@@ -180,11 +180,8 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, correlatio
 			cfg.DeployedAt = &now
 			cfg.UpdatedAt = now
 
-			// Update database (only if persistent mode)
-			if s.db != nil {
-				if err := s.db.UpdateConfig(cfg); err != nil {
-					log.Error("Failed to update config status in database", slog.Any("error", err), slog.String("id", configID))
-				}
+			if err := s.db.UpdateConfig(cfg); err != nil {
+				log.Error("Failed to update config status in database", slog.Any("error", err), slog.String("id", configID))
 			}
 
 			// Update in-memory store

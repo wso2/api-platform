@@ -194,21 +194,19 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 
 // saveOrUpdateConfig handles the atomic dual-write operation for saving/updating configuration
 func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig, logger *slog.Logger) (bool, error) {
-	// Try to save to database first (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.SaveConfig(storedCfg); err != nil {
-			// Check if it's a conflict (Configuration already exists)
-			if storage.IsConflictError(err) {
-				logger.Info("MCP configuration already exists in database, updating instead",
-					slog.String("id", storedCfg.UUID),
-					slog.String("displayName", storedCfg.DisplayName),
-					slog.String("version", storedCfg.Version))
+	// Try to save to database first
+	if err := s.db.SaveConfig(storedCfg); err != nil {
+		// Check if it's a conflict (Configuration already exists)
+		if storage.IsConflictError(err) {
+			logger.Info("MCP configuration already exists in database, updating instead",
+				slog.String("id", storedCfg.UUID),
+				slog.String("displayName", storedCfg.DisplayName),
+				slog.String("version", storedCfg.Version))
 
-				// Try to update instead
-				return s.updateExistingConfig(storedCfg, logger)
-			} else {
-				return false, fmt.Errorf("failed to save config to database: %w", err)
-			}
+			// Try to update instead
+			return s.updateExistingConfig(storedCfg, logger)
+		} else {
+			return false, fmt.Errorf("failed to save config to database: %w", err)
 		}
 	}
 
@@ -224,10 +222,8 @@ func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 			// Try to update instead
 			return s.updateExistingConfig(storedCfg, logger)
 		} else {
-			// Rollback database write (only if persistent mode)
-			if s.db != nil {
-				_ = s.db.DeleteConfig(storedCfg.UUID)
-			}
+			// Rollback database write
+			_ = s.db.DeleteConfig(storedCfg.UUID)
 			return false, fmt.Errorf("failed to add config to memory store: %w", err)
 		}
 	}
@@ -257,24 +253,20 @@ func (s *MCPDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 	existing.UpdatedAt = now
 	existing.DeployedAt = newConfig.DeployedAt
 
-	// Update database first (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.UpdateConfig(existing); err != nil {
-			return false, fmt.Errorf("failed to update config in database: %w", err)
-		}
+	// Update database first
+	if err := s.db.UpdateConfig(existing); err != nil {
+		return false, fmt.Errorf("failed to update config in database: %w", err)
 	}
 
 	// Update in-memory store
 	if err := s.store.Update(existing); err != nil {
 		// Rollback DB to original state since memory update failed
-		if s.db != nil {
-			if rbErr := s.db.UpdateConfig(&original); rbErr != nil {
-				logger.Error("Failed to rollback DB after memory update failure",
-					slog.Any("error", rbErr),
-					slog.String("id", original.UUID),
-					slog.String("displayName", original.DisplayName),
-					slog.String("version", original.Version))
-			}
+		if rbErr := s.db.UpdateConfig(&original); rbErr != nil {
+			logger.Error("Failed to rollback DB after memory update failure",
+				slog.Any("error", rbErr),
+				slog.String("id", original.UUID),
+				slog.String("displayName", original.DisplayName),
+				slog.String("version", original.Version))
 		}
 		return false, fmt.Errorf("failed to update config in memory store: %w", err)
 	}
@@ -331,10 +323,6 @@ func (s *MCPDeploymentService) ListMCPProxies() []*models.StoredConfig {
 
 // GetMCPProxyByHandle returns an MCP proxy configuration by its handle (metadata.name)
 func (s *MCPDeploymentService) GetMCPProxyByHandle(handle string) (*models.StoredConfig, error) {
-	if s.db == nil {
-		return nil, storage.ErrDatabaseUnavailable
-	}
-
 	cfg, err := s.db.GetConfigByKindAndHandle(models.KindMcp, handle)
 	if err != nil {
 		return nil, err
@@ -369,10 +357,6 @@ func (s *MCPDeploymentService) UpdateMCPProxy(handle string, params MCPDeploymen
 
 // DeleteMCPProxy deletes an MCP proxy by handle using store/db and updates snapshot
 func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID string, logger *slog.Logger) (*models.StoredConfig, error) {
-	if s.db == nil {
-		return nil, storage.ErrDatabaseUnavailable
-	}
-
 	// Check if config exists
 	cfg, err := s.db.GetConfigByKindAndHandle(models.KindMcp, handle)
 	if err != nil {
@@ -381,12 +365,10 @@ func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID string, logg
 		return nil, fmt.Errorf("MCP proxy configuration with handle '%s' not found", handle)
 	}
 
-	// Delete from database first (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.DeleteConfig(cfg.UUID); err != nil {
-			logger.Error("Failed to delete config from database", slog.Any("error", err))
-			return nil, fmt.Errorf("failed to delete configuration from database: %w", err)
-		}
+	// Delete from database first
+	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
+		logger.Error("Failed to delete config from database", slog.Any("error", err))
+		return nil, fmt.Errorf("failed to delete configuration from database: %w", err)
 	}
 
 	// Delete from in-memory store

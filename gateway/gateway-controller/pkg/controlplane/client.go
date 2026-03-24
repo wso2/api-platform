@@ -1299,17 +1299,15 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 	apiConfig.DeployedAt = &apiUndeployPerformedAt
 	apiConfig.UpdatedAt = time.Now()
 
-	// Update database (only if persistent mode)
-	if c.db != nil {
-		if err := c.db.UpdateConfig(apiConfig); err != nil {
-			c.logger.Error("Failed to update config status in database",
-				slog.String("api_id", apiID),
-				slog.Any("error", err),
-			)
-			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "api", "undeploy", "failed",
-				undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-			return
-		}
+	// Update database
+	if err := c.db.UpdateConfig(apiConfig); err != nil {
+		c.logger.Error("Failed to update config status in database",
+			slog.String("api_id", apiID),
+			slog.Any("error", err),
+		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "api", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+		return
 	}
 
 	if c.eventHub != nil {
@@ -1355,21 +1353,19 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 // Returns the config and an error. If the config is not found in either store,
 // returns (nil, storage.ErrNotFound). Other errors indicate actual storage failures.
 func (c *Client) findAPIConfig(apiID string) (*models.StoredConfig, error) {
-	// Check database first (source of truth when available)
-	if c.db != nil {
-		config, err := c.db.GetConfig(apiID)
-		if err == nil {
-			return config, nil
-		}
-		// If it's a real error (not just "not found"), surface it
-		if !storage.IsNotFoundError(err) {
-			return nil, fmt.Errorf("database error while fetching config: %w", err)
-		}
-		// Config not found in DB, fall through to check memory store
+	// Check database (source of truth)
+	config, err := c.db.GetConfig(apiID)
+	if err == nil {
+		return config, nil
 	}
+	// If it's a real error (not just "not found"), surface it
+	if !storage.IsNotFoundError(err) {
+		return nil, fmt.Errorf("database error while fetching config: %w", err)
+	}
+	// Config not found in DB, fall through to check memory store
 
 	// Fall back to in-memory store
-	config, err := c.store.Get(apiID)
+	config, err = c.store.Get(apiID)
 	if err == nil {
 		return config, nil
 	}
@@ -1476,17 +1472,15 @@ func (c *Client) cleanupOrphanedResources(apiID, correlationID string) {
 	)
 
 	// Check and clean up stale API keys from database
-	if c.db != nil {
-		if err := c.db.RemoveAPIKeysAPI(apiID); err != nil {
-			c.logger.Warn("Failed to remove stale API keys from database",
-				slog.String("api_id", apiID),
-				slog.Any("error", err),
-			)
-		} else {
-			c.logger.Debug("Cleaned up any stale API keys from database",
-				slog.String("api_id", apiID),
-			)
-		}
+	if err := c.db.RemoveAPIKeysAPI(apiID); err != nil {
+		c.logger.Warn("Failed to remove stale API keys from database",
+			slog.String("api_id", apiID),
+			slog.Any("error", err),
+		)
+	} else {
+		c.logger.Debug("Cleaned up any stale API keys from database",
+			slog.String("api_id", apiID),
+		)
 	}
 
 	if c.eventHub != nil {
@@ -1540,32 +1534,28 @@ func (c *Client) performFullAPIDeletion(apiID string, apiConfig *models.StoredCo
 	)
 
 	// 1. Delete API configuration from database first (for atomicity)
-	if c.db != nil {
-		if err := c.db.DeleteConfig(apiID); err != nil {
-			c.logger.Error("Failed to delete API configuration from database",
-				slog.String("api_id", apiID),
-				slog.Any("error", err),
-			)
-			// Continue with cleanup even if database deletion fails
-		} else {
-			c.logger.Info("Successfully deleted API configuration from database",
-				slog.String("api_id", apiID),
-			)
-		}
+	if err := c.db.DeleteConfig(apiID); err != nil {
+		c.logger.Error("Failed to delete API configuration from database",
+			slog.String("api_id", apiID),
+			slog.Any("error", err),
+		)
+		// Continue with cleanup even if database deletion fails
+	} else {
+		c.logger.Info("Successfully deleted API configuration from database",
+			slog.String("api_id", apiID),
+		)
 	}
 
 	// 2. Delete all API keys from database
-	if c.db != nil {
-		if err := c.db.RemoveAPIKeysAPI(apiID); err != nil {
-			c.logger.Warn("Failed to delete API keys from database",
-				slog.String("api_id", apiID),
-				slog.Any("error", err),
-			)
-		} else {
-			c.logger.Info("Successfully deleted API keys from database",
-				slog.String("api_id", apiID),
-			)
-		}
+	if err := c.db.RemoveAPIKeysAPI(apiID); err != nil {
+		c.logger.Warn("Failed to delete API keys from database",
+			slog.String("api_id", apiID),
+			slog.Any("error", err),
+		)
+	} else {
+		c.logger.Info("Successfully deleted API keys from database",
+			slog.String("api_id", apiID),
+		)
 	}
 
 	if c.eventHub != nil {
@@ -2240,17 +2230,15 @@ func (c *Client) handleMCPProxyUndeploymentEvent(event map[string]any) {
 	mcpConfig.DeployedAt = &mcpUndeployPerformedAt
 	mcpConfig.UpdatedAt = time.Now()
 
-	// Update database (only if persistent mode)
-	if c.db != nil {
-		if err := c.db.UpdateConfig(mcpConfig); err != nil {
-			c.logger.Error("Failed to update config status in database",
-				slog.String("proxy_id", proxyID),
-				slog.Any("error", err),
-			)
-			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "undeploy", "failed",
-				undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-			return
-		}
+	// Update database
+	if err := c.db.UpdateConfig(mcpConfig); err != nil {
+		c.logger.Error("Failed to update config status in database",
+			slog.String("proxy_id", proxyID),
+			slog.Any("error", err),
+		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+		return
 	}
 
 	// Update in-memory store

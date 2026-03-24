@@ -536,25 +536,33 @@ func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
 		FROM artifacts a
 		JOIN rest_apis r ON a.uuid = r.uuid
 		WHERE a.gateway_id = ?
+
 		UNION ALL
+
 		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, w.configuration, a.desired_state,
 			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
 		JOIN websub_apis w ON a.uuid = w.uuid
 		WHERE a.gateway_id = ?
+
 		UNION ALL
+
 		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, lp.configuration, a.desired_state,
 			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
 		JOIN llm_providers lp ON a.uuid = lp.uuid
 		WHERE a.gateway_id = ?
+
 		UNION ALL
+
 		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, lx.configuration, a.desired_state,
 			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
 		JOIN llm_proxies lx ON a.uuid = lx.uuid
 		WHERE a.gateway_id = ?
+
 		UNION ALL
+		
 		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, m.configuration, a.desired_state,
 			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a

@@ -118,15 +118,6 @@ func TestMCPDeploymentService_ListMCPProxies(t *testing.T) {
 	})
 }
 
-func TestMCPDeploymentService_GetMCPProxyByHandle_NoDatabase(t *testing.T) {
-	store := storage.NewConfigStore()
-	service := NewMCPDeploymentService(store, nil, nil, nil, nil)
-
-	_, err := service.GetMCPProxyByHandle("0000-test-handle-0000-000000000000")
-	assert.Error(t, err)
-	assert.Equal(t, storage.ErrDatabaseUnavailable, err)
-}
-
 func TestMCPDeploymentService_CreateMCPProxy_ParseError(t *testing.T) {
 	store := storage.NewConfigStore()
 	service := NewMCPDeploymentService(store, nil, nil, nil, nil)
@@ -227,34 +218,6 @@ spec:
 	_, err := service.CreateMCPProxy(params)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "already exists")
-}
-
-func TestMCPDeploymentService_DeleteMCPProxy_NoDatabase(t *testing.T) {
-	store := storage.NewConfigStore()
-	service := NewMCPDeploymentService(store, nil, nil, nil, nil)
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
-	_, err := service.DeleteMCPProxy("0000-test-handle-0000-000000000000", "corr-id", logger)
-	assert.Error(t, err)
-	assert.Equal(t, storage.ErrDatabaseUnavailable, err)
-}
-
-func TestMCPDeploymentService_UpdateMCPProxy_NoDatabase(t *testing.T) {
-	store := storage.NewConfigStore()
-	service := NewMCPDeploymentService(store, nil, nil, nil, nil)
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
-	params := MCPDeploymentParams{
-		Data:          []byte("test data"),
-		ContentType:   "application/yaml",
-		Origin:        models.OriginGatewayAPI,
-		CorrelationID: "corr-id",
-		Logger:        logger,
-	}
-
-	_, err := service.UpdateMCPProxy("0000-test-handle-0000-000000000000", params, logger)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "not found")
 }
 
 func TestMCPDeploymentService_SaveOrUpdateConfig(t *testing.T) {

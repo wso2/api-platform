@@ -505,17 +505,15 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 		UpdatedAt:     time.Now(),
 	}
 
-	// Persist to DB if available
-	if s.db != nil {
-		if err := s.db.SaveLLMProviderTemplate(stored); err != nil {
-			if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
-				return nil, fmt.Errorf("template with handle '%s' already exists", tmpl.Metadata.Name)
-			}
-			return nil, fmt.Errorf("failed to save template to database: %w", err)
+	// Persist to DB
+	if err := s.db.SaveLLMProviderTemplate(stored); err != nil {
+		if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
+			return nil, fmt.Errorf("template with handle '%s' already exists", tmpl.Metadata.Name)
 		}
+		return nil, fmt.Errorf("failed to save template to database: %w", err)
 	}
 
-	if s.isEventDriven() && s.db != nil {
+	if s.isEventDriven() {
 		s.publishLLMTemplateEvent("CREATE", stored.UUID, params.CorrelationID, params.Logger)
 		return stored, nil
 	}
@@ -523,13 +521,11 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 	// Add to memory store (with rollback if it fails)
 	if err := s.store.AddTemplate(stored); err != nil {
 		// Rollback: Remove from DB if memory store fails
-		if s.db != nil {
-			if delErr := s.db.DeleteLLMProviderTemplate(stored.UUID); delErr != nil {
-				if params.Logger != nil {
-					params.Logger.Error("Failed to rollback template from database after memory store failure",
-						slog.String("template_handle", tmpl.Metadata.Name),
-						slog.Any("rollback_error", delErr))
-				}
+		if delErr := s.db.DeleteLLMProviderTemplate(stored.UUID); delErr != nil {
+			if params.Logger != nil {
+				params.Logger.Error("Failed to rollback template from database after memory store failure",
+					slog.String("template_handle", tmpl.Metadata.Name),
+					slog.Any("rollback_error", delErr))
 			}
 		}
 		return nil, fmt.Errorf("failed to add template to memory store: %w", err)
@@ -546,13 +542,11 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 					slog.Any("rollback_error", delErr))
 			}
 		}
-		if s.db != nil {
-			if delErr := s.db.DeleteLLMProviderTemplate(stored.UUID); delErr != nil {
-				if params.Logger != nil {
-					params.Logger.Error("Failed to rollback template from database after xDS failure",
-						slog.String("template_handle", tmpl.Metadata.Name),
-						slog.Any("rollback_error", delErr))
-				}
+		if delErr := s.db.DeleteLLMProviderTemplate(stored.UUID); delErr != nil {
+			if params.Logger != nil {
+				params.Logger.Error("Failed to rollback template from database after xDS failure",
+					slog.String("template_handle", tmpl.Metadata.Name),
+					slog.Any("rollback_error", delErr))
 			}
 		}
 		if params.Logger != nil {
@@ -606,12 +600,10 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 			}
 
 			// Update DB
-			if s.db != nil {
-				if err := s.db.UpdateLLMProviderTemplate(updated); err != nil {
-					allErrors = append(allErrors,
-						fmt.Sprintf("failed to update template '%s' in database: %v", tmpl.Metadata.Name, err))
-					continue
-				}
+			if err := s.db.UpdateLLMProviderTemplate(updated); err != nil {
+				allErrors = append(allErrors,
+					fmt.Sprintf("failed to update template '%s' in database: %v", tmpl.Metadata.Name, err))
+				continue
 			}
 
 			// Update memory store
@@ -649,16 +641,14 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 			UpdatedAt:     time.Now(),
 		}
 
-		// persist to DB if available
-		if s.db != nil {
-			if err := s.db.SaveLLMProviderTemplate(stored); err != nil {
-				if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
-					continue
-				}
-				allErrors = append(allErrors, fmt.Sprintf("failed to save template '%s' to database: %v",
-					tmpl.Metadata.Name, err))
+		// persist to DB
+		if err := s.db.SaveLLMProviderTemplate(stored); err != nil {
+			if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
 				continue
 			}
+			allErrors = append(allErrors, fmt.Sprintf("failed to save template '%s' to database: %v",
+				tmpl.Metadata.Name, err))
+			continue
 		}
 
 		// add to memory store
@@ -730,13 +720,11 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 	}
 
 	// Update DB
-	if s.db != nil {
-		if err := s.db.UpdateLLMProviderTemplate(updated); err != nil {
-			return nil, fmt.Errorf("failed to update template in database: %w", err)
-		}
+	if err := s.db.UpdateLLMProviderTemplate(updated); err != nil {
+		return nil, fmt.Errorf("failed to update template in database: %w", err)
 	}
 
-	if s.isEventDriven() && s.db != nil {
+	if s.isEventDriven() {
 		s.publishLLMTemplateEvent("UPDATE", updated.UUID, params.CorrelationID, params.Logger)
 		return updated, nil
 	}
@@ -744,13 +732,11 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 	// Update memory store (with rollback if it fails)
 	if err := s.store.UpdateTemplate(updated); err != nil {
 		// Rollback: Revert DB update if memory store update fails
-		if s.db != nil {
-			if rollbackErr := s.db.UpdateLLMProviderTemplate(existing); rollbackErr != nil {
-				if params.Logger != nil {
-					params.Logger.Error("Failed to rollback template in database after memory store update failure",
-						slog.String("template_handle", handle),
-						slog.Any("rollback_error", rollbackErr))
-				}
+		if rollbackErr := s.db.UpdateLLMProviderTemplate(existing); rollbackErr != nil {
+			if params.Logger != nil {
+				params.Logger.Error("Failed to rollback template in database after memory store update failure",
+					slog.String("template_handle", handle),
+					slog.Any("rollback_error", rollbackErr))
 			}
 		}
 		return nil, fmt.Errorf("failed to update template in memory store: %w", err)
@@ -766,13 +752,11 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 					slog.Any("rollback_error", rollbackErr))
 			}
 		}
-		if s.db != nil {
-			if rollbackErr := s.db.UpdateLLMProviderTemplate(existing); rollbackErr != nil {
-				if params.Logger != nil {
-					params.Logger.Error("Failed to rollback template in database after xDS failure",
-						slog.String("template_handle", handle),
-						slog.Any("rollback_error", rollbackErr))
-				}
+		if rollbackErr := s.db.UpdateLLMProviderTemplate(existing); rollbackErr != nil {
+			if params.Logger != nil {
+				params.Logger.Error("Failed to rollback template in database after xDS failure",
+					slog.String("template_handle", handle),
+					slog.Any("rollback_error", rollbackErr))
 			}
 		}
 		if params.Logger != nil {
@@ -793,7 +777,7 @@ func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle, correlationID s
 		return nil, fmt.Errorf("template with handle '%s' not found", handle)
 	}
 
-	if s.isEventDriven() && s.db != nil {
+	if s.isEventDriven() {
 		if err := s.db.DeleteLLMProviderTemplate(tmpl.UUID); err != nil {
 			return nil, fmt.Errorf("failed to delete template from database: %w", err)
 		}
@@ -811,29 +795,25 @@ func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle, correlationID s
 		}
 	}
 
-	if s.db != nil {
-		if err := s.db.DeleteLLMProviderTemplate(tmpl.UUID); err != nil {
-			// Rollback: Re-add to lazy resource store if database deletion fails.
-			// publishTemplateAsLazyResource restores the template in lazy resources when
-			// s.db.DeleteLLMProviderTemplate fails (only if lazy resource manager is available).
-			if s.lazyResourceManager != nil {
-				if rollbackErr := s.publishTemplateAsLazyResource(&tmpl.Configuration, ""); rollbackErr != nil {
-					slog.Error("Failed to rollback lazy resource after database deletion failure",
-						slog.String("template_handle", handle),
-						slog.Any("rollback_error", rollbackErr))
-				}
-			}
-			return nil, fmt.Errorf("failed to delete template from database: %w", err)
-		}
-	}
-	if err := s.store.DeleteTemplate(tmpl.UUID); err != nil {
-		// Rollback: Re-add to DB and lazy resource if memory deletion fails
-		if s.db != nil {
-			if rollbackErr := s.db.SaveLLMProviderTemplate(tmpl); rollbackErr != nil {
-				slog.Error("Failed to rollback template to database after memory store deletion failure",
+	if err := s.db.DeleteLLMProviderTemplate(tmpl.UUID); err != nil {
+		// Rollback: Re-add to lazy resource store if database deletion fails.
+		// publishTemplateAsLazyResource restores the template in lazy resources when
+		// s.db.DeleteLLMProviderTemplate fails (only if lazy resource manager is available).
+		if s.lazyResourceManager != nil {
+			if rollbackErr := s.publishTemplateAsLazyResource(&tmpl.Configuration, ""); rollbackErr != nil {
+				slog.Error("Failed to rollback lazy resource after database deletion failure",
 					slog.String("template_handle", handle),
 					slog.Any("rollback_error", rollbackErr))
 			}
+		}
+		return nil, fmt.Errorf("failed to delete template from database: %w", err)
+	}
+	if err := s.store.DeleteTemplate(tmpl.UUID); err != nil {
+		// Rollback: Re-add to DB and lazy resource if memory deletion fails
+		if rollbackErr := s.db.SaveLLMProviderTemplate(tmpl); rollbackErr != nil {
+			slog.Error("Failed to rollback template to database after memory store deletion failure",
+				slog.String("template_handle", handle),
+				slog.Any("rollback_error", rollbackErr))
 		}
 		if s.lazyResourceManager != nil {
 			if rollbackErr := s.publishTemplateAsLazyResource(&tmpl.Configuration, ""); rollbackErr != nil {
@@ -853,10 +833,8 @@ func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle, correlationID s
 // If displayName is nil or empty, all templates are returned.
 func (s *LLMDeploymentService) ListLLMProviderTemplates(displayName *string) []*models.StoredLLMProviderTemplate {
 	templates := s.store.GetAllTemplates()
-	if s.db != nil {
-		if storedTemplates, err := s.db.GetAllLLMProviderTemplates(); err == nil {
-			templates = storedTemplates
-		}
+	if storedTemplates, err := s.db.GetAllLLMProviderTemplates(); err == nil {
+		templates = storedTemplates
 	}
 
 	// Return all templates if no filter is specified
@@ -877,19 +855,17 @@ func (s *LLMDeploymentService) ListLLMProviderTemplates(displayName *string) []*
 
 // GetLLMProviderTemplateByHandle returns template by handle
 func (s *LLMDeploymentService) GetLLMProviderTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
-	if s.db != nil {
-		templates, err := s.db.GetAllLLMProviderTemplates()
-		if err == nil {
-			for _, template := range templates {
-				if template.GetHandle() == handle {
-					return template, nil
-				}
+	templates, err := s.db.GetAllLLMProviderTemplates()
+	if err == nil {
+		for _, template := range templates {
+			if template.GetHandle() == handle {
+				return template, nil
 			}
-			return nil, fmt.Errorf("%w: template with handle '%s' not found", storage.ErrNotFound, handle)
 		}
-		if !storage.IsDatabaseUnavailableError(err) {
-			return nil, err
-		}
+		return nil, fmt.Errorf("%w: template with handle '%s' not found", storage.ErrNotFound, handle)
+	}
+	if !storage.IsDatabaseUnavailableError(err) {
+		return nil, err
 	}
 
 	return s.store.GetTemplateByHandle(handle)
@@ -973,12 +949,10 @@ func (s *LLMDeploymentService) CreateLLMProvider(params LLMDeploymentParams) (*m
 // ListLLMProviders returns all stored LLM provider configurations with optional filtering
 func (s *LLMDeploymentService) ListLLMProviders(params api.ListLLMProvidersParams) []*models.StoredConfig {
 	configs := s.store.GetAllByKind(string(api.LlmProvider))
-	// Prefer database rows when available because EventHub-based flows can leave
+	// Prefer database rows because EventHub-based flows can leave
 	// the local store briefly behind the canonical state right after a write.
-	if s.db != nil {
-		if storedConfigs, err := s.db.GetAllConfigsByKind(string(api.LlmProvider)); err == nil {
-			configs = storedConfigs
-		}
+	if storedConfigs, err := s.db.GetAllConfigsByKind(string(api.LlmProvider)); err == nil {
+		configs = storedConfigs
 	}
 
 	// If no filters are provided, return all configs
@@ -1105,13 +1079,11 @@ func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID string,
 	}
 	// Remove the canonical row first so every replica observes the same delete
 	// via the follow-up event, instead of each writer mutating local state inline.
-	if s.db != nil {
-		if err := s.db.RemoveAPIKeysAPI(cfg.UUID); err != nil {
-			return cfg, fmt.Errorf("failed to delete LLM provider API keys from database: %w", err)
-		}
-		if err := s.db.DeleteConfig(cfg.UUID); err != nil {
-			return cfg, fmt.Errorf("failed to delete configuration from database: %w", err)
-		}
+	if err := s.db.RemoveAPIKeysAPI(cfg.UUID); err != nil {
+		return cfg, fmt.Errorf("failed to delete LLM provider API keys from database: %w", err)
+	}
+	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
+		return cfg, fmt.Errorf("failed to delete configuration from database: %w", err)
 	}
 	if s.isEventDriven() {
 		s.publishLLMProviderEvent("DELETE", cfg.UUID, correlationID, logger)
@@ -1144,31 +1116,20 @@ func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID string,
 }
 
 func (s *LLMDeploymentService) GetLLMProviderByHandle(handle string) (*models.StoredConfig, error) {
-	// In EventHub mode the database is the source of truth.
-	if s.db != nil {
-		cfg, err := s.db.GetConfigByKindAndHandle(string(api.LlmProvider), handle)
-		if err == nil {
-			_ = s.hydrateStoredLLMConfig(cfg)
-			return cfg, nil
-		}
-		return nil, err
+	// The database is the source of truth.
+	cfg, err := s.db.GetConfigByKindAndHandle(string(api.LlmProvider), handle)
+	if err == nil {
+		_ = s.hydrateStoredLLMConfig(cfg)
+		return cfg, nil
 	}
-
-	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProvider), handle)
-	if err != nil {
-		return nil, err
-	}
-	_ = s.hydrateStoredLLMConfig(cfg)
-	return cfg, nil
+	return nil, err
 }
 
 // ListLLMProxies returns all stored LLM proxy configurations
 func (s *LLMDeploymentService) ListLLMProxies(params api.ListLLMProxiesParams) []*models.StoredConfig {
 	configs := s.store.GetAllByKind(string(api.LlmProxy))
-	if s.db != nil {
-		if storedConfigs, err := s.db.GetAllConfigsByKind(string(api.LlmProxy)); err == nil {
-			configs = storedConfigs
-		}
+	if storedConfigs, err := s.db.GetAllConfigsByKind(string(api.LlmProxy)); err == nil {
+		configs = storedConfigs
 	}
 
 	// If no filters are provided, return all configs
@@ -1218,21 +1179,12 @@ func (s *LLMDeploymentService) UpdateLLMProxy(id string, params LLMDeploymentPar
 }
 
 func (s *LLMDeploymentService) GetLLMProxyByHandle(handle string) (*models.StoredConfig, error) {
-	if s.db != nil {
-		cfg, err := s.db.GetConfigByKindAndHandle(string(api.LlmProxy), handle)
-		if err == nil {
-			_ = s.hydrateStoredLLMConfig(cfg)
-			return cfg, nil
-		}
-		return nil, err
+	cfg, err := s.db.GetConfigByKindAndHandle(string(api.LlmProxy), handle)
+	if err == nil {
+		_ = s.hydrateStoredLLMConfig(cfg)
+		return cfg, nil
 	}
-
-	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProxy), handle)
-	if err != nil {
-		return nil, err
-	}
-	_ = s.hydrateStoredLLMConfig(cfg)
-	return cfg, nil
+	return nil, err
 }
 
 // DeleteLLMProxy deletes by name+version using store/db and updates snapshot
@@ -1244,13 +1196,11 @@ func (s *LLMDeploymentService) DeleteLLMProxy(handle, correlationID string, logg
 	if cfg == nil {
 		return cfg, fmt.Errorf("LLM proxy configuration with handle '%s' not found", handle)
 	}
-	if s.db != nil {
-		if err := s.db.RemoveAPIKeysAPI(cfg.UUID); err != nil {
-			return cfg, fmt.Errorf("failed to delete LLM proxy API keys from database: %w", err)
-		}
-		if err := s.db.DeleteConfig(cfg.UUID); err != nil {
-			return cfg, fmt.Errorf("failed to delete configuration from database: %w", err)
-		}
+	if err := s.db.RemoveAPIKeysAPI(cfg.UUID); err != nil {
+		return cfg, fmt.Errorf("failed to delete LLM proxy API keys from database: %w", err)
+	}
+	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
+		return cfg, fmt.Errorf("failed to delete configuration from database: %w", err)
 	}
 	if s.isEventDriven() {
 		s.publishLLMProxyEvent("DELETE", cfg.UUID, correlationID, logger)
