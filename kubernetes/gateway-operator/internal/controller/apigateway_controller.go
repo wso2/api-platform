@@ -114,7 +114,8 @@ func (t *GatewayTracker) Delete(key string) {
 }
 
 const (
-	apigatewayFinalizerName = "gateway.api-platform.wso2.com/apigateway-finalizer"
+	apigatewayFinalizerName  = "gateway.api-platform.wso2.com/apigateway-finalizer"
+	apigatewayConfigRefIndex = "spec.configRef.name"
 )
 
 // GatewayReconciler reconciles an APIGateway object
@@ -1007,9 +1008,13 @@ func (r *GatewayReconciler) enqueueGatewaysForConfigMap(ctx context.Context, obj
 
 	logger := log.FromContext(ctx)
 
-	// Find all Gateways that reference this ConfigMap
+	// Find only Gateways that reference this ConfigMap through the indexed spec.configRef.name field.
 	gatewayList := &apiv1.APIGatewayList{}
-	if err := r.List(ctx, gatewayList); err != nil {
+	if err := r.List(ctx, gatewayList,
+		client.InNamespace(configMap.Namespace),
+		client.MatchingFields{
+			apigatewayConfigRefIndex: configMap.Name,
+		}); err != nil {
 		logger.Error(err, "failed to list Gateways for ConfigMap event",
 			"configMap", configMap.Name,
 			"namespace", configMap.Namespace)
@@ -1048,6 +1053,16 @@ func (r *GatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	opts := controller.Options{MaxConcurrentReconciles: r.Config.Reconciliation.MaxConcurrentReconciles}
 	if opts.MaxConcurrentReconciles <= 0 {
 		opts.MaxConcurrentReconciles = 1
+	}
+
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &apiv1.APIGateway{}, apigatewayConfigRefIndex, func(rawObj client.Object) []string {
+		gateway, ok := rawObj.(*apiv1.APIGateway)
+		if !ok || gateway.Spec.ConfigRef == nil || gateway.Spec.ConfigRef.Name == "" {
+			return nil
+		}
+		return []string{gateway.Spec.ConfigRef.Name}
+	}); err != nil {
+		return fmt.Errorf("failed to index APIGateway configRef field: %w", err)
 	}
 
 	// Predicate to only watch ConfigMap updates and deletes (not creates)
