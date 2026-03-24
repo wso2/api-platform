@@ -283,4 +283,6 @@ type CustomPolicyRepository interface {
 	ListCustomPolicyByOrganization(orgUUID string) ([]*model.CustomPolicy, error)
 	DeleteCustomPolicy(orgUUID, name, version string) error
 	CountCustomPolicyUsages(policyUUID string) (int, error)
+	// DeleteCustomPolicyIfUnused atomically deletes the policy only when it has no active usages.
+	DeleteCustomPolicyIfUnused(orgUUID, policyUUID string) error
 }

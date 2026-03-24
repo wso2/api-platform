@@ -362,15 +362,7 @@ func (s *GatewayService) DeleteCustomPolicyByUUID(orgID, policyUUID, version str
 		return constants.ErrCustomPolicyVersionMismatch
 	}
 
-	count, err := s.customPolicyRepo.CountCustomPolicyUsages(policyUUID)
-	if err != nil {
-		return fmt.Errorf("failed to check custom policy usages (org_id=%s, policy_uuid=%s): %w", orgID, policyUUID, err)
-	}
-	if count > 0 {
-		return constants.ErrCustomPolicyInUse
-	}
-
-	return s.customPolicyRepo.DeleteCustomPolicy(orgID, policy.Name, policy.Version)
+	return s.customPolicyRepo.DeleteCustomPolicyIfUnused(orgID, policyUUID)
 }
 
 // RegisterGateway registers a new gateway with organization validation
