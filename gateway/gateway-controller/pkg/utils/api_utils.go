@@ -294,6 +294,7 @@ func (s *APIUtilsService) FetchSubscriptionsForAPI(apiID string) ([]models.Subsc
 // controlPlaneAPIKey is the API key response from the control plane REST API.
 // The APIKeyHashes field holds a map of hash algorithm → hash value (e.g. {"sha256": "abc123..."}).
 type controlPlaneAPIKey struct {
+	CorrelationID string            `json:"correlationId"`
 	UUID         string            `json:"uuid"`
 	Name         string            `json:"name"`
 	MaskedAPIKey string            `json:"maskedApiKey"`
@@ -309,26 +310,33 @@ type controlPlaneAPIKey struct {
 	Issuer       *string           `json:"issuer,omitempty"`
 }
 
-// FetchAPIKeysForArtifact fetches API keys for the given artifact from the control plane.
-// Supported artifact kinds: KindLlmProvider, KindLlmProxy, KindRestApi.
+// FetchAPIKeysByKind fetches all API keys for the given artifact kind from the control plane.
+// Supported kinds: KindLlmProvider, KindLlmProxy, KindRestApi.
+// When issuer is non-empty it is appended as a query parameter so the server returns
+// only keys matching that issuer; an empty issuer fetches all keys for the kind.
 // Only active keys that carry a sha256 hash are returned; others are skipped.
-func (s *APIUtilsService) FetchAPIKeysForArtifact(artifactKind, artifactID, artifactName string) ([]models.APIKey, error) {
-	var endpoint string
+func (s *APIUtilsService) FetchAPIKeysByKind(artifactKind, issuer string) ([]models.APIKey, error) {
 	baseURL := s.getBaseURL()
+	var path string
 	switch artifactKind {
 	case models.KindLlmProvider:
-		endpoint = baseURL + "/llm-providers/" + artifactID + "/api-keys"
+		path = "/llm-providers/api-keys"
 	case models.KindLlmProxy:
-		endpoint = baseURL + "/llm-proxies/" + artifactID + "/api-keys"
+		path = "/llm-proxies/api-keys"
 	case models.KindRestApi:
-		endpoint = baseURL + "/apis/" + artifactID + "/api-keys"
+		path = "/apis/api-keys"
 	default:
 		return nil, fmt.Errorf("unsupported artifact kind for API key fetch: %s", artifactKind)
 	}
 
-	s.logger.Info("Fetching API keys for artifact",
+	endpoint := baseURL + path
+	if issuer != "" {
+		endpoint += "?issuer=" + issuer
+	}
+
+	s.logger.Info("Fetching API keys by kind",
 		slog.String("kind", artifactKind),
-		slog.String("artifact_name", artifactName),
+		slog.Bool("issuer_filtered", issuer != ""),
 	)
 
 	req, err := http.NewRequest("GET", endpoint, nil)
@@ -358,7 +366,7 @@ func (s *APIUtilsService) FetchAPIKeysForArtifact(artifactKind, artifactID, arti
 	for _, ck := range cpKeys {
 		if models.APIKeyStatus(ck.Status) != models.APIKeyStatusActive {
 			s.logger.Debug("Skipping non-active API key during bulk sync",
-				slog.String("artifact_name", artifactName),
+				slog.String("kind", artifactKind),
 				slog.String("key_name", ck.Name),
 				slog.String("status", ck.Status),
 			)
@@ -367,7 +375,7 @@ func (s *APIUtilsService) FetchAPIKeysForArtifact(artifactKind, artifactID, arti
 		sha256Hash, ok := ck.APIKeyHashes[constants.HashingAlgorithmSHA256]
 		if !ok || sha256Hash == "" {
 			s.logger.Warn("Skipping API key without sha256 hash during bulk sync",
-				slog.String("artifact_name", artifactName),
+				slog.String("kind", artifactKind),
 				slog.String("key_name", ck.Name),
 			)
 			continue
@@ -377,7 +385,7 @@ func (s *APIUtilsService) FetchAPIKeysForArtifact(artifactKind, artifactID, arti
 			Name:          ck.Name,
 			APIKey:        sha256Hash,
 			MaskedAPIKey:  ck.MaskedAPIKey,
-			ArtifactUUID:  artifactID,
+			ArtifactUUID:  ck.ArtifactUUID,
 			Status:        models.APIKeyStatus(ck.Status),
 			CreatedAt:     ck.CreatedAt,
 			CreatedBy:     ck.CreatedBy,
@@ -386,11 +394,12 @@ func (s *APIUtilsService) FetchAPIKeysForArtifact(artifactKind, artifactID, arti
 			Source:        ck.Source,
 			ExternalRefId: ck.ExternalRefId,
 			Issuer:        ck.Issuer,
+			CorrelationID: ck.CorrelationID,
 		})
 	}
 
-	s.logger.Info("Successfully fetched API keys for artifact",
-		slog.String("artifact_name", artifactName),
+	s.logger.Info("Successfully fetched API keys by kind",
+		slog.String("kind", artifactKind),
 		slog.Int("count", len(keys)),
 	)
 

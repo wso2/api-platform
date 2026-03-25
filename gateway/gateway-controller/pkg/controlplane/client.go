@@ -783,8 +783,26 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 	}
 
 	c.logger.Info("Starting API key sync at gateway startup")
+
+	issuer := ""
+	if c.systemConfig != nil {
+		issuer = c.systemConfig.APIKey.Issuer
+	}
+
+	// Build a per-kind map of artifact UUIDs from the in-memory config store.
 	configs := c.store.GetAll()
+	artifactUUIDsByKind := make(map[string][]string)
 	for _, cfg := range configs {
+		if cfg == nil {
+			continue
+		}
+		if cfg.Kind != models.KindLlmProvider && cfg.Kind != models.KindLlmProxy && cfg.Kind != models.KindRestApi {
+			continue
+		}
+		artifactUUIDsByKind[cfg.Kind] = append(artifactUUIDsByKind[cfg.Kind], cfg.UUID)
+	}
+
+	for _, kind := range []string{models.KindRestApi, models.KindLlmProvider, models.KindLlmProxy} {
 		select {
 		case <-c.ctx.Done():
 			c.logger.Info("Stopping API key bulk sync due to client context cancellation")
@@ -795,19 +813,10 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 		default:
 		}
 
-		if cfg == nil {
-			continue
-		}
-		if cfg.Kind != models.KindLlmProvider && cfg.Kind != models.KindLlmProxy && cfg.Kind != models.KindRestApi {
-			continue
-		}
-
-		artifactID := cfg.UUID
-		keys, err := c.apiUtilsService.FetchAPIKeysForArtifact(cfg.Kind, artifactID, cfg.Handle)
+		keys, err := c.apiUtilsService.FetchAPIKeysByKind(kind, issuer)
 		if err != nil {
-			c.logger.Warn("Failed to bulk-sync API keys for artifact",
-				slog.String("artifact_name", cfg.Handle),
-				slog.String("kind", cfg.Kind),
+			c.logger.Warn("Failed to bulk-sync API keys for kind",
+				slog.String("kind", kind),
 				slog.Any("error", err),
 			)
 			continue
@@ -830,54 +839,39 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 				continue
 			}
 
-			if err := c.db.SaveAPIKey(&key); err != nil {
-				if storage.IsConflictError(err) {
-					if existing, fetchErr := c.db.GetAPIKeysByAPIAndName(key.ArtifactUUID, key.Name); fetchErr == nil && existing != nil {
-						if existing.Source != "" {
-							key.Source = existing.Source
-						}
-						if key.ExternalRefId == nil && existing.ExternalRefId != nil {
-							key.ExternalRefId = existing.ExternalRefId
-						}
-					}
-					if err := c.db.UpdateAPIKey(&key); err != nil {
-						c.logger.Warn("Failed to update existing API key during bulk sync",
-							slog.String("key_uuid", key.UUID),
-							slog.String("artifact_id", artifactID),
-							slog.Any("error", err))
-					}
-				} else {
-					c.logger.Warn("Failed to save API key during bulk sync",
-						slog.String("key_uuid", key.UUID),
-						slog.String("artifact_id", artifactID),
-						slog.Any("error", err))
-				}
+			if err := c.db.UpsertAPIKey(&key); err != nil {
+				c.logger.Warn("Failed to upsert API key during bulk sync",
+					slog.String("key_uuid", key.UUID),
+					slog.String("artifact_uuid", key.ArtifactUUID),
+					slog.Any("error", err))
+			} else {
+				c.apiKeyService.PublishAPIKeyEvent("CREATE", key.ArtifactUUID, key.UUID, key.CorrelationID, c.logger)
 			}
 			fetchedUUIDs = append(fetchedUUIDs, key.UUID)
 		}
 
-		if err := c.db.DeleteAPIKeysForArtifactNotIn(artifactID, fetchedUUIDs); err != nil {
-			c.logger.Warn("Failed to reconcile deleted API keys for artifact during bulk sync",
-				slog.String("artifact_id", artifactID), slog.Any("error", err))
+		artifactUUIDs := artifactUUIDsByKind[kind]
+		staleKeys, err := c.db.ListAPIKeysForArtifactsNotIn(artifactUUIDs, fetchedUUIDs)
+		if err != nil {
+			c.logger.Warn("Failed to list stale API keys before reconciliation",
+				slog.String("kind", kind), slog.Any("error", err))
+		}
+		if len(staleKeys) > 0 {
+			staleUUIDs := make([]string, len(staleKeys))
+			for i, k := range staleKeys {
+				staleUUIDs[i] = k.UUID
+			}
+			if err := c.db.DeleteAPIKeysByUUIDs(staleUUIDs); err != nil {
+				c.logger.Warn("Failed to reconcile deleted API keys during bulk sync",
+					slog.String("kind", kind), slog.Any("error", err))
+			} else {
+				for _, k := range staleKeys {
+					c.apiKeyService.PublishAPIKeyEvent("DELETE", k.ArtifactUUID, k.UUID,
+						utils.APIKeyCorrelationID(k.ArtifactUUID, k.Name), c.logger)
+				}
+			}
 		}
 	}
-
-	// Reload in-memory store from the now-reconciled DB state and push a single xDS refresh.
-	// Load into a temporary store first; only replace the live store and push the xDS snapshot
-	// if the database load succeeds. This ensures a DB failure does not wipe the live store and
-	// cause all API key authentication to fail for in-flight requests.
-	tempStore := storage.NewAPIKeyStore(c.logger)
-	if err := storage.LoadAPIKeysFromDatabase(c.db, c.store, tempStore); err != nil {
-		c.logger.Warn("Failed to reload API keys from database after bulk sync", slog.Any("error", err))
-		return
-	}
-	c.apiKeyStore.Clear()
-	for _, apiKey := range tempStore.GetAll() {
-		if err := c.apiKeyStore.Store(apiKey); err != nil {
-			c.logger.Warn("Failed to populate API key store entry after bulk sync", slog.Any("error", err))
-		}
-	}
-	c.refreshAPIKeySnapshot()
 }
 
 // Close closes the WebSocket connection
@@ -2542,6 +2536,32 @@ func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
 	if payload.UUID != "" {
 		keyUUID = &payload.UUID
 	}
+
+	// Parse authoritative timestamps from the platform API
+	var createdAt, updatedAt *time.Time
+	if payload.CreatedAt != "" {
+		t, err := time.Parse(time.RFC3339, payload.CreatedAt)
+		if err != nil {
+			logger.Warn("Invalid created_at format in API key event, using local time",
+				slog.String("created_at", payload.CreatedAt),
+				slog.Any("error", err),
+			)
+		} else {
+			createdAt = &t
+		}
+	}
+	if payload.UpdatedAt != "" {
+		t, err := time.Parse(time.RFC3339, payload.UpdatedAt)
+		if err != nil {
+			logger.Warn("Invalid updated_at format in API key event, using local time",
+				slog.String("updated_at", payload.UpdatedAt),
+				slog.Any("error", err),
+			)
+		} else {
+			updatedAt = &t
+		}
+	}
+
 	apiKeyCreationRequest := api.APIKeyCreationRequest{
 		MaskedApiKey:  &payload.MaskedApiKey,
 		Name:          &payload.Name,
@@ -2600,6 +2620,8 @@ func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
 		&payload.ApiKeyHashes,
 		keyCreatedEvent.CorrelationID,
 		logger,
+		createdAt,
+		updatedAt,
 	)
 	if err != nil {
 		logger.Error("Failed to create external API key", slog.Any("error", err))
@@ -2740,6 +2762,20 @@ func (c *Client) handleAPIKeyUpdatedEvent(event map[string]interface{}) {
 	var duration *int
 	now := time.Now()
 
+	// Parse authoritative updated_at timestamp from the platform API
+	var updatedAt *time.Time
+	if payload.UpdatedAt != "" {
+		t, err := time.Parse(time.RFC3339, payload.UpdatedAt)
+		if err != nil {
+			logger.Warn("Invalid updated_at format in API key updated event, using local time",
+				slog.String("updated_at", payload.UpdatedAt),
+				slog.Any("error", err),
+			)
+		} else {
+			updatedAt = &t
+		}
+	}
+
 	apiKeyCreationRequest := api.APIKeyCreationRequest{
 		MaskedApiKey:  &payload.MaskedApiKey,
 		ExternalRefId: payload.ExternalRefId,
@@ -2798,6 +2834,7 @@ func (c *Client) handleAPIKeyUpdatedEvent(event map[string]interface{}) {
 		evt.UserId,
 		evt.CorrelationID,
 		logger,
+		updatedAt,
 	)
 	if err != nil {
 		logger.Error("Failed to update external API key", slog.Any("error", err))

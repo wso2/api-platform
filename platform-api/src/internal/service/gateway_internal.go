@@ -18,6 +18,7 @@
 package service
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,25 +31,9 @@ import (
 	"platform-api/src/internal/utils"
 	"time"
 
+	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 )
-
-// InternalAPIKeyItem is the response shape for the internal API key listing endpoints.
-type InternalAPIKeyItem struct {
-	UUID          string            `json:"uuid"`
-	Name          string            `json:"name"`
-	MaskedAPIKey  string            `json:"maskedApiKey"`
-	APIKeyHashes  map[string]string `json:"apiKeyHashes"`
-	ArtifactUUID  string            `json:"artifactUuid"`
-	Status        string            `json:"status"`
-	CreatedAt     time.Time         `json:"createdAt"`
-	CreatedBy     string            `json:"createdBy"`
-	UpdatedAt     time.Time         `json:"updatedAt"`
-	ExpiresAt     *time.Time        `json:"expiresAt"`
-	Source        string            `json:"source"`        // always "external"
-	ExternalRefId *string           `json:"externalRefId"` // always null
-	Issuer        *string           `json:"issuer,omitempty"`
-}
 
 // GatewayInternalAPIService handles internal gateway API operations
 type GatewayInternalAPIService struct {
@@ -498,25 +483,40 @@ func (s *GatewayInternalAPIService) GetDeploymentContentBatch(orgID, gatewayID s
 	return contentMap, nil
 }
 
-// GetAPIKeysForArtifact returns the API keys for the given artifact UUID, with hashes and fixed metadata.
+// apiKeyCorrelationID derives a stable UUID v7-formatted ID from the unique
+// (artifactUUID, name) pair by SHA-256 hashing them, taking the first 16 bytes,
+// then stamping the UUID version (7) and RFC 4122 variant bits.
+func apiKeyCorrelationID(artifactUUID, name string) string {
+	h := sha256.Sum256([]byte(artifactUUID + ":" + name))
+	var uid uuid.UUID
+	copy(uid[:], h[:16])
+	uid[6] = (uid[6] & 0x0f) | 0x70 // version = 7
+	uid[8] = (uid[8] & 0x3f) | 0x80 // RFC 4122 variant
+	return uid.String()
+}
+
+// GetAPIKeysByKind returns all API keys for artifacts of the given kind deployed on the gateway.
+// When issuer is non-empty only keys whose issuer matches are returned.
+// Each item carries a stable correlationId derived from (artifactUuid, name).
 // source is always "external" and externalRefId is always null.
-func (s *GatewayInternalAPIService) GetAPIKeysForArtifact(artifactUUID string) ([]InternalAPIKeyItem, error) {
-	keys, err := s.apiKeyRepo.ListByArtifact(artifactUUID)
+func (s *GatewayInternalAPIService) GetAPIKeysByKind(gatewayID, orgID, kind, issuer string) ([]model.InternalAPIKeyItem, error) {
+	keys, err := s.apiKeyRepo.ListByGatewayAndKind(gatewayID, orgID, kind, issuer)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list API keys for artifact: %w", err)
+		return nil, fmt.Errorf("failed to list API keys by kind: %w", err)
 	}
 
-	items := make([]InternalAPIKeyItem, 0, len(keys))
+	items := make([]model.InternalAPIKeyItem, 0, len(keys))
 	for _, k := range keys {
 		var hashes map[string]string
 		if k.APIKeyHashes != "" {
 			if err := json.Unmarshal([]byte(k.APIKeyHashes), &hashes); err != nil {
 				s.slogger.Warn("Failed to unmarshal API key hashes, skipping key",
-					"keyUUID", k.UUID, "artifactUUID", artifactUUID, "error", err)
+					"keyUUID", k.UUID, "kind", kind, "error", err)
 				continue
 			}
 		}
-		items = append(items, InternalAPIKeyItem{
+		items = append(items, model.InternalAPIKeyItem{
+			CorrelationID: apiKeyCorrelationID(k.ArtifactUUID, k.Name),
 			UUID:          k.UUID,
 			Name:          k.Name,
 			MaskedAPIKey:  k.MaskedAPIKey,

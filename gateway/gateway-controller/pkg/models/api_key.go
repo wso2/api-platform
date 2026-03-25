@@ -52,6 +52,9 @@ type APIKey struct {
 	// Issuer identifies the developer portal that provisioned this key; nil if not provided
 	Issuer *string `json:"issuer,omitempty" db:"issuer"`
 
+	// CorrelationID is the deterministic ID assigned by the control plane (derived from
+	// artifact_uuid + name). Not persisted — used for EventHub event correlation only.
+	CorrelationID string `json:"-" db:"-"`
 }
 
 // IsValid checks if the API key is valid (active and not expired)

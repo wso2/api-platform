@@ -300,23 +300,24 @@ paths:
                     message: "Internal Server Error"
                     description: "Failed to create LLM Provider package"
 
-  /apis/{apiId}/api-keys:
+  /apis/api-keys:
     get:
-      summary: Get API keys for a specific REST API
+      summary: Get all API keys for REST API artifacts deployed on the gateway
       description: |
-        Retrieves all API keys associated with the given REST API artifact.
+        Retrieves all API keys for every REST API artifact currently deployed on the
+        authenticated gateway. When the optional `issuer` query parameter is provided
+        only keys whose issuer field matches are returned.
       operationId: getRestAPIAPIKeys
       tags:
         - Gateway Internal APIs
       parameters:
-        - name: apiId
-          in: path
-          required: true
-          description: The unique identifier (UUID) of the REST API
+        - name: issuer
+          in: query
+          required: false
+          description: Filter keys by issuer. When omitted all keys are returned.
           schema:
             type: string
-            format: uuid
-            example: "550e8400-e29b-41d4-a716-446655440000"
+            example: "https://issuer.example.com"
       responses:
         '200':
           description: Successfully retrieved API keys
@@ -326,16 +327,6 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/InternalAPIKeyItem'
-        '400':
-          description: Bad request - Invalid API ID
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                code: 400
-                message: "Bad Request"
-                description: "API ID is required"
         '401':
           description: Unauthorized - Invalid or missing API key
           content:
@@ -366,23 +357,24 @@ paths:
                 message: "Internal Server Error"
                 description: "Failed to get API keys"
 
-  /llm-providers/{providerId}/api-keys:
+  /llm-providers/api-keys:
     get:
-      summary: Get API keys for a specific LLM Provider
+      summary: Get all API keys for LLM Provider artifacts deployed on the gateway
       description: |
-        Retrieves all API keys associated with the given LLM Provider artifact.
+        Retrieves all API keys for every LLM Provider artifact currently deployed on the
+        authenticated gateway. When the optional `issuer` query parameter is provided
+        only keys whose issuer field matches are returned.
       operationId: getLLMProviderAPIKeys
       tags:
         - Gateway Internal APIs
       parameters:
-        - name: providerId
-          in: path
-          required: true
-          description: The unique identifier (UUID) of the LLM Provider
+        - name: issuer
+          in: query
+          required: false
+          description: Filter keys by issuer. When omitted all keys are returned.
           schema:
             type: string
-            format: uuid
-            example: "550e8400-e29b-41d4-a716-446655440000"
+            example: "https://issuer.example.com"
       responses:
         '200':
           description: Successfully retrieved API keys
@@ -392,16 +384,6 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/InternalAPIKeyItem'
-        '400':
-          description: Bad request - Invalid LLM Provider ID
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                code: 400
-                message: "Bad Request"
-                description: "Provider ID is required"
         '401':
           description: Unauthorized - Invalid or missing API key
           content:
@@ -530,23 +512,24 @@ paths:
                     message: "Internal Server Error"
                     description: "Failed to create LLM Proxy package"
 
-  /llm-proxies/{proxyId}/api-keys:
+  /llm-proxies/api-keys:
     get:
-      summary: Get API keys for a specific LLM Proxy
+      summary: Get all API keys for LLM Proxy artifacts deployed on the gateway
       description: |
-        Retrieves all API keys associated with the given LLM Proxy artifact.
+        Retrieves all API keys for every LLM Proxy artifact currently deployed on the
+        authenticated gateway. When the optional `issuer` query parameter is provided
+        only keys whose issuer field matches are returned.
       operationId: getLLMProxyAPIKeys
       tags:
         - Gateway Internal APIs
       parameters:
-        - name: proxyId
-          in: path
-          required: true
-          description: The unique identifier (UUID) of the LLM Proxy
+        - name: issuer
+          in: query
+          required: false
+          description: Filter keys by issuer. When omitted all keys are returned.
           schema:
             type: string
-            format: uuid
-            example: "550e8400-e29b-41d4-a716-446655440000"
+            example: "https://issuer.example.com"
       responses:
         '200':
           description: Successfully retrieved API keys
@@ -556,16 +539,6 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/InternalAPIKeyItem'
-        '400':
-          description: Bad request - Invalid LLM Proxy ID
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                code: 400
-                message: "Bad Request"
-                description: "Proxy ID is required"
         '401':
           description: Unauthorized - Invalid or missing API key
           content:
@@ -1271,8 +1244,9 @@ components:
 
     InternalAPIKeyItem:
       type: object
-      description: API key associated with an LLM Provider, LLM Proxy, or REST API artifact (used by /llm-providers/{providerId}/api-keys, /llm-proxies/{proxyId}/api-keys, and /apis/{apiId}/api-keys)
+      description: API key associated with an LLM Provider, LLM Proxy, or REST API artifact (used by /llm-providers/api-keys, /llm-proxies/api-keys, and /apis/api-keys)
       required:
+        - correlationId
         - uuid
         - name
         - maskedApiKey
@@ -1284,6 +1258,14 @@ components:
         - updatedAt
         - source
       properties:
+        correlationId:
+          type: string
+          format: uuid
+          description: >
+            Stable UUID v7-formatted identifier derived deterministically from
+            (artifactUuid, name). Same key always produces the same correlationId,
+            enabling idempotent processing and end-to-end tracing.
+          example: "01948c3e-d2b4-7f3a-9e1b-4a2c8f0d5e6b"
         uuid:
           type: string
           description: Unique identifier of the API key

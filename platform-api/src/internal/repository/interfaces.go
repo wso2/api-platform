@@ -241,6 +241,7 @@ type APIKeyRepository interface {
 	Revoke(artifactUUID, name string) error
 	GetByArtifactAndName(artifactUUID, name string) (*model.APIKey, error)
 	ListByArtifact(artifactUUID string) ([]*model.APIKey, error)
+	ListByGatewayAndKind(gatewayID, orgID, kind, issuer string) ([]*model.APIKey, error)
 	Delete(artifactUUID, name string) error
 	ListAPIKeysByUser(orgUUID, username string, kinds []string) ([]*model.UserAPIKey, error)
 }

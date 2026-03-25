@@ -129,6 +129,10 @@ func (m *mockStorageForDeletion) SaveAPIKey(key *models.APIKey) error {
 	return nil
 }
 
+func (m *mockStorageForDeletion) UpsertAPIKey(key *models.APIKey) error {
+	return nil
+}
+
 func (m *mockStorageForDeletion) GetAPIKey(apiID, name string) (*models.APIKey, error) {
 	return nil, storage.ErrNotFound
 }
@@ -254,7 +258,11 @@ func (m *mockStorageForDeletion) DeleteSubscriptionsForAPINotIn(apiID string, id
 	return nil
 }
 
-func (m *mockStorageForDeletion) DeleteAPIKeysForArtifactNotIn(artifactUUID string, uuids []string) error {
+func (m *mockStorageForDeletion) ListAPIKeysForArtifactsNotIn(artifactUUIDs []string, keyUUIDs []string) ([]*models.APIKey, error) {
+	return nil, nil
+}
+
+func (m *mockStorageForDeletion) DeleteAPIKeysByUUIDs(uuids []string) error {
 	return nil
 }
 

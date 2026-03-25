@@ -19,6 +19,7 @@
 package utils
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"strings"
 
@@ -48,6 +49,19 @@ func GetParamsOfPolicy(policyDef string, params ...string) (map[string]any, erro
 		return map[string]any{}, err
 	}
 	return m, nil
+}
+
+// APIKeyCorrelationID produces a deterministic UUID v7-formatted ID from the unique
+// combination of artifactUUID and name. Uses SHA-256 of "artifactUUID:name" as the
+// source bytes, then stamps version=7 and RFC 4122 variant bits.
+// Mirrors the same algorithm used by the platform-API so both sides agree on the ID.
+func APIKeyCorrelationID(artifactUUID, name string) string {
+	h := sha256.Sum256([]byte(artifactUUID + ":" + name))
+	var uid uuid.UUID
+	copy(uid[:], h[:16])
+	uid[6] = (uid[6] & 0x0f) | 0x70 // version = 7
+	uid[8] = (uid[8] & 0x3f) | 0x80 // RFC 4122 variant
+	return uid.String()
 }
 
 // GenerateUUID generates a new UUID v7 string
