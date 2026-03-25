@@ -32,11 +32,10 @@ import (
 )
 
 const (
-	anonymous          = "anonymous"
-	userIDPropertyKey  = "x-wso2-user-id"
-	llmCostPropertyKey = "llmCost"
-	guardrailHitKey    = "isGuardrailHit"
-	guardrailNameKey   = "guardrailName"
+	anonymous         = "anonymous"
+	userIDPropertyKey = "x-wso2-user-id"
+	guardrailHitKey   = "isGuardrailHit"
+	guardrailNameKey  = "guardrailName"
 )
 
 // Moesif represents a Moesif publisher.
@@ -275,11 +274,6 @@ func (m *Moesif) Publish(event *dto.Event) {
 	// commonName
 	if commonName, ok := event.Properties["commonName"]; ok && commonName != nil {
 		metadataMap["commonName"] = commonName
-	}
-
-	// llm cost
-	if llmCost, ok := event.Properties[llmCostPropertyKey]; ok && llmCost != nil {
-		metadataMap[llmCostPropertyKey] = llmCost
 	}
 
 	// guardrail metadata

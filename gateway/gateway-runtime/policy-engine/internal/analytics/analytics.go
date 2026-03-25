@@ -239,21 +239,16 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		target.ResponseCodeDetail = logEntry.GetResponse().GetResponseCodeDetails()
 	}
 
-	slog.Warn("Analytics: Before else block")
-
 	// Prepare Application
 	application := &dto.Application{}
 	if keyValuePairsFromMetadata[AppIDKey] == Unknown {
 		application = c.getAnonymousApp()
 	} else {
-		slog.Warn("Analytics: Event set entered else block")
 		application.ApplicationID = keyValuePairsFromMetadata[AppIDKey]
 		application.KeyType = keyValuePairsFromMetadata[AppKeyTypeKey]
 		application.ApplicationName = keyValuePairsFromMetadata[AppNameKey]
 		application.ApplicationOwner = keyValuePairsFromMetadata[AppOwnerKey]
 	}
-
-	slog.Warn("Analytics: Outside else block", "applicationID", application.ApplicationID, "applicationName", application.ApplicationName)
 
 	properties := logEntry.GetCommonProperties()
 	if properties != nil && properties.TimeToLastRxByte != nil &&
@@ -342,21 +337,20 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		event.Properties[GuardrailNameMetadataKey] = guardrailName
 	}
 
-	slog.Warn("Analytics: before parsing LLM cost metadata", "metadata", keyValuePairsFromMetadata[LLMCostMetadataKey])
+	var parsedLLMCost interface{}
 
 	// Set LLM cost from metadata when available.
 	if rawCost, exists := keyValuePairsFromMetadata[LLMCostMetadataKey]; exists && rawCost != "" {
 
 		slog.Warn("Analytics: inside parsing LLM cost metadata")
 		if llmCost, err := strconv.ParseFloat(rawCost, 64); err == nil {
-			slog.Warn("Analytics: valid parsing LLM cost metadata")
+			parsedLLMCost = llmCost
 			event.Properties[LLMCostPropertyKey] = llmCost
 		} else {
-			slog.Warn("Analytics: invalid LLM cost metadata value", "value", rawCost, "error", err)
+			parsedLLMCost = rawCost
 			event.Properties[LLMCostPropertyKey] = rawCost
 		}
 	}
-	slog.Warn("Analytics: after parsing LLM cost metadata", "LLMCost", event.Properties[LLMCostPropertyKey])
 
 	// Process AI related metadata only if all the required metadata are present
 	if keyValuePairsFromMetadata[AIProviderNameMetadataKey] != "" ||
@@ -367,6 +361,9 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		aiMetadata.VendorName = keyValuePairsFromMetadata[AIProviderNameMetadataKey]
 		aiMetadata.VendorVersion = keyValuePairsFromMetadata[APIVersionKey]
 		aiMetadata.Model = keyValuePairsFromMetadata[ModelIDMetadataKey]
+		if parsedLLMCost != nil {
+			aiMetadata.LLMCost = parsedLLMCost
+		}
 		event.Properties["aiMetadata"] = aiMetadata
 
 		aiTokenUsage := dto.AITokenUsage{}
