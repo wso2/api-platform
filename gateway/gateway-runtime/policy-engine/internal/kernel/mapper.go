@@ -27,11 +27,7 @@ import (
 // RouteConfig holds metadata and resolver info for a single route.
 // Metadata is pre-populated at deploy time; no request-time parsing needed.
 type RouteConfig struct {
-	Metadata                RouteMetadata
-	ResolverName            string
-	UpstreamBasePath        string
-	UpstreamDefinitionPaths map[string]string
-	DefaultUpstreamCluster  string
+	Metadata RouteMetadata
 }
 
 // RouteMapping maps Envoy metadata keys to PolicyChains for route-specific processing

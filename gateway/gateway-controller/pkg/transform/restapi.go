@@ -105,7 +105,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	}
 
 	// Build main upstream cluster
-	mainClusterKey, _, err := t.addUpstreamCluster(rdc, "main", &apiData.Upstream.Main, apiData.UpstreamDefinitions)
+	mainUpstream, err := t.addUpstreamCluster(rdc, "main", &apiData.Upstream.Main, apiData.UpstreamDefinitions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve main upstream: %w", err)
 	}
@@ -114,7 +114,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	useClusterHeader := apiData.UpstreamDefinitions != nil && len(*apiData.UpstreamDefinitions) > 0
 	defaultCluster := ""
 	if useClusterHeader {
-		defaultCluster = mainClusterKey
+		defaultCluster = mainUpstream.EnvoyClusterName
 	}
 
 	// Determine auto host rewrite for main upstream
@@ -145,7 +145,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 				Vhost:           vhost,
 				AutoHostRewrite: mainAutoHostRewrite,
 				Upstream: models.RouteUpstream{
-					ClusterKey:       mainClusterKey,
+					ClusterKey:       mainUpstream.ClusterKey,
 					UseClusterHeader: useClusterHeader,
 					DefaultCluster:   defaultCluster,
 				},
@@ -187,7 +187,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 
 	// Add sandbox upstream and update sandbox routes if present
 	if hasSandbox {
-		sbClusterKey, _, err := t.addUpstreamCluster(rdc, "sandbox", apiData.Upstream.Sandbox, apiData.UpstreamDefinitions)
+		sbUpstream, err := t.addUpstreamCluster(rdc, "sandbox", apiData.Upstream.Sandbox, apiData.UpstreamDefinitions)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve sandbox upstream: %w", err)
 		}
@@ -201,7 +201,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 		for _, op := range apiData.Operations {
 			routeKey := xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, effectiveSandboxVHost)
 			if r, exists := rdc.Routes[routeKey]; exists {
-				r.Upstream.ClusterKey = sbClusterKey
+				r.Upstream.ClusterKey = sbUpstream.ClusterKey
 				r.Upstream.UseClusterHeader = false
 				r.Upstream.DefaultCluster = ""
 				r.AutoHostRewrite = sbAutoHostRewrite
@@ -261,25 +261,36 @@ func (t *RestAPITransformer) buildPolicyChain(
 	return result
 }
 
+// upstreamClusterResult holds the result of resolving and registering an upstream cluster.
+type upstreamClusterResult struct {
+	// ClusterKey is the internal key used in rdc.UpstreamClusters.
+	ClusterKey string
+	// EnvoyClusterName is the Envoy cluster name matching pkg/xds/translator.go's
+	// sanitizeClusterName format ("cluster_<scheme>_<sanitized_host>").
+	// This is the value Envoy knows the cluster by, so PE must use it for x-target-upstream.
+	EnvoyClusterName string
+	// BasePath is the URL path component of the upstream (e.g. "/anything/foo").
+	BasePath string
+}
+
 // addUpstreamCluster resolves an upstream and adds it to the RuntimeDeployConfig.
-// Returns the cluster key and the base path.
 func (t *RestAPITransformer) addUpstreamCluster(
 	rdc *models.RuntimeDeployConfig,
 	upstreamName string,
 	up *api.Upstream,
 	upstreamDefinitions *[]api.UpstreamDefinition,
-) (string, string, error) {
+) (*upstreamClusterResult, error) {
 	rawURL, err := resolveUpstreamURL(upstreamName, up, upstreamDefinitions)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
-		return "", "", fmt.Errorf("invalid %s upstream URL: %w", upstreamName, err)
+		return nil, fmt.Errorf("invalid %s upstream URL: %w", upstreamName, err)
 	}
 	if parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
-		return "", "", fmt.Errorf("invalid %s upstream URL: must include host and http/https scheme", upstreamName)
+		return nil, fmt.Errorf("invalid %s upstream URL: must include host and http/https scheme", upstreamName)
 	}
 
 	port := ResolvePort(parsedURL)
@@ -299,7 +310,19 @@ func (t *RestAPITransformer) addUpstreamCluster(
 		TLS: &models.UpstreamTLS{Enabled: parsedURL.Scheme == "https"},
 	}
 
-	return clusterKey, basePath, nil
+	return &upstreamClusterResult{
+		ClusterKey:       clusterKey,
+		EnvoyClusterName: sanitizeEnvoyClusterName(parsedURL.Host, parsedURL.Scheme),
+		BasePath:         basePath,
+	}, nil
+}
+
+// sanitizeEnvoyClusterName computes the Envoy cluster name from a URL host and scheme,
+// matching the sanitizeClusterName logic in pkg/xds/translator.go.
+func sanitizeEnvoyClusterName(host, scheme string) string {
+	name := strings.ReplaceAll(host, ".", "_")
+	name = strings.ReplaceAll(name, ":", "_")
+	return "cluster_" + scheme + "_" + name
 }
 
 // resolveUpstreamURL resolves the URL from an upstream (direct URL or ref).
