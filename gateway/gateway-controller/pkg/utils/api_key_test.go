@@ -31,6 +31,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
@@ -837,6 +838,8 @@ func newTestAPIKeyConfig() *config.APIKeyConfig {
 
 func newTestSQLiteStorage(t *testing.T, logger *slog.Logger) storage.Storage {
 	t.Helper()
+
+	metrics.Init()
 
 	dbPath := filepath.Join(t.TempDir(), "apikey.db")
 	db, err := storage.NewStorage(storage.BackendConfig{

@@ -60,26 +60,28 @@ import (
 type APIServer struct {
 	*RestAPIHandler // embedded — promotes CreateRestAPI, ListRestAPIs, GetRestAPIById, UpdateRestAPI, DeleteRestAPI
 
-	store                *storage.ConfigStore
-	db                   storage.Storage
-	snapshotManager      *xds.SnapshotManager
-	policyManager        *policyxds.PolicyManager
-	policyDefinitions    map[string]models.PolicyDefinition // key name|version
-	policyDefMu          sync.RWMutex
-	parser               *config.Parser
-	validator            config.Validator
-	logger               *slog.Logger
-	deploymentService    *utils.APIDeploymentService
-	mcpDeploymentService *utils.MCPDeploymentService
-	llmDeploymentService *utils.LLMDeploymentService
-	apiKeyService        *utils.APIKeyService
-	apiKeyXDSManager     *apikeyxds.APIKeyStateManager
-	controlPlaneClient   controlplane.ControlPlaneClient
-	routerConfig         *config.RouterConfig
-	httpClient           *http.Client
-	systemConfig         *config.Config
-	eventHub             eventhub.EventHub
-	gatewayID            string
+	store                       *storage.ConfigStore
+	db                          storage.Storage
+	snapshotManager             *xds.SnapshotManager
+	policyManager               *policyxds.PolicyManager
+	policyDefinitions           map[string]models.PolicyDefinition // key name|version
+	policyDefMu                 sync.RWMutex
+	parser                      *config.Parser
+	validator                   config.Validator
+	logger                      *slog.Logger
+	deploymentService           *utils.APIDeploymentService
+	mcpDeploymentService        *utils.MCPDeploymentService
+	llmDeploymentService        *utils.LLMDeploymentService
+	apiKeyService               *utils.APIKeyService
+	apiKeyXDSManager            *apikeyxds.APIKeyStateManager
+	controlPlaneClient          controlplane.ControlPlaneClient
+	routerConfig                *config.RouterConfig
+	httpClient                  *http.Client
+	systemConfig                *config.Config
+	eventHub                    eventhub.EventHub
+	gatewayID                   string
+	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater
+	subscriptionResourceService *utils.SubscriptionResourceService
 }
 
 // NewAPIServer creates a new API server with dependencies
@@ -97,15 +99,18 @@ func NewAPIServer(
 	apiKeyXDSManager *apikeyxds.APIKeyStateManager,
 	systemConfig *config.Config,
 	eventHub eventhub.EventHub,
+	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater,
 ) *APIServer {
 	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.Router)
 	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, &systemConfig.APIKey)
+	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subscriptionSnapshotUpdater)
 
 	// Set EventHub on services for event-driven synchronization
 	if eventHub != nil {
 		gatewayID := systemConfig.Controller.Server.GatewayID
 		deploymentService.SetEventHub(eventHub, gatewayID)
 		apiKeyService.SetEventHub(eventHub, gatewayID)
+		subscriptionResourceService.SetEventHub(eventHub, gatewayID)
 	}
 
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
@@ -113,6 +118,7 @@ func NewAPIServer(
 	parser := config.NewParser()
 	httpClient := &http.Client{Timeout: 10 * time.Second}
 	routerConfig := &systemConfig.Router
+	mcpDeploymentService := utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager, policyValidator)
 
 	server := &APIServer{
 		store:                store,
@@ -124,17 +130,23 @@ func NewAPIServer(
 		validator:            validator,
 		logger:               logger,
 		deploymentService:    deploymentService,
-		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager, policyValidator),
+		mcpDeploymentService: mcpDeploymentService,
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, lazyResourceManager, templateDefinitions,
 			deploymentService, routerConfig, policyVersionResolver, policyValidator),
-		apiKeyService:      apiKeyService,
-		apiKeyXDSManager:   apiKeyXDSManager,
-		controlPlaneClient: controlPlaneClient,
-		routerConfig:       routerConfig,
-		httpClient:         httpClient,
-		systemConfig:       systemConfig,
-		eventHub:           eventHub,
-		gatewayID:          systemConfig.Controller.Server.GatewayID,
+		apiKeyService:               apiKeyService,
+		apiKeyXDSManager:            apiKeyXDSManager,
+		controlPlaneClient:          controlPlaneClient,
+		routerConfig:                routerConfig,
+		httpClient:                  httpClient,
+		systemConfig:                systemConfig,
+		eventHub:                    eventHub,
+		gatewayID:                   systemConfig.Controller.Server.GatewayID,
+		subscriptionSnapshotUpdater: subscriptionSnapshotUpdater,
+		subscriptionResourceService: subscriptionResourceService,
+	}
+	if eventHub != nil {
+		server.llmDeploymentService.SetEventHub(eventHub, systemConfig.Controller.Server.GatewayID)
+		server.mcpDeploymentService.SetEventHub(eventHub, systemConfig.Controller.Server.GatewayID)
 	}
 
 	// Create RestAPI service and handler
@@ -152,6 +164,19 @@ func NewAPIServer(
 	snapshotManager.SetStatusCallback(server.handleStatusUpdate)
 
 	return server
+}
+
+func (s *APIServer) getSubscriptionResourceService() *utils.SubscriptionResourceService {
+	if s.subscriptionResourceService != nil {
+		return s.subscriptionResourceService
+	}
+
+	s.subscriptionResourceService = utils.NewSubscriptionResourceService(s.db, s.subscriptionSnapshotUpdater)
+	if s.eventHub != nil {
+		s.subscriptionResourceService.SetEventHub(s.eventHub, s.gatewayID)
+	}
+
+	return s.subscriptionResourceService
 }
 
 // handleStatusUpdate is called by SnapshotManager after xDS deployment
@@ -177,11 +202,8 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, correlatio
 			cfg.DeployedAt = &now
 			cfg.UpdatedAt = now
 
-			// Update database (only if persistent mode)
-			if s.db != nil {
-				if err := s.db.UpdateConfig(cfg); err != nil {
-					log.Error("Failed to update config status in database", slog.Any("error", err), slog.String("id", configID))
-				}
+			if err := s.db.UpdateConfig(cfg); err != nil {
+				log.Error("Failed to update config status in database", slog.Any("error", err), slog.String("id", configID))
 			}
 
 			// Update in-memory store
@@ -238,6 +260,9 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 	}
 
 	configs := s.store.GetAllByKind(kind)
+	if kind == string(api.Mcp) && s.mcpDeploymentService != nil {
+		configs = s.mcpDeploymentService.ListMCPProxies()
+	}
 
 	// Filter based on kind to return appropriate response format
 	if kind == string(api.Mcp) {
@@ -470,6 +495,7 @@ func (s *APIServer) DeleteWebSubAPI(c *gin.Context, id string) {
 // (POST /llm-provider-templates)
 func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
 
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
@@ -483,9 +509,10 @@ func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 	}
 
 	storedTemplate, err := s.llmDeploymentService.CreateLLMProviderTemplate(utils.LLMTemplateParams{
-		Spec:        body,
-		ContentType: c.GetHeader("Content-Type"),
-		Logger:      log,
+		Spec:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Logger:        log,
 	})
 
 	if err != nil {
@@ -566,6 +593,7 @@ func (s *APIServer) GetLLMProviderTemplateById(c *gin.Context, id string) {
 // (PUT /llm-provider-templates/{id})
 func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
 
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
@@ -579,9 +607,10 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 	}
 
 	updated, err := s.llmDeploymentService.UpdateLLMProviderTemplate(id, utils.LLMTemplateParams{
-		Spec:        body,
-		ContentType: c.GetHeader("Content-Type"),
-		Logger:      log,
+		Spec:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Logger:        log,
 	})
 	if err != nil {
 		log.Error("Failed to parse template configuration", slog.Any("error", err))
@@ -608,8 +637,9 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 // (DELETE /llm-provider-templates/{id})
 func (s *APIServer) DeleteLLMProviderTemplate(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
 
-	deleted, err := s.llmDeploymentService.DeleteLLMProviderTemplate(id)
+	deleted, err := s.llmDeploymentService.DeleteLLMProviderTemplate(id, correlationID, log)
 	if err != nil {
 		log.Warn("LLM provider template not found for deletion", slog.String("handle", id))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
@@ -686,10 +716,11 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 
 	// Delegate to service which parses/validates/transforms and persists
 	stored, err := s.llmDeploymentService.CreateLLMProvider(utils.LLMDeploymentParams{
-		Data:        body,
-		ContentType: c.GetHeader("Content-Type"),
-		Origin:      models.OriginGatewayAPI,
-		Logger:      log,
+		Data:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Origin:        models.OriginGatewayAPI,
+		Logger:        log,
 	})
 	if err != nil {
 		log.Error("Failed to create LLM provider", slog.Any("error", err))
@@ -717,8 +748,9 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 		Message: stringPtr("LLM provider created successfully"),
 		Id:      stringPtr(stored.Handle), CreatedAt: timePtr(stored.CreatedAt)})
 
-	// Build and add policy config derived from API configuration if policies are present
-	if s.policyManager != nil {
+	// In EventHub mode the listener rebuilds local policy state after replaying
+	// the provider event, so the writer should not mutate local policies inline.
+	if s.policyManager != nil && s.eventHub == nil {
 		storedPolicy := s.buildStoredPolicyFromAPI(stored)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
@@ -737,18 +769,21 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 func (s *APIServer) GetLLMProviderById(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
-	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProvider), id)
+	// Service lookup is DB-first so reads still work before this replica has
+	// replayed the corresponding EventHub event into its in-memory store.
+	cfg, err := s.llmDeploymentService.GetLLMProviderByHandle(id)
 	if err != nil {
-		log.Error("Failed to look up LLM provider", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to look up LLM provider",
-		})
-		return
-	}
-	if cfg == nil {
+		if !storage.IsNotFoundError(err) && !strings.Contains(strings.ToLower(err.Error()), "not found") {
+			log.Error("Failed to look up LLM provider", slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to look up LLM provider",
+			})
+			return
+		}
 		log.Warn("LLM provider configuration not found",
-			slog.String("handle", id))
+			slog.String("handle", id),
+			slog.Any("error", err))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("LLM provider configuration with handle '%s' not found", id),
@@ -823,8 +858,9 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 		UpdatedAt: timePtr(updated.UpdatedAt),
 	})
 
-	// Rebuild and update derived policy configuration
-	if s.policyManager != nil {
+	// In EventHub mode the listener rebuilds local policy state after replaying
+	// the provider event, so the writer should not mutate local policies inline.
+	if s.policyManager != nil && s.eventHub == nil {
 		storedPolicy := s.buildStoredPolicyFromAPI(updated)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
@@ -878,8 +914,22 @@ func (s *APIServer) DeleteLLMProvider(c *gin.Context, id string) {
 		"id":      cfg.Handle,
 	})
 
-	// Remove derived policy configuration
-	if s.policyManager != nil {
+	if s.eventHub == nil && s.apiKeyXDSManager != nil {
+		apiName, apiVersion := cfg.DisplayName, cfg.Version
+		if apiName != "" {
+			if err := s.apiKeyXDSManager.RemoveAPIKeysByAPI(cfg.UUID, apiName, apiVersion, correlationID); err != nil {
+				log.Warn("Failed to remove LLM provider API keys from policy engine",
+					slog.Any("error", err),
+					slog.String("api_id", cfg.UUID),
+					slog.String("api_name", apiName),
+					slog.String("api_version", apiVersion))
+			}
+		}
+	}
+
+	// In EventHub mode the listener removes local policy state after replaying
+	// the delete event, so the writer should not race that cleanup inline.
+	if s.policyManager != nil && s.eventHub == nil {
 		policyID := cfg.UUID + "-policies"
 		if err := s.policyManager.RemovePolicy(policyID); err != nil {
 			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
@@ -945,10 +995,11 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 
 	// Delegate to service which parses/validates/transforms and persists
 	stored, err := s.llmDeploymentService.CreateLLMProxy(utils.LLMDeploymentParams{
-		Data:        body,
-		ContentType: c.GetHeader("Content-Type"),
-		Origin:      models.OriginGatewayAPI,
-		Logger:      log,
+		Data:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Logger:        log,
+		Origin:        models.OriginGatewayAPI,
 	})
 	if err != nil {
 		log.Error("Failed to create LLM proxy", slog.Any("error", err))
@@ -976,8 +1027,9 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 		Message: stringPtr("LLM proxy created successfully"),
 		Id:      stringPtr(stored.Handle), CreatedAt: timePtr(stored.CreatedAt)})
 
-	// Build and add policy config derived from API configuration if policies are present
-	if s.policyManager != nil {
+	// In EventHub mode the listener rebuilds local policy state after replaying
+	// the proxy event, so the writer should not mutate local policies inline.
+	if s.policyManager != nil && s.eventHub == nil {
 		storedPolicy := s.buildStoredPolicyFromAPI(stored)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
@@ -996,18 +1048,19 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 func (s *APIServer) GetLLMProxyById(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
-	cfg, err := s.store.GetByKindAndHandle(string(api.LlmProxy), id)
+	cfg, err := s.llmDeploymentService.GetLLMProxyByHandle(id)
 	if err != nil {
-		log.Error("Failed to look up LLM proxy", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to look up LLM proxy",
-		})
-		return
-	}
-	if cfg == nil {
+		if !storage.IsNotFoundError(err) && !strings.Contains(strings.ToLower(err.Error()), "not found") {
+			log.Error("Failed to look up LLM proxy", slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to look up LLM proxy",
+			})
+			return
+		}
 		log.Warn("LLM proxy configuration not found",
-			slog.String("handle", id))
+			slog.String("handle", id),
+			slog.Any("error", err))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("LLM proxy configuration with handle '%s' not found", id),
@@ -1082,8 +1135,9 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 		UpdatedAt: timePtr(updated.UpdatedAt),
 	})
 
-	// Rebuild and update derived policy configuration
-	if s.policyManager != nil {
+	// In EventHub mode the listener rebuilds local policy state after replaying
+	// the proxy event, so the writer should not mutate local policies inline.
+	if s.policyManager != nil && s.eventHub == nil {
 		storedPolicy := s.buildStoredPolicyFromAPI(updated)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
@@ -1137,8 +1191,22 @@ func (s *APIServer) DeleteLLMProxy(c *gin.Context, id string) {
 		"id":      cfg.Handle,
 	})
 
-	// Remove derived policy configuration
-	if s.policyManager != nil {
+	if s.eventHub == nil && s.apiKeyXDSManager != nil {
+		apiName, apiVersion := cfg.DisplayName, cfg.Version
+		if apiName != "" {
+			if err := s.apiKeyXDSManager.RemoveAPIKeysByAPI(cfg.UUID, apiName, apiVersion, correlationID); err != nil {
+				log.Warn("Failed to remove LLM proxy API keys from policy engine",
+					slog.Any("error", err),
+					slog.String("api_id", cfg.UUID),
+					slog.String("api_name", apiName),
+					slog.String("api_version", apiVersion))
+			}
+		}
+	}
+
+	// In EventHub mode the listener removes local policy state after replaying
+	// the delete event, so the writer should not race that cleanup inline.
+	if s.policyManager != nil && s.eventHub == nil {
 		policyID := cfg.UUID + "-policies"
 		if err := s.policyManager.RemovePolicy(policyID); err != nil {
 			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
@@ -1251,7 +1319,7 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 	}
 
 	// Build and add policy config derived from API configuration if policies are present
-	if s.policyManager != nil {
+	if s.policyManager != nil && s.eventHub == nil {
 		storedPolicy := s.buildStoredPolicyFromAPI(cfg)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
@@ -1272,7 +1340,7 @@ func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesPara
 		s.SearchDeployments(c, string(api.Mcp))
 		return
 	}
-	configs := s.store.GetAllByKind(string(api.Mcp))
+	configs := s.mcpDeploymentService.ListMCPProxies()
 
 	items := make([]api.MCPProxyListItem, len(configs))
 	for i, cfg := range configs {
@@ -1429,7 +1497,7 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 		slog.String("handle", handle))
 
 	// Rebuild and update derived policy configuration
-	if s.policyManager != nil {
+	if s.policyManager != nil && s.eventHub == nil {
 		storedPolicy := s.buildStoredPolicyFromAPI(updated)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
@@ -2133,6 +2201,10 @@ func (s *APIServer) resolveAPIIDByHandle(c *gin.Context, handle string, log *slo
 // CreateSubscription implements ServerInterface.CreateSubscription (POST /subscriptions)
 func (s *APIServer) CreateSubscription(c *gin.Context) {
 	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
+	if correlationID != "" {
+		log = log.With(slog.String("correlation_id", correlationID))
+	}
 
 	if s.db == nil {
 		log.Error("Database storage not available for subscription creation")
@@ -2245,7 +2317,7 @@ func (s *APIServer) CreateSubscription(c *gin.Context) {
 		Status:             status,
 		SubscriptionToken:  strings.TrimSpace(req.SubscriptionToken),
 	}
-	if err := s.db.SaveSubscription(sub); err != nil {
+	if err := s.getSubscriptionResourceService().SaveSubscription(sub, correlationID, log); err != nil {
 		if storage.IsConflictError(err) {
 			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: "Application already subscribed to this API"})
 			return
@@ -2344,6 +2416,10 @@ func (s *APIServer) GetSubscription(c *gin.Context, subscriptionId string) {
 // UpdateSubscription implements ServerInterface.UpdateSubscription (PUT /subscriptions/{subscriptionId})
 func (s *APIServer) UpdateSubscription(c *gin.Context, subscriptionId string) {
 	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
+	if correlationID != "" {
+		log = log.With(slog.String("correlation_id", correlationID))
+	}
 
 	if s.db == nil {
 		log.Error("Database storage not available for updating subscription")
@@ -2389,7 +2465,7 @@ func (s *APIServer) UpdateSubscription(c *gin.Context, subscriptionId string) {
 			return
 		}
 	}
-	if err := s.db.UpdateSubscription(sub); err != nil {
+	if err := s.getSubscriptionResourceService().UpdateSubscription(sub, correlationID, log); err != nil {
 		if storage.IsNotFoundError(err) {
 			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
 			return
@@ -2404,6 +2480,10 @@ func (s *APIServer) UpdateSubscription(c *gin.Context, subscriptionId string) {
 // DeleteSubscription implements ServerInterface.DeleteSubscription (DELETE /subscriptions/{subscriptionId})
 func (s *APIServer) DeleteSubscription(c *gin.Context, subscriptionId string) {
 	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
+	if correlationID != "" {
+		log = log.With(slog.String("correlation_id", correlationID))
+	}
 
 	if s.db == nil {
 		log.Error("Database storage not available for deleting subscription")
@@ -2428,7 +2508,7 @@ func (s *APIServer) DeleteSubscription(c *gin.Context, subscriptionId string) {
 		c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
 		return
 	}
-	if err := s.db.DeleteSubscription(subscriptionId, ""); err != nil {
+	if err := s.getSubscriptionResourceService().DeleteSubscription(subscriptionId, correlationID, log); err != nil {
 		if storage.IsNotFoundError(err) {
 			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
 			return
@@ -2469,6 +2549,10 @@ func validateThrottleLimits(count *int, unit *string) error {
 // CreateSubscriptionPlan implements ServerInterface.CreateSubscriptionPlan (POST /subscription-plans)
 func (s *APIServer) CreateSubscriptionPlan(c *gin.Context) {
 	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
+	if correlationID != "" {
+		log = log.With(slog.String("correlation_id", correlationID))
+	}
 
 	if s.db == nil {
 		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Database storage not available"})
@@ -2530,7 +2614,7 @@ func (s *APIServer) CreateSubscriptionPlan(c *gin.Context) {
 		plan.ExpiryTime = req.ExpiryTime
 	}
 
-	if err := s.db.SaveSubscriptionPlan(plan); err != nil {
+	if err := s.getSubscriptionResourceService().SaveSubscriptionPlan(plan, correlationID, log); err != nil {
 		if storage.IsConflictError(err) {
 			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: "Subscription plan already exists"})
 			return
@@ -2594,6 +2678,10 @@ func (s *APIServer) GetSubscriptionPlan(c *gin.Context, planId string) {
 // UpdateSubscriptionPlan implements ServerInterface.UpdateSubscriptionPlan (PUT /subscription-plans/{planId})
 func (s *APIServer) UpdateSubscriptionPlan(c *gin.Context, planId string) {
 	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
+	if correlationID != "" {
+		log = log.With(slog.String("correlation_id", correlationID))
+	}
 
 	if s.db == nil {
 		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Database storage not available"})
@@ -2665,7 +2753,7 @@ func (s *APIServer) UpdateSubscriptionPlan(c *gin.Context, planId string) {
 		}
 	}
 
-	if err := s.db.UpdateSubscriptionPlan(existing); err != nil {
+	if err := s.getSubscriptionResourceService().UpdateSubscriptionPlan(existing, correlationID, log); err != nil {
 		log.Error("Failed to update subscription plan", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to update subscription plan"})
 		return
@@ -2676,13 +2764,17 @@ func (s *APIServer) UpdateSubscriptionPlan(c *gin.Context, planId string) {
 // DeleteSubscriptionPlan implements ServerInterface.DeleteSubscriptionPlan (DELETE /subscription-plans/{planId})
 func (s *APIServer) DeleteSubscriptionPlan(c *gin.Context, planId string) {
 	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
+	if correlationID != "" {
+		log = log.With(slog.String("correlation_id", correlationID))
+	}
 
 	if s.db == nil {
 		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Database storage not available"})
 		return
 	}
 
-	if err := s.db.DeleteSubscriptionPlan(planId, ""); err != nil {
+	if err := s.getSubscriptionResourceService().DeleteSubscriptionPlan(planId, correlationID, log); err != nil {
 		if storage.IsNotFoundError(err) {
 			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
 			return

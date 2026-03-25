@@ -52,9 +52,9 @@ func SanitizePackageName(name string) string {
 func WriteFile(t *testing.T, path, content string) {
 	t.Helper()
 	dir := filepath.Dir(path)
-	err := os.MkdirAll(dir, 0755)
+	err := os.MkdirAll(dir, 0750)
 	require.NoError(t, err, "failed to create directory %s", dir)
-	err = os.WriteFile(path, []byte(content), 0644)
+	err = os.WriteFile(path, []byte(content), 0600)
 	require.NoError(t, err, "failed to write file %s", path)
 }
 
@@ -62,7 +62,7 @@ func WriteFile(t *testing.T, path, content string) {
 // Parent directories are created if they don't exist.
 func CreateDir(t *testing.T, path string) {
 	t.Helper()
-	err := os.MkdirAll(path, 0755)
+	err := os.MkdirAll(path, 0750)
 	require.NoError(t, err, "failed to create directory %s", path)
 }
 

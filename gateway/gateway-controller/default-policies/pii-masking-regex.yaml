@@ -1,5 +1,5 @@
 name: pii-masking-regex
-version: v0.8.1
+version: v0.8.2
 description: |
   Masks or redacts Personally Identifiable Information (PII) in request and
   response payloads.
@@ -38,7 +38,8 @@ parameters:
           piiEntity:
             type: string
             description: Specifies the PII entity name, for example "EMAIL",
-              "PHONE", or "SSN".
+              "PHONE", or "SSN". Letter case is ignored and names are normalized
+              internally.
           piiRegex:
             type: string
             description: Specifies the regex pattern used to match the configured
@@ -82,3 +83,4 @@ parameters:
 systemParameters:         
   type: object
   properties: {}
+  

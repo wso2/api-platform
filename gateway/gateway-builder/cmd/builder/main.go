@@ -24,6 +24,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-builder/internal/buildfile"
@@ -208,8 +209,8 @@ func main() {
 	}
 
 	slog.Info("Build metadata for policy engine",
-		"version", policyEngineVersion,
-		"git_commit", policyEngineGitCommit,
+		"version", sanitizeLogValue(policyEngineVersion),
+		"git_commit", sanitizeLogValue(policyEngineGitCommit),
 		"build_date", buildTimestamp.Format(time.RFC3339),
 		"phase", "compilation")
 
@@ -280,6 +281,14 @@ func main() {
 		errors.FatalError(errors.NewGenerationError("failed to copy build-lock.yaml into gateway-controller build context", err))
 	}
 	slog.Info("Copied build-lock.yaml into gateway-controller build context successfully", "dst", gcBuildLockDst)
+}
+
+func sanitizeLogValue(value string) string {
+	return strings.NewReplacer(
+		"\n", "\\n",
+		"\r", "\\r",
+		"\t", "\\t",
+	).Replace(value)
 }
 
 // initLogger sets up the slog logger based on format and level

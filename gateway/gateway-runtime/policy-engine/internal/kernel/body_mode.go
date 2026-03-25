@@ -79,13 +79,9 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySp
 
 		// Get policy mode and update body requirements
 		mode := impl.Mode()
-
-		// Update request body requirement (if any policy needs buffering)
 		if mode.RequestBodyMode == policy.BodyModeBuffer || mode.RequestBodyMode == policy.BodyModeStream {
 			chain.RequiresRequestBody = true
 		}
-
-		// Update response body requirement (if any policy needs buffering)
 		if mode.ResponseBodyMode == policy.BodyModeBuffer || mode.ResponseBodyMode == policy.BodyModeStream {
 			chain.RequiresResponseBody = true
 		}

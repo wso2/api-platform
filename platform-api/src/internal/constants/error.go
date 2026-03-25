@@ -77,6 +77,12 @@ var (
 )
 
 var (
+	ErrCustomPolicyNotFound    = errors.New("custom policy not found")
+	ErrCustomPolicyInUse       = errors.New("custom policy is in use by one or more APIs")
+	ErrCustomPolicyVersionMismatch = errors.New("custom policy version does not match")
+)
+
+var (
 	ErrDeploymentNotFound          = errors.New("deployment not found")
 	ErrDeploymentNotActive         = errors.New("no active deployment found for this API on the gateway")
 	ErrDeploymentIsDeployed        = errors.New("cannot delete an active deployment - undeploy it first")

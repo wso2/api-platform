@@ -63,12 +63,12 @@ jobs:
 
       - name: Validate tag does not exist
         run: |
-          TAG_NAME="sdk/v${{ steps.version.outputs.version }}"
-          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
-            echo "Error: Tag $TAG_NAME already exists!"
+          SDK_TAG="sdk/v${{ steps.version.outputs.version }}"
+          if git rev-parse "$SDK_TAG" >/dev/null 2>&1; then
+            echo "Error: Tag $SDK_TAG already exists!"
             exit 1
           fi
-          echo "Tag $TAG_NAME does not exist, proceeding with release"
+          echo "Tag $SDK_TAG does not exist, proceeding with release"
 
       - name: Create and push tag
         run: |

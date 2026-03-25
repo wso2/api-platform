@@ -30,7 +30,7 @@ import (
 // Useful for testing policy chains without side effects.
 type NoopPolicy struct{}
 
-// Mode returns an empty ProcessingMode.
+// Mode returns an empty ProcessingMode — no phases are processed.
 func (p *NoopPolicy) Mode() policy.ProcessingMode {
 	return policy.ProcessingMode{}
 }
@@ -55,7 +55,7 @@ type HeaderModifyingPolicy struct {
 	Value string
 }
 
-// Mode returns a ProcessingMode that processes headers.
+// Mode returns a ProcessingMode that processes request and response headers.
 func (p *HeaderModifyingPolicy) Mode() policy.ProcessingMode {
 	return policy.ProcessingMode{
 		RequestHeaderMode:  policy.HeaderModeProcess,
@@ -87,7 +87,7 @@ type ShortCircuitingPolicy struct {
 	Body       []byte
 }
 
-// Mode returns a ProcessingMode that processes request headers.
+// Mode returns a ProcessingMode that processes request headers only.
 func (p *ShortCircuitingPolicy) Mode() policy.ProcessingMode {
 	return policy.ProcessingMode{
 		RequestHeaderMode: policy.HeaderModeProcess,
@@ -113,8 +113,8 @@ func (p *ShortCircuitingPolicy) OnResponse(*policy.ResponseContext, map[string]i
 
 // ConfigurableMockPolicy is a mock policy with configurable behavior via callbacks.
 type ConfigurableMockPolicy struct {
-	Name    string
-	Version string
+	Name     string
+	Version  string
 	MockMode policy.ProcessingMode
 	OnReqFn  func(*policy.RequestContext, map[string]interface{}) policy.RequestAction
 	OnRespFn func(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction
@@ -151,7 +151,7 @@ type SimpleMockPolicy struct {
 	Version string
 }
 
-// Mode returns an empty ProcessingMode.
+// Mode returns an empty ProcessingMode — no phases are processed.
 func (m *SimpleMockPolicy) Mode() policy.ProcessingMode {
 	return policy.ProcessingMode{}
 }

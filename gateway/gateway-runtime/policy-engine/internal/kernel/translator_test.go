@@ -602,3 +602,84 @@ func TestTranslateRequestActionsCore_WithPathOverride(t *testing.T) {
 	require.NotNil(t, pathMutation)
 	assert.Equal(t, "/new/path", *pathMutation)
 }
+
+// =============================================================================
+// translateResponseActionsCore Tests
+// =============================================================================
+
+func TestTranslateResponseActionsCore_ShortCircuit(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+
+	chain := &registry.PolicyChain{}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.requestContext = &policy.RequestContext{
+		Path:          "/api/test",
+		SharedContext: &policy.SharedContext{},
+	}
+	execCtx.responseContext = &policy.ResponseContext{
+		SharedContext: &policy.SharedContext{},
+		ResponseHeaders: policy.NewHeaders(map[string][]string{
+			"content-type": {"application/json"},
+		}),
+		ResponseStatus: 200,
+	}
+
+	result := &executor.ResponseExecutionResult{
+		ShortCircuited: true,
+		FinalAction: policy.ImmediateResponse{
+			StatusCode: 503,
+			Headers:    map[string]string{"x-error": "upstream-fault"},
+			Body:       []byte(`{"error":"service unavailable"}`),
+		},
+	}
+
+	_, _, _, _, immResp, err := translateResponseActionsCore(result, execCtx)
+
+	assert.NoError(t, err)
+	require.NotNil(t, immResp, "short-circuit response must be returned")
+
+	immediate := immResp.GetImmediateResponse()
+	require.NotNil(t, immediate)
+	assert.Equal(t, uint32(503), uint32(immediate.Status.Code))
+	assert.Equal(t, []byte(`{"error":"service unavailable"}`), immediate.Body)
+}
+
+func TestTranslateResponseActionsCore_NoShortCircuit(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+
+	chain := &registry.PolicyChain{}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.requestContext = &policy.RequestContext{
+		Path:          "/api/test",
+		SharedContext: &policy.SharedContext{},
+	}
+	execCtx.responseContext = &policy.ResponseContext{
+		SharedContext: &policy.SharedContext{},
+		ResponseHeaders: policy.NewHeaders(map[string][]string{
+			"content-type": {"application/json"},
+		}),
+		ResponseStatus: 200,
+	}
+
+	result := &executor.ResponseExecutionResult{
+		Results: []executor.ResponsePolicyResult{
+			{
+				Skipped: false,
+				Action: policy.UpstreamResponseModifications{
+					SetHeaders: map[string]string{"x-response": "modified"},
+				},
+			},
+		},
+	}
+
+	headerMutation, _, _, _, immResp, err := translateResponseActionsCore(result, execCtx)
+
+	assert.NoError(t, err)
+	assert.Nil(t, immResp, "no immediate response expected for normal flow")
+	require.NotNil(t, headerMutation)
+	assert.Len(t, headerMutation.SetHeaders, 1)
+}

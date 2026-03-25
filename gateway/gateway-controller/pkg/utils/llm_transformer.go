@@ -14,6 +14,7 @@ import (
 
 type LLMProviderTransformer struct {
 	store                 *storage.ConfigStore
+	db                    storage.Storage
 	routerConfig          *config.RouterConfig
 	policyVersionResolver PolicyVersionResolver
 }
@@ -24,9 +25,10 @@ type pathMethodKey struct {
 	method string
 }
 
-func NewLLMProviderTransformer(store *storage.ConfigStore, routerConfig *config.RouterConfig, policyVersionResolver PolicyVersionResolver) *LLMProviderTransformer {
+func NewLLMProviderTransformer(store *storage.ConfigStore, db storage.Storage, routerConfig *config.RouterConfig, policyVersionResolver PolicyVersionResolver) *LLMProviderTransformer {
 	return &LLMProviderTransformer{
 		store:                 store,
+		db:                    db,
 		routerConfig:          routerConfig,
 		policyVersionResolver: policyVersionResolver,
 	}
@@ -50,11 +52,40 @@ func (t *LLMProviderTransformer) resolvePolicyVersion(name string) (string, erro
 	return t.policyVersionResolver.Resolve(name)
 }
 
+func (t *LLMProviderTransformer) getTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
+	templates, err := t.db.GetAllLLMProviderTemplates()
+	if err == nil {
+		for _, tmpl := range templates {
+			if tmpl.GetHandle() == handle {
+				return tmpl, nil
+			}
+		}
+		return nil, fmt.Errorf("%w: template with handle '%s' not found", storage.ErrNotFound, handle)
+	}
+	if !storage.IsDatabaseUnavailableError(err) {
+		return nil, err
+	}
+
+	return t.store.GetTemplateByHandle(handle)
+}
+
+func (t *LLMProviderTransformer) getProviderByHandle(handle string) (*models.StoredConfig, error) {
+	cfg, err := t.db.GetConfigByKindAndHandle(string(api.LlmProvider), handle)
+	if err == nil {
+		return cfg, nil
+	}
+	if !storage.IsDatabaseUnavailableError(err) {
+		return nil, err
+	}
+
+	return t.store.GetByKindAndHandle(string(api.LlmProvider), handle)
+}
+
 func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration,
 	output *api.RestAPI) (*api.RestAPI, error) {
 
 	// Step 1: Retrieve and validate provider reference
-	provider, err := t.store.GetByKindAndHandle(string(api.LlmProvider), proxy.Spec.Provider.Id)
+	provider, err := t.getProviderByHandle(proxy.Spec.Provider.Id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up provider '%s': %w", proxy.Spec.Provider.Id, err)
 	}
@@ -68,7 +99,7 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 		return nil, fmt.Errorf("provider source configuration is not LLMProviderConfiguration")
 	}
 
-	tmpl, err := t.store.GetTemplateByHandle(providerConfig.Spec.Template)
+	tmpl, err := t.getTemplateByHandle(providerConfig.Spec.Template)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve template '%s' from provider: %w", providerConfig.Spec.Template, err)
 	}
@@ -272,7 +303,7 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 	output *api.RestAPI) (*api.RestAPI, error) {
 	// @TODO: Step 1) Configure token based rate-limiting policy based on template configs
 	// Retrieve and validate template
-	tmpl, err := t.store.GetTemplateByHandle(provider.Spec.Template)
+	tmpl, err := t.getTemplateByHandle(provider.Spec.Template)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve template '%s': %w", provider.Spec.Template, err)
 	}

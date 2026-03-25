@@ -137,6 +137,12 @@ const (
 
 const GatewayApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
 
+// Custom Policy ManagedBy constants
+const (
+	PolicyManagedByCustomer = "customer"
+	PolicyManagedByWSO2     = "wso2"
+)
+
 // Metadata key constants for deployment metadata
 const (
 	// MetadataKeyEndpointUrl is the metadata key for the per-deployment endpoint URL override.

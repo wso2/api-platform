@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"net/url"
 	"os"
@@ -74,6 +75,16 @@ const (
 	OTELCollectorClusterName                = "otel_collector"
 	WebSubHubInternalClusterName            = "WEBSUBHUB_INTERNAL_CLUSTER"
 )
+
+func checkedUInt32FromPositiveInt(fieldName string, value int) (uint32, error) {
+	if value <= 0 {
+		return 0, fmt.Errorf("%s must be positive, got %d", fieldName, value)
+	}
+	if value > math.MaxUint32 {
+		return 0, fmt.Errorf("%s exceeds uint32 range: %d", fieldName, value)
+	}
+	return uint32(value), nil
+}
 
 // Translator converts API configurations to Envoy xDS resources
 type Translator struct {
@@ -2728,13 +2739,17 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 // createGRPCAccessLog creates a gRPC access log configuration for the gateway controller
 func (t *Translator) createGRPCAccessLog() (*accesslog.AccessLog, error) {
 	grpcConfig := t.config.Analytics.GRPCEventServerCfg
+	bufferSizeBytes, err := checkedUInt32FromPositiveInt("analytics.grpc_event_server.buffer_size_bytes", grpcConfig.BufferSizeBytes)
+	if err != nil {
+		return nil, err
+	}
 
 	httpGrpcAccessLog := &grpc_accesslogv3.HttpGrpcAccessLogConfig{
 		CommonConfig: &grpc_accesslogv3.CommonGrpcAccessLogConfig{
 			TransportApiVersion: corev3.ApiVersion_V3,
 			LogName:             constants.DefaultALSLogName,
 			BufferFlushInterval: durationpb.New(time.Duration(grpcConfig.BufferFlushInterval)),
-			BufferSizeBytes:     wrapperspb.UInt32(uint32(grpcConfig.BufferSizeBytes)),
+			BufferSizeBytes:     wrapperspb.UInt32(bufferSizeBytes),
 			GrpcService: &corev3.GrpcService{
 				TargetSpecifier: &corev3.GrpcService_EnvoyGrpc_{
 					EnvoyGrpc: &corev3.GrpcService_EnvoyGrpc{

@@ -20,6 +20,7 @@ package xds
 
 import (
 	"fmt"
+	"math"
 	"net/url"
 	"testing"
 	"time"
@@ -1181,14 +1182,37 @@ func TestTranslator_CreateGRPCAccessLog(t *testing.T) {
 	routerCfg := testRouterConfig()
 	cfg := testConfig()
 	cfg.Analytics.GRPCEventServerCfg = config.GRPCEventServerConfig{
-		Mode: "tcp",
-		Port: 18090,
+		Mode:                "tcp",
+		Port:                18090,
+		BufferFlushInterval: 1000,
+		BufferSizeBytes:     16384,
+		GRPCRequestTimeout:  5000,
 	}
 	translator := NewTranslator(logger, routerCfg, nil, cfg)
 
 	accessLog, err := translator.createGRPCAccessLog()
 	assert.NoError(t, err)
 	assert.NotNil(t, accessLog)
+}
+
+func TestTranslator_CreateGRPCAccessLog_BufferSizeOverflow(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	cfg.Analytics.GRPCEventServerCfg = config.GRPCEventServerConfig{
+		Mode:                "tcp",
+		Port:                18090,
+		BufferFlushInterval: 1000,
+		BufferSizeBytes:     math.MaxInt,
+		GRPCRequestTimeout:  5000,
+		ServerPort:          18090,
+	}
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	accessLog, err := translator.createGRPCAccessLog()
+	assert.Error(t, err)
+	assert.Nil(t, accessLog)
+	assert.Contains(t, err.Error(), "buffer_size_bytes")
 }
 
 func TestTranslator_CreateDynamicForwardProxyCluster(t *testing.T) {

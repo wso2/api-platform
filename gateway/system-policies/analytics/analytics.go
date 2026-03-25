@@ -45,11 +45,12 @@ var (
 	ProtocolVersionJsonPath   = "$.params.protocolVersion"
 	ClientNameJsonPath        = "$.params.clientInfo.name"
 	ClientVersionJsonPath     = "$.params.clientInfo.version"
-	JsonRpcErrorCodeJsonPath  = "$.error.code"
 
 	ServerProtocolVersionJsonPath = "$.result.protocolVersion"
 	ServerInfoNameJsonPath        = "$.result.serverInfo.name"
 	ServerInfoVersionJsonPath     = "$.result.serverInfo.version"
+	IsErrorJsonPath               = "$.result.IsError"
+	JsonRpcErrorCodeJsonPath      = "$.error.code"
 )
 
 // AnalyticsPolicy implements the default analytics data collection process.
@@ -60,7 +61,6 @@ type McpRequestAnalyticsProperties struct {
 	Capability     string         `json:"capability,omitempty"`
 	CapabilityName string         `json:"capabilityName,omitempty"`
 	ClientInfo     *McpClientInfo `json:"clientInfo,omitempty"`
-	ServerInfo     *McpServerInfo `json:"serverInfo,omitempty"`
 }
 
 type McpClientInfo struct {
@@ -80,8 +80,9 @@ type McpServerInfoDetails struct {
 }
 
 type McpResponseAnalyticsProperties struct {
-	IsError   bool `json:"isError,omitempty"`
-	ErrorCode int  `json:"errorCode,omitempty"`
+	IsError    bool           `json:"isError,omitempty"`
+	ErrorCode  int            `json:"errorCode,omitempty"`
+	ServerInfo *McpServerInfo `json:"serverInfo,omitempty"`
 }
 
 // LLMTokenInfo holds extracted token-related information from LLM provider responses
@@ -358,6 +359,8 @@ func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[str
 				}
 			}
 
+			props := McpResponseAnalyticsProperties{}
+
 			// Unmarshal the JSON (either from SSE data field or direct response)
 			if err := json.Unmarshal(responseContent, &mcpResponsePayload); err != nil {
 				slog.Error("Failed to unmarshal MCP response body for server info analytics", "error", err)
@@ -378,12 +381,31 @@ func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[str
 					serverInfo.ServerInfo = &serverInfoDetails
 				}
 
-				// Only attach server info if at least one field is non-empty
+				// Only set ServerInfo pointer if at least one field is non-empty
 				if serverInfo.ProtocolVersion != "" || serverInfo.ServerInfo != nil {
-					if data, err := json.Marshal(serverInfo); err != nil {
-						slog.Error("Failed to marshal MCP server info", "error", err)
+					props.ServerInfo = &serverInfo
+				}
+
+				// Handle error case based on presence of "error" field in response
+				isError, err := extractBoolFromJsonpath(mcpResponsePayload, IsErrorJsonPath)
+				if err != nil {
+					slog.Debug("Unable to extract MCP error flag")
+				}
+				props.IsError = isError
+
+				errorCode, err := extractIntFromJsonpath(mcpResponsePayload, JsonRpcErrorCodeJsonPath)
+				if err != nil {
+					slog.Debug("Unable to extract MCP error code")
+				} else {
+					props.ErrorCode = errorCode
+				}
+
+				// Only attach MCP response properties if at least one field is non-empty
+				if props.IsError || props.ErrorCode != 0 || props.ServerInfo != nil {
+					if data, err := json.Marshal(props); err != nil {
+						slog.Error("Failed to marshal MCP response analytics properties", "error", err)
 					} else {
-						analyticsMetadata["mcp_server_info"] = string(data)
+						analyticsMetadata["mcp_response_properties"] = string(data)
 					}
 				}
 			}
@@ -601,4 +623,39 @@ func extractStringFromJsonpath(mcpResponsePayload map[string]interface{}, path s
 		return s
 	}
 	return ""
+}
+
+// Helper to extract int values via JSONPath
+func extractIntFromJsonpath(mcpResponsePayload map[string]interface{}, path string) (int, error) {
+	val, err := utils.ExtractValueFromJsonpath(mcpResponsePayload, path)
+	if err != nil || val == nil {
+		return 0, fmt.Errorf("value not found at path %s", path)
+	}
+	switch v := val.(type) {
+	case int:
+		return v, nil
+	case float64:
+		return int(v), nil
+	case string:
+		return strconv.Atoi(v)
+	default:
+		return 0, fmt.Errorf("unexpected type %T at path %s", val, path)
+	}
+}
+
+// Helper to extract bool values via JSONPath
+func extractBoolFromJsonpath(mcpResponsePayload map[string]interface{}, path string) (bool, error) {
+	val, err := utils.ExtractValueFromJsonpath(mcpResponsePayload, path)
+	if err != nil || val == nil {
+		return false, fmt.Errorf("value not found at path %s", path)
+	}
+	switch v := val.(type) {
+	case bool:
+		return v, nil
+	case string:
+		lower := strings.ToLower(strings.TrimSpace(v))
+		return lower == "true" || lower == "1" || lower == "yes", nil
+	default:
+		return false, fmt.Errorf("unexpected type %T at path %s", val, path)
+	}
 }

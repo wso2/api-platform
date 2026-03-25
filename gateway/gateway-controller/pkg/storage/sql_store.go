@@ -149,8 +149,11 @@ func kindToResourceTable(kind string) (string, error) {
 	}
 }
 
-// unmarshalSourceConfig unmarshals JSON into the correct typed struct for the given kind,
-// and populates both SourceConfiguration and (for RestApi/WebSubApi) Configuration.
+// unmarshalSourceConfig unmarshals JSON into the correct typed struct for the given kind.
+// RestApi/WebSubApi rows can populate Configuration directly because the stored
+// payload is already the deployable shape. LLM provider/proxy rows only restore
+// SourceConfiguration; their derived RestAPI form is rebuilt later by the
+// deployment/event-listener layer once templates and policies are available.
 func unmarshalSourceConfig(cfg *models.StoredConfig, jsonData string) error {
 	switch cfg.Kind {
 	case "RestApi":
@@ -199,8 +202,8 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 	query := `
 		INSERT INTO artifacts (
 			uuid, gateway_id, display_name, version, kind, handle,
-			desired_state, deployment_id, origin, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			desired_state, deployment_id, origin, created_at, updated_at, deployed_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	tx, err := s.begin()
@@ -225,6 +228,10 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 	if cfg.DeploymentID != "" {
 		deploymentID = cfg.DeploymentID
 	}
+	var deployedAt interface{}
+	if cfg.DeployedAt != nil && !cfg.DeployedAt.IsZero() {
+		deployedAt = *cfg.DeployedAt
+	}
 	_, err = stmt.Exec(
 		cfg.UUID,
 		s.gatewayId,
@@ -237,6 +244,7 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 		cfg.Origin,
 		now,
 		now,
+		deployedAt,
 	)
 
 	if err != nil {
@@ -292,7 +300,7 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 	query := `
 		UPDATE artifacts
 		SET display_name = ?, version = ?, kind = ?, handle = ?,
-			desired_state = ?, deployment_id = ?, origin = ?, updated_at = ?
+			desired_state = ?, deployment_id = ?, origin = ?, updated_at = ?, deployed_at = ?
 		WHERE uuid = ? AND gateway_id = ?
 	`
 
@@ -321,6 +329,10 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 	if cfg.DeploymentID != "" {
 		updateDeploymentID = cfg.DeploymentID
 	}
+	var updateDeployedAt interface{}
+	if cfg.DeployedAt != nil && !cfg.DeployedAt.IsZero() {
+		updateDeployedAt = *cfg.DeployedAt
+	}
 	result, err := stmt.Exec(
 		cfg.DisplayName,
 		cfg.Version,
@@ -330,6 +342,7 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 		updateDeploymentID,
 		cfg.Origin,
 		time.Now(),
+		updateDeployedAt,
 		cfg.UUID,
 		s.gatewayId,
 	)
@@ -533,25 +546,33 @@ func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
 		FROM artifacts a
 		JOIN rest_apis r ON a.uuid = r.uuid
 		WHERE a.gateway_id = ?
+
 		UNION ALL
+
 		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, w.configuration, a.desired_state,
 			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
 		JOIN websub_apis w ON a.uuid = w.uuid
 		WHERE a.gateway_id = ?
+
 		UNION ALL
+
 		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, lp.configuration, a.desired_state,
 			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
 		JOIN llm_providers lp ON a.uuid = lp.uuid
 		WHERE a.gateway_id = ?
+
 		UNION ALL
+
 		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, lx.configuration, a.desired_state,
 			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
 		JOIN llm_proxies lx ON a.uuid = lx.uuid
 		WHERE a.gateway_id = ?
+
 		UNION ALL
+		
 		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, m.configuration, a.desired_state,
 			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
 		FROM artifacts a
@@ -690,6 +711,8 @@ func (s *sqlStore) addResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConfig)
 	var args []interface{}
 
 	if cfg.Kind == "LlmProxy" {
+		// Proxies persist both the raw JSON payload and the resolved provider UUID
+		// so relational lookups do not depend on parsing the configuration blob.
 		proxyConfig, ok := cfg.SourceConfiguration.(api.LLMProxyConfiguration)
 		if !ok {
 			return false, fmt.Errorf("expected LLMProxyConfiguration but got %T", cfg.SourceConfiguration)
@@ -735,6 +758,8 @@ func (s *sqlStore) updateResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 	var args []interface{}
 
 	if cfg.Kind == "LlmProxy" {
+		// Keep the provider UUID in sync with the latest handle->UUID resolution
+		// so proxy reads can follow a stable foreign key instead of JSON content.
 		proxyConfig, ok := cfg.SourceConfiguration.(api.LLMProxyConfiguration)
 		if !ok {
 			return false, fmt.Errorf("expected LLMProxyConfiguration but got %T", cfg.SourceConfiguration)

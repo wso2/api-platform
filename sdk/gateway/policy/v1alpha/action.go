@@ -1,6 +1,7 @@
 package policyv1alpha
 
 // RequestAction marker interface (oneof pattern)
+
 type RequestAction interface {
 	isRequestAction()    // private marker method
 	StopExecution() bool // returns true if execution should stop
@@ -49,7 +50,8 @@ type ImmediateResponse struct {
 	DropHeadersFromAnalytics DropHeaderAction          // Headers to be excluded from analytics event
 }
 
-func (i ImmediateResponse) isRequestAction() {}
+func (i ImmediateResponse) isRequestAction()  {}
+func (i ImmediateResponse) isResponseAction() {}
 func (i ImmediateResponse) StopExecution() bool {
 	return true // Stop chain, return response immediately
 }
