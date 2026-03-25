@@ -622,6 +622,42 @@ func TestClient_handleAPIDeletedEvent_DBOnlyConfig(t *testing.T) {
 	}
 }
 
+func TestClient_handleAPIDeletedEvent_RequiresEventHub(t *testing.T) {
+	client, _, db, _ := createDeletionTestClient()
+	client.eventHub = nil
+	client.gatewayID = ""
+
+	apiID := "test-api-requires-eventhub"
+	apiConfig := createTestAPIConfigForDeletion(apiID)
+	if err := db.SaveConfig(apiConfig); err != nil {
+		t.Fatalf("failed to seed API config in DB: %v", err)
+	}
+
+	event := map[string]interface{}{
+		"type": "api.deleted",
+		"payload": map[string]interface{}{
+			"apiId":       apiID,
+			"environment": "production",
+			"vhost":       "api.example.com",
+		},
+		"timestamp":     time.Now().Format(time.RFC3339),
+		"correlationId": "corr-requires-hub",
+	}
+
+	client.handleAPIDeletedEvent(event)
+
+	if db.deleteCallCount != 0 {
+		t.Fatalf("expected DeleteConfig not to run without EventHub, got %d calls", db.deleteCallCount)
+	}
+	if db.removeKeyCallCount != 0 {
+		t.Fatalf("expected RemoveAPIKeysAPI not to run without EventHub, got %d calls", db.removeKeyCallCount)
+	}
+
+	if _, err := db.GetConfig(apiID); err != nil {
+		t.Fatalf("expected API config to remain in DB when EventHub is missing, got %v", err)
+	}
+}
+
 // TestClient_handleAPIDeletedEvent_StorageErrors tests error handling
 func TestClient_handleAPIDeletedEvent_StorageErrors(t *testing.T) {
 	client, store, db, hub := createDeletionTestClient()

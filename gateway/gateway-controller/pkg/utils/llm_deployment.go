@@ -114,7 +114,13 @@ func (s *LLMDeploymentService) requireReplicaSyncDependencies() error {
 	if s.deploymentService == nil {
 		return fmt.Errorf("LLMDeploymentService requires APIDeploymentService")
 	}
-	return s.deploymentService.requireReplicaSyncDependencies()
+	if s.deploymentService.eventHub == nil {
+		return fmt.Errorf("LLMDeploymentService requires EventHub")
+	}
+	if strings.TrimSpace(s.deploymentService.gatewayID) == "" {
+		return fmt.Errorf("LLMDeploymentService requires gateway ID")
+	}
+	return nil
 }
 
 func (s *LLMDeploymentService) publishLLMProviderEvent(action, entityID, correlationID string, logger *slog.Logger) {

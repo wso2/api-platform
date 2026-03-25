@@ -101,15 +101,18 @@ func NewAPIServer(
 	if db == nil {
 		panic("APIServer requires non-nil storage")
 	}
+	if systemConfig == nil {
+		panic("APIServer requires non-nil system config")
+	}
+	gatewayID := strings.TrimSpace(systemConfig.Controller.Server.GatewayID)
+	if gatewayID == "" {
+		panic("APIServer requires non-empty gateway ID")
+	}
+
 	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.Router)
 	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, &systemConfig.APIKey)
-
-	// Set EventHub on services for event-driven synchronization
-	if eventHub != nil {
-		gatewayID := systemConfig.Controller.Server.GatewayID
-		deploymentService.SetEventHub(eventHub, gatewayID)
-		apiKeyService.SetEventHub(eventHub, gatewayID)
-	}
+	deploymentService.SetEventHub(eventHub, gatewayID)
+	apiKeyService.SetEventHub(eventHub, gatewayID)
 
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
@@ -138,12 +141,10 @@ func NewAPIServer(
 		httpClient:         httpClient,
 		systemConfig:       systemConfig,
 		eventHub:           eventHub,
-		gatewayID:          systemConfig.Controller.Server.GatewayID,
+		gatewayID:          gatewayID,
 	}
-	if eventHub != nil {
-		server.llmDeploymentService.SetEventHub(eventHub, systemConfig.Controller.Server.GatewayID)
-		server.mcpDeploymentService.SetEventHub(eventHub, systemConfig.Controller.Server.GatewayID)
-	}
+	server.llmDeploymentService.SetEventHub(eventHub, gatewayID)
+	server.mcpDeploymentService.SetEventHub(eventHub, gatewayID)
 
 	// Create RestAPI service and handler
 	restAPIService := restapi.NewRestAPIService(
@@ -151,8 +152,7 @@ func NewAPIServer(
 		policyDefinitions, &server.policyDefMu,
 		deploymentService, apiKeyXDSManager,
 		controlPlaneClient, routerConfig, systemConfig,
-		httpClient, parser, validator, logger,
-		eventHub,
+		httpClient, parser, validator, logger, eventHub,
 	)
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
 
@@ -786,21 +786,6 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 		Status:  stringPtr("success"),
 		Message: stringPtr("LLM provider created successfully"),
 		Id:      stringPtr(stored.Handle), CreatedAt: timePtr(stored.CreatedAt)})
-
-	// In EventHub mode the listener rebuilds local policy state after replaying
-	// the provider event, so the writer should not mutate local policies inline.
-	if s.policyManager != nil && s.eventHub == nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(stored)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to add derived policy configuration", slog.Any("error", err))
-			} else {
-				log.Info("Derived policy configuration added",
-					slog.String("policy_id", storedPolicy.ID),
-					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		}
-	}
 }
 
 // GetLLMProviderById implements ServerInterface.GetLLMProviderById
@@ -896,31 +881,6 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 		Status:    stringPtr("success"),
 		UpdatedAt: timePtr(updated.UpdatedAt),
 	})
-
-	// In EventHub mode the listener rebuilds local policy state after replaying
-	// the provider event, so the writer should not mutate local policies inline.
-	if s.policyManager != nil && s.eventHub == nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(updated)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to update derived policy configuration", slog.Any("error", err))
-			} else {
-				log.Info("Derived policy configuration updated",
-					slog.String("policy_id", storedPolicy.ID),
-					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		} else {
-			// LLM provider no longer has policies, remove the existing policy configuration
-			policyID := updated.UUID + "-policies"
-			if err := s.policyManager.RemovePolicy(policyID); err != nil {
-				// Log at debug level since policy may not exist if LLM provider never had policies
-				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
-			} else {
-				log.Info("Derived policy configuration removed (LLM provider no longer has policies)",
-					slog.String("policy_id", policyID))
-			}
-		}
-	}
 }
 
 // DeleteLLMProvider implements ServerInterface.DeleteLLMProvider
@@ -952,30 +912,6 @@ func (s *APIServer) DeleteLLMProvider(c *gin.Context, id string) {
 		"message": "LLM provider deleted successfully",
 		"id":      cfg.Handle,
 	})
-
-	if s.eventHub == nil && s.apiKeyXDSManager != nil {
-		apiName, apiVersion := cfg.DisplayName, cfg.Version
-		if apiName != "" {
-			if err := s.apiKeyXDSManager.RemoveAPIKeysByAPI(cfg.UUID, apiName, apiVersion, correlationID); err != nil {
-				log.Warn("Failed to remove LLM provider API keys from policy engine",
-					slog.Any("error", err),
-					slog.String("api_id", cfg.UUID),
-					slog.String("api_name", apiName),
-					slog.String("api_version", apiVersion))
-			}
-		}
-	}
-
-	// In EventHub mode the listener removes local policy state after replaying
-	// the delete event, so the writer should not race that cleanup inline.
-	if s.policyManager != nil && s.eventHub == nil {
-		policyID := cfg.UUID + "-policies"
-		if err := s.policyManager.RemovePolicy(policyID); err != nil {
-			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
-		} else {
-			log.Info("Derived policy configuration removed", slog.String("policy_id", policyID))
-		}
-	}
 }
 
 // ListLLMProxies implements ServerInterface.ListLLMProxies
@@ -1065,21 +1001,6 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 		Status:  stringPtr("success"),
 		Message: stringPtr("LLM proxy created successfully"),
 		Id:      stringPtr(stored.Handle), CreatedAt: timePtr(stored.CreatedAt)})
-
-	// In EventHub mode the listener rebuilds local policy state after replaying
-	// the proxy event, so the writer should not mutate local policies inline.
-	if s.policyManager != nil && s.eventHub == nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(stored)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to add derived policy configuration", slog.Any("error", err))
-			} else {
-				log.Info("Derived policy configuration added",
-					slog.String("policy_id", storedPolicy.ID),
-					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		}
-	}
 }
 
 // GetLLMProxyById implements ServerInterface.GetLLMProxyById
@@ -1173,31 +1094,6 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 		Status:    stringPtr("success"),
 		UpdatedAt: timePtr(updated.UpdatedAt),
 	})
-
-	// In EventHub mode the listener rebuilds local policy state after replaying
-	// the proxy event, so the writer should not mutate local policies inline.
-	if s.policyManager != nil && s.eventHub == nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(updated)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to update derived policy configuration", slog.Any("error", err))
-			} else {
-				log.Info("Derived policy configuration updated",
-					slog.String("policy_id", storedPolicy.ID),
-					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		} else {
-			// LLM proxy no longer has policies, remove the existing policy configuration
-			policyID := updated.UUID + "-policies"
-			if err := s.policyManager.RemovePolicy(policyID); err != nil {
-				// Log at debug level since policy may not exist if LLM provider never had policies
-				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
-			} else {
-				log.Info("Derived policy configuration removed (LLM provider no longer has policies)",
-					slog.String("policy_id", policyID))
-			}
-		}
-	}
 }
 
 // DeleteLLMProxy implements ServerInterface.DeleteLLMProxy
@@ -1229,41 +1125,11 @@ func (s *APIServer) DeleteLLMProxy(c *gin.Context, id string) {
 		"message": "LLM proxy deleted successfully",
 		"id":      cfg.Handle,
 	})
-
-	if s.eventHub == nil && s.apiKeyXDSManager != nil {
-		apiName, apiVersion := cfg.DisplayName, cfg.Version
-		if apiName != "" {
-			if err := s.apiKeyXDSManager.RemoveAPIKeysByAPI(cfg.UUID, apiName, apiVersion, correlationID); err != nil {
-				log.Warn("Failed to remove LLM proxy API keys from policy engine",
-					slog.Any("error", err),
-					slog.String("api_id", cfg.UUID),
-					slog.String("api_name", apiName),
-					slog.String("api_version", apiVersion))
-			}
-		}
-	}
-
-	// In EventHub mode the listener removes local policy state after replaying
-	// the delete event, so the writer should not race that cleanup inline.
-	if s.policyManager != nil && s.eventHub == nil {
-		policyID := cfg.UUID + "-policies"
-		if err := s.policyManager.RemovePolicy(policyID); err != nil {
-			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
-		} else {
-			log.Info("Derived policy configuration removed", slog.String("policy_id", policyID))
-		}
-	}
 }
 
 // buildStoredPolicyFromAPI constructs a StoredPolicyConfig from an API config.
-// This is a thread-safe wrapper around policybuilder.DerivePolicyFromAPIConfig that handles
-// locking for the policyDefinitions map.
-//
-// Policy execution order: System Policies -> API Level Policies -> Operation Level Policies
-// Each level does not override the previous one; policies are executed in the given order.
+// Tests still use this helper directly to verify derived policy content.
 func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.StoredPolicyConfig {
-	// Copy policy definitions under lock to ensure thread safety
-	// (safe if map is ever mutated from another goroutine)
 	s.policyDefMu.RLock()
 	defsCopy := make(map[string]models.PolicyDefinition, len(s.policyDefinitions))
 	for k, v := range s.policyDefinitions {
@@ -1271,12 +1137,11 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 	}
 	s.policyDefMu.RUnlock()
 
-	// Use the centralized, bug-fixed implementation from pkg/policy
 	return policybuilder.DerivePolicyFromAPIConfig(cfg, s.routerConfig, s.systemConfig, defsCopy)
 }
 
 // convertAPIPolicy converts generated api.Policy to policyenginev1.PolicyInstance.
-// resolvedVersion is the full semver (e.g. v1.0.0) to send to the policy engine.
+// Tests use this helper directly when asserting policy payload translation.
 func convertAPIPolicy(p api.Policy, attachedTo policy.Level, resolvedVersion string) policyenginev1.PolicyInstance {
 	paramsMap := make(map[string]interface{})
 	if p.Params != nil {
@@ -1285,7 +1150,6 @@ func convertAPIPolicy(p api.Policy, attachedTo policy.Level, resolvedVersion str
 		}
 	}
 
-	// Add attachedTo metadata to parameters
 	if attachedTo != "" {
 		paramsMap["attachedTo"] = string(attachedTo)
 	}
@@ -1293,7 +1157,7 @@ func convertAPIPolicy(p api.Policy, attachedTo policy.Level, resolvedVersion str
 	return policyenginev1.PolicyInstance{
 		Name:               p.Name,
 		Version:            resolvedVersion,
-		Enabled:            true, // Default to enabled
+		Enabled:            true,
 		ExecutionCondition: p.ExecutionCondition,
 		Parameters:         paramsMap,
 	}
@@ -1355,20 +1219,6 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 
 	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
 		go s.waitForDeploymentAndPush(cfg.UUID, correlationID, log)
-	}
-
-	// Build and add policy config derived from API configuration if policies are present
-	if s.policyManager != nil && s.eventHub == nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(cfg)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to add derived policy configuration", slog.Any("error", err))
-			} else {
-				log.Info("Derived policy configuration added",
-					slog.String("policy_id", storedPolicy.ID),
-					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		}
 	}
 }
 
@@ -1521,30 +1371,6 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 	log.Info("MCP proxy configuration updated",
 		slog.String("id", updated.UUID),
 		slog.String("handle", handle))
-
-	// Rebuild and update derived policy configuration
-	if s.policyManager != nil && s.eventHub == nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(updated)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to update derived policy configuration", slog.Any("error", err))
-			} else {
-				log.Info("Derived policy configuration updated",
-					slog.String("policy_id", storedPolicy.ID),
-					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		} else {
-			// MCP proxy no longer has policies, remove the existing policy configuration
-			policyID := updated.UUID + "-policies"
-			if err := s.policyManager.RemovePolicy(policyID); err != nil {
-				// Log at debug level since policy may not exist if MCP proxy never had policies
-				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
-			} else {
-				log.Info("Derived policy configuration removed (MCP proxy no longer has policies)",
-					slog.String("policy_id", policyID))
-			}
-		}
-	}
 
 	// Return success response (id is the handle)
 	c.JSON(http.StatusOK, api.MCPProxyUpdateResponse{

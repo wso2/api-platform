@@ -26,6 +26,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/common/eventhub"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
@@ -34,6 +35,24 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
+
+type noopIntegrationEventHub struct{}
+
+func (noopIntegrationEventHub) Initialize() error { return nil }
+
+func (noopIntegrationEventHub) RegisterGateway(string) error { return nil }
+
+func (noopIntegrationEventHub) PublishEvent(string, eventhub.Event) error { return nil }
+
+func (noopIntegrationEventHub) Subscribe(string) (<-chan eventhub.Event, error) { return nil, nil }
+
+func (noopIntegrationEventHub) Unsubscribe(string, <-chan eventhub.Event) error { return nil }
+
+func (noopIntegrationEventHub) UnsubscribeAll(string) error { return nil }
+
+func (noopIntegrationEventHub) CleanUpEvents() error { return nil }
+
+func (noopIntegrationEventHub) Close() error { return nil }
 
 func TestVhostMaterializationOnDeploy(t *testing.T) {
 	const mainDefault = "*.gw.example.com"
@@ -72,6 +91,7 @@ spec:
 		fullCfg := &config.Config{Router: *routerCfg}
 		snapshotManager := xds.NewSnapshotManager(store, logger, routerCfg, db, fullCfg)
 		svc := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerCfg)
+		svc.SetEventHub(noopIntegrationEventHub{}, "test-gateway")
 		return svc, db
 	}
 

@@ -102,9 +102,8 @@ func NewAPIDeploymentService(
 	}
 }
 
-// SetEventHub sets the EventHub for event-driven synchronization.
-// When set, the deployment service publishes events instead of directly
-// updating in-memory stores and xDS snapshots.
+// SetEventHub wires replica-sync publishing for write paths. Callers are
+// expected to configure this during service construction.
 func (s *APIDeploymentService) SetEventHub(eventHub eventhub.EventHub, gatewayID string) {
 	s.eventHub = eventHub
 	s.gatewayID = gatewayID
@@ -129,16 +128,6 @@ func (s *APIDeploymentService) publishEvent(eventType eventhub.EventType, action
 			slog.String("entity_id", entityID),
 			slog.Any("error", err))
 	}
-}
-
-func (s *APIDeploymentService) requireReplicaSyncDependencies() error {
-	if s.eventHub == nil {
-		return fmt.Errorf("APIDeploymentService requires EventHub")
-	}
-	if strings.TrimSpace(s.gatewayID) == "" {
-		return fmt.Errorf("APIDeploymentService requires gateway ID")
-	}
-	return nil
 }
 
 // DeployAPIConfiguration handles the complete API configuration deployment process
@@ -454,10 +443,6 @@ func (s *APIDeploymentService) GetTopicsForDelete(apiConfig models.StoredConfig)
 
 // saveOrUpdateConfig handles the atomic dual-write operation for saving/updating configuration
 func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig, logger *slog.Logger) (bool, error) {
-	if err := s.requireReplicaSyncDependencies(); err != nil {
-		return false, err
-	}
-
 	existing, _ := s.db.GetConfig(storedCfg.UUID)
 
 	// If config already exists, update it
@@ -486,10 +471,6 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 // updateExistingConfig updates an existing API configuration
 func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConfig,
 	existing *models.StoredConfig) (bool, error) {
-	if err := s.requireReplicaSyncDependencies(); err != nil {
-		return false, err
-	}
-
 	// Update the existing configuration (including denormalized fields used by secondary indexes)
 	now := time.Now()
 	existing.Kind = newConfig.Kind

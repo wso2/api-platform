@@ -729,7 +729,11 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 	}
 	httpClient := &http.Client{Timeout: 10 * time.Second}
 	systemCfg := &config.Config{
-		Controller: config.Controller{},
+		Controller: config.Controller{
+			Server: config.ServerConfig{
+				GatewayID: "test-gateway",
+			},
+		},
 		Router: config.RouterConfig{
 			GatewayHost: "localhost",
 			VHosts:      *vhosts,
@@ -753,8 +757,11 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 		httpClient:        httpClient,
 		systemConfig:      systemCfg,
 	}
+	server.eventHub = &mockEventHub{}
+	server.gatewayID = systemCfg.Controller.Server.GatewayID
 
 	deploymentService := utils.NewAPIDeploymentService(store, db, nil, validator, routerCfg)
+	deploymentService.SetEventHub(server.eventHub, server.gatewayID)
 	server.deploymentService = deploymentService
 	server.mcpDeploymentService = utils.NewMCPDeploymentService(store, db, nil, nil, nil)
 	server.llmDeploymentService = utils.NewLLMDeploymentService(
@@ -768,9 +775,12 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 		nil,
 		nil,
 	)
+	server.mcpDeploymentService.SetEventHub(server.eventHub, server.gatewayID)
+	server.llmDeploymentService.SetEventHub(server.eventHub, server.gatewayID)
 
 	// Initialize API key service (needed for API key operations)
 	apiKeyService := utils.NewAPIKeyService(store, db, nil, &server.systemConfig.APIKey)
+	apiKeyService.SetEventHub(server.eventHub, server.gatewayID)
 	server.apiKeyService = apiKeyService
 
 	// Initialize RestAPI service and handler
@@ -976,7 +986,7 @@ func attachTestEventHub(server *APIServer, hub eventhub.EventHub, gatewayID stri
 		restAPIService := restapi.NewRestAPIService(
 			server.store, server.db, nil, nil,
 			server.policyDefinitions, &server.policyDefMu,
-			nil, nil, nil,
+			server.deploymentService, nil, nil,
 			server.routerConfig, server.systemConfig,
 			server.httpClient, server.parser, server.validator, server.logger, hub,
 		)
