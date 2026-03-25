@@ -77,8 +77,8 @@ var (
 )
 
 var (
-	ErrCustomPolicyNotFound    = errors.New("custom policy not found")
-	ErrCustomPolicyInUse       = errors.New("custom policy is in use by one or more APIs")
+	ErrCustomPolicyNotFound        = errors.New("custom policy not found")
+	ErrCustomPolicyInUse           = errors.New("custom policy is in use by one or more APIs")
 	ErrCustomPolicyVersionMismatch = errors.New("custom policy version does not match")
 )
 
@@ -179,8 +179,9 @@ var (
 
 var (
 	// Subscription errors (application-level subscriptions for REST APIs)
-	ErrSubscriptionNotFound      = errors.New("subscription not found")
-	ErrSubscriptionAlreadyExists = errors.New("application is already subscribed to this API")
+	ErrSubscriptionNotFound           = errors.New("subscription not found")
+	ErrSubscriptionAlreadyExists      = errors.New("application is already subscribed to this API")
+	ErrSubscriptionSubscriberMismatch = errors.New("subscriber does not match this subscription")
 )
 
 var (
