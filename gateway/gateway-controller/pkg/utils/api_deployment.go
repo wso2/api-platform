@@ -273,6 +273,13 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		DeployedAt:          params.DeployedAt,
 	}
 
+	// Compute WebSub topic diff BEFORE persisting — ConfigStore.Add populates TopicManager,
+	// so GetTopicsForUpdate must run while the store still has the old state.
+	var topicsToRegister, topicsToUnregister []string
+	if kind == "WebSubApi" {
+		topicsToRegister, topicsToUnregister = s.GetTopicsForUpdate(*storedCfg)
+	}
+
 	// Resolve gateway-default sentinels to the current config values before persisting so that
 	// the stored vhosts are immune to future gateway config changes.
 	if err := resolveVhostSentinels(&storedCfg.Configuration, s.routerConfig); err != nil {
@@ -301,7 +308,6 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 
 	// WebSub topic registration/deregistration — only after successful, non-stale persistence.
 	if kind == "WebSubApi" {
-		topicsToRegister, topicsToUnregister := s.GetTopicsForUpdate(*storedCfg)
 		// TODO: Pre configure the dynamic forward proxy rules for event gw
 		// This was communication bridge will be created on the gw startup
 		// Can perform internal communication with websub hub without relying on the dynamic rules
@@ -411,7 +417,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 			action = "UPDATE"
 		}
 		s.publishEvent(eventhub.EventTypeAPI, action, apiID, params.CorrelationID, params.Logger)
-	} else {
+	} else if s.snapshotManager != nil {
 		// Memory-only mode: update xDS snapshot inline
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

@@ -19,8 +19,10 @@
 package utils
 
 import (
+	"archive/tar"
 	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -375,6 +377,29 @@ func createTestZip(t *testing.T, files map[string][]byte) []byte {
 	return buf.Bytes()
 }
 
+func createTestTarGz(t *testing.T, files map[string][]byte) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gzWriter := gzip.NewWriter(&buf)
+	tarWriter := tar.NewWriter(gzWriter)
+
+	for name, content := range files {
+		header := &tar.Header{
+			Name: name,
+			Size: int64(len(content)),
+			Mode: 0644,
+		}
+		err := tarWriter.WriteHeader(header)
+		require.NoError(t, err)
+		_, err = tarWriter.Write(content)
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, tarWriter.Close())
+	require.NoError(t, gzWriter.Close())
+	return buf.Bytes()
+}
+
 func TestAPIUtilsService_FetchControlPlaneDeployments(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -482,7 +507,7 @@ func TestAPIUtilsService_BatchFetchDeployments(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	t.Run("Successful batch fetch", func(t *testing.T) {
-		expectedZip := createTestZip(t, map[string][]byte{
+		expectedTarGz := createTestTarGz(t, map[string][]byte{
 			"dep-789/api-abc.yaml": []byte("apiVersion: v1"),
 		})
 
@@ -491,7 +516,7 @@ func TestAPIUtilsService_BatchFetchDeployments(t *testing.T) {
 			assert.Equal(t, "/deployments/fetch-batch", r.URL.Path)
 			assert.Equal(t, "test-token", r.Header.Get("api-key"))
 			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-			assert.Equal(t, "application/zip", r.Header.Get("Accept"))
+			assert.Equal(t, "application/gzip", r.Header.Get("Accept"))
 
 			// Verify request body
 			body, err := io.ReadAll(r.Body)
@@ -501,9 +526,9 @@ func TestAPIUtilsService_BatchFetchDeployments(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, []string{"dep-789", "dep-456"}, req.DeploymentIDs)
 
-			w.Header().Set("Content-Type", "application/zip")
+			w.Header().Set("Content-Type", "application/gzip")
 			w.WriteHeader(http.StatusOK)
-			w.Write(expectedZip)
+			w.Write(expectedTarGz)
 		}))
 		defer server.Close()
 
@@ -541,12 +566,12 @@ func TestAPIUtilsService_ExtractDeploymentsFromBatchZip(t *testing.T) {
 		yamlContent1 := []byte("apiVersion: v1\nkind: RestApi\nmetadata:\n  name: api-1")
 		yamlContent2 := []byte("apiVersion: v1\nkind: LlmProvider\nmetadata:\n  name: provider-1")
 
-		zipData := createTestZip(t, map[string][]byte{
+		tarGzData := createTestTarGz(t, map[string][]byte{
 			"dep-789/api-abc.yaml":              yamlContent1,
 			"dep-456/llm-provider-xyz.yaml":     yamlContent2,
 		})
 
-		result, err := svc.ExtractDeploymentsFromBatchZip(zipData)
+		result, err := svc.ExtractDeploymentsFromBatchZip(tarGzData)
 		assert.NoError(t, err)
 		assert.Len(t, result, 2)
 		assert.Equal(t, yamlContent1, result["dep-789"])
@@ -554,49 +579,49 @@ func TestAPIUtilsService_ExtractDeploymentsFromBatchZip(t *testing.T) {
 	})
 
 	t.Run("Skip non-YAML files", func(t *testing.T) {
-		zipData := createTestZip(t, map[string][]byte{
+		tarGzData := createTestTarGz(t, map[string][]byte{
 			"dep-789/api-abc.yaml": []byte("valid yaml"),
 			"dep-789/readme.txt":  []byte("not yaml"),
 		})
 
-		result, err := svc.ExtractDeploymentsFromBatchZip(zipData)
+		result, err := svc.ExtractDeploymentsFromBatchZip(tarGzData)
 		assert.NoError(t, err)
 		assert.Len(t, result, 1)
 		assert.Equal(t, []byte("valid yaml"), result["dep-789"])
 	})
 
-	t.Run("Empty zip", func(t *testing.T) {
-		zipData := createTestZip(t, map[string][]byte{})
+	t.Run("Empty archive", func(t *testing.T) {
+		tarGzData := createTestTarGz(t, map[string][]byte{})
 
-		result, err := svc.ExtractDeploymentsFromBatchZip(zipData)
+		result, err := svc.ExtractDeploymentsFromBatchZip(tarGzData)
 		assert.NoError(t, err)
 		assert.Empty(t, result)
 	})
 
-	t.Run("Invalid zip data", func(t *testing.T) {
-		result, err := svc.ExtractDeploymentsFromBatchZip([]byte("not a zip"))
+	t.Run("Invalid archive data", func(t *testing.T) {
+		result, err := svc.ExtractDeploymentsFromBatchZip([]byte("not a tar.gz"))
 		assert.Error(t, err)
 		assert.Nil(t, result)
 	})
 
 	t.Run("Path traversal entries are skipped", func(t *testing.T) {
-		zipData := createTestZip(t, map[string][]byte{
+		tarGzData := createTestTarGz(t, map[string][]byte{
 			"../../../etc/malicious.yaml":  []byte("malicious"),
 			"dep-789/api-abc.yaml":         []byte("valid content"),
 		})
 
-		result, err := svc.ExtractDeploymentsFromBatchZip(zipData)
+		result, err := svc.ExtractDeploymentsFromBatchZip(tarGzData)
 		assert.NoError(t, err)
 		assert.Len(t, result, 1)
 		assert.Equal(t, []byte("valid content"), result["dep-789"])
 	})
 
 	t.Run("Files at root level are skipped", func(t *testing.T) {
-		zipData := createTestZip(t, map[string][]byte{
+		tarGzData := createTestTarGz(t, map[string][]byte{
 			"root-file.yaml": []byte("should be skipped"),
 		})
 
-		result, err := svc.ExtractDeploymentsFromBatchZip(zipData)
+		result, err := svc.ExtractDeploymentsFromBatchZip(tarGzData)
 		assert.NoError(t, err)
 		assert.Empty(t, result)
 	})
