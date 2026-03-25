@@ -1,7 +1,7 @@
 version: v1
 policies:
     - name: token-based-ratelimit
-      version: v0.9.1
+      version: v0.9.2
       gomodule: github.com/wso2/gateway-controllers/policies/token-based-ratelimit@v0
     - name: advanced-ratelimit
       version: v0.9.0
@@ -103,11 +103,11 @@ policies:
       version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/json-xml-mediator@v0
     - name: subscription-validation
-      version: v0.9.0
+      version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/subscription-validation@v0
     - name: llm-cost
       version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/llm-cost@v0
     - name: llm-cost-based-ratelimit
-      version: v0.9.1
+      version: v0.9.2
       gomodule: github.com/wso2/gateway-controllers/policies/llm-cost-based-ratelimit@v0
