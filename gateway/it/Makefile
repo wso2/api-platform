@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-.PHONY: all test test-postgres test-vhosts-single test-vhosts-multi test-all test-verbose clean deps check-docker coverage-report build-coverage ensure-test-tags
+.PHONY: all test test-postgres test-vhosts-single test-vhosts-multi test-all test-verbose clean deps check-docker coverage-report build-coverage ensure-test-tags ensure-coverage-dirs
 
 VERSION ?= $(shell cat ../VERSION 2>/dev/null | tr -d '[:space:]' || echo "0.0.1-SNAPSHOT")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
@@ -44,9 +44,13 @@ ensure-test-tags:
 		fi; \
 	done
 
+ensure-coverage-dirs:
+	@mkdir -p coverage/gateway-controller coverage/gateway-runtime coverage/merged logs reports
+	@chmod 0777 coverage/gateway-controller coverage/gateway-runtime coverage/merged
+
 # Run integration tests (always with coverage)
 # Requires: make build-coverage-image (run once before tests)
-test: ensure-test-tags
+test: ensure-test-tags ensure-coverage-dirs
 	COMPOSE_FILE=$(COMPOSE_FILE) go test -v -timeout 30m ./...
 
 # Build all coverage-instrumented gateway components
@@ -69,7 +73,7 @@ test-vhosts-multi:
 	COMPOSE_FILE=docker-compose.test.vhosts-multi.yaml IT_FEATURE_PATHS=features/vhost-routing-multi.feature $(MAKE) test
 
 # Run tests with verbose output
-test-verbose: ensure-test-tags
+test-verbose: ensure-test-tags ensure-coverage-dirs
 	COMPOSE_FILE=$(COMPOSE_FILE) go test -v -count=1 -timeout 30m ./...
 
 # Clean up test artifacts
@@ -81,7 +85,7 @@ clean:
 	docker compose -f docker-compose.test.vhosts-multi.yaml -p gateway-it down -v --remove-orphans 2>/dev/null || true
 	docker compose -f docker-compose.test.postgres.vhosts-single.yaml -p gateway-it down -v --remove-orphans 2>/dev/null || true
 	docker compose -f docker-compose.test.postgres.vhosts-multi.yaml -p gateway-it down -v --remove-orphans 2>/dev/null || true
-	rm -rf coverage/*.out coverage/*.txt coverage/*.html coverage/merged coverage/gateway-controller reports/*.json
+	rm -rf coverage/*.out coverage/*.txt coverage/*.html coverage/merged coverage/gateway-controller coverage/gateway-runtime reports/*.json
 
 # Install dependencies
 deps:
