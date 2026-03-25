@@ -243,7 +243,7 @@ func (h *ResourceHandler) HandleRouteConfigUpdate(ctx context.Context, resources
 		if metaMap, ok := data["metadata"].(map[string]interface{}); ok {
 			rc.Metadata = kernel.RouteMetadata{
 				RouteName:      routeKey,
-				APIName:        getStringFromMap(metaMap, "name"),
+				APIName:        getStringFromMap(metaMap, "display_name"),
 				APIVersion:     getStringFromMap(metaMap, "version"),
 				Context:        getStringFromMap(metaMap, "api_context"),
 				Vhost:          getStringFromMap(metaMap, "vhost"),

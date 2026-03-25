@@ -105,7 +105,6 @@ func TestTranslator_TranslateRuntimeConfigs(t *testing.T) {
 				Metadata: models.Metadata{
 					Kind:        "RestApi",
 					Handle:      "test-handle",
-					Name:        "TestAPI",
 					Version:     "v1",
 					DisplayName: "TestAPI",
 				},

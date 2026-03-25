@@ -257,7 +257,6 @@ func (t *Translator) createRouteConfigResource(
 		"uuid":         rdc.Metadata.UUID,
 		"kind":         rdc.Metadata.Kind,
 		"handle":       rdc.Metadata.Handle,
-		"name":         rdc.Metadata.Name,
 		"version":      rdc.Metadata.Version,
 		"display_name": rdc.Metadata.DisplayName,
 		"project_id":   rdc.Metadata.ProjectID,

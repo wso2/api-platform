@@ -78,7 +78,6 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 			UUID:        cfg.UUID,
 			Kind:        cfg.Kind,
 			Handle:      cfg.Handle,
-			Name:        apiData.DisplayName,
 			Version:     apiData.Version,
 			DisplayName: apiData.DisplayName,
 			ProjectID:   projectID,
