@@ -468,7 +468,7 @@ func CopyDir(src, dst string) error {
 				return err
 			}
 		} else {
-			if err := copyFile(srcPath, dstPath); err != nil {
+			if err := CopyFile(srcPath, dstPath); err != nil {
 				return err
 			}
 		}
@@ -477,8 +477,8 @@ func CopyDir(src, dst string) error {
 	return nil
 }
 
-// copyFile copies a single file
-func copyFile(src, dst string) error {
+// CopyFile copies a single file
+func CopyFile(src, dst string) error {
 	sourceFile, err := os.Open(src)
 	if err != nil {
 		return fmt.Errorf("failed to open source file: %w", err)
