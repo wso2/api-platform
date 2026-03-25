@@ -29,6 +29,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -532,7 +533,7 @@ func (s *APIUtilsService) CreateMCPProxyFromYAML(yamlData []byte, proxyID string
 func (s *APIUtilsService) FetchControlPlaneDeployments(since *time.Time) ([]models.ControlPlaneDeployment, error) {
 	deploymentsURL := s.getBaseURL() + "/deployments"
 	if since != nil {
-		deploymentsURL += "?since=" + since.Format(time.RFC3339)
+		deploymentsURL += "?since=" + url.QueryEscape(since.Format(time.RFC3339))
 	}
 
 	s.logger.Info("Fetching control plane deployments",
