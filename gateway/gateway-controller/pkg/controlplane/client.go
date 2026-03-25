@@ -1495,18 +1495,20 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 // returns (nil, storage.ErrNotFound). Other errors indicate actual storage failures.
 func (c *Client) findAPIConfig(apiID string) (*models.StoredConfig, error) {
 	// Check database (source of truth)
-	config, err := c.db.GetConfig(apiID)
-	if err == nil {
-		return config, nil
+	if c.db != nil {
+		config, err := c.db.GetConfig(apiID)
+		if err == nil {
+			return config, nil
+		}
+		// If it's a real error (not just "not found"), surface it
+		if !storage.IsNotFoundError(err) {
+			return nil, fmt.Errorf("database error while fetching config: %w", err)
+		}
 	}
-	// If it's a real error (not just "not found"), surface it
-	if !storage.IsNotFoundError(err) {
-		return nil, fmt.Errorf("database error while fetching config: %w", err)
-	}
-	// Config not found in DB, fall through to check memory store
+	// Config not found in DB (or no DB), fall through to check memory store
 
 	// Fall back to in-memory store
-	config, err = c.store.Get(apiID)
+	config, err := c.store.Get(apiID)
 	if err == nil {
 		return config, nil
 	}
@@ -1613,6 +1615,9 @@ func (c *Client) cleanupOrphanedResources(apiID, correlationID string) {
 	)
 
 	// Check and clean up stale API keys from database
+	if c.db == nil {
+		return
+	}
 	if err := c.db.RemoveAPIKeysAPI(apiID); err != nil {
 		c.logger.Warn("Failed to remove stale API keys from database",
 			slog.String("api_id", apiID),

@@ -27,6 +27,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -334,7 +335,9 @@ func (s *APIUtilsService) FetchAPIKeysByKind(artifactKind, issuer string) ([]mod
 
 	endpoint := baseURL + path
 	if issuer != "" {
-		endpoint += "?issuer=" + issuer
+		params := url.Values{}
+		params.Set("issuer", issuer)
+		endpoint += "?" + params.Encode()
 	}
 
 	s.logger.Info("Fetching API keys by kind",

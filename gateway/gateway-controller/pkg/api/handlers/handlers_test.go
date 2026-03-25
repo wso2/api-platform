@@ -258,6 +258,9 @@ func (m *MockStorage) SaveAPIKey(apiKey *models.APIKey) error {
 }
 
 func (m *MockStorage) UpsertAPIKey(apiKey *models.APIKey) error {
+	if m.saveErr != nil {
+		return m.saveErr
+	}
 	m.apiKeys[apiKey.UUID] = apiKey
 	return nil
 }

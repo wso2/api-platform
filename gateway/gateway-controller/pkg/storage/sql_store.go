@@ -1292,7 +1292,7 @@ func (s *sqlStore) UpsertAPIKey(apiKey *models.APIKey) error {
 			expires_at      = excluded.expires_at,
 			source          = CASE WHEN api_keys.source != '' THEN api_keys.source ELSE excluded.source END,
 			external_ref_id = COALESCE(excluded.external_ref_id, api_keys.external_ref_id),
-			issuer          = excluded.issuer
+			issuer          = CASE WHEN api_keys.issuer != '' THEN api_keys.issuer ELSE excluded.issuer END
 		WHERE api_keys.updated_at < excluded.updated_at
 	`
 

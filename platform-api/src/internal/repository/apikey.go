@@ -151,7 +151,7 @@ func (r *APIKeyRepo) ListByGatewayAndKind(gatewayID, orgID, kind, issuer string)
 		WHERE s.gateway_uuid = ?
 		  AND s.organization_uuid = ?
 		  AND a.kind = ?
-		  AND s.status = 'DEPLOYED'`
+		  AND s.status_desired = 'DEPLOYED'`
 
 	args := []any{gatewayID, orgID, kind}
 	if issuer != "" {

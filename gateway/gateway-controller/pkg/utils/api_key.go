@@ -305,21 +305,6 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 				// Hash-value collision on a locally generated key — retry once with a new key.
 				logger.Warn("API key collision detected, generating new key",
 					slog.String("operation", operationType+"_key"))
-	// Save API key to database
-	if err := s.db.SaveAPIKey(apiKey); err != nil {
-		if errors.Is(err, storage.ErrConflict) {
-			// Handle collision - only retry for locally generated keys
-			if isExternalKeyInjection {
-				// For external keys, collision means the key already exists
-				logger.Error("External API key already exists in the system",
-					slog.String("operation", operationType+"_key"))
-				return nil, fmt.Errorf("%w: provided API key already exists", storage.ErrConflict)
-			}
-
-			// For local keys, retry with a new generated key
-			logger.Warn("API key collision detected, generating new key",
-				slog.String("operation", operationType+"_key"))
-
 				apiKey, err = s.createAPIKeyFromRequest(params.Handle, &params.Request, user.UserID, config, params.UUID, params.ApiKeyHashes, params.CreatedAt, params.UpdatedAt)
 				if err != nil {
 					logger.Error("Failed to generate API key after collision",
@@ -327,35 +312,19 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 						slog.Any("error", err))
 					return nil, fmt.Errorf("failed to generate API key after collision: %w", err)
 				}
-			// Generate a new key
-			apiKey, err = s.createAPIKeyFromRequest(params.Handle, &params.Request, user.UserID, config, params.UUID, params.ApiKeyHashes)
-			if err != nil {
-				logger.Error("Failed to generate API key after collision",
-					slog.String("operation", operationType+"_key"),
-					slog.Any("error", err))
-				return nil, fmt.Errorf("failed to generate API key after collision: %w", err)
-			}
-
 				if err := s.db.UpsertAPIKey(apiKey); err != nil {
 					logger.Error("Failed to save API key after retry",
 						slog.String("operation", operationType+"_key"),
 						slog.Any("error", err))
 					return nil, fmt.Errorf("failed to save API key after retry: %w", err)
 				}
-			// Try saving again
-			if err := s.db.SaveAPIKey(apiKey); err != nil {
-				logger.Error("Failed to save API key after retry",
+				result.IsRetry = true
+			} else {
+				logger.Error("Failed to save API key to database",
 					slog.String("operation", operationType+"_key"),
 					slog.Any("error", err))
-				return nil, fmt.Errorf("failed to save API key after retry: %w", err)
+				return nil, fmt.Errorf("failed to save API key to database: %w", err)
 			}
-
-			result.IsRetry = true
-		} else {
-			logger.Error("Failed to save API key to database",
-				slog.String("operation", operationType+"_key"),
-				slog.Any("error", err))
-			return nil, fmt.Errorf("failed to save API key to database: %w", err)
 		}
 	}
 
