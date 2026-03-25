@@ -106,9 +106,10 @@ ARG ENABLE_COVERAGE=false
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    wget && \
+    apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+    ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
