@@ -254,6 +254,7 @@ func (t *Translator) createRouteConfigResource(
 	route := rdc.Routes[routeKey]
 
 	metadataMap := map[string]interface{}{
+		"uuid":         rdc.Metadata.UUID,
 		"kind":         rdc.Metadata.Kind,
 		"handle":       rdc.Metadata.Handle,
 		"name":         rdc.Metadata.Name,

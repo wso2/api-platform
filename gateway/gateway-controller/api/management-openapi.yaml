@@ -4154,7 +4154,5 @@ tags:
     description: CRUD operations for Rest APIs
   - name: MCP Proxy Management
     description: CRUD operations for MCPProxies
-  - name: Policy Management
-    description: Registration of reusable policy definitions
   - name: Certificate Management
     description: Manage custom TLS certificates for HTTPS upstream verification

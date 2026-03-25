@@ -252,7 +252,7 @@ func (h *ResourceHandler) HandleRouteConfigUpdate(ctx context.Context, resources
 				ProviderName:   getStringFromMap(metaMap, "provider_name"),
 				ProjectID:      getStringFromMap(metaMap, "project_id"),
 				OperationPath:  getStringFromMap(metaMap, "path"),
-				APIId:          getStringFromMap(metaMap, "handle"),
+				APIId:          getStringFromMap(metaMap, "uuid"),
 			}
 		}
 

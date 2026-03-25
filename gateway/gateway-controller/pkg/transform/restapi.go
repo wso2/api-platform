@@ -75,6 +75,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 
 	rdc := &models.RuntimeDeployConfig{
 		Metadata: models.Metadata{
+			UUID:        cfg.UUID,
 			Kind:        cfg.Kind,
 			Handle:      cfg.Handle,
 			Name:        apiData.DisplayName,

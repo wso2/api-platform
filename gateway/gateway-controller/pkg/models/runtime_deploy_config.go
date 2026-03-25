@@ -34,6 +34,7 @@ type RuntimeDeployConfig struct {
 
 // Metadata contains identity information for the deployed API.
 type Metadata struct {
+	UUID        string
 	Kind        string
 	Handle      string
 	Name        string
