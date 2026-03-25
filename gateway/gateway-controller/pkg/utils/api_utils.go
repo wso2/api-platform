@@ -649,13 +649,21 @@ func (s *APIUtilsService) ExtractDeploymentsFromBatchZip(zipData []byte) (map[st
 			continue
 		}
 
-		cleanPath := filepath.Clean(header.Name)
-		if strings.Contains(cleanPath, "..") {
-			s.logger.Warn("Skipping tar entry with path traversal",
+		hasInvalidSegment := false
+		for _, segment := range strings.Split(header.Name, "/") {
+			if segment == ".." {
+				hasInvalidSegment = true
+				break
+			}
+		}
+		if hasInvalidSegment {
+			s.logger.Warn("Skipping tar entry with invalid path",
 				slog.String("path", header.Name),
 			)
 			continue
 		}
+
+		cleanPath := filepath.Clean(header.Name)
 
 		// Extract deployment ID from directory name (first path component)
 		dir := filepath.Dir(cleanPath)
