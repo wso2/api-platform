@@ -75,7 +75,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     -o /usr/local/bin/gateway-builder \
     ./cmd/builder
 
-FROM golang:1.25.7-bookworm
+# Runtime image uses Ubuntu LTS and reuses the Go toolchain from the builder stage
+FROM ubuntu:24.04
 
 # Install runtime dependencies
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -83,9 +84,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     git \
     make \
-    ca-certificates
+    ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy the compiled binary from builder stage
+COPY --from=builder /usr/local/go /usr/local/go
 COPY --from=builder /usr/local/bin/gateway-builder /usr/local/bin/gateway-builder
 
 # Copy Policy Engine framework source code
@@ -97,6 +100,9 @@ COPY --from=sdk-core . /api-platform/sdk/core
 
 # Set working directory
 WORKDIR /workspace
+
+# Make the copied Go toolchain available to the builder binary at runtime
+ENV PATH=/usr/local/go/bin:${PATH}
 
 # Set entrypoint to builder binary with system build lock
 ENTRYPOINT [ \
