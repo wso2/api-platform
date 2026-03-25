@@ -189,7 +189,8 @@ func (l *EventListener) updatePoliciesForAPI(cfg *models.StoredConfig, correlati
 
 	// Policies are derived only for artifact kinds that can expose route-level policies.
 	if cfg.Kind != string(api.RestApi) && cfg.Kind != string(api.WebSubApi) &&
-		cfg.Kind != string(api.LlmProvider) && cfg.Kind != string(api.LlmProxy) {
+		cfg.Kind != string(api.LlmProvider) && cfg.Kind != string(api.LlmProxy) &&
+		cfg.Kind != string(api.Mcp) {
 		return
 	}
 

@@ -115,51 +115,45 @@ func main() {
 
 	// Initialize storage based on type
 	var db storage.Storage
-	if cfg.IsPersistentMode() {
-		db, err = storage.NewStorage(toBackendConfig(cfg), log)
-		if err != nil {
-			if strings.EqualFold(cfg.Controller.Storage.Type, "sqlite") && errors.Is(err, storage.ErrDatabaseLocked) {
-				log.Error("Database is locked by another process",
-					slog.String("database_path", cfg.Controller.Storage.SQLite.Path),
-					slog.String("troubleshooting", "Check if another gateway-controller instance is running or remove stale WAL files"))
-				os.Exit(1)
-			}
-			log.Error("Failed to initialize database storage",
-				slog.String("type", cfg.Controller.Storage.Type),
-				slog.Any("error", err))
+	db, err = storage.NewStorage(toBackendConfig(cfg), log)
+	if err != nil {
+		if strings.EqualFold(cfg.Controller.Storage.Type, "sqlite") && errors.Is(err, storage.ErrDatabaseLocked) {
+			log.Error("Database is locked by another process",
+				slog.String("database_path", cfg.Controller.Storage.SQLite.Path),
+				slog.String("troubleshooting", "Check if another gateway-controller instance is running or remove stale WAL files"))
 			os.Exit(1)
 		}
-		defer db.Close()
-	} else {
-		log.Info("Running in memory-only mode (no persistent storage)")
+		log.Error("Failed to initialize database storage",
+			slog.String("type", cfg.Controller.Storage.Type),
+			slog.Any("error", err))
+		os.Exit(1)
 	}
+	defer db.Close()
 
 	// Initialize EventHub for multi-replica sync (requires persistent storage)
 	var eventHubInstance eventhub.EventHub
 	var eventHubStorage storage.Storage
-	if cfg.IsPersistentMode() {
-		// Create separate storage connection for EventHub (avoids SQLite lock contention)
-		eventHubStorage, err = storage.NewStorage(toBackendConfig(cfg), log)
-		if err != nil {
-			log.Error("Failed to initialize EventHub storage", slog.Any("error", err))
+	// Create separate storage connection for EventHub (avoids SQLite lock contention)
+	eventHubStorage, err = storage.NewStorage(toBackendConfig(cfg), log)
+	if err != nil {
+		log.Error("Failed to initialize EventHub storage", slog.Any("error", err))
+		os.Exit(1)
+	}
+	eventHubDB := eventHubStorage.GetDB()
+	if eventHubDB != nil {
+		eventHubInstance = eventhub.New(eventHubDB, log, eventhub.DefaultConfig())
+		if err := eventHubInstance.Initialize(); err != nil {
+			log.Error("Failed to initialize EventHub", slog.Any("error", err))
 			os.Exit(1)
 		}
-		eventHubDB := eventHubStorage.GetDB()
-		if eventHubDB != nil {
-			eventHubInstance = eventhub.New(eventHubDB, log, eventhub.DefaultConfig())
-			if err := eventHubInstance.Initialize(); err != nil {
-				log.Error("Failed to initialize EventHub", slog.Any("error", err))
-				os.Exit(1)
-			}
-			if err := eventHubInstance.RegisterGateway(cfg.Controller.Server.GatewayID); err != nil {
-				log.Error("Failed to register gateway with EventHub", slog.Any("error", err))
-				os.Exit(1)
-			}
-			log.Info("EventHub initialized for multi-replica sync",
-				slog.String("gateway_id", cfg.Controller.Server.GatewayID))
-		} else {
-			log.Warn("EventHub storage returned nil DB, skipping EventHub initialization")
+		if err := eventHubInstance.RegisterGateway(cfg.Controller.Server.GatewayID); err != nil {
+			log.Error("Failed to register gateway with EventHub", slog.Any("error", err))
+			os.Exit(1)
 		}
+		log.Info("EventHub initialized for multi-replica sync",
+			slog.String("gateway_id", cfg.Controller.Server.GatewayID))
+	} else {
+		log.Warn("EventHub storage returned nil DB, skipping EventHub initialization")
 	}
 
 	// Initialize in-memory config store
@@ -175,26 +169,36 @@ func main() {
 	lazyResourceSnapshotManager := lazyresourcexds.NewLazyResourceSnapshotManager(lazyResourceStore, log)
 	lazyResourceXDSManager := lazyresourcexds.NewLazyResourceStateManager(lazyResourceStore, lazyResourceSnapshotManager, log)
 
-	// Load configurations from database on startup (if persistent mode)
-	if cfg.IsPersistentMode() && db != nil {
-		log.Info("Loading configurations from database")
-		if err := storage.LoadFromDatabase(db, configStore); err != nil {
-			log.Error("Failed to load configurations from database", slog.Any("error", err))
-			os.Exit(1)
-		}
-		if err := storage.LoadLLMProviderTemplatesFromDatabase(db, configStore); err != nil {
-			log.Error("Failed to load llm provider template configurations from database", slog.Any("error", err))
-			os.Exit(1)
-		}
-		log.Info("Loaded configurations", slog.Int("count", len(configStore.GetAll())))
+	// Load configurations from database on startup
+	log.Info("Loading configurations from database")
+	if err := storage.LoadFromDatabase(db, configStore); err != nil {
+		log.Error("Failed to load configurations from database", slog.Any("error", err))
+		os.Exit(1)
+	}
+	if err := storage.LoadLLMProviderTemplatesFromDatabase(db, configStore); err != nil {
+		log.Error("Failed to load llm provider template configurations from database", slog.Any("error", err))
+		os.Exit(1)
+	}
+	log.Info("Loaded configurations", slog.Int("count", len(configStore.GetAll())))
 
-		// Load API keys from database into both in-memory stores
-		log.Info("Loading API keys from database")
-		if err := storage.LoadAPIKeysFromDatabase(db, configStore, apiKeyStore); err != nil {
-			log.Error("Failed to load API keys from database", slog.Any("error", err))
+	// Load API keys from database into both in-memory stores
+	log.Info("Loading API keys from database")
+	if err := storage.LoadAPIKeysFromDatabase(db, configStore, apiKeyStore); err != nil {
+		log.Error("Failed to load API keys from database", slog.Any("error", err))
+		os.Exit(1)
+	}
+	log.Info("Loaded API keys", slog.Int("count", apiKeyXDSManager.GetAPIKeyCount()))
+
+	// MCP proxies are stored in their source form and need to be rehydrated into
+	// the derived RestAPI representation before startup snapshot and policy work.
+	for _, storedCfg := range configStore.GetAllByKind(string(api.Mcp)) {
+		if err := utils.HydrateStoredMCPConfig(storedCfg); err != nil {
+			log.Error("Failed to hydrate stored MCP proxy configuration",
+				slog.String("id", storedCfg.UUID),
+				slog.String("handle", storedCfg.Handle),
+				slog.Any("error", err))
 			os.Exit(1)
 		}
-		log.Info("Loaded API keys", slog.Int("count", apiKeyXDSManager.GetAPIKeyCount()))
 	}
 
 	// Initialize xDS snapshot manager with router config
@@ -243,7 +247,7 @@ func main() {
 	}()
 
 	// Generate initial API key snapshot if API keys were loaded from database
-	if cfg.IsPersistentMode() && apiKeyXDSManager.GetAPIKeyCount() > 0 {
+	if apiKeyXDSManager.GetAPIKeyCount() > 0 {
 		log.Info("Generating initial API key snapshot for policy engine",
 			slog.Int("api_key_count", apiKeyXDSManager.GetAPIKeyCount()))
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -296,29 +300,28 @@ func main() {
 	policyManager := policyxds.NewPolicyManager(policyStore, policySnapshotManager, log)
 
 	// Load policies from existing API configurations on startup
-	if cfg.IsPersistentMode() {
-		log.Info("Deriving policies from loaded API configurations")
-		loadedAPIs := configStore.GetAll()
-		derivedCount := 0
-		for _, apiConfig := range loadedAPIs {
-			// Derive policy configuration from API
-			if apiConfig.Kind == "RestApi" || apiConfig.Kind == "WebSubApi" {
-				storedPolicy := policybuilder.DerivePolicyFromAPIConfig(apiConfig, &cfg.Router, cfg, policyDefinitions)
-				if storedPolicy != nil {
-					if err := policyStore.Set(storedPolicy); err != nil {
-						log.Warn("Failed to load policy from API",
-							slog.String("api_id", apiConfig.UUID),
-							slog.Any("error", err))
-					} else {
-						derivedCount++
-					}
+	log.Info("Deriving policies from loaded API configurations")
+	loadedAPIs := configStore.GetAll()
+	derivedCount := 0
+	for _, apiConfig := range loadedAPIs {
+		// MCP proxies hydrate into RestAPI form, so they can participate in the
+		// same policy bootstrapping path as the other routed artifacts.
+		if apiConfig.Kind == "RestApi" || apiConfig.Kind == "WebSubApi" || apiConfig.Kind == "Mcp" {
+			storedPolicy := policybuilder.DerivePolicyFromAPIConfig(apiConfig, &cfg.Router, cfg, policyDefinitions)
+			if storedPolicy != nil {
+				if err := policyStore.Set(storedPolicy); err != nil {
+					log.Warn("Failed to load policy from API",
+						slog.String("api_id", apiConfig.UUID),
+						slog.Any("error", err))
+				} else {
+					derivedCount++
 				}
 			}
 		}
-		log.Info("Loaded policies from API configurations",
-			slog.Int("total_apis", len(loadedAPIs)),
-			slog.Int("policies_derived", derivedCount))
 	}
+	log.Info("Loaded policies from API configurations",
+		slog.Int("total_apis", len(loadedAPIs)),
+		slog.Int("policies_derived", derivedCount))
 
 	// Generate initial policy snapshot
 	log.Info("Generating initial policy xDS snapshot")
@@ -411,6 +414,7 @@ func main() {
 			configStore,
 			db,
 			snapshotManager,
+			subscriptionSnapshotManager,
 			apiKeyXDSManager,
 			lazyResourceXDSManager,
 			policyManager,
@@ -428,7 +432,7 @@ func main() {
 
 	// Initialize API server with the configured validator and API key manager
 	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, lazyResourceXDSManager, log, cpClient,
-		policyDefinitions, templateDefinitions, validator, apiKeyXDSManager, cfg, eventHubInstance)
+		policyDefinitions, templateDefinitions, validator, apiKeyXDSManager, cfg, eventHubInstance, subscriptionSnapshotManager)
 
 	// Ensure initial lazy resource snapshot includes default templates loaded from files.
 	// At this point, the API server initialization has already persisted/published OOB templates.
@@ -485,8 +489,9 @@ func main() {
 
 	// Setup graceful shutdown
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.Controller.Server.APIPort),
-		Handler: router,
+		Addr:              fmt.Sprintf(":%d", cfg.Controller.Server.APIPort),
+		Handler:           router,
+		ReadHeaderTimeout: 30 * time.Second,
 	}
 
 	// Start server in a goroutine

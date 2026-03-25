@@ -184,30 +184,12 @@ func (s *APIKeyService) SetEventHub(eventHub eventhub.EventHub, gatewayID string
 
 // getAPIConfigByHandle resolves an artifact configuration by kind and handle.
 func (s *APIKeyService) getAPIConfigByHandle(kind models.ArtifactKind, handle string) (*models.StoredConfig, error) {
-	if s.db != nil {
-		cfg, err := s.db.GetConfigByKindAndHandle(kind, handle)
-		if err != nil {
-			if storage.IsNotFoundError(err) {
-				return nil, storage.ErrNotFound
-			}
-			return nil, fmt.Errorf("database error while fetching config: %w", err)
-		}
-		if cfg == nil {
-			return nil, storage.ErrNotFound
-		}
-		return cfg, nil
-	}
-
-	if s.store == nil {
-		return nil, storage.ErrNotFound
-	}
-
-	cfg, err := s.store.GetByKindAndHandle(kind, handle)
+	cfg, err := s.db.GetConfigByKindAndHandle(kind, handle)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
 			return nil, storage.ErrNotFound
 		}
-		return nil, fmt.Errorf("memory store error while fetching config: %w", err)
+		return nil, fmt.Errorf("database error while fetching config: %w", err)
 	}
 	if cfg == nil {
 		return nil, storage.ErrNotFound
@@ -323,6 +305,20 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 				// Hash-value collision on a locally generated key — retry once with a new key.
 				logger.Warn("API key collision detected, generating new key",
 					slog.String("operation", operationType+"_key"))
+	// Save API key to database
+	if err := s.db.SaveAPIKey(apiKey); err != nil {
+		if errors.Is(err, storage.ErrConflict) {
+			// Handle collision - only retry for locally generated keys
+			if isExternalKeyInjection {
+				// For external keys, collision means the key already exists
+				logger.Error("External API key already exists in the system",
+					slog.String("operation", operationType+"_key"))
+				return nil, fmt.Errorf("%w: provided API key already exists", storage.ErrConflict)
+			}
+
+			// For local keys, retry with a new generated key
+			logger.Warn("API key collision detected, generating new key",
+				slog.String("operation", operationType+"_key"))
 
 				apiKey, err = s.createAPIKeyFromRequest(params.Handle, &params.Request, user.UserID, config, params.UUID, params.ApiKeyHashes, params.CreatedAt, params.UpdatedAt)
 				if err != nil {
@@ -331,6 +327,14 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 						slog.Any("error", err))
 					return nil, fmt.Errorf("failed to generate API key after collision: %w", err)
 				}
+			// Generate a new key
+			apiKey, err = s.createAPIKeyFromRequest(params.Handle, &params.Request, user.UserID, config, params.UUID, params.ApiKeyHashes)
+			if err != nil {
+				logger.Error("Failed to generate API key after collision",
+					slog.String("operation", operationType+"_key"),
+					slog.Any("error", err))
+				return nil, fmt.Errorf("failed to generate API key after collision: %w", err)
+			}
 
 				if err := s.db.UpsertAPIKey(apiKey); err != nil {
 					logger.Error("Failed to save API key after retry",
@@ -338,14 +342,20 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 						slog.Any("error", err))
 					return nil, fmt.Errorf("failed to save API key after retry: %w", err)
 				}
-
-				result.IsRetry = true
-			} else {
-				logger.Error("Failed to save API key to database",
+			// Try saving again
+			if err := s.db.SaveAPIKey(apiKey); err != nil {
+				logger.Error("Failed to save API key after retry",
 					slog.String("operation", operationType+"_key"),
 					slog.Any("error", err))
-				return nil, fmt.Errorf("failed to save API key to database: %w", err)
+				return nil, fmt.Errorf("failed to save API key after retry: %w", err)
 			}
+
+			result.IsRetry = true
+		} else {
+			logger.Error("Failed to save API key to database",
+				slog.String("operation", operationType+"_key"),
+				slog.Any("error", err))
+			return nil, fmt.Errorf("failed to save API key to database: %w", err)
 		}
 	}
 
@@ -367,12 +377,10 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 				slog.String("operation", operationType+"_key"))
 
 			// Rollback database save to maintain consistency
-			if s.db != nil {
-				if delErr := s.db.RemoveAPIKeyAPIAndName(apiKey.ArtifactUUID, apiKey.Name); delErr != nil {
-					logger.Error("Failed to rollback API key from database",
-						slog.Any("error", delErr),
-						slog.String("correlation_id", params.CorrelationID))
-				}
+			if delErr := s.db.RemoveAPIKeyAPIAndName(apiKey.ArtifactUUID, apiKey.Name); delErr != nil {
+				logger.Error("Failed to rollback API key from database",
+					slog.Any("error", delErr),
+					slog.String("correlation_id", params.CorrelationID))
 			}
 			return nil, fmt.Errorf("failed to store API key in ConfigStore: %w", err)
 		}
@@ -482,13 +490,11 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 	existingAPIKey, err := s.store.GetAPIKeyByName(config.UUID, apiKeyName)
 	if err != nil {
 		// If memory store fails, try database
-		if s.db != nil {
-			existingAPIKey, err = s.db.GetAPIKeysByAPIAndName(config.UUID, apiKeyName)
-			if err != nil {
-				logger.Debug("Failed to get API keys for revocation",
-					slog.Any("error", err))
-				// Continue with revocation for security reasons (don't leak info)
-			}
+		existingAPIKey, err = s.db.GetAPIKeysByAPIAndName(config.UUID, apiKeyName)
+		if err != nil {
+			logger.Debug("Failed to get API keys for revocation",
+				slog.Any("error", err))
+			// Continue with revocation for security reasons (don't leak info)
 		}
 	}
 
@@ -529,13 +535,11 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 		apiKey.Status = models.APIKeyStatusRevoked
 		apiKey.UpdatedAt = time.Now()
 
-		// Update the API key status in the database (if persistent mode)
-		if s.db != nil {
-			if err := s.db.UpdateAPIKey(apiKey); err != nil {
-				logger.Error("Failed to update API key status in database",
-					slog.Any("error", err))
-				return nil, fmt.Errorf("failed to revoke API key: %w", err)
-			}
+		// Update the API key status in the database
+		if err := s.db.UpdateAPIKey(apiKey); err != nil {
+			logger.Error("Failed to update API key status in database",
+				slog.Any("error", err))
+			return nil, fmt.Errorf("failed to revoke API key: %w", err)
 		}
 
 		apiId := config.UUID
@@ -567,11 +571,9 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 		}
 		// Remove the API key from database (complete removal)
 		// Note: This is cleanup only - the revocation is already complete
-		if s.db != nil {
-			if err := s.db.RemoveAPIKeyAPIAndName(config.UUID, apiKey.Name); err != nil {
-				logger.Warn("Failed to remove API key from database, but revocation was successful",
-					slog.Any("error", err))
-			}
+		if err := s.db.RemoveAPIKeyAPIAndName(config.UUID, apiKey.Name); err != nil {
+			logger.Warn("Failed to remove API key from database, but revocation was successful",
+				slog.Any("error", err))
 		}
 	}
 
@@ -708,13 +710,11 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 	// Clear plaintext secret before persisting or storing
 	updatedKey.PlainAPIKey = ""
 
-	// Save to database (if persistent mode)
-	if s.db != nil {
-		if err := s.db.UpdateAPIKey(updatedKey); err != nil {
-			logger.Error("Failed to update API key in database",
-				slog.Any("error", err))
-			return nil, fmt.Errorf("failed to update API key in database: %w", err)
-		}
+	// Save to database
+	if err := s.db.UpdateAPIKey(updatedKey); err != nil {
+		logger.Error("Failed to update API key in database",
+			slog.Any("error", err))
+		return nil, fmt.Errorf("failed to update API key in database: %w", err)
 	}
 
 	apiId := config.UUID
@@ -730,15 +730,13 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 			logger.Error("Failed to update API key in ConfigStore",
 				slog.Any("error", err))
 
-			// Rollback database update if we have a persistent DB
-			if s.db != nil {
-				if rollbackErr := s.db.UpdateAPIKey(existingKey); rollbackErr != nil {
-					logger.Error("Failed to rollback API key in database after ConfigStore failure",
-						slog.Any("error", rollbackErr),
-						slog.Any("original_error", err))
-				} else {
-					logger.Info("Successfully rolled back API key in database after ConfigStore failure")
-				}
+			// Rollback database update
+			if rollbackErr := s.db.UpdateAPIKey(existingKey); rollbackErr != nil {
+				logger.Error("Failed to rollback API key in database after ConfigStore failure",
+					slog.Any("error", rollbackErr),
+					slog.Any("original_error", err))
+			} else {
+				logger.Info("Successfully rolled back API key in database after ConfigStore failure")
 			}
 
 			return nil, fmt.Errorf("failed to update API key in ConfigStore: %w", err)
@@ -873,43 +871,41 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 		}
 	}
 
-	// Save regenerated API key to database (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.UpdateAPIKey(regeneratedKey); err != nil {
-			if errors.Is(err, storage.ErrConflict) {
-				// Handle collision by retrying once with a new key
-				logger.Warn("API key collision detected during regeneration, retrying",
-					slog.String("handle", params.Handle),
-					slog.String("correlation_id", params.CorrelationID))
+	// Save regenerated API key to database
+	if err := s.db.UpdateAPIKey(regeneratedKey); err != nil {
+		if errors.Is(err, storage.ErrConflict) {
+			// Handle collision by retrying once with a new key
+			logger.Warn("API key collision detected during regeneration, retrying",
+				slog.String("handle", params.Handle),
+				slog.String("correlation_id", params.CorrelationID))
 
-				// Generate a new regenerated key
-				regeneratedKey, err = s.regenerateAPIKey(existingKey, params.Request, user.UserID, logger)
-				if err != nil {
-					logger.Error("Failed to regenerate API key after collision",
-						slog.Any("error", err),
-						slog.String("correlation_id", params.CorrelationID))
-					return nil, fmt.Errorf("failed to regenerate API key after collision: %w", err)
-				}
-
-				// Try saving again
-				if err := s.db.UpdateAPIKey(regeneratedKey); err != nil {
-					logger.Error("Failed to save regenerated API key after retry",
-						slog.Any("error", err),
-						slog.String("correlation_id", params.CorrelationID))
-					return nil, fmt.Errorf("failed to save regenerated API key after retry: %w", err)
-				}
-
-				result.IsRetry = true
-			} else {
-				logger.Error("Failed to save regenerated API key to database",
+			// Generate a new regenerated key
+			regeneratedKey, err = s.regenerateAPIKey(existingKey, params.Request, user.UserID, logger)
+			if err != nil {
+				logger.Error("Failed to regenerate API key after collision",
 					slog.Any("error", err),
-					slog.String("handle", params.Handle),
 					slog.String("correlation_id", params.CorrelationID))
-				return nil, fmt.Errorf("failed to save regenerated API key to database: %w", err)
+				return nil, fmt.Errorf("failed to regenerate API key after collision: %w", err)
 			}
+
+			// Try saving again
+			if err := s.db.UpdateAPIKey(regeneratedKey); err != nil {
+				logger.Error("Failed to save regenerated API key after retry",
+					slog.Any("error", err),
+					slog.String("correlation_id", params.CorrelationID))
+				return nil, fmt.Errorf("failed to save regenerated API key after retry: %w", err)
+			}
+
+			result.IsRetry = true
+		} else {
+			logger.Error("Failed to save regenerated API key to database",
+				slog.Any("error", err),
+				slog.String("handle", params.Handle),
+				slog.String("correlation_id", params.CorrelationID))
+			return nil, fmt.Errorf("failed to save regenerated API key to database: %w", err)
 		}
-		// No need to revoke the old API key as the old one will be overwritten
 	}
+	// No need to revoke the old API key as the old one will be overwritten
 
 	plainAPIKey := regeneratedKey.PlainAPIKey // Store plain API key for response
 	regeneratedKey.PlainAPIKey = ""           // Clear plain API key from the struct for security
@@ -930,12 +926,10 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 				slog.String("correlation_id", params.CorrelationID))
 
 			// Roll back to the previous credential to maintain consistency
-			if s.db != nil {
-				if rollbackErr := s.db.UpdateAPIKey(existingKey); rollbackErr != nil {
-					logger.Error("Failed to rollback regenerated API key in database",
-						slog.Any("error", rollbackErr),
-						slog.String("correlation_id", params.CorrelationID))
-				}
+			if rollbackErr := s.db.UpdateAPIKey(existingKey); rollbackErr != nil {
+				logger.Error("Failed to rollback regenerated API key in database",
+					slog.Any("error", rollbackErr),
+					slog.String("correlation_id", params.CorrelationID))
 			}
 			return nil, fmt.Errorf("failed to store API key in ConfigStore: %w", err)
 		}
@@ -996,19 +990,15 @@ func (s *APIKeyService) ListAPIKeys(params ListAPIKeyParams) (*ListAPIKeyResult,
 			slog.String("correlation_id", params.CorrelationID))
 
 		// If memory store fails, try database
-		if s.db != nil {
-			dbKeys, dbErr := s.db.GetAPIKeysByAPI(config.UUID)
-			if dbErr != nil {
-				logger.Error("Failed to get API keys from database",
-					slog.Any("error", dbErr),
-					slog.String("handle", params.Handle),
-					slog.String("correlation_id", params.CorrelationID))
-				return nil, fmt.Errorf("failed to retrieve API keys: %w", dbErr)
-			}
-			apiKeys = dbKeys
-		} else {
-			return nil, fmt.Errorf("failed to retrieve API keys: %w", err)
+		dbKeys, dbErr := s.db.GetAPIKeysByAPI(config.UUID)
+		if dbErr != nil {
+			logger.Error("Failed to get API keys from database",
+				slog.Any("error", dbErr),
+				slog.String("handle", params.Handle),
+				slog.String("correlation_id", params.CorrelationID))
+			return nil, fmt.Errorf("failed to retrieve API keys: %w", dbErr)
 		}
+		apiKeys = dbKeys
 	} else {
 		apiKeys = memoryKeys
 	}
@@ -1713,15 +1703,11 @@ func (s *APIKeyService) enforceAPIKeyLimit(apiId, userID string, logger *slog.Lo
 			slog.String("user_id", userID))
 
 		// If memory store fails, try database
-		if s.db != nil {
-			if currentCount, err = s.db.CountActiveAPIKeysByUserAndAPI(apiId, userID); err != nil {
-				logger.Error("Failed to count API keys from database",
-					slog.Any("error", err),
-					slog.String("api_id", apiId),
-					slog.String("user_id", userID))
-				return fmt.Errorf("failed to check API key count: %w", err)
-			}
-		} else {
+		if currentCount, err = s.db.CountActiveAPIKeysByUserAndAPI(apiId, userID); err != nil {
+			logger.Error("Failed to count API keys from database",
+				slog.Any("error", err),
+				slog.String("api_id", apiId),
+				slog.String("user_id", userID))
 			return fmt.Errorf("failed to check API key count: %w", err)
 		}
 	}
@@ -1761,10 +1747,8 @@ func (s *APIKeyService) getCurrentAPIKeyCount(apiId, userID string) (int, error)
 	}
 
 	// If memory store fails, try database
-	if s.db != nil {
-		if currentCount, err := s.db.CountActiveAPIKeysByUserAndAPI(apiId, userID); err == nil {
-			return currentCount, nil
-		}
+	if currentCount, err := s.db.CountActiveAPIKeysByUserAndAPI(apiId, userID); err == nil {
+		return currentCount, nil
 	}
 
 	// If both fail, return error
@@ -1847,13 +1831,11 @@ func (s *APIKeyService) generateUniqueAPIKeyName(apiId, displayName string, maxR
 
 // checkAPIKeyNameExists checks if an API key name already exists for the given API
 func (s *APIKeyService) checkAPIKeyNameExists(apiId, name string) (bool, error) {
-	if s.db != nil {
-		if apiKey, _ := s.db.GetAPIKeysByAPIAndName(apiId, name); apiKey != nil {
-			return true, nil
-		}
+	if apiKey, _ := s.db.GetAPIKeysByAPIAndName(apiId, name); apiKey != nil {
+		return true, nil
 	}
 
-	// Fallback to memory store (for in-memory mode)
+	// Fallback to memory store
 	if s.store != nil {
 		if apiKey, err := s.store.GetAPIKeyByName(apiId, name); err == nil && apiKey != nil {
 			return true, nil
@@ -2051,27 +2033,12 @@ func (s *APIKeyService) UpdateExternalAPIKeyFromEvent(
 }
 
 func (s *APIKeyService) getArtifactConfigByID(artifactUUID string) (*models.StoredConfig, error) {
-	if s.db != nil {
-		cfg, err := s.db.GetConfig(artifactUUID)
-		if err == nil {
-			return cfg, nil
-		}
-		if storage.IsNotFoundError(err) {
-			return nil, storage.ErrNotFound
-		}
-		return nil, fmt.Errorf("database error while fetching artifact %s: %w", artifactUUID, err)
+	cfg, err := s.db.GetConfig(artifactUUID)
+	if err == nil {
+		return cfg, nil
 	}
-
-	if s.store == nil {
+	if storage.IsNotFoundError(err) {
 		return nil, storage.ErrNotFound
 	}
-
-	cfg, err := s.store.Get(artifactUUID)
-	if err != nil {
-		if storage.IsNotFoundError(err) {
-			return nil, storage.ErrNotFound
-		}
-		return nil, fmt.Errorf("memory store error while fetching artifact %s: %w", artifactUUID, err)
-	}
-	return cfg, nil
+	return nil, fmt.Errorf("database error while fetching artifact %s: %w", artifactUUID, err)
 }

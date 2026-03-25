@@ -111,8 +111,10 @@ func setupTestTransformer(t *testing.T) (*LLMProviderTransformer, *storage.Confi
 
 	err := store.AddTemplate(openAITemplate)
 	require.NoError(t, err, "Failed to add test template")
+	db := newTestMockDB()
+	db.SaveLLMProviderTemplate(openAITemplate)
 	cfg := loadDummyConfig()
-	transformer := NewLLMProviderTransformer(store, nil, &cfg, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, db, &cfg, newTestPolicyVersionResolver())
 	return transformer, store
 }
 

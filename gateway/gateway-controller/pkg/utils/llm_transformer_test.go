@@ -35,12 +35,13 @@ import (
 
 func TestNewLLMProviderTransformer_Basic(t *testing.T) {
 	store := storage.NewConfigStore()
+	db := newTestMockDB()
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 		HTTPSEnabled: false,
 	}
 
-	transformer := NewLLMProviderTransformer(store, nil, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
 	assert.NotNil(t, transformer)
 	assert.Equal(t, store, transformer.store)
 	assert.Equal(t, routerConfig, transformer.routerConfig)
@@ -48,10 +49,11 @@ func TestNewLLMProviderTransformer_Basic(t *testing.T) {
 
 func TestLLMProviderTransformer_Transform_InvalidInput(t *testing.T) {
 	store := storage.NewConfigStore()
+	db := newTestMockDB()
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 	}
-	transformer := NewLLMProviderTransformer(store, nil, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
 
 	t.Run("Invalid input type returns error", func(t *testing.T) {
 		output := &api.RestAPI{}
@@ -778,10 +780,11 @@ func TestShouldSwap(t *testing.T) {
 
 func TestTransformProvider_MissingTemplate(t *testing.T) {
 	store := storage.NewConfigStore()
+	db := newTestMockDB()
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 	}
-	transformer := NewLLMProviderTransformer(store, nil, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
 
 	provider := &api.LLMProviderConfiguration{
 		Metadata: api.Metadata{Name: "test-provider"},
@@ -803,10 +806,11 @@ func TestTransformProvider_MissingTemplate(t *testing.T) {
 
 func TestTransformProvider_AllowAllMode(t *testing.T) {
 	store := storage.NewConfigStore()
+	db := newTestMockDB()
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 	}
-	transformer := NewLLMProviderTransformer(store, nil, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
 
 	// Add a template to the store
 	template := &models.StoredLLMProviderTemplate{
@@ -816,6 +820,7 @@ func TestTransformProvider_AllowAllMode(t *testing.T) {
 			Spec:     api.LLMProviderTemplateData{},
 		},
 	}
+	db.SaveLLMProviderTemplate(template)
 	err := store.AddTemplate(template)
 	require.NoError(t, err)
 
@@ -844,10 +849,11 @@ func TestTransformProvider_AllowAllMode(t *testing.T) {
 
 func TestTransformProvider_DenyAllMode(t *testing.T) {
 	store := storage.NewConfigStore()
+	db := newTestMockDB()
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 	}
-	transformer := NewLLMProviderTransformer(store, nil, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
 
 	// Add a template to the store
 	template := &models.StoredLLMProviderTemplate{
@@ -857,6 +863,7 @@ func TestTransformProvider_DenyAllMode(t *testing.T) {
 			Spec:     api.LLMProviderTemplateData{},
 		},
 	}
+	db.SaveLLMProviderTemplate(template)
 	err := store.AddTemplate(template)
 	require.NoError(t, err)
 
@@ -888,8 +895,9 @@ func TestTransformProvider_DenyAllMode(t *testing.T) {
 
 func TestTransformProvider_ExpandsWildcardPolicyPathWithTemplateMappings(t *testing.T) {
 	store := storage.NewConfigStore()
+	db := newTestMockDB()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	transformer := NewLLMProviderTransformer(store, nil, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
 
 	defaultModel := "$.model"
 	responsesModel := "$.response.model"
@@ -910,6 +918,7 @@ func TestTransformProvider_ExpandsWildcardPolicyPathWithTemplateMappings(t *test
 			},
 		},
 	}
+	db.SaveLLMProviderTemplate(template)
 	err := store.AddTemplate(template)
 	require.NoError(t, err)
 
@@ -998,10 +1007,11 @@ func TestTransformProvider_ExpandsWildcardPolicyPathWithTemplateMappings(t *test
 
 func TestTransformProvider_WithUpstreamAuth(t *testing.T) {
 	store := storage.NewConfigStore()
+	db := newTestMockDB()
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 	}
-	transformer := NewLLMProviderTransformer(store, nil, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
 
 	// Add a template to the store
 	template := &models.StoredLLMProviderTemplate{
@@ -1011,6 +1021,7 @@ func TestTransformProvider_WithUpstreamAuth(t *testing.T) {
 			Spec:     api.LLMProviderTemplateData{},
 		},
 	}
+	db.SaveLLMProviderTemplate(template)
 	err := store.AddTemplate(template)
 	require.NoError(t, err)
 
@@ -1063,8 +1074,9 @@ func TestTransformProvider_WithUpstreamAuth(t *testing.T) {
 
 func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 	store := storage.NewConfigStore()
+	db := newTestMockDB()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	transformer := NewLLMProviderTransformer(store, nil, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
 
 	// Add a template to the store (required for proxy transform to resolve provider template params)
 	template := &models.StoredLLMProviderTemplate{
@@ -1074,6 +1086,7 @@ func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 			Spec:     api.LLMProviderTemplateData{},
 		},
 	}
+	db.SaveLLMProviderTemplate(template)
 	err := store.AddTemplate(template)
 	require.NoError(t, err)
 
@@ -1108,6 +1121,7 @@ func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 		DesiredState:        models.StateDeployed,
 		Origin:              models.OriginGatewayAPI,
 	}
+	db.SaveConfig(storedProvider)
 	err = store.Add(storedProvider)
 	require.NoError(t, err)
 
@@ -1153,10 +1167,11 @@ func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 
 func TestTransformProvider_UnsupportedMode(t *testing.T) {
 	store := storage.NewConfigStore()
+	db := newTestMockDB()
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 	}
-	transformer := NewLLMProviderTransformer(store, nil, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
 
 	// Add a template to the store
 	template := &models.StoredLLMProviderTemplate{
@@ -1166,6 +1181,7 @@ func TestTransformProvider_UnsupportedMode(t *testing.T) {
 			Spec:     api.LLMProviderTemplateData{},
 		},
 	}
+	db.SaveLLMProviderTemplate(template)
 	err := store.AddTemplate(template)
 	require.NoError(t, err)
 

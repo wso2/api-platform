@@ -30,12 +30,20 @@ const (
 	EventTypeAPIKey EventType = "API_KEY"
 	// EventTypeCertificate represents a certificate change event
 	EventTypeCertificate EventType = "CERTIFICATE"
+	// EventTypeSubscription represents a subscription change event
+	EventTypeSubscription EventType = "SUBSCRIPTION"
+	// EventTypeSubscriptionPlan represents a subscription plan change event
+	EventTypeSubscriptionPlan EventType = "SUBSCRIPTION_PLAN"
+	// EventTypeApplication represents an application metadata change event
+	EventTypeApplication EventType = "APPLICATION"
 	// EventTypeLLMProvider represents an LLM provider change event
 	EventTypeLLMProvider EventType = "LLM_PROVIDER"
 	// EventTypeLLMProxy represents an LLM proxy change event
 	EventTypeLLMProxy EventType = "LLM_PROXY"
 	// EventTypeLLMTemplate represents an LLM template change event
 	EventTypeLLMTemplate EventType = "LLM_TEMPLATE"
+	// EventTypeMCPProxy represents an MCP proxy change event
+	EventTypeMCPProxy EventType = "MCP_PROXY"
 
 	// EmptyEventData is the canonical JSON payload for events that do not
 	// require additional data beyond the top-level event fields.

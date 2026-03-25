@@ -86,6 +86,15 @@ type mockAPIKeyXDSManager struct {
 	removeCalls []removeCall
 }
 
+type mockSubscriptionSnapshotUpdater struct {
+	callCount int
+}
+
+func (m *mockSubscriptionSnapshotUpdater) UpdateSnapshot(context.Context) error {
+	m.callCount++
+	return nil
+}
+
 type storeCall struct {
 	apiID         string
 	apiName       string
@@ -281,6 +290,7 @@ func TestStart_SubscribesWithTrimmedGatewayID(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 		newTestLogger(),
 		&config.Config{
 			Controller: config.Controller{
@@ -313,14 +323,37 @@ func TestHandleEvent_AcceptsKnownTypesAndUnknown(t *testing.T) {
 		EntityID:  "tmpl-1",
 	})
 	listener.handleEvent(eventhub.Event{
+		EventType: eventhub.EventTypeApplication,
+		Action:    "UPDATE",
+		EntityID:  "app-1",
+	})
+	listener.handleEvent(eventhub.Event{
 		EventType: eventhub.EventType("UNKNOWN"),
 		EntityID:  "mystery-1",
 	})
 
 	logs := logBuf.String()
 	assert.Contains(t, logs, "Certificate event received")
+	assert.Contains(t, logs, "Processed application replica sync event")
 	assert.Contains(t, logs, "Unknown LLM template event action")
 	assert.Contains(t, logs, "Unknown event type received")
+}
+
+func TestHandleEvent_SubscriptionPlanRefreshesSnapshot(t *testing.T) {
+	updater := &mockSubscriptionSnapshotUpdater{}
+	listener := &EventListener{
+		logger:              newTestLogger(),
+		subscriptionManager: updater,
+	}
+
+	listener.handleEvent(eventhub.Event{
+		EventType: eventhub.EventTypeSubscriptionPlan,
+		Action:    "UPDATE",
+		EntityID:  "plan-1",
+		EventID:   "corr-plan-update",
+	})
+
+	assert.Equal(t, 1, updater.callCount)
 }
 
 func TestProcessEvents_RecoversFromPanicAndContinues(t *testing.T) {

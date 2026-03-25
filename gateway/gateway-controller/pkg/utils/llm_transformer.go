@@ -53,33 +53,29 @@ func (t *LLMProviderTransformer) resolvePolicyVersion(name string) (string, erro
 }
 
 func (t *LLMProviderTransformer) getTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
-	if t.db != nil {
-		templates, err := t.db.GetAllLLMProviderTemplates()
-		if err == nil {
-			for _, tmpl := range templates {
-				if tmpl.GetHandle() == handle {
-					return tmpl, nil
-				}
+	templates, err := t.db.GetAllLLMProviderTemplates()
+	if err == nil {
+		for _, tmpl := range templates {
+			if tmpl.GetHandle() == handle {
+				return tmpl, nil
 			}
-			return nil, fmt.Errorf("%w: template with handle '%s' not found", storage.ErrNotFound, handle)
 		}
-		if !storage.IsDatabaseUnavailableError(err) {
-			return nil, err
-		}
+		return nil, fmt.Errorf("%w: template with handle '%s' not found", storage.ErrNotFound, handle)
+	}
+	if !storage.IsDatabaseUnavailableError(err) {
+		return nil, err
 	}
 
 	return t.store.GetTemplateByHandle(handle)
 }
 
 func (t *LLMProviderTransformer) getProviderByHandle(handle string) (*models.StoredConfig, error) {
-	if t.db != nil {
-		cfg, err := t.db.GetConfigByKindAndHandle(string(api.LlmProvider), handle)
-		if err == nil {
-			return cfg, nil
-		}
-		if !storage.IsDatabaseUnavailableError(err) {
-			return nil, err
-		}
+	cfg, err := t.db.GetConfigByKindAndHandle(string(api.LlmProvider), handle)
+	if err == nil {
+		return cfg, nil
+	}
+	if !storage.IsDatabaseUnavailableError(err) {
+		return nil, err
 	}
 
 	return t.store.GetByKindAndHandle(string(api.LlmProvider), handle)

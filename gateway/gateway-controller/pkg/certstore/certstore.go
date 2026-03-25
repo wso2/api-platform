@@ -23,6 +23,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -74,7 +75,7 @@ func (cs *CertStore) LoadCertificates() ([]byte, error) {
 	loadedCount := 0
 
 	// Bootstrap: Sync filesystem certificates to database on first run
-	if cs.db != nil && cs.certsDir != "" {
+	if cs.certsDir != "" {
 		if err := cs.bootstrapCertificatesFromFilesystem(); err != nil {
 			cs.logger.Warn("Failed to bootstrap certificates from filesystem",
 				slog.Any("error", err))
@@ -82,17 +83,15 @@ func (cs *CertStore) LoadCertificates() ([]byte, error) {
 	}
 
 	// Load custom certificates from database (primary and only source for custom certs)
-	if cs.db != nil {
-		dbCerts, count, err := cs.loadDatabaseCertificates()
-		if err != nil {
-			cs.logger.Warn("Failed to load certificates from database",
-				slog.Any("error", err))
-		} else if count > 0 {
-			certBuffer.Write(dbCerts)
-			loadedCount += count
-			cs.logger.Info("Loaded custom certificates from database",
-				slog.Int("count", count))
-		}
+	dbCerts, count, err := cs.loadDatabaseCertificates()
+	if err != nil {
+		cs.logger.Warn("Failed to load certificates from database",
+			slog.Any("error", err))
+	} else if count > 0 {
+		certBuffer.Write(dbCerts)
+		loadedCount += count
+		cs.logger.Info("Loaded custom certificates from database",
+			slog.Int("count", count))
 	}
 
 	// Load system certificates
@@ -185,35 +184,7 @@ func (cs *CertStore) loadCustomCertificates() ([]byte, int, error) {
 	var certBuffer bytes.Buffer
 	certCount := 0
 
-	// Walk through all files in the certificates directory
-	err := filepath.Walk(cs.certsDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Skip directories
-		if info.IsDir() {
-			return nil
-		}
-
-		// Only process files with common certificate extensions
-		ext := strings.ToLower(filepath.Ext(path))
-		if ext != ".pem" && ext != ".crt" && ext != ".cer" && ext != ".cert" {
-			cs.logger.Debug("Skipping non-certificate file",
-				slog.String("file", path))
-			return nil
-		}
-
-		// Read certificate file
-		certData, err := os.ReadFile(path)
-		if err != nil {
-			cs.logger.Warn("Failed to read certificate file",
-				slog.String("file", path),
-				slog.Any("error", err))
-			return nil // Continue with other files
-		}
-
-		// Validate that the file contains valid PEM-encoded certificates
+	err := cs.walkCertificateFiles(func(path string, certData []byte) error {
 		count, err := cs.validateAndExtractCertificates(path, certData)
 		if err != nil {
 			cs.logger.Warn("Invalid certificate file",
@@ -351,32 +322,7 @@ func (cs *CertStore) bootstrapCertificatesFromFilesystem() error {
 	bootstrapCount := 0
 	skippedCount := 0
 
-	// Walk through all files in the certificates directory
-	err := filepath.Walk(cs.certsDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Skip directories
-		if info.IsDir() {
-			return nil
-		}
-
-		// Only process files with common certificate extensions
-		ext := strings.ToLower(filepath.Ext(path))
-		if ext != ".pem" && ext != ".crt" && ext != ".cer" && ext != ".cert" {
-			return nil
-		}
-
-		// Read certificate file
-		certData, err := os.ReadFile(path)
-		if err != nil {
-			cs.logger.Warn("Failed to read certificate file during bootstrap",
-				slog.String("file", path),
-				slog.Any("error", err))
-			return nil // Continue with other files
-		}
-
+	err := cs.walkCertificateFiles(func(path string, certData []byte) error {
 		// Validate certificate
 		count, err := cs.validateCertificateData(filepath.Base(path), certData)
 		if err != nil {
@@ -473,6 +419,47 @@ func (cs *CertStore) bootstrapCertificatesFromFilesystem() error {
 	}
 
 	return nil
+}
+
+func (cs *CertStore) walkCertificateFiles(visit func(path string, certData []byte) error) error {
+	root, err := os.OpenRoot(cs.certsDir)
+	if err != nil {
+		return fmt.Errorf("failed to open certificates directory: %w", err)
+	}
+	defer func() {
+		if closeErr := root.Close(); closeErr != nil {
+			cs.logger.Warn("Failed to close certificates root",
+				slog.String("path", cs.certsDir),
+				slog.Any("error", closeErr))
+		}
+	}()
+
+	return fs.WalkDir(root.FS(), ".", func(relPath string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+
+		absPath := filepath.Join(cs.certsDir, relPath)
+		ext := strings.ToLower(filepath.Ext(d.Name()))
+		if ext != ".pem" && ext != ".crt" && ext != ".cer" && ext != ".cert" {
+			cs.logger.Debug("Skipping non-certificate file",
+				slog.String("file", absPath))
+			return nil
+		}
+
+		certData, err := root.ReadFile(relPath)
+		if err != nil {
+			cs.logger.Warn("Failed to read certificate file",
+				slog.String("file", absPath),
+				slog.Any("error", err))
+			return nil
+		}
+
+		return visit(absPath, certData)
+	})
 }
 
 // certificateExistsByName checks if a certificate with the given name exists in database

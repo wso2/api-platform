@@ -58,9 +58,12 @@ func NewAPIUtilsService(config PlatformAPIConfig, logger *slog.Logger) *APIUtils
 	if config.Timeout == 0 {
 		config.Timeout = 30 * time.Second
 	}
+	if config.InsecureSkipVerify {
+		logger.Warn("TLS certificate verification disabled for API utils (insecure_skip_verify=true)")
+	}
 
 	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{
+		TLSClientConfig: &tls.Config{ // #nosec G402 -- Explicit operator-controlled opt-out for dev/test environments.
 			InsecureSkipVerify: config.InsecureSkipVerify,
 			MinVersion:         tls.VersionTLS12,
 		},
@@ -254,7 +257,7 @@ func (s *APIUtilsService) FetchSubscriptionsForAPI(apiID string) ([]models.Subsc
 	client := &http.Client{
 		Timeout: s.config.Timeout,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
+			TLSClientConfig: &tls.Config{ // #nosec G402 -- Explicit operator-controlled opt-out for dev/test environments.
 				InsecureSkipVerify: s.config.InsecureSkipVerify,
 			},
 		},
@@ -415,7 +418,7 @@ func (s *APIUtilsService) FetchSubscriptionPlans() ([]models.SubscriptionPlan, e
 	client := &http.Client{
 		Timeout: s.config.Timeout,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
+			TLSClientConfig: &tls.Config{ // #nosec G402 -- Explicit operator-controlled opt-out for dev/test environments.
 				InsecureSkipVerify: s.config.InsecureSkipVerify,
 			},
 		},

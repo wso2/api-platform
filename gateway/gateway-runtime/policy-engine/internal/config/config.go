@@ -20,6 +20,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"net/url"
 	"strings"
 	"time"
@@ -506,6 +507,9 @@ func (c *Config) validateAnalyticsConfig() error {
 		}
 		if als.ExtProcMaxHeaderLimit <= 0 {
 			return fmt.Errorf("analytics.access_logs_service.max_header_limit must be positive, got %d", als.ExtProcMaxHeaderLimit)
+		}
+		if als.ExtProcMaxHeaderLimit > math.MaxUint32 {
+			return fmt.Errorf("analytics.access_logs_service.max_header_limit must be <= %d, got %d", uint64(math.MaxUint32), als.ExtProcMaxHeaderLimit)
 		}
 
 		// Validate enabled publishers

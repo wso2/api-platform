@@ -55,7 +55,6 @@ Feature: Subscription Validation
               - name: subscription-validation
                 version: v0
                 params:
-                  enabled: true
                   subscriptionKeyHeader: "Subscription-Key"
       """
     Then the response should be successful

@@ -671,3 +671,92 @@ func TestResponseExecutionResult(t *testing.T) {
 	assert.Empty(t, result.Results)
 	assert.Nil(t, result.FinalAction)
 }
+
+// =============================================================================
+// Tests for deepCopyParams
+// =============================================================================
+
+// TestDeepCopyParams_MutationIsolation verifies that a policy mutating params
+// during execution does not affect the original spec map or a concurrent request.
+func TestDeepCopyParams_MutationIsolation(t *testing.T) {
+	original := map[string]interface{}{
+		"level1": map[string]interface{}{
+			"nested": "original",
+		},
+	}
+
+	copy1, err := deepCopyParams(original)
+	require.NoError(t, err)
+
+	// Simulate a policy mutating a nested value
+	copy1["level1"].(map[string]interface{})["nested"] = "mutated"
+
+	// A second copy (next request) should still see the original value
+	copy2, err := deepCopyParams(original)
+	require.NoError(t, err)
+
+	assert.Equal(t, "original", copy2["level1"].(map[string]interface{})["nested"],
+		"mutation of copy1 must not affect the source map used by copy2")
+	assert.Equal(t, "original", original["level1"].(map[string]interface{})["nested"],
+		"mutation of copy1 must not affect the original source map")
+}
+
+// TestDeepCopyParams_EmptyMap verifies that an empty map returns an empty copy.
+func TestDeepCopyParams_EmptyMap(t *testing.T) {
+	result, err := deepCopyParams(map[string]interface{}{})
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Empty(t, result)
+}
+
+// TestDeepCopyParams_SliceIsolation verifies that slice values are also deep-copied.
+func TestDeepCopyParams_SliceIsolation(t *testing.T) {
+	original := map[string]interface{}{
+		"items": []interface{}{"a", "b", "c"},
+	}
+
+	copy1, err := deepCopyParams(original)
+	require.NoError(t, err)
+
+	// Mutate the slice in copy1
+	copy1["items"] = []interface{}{"x", "y"}
+
+	copy2, err := deepCopyParams(original)
+	require.NoError(t, err)
+
+	assert.Equal(t, []interface{}{"a", "b", "c"}, copy2["items"],
+		"slice mutation in copy1 must not affect subsequent copies")
+}
+
+// TestExecuteResponsePolicies_ImmediateResponseShortCircuit verifies that a
+// policy returning ImmediateResponse from OnResponse short-circuits the chain.
+func TestExecuteResponsePolicies_ImmediateResponseShortCircuit(t *testing.T) {
+	tracer := noop.NewTracerProvider().Tracer("test")
+	executor := NewChainExecutor(nil, nil, tracer)
+
+	ctx := context.Background()
+	respCtx := testutils.NewTestResponseContext()
+
+	shortCircuitPolicy := &testutils.ConfigurableMockPolicy{
+		OnRespFn: func(_ *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
+			return policy.ImmediateResponse{StatusCode: 503, Body: []byte("service unavailable")}
+		},
+	}
+	noop := &testutils.NoopPolicy{}
+
+	policies := []policy.Policy{shortCircuitPolicy, noop}
+	specs := []policy.PolicySpec{
+		newPolicySpec("circuit-breaker", "v1.0.0", true, nil),
+		newPolicySpec("noop", "v1.0.0", true, nil),
+	}
+
+	result, err := executor.ExecuteResponsePolicies(ctx, policies, respCtx, specs, "api", "route", false)
+
+	require.NoError(t, err)
+	assert.True(t, result.ShortCircuited)
+	assert.NotNil(t, result.FinalAction)
+
+	immResp, ok := result.FinalAction.(policy.ImmediateResponse)
+	require.True(t, ok)
+	assert.Equal(t, 503, immResp.StatusCode)
+}
