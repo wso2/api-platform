@@ -255,6 +255,10 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 
 	// Create stored configuration
 	now := time.Now()
+	deployedAt := params.DeployedAt
+	if deployedAt == nil {
+		deployedAt = &now
+	}
 	storedCfg := &models.StoredConfig{
 		UUID:                apiID,
 		Kind:                string(api.LlmProvider),
@@ -268,7 +272,7 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		Origin:              params.Origin,
 		CreatedAt:           now,
 		UpdatedAt:           now,
-		DeployedAt:          params.DeployedAt,
+		DeployedAt:          deployedAt,
 	}
 
 	isUpdate := params.IsUpdate
@@ -413,6 +417,10 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 
 	// Create stored configuration
 	now := time.Now()
+	deployedAt := params.DeployedAt
+	if deployedAt == nil {
+		deployedAt = &now
+	}
 	storedCfg := &models.StoredConfig{
 		UUID:                apiID,
 		Kind:                string(api.LlmProxy),
@@ -426,7 +434,7 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 		Origin:              params.Origin,
 		CreatedAt:           now,
 		UpdatedAt:           now,
-		DeployedAt:          params.DeployedAt,
+		DeployedAt:          deployedAt,
 	}
 
 	isUpdate := params.IsUpdate

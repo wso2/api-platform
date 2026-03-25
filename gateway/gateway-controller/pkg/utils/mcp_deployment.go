@@ -240,6 +240,10 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 
 	// Create stored configuration
 	now := time.Now()
+	deployedAt := params.DeployedAt
+	if deployedAt == nil {
+		deployedAt = &now
+	}
 	storedCfg := &models.StoredConfig{
 		UUID:                apiID,
 		Kind:                string(api.Mcp),
@@ -253,7 +257,7 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 		Origin:              params.Origin,
 		CreatedAt:           now,
 		UpdatedAt:           now,
-		DeployedAt:          params.DeployedAt,
+		DeployedAt:          deployedAt,
 	}
 
 	// Try to save/update the configuration

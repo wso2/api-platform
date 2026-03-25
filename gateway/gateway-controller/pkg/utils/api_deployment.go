@@ -257,6 +257,10 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 
 	// Create stored configuration
 	now := time.Now()
+	deployedAt := params.DeployedAt
+	if deployedAt == nil {
+		deployedAt = &now
+	}
 	storedCfg := &models.StoredConfig{
 		UUID:                apiID,
 		Kind:                kind,
@@ -270,7 +274,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		Origin:              params.Origin,
 		CreatedAt:           now,
 		UpdatedAt:           now,
-		DeployedAt:          params.DeployedAt,
+		DeployedAt:          deployedAt,
 	}
 
 	// Compute WebSub topic diff BEFORE persisting — ConfigStore.Add populates TopicManager,
