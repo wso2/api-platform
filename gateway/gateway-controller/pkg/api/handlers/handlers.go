@@ -1394,30 +1394,11 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 		slog.String("id", updated.UUID),
 		slog.String("handle", handle))
 
-	// Rebuild and update derived policy configuration
+	// In EventHub mode the listener rebuilds local runtime state after replaying
+	// the provider event, so the writer should not mutate local state inline.
 	if s.policyManager != nil && s.eventHub == nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(updated)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to update derived policy configuration", slog.Any("error", err))
-			} else {
-				log.Info("Derived policy configuration updated",
-					slog.String("policy_id", storedPolicy.ID),
-					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		} else {
-			// MCP proxy no longer has policies, remove the existing policy configuration
-			policyID := updated.UUID + "-policies"
-			if err := s.policyManager.RemovePolicy(policyID); err != nil {
-				// Log at debug level since policy may not exist if MCP proxy never had policies
-				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
-			} else {
-				log.Info("Derived policy configuration removed (MCP proxy no longer has policies)",
-					slog.String("policy_id", policyID))
-			}
-	if s.policyManager != nil {
 		if err := s.policyManager.UpsertAPIConfig(updated); err != nil {
-			log.Error("Failed to upsert runtime config for MCP proxy", slog.Any("error", err))
+			log.Error("Failed to upsert runtime config after MCP proxy update", slog.Any("error", err))
 		}
 	}
 
