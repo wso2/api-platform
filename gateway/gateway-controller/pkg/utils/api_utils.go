@@ -19,8 +19,10 @@
 package utils
 
 import (
+	"archive/tar"
 	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -569,7 +571,7 @@ func (s *APIUtilsService) FetchControlPlaneDeployments(since *time.Time) ([]mode
 }
 
 // BatchFetchDeployments fetches multiple deployment artifacts in a single request.
-// It returns the raw zip data containing deployment directories, each named by deployment ID
+// It returns the raw tar.gz data containing deployment directories, each named by deployment ID
 // and containing the artifact YAML file. Returns an error if the request fails.
 func (s *APIUtilsService) BatchFetchDeployments(deploymentIDs []string) ([]byte, error) {
 	batchURL := s.getBaseURL() + "/deployments/fetch-batch"
@@ -594,7 +596,7 @@ func (s *APIUtilsService) BatchFetchDeployments(deploymentIDs []string) ([]byte,
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Add("api-key", s.config.Token)
-	req.Header.Add("Accept", "application/zip")
+	req.Header.Add("Accept", "application/gzip")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -620,26 +622,37 @@ func (s *APIUtilsService) BatchFetchDeployments(deploymentIDs []string) ([]byte,
 	return bodyBytes, nil
 }
 
-// ExtractDeploymentsFromBatchZip processes a batch zip response and extracts YAML content
-// for each deployment. The zip structure has top-level directories named by deployment ID,
-// each containing a YAML file. Returns a map of deployment ID to YAML content bytes.
+// ExtractDeploymentsFromBatchZip processes a batch tar.gz response and extracts YAML content
+// for each deployment. The archive structure has top-level directories named by deployment ID,
+// each containing the artifact YAML file. Returns a map of deployment ID to YAML content bytes.
 func (s *APIUtilsService) ExtractDeploymentsFromBatchZip(zipData []byte) (map[string][]byte, error) {
-	zipReader, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
+	gzReader, err := gzip.NewReader(bytes.NewReader(zipData))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create zip reader: %w", err)
+		return nil, fmt.Errorf("failed to create gzip reader: %w", err)
 	}
+	defer gzReader.Close()
 
+	tarReader := tar.NewReader(gzReader)
 	deployments := make(map[string][]byte)
-	for _, file := range zipReader.File {
+
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to read tar entry: %w", err)
+		}
+
 		// Skip directories
-		if file.FileInfo().IsDir() {
+		if header.Typeflag == tar.TypeDir {
 			continue
 		}
 
-		cleanPath := filepath.Clean(file.Name)
+		cleanPath := filepath.Clean(header.Name)
 		if strings.Contains(cleanPath, "..") {
-			s.logger.Warn("Skipping zip entry with path traversal",
-				slog.String("path", file.Name),
+			s.logger.Warn("Skipping tar entry with path traversal",
+				slog.String("path", header.Name),
 			)
 			continue
 		}
@@ -648,8 +661,8 @@ func (s *APIUtilsService) ExtractDeploymentsFromBatchZip(zipData []byte) (map[st
 		dir := filepath.Dir(cleanPath)
 		deploymentID := filepath.Base(dir)
 		if deploymentID == "." || deploymentID == "" {
-			s.logger.Warn("Skipping file with unexpected path in batch zip",
-				slog.String("path", file.Name),
+			s.logger.Warn("Skipping file with unexpected path in batch archive",
+				slog.String("path", header.Name),
 			)
 			continue
 		}
@@ -660,20 +673,10 @@ func (s *APIUtilsService) ExtractDeploymentsFromBatchZip(zipData []byte) (map[st
 			continue
 		}
 
-		rc, err := file.Open()
+		content, err := io.ReadAll(tarReader)
 		if err != nil {
-			s.logger.Warn("Failed to open file in batch zip",
-				slog.String("path", file.Name),
-				slog.Any("error", err),
-			)
-			continue
-		}
-
-		content, err := io.ReadAll(rc)
-		rc.Close()
-		if err != nil {
-			s.logger.Warn("Failed to read file in batch zip",
-				slog.String("path", file.Name),
+			s.logger.Warn("Failed to read file in batch archive",
+				slog.String("path", header.Name),
 				slog.Any("error", err),
 			)
 			continue
@@ -682,7 +685,7 @@ func (s *APIUtilsService) ExtractDeploymentsFromBatchZip(zipData []byte) (map[st
 		deployments[deploymentID] = content
 	}
 
-	s.logger.Info("Extracted deployments from batch zip",
+	s.logger.Info("Extracted deployments from batch archive",
 		slog.Int("count", len(deployments)),
 	)
 

@@ -180,7 +180,7 @@ func (c *Client) processSyncFetches(deployments []models.ControlPlaneDeployment,
 			providers = append(providers, dep)
 		case models.KindLlmProxy:
 			proxies = append(proxies, dep)
-		default:
+		case models.KindRestApi:
 			restAPIs = append(restAPIs, dep)
 		}
 	}
@@ -298,8 +298,8 @@ func (c *Client) processSyncFetchBatch(batch []models.ControlPlaneDeployment, ga
 	}
 }
 
-// processSyncStatusUpdates handles deployments where only the status has changed
-// (e.g. remote says "undeployed" but local is still "deployed").
+// processSyncStatusUpdates handles deployments where only the desired state has
+// changed (e.g. undeploy or redeploy) while the deployment ID remains the same.
 func (c *Client) processSyncStatusUpdates(deployments []models.ControlPlaneDeployment, gatewayID string) {
 	for _, dep := range deployments {
 		correlationID := syncCorrelationID(dep)
@@ -313,9 +313,9 @@ func (c *Client) processSyncStatusUpdates(deployments []models.ControlPlaneDeplo
 			continue
 		}
 
-		// Update to undeployed state
+		// Map remote state to local desired state
 		deployedAt := dep.DeployedAt
-		cfg.DesiredState = models.StateUndeployed
+		cfg.DesiredState = models.DesiredState(dep.State)
 		cfg.DeploymentID = dep.DeploymentID
 		cfg.DeployedAt = &deployedAt
 		cfg.UpdatedAt = time.Now()
@@ -364,7 +364,7 @@ func (c *Client) processSyncStatusUpdates(deployments []models.ControlPlaneDeplo
 
 		c.logger.Info("Synced status update",
 			slog.String("artifact_id", dep.ArtifactID),
-			slog.String("new_state", string(models.StateUndeployed)),
+			slog.String("new_state", dep.State),
 			slog.String("correlation_id", correlationID),
 		)
 	}
@@ -401,10 +401,8 @@ func (c *Client) processSyncDeletions(artifactIDs []string, gatewayID string) {
 			providers = append(providers, entry)
 		case models.KindLlmProxy:
 			proxies = append(proxies, entry)
-		case models.KindRestApi, models.KindWebSubApi:
+		case models.KindRestApi:
 			restAPIs = append(restAPIs, entry)
-		default:
-			unknown = append(unknown, entry)
 		}
 	}
 
@@ -470,7 +468,7 @@ func (c *Client) processSyncDeletion(artifactID, kind, gatewayID string) {
 			}
 		}
 
-	default:
+	case models.KindRestApi:
 		// REST API / WebSub — follow the performFullAPIDeletion pattern
 		apiConfig, err := c.findAPIConfig(artifactID)
 		if err != nil {

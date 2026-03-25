@@ -34,10 +34,10 @@ policies:
       version: v0.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/dynamic-endpoint@v0
     - name: json-schema-guardrail
-      version: v0.2.1
+      version: v0.2.2
       gomodule: github.com/wso2/gateway-controllers/policies/json-schema-guardrail@v0
     - name: jwt-auth
-      version: v0.8.2
+      version: v0.8.3
       gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v0
     - name: log-message
       version: v0.2.1
