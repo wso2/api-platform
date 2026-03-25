@@ -273,6 +273,33 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		DeployedAt:          params.DeployedAt,
 	}
 
+	// Resolve gateway-default sentinels to the current config values before persisting so that
+	// the stored vhosts are immune to future gateway config changes.
+	if err := resolveVhostSentinels(&storedCfg.Configuration, s.routerConfig); err != nil {
+		return nil, fmt.Errorf("failed to resolve vhost sentinels: %w", err)
+	}
+	// Sync SourceConfiguration so the resolved vhosts are persisted to the database
+	// (the DB layer marshals SourceConfiguration, not Configuration).
+	storedCfg.SourceConfiguration = storedCfg.Configuration
+
+	// Try to save/update the configuration using timestamp-guarded upsert.
+	// affected=true means the row was actually inserted or updated in the DB.
+	// affected=false means a newer version already exists (stale event — no-op).
+	affected, saveErr := s.saveOrUpdateConfig(storedCfg, params.Logger)
+	if saveErr != nil {
+		return nil, saveErr
+	}
+
+	if !affected {
+		// Stale event — DB was not modified. Return success but skip event publishing and xDS update.
+		return &APIDeploymentResult{
+			StoredConfig: storedCfg,
+			IsUpdate:     isUpdate,
+			IsStale:      true,
+		}, nil
+	}
+
+	// WebSub topic registration/deregistration — only after successful, non-stale persistence.
 	if kind == "WebSubApi" {
 		topicsToRegister, topicsToUnregister := s.GetTopicsForUpdate(*storedCfg)
 		// TODO: Pre configure the dynamic forward proxy rules for event gw
@@ -360,32 +387,6 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 				slog.Int("deregister_errors", int(deregErrs)))
 			return nil, fmt.Errorf("failed to complete topic operations: %d registration error(s), %d deregistration error(s)", regErrs, deregErrs)
 		}
-	}
-
-	// Resolve gateway-default sentinels to the current config values before persisting so that
-	// the stored vhosts are immune to future gateway config changes.
-	if err := resolveVhostSentinels(&storedCfg.Configuration, s.routerConfig); err != nil {
-		return nil, fmt.Errorf("failed to resolve vhost sentinels: %w", err)
-	}
-	// Sync SourceConfiguration so the resolved vhosts are persisted to the database
-	// (the DB layer marshals SourceConfiguration, not Configuration).
-	storedCfg.SourceConfiguration = storedCfg.Configuration
-
-	// Try to save/update the configuration using timestamp-guarded upsert.
-	// affected=true means the row was actually inserted or updated in the DB.
-	// affected=false means a newer version already exists (stale event — no-op).
-	affected, saveErr := s.saveOrUpdateConfig(storedCfg, params.Logger)
-	if saveErr != nil {
-		return nil, saveErr
-	}
-
-	if !affected {
-		// Stale event — DB was not modified. Return success but skip event publishing and xDS update.
-		return &APIDeploymentResult{
-			StoredConfig: storedCfg,
-			IsUpdate:     isUpdate,
-			IsStale:      true,
-		}, nil
 	}
 
 	// Log success
