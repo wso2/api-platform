@@ -151,6 +151,14 @@ func (m *MockStorage) UpsertConfig(cfg *models.StoredConfig) (bool, error) {
 	if m.updateErr != nil {
 		return false, m.updateErr
 	}
+	if cfg.Handle == "" {
+		return false, fmt.Errorf("handle (metadata.name) is required and cannot be empty")
+	}
+	if existing, ok := m.configs[cfg.UUID]; ok {
+		if existing.DeployedAt != nil && cfg.DeployedAt != nil && !existing.DeployedAt.Before(*cfg.DeployedAt) {
+			return false, nil
+		}
+	}
 	m.configs[cfg.UUID] = cfg
 	return true, nil
 }
