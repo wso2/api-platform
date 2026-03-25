@@ -88,7 +88,7 @@ build-coverage-image: test ## Build coverage-instrumented gateway-controller ima
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg ENABLE_COVERAGE=true \
-		--target production \
+		--target production-coverage \
 		-t $(IMAGE_NAME)-coverage:$(VERSION) \
 		--load \
 		.

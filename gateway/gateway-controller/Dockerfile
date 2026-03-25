@@ -102,13 +102,12 @@ ENTRYPOINT ["/go/bin/dlv", "exec", "/app/controller", \
             "--listen=:2345", "--headless=true", \
             "--api-version=2", "--accept-multiclient", "--"]
 
-# Stage 2: Runtime image
+# Stage 2: Base runtime image
 # Distroless keeps the glibc runtime we need for CGO while avoiding a package-managed
 # Debian root filesystem in the final image.
-FROM gcr.io/distroless/cc-debian12:nonroot AS production
+FROM gcr.io/distroless/cc-debian12:nonroot AS production-base
 
 ARG VERSION=0.0.1-SNAPSHOT
-ARG ENABLE_COVERAGE=false
 
 WORKDIR /app
 
@@ -116,10 +115,7 @@ COPY --chown=nonroot:nonroot --from=builder /build/controller .
 COPY --chown=nonroot:nonroot default-policies /app/default-policies
 COPY --chown=nonroot:nonroot lua /app/lua
 COPY --chown=nonroot:nonroot default-llm-provider-templates /app/default-llm-provider-templates
-COPY --chown=nonroot:nonroot --from=builder /runtime-root/ /
-
-# Set GOCOVERDIR for coverage data collection (only effective when binary is built with -cover)
-ENV GOCOVERDIR=/coverage
+COPY --chown=nonroot:nonroot --from=builder /runtime-root/app/data /app/data
 
 EXPOSE 9090 18000
 
@@ -130,3 +126,12 @@ LABEL org.opencontainers.image.vendor="WSO2"
 LABEL org.opencontainers.image.version="${VERSION}"
 
 ENTRYPOINT ["/app/controller"]
+
+FROM production-base AS production
+
+FROM production-base AS production-coverage
+
+COPY --chown=nonroot:nonroot --from=builder /runtime-root/coverage /coverage
+
+# Set GOCOVERDIR for coverage data collection (only effective when binary is built with -cover)
+ENV GOCOVERDIR=/coverage
