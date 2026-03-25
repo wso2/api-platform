@@ -73,11 +73,19 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 					continue
 				}
 				mods, ok := policyResult.Action.(policy.UpstreamRequestModifications)
-				if !ok || mods.AnalyticsMetadata == nil {
+				if !ok {
 					continue
 				}
-				for key, value := range mods.AnalyticsMetadata {
-					shortCircuitAnalyticsData[key] = value
+				if mods.AnalyticsMetadata != nil {
+					for key, value := range mods.AnalyticsMetadata {
+						shortCircuitAnalyticsData[key] = value
+					}
+				}
+
+				dropAction := mods.DropHeadersFromAnalytics
+				if dropAction.Action != "" || len(dropAction.Headers) > 0 {
+					originalHeaders := execCtx.requestContext.Headers.GetAll()
+					shortCircuitAnalyticsData["request_headers"] = finalizeAnalyticsHeaders(dropAction, originalHeaders)
 				}
 			}
 			if immResp.AnalyticsMetadata != nil {
