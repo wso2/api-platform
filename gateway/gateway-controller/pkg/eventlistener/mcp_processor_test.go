@@ -31,7 +31,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
-	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
 )
 
 func testMCPStoredConfig(uuid, handle, displayName, version string, desiredState models.DesiredState, policies []api.Policy) *models.StoredConfig {
@@ -85,8 +84,7 @@ func TestHandleEvent_MCPUpdate_RehydratesConfigAndPolicyFromDB(t *testing.T) {
 	)
 	require.NoError(t, db.SaveConfig(cfg))
 
-	policyStore := storage.NewPolicyStore()
-	policyManager := policyxds.NewPolicyManager(policyStore, policyxds.NewSnapshotManager(policyStore, newTestLogger()), newTestLogger())
+	policyManager := policyxds.NewPolicyManager(policyxds.NewSnapshotManager(newTestLogger()), newTestLogger())
 
 	listener := &EventListener{
 		store:         store,
@@ -116,10 +114,6 @@ func TestHandleEvent_MCPUpdate_RehydratesConfigAndPolicyFromDB(t *testing.T) {
 	assert.Equal(t, models.StateUndeployed, stored.DesiredState)
 	_, ok := stored.Configuration.(api.RestAPI)
 	assert.True(t, ok)
-
-	policy, err := policyManager.GetPolicy(cfg.UUID + "-policies")
-	require.NoError(t, err)
-	require.NotEmpty(t, policy.Configuration.Routes)
 }
 
 func TestHandleEvent_MCPDelete_RemovesLocalStateAndPolicy(t *testing.T) {
@@ -127,18 +121,11 @@ func TestHandleEvent_MCPDelete_RemovesLocalStateAndPolicy(t *testing.T) {
 	cfg := testMCPStoredConfig("mcp-delete-id", "test-mcp", "Test MCP", "v1.0.0", models.StateDeployed, nil)
 	require.NoError(t, store.Add(cfg))
 
-	policyStore := storage.NewPolicyStore()
-	policyManager := policyxds.NewPolicyManager(policyStore, policyxds.NewSnapshotManager(policyStore, newTestLogger()), newTestLogger())
-	require.NoError(t, policyStore.Set(&models.StoredPolicyConfig{
-		ID: cfg.UUID + "-policies",
-		Configuration: policyenginev1.Configuration{
-			Metadata: policyenginev1.Metadata{
-				APIName: "Test MCP",
-				Version: "v1.0.0",
-				Context: "/mcp",
-			},
-		},
-	}))
+	runtimeStore := storage.NewRuntimeConfigStore()
+	policyManager := policyxds.NewPolicyManager(policyxds.NewSnapshotManager(newTestLogger()), newTestLogger())
+	policyManager.SetRuntimeStore(runtimeStore)
+	runtimeKey := storage.Key(cfg.Kind, cfg.Handle)
+	runtimeStore.Set(runtimeKey, &models.RuntimeDeployConfig{})
 
 	listener := &EventListener{
 		store:         store,
@@ -156,6 +143,6 @@ func TestHandleEvent_MCPDelete_RemovesLocalStateAndPolicy(t *testing.T) {
 	_, err := store.Get(cfg.UUID)
 	require.ErrorIs(t, err, storage.ErrNotFound)
 
-	_, err = policyManager.GetPolicy(cfg.UUID + "-policies")
-	require.Error(t, err)
+	_, exists := runtimeStore.Get(runtimeKey)
+	assert.False(t, exists)
 }

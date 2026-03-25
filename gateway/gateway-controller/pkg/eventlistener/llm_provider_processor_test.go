@@ -190,7 +190,7 @@ func TestHandleEvent_LLMProviderDelete_RemovesLocalStateAndAPIKeys(t *testing.T)
 	require.NoError(t, store.AddTemplate(testLLMProviderTemplate("tmpl-1", "openai")))
 
 	cfg := testLLMProviderStoredConfig("llm-provider-delete-id", "provider-a", "openai", nil)
-	apiKey := testAPIKey("provider-key-id-1", "provider-key", "Provider Key", cfg.UUID)
+	apiKey := testAPIKey("provider-key-id-1", "provider-key", cfg.UUID)
 	require.NoError(t, store.Add(cfg))
 	require.NoError(t, store.StoreAPIKey(apiKey))
 
@@ -200,7 +200,7 @@ func TestHandleEvent_LLMProviderDelete_RemovesLocalStateAndAPIKeys(t *testing.T)
 	require.NoError(t, lazyManager.StoreResource(&storage.LazyResource{
 		ID:           cfg.Handle,
 		ResourceType: utils.LazyResourceTypeProviderTemplateMapping,
-		Resource: map[string]interface{}{
+		Resource: map[string]any{
 			"provider_name":   cfg.Handle,
 			"template_handle": "openai",
 		},
@@ -305,7 +305,7 @@ func TestHandleEvent_LLMProxyDelete_RemovesLocalStateAndAPIKeys(t *testing.T) {
 	store := storage.NewConfigStore()
 	xdsManager := &mockAPIKeyXDSManager{}
 	cfg := testLLMProxyStoredConfig("llm-proxy-delete-id", "proxy-a", "provider-a", nil)
-	apiKey := testAPIKey("proxy-key-id-1", "proxy-key", "Proxy Key", cfg.UUID)
+	apiKey := testAPIKey("proxy-key-id-1", "proxy-key", cfg.UUID)
 
 	require.NoError(t, store.Add(cfg))
 	require.NoError(t, store.StoreAPIKey(apiKey))

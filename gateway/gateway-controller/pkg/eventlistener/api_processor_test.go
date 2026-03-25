@@ -87,7 +87,7 @@ func TestHandleEvent_APIDelete_RemovesAPIKeysFromMemoryAndXDS(t *testing.T) {
 	cfg := testRestStoredConfig("api-delete-id", "delete-api", "Delete API", "v1.0.0", models.StateDeployed)
 	require.NoError(t, store.Add(cfg))
 
-	apiKey := testAPIKey("api-key-id-1", "test-key", "Test Key", cfg.UUID)
+	apiKey := testAPIKey("api-key-id-1", "test-key", cfg.UUID)
 	require.NoError(t, store.StoreAPIKey(apiKey))
 
 	listener := &EventListener{
