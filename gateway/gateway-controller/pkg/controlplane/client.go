@@ -470,6 +470,11 @@ func (c *Client) GetGatewayPath() string {
 	return c.gatewayPath
 }
 
+// isOnPrem returns true when the control plane is an on-prem deployment.
+func (c *Client) isOnPrem() bool {
+	return c.GetGatewayPath() != ""
+}
+
 // discoverGatewayPath fetches the gateway websocket base path from the control plane well-known endpoint.
 func (c *Client) discoverGatewayPath() (string, error) {
 	wellKnownURL := fmt.Sprintf("https://%s/internal/gateway/.well-known", c.config.Host)
@@ -3277,6 +3282,14 @@ func (c *Client) pushGatewayManifest(gatewayID string, policies []models.PolicyD
 // pushGatewayManifestOnConnect collects all loaded policy definitions and POSTs
 // them to the control plane immediately after the connection is established.
 func (c *Client) pushGatewayManifestOnConnect(gatewayID string) {
+	// Skip for on-prem control planes
+	if c.isOnPrem() {
+		c.logger.Debug("Skipping gateway manifest push: on-prem control plane detected",
+			slog.String("gateway_id", gatewayID),
+		)
+		return
+	}
+
 	c.logger.Info("Pushing gateway manifest on connect",
 		slog.String("gateway_id", gatewayID),
 	)
