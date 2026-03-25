@@ -660,6 +660,12 @@ func (c *Client) syncSubscriptionPlans(gatewayID string) {
 		return
 	}
 
+	resourceService := c.getSubscriptionResourceService()
+	if resourceService == nil {
+		c.logger.Warn("Subscription resource service not available; skipping subscription plan sync")
+		return
+	}
+
 	c.logger.Info("Starting bulk sync of subscription plans")
 
 	plans, err := c.apiUtilsService.FetchSubscriptionPlans()
@@ -669,7 +675,7 @@ func (c *Client) syncSubscriptionPlans(gatewayID string) {
 	}
 
 	saved := 0
-	fetchedIDs := make([]string, 0, len(plans))
+	fetchedIDs := make(map[string]struct{}, len(plans))
 	for _, plan := range plans {
 		select {
 		case <-c.ctx.Done():
@@ -679,24 +685,33 @@ func (c *Client) syncSubscriptionPlans(gatewayID string) {
 		}
 
 		plan.GatewayID = ""
-		if err := c.db.SaveSubscriptionPlan(&plan); err != nil {
-			if storage.IsConflictError(err) {
-				if err := c.db.UpdateSubscriptionPlan(&plan); err != nil {
-					c.logger.Warn("Failed to update existing subscription plan during bulk sync",
-						slog.String("planId", plan.ID), slog.Any("error", err))
-				}
-			} else {
-				c.logger.Warn("Failed to save subscription plan during bulk sync",
-					slog.String("planId", plan.ID), slog.Any("error", err))
-			}
+		correlationID := plan.Etag
+		if correlationID == "" {
+			correlationID = utils.GenerateDeterministicUUIDv7(plan.ID, plan.UpdatedAt)
+		}
+		if err := resourceService.UpsertSubscriptionPlan(&plan, "CREATE", correlationID, c.logger); err != nil {
+			c.logger.Warn("Failed to upsert subscription plan during bulk sync",
+				slog.String("planId", plan.ID), slog.Any("error", err))
 		} else {
 			saved++
 		}
-		fetchedIDs = append(fetchedIDs, plan.ID)
+		fetchedIDs[plan.ID] = struct{}{}
 	}
 
-	if err := c.db.DeleteSubscriptionPlansNotIn(fetchedIDs); err != nil {
-		c.logger.Warn("Failed to reconcile deleted subscription plans during bulk sync", slog.Any("error", err))
+	// Reconcile orphaned plans: delete plans that exist locally but were not in the remote set
+	localPlans, err := c.db.ListSubscriptionPlans("")
+	if err != nil {
+		c.logger.Warn("Failed to list local subscription plans for orphan reconciliation", slog.Any("error", err))
+	} else {
+		for _, lp := range localPlans {
+			if _, exists := fetchedIDs[lp.ID]; !exists {
+				correlationID := utils.GenerateDeterministicUUIDv7(lp.ID, lp.UpdatedAt)
+				if err := resourceService.DeleteSubscriptionPlan(lp.ID, correlationID, c.logger); err != nil {
+					c.logger.Warn("Failed to delete orphaned subscription plan during bulk sync",
+						slog.String("planId", lp.ID), slog.Any("error", err))
+				}
+			}
+		}
 	}
 
 	c.logger.Info("Subscription plan bulk sync complete",
@@ -710,6 +725,12 @@ func (c *Client) syncSubscriptionPlans(gatewayID string) {
 // reconnects.
 func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 	if c.apiUtilsService == nil || c.db == nil || c.store == nil {
+		return
+	}
+
+	resourceService := c.getSubscriptionResourceService()
+	if resourceService == nil {
+		c.logger.Warn("Subscription resource service not available; skipping subscription sync")
 		return
 	}
 
@@ -743,7 +764,7 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 			continue
 		}
 
-		fetchedSubIDs := make([]string, 0, len(subs))
+		fetchedSubIDs := make(map[string]struct{}, len(subs))
 		for i := range subs {
 			select {
 			case <-c.ctx.Done():
@@ -763,42 +784,38 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 			sub.APIID = apiID
 			sub.GatewayID = ""
 
-			if err := c.db.SaveSubscription(&sub); err != nil {
-				if storage.IsConflictError(err) {
-					existing, err2 := c.db.GetSubscriptionByID(sub.ID, "")
-					if err2 != nil || existing == nil {
-						continue
+			correlationID := sub.Etag
+			if correlationID == "" {
+				correlationID = utils.GenerateDeterministicUUIDv7(sub.ID, sub.UpdatedAt)
+			}
+			if err := resourceService.UpsertSubscription(&sub, "CREATE", correlationID, c.logger); err != nil {
+				c.logger.Warn("Failed to upsert subscription during bulk sync",
+					slog.String("subscription_id", sub.ID),
+					slog.String("api_id", apiID),
+					slog.Any("error", err),
+				)
+			}
+			fetchedSubIDs[sub.ID] = struct{}{}
+		}
+
+		// Reconcile orphaned subscriptions: delete subs that exist locally but were not in the remote set
+		localSubs, err := c.db.ListSubscriptionsByAPI(apiID, "", nil, nil)
+		if err != nil {
+			c.logger.Warn("Failed to list local subscriptions for orphan reconciliation",
+				slog.String("api_id", apiID), slog.Any("error", err))
+		} else {
+			for _, ls := range localSubs {
+				if _, exists := fetchedSubIDs[ls.ID]; !exists {
+					correlationID := utils.GenerateDeterministicUUIDv7(ls.ID, ls.UpdatedAt)
+					if err := resourceService.DeleteSubscription(ls.ID, correlationID, c.logger); err != nil {
+						c.logger.Warn("Failed to delete orphaned subscription during bulk sync",
+							slog.String("subscription_id", ls.ID),
+							slog.String("api_id", apiID), slog.Any("error", err))
 					}
-					// Copy all mutable fields from control-plane sub into existing before update.
-					existing.APIID = sub.APIID
-					existing.ApplicationID = sub.ApplicationID
-					existing.SubscriptionToken = sub.SubscriptionToken
-					existing.SubscriptionPlanID = sub.SubscriptionPlanID
-					existing.Status = sub.Status
-					existing.UpdatedAt = sub.UpdatedAt
-					if err := c.db.UpdateSubscription(existing); err != nil {
-						c.logger.Error("Failed to update subscription during bulk sync conflict handling",
-							slog.String("subscription_id", existing.ID),
-							slog.Any("error", err))
-					}
-				} else {
-					c.logger.Warn("Failed to upsert subscription during bulk sync",
-						slog.String("subscription_id", sub.ID),
-						slog.String("api_id", apiID),
-						slog.Any("error", err),
-					)
 				}
 			}
-			fetchedSubIDs = append(fetchedSubIDs, sub.ID)
-		}
-
-		if err := c.db.DeleteSubscriptionsForAPINotIn(apiID, fetchedSubIDs); err != nil {
-			c.logger.Warn("Failed to reconcile deleted subscriptions for API during bulk sync",
-				slog.String("api_id", apiID), slog.Any("error", err))
 		}
 	}
-
-	c.refreshSubscriptionSnapshot()
 }
 
 // Close closes the WebSocket connection
