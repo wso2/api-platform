@@ -62,12 +62,21 @@ func TestGatewayRuntimeGenerator_Generate_Success(t *testing.T) {
 	copiedBin := filepath.Join(outputDir, "gateway-runtime", "policy-engine")
 	assert.FileExists(t, copiedBin)
 
+	runtimeDir := filepath.Join(outputDir, "gateway-runtime")
+	runtimeDirInfo, err := os.Stat(runtimeDir)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0755), runtimeDirInfo.Mode().Perm())
+
 	// Verify Dockerfile contains expected content
 	content, err := os.ReadFile(dockerfilePath)
 	require.NoError(t, err)
 	assert.Contains(t, string(content), "v1.0.0")                                              // builder version in labels
 	assert.Contains(t, string(content), "ghcr.io/wso2/api-platform/gateway-runtime:v1.0.0")    // base image
 	assert.Contains(t, string(content), "COPY policy-engine /app/policy-engine")                // binary copy
+
+	dockerfileInfo, err := os.Stat(dockerfilePath)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0644), dockerfileInfo.Mode().Perm())
 }
 
 func TestGatewayRuntimeGenerator_Generate_MissingBinary(t *testing.T) {
@@ -168,10 +177,24 @@ func TestGatewayControllerGenerator_Generate_Success(t *testing.T) {
 	copiedPolicy := filepath.Join(outputDir, "gateway-controller", "policies", "test-policy-v1.0.0.yaml")
 	assert.FileExists(t, copiedPolicy)
 
+	controllerDir := filepath.Join(outputDir, "gateway-controller")
+	controllerDirInfo, err := os.Stat(controllerDir)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0755), controllerDirInfo.Mode().Perm())
+
+	policiesDir := filepath.Join(controllerDir, "policies")
+	policiesDirInfo, err := os.Stat(policiesDir)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0755), policiesDirInfo.Mode().Perm())
+
 	// Verify Dockerfile contains expected content
 	content, err := os.ReadFile(dockerfilePath)
 	require.NoError(t, err)
 	assert.Contains(t, string(content), "base:image")
+
+	dockerfileInfo, err := os.Stat(dockerfilePath)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0644), dockerfileInfo.Mode().Perm())
 }
 
 func TestGatewayControllerGenerator_Generate_NoPolicies(t *testing.T) {

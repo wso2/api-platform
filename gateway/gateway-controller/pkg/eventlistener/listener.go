@@ -41,6 +41,11 @@ type APIKeyXDSManager interface {
 	RemoveAPIKeysByAPI(apiId, apiName, apiVersion, correlationID string) error
 }
 
+// SubscriptionSnapshotUpdater defines the subscription xDS refresh surface used by the listener.
+type SubscriptionSnapshotUpdater interface {
+	UpdateSnapshot(ctx context.Context) error
+}
+
 // EventListener listens for events from EventHub and processes them
 // to keep the local replica synchronized with other replicas.
 type EventListener struct {
@@ -48,6 +53,7 @@ type EventListener struct {
 	store               *storage.ConfigStore
 	db                  storage.Storage
 	snapshotManager     *xds.SnapshotManager
+	subscriptionManager SubscriptionSnapshotUpdater
 	apiKeyXDSManager    APIKeyXDSManager
 	lazyResourceManager *lazyresourcexds.LazyResourceStateManager
 	policyManager       *policyxds.PolicyManager
@@ -67,6 +73,7 @@ func NewEventListener(
 	store *storage.ConfigStore,
 	db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
+	subscriptionManager SubscriptionSnapshotUpdater,
 	apiKeyXDSManager APIKeyXDSManager,
 	lazyResourceManager *lazyresourcexds.LazyResourceStateManager,
 	policyManager *policyxds.PolicyManager,
@@ -81,6 +88,7 @@ func NewEventListener(
 		store:               store,
 		db:                  db,
 		snapshotManager:     snapshotManager,
+		subscriptionManager: subscriptionManager,
 		apiKeyXDSManager:    apiKeyXDSManager,
 		lazyResourceManager: lazyResourceManager,
 		policyManager:       policyManager,
@@ -183,6 +191,12 @@ func (l *EventListener) handleEvent(event eventhub.Event) {
 	case eventhub.EventTypeCertificate:
 		l.logger.Info("Certificate event received (processing not yet implemented)",
 			slog.String("entity_id", event.EntityID))
+	case eventhub.EventTypeSubscription:
+		l.processSubscriptionEvent(event)
+	case eventhub.EventTypeSubscriptionPlan:
+		l.processSubscriptionPlanEvent(event)
+	case eventhub.EventTypeApplication:
+		l.processApplicationEvent(event)
 	case eventhub.EventTypeLLMProvider:
 		l.processLLMProviderEvent(event)
 	case eventhub.EventTypeLLMProxy:
