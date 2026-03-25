@@ -4450,6 +4450,7 @@ components:
         issuer:
           type: string
           description: Optional identifier of the developer portal that provisioned this key
+          example: "api-platform-devportal"
         allowedTargets:
           type: string
           description: "Comma-separated list of allowed gateways; 'ALL' means unrestricted"

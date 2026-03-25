@@ -945,6 +945,31 @@ type CreateSubscriptionRequest struct {
 // CreateSubscriptionRequestStatus Subscription status (default ACTIVE)
 type CreateSubscriptionRequestStatus string
 
+// CustomPolicyResponse A custom policy stored in the platform's custom policy registry.
+type CustomPolicyResponse struct {
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// Description Human-readable description of the policy
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// Name Policy name
+	Name string `binding:"required" json:"name" yaml:"name"`
+
+	// OrganizationUuid Organization this policy belongs to
+	OrganizationUuid openapi_types.UUID `binding:"required" json:"organizationUuid" yaml:"organizationUuid"`
+
+	// PolicyDefinition The full policy schema as declared in the policy's policy-definition.yaml.
+	// Contains `parameters` and `systemParameters` JSON Schema documents.
+	PolicyDefinition map[string]interface{} `binding:"required" json:"policyDefinition" yaml:"policyDefinition"`
+	UpdatedAt        *time.Time             `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// Uuid Unique identifier of the custom policy record
+	Uuid openapi_types.UUID `binding:"required" json:"uuid" yaml:"uuid"`
+
+	// Version Policy version
+	Version string `binding:"required" json:"version" yaml:"version"`
+}
+
 // DeployRequest defines model for DeployRequest.
 type DeployRequest struct {
 	// Base The source for the API definition. Can be "current" (latest working copy) or a deploymentId (existing deployment)
@@ -1160,6 +1185,26 @@ type GatewayListResponse struct {
 	Count      int               `binding:"required" json:"count" yaml:"count"`
 	List       []GatewayResponse `binding:"required" json:"list" yaml:"list"`
 	Pagination Pagination        `json:"pagination" yaml:"pagination"`
+}
+
+// GatewayPolicyDefinition A policy installed on a gateway controller.
+type GatewayPolicyDefinition struct {
+	// Description Human-readable description of the policy
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// IsCustomPolicy Whether this is a user-installed custom policy.
+	IsCustomPolicy bool `binding:"required" json:"isCustomPolicy" yaml:"isCustomPolicy"`
+
+	// Name Unique policy name
+	Name string `binding:"required" json:"name" yaml:"name"`
+
+	// PolicyDefinition The full policy schema as declared in the policy's policy-definition.yaml.
+	// Contains `parameters` and `systemParameters` JSON Schema documents.
+	// Only present for custom policies.
+	PolicyDefinition *map[string]interface{} `json:"policyDefinition,omitempty" yaml:"policyDefinition,omitempty"`
+
+	// Version Semantic version of the policy
+	Version string `binding:"required" json:"version" yaml:"version"`
 }
 
 // GatewayResponse defines model for GatewayResponse.
@@ -1576,8 +1621,8 @@ type LLMProviderTemplate struct {
 	Name             string                               `binding:"required" json:"name" yaml:"name"`
 	PromptTokens     *ExtractionIdentifier                `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
 	RemainingTokens  *ExtractionIdentifier                `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
-	ResourceMappings *LLMProviderTemplateResourceMappings `json:"resourceMappings,omitempty" yaml:"resourceMappings,omitempty"`
 	RequestModel     *ExtractionIdentifier                `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
+	ResourceMappings *LLMProviderTemplateResourceMappings `json:"resourceMappings,omitempty" yaml:"resourceMappings,omitempty"`
 	ResponseModel    *ExtractionIdentifier                `json:"responseModel,omitempty" yaml:"responseModel,omitempty"`
 	TotalTokens      *ExtractionIdentifier                `json:"totalTokens,omitempty" yaml:"totalTokens,omitempty"`
 
@@ -1614,6 +1659,20 @@ type LLMProviderTemplateListResponse struct {
 	Pagination Pagination                    `json:"pagination" yaml:"pagination"`
 }
 
+// LLMProviderTemplateMetadata defines model for LLMProviderTemplateMetadata.
+type LLMProviderTemplateMetadata struct {
+	Auth *LLMProviderTemplateAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
+
+	// EndpointUrl Default endpoint URL for the template
+	EndpointUrl *string `json:"endpointUrl,omitempty" yaml:"endpointUrl,omitempty"`
+
+	// LogoUrl URL of the provider logo
+	LogoUrl *string `json:"logoUrl,omitempty" yaml:"logoUrl,omitempty"`
+
+	// OpenapiSpecUrl URL to the OpenAPI specification for the provider
+	OpenapiSpecUrl *string `json:"openapiSpecUrl,omitempty" yaml:"openapiSpecUrl,omitempty"`
+}
+
 // LLMProviderTemplateResourceMapping defines model for LLMProviderTemplateResourceMapping.
 type LLMProviderTemplateResourceMapping struct {
 	CompletionTokens *ExtractionIdentifier `json:"completionTokens,omitempty" yaml:"completionTokens,omitempty"`
@@ -1630,20 +1689,6 @@ type LLMProviderTemplateResourceMapping struct {
 // LLMProviderTemplateResourceMappings defines model for LLMProviderTemplateResourceMappings.
 type LLMProviderTemplateResourceMappings struct {
 	Resources *[]LLMProviderTemplateResourceMapping `json:"resources,omitempty" yaml:"resources,omitempty"`
-}
-
-// LLMProviderTemplateMetadata defines model for LLMProviderTemplateMetadata.
-type LLMProviderTemplateMetadata struct {
-	Auth *LLMProviderTemplateAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
-
-	// EndpointUrl Default endpoint URL for the template
-	EndpointUrl *string `json:"endpointUrl,omitempty" yaml:"endpointUrl,omitempty"`
-
-	// LogoUrl URL of the provider logo
-	LogoUrl *string `json:"logoUrl,omitempty" yaml:"logoUrl,omitempty"`
-
-	// OpenapiSpecUrl URL to the OpenAPI specification for the provider
-	OpenapiSpecUrl *string `json:"openapiSpecUrl,omitempty" yaml:"openapiSpecUrl,omitempty"`
 }
 
 // LLMProxy defines model for LLMProxy.
@@ -1858,6 +1903,13 @@ type MCPServerInfoFetchResponse struct {
 	Resources  *[]map[string]interface{} `json:"resources,omitempty" yaml:"resources,omitempty"`
 	ServerInfo *map[string]interface{}   `json:"serverInfo,omitempty" yaml:"serverInfo,omitempty"`
 	Tools      *[]map[string]interface{} `json:"tools,omitempty" yaml:"tools,omitempty"`
+}
+
+// ManifestSyncResponse defines model for ManifestSyncResponse.
+type ManifestSyncResponse struct {
+	// Policies All policies installed on the gateway. Each entry includes name, version, and isCustomPolicy.
+	// Custom policies additionally include policyDefinition with their parameters and systemParameters schemas.
+	Policies *[]GatewayPolicyDefinition `json:"policies,omitempty" yaml:"policies,omitempty"`
 }
 
 // MappedAPIKey defines model for MappedAPIKey.
@@ -2527,6 +2579,9 @@ type Subscription struct {
 	// SubscriptionPlanId Subscription plan UUID
 	SubscriptionPlanId *string `json:"subscriptionPlanId,omitempty" yaml:"subscriptionPlanId,omitempty"`
 
+	// SubscriptionPlanName Subscription plan display name (e.g. Bronze, Gold)
+	SubscriptionPlanName *string `json:"subscriptionPlanName,omitempty" yaml:"subscriptionPlanName,omitempty"`
+
 	// SubscriptionToken Opaque subscription token for API invocation via Subscription-Key header
 	SubscriptionToken *string    `json:"subscriptionToken,omitempty" yaml:"subscriptionToken,omitempty"`
 	UpdatedAt         *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
@@ -2978,6 +3033,18 @@ type ListDevPortalsParams struct {
 
 	// Active Filter by active DevPortals
 	Active *bool `form:"active,omitempty" json:"active,omitempty" yaml:"active,omitempty"`
+}
+
+// SyncCustomPolicyParams defines parameters for SyncCustomPolicy.
+type SyncCustomPolicyParams struct {
+	// GatewayId UUID of the gateway whose manifest contains the policy
+	GatewayId openapi_types.UUID `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+
+	// PolicyName Name of the custom policy (case-insensitive)
+	PolicyName string `form:"policyName" json:"policyName" yaml:"policyName"`
+
+	// PolicyVersion Version of the custom policy in MAJOR.MINOR.PATCH format
+	PolicyVersion string `form:"policyVersion" json:"policyVersion" yaml:"policyVersion"`
 }
 
 // GetGatewayArtifactsParams defines parameters for GetGatewayArtifacts.

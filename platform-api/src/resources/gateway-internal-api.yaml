@@ -317,7 +317,7 @@ paths:
           description: Filter keys by issuer. When omitted all keys are returned.
           schema:
             type: string
-            example: "https://issuer.example.com"
+            example: "api-platform-devportal"
       responses:
         '200':
           description: Successfully retrieved API keys
@@ -374,7 +374,7 @@ paths:
           description: Filter keys by issuer. When omitted all keys are returned.
           schema:
             type: string
-            example: "https://issuer.example.com"
+            example: "api-platform-devportal"
       responses:
         '200':
           description: Successfully retrieved API keys
@@ -529,7 +529,7 @@ paths:
           description: Filter keys by issuer. When omitted all keys are returned.
           schema:
             type: string
-            example: "https://issuer.example.com"
+            example: "api-platform-devportal"
       responses:
         '200':
           description: Successfully retrieved API keys
@@ -1326,7 +1326,7 @@ components:
           type: string
           nullable: true
           description: Issuer of the API key, if applicable
-          example: "https://issuer.example.com"
+          example: "api-platform-devportal"
 
     ErrorResponse:
       type: object
