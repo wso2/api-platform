@@ -43,7 +43,12 @@ The API Platform covers the complete API lifecycle:
 
 ## Architecture
 
-TODO: add image
+### High-Level Architecture
+![Architecture](docs/images/Govern-your-APIs.webp)
+
+### Technical Architecture
+
+![Technical Architecture](docs/images/technical-architecture.png)
 
 ## Quick Start
 
