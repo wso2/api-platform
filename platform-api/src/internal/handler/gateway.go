@@ -565,6 +565,83 @@ func (h *GatewayHandler) SyncCustomPolicy(c *gin.Context) {
 	c.JSON(http.StatusOK, policy)
 }
 
+// GetCustomPolicy handles GET /api/v1/gateway-custom-policies/:customPolicyUuid/version/:version
+func (h *GatewayHandler) GetCustomPolicy(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	policyUUID := c.Param("customPolicyUuid")
+	version := c.Param("version")
+	if policyUUID == "" || version == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"customPolicyUuid and version are required"))
+		return
+	}
+
+	policy, err := h.gatewayService.GetCustomPolicyByUUID(orgId, policyUUID, version)
+	if err != nil {
+		if errors.Is(err, constants.ErrCustomPolicyNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Custom policy not found"))
+			return
+		}
+		if errors.Is(err, constants.ErrCustomPolicyVersionMismatch) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Custom policy not found with the specified version"))
+			return
+		}
+		h.slogger.Error("Failed to get custom policy", "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get custom policy"))
+		return
+	}
+
+	c.JSON(http.StatusOK, policy)
+}
+
+// DeleteCustomPolicy handles DELETE /api/v1/gateway-custom-policies/:customPolicyUuid/version/:version
+func (h *GatewayHandler) DeleteCustomPolicy(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	policyUUID := c.Param("customPolicyUuid")
+	version := c.Param("version")
+	if policyUUID == "" || version == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"customPolicyUuid and version are required"))
+		return
+	}
+
+	err := h.gatewayService.DeleteCustomPolicyByUUID(orgId, policyUUID, version)
+	if err != nil {
+		if errors.Is(err, constants.ErrCustomPolicyNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Custom policy not found"))
+			return
+		}
+		if errors.Is(err, constants.ErrCustomPolicyVersionMismatch) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Custom policy not found with the specified version"))
+			return
+		}
+		if errors.Is(err, constants.ErrCustomPolicyInUse) {
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+				"Custom policy is in use by one or more APIs and cannot be deleted"))
+			return
+		}
+		h.slogger.Error("Failed to delete custom policy", "org_id", orgId, "policy_uuid", policyUUID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to delete custom policy"))
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
 // ListCustomPolicies handles GET /api/v1/gateway-custom-policies
 func (h *GatewayHandler) ListCustomPolicies(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
@@ -606,6 +683,8 @@ func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		customPoliciesGroup.GET("", h.ListCustomPolicies)
 		customPoliciesGroup.POST("/sync", h.SyncCustomPolicy)
+		customPoliciesGroup.GET("/:customPolicyUuid/version/:version", h.GetCustomPolicy)
+		customPoliciesGroup.DELETE("/:customPolicyUuid/version/:version", h.DeleteCustomPolicy)
 	}
 
 	gatewayStatusGroup := r.Group("/api/v1/status")

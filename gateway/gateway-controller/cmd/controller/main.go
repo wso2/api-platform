@@ -189,6 +189,18 @@ func main() {
 	}
 	log.Info("Loaded API keys", slog.Int("count", apiKeyXDSManager.GetAPIKeyCount()))
 
+	// MCP proxies are stored in their source form and need to be rehydrated into
+	// the derived RestAPI representation before startup snapshot and policy work.
+	for _, storedCfg := range configStore.GetAllByKind(string(api.Mcp)) {
+		if err := utils.HydrateStoredMCPConfig(storedCfg); err != nil {
+			log.Error("Failed to hydrate stored MCP proxy configuration",
+				slog.String("id", storedCfg.UUID),
+				slog.String("handle", storedCfg.Handle),
+				slog.Any("error", err))
+			os.Exit(1)
+		}
+	}
+
 	// Initialize xDS snapshot manager with router config
 	snapshotManager := xds.NewSnapshotManager(configStore, log, &cfg.Router, db, cfg)
 

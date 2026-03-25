@@ -165,13 +165,9 @@ func (cl *ConfigLoader) buildPolicyChain(routeKey string, config *policyenginev1
 
 		// Get policy mode and update body requirements
 		mode := impl.Mode()
-
-		// Update request body requirement (if any policy needs buffering)
 		if mode.RequestBodyMode == policy.BodyModeBuffer || mode.RequestBodyMode == policy.BodyModeStream {
 			requiresRequestBody = true
 		}
-
-		// Update response body requirement (if any policy needs buffering)
 		if mode.ResponseBodyMode == policy.BodyModeBuffer || mode.ResponseBodyMode == policy.BodyModeStream {
 			requiresResponseBody = true
 		}

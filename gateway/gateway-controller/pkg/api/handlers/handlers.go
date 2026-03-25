@@ -112,6 +112,7 @@ func NewAPIServer(
 	parser := config.NewParser()
 	httpClient := &http.Client{Timeout: 10 * time.Second}
 	routerConfig := &systemConfig.Router
+	mcpDeploymentService := utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager, policyValidator)
 
 	server := &APIServer{
 		store:                store,
@@ -123,7 +124,7 @@ func NewAPIServer(
 		validator:            validator,
 		logger:               logger,
 		deploymentService:    deploymentService,
-		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager, policyValidator),
+		mcpDeploymentService: mcpDeploymentService,
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, lazyResourceManager, templateDefinitions,
 			deploymentService, routerConfig, policyVersionResolver, policyValidator),
 		apiKeyService:      apiKeyService,
@@ -137,6 +138,7 @@ func NewAPIServer(
 	}
 	if eventHub != nil {
 		server.llmDeploymentService.SetEventHub(eventHub, systemConfig.Controller.Server.GatewayID)
+		server.mcpDeploymentService.SetEventHub(eventHub, systemConfig.Controller.Server.GatewayID)
 	}
 
 	// Create RestAPI service and handler
@@ -237,6 +239,9 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 	}
 
 	configs := s.store.GetAllByKind(kind)
+	if kind == string(api.Mcp) && s.mcpDeploymentService != nil {
+		configs = s.mcpDeploymentService.ListMCPProxies()
+	}
 
 	// Filter based on kind to return appropriate response format
 	if kind == string(api.Mcp) {
@@ -1233,7 +1238,7 @@ func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesPara
 		s.SearchDeployments(c, string(api.Mcp))
 		return
 	}
-	configs := s.store.GetAllByKind(string(api.Mcp))
+	configs := s.mcpDeploymentService.ListMCPProxies()
 
 	items := make([]api.MCPProxyListItem, len(configs))
 	for i, cfg := range configs {
@@ -1389,6 +1394,27 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 		slog.String("id", updated.UUID),
 		slog.String("handle", handle))
 
+	// Rebuild and update derived policy configuration
+	if s.policyManager != nil && s.eventHub == nil {
+		storedPolicy := s.buildStoredPolicyFromAPI(updated)
+		if storedPolicy != nil {
+			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
+				log.Error("Failed to update derived policy configuration", slog.Any("error", err))
+			} else {
+				log.Info("Derived policy configuration updated",
+					slog.String("policy_id", storedPolicy.ID),
+					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
+			}
+		} else {
+			// MCP proxy no longer has policies, remove the existing policy configuration
+			policyID := updated.UUID + "-policies"
+			if err := s.policyManager.RemovePolicy(policyID); err != nil {
+				// Log at debug level since policy may not exist if MCP proxy never had policies
+				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
+			} else {
+				log.Info("Derived policy configuration removed (MCP proxy no longer has policies)",
+					slog.String("policy_id", policyID))
+			}
 	if s.policyManager != nil {
 		if err := s.policyManager.UpsertAPIConfig(updated); err != nil {
 			log.Error("Failed to upsert runtime config for MCP proxy", slog.Any("error", err))
