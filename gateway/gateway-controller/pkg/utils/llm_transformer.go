@@ -59,7 +59,7 @@ func HydrateLLMConfig(cfg *models.StoredConfig, store *storage.ConfigStore, db s
 			return err
 		}
 	default:
-		return nil
+		return fmt.Errorf("unsupported LLM source configuration type: %T", cfg.SourceConfiguration)
 	}
 
 	cfg.Configuration = restAPI
