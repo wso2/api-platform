@@ -50,6 +50,7 @@ type LLMDeploymentParams struct {
 	DeployedAt    *time.Time    // Deployment timestamp from platform event (nil for gateway-api origin)
 	CorrelationID string        // Correlation ID for tracking
 	Logger        *slog.Logger  // Logger
+	IsUpdate      bool          // True when the caller has resolved this as an update (e.g. from DB lookup)
 }
 
 // LLMDeploymentService encapsulates validate+transform+persist+deploy for LLM Providers
@@ -270,10 +271,11 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		DeployedAt:          params.DeployedAt,
 	}
 
-	// Determine if this is an update by checking the in-memory store
-	var isUpdate bool
-	if existing, _ := s.store.Get(apiID); existing != nil {
-		isUpdate = true
+	isUpdate := params.IsUpdate
+	if !isUpdate && params.ID != "" {
+		if existing, err := s.db.GetConfig(params.ID); err == nil && existing != nil {
+			isUpdate = true
+		}
 	}
 
 	// Save or update using timestamp-guarded upsert.
@@ -427,10 +429,11 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 		DeployedAt:          params.DeployedAt,
 	}
 
-	// Determine if this is an update by checking the in-memory store
-	var isUpdate bool
-	if existing, _ := s.store.Get(apiID); existing != nil {
-		isUpdate = true
+	isUpdate := params.IsUpdate
+	if !isUpdate && params.ID != "" {
+		if existing, err := s.db.GetConfig(params.ID); err == nil && existing != nil {
+			isUpdate = true
+		}
 	}
 
 	// Save or update using timestamp-guarded upsert.
@@ -1089,6 +1092,7 @@ func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploy
 	}
 	// Ensure Deploy uses existing ID so it performs an update
 	params.ID = existing.UUID
+	params.IsUpdate = true
 	return s.DeployLLMProviderConfiguration(params)
 }
 
@@ -1192,6 +1196,7 @@ func (s *LLMDeploymentService) UpdateLLMProxy(id string, params LLMDeploymentPar
 	}
 	// Ensure Deploy uses existing ID so it performs an update
 	params.ID = existing.UUID
+	params.IsUpdate = true
 	return s.DeployLLMProxyConfiguration(params)
 }
 
