@@ -43,8 +43,9 @@ COPY --from=common . /common
 COPY . ./
 
 # Prepare writable runtime directories for the distroless image.
-RUN mkdir -p /runtime/app/data /runtime/coverage && \
-    chown -R 65532:65532 /runtime
+RUN mkdir -p /runtime-root/app/data && \
+    if [ "$ENABLE_COVERAGE" = "true" ]; then mkdir -p /runtime-root/coverage; fi && \
+    chown -R 65532:65532 /runtime-root
 
 # Build with CGO (required for SQLite), set CC for cross-compilation, add -cover/-gcflags if enabled
 RUN --mount=type=cache,target=/go/pkg/mod \
@@ -115,8 +116,7 @@ COPY --chown=nonroot:nonroot --from=builder /build/controller .
 COPY --chown=nonroot:nonroot default-policies /app/default-policies
 COPY --chown=nonroot:nonroot lua /app/lua
 COPY --chown=nonroot:nonroot default-llm-provider-templates /app/default-llm-provider-templates
-COPY --chown=nonroot:nonroot --from=builder /runtime/app/data /app/data
-COPY --chown=nonroot:nonroot --from=builder /runtime/coverage /coverage
+COPY --chown=nonroot:nonroot --from=builder /runtime-root/ /
 
 # Set GOCOVERDIR for coverage data collection (only effective when binary is built with -cover)
 ENV GOCOVERDIR=/coverage
