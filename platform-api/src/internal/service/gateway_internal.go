@@ -174,7 +174,7 @@ func (s *GatewayInternalAPIService) IsAPIDeployedOnGateway(apiID, gatewayID, org
 }
 
 // ListSubscriptionsForAPI lists subscriptions for a given API within an organization.
-func (s *GatewayInternalAPIService) ListSubscriptionsForAPI(apiID, orgID string) ([]*model.Subscription, error) {
+func (s *GatewayInternalAPIService) ListSubscriptionsForAPI(apiID, orgID string) ([]dto.GatewaySubscriptionInfo, error) {
 	if apiID == "" || orgID == "" {
 		return nil, constants.ErrInvalidInput
 	}
@@ -195,7 +195,7 @@ func (s *GatewayInternalAPIService) ListSubscriptionsForAPI(apiID, orgID string)
 	}
 
 	// Internal sync: fetch all subscriptions for the API via pagination so reconciliation
-	// (DeleteSubscriptionsForAPINotIn) never performs destructive deletes due to a cutoff.
+	// never performs destructive deletes due to a cutoff.
 	const pageSize = 1000
 	var subs []*model.Subscription
 	for offset := 0; ; offset += pageSize {
@@ -208,16 +208,31 @@ func (s *GatewayInternalAPIService) ListSubscriptionsForAPI(apiID, orgID string)
 			break
 		}
 	}
-	return subs, nil
+
+	items := make([]dto.GatewaySubscriptionInfo, len(subs))
+	for i, sub := range subs {
+		items[i] = dto.GatewaySubscriptionInfo{
+			ID:                 sub.UUID,
+			APIID:              sub.APIUUID,
+			ApplicationID:      sub.ApplicationID,
+			SubscriptionToken:  sub.SubscriptionToken,
+			SubscriptionPlanID: sub.SubscriptionPlanID,
+			Status:             string(sub.Status),
+			CreatedAt:          sub.CreatedAt,
+			UpdatedAt:          sub.UpdatedAt,
+			Etag:               utils.GenerateDeterministicUUIDv7(sub.UUID, sub.UpdatedAt),
+		}
+	}
+	return items, nil
 }
 
 // ListSubscriptionPlansForOrg lists all subscription plans for an organization.
-func (s *GatewayInternalAPIService) ListSubscriptionPlansForOrg(orgID string) ([]*model.SubscriptionPlan, error) {
+func (s *GatewayInternalAPIService) ListSubscriptionPlansForOrg(orgID string) ([]dto.GatewaySubscriptionPlanInfo, error) {
 	if orgID == "" {
 		return nil, constants.ErrInvalidInput
 	}
 	// Internal sync: fetch all plans for the organization via pagination so reconciliation
-	// (DeleteSubscriptionPlansNotIn) never performs destructive deletes due to a cutoff.
+	// never performs destructive deletes due to a cutoff.
 	const pageSize = 1000
 	var plans []*model.SubscriptionPlan
 	for offset := 0; ; offset += pageSize {
@@ -230,7 +245,24 @@ func (s *GatewayInternalAPIService) ListSubscriptionPlansForOrg(orgID string) ([
 			break
 		}
 	}
-	return plans, nil
+
+	items := make([]dto.GatewaySubscriptionPlanInfo, len(plans))
+	for i, plan := range plans {
+		items[i] = dto.GatewaySubscriptionPlanInfo{
+			ID:                 plan.UUID,
+			PlanName:           plan.PlanName,
+			BillingPlan:        plan.BillingPlan,
+			StopOnQuotaReach:   plan.StopOnQuotaReach,
+			ThrottleLimitCount: plan.ThrottleLimitCount,
+			ThrottleLimitUnit:  plan.ThrottleLimitUnit,
+			ExpiryTime:         plan.ExpiryTime,
+			Status:             string(plan.Status),
+			CreatedAt:          plan.CreatedAt,
+			UpdatedAt:          plan.UpdatedAt,
+			Etag:               utils.GenerateDeterministicUUIDv7(plan.UUID, plan.UpdatedAt),
+		}
+	}
+	return items, nil
 }
 
 // GetActiveMCPProxyDeploymentByGateway retrieves the currently deployed MCP proxy artifact for a specific gateway
@@ -454,12 +486,14 @@ func (s *GatewayInternalAPIService) GetDeploymentsByGateway(orgID, gatewayID str
 	// Convert to response DTO
 	items := make([]dto.GatewayDeploymentInfo, len(deployments))
 	for i, dep := range deployments {
+		deployedAt := dep.PerformedAt
 		items[i] = dto.GatewayDeploymentInfo{
 			ArtifactID:   dep.ArtifactID,
 			DeploymentID: dep.DeploymentID,
 			Kind:         dep.Kind,
 			State:        string(dep.Status),
-			DeployedAt:   dep.UpdatedAt,
+			DeployedAt:   deployedAt,
+			Etag:         utils.GenerateDeterministicUUIDv7(dep.DeploymentID, deployedAt),
 		}
 	}
 
