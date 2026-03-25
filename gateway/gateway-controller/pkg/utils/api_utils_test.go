@@ -606,14 +606,16 @@ func TestAPIUtilsService_ExtractDeploymentsFromBatchZip(t *testing.T) {
 
 	t.Run("Path traversal entries are skipped", func(t *testing.T) {
 		tarGzData := createTestTarGz(t, map[string][]byte{
-			"../../../etc/malicious.yaml":  []byte("malicious"),
-			"dep-789/api-abc.yaml":         []byte("valid content"),
+			"../../../etc/malicious.yaml":        []byte("malicious"),
+			"dep-789/../dep-456/api.yaml":        []byte("sneaky overwrite"),
+			"dep-789/api-abc.yaml":               []byte("valid content"),
 		})
 
 		result, err := svc.ExtractDeploymentsFromBatchZip(tarGzData)
 		assert.NoError(t, err)
 		assert.Len(t, result, 1)
 		assert.Equal(t, []byte("valid content"), result["dep-789"])
+		assert.NotContains(t, result, "dep-456", "internal ../ path should not create a dep-456 entry")
 	})
 
 	t.Run("Files at root level are skipped", func(t *testing.T) {
