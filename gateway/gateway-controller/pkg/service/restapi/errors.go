@@ -28,9 +28,6 @@ import (
 var (
 	// ErrNotFound is returned when a REST API is not found.
 	ErrNotFound = errors.New("rest api not found")
-
-	// ErrDatabaseUnavailable is returned when the database storage is not available.
-	ErrDatabaseUnavailable = errors.New("database storage not available")
 )
 
 // ValidationError wraps configuration validation errors.

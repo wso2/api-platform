@@ -381,13 +381,13 @@ func (m *mockStorageForDeletion) GetDB() *sql.DB {
 func createTestAPIConfigForDeletion(apiID string) *models.StoredConfig {
 	// Create a complete API configuration so deletion flow can properly process it
 	return &models.StoredConfig{
-		UUID:        apiID,
-		Handle:      apiID,
-		DisplayName: "Test API",
-		Version:     "v1",
+		UUID:         apiID,
+		Handle:       apiID,
+		DisplayName:  "Test API",
+		Version:      "v1",
 		DesiredState: models.StateDeployed,
-		Origin:      models.OriginGatewayAPI,
-		Kind:        "API",
+		Origin:       models.OriginGatewayAPI,
+		Kind:         "API",
 		Configuration: api.RestAPI{
 			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 			Kind:       api.RestApi,
@@ -686,30 +686,6 @@ func TestClient_findAPIConfig(t *testing.T) {
 		config, err := client.findAPIConfig(apiID)
 		if err != nil {
 			t.Errorf("Expected to find API config in database, got error: %v", err)
-		}
-		if config.UUID != apiID {
-			t.Errorf("Expected API ID %s, got %s", apiID, config.UUID)
-		}
-	})
-
-	t.Run("Returns config from memory when not in database", func(t *testing.T) {
-		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-		store := storage.NewConfigStore()
-		db := newMockStorageForDeletion()
-
-		apiID := "test-api-memory"
-		apiConfig := createTestAPIConfigForDeletion(apiID)
-		store.Add(apiConfig)
-
-		client := &Client{
-			logger: logger,
-			store:  store,
-			db:     db,
-		}
-
-		config, err := client.findAPIConfig(apiID)
-		if err != nil {
-			t.Errorf("Expected to find API config in memory store, got error: %v", err)
 		}
 		if config.UUID != apiID {
 			t.Errorf("Expected API ID %s, got %s", apiID, config.UUID)

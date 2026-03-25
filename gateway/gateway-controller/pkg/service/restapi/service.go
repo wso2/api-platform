@@ -106,6 +106,9 @@ func NewRestAPIService(
 	logger *slog.Logger,
 	eventHub eventhub.EventHub,
 ) *RestAPIService {
+	if db == nil {
+		panic("RestAPIService requires non-nil storage")
+	}
 	return &RestAPIService{
 		store:              store,
 		db:                 db,

@@ -504,7 +504,7 @@ func TestLLMDeploymentService_DeleteLLMProviderTemplate_NotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "not found")
 }
 
-func TestLLMDeploymentService_DeleteLLMProviderTemplate_Success(t *testing.T) {
+func TestLLMDeploymentService_DeleteLLMProviderTemplate_RequiresEventHub(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
 	db := newTestMockDB()
@@ -524,15 +524,16 @@ func TestLLMDeploymentService_DeleteLLMProviderTemplate_Success(t *testing.T) {
 	db.SaveLLMProviderTemplate(template)
 	store.AddTemplate(template)
 
-	// Delete it
 	deleted, err := service.DeleteLLMProviderTemplate("delete-me", "corr-delete-template", slog.New(slog.NewTextHandler(io.Discard, nil)))
-	assert.NoError(t, err)
-	assert.NotNil(t, deleted)
-	assert.Equal(t, "delete-me", deleted.Configuration.Metadata.Name)
-
-	// Verify it's gone
-	_, err = store.GetTemplateByHandle("delete-me")
 	assert.Error(t, err)
+	assert.Nil(t, deleted)
+	assert.Contains(t, err.Error(), "requires EventHub")
+
+	_, err = db.GetLLMProviderTemplate(template.UUID)
+	assert.NoError(t, err)
+
+	_, err = store.GetTemplateByHandle("delete-me")
+	assert.NoError(t, err)
 }
 
 func TestLLMDeploymentService_CreateLLMProviderTemplate_WithDBAndEventHubPublishesCreate(t *testing.T) {

@@ -75,6 +75,9 @@ func NewEventListener(
 	systemConfig *config.Config,
 	policyDefinitions map[string]models.PolicyDefinition,
 ) *EventListener {
+	if db == nil {
+		panic("event listener requires non-nil storage")
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &EventListener{
 		eventHub:            eventHub,

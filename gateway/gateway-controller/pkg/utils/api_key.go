@@ -156,6 +156,9 @@ type APIKeyService struct {
 // NewAPIKeyService creates a new API key generation service
 func NewAPIKeyService(store *storage.ConfigStore, db storage.Storage, xdsManager XDSManager,
 	apiKeyConfig *config.APIKeyConfig) *APIKeyService {
+	if db == nil {
+		panic("APIKeyService requires non-nil storage")
+	}
 	return &APIKeyService{
 		store:        store,
 		db:           db,
@@ -895,7 +898,7 @@ func (s *APIKeyService) ListAPIKeys(params ListAPIKeyParams) (*ListAPIKeyResult,
 	user := params.User
 
 	// Validate that API exists
-	config, err := s.store.GetByKindAndHandle(models.KindRestApi, params.Handle)
+	config, err := s.db.GetConfigByKindAndHandle(models.KindRestApi, params.Handle)
 	if err != nil || config == nil {
 		logger.Warn("API configuration not found for API keys listing",
 			slog.String("handle", params.Handle),

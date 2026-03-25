@@ -63,12 +63,6 @@ func (l *EventListener) handleLLMProviderCreateOrUpdate(event eventhub.Event) {
 		slog.String("action", event.Action),
 		slog.String("event_id", event.EventID))
 
-	if l.db == nil {
-		l.logger.Warn("Database not available, cannot process LLM provider event",
-			slog.String("provider_id", entityID))
-		return
-	}
-
 	// The event only tells replicas which artifact changed. Re-read the full row
 	// from the database so every replica rebuilds from the same canonical payload.
 	storedConfig, err := l.db.GetConfig(entityID)
@@ -133,12 +127,6 @@ func (l *EventListener) handleLLMProxyCreateOrUpdate(event eventhub.Event) {
 		slog.String("proxy_id", entityID),
 		slog.String("action", event.Action),
 		slog.String("event_id", event.EventID))
-
-	if l.db == nil {
-		l.logger.Warn("Database not available, cannot process LLM proxy event",
-			slog.String("proxy_id", entityID))
-		return
-	}
 
 	storedConfig, err := l.db.GetConfig(entityID)
 	if err != nil {

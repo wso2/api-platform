@@ -88,6 +88,9 @@ func NewAPIDeploymentService(
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
 ) *APIDeploymentService {
+	if db == nil {
+		panic("APIDeploymentService requires non-nil storage")
+	}
 	return &APIDeploymentService{
 		store:           store,
 		db:              db,
@@ -110,16 +113,6 @@ func (s *APIDeploymentService) SetEventHub(eventHub eventhub.EventHub, gatewayID
 // TODO: (VirajSalaka) We do not need gatewayID in the event as it is part of the publishEvent.
 // publishEvent publishes an event to the EventHub for async processing.
 func (s *APIDeploymentService) publishEvent(eventType eventhub.EventType, action, entityID, correlationID string, logger *slog.Logger) {
-	if s.eventHub == nil {
-		return
-	}
-	if strings.TrimSpace(s.gatewayID) == "" {
-		logger.Warn("Skipping event publish because gateway ID is not configured",
-			slog.String("event_type", string(eventType)),
-			slog.String("action", action),
-			slog.String("entity_id", entityID))
-		return
-	}
 	event := eventhub.Event{
 		GatewayID:           s.gatewayID,
 		OriginatedTimestamp: time.Now(),
@@ -138,13 +131,14 @@ func (s *APIDeploymentService) publishEvent(eventType eventhub.EventType, action
 	}
 }
 
-func isReplicaSyncedKind(kind string) bool {
-	switch kind {
-	case models.KindRestApi, models.KindWebSubApi, models.KindLlmProvider, models.KindLlmProxy:
-		return true
-	default:
-		return false
+func (s *APIDeploymentService) requireReplicaSyncDependencies() error {
+	if s.eventHub == nil {
+		return fmt.Errorf("APIDeploymentService requires EventHub")
 	}
+	if strings.TrimSpace(s.gatewayID) == "" {
+		return fmt.Errorf("APIDeploymentService requires gateway ID")
+	}
+	return nil
 }
 
 // DeployAPIConfiguration handles the complete API configuration deployment process
@@ -392,27 +386,11 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 			slog.String("correlation_id", params.CorrelationID))
 	}
 
-	if s.eventHub != nil {
-		// Event-driven mode: publish event for async processing by EventListener
-		action := "CREATE"
-		if isUpdate {
-			action = "UPDATE"
-		}
-		s.publishEvent(eventhub.EventTypeAPI, action, apiID, params.CorrelationID, params.Logger)
-	} else {
-		// Memory-only mode: update xDS snapshot inline
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-
-			if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
-				params.Logger.Error("Failed to update xDS snapshot",
-					slog.Any("error", err),
-					slog.String("api_id", apiID),
-					slog.String("correlation_id", params.CorrelationID))
-			}
-		}()
+	action := "CREATE"
+	if isUpdate {
+		action = "UPDATE"
 	}
+	s.publishEvent(eventhub.EventTypeAPI, action, apiID, params.CorrelationID, params.Logger)
 
 	return &APIDeploymentResult{
 		StoredConfig: storedCfg,
@@ -476,6 +454,10 @@ func (s *APIDeploymentService) GetTopicsForDelete(apiConfig models.StoredConfig)
 
 // saveOrUpdateConfig handles the atomic dual-write operation for saving/updating configuration
 func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig, logger *slog.Logger) (bool, error) {
+	if err := s.requireReplicaSyncDependencies(); err != nil {
+		return false, err
+	}
+
 	existing, _ := s.db.GetConfig(storedCfg.UUID)
 
 	// If config already exists, update it
@@ -484,7 +466,7 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 			slog.String("api_id", storedCfg.UUID),
 			slog.String("displayName", storedCfg.DisplayName),
 			slog.String("version", storedCfg.Version))
-		return s.updateExistingConfig(storedCfg, existing, logger)
+		return s.updateExistingConfig(storedCfg, existing)
 	}
 
 	// Save new config to database first
@@ -496,29 +478,17 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 		return false, fmt.Errorf("failed to save config to database: %w", err)
 	}
 
-	if s.eventHub == nil || !isReplicaSyncedKind(storedCfg.Kind) {
-		// Add to in-memory store inline
-		if err := s.store.Add(storedCfg); err != nil {
-			// Rollback database write
-			logger.Info("Error adding new API configuration to memory store, rolling back database",
-				slog.String("api_id", storedCfg.UUID),
-				slog.String("displayName", storedCfg.DisplayName),
-				slog.String("version", storedCfg.Version))
-			_ = s.db.DeleteConfig(storedCfg.UUID)
-			return false, fmt.Errorf("failed to add config to memory store: %w", err)
-		}
-	}
-	// In event-driven mode, the EventListener will add to store via event processing
-
+	// Replica-synced artifacts are materialized in-memory by the EventListener after
+	// every replica consumes the published event.
 	return false, nil // Successfully created new config
 }
 
 // updateExistingConfig updates an existing API configuration
 func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConfig,
-	existing *models.StoredConfig, logger *slog.Logger) (bool, error) {
-
-	// Backup original state for potential rollback
-	original := *existing
+	existing *models.StoredConfig) (bool, error) {
+	if err := s.requireReplicaSyncDependencies(); err != nil {
+		return false, err
+	}
 
 	// Update the existing configuration (including denormalized fields used by secondary indexes)
 	now := time.Now()
@@ -538,22 +508,8 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 	if err := s.db.UpdateConfig(existing); err != nil {
 		return false, fmt.Errorf("failed to update config in database: %w", err)
 	}
-
-	if s.eventHub == nil || !isReplicaSyncedKind(existing.Kind) {
-		// Update in-memory store inline
-		if err := s.store.Update(existing); err != nil {
-			// Rollback DB to original state since memory update failed
-			if rbErr := s.db.UpdateConfig(&original); rbErr != nil {
-				logger.Error("Failed to rollback DB after memory update failure",
-					slog.Any("error", rbErr),
-					slog.String("id", original.UUID),
-					slog.String("displayName", original.DisplayName),
-					slog.String("version", original.Version))
-			}
-			return false, fmt.Errorf("failed to update config in memory store: %w", err)
-		}
-	}
-	// In event-driven mode, the EventListener will update store via event processing
+	// Replica-synced artifacts are materialized in-memory by the EventListener after
+	// every replica consumes the published event.
 
 	// Update the newConfig to reflect the changes
 	*newConfig = *existing

@@ -260,14 +260,6 @@ func (h *RestAPIHandler) mapCreateError(c *gin.Context, err error) {
 
 // mapGetError maps service errors to HTTP responses for GetByHandle.
 func (h *RestAPIHandler) mapGetError(c *gin.Context, log *slog.Logger, handle string, err error) {
-	if errors.Is(err, restapi.ErrDatabaseUnavailable) {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
-
 	log.Warn("API configuration not found", slog.String("handle", handle))
 	c.JSON(http.StatusNotFound, api.ErrorResponse{
 		Status:  "error",
@@ -315,14 +307,6 @@ func (h *RestAPIHandler) mapUpdateError(c *gin.Context, handle string, err error
 		return
 	}
 
-	if errors.Is(err, restapi.ErrDatabaseUnavailable) {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
-
 	if errors.Is(err, restapi.ErrNotFound) {
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
@@ -347,15 +331,6 @@ func (h *RestAPIHandler) mapUpdateError(c *gin.Context, handle string, err error
 
 // mapDeleteError maps service errors to HTTP responses for Delete.
 func (h *RestAPIHandler) mapDeleteError(c *gin.Context, log *slog.Logger, handle string, err error) {
-	if errors.Is(err, restapi.ErrDatabaseUnavailable) {
-		log.Error("Database storage not available")
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
-
 	if errors.Is(err, restapi.ErrNotFound) {
 		log.Warn("API configuration not found", slog.String("handle", handle))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{

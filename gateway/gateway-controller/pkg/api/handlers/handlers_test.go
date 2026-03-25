@@ -162,7 +162,7 @@ func (m *MockStorage) GetConfig(id string) (*models.StoredConfig, error) {
 	if cfg, ok := m.configs[id]; ok {
 		return cfg, nil
 	}
-	return nil, errors.New("config not found")
+	return nil, storage.ErrNotFound
 }
 
 func (m *MockStorage) GetConfigByKindAndHandle(kind string, handle string) (*models.StoredConfig, error) {
@@ -177,7 +177,7 @@ func (m *MockStorage) GetConfigByKindAndHandle(kind string, handle string) (*mod
 			return cfg, nil
 		}
 	}
-	return nil, errors.New("config not found")
+	return nil, storage.ErrNotFound
 }
 
 func (m *MockStorage) GetAllConfigs() ([]*models.StoredConfig, error) {
@@ -235,7 +235,7 @@ func (m *MockStorage) GetLLMProviderTemplate(id string) (*models.StoredLLMProvid
 	if tmpl, ok := m.templates[id]; ok {
 		return tmpl, nil
 	}
-	return nil, errors.New("template not found")
+	return nil, storage.ErrNotFound
 }
 
 func (m *MockStorage) GetAllLLMProviderTemplates() ([]*models.StoredLLMProviderTemplate, error) {
@@ -264,7 +264,7 @@ func (m *MockStorage) GetAPIKeyByID(id string) (*models.APIKey, error) {
 	if key, ok := m.apiKeys[id]; ok {
 		return key, nil
 	}
-	return nil, errors.New("API key not found")
+	return nil, storage.ErrNotFound
 }
 
 func (m *MockStorage) GetAPIKeyByUUID(uuid string) (*models.APIKey, error) {
@@ -288,7 +288,7 @@ func (m *MockStorage) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 			return apiKey, nil
 		}
 	}
-	return nil, errors.New("API key not found")
+	return nil, storage.ErrNotFound
 }
 
 func (m *MockStorage) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) {
@@ -324,7 +324,7 @@ func (m *MockStorage) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey
 			return key, nil
 		}
 	}
-	return nil, errors.New("API key not found")
+	return nil, storage.ErrNotFound
 }
 
 func (m *MockStorage) UpdateAPIKey(apiKey *models.APIKey) error {
@@ -345,7 +345,7 @@ func (m *MockStorage) DeleteAPIKey(key string) error {
 			return nil
 		}
 	}
-	return errors.New("API key not found")
+	return storage.ErrNotFound
 }
 
 func (m *MockStorage) RemoveAPIKeysAPI(apiId string) error {
@@ -1110,9 +1110,10 @@ func TestListRestAPIsEmpty(t *testing.T) {
 // TestGetAPIByNameVersion tests getting an API by name and version
 func TestGetAPIByNameVersion(t *testing.T) {
 	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
 
 	cfg := createTestStoredConfig("test-id-1", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
-	_ = server.store.Add(cfg)
+	require.NoError(t, mockDB.SaveConfig(cfg))
 
 	c, w := createTestContext("GET", "/rest-apis/test-api/v1.0.0", nil)
 	c.Params = gin.Params{
@@ -1205,26 +1206,37 @@ func TestGetRestAPIByIdWrongKind(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
-// TestSearchDeploymentsWithNilStore tests SearchDeployments with nil store
-func TestSearchDeploymentsWithNilStore(t *testing.T) {
-	server := createTestAPIServer()
-	server.store = nil
-
-	c, w := createTestContext("GET", "/rest-apis?displayName=test", nil)
-	c.Request.URL.RawQuery = "displayName=test"
-	server.SearchDeployments(c, string(api.RestApi))
-
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	var response map[string]interface{}
-	err := json.Unmarshal(w.Body.Bytes(), &response)
-	require.NoError(t, err)
-	assert.Equal(t, float64(0), response["count"])
-}
-
 // TestSearchDeploymentsMCP tests SearchDeployments for MCP kind
 func TestSearchDeploymentsMCP(t *testing.T) {
 	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+
+	upstreamURL := "http://backend.example.com"
+	cfg := &models.StoredConfig{
+		UUID:        "0000-mcp-search-id-0000-000000000000",
+		Kind:        string(api.Mcp),
+		Handle:      "test-mcp",
+		DisplayName: "test",
+		Version:     "v1.0.0",
+		SourceConfiguration: api.MCPProxyConfiguration{
+			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.Mcp,
+			Metadata:   api.Metadata{Name: "test-mcp"},
+			Spec: api.MCPProxyConfigData{
+				DisplayName: "test",
+				Version:     "v1.0.0",
+				Context:     stringPtr("/mcp"),
+				Upstream: api.MCPProxyConfigData_Upstream{
+					Url: &upstreamURL,
+				},
+			},
+		},
+		DesiredState: models.StateDeployed,
+		Origin:       models.OriginGatewayAPI,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	require.NoError(t, mockDB.SaveConfig(cfg))
 
 	c, w := createTestContext("GET", "/mcp-proxies?displayName=test", nil)
 	c.Request.URL.RawQuery = "displayName=test"
@@ -1236,6 +1248,15 @@ func TestSearchDeploymentsMCP(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
 	assert.Contains(t, response, "mcpProxies")
+	assert.Equal(t, float64(1), response["count"])
+
+	items := response["mcpProxies"].([]interface{})
+	require.Len(t, items, 1)
+	item := items[0].(map[string]interface{})
+	assert.Equal(t, "test-mcp", item["id"])
+	assert.Equal(t, "test", item["displayName"])
+	assert.Equal(t, "v1.0.0", item["version"])
+	assert.Equal(t, "/mcp", item["context"])
 }
 
 // TestGetConfigDump tests the config dump endpoint
@@ -1320,17 +1341,6 @@ func TestGetConfigDumpWithCertificates(t *testing.T) {
 			CertCount:   1,
 		},
 	}
-
-	c, w := createTestContext("GET", "/config_dump", nil)
-	server.GetConfigDump(c)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-}
-
-// TestGetConfigDumpNoDB tests config dump without database
-func TestGetConfigDumpNoDB(t *testing.T) {
-	server := createTestAPIServer()
-	server.db = nil
 
 	c, w := createTestContext("GET", "/config_dump", nil)
 	server.GetConfigDump(c)
@@ -1702,7 +1712,31 @@ func TestListMCPProxies(t *testing.T) {
 	server := createTestAPIServer()
 	mockDB := server.db.(*MockStorage)
 
-	cfg := createTestMCPStoredConfig(t, "0000-mcp-id-0000-000000000000", "test-mcp", "Test MCP", "v1.0.0", "/mcp", models.StateDeployed)
+	upstreamURL := "http://backend.example.com"
+	cfg := &models.StoredConfig{
+		UUID:        "0000-mcp-id-0000-000000000000",
+		Kind:        string(api.Mcp),
+		Handle:      "test-mcp",
+		DisplayName: "Test MCP",
+		Version:     "v1.0.0",
+		SourceConfiguration: api.MCPProxyConfiguration{
+			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.Mcp,
+			Metadata:   api.Metadata{Name: "test-mcp"},
+			Spec: api.MCPProxyConfigData{
+				DisplayName: "Test MCP",
+				Version:     "v1.0.0",
+				Context:     stringPtr("/mcp"),
+				Upstream: api.MCPProxyConfigData_Upstream{
+					Url: &upstreamURL,
+				},
+			},
+		},
+		DesiredState: models.StateDeployed,
+		Origin:       models.OriginGatewayAPI,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
 	require.NoError(t, mockDB.SaveConfig(cfg))
 
 	c, w := createTestContext("GET", "/mcp-proxies", nil)
@@ -1714,6 +1748,14 @@ func TestListMCPProxies(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
 	assert.Equal(t, "success", response["status"])
 	assert.Equal(t, float64(1), response["count"])
+
+	items := response["mcpProxies"].([]interface{})
+	require.Len(t, items, 1)
+	item := items[0].(map[string]interface{})
+	assert.Equal(t, "test-mcp", item["id"])
+	assert.Equal(t, "Test MCP", item["displayName"])
+	assert.Equal(t, "v1.0.0", item["version"])
+	assert.Equal(t, "/mcp", item["context"])
 }
 
 // TestListMCPProxiesWithFilters tests listing MCP proxies with filters
@@ -2168,11 +2210,12 @@ func TestPopulatePropsForSystemPolicies(t *testing.T) {
 func TestWaitForDeploymentAndNotifyTimeout(t *testing.T) {
 	server := createTestAPIServer()
 	server.controlPlaneClient = &MockControlPlaneClient{connected: true}
+	mockDB := server.db.(*MockStorage)
 
 	// Add config that starts pending and will be updated to deployed
 	cfg := createTestStoredConfig("0000-test-id-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
 	cfg.DesiredState = models.StateDeployed
-	_ = server.store.Add(cfg)
+	require.NoError(t, mockDB.SaveConfig(cfg))
 
 	done := make(chan error, 1)
 
@@ -2198,7 +2241,7 @@ func TestWaitForDeploymentAndNotifyTimeout(t *testing.T) {
 		server.handleStatusUpdate("0000-test-id-0000-000000000000", true, "")
 		require.NoError(t, <-done)
 
-		retrievedCfg, err := server.store.Get("0000-test-id-0000-000000000000")
+		retrievedCfg, err := server.db.GetConfig("0000-test-id-0000-000000000000")
 		require.NoError(t, err)
 		assert.Equal(t, models.StateDeployed, retrievedCfg.DesiredState)
 	}
@@ -2267,14 +2310,15 @@ func TestNewAPIServer(t *testing.T) {
 // TestSearchDeploymentsFilters tests SearchDeployments with various filters
 func TestSearchDeploymentsFilters(t *testing.T) {
 	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
 
 	// Add test configs with different desired states
 	cfg1 := createTestStoredConfig("test-id-1", "api-one", "v1.0.0", "/ctx1")
 	cfg1.DesiredState = models.StateDeployed
 	cfg2 := createTestStoredConfig("test-id-2", "api-two", "v2.0.0", "/ctx2")
 	cfg2.DesiredState = models.StateUndeployed
-	_ = server.store.Add(cfg1)
-	_ = server.store.Add(cfg2)
+	require.NoError(t, mockDB.SaveConfig(cfg1))
+	require.NoError(t, mockDB.SaveConfig(cfg2))
 
 	testCases := []struct {
 		name        string
@@ -2332,11 +2376,12 @@ func TestGetRestAPIByIdWithDeployedAt(t *testing.T) {
 // TestGetAPIByNameVersionWithDeployedAt tests GetAPIByNameVersion with deployedAt in response
 func TestGetAPIByNameVersionWithDeployedAt(t *testing.T) {
 	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
 
 	cfg := createTestStoredConfig("test-id-1", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
 	deployedAt := time.Now()
 	cfg.DeployedAt = &deployedAt
-	_ = server.store.Add(cfg)
+	require.NoError(t, mockDB.SaveConfig(cfg))
 
 	c, w := createTestContext("GET", "/rest-apis/test-api/v1.0.0", nil)
 	server.GetAPIByNameVersion(c, "0000-test-api-0000-000000000000", "v1.0.0")
@@ -2464,11 +2509,12 @@ func TestConfigDumpAPIStatusConversion(t *testing.T) {
 // TestSearchDeploymentsAPIKind tests SearchDeployments for API kind with filters
 func TestSearchDeploymentsAPIKind(t *testing.T) {
 	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
 
 	cfg1 := createTestStoredConfig("test-id-1", "api-one", "v1.0.0", "/ctx1")
 	cfg2 := createTestStoredConfig("test-id-2", "api-two", "v1.0.0", "/ctx2")
-	_ = server.store.Add(cfg1)
-	_ = server.store.Add(cfg2)
+	require.NoError(t, mockDB.SaveConfig(cfg1))
+	require.NoError(t, mockDB.SaveConfig(cfg2))
 
 	c, w := createTestContext("GET", "/rest-apis?displayName=api-one&version=v1.0.0", nil)
 	c.Request.URL.RawQuery = "displayName=api-one&version=v1.0.0"
@@ -2952,34 +2998,35 @@ func TestGetConfigDumpMissingHandle(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
-// Test that SearchDeployments handles MCP kind with unmarshal error
-func TestSearchDeploymentsMCPUnmarshalError(t *testing.T) {
+// Test that SearchDeployments skips MCP rows with invalid stored source configuration.
+func TestSearchDeploymentsMCPSkipsInvalidSourceConfig(t *testing.T) {
 	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
 
-	// Add an MCP config with invalid source configuration
+	// Add an MCP config with invalid source configuration.
 	cfg := &models.StoredConfig{
 		UUID:                "0000-mcp-id-0000-000000000000",
 		Kind:                string(api.Mcp),
-		SourceConfiguration: make(chan int), // Invalid - can't be marshaled to JSON
-		Configuration: api.RestAPI{
-			Kind: api.RestApi, // Use RestApi for RestAPI type
-			Metadata: api.Metadata{
-				Name: "test-mcp",
-			},
-		},
-		DesiredState: models.StateDeployed,
-		Origin:       models.OriginGatewayAPI,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		Handle:              "test-mcp",
+		DisplayName:         "test",
+		Version:             "v1.0",
+		SourceConfiguration: make(chan int),
+		DesiredState:        models.StateDeployed,
+		Origin:              models.OriginGatewayAPI,
+		CreatedAt:           time.Now(),
+		UpdatedAt:           time.Now(),
 	}
-	_ = server.store.Add(cfg)
+	require.NoError(t, mockDB.SaveConfig(cfg))
 
 	c, w := createTestContext("GET", "/mcp-proxies?displayName=test", nil)
 	c.Request.URL.RawQuery = "displayName=test"
 	server.SearchDeployments(c, string(api.Mcp))
 
-	// SearchDeployments logs unmarshal errors and continues, returning StatusOK with valid configs only
 	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	assert.Equal(t, float64(0), response["count"])
 }
 
 // TestBuildStoredPolicyFromAPIWithVhosts tests buildStoredPolicyFromAPI with custom vhosts
@@ -3161,12 +3208,12 @@ func TestBuildStoredPolicyFromAPIWebSubApiWithPolicies(t *testing.T) {
 	assert.Nil(t, result)
 }
 
-// Test ListMCPProxies with stored configs that have unmarshal issues
-func TestListMCPProxiesUnmarshalError(t *testing.T) {
+// Test ListMCPProxies with stored configs that have invalid source configuration.
+func TestListMCPProxiesInvalidSourceConfig(t *testing.T) {
 	server := createTestAPIServer()
 	mockDB := server.db.(*MockStorage)
 
-	// Add MCP config, then replace SourceConfiguration with something that can't be marshaled to JSON
+	// Add MCP config, then replace SourceConfiguration with an invalid type.
 	cfg := &models.StoredConfig{
 		UUID: "0000-mcp-id-0000-000000000000",
 		Kind: string(api.Mcp),
@@ -3187,13 +3234,11 @@ func TestListMCPProxiesUnmarshalError(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 	require.NoError(t, mockDB.SaveConfig(cfg))
-	// Mutate the DB-backed object to something that can't be JSON marshaled.
 	cfg.SourceConfiguration = make(chan int)
 
 	c, w := createTestContext("GET", "/mcp-proxies", nil)
 	server.ListMCPProxies(c, api.ListMCPProxiesParams{})
 
-	// ListMCPProxies deterministically returns StatusInternalServerError on unmarshal errors
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 

@@ -148,6 +148,9 @@ func NewClient(
 	subSnapshotManager *subscriptionxds.SnapshotManager,
 	eventHubInstance eventhub.EventHub,
 ) *Client {
+	if db == nil {
+		panic("control plane client requires non-nil storage")
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 
 	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig)
@@ -617,7 +620,7 @@ func (c *Client) refreshSubscriptionSnapshot() {
 // and persists them locally. This must run before subscription sync since
 // subscriptions reference plans via foreign key.
 func (c *Client) syncSubscriptionPlans(gatewayID string) {
-	if c.apiUtilsService == nil || c.db == nil {
+	if c.apiUtilsService == nil {
 		return
 	}
 
@@ -670,11 +673,18 @@ func (c *Client) syncSubscriptionPlans(gatewayID string) {
 // time the sync was scheduled, ensuring we don't cross-contaminate state across
 // reconnects.
 func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
-	if c.apiUtilsService == nil || c.db == nil || c.store == nil {
+	if c.apiUtilsService == nil {
 		return
 	}
 
-	configs := c.store.GetAll()
+	configs, err := c.db.GetAllConfigsByKind(string(api.RestApi))
+	if err != nil {
+		c.logger.Warn("Failed to list APIs for subscription bulk sync",
+			slog.String("gateway_id", gatewayID),
+			slog.Any("error", err),
+		)
+		return
+	}
 	for _, cfg := range configs {
 		// Abort promptly if the client is shutting down.
 		select {
@@ -1354,32 +1364,17 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 	)
 }
 
-// findAPIConfig checks if an API exists in database or memory store
-// Returns the config and an error. If the config is not found in either store,
-// returns (nil, storage.ErrNotFound). Other errors indicate actual storage failures.
+// findAPIConfig checks if an API exists in the database.
+// Returns storage.ErrNotFound when the config does not exist.
 func (c *Client) findAPIConfig(apiID string) (*models.StoredConfig, error) {
-	// Check database (source of truth)
 	config, err := c.db.GetConfig(apiID)
 	if err == nil {
 		return config, nil
 	}
-	// If it's a real error (not just "not found"), surface it
 	if !storage.IsNotFoundError(err) {
 		return nil, fmt.Errorf("database error while fetching config: %w", err)
 	}
-	// Config not found in DB, fall through to check memory store
-
-	// Fall back to in-memory store
-	config, err = c.store.Get(apiID)
-	if err == nil {
-		return config, nil
-	}
-	// If memory store also doesn't have it, return not found
-	if storage.IsNotFoundError(err) {
-		return nil, storage.ErrNotFound
-	}
-	// Other memory store errors
-	return nil, fmt.Errorf("memory store error while fetching config: %w", err)
+	return nil, storage.ErrNotFound
 }
 
 // removePolicyConfiguration removes policy configuration with proper error handling
@@ -2654,11 +2649,6 @@ func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
 		baseLogger = slog.Default()
 	}
 
-	if c.db == nil {
-		baseLogger.Warn("Storage not configured; skipping application.updated persistence")
-		return
-	}
-
 	eventBytes, err := json.Marshal(event)
 	if err != nil {
 		baseLogger.Error("Failed to marshal application updated event for parsing",
@@ -2805,12 +2795,6 @@ func (c *Client) handleSubscriptionCreatedEvent(event map[string]interface{}) {
 		baseLogger = slog.Default()
 	}
 
-	// If no database is configured (in-memory mode), ignore subscription persistence.
-	if c.db == nil {
-		baseLogger.Warn("Storage not configured; skipping subscription.created persistence")
-		return
-	}
-
 	var createdEvent SubscriptionCreatedEvent
 	if err := utils.MapToStruct(event, &createdEvent); err != nil {
 		baseLogger.Error("Failed to parse subscription.created event", slog.Any("error", err))
@@ -2876,11 +2860,6 @@ func (c *Client) handleSubscriptionUpdatedEvent(event map[string]interface{}) {
 		baseLogger = slog.Default()
 	}
 
-	if c.db == nil {
-		baseLogger.Warn("Storage not configured; skipping subscription.updated persistence")
-		return
-	}
-
 	var updatedEvent SubscriptionUpdatedEvent
 	if err := utils.MapToStruct(event, &updatedEvent); err != nil {
 		baseLogger.Error("Failed to parse subscription.updated event", slog.Any("error", err))
@@ -2941,11 +2920,6 @@ func (c *Client) handleSubscriptionDeletedEvent(event map[string]interface{}) {
 		baseLogger = slog.Default()
 	}
 
-	if c.db == nil {
-		baseLogger.Warn("Storage not configured; skipping subscription.deleted persistence")
-		return
-	}
-
 	var deletedEvent SubscriptionDeletedEvent
 	if err := utils.MapToStruct(event, &deletedEvent); err != nil {
 		baseLogger.Error("Failed to parse subscription.deleted event", slog.Any("error", err))
@@ -2968,10 +2942,6 @@ func (c *Client) handleSubscriptionDeletedEvent(event map[string]interface{}) {
 // handleSubscriptionPlanCreatedEvent processes subscriptionPlan.created events.
 func (c *Client) handleSubscriptionPlanCreatedEvent(event map[string]interface{}) {
 	baseLogger := c.logger
-	if c.db == nil {
-		baseLogger.Warn("Storage not configured; skipping subscriptionPlan.created persistence")
-		return
-	}
 
 	var created SubscriptionPlanCreatedEvent
 	if err := utils.MapToStruct(event, &created); err != nil {
@@ -3023,10 +2993,6 @@ func (c *Client) handleSubscriptionPlanCreatedEvent(event map[string]interface{}
 // handleSubscriptionPlanUpdatedEvent processes subscriptionPlan.updated events.
 func (c *Client) handleSubscriptionPlanUpdatedEvent(event map[string]interface{}) {
 	baseLogger := c.logger
-	if c.db == nil {
-		baseLogger.Warn("Storage not configured; skipping subscriptionPlan.updated persistence")
-		return
-	}
 
 	var updated SubscriptionPlanUpdatedEvent
 	if err := utils.MapToStruct(event, &updated); err != nil {
@@ -3083,10 +3049,6 @@ func (c *Client) handleSubscriptionPlanUpdatedEvent(event map[string]interface{}
 // handleSubscriptionPlanDeletedEvent processes subscriptionPlan.deleted events.
 func (c *Client) handleSubscriptionPlanDeletedEvent(event map[string]interface{}) {
 	baseLogger := c.logger
-	if c.db == nil {
-		baseLogger.Warn("Storage not configured; skipping subscriptionPlan.deleted persistence")
-		return
-	}
 
 	var deleted SubscriptionPlanDeletedEvent
 	if err := utils.MapToStruct(event, &deleted); err != nil {

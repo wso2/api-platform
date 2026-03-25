@@ -98,6 +98,9 @@ func NewAPIServer(
 	systemConfig *config.Config,
 	eventHub eventhub.EventHub,
 ) *APIServer {
+	if db == nil {
+		panic("APIServer requires non-nil storage")
+	}
 	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.Router)
 	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, &systemConfig.APIKey)
 
@@ -231,77 +234,52 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 		}
 	}
 
-	if s.store == nil {
-		c.JSON(http.StatusOK, gin.H{
-			"status": "success",
-			"count":  0,
-		})
-		return
-	}
-
-	configs := s.store.GetAllByKind(kind)
-	if kind == string(api.Mcp) && s.mcpDeploymentService != nil {
-		configs = s.mcpDeploymentService.ListMCPProxies()
-	}
-
-	// Filter based on kind to return appropriate response format
 	if kind == string(api.Mcp) {
-		// Return MCP proxy format
-		mcpItems := make([]api.MCPProxyListItem, 0)
-		for _, cfg := range configs {
-			if v, ok := filters["displayName"]; ok && cfg.DisplayName != v {
-				continue
-			}
-			if v, ok := filters["version"]; ok && cfg.Version != v {
-				continue
-			}
-			cfgContext, err := cfg.GetContext()
-			if err != nil {
-				s.logger.Warn("Failed to get context for MCP config",
-					slog.String("id", cfg.UUID),
-					slog.String("displayName", cfg.DisplayName),
-					slog.Any("error", err))
-				continue
-			}
-			if v, ok := filters["context"]; ok && cfgContext != v {
-				continue
-			}
-			if v, ok := filters["status"]; ok && string(cfg.DesiredState) != v {
-				continue
-			}
-
-			status := api.MCPProxyListItemStatus(cfg.DesiredState)
-			// Convert SourceConfiguration to MCPProxyConfiguration to get spec fields
-			var mcp api.MCPProxyConfiguration
-			j, _ := json.Marshal(cfg.SourceConfiguration)
-			err = json.Unmarshal(j, &mcp)
-			if err != nil {
-				s.logger.Error("Failed to unmarshal stored MCP configuration",
-					slog.String("id", cfg.UUID),
-					slog.String("displayName", cfg.DisplayName))
-				continue
-			}
-
-			li := api.MCPProxyListItem{
-				Id:          stringPtr(cfg.Handle),
-				DisplayName: stringPtr(mcp.Spec.DisplayName),
-				Version:     stringPtr(mcp.Spec.Version),
-				Status:      &status,
-				CreatedAt:   timePtr(cfg.CreatedAt),
-				UpdatedAt:   timePtr(cfg.UpdatedAt),
-			}
-			if mcp.Spec.Context != nil {
-				li.Context = mcp.Spec.Context
-			}
-			mcpItems = append(mcpItems, li)
+		configs, err := s.mcpDeploymentService.ListMCPProxies()
+		if err != nil {
+			s.logger.Error("Failed to retrieve deployment configurations",
+				slog.String("kind", kind),
+				slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to retrieve deployment configurations",
+			})
+			return
 		}
 
+		mcpItems, err := s.buildMCPProxyListItems(configs, filters, false)
+		if err != nil {
+			s.logger.Error("Failed to build MCP proxy list items",
+				slog.String("kind", kind),
+				slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to retrieve deployment configurations",
+			})
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"status":     "success",
 			"count":      len(mcpItems),
 			"mcpProxies": mcpItems,
 		})
-	} else if kind == string(api.WebSubApi) {
+		return
+	}
+
+	configs, err := s.db.GetAllConfigsByKind(kind)
+	if err != nil {
+		s.logger.Error("Failed to retrieve deployment configurations",
+			slog.String("kind", kind),
+			slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to retrieve deployment configurations",
+		})
+		return
+	}
+
+	// Filter based on kind to return appropriate response format
+	if kind == string(api.WebSubApi) {
 		// Return WebSub API format
 		websubItems := make([]api.WebSubAPIListItem, 0)
 		for _, cfg := range configs {
@@ -388,14 +366,95 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 	}
 }
 
+func (s *APIServer) buildMCPProxyListItems(configs []*models.StoredConfig, filters map[string]string, failOnSourceConfigError bool) ([]api.MCPProxyListItem, error) {
+	items := make([]api.MCPProxyListItem, 0, len(configs))
+	for _, cfg := range configs {
+		if v, ok := filters["displayName"]; ok && cfg.DisplayName != v {
+			continue
+		}
+		if v, ok := filters["version"]; ok && cfg.Version != v {
+			continue
+		}
+		if v, ok := filters["status"]; ok && string(cfg.DesiredState) != v {
+			continue
+		}
+
+		mcp, err := storedMCPSourceConfig(cfg)
+		if err != nil {
+			if failOnSourceConfigError {
+				return nil, fmt.Errorf("failed to read stored MCP configuration %s: %w", cfg.UUID, err)
+			}
+			s.logger.Warn("Failed to read stored MCP configuration",
+				slog.String("id", cfg.UUID),
+				slog.String("displayName", cfg.DisplayName),
+				slog.Any("error", err))
+			continue
+		}
+
+		contextValue := ""
+		if mcp.Spec.Context != nil {
+			contextValue = *mcp.Spec.Context
+		}
+		if v, ok := filters["context"]; ok && contextValue != v {
+			continue
+		}
+
+		status := api.MCPProxyListItemStatus(cfg.DesiredState)
+		item := api.MCPProxyListItem{
+			Id:          stringPtr(cfg.Handle),
+			DisplayName: stringPtr(cfg.DisplayName),
+			Version:     stringPtr(cfg.Version),
+			Status:      &status,
+			CreatedAt:   timePtr(cfg.CreatedAt),
+			UpdatedAt:   timePtr(cfg.UpdatedAt),
+		}
+		if mcp.Spec.Context != nil {
+			item.Context = mcp.Spec.Context
+		}
+		items = append(items, item)
+	}
+	return items, nil
+}
+
+func storedMCPSourceConfig(cfg *models.StoredConfig) (api.MCPProxyConfiguration, error) {
+	if cfg == nil {
+		return api.MCPProxyConfiguration{}, fmt.Errorf("stored MCP configuration is nil")
+	}
+
+	mcp, ok := cfg.SourceConfiguration.(api.MCPProxyConfiguration)
+	if !ok {
+		return api.MCPProxyConfiguration{}, fmt.Errorf("unexpected MCP source configuration type %T", cfg.SourceConfiguration)
+	}
+	return mcp, nil
+}
+
 // GetAPIByNameVersion implements ServerInterface.GetAPIByNameVersion
 // (GET /apis/{name}/{version})
 func (s *APIServer) GetAPIByNameVersion(c *gin.Context, name string, version string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
 
-	cfg, err := s.store.GetByKindNameAndVersion(models.KindRestApi, name, version)
-	if err != nil || cfg == nil {
+	configs, err := s.db.GetAllConfigsByKind(models.KindRestApi)
+	if err != nil {
+		log.Error("Failed to retrieve API configurations",
+			slog.String("name", name),
+			slog.String("version", version),
+			slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to retrieve API configurations",
+		})
+		return
+	}
+
+	var cfg *models.StoredConfig
+	for _, stored := range configs {
+		if stored.DisplayName == name && stored.Version == version {
+			cfg = stored
+			break
+		}
+	}
+	if cfg == nil {
 		log.Warn("API configuration not found",
 			slog.String("name", name),
 			slog.String("version", version))
@@ -1320,37 +1379,24 @@ func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesPara
 		s.SearchDeployments(c, string(api.Mcp))
 		return
 	}
-	configs := s.mcpDeploymentService.ListMCPProxies()
+	configs, err := s.mcpDeploymentService.ListMCPProxies()
+	if err != nil {
+		s.logger.Error("Failed to retrieve MCP proxy configurations", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to retrieve MCP proxy configurations",
+		})
+		return
+	}
 
-	items := make([]api.MCPProxyListItem, len(configs))
-	for i, cfg := range configs {
-		status := api.MCPProxyListItemStatus(cfg.DesiredState)
-		// Convert SourceConfiguration to MCPProxyConfiguration
-		var mcp api.MCPProxyConfiguration
-		j, _ := json.Marshal(cfg.SourceConfiguration)
-		err := json.Unmarshal(j, &mcp)
-		if err != nil {
-			s.logger.Error("Failed to unmarshal stored MCP configuration",
-				slog.String("id", cfg.UUID),
-				slog.String("displayName", cfg.DisplayName))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-				Status:  "error",
-				Message: "Failed to get stored MCP configuration",
-			})
-			return
-		}
-		li := api.MCPProxyListItem{
-			Id:          stringPtr(cfg.Handle),
-			DisplayName: stringPtr(mcp.Spec.DisplayName),
-			Version:     stringPtr(mcp.Spec.Version),
-			Status:      &status,
-			CreatedAt:   timePtr(cfg.CreatedAt),
-			UpdatedAt:   timePtr(cfg.UpdatedAt),
-		}
-		if mcp.Spec.Context != nil {
-			li.Context = mcp.Spec.Context
-		}
-		items[i] = li
+	items, err := s.buildMCPProxyListItems(configs, nil, true)
+	if err != nil {
+		s.logger.Error("Failed to build MCP proxy list items", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to get stored MCP configuration",
+		})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -1570,7 +1616,7 @@ func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID stri
 			return
 
 		case <-ticker.C:
-			cfg, err := s.store.Get(configID)
+			cfg, err := s.db.GetConfig(configID)
 			if err != nil {
 				log.Warn("Config not found while waiting for deployment completion",
 					slog.String("config_id", configID))
@@ -1696,30 +1742,24 @@ func (s *APIServer) BuildConfigDumpResponse(log *slog.Logger) (*adminapi.ConfigD
 	// Get all certificates
 	var certificates []adminapi.CertificateResponse
 	totalBytes := 0
+	certs, err := s.db.ListCertificates()
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve certificates: %w", err)
+	}
 
-	if s.db == nil {
-		// Memory-only mode: return empty certificate list
-		log.Debug("Storage is memory-only, returning empty certificate list")
-	} else {
-		certs, err := s.db.ListCertificates()
-		if err != nil {
-			return nil, fmt.Errorf("failed to retrieve certificates: %w", err)
-		}
+	for _, cert := range certs {
+		totalBytes += len(cert.Certificate)
 
-		for _, cert := range certs {
-			totalBytes += len(cert.Certificate)
-
-			certStatus := "success"
-			certificates = append(certificates, adminapi.CertificateResponse{
-				Id:       &cert.UUID,
-				Name:     &cert.Name,
-				Subject:  &cert.Subject,
-				Issuer:   &cert.Issuer,
-				NotAfter: &cert.NotAfter,
-				Count:    &cert.CertCount,
-				Status:   &certStatus,
-			})
-		}
+		certStatus := "success"
+		certificates = append(certificates, adminapi.CertificateResponse{
+			Id:       &cert.UUID,
+			Name:     &cert.Name,
+			Subject:  &cert.Subject,
+			Issuer:   &cert.Issuer,
+			NotAfter: &cert.NotAfter,
+			Count:    &cert.CertCount,
+			Status:   &certStatus,
+		})
 	}
 
 	// Calculate statistics
@@ -2112,14 +2152,6 @@ func (s *APIServer) ListAPIKeys(c *gin.Context, id string) {
 // It first attempts a direct ID lookup; if that fails, it falls back to handle-based resolution.
 // Returns (apiID, nil) on success; on failure writes the HTTP response and returns ("", err).
 func (s *APIServer) resolveAPIIDByHandle(c *gin.Context, handle string, log *slog.Logger) (string, error) {
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return "", fmt.Errorf("database not available")
-	}
-
 	// First, try treating the input as a deployment ID.
 	cfgByID, err := s.db.GetConfig(handle)
 	if err != nil {
@@ -2181,15 +2213,6 @@ func (s *APIServer) resolveAPIIDByHandle(c *gin.Context, handle string, log *slo
 // CreateSubscription implements ServerInterface.CreateSubscription (POST /subscriptions)
 func (s *APIServer) CreateSubscription(c *gin.Context) {
 	log := middleware.GetLogger(c, s.logger)
-
-	if s.db == nil {
-		log.Error("Database storage not available for subscription creation")
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
 
 	var req api.SubscriptionCreateRequest
 	if err := s.bindRequestBody(c, &req); err != nil {
@@ -2310,15 +2333,6 @@ func (s *APIServer) CreateSubscription(c *gin.Context) {
 func (s *APIServer) ListSubscriptions(c *gin.Context, params api.ListSubscriptionsParams) {
 	log := middleware.GetLogger(c, s.logger)
 
-	if s.db == nil {
-		log.Error("Database storage not available for listing subscriptions")
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
-
 	var apiID, appID, status *string
 	if params.ApiId != nil && *params.ApiId != "" {
 		// Normalize apiId to the internal deployment ID (accepts handle or deployment ID).
@@ -2363,15 +2377,6 @@ func (s *APIServer) ListSubscriptions(c *gin.Context, params api.ListSubscriptio
 func (s *APIServer) GetSubscription(c *gin.Context, subscriptionId string) {
 	log := middleware.GetLogger(c, s.logger)
 
-	if s.db == nil {
-		log.Error("Database storage not available for getting subscription")
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
-
 	sub, err := s.db.GetSubscriptionByID(subscriptionId, "")
 	if err != nil {
 		if storage.IsNotFoundError(err) {
@@ -2392,15 +2397,6 @@ func (s *APIServer) GetSubscription(c *gin.Context, subscriptionId string) {
 // UpdateSubscription implements ServerInterface.UpdateSubscription (PUT /subscriptions/{subscriptionId})
 func (s *APIServer) UpdateSubscription(c *gin.Context, subscriptionId string) {
 	log := middleware.GetLogger(c, s.logger)
-
-	if s.db == nil {
-		log.Error("Database storage not available for updating subscription")
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
 
 	sub, err := s.db.GetSubscriptionByID(subscriptionId, "")
 	if err != nil {
@@ -2452,15 +2448,6 @@ func (s *APIServer) UpdateSubscription(c *gin.Context, subscriptionId string) {
 // DeleteSubscription implements ServerInterface.DeleteSubscription (DELETE /subscriptions/{subscriptionId})
 func (s *APIServer) DeleteSubscription(c *gin.Context, subscriptionId string) {
 	log := middleware.GetLogger(c, s.logger)
-
-	if s.db == nil {
-		log.Error("Database storage not available for deleting subscription")
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
 
 	sub, err := s.db.GetSubscriptionByID(subscriptionId, "")
 	if err != nil {
@@ -2517,11 +2504,6 @@ func validateThrottleLimits(count *int, unit *string) error {
 // CreateSubscriptionPlan implements ServerInterface.CreateSubscriptionPlan (POST /subscription-plans)
 func (s *APIServer) CreateSubscriptionPlan(c *gin.Context) {
 	log := middleware.GetLogger(c, s.logger)
-
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Database storage not available"})
-		return
-	}
 
 	var req api.SubscriptionPlanCreateRequest
 	if err := s.bindRequestBody(c, &req); err != nil {
@@ -2594,11 +2576,6 @@ func (s *APIServer) CreateSubscriptionPlan(c *gin.Context) {
 func (s *APIServer) ListSubscriptionPlans(c *gin.Context) {
 	log := middleware.GetLogger(c, s.logger)
 
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Database storage not available"})
-		return
-	}
-
 	list, err := s.db.ListSubscriptionPlans("")
 	if err != nil {
 		log.Error("Failed to list subscription plans", slog.Any("error", err))
@@ -2616,11 +2593,6 @@ func (s *APIServer) ListSubscriptionPlans(c *gin.Context) {
 // GetSubscriptionPlan implements ServerInterface.GetSubscriptionPlan (GET /subscription-plans/{planId})
 func (s *APIServer) GetSubscriptionPlan(c *gin.Context, planId string) {
 	log := middleware.GetLogger(c, s.logger)
-
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Database storage not available"})
-		return
-	}
 
 	plan, err := s.db.GetSubscriptionPlanByID(planId, "")
 	if err != nil {
@@ -2642,11 +2614,6 @@ func (s *APIServer) GetSubscriptionPlan(c *gin.Context, planId string) {
 // UpdateSubscriptionPlan implements ServerInterface.UpdateSubscriptionPlan (PUT /subscription-plans/{planId})
 func (s *APIServer) UpdateSubscriptionPlan(c *gin.Context, planId string) {
 	log := middleware.GetLogger(c, s.logger)
-
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Database storage not available"})
-		return
-	}
 
 	existing, err := s.db.GetSubscriptionPlanByID(planId, "")
 	if err != nil {
@@ -2724,11 +2691,6 @@ func (s *APIServer) UpdateSubscriptionPlan(c *gin.Context, planId string) {
 // DeleteSubscriptionPlan implements ServerInterface.DeleteSubscriptionPlan (DELETE /subscription-plans/{planId})
 func (s *APIServer) DeleteSubscriptionPlan(c *gin.Context, planId string) {
 	log := middleware.GetLogger(c, s.logger)
-
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Database storage not available"})
-		return
-	}
 
 	if err := s.db.DeleteSubscriptionPlan(planId, ""); err != nil {
 		if storage.IsNotFoundError(err) {
@@ -2890,12 +2852,18 @@ func (s *APIServer) getLLMProviderTemplate(sourceConfig any) (*api.LLMProviderTe
 		return nil, fmt.Errorf("template name is empty")
 	}
 
-	storedTemplate, err := s.store.GetTemplateByHandle(templateNameStr)
+	storedTemplates, err := s.db.GetAllLLMProviderTemplates()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get template '%s' from store: %w", templateNameStr, err)
+		return nil, fmt.Errorf("failed to get template '%s' from database: %w", templateNameStr, err)
 	}
 
-	return &storedTemplate.Configuration, nil
+	for _, storedTemplate := range storedTemplates {
+		if storedTemplate.GetHandle() == templateNameStr {
+			return &storedTemplate.Configuration, nil
+		}
+	}
+
+	return nil, fmt.Errorf("failed to get template '%s' from database: %w", templateNameStr, storage.ErrNotFound)
 }
 
 // populatePropsForSystemPolicies populates the props for system policies

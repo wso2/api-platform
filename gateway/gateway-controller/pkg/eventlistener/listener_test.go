@@ -271,7 +271,7 @@ func TestStart_SubscribesWithTrimmedGatewayID(t *testing.T) {
 	listener := NewEventListener(
 		hub,
 		storage.NewConfigStore(),
-		nil,
+		setupSQLiteDBForEventListenerTests(t),
 		nil,
 		nil,
 		nil,

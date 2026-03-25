@@ -38,14 +38,16 @@ import (
 
 func TestNewAPIKeyService(t *testing.T) {
 	store := storage.NewConfigStore()
+	db := newTestMockDB()
 	apiKeyConfig := &config.APIKeyConfig{
 		APIKeysPerUserPerAPI: 10,
 		Algorithm:            constants.HashingAlgorithmSHA256,
 	}
 
-	service := NewAPIKeyService(store, nil, nil, apiKeyConfig)
+	service := NewAPIKeyService(store, db, nil, apiKeyConfig)
 	assert.NotNil(t, service)
 	assert.Equal(t, store, service.store)
+	assert.Equal(t, db, service.db)
 	assert.Equal(t, apiKeyConfig, service.apiKeyConfig)
 }
 
