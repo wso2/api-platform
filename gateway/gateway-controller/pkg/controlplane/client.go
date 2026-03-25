@@ -44,7 +44,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/subscriptionxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
@@ -123,7 +122,8 @@ type Client struct {
 	policyManager               *policyxds.PolicyManager
 	systemConfig                *config.Config
 	policyDefinitions           map[string]models.PolicyDefinition
-	subscriptionSnapshotManager *subscriptionxds.SnapshotManager
+	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater
+	subscriptionResourceService *utils.SubscriptionResourceService
 	eventHub                    eventhub.EventHub
 	gatewayID                   string
 	gatewayPath                 string // cached gateway path from well-known discovery
@@ -145,19 +145,21 @@ func NewClient(
 	policyDefinitions map[string]models.PolicyDefinition,
 	lazyResourceManager *lazyresourcexds.LazyResourceStateManager,
 	templateDefinitions map[string]*api.LLMProviderTemplate,
-	subSnapshotManager *subscriptionxds.SnapshotManager,
+	subSnapshotManager utils.SubscriptionSnapshotUpdater,
 	eventHubInstance eventhub.EventHub,
 ) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig)
 	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, apiKeyConfig)
+	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subSnapshotManager)
 
 	var gatewayID string
 	if eventHubInstance != nil {
 		gatewayID = systemConfig.Controller.Server.GatewayID
 		deploymentService.SetEventHub(eventHubInstance, gatewayID)
 		apiKeyService.SetEventHub(eventHubInstance, gatewayID)
+		subscriptionResourceService.SetEventHub(eventHubInstance, gatewayID)
 	}
 
 	client := &Client{
@@ -175,7 +177,8 @@ func NewClient(
 		policyManager:               policyManager,
 		systemConfig:                systemConfig,
 		policyDefinitions:           policyDefinitions,
-		subscriptionSnapshotManager: subSnapshotManager,
+		subscriptionSnapshotUpdater: subSnapshotManager,
+		subscriptionResourceService: subscriptionResourceService,
 		eventHub:                    eventHubInstance,
 		gatewayID:                   gatewayID,
 		state: &ConnectionState{
@@ -228,6 +231,22 @@ func NewClient(
 	}, logger)
 
 	return client
+}
+
+func (c *Client) getSubscriptionResourceService() *utils.SubscriptionResourceService {
+	if c.subscriptionResourceService != nil {
+		return c.subscriptionResourceService
+	}
+	if c.db == nil {
+		return nil
+	}
+
+	c.subscriptionResourceService = utils.NewSubscriptionResourceService(c.db, c.subscriptionSnapshotUpdater)
+	if c.eventHub != nil {
+		c.subscriptionResourceService.SetEventHub(c.eventHub, c.gatewayID)
+	}
+
+	return c.subscriptionResourceService
 }
 
 // Start initiates the connection to the control plane
@@ -603,12 +622,12 @@ func (c *Client) waitForConnectionAck(conn *websocket.Conn) error {
 // refreshSubscriptionSnapshot triggers an xDS snapshot rebuild so the policy
 // engine picks up the latest subscription state from the DB.
 func (c *Client) refreshSubscriptionSnapshot() {
-	if c.subscriptionSnapshotManager == nil {
+	if c.subscriptionSnapshotUpdater == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := c.subscriptionSnapshotManager.UpdateSnapshot(ctx); err != nil {
+	if err := c.subscriptionSnapshotUpdater.UpdateSnapshot(ctx); err != nil {
 		c.logger.Warn("Failed to refresh subscription xDS snapshot after event", slog.Any("error", err))
 	}
 }
@@ -2658,6 +2677,11 @@ func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
 		baseLogger.Warn("Storage not configured; skipping application.updated persistence")
 		return
 	}
+	resourceService := c.getSubscriptionResourceService()
+	if resourceService == nil {
+		baseLogger.Warn("Subscription resource service not available; skipping application.updated persistence")
+		return
+	}
 
 	eventBytes, err := json.Marshal(event)
 	if err != nil {
@@ -2752,7 +2776,7 @@ func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
 		ApplicationType: evt.Payload.ApplicationType,
 	}
 
-	if err := c.db.ReplaceApplicationAPIKeyMappings(application, resolvedMappings); err != nil {
+	if err := resourceService.ReplaceApplicationAPIKeyMappings(application, resolvedMappings, evt.CorrelationID, logger); err != nil {
 		logger.Error("Failed to persist application key mappings", slog.Any("error", err))
 		return
 	}
@@ -2810,6 +2834,11 @@ func (c *Client) handleSubscriptionCreatedEvent(event map[string]interface{}) {
 		baseLogger.Warn("Storage not configured; skipping subscription.created persistence")
 		return
 	}
+	resourceService := c.getSubscriptionResourceService()
+	if resourceService == nil {
+		baseLogger.Warn("Subscription resource service not available; skipping subscription.created persistence")
+		return
+	}
 
 	var createdEvent SubscriptionCreatedEvent
 	if err := utils.MapToStruct(event, &createdEvent); err != nil {
@@ -2824,6 +2853,11 @@ func (c *Client) handleSubscriptionCreatedEvent(event map[string]interface{}) {
 			slog.Bool("hasToken", payload.SubscriptionToken != ""))
 		return
 	}
+	logger := baseLogger.With(
+		slog.String("correlation_id", createdEvent.CorrelationID),
+		slog.String("subscription_id", payload.SubscriptionID),
+		slog.String("api_id", payload.APIID),
+	)
 
 	status := models.SubscriptionStatus(payload.Status)
 	sub := &models.Subscription{
@@ -2841,32 +2875,11 @@ func (c *Client) handleSubscriptionCreatedEvent(event map[string]interface{}) {
 		sub.SubscriptionPlanID = &payload.SubscriptionPlanId
 	}
 
-	if err := c.db.SaveSubscription(sub); err != nil {
-		if storage.IsConflictError(err) {
-			existing, err2 := c.db.GetSubscriptionByID(sub.ID, "")
-			if err2 != nil || existing == nil {
-				return
-			}
-			// Copy all mutable fields from incoming sub into existing before update.
-			existing.APIID = sub.APIID
-			existing.ApplicationID = sub.ApplicationID
-			existing.SubscriptionToken = sub.SubscriptionToken
-			existing.SubscriptionPlanID = sub.SubscriptionPlanID
-			existing.Status = sub.Status
-			existing.UpdatedAt = sub.UpdatedAt
-			if err := c.db.UpdateSubscription(existing); err != nil {
-				baseLogger.Error("Failed to update subscription during subscription.created conflict handling",
-					slog.String("subscription_id", sub.ID), slog.Any("error", err))
-				return
-			}
-			c.refreshSubscriptionSnapshot()
-			return
-		}
-		baseLogger.Error("Failed to persist subscription from subscription.created event",
+	if err := resourceService.UpsertSubscription(sub, "CREATE", createdEvent.CorrelationID, logger); err != nil {
+		logger.Error("Failed to persist subscription from subscription.created event",
 			slog.Any("error", err))
 		return
 	}
-	c.refreshSubscriptionSnapshot()
 }
 
 // handleSubscriptionUpdatedEvent processes subscription.updated events from platform-api.
@@ -2880,6 +2893,11 @@ func (c *Client) handleSubscriptionUpdatedEvent(event map[string]interface{}) {
 		baseLogger.Warn("Storage not configured; skipping subscription.updated persistence")
 		return
 	}
+	resourceService := c.getSubscriptionResourceService()
+	if resourceService == nil {
+		baseLogger.Warn("Subscription resource service not available; skipping subscription.updated persistence")
+		return
+	}
 
 	var updatedEvent SubscriptionUpdatedEvent
 	if err := utils.MapToStruct(event, &updatedEvent); err != nil {
@@ -2891,19 +2909,23 @@ func (c *Client) handleSubscriptionUpdatedEvent(event map[string]interface{}) {
 		baseLogger.Error("subscription.updated event missing subscriptionId")
 		return
 	}
+	logger := baseLogger.With(
+		slog.String("correlation_id", updatedEvent.CorrelationID),
+		slog.String("subscription_id", payload.SubscriptionID),
+	)
 
 	existing, err := c.db.GetSubscriptionByID(payload.SubscriptionID, "")
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			baseLogger.Debug("Subscription not found for subscription.updated event; skipping",
+			logger.Debug("Subscription not found for subscription.updated event; skipping",
 				slog.String("id", payload.SubscriptionID))
 			return
 		}
-		baseLogger.Error("Failed to fetch subscription for update", slog.Any("error", err))
+		logger.Error("Failed to fetch subscription for update", slog.Any("error", err))
 		return
 	}
 	if existing == nil {
-		baseLogger.Debug("Subscription nil for subscription.updated event; skipping",
+		logger.Debug("Subscription nil for subscription.updated event; skipping",
 			slog.String("id", payload.SubscriptionID))
 		return
 	}
@@ -2926,12 +2948,11 @@ func (c *Client) handleSubscriptionUpdatedEvent(event map[string]interface{}) {
 		existing.SubscriptionPlanID = nil
 	}
 	existing.Status = models.SubscriptionStatus(payload.Status)
-	if err := c.db.UpdateSubscription(existing); err != nil {
-		baseLogger.Error("Failed to update subscription from subscription.updated event",
+	if err := resourceService.UpdateSubscription(existing, updatedEvent.CorrelationID, logger); err != nil {
+		logger.Error("Failed to update subscription from subscription.updated event",
 			slog.Any("error", err))
 		return
 	}
-	c.refreshSubscriptionSnapshot()
 }
 
 // handleSubscriptionDeletedEvent processes subscription.deleted events from platform-api.
@@ -2945,6 +2966,11 @@ func (c *Client) handleSubscriptionDeletedEvent(event map[string]interface{}) {
 		baseLogger.Warn("Storage not configured; skipping subscription.deleted persistence")
 		return
 	}
+	resourceService := c.getSubscriptionResourceService()
+	if resourceService == nil {
+		baseLogger.Warn("Subscription resource service not available; skipping subscription.deleted persistence")
+		return
+	}
 
 	var deletedEvent SubscriptionDeletedEvent
 	if err := utils.MapToStruct(event, &deletedEvent); err != nil {
@@ -2956,13 +2982,16 @@ func (c *Client) handleSubscriptionDeletedEvent(event map[string]interface{}) {
 		baseLogger.Error("subscription.deleted event missing subscriptionId")
 		return
 	}
+	logger := baseLogger.With(
+		slog.String("correlation_id", deletedEvent.CorrelationID),
+		slog.String("subscription_id", payload.SubscriptionID),
+	)
 
-	if err := c.db.DeleteSubscription(payload.SubscriptionID, ""); err != nil {
-		baseLogger.Warn("Failed to delete subscription from subscription.deleted event",
+	if err := resourceService.DeleteSubscription(payload.SubscriptionID, deletedEvent.CorrelationID, logger); err != nil {
+		logger.Warn("Failed to delete subscription from subscription.deleted event",
 			slog.Any("error", err))
 		return
 	}
-	c.refreshSubscriptionSnapshot()
 }
 
 // handleSubscriptionPlanCreatedEvent processes subscriptionPlan.created events.
@@ -2970,6 +2999,11 @@ func (c *Client) handleSubscriptionPlanCreatedEvent(event map[string]interface{}
 	baseLogger := c.logger
 	if c.db == nil {
 		baseLogger.Warn("Storage not configured; skipping subscriptionPlan.created persistence")
+		return
+	}
+	resourceService := c.getSubscriptionResourceService()
+	if resourceService == nil {
+		baseLogger.Warn("Subscription resource service not available; skipping subscriptionPlan.created persistence")
 		return
 	}
 
@@ -2983,6 +3017,10 @@ func (c *Client) handleSubscriptionPlanCreatedEvent(event map[string]interface{}
 		baseLogger.Error("subscriptionPlan.created event missing required fields", slog.Any("payload", payload))
 		return
 	}
+	logger := baseLogger.With(
+		slog.String("correlation_id", created.CorrelationID),
+		slog.String("plan_id", payload.PlanId),
+	)
 
 	var billingPlan, throttleLimitUnit *string
 	if payload.BillingPlan != "" {
@@ -3002,22 +3040,11 @@ func (c *Client) handleSubscriptionPlanCreatedEvent(event map[string]interface{}
 		Status:             models.SubscriptionPlanStatus(payload.Status),
 	}
 
-	if err := c.db.SaveSubscriptionPlan(plan); err != nil {
-		if storage.IsConflictError(err) {
-			if err := c.db.UpdateSubscriptionPlan(plan); err != nil {
-				baseLogger.Error("Failed to update existing subscription plan from subscriptionPlan.created event (conflict)",
-					slog.String("planId", plan.ID), slog.Any("error", err))
-				return
-			}
-			baseLogger.Debug("Subscription plan already existed; updated from subscriptionPlan.created event",
-				slog.String("planId", plan.ID))
-		} else {
-			baseLogger.Error("Failed to persist subscription plan from subscriptionPlan.created event",
-				slog.Any("error", err))
-			return
-		}
+	if err := resourceService.UpsertSubscriptionPlan(plan, "CREATE", created.CorrelationID, logger); err != nil {
+		logger.Error("Failed to persist subscription plan from subscriptionPlan.created event",
+			slog.Any("error", err))
+		return
 	}
-	c.refreshSubscriptionSnapshot()
 }
 
 // handleSubscriptionPlanUpdatedEvent processes subscriptionPlan.updated events.
@@ -3025,6 +3052,11 @@ func (c *Client) handleSubscriptionPlanUpdatedEvent(event map[string]interface{}
 	baseLogger := c.logger
 	if c.db == nil {
 		baseLogger.Warn("Storage not configured; skipping subscriptionPlan.updated persistence")
+		return
+	}
+	resourceService := c.getSubscriptionResourceService()
+	if resourceService == nil {
+		baseLogger.Warn("Subscription resource service not available; skipping subscriptionPlan.updated persistence")
 		return
 	}
 
@@ -3038,15 +3070,19 @@ func (c *Client) handleSubscriptionPlanUpdatedEvent(event map[string]interface{}
 		baseLogger.Error("subscriptionPlan.updated event missing planId")
 		return
 	}
+	logger := baseLogger.With(
+		slog.String("correlation_id", updated.CorrelationID),
+		slog.String("plan_id", payload.PlanId),
+	)
 
 	existing, err := c.db.GetSubscriptionPlanByID(payload.PlanId, "")
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			baseLogger.Debug("Subscription plan not found for update; skipping",
+			logger.Debug("Subscription plan not found for update; skipping",
 				slog.String("planId", payload.PlanId))
 			return
 		}
-		baseLogger.Error("Failed to fetch subscription plan for update", slog.Any("error", err))
+		logger.Error("Failed to fetch subscription plan for update", slog.Any("error", err))
 		return
 	}
 
@@ -3072,12 +3108,11 @@ func (c *Client) handleSubscriptionPlanUpdatedEvent(event map[string]interface{}
 		existing.Status = models.SubscriptionPlanStatus(payload.Status)
 	}
 
-	if err := c.db.UpdateSubscriptionPlan(existing); err != nil {
-		baseLogger.Error("Failed to update subscription plan from subscriptionPlan.updated event",
+	if err := resourceService.UpdateSubscriptionPlan(existing, updated.CorrelationID, logger); err != nil {
+		logger.Error("Failed to update subscription plan from subscriptionPlan.updated event",
 			slog.Any("error", err))
 		return
 	}
-	c.refreshSubscriptionSnapshot()
 }
 
 // handleSubscriptionPlanDeletedEvent processes subscriptionPlan.deleted events.
@@ -3085,6 +3120,11 @@ func (c *Client) handleSubscriptionPlanDeletedEvent(event map[string]interface{}
 	baseLogger := c.logger
 	if c.db == nil {
 		baseLogger.Warn("Storage not configured; skipping subscriptionPlan.deleted persistence")
+		return
+	}
+	resourceService := c.getSubscriptionResourceService()
+	if resourceService == nil {
+		baseLogger.Warn("Subscription resource service not available; skipping subscriptionPlan.deleted persistence")
 		return
 	}
 
@@ -3098,13 +3138,16 @@ func (c *Client) handleSubscriptionPlanDeletedEvent(event map[string]interface{}
 		baseLogger.Error("subscriptionPlan.deleted event missing planId")
 		return
 	}
+	logger := baseLogger.With(
+		slog.String("correlation_id", deleted.CorrelationID),
+		slog.String("plan_id", payload.PlanId),
+	)
 
-	if err := c.db.DeleteSubscriptionPlan(payload.PlanId, ""); err != nil {
-		baseLogger.Warn("Failed to delete subscription plan from subscriptionPlan.deleted event",
+	if err := resourceService.DeleteSubscriptionPlan(payload.PlanId, deleted.CorrelationID, logger); err != nil {
+		logger.Warn("Failed to delete subscription plan from subscriptionPlan.deleted event",
 			slog.Any("error", err))
 		return
 	}
-	c.refreshSubscriptionSnapshot()
 }
 
 // setState updates the connection state

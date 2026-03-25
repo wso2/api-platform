@@ -414,6 +414,7 @@ func main() {
 			configStore,
 			db,
 			snapshotManager,
+			subscriptionSnapshotManager,
 			apiKeyXDSManager,
 			lazyResourceXDSManager,
 			policyManager,
@@ -431,7 +432,7 @@ func main() {
 
 	// Initialize API server with the configured validator and API key manager
 	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, lazyResourceXDSManager, log, cpClient,
-		policyDefinitions, templateDefinitions, validator, apiKeyXDSManager, cfg, eventHubInstance)
+		policyDefinitions, templateDefinitions, validator, apiKeyXDSManager, cfg, eventHubInstance, subscriptionSnapshotManager)
 
 	// Ensure initial lazy resource snapshot includes default templates loaded from files.
 	// At this point, the API server initialization has already persisted/published OOB templates.

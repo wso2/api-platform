@@ -772,6 +772,7 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 	// Initialize API key service (needed for API key operations)
 	apiKeyService := utils.NewAPIKeyService(store, db, nil, &server.systemConfig.APIKey)
 	server.apiKeyService = apiKeyService
+	server.subscriptionResourceService = utils.NewSubscriptionResourceService(db, nil)
 
 	// Initialize RestAPI service and handler
 	restAPIService := restapi.NewRestAPIService(
@@ -993,6 +994,9 @@ func attachTestEventHub(server *APIServer, hub eventhub.EventHub, gatewayID stri
 	}
 	if server.mcpDeploymentService != nil {
 		server.mcpDeploymentService.SetEventHub(hub, gatewayID)
+	}
+	if server.subscriptionResourceService != nil {
+		server.subscriptionResourceService.SetEventHub(hub, gatewayID)
 	}
 }
 
@@ -2859,6 +2863,84 @@ func TestDeleteLLMProxyWithDBAndEventHub(t *testing.T) {
 // Note: This test requires full deployment service setup
 func TestDeleteLLMProxyInternalError(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
+}
+
+func TestCreateSubscriptionWithDBAndEventHub(t *testing.T) {
+	server := createTestAPIServer()
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	cfg := seedAPIForAPIKeyHandlerTests(t, server, "subscription-api")
+	body, err := json.Marshal(api.SubscriptionCreateRequest{
+		ApiId:             cfg.UUID,
+		SubscriptionToken: "subscription-token-123",
+	})
+	require.NoError(t, err)
+
+	c, w := createTestContextWithHeader("POST", "/subscriptions", body, map[string]string{
+		"Content-Type": "application/json",
+	})
+	c.Set(middleware.CorrelationIDKey, "corr-id-create-subscription")
+
+	server.CreateSubscription(c)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+
+	var response api.SubscriptionResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.NotNil(t, response.Id)
+	require.NotNil(t, response.SubscriptionToken)
+	assert.Equal(t, "subscription-token-123", *response.SubscriptionToken)
+
+	storedSub, err := server.db.GetSubscriptionByID(*response.Id, "")
+	require.NoError(t, err)
+	assert.Equal(t, cfg.UUID, storedSub.APIID)
+
+	require.Len(t, mockHub.publishedEvents, 1)
+	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
+	assert.Equal(t, eventhub.EventTypeSubscription, mockHub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "CREATE", mockHub.publishedEvents[0].event.Action)
+	assert.Equal(t, *response.Id, mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-id-create-subscription", mockHub.publishedEvents[0].event.EventID)
+	assert.Equal(t, eventhub.EmptyEventData, mockHub.publishedEvents[0].event.EventData)
+}
+
+func TestCreateSubscriptionPlanWithDBAndEventHub(t *testing.T) {
+	server := createTestAPIServer()
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	body, err := json.Marshal(api.SubscriptionPlanCreateRequest{
+		PlanName: "Gold",
+	})
+	require.NoError(t, err)
+
+	c, w := createTestContextWithHeader("POST", "/subscription-plans", body, map[string]string{
+		"Content-Type": "application/json",
+	})
+	c.Set(middleware.CorrelationIDKey, "corr-id-create-plan")
+
+	server.CreateSubscriptionPlan(c)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+
+	var response api.SubscriptionPlanResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	require.NotNil(t, response.Id)
+	assert.NotNil(t, response.PlanName)
+	assert.Equal(t, "Gold", *response.PlanName)
+
+	storedPlan, err := server.db.GetSubscriptionPlanByID(*response.Id, "")
+	require.NoError(t, err)
+	assert.Equal(t, "Gold", storedPlan.PlanName)
+
+	require.Len(t, mockHub.publishedEvents, 1)
+	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
+	assert.Equal(t, eventhub.EventTypeSubscriptionPlan, mockHub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "CREATE", mockHub.publishedEvents[0].event.Action)
+	assert.Equal(t, *response.Id, mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-id-create-plan", mockHub.publishedEvents[0].event.EventID)
+	assert.Equal(t, eventhub.EmptyEventData, mockHub.publishedEvents[0].event.EventData)
 }
 
 // TestMCPProxyKindMismatch tests GetMCPProxyById with wrong kind
