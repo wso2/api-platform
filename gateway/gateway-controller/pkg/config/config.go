@@ -446,6 +446,8 @@ func LoadConfig(configPath string) (*Config, error) {
 			return "controller.controlplane.insecure_skip_verify"
 		case "controller_controlplane_deployment_push_enabled":
 			return "controller.controlplane.deployment_push_enabled"
+		case "controller_controlplane_sync_batch_size":
+			return "controller.controlplane.sync_batch_size"
 		default:
 			// For other env vars, use standard mapping (underscore to dot)
 			// Step 1: Convert double underscore "__" into a temporary placeholder
