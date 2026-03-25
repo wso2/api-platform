@@ -32,8 +32,11 @@ import (
 )
 
 const (
-	anonymous         = "anonymous"
-	userIDPropertyKey = "x-wso2-user-id"
+	anonymous          = "anonymous"
+	userIDPropertyKey  = "x-wso2-user-id"
+	llmCostPropertyKey = "llmCost"
+	guardrailHitKey    = "isGuardrailHit"
+	guardrailNameKey   = "guardrailName"
 )
 
 // Moesif represents a Moesif publisher.
@@ -272,6 +275,29 @@ func (m *Moesif) Publish(event *dto.Event) {
 	// commonName
 	if commonName, ok := event.Properties["commonName"]; ok && commonName != nil {
 		metadataMap["commonName"] = commonName
+	}
+
+	// llm cost
+	if llmCost, ok := event.Properties[llmCostPropertyKey]; ok && llmCost != nil {
+		metadataMap[llmCostPropertyKey] = llmCost
+	}
+
+	// guardrail metadata
+	if isGuardrailHit, ok := event.Properties[guardrailHitKey]; ok && isGuardrailHit != nil {
+		metadataMap[guardrailHitKey] = isGuardrailHit
+	}
+	if guardrailName, ok := event.Properties[guardrailNameKey]; ok && guardrailName != nil {
+		metadataMap[guardrailNameKey] = guardrailName
+	}
+
+	// application metadata
+	if event.Application != nil {
+		if event.Application.ApplicationID != "" {
+			metadataMap["applicationId"] = event.Application.ApplicationID
+		}
+		if event.Application.ApplicationName != "" {
+			metadataMap["applicationName"] = event.Application.ApplicationName
+		}
 	}
 
 	// isEgress

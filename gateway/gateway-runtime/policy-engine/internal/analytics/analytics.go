@@ -77,9 +77,17 @@ const (
 	AIProviderNameMetadataKey string = "ai:providername"
 	// AIProviderAPIVersionMetadataKey represents the AI provider API version metadata key.
 	AIProviderAPIVersionMetadataKey string = "ai:providerversion"
+	// LLMCostMetadataKey represents the LLM cost metadata key.
+	LLMCostMetadataKey string = "x-llm-cost"
+	// LLMCostPropertyKey represents the analytics property key for LLM cost.
+	LLMCostPropertyKey string = "llmCost"
 
 	// UserIDMetadataKey represents the user ID metadata key for analytics.
 	UserIDMetadataKey string = "x-wso2-user-id"
+	// GuardrailHitMetadataKey indicates whether a guardrail intervened.
+	GuardrailHitMetadataKey string = "isGuardrailHit"
+	// GuardrailNameMetadataKey identifies the guardrail that intervened.
+	GuardrailNameMetadataKey string = "guardrailName"
 )
 
 // Analytics represents analytics collector service.
@@ -153,6 +161,7 @@ func (c *Analytics) GetFaultType() FaultCategory {
 
 func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.Event {
 	keyValuePairsFromMetadata := make(map[string]string)
+	typedValuePairsFromMetadata := make(map[string]interface{})
 	slog.Debug("Log entry: ", "logEntry", logEntry)
 	if logEntry.CommonProperties != nil && logEntry.CommonProperties.Metadata != nil && logEntry.CommonProperties.Metadata.FilterMetadata != nil {
 		slog.Debug("Proceeding to filtering metadata")
@@ -166,13 +175,25 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 							if analyticsStruct := value.GetStructValue(); analyticsStruct != nil {
 								for analyticsKey, analyticsValue := range analyticsStruct.Fields {
 									if analyticsValue != nil {
-										keyValuePairsFromMetadata[analyticsKey] = analyticsValue.GetStringValue()
+										metadataValue := analyticsValue.AsInterface()
+										typedValuePairsFromMetadata[analyticsKey] = metadataValue
+										if stringValue, ok := metadataValue.(string); ok {
+											keyValuePairsFromMetadata[analyticsKey] = stringValue
+										} else {
+											keyValuePairsFromMetadata[analyticsKey] = fmt.Sprintf("%v", metadataValue)
+										}
 									}
 								}
 							}
 						} else {
 							// Handle regular string values
-							keyValuePairsFromMetadata[key] = value.GetStringValue()
+							metadataValue := value.AsInterface()
+							typedValuePairsFromMetadata[key] = metadataValue
+							if stringValue, ok := metadataValue.(string); ok {
+								keyValuePairsFromMetadata[key] = stringValue
+							} else {
+								keyValuePairsFromMetadata[key] = fmt.Sprintf("%v", metadataValue)
+							}
 						}
 					}
 				}
@@ -218,16 +239,21 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		target.ResponseCodeDetail = logEntry.GetResponse().GetResponseCodeDetails()
 	}
 
+	slog.Warn("Analytics: Before else block")
+
 	// Prepare Application
 	application := &dto.Application{}
 	if keyValuePairsFromMetadata[AppIDKey] == Unknown {
 		application = c.getAnonymousApp()
 	} else {
+		slog.Warn("Analytics: Event set entered else block")
 		application.ApplicationID = keyValuePairsFromMetadata[AppIDKey]
 		application.KeyType = keyValuePairsFromMetadata[AppKeyTypeKey]
 		application.ApplicationName = keyValuePairsFromMetadata[AppNameKey]
 		application.ApplicationOwner = keyValuePairsFromMetadata[AppOwnerKey]
 	}
+
+	slog.Warn("Analytics: Outside else block", "applicationID", application.ApplicationID, "applicationName", application.ApplicationName)
 
 	properties := logEntry.GetCommonProperties()
 	if properties != nil && properties.TimeToLastRxByte != nil &&
@@ -300,6 +326,37 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		event.Properties[UserIDMetadataKey] = userID
 		slog.Debug("Analytics: User ID set from metadata", "userID", userID)
 	}
+
+	// Forward guardrail metadata when available in analytics_data.
+	if guardrailHitRaw, exists := typedValuePairsFromMetadata[GuardrailHitMetadataKey]; exists {
+		switch guardrailHit := guardrailHitRaw.(type) {
+		case bool:
+			event.Properties[GuardrailHitMetadataKey] = guardrailHit
+		case string:
+			if parsed, err := strconv.ParseBool(guardrailHit); err == nil {
+				event.Properties[GuardrailHitMetadataKey] = parsed
+			}
+		}
+	}
+	if guardrailName, exists := keyValuePairsFromMetadata[GuardrailNameMetadataKey]; exists && guardrailName != "" {
+		event.Properties[GuardrailNameMetadataKey] = guardrailName
+	}
+
+	slog.Warn("Analytics: before parsing LLM cost metadata", "metadata", keyValuePairsFromMetadata[LLMCostMetadataKey])
+
+	// Set LLM cost from metadata when available.
+	if rawCost, exists := keyValuePairsFromMetadata[LLMCostMetadataKey]; exists && rawCost != "" {
+
+		slog.Warn("Analytics: inside parsing LLM cost metadata")
+		if llmCost, err := strconv.ParseFloat(rawCost, 64); err == nil {
+			slog.Warn("Analytics: valid parsing LLM cost metadata")
+			event.Properties[LLMCostPropertyKey] = llmCost
+		} else {
+			slog.Warn("Analytics: invalid LLM cost metadata value", "value", rawCost, "error", err)
+			event.Properties[LLMCostPropertyKey] = rawCost
+		}
+	}
+	slog.Warn("Analytics: after parsing LLM cost metadata", "LLMCost", event.Properties[LLMCostPropertyKey])
 
 	// Process AI related metadata only if all the required metadata are present
 	if keyValuePairsFromMetadata[AIProviderNameMetadataKey] != "" ||

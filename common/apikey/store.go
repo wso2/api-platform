@@ -39,6 +39,10 @@ type APIKey struct {
 	APIKey string `json:"apiKey" yaml:"apiKey"`
 	// APIId Unique identifier of the API that the key is associated with
 	APIId string `json:"apiId" yaml:"apiId"`
+	// ApplicationID identifies the mapped application for this API key when available.
+	ApplicationID string `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
+	// ApplicationName is the mapped application name for this API key when available.
+	ApplicationName string `json:"applicationName,omitempty" yaml:"applicationName,omitempty"`
 	// Operations List of API operations the key will have access to
 	Operations string `json:"operations" yaml:"operations"`
 	// Status of the API key
@@ -74,7 +78,6 @@ const (
 	Expired APIKeyStatus = "expired"
 	Revoked APIKeyStatus = "revoked"
 )
-
 
 // Common storage errors - implementation agnostic
 var (
@@ -169,58 +172,80 @@ func (aks *APIkeyStore) StoreAPIKey(apiId string, apiKey *APIKey) error {
 	return nil
 }
 
-// ValidateAPIKey validates the provided API key against the internal APIkey store.
-// Supports both local and external keys using unified hash-based lookup.
+// ResolveValidatedAPIKey validates the provided API key and returns the matched API key object.
+// It returns (nil, nil) when a key is found but does not satisfy validation constraints.
 // issuer, when non-empty, restricts validation to keys from a specific portal.
-func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, providedAPIKey string, issuer ...string) (bool, error) {
+func (aks *APIkeyStore) ResolveValidatedAPIKey(apiId, apiOperation, operationMethod, providedAPIKey string, issuer ...string) (*APIKey, error) {
 	aks.mu.RLock()
 	defer aks.mu.RUnlock()
 
-	// Normalize the provided API key
+	// Normalize the provided API key.
 	providedAPIKey = strings.TrimSpace(providedAPIKey)
 	if providedAPIKey == "" {
-		return false, fmt.Errorf("API key is empty")
+		return nil, fmt.Errorf("API key is empty")
 	}
 
-	// Compute hash for lookup (hash the full API key value as-is)
+	// Compute hash for lookup (hash the full API key value as-is).
 	hash := ComputeAPIKeyHash(providedAPIKey)
 	if hash == "" {
-		return false, fmt.Errorf("failed to compute API key hash")
+		return nil, fmt.Errorf("failed to compute API key hash")
 	}
 
-	// Single unified O(1) lookup by hash
+	// Single unified O(1) lookup by hash.
 	targetAPIKey, exists := aks.apiKeysByAPI[apiId][hash]
 	if !exists {
-		return false, ErrNotFound
+		return nil, ErrNotFound
 	}
 
-	// Check if the API key belongs to the specified API
+	// Check if the API key belongs to the specified API.
 	if targetAPIKey.APIId != apiId {
-		return false, nil
+		return nil, nil
 	}
 
-	// issuer check: only enforce when issuer is provided and non-empty
+	// issuer check: only enforce when issuer is provided and non-empty.
 	if len(issuer) > 0 && issuer[0] != "" {
 		if targetAPIKey.Issuer == nil || *targetAPIKey.Issuer != issuer[0] {
-			return false, nil
+			return nil, nil
 		}
 	}
 
-	// Check if the API key is active
+	// Check if the API key is active.
 	if targetAPIKey.Status != Active {
-		return false, nil
+		return nil, nil
 	}
 
-	// Check if the API key has expired
+	// Check if the API key has expired.
 	if targetAPIKey.Status == Expired || (targetAPIKey.ExpiresAt != nil && time.Now().After(*targetAPIKey.ExpiresAt)) {
-		targetAPIKey.Status = Expired
-		return false, nil
+		return nil, nil
 	}
 
-    // TODO: Currently, API key creation happens only per API, not per operation, since it was decided to remove the operations field from API keys. 
-	// Therefore, this implementation should include some kind of mapping so that when a policy is attached to a resource, this method  
+	// TODO: Currently, API key creation happens only per API, not per operation, since it was decided to remove the operations field from API keys.
+	// Therefore, this implementation should include some kind of mapping so that when a policy is attached to a resource, this method
 	// can look up that mapping and perform the validation.
-	return true, nil
+	return targetAPIKey, nil
+}
+
+// GetAPIKeyByID retrieves an API key by API ID and key ID.
+func (aks *APIkeyStore) GetAPIKeyByID(apiId, keyID string) (*APIKey, error) {
+	aks.mu.RLock()
+	defer aks.mu.RUnlock()
+
+	if keyID == "" {
+		return nil, ErrNotFound
+	}
+
+	apiKeysByHash, ok := aks.apiKeysByAPI[apiId]
+	if !ok {
+		return nil, ErrNotFound
+	}
+
+	for _, apiKey := range apiKeysByHash {
+		if apiKey != nil && apiKey.ID == keyID {
+			return apiKey, nil
+		}
+	}
+
+	return nil, ErrNotFound
 }
 
 // RevokeAPIKey revokes a specific API key by plain text API key value
@@ -277,7 +302,6 @@ func (aks *APIkeyStore) ClearAll() error {
 
 	return nil
 }
-
 
 // ComputeAPIKeyHash computes a SHA-256 hash of the plain-text API key for storage and lookup
 // Returns the hash as hex-encoded string (64 characters)

@@ -62,6 +62,30 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 	// Check for short-circuit with immediate response
 	if result.ShortCircuited && result.FinalAction != nil {
 		if immResp, ok := result.FinalAction.(policy.ImmediateResponse); ok {
+			// Preserve request-phase analytics metadata from policies executed before
+			// the short-circuit action so immediate responses still include it.
+			shortCircuitAnalyticsData := make(map[string]any)
+			for key, value := range execCtx.analyticsMetadata {
+				shortCircuitAnalyticsData[key] = value
+			}
+			for _, policyResult := range result.Results {
+				if policyResult.Skipped || policyResult.Action == nil {
+					continue
+				}
+				mods, ok := policyResult.Action.(policy.UpstreamRequestModifications)
+				if !ok || mods.AnalyticsMetadata == nil {
+					continue
+				}
+				for key, value := range mods.AnalyticsMetadata {
+					shortCircuitAnalyticsData[key] = value
+				}
+			}
+			if immResp.AnalyticsMetadata != nil {
+				for key, value := range immResp.AnalyticsMetadata {
+					shortCircuitAnalyticsData[key] = value
+				}
+			}
+
 			response := &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 					ImmediateResponse: &extprocv3.ImmediateResponse{
@@ -75,7 +99,7 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 			}
 
 			// Handle analytics metadata for immediate response
-			analyticsStruct, err := buildAnalyticsStruct(immResp.AnalyticsMetadata, execCtx)
+			analyticsStruct, err := buildAnalyticsStruct(shortCircuitAnalyticsData, execCtx)
 			if err != nil {
 				return nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to build analytics metadata for immediate response: %w", err)
 			}
@@ -119,7 +143,6 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 				for _, key := range mods.RemoveHeaders {
 					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "remove", value: ""})
 				}
-
 
 				// Handle body modifications (last one wins)
 				if mods.Body != nil {
@@ -439,7 +462,6 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 				for _, key := range mods.RemoveHeaders {
 					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "remove", value: ""})
 				}
-
 
 				// Handle body modifications (last one wins)
 				if mods.Body != nil {

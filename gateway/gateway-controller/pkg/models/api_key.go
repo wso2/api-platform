@@ -33,17 +33,19 @@ const (
 
 // APIKey represents an API key for an API
 type APIKey struct {
-	UUID         string       `json:"uuid" db:"uuid"`
-	Name         string       `json:"name" db:"name"`                   // URL-safe identifier (auto-generated, immutable)
-	APIKey       string       `json:"apiKey" db:"api_key"`              // Stores hashed API key
-	MaskedAPIKey string       `json:"maskedApiKey" db:"masked_api_key"` // Stores masked API key for display
-	PlainAPIKey  string       `json:"-" db:"-"`                         // Temporary field for plain API key (not persisted)
-	ArtifactUUID string       `json:"artifactUuid" db:"artifact_uuid"`
-	Status       APIKeyStatus `json:"status" db:"status"`
-	CreatedAt    time.Time    `json:"createdAt" db:"created_at"`
-	CreatedBy    string       `json:"createdBy" db:"created_by"`
-	UpdatedAt    time.Time    `json:"updatedAt" db:"updated_at"`
-	ExpiresAt    *time.Time   `json:"expiresAt" db:"expires_at"`
+	UUID            string       `json:"uuid" db:"uuid"`
+	Name            string       `json:"name" db:"name"`                   // URL-safe identifier (auto-generated, immutable)
+	APIKey          string       `json:"apiKey" db:"api_key"`              // Stores hashed API key
+	MaskedAPIKey    string       `json:"maskedApiKey" db:"masked_api_key"` // Stores masked API key for display
+	PlainAPIKey     string       `json:"-" db:"-"`                         // Temporary field for plain API key (not persisted)
+	ArtifactUUID    string       `json:"artifactUuid" db:"artifact_uuid"`
+	ApplicationID   string       `json:"applicationId,omitempty" db:"application_id"`
+	ApplicationName string       `json:"applicationName,omitempty" db:"application_name"`
+	Status          APIKeyStatus `json:"status" db:"status"`
+	CreatedAt       time.Time    `json:"createdAt" db:"created_at"`
+	CreatedBy       string       `json:"createdBy" db:"created_by"`
+	UpdatedAt       time.Time    `json:"updatedAt" db:"updated_at"`
+	ExpiresAt       *time.Time   `json:"expiresAt" db:"expires_at"`
 
 	// Source tracking for external key support
 	Source        string  `json:"source" db:"source"`                 // "local" | "external"

@@ -318,6 +318,51 @@ func TestPublish_WithPayloads(t *testing.T) {
 	assert.Equal(t, `{"result": "success"}`, metadata["response_payload"])
 }
 
+func TestPublish_WithLLMCost(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.Properties["llmCost"] = 0.00004231
+
+	moesif.Publish(event)
+
+	assert.Len(t, moesif.events, 1)
+	metadata := getMetadata(moesif.events[0])
+	assert.Equal(t, 0.00004231, metadata["llmCost"])
+}
+
+func TestPublish_WithGuardrailMetadata(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.Properties["isGuardrailHit"] = true
+	event.Properties["guardrailName"] = "word-count-guardrail"
+
+	moesif.Publish(event)
+
+	assert.Len(t, moesif.events, 1)
+	metadata := getMetadata(moesif.events[0])
+	assert.Equal(t, true, metadata["isGuardrailHit"])
+	assert.Equal(t, "word-count-guardrail", metadata["guardrailName"])
+}
+
+func TestPublish_WithApplicationMetadata(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	event.Application = &dto.Application{
+		ApplicationID:   "app-123",
+		ApplicationName: "gold-plan-app",
+	}
+
+	moesif.Publish(event)
+
+	assert.Len(t, moesif.events, 1)
+	metadata := getMetadata(moesif.events[0])
+	assert.Equal(t, "app-123", metadata["applicationId"])
+	assert.Equal(t, "gold-plan-app", metadata["applicationName"])
+}
+
 func TestPublish_WithUserID(t *testing.T) {
 	moesif := createTestMoesifWithoutAPI()
 

@@ -3339,6 +3339,37 @@ func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
 		return
 	}
 
+	if c.apiKeyXDSManager != nil {
+		apiKeys, err := c.db.GetAllAPIKeys()
+		if err != nil {
+			logger.Error("Failed to load API keys for xDS refresh after application mapping update", slog.Any("error", err))
+		} else {
+			for _, apiKey := range apiKeys {
+				if apiKey == nil {
+					continue
+				}
+
+				cfg, cfgErr := c.db.GetConfig(apiKey.ArtifactUUID)
+				if cfgErr != nil {
+					logger.Warn("Skipping API key xDS refresh due to missing API config",
+						slog.String("api_key_uuid", apiKey.UUID),
+						slog.String("artifact_uuid", apiKey.ArtifactUUID),
+						slog.Any("error", cfgErr),
+					)
+					continue
+				}
+
+				if err := c.apiKeyXDSManager.StoreAPIKey(apiKey.ArtifactUUID, cfg.DisplayName, cfg.Version, apiKey, evt.CorrelationID); err != nil {
+					logger.Error("Failed to refresh API key xDS state after application mapping update",
+						slog.String("api_key_uuid", apiKey.UUID),
+						slog.String("artifact_uuid", apiKey.ArtifactUUID),
+						slog.Any("error", err),
+					)
+				}
+			}
+		}
+	}
+
 	logger.Info("Successfully processed application updated event", slog.Int("mapping_count", len(resolvedMappings)))
 }
 

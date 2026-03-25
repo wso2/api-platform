@@ -28,6 +28,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
@@ -506,6 +507,62 @@ func TestTranslateRequestActionsCore_ShortCircuit(t *testing.T) {
 	immediate := immResp.GetImmediateResponse()
 	require.NotNil(t, immediate)
 	assert.Equal(t, uint32(403), uint32(immediate.Status.Code))
+}
+
+func TestTranslateRequestActionsCore_ShortCircuit_PreservesPriorRequestAnalyticsMetadata(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+
+	chain := &registry.PolicyChain{}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.requestContext = &policy.RequestContext{
+		Path: "/api/test",
+		SharedContext: &policy.SharedContext{
+			APIId: "api-1",
+		},
+	}
+
+	result := &executor.RequestExecutionResult{
+		ShortCircuited: true,
+		Results: []executor.RequestPolicyResult{
+			{
+				Skipped: false,
+				Action: policy.UpstreamRequestModifications{
+					AnalyticsMetadata: map[string]any{
+						"x-wso2-application-id":   "app-1",
+						"x-wso2-application-name": "app-one",
+						"source":                  "request-policy",
+					},
+				},
+			},
+		},
+		FinalAction: policy.ImmediateResponse{
+			StatusCode: 403,
+			Headers: map[string]string{
+				"content-type": "application/json",
+			},
+			Body: []byte(`{"error":"forbidden"}`),
+			AnalyticsMetadata: map[string]any{
+				"source": "immediate-response",
+			},
+		},
+	}
+
+	_, _, _, _, _, _, immResp, err := translateRequestActionsCore(result, execCtx)
+
+	assert.NoError(t, err)
+	require.NotNil(t, immResp)
+
+	extProcNamespace := immResp.DynamicMetadata.GetFields()[constants.ExtProcFilterName].GetStructValue()
+	require.NotNil(t, extProcNamespace)
+
+	analyticsData := extProcNamespace.GetFields()["analytics_data"].GetStructValue()
+	require.NotNil(t, analyticsData)
+
+	assert.Equal(t, "app-1", analyticsData.GetFields()["x-wso2-application-id"].GetStringValue())
+	assert.Equal(t, "app-one", analyticsData.GetFields()["x-wso2-application-name"].GetStringValue())
+	assert.Equal(t, "immediate-response", analyticsData.GetFields()["source"].GetStringValue())
 }
 
 func TestTranslateRequestActionsCore_SkippedPolicy(t *testing.T) {
