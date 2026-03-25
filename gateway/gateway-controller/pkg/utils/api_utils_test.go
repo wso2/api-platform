@@ -516,7 +516,7 @@ func TestAPIUtilsService_BatchFetchDeployments(t *testing.T) {
 			assert.Equal(t, "/deployments/fetch-batch", r.URL.Path)
 			assert.Equal(t, "test-token", r.Header.Get("api-key"))
 			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
-			assert.Equal(t, "application/gzip", r.Header.Get("Accept"))
+			assert.Equal(t, "application/x-tar+gzip", r.Header.Get("Accept"))
 
 			// Verify request body
 			body, err := io.ReadAll(r.Body)
