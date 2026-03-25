@@ -274,8 +274,7 @@ func (c *Client) processSyncFetchBatch(batch []models.ControlPlaneDeployment, ga
 			_, err = c.apiUtilsService.CreateLLMProxyFromYAML(yamlData, dep.ArtifactID,
 				dep.DeploymentID, &deployedAt, correlationID, c.llmDeploymentService)
 
-		default:
-			// REST API (and other kinds like WebSub)
+		case models.KindRestApi:
 			_, err = c.apiUtilsService.CreateAPIFromYAML(yamlData, dep.ArtifactID,
 				dep.DeploymentID, &deployedAt, correlationID, c.deploymentService)
 		}

@@ -455,7 +455,7 @@ func (s *GatewayInternalAPIService) GetDeploymentsByGateway(orgID, gatewayID str
 	items := make([]dto.GatewayDeploymentInfo, len(deployments))
 	for i, dep := range deployments {
 		items[i] = dto.GatewayDeploymentInfo{
-			ArtifactID:   dep.Handle,
+			ArtifactID:   dep.ArtifactID,
 			DeploymentID: dep.DeploymentID,
 			Kind:         dep.Kind,
 			State:        string(dep.Status),
