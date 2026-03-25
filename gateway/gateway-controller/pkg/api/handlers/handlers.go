@@ -1293,7 +1293,7 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Deploy MCP configuration using the utility service
-	cfg, err := s.mcpDeploymentService.CreateMCPProxy(utils.MCPDeploymentParams{
+	result, err := s.mcpDeploymentService.CreateMCPProxy(utils.MCPDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
 		ID:            "", // Empty to generate new UUID
@@ -1318,6 +1318,8 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 		return
 	}
 
+	cfg := result.StoredConfig
+
 	// Return success response (id is the handle)
 	c.JSON(http.StatusCreated, api.MCPProxyCreateResponse{
 		Status:    stringPtr("success"),
@@ -1325,6 +1327,10 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 		Id:        stringPtr(cfg.Handle),
 		CreatedAt: timePtr(cfg.CreatedAt),
 	})
+
+	if result.IsStale {
+		return
+	}
 
 	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
 		go s.waitForDeploymentAndPush(cfg.UUID, correlationID, log)

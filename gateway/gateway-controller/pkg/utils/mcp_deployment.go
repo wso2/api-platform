@@ -40,6 +40,7 @@ const (
 )
 
 var ErrMCPDeploymentIDMismatch = errors.New("mcp proxy deployment id mismatch")
+var ErrMCPUndeployStale = errors.New("mcp proxy undeploy skipped: newer version exists")
 
 type MCPDeploymentParams struct {
 	Data          []byte        // Raw configuration data (YAML/JSON)
@@ -193,9 +194,6 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 		return nil, fmt.Errorf("invalid or missing origin: %q", params.Origin)
 	}
 
-	var existingConfig *models.StoredConfig
-	var isUpdate bool
-
 	mcpConfig, apiConfig, err := s.parseValidateAndTransform(params)
 	if err != nil {
 		return nil, err
@@ -217,9 +215,6 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 		return nil, err
 	}
 
-	existingConfig, _ = s.getMCPProxyByID(apiID)
-	isUpdate = existingConfig != nil
-
 	existingConfigs := s.store.GetAllByKind(string(api.Mcp))
 	if s.db != nil {
 		if storedConfigs, err := s.db.GetAllConfigsByKind(string(api.Mcp)); err == nil {
@@ -235,6 +230,13 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 		}
 		if handle != "" && cfg.Handle == handle {
 			return nil, fmt.Errorf("%w: configuration with handle '%s' already exists", storage.ErrConflict, handle)
+		}
+	}
+
+	isUpdate := false
+	if params.ID != "" {
+		if existing, err := s.db.GetConfig(params.ID); err == nil && existing != nil {
+			isUpdate = true
 		}
 	}
 
@@ -260,10 +262,21 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 		DeployedAt:          deployedAt,
 	}
 
-	// Try to save/update the configuration
-	isUpdate, err = s.saveOrUpdateConfig(storedCfg, params.Logger)
+	// Save or update using timestamp-guarded upsert.
+	// affected=true means the DB row was actually inserted or updated.
+	// affected=false means a newer version already exists (stale event — no-op).
+	affected, err := s.saveOrUpdateConfig(storedCfg, params.Logger)
 	if err != nil {
 		return nil, err
+	}
+
+	if !affected {
+		// Stale event — DB was not modified. Return success but skip event publishing and xDS update.
+		return &APIDeploymentResult{
+			StoredConfig: storedCfg,
+			IsUpdate:     isUpdate,
+			IsStale:      true,
+		}, nil
 	}
 
 	// Log success
@@ -308,108 +321,58 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 	}, nil
 }
 
-// saveOrUpdateConfig handles the atomic dual-write operation for saving/updating configuration
+// saveOrUpdateConfig handles the atomic save/update operation using timestamp-guarded
+// upsert. Returns (affected, error) where affected=true means the DB row was actually
+// inserted or updated. Callers should only publish EventHub events and update xDS
+// snapshots when affected=true.
 func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig, logger *slog.Logger) (bool, error) {
-	var existing *models.StoredConfig
 	if s.db != nil {
-		existing, _ = s.db.GetConfig(storedCfg.UUID)
-	} else {
-		existing, _ = s.store.Get(storedCfg.UUID)
-	}
-
-	if existing != nil {
-		logger.Info("MCP configuration already exists, updating",
-			slog.String("id", storedCfg.UUID),
-			slog.String("displayName", storedCfg.DisplayName),
-			slog.String("version", storedCfg.Version))
-		return s.updateExistingConfigWithExisting(storedCfg, existing, logger)
-	}
-
-	// Try to save to database first (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.SaveConfig(storedCfg); err != nil {
-			return false, fmt.Errorf("failed to save config to database: %w", err)
+		affected, err := s.db.UpsertConfig(storedCfg)
+		if err != nil {
+			return false, fmt.Errorf("failed to upsert config to database: %w", err)
 		}
+		if !affected {
+			logger.Debug("Skipped stale MCP configuration (newer version exists in DB)",
+				slog.String("api_id", storedCfg.UUID),
+				slog.String("displayName", storedCfg.DisplayName),
+				slog.String("version", storedCfg.Version))
+			return false, nil
+		}
+
+		// In event-driven mode, the EventListener will update the in-memory store
+		// via event processing. Only update the store inline for non-event-driven mode.
+		if !s.isEventDriven() {
+			if existing, _ := s.store.Get(storedCfg.UUID); existing != nil {
+				storedCfg.CreatedAt = existing.CreatedAt
+				if err := s.store.Update(storedCfg); err != nil {
+					logger.Warn("Failed to update config in memory store after DB upsert",
+						slog.String("api_id", storedCfg.UUID),
+						slog.Any("error", err))
+				}
+			} else {
+				if err := s.store.Add(storedCfg); err != nil {
+					logger.Warn("Failed to add config to memory store after DB upsert",
+						slog.String("api_id", storedCfg.UUID),
+						slog.Any("error", err))
+				}
+			}
+		}
+
+		return true, nil
 	}
 
-	if !s.isEventDriven() {
-		// Try to add to in-memory store
+	// Memory-only mode (no database): use in-memory store directly
+	if existing, _ := s.store.Get(storedCfg.UUID); existing != nil {
+		storedCfg.CreatedAt = existing.CreatedAt
+		if err := s.store.Update(storedCfg); err != nil {
+			return false, fmt.Errorf("failed to update config in memory store: %w", err)
+		}
+	} else {
 		if err := s.store.Add(storedCfg); err != nil {
-			// Rollback database write (only if persistent mode)
-			if s.db != nil {
-				_ = s.db.DeleteConfig(storedCfg.UUID)
-			}
 			return false, fmt.Errorf("failed to add config to memory store: %w", err)
 		}
 	}
-
-	return false, nil // Successfully created new config
-}
-
-// updateExistingConfig updates an existing API configuration
-func (s *MCPDeploymentService) updateExistingConfig(newConfig *models.StoredConfig,
-	logger *slog.Logger) (bool, error) {
-	var existing *models.StoredConfig
-	if s.db != nil {
-		existing, _ = s.db.GetConfig(newConfig.UUID)
-	} else {
-		existing, _ = s.store.Get(newConfig.UUID)
-	}
-	if existing == nil {
-		return false, fmt.Errorf("failed to get existing config: config not found")
-	}
-	return s.updateExistingConfigWithExisting(newConfig, existing, logger)
-}
-
-func (s *MCPDeploymentService) updateExistingConfigWithExisting(newConfig, existing *models.StoredConfig,
-	logger *slog.Logger) (bool, error) {
-	// Get existing config
-	// Backup original state for potential rollback
-	original := *existing
-
-	// Update the existing configuration
-	now := time.Now()
-	updated := *existing
-	updated.Kind = newConfig.Kind
-	updated.Handle = newConfig.Handle
-	updated.DisplayName = newConfig.DisplayName
-	updated.Version = newConfig.Version
-	updated.Configuration = newConfig.Configuration
-	updated.SourceConfiguration = newConfig.SourceConfiguration
-	updated.DesiredState = models.StateDeployed
-	updated.DeploymentID = newConfig.DeploymentID
-	updated.Origin = newConfig.Origin
-	updated.UpdatedAt = now
-	updated.DeployedAt = newConfig.DeployedAt
-
-	// Update database first (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.UpdateConfig(&updated); err != nil {
-			return false, fmt.Errorf("failed to update config in database: %w", err)
-		}
-	}
-
-	if !s.isEventDriven() {
-		// Update in-memory store
-		if err := s.store.Update(&updated); err != nil {
-			// Rollback DB to original state since memory update failed
-			if s.db != nil {
-				if rbErr := s.db.UpdateConfig(&original); rbErr != nil {
-					logger.Error("Failed to rollback DB after memory update failure",
-						slog.Any("error", rbErr),
-						slog.String("id", original.UUID),
-						slog.String("displayName", original.DisplayName),
-						slog.String("version", original.Version))
-				}
-			}
-			return false, fmt.Errorf("failed to update config in memory store: %w", err)
-		}
-	}
-
-	// Update the newConfig to reflect the changes
-	*newConfig = updated
-
-	return true, nil // Successfully updated existing config
+	return true, nil
 }
 
 func (s *MCPDeploymentService) parseValidateAndTransform(params MCPDeploymentParams) (*api.MCPProxyConfiguration, *api.RestAPI, error) {
@@ -492,12 +455,8 @@ func (s *MCPDeploymentService) GetMCPProxyByHandle(handle string) (*models.Store
 }
 
 // CreateMCPProxy is a convenience wrapper around DeployMCPConfiguration for creating MCP proxies
-func (s *MCPDeploymentService) CreateMCPProxy(params MCPDeploymentParams) (*models.StoredConfig, error) {
-	res, err := s.DeployMCPConfiguration(params)
-	if err != nil {
-		return nil, err
-	}
-	return res.StoredConfig, nil
+func (s *MCPDeploymentService) CreateMCPProxy(params MCPDeploymentParams) (*APIDeploymentResult, error) {
+	return s.DeployMCPConfiguration(params)
 }
 
 // UpdateMCPProxy updates an existing MCP proxy identified by its handle
@@ -602,9 +561,14 @@ func (s *MCPDeploymentService) UndeployMCPProxy(
 	updated.DeployedAt = &undeployedAt
 	updated.UpdatedAt = time.Now()
 
+	// Timestamp-guarded upsert: only writes if deployed_at is newer than what's in DB.
 	if s.db != nil {
-		if err := s.db.UpdateConfig(&updated); err != nil {
-			return nil, fmt.Errorf("failed to update configuration in database: %w", err)
+		affected, err := s.db.UpsertConfig(&updated)
+		if err != nil {
+			return nil, fmt.Errorf("failed to upsert configuration in database: %w", err)
+		}
+		if !affected {
+			return nil, ErrMCPUndeployStale
 		}
 	}
 

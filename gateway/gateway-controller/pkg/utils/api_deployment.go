@@ -141,7 +141,7 @@ func (s *APIDeploymentService) publishEvent(eventType eventhub.EventType, action
 
 func isReplicaSyncedKind(kind string) bool {
 	switch kind {
-	case models.KindRestApi, models.KindWebSubApi, models.KindLlmProvider, models.KindLlmProxy:
+	case models.KindRestApi, models.KindWebSubApi, models.KindLlmProvider, models.KindLlmProxy, models.KindMcp:
 		return true
 	default:
 		return false

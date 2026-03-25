@@ -2540,6 +2540,17 @@ func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
 		return
 	}
 
+	if result.IsStale {
+		// Stale event — DB was not modified. Do not send ack; in HA mode the
+		// controller that actually processed the event will ack. If all controllers
+		// see stale, platform-API will timeout and handle accordingly.
+		c.logger.Debug("Skipped stale MCP proxy deploy event (newer version exists in DB)",
+			slog.String("proxy_id", proxyID),
+			slog.String("deployment_id", deployedEvent.Payload.DeploymentID),
+		)
+		return
+	}
+
 	// In event-driven mode the EventListener owns local policy convergence.
 	if c.eventHub == nil {
 		if err := c.updatePolicyForDeployment(proxyID, deployedEvent.CorrelationID, result); err != nil {
@@ -2621,6 +2632,13 @@ func (c *Client) handleMCPProxyUndeploymentEvent(event map[string]any) {
 			)
 			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "undeploy", "failed",
 				undeployedEvent.Payload.PerformedAt, "DEPLOYMENT_ID_MISMATCH")
+			return
+		}
+		if errors.Is(err, utils.ErrMCPUndeployStale) {
+			c.logger.Debug("Skipped stale MCP proxy undeploy event (newer version exists in DB)",
+				slog.String("proxy_id", proxyID),
+				slog.String("deployment_id", undeployedEvent.Payload.DeploymentID),
+			)
 			return
 		}
 		c.logger.Error("Failed to undeploy MCP proxy configuration",
