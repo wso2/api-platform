@@ -597,7 +597,7 @@ func (s *APIUtilsService) BatchFetchDeployments(deploymentIDs []string) ([]byte,
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Add("api-key", s.config.Token)
-	req.Header.Add("Accept", "application/gzip")
+	req.Header.Add("Accept", "application/x-tar+gzip")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
