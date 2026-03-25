@@ -1,5 +1,5 @@
 name: url-guardrail
-version: v0.2.1
+version: v0.9.0
 description: |
   Validate URLs in request or response content using JSONPath extraction with DNS-only or HTTP reachability checks.
 

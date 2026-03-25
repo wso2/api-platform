@@ -1,5 +1,5 @@
 name: advanced-ratelimit
-version: v0.3.2
+version: v0.9.0
 description: |
   Applies advanced rate limits using fixed-window (default) or GCRA algorithms with multi-quota controls,
   configurable key and cost extraction, and memory or Redis storage.

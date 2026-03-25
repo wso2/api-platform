@@ -1,5 +1,5 @@
 name: model-weighted-round-robin
-version: v0.2.2
+version: v0.9.0
 description: |
   Distribute requests across models using weighted round-robin so higher-weight models receive proportionally more traffic.
 
