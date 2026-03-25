@@ -123,9 +123,11 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 		mainAutoHostRewrite = false
 	}
 
-	// Determine vhosts to create routes for
-	hasSandbox := apiData.Upstream.Sandbox != nil && apiData.Upstream.Sandbox.Url != nil &&
-		strings.TrimSpace(*apiData.Upstream.Sandbox.Url) != ""
+	// Determine vhosts to create routes for.
+	// Sandbox is active when a sandbox upstream is configured via either url or ref.
+	hasSandbox := apiData.Upstream.Sandbox != nil &&
+		((apiData.Upstream.Sandbox.Url != nil && strings.TrimSpace(*apiData.Upstream.Sandbox.Url) != "") ||
+			(apiData.Upstream.Sandbox.Ref != nil && strings.TrimSpace(*apiData.Upstream.Sandbox.Ref) != ""))
 
 	// Build routes and policy chains for each operation
 	for _, op := range apiData.Operations {
