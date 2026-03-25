@@ -97,42 +97,27 @@ ENTRYPOINT ["/go/bin/dlv", "exec", "/app/controller", \
             "--listen=:2345", "--headless=true", \
             "--api-version=2", "--accept-multiclient", "--"]
 
-# Stage 2: Runtime image (Debian slim for glibc compatibility)
-FROM debian:bookworm-slim AS production
+# Stage 2: Runtime image
+# Distroless keeps the glibc runtime we need for CGO while avoiding a package-managed
+# Debian root filesystem in the final image.
+FROM gcr.io/distroless/cc-debian12:nonroot AS production
 
-# Re-declare ARGs after FROM to use them in this stage
 ARG VERSION=0.0.1-SNAPSHOT
 ARG ENABLE_COVERAGE=false
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    wget
-
 WORKDIR /app
 
-COPY --from=builder /build/controller .
-COPY default-policies /app/default-policies
-COPY lua /app/lua
-COPY default-llm-provider-templates /app/default-llm-provider-templates
+COPY --chown=nonroot:nonroot --from=builder /build/controller .
+COPY --chown=nonroot:nonroot default-policies /app/default-policies
+COPY --chown=nonroot:nonroot lua /app/lua
+COPY --chown=nonroot:nonroot default-llm-provider-templates /app/default-llm-provider-templates
 
-RUN mkdir -p /app/data && \
-    if [ "$ENABLE_COVERAGE" = "true" ]; then mkdir -p /coverage; fi
-
-RUN groupadd -r -g 10001 wso2 && \
-    useradd -r -u 10001 -g wso2 -s /sbin/nologin -c "WSO2 Application User" wso2 && \
-    chown -R wso2:wso2 /app/data && \
-    chmod -R 755 /app/data && \
-    if [ "$ENABLE_COVERAGE" = "true" ]; then \
-        chown -R wso2:wso2 /coverage && \
-        chmod -R 755 /coverage; \
-    fi
+WORKDIR /app/data
+WORKDIR /coverage
+WORKDIR /app
 
 # Set GOCOVERDIR for coverage data collection (only effective when binary is built with -cover)
 ENV GOCOVERDIR=/coverage
-
-USER wso2
 
 EXPOSE 9090 18000
 
