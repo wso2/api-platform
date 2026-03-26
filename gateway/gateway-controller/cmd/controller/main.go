@@ -458,7 +458,7 @@ func main() {
 		db, snapshotManager,
 		validator,
 		&cfg.Router,
-		apiKeyXDSManager,
+		apiKeyXDSManager, apiKeyStore,
 		&cfg.APIKey,
 		policyManager,
 		cfg, policyDefinitions,

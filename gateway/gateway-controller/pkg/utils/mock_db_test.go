@@ -115,6 +115,7 @@ func (m *testMockDB) GetAllLLMProviderTemplates() ([]*models.StoredLLMProviderTe
 }
 
 func (m *testMockDB) SaveAPIKey(key *models.APIKey) error { return nil }
+func (m *testMockDB) UpsertAPIKey(key *models.APIKey) error                       { return nil }
 func (m *testMockDB) GetAPIKeyByID(id string) (*models.APIKey, error) {
 	return nil, storage.ErrNotFound
 }
@@ -131,6 +132,10 @@ func (m *testMockDB) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey,
 }
 func (m *testMockDB) UpdateAPIKey(key *models.APIKey) error           { return nil }
 func (m *testMockDB) DeleteAPIKey(key string) error                   { return nil }
+func (m *testMockDB) DeleteAPIKeysByUUIDs(uuids []string) error          { return nil }
+func (m *testMockDB) ListAPIKeysForArtifactsNotIn(artifactUUIDs []string, keyUUIDs []string) ([]*models.APIKey, error) {
+	return nil, nil
+}
 func (m *testMockDB) RemoveAPIKeysAPI(apiId string) error             { return nil }
 func (m *testMockDB) RemoveAPIKeyAPIAndName(apiId, name string) error { return nil }
 func (m *testMockDB) CountActiveAPIKeysByUserAndAPI(apiId, userID string) (int, error) {

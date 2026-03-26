@@ -147,6 +147,14 @@ type Storage interface {
 	// Implementations should ensure this operation is atomic (all-or-nothing).
 	SaveAPIKey(apiKey *models.APIKey) error
 
+	// UpsertAPIKey inserts or updates an API key identified by (artifact_uuid, name, gateway_id).
+	//
+	// If a key with the same name already exists for the artifact, it is updated only when the
+	// incoming record's updated_at is strictly newer than the stored one — preventing a slow
+	// bulk-sync goroutine from overwriting a more recent event-driven write.
+	// The existing source and external_ref_id are preserved when the incoming values are absent.
+	UpsertAPIKey(apiKey *models.APIKey) error
+
 	// GetAPIKeyByID retrieves an API key by its ID.
 	//
 	// Returns an error if the API key is not found.
@@ -207,6 +215,15 @@ type Storage interface {
 	//
 	// Returns the count of active API keys and an error if the operation fails.
 	CountActiveAPIKeysByUserAndAPI(apiId, userID string) (int, error)
+
+	// ListAPIKeysForArtifactsNotIn returns the minimal key info (uuid + artifact_uuid) for
+	// keys whose artifact_uuid is in artifactUUIDs but whose own UUID is not in keyUUIDs.
+	// Used to collect identifiers before deletion so callers can publish EventHub events.
+	ListAPIKeysForArtifactsNotIn(artifactUUIDs []string, keyUUIDs []string) ([]*models.APIKey, error)
+
+	// DeleteAPIKeysByUUIDs removes API keys by their UUIDs. Used after ListAPIKeysForArtifactsNotIn
+	// has already identified the stale keys, avoiding a redundant NOT IN query.
+	DeleteAPIKeysByUUIDs(uuids []string) error
 
 	// ========================================
 	// Subscription Plan Methods

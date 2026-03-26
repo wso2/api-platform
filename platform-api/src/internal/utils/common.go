@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"net/http"
@@ -417,6 +418,20 @@ func CheckURLReachability(rawURL string, timeout time.Duration) error {
 	defer resp.Body.Close() //nolint:errcheck
 
 	return nil
+}
+
+// APIKeyETag derives a stable UUID v7-formatted ETag from the unique
+// (artifactUUID, name, updatedAt) tuple by SHA-256 hashing them, taking the
+// first 16 bytes, then stamping the UUID version (7) and RFC 4122 variant bits.
+// updatedAt is included to capture the current state of the artifact, ensuring
+// the ETag changes on every update and remains unique as the PK in the event table.
+func APIKeyETag(artifactUUID, name string, updatedAt time.Time) string {
+	h := sha256.Sum256([]byte(fmt.Sprintf("%s:%s:%d", artifactUUID, name, updatedAt.UnixNano())))
+	var uid uuid.UUID
+	copy(uid[:], h[:16])
+	uid[6] = (uid[6] & 0x0f) | 0x70 // version = 7
+	uid[8] = (uid[8] & 0x3f) | 0x80 // RFC 4122 variant
+	return uid.String()
 }
 
 func hasTraversalSegments(escapedPath string) bool {

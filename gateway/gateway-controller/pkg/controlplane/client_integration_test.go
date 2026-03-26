@@ -97,6 +97,7 @@ func createIntegrationTestClientWithConfig(t *testing.T, cfg config.ControlPlane
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	store := storage.NewConfigStore()
+	db := newMockStorageForDeletion()
 	mockHub := &integrationTestEventHub{}
 
 	routerConfig := &config.RouterConfig{
@@ -122,7 +123,7 @@ func createIntegrationTestClientWithConfig(t *testing.T, cfg config.ControlPlane
 		APIKey: *apiKeyConfig,
 	}
 
-	client := NewClient(cfg, logger, store, newMockStorageForDeletion(), nil, nil, routerConfig, nil, apiKeyConfig, nil, systemConfig, nil, nil, nil, nil, mockHub, nil)
+	client := NewClient(cfg, logger, store, db, nil, nil, routerConfig, nil, nil, apiKeyConfig, nil, systemConfig, nil, nil, nil, nil, mockHub, nil)
 	require.NotNil(t, client.eventHub)
 	require.Equal(t, "test-gateway", client.gatewayID)
 	return client
