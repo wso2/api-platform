@@ -433,7 +433,7 @@ func BenchmarkCELRealWorldExpressions(b *testing.B) {
 	b.Run("DualPhaseExpression", func(b *testing.B) {
 		// Expression that works in both phases using processing.phase
 		reqExpr := `processing.phase == "request_body" && request.Method == "GET"`
-		respExpr := `processing.phase == "response" && response.ResponseStatus == 200`
+		respExpr := `processing.phase == "response_body" && response.ResponseStatus == 200`
 
 		_, _ = evaluator.EvaluateRequestBodyCondition(reqExpr, reqCtx)    // warm cache
 		_, _ = evaluator.EvaluateResponseBodyCondition(respExpr, respCtx) // warm cache

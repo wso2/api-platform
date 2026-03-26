@@ -562,6 +562,12 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 	)
 	if err != nil {
 		ec.streamAccumulator = nil
+		// NOTE: Mid-stream error — response headers and any previously flushed chunks
+		// are already committed to the downstream client. The ImmediateResponse
+		// returned by handlePolicyError is silently ignored by Envoy in
+		// FULL_DUPLEX_STREAMED mode; Envoy will abort the HTTP/2 stream with a
+		// RESET_STREAM. The client sees an abrupt connection close, not a structured
+		// HTTP error response. There is no recovery path once streaming has started.
 		return ec.handlePolicyError(ctx, err, "response_body_streaming"), nil
 	}
 

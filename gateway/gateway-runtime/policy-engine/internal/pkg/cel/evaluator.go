@@ -27,6 +27,10 @@ import (
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
+// defaultProgramCacheSize is the maximum number of compiled CEL programs kept
+// in memory. Least-recently-used entries are evicted when the limit is reached.
+const defaultProgramCacheSize = 1024
+
 // CELEvaluator provides CEL expression evaluation for each processing phase context
 type CELEvaluator interface {
 	EvaluateRequestHeaderCondition(expression string, ctx *policy.RequestHeaderContext) (bool, error)
@@ -39,11 +43,12 @@ type CELEvaluator interface {
 
 // celEvaluator implements CELEvaluator with caching
 type celEvaluator struct {
-	mu sync.RWMutex
+	mu sync.Mutex
 
-	// Compiled CEL programs cache
-	// Key: expression string, Value: compiled cel.Program
-	programCache map[string]cel.Program
+	// Bounded LRU cache of compiled CEL programs keyed by expression string.
+	// LRU get promotes the entry to most-recently-used, so a plain Mutex is
+	// required instead of an RWMutex.
+	programCache *programLRUCache
 
 	// Unified CEL environment supporting both request and response contexts
 	env *cel.Env
@@ -58,7 +63,7 @@ func NewCELEvaluator() (CELEvaluator, error) {
 	}
 
 	return &celEvaluator{
-		programCache: make(map[string]cel.Program),
+		programCache: newProgramLRUCache(defaultProgramCacheSize),
 		env:          env,
 	}, nil
 }
@@ -437,38 +442,27 @@ func (e *celEvaluator) eval(program cel.Program, evalCtx map[string]interface{})
 	return boolResult, nil
 }
 
-// getOrCompileProgram gets cached program or compiles new one
+// getOrCompileProgram returns a cached compiled program, or compiles and caches it.
+// A plain Mutex (not RWMutex) is required because an LRU hit promotes the entry,
+// which mutates the cache even on a read path.
 func (e *celEvaluator) getOrCompileProgram(expression string) (cel.Program, error) {
-	// Check cache first (read lock)
-	e.mu.RLock()
-	if program, ok := e.programCache[expression]; ok {
-		e.mu.RUnlock()
-		return program, nil
-	}
-	e.mu.RUnlock()
-
-	// Compile (write lock)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	// Double-check after acquiring write lock
-	if program, ok := e.programCache[expression]; ok {
+	if program, ok := e.programCache.get(expression); ok {
 		return program, nil
 	}
 
-	// Compile expression
 	ast, issues := e.env.Compile(expression)
 	if issues != nil && issues.Err() != nil {
 		return nil, fmt.Errorf("CEL compilation failed: %w", issues.Err())
 	}
 
-	// Create program
 	program, err := e.env.Program(ast)
 	if err != nil {
 		return nil, fmt.Errorf("CEL program creation failed: %w", err)
 	}
 
-	// Cache and return
-	e.programCache[expression] = program
+	e.programCache.put(expression, program)
 	return program, nil
 }
