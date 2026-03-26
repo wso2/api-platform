@@ -70,13 +70,9 @@ type McpClientInfo struct {
 }
 
 type McpServerInfo struct {
-	ProtocolVersion string                `json:"protocolVersion,omitempty"`
-	ServerInfo      *McpServerInfoDetails `json:"serverInfo,omitempty"`
-}
-
-type McpServerInfoDetails struct {
-	Name    string `json:"name,omitempty"`
-	Version string `json:"version,omitempty"`
+	ProtocolVersion string `json:"protocolVersion,omitempty"`
+	Name            string `json:"name,omitempty"`
+	Version         string `json:"version,omitempty"`
 }
 
 type McpResponseAnalyticsProperties struct {
@@ -365,24 +361,15 @@ func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[str
 			if err := json.Unmarshal(responseContent, &mcpResponsePayload); err != nil {
 				slog.Error("Failed to unmarshal MCP response body for server info analytics", "error", err)
 			} else {
-				// Populate server info details
-				serverInfoDetails := McpServerInfoDetails{
-					Name:    extractStringFromJsonpath(mcpResponsePayload, ServerInfoNameJsonPath),
-					Version: extractStringFromJsonpath(mcpResponsePayload, ServerInfoVersionJsonPath),
-				}
-
 				// Populate server info
 				serverInfo := McpServerInfo{
 					ProtocolVersion: extractStringFromJsonpath(mcpResponsePayload, ServerProtocolVersionJsonPath),
+					Name:            extractStringFromJsonpath(mcpResponsePayload, ServerInfoNameJsonPath),
+					Version:         extractStringFromJsonpath(mcpResponsePayload, ServerInfoVersionJsonPath),
 				}
 
 				// Only set ServerInfo pointer if at least one field is non-empty
-				if serverInfoDetails.Name != "" || serverInfoDetails.Version != "" {
-					serverInfo.ServerInfo = &serverInfoDetails
-				}
-
-				// Only set ServerInfo pointer if at least one field is non-empty
-				if serverInfo.ProtocolVersion != "" || serverInfo.ServerInfo != nil {
+				if serverInfo.Name != "" || serverInfo.Version != "" {
 					props.ServerInfo = &serverInfo
 				}
 
