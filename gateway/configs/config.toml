@@ -16,6 +16,9 @@ enabled = true
 [controller.server]
 gateway_id = "platform-gateway-id"
 
+[controller.controlplane]
+insecure_skip_verify = false
+
 [controller.auth.basic]
 enabled = true
 
