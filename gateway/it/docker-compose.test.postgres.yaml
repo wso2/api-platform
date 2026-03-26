@@ -96,6 +96,7 @@ services:
       - APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY=true
     volumes:
       - controller-data-tests:/app/data
+      - ./it-aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro
       - ./test-config.toml:/etc/gateway-controller/config.toml:ro
       - ../gateway-controller/certificates:/app/certificates
       - ../gateway-controller/listener-certs:/app/listener-certs:ro

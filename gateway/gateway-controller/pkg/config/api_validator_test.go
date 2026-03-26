@@ -697,7 +697,7 @@ func createValidRestAPIConfig() *api.RestAPI {
 
 func createValidWebSubAPIConfig() *api.WebSubAPI {
 	return &api.WebSubAPI{
-		ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
 		Kind:       api.WebSubApi,
 		Metadata: api.Metadata{
 			Name: "test-websub",

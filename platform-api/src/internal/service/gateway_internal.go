@@ -199,7 +199,7 @@ func (s *GatewayInternalAPIService) ListSubscriptionsForAPI(apiID, orgID string)
 	const pageSize = 1000
 	var subs []*model.Subscription
 	for offset := 0; ; offset += pageSize {
-		page, err := s.subscriptionRepo.ListByFilters(orgID, &apiID, nil, nil, pageSize, offset)
+		page, err := s.subscriptionRepo.ListByFilters(orgID, &apiID, nil, nil, nil, pageSize, offset)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list subscriptions for API %s: %w", apiID, err)
 		}

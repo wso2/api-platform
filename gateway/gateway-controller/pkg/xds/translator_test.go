@@ -1660,7 +1660,7 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 					Labels: &map[string]string{"project-id": "proj-123"},
 				},
 				Kind:       api.WebSubApi,
-				ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+				ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
 				Spec: api.WebhookAPIData{
 					DisplayName: "WebSub Test API",
 					Version:     "v1.0",
@@ -1700,7 +1700,7 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 			Configuration: api.WebSubAPI{
 				Metadata:   api.Metadata{Name: "websub-invalid"},
 				Kind:       api.WebSubApi,
-				ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+				ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
 				Spec: api.WebhookAPIData{
 					DisplayName: "WebSub Invalid",
 					Version:     "v1.0",

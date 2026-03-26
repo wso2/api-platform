@@ -454,7 +454,7 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 	// Test WebSubApi
 	t.Run("WebSubApi with valid labels", func(t *testing.T) {
 		config := &api.WebSubAPI{
-			ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
 			Kind:       api.WebSubApi,
 			Metadata: api.Metadata{
 				Name:   "test-api-v1.0",
@@ -526,7 +526,7 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 
 	t.Run("WebSubApi with invalid labels", func(t *testing.T) {
 		config := &api.WebSubAPI{
-			ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
 			Kind:       api.WebSubApi,
 			Metadata: api.Metadata{
 				Name:   "test-api-v1.0",
