@@ -85,20 +85,6 @@ func (s *RuntimeConfigStore) Delete(key string) error {
 	return nil
 }
 
-// Count returns the total number of stored configs.
-func (s *RuntimeConfigStore) Count() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return len(s.configs)
-}
-
-// Clear removes all configs.
-func (s *RuntimeConfigStore) Clear() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.configs = make(map[string]*models.RuntimeDeployConfig)
-}
-
 // IncrementResourceVersion increments and returns the new resource version.
 func (s *RuntimeConfigStore) IncrementResourceVersion() int64 {
 	s.mu.Lock()

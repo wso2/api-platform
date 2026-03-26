@@ -25,19 +25,17 @@ import (
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
-	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
 )
 
 func TestNewSnapshotManager(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	store := storage.NewPolicyStore()
 
-	manager := NewSnapshotManager(store, logger)
+	manager := NewSnapshotManager(logger)
 	if manager == nil {
 		t.Fatal("NewSnapshotManager returned nil")
 	}
 
-	if manager.GetCache() == nil {
+	if manager.GetPolicyCache() == nil {
 		t.Error("GetCache() returned nil")
 	}
 
@@ -48,18 +46,11 @@ func TestNewSnapshotManager(t *testing.T) {
 
 func TestNewPolicyManager(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	store := storage.NewPolicyStore()
-	snapshotManager := NewSnapshotManager(store, logger)
+	snapshotManager := NewSnapshotManager(logger)
 
-	manager := NewPolicyManager(store, snapshotManager, logger)
+	manager := NewPolicyManager(snapshotManager, logger)
 	if manager == nil {
 		t.Fatal("NewPolicyManager returned nil")
-	}
-
-	// Test ListPolicies when empty
-	policies := manager.ListPolicies()
-	if len(policies) != 0 {
-		t.Errorf("ListPolicies() returned %d policies, want 0", len(policies))
 	}
 }
 
@@ -114,7 +105,6 @@ func TestTranslator_TranslateRuntimeConfigs(t *testing.T) {
 				Metadata: models.Metadata{
 					Kind:        "RestApi",
 					Handle:      "test-handle",
-					Name:        "TestAPI",
 					Version:     "v1",
 					DisplayName: "TestAPI",
 				},
@@ -160,164 +150,48 @@ func TestTranslator_TranslateRuntimeConfigs(t *testing.T) {
 	})
 }
 
-func TestSnapshotManager_UpdateSnapshotLegacy(t *testing.T) {
+func TestPolicyManager_UpsertAndDeleteAPIConfig(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	store := storage.NewPolicyStore()
-	manager := NewSnapshotManager(store, logger)
+	snapshotManager := NewSnapshotManager(logger)
+	manager := NewPolicyManager(snapshotManager, logger)
 
-	// Test update with empty store
-	t.Run("empty store", func(t *testing.T) {
-		err := manager.UpdateSnapshotLegacy(nil, store)
-		if err != nil {
-			t.Errorf("UpdateSnapshotLegacy failed: %v", err)
-		}
-	})
+	runtimeStore := storage.NewRuntimeConfigStore()
+	snapshotManager.SetRuntimeStore(runtimeStore)
+	manager.SetRuntimeStore(runtimeStore)
 
-	// Add a policy and update
-	t.Run("with policy", func(t *testing.T) {
-		policy := &models.StoredPolicyConfig{
-			ID: "policy-1",
-			Configuration: policyenginev1.Configuration{
-				Routes: []policyenginev1.PolicyChain{
-					{
-						RouteKey: "GET:/api/v1/test",
-						Policies: []policyenginev1.PolicyInstance{
-							{Name: "cors", Version: "v1", Enabled: true},
-						},
-					},
-				},
-				Metadata: policyenginev1.Metadata{
-					APIName: "TestAPI",
-					Version: "v1",
-					Context: "/api",
-				},
-			},
-			Version: 1,
-		}
-		store.Set(policy)
-
-		err := manager.UpdateSnapshotLegacy(nil, store)
-		if err != nil {
-			t.Errorf("UpdateSnapshotLegacy failed: %v", err)
-		}
-	})
-}
-
-func TestPolicyManager_AddPolicy(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	store := storage.NewPolicyStore()
-	snapshotManager := NewSnapshotManager(store, logger)
-	manager := NewPolicyManager(store, snapshotManager, logger)
-
-	policy := &models.StoredPolicyConfig{
-		ID: "policy-1",
-		Configuration: policyenginev1.Configuration{
-			Routes: []policyenginev1.PolicyChain{
-				{
-					RouteKey: "GET:/api/v1/users",
-					Policies: []policyenginev1.PolicyInstance{
-						{Name: "rate-limit", Version: "v1", Enabled: true},
-					},
-				},
-			},
-			Metadata: policyenginev1.Metadata{
-				APIName: "TestAPI",
-				Version: "v1",
-				Context: "/api",
-			},
-		},
-		Version: 1,
+	// UpsertAPIConfig without transformers set — should return error
+	cfg := &models.StoredConfig{
+		UUID:   "api-1",
+		Kind:   "RestApi",
+		Handle: "test-api",
 	}
-
-	err := manager.AddPolicy(policy)
-	if err != nil {
-		t.Fatalf("AddPolicy failed: %v", err)
-	}
-
-	// Verify policy is stored
-	policies := manager.ListPolicies()
-	if len(policies) != 1 {
-		t.Errorf("ListPolicies() returned %d policies, want 1", len(policies))
-	}
-}
-
-func TestPolicyManager_RemovePolicy(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	store := storage.NewPolicyStore()
-	snapshotManager := NewSnapshotManager(store, logger)
-	manager := NewPolicyManager(store, snapshotManager, logger)
-
-	// Add first
-	policy := &models.StoredPolicyConfig{
-		ID: "policy-1",
-		Configuration: policyenginev1.Configuration{
-			Routes: []policyenginev1.PolicyChain{},
-			Metadata: policyenginev1.Metadata{
-				APIName: "TestAPI",
-				Version: "v1",
-				Context: "/api",
-			},
-		},
-		Version: 1,
-	}
-	store.Set(policy)
-
-	// Remove
-	err := manager.RemovePolicy("policy-1")
-	if err != nil {
-		t.Fatalf("RemovePolicy failed: %v", err)
-	}
-
-	// Verify policy is removed
-	policies := manager.ListPolicies()
-	if len(policies) != 0 {
-		t.Errorf("ListPolicies() returned %d policies, want 0", len(policies))
-	}
-
-	// Remove non-existent (should error)
-	err = manager.RemovePolicy("non-existent")
+	err := manager.UpsertAPIConfig(cfg)
 	if err == nil {
-		t.Error("RemovePolicy should fail for non-existent policy")
+		t.Error("UpsertAPIConfig should fail when transformers are not set")
+	}
+
+	// DeleteAPIConfig — should be a no-op (not found is silently ignored)
+	err = manager.DeleteAPIConfig("RestApi", "test-api")
+	if err != nil {
+		t.Errorf("DeleteAPIConfig should not fail for non-existent key, got: %v", err)
 	}
 }
 
-func TestPolicyManager_GetPolicy(t *testing.T) {
+func TestPolicyManager_GetResourceVersion(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	store := storage.NewPolicyStore()
-	snapshotManager := NewSnapshotManager(store, logger)
-	manager := NewPolicyManager(store, snapshotManager, logger)
+	snapshotManager := NewSnapshotManager(logger)
+	manager := NewPolicyManager(snapshotManager, logger)
 
-	// Add policy
-	policy := &models.StoredPolicyConfig{
-		ID: "policy-1",
-		Configuration: policyenginev1.Configuration{
-			Routes: []policyenginev1.PolicyChain{},
-			Metadata: policyenginev1.Metadata{
-				APIName: "TestAPI",
-				Version: "v1",
-				Context: "/api",
-			},
-		},
-		Version: 1,
-	}
-	store.Set(policy)
+	runtimeStore := storage.NewRuntimeConfigStore()
+	manager.SetRuntimeStore(runtimeStore)
 
-	// Get existing policy
-	found, err := manager.GetPolicy("policy-1")
-	if err != nil {
-		t.Fatalf("GetPolicy failed: %v", err)
-	}
-	if found == nil {
-		t.Error("GetPolicy returned nil")
-	}
-	if found.ID != "policy-1" {
-		t.Errorf("GetPolicy returned wrong policy ID: %s", found.ID)
-	}
+	v0 := manager.GetResourceVersion()
+	runtimeStore.IncrementResourceVersion()
+	runtimeStore.IncrementResourceVersion()
+	v2 := manager.GetResourceVersion()
 
-	// Get non-existent policy
-	_, err = manager.GetPolicy("non-existent")
-	if err == nil {
-		t.Error("GetPolicy should fail for non-existent policy")
+	if v2 <= v0 {
+		t.Errorf("GetResourceVersion should increase after increments: v0=%d, v2=%d", v0, v2)
 	}
 }
 

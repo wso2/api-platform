@@ -150,6 +150,10 @@ func (m *mockAPIKeyXDSManager) RemoveAPIKeysByAPI(apiID, apiName, apiVersion, co
 	return nil
 }
 
+func (m *mockAPIKeyXDSManager) RefreshSnapshot() error {
+	return nil
+}
+
 func newTestLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
@@ -216,20 +220,7 @@ func testRestStoredConfig(uuid, handle, displayName, version string, status mode
 	}
 }
 
-func testRestStoredConfigWithPolicies(
-	uuid, handle, displayName, version string,
-	status models.DesiredState,
-	policies []api.Policy,
-) *models.StoredConfig {
-	cfg := testRestStoredConfig(uuid, handle, displayName, version, status)
-	restAPI := cfg.Configuration.(api.RestAPI)
-	restAPI.Spec.Policies = &policies
-	cfg.Configuration = restAPI
-	cfg.SourceConfiguration = restAPI
-	return cfg
-}
-
-func testAPIKey(uuid, name, displayName, artifactUUID string) *models.APIKey {
+func testAPIKey(uuid, name, artifactUUID string) *models.APIKey {
 	now := time.Now()
 	return &models.APIKey{
 		UUID:         uuid,

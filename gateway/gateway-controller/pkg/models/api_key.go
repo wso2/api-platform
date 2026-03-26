@@ -52,6 +52,10 @@ type APIKey struct {
 	// Issuer identifies the developer portal that provisioned this key; nil if not provided
 	Issuer *string `json:"issuer,omitempty" db:"issuer"`
 
+	// ETag identifies the current state of the API key. Derived deterministically from
+	// (artifact_uuid, name, updated_at) by the control plane. Not persisted — used for
+	// EventHub event correlation only.
+	ETag string `json:"-" db:"-"`
 }
 
 // IsValid checks if the API key is valid (active and not expired)

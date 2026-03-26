@@ -559,9 +559,58 @@ func (h *GatewayInternalAPIHandler) ReceiveGatewayManifest(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// GetRestAPIAPIKeys handles GET /api/internal/v1/apis/api-keys
+func (h *GatewayInternalAPIHandler) GetRestAPIAPIKeys(c *gin.Context) {
+	orgID, gatewayID, ok := h.authenticateRequest(c)
+	if !ok {
+		return
+	}
+	issuer := c.Query("issuer")
+	keys, err := h.gatewayInternalService.GetAPIKeysByKind(gatewayID, orgID, constants.RestApi, issuer)
+	if err != nil {
+		h.slogger.Error("Failed to get API keys for REST APIs", "gatewayID", gatewayID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get API keys"))
+		return
+	}
+	c.JSON(http.StatusOK, keys)
+}
+
+// GetLLMProviderAPIKeys handles GET /api/internal/v1/llm-providers/api-keys
+func (h *GatewayInternalAPIHandler) GetLLMProviderAPIKeys(c *gin.Context) {
+	orgID, gatewayID, ok := h.authenticateRequest(c)
+	if !ok {
+		return
+	}
+	issuer := c.Query("issuer")
+	keys, err := h.gatewayInternalService.GetAPIKeysByKind(gatewayID, orgID, constants.LLMProvider, issuer)
+	if err != nil {
+		h.slogger.Error("Failed to get API keys for LLM providers", "gatewayID", gatewayID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get API keys"))
+		return
+	}
+	c.JSON(http.StatusOK, keys)
+}
+
+// GetLLMProxyAPIKeys handles GET /api/internal/v1/llm-proxies/api-keys
+func (h *GatewayInternalAPIHandler) GetLLMProxyAPIKeys(c *gin.Context) {
+	orgID, gatewayID, ok := h.authenticateRequest(c)
+	if !ok {
+		return
+	}
+	issuer := c.Query("issuer")
+	keys, err := h.gatewayInternalService.GetAPIKeysByKind(gatewayID, orgID, constants.LLMProxy, issuer)
+	if err != nil {
+		h.slogger.Error("Failed to get API keys for LLM proxies", "gatewayID", gatewayID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get API keys"))
+		return
+	}
+	c.JSON(http.StatusOK, keys)
+}
+
 func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 	orgGroup := r.Group("/api/internal/v1/apis")
 	{
+		orgGroup.GET("/api-keys", h.GetRestAPIAPIKeys)
 		orgGroup.GET("/:apiId", h.GetAPI)
 		orgGroup.POST("/:apiId/gateway-deployments", h.CreateGatewayDeployment)
 		orgGroup.GET("/:apiId/subscriptions", h.GetSubscriptions)
@@ -574,11 +623,13 @@ func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 
 	llmGroup := r.Group("/api/internal/v1/llm-providers")
 	{
+		llmGroup.GET("/api-keys", h.GetLLMProviderAPIKeys)
 		llmGroup.GET("/:providerId", h.GetLLMProvider)
 	}
 
 	llmProxyGroup := r.Group("/api/internal/v1/llm-proxies")
 	{
+		llmProxyGroup.GET("/api-keys", h.GetLLMProxyAPIKeys)
 		llmProxyGroup.GET("/:proxyId", h.GetLLMProxy)
 	}
 

@@ -49,6 +49,11 @@ func (m *testMockDB) UpdateConfig(cfg *models.StoredConfig) error {
 	return nil
 }
 
+func (m *testMockDB) UpsertConfig(cfg *models.StoredConfig) (bool, error) {
+	m.configs[cfg.UUID] = cfg
+	return true, nil
+}
+
 func (m *testMockDB) DeleteConfig(id string) error {
 	delete(m.configs, id)
 	return nil
@@ -88,6 +93,16 @@ func (m *testMockDB) GetAllConfigsByKind(kind string) ([]*models.StoredConfig, e
 	return result, nil
 }
 
+func (m *testMockDB) GetAllConfigsByOrigin(origin models.Origin) ([]*models.StoredConfig, error) {
+	result := make([]*models.StoredConfig, 0)
+	for _, cfg := range m.configs {
+		if cfg.Origin == origin {
+			result = append(result, cfg)
+		}
+	}
+	return result, nil
+}
+
 func (m *testMockDB) SaveLLMProviderTemplate(t *models.StoredLLMProviderTemplate) error {
 	m.templates[t.UUID] = t
 	return nil
@@ -115,6 +130,7 @@ func (m *testMockDB) GetAllLLMProviderTemplates() ([]*models.StoredLLMProviderTe
 }
 
 func (m *testMockDB) SaveAPIKey(key *models.APIKey) error { return nil }
+func (m *testMockDB) UpsertAPIKey(key *models.APIKey) error                       { return nil }
 func (m *testMockDB) GetAPIKeyByID(id string) (*models.APIKey, error) {
 	return nil, storage.ErrNotFound
 }
@@ -131,6 +147,10 @@ func (m *testMockDB) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey,
 }
 func (m *testMockDB) UpdateAPIKey(key *models.APIKey) error           { return nil }
 func (m *testMockDB) DeleteAPIKey(key string) error                   { return nil }
+func (m *testMockDB) DeleteAPIKeysByUUIDs(uuids []string) error          { return nil }
+func (m *testMockDB) ListAPIKeysForArtifactsNotIn(artifactUUIDs []string, keyUUIDs []string) ([]*models.APIKey, error) {
+	return nil, nil
+}
 func (m *testMockDB) RemoveAPIKeysAPI(apiId string) error             { return nil }
 func (m *testMockDB) RemoveAPIKeyAPIAndName(apiId, name string) error { return nil }
 func (m *testMockDB) CountActiveAPIKeysByUserAndAPI(apiId, userID string) (int, error) {

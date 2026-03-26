@@ -34,9 +34,9 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
-	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
@@ -335,27 +335,36 @@ func main() {
 		policyDefinitions[key] = def
 	}
 
-	// Initialize policy store and policy xDS server
+	// Initialize policy xDS server
 	log.Info("Initializing Policy xDS server", slog.Int("port", cfg.Controller.PolicyServer.Port))
 
 	// Initialize policy resolver
 	policyResolver := resolver.NewPolicyResolver(policyDefinitions, secretsService)
 
-	// Initialize policy store
-	policyStore := storage.NewPolicyStore()
-
-	// Initialize policy snapshot manager
-	policySnapshotManager := policyxds.NewSnapshotManager(policyStore, log)
+	// Initialize policy snapshot manager and runtime config store
+	policySnapshotManager := policyxds.NewSnapshotManager(log)
+	runtimeStore := storage.NewRuntimeConfigStore()
+	policySnapshotManager.SetRuntimeStore(runtimeStore)
 
 	// Initialize subscription snapshot manager (driven by DB storage)
 	subscriptionSnapshotManager := subscriptionxds.NewSnapshotManager(db, log)
-	// Initialize policy manager (used to derive policies from API configurations)
-	policyManager := policyxds.NewPolicyManager(policyStore, policySnapshotManager, log)
 
-	// Load policies from existing API configurations on startup
-	log.Info("Deriving policies from loaded API configurations")
+	// Initialize policy manager
+	policyManager := policyxds.NewPolicyManager(policySnapshotManager, log)
+	policyManager.SetRuntimeStore(runtimeStore)
+
+	// Build transformer registry for StoredConfig → RuntimeDeployConfig conversion
+	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
+	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
+	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
+	policyManager.SetTransformers(transform.NewRegistry(restTransformer, llmTransformer))
+
+	// Load runtime configs from existing API configurations on startup.
+	// We write directly to runtimeStore to avoid triggering N separate snapshot updates;
+	// the single UpdateSnapshot call below covers all of them.
+	log.Info("Loading runtime configs from existing API configurations")
 	loadedAPIs := configStore.GetAll()
-	derivedCount := 0
+	loadedCount := 0
 	for _, apiConfig := range loadedAPIs {
 		// MCP proxies hydrate into RestAPI form, so they can participate in the
 		// same policy bootstrapping path as the other routed artifacts.
@@ -373,21 +382,24 @@ func main() {
 				// Continue to load other APIs
 				continue
 			}
-			storedPolicy := policybuilder.DerivePolicyFromAPIConfig(resolvedCfg, &cfg.Router, cfg, policyDefinitions)
-			if storedPolicy != nil {
-				if err := policyStore.Set(storedPolicy); err != nil {
-					log.Warn("Failed to load policy from API",
-						slog.String("api_id", apiConfig.UUID),
-						slog.Any("error", err))
-				} else {
-					derivedCount++
-				}
+			rdc, err := restTransformer.Transform(resolvedCfg)
+			if apiConfig.Kind == "LlmProvider" || apiConfig.Kind == "LlmProxy" {
+				rdc, err = llmTransformer.Transform(apiConfig)
 			}
+			if err != nil {
+				log.Warn("Failed to transform API config at startup",
+					slog.String("api_id", apiConfig.UUID),
+					slog.String("kind", apiConfig.Kind),
+					slog.Any("error", err))
+				continue
+			}
+			runtimeStore.Set(storage.Key(apiConfig.Kind, apiConfig.Handle), rdc)
+			loadedCount++
 		}
 	}
-	log.Info("Loaded policies from API configurations",
+	log.Info("Loaded runtime configs from API configurations",
 		slog.Int("total_apis", len(loadedAPIs)),
-		slog.Int("policies_derived", derivedCount))
+		slog.Int("configs_loaded", loadedCount))
 
 	// Generate initial policy snapshot
 	log.Info("Generating initial policy xDS snapshot")
@@ -446,7 +458,7 @@ func main() {
 		db, snapshotManager,
 		validator,
 		&cfg.Router,
-		apiKeyXDSManager,
+		apiKeyXDSManager, apiKeyStore,
 		&cfg.APIKey,
 		policyManager,
 		cfg, policyDefinitions,

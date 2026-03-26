@@ -54,6 +54,9 @@ type mockStorageForDeletion struct {
 	removeKeyCallCount           int
 	removeSubscriptionCallCount  int
 	lastSubscriptionCleanupAPIID string
+	upsertAffected     *bool // nil = default (true); non-nil = use this value
+	upsertErr          error
+	upsertCallCount    int
 }
 
 func newMockStorageForDeletion() *mockStorageForDeletion {
@@ -84,6 +87,21 @@ func (m *mockStorageForDeletion) GetConfig(id string) (*models.StoredConfig, err
 func (m *mockStorageForDeletion) UpdateConfig(config *models.StoredConfig) error {
 	m.configs[config.UUID] = config
 	return nil
+}
+
+func (m *mockStorageForDeletion) UpsertConfig(config *models.StoredConfig) (bool, error) {
+	m.upsertCallCount++
+	if m.upsertErr != nil {
+		return false, m.upsertErr
+	}
+	affected := true
+	if m.upsertAffected != nil {
+		affected = *m.upsertAffected
+	}
+	if affected {
+		m.configs[config.UUID] = config
+	}
+	return affected, nil
 }
 
 func (m *mockStorageForDeletion) DeleteConfig(id string) error {
@@ -117,6 +135,16 @@ func (m *mockStorageForDeletion) GetAllConfigsByKind(kind string) ([]*models.Sto
 	return configs, nil
 }
 
+func (m *mockStorageForDeletion) GetAllConfigsByOrigin(origin models.Origin) ([]*models.StoredConfig, error) {
+	var configs []*models.StoredConfig
+	for _, config := range m.configs {
+		if config.Origin == origin {
+			configs = append(configs, config)
+		}
+	}
+	return configs, nil
+}
+
 func (m *mockStorageForDeletion) GetConfigByKindAndHandle(kind string, handle string) (*models.StoredConfig, error) {
 	for _, config := range m.configs {
 		if config.Kind == kind && config.Handle == handle {
@@ -131,6 +159,10 @@ func (m *mockStorageForDeletion) Close() error {
 }
 
 func (m *mockStorageForDeletion) SaveAPIKey(key *models.APIKey) error {
+	return nil
+}
+
+func (m *mockStorageForDeletion) UpsertAPIKey(key *models.APIKey) error {
 	return nil
 }
 
@@ -261,6 +293,14 @@ func (m *mockStorageForDeletion) DeleteSubscriptionsForAPINotIn(apiID string, id
 	if m.removeSubscriptionErr != nil {
 		return m.removeSubscriptionErr
 	}
+	return nil
+}
+
+func (m *mockStorageForDeletion) ListAPIKeysForArtifactsNotIn(artifactUUIDs []string, keyUUIDs []string) ([]*models.APIKey, error) {
+	return nil, nil
+}
+
+func (m *mockStorageForDeletion) DeleteAPIKeysByUUIDs(uuids []string) error {
 	return nil
 }
 

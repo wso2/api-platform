@@ -34,6 +34,38 @@ func NewLLMProviderTransformer(store *storage.ConfigStore, db storage.Storage, r
 	}
 }
 
+// HydrateLLMConfig populates cfg.Configuration with a derived RestAPI for LlmProvider and
+// LlmProxy kinds. These are stored with only SourceConfiguration set (Configuration is nil
+// by design) and must be hydrated before policy derivation or xDS snapshot generation.
+// For other kinds (RestApi, WebSubApi, Mcp) the function is a no-op.
+func HydrateLLMConfig(cfg *models.StoredConfig, store *storage.ConfigStore, db storage.Storage, routerConfig *config.RouterConfig, policyDefinitions map[string]models.PolicyDefinition) error {
+	if cfg == nil {
+		return nil
+	}
+	if _, ok := cfg.Configuration.(api.RestAPI); ok {
+		return nil
+	}
+
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, NewLoadedPolicyVersionResolver(policyDefinitions))
+
+	var restAPI api.RestAPI
+	switch source := cfg.SourceConfiguration.(type) {
+	case api.LLMProviderConfiguration:
+		if _, err := transformer.Transform(&source, &restAPI); err != nil {
+			return err
+		}
+	case api.LLMProxyConfiguration:
+		if _, err := transformer.Transform(&source, &restAPI); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unsupported LLM source configuration type: %T", cfg.SourceConfiguration)
+	}
+
+	cfg.Configuration = restAPI
+	return nil
+}
+
 func (t *LLMProviderTransformer) Transform(input any, output *api.RestAPI) (*api.RestAPI, error) {
 	switch v := input.(type) {
 	case *api.LLMProviderConfiguration:

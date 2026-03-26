@@ -41,4 +41,5 @@ type SubscriptionPlan struct {
 	Status             SubscriptionPlanStatus `json:"status" db:"status"`
 	CreatedAt          time.Time              `json:"createdAt" db:"created_at"`
 	UpdatedAt          time.Time              `json:"updatedAt" db:"updated_at"`
+	Etag               string                 `json:"etag,omitempty"` // Transient; from CP sync response, not stored in DB
 }

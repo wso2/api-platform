@@ -163,7 +163,9 @@ type APIKeyCreatedEventPayload struct {
 		Duration int    `json:"duration,omitempty"`
 		Unit     string `json:"unit,omitempty"`
 	} `json:"expiresIn,omitempty"`
-	Issuer *string `json:"issuer,omitempty"` // nil if not provided by the platform API
+	Issuer    *string `json:"issuer,omitempty"` // nil if not provided by the platform API
+	CreatedAt string  `json:"createdAt"`        // RFC3339 timestamp from platform API
+	UpdatedAt string  `json:"updatedAt"`        // RFC3339 timestamp from platform API
 }
 
 // APIKeyCreatedEvent represents the complete API key created event
@@ -186,7 +188,8 @@ type APIKeyUpdatedEventPayload struct {
 		Duration int    `json:"duration,omitempty"`
 		Unit     string `json:"unit,omitempty"`
 	} `json:"expiresIn,omitempty"`
-	Issuer *string `json:"issuer,omitempty"` // nil if not provided by the platform API
+	Issuer    *string `json:"issuer,omitempty"` // nil if not provided by the platform API
+	UpdatedAt string  `json:"updatedAt"`        // RFC3339 timestamp from platform API
 }
 
 // APIKeyUpdatedEvent represents the complete API key updated event
@@ -241,6 +244,32 @@ type MCPProxyUndeployedEvent struct {
 	Payload       MCPProxyUndeployedEventPayload `json:"payload"`
 	Timestamp     string                         `json:"timestamp"`
 	CorrelationID string                         `json:"correlationId"`
+}
+
+// LLMProviderDeletedEventPayload represents the payload of an LLM provider deletion event
+type LLMProviderDeletedEventPayload struct {
+	ProviderID string `json:"providerId"`
+}
+
+// LLMProviderDeletedEvent represents the complete LLM provider deletion event
+type LLMProviderDeletedEvent struct {
+	Type          string                          `json:"type"`
+	Payload       LLMProviderDeletedEventPayload  `json:"payload"`
+	Timestamp     string                          `json:"timestamp"`
+	CorrelationID string                          `json:"correlationId"`
+}
+
+// LLMProxyDeletedEventPayload represents the payload of an LLM proxy deletion event
+type LLMProxyDeletedEventPayload struct {
+	ProxyID string `json:"proxyId"`
+}
+
+// LLMProxyDeletedEvent represents the complete LLM proxy deletion event
+type LLMProxyDeletedEvent struct {
+	Type          string                       `json:"type"`
+	Payload       LLMProxyDeletedEventPayload  `json:"payload"`
+	Timestamp     string                       `json:"timestamp"`
+	CorrelationID string                       `json:"correlationId"`
 }
 
 // MCPProxyDeletedEventPayload represents the payload of an MCP proxy deletion event

@@ -45,6 +45,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -149,6 +150,22 @@ func (m *MockStorage) UpdateConfig(cfg *models.StoredConfig) error {
 	return nil
 }
 
+func (m *MockStorage) UpsertConfig(cfg *models.StoredConfig) (bool, error) {
+	if m.updateErr != nil {
+		return false, m.updateErr
+	}
+	if cfg.Handle == "" {
+		return false, fmt.Errorf("handle (metadata.name) is required and cannot be empty")
+	}
+	if existing, ok := m.configs[cfg.UUID]; ok {
+		if existing.DeployedAt != nil && cfg.DeployedAt != nil && !existing.DeployedAt.Before(*cfg.DeployedAt) {
+			return false, nil
+		}
+	}
+	m.configs[cfg.UUID] = cfg
+	return true, nil
+}
+
 func (m *MockStorage) DeleteConfig(id string) error {
 	if m.deleteErr != nil {
 		return m.deleteErr
@@ -206,6 +223,19 @@ func (m *MockStorage) GetAllConfigsByKind(kind string) ([]*models.StoredConfig, 
 	return result, nil
 }
 
+func (m *MockStorage) GetAllConfigsByOrigin(origin models.Origin) ([]*models.StoredConfig, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	result := make([]*models.StoredConfig, 0)
+	for _, cfg := range m.configs {
+		if cfg.Origin == origin {
+			result = append(result, cfg)
+		}
+	}
+	return result, nil
+}
+
 func (m *MockStorage) SaveLLMProviderTemplate(template *models.StoredLLMProviderTemplate) error {
 	if m.saveErr != nil {
 		return m.saveErr
@@ -252,6 +282,14 @@ func (m *MockStorage) GetAllLLMProviderTemplates() ([]*models.StoredLLMProviderT
 }
 
 func (m *MockStorage) SaveAPIKey(apiKey *models.APIKey) error {
+	if m.saveErr != nil {
+		return m.saveErr
+	}
+	m.apiKeys[apiKey.UUID] = apiKey
+	return nil
+}
+
+func (m *MockStorage) UpsertAPIKey(apiKey *models.APIKey) error {
 	if m.saveErr != nil {
 		return m.saveErr
 	}
@@ -373,6 +411,14 @@ func (m *MockStorage) RemoveAPIKeyAPIAndName(apiId, name string) error {
 		}
 	}
 	return errors.New("API key not found")
+}
+
+func (m *MockStorage) ListAPIKeysForArtifactsNotIn(artifactUUIDs []string, keyUUIDs []string) ([]*models.APIKey, error) {
+	return nil, nil
+}
+
+func (m *MockStorage) DeleteAPIKeysByUUIDs(uuids []string) error {
+	return nil
 }
 
 func (m *MockStorage) CountActiveAPIKeysByUserAndAPI(apiId, userID string) (int, error) {
@@ -1357,12 +1403,14 @@ func TestGetXDSSyncStatus(t *testing.T) {
 func TestGetXDSSyncStatusWithPolicyVersion(t *testing.T) {
 	server := createTestAPIServer()
 
-	policyStore := storage.NewPolicyStore()
-	snapshotMgr := policyxds.NewSnapshotManager(policyStore, server.logger)
-	server.policyManager = policyxds.NewPolicyManager(policyStore, snapshotMgr, server.logger)
+	runtimeStore := storage.NewRuntimeConfigStore()
+	snapshotMgr := policyxds.NewSnapshotManager(server.logger)
+	snapshotMgr.SetRuntimeStore(runtimeStore)
+	server.policyManager = policyxds.NewPolicyManager(snapshotMgr, server.logger)
+	server.policyManager.SetRuntimeStore(runtimeStore)
 
-	policyStore.IncrementResourceVersion()
-	policyStore.IncrementResourceVersion()
+	runtimeStore.IncrementResourceVersion()
+	runtimeStore.IncrementResourceVersion()
 
 	c, w := createTestContext("GET", "/xds_sync_status", nil)
 	server.GetXDSSyncStatus(c)
@@ -2184,7 +2232,7 @@ func TestBuildStoredPolicyFromAPINoPolicies(t *testing.T) {
 		Origin:              models.OriginGatewayAPI,
 	}
 
-	result := server.buildStoredPolicyFromAPI(cfg)
+	result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions)
 	assert.Nil(t, result)
 }
 
@@ -2501,7 +2549,7 @@ func TestBuildStoredPolicyFromAPIInvalidKind(t *testing.T) {
 		Origin:              models.OriginGatewayAPI,
 	}
 
-	result := server.buildStoredPolicyFromAPI(cfg)
+	result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions)
 	assert.Nil(t, result)
 }
 
@@ -3057,7 +3105,7 @@ func TestBuildStoredPolicyFromAPIWebSubApi(t *testing.T) {
 		Origin:              models.OriginGatewayAPI,
 	}
 
-	result := server.buildStoredPolicyFromAPI(cfg)
+	result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions)
 	// Should return nil because the spec can't be parsed as WebhookAPIData without proper setup
 	assert.Nil(t, result)
 }
@@ -3184,7 +3232,7 @@ func TestBuildStoredPolicyFromAPIWithVhosts(t *testing.T) {
 		Origin:              models.OriginGatewayAPI,
 	}
 
-	result := server.buildStoredPolicyFromAPI(cfg)
+	result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions)
 	assert.NotNil(t, result)
 	// Should have 2 routes (one for main vhost, one for sandbox)
 	assert.Equal(t, 2, len(result.Configuration.Routes))
@@ -3236,7 +3284,7 @@ func TestBuildStoredPolicyFromAPIOperationPolicies(t *testing.T) {
 		Origin:              models.OriginGatewayAPI,
 	}
 
-	result := server.buildStoredPolicyFromAPI(cfg)
+	result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions)
 	assert.NotNil(t, result)
 	assert.Equal(t, 1, len(result.Configuration.Routes))
 	// Should have both operation-level and API-level policies
@@ -3306,7 +3354,7 @@ func TestBuildStoredPolicyFromAPIWebSubApiWithPolicies(t *testing.T) {
 		Origin:              models.OriginGatewayAPI,
 	}
 
-	result := server.buildStoredPolicyFromAPI(cfg)
+	result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions)
 	// Should return nil since we don't have valid spec data
 	assert.Nil(t, result)
 }

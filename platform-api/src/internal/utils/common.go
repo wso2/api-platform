@@ -23,6 +23,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"net/http"
@@ -419,6 +421,20 @@ func CheckURLReachability(rawURL string, timeout time.Duration) error {
 	return nil
 }
 
+// APIKeyETag derives a stable UUID v7-formatted ETag from the unique
+// (artifactUUID, name, updatedAt) tuple by SHA-256 hashing them, taking the
+// first 16 bytes, then stamping the UUID version (7) and RFC 4122 variant bits.
+// updatedAt is included to capture the current state of the artifact, ensuring
+// the ETag changes on every update and remains unique as the PK in the event table.
+func APIKeyETag(artifactUUID, name string, updatedAt time.Time) string {
+	h := sha256.Sum256([]byte(fmt.Sprintf("%s:%s:%d", artifactUUID, name, updatedAt.UnixNano())))
+	var uid uuid.UUID
+	copy(uid[:], h[:16])
+	uid[6] = (uid[6] & 0x0f) | 0x70 // version = 7
+	uid[8] = (uid[8] & 0x3f) | 0x80 // RFC 4122 variant
+	return uid.String()
+}
+
 func hasTraversalSegments(escapedPath string) bool {
 	for segment := range strings.SplitSeq(escapedPath, "/") {
 		if segment == "" {
@@ -436,4 +452,33 @@ func hasTraversalSegments(escapedPath string) bool {
 	}
 
 	return false
+}
+
+// GenerateDeterministicUUIDv7 generates a deterministic UUIDv7 from an entity ID and timestamp.
+// The timestamp component uses the provided time (millisecond precision) and the random bits are
+// derived from a SHA-256 hash of the entityID. This ensures:
+//   - Same (entityID, timestamp) always produces the same UUID
+//   - UUIDs are time-ordered (UUIDv7 property)
+//   - Different entityIDs produce different UUIDs even at the same timestamp
+func GenerateDeterministicUUIDv7(entityID string, ts time.Time) string {
+	hash := sha256.Sum256([]byte(entityID))
+
+	var b [16]byte
+
+	// Set 48-bit millisecond timestamp
+	ms := uint64(ts.UnixMilli())
+	binary.BigEndian.PutUint16(b[0:2], uint16(ms>>32))
+	binary.BigEndian.PutUint32(b[2:6], uint32(ms))
+
+	// Fill remaining bytes from hash (deterministic "random" bits)
+	copy(b[6:], hash[:10])
+
+	// Set version 7 (bits 48-51 = 0111)
+	b[6] = (b[6] & 0x0F) | 0x70
+
+	// Set variant (bits 64-65 = 10)
+	b[8] = (b[8] & 0x3F) | 0x80
+
+	u, _ := uuid.FromBytes(b[:])
+	return u.String()
 }

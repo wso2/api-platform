@@ -258,10 +258,9 @@ func (l *EventListener) handleLLMProviderDelete(event eventhub.Event) {
 
 	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after LLM provider deletion")
 
-	if l.policyManager != nil {
-		policyID := entityID + "-policies"
-		if err := l.policyManager.RemovePolicy(policyID); err != nil && !storage.IsPolicyNotFoundError(err) {
-			l.logger.Warn("Failed to remove policy after LLM provider deletion",
+	if l.policyManager != nil && existingConfig != nil {
+		if err := l.policyManager.DeleteAPIConfig(existingConfig.Kind, existingConfig.Handle); err != nil {
+			l.logger.Warn("Failed to remove runtime config after LLM provider deletion",
 				slog.String("provider_id", entityID),
 				slog.Any("error", err))
 		}
@@ -316,10 +315,9 @@ func (l *EventListener) handleLLMProxyDelete(event eventhub.Event) {
 
 	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after LLM proxy deletion")
 
-	if l.policyManager != nil {
-		policyID := entityID + "-policies"
-		if err := l.policyManager.RemovePolicy(policyID); err != nil && !storage.IsPolicyNotFoundError(err) {
-			l.logger.Warn("Failed to remove policy after LLM proxy deletion",
+	if l.policyManager != nil && existingConfig != nil {
+		if err := l.policyManager.DeleteAPIConfig(existingConfig.Kind, existingConfig.Handle); err != nil {
+			l.logger.Warn("Failed to remove runtime config after LLM proxy deletion",
 				slog.String("proxy_id", entityID),
 				slog.Any("error", err))
 		}
@@ -331,36 +329,7 @@ func (l *EventListener) handleLLMProxyDelete(event eventhub.Event) {
 }
 
 func (l *EventListener) hydrateLLMConfig(cfg *models.StoredConfig) error {
-	if cfg == nil {
-		return nil
-	}
-	if _, ok := cfg.Configuration.(api.RestAPI); ok {
-		return nil
-	}
-
-	transformer := utils.NewLLMProviderTransformer(
-		l.store,
-		l.db,
-		l.routerConfig,
-		utils.NewLoadedPolicyVersionResolver(l.policyDefinitions),
-	)
-
-	var restAPI api.RestAPI
-	switch source := cfg.SourceConfiguration.(type) {
-	case api.LLMProviderConfiguration:
-		if _, err := transformer.Transform(&source, &restAPI); err != nil {
-			return err
-		}
-	case api.LLMProxyConfiguration:
-		if _, err := transformer.Transform(&source, &restAPI); err != nil {
-			return err
-		}
-	default:
-		return fmt.Errorf("unexpected LLM source configuration type %T", cfg.SourceConfiguration)
-	}
-
-	cfg.Configuration = restAPI
-	return nil
+	return utils.HydrateLLMConfig(cfg, l.store, l.db, l.routerConfig, l.policyDefinitions)
 }
 
 func (l *EventListener) syncProviderTemplateMapping(cfg *models.StoredConfig, correlationID string) error {

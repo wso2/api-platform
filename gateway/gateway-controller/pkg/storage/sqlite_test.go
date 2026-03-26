@@ -1115,3 +1115,95 @@ func createTestSubscription() *models.Subscription {
 		UpdatedAt:         time.Now(),
 	}
 }
+
+func TestSQLiteStorage_UpsertConfig(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	t.Run("Insert new config", func(t *testing.T) {
+		cfg := createTestStoredConfig()
+		deployedAt := time.Now()
+		cfg.DeployedAt = &deployedAt
+		cfg.DeploymentID = "dep-001"
+		cfg.Origin = models.OriginControlPlane
+
+		updated, err := storage.UpsertConfig(cfg)
+		assert.NilError(t, err)
+		assert.Assert(t, updated)
+
+		// Verify it was inserted
+		retrieved, err := storage.GetConfig(cfg.UUID)
+		assert.NilError(t, err)
+		assert.Equal(t, cfg.UUID, retrieved.UUID)
+		assert.Equal(t, cfg.DeploymentID, retrieved.DeploymentID)
+	})
+
+	t.Run("Update with newer deployed_at succeeds", func(t *testing.T) {
+		cfg := createTestStoredConfig()
+		olderTime := time.Now().Add(-1 * time.Hour)
+		cfg.DeployedAt = &olderTime
+		cfg.DeploymentID = "dep-old"
+		cfg.Origin = models.OriginControlPlane
+
+		// Insert initial
+		updated, err := storage.UpsertConfig(cfg)
+		assert.NilError(t, err)
+		assert.Assert(t, updated)
+
+		// Update with newer timestamp
+		newerTime := time.Now()
+		cfg.DeployedAt = &newerTime
+		cfg.DeploymentID = "dep-new"
+		cfg.DesiredState = models.StateUndeployed
+
+		updated, err = storage.UpsertConfig(cfg)
+		assert.NilError(t, err)
+		assert.Assert(t, updated)
+
+		// Verify the update took effect
+		retrieved, err := storage.GetConfig(cfg.UUID)
+		assert.NilError(t, err)
+		assert.Equal(t, "dep-new", retrieved.DeploymentID)
+		assert.Equal(t, models.StateUndeployed, retrieved.DesiredState)
+	})
+
+	t.Run("Update with older deployed_at is skipped (stale event)", func(t *testing.T) {
+		cfg := createTestStoredConfig()
+		newerTime := time.Now()
+		cfg.DeployedAt = &newerTime
+		cfg.DeploymentID = "dep-current"
+		cfg.Origin = models.OriginControlPlane
+
+		// Insert with newer timestamp
+		updated, err := storage.UpsertConfig(cfg)
+		assert.NilError(t, err)
+		assert.Assert(t, updated)
+
+		// Try to upsert with older timestamp — should be skipped
+		olderTime := newerTime.Add(-1 * time.Hour)
+		cfg.DeployedAt = &olderTime
+		cfg.DeploymentID = "dep-stale"
+		cfg.DesiredState = models.StateUndeployed
+
+		updated, err = storage.UpsertConfig(cfg)
+		assert.NilError(t, err)
+		assert.Assert(t, !updated) // Should NOT have updated
+
+		// Verify original data is preserved
+		retrieved, err := storage.GetConfig(cfg.UUID)
+		assert.NilError(t, err)
+		assert.Equal(t, "dep-current", retrieved.DeploymentID)
+		assert.Equal(t, models.StateDeployed, retrieved.DesiredState)
+	})
+
+	t.Run("Missing handle returns error", func(t *testing.T) {
+		cfg := createTestStoredConfig()
+		cfg.Handle = ""
+		deployedAt := time.Now()
+		cfg.DeployedAt = &deployedAt
+
+		_, err := storage.UpsertConfig(cfg)
+		assert.Assert(t, err != nil)
+		assert.Assert(t, strings.Contains(err.Error(), "handle"))
+	})
+}

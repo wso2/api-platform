@@ -19,19 +19,24 @@
 package utils
 
 import (
+	"archive/tar"
 	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
@@ -293,6 +298,128 @@ func (s *APIUtilsService) FetchSubscriptionsForAPI(apiID string) ([]models.Subsc
 	return subs, nil
 }
 
+// controlPlaneAPIKey is the API key response from the control plane REST API.
+// The APIKeyHashes field holds a map of hash algorithm → hash value (e.g. {"sha256": "abc123..."}).
+type controlPlaneAPIKey struct {
+	ETag         string            `json:"etag"`
+	UUID         string            `json:"uuid"`
+	Name         string            `json:"name"`
+	MaskedAPIKey string            `json:"maskedApiKey"`
+	APIKeyHashes map[string]string `json:"apiKeyHashes"`
+	ArtifactUUID string            `json:"artifactUuid"`
+	Status       string            `json:"status"`
+	CreatedAt    time.Time         `json:"createdAt"`
+	CreatedBy    string            `json:"createdBy"`
+	UpdatedAt    time.Time         `json:"updatedAt"`
+	ExpiresAt    *time.Time        `json:"expiresAt"`
+	Source       string            `json:"source"`
+	ExternalRefId *string          `json:"externalRefId"`
+	Issuer       *string           `json:"issuer,omitempty"`
+}
+
+// FetchAPIKeysByKind fetches all API keys for the given artifact kind from the control plane.
+// Supported kinds: KindLlmProvider, KindLlmProxy, KindRestApi.
+// When issuer is non-empty it is appended as a query parameter so the server returns
+// only keys matching that issuer; an empty issuer fetches all keys for the kind.
+// Only active keys that carry a sha256 hash are returned; others are skipped.
+func (s *APIUtilsService) FetchAPIKeysByKind(artifactKind, issuer string) ([]models.APIKey, error) {
+	baseURL := s.getBaseURL()
+	var path string
+	switch artifactKind {
+	case models.KindLlmProvider:
+		path = "/llm-providers/api-keys"
+	case models.KindLlmProxy:
+		path = "/llm-proxies/api-keys"
+	case models.KindRestApi:
+		path = "/apis/api-keys"
+	default:
+		return nil, fmt.Errorf("unsupported artifact kind for API key fetch: %s", artifactKind)
+	}
+
+	endpoint := baseURL + path
+	if issuer != "" {
+		params := url.Values{}
+		params.Set("issuer", issuer)
+		endpoint += "?" + params.Encode()
+	}
+
+	s.logger.Info("Fetching API keys by kind",
+		slog.String("kind", artifactKind),
+		slog.Bool("issuer_filtered", issuer != ""),
+	)
+
+	req, err := http.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create API keys request: %w", err)
+	}
+	req.Header.Add("api-key", s.config.Token)
+	req.Header.Add("Accept", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch API keys: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("API keys request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var cpKeys []controlPlaneAPIKey
+	if err := json.NewDecoder(resp.Body).Decode(&cpKeys); err != nil {
+		return nil, fmt.Errorf("failed to decode API keys response: %w", err)
+	}
+
+	keys := make([]models.APIKey, 0, len(cpKeys))
+	for _, ck := range cpKeys {
+		if models.APIKeyStatus(ck.Status) != models.APIKeyStatusActive {
+			s.logger.Debug("Skipping non-active API key during bulk sync",
+				slog.String("kind", artifactKind),
+				slog.String("key_name", ck.Name),
+				slog.String("status", ck.Status),
+			)
+			continue
+		}
+		sha256Hash, ok := ck.APIKeyHashes[constants.HashingAlgorithmSHA256]
+		if !ok || sha256Hash == "" {
+			s.logger.Warn("Skipping API key without sha256 hash during bulk sync",
+				slog.String("kind", artifactKind),
+				slog.String("key_name", ck.Name),
+			)
+			continue
+		}
+		etag := ck.ETag
+		if etag == "" {
+			// Fall back to local generation if the platform did not include the etag.
+			etag = APIKeyETag(ck.ArtifactUUID, ck.Name, ck.UpdatedAt)
+		}
+		keys = append(keys, models.APIKey{
+			UUID:          ck.UUID,
+			Name:          ck.Name,
+			APIKey:        sha256Hash,
+			MaskedAPIKey:  ck.MaskedAPIKey,
+			ArtifactUUID:  ck.ArtifactUUID,
+			Status:        models.APIKeyStatus(ck.Status),
+			CreatedAt:     ck.CreatedAt,
+			CreatedBy:     ck.CreatedBy,
+			UpdatedAt:     ck.UpdatedAt,
+			ExpiresAt:     ck.ExpiresAt,
+			Source:        ck.Source,
+			ExternalRefId: ck.ExternalRefId,
+			Issuer:        ck.Issuer,
+			ETag:          etag,
+		})
+	}
+
+	s.logger.Info("Successfully fetched API keys by kind",
+		slog.String("kind", artifactKind),
+		slog.Int("count", len(keys)),
+	)
+
+	return keys, nil
+}
+
 // FetchSubscriptionPlans fetches all subscription plans from the control plane for the organization.
 func (s *APIUtilsService) FetchSubscriptionPlans() ([]models.SubscriptionPlan, error) {
 	planURL := s.getBaseURL() + "/subscription-plans"
@@ -521,6 +648,180 @@ func (s *APIUtilsService) CreateMCPProxyFromYAML(yamlData []byte, proxyID string
 	}
 
 	return result, nil
+}
+
+// FetchControlPlaneDeployments retrieves the list of deployments that should be active on this gateway
+// from the platform-API. If since is non-nil, only deployments updated after that timestamp are returned
+// (incremental sync). Pass nil for a full sync.
+func (s *APIUtilsService) FetchControlPlaneDeployments(since *time.Time) ([]models.ControlPlaneDeployment, error) {
+	deploymentsURL := s.getBaseURL() + "/deployments"
+	if since != nil {
+		deploymentsURL += "?since=" + url.QueryEscape(since.Format(time.RFC3339))
+	}
+
+	s.logger.Info("Fetching control plane deployments",
+		slog.String("url", deploymentsURL),
+	)
+
+	req, err := http.NewRequest("GET", deploymentsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Add("api-key", s.config.Token)
+	req.Header.Add("Accept", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch control plane deployments: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("control plane deployments request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var response models.ControlPlaneDeploymentsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("failed to decode control plane deployments response: %w", err)
+	}
+
+	s.logger.Info("Successfully fetched control plane deployments",
+		slog.Int("count", len(response.Deployments)),
+	)
+
+	return response.Deployments, nil
+}
+
+// BatchFetchDeployments fetches multiple deployment artifacts in a single request.
+// It returns the raw tar.gz data containing deployment directories, each named by deployment ID
+// and containing the artifact YAML file. Returns an error if the request fails.
+func (s *APIUtilsService) BatchFetchDeployments(deploymentIDs []string) ([]byte, error) {
+	batchURL := s.getBaseURL() + "/deployments/fetch-batch"
+
+	s.logger.Info("Batch fetching deployments from platform-API",
+		slog.String("url", batchURL),
+		slog.Int("count", len(deploymentIDs)),
+	)
+
+	requestBody := models.BatchFetchRequest{
+		DeploymentIDs: deploymentIDs,
+	}
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal batch fetch request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", batchURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Add("api-key", s.config.Token)
+	req.Header.Add("Accept", "application/x-tar+gzip")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to batch fetch deployments: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("batch fetch request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read batch fetch response body: %w", err)
+	}
+
+	s.logger.Info("Successfully batch fetched deployments",
+		slog.Int("count", len(deploymentIDs)),
+		slog.Int("size_bytes", len(bodyBytes)),
+	)
+
+	return bodyBytes, nil
+}
+
+// ExtractDeploymentsFromBatchZip processes a batch tar.gz response and extracts YAML content
+// for each deployment. The archive structure has top-level directories named by deployment ID,
+// each containing the artifact YAML file. Returns a map of deployment ID to YAML content bytes.
+func (s *APIUtilsService) ExtractDeploymentsFromBatchZip(zipData []byte) (map[string][]byte, error) {
+	gzReader, err := gzip.NewReader(bytes.NewReader(zipData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create gzip reader: %w", err)
+	}
+	defer gzReader.Close()
+
+	tarReader := tar.NewReader(gzReader)
+	deployments := make(map[string][]byte)
+
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to read tar entry: %w", err)
+		}
+
+		// Skip directories
+		if header.Typeflag == tar.TypeDir {
+			continue
+		}
+
+		hasInvalidSegment := false
+		for _, segment := range strings.Split(header.Name, "/") {
+			if segment == ".." {
+				hasInvalidSegment = true
+				break
+			}
+		}
+		if hasInvalidSegment {
+			s.logger.Warn("Skipping tar entry with invalid path",
+				slog.String("path", header.Name),
+			)
+			continue
+		}
+
+		cleanPath := filepath.Clean(header.Name)
+
+		// Extract deployment ID from directory name (first path component)
+		dir := filepath.Dir(cleanPath)
+		deploymentID := filepath.Base(dir)
+		if deploymentID == "." || deploymentID == "" {
+			s.logger.Warn("Skipping file with unexpected path in batch archive",
+				slog.String("path", header.Name),
+			)
+			continue
+		}
+
+		// Only process YAML files
+		ext := filepath.Ext(cleanPath)
+		if ext != ".yaml" && ext != ".yml" {
+			continue
+		}
+
+		content, err := io.ReadAll(tarReader)
+		if err != nil {
+			s.logger.Warn("Failed to read file in batch archive",
+				slog.String("path", header.Name),
+				slog.Any("error", err),
+			)
+			continue
+		}
+
+		deployments[deploymentID] = content
+	}
+
+	s.logger.Info("Extracted deployments from batch archive",
+		slog.Int("count", len(deployments)),
+	)
+
+	return deployments, nil
 }
 
 // SaveAPIDefinition saves the API definition zip file to disk

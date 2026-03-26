@@ -176,12 +176,14 @@ func unmarshalSourceConfig(cfg *models.StoredConfig, jsonData string) error {
 			return fmt.Errorf("failed to unmarshal source configuration: %w", err)
 		}
 		cfg.SourceConfiguration = config
+		cfg.Configuration = config
 	case "LlmProxy":
 		var config api.LLMProxyConfiguration
 		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
 			return fmt.Errorf("failed to unmarshal source configuration: %w", err)
 		}
 		cfg.SourceConfiguration = config
+		cfg.Configuration = config
 	case "Mcp":
 		var config api.MCPProxyConfiguration
 		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
@@ -390,6 +392,125 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 		slog.String("version", cfg.Version))
 
 	return nil
+}
+
+// UpsertConfig performs a timestamp-guarded insert-or-update.
+// The artifact row is only written if no existing row has a newer deployed_at.
+// Returns (true, nil) when the DB was actually modified, (false, nil) when a
+// newer version already exists (stale event), or (false, error) on failure.
+func (s *sqlStore) UpsertConfig(cfg *models.StoredConfig) (bool, error) {
+	startTime := time.Now()
+	table := "artifacts"
+
+	if cfg.Handle == "" {
+		return false, fmt.Errorf("handle (metadata.name) is required and cannot be empty")
+	}
+
+	// INSERT ... ON CONFLICT upsert with deployed_at guard.
+	// The WHERE clause ensures we only overwrite when the incoming deployed_at
+	// is strictly newer than the stored value (or the stored value is NULL).
+	query := `
+		INSERT INTO artifacts (
+			uuid, gateway_id, display_name, version, kind, handle,
+			desired_state, deployment_id, origin, created_at, updated_at, deployed_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(gateway_id, uuid) DO UPDATE SET
+			display_name  = excluded.display_name,
+			version       = excluded.version,
+			kind          = excluded.kind,
+			handle        = excluded.handle,
+			desired_state = excluded.desired_state,
+			deployment_id = excluded.deployment_id,
+			origin        = excluded.origin,
+			updated_at    = excluded.updated_at,
+			deployed_at   = excluded.deployed_at
+		WHERE artifacts.deployed_at IS NULL
+		   OR artifacts.deployed_at < excluded.deployed_at
+	`
+
+	tx, err := s.begin()
+	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("upsert", table, "error").Inc()
+		return false, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	stmt, err := tx.tx.Prepare(s.bind(query))
+	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("upsert", table, "error").Inc()
+		return false, fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	now := time.Now()
+	var deploymentID interface{}
+	if cfg.DeploymentID != "" {
+		deploymentID = cfg.DeploymentID
+	}
+
+	result, err := stmt.Exec(
+		cfg.UUID,
+		s.gatewayId,
+		cfg.DisplayName,
+		cfg.Version,
+		cfg.Kind,
+		cfg.Handle,
+		cfg.DesiredState,
+		deploymentID,
+		cfg.Origin,
+		now,
+		now,
+		cfg.DeployedAt,
+	)
+	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("upsert", table, "error").Inc()
+		return false, fmt.Errorf("failed to upsert artifact: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("upsert", table, "error").Inc()
+		return false, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rows == 0 {
+		// Stale event — existing row has a newer deployed_at. No-op.
+		_ = tx.Rollback()
+		committed = true // prevent double-rollback in defer
+		metrics.DatabaseOperationsTotal.WithLabelValues("upsert", table, "skipped").Inc()
+		s.logger.Info("Upsert skipped (stale event)",
+			slog.String("uuid", cfg.UUID),
+			slog.String("deployment_id", cfg.DeploymentID))
+		return false, nil
+	}
+
+	// Upsert the per-resource-type table (configuration JSON).
+	if err := s.upsertResourceConfigTx(tx, cfg); err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("upsert", table, "error").Inc()
+		return false, fmt.Errorf("failed to upsert resource configuration: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("upsert", table, "error").Inc()
+		return false, fmt.Errorf("failed to commit upsert transaction: %w", err)
+	}
+	committed = true
+
+	metrics.DatabaseOperationsTotal.WithLabelValues("upsert", table, "success").Inc()
+	metrics.DatabaseOperationDurationSeconds.WithLabelValues("upsert", table).Observe(time.Since(startTime).Seconds())
+
+	s.logger.Info("Configuration upserted",
+		slog.String("uuid", cfg.UUID),
+		slog.String("kind", cfg.Kind),
+		slog.String("handle", cfg.Handle),
+		slog.String("deployment_id", cfg.DeploymentID))
+
+	return true, nil
 }
 
 // DeleteConfig removes an artifact configuration by UUID
@@ -698,6 +819,64 @@ func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error
 	return configs, nil
 }
 
+// GetAllConfigsByOrigin retrieves artifact metadata (without full configuration) for all
+// configs with the given origin. Queries only the artifacts table — no resource-table JOINs —
+// so Configuration/SourceConfiguration will be nil.
+func (s *sqlStore) GetAllConfigsByOrigin(origin models.Origin) ([]*models.StoredConfig, error) {
+	query := `
+		SELECT uuid, kind, handle, display_name, version, desired_state,
+			deployment_id, origin, created_at, updated_at, deployed_at
+		FROM artifacts
+		WHERE origin = ? AND gateway_id = ?
+		ORDER BY created_at DESC
+	`
+
+	rows, err := s.query(query, string(origin), s.gatewayId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query configurations by origin: %w", err)
+	}
+	defer rows.Close()
+
+	var configs []*models.StoredConfig
+	for rows.Next() {
+		var cfg models.StoredConfig
+		var deployedAt sql.NullTime
+		var deploymentID sql.NullString
+
+		err := rows.Scan(
+			&cfg.UUID,
+			&cfg.Kind,
+			&cfg.Handle,
+			&cfg.DisplayName,
+			&cfg.Version,
+			&cfg.DesiredState,
+			&deploymentID,
+			&cfg.Origin,
+			&cfg.CreatedAt,
+			&cfg.UpdatedAt,
+			&deployedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		if deployedAt.Valid {
+			cfg.DeployedAt = &deployedAt.Time
+		}
+		if deploymentID.Valid {
+			cfg.DeploymentID = deploymentID.String
+		}
+
+		configs = append(configs, &cfg)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return configs, nil
+}
+
 // loadResourceConfig loads the configuration from the correct type table into the StoredConfig.
 // cfg.UUID and cfg.Kind must already be populated.
 func (s *sqlStore) loadResourceConfig(cfg *models.StoredConfig) error {
@@ -826,6 +1005,61 @@ func (s *sqlStore) updateResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 	}
 
 	return true, nil
+}
+
+// upsertResourceConfigTx performs INSERT ... ON CONFLICT(gateway_id, uuid)
+// DO UPDATE for the per-resource-type table. Works identically on SQLite
+// (3.24+) and PostgreSQL.
+func (s *sqlStore) upsertResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConfig) error {
+	resourceTable, err := kindToResourceTable(cfg.Kind)
+	if err != nil {
+		return err
+	}
+
+	configJSON, err := json.Marshal(cfg.SourceConfiguration)
+	if err != nil {
+		return fmt.Errorf("failed to marshal configuration: %w", err)
+	}
+
+	var query string
+	var args []interface{}
+
+	if cfg.Kind == "LlmProxy" {
+		proxyConfig, ok := cfg.SourceConfiguration.(api.LLMProxyConfiguration)
+		if !ok {
+			return fmt.Errorf("expected LLMProxyConfiguration but got %T", cfg.SourceConfiguration)
+		}
+		providerUUID, err := s.resolveProviderUUID(tx, proxyConfig.Spec.Provider.Id)
+		if err != nil {
+			return fmt.Errorf("failed to resolve provider: %w", err)
+		}
+		query = fmt.Sprintf(`
+			INSERT INTO %s (uuid, gateway_id, configuration, provider_uuid) VALUES (?, ?, ?, ?)
+			ON CONFLICT(gateway_id, uuid) DO UPDATE SET
+				configuration  = excluded.configuration,
+				provider_uuid  = excluded.provider_uuid
+		`, resourceTable)
+		args = []interface{}{cfg.UUID, s.gatewayId, string(configJSON), providerUUID}
+	} else {
+		query = fmt.Sprintf(`
+			INSERT INTO %s (uuid, gateway_id, configuration) VALUES (?, ?, ?)
+			ON CONFLICT(gateway_id, uuid) DO UPDATE SET
+				configuration = excluded.configuration
+		`, resourceTable)
+		args = []interface{}{cfg.UUID, s.gatewayId, string(configJSON)}
+	}
+
+	stmt, err := tx.tx.Prepare(s.bind(query))
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	if _, err = stmt.Exec(args...); err != nil {
+		return fmt.Errorf("failed to upsert resource configuration: %w", err)
+	}
+
+	return nil
 }
 
 // resolveProviderUUID looks up the provider UUID from the database by provider handle and gateway ID.
@@ -1292,10 +1526,65 @@ func (s *sqlStore) SaveAPIKey(apiKey *models.APIKey) error {
 	}
 
 	s.logger.Info("API key inserted successfully",
-		slog.String("uuid", apiKey.UUID),
 		slog.String("name", apiKey.Name),
-		slog.String("artifact_uuid", apiKey.ArtifactUUID),
 		slog.String("created_by", apiKey.CreatedBy))
+
+	return nil
+}
+
+// UpsertAPIKey inserts or conditionally updates an API key.
+//
+// The conflict target is the unique composite key (gateway_id, artifact_uuid, name).
+// The DO UPDATE only fires when the stored updated_at is strictly older than the incoming one,
+// so a racing WebSocket event that already wrote a newer record is never overwritten.
+// source is preserved from the existing row when it is already set.
+// external_ref_id falls back to the existing value when the incoming one is NULL.
+func (s *sqlStore) UpsertAPIKey(apiKey *models.APIKey) error {
+	query := `
+		INSERT INTO api_keys (
+			uuid, gateway_id, name, api_key, masked_api_key, artifact_uuid, status,
+			created_at, created_by, updated_at, expires_at,
+			source, external_ref_id, issuer
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(gateway_id, artifact_uuid, name) DO UPDATE SET
+			uuid            = excluded.uuid,
+			api_key         = excluded.api_key,
+			masked_api_key  = excluded.masked_api_key,
+			status          = excluded.status,
+			updated_at      = excluded.updated_at,
+			expires_at      = excluded.expires_at,
+			source          = CASE WHEN api_keys.source != '' THEN api_keys.source ELSE excluded.source END,
+			external_ref_id = COALESCE(excluded.external_ref_id, api_keys.external_ref_id),
+			issuer          = CASE WHEN api_keys.issuer != '' THEN api_keys.issuer ELSE excluded.issuer END
+		WHERE api_keys.updated_at < excluded.updated_at
+	`
+
+	_, err := s.exec(query,
+		apiKey.UUID,
+		s.gatewayId,
+		apiKey.Name,
+		apiKey.APIKey,
+		apiKey.MaskedAPIKey,
+		apiKey.ArtifactUUID,
+		apiKey.Status,
+		apiKey.CreatedAt,
+		apiKey.CreatedBy,
+		apiKey.UpdatedAt,
+		apiKey.ExpiresAt,
+		apiKey.Source,
+		apiKey.ExternalRefId,
+		apiKey.Issuer,
+	)
+	if err != nil {
+		if s.isUniqueViolation(err) {
+			return fmt.Errorf("%w: API key value already exists", ErrConflict)
+		}
+		return fmt.Errorf("failed to upsert API key: %w", err)
+	}
+
+	s.logger.Debug("API key upserted",
+		slog.String("name", apiKey.Name),
+		slog.String("artifact_uuid", apiKey.ArtifactUUID))
 
 	return nil
 }
@@ -2447,4 +2736,73 @@ func (s *sqlStore) SecretExists(handle string) (bool, error) {
 	}
 
 	return exists, nil
+}
+
+// ListAPIKeysForArtifactsNotIn returns uuid + artifact_uuid for keys that would be removed
+// by DeleteAPIKeysForArtifactsNotIn. Call this before the delete to collect identifiers
+// needed for publishing EventHub events.
+func (s *sqlStore) ListAPIKeysForArtifactsNotIn(artifactUUIDs []string, keyUUIDs []string) ([]*models.APIKey, error) {
+	if len(artifactUUIDs) == 0 {
+		return nil, nil
+	}
+	artifactPlaceholders := make([]string, len(artifactUUIDs))
+	args := make([]interface{}, 0, len(artifactUUIDs)+len(keyUUIDs)+1)
+	args = append(args, s.gatewayId)
+	for i, id := range artifactUUIDs {
+		artifactPlaceholders[i] = "?"
+		args = append(args, id)
+	}
+	var query string
+	if len(keyUUIDs) == 0 {
+		query = fmt.Sprintf(
+			`SELECT uuid, artifact_uuid, name FROM api_keys WHERE gateway_id = ? AND artifact_uuid IN (%s)`,
+			strings.Join(artifactPlaceholders, ","),
+		)
+	} else {
+		keyPlaceholders := make([]string, len(keyUUIDs))
+		for i, id := range keyUUIDs {
+			keyPlaceholders[i] = "?"
+			args = append(args, id)
+		}
+		query = fmt.Sprintf(
+			`SELECT uuid, artifact_uuid, name FROM api_keys WHERE gateway_id = ? AND artifact_uuid IN (%s) AND uuid NOT IN (%s)`,
+			strings.Join(artifactPlaceholders, ","),
+			strings.Join(keyPlaceholders, ","),
+		)
+	}
+	rows, err := s.query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list API keys for artifacts not in set: %w", err)
+	}
+	defer rows.Close()
+	var keys []*models.APIKey
+	for rows.Next() {
+		k := &models.APIKey{}
+		if err := rows.Scan(&k.UUID, &k.ArtifactUUID, &k.Name); err != nil {
+			return nil, fmt.Errorf("failed to scan API key row: %w", err)
+		}
+		keys = append(keys, k)
+	}
+	return keys, rows.Err()
+}
+
+// DeleteAPIKeysByUUIDs removes API keys by their UUIDs.
+func (s *sqlStore) DeleteAPIKeysByUUIDs(uuids []string) error {
+	if len(uuids) == 0 {
+		return nil
+	}
+	placeholders := make([]string, len(uuids))
+	args := make([]interface{}, 0, len(uuids)+1)
+	args = append(args, s.gatewayId)
+	for i, id := range uuids {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	query := fmt.Sprintf(`DELETE FROM api_keys WHERE gateway_id = ? AND uuid IN (%s)`,
+		strings.Join(placeholders, ","))
+	_, err := s.exec(query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to delete API keys by UUIDs: %w", err)
+	}
+	return nil
 }

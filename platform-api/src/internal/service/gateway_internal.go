@@ -18,6 +18,7 @@
 package service
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -44,6 +45,7 @@ type GatewayInternalAPIService struct {
 	gatewayRepo          repository.GatewayRepository
 	orgRepo              repository.OrganizationRepository
 	projectRepo          repository.ProjectRepository
+	apiKeyRepo           repository.APIKeyRepository
 	apiUtil              *utils.APIUtil
 	cfg                  *config.Server
 	slogger              *slog.Logger
@@ -53,7 +55,7 @@ type GatewayInternalAPIService struct {
 func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscriptionRepo repository.SubscriptionRepository,
 	subscriptionPlanRepo repository.SubscriptionPlanRepository, providerRepo repository.LLMProviderRepository,
 	proxyRepo repository.LLMProxyRepository, mcpProxyRepo repository.MCPProxyRepository, deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
-	orgRepo repository.OrganizationRepository, projectRepo repository.ProjectRepository, cfg *config.Server, slogger *slog.Logger) *GatewayInternalAPIService {
+	orgRepo repository.OrganizationRepository, projectRepo repository.ProjectRepository, apiKeyRepo repository.APIKeyRepository, cfg *config.Server, slogger *slog.Logger) *GatewayInternalAPIService {
 	return &GatewayInternalAPIService{
 		apiRepo:              apiRepo,
 		subscriptionRepo:     subscriptionRepo,
@@ -65,6 +67,7 @@ func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscription
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,
 		projectRepo:          projectRepo,
+		apiKeyRepo:           apiKeyRepo,
 		apiUtil:              &utils.APIUtil{},
 		cfg:                  cfg,
 		slogger:              slogger,
@@ -174,7 +177,7 @@ func (s *GatewayInternalAPIService) IsAPIDeployedOnGateway(apiID, gatewayID, org
 }
 
 // ListSubscriptionsForAPI lists subscriptions for a given API within an organization.
-func (s *GatewayInternalAPIService) ListSubscriptionsForAPI(apiID, orgID string) ([]*model.Subscription, error) {
+func (s *GatewayInternalAPIService) ListSubscriptionsForAPI(apiID, orgID string) ([]dto.GatewaySubscriptionInfo, error) {
 	if apiID == "" || orgID == "" {
 		return nil, constants.ErrInvalidInput
 	}
@@ -195,7 +198,7 @@ func (s *GatewayInternalAPIService) ListSubscriptionsForAPI(apiID, orgID string)
 	}
 
 	// Internal sync: fetch all subscriptions for the API via pagination so reconciliation
-	// (DeleteSubscriptionsForAPINotIn) never performs destructive deletes due to a cutoff.
+	// never performs destructive deletes due to a cutoff.
 	const pageSize = 1000
 	var subs []*model.Subscription
 	for offset := 0; ; offset += pageSize {
@@ -208,16 +211,31 @@ func (s *GatewayInternalAPIService) ListSubscriptionsForAPI(apiID, orgID string)
 			break
 		}
 	}
-	return subs, nil
+
+	items := make([]dto.GatewaySubscriptionInfo, len(subs))
+	for i, sub := range subs {
+		items[i] = dto.GatewaySubscriptionInfo{
+			ID:                 sub.UUID,
+			APIID:              sub.APIUUID,
+			ApplicationID:      sub.ApplicationID,
+			SubscriptionToken:  sub.SubscriptionToken,
+			SubscriptionPlanID: sub.SubscriptionPlanID,
+			Status:             string(sub.Status),
+			CreatedAt:          sub.CreatedAt,
+			UpdatedAt:          sub.UpdatedAt,
+			Etag:               utils.GenerateDeterministicUUIDv7(sub.UUID, sub.UpdatedAt),
+		}
+	}
+	return items, nil
 }
 
 // ListSubscriptionPlansForOrg lists all subscription plans for an organization.
-func (s *GatewayInternalAPIService) ListSubscriptionPlansForOrg(orgID string) ([]*model.SubscriptionPlan, error) {
+func (s *GatewayInternalAPIService) ListSubscriptionPlansForOrg(orgID string) ([]dto.GatewaySubscriptionPlanInfo, error) {
 	if orgID == "" {
 		return nil, constants.ErrInvalidInput
 	}
 	// Internal sync: fetch all plans for the organization via pagination so reconciliation
-	// (DeleteSubscriptionPlansNotIn) never performs destructive deletes due to a cutoff.
+	// never performs destructive deletes due to a cutoff.
 	const pageSize = 1000
 	var plans []*model.SubscriptionPlan
 	for offset := 0; ; offset += pageSize {
@@ -230,7 +248,24 @@ func (s *GatewayInternalAPIService) ListSubscriptionPlansForOrg(orgID string) ([
 			break
 		}
 	}
-	return plans, nil
+
+	items := make([]dto.GatewaySubscriptionPlanInfo, len(plans))
+	for i, plan := range plans {
+		items[i] = dto.GatewaySubscriptionPlanInfo{
+			ID:                 plan.UUID,
+			PlanName:           plan.PlanName,
+			BillingPlan:        plan.BillingPlan,
+			StopOnQuotaReach:   plan.StopOnQuotaReach,
+			ThrottleLimitCount: plan.ThrottleLimitCount,
+			ThrottleLimitUnit:  plan.ThrottleLimitUnit,
+			ExpiryTime:         plan.ExpiryTime,
+			Status:             string(plan.Status),
+			CreatedAt:          plan.CreatedAt,
+			UpdatedAt:          plan.UpdatedAt,
+			Etag:               utils.GenerateDeterministicUUIDv7(plan.UUID, plan.UpdatedAt),
+		}
+	}
+	return items, nil
 }
 
 // GetActiveMCPProxyDeploymentByGateway retrieves the currently deployed MCP proxy artifact for a specific gateway
@@ -454,12 +489,14 @@ func (s *GatewayInternalAPIService) GetDeploymentsByGateway(orgID, gatewayID str
 	// Convert to response DTO
 	items := make([]dto.GatewayDeploymentInfo, len(deployments))
 	for i, dep := range deployments {
+		deployedAt := dep.PerformedAt
 		items[i] = dto.GatewayDeploymentInfo{
-			ArtifactID:   dep.Handle,
+			ArtifactID:   dep.ArtifactID,
 			DeploymentID: dep.DeploymentID,
 			Kind:         dep.Kind,
 			State:        string(dep.Status),
-			DeployedAt:   dep.UpdatedAt,
+			DeployedAt:   deployedAt,
+			Etag:         utils.GenerateDeterministicUUIDv7(dep.DeploymentID, deployedAt),
 		}
 	}
 
@@ -476,4 +513,44 @@ func (s *GatewayInternalAPIService) GetDeploymentContentBatch(orgID, gatewayID s
 		return nil, fmt.Errorf("failed to get deployment content: %w", err)
 	}
 	return contentMap, nil
+}
+
+// GetAPIKeysByKind returns all API keys for artifacts of the given kind deployed on the gateway.
+// When issuer is non-empty only keys whose issuer matches are returned.
+// Each item carries a stable correlationId derived from (artifactUuid, name, updatedAt).
+// source is always "external" and externalRefId is always null.
+func (s *GatewayInternalAPIService) GetAPIKeysByKind(gatewayID, orgID, kind, issuer string) ([]model.InternalAPIKeyItem, error) {
+	keys, err := s.apiKeyRepo.ListByGatewayAndKind(gatewayID, orgID, kind, issuer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list API keys by kind: %w", err)
+	}
+
+	items := make([]model.InternalAPIKeyItem, 0, len(keys))
+	for _, k := range keys {
+		var hashes map[string]string
+		if k.APIKeyHashes != "" {
+			if err := json.Unmarshal([]byte(k.APIKeyHashes), &hashes); err != nil {
+				s.slogger.Warn("Failed to unmarshal API key hashes, skipping key",
+					"keyUUID", k.UUID, "kind", kind, "error", err)
+				continue
+			}
+		}
+		items = append(items, model.InternalAPIKeyItem{
+			ETag: utils.APIKeyETag(k.ArtifactUUID, k.Name, k.UpdatedAt),
+			UUID:          k.UUID,
+			Name:          k.Name,
+			MaskedAPIKey:  k.MaskedAPIKey,
+			APIKeyHashes:  hashes,
+			ArtifactUUID:  k.ArtifactUUID,
+			Status:        k.Status,
+			CreatedAt:     k.CreatedAt,
+			CreatedBy:     k.CreatedBy,
+			UpdatedAt:     k.UpdatedAt,
+			ExpiresAt:     k.ExpiresAt,
+			Source:        "external",
+			ExternalRefId: nil,
+			Issuer:        k.Issuer,
+		})
+	}
+	return items, nil
 }

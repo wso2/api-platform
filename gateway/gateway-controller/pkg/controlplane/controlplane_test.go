@@ -222,7 +222,7 @@ func createTestClientWithConfig(t *testing.T, cfg config.ControlPlaneConfig) *Cl
 		APIKey: *apiKeyConfig,
 	}
 
-	return NewClient(cfg, logger, store, db, nil, nil, routerConfig, nil, apiKeyConfig, nil, systemConfig, nil, nil, nil, nil, mockHub, nil)
+	return NewClient(cfg, logger, store, db, nil, nil, routerConfig, nil, nil, apiKeyConfig, nil, systemConfig, nil, nil, nil, nil, mockHub, nil)
 }
 
 func createTestClientWithHost(t *testing.T, host string) *Client {
@@ -558,18 +558,6 @@ func TestClient_handleMessage_UnknownType(t *testing.T) {
 	client.handleMessage(1, []byte(msg))
 }
 
-func TestClient_handleAPIUndeployedEvent(t *testing.T) {
-	client := createTestClient(t)
-
-	// Should handle undeploy event without panic
-	event := map[string]interface{}{
-		"type":          "api.undeployed",
-		"payload":       map[string]interface{}{"apiId": "api-123"},
-		"timestamp":     "2025-01-30T12:00:00Z",
-		"correlationId": "corr-789",
-	}
-	client.handleAPIUndeployedEvent(event)
-}
 
 func TestClient_handleMCPProxyUndeploymentEvent_PublishesReplicaSyncUpdate(t *testing.T) {
 	client := createTestClient(t)
