@@ -72,10 +72,13 @@ func NewMCPDeploymentService(
 	snapshotManager *xds.SnapshotManager,
 	policyManager *policyxds.PolicyManager,
 	policyValidator *config.PolicyValidator,
+	eventHub eventhub.EventHub,
+	gatewayID string,
 ) *MCPDeploymentService {
 	if db == nil {
 		panic("MCPDeploymentService requires non-nil storage")
 	}
+	trimmedGatewayID := requireReplicaSyncWiring("MCPDeploymentService", eventHub, gatewayID)
 
 	return &MCPDeploymentService{
 		store:           store,
@@ -85,6 +88,8 @@ func NewMCPDeploymentService(
 		validator:       config.NewMCPValidator().WithPolicyValidator(policyValidator),
 		transformer:     NewMCPTransformer(),
 		policyManager:   policyManager,
+		eventHub:        eventHub,
+		gatewayID:       trimmedGatewayID,
 	}
 }
 
@@ -111,26 +116,7 @@ func HydrateStoredMCPConfig(cfg *models.StoredConfig) error {
 	return fmt.Errorf("unexpected MCP source configuration type %T", cfg.SourceConfiguration)
 }
 
-// SetEventHub configures EventHub publishing for replica-synced MCP proxy flows.
-func (s *MCPDeploymentService) SetEventHub(eventHub eventhub.EventHub, gatewayID string) {
-	s.eventHub = eventHub
-	s.gatewayID = gatewayID
-}
-
-func (s *MCPDeploymentService) requireReplicaSyncDependencies() error {
-	if s.eventHub == nil {
-		return fmt.Errorf("MCPDeploymentService requires EventHub")
-	}
-	if strings.TrimSpace(s.gatewayID) == "" {
-		return fmt.Errorf("MCPDeploymentService requires gateway ID")
-	}
-	return nil
-}
-
 func (s *MCPDeploymentService) publishMCPProxyEvent(action, entityID, correlationID string, logger *slog.Logger) {
-	if err := s.requireReplicaSyncDependencies(); err != nil {
-		panic(err.Error())
-	}
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -184,9 +170,6 @@ func (s *MCPDeploymentService) getMCPProxyByID(id string) (*models.StoredConfig,
 func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams) (*APIDeploymentResult, error) {
 	if !models.IsValidOrigin(params.Origin) {
 		return nil, fmt.Errorf("invalid or missing origin: %q", params.Origin)
-	}
-	if err := s.requireReplicaSyncDependencies(); err != nil {
-		return nil, err
 	}
 
 	mcpConfig, apiConfig, err := s.parseValidateAndTransform(params)
@@ -304,10 +287,6 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 // inserted or updated. Callers should only publish EventHub events and update xDS
 // snapshots when affected=true.
 func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig, logger *slog.Logger) (bool, error) {
-	if err := s.requireReplicaSyncDependencies(); err != nil {
-		return false, err
-	}
-
 	affected, err := s.db.UpsertConfig(storedCfg)
 	if err != nil {
 		return false, fmt.Errorf("failed to upsert config to database: %w", err)
@@ -428,10 +407,6 @@ func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID string, logg
 		}
 	}
 
-	if err := s.requireReplicaSyncDependencies(); err != nil {
-		return nil, err
-	}
-
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 		logger.Error("Failed to delete config from database", slog.Any("error", err))
 		return nil, fmt.Errorf("failed to delete configuration from database: %w", err)
@@ -468,10 +443,6 @@ func (s *MCPDeploymentService) UndeployMCPProxy(
 	updated.DeploymentID = deploymentID
 	updated.DeployedAt = &undeployedAt
 	updated.UpdatedAt = time.Now()
-
-	if err := s.requireReplicaSyncDependencies(); err != nil {
-		return nil, err
-	}
 
 	// Timestamp-guarded upsert: only writes if deployed_at is newer than what's in DB.
 	affected, err := s.db.UpsertConfig(&updated)

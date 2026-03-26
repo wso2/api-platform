@@ -30,9 +30,38 @@ func newTestAPIDeploymentService(
 	routerConfig *config.RouterConfig,
 	policyResolver *resolver.PolicyResolver,
 ) *APIDeploymentService {
-	service := NewAPIDeploymentService(store, newReplicaSyncTestDB(db), snapshotManager, validator, routerConfig, policyResolver)
-	service.SetEventHub(newReplicaSyncTestEventHub(), testGatewayID)
-	return service
+	return newTestAPIDeploymentServiceWithHub(
+		store,
+		db,
+		snapshotManager,
+		validator,
+		routerConfig,
+		policyResolver,
+		newReplicaSyncTestEventHub(),
+		testGatewayID,
+	)
+}
+
+func newTestAPIDeploymentServiceWithHub(
+	store *storage.ConfigStore,
+	db storage.Storage,
+	snapshotManager *xds.SnapshotManager,
+	validator config.Validator,
+	routerConfig *config.RouterConfig,
+	policyResolver *resolver.PolicyResolver,
+	hub eventhub.EventHub,
+	gatewayID string,
+) *APIDeploymentService {
+	return NewAPIDeploymentService(
+		store,
+		newReplicaSyncTestDB(db),
+		snapshotManager,
+		validator,
+		routerConfig,
+		policyResolver,
+		hub,
+		gatewayID,
+	)
 }
 
 func newTestAPIKeyService(
@@ -41,9 +70,7 @@ func newTestAPIKeyService(
 	xdsManager XDSManager,
 	apiKeyConfig *config.APIKeyConfig,
 ) *APIKeyService {
-	service := NewAPIKeyService(store, newReplicaSyncTestDB(db), xdsManager, apiKeyConfig)
-	service.SetEventHub(newReplicaSyncTestEventHub(), testGatewayID)
-	return service
+	return NewAPIKeyService(store, newReplicaSyncTestDB(db), xdsManager, apiKeyConfig, newReplicaSyncTestEventHub(), testGatewayID)
 }
 
 func newTestMCPDeploymentService(
@@ -53,7 +80,33 @@ func newTestMCPDeploymentService(
 	policyManager *policyxds.PolicyManager,
 	policyValidator *config.PolicyValidator,
 ) *MCPDeploymentService {
-	service := NewMCPDeploymentService(store, newReplicaSyncTestDB(db), snapshotManager, policyManager, policyValidator)
-	service.SetEventHub(newReplicaSyncTestEventHub(), testGatewayID)
-	return service
+	return newTestMCPDeploymentServiceWithHub(
+		store,
+		db,
+		snapshotManager,
+		policyManager,
+		policyValidator,
+		newReplicaSyncTestEventHub(),
+		testGatewayID,
+	)
+}
+
+func newTestMCPDeploymentServiceWithHub(
+	store *storage.ConfigStore,
+	db storage.Storage,
+	snapshotManager *xds.SnapshotManager,
+	policyManager *policyxds.PolicyManager,
+	policyValidator *config.PolicyValidator,
+	hub eventhub.EventHub,
+	gatewayID string,
+) *MCPDeploymentService {
+	return NewMCPDeploymentService(
+		store,
+		newReplicaSyncTestDB(db),
+		snapshotManager,
+		policyManager,
+		policyValidator,
+		hub,
+		gatewayID,
+	)
 }

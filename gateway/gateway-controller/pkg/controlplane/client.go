@@ -170,12 +170,9 @@ func NewClient(
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig, policyResolver)
-	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, apiKeyConfig)
-	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subSnapshotManager)
-	deploymentService.SetEventHub(eventHubInstance, gatewayID)
-	apiKeyService.SetEventHub(eventHubInstance, gatewayID)
-	subscriptionResourceService.SetEventHub(eventHubInstance, gatewayID)
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig, policyResolver, eventHubInstance, gatewayID)
+	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, apiKeyConfig, eventHubInstance, gatewayID)
+	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subSnapshotManager, eventHubInstance, gatewayID)
 
 	client := &Client{
 		config:                      cfg,
@@ -225,16 +222,15 @@ func NewClient(
 		policyVersionResolver,
 		policyValidator,
 	)
-	client.llmDeploymentService.SetEventHub(eventHubInstance, gatewayID)
-
 	client.mcpDeploymentService = utils.NewMCPDeploymentService(
 		store,
 		db,
 		snapshotManager,
 		policyManager,
 		policyValidator,
+		eventHubInstance,
+		gatewayID,
 	)
-	client.mcpDeploymentService.SetEventHub(eventHubInstance, gatewayID)
 
 	// Initialize API utils service with the proper base URL using the method
 	client.apiUtilsService = utils.NewAPIUtilsService(utils.PlatformAPIConfig{
@@ -252,8 +248,7 @@ func (c *Client) getSubscriptionResourceService() *utils.SubscriptionResourceSer
 		return c.subscriptionResourceService
 	}
 
-	c.subscriptionResourceService = utils.NewSubscriptionResourceService(c.db, c.subscriptionSnapshotUpdater)
-	c.subscriptionResourceService.SetEventHub(c.eventHub, c.gatewayID)
+	c.subscriptionResourceService = utils.NewSubscriptionResourceService(c.db, c.subscriptionSnapshotUpdater, c.eventHub, c.gatewayID)
 
 	return c.subscriptionResourceService
 }

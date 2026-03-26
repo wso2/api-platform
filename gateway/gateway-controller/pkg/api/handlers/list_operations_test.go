@@ -51,7 +51,6 @@ func createTestServerWithLLM() *APIServer {
 		policyVersionResolver,
 		policyValidator,
 	)
-	llmService.SetEventHub(server.eventHub, server.gatewayID)
 	server.llmDeploymentService = llmService
 	return server
 }

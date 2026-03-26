@@ -166,34 +166,20 @@ type APIKeyService struct {
 
 // NewAPIKeyService creates a new API key generation service
 func NewAPIKeyService(store *storage.ConfigStore, db storage.Storage, xdsManager XDSManager,
-	apiKeyConfig *config.APIKeyConfig) *APIKeyService {
+	apiKeyConfig *config.APIKeyConfig, eventHub eventhub.EventHub, gatewayID string) *APIKeyService {
 	if db == nil {
 		panic("APIKeyService requires non-nil storage")
 	}
+	trimmedGatewayID := requireReplicaSyncWiring("APIKeyService", eventHub, gatewayID)
 
 	return &APIKeyService{
 		store:        store,
 		db:           db,
 		xdsManager:   xdsManager,
 		apiKeyConfig: apiKeyConfig,
+		eventHub:     eventHub,
+		gatewayID:    trimmedGatewayID,
 	}
-}
-
-// TODO: (VirajSalaka) Set at the construction of the service.
-// SetEventHub sets the EventHub for event-driven synchronization.
-func (s *APIKeyService) SetEventHub(eventHub eventhub.EventHub, gatewayID string) {
-	s.eventHub = eventHub
-	s.gatewayID = gatewayID
-}
-
-func (s *APIKeyService) requireReplicaSyncDependencies() error {
-	if s.eventHub == nil {
-		return fmt.Errorf("APIKeyService requires EventHub")
-	}
-	if strings.TrimSpace(s.gatewayID) == "" {
-		return fmt.Errorf("APIKeyService requires gateway ID")
-	}
-	return nil
 }
 
 // getAPIConfigByHandle resolves an artifact configuration by kind and handle.
@@ -220,9 +206,6 @@ func (s *APIKeyService) PublishAPIKeyEvent(action, apiID, keyID, correlationID s
 
 // publishAPIKeyEvent publishes an API key event to the EventHub.
 func (s *APIKeyService) publishAPIKeyEvent(action, apiID, keyID, correlationID string, logger *slog.Logger) {
-	if err := s.requireReplicaSyncDependencies(); err != nil {
-		panic(err.Error())
-	}
 	event := eventhub.Event{
 		EventType: eventhub.EventTypeAPIKey,
 		Action:    action,
@@ -246,9 +229,6 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 	baseLogger := params.Logger
 	if baseLogger == nil {
 		baseLogger = slog.Default()
-	}
-	if err := s.requireReplicaSyncDependencies(); err != nil {
-		return nil, err
 	}
 	user := params.User
 
@@ -394,9 +374,6 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 	if baseLogger == nil {
 		baseLogger = slog.Default()
 	}
-	if err := s.requireReplicaSyncDependencies(); err != nil {
-		return nil, err
-	}
 	user := params.User
 	apiKeyName := params.APIKeyName
 
@@ -508,9 +485,6 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 	baseLogger := params.Logger
 	if baseLogger == nil {
 		baseLogger = slog.Default()
-	}
-	if err := s.requireReplicaSyncDependencies(); err != nil {
-		return nil, err
 	}
 
 	// Create logger with pre-attached correlation ID and common fields
@@ -676,9 +650,6 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 	logger := params.Logger
 	if logger == nil {
 		logger = slog.Default()
-	}
-	if err := s.requireReplicaSyncDependencies(); err != nil {
-		return nil, err
 	}
 	user := params.User
 

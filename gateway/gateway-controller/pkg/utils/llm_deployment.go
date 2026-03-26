@@ -83,6 +83,7 @@ func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 	if deploymentService == nil {
 		panic("LLMDeploymentService requires APIDeploymentService")
 	}
+	requireReplicaSyncWiring("LLMDeploymentService", deploymentService.eventHub, deploymentService.gatewayID)
 
 	service := &LLMDeploymentService{
 		store:               store,
@@ -106,18 +107,6 @@ func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 	}
 
 	return service
-}
-
-// SetEventHub configures EventHub publishing for replica-synced LLM provider flows.
-func (s *LLMDeploymentService) SetEventHub(eventHub eventhub.EventHub, gatewayID string) {
-	s.deploymentService.SetEventHub(eventHub, gatewayID)
-}
-
-func (s *LLMDeploymentService) requireReplicaSyncDependencies() error {
-	if s.deploymentService == nil {
-		return fmt.Errorf("LLMDeploymentService requires APIDeploymentService")
-	}
-	return s.deploymentService.requireReplicaSyncDependencies()
 }
 
 func (s *LLMDeploymentService) publishLLMProviderEvent(action, entityID, correlationID string, logger *slog.Logger) {
@@ -522,9 +511,6 @@ func (s *LLMDeploymentService) parseAndValidateLLMTemplate(params LLMTemplatePar
 
 // CreateLLMProviderTemplate parses, validates, and persists a template
 func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParams) (*models.StoredLLMProviderTemplate, error) {
-	if err := s.requireReplicaSyncDependencies(); err != nil {
-		return nil, err
-	}
 	tmpl, err := s.parseAndValidateLLMTemplate(params)
 	if err != nil {
 		return nil, err
@@ -688,9 +674,6 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 
 // UpdateLLMProviderTemplate validates and updates existing template by handle
 func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params LLMTemplateParams) (*models.StoredLLMProviderTemplate, error) {
-	if err := s.requireReplicaSyncDependencies(); err != nil {
-		return nil, err
-	}
 	existing, err := s.GetLLMProviderTemplateByHandle(handle)
 	if err != nil {
 		return nil, fmt.Errorf("template with handle '%s' not found", handle)
@@ -727,9 +710,6 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 
 // DeleteLLMProviderTemplate deletes a template by name
 func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle, correlationID string, logger *slog.Logger) (*models.StoredLLMProviderTemplate, error) {
-	if err := s.requireReplicaSyncDependencies(); err != nil {
-		return nil, err
-	}
 	tmpl, err := s.GetLLMProviderTemplateByHandle(handle)
 	if err != nil {
 		return nil, fmt.Errorf("template with handle '%s' not found", handle)
@@ -976,9 +956,6 @@ func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploy
 // DeleteLLMProvider deletes by name+version using store/db and updates snapshot
 func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID string,
 	logger *slog.Logger) (*models.StoredConfig, error) {
-	if err := s.requireReplicaSyncDependencies(); err != nil {
-		return nil, err
-	}
 	cfg, err := s.GetLLMProviderByHandle(handle)
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up LLM provider: %w", err)
@@ -1065,9 +1042,6 @@ func (s *LLMDeploymentService) GetLLMProxyByHandle(handle string) (*models.Store
 
 // DeleteLLMProxy deletes by name+version using store/db and updates snapshot
 func (s *LLMDeploymentService) DeleteLLMProxy(handle, correlationID string, logger *slog.Logger) (*models.StoredConfig, error) {
-	if err := s.requireReplicaSyncDependencies(); err != nil {
-		return nil, err
-	}
 	cfg, err := s.GetLLMProxyByHandle(handle)
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up LLM proxy: %w", err)

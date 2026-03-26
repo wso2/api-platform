@@ -20,9 +20,7 @@ package utils
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
@@ -44,21 +42,23 @@ type SubscriptionResourceService struct {
 }
 
 // NewSubscriptionResourceService creates a new service for subscription-related resources.
-func NewSubscriptionResourceService(db storage.Storage, snapshotUpdater SubscriptionSnapshotUpdater) *SubscriptionResourceService {
+func NewSubscriptionResourceService(
+	db storage.Storage,
+	snapshotUpdater SubscriptionSnapshotUpdater,
+	eventHub eventhub.EventHub,
+	gatewayID string,
+) *SubscriptionResourceService {
 	if db == nil {
 		panic("SubscriptionResourceService requires non-nil storage")
 	}
+	trimmedGatewayID := requireReplicaSyncWiring("SubscriptionResourceService", eventHub, gatewayID)
 
 	return &SubscriptionResourceService{
 		db:              db,
 		snapshotUpdater: snapshotUpdater,
+		eventHub:        eventHub,
+		gatewayID:       trimmedGatewayID,
 	}
-}
-
-// SetEventHub configures EventHub publishing for replica-synced subscription resources.
-func (s *SubscriptionResourceService) SetEventHub(eventHub eventhub.EventHub, gatewayID string) {
-	s.eventHub = eventHub
-	s.gatewayID = gatewayID
 }
 
 // SaveSubscription stores a new subscription and publishes a replica-sync event after the DB write succeeds.
@@ -159,16 +159,6 @@ func (s *SubscriptionResourceService) requireDB() storage.Storage {
 	return s.db
 }
 
-func (s *SubscriptionResourceService) requireReplicaSyncDependencies() error {
-	if s.eventHub == nil {
-		return fmt.Errorf("SubscriptionResourceService requires EventHub")
-	}
-	if strings.TrimSpace(s.gatewayID) == "" {
-		return fmt.Errorf("SubscriptionResourceService requires gateway ID")
-	}
-	return nil
-}
-
 func (s *SubscriptionResourceService) persistAndSync(
 	eventType eventhub.EventType,
 	action string,
@@ -180,9 +170,6 @@ func (s *SubscriptionResourceService) persistAndSync(
 ) error {
 	if logger == nil {
 		logger = slog.Default()
-	}
-	if err := s.requireReplicaSyncDependencies(); err != nil {
-		return err
 	}
 
 	if err := persist(); err != nil {

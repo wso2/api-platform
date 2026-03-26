@@ -105,8 +105,7 @@ func TestSubscriptionResourceServiceSaveSubscription_PublishesAfterDBWrite(t *te
 	db := newRecordingSubscriptionDB(&calls)
 	updater := &recordingSubscriptionUpdater{}
 	hub := &recordingSubscriptionEventHub{calls: &calls}
-	service := NewSubscriptionResourceService(db, updater)
-	service.SetEventHub(hub, "gateway-1")
+	service := NewSubscriptionResourceService(db, updater, hub, "gateway-1")
 
 	sub := &models.Subscription{
 		ID:                "sub-1",
@@ -134,8 +133,7 @@ func TestSubscriptionResourceServiceReplaceApplicationMappings_PublishesWithoutL
 	db := newRecordingSubscriptionDB(&calls)
 	updater := &recordingSubscriptionUpdater{}
 	hub := &recordingSubscriptionEventHub{calls: &calls}
-	service := NewSubscriptionResourceService(db, updater)
-	service.SetEventHub(hub, "gateway-2")
+	service := NewSubscriptionResourceService(db, updater, hub, "gateway-2")
 
 	application := &models.StoredApplication{
 		ApplicationID:   "app-123",

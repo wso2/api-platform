@@ -539,11 +539,9 @@ func TestLLMDeploymentService_CreateLLMProviderTemplate_WithDBAndEventHubPublish
 	store := storage.NewConfigStore()
 	db := newTestSQLiteStorage(t, logger)
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, routerConfig, nil)
-	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
-
 	mockHub := &mockLLMEventHub{}
-	service.SetEventHub(mockHub, "test-gateway")
+	apiDeploymentService := newTestAPIDeploymentServiceWithHub(store, db, nil, nil, routerConfig, nil, mockHub, "test-gateway")
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	created, err := service.CreateLLMProviderTemplate(LLMTemplateParams{
 		Spec:          testLLMTemplateYAML("openai", "OpenAI Template"),
@@ -573,15 +571,13 @@ func TestLLMDeploymentService_UpdateLLMProviderTemplate_WithDBAndEventHubPublish
 	store := storage.NewConfigStore()
 	db := newTestSQLiteStorage(t, logger)
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, routerConfig, nil)
+	mockHub := &mockLLMEventHub{}
+	apiDeploymentService := newTestAPIDeploymentServiceWithHub(store, db, nil, nil, routerConfig, nil, mockHub, "test-gateway")
 	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	existing := testStoredLLMTemplate("template-update-id", "openai", "OpenAI Template")
 	require.NoError(t, db.SaveLLMProviderTemplate(existing))
 	require.NoError(t, store.AddTemplate(existing))
-
-	mockHub := &mockLLMEventHub{}
-	service.SetEventHub(mockHub, "test-gateway")
 
 	updated, err := service.UpdateLLMProviderTemplate("openai", LLMTemplateParams{
 		Spec:          testLLMTemplateYAML("openai", "Updated OpenAI Template"),
@@ -614,15 +610,13 @@ func TestLLMDeploymentService_DeleteLLMProviderTemplate_WithDBAndEventHubPublish
 	store := storage.NewConfigStore()
 	db := newTestSQLiteStorage(t, logger)
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, routerConfig, nil)
+	mockHub := &mockLLMEventHub{}
+	apiDeploymentService := newTestAPIDeploymentServiceWithHub(store, db, nil, nil, routerConfig, nil, mockHub, "test-gateway")
 	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	template := testStoredLLMTemplate("template-delete-id", "openai", "OpenAI Template")
 	require.NoError(t, db.SaveLLMProviderTemplate(template))
 	require.NoError(t, store.AddTemplate(template))
-
-	mockHub := &mockLLMEventHub{}
-	service.SetEventHub(mockHub, "test-gateway")
 
 	deleted, err := service.DeleteLLMProviderTemplate("openai", "corr-llm-template-delete", logger)
 	require.NoError(t, err)
@@ -741,11 +735,9 @@ func TestLLMDeploymentService_DeleteLLMProvider_WithDBAndEventHubPublishesDelete
 	store := storage.NewConfigStore()
 	db := newTestSQLiteStorage(t, logger)
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, routerConfig, nil)
-	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
-
 	mockHub := &mockLLMEventHub{}
-	service.SetEventHub(mockHub, "test-gateway")
+	apiDeploymentService := newTestAPIDeploymentServiceWithHub(store, db, nil, nil, routerConfig, nil, mockHub, "test-gateway")
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	cfg := &models.StoredConfig{
 		UUID:        "llm-provider-delete-id",
@@ -819,11 +811,9 @@ func TestLLMDeploymentService_DeleteLLMProxy_WithDBAndEventHubPublishesDeleteAnd
 	store := storage.NewConfigStore()
 	db := newTestSQLiteStorage(t, logger)
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, routerConfig, nil)
-	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
-
 	mockHub := &mockLLMEventHub{}
-	service.SetEventHub(mockHub, "test-gateway")
+	apiDeploymentService := newTestAPIDeploymentServiceWithHub(store, db, nil, nil, routerConfig, nil, mockHub, "test-gateway")
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	providerCfg := &models.StoredConfig{
 		UUID:        "provider-1",

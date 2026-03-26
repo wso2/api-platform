@@ -592,9 +592,8 @@ func TestMCPDeploymentService_CreateMCPProxy_WithDBAndEventHubPublishesCreate(t 
 	store := storage.NewConfigStore()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	db := newTestSQLiteStorage(t, logger)
-	service := newTestMCPDeploymentService(store, db, nil, nil, nil)
 	mockHub := &mockLLMEventHub{}
-	service.SetEventHub(mockHub, "test-gateway")
+	service := newTestMCPDeploymentServiceWithHub(store, db, nil, nil, nil, mockHub, "test-gateway")
 
 	yamlData := `
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
@@ -638,9 +637,8 @@ func TestMCPDeploymentService_UndeployMCPProxy_WithDBAndEventHubPublishesUpdate(
 	store := storage.NewConfigStore()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	db := newTestSQLiteStorage(t, logger)
-	service := newTestMCPDeploymentService(store, db, nil, nil, nil)
 	mockHub := &mockLLMEventHub{}
-	service.SetEventHub(mockHub, "test-gateway")
+	service := newTestMCPDeploymentServiceWithHub(store, db, nil, nil, nil, mockHub, "test-gateway")
 	upstreamURL := "http://localhost:8080"
 
 	cfg := &models.StoredConfig{

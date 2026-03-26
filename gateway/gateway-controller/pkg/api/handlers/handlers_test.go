@@ -876,13 +876,12 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 		httpClient:        httpClient,
 		systemConfig:      systemCfg,
 		gatewayID:         gatewayID,
+		policyResolver:    policyResolver,
 	}
 
-	deploymentService := utils.NewAPIDeploymentService(store, db, nil, validator, routerCfg, policyResolver)
-	deploymentService.SetEventHub(hub, gatewayID)
+	deploymentService := utils.NewAPIDeploymentService(store, db, nil, validator, routerCfg, policyResolver, hub, gatewayID)
 	server.deploymentService = deploymentService
-	server.mcpDeploymentService = utils.NewMCPDeploymentService(store, db, nil, nil, nil)
-	server.mcpDeploymentService.SetEventHub(hub, gatewayID)
+	server.mcpDeploymentService = utils.NewMCPDeploymentService(store, db, nil, nil, nil, hub, gatewayID)
 	server.llmDeploymentService = utils.NewLLMDeploymentService(
 		store,
 		db,
@@ -894,14 +893,11 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 		nil,
 		nil,
 	)
-	server.llmDeploymentService.SetEventHub(hub, gatewayID)
 
 	// Initialize API key service (needed for API key operations)
-	apiKeyService := utils.NewAPIKeyService(store, db, nil, &server.systemConfig.APIKey)
-	apiKeyService.SetEventHub(hub, gatewayID)
+	apiKeyService := utils.NewAPIKeyService(store, db, nil, &server.systemConfig.APIKey, hub, gatewayID)
 	server.apiKeyService = apiKeyService
-	server.subscriptionResourceService = utils.NewSubscriptionResourceService(db, nil)
-	server.subscriptionResourceService.SetEventHub(hub, gatewayID)
+	server.subscriptionResourceService = utils.NewSubscriptionResourceService(db, nil, hub, gatewayID)
 
 	// Initialize RestAPI service and handler
 	restAPIService := restapi.NewRestAPIService(
@@ -1102,31 +1098,38 @@ func attachTestEventHub(server *APIServer, hub eventhub.EventHub, gatewayID stri
 	if server.systemConfig != nil {
 		server.systemConfig.Controller.Server.GatewayID = gatewayID
 	}
+	policyResolver := server.policyResolver
+	if policyResolver == nil {
+		policyResolver = resolver.NewPolicyResolver(server.policyDefinitions, nil)
+		server.policyResolver = policyResolver
+	}
+	policyValidator := config.NewPolicyValidator(server.policyDefinitions)
+	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(server.policyDefinitions)
+	server.deploymentService = utils.NewAPIDeploymentService(server.store, server.db, server.snapshotManager, server.validator, server.routerConfig, policyResolver, hub, gatewayID)
+	server.apiKeyService = utils.NewAPIKeyService(server.store, server.db, server.apiKeyXDSManager, &server.systemConfig.APIKey, hub, gatewayID)
+	server.subscriptionResourceService = utils.NewSubscriptionResourceService(server.db, server.subscriptionSnapshotUpdater, hub, gatewayID)
+	server.mcpDeploymentService = utils.NewMCPDeploymentService(server.store, server.db, server.snapshotManager, server.policyManager, policyValidator, hub, gatewayID)
+	server.llmDeploymentService = utils.NewLLMDeploymentService(
+		server.store,
+		server.db,
+		server.snapshotManager,
+		nil,
+		map[string]*api.LLMProviderTemplate{},
+		server.deploymentService,
+		server.routerConfig,
+		policyVersionResolver,
+		policyValidator,
+	)
+
 	if server.RestAPIHandler != nil {
-		policyResolver := resolver.NewPolicyResolver(server.policyDefinitions, nil)
 		restAPIService := restapi.NewRestAPIService(
 			server.store, server.db, nil, nil,
 			server.policyDefinitions, &server.policyDefMu,
-			server.deploymentService, nil, nil,
+			server.deploymentService, server.apiKeyXDSManager, nil,
 			server.routerConfig, server.systemConfig,
 			server.httpClient, server.parser, server.validator, server.logger, hub, policyResolver,
 		)
 		server.RestAPIHandler = NewRestAPIHandler(restAPIService, server.logger)
-	}
-	if server.apiKeyService != nil {
-		server.apiKeyService.SetEventHub(hub, gatewayID)
-	}
-	if server.deploymentService != nil {
-		server.deploymentService.SetEventHub(hub, gatewayID)
-	}
-	if server.llmDeploymentService != nil {
-		server.llmDeploymentService.SetEventHub(hub, gatewayID)
-	}
-	if server.mcpDeploymentService != nil {
-		server.mcpDeploymentService.SetEventHub(hub, gatewayID)
-	}
-	if server.subscriptionResourceService != nil {
-		server.subscriptionResourceService.SetEventHub(hub, gatewayID)
 	}
 }
 

@@ -91,10 +91,13 @@ func NewAPIDeploymentService(
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
 	policyResolver *resolver.PolicyResolver,
+	eventHub eventhub.EventHub,
+	gatewayID string,
 ) *APIDeploymentService {
 	if db == nil {
 		panic("APIDeploymentService requires non-nil storage")
 	}
+	trimmedGatewayID := requireReplicaSyncWiring("APIDeploymentService", eventHub, gatewayID)
 
 	return &APIDeploymentService{
 		store:           store,
@@ -104,32 +107,15 @@ func NewAPIDeploymentService(
 		validator:       validator,
 		httpClient:      &http.Client{Timeout: 10 * time.Second},
 		routerConfig:    routerConfig,
+		eventHub:        eventHub,
+		gatewayID:       trimmedGatewayID,
 		policyResolver:  policyResolver,
 	}
-}
-
-// SetEventHub wires replica-sync publishing for write paths.
-func (s *APIDeploymentService) SetEventHub(eventHub eventhub.EventHub, gatewayID string) {
-	s.eventHub = eventHub
-	s.gatewayID = gatewayID
-}
-
-func (s *APIDeploymentService) requireReplicaSyncDependencies() error {
-	if s.eventHub == nil {
-		return fmt.Errorf("APIDeploymentService requires EventHub")
-	}
-	if strings.TrimSpace(s.gatewayID) == "" {
-		return fmt.Errorf("APIDeploymentService requires gateway ID")
-	}
-	return nil
 }
 
 // TODO: (VirajSalaka) We do not need gatewayID in the event as it is part of the publishEvent.
 // publishEvent publishes an event to the EventHub for async processing.
 func (s *APIDeploymentService) publishEvent(eventType eventhub.EventType, action, entityID, correlationID string, logger *slog.Logger) {
-	if err := s.requireReplicaSyncDependencies(); err != nil {
-		panic(err.Error())
-	}
 	event := eventhub.Event{
 		GatewayID:           s.gatewayID,
 		OriginatedTimestamp: time.Now(),
@@ -153,9 +139,6 @@ func (s *APIDeploymentService) publishEvent(eventType eventhub.EventType, action
 func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams) (*APIDeploymentResult, error) {
 	if !models.IsValidOrigin(params.Origin) {
 		return nil, fmt.Errorf("invalid or missing origin: %q", params.Origin)
-	}
-	if err := s.requireReplicaSyncDependencies(); err != nil {
-		return nil, err
 	}
 
 	var (
@@ -516,10 +499,6 @@ func (s *APIDeploymentService) GetTopicsForDelete(apiConfig models.StoredConfig)
 
 // saveOrUpdateConfig performs a timestamp-guarded upsert of the API configuration.
 func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig, logger *slog.Logger) (bool, error) {
-	if err := s.requireReplicaSyncDependencies(); err != nil {
-		return false, err
-	}
-
 	affected, err := s.db.UpsertConfig(storedCfg)
 	if err != nil {
 		return false, fmt.Errorf("failed to upsert config to database: %w", err)

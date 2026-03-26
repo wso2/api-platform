@@ -120,19 +120,16 @@ func NewAPIServer(
 		panic("APIServer requires non-empty gateway ID")
 	}
 
-	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.Router, policyResolver)
-	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, &systemConfig.APIKey)
-	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subscriptionSnapshotUpdater)
-	deploymentService.SetEventHub(eventHub, gatewayID)
-	apiKeyService.SetEventHub(eventHub, gatewayID)
-	subscriptionResourceService.SetEventHub(eventHub, gatewayID)
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.Router, policyResolver, eventHub, gatewayID)
+	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, &systemConfig.APIKey, eventHub, gatewayID)
+	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subscriptionSnapshotUpdater, eventHub, gatewayID)
 
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
 	parser := config.NewParser()
 	httpClient := &http.Client{Timeout: 10 * time.Second}
 	routerConfig := &systemConfig.Router
-	mcpDeploymentService := utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager, policyValidator)
+	mcpDeploymentService := utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager, policyValidator, eventHub, gatewayID)
 
 	server := &APIServer{
 		store:                store,
@@ -160,9 +157,6 @@ func NewAPIServer(
 		subscriptionSnapshotUpdater: subscriptionSnapshotUpdater,
 		subscriptionResourceService: subscriptionResourceService,
 	}
-	server.llmDeploymentService.SetEventHub(eventHub, gatewayID)
-	server.mcpDeploymentService.SetEventHub(eventHub, gatewayID)
-
 	// Create RestAPI service and handler
 	restAPIService := restapi.NewRestAPIService(
 		store, db, snapshotManager, policyManager,
@@ -185,8 +179,7 @@ func (s *APIServer) getSubscriptionResourceService() *utils.SubscriptionResource
 		return s.subscriptionResourceService
 	}
 
-	s.subscriptionResourceService = utils.NewSubscriptionResourceService(s.db, s.subscriptionSnapshotUpdater)
-	s.subscriptionResourceService.SetEventHub(s.eventHub, s.gatewayID)
+	s.subscriptionResourceService = utils.NewSubscriptionResourceService(s.db, s.subscriptionSnapshotUpdater, s.eventHub, s.gatewayID)
 
 	return s.subscriptionResourceService
 }
