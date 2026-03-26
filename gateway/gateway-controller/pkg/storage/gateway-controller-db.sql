@@ -159,7 +159,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     -- Masked version of the API key for display purposes
     masked_api_key TEXT NOT NULL,
 
-    -- Artifact reference
+    -- Artifact association (the API may not be deployed locally yet)
     artifact_uuid TEXT NOT NULL,
 
     -- Key status
@@ -180,9 +180,6 @@ CREATE TABLE IF NOT EXISTS api_keys (
 
     -- Portal and target tracking
     issuer TEXT NULL DEFAULT NULL,               -- developer portal identifier; NULL means not specified
-
-    -- Foreign key relationship to artifacts
-    FOREIGN KEY (gateway_id, artifact_uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE,
 
     -- Composite unique constraint (artifact + api key name must be unique)
     UNIQUE (gateway_id, artifact_uuid, name),
@@ -220,7 +217,7 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
     UNIQUE(gateway_id, plan_name)
 );
 
--- Subscriptions table (application-level subscriptions for REST APIs)
+-- Subscriptions table (application-level subscriptions for REST APIs, even before deployment)
 -- subscription_token_hash: for xDS validation and request validation (Platform-API stores original token)
 CREATE TABLE IF NOT EXISTS subscriptions (
     uuid TEXT NOT NULL,
@@ -233,7 +230,6 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (gateway_id, uuid),
-    FOREIGN KEY (gateway_id, api_id) REFERENCES rest_apis(gateway_id, uuid) ON DELETE CASCADE,
     FOREIGN KEY (gateway_id, subscription_plan_id) REFERENCES subscription_plans(gateway_id, uuid),
     UNIQUE(gateway_id, api_id, subscription_token_hash)
 );
