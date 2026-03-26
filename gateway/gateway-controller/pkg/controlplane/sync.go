@@ -20,6 +20,7 @@ package controlplane
 
 import (
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
@@ -147,7 +148,8 @@ func computeSyncDiff(remote []models.ControlPlaneDeployment, local []*models.Sto
 
 		// 2. Same deployment ID but state differs (either direction):
 		//    remote undeployed / local deployed, or remote deployed / local undeployed.
-		if dep.State != string(localCfg.DesiredState) {
+		//    Normalize remote state to lowercase for comparison (platform sends DEPLOYED/UNDEPLOYED).
+		if strings.ToLower(dep.State) != string(localCfg.DesiredState) {
 			result.toUpdateStatus = append(result.toUpdateStatus, dep)
 			continue
 		}
@@ -326,9 +328,9 @@ func (c *Client) processSyncStatusUpdates(deployments []models.ControlPlaneDeplo
 			continue
 		}
 
-		// Map remote state to local desired state
+		// Map remote state to local desired state (normalize to lowercase)
 		deployedAt := dep.DeployedAt
-		cfg.DesiredState = models.DesiredState(dep.State)
+		cfg.DesiredState = models.DesiredState(strings.ToLower(dep.State))
 		cfg.DeploymentID = dep.DeploymentID
 		cfg.DeployedAt = &deployedAt
 		cfg.UpdatedAt = time.Now()
