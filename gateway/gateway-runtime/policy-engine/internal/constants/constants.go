@@ -80,4 +80,10 @@ const (
 	AttrSkipReasonConditionNotMet = "condition_not_met"
 	AttrPolicyExecutionTimeNS     = "policy.execution_time_ns"
 	AttrPolicyShortCircuit        = "policy.short_circuit"
+
+	// Analytics metadata and property keys shared across packages.
+	GuardrailHitMetadataKey  = "isGuardrailHit"
+	GuardrailNameMetadataKey = "guardrailName"
+	LLMCostMetadataKey       = "x-llm-cost"
+	LLMCostPropertyKey       = "llmCost"
 )
