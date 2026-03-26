@@ -74,6 +74,16 @@ type PolicyExecutionContext struct {
 	// Used when UpstreamName is set to compute the correct path transformation
 	upstreamDefinitionPaths map[string]string
 
+	// requestContentEncoding stores the Content-Encoding of the incoming request (e.g. "gzip", "br").
+	// The body is decompressed before being passed to policies, and re-compressed using this value
+	// before being forwarded to the upstream.
+	requestContentEncoding string
+
+	// responseContentEncoding stores the Content-Encoding of the upstream response (e.g. "gzip", "br").
+	// The body is decompressed before being passed to policies, and re-compressed using this value
+	// before being sent back to the downstream client.
+	responseContentEncoding string
+
 	// Reference to server components
 	server *ExternalProcessorServer
 }
@@ -216,9 +226,24 @@ func (ec *PolicyExecutionContext) processRequestBody(
 ) (*extprocv3.ProcessingResponse, error) {
 	// If policy chain requires request body, execute policies with both headers and body
 	if ec.policyChain.RequiresRequestBody {
+		// Decompress body if Content-Encoding was set, so policies receive plain bytes.
+		bodyContent := body.Body
+		if ec.requestContentEncoding != "" {
+			decompressed, err := decompressBody(body.Body, ec.requestContentEncoding)
+			if err != nil {
+				slog.Warn("Failed to decompress request body, passing raw bytes to policies",
+					"request_id", ec.requestID,
+					"encoding", ec.requestContentEncoding,
+					"error", err,
+				)
+			} else {
+				bodyContent = decompressed
+			}
+		}
+
 		// Update request context with body data
 		ec.requestContext.Body = &policy.Body{
-			Content:     body.Body,
+			Content:     bodyContent,
 			EndOfStream: body.EndOfStream,
 			Present:     true,
 		}
@@ -292,9 +317,24 @@ func (ec *PolicyExecutionContext) processResponseBody(
 ) (*extprocv3.ProcessingResponse, error) {
 	// If policy chain requires response body, execute policies with both headers and body
 	if ec.policyChain.RequiresResponseBody {
+		// Decompress body if Content-Encoding was set, so policies receive plain JSON.
+		bodyContent := body.Body
+		if ec.responseContentEncoding != "" {
+			decompressed, err := decompressBody(body.Body, ec.responseContentEncoding)
+			if err != nil {
+				slog.Warn("Failed to decompress response body, passing raw bytes to policies",
+					"request_id", ec.requestID,
+					"encoding", ec.responseContentEncoding,
+					"error", err,
+				)
+			} else {
+				bodyContent = decompressed
+			}
+		}
+
 		// Update response context with body data
 		ec.responseContext.ResponseBody = &policy.Body{
-			Content:     body.Body,
+			Content:     bodyContent,
 			EndOfStream: body.EndOfStream,
 			Present:     true,
 		}
@@ -354,6 +394,8 @@ func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHea
 				if requestID == "" { // Take first occurrence
 					requestID = value
 				}
+			case "content-encoding":
+				ec.requestContentEncoding = value
 			}
 		}
 	}
@@ -424,8 +466,8 @@ func (ec *PolicyExecutionContext) buildResponseContext(headers *extprocv3.HttpHe
 			value := string(header.RawValue)
 			responseHeadersMap[key] = append(responseHeadersMap[key], value)
 
-			// Extract status from pseudo-header
-			if key == ":status" {
+			switch key {
+			case ":status":
 				// Convert status string to int
 				_, err := fmt.Sscanf(value, "%d", &responseStatus)
 				if err != nil {
@@ -435,6 +477,8 @@ func (ec *PolicyExecutionContext) buildResponseContext(headers *extprocv3.HttpHe
 						"error", err,
 					)
 				}
+			case "content-encoding":
+				ec.responseContentEncoding = value
 			}
 		}
 	}

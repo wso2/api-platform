@@ -120,7 +120,6 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "remove", value: ""})
 				}
 
-
 				// Handle body modifications (last one wins)
 				if mods.Body != nil {
 					bodyMutation = &extprocv3.BodyMutation{
@@ -278,6 +277,24 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 		}
 	}
 
+	// If the request body was decompressed, always forward the decompressed body to Envoy.
+	// Upstream APIs (e.g. Anthropic) do not accept compressed request bodies, so we must
+	// never re-compress the request. Content-Encoding removal is handled in the header phase
+	// (TranslateRequestHeadersActions) to avoid ClearRouteCache side-effects in the body phase.
+	if execCtx.requestContentEncoding != "" && execCtx.requestContext != nil && execCtx.requestContext.Body != nil {
+		if !bodyModified {
+			// No policy changed the body, but we still must send the decompressed version
+			// so Envoy replaces the original compressed bytes before forwarding to upstream.
+			bodyMutation = &extprocv3.BodyMutation{
+				Mutation: &extprocv3.BodyMutation_Body{
+					Body: execCtx.requestContext.Body.Content,
+				},
+			}
+			finalBodyLength = len(execCtx.requestContext.Body.Content)
+			bodyModified = true
+		}
+	}
+
 	// Remove any content-length headers from policy operations if we're managing it ourselves
 	if bodyModified {
 		delete(headerOps, "content-length")
@@ -302,6 +319,16 @@ func TranslateRequestHeadersActions(result *executor.RequestExecutionResult, cha
 	}
 	if immediateResp != nil {
 		return immediateResp, nil
+	}
+
+	// If we will decompress the request body for policies, proactively remove Content-Encoding
+	// here in the header phase. Removing it in the body phase combined with ClearRouteCache
+	// can cause upstream auth headers (e.g. x-api-key) to be dropped by Envoy.
+	if chain.RequiresRequestBody && execCtx.requestContentEncoding != "" {
+		if headerMutation.RemoveHeaders == nil {
+			headerMutation.RemoveHeaders = make([]string, 0, 1)
+		}
+		headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, "content-encoding")
 	}
 
 	// Build ProcessingResponse for request headers
@@ -440,7 +467,6 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "remove", value: ""})
 				}
 
-
 				// Handle body modifications (last one wins)
 				if mods.Body != nil {
 					bodyMutation = &extprocv3.BodyMutation{
@@ -487,6 +513,22 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 					}
 				}
 			}
+		}
+	}
+
+	// Re-compress body if a policy modified it and the original response was compressed.
+	// Policies receive decompressed bodies; the downstream client expects the original encoding.
+	if bodyModified && execCtx.responseContentEncoding != "" {
+		originalBody := bodyMutation.Mutation.(*extprocv3.BodyMutation_Body).Body
+		recompressed, err := recompressBody(originalBody, execCtx.responseContentEncoding)
+		if err != nil {
+			slog.Warn("Failed to re-compress response body, sending uncompressed",
+				"encoding", execCtx.responseContentEncoding,
+				"error", err,
+			)
+		} else {
+			bodyMutation.Mutation.(*extprocv3.BodyMutation_Body).Body = recompressed
+			finalBodyLength = len(recompressed)
 		}
 	}
 

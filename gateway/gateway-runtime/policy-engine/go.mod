@@ -3,6 +3,7 @@ module github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine
 go 1.26.1
 
 require (
+	github.com/andybalholm/brotli v1.2.0
 	github.com/envoyproxy/go-control-plane/envoy v1.36.0
 	github.com/go-viper/mapstructure/v2 v2.4.0
 	github.com/google/cel-go v0.26.1

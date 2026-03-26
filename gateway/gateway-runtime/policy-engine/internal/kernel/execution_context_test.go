@@ -27,6 +27,7 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
@@ -34,6 +35,12 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/testutils"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
+
+// newTestExecutor returns a ChainExecutor with a no-op tracer suitable for tests
+// that actually execute policies (processRequestBody / processResponseBody).
+func newTestExecutor() *executor.ChainExecutor {
+	return executor.NewChainExecutor(nil, nil, noop.NewTracerProvider().Tracer(""))
+}
 
 // =============================================================================
 // newPolicyExecutionContext Tests
@@ -451,4 +458,361 @@ func TestBuildResponseContext_InvalidStatus(t *testing.T) {
 	execCtx.buildResponseContext(respHeaders)
 
 	assert.Equal(t, 0, execCtx.responseContext.ResponseStatus)
+}
+
+// =============================================================================
+// Content-Encoding Detection Tests
+// =============================================================================
+
+func TestBuildRequestContext_DetectsContentEncoding(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+
+	chain := &registry.PolicyChain{}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	headers := &extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":path", RawValue: []byte("/api/chat")},
+				{Key: "content-encoding", RawValue: []byte("gzip")},
+			},
+		},
+	}
+
+	execCtx.buildRequestContext(headers, RouteMetadata{})
+
+	assert.Equal(t, "gzip", execCtx.requestContentEncoding)
+}
+
+func TestBuildRequestContext_DetectsBrotliEncoding(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+
+	chain := &registry.PolicyChain{}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	headers := &extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":path", RawValue: []byte("/api/chat")},
+				{Key: "content-encoding", RawValue: []byte("br")},
+			},
+		},
+	}
+
+	execCtx.buildRequestContext(headers, RouteMetadata{})
+
+	assert.Equal(t, "br", execCtx.requestContentEncoding)
+}
+
+func TestBuildRequestContext_NoContentEncoding(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+
+	chain := &registry.PolicyChain{}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	headers := &extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":path", RawValue: []byte("/api/chat")},
+				{Key: "content-type", RawValue: []byte("application/json")},
+			},
+		},
+	}
+
+	execCtx.buildRequestContext(headers, RouteMetadata{})
+
+	assert.Empty(t, execCtx.requestContentEncoding)
+}
+
+func TestBuildResponseContext_DetectsContentEncoding(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+
+	chain := &registry.PolicyChain{}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	execCtx.buildRequestContext(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{}}, RouteMetadata{})
+
+	respHeaders := &extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":status", RawValue: []byte("200")},
+				{Key: "content-encoding", RawValue: []byte("gzip")},
+			},
+		},
+	}
+
+	execCtx.buildResponseContext(respHeaders)
+
+	assert.Equal(t, "gzip", execCtx.responseContentEncoding)
+}
+
+func TestBuildResponseContext_DetectsBrotliEncoding(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+
+	chain := &registry.PolicyChain{}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	execCtx.buildRequestContext(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{}}, RouteMetadata{})
+
+	respHeaders := &extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":status", RawValue: []byte("200")},
+				{Key: "content-encoding", RawValue: []byte("br")},
+			},
+		},
+	}
+
+	execCtx.buildResponseContext(respHeaders)
+
+	assert.Equal(t, "br", execCtx.responseContentEncoding)
+}
+
+func TestBuildResponseContext_NoContentEncoding(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+
+	chain := &registry.PolicyChain{}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	execCtx.buildRequestContext(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{}}, RouteMetadata{})
+
+	respHeaders := &extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":status", RawValue: []byte("200")},
+				{Key: "content-type", RawValue: []byte("application/json")},
+			},
+		},
+	}
+
+	execCtx.buildResponseContext(respHeaders)
+
+	assert.Empty(t, execCtx.responseContentEncoding)
+}
+
+// =============================================================================
+// Body Decompression in processResponseBody Tests
+// =============================================================================
+
+func TestProcessResponseBody_DecompressesGzip(t *testing.T) {
+	kernel := NewKernel()
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "")
+
+	// Policy that requires and captures the response body
+	var capturedBody []byte
+	mockPolicy := &testutils.ConfigurableMockPolicy{
+		MockMode: policy.ProcessingMode{
+			ResponseBodyMode: policy.BodyModeBuffer,
+		},
+		OnRespFn: func(ctx *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
+			if ctx.ResponseBody != nil {
+				capturedBody = ctx.ResponseBody.Content
+			}
+			return policy.UpstreamResponseModifications{}
+		},
+	}
+
+	chain := &registry.PolicyChain{
+		RequiresResponseBody: true,
+		Policies:             []policy.Policy{mockPolicy},
+		PolicySpecs:          []policy.PolicySpec{{Enabled: true}},
+	}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	// Build request context
+	execCtx.buildRequestContext(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{}}, RouteMetadata{})
+
+	// Build response context with gzip content-encoding
+	execCtx.buildResponseContext(&extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":status", RawValue: []byte("200")},
+				{Key: "content-encoding", RawValue: []byte("gzip")},
+			},
+		},
+	})
+
+	// Compress a JSON response body
+	originalJSON := []byte(`{"model":"gpt-4","usage":{"prompt_tokens":10,"completion_tokens":20}}`)
+	compressed := gzipCompress(originalJSON)
+
+	_, err := execCtx.processResponseBody(context.Background(), &extprocv3.HttpBody{
+		Body:        compressed,
+		EndOfStream: true,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, originalJSON, capturedBody)
+}
+
+func TestProcessResponseBody_DecompressesBrotli(t *testing.T) {
+	kernel := NewKernel()
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "")
+
+	var capturedBody []byte
+	mockPolicy := &testutils.ConfigurableMockPolicy{
+		MockMode: policy.ProcessingMode{
+			ResponseBodyMode: policy.BodyModeBuffer,
+		},
+		OnRespFn: func(ctx *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
+			if ctx.ResponseBody != nil {
+				capturedBody = ctx.ResponseBody.Content
+			}
+			return policy.UpstreamResponseModifications{}
+		},
+	}
+
+	chain := &registry.PolicyChain{
+		RequiresResponseBody: true,
+		Policies:             []policy.Policy{mockPolicy},
+		PolicySpecs:          []policy.PolicySpec{{Enabled: true}},
+	}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	execCtx.buildRequestContext(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{}}, RouteMetadata{})
+	execCtx.buildResponseContext(&extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":status", RawValue: []byte("200")},
+				{Key: "content-encoding", RawValue: []byte("br")},
+			},
+		},
+	})
+
+	originalJSON := []byte(`{"model":"claude-3","usage":{"input_tokens":5,"output_tokens":15}}`)
+	compressed := brotliCompress(originalJSON)
+
+	_, err := execCtx.processResponseBody(context.Background(), &extprocv3.HttpBody{
+		Body:        compressed,
+		EndOfStream: true,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, originalJSON, capturedBody)
+}
+
+func TestProcessResponseBody_NoEncoding_PassesThrough(t *testing.T) {
+	kernel := NewKernel()
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "")
+
+	var capturedBody []byte
+	mockPolicy := &testutils.ConfigurableMockPolicy{
+		MockMode: policy.ProcessingMode{
+			ResponseBodyMode: policy.BodyModeBuffer,
+		},
+		OnRespFn: func(ctx *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
+			if ctx.ResponseBody != nil {
+				capturedBody = ctx.ResponseBody.Content
+			}
+			return policy.UpstreamResponseModifications{}
+		},
+	}
+
+	chain := &registry.PolicyChain{
+		RequiresResponseBody: true,
+		Policies:             []policy.Policy{mockPolicy},
+		PolicySpecs:          []policy.PolicySpec{{Enabled: true}},
+	}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	execCtx.buildRequestContext(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{}}, RouteMetadata{})
+	execCtx.buildResponseContext(&extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":status", RawValue: []byte("200")},
+			},
+		},
+	})
+
+	plainJSON := []byte(`{"model":"gpt-4","usage":{"prompt_tokens":10}}`)
+
+	_, err := execCtx.processResponseBody(context.Background(), &extprocv3.HttpBody{
+		Body:        plainJSON,
+		EndOfStream: true,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, plainJSON, capturedBody)
+}
+
+// =============================================================================
+// Body Decompression in processRequestBody Tests
+// =============================================================================
+
+func TestProcessRequestBody_DecompressesGzip(t *testing.T) {
+	kernel := NewKernel()
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "")
+
+	chain := &registry.PolicyChain{
+		RequiresRequestBody: true,
+		Policies:            []policy.Policy{&testutils.NoopPolicy{}},
+		PolicySpecs:         []policy.PolicySpec{{Enabled: true}},
+	}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	// Build request context with gzip content-encoding
+	execCtx.buildRequestContext(&extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":path", RawValue: []byte("/api/chat")},
+				{Key: "content-encoding", RawValue: []byte("gzip")},
+			},
+		},
+	}, RouteMetadata{})
+
+	originalJSON := []byte(`{"messages":[{"role":"user","content":"Hello"}]}`)
+	compressed := gzipCompress(originalJSON)
+
+	_, err := execCtx.processRequestBody(context.Background(), &extprocv3.HttpBody{
+		Body:        compressed,
+		EndOfStream: true,
+	})
+
+	require.NoError(t, err)
+	// Body set on requestContext should be the decompressed JSON, not the raw compressed bytes
+	require.NotNil(t, execCtx.requestContext.Body)
+	assert.Equal(t, originalJSON, execCtx.requestContext.Body.Content)
+}
+
+func TestProcessRequestBody_NoEncoding_PassesThrough(t *testing.T) {
+	kernel := NewKernel()
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "")
+
+	chain := &registry.PolicyChain{
+		RequiresRequestBody: true,
+		Policies:            []policy.Policy{&testutils.NoopPolicy{}},
+		PolicySpecs:         []policy.PolicySpec{{Enabled: true}},
+	}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	execCtx.buildRequestContext(&extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":path", RawValue: []byte("/api/chat")},
+			},
+		},
+	}, RouteMetadata{})
+
+	plainJSON := []byte(`{"messages":[{"role":"user","content":"Hello"}]}`)
+
+	_, err := execCtx.processRequestBody(context.Background(), &extprocv3.HttpBody{
+		Body:        plainJSON,
+		EndOfStream: true,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, execCtx.requestContext.Body)
+	assert.Equal(t, plainJSON, execCtx.requestContext.Body.Content)
 }
