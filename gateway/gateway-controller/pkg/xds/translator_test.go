@@ -28,6 +28,7 @@ import (
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
+	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	resource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/stretchr/testify/assert"
@@ -500,6 +501,82 @@ func TestTranslator_PathToRegex(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := translator.pathToRegex(tt.path)
 			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestTranslator_CreateRoute_PathSpecifier(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	tests := []struct {
+		name            string
+		context         string
+		apiVersion      string
+		path            string
+		expectedRegex   string
+		expectExactPath string // non-empty means RouteMatch_Path (exact) is expected
+	}{
+		{
+			name:          "Wildcard /* does not add extra slash before .*",
+			context:       "/weather/$version",
+			apiVersion:    "v1.0",
+			path:          "/*",
+			expectedRegex: `^/weather/v1\.0.*$`,
+		},
+		{
+			name:          "Wildcard /* on plain context",
+			context:       "/api",
+			apiVersion:    "v1",
+			path:          "/*",
+			expectedRegex: `^/api.*$`,
+		},
+		{
+			name:          "Root path / matches with and without trailing slash",
+			context:       "/weather/$version",
+			apiVersion:    "v1.0",
+			path:          "/",
+			expectedRegex: `^/weather/v1\.0/?$`,
+		},
+		{
+			name:          "Root path / on plain context",
+			context:       "/api",
+			apiVersion:    "v1",
+			path:          "/",
+			expectedRegex: `^/api/?$`,
+		},
+		{
+			name:            "Exact path is unchanged",
+			context:         "/weather/$version",
+			apiVersion:      "v1.0",
+			path:            "/forecast",
+			expectExactPath: "/weather/v1.0/forecast",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := translator.createRoute(
+				"test-id", "TestAPI", tt.apiVersion, tt.context,
+				"GET", tt.path, "test-cluster", "/",
+				"localhost", "http/rest", "", "", nil, "", nil,
+				false, "", nil,
+			)
+			require.NotNil(t, r)
+			if tt.expectExactPath != "" {
+				exact, ok := r.Match.PathSpecifier.(*route.RouteMatch_Path)
+				require.True(t, ok, "expected RouteMatch_Path specifier")
+				assert.Equal(t, tt.expectExactPath, exact.Path)
+			} else {
+				regex, ok := r.Match.PathSpecifier.(*route.RouteMatch_SafeRegex)
+				require.True(t, ok, "expected RouteMatch_SafeRegex specifier")
+				assert.Equal(t, tt.expectedRegex, regex.SafeRegex.Regex)
+			}
+			// Method header matcher must always be present
+			require.Len(t, r.Match.Headers, 1)
+			assert.Equal(t, ":method", r.Match.Headers[0].Name)
 		})
 	}
 }
