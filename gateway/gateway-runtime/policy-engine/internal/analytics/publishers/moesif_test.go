@@ -28,6 +28,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 )
 
 // createTestMoesifWithoutAPI creates a Moesif publisher without a real API for testing Publish method.
@@ -322,28 +323,28 @@ func TestPublish_WithLLMCost(t *testing.T) {
 	moesif := createTestMoesifWithoutAPI()
 
 	event := createBaseEvent()
-	event.Properties["llmCost"] = 0.00004231
+	event.Properties[constants.LLMCostPropertyKey] = 0.00004231
 
 	moesif.Publish(event)
 
 	assert.Len(t, moesif.events, 1)
 	metadata := getMetadata(moesif.events[0])
-	assert.Equal(t, 0.00004231, metadata["llmCost"])
+	assert.Equal(t, 0.00004231, metadata[constants.LLMCostPropertyKey])
 }
 
 func TestPublish_WithGuardrailMetadata(t *testing.T) {
 	moesif := createTestMoesifWithoutAPI()
 
 	event := createBaseEvent()
-	event.Properties["isGuardrailHit"] = true
-	event.Properties["guardrailName"] = "word-count-guardrail"
+	event.Properties[constants.GuardrailHitMetadataKey] = true
+	event.Properties[constants.GuardrailNameMetadataKey] = "word-count-guardrail"
 
 	moesif.Publish(event)
 
 	assert.Len(t, moesif.events, 1)
 	metadata := getMetadata(moesif.events[0])
-	assert.Equal(t, true, metadata["isGuardrailHit"])
-	assert.Equal(t, "word-count-guardrail", metadata["guardrailName"])
+	assert.Equal(t, true, metadata[constants.GuardrailHitMetadataKey])
+	assert.Equal(t, "word-count-guardrail", metadata[constants.GuardrailNameMetadataKey])
 }
 
 func TestPublish_WithApplicationMetadata(t *testing.T) {

@@ -77,17 +77,9 @@ const (
 	AIProviderNameMetadataKey string = "ai:providername"
 	// AIProviderAPIVersionMetadataKey represents the AI provider API version metadata key.
 	AIProviderAPIVersionMetadataKey string = "ai:providerversion"
-	// LLMCostMetadataKey represents the LLM cost metadata key.
-	LLMCostMetadataKey string = "x-llm-cost"
-	// LLMCostPropertyKey represents the analytics property key for LLM cost.
-	LLMCostPropertyKey string = "llmCost"
 
 	// UserIDMetadataKey represents the user ID metadata key for analytics.
 	UserIDMetadataKey string = "x-wso2-user-id"
-	// GuardrailHitMetadataKey indicates whether a guardrail intervened.
-	GuardrailHitMetadataKey string = "isGuardrailHit"
-	// GuardrailNameMetadataKey identifies the guardrail that intervened.
-	GuardrailNameMetadataKey string = "guardrailName"
 )
 
 // Analytics represents analytics collector service.
@@ -323,24 +315,24 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	}
 
 	// Forward guardrail metadata when available in analytics_data.
-	if guardrailHitRaw, exists := typedValuePairsFromMetadata[GuardrailHitMetadataKey]; exists {
+	if guardrailHitRaw, exists := typedValuePairsFromMetadata[constants.GuardrailHitMetadataKey]; exists {
 		switch guardrailHit := guardrailHitRaw.(type) {
 		case bool:
-			event.Properties[GuardrailHitMetadataKey] = guardrailHit
+			event.Properties[constants.GuardrailHitMetadataKey] = guardrailHit
 		case string:
 			if parsed, err := strconv.ParseBool(guardrailHit); err == nil {
-				event.Properties[GuardrailHitMetadataKey] = parsed
+				event.Properties[constants.GuardrailHitMetadataKey] = parsed
 			}
 		}
 	}
-	if guardrailName, exists := keyValuePairsFromMetadata[GuardrailNameMetadataKey]; exists && guardrailName != "" {
-		event.Properties[GuardrailNameMetadataKey] = guardrailName
+	if guardrailName, exists := keyValuePairsFromMetadata[constants.GuardrailNameMetadataKey]; exists && guardrailName != "" {
+		event.Properties[constants.GuardrailNameMetadataKey] = guardrailName
 	}
 
 	var parsedLLMCost interface{}
 
 	// Set LLM cost from metadata when available.
-	if rawCost, exists := keyValuePairsFromMetadata[LLMCostMetadataKey]; exists && rawCost != "" {
+	if rawCost, exists := keyValuePairsFromMetadata[constants.LLMCostMetadataKey]; exists && rawCost != "" {
 
 		slog.Debug("Proceeding to process LLM cost metadata")
 		if llmCost, err := strconv.ParseFloat(rawCost, 64); err == nil {
@@ -348,6 +340,9 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		} else {
 			parsedLLMCost = rawCost
 		}
+	}
+	if parsedLLMCost != nil {
+		event.Properties[constants.LLMCostPropertyKey] = parsedLLMCost
 	}
 
 	// Process AI related metadata only if all the required metadata are present

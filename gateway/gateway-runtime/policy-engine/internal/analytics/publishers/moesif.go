@@ -29,13 +29,12 @@ import (
 	"github.com/moesif/moesifapi-go/models"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 )
 
 const (
 	anonymous         = "anonymous"
 	userIDPropertyKey = "x-wso2-user-id"
-	guardrailHitKey   = "isGuardrailHit"
-	guardrailNameKey  = "guardrailName"
 )
 
 // Moesif represents a Moesif publisher.
@@ -277,11 +276,14 @@ func (m *Moesif) Publish(event *dto.Event) {
 	}
 
 	// guardrail metadata
-	if isGuardrailHit, ok := event.Properties[guardrailHitKey]; ok && isGuardrailHit != nil {
-		metadataMap[guardrailHitKey] = isGuardrailHit
+	if llmCost, ok := event.Properties[constants.LLMCostPropertyKey]; ok && llmCost != nil {
+		metadataMap[constants.LLMCostPropertyKey] = llmCost
 	}
-	if guardrailName, ok := event.Properties[guardrailNameKey]; ok && guardrailName != nil {
-		metadataMap[guardrailNameKey] = guardrailName
+	if isGuardrailHit, ok := event.Properties[constants.GuardrailHitMetadataKey]; ok && isGuardrailHit != nil {
+		metadataMap[constants.GuardrailHitMetadataKey] = isGuardrailHit
+	}
+	if guardrailName, ok := event.Properties[constants.GuardrailNameMetadataKey]; ok && guardrailName != nil {
+		metadataMap[constants.GuardrailNameMetadataKey] = guardrailName
 	}
 
 	// application metadata
