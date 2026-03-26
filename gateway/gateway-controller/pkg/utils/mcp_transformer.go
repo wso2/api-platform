@@ -149,7 +149,8 @@ func (t *MCPTransformer) Transform(input any, output *api.RestAPI) (*api.RestAPI
 		}
 		pol := api.Policy{
 			Name:    constants.SET_HEADERS_POLICY_NAME,
-			Version: constants.SET_HEADERS_POLICY_VERSION, Params: &params}
+			Params:  &params,
+		}
 		policies = append(policies, pol)
 	}
 
