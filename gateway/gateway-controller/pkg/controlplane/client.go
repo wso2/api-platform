@@ -3373,7 +3373,7 @@ func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
 			cfg := cfgByArtifactUUID[apiKey.ArtifactUUID]
 			if cfg == nil {
 				if cfgErr, missing := missingCfgArtifactUUIDs[apiKey.ArtifactUUID]; missing {
-					logger.Warn("Skipping API key xDS refresh due to missing API config",
+					logger.Debug("Skipping API key xDS refresh due to missing API config",
 						slog.String("api_key_uuid", apiKey.UUID),
 						slog.String("artifact_uuid", apiKey.ArtifactUUID),
 						slog.Any("error", cfgErr),
@@ -3384,7 +3384,7 @@ func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
 				cfgLoaded, cfgErr := c.db.GetConfig(apiKey.ArtifactUUID)
 				if cfgErr != nil {
 					missingCfgArtifactUUIDs[apiKey.ArtifactUUID] = cfgErr
-					logger.Warn("Skipping API key xDS refresh due to missing API config",
+					logger.Debug("Skipping API key xDS refresh due to missing API config",
 						slog.String("api_key_uuid", apiKey.UUID),
 						slog.String("artifact_uuid", apiKey.ArtifactUUID),
 						slog.Any("error", cfgErr),
