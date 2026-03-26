@@ -396,7 +396,33 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 func (s *sqlStore) DeleteConfig(id string) error {
 	startTime := time.Now()
 	table := "artifacts"
-	result, err := s.exec(`DELETE FROM artifacts WHERE uuid = ? AND gateway_id = ?`, id, s.gatewayId)
+	tx, err := s.begin()
+	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("delete", "begin_error").Inc()
+		return fmt.Errorf("failed to begin delete transaction: %w", err)
+	}
+
+	committed := false
+	defer func() {
+		if !committed {
+			s.rollbackTx(tx, "delete configuration transaction not committed")
+		}
+	}()
+
+	if _, err := tx.ExecQ(`DELETE FROM subscriptions WHERE gateway_id = ? AND api_id = ?`, s.gatewayId, id); err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("delete", "cleanup_subscriptions_error").Inc()
+		return fmt.Errorf("failed to delete subscriptions for configuration: %w", err)
+	}
+
+	if _, err := tx.ExecQ(`DELETE FROM api_keys WHERE gateway_id = ? AND artifact_uuid = ?`, s.gatewayId, id); err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("delete", "cleanup_api_keys_error").Inc()
+		return fmt.Errorf("failed to delete API keys for configuration: %w", err)
+	}
+
+	result, err := tx.ExecQ(`DELETE FROM artifacts WHERE uuid = ? AND gateway_id = ?`, id, s.gatewayId)
 	if err != nil {
 		metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "error").Inc()
 		metrics.StorageErrorsTotal.WithLabelValues("delete", "exec_error").Inc()
@@ -416,21 +442,12 @@ func (s *sqlStore) DeleteConfig(id string) error {
 		return fmt.Errorf("%w: id=%s", ErrNotFound, id)
 	}
 
-	// Child rows can legitimately exist before deployment, so once the artifact row is gone
-	// we treat follow-up cleanup as best-effort and avoid failing the delete on cleanup errors.
-	if _, err := s.exec(`DELETE FROM subscriptions WHERE gateway_id = ? AND api_id = ?`, s.gatewayId, id); err != nil {
-		s.logger.Warn("Failed to delete subscriptions for configuration",
-			slog.String("uuid", id),
-			slog.String("gateway_id", s.gatewayId),
-			slog.Any("error", err))
+	if err := tx.Commit(); err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("delete", "commit_error").Inc()
+		return fmt.Errorf("failed to commit delete transaction: %w", err)
 	}
-
-	if _, err := s.exec(`DELETE FROM api_keys WHERE gateway_id = ? AND artifact_uuid = ?`, s.gatewayId, id); err != nil {
-		s.logger.Warn("Failed to delete API keys for configuration",
-			slog.String("uuid", id),
-			slog.String("gateway_id", s.gatewayId),
-			slog.Any("error", err))
-	}
+	committed = true
 
 	// Record successful metrics
 	metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "success").Inc()
