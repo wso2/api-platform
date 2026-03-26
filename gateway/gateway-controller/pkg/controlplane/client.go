@@ -1688,6 +1688,17 @@ func (c *Client) cleanupOrphanedResources(apiID, correlationID string) {
 		)
 	}
 
+	if err := c.db.DeleteSubscriptionsForAPINotIn(apiID, nil); err != nil {
+		c.logger.Warn("Failed to remove stale subscriptions from database",
+			slog.String("api_id", apiID),
+			slog.Any("error", err),
+		)
+	} else {
+		c.logger.Debug("Cleaned up any stale subscriptions from database",
+			slog.String("api_id", apiID),
+		)
+	}
+
 	if c.eventHub != nil {
 		// Event-driven mode: publish event; EventListener handles store/xDS/policy cleanup
 		evt := eventhub.Event{
