@@ -123,7 +123,7 @@ func (a *AnalyticsPolicy) Mode() policy.ProcessingMode {
 
 // OnRequestBody performs Analytics collection process during the request phase (buffered).
 func (a *AnalyticsPolicy) OnRequestBody(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	slog.Info("Analytics system policy: OnRequestBody called")
+	slog.Debug("Analytics system policy: OnRequestBody called")
 	allowPayloads := getAllowPayloadsFlag(params)
 	analyticsMetadata := make(map[string]any)
 
@@ -206,7 +206,7 @@ func (a *AnalyticsPolicy) OnRequestBody(ctx *policy.RequestContext, params map[s
 // OnResponseBody performs Analytics collection during the response phase (buffered fallback).
 // Called when the chain is in buffered mode (e.g. another policy does not support streaming).
 func (a *AnalyticsPolicy) OnResponseBody(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	slog.Info("Analytics system policy: OnResponseBody called")
+	slog.Debug("Analytics system policy: OnResponseBody called")
 	allowPayloads := getAllowPayloadsFlag(params)
 
 	analyticsMetadata := make(map[string]any)
@@ -392,7 +392,7 @@ func (a *AnalyticsPolicy) OnResponseBodyChunk(ctx *policy.ResponseStreamContext,
 			}
 		}
 	default:
-		slog.Info("Analytics streaming: unhandled API kind", "kind", apiKind)
+		slog.Debug("Analytics streaming: unhandled API kind", "kind", apiKind)
 	}
 
 	if getAllowPayloadsFlag(params) && len(accumulated) > 0 {

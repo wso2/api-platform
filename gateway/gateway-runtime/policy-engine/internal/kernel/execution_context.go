@@ -177,7 +177,7 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 	mode.RequestTrailerMode = extprocconfigv3.ProcessingMode_SKIP
 	mode.ResponseTrailerMode = extprocconfigv3.ProcessingMode_SKIP
 
-	slog.Info("[mode] getModeOverride (request-headers phase)",
+	slog.Debug("[mode] getModeOverride (request-headers phase)",
 		"route", ec.routeKey,
 		"requires_request_body", ec.policyChain.RequiresRequestBody,
 		"requires_response_body", ec.policyChain.RequiresResponseBody,
@@ -298,7 +298,7 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 		ec.requestStreamAccumulator = append(ec.requestStreamAccumulator, chunk.Chunk...)
 	}
 
-	slog.Info("[streaming] request chunk received",
+	slog.Debug("[streaming] request chunk received",
 		"route", ec.routeKey,
 		"chunk_bytes", len(chunk.Chunk),
 		"accumulated_bytes", len(ec.requestStreamAccumulator),
@@ -318,7 +318,7 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 	// In FULL_DUPLEX_STREAMED mode an empty BodyResponse passes the chunk through unchanged,
 	// so we must explicitly suppress it with an empty StreamedBodyResponse while accumulating.
 	if !chunk.EndOfStream && !shouldForceFlush && ec.anyPolicyNeedsMoreRequestData(ec.requestStreamAccumulator) {
-		slog.Info("[streaming] accumulating — waiting for more request data",
+		slog.Debug("[streaming] accumulating — waiting for more request data",
 			"route", ec.routeKey,
 			"accumulated_bytes", len(ec.requestStreamAccumulator),
 		)
@@ -341,7 +341,7 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 		Chunk:       ec.requestStreamAccumulator,
 		EndOfStream: chunk.EndOfStream,
 	}
-	slog.Info("[streaming] flushing accumulated request data to policies",
+	slog.Debug("[streaming] flushing accumulated request data to policies",
 		"route", ec.routeKey,
 		"flush_bytes", len(flushChunk.Chunk),
 		"end_of_stream", flushChunk.EndOfStream,
@@ -391,7 +391,7 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 	// Detect streaming response: upgrade when chain supports streaming AND
 	// upstream signals chunked/SSE AND body is coming (not EndOfStream).
 	hasStreamingHeaders := isStreamingUpstreamResponse(ec.responseHeaderCtx.ResponseHeaders)
-	slog.Info("[mode] response headers received — streaming detection",
+	slog.Debug("[mode] response headers received — streaming detection",
 		"route", ec.routeKey,
 		"supports_response_streaming", ec.policyChain.SupportsResponseStreaming,
 		"headers_end_of_stream", headers.EndOfStream,
@@ -402,7 +402,7 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 	if ec.policyChain.SupportsResponseStreaming && !headers.EndOfStream && hasStreamingHeaders {
 		ec.isStreamingResponse = true
 	}
-	slog.Info("[mode] streaming response decision",
+	slog.Debug("[mode] streaming response decision",
 		"route", ec.routeKey,
 		"is_streaming_response", ec.isStreamingResponse,
 	)
@@ -431,7 +431,7 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 
 	if ec.isStreamingResponse {
 		resp.ModeOverride = ec.getStreamingResponseModeOverride()
-		slog.Info("[mode] upgraded response body mode to FULL_DUPLEX_STREAMED",
+		slog.Debug("[mode] upgraded response body mode to FULL_DUPLEX_STREAMED",
 			"route", ec.routeKey,
 		)
 	}
@@ -445,14 +445,14 @@ func (ec *PolicyExecutionContext) processResponseBody(
 	body *extprocv3.HttpBody,
 ) (*extprocv3.ProcessingResponse, error) {
 	if ec.isStreamingResponse {
-		slog.Info("[body] routing to streaming response body handler",
+		slog.Debug("[body] routing to streaming response body handler",
 			"route", ec.routeKey,
 			"chunk_bytes", len(body.Body),
 			"end_of_stream", body.EndOfStream,
 		)
 		return ec.processStreamingResponseBody(ctx, body)
 	}
-	slog.Info("[body] routing to buffered response body handler",
+	slog.Debug("[body] routing to buffered response body handler",
 		"route", ec.routeKey,
 		"body_bytes", len(body.Body),
 		"end_of_stream", body.EndOfStream,
@@ -502,7 +502,7 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 		ec.streamAccumulator = append(ec.streamAccumulator, chunk.Chunk...)
 	}
 
-	slog.Info("[streaming] response chunk received",
+	slog.Debug("[streaming] response chunk received",
 		"route", ec.routeKey,
 		"chunk_bytes", len(chunk.Chunk),
 		"accumulated_bytes", len(ec.streamAccumulator),
@@ -520,7 +520,7 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 
 	// Consult streaming policies to decide whether to flush now.
 	if !chunk.EndOfStream && !shouldForceFlush && ec.anyPolicyNeedsMoreResponseData(ec.streamAccumulator) {
-		slog.Info("[streaming] accumulating — waiting for more response data",
+		slog.Debug("[streaming] accumulating — waiting for more response data",
 			"route", ec.routeKey,
 			"accumulated_bytes", len(ec.streamAccumulator),
 		)
@@ -543,7 +543,7 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 		Chunk:       ec.streamAccumulator,
 		EndOfStream: chunk.EndOfStream,
 	}
-	slog.Info("[streaming] flushing accumulated response data to policies",
+	slog.Debug("[streaming] flushing accumulated response data to policies",
 		"route", ec.routeKey,
 		"flush_bytes", len(flushChunk.Chunk),
 		"end_of_stream", flushChunk.EndOfStream,
@@ -903,7 +903,7 @@ func (ec *PolicyExecutionContext) anyPolicyNeedsMoreResponseData(accumulated []b
 		}
 		if sp, ok := pol.(policy.StreamingResponsePolicy); ok {
 			needs := sp.NeedsMoreResponseData(accumulated)
-			slog.Info("[streaming] NeedsMoreResponseData",
+			slog.Debug("[streaming] NeedsMoreResponseData",
 				"route", ec.routeKey,
 				"policy", spec.Name,
 				"accumulated_bytes", len(accumulated),
