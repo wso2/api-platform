@@ -22,8 +22,8 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"path/filepath"
 	"strconv"
@@ -580,12 +580,21 @@ func TestDeployAPIConfiguration_WebSubTopicOperations(t *testing.T) {
 	// Helper to create a failing WebSub hub server
 	failingHub := func(t *testing.T) (string, int, func()) {
 		t.Helper()
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "hub error", http.StatusInternalServerError)
-		}))
-		u, _ := url.Parse(srv.URL)
+		})
+		listener, err := net.Listen("tcp4", "127.0.0.1:0")
+		require.NoError(t, err)
+		server := &http.Server{Handler: handler}
+		go func() {
+			_ = server.Serve(listener)
+		}()
+		u, _ := url.Parse("http://" + listener.Addr().String())
 		p, _ := strconv.Atoi(u.Port())
-		return u.Hostname(), p, srv.Close
+		return u.Hostname(), p, func() {
+			_ = server.Close()
+			_ = listener.Close()
+		}
 	}
 
 	t.Run("Topic registration error path", func(t *testing.T) {

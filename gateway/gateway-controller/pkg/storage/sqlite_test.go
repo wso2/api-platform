@@ -35,9 +35,10 @@ import (
 )
 
 var (
-	configCounter      int
-	llmTemplateCounter int
-	apiKeyCounter      int
+	configCounter       int
+	llmTemplateCounter  int
+	apiKeyCounter       int
+	subscriptionCounter int
 )
 
 func TestNewSQLiteStorage_Success(t *testing.T) {
@@ -156,6 +157,72 @@ func TestSQLiteStorage_DeleteConfig_Success(t *testing.T) {
 	assert.Assert(t, errors.Is(err, ErrNotFound))
 }
 
+func TestSQLiteStorage_DeleteConfig_RemovesRelaxedChildren(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	apiID := "delete-api-with-children"
+
+	apiKey := createTestAPIKey()
+	apiKey.UUID = "delete-api-key"
+	apiKey.Name = "delete-api-key"
+	apiKey.ArtifactUUID = apiID
+	err := storage.SaveAPIKey(apiKey)
+	assert.NilError(t, err)
+
+	subscription := createTestSubscription()
+	subscription.ID = "delete-subscription"
+	subscription.APIID = apiID
+	err = storage.SaveSubscription(subscription)
+	assert.NilError(t, err)
+
+	config := createTestStoredConfig()
+	config.UUID = apiID
+	config.Handle = "delete-api-handle"
+	err = storage.SaveConfig(config)
+	assert.NilError(t, err)
+
+	var apiKeyCount int
+	err = storage.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM api_keys
+		WHERE gateway_id = ? AND artifact_uuid = ?
+	`, storage.gatewayId, apiID).Scan(&apiKeyCount)
+	assert.NilError(t, err)
+	assert.Equal(t, apiKeyCount, 1)
+
+	var subscriptionCount int
+	err = storage.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM subscriptions
+		WHERE gateway_id = ? AND api_id = ?
+	`, storage.gatewayId, apiID).Scan(&subscriptionCount)
+	assert.NilError(t, err)
+	assert.Equal(t, subscriptionCount, 1)
+
+	err = storage.DeleteConfig(apiID)
+	assert.NilError(t, err)
+
+	err = storage.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM api_keys
+		WHERE gateway_id = ? AND artifact_uuid = ?
+	`, storage.gatewayId, apiID).Scan(&apiKeyCount)
+	assert.NilError(t, err)
+	assert.Equal(t, apiKeyCount, 0)
+
+	err = storage.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM subscriptions
+		WHERE gateway_id = ? AND api_id = ?
+	`, storage.gatewayId, apiID).Scan(&subscriptionCount)
+	assert.NilError(t, err)
+	assert.Equal(t, subscriptionCount, 0)
+
+	_, err = storage.GetConfig(apiID)
+	assert.Assert(t, errors.Is(err, ErrNotFound))
+}
+
 func TestSQLiteStorage_GetConfig_NotFound(t *testing.T) {
 	storage := setupTestStorage(t)
 	defer storage.db.Close()
@@ -195,9 +262,9 @@ func TestSQLiteStorage_GetConfig_JSONUnmarshalError(t *testing.T) {
 	assert.NilError(t, err)
 
 	_, err = storage.db.Exec(`
-		INSERT INTO rest_apis (uuid, configuration)
-		VALUES (?, ?)`,
-		"0000-test-id-0000-000000000000", "invalid-json")
+		INSERT INTO rest_apis (uuid, gateway_id, configuration)
+		VALUES (?, ?, ?)`,
+		"0000-test-id-0000-000000000000", "platform-gateway-id", "invalid-json")
 	assert.NilError(t, err)
 
 	_, err = storage.GetConfig("0000-test-id-0000-000000000000")
@@ -268,9 +335,9 @@ func TestSQLiteStorage_GetAllConfigs_JSONUnmarshalError(t *testing.T) {
 	assert.NilError(t, err)
 
 	_, err = storage.db.Exec(`
-		INSERT INTO rest_apis (uuid, configuration)
-		VALUES (?, ?)`,
-		"invalid-json-config", "invalid-json")
+		INSERT INTO rest_apis (uuid, gateway_id, configuration)
+		VALUES (?, ?, ?)`,
+		"invalid-json-config", "platform-gateway-id", "invalid-json")
 	assert.NilError(t, err)
 
 	_, err = storage.GetAllConfigs()
@@ -366,9 +433,9 @@ func TestSQLiteStorage_GetAllConfigsByKind_JSONError(t *testing.T) {
 	assert.NilError(t, err)
 
 	_, err = storage.db.Exec(`
-		INSERT INTO rest_apis (uuid, configuration)
-		VALUES (?, ?)`,
-		"invalid-config", "invalid-json")
+		INSERT INTO rest_apis (uuid, gateway_id, configuration)
+		VALUES (?, ?, ?)`,
+		"invalid-config", "platform-gateway-id", "invalid-json")
 	assert.NilError(t, err)
 
 	_, err = storage.GetAllConfigsByKind("RestApi")
@@ -561,6 +628,24 @@ func TestSQLiteStorage_GetAPIKeyByID_NotFound(t *testing.T) {
 
 	_, err := storage.GetAPIKeyByID("non-existent-id")
 	assert.Assert(t, errors.Is(err, ErrNotFound))
+}
+
+func TestSQLiteStorage_SaveAPIKey_AllowsUndeployedArtifact(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	apiKey := createTestAPIKey()
+	apiKey.UUID = "undeployed-api-key"
+	apiKey.Name = "undeployed-api-key"
+	apiKey.ArtifactUUID = "undeployed-api"
+
+	err := storage.SaveAPIKey(apiKey)
+	assert.NilError(t, err)
+
+	retrieved, err := storage.GetAPIKeyByID(apiKey.UUID)
+	assert.NilError(t, err)
+	assert.Equal(t, retrieved.UUID, apiKey.UUID)
+	assert.Equal(t, retrieved.ArtifactUUID, apiKey.ArtifactUUID)
 }
 
 func TestSQLiteStorage_GetAPIKeyByID_Success(t *testing.T) {
@@ -803,6 +888,132 @@ func TestSQLiteStorage_CountActiveAPIKeysByUserAndAPI_Success(t *testing.T) {
 	assert.Equal(t, count, 1)
 }
 
+func TestSQLiteStorage_SaveSubscription_AllowsUndeployedAPI(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	subscription := createTestSubscription()
+	subscription.ID = "undeployed-subscription"
+	subscription.APIID = "undeployed-api"
+
+	err := storage.SaveSubscription(subscription)
+	assert.NilError(t, err)
+
+	retrieved, err := storage.GetSubscriptionByID(subscription.ID, storage.gatewayId)
+	assert.NilError(t, err)
+	assert.Equal(t, retrieved.ID, subscription.ID)
+	assert.Equal(t, retrieved.APIID, subscription.APIID)
+	assert.Assert(t, retrieved.SubscriptionTokenHash != "")
+}
+
+func TestSQLiteStorage_ReplaceApplicationAPIKeyMappings_Success(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	config := createTestStoredConfig()
+	config.UUID = "mapped-api"
+	config.Handle = "mapped-api"
+	err := storage.SaveConfig(config)
+	assert.NilError(t, err)
+
+	apiKey1 := createTestAPIKey()
+	apiKey1.UUID = "mapped-key-1"
+	apiKey1.Name = "mapped-key-1"
+	apiKey1.ArtifactUUID = config.UUID
+	apiKey1.Source = "local"
+	err = storage.SaveAPIKey(apiKey1)
+	assert.NilError(t, err)
+
+	apiKey2 := createTestAPIKey()
+	apiKey2.UUID = "mapped-key-2"
+	apiKey2.Name = "mapped-key-2"
+	apiKey2.ArtifactUUID = config.UUID
+	apiKey2.Source = "local"
+	err = storage.SaveAPIKey(apiKey2)
+	assert.NilError(t, err)
+
+	application := &models.StoredApplication{
+		ApplicationUUID: "app-uuid-1",
+		ApplicationID:   "app-id-1",
+		ApplicationName: "App One",
+		ApplicationType: "web",
+	}
+
+	err = storage.ReplaceApplicationAPIKeyMappings(application, []*models.ApplicationAPIKeyMapping{
+		{
+			ApplicationUUID: application.ApplicationUUID,
+			APIKeyID:        apiKey1.UUID,
+		},
+	})
+	assert.NilError(t, err)
+
+	var gatewayID string
+	var applicationName string
+	err = storage.db.QueryRow(`
+		SELECT gateway_id, application_name
+		FROM applications
+		WHERE application_uuid = ? AND gateway_id = ?
+	`, application.ApplicationUUID, "platform-gateway-id").Scan(&gatewayID, &applicationName)
+	assert.NilError(t, err)
+	assert.Equal(t, gatewayID, "platform-gateway-id")
+	assert.Equal(t, applicationName, "App One")
+
+	var mappingCount int
+	var mappedKeyID string
+	err = storage.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM application_api_keys
+		WHERE application_uuid = ? AND gateway_id = ?
+	`, application.ApplicationUUID, "platform-gateway-id").Scan(&mappingCount)
+	assert.NilError(t, err)
+	assert.Equal(t, mappingCount, 1)
+
+	err = storage.db.QueryRow(`
+		SELECT api_key_id
+		FROM application_api_keys
+		WHERE application_uuid = ? AND gateway_id = ?
+	`, application.ApplicationUUID, "platform-gateway-id").Scan(&mappedKeyID)
+	assert.NilError(t, err)
+	assert.Equal(t, mappedKeyID, apiKey1.UUID)
+
+	application.ApplicationName = "App One Updated"
+	err = storage.ReplaceApplicationAPIKeyMappings(application, []*models.ApplicationAPIKeyMapping{
+		{
+			ApplicationUUID: application.ApplicationUUID,
+			APIKeyID:        apiKey2.UUID,
+		},
+		{
+			ApplicationUUID: application.ApplicationUUID,
+			APIKeyID:        apiKey2.UUID,
+		},
+	})
+	assert.NilError(t, err)
+
+	err = storage.db.QueryRow(`
+		SELECT application_name
+		FROM applications
+		WHERE application_uuid = ? AND gateway_id = ?
+	`, application.ApplicationUUID, "platform-gateway-id").Scan(&applicationName)
+	assert.NilError(t, err)
+	assert.Equal(t, applicationName, "App One Updated")
+
+	err = storage.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM application_api_keys
+		WHERE application_uuid = ? AND gateway_id = ?
+	`, application.ApplicationUUID, "platform-gateway-id").Scan(&mappingCount)
+	assert.NilError(t, err)
+	assert.Equal(t, mappingCount, 1)
+
+	err = storage.db.QueryRow(`
+		SELECT api_key_id
+		FROM application_api_keys
+		WHERE application_uuid = ? AND gateway_id = ?
+	`, application.ApplicationUUID, "platform-gateway-id").Scan(&mappedKeyID)
+	assert.NilError(t, err)
+	assert.Equal(t, mappedKeyID, apiKey2.UUID)
+}
+
 // Helper functions
 
 func setupTestStorage(t *testing.T) *sqlStore {
@@ -888,6 +1099,20 @@ func createTestAPIKey() *models.APIKey {
 		CreatedAt:    time.Now(),
 		CreatedBy:    "test-user",
 		UpdatedAt:    time.Now(),
+	}
+}
+
+func createTestSubscription() *models.Subscription {
+	subscriptionCounter++
+	applicationID := fmt.Sprintf("test-application-%d", subscriptionCounter)
+	return &models.Subscription{
+		ID:                fmt.Sprintf("test-subscription-%d", subscriptionCounter),
+		APIID:             fmt.Sprintf("test-api-%d", subscriptionCounter),
+		ApplicationID:     &applicationID,
+		SubscriptionToken: fmt.Sprintf("subscription-token-%d-%d", subscriptionCounter, time.Now().UnixNano()),
+		Status:            models.SubscriptionStatusActive,
+		CreatedAt:         time.Now(),
+		UpdatedAt:         time.Now(),
 	}
 }
 

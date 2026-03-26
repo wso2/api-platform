@@ -136,18 +136,18 @@ func TestSchemaInitialization(t *testing.T) {
 
 		// Verify expected columns exist
 		expectedColumns := map[string]string{
-			"uuid":         "TEXT",
-			"display_name": "TEXT",
-			"version":      "TEXT",
-			"kind":         "TEXT",
-			"handle":       "TEXT",
+			"uuid":          "TEXT",
+			"display_name":  "TEXT",
+			"version":       "TEXT",
+			"kind":          "TEXT",
+			"handle":        "TEXT",
 			"desired_state": "TEXT",
 			"deployment_id": "TEXT",
-			"created_at":   "TIMESTAMP",
-			"updated_at":   "TIMESTAMP",
-			"deployed_at":  "TIMESTAMP",
-			"gateway_id":   "TEXT",
-			"origin":       "TEXT",
+			"created_at":    "TIMESTAMP",
+			"updated_at":    "TIMESTAMP",
+			"deployed_at":   "TIMESTAMP",
+			"gateway_id":    "TEXT",
+			"origin":        "TEXT",
 		}
 
 		for colName, colType := range expectedColumns {
@@ -175,6 +175,7 @@ func TestSchemaInitialization(t *testing.T) {
 		defer rows.Close()
 
 		columns := make(map[string]string)
+		pkColumns := make(map[string]int)
 		for rows.Next() {
 			var cid int
 			var name, colType string
@@ -183,10 +184,12 @@ func TestSchemaInitialization(t *testing.T) {
 			err := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk)
 			require.NoError(t, err)
 			columns[name] = colType
+			pkColumns[name] = pk
 		}
 
 		expectedColumns := map[string]string{
 			"uuid":          "TEXT",
+			"gateway_id":    "TEXT",
 			"configuration": "TEXT",
 		}
 		for colName, colType := range expectedColumns {
@@ -194,31 +197,58 @@ func TestSchemaInitialization(t *testing.T) {
 			assert.True(t, exists, "Column %s should exist in rest_apis", colName)
 			assert.Equal(t, colType, actualType, "Column %s should have type %s", colName, colType)
 		}
+
+		assert.Equal(t, 1, pkColumns["gateway_id"], "gateway_id should be the first component of the composite primary key")
+		assert.Equal(t, 2, pkColumns["uuid"], "uuid should be the second component of the composite primary key")
 	})
 
-	// Verify indexes exist
-	t.Run("IndexesExist", func(t *testing.T) {
-		rows, err := rawDB.Query("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='artifacts'")
+	t.Run("APIKeysArtifactForeignKeyRemoved", func(t *testing.T) {
+		rows, err := rawDB.Query("PRAGMA foreign_key_list(api_keys)")
 		require.NoError(t, err)
 		defer rows.Close()
 
-		indexes := make(map[string]bool)
 		for rows.Next() {
-			var name string
-			err := rows.Scan(&name)
+			var id, seq int
+			var tableName, fromColumn, toColumn, onUpdate, onDelete, match string
+			err := rows.Scan(&id, &seq, &tableName, &fromColumn, &toColumn, &onUpdate, &onDelete, &match)
 			require.NoError(t, err)
-			indexes[name] = true
+			assert.NotEqual(t, "artifacts", tableName, "api_keys should not retain an artifact foreign key")
+			assert.NotEqual(t, "artifact_uuid", fromColumn, "api_keys.artifact_uuid should not participate in a foreign key")
 		}
 
-		expectedIndexes := []string{
-			"idx_artifacts_desired_state",
-			"idx_artifacts_deployment_id",
-			"idx_artifacts_kind",
+		assert.NoError(t, rows.Err())
+	})
+
+	t.Run("SubscriptionsForeignKeys", func(t *testing.T) {
+		rows, err := rawDB.Query("PRAGMA foreign_key_list(subscriptions)")
+		require.NoError(t, err)
+		defer rows.Close()
+
+		planFKCols := map[int]map[string]string{}
+		for rows.Next() {
+			var id, seq int
+			var tableName, fromColumn, toColumn, onUpdate, onDelete, match string
+			err := rows.Scan(&id, &seq, &tableName, &fromColumn, &toColumn, &onUpdate, &onDelete, &match)
+			require.NoError(t, err)
+			assert.NotEqual(t, "rest_apis", tableName, "subscriptions should not retain a REST API foreign key")
+			assert.NotEqual(t, "api_id", fromColumn, "subscriptions.api_id should not participate in a foreign key")
+			if tableName == "subscription_plans" {
+				if planFKCols[id] == nil {
+					planFKCols[id] = map[string]string{}
+				}
+				planFKCols[id][fromColumn] = toColumn
+			}
 		}
 
-		for _, idxName := range expectedIndexes {
-			assert.True(t, indexes[idxName], "Index %s should exist", idxName)
+		assert.NoError(t, rows.Err())
+		hasScopedPlanFK := false
+		for _, cols := range planFKCols {
+			if cols["gateway_id"] == "gateway_id" && cols["subscription_plan_id"] == "uuid" {
+				hasScopedPlanFK = true
+				break
+			}
 		}
+		assert.True(t, hasScopedPlanFK, "subscriptions should retain the gateway-scoped subscription plan foreign key")
 	})
 
 	// Verify UNIQUE constraint on artifacts
@@ -247,8 +277,8 @@ func TestSchemaInitialization(t *testing.T) {
 		assert.Equal(t, "wal", journalMode, "Journal mode should be WAL")
 	})
 
-	// Verify foreign keys setting (we don't have foreign keys in our schema,
-	// but the pragma should be readable)
+	// Verify foreign keys setting on the inspection connection.
+	// This raw connection is opened without explicit pragmas, so 0 or 1 is acceptable.
 	t.Run("ForeignKeysPragma", func(t *testing.T) {
 		var foreignKeys int
 		err := rawDB.QueryRow("PRAGMA foreign_keys").Scan(&foreignKeys)
