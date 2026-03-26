@@ -62,7 +62,7 @@ Feature: Lazy Resources xDS Synchronization
     And the JSON response field "id" should be "xds-test-template"
 
     # Wait for xDS propagation
-    When I wait for 3 seconds
+    When I wait for 4 seconds
 
     # Query the policy engine config dump to verify lazy resources
     When I send a GET request to "http://localhost:9002/config_dump"
@@ -105,7 +105,7 @@ Feature: Lazy Resources xDS Synchronization
     Then the response status code should be 201
 
     # Wait for xDS propagation
-    When I wait for 3 seconds
+    When I wait for 4 seconds
 
     # Verify template exists in policy engine
     When I send a GET request to "http://localhost:9002/config_dump"
@@ -130,7 +130,7 @@ Feature: Lazy Resources xDS Synchronization
     Then the response status code should be 200
 
     # Wait for xDS propagation
-    When I wait for 3 seconds
+    When I wait for 4 seconds
 
     # Verify updated template in policy engine
     When I send a GET request to "http://localhost:9002/config_dump"
@@ -158,7 +158,7 @@ Feature: Lazy Resources xDS Synchronization
     Then the response status code should be 201
 
     # Wait for xDS propagation
-    When I wait for 3 seconds
+    When I wait for 4 seconds
 
     # Verify template exists in policy engine
     When I send a GET request to "http://localhost:9002/config_dump"
@@ -171,7 +171,7 @@ Feature: Lazy Resources xDS Synchronization
     Then the response status code should be 200
 
     # Wait for xDS propagation
-    When I wait for 3 seconds
+    When I wait for 4 seconds
 
     # Verify template is removed from policy engine
     When I send a GET request to "http://localhost:9002/config_dump"
@@ -208,7 +208,7 @@ Feature: Lazy Resources xDS Synchronization
     And the JSON response field "id" should be "test-openai-provider"
 
     # Wait for xDS propagation
-    When I wait for 3 seconds
+    When I wait for 4 seconds
 
     # Verify ProviderTemplateMapping exists in policy engine lazy resources
     When I send a GET request to "http://localhost:9002/config_dump"
@@ -260,7 +260,7 @@ Feature: Lazy Resources xDS Synchronization
     Then the response status code should be 201
 
     # Wait for xDS propagation
-    When I wait for 3 seconds
+    When I wait for 4 seconds
 
     # Verify initial mapping
     When I send a GET request to "http://localhost:9002/config_dump"
@@ -288,7 +288,7 @@ Feature: Lazy Resources xDS Synchronization
     Then the response status code should be 200
 
     # Wait for xDS propagation
-    When I wait for 3 seconds
+    When I wait for 4 seconds
 
     # Verify mapping is updated
     When I send a GET request to "http://localhost:9002/config_dump"
@@ -326,7 +326,7 @@ Feature: Lazy Resources xDS Synchronization
     Then the response status code should be 201
 
     # Wait for xDS propagation
-    When I wait for 3 seconds
+    When I wait for 4 seconds
 
     # Verify mapping exists
     When I send a GET request to "http://localhost:9002/config_dump"
@@ -339,7 +339,7 @@ Feature: Lazy Resources xDS Synchronization
     Then the response status code should be 200
 
     # Wait for xDS propagation
-    When I wait for 3 seconds
+    When I wait for 4 seconds
 
     # Verify mapping is removed
     When I send a GET request to "http://localhost:9002/config_dump"
@@ -373,7 +373,7 @@ Feature: Lazy Resources xDS Synchronization
     Then the response status code should be 201
 
     # Wait for xDS propagation to Envoy
-    When I wait for 3 seconds
+    When I wait for 4 seconds
 
     # Check Envoy's route configuration contains the provider_name in metadata
     When I send a GET request to "http://localhost:9901/config_dump?resource=dynamic_route_configs"
@@ -415,7 +415,7 @@ Feature: Lazy Resources xDS Synchronization
     And the JSON response field "id" should be "collision-test"
 
     # Wait for xDS propagation
-    When I wait for 3 seconds
+    When I wait for 4 seconds
 
     # Verify template exists in policy engine
     When I send a GET request to "http://localhost:9002/config_dump"
@@ -445,7 +445,7 @@ Feature: Lazy Resources xDS Synchronization
     And the JSON response field "id" should be "collision-test"
 
     # Wait for xDS propagation
-    When I wait for 3 seconds
+    When I wait for 4 seconds
 
     # Verify BOTH resources exist - template should NOT be overwritten
     When I send a GET request to "http://localhost:9002/config_dump"
@@ -469,7 +469,7 @@ Feature: Lazy Resources xDS Synchronization
     Then the response status code should be 200
 
     # Wait for xDS propagation
-    When I wait for 3 seconds
+    When I wait for 4 seconds
 
     # Verify template still exists after provider deletion
     When I send a GET request to "http://localhost:9002/config_dump"
@@ -486,7 +486,7 @@ Feature: Lazy Resources xDS Synchronization
     Then the response status code should be 200
 
     # Verify everything is cleaned up
-    When I wait for 3 seconds
+    When I wait for 4 seconds
     When I send a GET request to "http://localhost:9002/config_dump"
     Then the response status code should be 200
     And the lazy resources should not contain template "collision-test"

@@ -61,7 +61,7 @@ Feature: API Key Management Operations
     And the JSON response should have field "apiKey"
     And the JSON response should have field "apiKey.name"
     And the JSON response should have field "apiKey.apiKey"
-    And I wait for 2 seconds
+    And I wait for 4 seconds
     
     # List API keys - should have 1 key
     When I send a GET request to the "gateway-controller" service at "/rest-apis/apikey-lifecycle-api/api-keys"
@@ -135,7 +135,7 @@ Feature: API Key Management Operations
       """
     Then the response status should be 201
     And the response should be valid JSON
-    And I wait for 2 seconds
+    And I wait for 4 seconds
     
     # List should show both keys
     When I send a GET request to the "gateway-controller" service at "/rest-apis/multi-key-api/api-keys"

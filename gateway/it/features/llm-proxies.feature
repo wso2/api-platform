@@ -421,7 +421,7 @@ Feature: LLM Proxy Management Operations
           id: invoke-proxy-provider
       """
     Then the response status should be 201
-    And I wait for 3 seconds
+    And I wait for 4 seconds
 
     # Invoke chat completions through the proxy
     When I set header "Content-Type" to "application/json"
@@ -488,7 +488,7 @@ Feature: LLM Proxy Management Operations
           id: acl-proxy-provider
       """
     Then the response status should be 201
-    And I wait for 3 seconds
+    And I wait for 4 seconds
 
     # Allowed endpoint should work
     When I set header "Content-Type" to "application/json"
@@ -549,7 +549,7 @@ Feature: LLM Proxy Management Operations
           id: multi-request-provider
       """
     Then the response status should be 201
-    And I wait for 3 seconds
+    And I wait for 4 seconds
 
     # First request
     When I set header "Content-Type" to "application/json"

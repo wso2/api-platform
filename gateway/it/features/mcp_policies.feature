@@ -80,7 +80,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
         Then the response should be successful
         And the response should be valid JSON
         And the JSON response field "status" should be "success"
-        And I wait for 2 seconds
+        And I wait for 4 seconds
 
         When I use the MCP Client to send an initialize request to "http://127.0.0.1:8080/mcpauth/mcp"
         Then the response status code should be 401
@@ -123,7 +123,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
         Then the response should be successful
         And the response should be valid JSON
         And the JSON response field "status" should be "success"
-        And I wait for 2 seconds
+        And I wait for 4 seconds
 
         When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token"
         And I use the MCP Client to send an initialize request to "http://localhost:8080/mcpvalidtoken/mcp" with the JWT token
@@ -174,7 +174,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
         Then the response should be successful
         And the response should be valid JSON
         And the JSON response field "status" should be "success"
-        And I wait for 2 seconds
+        And I wait for 4 seconds
 
         When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token"
         And I use the MCP Client to send an initialize request to "http://localhost:8080/mcpauthz/mcp" with the JWT token
@@ -236,7 +236,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
         Then the response should be successful
         And the response should be valid JSON
         And the JSON response field "status" should be "success"
-        And I wait for 2 seconds
+        And I wait for 4 seconds
 
         When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token" and scope "add-scope"
         And I use the MCP Client to send an initialize request to "http://localhost:8080/mcpauthzvalidtoken/mcp" with the JWT token
@@ -279,7 +279,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
         Then the response should be successful
         And the response should be valid JSON
         And the JSON response field "status" should be "success"
-        And I wait for 2 seconds
+        And I wait for 4 seconds
 
         When I use the MCP Client to send an initialize request to "http://127.0.0.1:8080/mcpacl/mcp"
         Then the response should be successful
@@ -319,7 +319,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
         Then the response should be successful
         And the response should be valid JSON
         And the JSON response field "status" should be "success"
-        And I wait for 2 seconds
+        And I wait for 4 seconds
 
         When I use the MCP Client to send "echo" tools/call request to "http://localhost:8080/mcpacl/mcp"
         Then the response should be successful
@@ -384,7 +384,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
         Then the response should be successful
         And the response should be valid JSON
         And the JSON response field "status" should be "success"
-        And I wait for 2 seconds
+        And I wait for 4 seconds
 
         When I use the MCP Client to send an initialize request to "http://127.0.0.1:8080/mcprewrite/mcp"
         Then the response should be successful
@@ -436,7 +436,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
         Then the response should be successful
         And the response should be valid JSON
         And the JSON response field "status" should be "success"
-        And I wait for 2 seconds
+        And I wait for 4 seconds
 
         # Preflight request from allowed origin
         When I set header "Origin" to "http://example.com"

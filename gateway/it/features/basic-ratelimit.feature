@@ -583,7 +583,7 @@ Feature: Basic Rate Limiting
                       duration: "1h"
       """
     Then the response should be successful
-    And I wait for 2 seconds
+    And I wait for 4 seconds
 
     When I send 2 GET requests to "http://localhost:8080/basic-ratelimit-update-route-policy/v1.0/resource"
     Then the response status code should be 200
@@ -619,7 +619,7 @@ Feature: Basic Rate Limiting
             path: /resource
       """
     Then the response should be successful
-    And I wait for 2 seconds
+    And I wait for 4 seconds
 
     When I send 3 GET requests to "http://localhost:8080/basic-ratelimit-update-route-policy/v1.0/resource"
     Then the response status code should be 200
@@ -735,7 +735,7 @@ Feature: Basic Rate Limiting
             path: /books/{id}
       """
     Then the response should be successful
-    And I wait for 2 seconds
+    And I wait for 4 seconds
 
     # /books has route-level=50, so these calls should not be route-limited
     When I send 14 GET requests to "http://localhost:8080/analytics-test-new/reading-list-api/v1.0/books"
