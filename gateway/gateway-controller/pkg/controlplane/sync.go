@@ -20,7 +20,6 @@ package controlplane
 
 import (
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
@@ -148,8 +147,12 @@ func computeSyncDiff(remote []models.ControlPlaneDeployment, local []*models.Sto
 
 		// 2. Same deployment ID but state differs (either direction):
 		//    remote undeployed / local deployed, or remote deployed / local undeployed.
-		//    Normalize remote state to lowercase for comparison (platform sends DEPLOYED/UNDEPLOYED).
-		if strings.ToLower(dep.State) != string(localCfg.DesiredState) {
+		remoteState, valid := models.ParseDesiredState(dep.State)
+		if !valid {
+			// Unrecognised state — skip rather than persisting an invalid value.
+			continue
+		}
+		if remoteState != localCfg.DesiredState {
 			result.toUpdateStatus = append(result.toUpdateStatus, dep)
 			continue
 		}
@@ -328,9 +331,17 @@ func (c *Client) processSyncStatusUpdates(deployments []models.ControlPlaneDeplo
 			continue
 		}
 
-		// Map remote state to local desired state (normalize to lowercase)
+		// Map remote state to local desired state
+		desiredState, ok := models.ParseDesiredState(dep.State)
+		if !ok {
+			c.logger.Error("Skipping sync status update: unrecognised remote state",
+				slog.String("artifact_id", dep.ArtifactID),
+				slog.String("remote_state", dep.State),
+			)
+			continue
+		}
 		deployedAt := dep.DeployedAt
-		cfg.DesiredState = models.DesiredState(strings.ToLower(dep.State))
+		cfg.DesiredState = desiredState
 		cfg.DeploymentID = dep.DeploymentID
 		cfg.DeployedAt = &deployedAt
 		cfg.UpdatedAt = time.Now()
