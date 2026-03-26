@@ -236,6 +236,8 @@ func (ec *PolicyExecutionContext) processRequestBody(
 					"encoding", ec.requestContentEncoding,
 					"error", err,
 				)
+				// Clear encoding so translator doesn't attempt to recompress raw compressed bytes
+				ec.requestContentEncoding = ""
 			} else {
 				bodyContent = decompressed
 			}
@@ -327,6 +329,8 @@ func (ec *PolicyExecutionContext) processResponseBody(
 					"encoding", ec.responseContentEncoding,
 					"error", err,
 				)
+				// Clear encoding so translator doesn't attempt to recompress raw compressed bytes
+				ec.responseContentEncoding = ""
 			} else {
 				bodyContent = decompressed
 			}
