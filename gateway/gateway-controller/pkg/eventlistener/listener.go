@@ -93,6 +93,9 @@ func NewEventListener(
 	if systemConfig == nil {
 		panic("event listener requires non-nil system config")
 	}
+	if logger == nil {
+		panic("event listener requires non-nil logger")
+	}
 	gatewayID := strings.TrimSpace(systemConfig.Controller.Server.GatewayID)
 	if gatewayID == "" {
 		panic("event listener requires non-empty gateway ID")
