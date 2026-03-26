@@ -144,8 +144,14 @@ func main() {
 		os.Exit(1)
 	}
 	eventHubDB := eventHubStorage.GetDB()
+	eventHubDB := eventHubStorage.GetDB()
+	gatewayID := strings.TrimSpace(cfg.Controller.Server.GatewayID)
 	if eventHubDB == nil {
 		log.Error("EventHub storage returned nil database handle")
+		os.Exit(1)
+	}
+	if gatewayID == "" {
+		log.Error("EventHub requires non-empty gateway ID")
 		os.Exit(1)
 	}
 	eventHubInstance = eventhub.New(eventHubDB, log, eventhub.DefaultConfig())
@@ -153,12 +159,12 @@ func main() {
 		log.Error("Failed to initialize EventHub", slog.Any("error", err))
 		os.Exit(1)
 	}
-	if err := eventHubInstance.RegisterGateway(cfg.Controller.Server.GatewayID); err != nil {
+	if err := eventHubInstance.RegisterGateway(gatewayID); err != nil {
 		log.Error("Failed to register gateway with EventHub", slog.Any("error", err))
 		os.Exit(1)
 	}
 	log.Info("EventHub initialized for multi-replica sync",
-		slog.String("gateway_id", cfg.Controller.Server.GatewayID))
+		slog.String("gateway_id", gatewayID))
 
 	// Initialize in-memory config store
 	configStore := storage.NewConfigStore()
