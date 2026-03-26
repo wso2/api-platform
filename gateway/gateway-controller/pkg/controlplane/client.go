@@ -644,6 +644,15 @@ func (c *Client) refreshSubscriptionSnapshot() {
 // and persists them locally. This must run before subscription sync since
 // subscriptions reference plans via foreign key.
 func (c *Client) syncSubscriptionPlans(gatewayID string) {
+
+	// Skip for on-prem control planes
+	if c.isOnPrem() {
+		c.logger.Debug("Skipping subscription plan bulk sync: on-prem control plane detected",
+			slog.String("gateway_id", gatewayID),
+		)
+		return
+	}
+
 	if c.apiUtilsService == nil || c.db == nil {
 		return
 	}
@@ -697,6 +706,15 @@ func (c *Client) syncSubscriptionPlans(gatewayID string) {
 // time the sync was scheduled, ensuring we don't cross-contaminate state across
 // reconnects.
 func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
+
+	// Skip for on-prem control planes
+	if c.isOnPrem() {
+		c.logger.Debug("Skipping subscription bulk sync: on-prem control plane detected",
+			slog.String("gateway_id", gatewayID),
+		)
+		return
+	}
+
 	if c.apiUtilsService == nil || c.db == nil || c.store == nil {
 		return
 	}
