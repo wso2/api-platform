@@ -412,7 +412,7 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 		sanitizedDefName := sanitizeUpstreamDefinitionName(*targetUpstreamName)
 		clusterName := constants.UpstreamDefinitionClusterPrefix + apiKind + "_" + apiId + "_" + sanitizedDefName
 		headerOps[constants.TargetUpstreamHeader] = append(headerOps[constants.TargetUpstreamHeader], &headerOp{opType: "set", value: clusterName})
-		extProcNS := constants.ExtProcFilter
+		extProcNS := constants.ExtProcFilterName
 		if execCtx.dynamicMetadata[extProcNS] == nil {
 			execCtx.dynamicMetadata[extProcNS] = make(map[string]interface{})
 		}
@@ -434,7 +434,7 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 		}
 	} else if execCtx.defaultUpstreamCluster != "" {
 		headerOps[constants.TargetUpstreamHeader] = append(headerOps[constants.TargetUpstreamHeader], &headerOp{opType: "set", value: execCtx.defaultUpstreamCluster})
-		extProcNS := constants.ExtProcFilter
+		extProcNS := constants.ExtProcFilterName
 		if execCtx.dynamicMetadata[extProcNS] == nil {
 			execCtx.dynamicMetadata[extProcNS] = make(map[string]interface{})
 		}

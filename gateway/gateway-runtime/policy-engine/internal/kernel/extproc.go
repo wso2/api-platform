@@ -407,7 +407,7 @@ func (s *ExternalProcessorServer) extractRouteKey(req *extprocv3.ProcessingReque
 
 // skipAllProcessing returns a response that skips all processing phases
 func (s *ExternalProcessorServer) skipAllProcessing(routeMetadata RouteMetadata) *extprocv3.ProcessingResponse {
-	// Build analytics metadata using route metadataeven when skipping policy processing
+	// Build analytics metadata using route metadata even when skipping policy processing
 	analyticsData := extractMetadataFromRouteMetadata(routeMetadata)
 
 	// Build the analytics struct

@@ -163,7 +163,7 @@ func (p *shortCircuitPolicy) Mode() policy.ProcessingMode {
 }
 
 func (p *shortCircuitPolicy) OnRequestBody(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
-	return &policy.ImmediateResponse{
+	return policy.ImmediateResponse{
 		StatusCode: 401,
 		Headers:    map[string]string{"content-type": "application/json"},
 		Body:       []byte(`{"error":"unauthorized"}`),

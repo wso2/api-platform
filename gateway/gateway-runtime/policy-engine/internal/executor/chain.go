@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/utils"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
@@ -83,6 +84,12 @@ func (c *ChainExecutor) ExecuteRequestHeaderPolicies(
 			)
 		}
 
+		headerPol, ok := pol.(policy.RequestHeaderPolicy)
+		if !ok {
+			span.End()
+			continue
+		}
+
 		if !spec.Enabled {
 			if span.IsRecording() {
 				span.SetAttributes(attribute.Bool(constants.AttrPolicySkipped, true))
@@ -128,12 +135,6 @@ func (c *ChainExecutor) ExecuteRequestHeaderPolicies(
 			}
 		}
 
-		headerPol, ok := pol.(policy.RequestHeaderPolicy)
-		if !ok {
-			span.End()
-			continue
-		}
-
 		params, err := deepCopyParams(spec.Parameters.Raw)
 		if err != nil {
 			span.End()
@@ -142,6 +143,23 @@ func (c *ChainExecutor) ExecuteRequestHeaderPolicies(
 
 		action := headerPol.OnRequestHeaders(ctx, params)
 		executionTime := time.Since(policyStartTime)
+
+		// Apply header mutations to ctx so subsequent policies and CEL conditions see the mutated state
+		if mod, ok := action.(policy.UpstreamRequestHeaderModifications); ok {
+			internalHeaders := ctx.Headers.UnsafeInternalValues()
+			for k, v := range mod.HeadersToSet {
+				internalHeaders[strings.ToLower(k)] = []string{v}
+			}
+			for _, k := range mod.HeadersToRemove {
+				delete(internalHeaders, strings.ToLower(k))
+			}
+			if mod.Path != nil {
+				ctx.Path = *mod.Path
+			}
+			if mod.Method != nil {
+				ctx.Method = *mod.Method
+			}
+		}
 
 		metrics.PolicyExecutionsTotal.WithLabelValues(spec.Name, spec.Version, api, route, "executed").Inc()
 		metrics.PolicyDurationSeconds.WithLabelValues(spec.Name, spec.Version, api, route).Observe(executionTime.Seconds())
@@ -222,6 +240,13 @@ func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyL
 			)
 		}
 
+		// Execute policy via RequestPolicy sub-interface
+		rp, ok := pol.(policy.RequestPolicy)
+		if !ok {
+			span.End()
+			continue
+		}
+
 		// Check if policy is enabled
 		if !spec.Enabled {
 			if span.IsRecording() {
@@ -278,12 +303,6 @@ func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyL
 			return nil, fmt.Errorf("failed to clone parameters for policy %s:%s: %w", spec.Name, spec.Version, err)
 		}
 
-		// Execute policy via RequestPolicy sub-interface
-		rp, ok := pol.(policy.RequestPolicy)
-		if !ok {
-			span.End()
-			continue
-		}
 		action := rp.OnRequestBody(ctx, params)
 		executionTime := time.Since(policyStartTime)
 
@@ -382,6 +401,12 @@ func (c *ChainExecutor) ExecuteResponseHeaderPolicies(
 			)
 		}
 
+		headerPol, ok := pol.(policy.ResponseHeaderPolicy)
+		if !ok {
+			span.End()
+			continue
+		}
+
 		if !spec.Enabled {
 			if span.IsRecording() {
 				span.SetAttributes(attribute.Bool(constants.AttrPolicySkipped, true))
@@ -420,12 +445,6 @@ func (c *ChainExecutor) ExecuteResponseHeaderPolicies(
 			}
 		}
 
-		headerPol, ok := pol.(policy.ResponseHeaderPolicy)
-		if !ok {
-			span.End()
-			continue
-		}
-
 		params, err := deepCopyParams(spec.Parameters.Raw)
 		if err != nil {
 			span.End()
@@ -434,6 +453,17 @@ func (c *ChainExecutor) ExecuteResponseHeaderPolicies(
 
 		action := headerPol.OnResponseHeaders(ctx, params)
 		executionTime := time.Since(policyStartTime)
+
+		// Apply header mutations to ctx so subsequent policies and CEL conditions see the mutated state
+		if mod, ok := action.(policy.DownstreamResponseHeaderModifications); ok {
+			internalHeaders := ctx.ResponseHeaders.UnsafeInternalValues()
+			for k, v := range mod.HeadersToSet {
+				internalHeaders[strings.ToLower(k)] = []string{v}
+			}
+			for _, k := range mod.HeadersToRemove {
+				delete(internalHeaders, strings.ToLower(k))
+			}
+		}
 
 		metrics.PolicyExecutionsTotal.WithLabelValues(spec.Name, spec.Version, api, route, "executed").Inc()
 		metrics.PolicyDurationSeconds.WithLabelValues(spec.Name, spec.Version, api, route).Observe(executionTime.Seconds())
@@ -516,6 +546,13 @@ func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policy
 			)
 		}
 
+		// Execute policy via ResponsePolicy sub-interface
+		rp, ok := pol.(policy.ResponsePolicy)
+		if !ok {
+			span.End()
+			continue
+		}
+
 		// Check if policy is enabled
 		if !spec.Enabled {
 			if span.IsRecording() {
@@ -572,12 +609,6 @@ func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policy
 			return nil, fmt.Errorf("failed to clone parameters for policy %s:%s: %w", spec.Name, spec.Version, err)
 		}
 
-		// Execute policy via ResponsePolicy sub-interface
-		rp, ok := pol.(policy.ResponsePolicy)
-		if !ok {
-			span.End()
-			continue
-		}
 		action := rp.OnResponseBody(ctx, params)
 		executionTime := time.Since(policyStartTime)
 
@@ -679,6 +710,12 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 			)
 		}
 
+		streamingPol, ok := pol.(policy.StreamingRequestPolicy)
+		if !ok {
+			span.End()
+			continue
+		}
+
 		if !spec.Enabled {
 			metrics.PolicySkippedTotal.WithLabelValues(spec.Name, "", "", "disabled").Inc()
 			span.End()
@@ -714,12 +751,6 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 					continue
 				}
 			}
-		}
-
-		streamingPol, ok := pol.(policy.StreamingRequestPolicy)
-		if !ok {
-			span.End()
-			continue
 		}
 
 		params, err := deepCopyParams(spec.Parameters.Raw)
@@ -814,6 +845,12 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 			)
 		}
 
+		streamingPol, ok := pol.(policy.StreamingResponsePolicy)
+		if !ok {
+			span.End()
+			continue
+		}
+
 		if !spec.Enabled {
 			if span.IsRecording() {
 				span.SetAttributes(attribute.Bool(constants.AttrPolicySkipped, true))
@@ -854,12 +891,6 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 					continue
 				}
 			}
-		}
-
-		streamingPol, ok := pol.(policy.StreamingResponsePolicy)
-		if !ok {
-			span.End()
-			continue
 		}
 
 		params, err := deepCopyParams(spec.Parameters.Raw)
