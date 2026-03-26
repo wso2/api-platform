@@ -2415,6 +2415,38 @@ components:
           $ref: "#/components/schemas/Metadata"
         spec:
           $ref: '#/components/schemas/APIConfigData'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: RestApi
+        metadata:
+          name: petstore-api-v1.0
+        spec:
+          displayName: Petstore-API
+          version: v1.0
+          context: /petstore/$version
+          upstream:
+            main:
+              url: https://petstore3.swagger.io/api/v3
+          operations:
+            - method: PUT
+              path: /pet
+            - method: POST
+              path: /pet
+              policies:
+                - name: log-message
+                  version: v0
+                  params:
+                    request:
+                      payload: true
+                      headers: true
+            - method: GET
+              path: /pet/findByStatus
+            - method: GET
+              path: /pet/{petId}
+            - method: POST
+              path: /pet/{petId}
+            - method: DELETE
+              path: /pet/{petId}
 
     WebSubAPI:
       type: object

@@ -28,6 +28,11 @@ LDFLAGS := -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.Bu
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-controller
 
+# Doc generation
+REPO_ROOT := $(shell git rev-parse --show-toplevel)
+APIDOCS_TOOLS_DIR := $(REPO_ROOT)/tools/apidocs
+DOCS_OUT_DIR := $(REPO_ROOT)/docs/gateway/gateway-rest-api
+
 .PHONY: help generate build test generate-listener-certs push build-coverage-image build-debug clean build-and-push-multiarch generate-postman-collection
 
 help: ## Show this help message
@@ -126,6 +131,17 @@ generate-postman-collection: ## Generate Postman collection from OpenAPI spec
 	@echo "Generating Postman collection from OpenAPI spec..."
 	@npx openapi-to-postmanv2 -s api/management-openapi.yaml -o api/postman_collection.json -p
 	@echo "Postman collection generated at api/postman_collection.json"
+
+generate-apidocs: ## Generate REST API docs from OpenAPI specs
+	@command -v widdershins >/dev/null 2>&1 || { echo "widdershins not found, installing..."; npm install -g widdershins; }
+	@echo "Generating REST API docs..."
+	@widdershins api/management-openapi.yaml -o /tmp/gw-openapi.md \
+		--omitHeader --summary \
+		--language_tabs 'shell:Shell:curl' \
+		--user_templates $(APIDOCS_TOOLS_DIR)/widdershins_templates/
+	@bash $(APIDOCS_TOOLS_DIR)/split-openapi.sh /tmp/gw-openapi.md $(DOCS_OUT_DIR)
+	@rm -f /tmp/gw-openapi.md
+	@echo "REST API docs generated at $(DOCS_OUT_DIR)"
 
 clean: ## Remove SQLite database files from data/
 	@echo "Cleaning database files from data/..."
