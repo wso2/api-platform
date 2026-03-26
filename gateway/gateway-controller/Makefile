@@ -28,7 +28,7 @@ LDFLAGS := -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.Bu
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-controller
 
-.PHONY: help generate build test generate-listener-certs push build-coverage-image build-debug
+.PHONY: help generate build test generate-listener-certs push build-coverage-image build-debug clean
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -126,3 +126,8 @@ generate-postman-collection: ## Generate Postman collection from OpenAPI spec
 	@echo "Generating Postman collection from OpenAPI spec..."
 	@npx openapi-to-postmanv2 -s api/management-openapi.yaml -o api/postman_collection.json -p
 	@echo "Postman collection generated at api/postman_collection.json"
+
+clean: ## Remove SQLite database files from data/
+	@echo "Cleaning database files from data/..."
+	@rm -f data/*.db data/*.db-shm data/*.db-wal
+	@echo "Done."
