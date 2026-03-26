@@ -396,9 +396,33 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 func (s *sqlStore) DeleteConfig(id string) error {
 	startTime := time.Now()
 	table := "artifacts"
-	query := `DELETE FROM artifacts WHERE uuid = ? AND gateway_id = ?`
+	tx, err := s.begin()
+	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("delete", "begin_error").Inc()
+		return fmt.Errorf("failed to begin delete transaction: %w", err)
+	}
 
-	result, err := s.exec(query, id, s.gatewayId)
+	committed := false
+	defer func() {
+		if !committed {
+			s.rollbackTx(tx, "delete configuration transaction not committed")
+		}
+	}()
+
+	if _, err := tx.ExecQ(`DELETE FROM subscriptions WHERE gateway_id = ? AND api_id = ?`, s.gatewayId, id); err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("delete", "cleanup_subscriptions_error").Inc()
+		return fmt.Errorf("failed to delete subscriptions for configuration: %w", err)
+	}
+
+	if _, err := tx.ExecQ(`DELETE FROM api_keys WHERE gateway_id = ? AND artifact_uuid = ?`, s.gatewayId, id); err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("delete", "cleanup_api_keys_error").Inc()
+		return fmt.Errorf("failed to delete API keys for configuration: %w", err)
+	}
+
+	result, err := tx.ExecQ(`DELETE FROM artifacts WHERE uuid = ? AND gateway_id = ?`, id, s.gatewayId)
 	if err != nil {
 		metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "error").Inc()
 		metrics.StorageErrorsTotal.WithLabelValues("delete", "exec_error").Inc()
@@ -417,6 +441,13 @@ func (s *sqlStore) DeleteConfig(id string) error {
 		metrics.StorageErrorsTotal.WithLabelValues("delete", "not_found").Inc()
 		return fmt.Errorf("%w: id=%s", ErrNotFound, id)
 	}
+
+	if err := tx.Commit(); err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("delete", "commit_error").Inc()
+		return fmt.Errorf("failed to commit delete transaction: %w", err)
+	}
+	committed = true
 
 	// Record successful metrics
 	metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "success").Inc()
@@ -541,43 +572,43 @@ func (s *sqlStore) GetConfigByKindAndHandle(kind string, handle string) (*models
 func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
 	// Use UNION ALL across all type tables joined with artifacts
 	query := `
-		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, r.configuration, a.desired_state,
-			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
-		FROM artifacts a
-		JOIN rest_apis r ON a.uuid = r.uuid
-		WHERE a.gateway_id = ?
+			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, r.configuration, a.desired_state,
+				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
+			FROM artifacts a
+			JOIN rest_apis r ON a.uuid = r.uuid AND a.gateway_id = r.gateway_id
+			WHERE a.gateway_id = ?
 
 		UNION ALL
 
-		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, w.configuration, a.desired_state,
-			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
-		FROM artifacts a
-		JOIN websub_apis w ON a.uuid = w.uuid
-		WHERE a.gateway_id = ?
+			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, w.configuration, a.desired_state,
+				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
+			FROM artifacts a
+			JOIN websub_apis w ON a.uuid = w.uuid AND a.gateway_id = w.gateway_id
+			WHERE a.gateway_id = ?
 
 		UNION ALL
 
-		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, lp.configuration, a.desired_state,
-			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
-		FROM artifacts a
-		JOIN llm_providers lp ON a.uuid = lp.uuid
-		WHERE a.gateway_id = ?
+			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, lp.configuration, a.desired_state,
+				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
+			FROM artifacts a
+			JOIN llm_providers lp ON a.uuid = lp.uuid AND a.gateway_id = lp.gateway_id
+			WHERE a.gateway_id = ?
 
 		UNION ALL
 
-		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, lx.configuration, a.desired_state,
-			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
-		FROM artifacts a
-		JOIN llm_proxies lx ON a.uuid = lx.uuid
-		WHERE a.gateway_id = ?
+			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, lx.configuration, a.desired_state,
+				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
+			FROM artifacts a
+			JOIN llm_proxies lx ON a.uuid = lx.uuid AND a.gateway_id = lx.gateway_id
+			WHERE a.gateway_id = ?
 
 		UNION ALL
 		
-		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, m.configuration, a.desired_state,
-			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
-		FROM artifacts a
-		JOIN mcp_proxies m ON a.uuid = m.uuid
-		WHERE a.gateway_id = ?
+			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, m.configuration, a.desired_state,
+				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
+			FROM artifacts a
+			JOIN mcp_proxies m ON a.uuid = m.uuid AND a.gateway_id = m.gateway_id
+			WHERE a.gateway_id = ?
 		ORDER BY created_at DESC
 	`
 
@@ -598,13 +629,13 @@ func (s *sqlStore) GetAllConfigsByKind(kind string) ([]*models.StoredConfig, err
 	}
 
 	query := fmt.Sprintf(`
-		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, r.configuration, a.desired_state,
-			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
-		FROM artifacts a
-		JOIN %s r ON a.uuid = r.uuid
-		WHERE a.kind = ? AND a.gateway_id = ?
-		ORDER BY a.created_at DESC
-	`, resourceTable)
+			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, r.configuration, a.desired_state,
+				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at
+			FROM artifacts a
+			JOIN %s r ON a.uuid = r.uuid AND a.gateway_id = r.gateway_id
+			WHERE a.kind = ? AND a.gateway_id = ?
+			ORDER BY a.created_at DESC
+		`, resourceTable)
 
 	rows, err := s.query(query, kind, s.gatewayId)
 	if err != nil {
@@ -675,10 +706,10 @@ func (s *sqlStore) loadResourceConfig(cfg *models.StoredConfig) error {
 		return err
 	}
 
-	query := fmt.Sprintf(`SELECT configuration FROM %s WHERE uuid = ?`, resourceTable)
+	query := fmt.Sprintf(`SELECT configuration FROM %s WHERE uuid = ? AND gateway_id = ?`, resourceTable)
 
 	var configJSON sql.NullString
-	err = s.queryRow(query, cfg.UUID).Scan(&configJSON)
+	err = s.queryRow(query, cfg.UUID, s.gatewayId).Scan(&configJSON)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("resource config not found for uuid=%s in table %s", cfg.UUID, resourceTable)
@@ -721,11 +752,11 @@ func (s *sqlStore) addResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConfig)
 		if err != nil {
 			return false, fmt.Errorf("failed to resolve provider: %w", err)
 		}
-		query = fmt.Sprintf(`INSERT INTO %s (uuid, configuration, provider_uuid) VALUES (?, ?, ?)`, resourceTable)
-		args = []interface{}{cfg.UUID, string(configJSON), providerUUID}
+		query = fmt.Sprintf(`INSERT INTO %s (uuid, gateway_id, configuration, provider_uuid) VALUES (?, ?, ?, ?)`, resourceTable)
+		args = []interface{}{cfg.UUID, s.gatewayId, string(configJSON), providerUUID}
 	} else {
-		query = fmt.Sprintf(`INSERT INTO %s (uuid, configuration) VALUES (?, ?)`, resourceTable)
-		args = []interface{}{cfg.UUID, string(configJSON)}
+		query = fmt.Sprintf(`INSERT INTO %s (uuid, gateway_id, configuration) VALUES (?, ?, ?)`, resourceTable)
+		args = []interface{}{cfg.UUID, s.gatewayId, string(configJSON)}
 	}
 
 	stmt, err := tx.tx.Prepare(s.bind(query))
@@ -768,11 +799,11 @@ func (s *sqlStore) updateResourceConfigTx(tx *sqlStoreTx, cfg *models.StoredConf
 		if err != nil {
 			return false, fmt.Errorf("failed to resolve provider: %w", err)
 		}
-		query = fmt.Sprintf(`UPDATE %s SET configuration = ?, provider_uuid = ? WHERE uuid = ?`, resourceTable)
-		args = []interface{}{string(configJSON), providerUUID, cfg.UUID}
+		query = fmt.Sprintf(`UPDATE %s SET configuration = ?, provider_uuid = ? WHERE uuid = ? AND gateway_id = ?`, resourceTable)
+		args = []interface{}{string(configJSON), providerUUID, cfg.UUID, s.gatewayId}
 	} else {
-		query = fmt.Sprintf(`UPDATE %s SET configuration = ? WHERE uuid = ?`, resourceTable)
-		args = []interface{}{string(configJSON), cfg.UUID}
+		query = fmt.Sprintf(`UPDATE %s SET configuration = ? WHERE uuid = ? AND gateway_id = ?`, resourceTable)
+		args = []interface{}{string(configJSON), cfg.UUID, s.gatewayId}
 	}
 
 	stmt, err := tx.tx.Prepare(s.bind(query))
@@ -1644,15 +1675,15 @@ func (s *sqlStore) ReplaceApplicationAPIKeyMappings(application *models.StoredAp
 
 	if _, err = tx.ExecQ(`
 		INSERT INTO applications (
-			application_uuid, application_id, application_name, application_type, created_at, updated_at
+			application_uuid, gateway_id, application_id, application_name, application_type, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?)
-		ON CONFLICT(application_uuid) DO UPDATE SET
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(gateway_id, application_uuid) DO UPDATE SET
 			application_id = excluded.application_id,
 			application_name = excluded.application_name,
 			application_type = excluded.application_type,
 			updated_at = excluded.updated_at
-	`, application.ApplicationUUID, application.ApplicationID, application.ApplicationName, application.ApplicationType, now, now); err != nil {
+	`, application.ApplicationUUID, s.gatewayId, application.ApplicationID, application.ApplicationName, application.ApplicationType, now, now); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("failed to upsert application metadata: %w", err)
 	}
