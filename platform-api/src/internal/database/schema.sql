@@ -161,6 +161,7 @@ CREATE TABLE IF NOT EXISTS gateway_custom_policies (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
     version VARCHAR(15) NOT NULL,
     description TEXT,
     policy_definition TEXT,
