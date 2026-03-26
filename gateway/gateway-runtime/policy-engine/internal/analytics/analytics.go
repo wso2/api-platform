@@ -342,13 +342,11 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	// Set LLM cost from metadata when available.
 	if rawCost, exists := keyValuePairsFromMetadata[LLMCostMetadataKey]; exists && rawCost != "" {
 
-		slog.Warn("Analytics: inside parsing LLM cost metadata")
+		slog.Debug("Proceeding to process LLM cost metadata")
 		if llmCost, err := strconv.ParseFloat(rawCost, 64); err == nil {
 			parsedLLMCost = llmCost
-			event.Properties[LLMCostPropertyKey] = llmCost
 		} else {
 			parsedLLMCost = rawCost
-			event.Properties[LLMCostPropertyKey] = rawCost
 		}
 	}
 
