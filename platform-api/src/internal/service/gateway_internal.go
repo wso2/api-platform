@@ -18,7 +18,6 @@
 package service
 
 import (
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -31,7 +30,6 @@ import (
 	"platform-api/src/internal/utils"
 	"time"
 
-	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 )
 
@@ -483,21 +481,9 @@ func (s *GatewayInternalAPIService) GetDeploymentContentBatch(orgID, gatewayID s
 	return contentMap, nil
 }
 
-// apiKeyCorrelationID derives a stable UUID v7-formatted ID from the unique
-// (artifactUUID, name) pair by SHA-256 hashing them, taking the first 16 bytes,
-// then stamping the UUID version (7) and RFC 4122 variant bits.
-func apiKeyCorrelationID(artifactUUID, name string) string {
-	h := sha256.Sum256([]byte(artifactUUID + ":" + name))
-	var uid uuid.UUID
-	copy(uid[:], h[:16])
-	uid[6] = (uid[6] & 0x0f) | 0x70 // version = 7
-	uid[8] = (uid[8] & 0x3f) | 0x80 // RFC 4122 variant
-	return uid.String()
-}
-
 // GetAPIKeysByKind returns all API keys for artifacts of the given kind deployed on the gateway.
 // When issuer is non-empty only keys whose issuer matches are returned.
-// Each item carries a stable correlationId derived from (artifactUuid, name).
+// Each item carries a stable correlationId derived from (artifactUuid, name, updatedAt).
 // source is always "external" and externalRefId is always null.
 func (s *GatewayInternalAPIService) GetAPIKeysByKind(gatewayID, orgID, kind, issuer string) ([]model.InternalAPIKeyItem, error) {
 	keys, err := s.apiKeyRepo.ListByGatewayAndKind(gatewayID, orgID, kind, issuer)
@@ -516,7 +502,7 @@ func (s *GatewayInternalAPIService) GetAPIKeysByKind(gatewayID, orgID, kind, iss
 			}
 		}
 		items = append(items, model.InternalAPIKeyItem{
-			CorrelationID: apiKeyCorrelationID(k.ArtifactUUID, k.Name),
+			ETag: utils.APIKeyETag(k.ArtifactUUID, k.Name, k.UpdatedAt),
 			UUID:          k.UUID,
 			Name:          k.Name,
 			MaskedAPIKey:  k.MaskedAPIKey,

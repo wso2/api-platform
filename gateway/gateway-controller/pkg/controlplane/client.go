@@ -866,7 +866,11 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 					slog.String("artifact_uuid", key.ArtifactUUID),
 					slog.Any("error", err))
 			} else {
-				c.apiKeyService.PublishAPIKeyEvent("CREATE", key.ArtifactUUID, key.UUID, key.CorrelationID, c.logger)
+				etag := key.ETag
+				if etag == "" {
+					etag = utils.APIKeyETag(key.ArtifactUUID, key.Name, key.UpdatedAt)
+				}
+				c.apiKeyService.PublishAPIKeyEvent("CREATE", key.ArtifactUUID, key.UUID, etag, c.logger)
 			}
 			fetchedUUIDs = append(fetchedUUIDs, key.UUID)
 		}
@@ -888,7 +892,7 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 			} else {
 				for _, k := range staleKeys {
 					c.apiKeyService.PublishAPIKeyEvent("DELETE", k.ArtifactUUID, k.UUID,
-						utils.APIKeyCorrelationID(k.ArtifactUUID, k.Name), c.logger)
+						utils.APIKeyETag(k.ArtifactUUID, k.Name, k.UpdatedAt), c.logger)
 				}
 			}
 		}

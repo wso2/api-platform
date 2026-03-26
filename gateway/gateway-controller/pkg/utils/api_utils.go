@@ -298,7 +298,7 @@ func (s *APIUtilsService) FetchSubscriptionsForAPI(apiID string) ([]models.Subsc
 // controlPlaneAPIKey is the API key response from the control plane REST API.
 // The APIKeyHashes field holds a map of hash algorithm → hash value (e.g. {"sha256": "abc123..."}).
 type controlPlaneAPIKey struct {
-	CorrelationID string            `json:"correlationId"`
+	ETag         string            `json:"etag"`
 	UUID         string            `json:"uuid"`
 	Name         string            `json:"name"`
 	MaskedAPIKey string            `json:"maskedApiKey"`
@@ -386,6 +386,11 @@ func (s *APIUtilsService) FetchAPIKeysByKind(artifactKind, issuer string) ([]mod
 			)
 			continue
 		}
+		etag := ck.ETag
+		if etag == "" {
+			// Fall back to local generation if the platform did not include the etag.
+			etag = APIKeyETag(ck.ArtifactUUID, ck.Name, ck.UpdatedAt)
+		}
 		keys = append(keys, models.APIKey{
 			UUID:          ck.UUID,
 			Name:          ck.Name,
@@ -400,7 +405,7 @@ func (s *APIUtilsService) FetchAPIKeysByKind(artifactKind, issuer string) ([]mod
 			Source:        ck.Source,
 			ExternalRefId: ck.ExternalRefId,
 			Issuer:        ck.Issuer,
-			CorrelationID: ck.CorrelationID,
+			ETag:          etag,
 		})
 	}
 

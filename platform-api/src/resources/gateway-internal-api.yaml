@@ -1246,7 +1246,7 @@ components:
       type: object
       description: API key associated with an LLM Provider, LLM Proxy, or REST API artifact (used by /llm-providers/api-keys, /llm-proxies/api-keys, and /apis/api-keys)
       required:
-        - correlationId
+        - etag
         - uuid
         - name
         - maskedApiKey
@@ -1258,13 +1258,14 @@ components:
         - updatedAt
         - source
       properties:
-        correlationId:
+        etag:
           type: string
           format: uuid
           description: >
-            Stable UUID v7-formatted identifier derived deterministically from
-            (artifactUuid, name). Same key always produces the same correlationId,
-            enabling idempotent processing and end-to-end tracing.
+            Stable UUID v7-formatted identifier representing the current state of the
+            API key, derived deterministically from (artifactUuid, name, updatedAt).
+            Changes on every update, ensuring uniqueness as the primary key in the
+            event table.
           example: "01948c3e-d2b4-7f3a-9e1b-4a2c8f0d5e6b"
         uuid:
           type: string

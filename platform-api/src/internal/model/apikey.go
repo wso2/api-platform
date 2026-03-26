@@ -44,7 +44,7 @@ type UserAPIKey struct {
 
 // InternalAPIKeyItem is the response shape for the internal API key listing endpoints.
 type InternalAPIKeyItem struct {
-	CorrelationID string            `json:"correlationId"`
+	ETag          string            `json:"etag"`
 	UUID          string            `json:"uuid"`
 	Name          string            `json:"name"`
 	MaskedAPIKey  string            `json:"maskedApiKey"`
