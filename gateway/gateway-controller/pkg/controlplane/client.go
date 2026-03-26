@@ -855,6 +855,14 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 // is established. Upserts fetched keys into the DB, reconciles deletions per artifact,
 // then reloads the in-memory store and refreshes the xDS snapshot once.
 func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
+	// Skip for on-prem control planes
+	if c.isOnPrem() {
+		c.logger.Debug("Skipping API Key bulk sync: on-prem control plane detected",
+			slog.String("gateway_id", gatewayID),
+		)
+		return
+	}
+
 	if c.apiUtilsService == nil || c.db == nil || c.store == nil || c.apiKeyStore == nil {
 		return
 	}
@@ -3295,6 +3303,26 @@ func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
 		slog.String("application_type", evt.Payload.ApplicationType),
 	)
 
+	affectedAPIKeyUUIDs := make(map[string]struct{})
+	apiKeysByUUID := make(map[string]*models.APIKey)
+	if c.apiKeyXDSManager != nil {
+		apiKeys, err := c.db.GetAllAPIKeys()
+		if err != nil {
+			logger.Error("Failed to load API keys for xDS refresh after application mapping update", slog.Any("error", err))
+		} else {
+			for _, apiKey := range apiKeys {
+				if apiKey == nil || apiKey.UUID == "" {
+					continue
+				}
+
+				apiKeysByUUID[apiKey.UUID] = apiKey
+				if apiKey.ApplicationID == evt.Payload.ApplicationUuid {
+					affectedAPIKeyUUIDs[apiKey.UUID] = struct{}{}
+				}
+			}
+		}
+	}
+
 	resolvedMappings := make([]*models.ApplicationAPIKeyMapping, 0, len(evt.Payload.Mappings))
 
 	for _, mapping := range evt.Payload.Mappings {
@@ -3325,6 +3353,7 @@ func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
 			ApplicationUUID: evt.Payload.ApplicationUuid,
 			APIKeyID:        apiKey.UUID,
 		})
+		affectedAPIKeyUUIDs[apiKey.UUID] = struct{}{}
 	}
 
 	application := &models.StoredApplication{
@@ -3337,6 +3366,52 @@ func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
 	if err := resourceService.ReplaceApplicationAPIKeyMappings(application, resolvedMappings, evt.CorrelationID, logger); err != nil {
 		logger.Error("Failed to persist application key mappings", slog.Any("error", err))
 		return
+	}
+
+	if c.apiKeyXDSManager != nil {
+		cfgByArtifactUUID := make(map[string]*models.StoredConfig)
+		missingCfgArtifactUUIDs := make(map[string]error)
+
+		for apiKeyUUID := range affectedAPIKeyUUIDs {
+			apiKey := apiKeysByUUID[apiKeyUUID]
+			if apiKey == nil {
+				continue
+			}
+
+			cfg := cfgByArtifactUUID[apiKey.ArtifactUUID]
+			if cfg == nil {
+				if cfgErr, missing := missingCfgArtifactUUIDs[apiKey.ArtifactUUID]; missing {
+					logger.Debug("Skipping API key xDS refresh due to missing API config",
+						slog.String("api_key_uuid", apiKey.UUID),
+						slog.String("artifact_uuid", apiKey.ArtifactUUID),
+						slog.Any("error", cfgErr),
+					)
+					continue
+				}
+
+				cfgLoaded, cfgErr := c.db.GetConfig(apiKey.ArtifactUUID)
+				if cfgErr != nil {
+					missingCfgArtifactUUIDs[apiKey.ArtifactUUID] = cfgErr
+					logger.Debug("Skipping API key xDS refresh due to missing API config",
+						slog.String("api_key_uuid", apiKey.UUID),
+						slog.String("artifact_uuid", apiKey.ArtifactUUID),
+						slog.Any("error", cfgErr),
+					)
+					continue
+				}
+
+				cfg = cfgLoaded
+				cfgByArtifactUUID[apiKey.ArtifactUUID] = cfgLoaded
+			}
+
+			if err := c.apiKeyXDSManager.StoreAPIKey(apiKey.ArtifactUUID, cfg.DisplayName, cfg.Version, apiKey, evt.CorrelationID); err != nil {
+				logger.Error("Failed to refresh API key xDS state after application mapping update",
+					slog.String("api_key_uuid", apiKey.UUID),
+					slog.String("artifact_uuid", apiKey.ArtifactUUID),
+					slog.Any("error", err),
+				)
+			}
+		}
 	}
 
 	logger.Info("Successfully processed application updated event", slog.Int("mapping_count", len(resolvedMappings)))

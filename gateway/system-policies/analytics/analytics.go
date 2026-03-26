@@ -30,6 +30,8 @@ const (
 	ModelIDMetadataKey               = "aitoken:modelid"
 	AIProviderNameMetadataKey        = "ai:providername"
 	AIProviderDisplayNameMetadataKey = "ai:providerdisplayname"
+	ApplicationIDMetadataKey         = "x-wso2-application-id"
+	ApplicationNameMetadataKey       = "x-wso2-application-name"
 
 	// Lazy resource type for LLM provider templates
 	lazyResourceTypeLLMProviderTemplate = "LlmProviderTemplate"

@@ -69,6 +69,12 @@ type APIKeyData struct {
 	// APIId of the API the key is associated with
 	APIId string `json:"apiId" yaml:"apiId"`
 
+	// ApplicationID identifies the mapped application for this key when available.
+	ApplicationID string `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
+
+	// ApplicationName is the mapped application name for this key when available.
+	ApplicationName string `json:"applicationName,omitempty" yaml:"applicationName,omitempty"`
+
 	// Operations List of API operations the key will have access to (JSON array string)
 	Operations string `json:"operations" yaml:"operations"`
 

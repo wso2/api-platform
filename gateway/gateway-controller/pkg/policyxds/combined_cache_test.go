@@ -31,6 +31,9 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/server/stream/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/subscriptionxds"
 )
 
 // mockCache is a mock implementation of cache.Cache for testing
@@ -55,7 +58,7 @@ func newMockCache() *mockCache {
 	}
 }
 
-func (m *mockCache) CreateWatch(request *cache.Request, streamState stream.StreamState, responseChan chan cache.Response) func() {
+func (m *mockCache) CreateWatch(request *cache.Request, subscription cache.Subscription, responseChan chan cache.Response) (func(), error) {
 	m.createWatchCalled = true
 	// Send response if available
 	if m.responseChan != nil {
@@ -67,12 +70,12 @@ func (m *mockCache) CreateWatch(request *cache.Request, streamState stream.Strea
 			}
 		}()
 	}
-	return m.watchCancelFunc
+	return m.watchCancelFunc, nil
 }
 
-func (m *mockCache) CreateDeltaWatch(request *cache.DeltaRequest, streamState stream.StreamState, responseChan chan cache.DeltaResponse) func() {
+func (m *mockCache) CreateDeltaWatch(request *cache.DeltaRequest, subscription cache.Subscription, responseChan chan cache.DeltaResponse) (func(), error) {
 	m.createDeltaWatchCalled = true
-	return m.deltaWatchCancelFunc
+	return m.deltaWatchCancelFunc, nil
 }
 
 func (m *mockCache) Fetch(ctx context.Context, request *cache.Request) (cache.Response, error) {
@@ -91,9 +94,9 @@ func newMockDeltaCache() *mockDeltaCache {
 	}
 }
 
-func (m *mockDeltaCache) CreateDeltaWatch(request *cache.DeltaRequest, streamState stream.StreamState, responseChan chan cache.DeltaResponse) func() {
+func (m *mockDeltaCache) CreateDeltaWatch(request *cache.DeltaRequest, subscription cache.Subscription, responseChan chan cache.DeltaResponse) (func(), error) {
 	m.createDeltaWatchCalled = true
-	return m.deltaWatchCancelFunc
+	return m.deltaWatchCancelFunc, nil
 }
 
 // mockResponse implements cache.Response for testing
@@ -118,8 +121,31 @@ func (m *mockResponse) GetVersion() (string, error) {
 	return m.version, m.err
 }
 
+func (m *mockResponse) GetResponseVersion() string {
+	return m.version
+}
+
+func (m *mockResponse) GetReturnedResources() map[string]string {
+	return nil
+}
+
 func (m *mockResponse) GetContext() context.Context {
 	return context.Background()
+}
+
+func newSotwSubscription(req *cache.Request) cache.Subscription {
+	sub := stream.NewSotwSubscription(req.GetResourceNames(), false)
+	return sub
+}
+
+func newDeltaSubscription(req *cache.DeltaRequest) cache.Subscription {
+	sub := stream.NewDeltaSubscription(
+		req.GetResourceNamesSubscribe(),
+		req.GetResourceNamesUnsubscribe(),
+		req.GetInitialResourceVersions(),
+		false,
+	)
+	return sub
 }
 
 func TestNewCombinedCache(t *testing.T) {
@@ -167,7 +193,7 @@ func TestNewCombinedCache(t *testing.T) {
 func TestCombinedCache_CreateWatch(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	t.Run("creates watch on all caches", func(t *testing.T) {
+	t.Run("creates watch only on matching cache", func(t *testing.T) {
 		policyCache := newMockCache()
 		apiKeyCache := newMockCache()
 		lazyResourceCache := newMockCache()
@@ -175,27 +201,28 @@ func TestCombinedCache_CreateWatch(t *testing.T) {
 		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.Request{
-			TypeUrl: "test-type",
+			TypeUrl: PolicyChainTypeURL,
 			Node:    &core.Node{Id: "test-node"},
 		}
 		responseChan := make(chan cache.Response, 1)
 
-		cancel := cc.CreateWatch(request, stream.NewStreamState(false, nil), responseChan)
+		cancel, err := cc.CreateWatch(request, newSotwSubscription(request), responseChan)
+		require.NoError(t, err)
 		assert.NotNil(t, cancel)
 
 		// Wait for watches to be created
 		time.Sleep(50 * time.Millisecond)
 
 		assert.True(t, policyCache.createWatchCalled)
-		assert.True(t, apiKeyCache.createWatchCalled)
-		assert.True(t, lazyResourceCache.createWatchCalled)
-		assert.True(t, subscriptionCache.createWatchCalled)
+		assert.False(t, apiKeyCache.createWatchCalled)
+		assert.False(t, lazyResourceCache.createWatchCalled)
+		assert.False(t, subscriptionCache.createWatchCalled)
 
 		// Call cancel
 		cancel()
 	})
 
-	t.Run("returns cancel function that works", func(t *testing.T) {
+	t.Run("returns cancel function that works for selected cache", func(t *testing.T) {
 		policyCache := newMockCache()
 		apiKeyCache := newMockCache()
 		lazyResourceCache := newMockCache()
@@ -214,28 +241,42 @@ func TestCombinedCache_CreateWatch(t *testing.T) {
 		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.Request{
-			TypeUrl: "test-type",
+			TypeUrl: apikeyxds.APIKeyStateTypeURL,
 			Node:    &core.Node{Id: "test-node"},
 		}
 		responseChan := make(chan cache.Response, 1)
 
-		cancel := cc.CreateWatch(request, stream.NewStreamState(false, nil), responseChan)
+		cancel, err := cc.CreateWatch(request, newSotwSubscription(request), responseChan)
+		require.NoError(t, err)
 		cancel()
 
 		// Wait for cancel to propagate
 		time.Sleep(50 * time.Millisecond)
 
-		assert.True(t, policyCancelCalled)
 		assert.True(t, apiKeyCancelCalled)
-		assert.True(t, lazyResourceCancelCalled)
-		assert.True(t, subscriptionCancelCalled)
+		assert.False(t, policyCancelCalled)
+		assert.False(t, lazyResourceCancelCalled)
+		assert.False(t, subscriptionCancelCalled)
+	})
+
+	t.Run("returns error for unsupported type", func(t *testing.T) {
+		cc := NewCombinedCache(newMockCache(), newMockCache(), newMockCache(), newMockCache(), nil, logger)
+
+		request := &cache.Request{
+			TypeUrl: "test-type",
+			Node:    &core.Node{Id: "test-node"},
+		}
+
+		cancel, err := cc.CreateWatch(request, newSotwSubscription(request), make(chan cache.Response, 1))
+		require.Error(t, err)
+		assert.Nil(t, cancel)
 	})
 }
 
 func TestCombinedCache_CreateDeltaWatch(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	t.Run("creates delta watch when caches support it", func(t *testing.T) {
+	t.Run("creates delta watch only on matching cache", func(t *testing.T) {
 		policyCache := newMockDeltaCache()
 		apiKeyCache := newMockDeltaCache()
 		lazyResourceCache := newMockDeltaCache()
@@ -243,18 +284,19 @@ func TestCombinedCache_CreateDeltaWatch(t *testing.T) {
 		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.DeltaRequest{
-			TypeUrl: "test-type",
+			TypeUrl: lazyresourcexds.LazyResourceTypeURL,
 			Node:    &core.Node{Id: "test-node"},
 		}
 		responseChan := make(chan cache.DeltaResponse, 1)
 
-		cancel := cc.CreateDeltaWatch(request, stream.NewStreamState(false, nil), responseChan)
+		cancel, err := cc.CreateDeltaWatch(request, newDeltaSubscription(request), responseChan)
+		require.NoError(t, err)
 		assert.NotNil(t, cancel)
 
-		assert.True(t, policyCache.createDeltaWatchCalled)
-		assert.True(t, apiKeyCache.createDeltaWatchCalled)
 		assert.True(t, lazyResourceCache.createDeltaWatchCalled)
-		assert.True(t, subscriptionCache.createDeltaWatchCalled)
+		assert.False(t, policyCache.createDeltaWatchCalled)
+		assert.False(t, apiKeyCache.createDeltaWatchCalled)
+		assert.False(t, subscriptionCache.createDeltaWatchCalled)
 
 		cancel()
 	})
@@ -272,19 +314,20 @@ func TestCombinedCache_CreateDeltaWatch(t *testing.T) {
 		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.DeltaRequest{
-			TypeUrl: "test-type",
+			TypeUrl: PolicyChainTypeURL,
 			Node:    &core.Node{Id: "test-node"},
 		}
 		responseChan := make(chan cache.DeltaResponse, 1)
 
-		cancel := cc.CreateDeltaWatch(request, stream.NewStreamState(false, nil), responseChan)
+		cancel, err := cc.CreateDeltaWatch(request, newDeltaSubscription(request), responseChan)
+		require.NoError(t, err)
 		assert.NotNil(t, cancel)
 
 		// Should not panic - this tests the fallback path when type assertion fails
 		cancel()
 	})
 
-	t.Run("cancel function calls underlying cancels", func(t *testing.T) {
+	t.Run("cancel function calls selected underlying cancel", func(t *testing.T) {
 		policyCache := newMockDeltaCache()
 		apiKeyCache := newMockDeltaCache()
 		lazyResourceCache := newMockDeltaCache()
@@ -303,18 +346,19 @@ func TestCombinedCache_CreateDeltaWatch(t *testing.T) {
 		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.DeltaRequest{
-			TypeUrl: "test-type",
+			TypeUrl: subscriptionxds.SubscriptionStateTypeURL,
 			Node:    &core.Node{Id: "test-node"},
 		}
 		responseChan := make(chan cache.DeltaResponse, 1)
 
-		cancel := cc.CreateDeltaWatch(request, stream.NewStreamState(false, nil), responseChan)
+		cancel, err := cc.CreateDeltaWatch(request, newDeltaSubscription(request), responseChan)
+		require.NoError(t, err)
 		cancel()
 
-		assert.True(t, policyCancelCalled)
-		assert.True(t, apiKeyCancelCalled)
-		assert.True(t, lazyResourceCancelCalled)
 		assert.True(t, subscriptionCancelCalled)
+		assert.False(t, policyCancelCalled)
+		assert.False(t, apiKeyCancelCalled)
+		assert.False(t, lazyResourceCancelCalled)
 	})
 }
 
@@ -334,7 +378,7 @@ func TestCombinedCache_Fetch(t *testing.T) {
 		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.Request{
-			TypeUrl: "test-type",
+			TypeUrl: PolicyChainTypeURL,
 			Node:    &core.Node{Id: "test-node"},
 		}
 
@@ -358,7 +402,7 @@ func TestCombinedCache_Fetch(t *testing.T) {
 		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.Request{
-			TypeUrl: "test-type",
+			TypeUrl: PolicyChainTypeURL,
 			Node:    &core.Node{Id: "test-node"},
 		}
 
@@ -384,7 +428,7 @@ func TestCombinedCache_Fetch(t *testing.T) {
 		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.Request{
-			TypeUrl: "test-type",
+			TypeUrl: PolicyChainTypeURL,
 			Node:    &core.Node{Id: "test-node"},
 		}
 
@@ -444,12 +488,13 @@ func TestCombinedCache_CancelWatch(t *testing.T) {
 		cc := NewCombinedCache(policyCache, apiKeyCache, lazyResourceCache, subscriptionCache, nil, logger)
 
 		request := &cache.Request{
-			TypeUrl: "test-type",
+			TypeUrl: PolicyChainTypeURL,
 			Node:    &core.Node{Id: "test-node"},
 		}
 		responseChan := make(chan cache.Response, 1)
 
-		cancel := cc.CreateWatch(request, stream.NewStreamState(false, nil), responseChan)
+		cancel, err := cc.CreateWatch(request, newSotwSubscription(request), responseChan)
+		require.NoError(t, err)
 
 		// Wait a bit for the watch to be created
 		time.Sleep(20 * time.Millisecond)
@@ -937,18 +982,26 @@ func TestCombinedCache_Fetch_VersionErrors(t *testing.T) {
 // mockResponseWithVersionError implements cache.Response but returns error on GetVersion
 type mockResponseWithVersionError struct{}
 
+func (m *mockResponseWithVersionError) GetDiscoveryResponse() (*discoveryv3.DiscoveryResponse, error) {
+	return &discoveryv3.DiscoveryResponse{}, nil
+}
+
 func (m *mockResponseWithVersionError) GetVersion() (string, error) {
 	return "", assert.AnError
+}
+
+func (m *mockResponseWithVersionError) GetResponseVersion() string {
+	return ""
 }
 
 func (m *mockResponseWithVersionError) GetRequest() *cache.Request {
 	return &cache.Request{}
 }
 
-func (m *mockResponseWithVersionError) GetContext() context.Context {
-	return context.Background()
+func (m *mockResponseWithVersionError) GetReturnedResources() map[string]string {
+	return nil
 }
 
-func (m *mockResponseWithVersionError) GetDiscoveryResponse() (*discoveryv3.DiscoveryResponse, error) {
-	return &discoveryv3.DiscoveryResponse{}, nil
+func (m *mockResponseWithVersionError) GetContext() context.Context {
+	return context.Background()
 }

@@ -29,6 +29,7 @@ import (
 	"github.com/moesif/moesifapi-go/models"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 )
 
 const (
@@ -272,6 +273,27 @@ func (m *Moesif) Publish(event *dto.Event) {
 	// commonName
 	if commonName, ok := event.Properties["commonName"]; ok && commonName != nil {
 		metadataMap["commonName"] = commonName
+	}
+
+	// guardrail metadata
+	if llmCost, ok := event.Properties[constants.LLMCostPropertyKey]; ok && llmCost != nil {
+		metadataMap[constants.LLMCostPropertyKey] = llmCost
+	}
+	if isGuardrailHit, ok := event.Properties[constants.GuardrailHitMetadataKey]; ok && isGuardrailHit != nil {
+		metadataMap[constants.GuardrailHitMetadataKey] = isGuardrailHit
+	}
+	if guardrailName, ok := event.Properties[constants.GuardrailNameMetadataKey]; ok && guardrailName != nil {
+		metadataMap[constants.GuardrailNameMetadataKey] = guardrailName
+	}
+
+	// application metadata
+	if event.Application != nil {
+		if event.Application.ApplicationID != "" {
+			metadataMap["applicationId"] = event.Application.ApplicationID
+		}
+		if event.Application.ApplicationName != "" {
+			metadataMap["applicationName"] = event.Application.ApplicationName
+		}
 	}
 
 	// isEgress
