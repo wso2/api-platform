@@ -287,6 +287,9 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 				"encoding", execCtx.requestContentEncoding,
 				"error", err,
 			)
+			// Remove Content-Encoding so the upstream does not try to decompress an uncompressed body.
+			headerOps["content-encoding"] = append(headerOps["content-encoding"], &headerOp{opType: "remove", value: ""})
+			finalBodyLength = len(originalBody)
 		} else {
 			bodyMutation.Mutation.(*extprocv3.BodyMutation_Body).Body = recompressed
 			finalBodyLength = len(recompressed)
@@ -514,6 +517,9 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 				"encoding", execCtx.responseContentEncoding,
 				"error", err,
 			)
+			// Remove Content-Encoding so the client does not try to decompress an uncompressed body.
+			headerOps["content-encoding"] = append(headerOps["content-encoding"], &headerOp{opType: "remove", value: ""})
+			finalBodyLength = len(originalBody)
 		} else {
 			bodyMutation.Mutation.(*extprocv3.BodyMutation_Body).Body = recompressed
 			finalBodyLength = len(recompressed)
