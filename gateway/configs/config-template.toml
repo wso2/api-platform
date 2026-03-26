@@ -31,6 +31,20 @@ cert_file = "./certs/server.crt"
 # Path to TLS private key file (required if TLS is enabled)
 key_file = "./certs/server.key"
 
+[controller.controlplane]
+# Control plane websocket endpoint
+host = ""
+# Control plane authentication token
+token = ""
+# Initial reconnect delay
+reconnect_initial = "1s"
+# Maximum reconnect delay
+reconnect_max = "5m"
+# Polling interval for periodic sync
+polling_interval = "15m"
+# Skip TLS certificate verification for control plane connections
+insecure_skip_verify = false
+
 [controller.storage]
 # Storage type: "sqlite", "postgres", or "memory"
 type = "sqlite"
