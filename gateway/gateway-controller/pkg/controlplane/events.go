@@ -163,7 +163,9 @@ type APIKeyCreatedEventPayload struct {
 		Duration int    `json:"duration,omitempty"`
 		Unit     string `json:"unit,omitempty"`
 	} `json:"expiresIn,omitempty"`
-	Issuer *string `json:"issuer,omitempty"` // nil if not provided by the platform API
+	Issuer    *string `json:"issuer,omitempty"` // nil if not provided by the platform API
+	CreatedAt string  `json:"createdAt"`        // RFC3339 timestamp from platform API
+	UpdatedAt string  `json:"updatedAt"`        // RFC3339 timestamp from platform API
 }
 
 // APIKeyCreatedEvent represents the complete API key created event
@@ -186,7 +188,8 @@ type APIKeyUpdatedEventPayload struct {
 		Duration int    `json:"duration,omitempty"`
 		Unit     string `json:"unit,omitempty"`
 	} `json:"expiresIn,omitempty"`
-	Issuer *string `json:"issuer,omitempty"` // nil if not provided by the platform API
+	Issuer    *string `json:"issuer,omitempty"` // nil if not provided by the platform API
+	UpdatedAt string  `json:"updatedAt"`        // RFC3339 timestamp from platform API
 }
 
 // APIKeyUpdatedEvent represents the complete API key updated event

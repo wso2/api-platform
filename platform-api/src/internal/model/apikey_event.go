@@ -58,6 +58,12 @@ type APIKeyCreatedEvent struct {
 
 	// Issuer identifies the developer portal that provisioned this key; nil (omitted) if not provided
 	Issuer *string `json:"issuer,omitempty"`
+
+	// CreatedAt is the timestamp when the key was created on the platform API (RFC3339)
+	CreatedAt string `json:"createdAt"`
+
+	// UpdatedAt is the timestamp when the key was last updated on the platform API (RFC3339)
+	UpdatedAt string `json:"updatedAt"`
 }
 
 // APIKeyRevokedEvent represents the payload for "apikey.revoked" event type.
@@ -93,4 +99,7 @@ type APIKeyUpdatedEvent struct {
 
 	// Issuer identifies the developer portal that provisioned this key; nil (omitted) if not provided
 	Issuer *string `json:"issuer,omitempty"`
+
+	// UpdatedAt is the timestamp when the key was last updated on the platform API (RFC3339)
+	UpdatedAt string `json:"updatedAt"`
 }

@@ -289,6 +289,14 @@ func (m *MockStorage) SaveAPIKey(apiKey *models.APIKey) error {
 	return nil
 }
 
+func (m *MockStorage) UpsertAPIKey(apiKey *models.APIKey) error {
+	if m.saveErr != nil {
+		return m.saveErr
+	}
+	m.apiKeys[apiKey.UUID] = apiKey
+	return nil
+}
+
 func (m *MockStorage) GetAPIKeyByID(id string) (*models.APIKey, error) {
 	if m.getErr != nil {
 		return nil, m.getErr
@@ -403,6 +411,14 @@ func (m *MockStorage) RemoveAPIKeyAPIAndName(apiId, name string) error {
 		}
 	}
 	return errors.New("API key not found")
+}
+
+func (m *MockStorage) ListAPIKeysForArtifactsNotIn(artifactUUIDs []string, keyUUIDs []string) ([]*models.APIKey, error) {
+	return nil, nil
+}
+
+func (m *MockStorage) DeleteAPIKeysByUUIDs(uuids []string) error {
+	return nil
 }
 
 func (m *MockStorage) CountActiveAPIKeysByUserAndAPI(apiId, userID string) (int, error) {

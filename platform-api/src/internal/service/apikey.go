@@ -365,6 +365,8 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 		MaskedApiKey:  maskedAPIKey,
 		ExternalRefId: req.ExternalRefId,
 		Issuer:        issuer,
+		CreatedAt:     dbKey.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:     dbKey.UpdatedAt.Format(time.RFC3339),
 	}
 	if expiresAt != nil {
 		expiresAtStr := expiresAt.Format(time.RFC3339)
@@ -480,6 +482,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 		ApiKeyHashes: apiKeyHashesJSON,
 		MaskedApiKey: maskedAPIKey,
 		Issuer:       req.Issuer,
+		UpdatedAt:    dbKey.UpdatedAt.Format(time.RFC3339),
 	}
 	if req.ExternalRefId != nil {
 		event.ExternalRefId = req.ExternalRefId

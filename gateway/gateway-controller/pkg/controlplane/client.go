@@ -118,6 +118,7 @@ type Client struct {
 	llmDeploymentService        *utils.LLMDeploymentService
 	mcpDeploymentService        *utils.MCPDeploymentService
 	apiKeyXDSManager            utils.XDSManager
+	apiKeyStore                 *storage.APIKeyStore
 	routerConfig                *config.RouterConfig
 	policyManager               *policyxds.PolicyManager
 	systemConfig                *config.Config
@@ -142,6 +143,7 @@ func NewClient(
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
 	apiKeyXDSManager utils.XDSManager,
+	apiKeyStore *storage.APIKeyStore,
 	apiKeyConfig *config.APIKeyConfig,
 	policyManager *policyxds.PolicyManager,
 	systemConfig *config.Config,
@@ -177,6 +179,7 @@ func NewClient(
 		deploymentService:           deploymentService,
 		apiKeyService:               apiKeyService,
 		apiKeyXDSManager:            apiKeyXDSManager,
+		apiKeyStore:                 apiKeyStore,
 		routerConfig:                routerConfig,
 		policyManager:               policyManager,
 		systemConfig:                systemConfig,
@@ -407,6 +410,8 @@ func (c *Client) Connect() error {
 			c.syncDeployments(gwID)
 			c.syncSubscriptionPlans(gwID)
 			c.syncSubscriptionsForExistingAPIs(gwID)
+			// Sync API keys for LlmProvider, LlmProxy, and RestApi artifacts.
+			c.syncAPIKeysForExistingArtifacts(gwID)
 		}(gatewayID)
 	})
 
@@ -418,6 +423,8 @@ func (c *Client) Connect() error {
 			defer c.wg.Done()
 			c.syncSubscriptionPlans(gwID)
 			c.syncSubscriptionsForExistingAPIs(gwID)
+			// Sync API keys for LlmProvider, LlmProxy, and RestApi artifacts.
+			c.syncAPIKeysForExistingArtifacts(gwID)
 		}(gatewayID)
 	}
 
@@ -837,6 +844,111 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 							slog.String("subscription_id", ls.ID),
 							slog.String("api_id", apiID), slog.Any("error", err))
 					}
+				}
+			}
+		}
+	}
+}
+
+// syncAPIKeysForExistingArtifacts performs a one-time bulk sync of API keys for all
+// currently known LlmProvider and LlmProxy artifacts after the WebSocket connection
+// is established. Upserts fetched keys into the DB, reconciles deletions per artifact,
+// then reloads the in-memory store and refreshes the xDS snapshot once.
+func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
+	if c.apiUtilsService == nil || c.db == nil || c.store == nil || c.apiKeyStore == nil {
+		return
+	}
+
+	c.logger.Info("Starting API key sync at gateway startup")
+
+	issuer := ""
+	if c.systemConfig != nil {
+		issuer = c.systemConfig.APIKey.Issuer
+	}
+
+	// Build a per-kind map of artifact UUIDs from the in-memory config store.
+	configs := c.store.GetAll()
+	artifactUUIDsByKind := make(map[string][]string)
+	for _, cfg := range configs {
+		if cfg == nil {
+			continue
+		}
+		if cfg.Kind != models.KindLlmProvider && cfg.Kind != models.KindLlmProxy && cfg.Kind != models.KindRestApi {
+			continue
+		}
+		artifactUUIDsByKind[cfg.Kind] = append(artifactUUIDsByKind[cfg.Kind], cfg.UUID)
+	}
+
+	for _, kind := range []string{models.KindRestApi, models.KindLlmProvider, models.KindLlmProxy} {
+		select {
+		case <-c.ctx.Done():
+			c.logger.Info("Stopping API key bulk sync due to client context cancellation")
+			return
+		case <-c.stopChan:
+			c.logger.Info("Stopping API key bulk sync due to stop signal")
+			return
+		default:
+		}
+
+		keys, err := c.apiUtilsService.FetchAPIKeysByKind(kind, issuer)
+		if err != nil {
+			c.logger.Warn("Failed to bulk-sync API keys for kind",
+				slog.String("kind", kind),
+				slog.Any("error", err),
+			)
+			continue
+		}
+
+		fetchedUUIDs := make([]string, 0, len(keys))
+		for i := range keys {
+			select {
+			case <-c.ctx.Done():
+				c.logger.Info("Stopping API key bulk sync during key processing due to client context cancellation")
+				return
+			case <-c.stopChan:
+				c.logger.Info("Stopping API key bulk sync during key processing due to stop signal")
+				return
+			default:
+			}
+
+			key := keys[i]
+			if key.UUID == "" {
+				continue
+			}
+
+			if err := c.db.UpsertAPIKey(&key); err != nil {
+				c.logger.Warn("Failed to upsert API key during bulk sync",
+					slog.String("key_uuid", key.UUID),
+					slog.String("artifact_uuid", key.ArtifactUUID),
+					slog.Any("error", err))
+			} else {
+				etag := key.ETag
+				if etag == "" {
+					etag = utils.APIKeyETag(key.ArtifactUUID, key.Name, key.UpdatedAt)
+				}
+				c.apiKeyService.PublishAPIKeyEvent("CREATE", key.ArtifactUUID, key.UUID, etag, c.logger)
+			}
+			fetchedUUIDs = append(fetchedUUIDs, key.UUID)
+		}
+
+		artifactUUIDs := artifactUUIDsByKind[kind]
+		staleKeys, err := c.db.ListAPIKeysForArtifactsNotIn(artifactUUIDs, fetchedUUIDs)
+		if err != nil {
+			c.logger.Warn("Failed to list stale API keys before reconciliation",
+				slog.String("kind", kind), slog.Any("error", err))
+		}
+		if len(staleKeys) > 0 {
+			staleUUIDs := make([]string, len(staleKeys))
+			for i, k := range staleKeys {
+				staleUUIDs[i] = k.UUID
+			}
+			if err := c.db.DeleteAPIKeysByUUIDs(staleUUIDs); err != nil {
+				c.logger.Warn("Failed to reconcile deleted API keys during bulk sync",
+					slog.String("kind", kind), slog.Any("error", err))
+			} else {
+				for _, k := range staleKeys {
+					c.apiKeyService.PublishAPIKeyEvent("DELETE", k.ArtifactUUID, k.UUID,
+						utils.APIKeyETag(k.ArtifactUUID, k.Name, k.UpdatedAt), c.logger)
 				}
 			}
 		}
@@ -1456,7 +1568,6 @@ func (c *Client) findAPIConfig(apiID string) (*models.StoredConfig, error) {
 		return nil, fmt.Errorf("database error while fetching config: %w", err)
 	}
 	// Config not found in DB, fall through to check memory store
-
 	// Fall back to in-memory store
 	config, err = c.store.Get(apiID)
 	if err == nil {
@@ -2806,6 +2917,32 @@ func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
 	if payload.UUID != "" {
 		keyUUID = &payload.UUID
 	}
+
+	// Parse authoritative timestamps from the platform API
+	var createdAt, updatedAt *time.Time
+	if payload.CreatedAt != "" {
+		t, err := time.Parse(time.RFC3339, payload.CreatedAt)
+		if err != nil {
+			logger.Warn("Invalid created_at format in API key event, using local time",
+				slog.String("created_at", payload.CreatedAt),
+				slog.Any("error", err),
+			)
+		} else {
+			createdAt = &t
+		}
+	}
+	if payload.UpdatedAt != "" {
+		t, err := time.Parse(time.RFC3339, payload.UpdatedAt)
+		if err != nil {
+			logger.Warn("Invalid updated_at format in API key event, using local time",
+				slog.String("updated_at", payload.UpdatedAt),
+				slog.Any("error", err),
+			)
+		} else {
+			updatedAt = &t
+		}
+	}
+
 	apiKeyCreationRequest := api.APIKeyCreationRequest{
 		MaskedApiKey:  &payload.MaskedApiKey,
 		Name:          &payload.Name,
@@ -2864,6 +3001,8 @@ func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
 		&payload.ApiKeyHashes,
 		keyCreatedEvent.CorrelationID,
 		logger,
+		createdAt,
+		updatedAt,
 	)
 	if err != nil {
 		logger.Error("Failed to create external API key", slog.Any("error", err))
@@ -3004,6 +3143,20 @@ func (c *Client) handleAPIKeyUpdatedEvent(event map[string]interface{}) {
 	var duration *int
 	now := time.Now()
 
+	// Parse authoritative updated_at timestamp from the platform API
+	var updatedAt *time.Time
+	if payload.UpdatedAt != "" {
+		t, err := time.Parse(time.RFC3339, payload.UpdatedAt)
+		if err != nil {
+			logger.Warn("Invalid updated_at format in API key updated event, using local time",
+				slog.String("updated_at", payload.UpdatedAt),
+				slog.Any("error", err),
+			)
+		} else {
+			updatedAt = &t
+		}
+	}
+
 	apiKeyCreationRequest := api.APIKeyCreationRequest{
 		MaskedApiKey:  &payload.MaskedApiKey,
 		ExternalRefId: payload.ExternalRefId,
@@ -3062,6 +3215,7 @@ func (c *Client) handleAPIKeyUpdatedEvent(event map[string]interface{}) {
 		evt.UserId,
 		evt.CorrelationID,
 		logger,
+		updatedAt,
 	)
 	if err != nil {
 		logger.Error("Failed to update external API key", slog.Any("error", err))

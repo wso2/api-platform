@@ -176,12 +176,14 @@ func unmarshalSourceConfig(cfg *models.StoredConfig, jsonData string) error {
 			return fmt.Errorf("failed to unmarshal source configuration: %w", err)
 		}
 		cfg.SourceConfiguration = config
+		cfg.Configuration = config
 	case "LlmProxy":
 		var config api.LLMProxyConfiguration
 		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
 			return fmt.Errorf("failed to unmarshal source configuration: %w", err)
 		}
 		cfg.SourceConfiguration = config
+		cfg.Configuration = config
 	case "Mcp":
 		var config api.MCPProxyConfiguration
 		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
@@ -1492,10 +1494,65 @@ func (s *sqlStore) SaveAPIKey(apiKey *models.APIKey) error {
 	}
 
 	s.logger.Info("API key inserted successfully",
-		slog.String("uuid", apiKey.UUID),
 		slog.String("name", apiKey.Name),
-		slog.String("artifact_uuid", apiKey.ArtifactUUID),
 		slog.String("created_by", apiKey.CreatedBy))
+
+	return nil
+}
+
+// UpsertAPIKey inserts or conditionally updates an API key.
+//
+// The conflict target is the unique composite key (artifact_uuid, name, gateway_id).
+// The DO UPDATE only fires when the stored updated_at is strictly older than the incoming one,
+// so a racing WebSocket event that already wrote a newer record is never overwritten.
+// source is preserved from the existing row when it is already set.
+// external_ref_id falls back to the existing value when the incoming one is NULL.
+func (s *sqlStore) UpsertAPIKey(apiKey *models.APIKey) error {
+	query := `
+		INSERT INTO api_keys (
+			uuid, gateway_id, name, api_key, masked_api_key, artifact_uuid, status,
+			created_at, created_by, updated_at, expires_at,
+			source, external_ref_id, issuer
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(artifact_uuid, name, gateway_id) DO UPDATE SET
+			uuid            = excluded.uuid,
+			api_key         = excluded.api_key,
+			masked_api_key  = excluded.masked_api_key,
+			status          = excluded.status,
+			updated_at      = excluded.updated_at,
+			expires_at      = excluded.expires_at,
+			source          = CASE WHEN api_keys.source != '' THEN api_keys.source ELSE excluded.source END,
+			external_ref_id = COALESCE(excluded.external_ref_id, api_keys.external_ref_id),
+			issuer          = CASE WHEN api_keys.issuer != '' THEN api_keys.issuer ELSE excluded.issuer END
+		WHERE api_keys.updated_at < excluded.updated_at
+	`
+
+	_, err := s.exec(query,
+		apiKey.UUID,
+		s.gatewayId,
+		apiKey.Name,
+		apiKey.APIKey,
+		apiKey.MaskedAPIKey,
+		apiKey.ArtifactUUID,
+		apiKey.Status,
+		apiKey.CreatedAt,
+		apiKey.CreatedBy,
+		apiKey.UpdatedAt,
+		apiKey.ExpiresAt,
+		apiKey.Source,
+		apiKey.ExternalRefId,
+		apiKey.Issuer,
+	)
+	if err != nil {
+		if s.isUniqueViolation(err) {
+			return fmt.Errorf("%w: API key value already exists", ErrConflict)
+		}
+		return fmt.Errorf("failed to upsert API key: %w", err)
+	}
+
+	s.logger.Debug("API key upserted",
+		slog.String("name", apiKey.Name),
+		slog.String("artifact_uuid", apiKey.ArtifactUUID))
 
 	return nil
 }
@@ -2647,4 +2704,73 @@ func (s *sqlStore) SecretExists(handle string) (bool, error) {
 	}
 
 	return exists, nil
+}
+
+// ListAPIKeysForArtifactsNotIn returns uuid + artifact_uuid for keys that would be removed
+// by DeleteAPIKeysForArtifactsNotIn. Call this before the delete to collect identifiers
+// needed for publishing EventHub events.
+func (s *sqlStore) ListAPIKeysForArtifactsNotIn(artifactUUIDs []string, keyUUIDs []string) ([]*models.APIKey, error) {
+	if len(artifactUUIDs) == 0 {
+		return nil, nil
+	}
+	artifactPlaceholders := make([]string, len(artifactUUIDs))
+	args := make([]interface{}, 0, len(artifactUUIDs)+len(keyUUIDs)+1)
+	args = append(args, s.gatewayId)
+	for i, id := range artifactUUIDs {
+		artifactPlaceholders[i] = "?"
+		args = append(args, id)
+	}
+	var query string
+	if len(keyUUIDs) == 0 {
+		query = fmt.Sprintf(
+			`SELECT uuid, artifact_uuid, name FROM api_keys WHERE gateway_id = ? AND artifact_uuid IN (%s)`,
+			strings.Join(artifactPlaceholders, ","),
+		)
+	} else {
+		keyPlaceholders := make([]string, len(keyUUIDs))
+		for i, id := range keyUUIDs {
+			keyPlaceholders[i] = "?"
+			args = append(args, id)
+		}
+		query = fmt.Sprintf(
+			`SELECT uuid, artifact_uuid, name FROM api_keys WHERE gateway_id = ? AND artifact_uuid IN (%s) AND uuid NOT IN (%s)`,
+			strings.Join(artifactPlaceholders, ","),
+			strings.Join(keyPlaceholders, ","),
+		)
+	}
+	rows, err := s.query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list API keys for artifacts not in set: %w", err)
+	}
+	defer rows.Close()
+	var keys []*models.APIKey
+	for rows.Next() {
+		k := &models.APIKey{}
+		if err := rows.Scan(&k.UUID, &k.ArtifactUUID, &k.Name); err != nil {
+			return nil, fmt.Errorf("failed to scan API key row: %w", err)
+		}
+		keys = append(keys, k)
+	}
+	return keys, rows.Err()
+}
+
+// DeleteAPIKeysByUUIDs removes API keys by their UUIDs.
+func (s *sqlStore) DeleteAPIKeysByUUIDs(uuids []string) error {
+	if len(uuids) == 0 {
+		return nil
+	}
+	placeholders := make([]string, len(uuids))
+	args := make([]interface{}, 0, len(uuids)+1)
+	args = append(args, s.gatewayId)
+	for i, id := range uuids {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	query := fmt.Sprintf(`DELETE FROM api_keys WHERE gateway_id = ? AND uuid IN (%s)`,
+		strings.Join(placeholders, ","))
+	_, err := s.exec(query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to delete API keys by UUIDs: %w", err)
+	}
+	return nil
 }

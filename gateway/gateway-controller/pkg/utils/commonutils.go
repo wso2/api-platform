@@ -53,6 +53,19 @@ func GetParamsOfPolicy(policyDef string, params ...string) (map[string]any, erro
 	return m, nil
 }
 
+// APIKeyETag produces a deterministic UUID v7-formatted ETag from the unique
+// (artifactUUID, name, updatedAt) tuple. Uses SHA-256 of the tuple as the source
+// bytes, then stamps version=7 and RFC 4122 variant bits.
+// Mirrors the same algorithm used by the platform-API so both sides agree on the value.
+func APIKeyETag(artifactUUID, name string, updatedAt time.Time) string {
+	h := sha256.Sum256([]byte(fmt.Sprintf("%s:%s:%d", artifactUUID, name, updatedAt.UnixNano())))
+	var uid uuid.UUID
+	copy(uid[:], h[:16])
+	uid[6] = (uid[6] & 0x0f) | 0x70 // version = 7
+	uid[8] = (uid[8] & 0x3f) | 0x80 // RFC 4122 variant
+	return uid.String()
+}
+
 // GenerateUUID generates a new UUID v7 string
 func GenerateUUID() (string, error) {
 	u, err := uuid.NewV7()

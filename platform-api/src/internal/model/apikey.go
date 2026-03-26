@@ -41,3 +41,21 @@ type UserAPIKey struct {
 	ArtifactHandle string // Handle (ID) of the LLM provider or proxy
 	ArtifactKind   string // Kind of the artifact: LlmProvider or LlmProxy
 }
+
+// InternalAPIKeyItem is the response shape for the internal API key listing endpoints.
+type InternalAPIKeyItem struct {
+	ETag          string            `json:"etag"`
+	UUID          string            `json:"uuid"`
+	Name          string            `json:"name"`
+	MaskedAPIKey  string            `json:"maskedApiKey"`
+	APIKeyHashes  map[string]string `json:"apiKeyHashes"`
+	ArtifactUUID  string            `json:"artifactUuid"`
+	Status        string            `json:"status"`
+	CreatedAt     time.Time         `json:"createdAt"`
+	CreatedBy     string            `json:"createdBy"`
+	UpdatedAt     time.Time         `json:"updatedAt"`
+	ExpiresAt     *time.Time        `json:"expiresAt"`
+	Source        string            `json:"source"`        // always "external"
+	ExternalRefId *string           `json:"externalRefId"` // always null
+	Issuer        *string           `json:"issuer,omitempty"`
+}
