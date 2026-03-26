@@ -159,6 +159,7 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
 			go s.waitForDeploymentAndPush(result.StoredConfig.UUID, params.CorrelationID, log)
 		}
+	}
 
 	// Build and add policy config derived from API configuration.
 	// In event-driven mode the EventListener handles this after replaying the event.

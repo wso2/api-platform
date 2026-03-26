@@ -378,7 +378,7 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 	// Broadcast LLM provider undeployment event to gateway
 	if s.gatewayEventsService != nil {
 		undeploymentEvent := &model.LLMProviderUndeploymentEvent{
-			ProviderId:   provider.ID,
+			ProviderId:   provider.UUID,
 			DeploymentID: deploymentID,
 			PerformedAt:  performedAt,
 		}
@@ -1181,7 +1181,7 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 	// Broadcast LLM proxy undeployment event to gateway
 	if s.gatewayEventsService != nil {
 		undeploymentEvent := &model.LLMProxyUndeploymentEvent{
-			ProxyId:      proxy.ID,
+			ProxyId:      proxy.UUID,
 			DeploymentID: deploymentID,
 			PerformedAt:  performedAt,
 		}

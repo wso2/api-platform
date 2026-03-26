@@ -2360,7 +2360,7 @@ func (c *Client) handleLLMProviderDeletedEvent(event map[string]interface{}) {
 				}
 			}
 		}
-		c.removePolicyConfiguration(cfg.UUID, deletedEvent.CorrelationID, false)
+		c.removePolicyConfiguration(cfg, deletedEvent.CorrelationID, false)
 	}
 
 	c.logger.Info("Successfully processed LLM provider deletion event",
@@ -2450,7 +2450,7 @@ func (c *Client) handleLLMProxyDeletedEvent(event map[string]interface{}) {
 				}
 			}
 		}
-		c.removePolicyConfiguration(cfg.UUID, deletedEvent.CorrelationID, false)
+		c.removePolicyConfiguration(cfg, deletedEvent.CorrelationID, false)
 	}
 
 	c.logger.Info("Successfully processed LLM proxy deletion event",
