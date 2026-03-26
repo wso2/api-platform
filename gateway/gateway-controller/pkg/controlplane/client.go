@@ -787,6 +787,14 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 		}
 
 		apiID := cfg.UUID
+
+		// Check the DB (already updated by syncDeployments) for the current
+		// desired state. The in-memory store may still show the old state
+		// because EventHub events are processed asynchronously.
+		if dbCfg, err := c.db.GetConfig(apiID); err == nil && dbCfg.DesiredState == models.StateUndeployed {
+			continue
+		}
+
 		subs, err := c.apiUtilsService.FetchSubscriptionsForAPI(apiID)
 		if err != nil {
 			c.logger.Warn("Failed to bulk-sync subscriptions for API",
