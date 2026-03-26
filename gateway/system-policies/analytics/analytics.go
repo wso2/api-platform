@@ -1,6 +1,7 @@
 package analytics
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -278,16 +279,19 @@ func (a *AnalyticsPolicy) OnResponseBody(ctx *policy.ResponseContext, params map
 				}
 			}
 
-			var mcpResponsePayload map[string]interface{}
-			if err := json.Unmarshal(responseContent, &mcpResponsePayload); err != nil {
-				slog.Error("Failed to unmarshal MCP response body for server info analytics", "error", err)
-			} else {
-				props := extractMCPResponseAnalyticsProps(mcpResponsePayload)
-				if props != nil {
-					if data, err := json.Marshal(props); err != nil {
-						slog.Error("Failed to marshal MCP response analytics properties", "error", err)
-					} else {
-						analyticsMetadata["mcp_response_properties"] = string(data)
+			trimmed := bytes.TrimSpace(responseContent)
+			if len(trimmed) > 0 && (trimmed[0] == '{' || trimmed[0] == '[') {
+				var mcpResponsePayload map[string]interface{}
+				if err := json.Unmarshal(trimmed, &mcpResponsePayload); err != nil {
+					slog.Warn("Failed to unmarshal MCP response body for server info analytics", "error", err)
+				} else {
+					props := extractMCPResponseAnalyticsProps(mcpResponsePayload)
+					if props != nil {
+						if data, err := json.Marshal(props); err != nil {
+							slog.Error("Failed to marshal MCP response analytics properties", "error", err)
+						} else {
+							analyticsMetadata["mcp_response_properties"] = string(data)
+						}
 					}
 				}
 			}

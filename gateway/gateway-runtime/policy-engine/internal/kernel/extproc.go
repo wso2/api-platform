@@ -336,6 +336,9 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 	// Extract route key from Envoy attributes (just xds.route_name, lightweight)
 	routeKey := s.extractRouteKey(req)
 
+	slog.DebugContext(ctx, "initializeExecutionContext: looking up route",
+		"route_key", routeKey)
+
 	// Try new path: RouteConfigs + PolicyChains
 	if rc := s.kernel.GetRouteConfig(routeKey); rc != nil {
 		// Metadata is pre-populated from xDS — no request-time parsing needed
@@ -364,8 +367,15 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 	}
 
 	// Fallback: legacy path using extractRouteMetadata (prototext.Unmarshal from Envoy route metadata)
+	slog.DebugContext(ctx, "initializeExecutionContext: RouteConfig not found, falling back to legacy path",
+		"route_key", routeKey)
 	routeMetadata := s.extractRouteMetadata(req)
 
+	slog.DebugContext(ctx, "initializeExecutionContext: legacy path looking up policy chain",
+		"route_key", routeKey,
+		"legacy_route_name", routeMetadata.RouteName,
+		"keys_match", routeKey == routeMetadata.RouteName,
+		"registered_chains", s.kernel.DumpRouteKeys())
 	chain := s.kernel.GetPolicyChainForKey(routeMetadata.RouteName)
 	if chain == nil {
 		slog.InfoContext(ctx, "No policy chain found for route, skipping all processing",

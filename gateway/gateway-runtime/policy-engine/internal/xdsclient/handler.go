@@ -163,6 +163,15 @@ func (h *ResourceHandler) HandlePolicyChainUpdate(ctx context.Context, resources
 		chains[cwm.config.RouteKey] = chain
 	}
 
+	// Log the full set of routes being applied so we can detect missing routes
+	chainKeys := make([]string, 0, len(chains))
+	for key := range chains {
+		chainKeys = append(chainKeys, key)
+	}
+	slog.DebugContext(ctx, "Applying policy chains (State of the World)",
+		"count", len(chains),
+		"routes", chainKeys)
+
 	// Apply changes atomically
 	// This replaces ALL routes with the new set from xDS (State of the World)
 	h.kernel.ApplyWholeRoutes(chains)
@@ -348,6 +357,8 @@ func (h *ResourceHandler) buildPolicyChain(routeKey string, config *policyengine
 
 	requiresRequestBody := false
 	requiresResponseBody := false
+	requiresRequestHeader := false
+	requiresResponseHeader := false
 	hasExecutionConditions := false
 	supportsRequestStreaming := true
 	supportsResponseStreaming := true
@@ -405,6 +416,13 @@ func (h *ResourceHandler) buildPolicyChain(routeKey string, config *policyengine
 				supportsResponseStreaming = false
 			}
 		}
+
+		if _, ok := impl.(policy.RequestHeaderPolicy); ok {
+			requiresRequestHeader = true
+		}
+		if _, ok := impl.(policy.ResponseHeaderPolicy); ok {
+			requiresResponseHeader = true
+		}
 	}
 
 	if !hasRequestBodyPolicy {
@@ -419,6 +437,8 @@ func (h *ResourceHandler) buildPolicyChain(routeKey string, config *policyengine
 		PolicySpecs:              policySpecs,
 		RequiresRequestBody:      requiresRequestBody,
 		RequiresResponseBody:     requiresResponseBody,
+		RequiresRequestHeader:    requiresRequestHeader,
+		RequiresResponseHeader:   requiresResponseHeader,
 		HasExecutionConditions:   hasExecutionConditions,
 		SupportsRequestStreaming:  supportsRequestStreaming,
 		SupportsResponseStreaming: supportsResponseStreaming,

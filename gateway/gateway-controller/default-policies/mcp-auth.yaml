@@ -1,5 +1,5 @@
 name: mcp-auth
-version: v0.9.0
+version: v0.9.1
 description: |
   Secure Model Context Protocol traffic by validating bearer access tokens for MCP resources using the underlying JWT authentication runtime.
 

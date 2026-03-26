@@ -1,5 +1,5 @@
 name: content-length-guardrail
-version: v0.9.0
+version: v0.9.1
 description: |
   Validate content byte lengths in request or response payloads using min/max limits.
 

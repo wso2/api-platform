@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/utils"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -303,6 +304,7 @@ func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyL
 			return nil, fmt.Errorf("failed to clone parameters for policy %s:%s: %w", spec.Name, spec.Version, err)
 		}
 
+		slog.Debug("[body] calling OnRequestBody", "policy", spec.Name, "version", spec.Version, "route", route)
 		action := rp.OnRequestBody(ctx, params)
 		executionTime := time.Since(policyStartTime)
 
@@ -609,6 +611,7 @@ func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policy
 			return nil, fmt.Errorf("failed to clone parameters for policy %s:%s: %w", spec.Name, spec.Version, err)
 		}
 
+		slog.Debug("[body] calling OnResponseBody", "policy", spec.Name, "version", spec.Version, "route", route)
 		action := rp.OnResponseBody(ctx, params)
 		executionTime := time.Since(policyStartTime)
 
@@ -759,6 +762,7 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 			return nil, fmt.Errorf("failed to clone parameters for policy %s:%s: %w", spec.Name, spec.Version, err)
 		}
 
+		slog.Debug("[streaming] calling OnRequestBodyChunk", "policy", spec.Name, "version", spec.Version, "route", route, "end_of_stream", currentChunk.EndOfStream)
 		action := streamingPol.OnRequestBodyChunk(ctx, currentChunk, params)
 		executionTime := time.Since(policyStartTime)
 
@@ -899,6 +903,7 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 			return nil, fmt.Errorf("failed to clone parameters for policy %s:%s: %w", spec.Name, spec.Version, err)
 		}
 
+		slog.Debug("[streaming] calling OnResponseBodyChunk", "policy", spec.Name, "version", spec.Version, "route", route, "end_of_stream", currentChunk.EndOfStream)
 		action := streamingPol.OnResponseBodyChunk(ctx, currentChunk, params)
 		executionTime := time.Since(policyStartTime)
 

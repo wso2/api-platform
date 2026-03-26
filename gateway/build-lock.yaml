@@ -1,10 +1,10 @@
 version: v1
 policies:
     - name: token-based-ratelimit
-      version: v0.9.2
+      version: v0.9.3
       gomodule: github.com/wso2/gateway-controllers/policies/token-based-ratelimit@v0
     - name: advanced-ratelimit
-      version: v0.9.1
+      version: v0.9.3
       gomodule: github.com/wso2/gateway-controllers/policies/advanced-ratelimit@v0
     - name: analytics-header-filter
       version: v0.9.0
@@ -22,10 +22,10 @@ policies:
       version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/basic-auth@v0
     - name: basic-ratelimit
-      version: v0.9.1
+      version: v0.9.2
       gomodule: github.com/wso2/gateway-controllers/policies/basic-ratelimit@v0
     - name: content-length-guardrail
-      version: v0.9.0
+      version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/content-length-guardrail@v0
     - name: cors
       version: v0.9.0
@@ -46,7 +46,7 @@ policies:
       version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-acl-list@v0
     - name: mcp-auth
-      version: v0.9.0
+      version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-auth@v0
     - name: mcp-authz
       version: v0.9.0
@@ -55,22 +55,22 @@ policies:
       version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-rewrite@v0
     - name: model-round-robin
-      version: v0.9.0
+      version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/model-round-robin@v0
     - name: model-weighted-round-robin
-      version: v0.9.0
+      version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/model-weighted-round-robin@v0
     - name: pii-masking-regex
-      version: v0.9.0
+      version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/pii-masking-regex@v0
     - name: prompt-decorator
-      version: v0.9.0
+      version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/prompt-decorator@v0
     - name: prompt-template
       version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/prompt-template@v0
     - name: regex-guardrail
-      version: v0.9.0
+      version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/regex-guardrail@v0
     - name: remove-headers
       version: v0.9.0
@@ -88,16 +88,16 @@ policies:
       version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/semantic-prompt-guard@v0
     - name: sentence-count-guardrail
-      version: v0.9.1
+      version: v0.9.3
       gomodule: github.com/wso2/gateway-controllers/policies/sentence-count-guardrail@v0
     - name: set-headers
       version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/set-headers@v0
     - name: url-guardrail
-      version: v0.9.0
+      version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/url-guardrail@v0
     - name: word-count-guardrail
-      version: v0.9.2
+      version: v0.9.3
       gomodule: github.com/wso2/gateway-controllers/policies/word-count-guardrail@v0
     - name: json-xml-mediator
       version: v0.9.0
@@ -109,5 +109,5 @@ policies:
       version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/llm-cost@v0
     - name: llm-cost-based-ratelimit
-      version: v0.9.3
+      version: v0.9.4
       gomodule: github.com/wso2/gateway-controllers/policies/llm-cost-based-ratelimit@v0
