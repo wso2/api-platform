@@ -44,7 +44,7 @@ func createLLMDeletionTestClient() (*Client, *storage.ConfigStore, *mockStorageF
 	hub := &mockControlPlaneEventHub{}
 
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := utils.NewAPIDeploymentService(store, db, nil, nil, routerConfig)
+	apiDeploymentService := utils.NewAPIDeploymentService(store, db, nil, nil, routerConfig, nil)
 	llmService := utils.NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	llmService.SetEventHub(hub, "test-gateway")
 

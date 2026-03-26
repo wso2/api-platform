@@ -862,7 +862,7 @@ func TestSaveOrUpdateConfig_StaleEvent(t *testing.T) {
 	require.NoError(t, err)
 
 	store := storage.NewConfigStore()
-	service := NewAPIDeploymentService(store, db, nil, nil, nil)
+	service := NewAPIDeploymentService(store, db, nil, nil, nil, nil)
 
 	newerTime := time.Now()
 	olderTime := newerTime.Add(-10 * time.Minute)
