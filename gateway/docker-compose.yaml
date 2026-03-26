@@ -63,11 +63,11 @@ services:
       - "8082:8082"   # WebSub Hub dynamic forward proxy
       - "8083:8083"   # WebSub Hub internal listener
       - "9901:9901"   # Envoy admin
-      # # Policy Engine
-      # - "9002:9002"   # Admin API
-      # - "9003:9003"   # Metrics
+      # Policy Engine
+      - "9002:9002"   # Admin API
+      - "9003:9003"   # Metrics
     environment:
-      - GATEWAY_CONTROLLER_HOST=host.docker.internal
+      - GATEWAY_CONTROLLER_HOST=gateway-controller
       - MOESIF_KEY=${MOESIF_KEY:-}
       - LOG_LEVEL=info
     volumes:
