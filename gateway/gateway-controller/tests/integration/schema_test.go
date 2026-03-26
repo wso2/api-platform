@@ -224,7 +224,7 @@ func TestSchemaInitialization(t *testing.T) {
 		require.NoError(t, err)
 		defer rows.Close()
 
-		var hasPlanForeignKey bool
+		planFKCols := map[int]map[string]string{}
 		for rows.Next() {
 			var id, seq int
 			var tableName, fromColumn, toColumn, onUpdate, onDelete, match string
@@ -232,13 +232,23 @@ func TestSchemaInitialization(t *testing.T) {
 			require.NoError(t, err)
 			assert.NotEqual(t, "rest_apis", tableName, "subscriptions should not retain a REST API foreign key")
 			assert.NotEqual(t, "api_id", fromColumn, "subscriptions.api_id should not participate in a foreign key")
-			if tableName == "subscription_plans" && fromColumn == "subscription_plan_id" && toColumn == "uuid" {
-				hasPlanForeignKey = true
+			if tableName == "subscription_plans" {
+				if planFKCols[id] == nil {
+					planFKCols[id] = map[string]string{}
+				}
+				planFKCols[id][fromColumn] = toColumn
 			}
 		}
 
 		assert.NoError(t, rows.Err())
-		assert.True(t, hasPlanForeignKey, "subscriptions should retain the subscription plan foreign key")
+		hasScopedPlanFK := false
+		for _, cols := range planFKCols {
+			if cols["gateway_id"] == "gateway_id" && cols["subscription_plan_id"] == "uuid" {
+				hasScopedPlanFK = true
+				break
+			}
+		}
+		assert.True(t, hasScopedPlanFK, "subscriptions should retain the gateway-scoped subscription plan foreign key")
 	})
 
 	// Verify UNIQUE constraint on artifacts
