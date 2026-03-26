@@ -416,6 +416,34 @@ func TestAuthorizationMiddleware_CaseSensitiveRoles(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, w.Code)
 }
 
+func TestAuthorizationMiddleware_UnregisteredPath_Returns404(t *testing.T) {
+	// Scenario: Request to a path with no registered route should return 404, not 403.
+	// c.FullPath() is "" for unregistered paths; the middleware must not intercept these.
+	router := setupTestRouter()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	config := models.AuthConfig{
+		ResourceRoles: map[string][]string{
+			"GET /api/users": {"admin"},
+		},
+	}
+
+	router.Use(func(c *gin.Context) {
+		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{"admin"}})
+		c.Next()
+	})
+	router.Use(AuthorizationMiddleware(config, logger))
+	router.GET("/api/users", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"message": "success"})
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/foo", nil)
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
 func TestAuthorizationMiddleware_SkipAuthzFlag_BypassesAuthorization(t *testing.T) {
 	// Scenario: When JWT authenticator sets skip_authz flag (no role claim configured)
 	// Authorization should be bypassed even if ResourceRoles are defined
