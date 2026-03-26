@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
@@ -41,6 +42,11 @@ type APIKeyXDSManager interface {
 	RemoveAPIKeysByAPI(apiId, apiName, apiVersion, correlationID string) error
 }
 
+// SubscriptionSnapshotUpdater defines the subscription xDS refresh surface used by the listener.
+type SubscriptionSnapshotUpdater interface {
+	UpdateSnapshot(ctx context.Context) error
+}
+
 // EventListener listens for events from EventHub and processes them
 // to keep the local replica synchronized with other replicas.
 type EventListener struct {
@@ -48,6 +54,7 @@ type EventListener struct {
 	store               *storage.ConfigStore
 	db                  storage.Storage
 	snapshotManager     *xds.SnapshotManager
+	subscriptionManager SubscriptionSnapshotUpdater
 	apiKeyXDSManager    APIKeyXDSManager
 	lazyResourceManager *lazyresourcexds.LazyResourceStateManager
 	policyManager       *policyxds.PolicyManager
@@ -55,6 +62,7 @@ type EventListener struct {
 	logger              *slog.Logger
 	systemConfig        *config.Config
 	policyDefinitions   map[string]models.PolicyDefinition
+	policyResolver      *resolver.PolicyResolver
 
 	eventCh <-chan eventhub.Event
 	ctx     context.Context
@@ -67,6 +75,7 @@ func NewEventListener(
 	store *storage.ConfigStore,
 	db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
+	subscriptionManager SubscriptionSnapshotUpdater,
 	apiKeyXDSManager APIKeyXDSManager,
 	lazyResourceManager *lazyresourcexds.LazyResourceStateManager,
 	policyManager *policyxds.PolicyManager,
@@ -74,6 +83,7 @@ func NewEventListener(
 	logger *slog.Logger,
 	systemConfig *config.Config,
 	policyDefinitions map[string]models.PolicyDefinition,
+	policyResolver *resolver.PolicyResolver,
 ) *EventListener {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &EventListener{
@@ -81,6 +91,7 @@ func NewEventListener(
 		store:               store,
 		db:                  db,
 		snapshotManager:     snapshotManager,
+		subscriptionManager: subscriptionManager,
 		apiKeyXDSManager:    apiKeyXDSManager,
 		lazyResourceManager: lazyResourceManager,
 		policyManager:       policyManager,
@@ -88,6 +99,7 @@ func NewEventListener(
 		logger:              logger,
 		systemConfig:        systemConfig,
 		policyDefinitions:   policyDefinitions,
+		policyResolver:      policyResolver,
 		ctx:                 ctx,
 		cancel:              cancel,
 	}
@@ -183,6 +195,12 @@ func (l *EventListener) handleEvent(event eventhub.Event) {
 	case eventhub.EventTypeCertificate:
 		l.logger.Info("Certificate event received (processing not yet implemented)",
 			slog.String("entity_id", event.EntityID))
+	case eventhub.EventTypeSubscription:
+		l.processSubscriptionEvent(event)
+	case eventhub.EventTypeSubscriptionPlan:
+		l.processSubscriptionPlanEvent(event)
+	case eventhub.EventTypeApplication:
+		l.processApplicationEvent(event)
 	case eventhub.EventTypeLLMProvider:
 		l.processLLMProviderEvent(event)
 	case eventhub.EventTypeLLMProxy:

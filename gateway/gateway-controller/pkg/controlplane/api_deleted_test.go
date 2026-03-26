@@ -36,6 +36,7 @@ import (
 // mockStorageForDeletion implements storage.Storage interface for deletion testing
 type mockStorageForDeletion struct {
 	configs            map[string]*models.StoredConfig
+	secrets            map[string]*models.Secret
 	subscriptions      map[string]*models.Subscription
 	apiKeysByUUID      map[string]*models.APIKey
 	replacedMappings   []*models.ApplicationAPIKeyMapping
@@ -55,6 +56,7 @@ type mockStorageForDeletion struct {
 func newMockStorageForDeletion() *mockStorageForDeletion {
 	return &mockStorageForDeletion{
 		configs:       make(map[string]*models.StoredConfig),
+		secrets:       make(map[string]*models.Secret),
 		subscriptions: make(map[string]*models.Subscription),
 		apiKeysByUUID: make(map[string]*models.APIKey),
 	}
@@ -373,6 +375,71 @@ func (m *mockStorageForDeletion) DeleteLLMProviderTemplate(id string) error {
 	return nil
 }
 
+// Secret methods (not used in deletion tests but required by interface)
+func (m *mockStorageForDeletion) SaveSecret(secret *models.Secret) error {
+	if m.deleteErr != nil { // reuse existing error fields only if needed
+		return m.deleteErr
+	}
+	m.secrets[secret.Handle] = secret
+	return nil
+}
+
+func (m *mockStorageForDeletion) GetSecrets() ([]models.SecretMeta, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	secrets := make([]models.SecretMeta, 0, len(m.secrets))
+	for handle, secret := range m.secrets {
+		secrets = append(secrets, models.SecretMeta{
+			Handle:      handle,
+			DisplayName: secret.DisplayName,
+			CreatedAt:   secret.CreatedAt,
+			UpdatedAt:   secret.UpdatedAt,
+		})
+	}
+	return secrets, nil
+}
+
+func (m *mockStorageForDeletion) GetSecret(handle string) (*models.Secret, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	if s, ok := m.secrets[handle]; ok {
+		return s, nil
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *mockStorageForDeletion) UpdateSecret(secret *models.Secret) (*models.Secret, error) {
+	if m.updateErr != nil {
+		return nil, m.updateErr
+	}
+	if _, ok := m.secrets[secret.Handle]; !ok {
+		return nil, storage.ErrNotFound
+	}
+	m.secrets[secret.Handle] = secret
+	return secret, nil
+}
+
+func (m *mockStorageForDeletion) DeleteSecret(handle string) error {
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	if _, ok := m.secrets[handle]; !ok {
+		return storage.ErrNotFound
+	}
+	delete(m.secrets, handle)
+	return nil
+}
+
+func (m *mockStorageForDeletion) SecretExists(handle string) (bool, error) {
+	if m.getErr != nil {
+		return false, m.getErr
+	}
+	_, ok := m.secrets[handle]
+	return ok, nil
+}
+
 func (m *mockStorageForDeletion) GetDB() *sql.DB {
 	return nil
 }
@@ -381,13 +448,13 @@ func (m *mockStorageForDeletion) GetDB() *sql.DB {
 func createTestAPIConfigForDeletion(apiID string) *models.StoredConfig {
 	// Create a complete API configuration so deletion flow can properly process it
 	return &models.StoredConfig{
-		UUID:        apiID,
-		Handle:      apiID,
-		DisplayName: "Test API",
-		Version:     "v1",
+		UUID:         apiID,
+		Handle:       apiID,
+		DisplayName:  "Test API",
+		Version:      "v1",
 		DesiredState: models.StateDeployed,
-		Origin:      models.OriginGatewayAPI,
-		Kind:        "API",
+		Origin:       models.OriginGatewayAPI,
+		Kind:         "API",
 		Configuration: api.RestAPI{
 			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 			Kind:       api.RestApi,
@@ -755,13 +822,16 @@ func TestClient_findAPIConfig(t *testing.T) {
 func TestClient_handleApplicationUpdatedEvent_SkipsMissingAPIKeys(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	db := newMockStorageForDeletion()
+	hub := &mockControlPlaneEventHub{}
 
 	db.apiKeysByUUID["key-uuid-found-1"] = &models.APIKey{UUID: "key-uuid-found-1"}
 	db.apiKeysByUUID["key-uuid-found-2"] = &models.APIKey{UUID: "key-uuid-found-2"}
 
 	client := &Client{
-		logger: logger,
-		db:     db,
+		logger:    logger,
+		db:        db,
+		eventHub:  hub,
+		gatewayID: "test-gateway",
 	}
 
 	event := map[string]interface{}{
@@ -809,17 +879,35 @@ func TestClient_handleApplicationUpdatedEvent_SkipsMissingAPIKeys(t *testing.T) 
 	if db.replacedMappings[1].APIKeyID != "key-uuid-found-2" {
 		t.Errorf("expected second mapping key id key-uuid-found-2, got %q", db.replacedMappings[1].APIKeyID)
 	}
+	if len(hub.publishedEvents) != 1 {
+		t.Fatalf("expected one application event, got %d", len(hub.publishedEvents))
+	}
+	if hub.publishedEvents[0].event.EventType != eventhub.EventTypeApplication {
+		t.Errorf("expected event type APPLICATION, got %s", hub.publishedEvents[0].event.EventType)
+	}
+	if hub.publishedEvents[0].event.Action != "UPDATE" {
+		t.Errorf("expected action UPDATE, got %s", hub.publishedEvents[0].event.Action)
+	}
+	if hub.publishedEvents[0].event.EntityID != "app-uuid-123" {
+		t.Errorf("expected entity ID app-uuid-123, got %s", hub.publishedEvents[0].event.EntityID)
+	}
+	if hub.publishedEvents[0].event.EventID != "corr-app-update-skip-missing" {
+		t.Errorf("expected correlation ID corr-app-update-skip-missing, got %s", hub.publishedEvents[0].event.EventID)
+	}
 }
 
 func TestClient_handleApplicationUpdatedEvent_ContinuesOnInvalidMappingEntries(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	db := newMockStorageForDeletion()
+	hub := &mockControlPlaneEventHub{}
 
 	db.apiKeysByUUID["key-uuid-found"] = &models.APIKey{UUID: "key-uuid-found"}
 
 	client := &Client{
-		logger: logger,
-		db:     db,
+		logger:    logger,
+		db:        db,
+		eventHub:  hub,
+		gatewayID: "test-gateway",
 	}
 
 	event := map[string]interface{}{
@@ -862,5 +950,72 @@ func TestClient_handleApplicationUpdatedEvent_ContinuesOnInvalidMappingEntries(t
 	}
 	if db.replacedMappings[0].ApplicationUUID != "app-uuid-456" {
 		t.Errorf("expected resolved mapping application uuid app-uuid-456, got %q", db.replacedMappings[0].ApplicationUUID)
+	}
+	if len(hub.publishedEvents) != 1 {
+		t.Fatalf("expected one application event, got %d", len(hub.publishedEvents))
+	}
+	if hub.publishedEvents[0].event.EventType != eventhub.EventTypeApplication {
+		t.Errorf("expected event type APPLICATION, got %s", hub.publishedEvents[0].event.EventType)
+	}
+	if hub.publishedEvents[0].event.Action != "UPDATE" {
+		t.Errorf("expected action UPDATE, got %s", hub.publishedEvents[0].event.Action)
+	}
+	if hub.publishedEvents[0].event.EntityID != "app-uuid-456" {
+		t.Errorf("expected entity ID app-uuid-456, got %s", hub.publishedEvents[0].event.EntityID)
+	}
+	if hub.publishedEvents[0].event.EventID != "corr-app-update-skip-invalid" {
+		t.Errorf("expected correlation ID corr-app-update-skip-invalid, got %s", hub.publishedEvents[0].event.EventID)
+	}
+}
+
+func TestClient_handleSubscriptionCreatedEvent_PublishesReplicaSyncEvent(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	db := newMockStorageForDeletion()
+	hub := &mockControlPlaneEventHub{}
+
+	client := &Client{
+		logger:    logger,
+		db:        db,
+		eventHub:  hub,
+		gatewayID: "test-gateway",
+	}
+
+	event := map[string]interface{}{
+		"type": "subscription.created",
+		"payload": map[string]interface{}{
+			"subscriptionId":     "sub-123",
+			"apiId":              "api-123",
+			"subscriptionToken":  "token-123",
+			"status":             "ACTIVE",
+			"applicationId":      "app-123",
+			"subscriptionPlanId": "plan-123",
+		},
+		"timestamp":     time.Now().Format(time.RFC3339),
+		"correlationId": "corr-sub-created",
+	}
+
+	client.handleSubscriptionCreatedEvent(event)
+
+	sub, err := db.GetSubscriptionByID("sub-123", "")
+	if err != nil {
+		t.Fatalf("expected subscription to be stored, got %v", err)
+	}
+	if sub.APIID != "api-123" {
+		t.Errorf("expected api id api-123, got %s", sub.APIID)
+	}
+	if len(hub.publishedEvents) != 1 {
+		t.Fatalf("expected one subscription event, got %d", len(hub.publishedEvents))
+	}
+	if hub.publishedEvents[0].event.EventType != eventhub.EventTypeSubscription {
+		t.Errorf("expected event type SUBSCRIPTION, got %s", hub.publishedEvents[0].event.EventType)
+	}
+	if hub.publishedEvents[0].event.Action != "CREATE" {
+		t.Errorf("expected action CREATE, got %s", hub.publishedEvents[0].event.Action)
+	}
+	if hub.publishedEvents[0].event.EntityID != "sub-123" {
+		t.Errorf("expected entity ID sub-123, got %s", hub.publishedEvents[0].event.EntityID)
+	}
+	if hub.publishedEvents[0].event.EventID != "corr-sub-created" {
+		t.Errorf("expected correlation ID corr-sub-created, got %s", hub.publishedEvents[0].event.EventID)
 	}
 }

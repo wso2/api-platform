@@ -317,6 +317,12 @@ Feature: API Management Handler Operations
     # Verify it's accessible at /api/v2.0
     When I send a GET request to "http://localhost:8080/api/v2.0/data"
     Then the response should be successful
+    # Verify the list endpoint returns the resolved context (not the $version placeholder)
+    When I send a GET request to the "gateway-controller" service at "/rest-apis"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the response body should contain "/api/v2.0"
+    And the response body should not contain "/api/$version"
     # Cleanup
     When I delete the API "versioned-context-api"
     Then the response should be successful

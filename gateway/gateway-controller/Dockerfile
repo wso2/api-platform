@@ -88,6 +88,7 @@ COPY --from=builder /build/controller .
 COPY default-policies /app/default-policies
 COPY lua /app/lua
 COPY default-llm-provider-templates /app/default-llm-provider-templates
+
 RUN mkdir -p /app/data
 
 EXPOSE 2345 9090 18000
@@ -97,8 +98,8 @@ ENTRYPOINT ["/go/bin/dlv", "exec", "/app/controller", \
             "--listen=:2345", "--headless=true", \
             "--api-version=2", "--accept-multiclient", "--"]
 
-# Stage 2: Runtime image (Debian slim for glibc compatibility)
-FROM debian:bookworm-slim AS production
+# Stage 2: Runtime image (Ubuntu LTS for glibc compatibility and newer runtime packages)
+FROM ubuntu:24.04 AS production
 
 # Re-declare ARGs after FROM to use them in this stage
 ARG VERSION=0.0.1-SNAPSHOT
@@ -106,9 +107,12 @@ ARG ENABLE_COVERAGE=false
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends \
+    apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
     ca-certificates \
-    wget
+    wget && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -121,7 +125,7 @@ RUN mkdir -p /app/data && \
     if [ "$ENABLE_COVERAGE" = "true" ]; then mkdir -p /coverage; fi
 
 RUN groupadd -r -g 10001 wso2 && \
-    useradd -r -u 10001 -g wso2 -s /sbin/nologin -c "WSO2 Application User" wso2 && \
+    useradd -r -u 10001 -g wso2 -s /usr/sbin/nologin -c "WSO2 Application User" wso2 && \
     chown -R wso2:wso2 /app/data && \
     chmod -R 755 /app/data && \
     if [ "$ENABLE_COVERAGE" = "true" ]; then \

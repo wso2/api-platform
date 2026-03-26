@@ -56,7 +56,7 @@ func (g *GatewayRuntimeGenerator) Generate() (string, error) {
 
 	// Create output directory
 	runtimeDir := filepath.Join(g.outputDir, "gateway-runtime")
-	if err := os.MkdirAll(runtimeDir, 0750); err != nil {
+	if err := os.MkdirAll(runtimeDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create gateway-runtime directory: %w", err)
 	}
 
@@ -113,7 +113,7 @@ func (g *GatewayRuntimeGenerator) generateDockerfile(path string) error {
 	}
 
 	// Write Dockerfile
-	if err := os.WriteFile(path, buf.Bytes(), 0600); err != nil {
+	if err := os.WriteFile(path, buf.Bytes(), 0644); err != nil {
 		return fmt.Errorf("failed to write Dockerfile: %w", err)
 	}
 

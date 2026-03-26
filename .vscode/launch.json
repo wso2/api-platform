@@ -56,6 +56,7 @@
                 "APIP_GW_ANALYTICS_GRPC__EVENT__SERVER_MODE": "tcp",
                 "APIP_GW_ROUTER_DOWNSTREAM__TLS_CERT__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.crt",
                 "APIP_GW_ROUTER_DOWNSTREAM__TLS_KEY__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.key",
+                "APIP_GW_CONTROLLER_ENVIRONMENT": "development",
             },
         },
         {

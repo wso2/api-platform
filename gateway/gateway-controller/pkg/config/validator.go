@@ -47,10 +47,25 @@ func ValidateMetadata(metadata *api.Metadata) []ValidationError {
 			Field:   "metadata.name",
 			Message: "Metadata name is required",
 		})
+		return errors
+	}
+
+	// Reject names containing characters that break "$secret{...}" interpolation,
+	// URL path segments, or are otherwise unsafe as resource handles:
+	//   - whitespace (\s)
+	//   - closing brace '}' (terminates $secret{name} early)
+	//   - forward slash '/' (splits URL path segments)
+	//   - ASCII control characters (0x00–0x1f, 0x7f)
+	nameInvalidCharsRegex := regexp.MustCompile(`[\s}/\x00-\x1f\x7f]`)
+	if nameInvalidCharsRegex.MatchString(metadata.Name) {
+		errors = append(errors, ValidationError{
+			Field:   "metadata.name",
+			Message: "metadata.name must not contain whitespace, '/', '}', or control characters",
+		})
 	}
 
 	// Validate labels
-	if metadata != nil && metadata.Labels != nil {
+	if metadata.Labels != nil {
 		errors = append(errors, ValidateLabels(*metadata.Labels)...)
 	}
 

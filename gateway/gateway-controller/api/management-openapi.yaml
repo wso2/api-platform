@@ -1447,7 +1447,7 @@ paths:
       description: Add a new LLM provider template to the Gateway. A template defines token tracking and model extraction metadata for an LLM provider.
       operationId: createLLMProviderTemplate
       tags:
-        - LLM Provider Management
+        - LLM Provider Template Management
       requestBody:
         required: true
         content:
@@ -1488,7 +1488,7 @@ paths:
       description: List LLM provider templates registered in the Gateway, optionally filtered by name.
       operationId: listLLMProviderTemplates
       tags:
-        - LLM Provider Management
+        - LLM Provider Template Management
       parameters:
         - name: displayName
           in: query
@@ -1528,7 +1528,7 @@ paths:
       description: Get an LLM provider template by its ID.
       operationId: getLLMProviderTemplateById
       tags:
-        - LLM Provider Management
+        - LLM Provider Template Management
       parameters:
         - name: id
           in: path
@@ -1565,7 +1565,7 @@ paths:
       description: Update an existing LLM provider template in the Gateway.
       operationId: updateLLMProviderTemplate
       tags:
-        - LLM Provider Management
+        - LLM Provider Template Management
       parameters:
         - name: id
           in: path
@@ -1614,7 +1614,7 @@ paths:
       description: Delete an LLM provider template from the Gateway.
       operationId: deleteLLMProviderTemplate
       tags:
-        - LLM Provider Management
+        - LLM Provider Template Management
       parameters:
         - name: id
           in: path
@@ -1902,7 +1902,7 @@ paths:
       description: Add a new LLM proxy to the Gateway. A proxy defines how to interact with an LLM service deployed in the Gateway, including authentication and policies.
       operationId: createLLMProxy
       tags:
-        - LLM Provider Management
+        - LLM Proxy Management
       requestBody:
         required: true
         description: LLM proxy in YAML or JSON format
@@ -1944,7 +1944,7 @@ paths:
       description: List LLM proxies registered in the Gateway, optionally filtered by name, version, context, status, or vhost.
       operationId: listLLMProxies
       tags:
-        - LLM Provider Management
+        - LLM Proxy Management
       parameters:
         - name: displayName
           in: query
@@ -2013,7 +2013,7 @@ paths:
       description: Get an LLM proxy by its ID.
       operationId: getLLMProxyById
       tags:
-        - LLM Provider Management
+        - LLM Proxy Management
       parameters:
         - name: id
           in: path
@@ -2050,7 +2050,7 @@ paths:
       description: Update an existing LLM proxy in the Gateway.
       operationId: updateLLMProxy
       tags:
-        - LLM Provider Management
+        - LLM Proxy Management
       parameters:
         - name: id
           in: path
@@ -2100,7 +2100,7 @@ paths:
       description: Delete an LLM proxy from the Gateway.
       operationId: deleteLLMProxy
       tags:
-        - LLM Provider Management
+        - LLM Proxy Management
       parameters:
         - name: id
           in: path
@@ -2134,6 +2134,256 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /secrets:
+    get:
+      tags:
+        - Secrets Management
+      summary: List all secrets
+      description: |
+        Retrieve a list of all stored secrets. Returns secret identifiers without
+        the actual secret values for security purposes.
+      operationId: listSecrets
+      responses:
+        '200':
+          description: List of secrets retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretListResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      tags:
+        - Secrets Management
+      summary: Create a new secret
+      description: |
+        Stores a new secret encrypted at rest. The secret ID must be unique.
+        The value is encrypted using the primary encryption provider before persistence.
+      operationId: createSecret
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/SecretConfiguration'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretConfiguration'
+      responses:
+        '201':
+          description: Secret created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretResponse'
+              examples:
+                created:
+                  summary: Successful creation
+                  value:
+                    id: "database-password"
+                    createdAt: "2026-01-05T10:30:00Z"
+                    updatedAt: "2026-01-05T10:30:00Z"
+        '400':
+          description: Bad request - missing or invalid fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - secret with this ID already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error - encryption failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /secrets/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Unique secret identifier
+        schema:
+          type: string
+        examples:
+          simple:
+            summary: Simple ID
+            value: "database-password"
+          complex:
+            summary: Namespaced ID
+            value: "prod.db.main.password"
+
+    get:
+      tags:
+        - Secrets Management
+      summary: Retrieve a secret
+      description: |
+        Retrieves and decrypts a secret. The secret value is decrypted using the
+        encryption provider chain before being returned. If all providers fail to
+        decrypt the secret, a 500 error is returned with a generic message.
+      operationId: getSecret
+      responses:
+        '200':
+          description: Secret retrieved and decrypted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretDetailResponse'
+              examples:
+                success:
+                  summary: Successful retrieval
+                  value:
+                    status: "success"
+                    secret:
+                      id: "database-password"
+                      configuration:
+                        apiVersion: "gateway.api-platform.wso2.com/v1alpha1"
+                        kind: "Secret"
+                        metadata:
+                          name: "database-password"
+                        spec:
+                          displayName: "Database Password"
+                          description: "PostgreSQL main database password"
+                          type: "default"
+                          value: "sup3rs3cr3t!"
+                      metadata:
+                        createdAt: "2026-01-05T10:30:00Z"
+                        updatedAt: "2026-01-05T10:30:00Z"
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Secret configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error - decryption failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags:
+        - Secrets Management
+      summary: Update a secret
+      description: |
+        Updates an existing secret with a new value. The new value is encrypted
+        using the current primary encryption provider, enabling automatic migration
+        to newer keys during updates. Old secrets remain readable via the provider chain.
+      operationId: updateSecret
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/SecretConfiguration'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretConfiguration'
+      responses:
+        '200':
+          description: Secret updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretResponse'
+              examples:
+                updated:
+                  summary: Successful update
+                  value:
+                    id: "database-password"
+                    createdAt: "2026-01-05T10:30:00Z"
+                    updatedAt: "2026-01-05T11:45:00Z"
+        '400':
+          description: Bad request - missing or invalid value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Secret configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error - encryption failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - Secrets Management
+      summary: Delete a secret
+      description: |
+        Permanently deletes a secret from the database. This is a hard delete with
+        no recovery mechanism. The operation is idempotent - deleting a non-existent
+        secret returns 404.
+      operationId: deleteSecret
+      responses:
+        '200':
+          description: Secret deleted successfully (no content)
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Secret configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                not-found:
+                  summary: Secret does not exist
+                  value:
+                    status: "not_found"
+                    message: "secret configuration not found"
+        '500':
+          description: Internal server error - database failure
           content:
             application/json:
               schema:
@@ -4055,6 +4305,62 @@ components:
           description: List of policies applied only to this operation (overrides or adds to API-level policies)
           items:
             $ref: "#/components/schemas/LLMPolicy"
+    
+    SecretConfiguration:
+      type: object
+      required:
+        - apiVersion
+        - kind
+        - metadata
+        - spec
+      properties:
+        apiVersion:
+          type: string
+          description: Secret specification version
+          example: gateway.api-platform.wso2.com/v1alpha1
+          enum:
+            - gateway.api-platform.wso2.com/v1alpha1
+
+        kind:
+          type: string
+          description: Secret resource kind
+          example: Secret
+          enum:
+            - Secret
+
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+        spec:
+          $ref: "#/components/schemas/SecretConfigData"
+
+    SecretConfigData:
+      type: object
+      required:
+        - displayName
+        - value
+      properties:
+        displayName:
+          type: string
+          description: Human-readable secret name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+          minLength: 1
+          maxLength: 253
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: WSO2 OpenAI Key
+
+        description:
+          type: string
+          description: Description of the secret
+          maxLength: 1024
+          example: WSO2 OpenAI provider API Key
+
+        value:
+          type: string
+          description: Secret value (stored encrypted)
+          minLength: 1
+          maxLength: 10240
+          format: password
+          example: sk_xxx
 
     CertificateUploadRequest:
       type: object
@@ -4149,6 +4455,99 @@ components:
           type: string
           example: success
 
+    SecretResponse:
+      type: object
+      required:
+        - id
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          description: Unique secret identifier
+          example: "database-password"
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the secret was created (UTC)
+          example: "2026-01-05T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the secret was last updated (UTC)
+          example: "2026-01-05T11:45:00Z"
+      example:
+        id: "prod-db-password"
+        createdAt: "2026-01-05T10:00:00Z"
+        updatedAt: "2026-01-05T10:00:00Z"
+
+    SecretListResponse:
+      type: object
+      properties:
+        secrets:
+          type: array
+          description: List of secrets (without values for security)
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                description: Unique secret identifier (handle)
+                example: "openai-api-key"
+              displayName:
+                type: string
+                description: Human-readable display name
+                example: "OpenAI API Key"
+              createdAt:
+                type: string
+                format: date-time
+                description: Timestamp when the secret was created (UTC)
+                example: "2026-01-05T10:00:00Z"
+              updatedAt:
+                type: string
+                format: date-time
+                description: Timestamp when the secret was last updated (UTC)
+                example: "2026-01-05T10:30:00Z"
+            required:
+              - id
+              - displayName
+              - createdAt
+              - updatedAt
+        totalCount:
+          type: integer
+          description: Total number of secrets
+          example: 5
+        status:
+          type: string
+          example: success
+
+    SecretDetailResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        secret:
+          type: object
+          properties:
+            id:
+              type: string
+              description: Unique secret identifier
+              example: "database-password"
+            configuration:
+              $ref: '#/components/schemas/SecretConfiguration'
+            metadata:
+              type: object
+              properties:
+                createdAt:
+                  type: string
+                  format: date-time
+                  example: "2026-01-05T10:30:00Z"
+                updatedAt:
+                  type: string
+                  format: date-time
+                  example: "2026-01-05T11:45:00Z"
+
 tags:
   - name: Rest API Management
     description: CRUD operations for Rest APIs
@@ -4156,3 +4555,11 @@ tags:
     description: CRUD operations for MCPProxies
   - name: Certificate Management
     description: Manage custom TLS certificates for HTTPS upstream verification
+  - name: LLM Provider Template Management
+    description: CRUD operations for LLM Provider Template configurations
+  - name: LLM Provider Management
+    description: CRUD operations for LLM Provider configurations
+  - name: LLM Proxy Management
+    description: CRUD operations for LLM Proxy configurations
+  - name: Secrets Management
+    description: CRUD operations for Secrets

@@ -274,4 +274,19 @@ CREATE TABLE IF NOT EXISTS application_api_keys (
 CREATE INDEX IF NOT EXISTS idx_app_api_keys_application_uuid ON application_api_keys(application_uuid, gateway_id);
 CREATE INDEX IF NOT EXISTS idx_app_api_keys_apikey ON application_api_keys(api_key_id, gateway_id);
 
+-- Table for encrypted secrets
+CREATE TABLE IF NOT EXISTS secrets (
+    gateway_id TEXT NOT NULL,           -- gateway identifier
+    handle TEXT NOT NULL,               -- secret identifier (e.g., wso2-openai-api-key)
+    display_name TEXT NOT NULL,         -- human-readable name for list views
+    description TEXT,                   -- optional human-readable description
+    ciphertext BLOB NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (gateway_id, handle)
+);
+
+-- Index for secrets updates
+CREATE INDEX IF NOT EXISTS idx_secrets_updated_at ON secrets(updated_at);
+
 PRAGMA user_version = 1;

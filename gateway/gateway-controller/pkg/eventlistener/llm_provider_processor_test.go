@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
@@ -148,6 +149,9 @@ func TestHandleEvent_LLMProviderCreate_RehydratesConfigAndPolicyFromDB(t *testin
 	snapshotMgr := policyxds.NewSnapshotManager(newTestLogger())
 	policyManager := policyxds.NewPolicyManager(snapshotMgr, newTestLogger())
 
+	policyDefs := map[string]models.PolicyDefinition{
+		"rate-limit-v1.0.0": {Name: "rate-limit", Version: "v1.0.0"},
+	}
 	listener := &EventListener{
 		store:               store,
 		db:                  db,
@@ -159,11 +163,10 @@ func TestHandleEvent_LLMProviderCreate_RehydratesConfigAndPolicyFromDB(t *testin
 				Main: config.VHostEntry{Default: "api.example.com"},
 			},
 		},
-		systemConfig: &config.Config{},
-		policyDefinitions: map[string]models.PolicyDefinition{
-			"rate-limit-v1.0.0": {Name: "rate-limit", Version: "v1.0.0"},
-		},
-		logger: newTestLogger(),
+		systemConfig:      &config.Config{},
+		policyDefinitions: policyDefs,
+		policyResolver:    resolver.NewPolicyResolver(policyDefs, nil),
+		logger:            newTestLogger(),
 	}
 
 	listener.handleEvent(eventhub.Event{
@@ -270,6 +273,9 @@ func TestHandleEvent_LLMProxyCreate_RehydratesConfigAndPolicyFromDB(t *testing.T
 	snapshotMgr2 := policyxds.NewSnapshotManager(newTestLogger())
 	policyManager2 := policyxds.NewPolicyManager(snapshotMgr2, newTestLogger())
 
+	policyDefs := map[string]models.PolicyDefinition{
+		"rate-limit-v1.0.0": {Name: "rate-limit", Version: "v1.0.0"},
+	}
 	listener := &EventListener{
 		store:         store,
 		db:            db,
@@ -281,11 +287,10 @@ func TestHandleEvent_LLMProxyCreate_RehydratesConfigAndPolicyFromDB(t *testing.T
 				Main: config.VHostEntry{Default: "api.example.com"},
 			},
 		},
-		systemConfig: &config.Config{},
-		policyDefinitions: map[string]models.PolicyDefinition{
-			"rate-limit-v1.0.0": {Name: "rate-limit", Version: "v1.0.0"},
-		},
-		logger: newTestLogger(),
+		systemConfig:      &config.Config{},
+		policyDefinitions: policyDefs,
+		policyResolver:    resolver.NewPolicyResolver(policyDefs, nil),
+		logger:            newTestLogger(),
 	}
 
 	listener.handleEvent(eventhub.Event{

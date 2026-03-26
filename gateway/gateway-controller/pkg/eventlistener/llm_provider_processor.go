@@ -91,6 +91,16 @@ func (l *EventListener) handleLLMProviderCreateOrUpdate(event eventhub.Event) {
 		return
 	}
 
+	// Resolve policy configuration (handles secret resolution)
+	resolvedCfg, err := l.resolvePolicyConfiguration(storedConfig)
+	if err != nil {
+		l.logger.Error("Failed to resolve policy configuration for API",
+			slog.String("api_id", entityID),
+			slog.String("event_id", event.EventID),
+			slog.Any("error", err))
+		return
+	}
+
 	// After hydration the entry contains the derived RestAPI view used by the
 	// normal in-memory routing, xDS, and policy update pipelines.
 	existing, _ := l.store.Get(entityID)
@@ -119,7 +129,7 @@ func (l *EventListener) handleLLMProviderCreateOrUpdate(event eventhub.Event) {
 	}
 
 	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after LLM provider replica sync")
-	l.updatePoliciesForAPI(storedConfig, event.EventID)
+	l.updatePoliciesForAPI(resolvedCfg, event.EventID)
 
 	l.logger.Info("Successfully processed LLM provider create/update event",
 		slog.String("provider_id", entityID),
@@ -160,6 +170,16 @@ func (l *EventListener) handleLLMProxyCreateOrUpdate(event eventhub.Event) {
 		return
 	}
 
+	// Resolve policy configuration (handles secret resolution)
+	resolvedCfg, err := l.resolvePolicyConfiguration(storedConfig)
+	if err != nil {
+		l.logger.Error("Failed to resolve policy configuration for API",
+			slog.String("api_id", entityID),
+			slog.String("event_id", event.EventID),
+			slog.Any("error", err))
+		return
+	}
+
 	existing, _ := l.store.Get(entityID)
 	if existing != nil {
 		if err := l.store.Update(storedConfig); err != nil {
@@ -178,7 +198,7 @@ func (l *EventListener) handleLLMProxyCreateOrUpdate(event eventhub.Event) {
 	}
 
 	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after LLM proxy replica sync")
-	l.updatePoliciesForAPI(storedConfig, event.EventID)
+	l.updatePoliciesForAPI(resolvedCfg, event.EventID)
 
 	l.logger.Info("Successfully processed LLM proxy create/update event",
 		slog.String("proxy_id", entityID),

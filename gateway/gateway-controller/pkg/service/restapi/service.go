@@ -35,6 +35,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
@@ -84,6 +85,7 @@ type RestAPIService struct {
 	validator          config.Validator
 	logger             *slog.Logger
 	eventHub           eventhub.EventHub
+	policyResolver     *resolver.PolicyResolver
 }
 
 // NewRestAPIService creates a new RestAPIService.
@@ -104,6 +106,7 @@ func NewRestAPIService(
 	validator config.Validator,
 	logger *slog.Logger,
 	eventHub eventhub.EventHub,
+	policyResolver *resolver.PolicyResolver,
 ) *RestAPIService {
 	return &RestAPIService{
 		store:              store,
@@ -122,6 +125,7 @@ func NewRestAPIService(
 		validator:          validator,
 		logger:             logger,
 		eventHub:           eventHub,
+		policyResolver:     policyResolver,
 	}
 }
 
@@ -267,6 +271,14 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 	existing.DesiredState = models.StateDeployed
 	existing.UpdatedAt = now
 	existing.DeployedAt = nil
+
+	// Resolve policy configuration (handles secret resolution)
+	// Resolved config is not used here since we only want to check if the secret resolution succeeded
+	// Blocks the update if there are policy resolution errors (e.g. due to missing secrets) to prevent storing configs with unresolved secrets
+	_, err = s.resolvePolicyConfiguration(existing)
+	if err != nil {
+		return nil, err
+	}
 
 	// Dual-write: database first, then in-memory
 	if err := s.db.UpdateConfig(existing); err != nil {
@@ -435,6 +447,30 @@ func (s *RestAPIService) deregisterWebSubTopics(cfg *models.StoredConfig, log *s
 		return fmt.Errorf("topic lifecycle operations failed")
 	}
 	return nil
+}
+
+// resolvePolicyConfiguration resolves policy templates and secret references in the configuration.
+// Returns the resolved configuration or an error if policy resolution fails.
+func (s *RestAPIService) resolvePolicyConfiguration(storedCfg *models.StoredConfig) (*models.StoredConfig, error) {
+	if s.policyResolver == nil {
+		return nil, ErrMissingPolicyResolver
+	}
+	resolvedCfg, validationErrors := s.policyResolver.ResolvePolicies(storedCfg)
+	if len(validationErrors) > 0 {
+		errMsgs := make([]string, 0, len(validationErrors))
+		for _, ve := range validationErrors {
+			errMsgs = append(errMsgs, ve.Message)
+		}
+		errMsg := strings.Join(errMsgs, "; ")
+
+		slog.Error("Policy resolution failed",
+			slog.String("config_handle", storedCfg.Handle),
+			slog.String("errors", errMsg),
+		)
+
+		return nil, fmt.Errorf("policy resolution failed with %d errors: %s", len(validationErrors), errMsg)
+	}
+	return resolvedCfg, nil
 }
 
 func stringPtr(s string) *string {

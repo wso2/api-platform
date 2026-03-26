@@ -74,7 +74,7 @@ func (p *Parser) ParseAPIConfigYAML(data []byte, configParsed interface{}) error
 	default:
 		_ = target
 		if err := yaml.Unmarshal(data, target); err != nil {
-			return fmt.Errorf("failed to unmarshal YAML into MCPProxyConfiguration: %w", err)
+			return fmt.Errorf("failed to unmarshal YAML into %T: %w", configParsed, err)
 		}
 		return nil
 	}
