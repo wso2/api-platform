@@ -467,6 +467,232 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 	return response, nil
 }
 
+// TranslateRequestHeaderActionsWithBodyMerge merges results from both the request-headers
+// phase and the request-body phase into a single RequestHeaders ext_proc response.
+// This is used when a request carries no body (GET, Content-Length: 0, EndOfStream in headers)
+// so body policies are executed inline during the headers phase.
+//
+// The caller must set execCtx.requestBodyProcessedInline = true before calling this function
+// so that getModeOverride() instructs Envoy to skip the RequestBody phase (mode = NONE).
+func TranslateRequestHeaderActionsWithBodyMerge(
+	headerResult *executor.RequestHeaderExecutionResult,
+	bodyResult *executor.RequestExecutionResult,
+	execCtx *PolicyExecutionContext,
+) (*extprocv3.ProcessingResponse, error) {
+	// Only body policies can short-circuit here: this function is called exclusively
+	// when header policies did NOT short-circuit (see processRequestBodyForEmptyRequest).
+	if bodyResult.ShortCircuited && bodyResult.FinalAction != nil {
+		if immResp, ok := bodyResult.FinalAction.(policy.ImmediateResponse); ok {
+			response := &extprocv3.ProcessingResponse{
+				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+					ImmediateResponse: &extprocv3.ImmediateResponse{
+						Status:  &typev3.HttpStatus{Code: typev3.StatusCode(immResp.StatusCode)},
+						Headers: buildHeaderValueOptions(immResp.Headers),
+						Body:    immResp.Body,
+					},
+				},
+			}
+			analyticsStruct, err := buildAnalyticsStruct(immResp.AnalyticsMetadata, execCtx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to build analytics metadata for immediate response: %w", err)
+			}
+			response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, nil, immResp.DynamicMetadata)
+			return response, nil
+		}
+	}
+
+	headerOps := make(map[string][]*headerOp)
+	analyticsData := make(map[string]any)
+	dynamicMetadata := make(map[string]map[string]interface{})
+	headerMutation := &extprocv3.HeaderMutation{}
+	var pathMutation *string
+	var methodMutation *string
+	var bodyMutation *extprocv3.BodyMutation
+	var finalBodyLength int
+	bodyModified := false
+	var targetUpstreamName *string
+
+	path := execCtx.requestBodyCtx.Path
+
+	// Collect mutations from header-phase policies (UpstreamRequestHeaderModifications).
+	for _, pr := range headerResult.Results {
+		if pr.Skipped || pr.Action == nil {
+			continue
+		}
+		mods, ok := pr.Action.(policy.UpstreamRequestHeaderModifications)
+		if !ok {
+			continue
+		}
+		for k, v := range mods.HeadersToSet {
+			headerOps[strings.ToLower(k)] = append(headerOps[strings.ToLower(k)], &headerOp{opType: "set", value: v})
+		}
+		for _, k := range mods.HeadersToRemove {
+			headerOps[strings.ToLower(k)] = append(headerOps[strings.ToLower(k)], &headerOp{opType: "remove", value: ""})
+		}
+		if mods.QueryParametersToAdd != nil {
+			path = utils.AddQueryParametersToPath(path, mods.QueryParametersToAdd)
+			pathMutation = &path
+		}
+		if mods.QueryParametersToRemove != nil {
+			path = utils.RemoveQueryParametersFromPath(path, mods.QueryParametersToRemove)
+			pathMutation = &path
+		}
+		if mods.Path != nil {
+			pathMutation = mods.Path
+		}
+		if mods.Method != nil {
+			methodMutation = mods.Method
+		}
+		if mods.UpstreamName != nil && *mods.UpstreamName != "" {
+			targetUpstreamName = mods.UpstreamName
+		}
+		if mods.AnalyticsMetadata != nil {
+			for key, value := range mods.AnalyticsMetadata {
+				analyticsData[key] = value
+				execCtx.analyticsMetadata[key] = value
+			}
+		}
+		if mods.DynamicMetadata != nil {
+			mergeDynamicMetadata(dynamicMetadata, mods.DynamicMetadata)
+			mergeDynamicMetadata(execCtx.dynamicMetadata, mods.DynamicMetadata)
+		}
+		dropAction := mods.AnalyticsHeaderFilter
+		if dropAction.Action != "" || len(dropAction.Headers) > 0 {
+			originalHeaders := execCtx.requestBodyCtx.Headers.GetAll()
+			finalizedHeaders := finalizeAnalyticsHeaders(dropAction, originalHeaders)
+			analyticsData["request_headers"] = finalizedHeaders
+			execCtx.analyticsMetadata["request_headers"] = finalizedHeaders
+		}
+	}
+
+	// Collect mutations from body-phase policies (UpstreamRequestModifications).
+	for _, pr := range bodyResult.Results {
+		if pr.Skipped || pr.Action == nil {
+			continue
+		}
+		mods, ok := pr.Action.(policy.UpstreamRequestModifications)
+		if !ok {
+			continue
+		}
+		for k, v := range mods.HeadersToSet {
+			headerOps[strings.ToLower(k)] = append(headerOps[strings.ToLower(k)], &headerOp{opType: "set", value: v})
+		}
+		for _, k := range mods.HeadersToRemove {
+			headerOps[strings.ToLower(k)] = append(headerOps[strings.ToLower(k)], &headerOp{opType: "remove", value: ""})
+		}
+		if mods.Body != nil {
+			bodyMutation = &extprocv3.BodyMutation{
+				Mutation: &extprocv3.BodyMutation_Body{Body: mods.Body},
+			}
+			finalBodyLength = len(mods.Body)
+			bodyModified = true
+		}
+		if mods.QueryParametersToAdd != nil {
+			path = utils.AddQueryParametersToPath(path, mods.QueryParametersToAdd)
+			pathMutation = &path
+		}
+		if mods.QueryParametersToRemove != nil {
+			path = utils.RemoveQueryParametersFromPath(path, mods.QueryParametersToRemove)
+			pathMutation = &path
+		}
+		if mods.Path != nil {
+			pathMutation = mods.Path
+		}
+		if mods.Method != nil {
+			methodMutation = mods.Method
+		}
+		if mods.UpstreamName != nil && *mods.UpstreamName != "" {
+			targetUpstreamName = mods.UpstreamName
+		}
+		if mods.AnalyticsMetadata != nil {
+			for key, value := range mods.AnalyticsMetadata {
+				analyticsData[key] = value
+				execCtx.analyticsMetadata[key] = value
+			}
+		}
+		if mods.DynamicMetadata != nil {
+			mergeDynamicMetadata(dynamicMetadata, mods.DynamicMetadata)
+			mergeDynamicMetadata(execCtx.dynamicMetadata, mods.DynamicMetadata)
+		}
+		dropAction := mods.AnalyticsHeaderFilter
+		if dropAction.Action != "" || len(dropAction.Headers) > 0 {
+			originalHeaders := execCtx.requestBodyCtx.Headers.GetAll()
+			finalizedHeaders := finalizeAnalyticsHeaders(dropAction, originalHeaders)
+			analyticsData["request_headers"] = finalizedHeaders
+			execCtx.analyticsMetadata["request_headers"] = finalizedHeaders
+		}
+	}
+
+	// Handle dynamic cluster routing (last UpstreamName wins across both phases).
+	if targetUpstreamName != nil {
+		apiKind := execCtx.sharedCtx.APIKind
+		apiId := execCtx.sharedCtx.APIId
+		sanitizedDefName := sanitizeUpstreamDefinitionName(*targetUpstreamName)
+		clusterName := constants.UpstreamDefinitionClusterPrefix + apiKind + "_" + apiId + "_" + sanitizedDefName
+		headerOps[constants.TargetUpstreamHeader] = append(headerOps[constants.TargetUpstreamHeader], &headerOp{opType: "set", value: clusterName})
+		extProcNS := constants.ExtProcFilterName
+		if execCtx.dynamicMetadata[extProcNS] == nil {
+			execCtx.dynamicMetadata[extProcNS] = make(map[string]interface{})
+		}
+		if dynamicMetadata[extProcNS] == nil {
+			dynamicMetadata[extProcNS] = make(map[string]interface{})
+		}
+		execCtx.dynamicMetadata[extProcNS][constants.TargetUpstreamClusterKey] = clusterName
+		execCtx.dynamicMetadata[extProcNS][constants.TargetUpstreamNameKey] = *targetUpstreamName
+		dynamicMetadata[extProcNS]["api_context"] = execCtx.apiContext
+		dynamicMetadata[extProcNS]["upstream_base_path"] = execCtx.upstreamBasePath
+		if execCtx.upstreamDefinitionPaths != nil {
+			if targetUpstreamPath, ok := execCtx.upstreamDefinitionPaths[*targetUpstreamName]; ok {
+				if pathMutation == nil {
+					computedPath := strings.TrimSuffix(targetUpstreamPath, "/") + execCtx.requestBodyCtx.Path
+					pathMutation = &computedPath
+					dynamicMetadata[extProcNS]["request_transformation.target_path"] = computedPath
+					execCtx.dynamicMetadata[extProcNS]["request_transformation.target_path"] = computedPath
+				}
+			}
+		}
+	} else if execCtx.defaultUpstreamCluster != "" {
+		headerOps[constants.TargetUpstreamHeader] = append(headerOps[constants.TargetUpstreamHeader], &headerOp{opType: "set", value: execCtx.defaultUpstreamCluster})
+		extProcNS := constants.ExtProcFilterName
+		if execCtx.dynamicMetadata[extProcNS] == nil {
+			execCtx.dynamicMetadata[extProcNS] = make(map[string]interface{})
+		}
+		dynamicMetadata[extProcNS] = map[string]interface{}{
+			"api_context":        execCtx.apiContext,
+			"upstream_base_path": execCtx.upstreamBasePath,
+		}
+	}
+
+	if bodyModified {
+		delete(headerOps, "content-length")
+	}
+	mergeHeaderMutations(headerMutation, headerOps)
+	if bodyModified {
+		setContentLengthHeader(headerMutation, finalBodyLength)
+	}
+
+	response := &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_RequestHeaders{
+			RequestHeaders: &extprocv3.HeadersResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation:  headerMutation,
+					BodyMutation:    bodyMutation,
+					ClearRouteCache: true,
+				},
+			},
+		},
+		ModeOverride: execCtx.getModeOverride(),
+	}
+
+	analyticsStruct, err := buildAnalyticsStruct(analyticsData, execCtx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
+	}
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, pathMutation, methodMutation, dynamicMetadata)
+
+	return response, nil
+}
+
 // TranslateResponseHeaderActions converts a ResponseHeaderExecutionResult (from ExecuteResponseHeaderPolicies)
 // to an ext_proc response. The ModeOverride instructs Envoy on how to deliver the response body.
 // Callers may further override ModeOverride for streaming (FULL_DUPLEX_STREAMED).

@@ -1,9 +1,8 @@
 name: jwt-auth
 version: v0.9.0
 description: |
-  Validates JWT access tokens in API requests using configured JWKS providers.
-  Verifies signature and claims such as expiry, issuer, audience, scopes, and
-  required claims.
+  Validates JWT access tokens included in API requests. The gateway verifies the
+  token's signature, expiry, issuer, audience, scopes, and required claims.
 
 parameters:
   type: object
@@ -65,6 +64,14 @@ parameters:
         Specifies the claim name used to extract the user ID for analytics.
         Defaults to "sub" when omitted.
       default: sub
+
+    headerName:
+      type: string
+      x-wso2-policy-advanced-param: true
+      minLength: 1
+      pattern: "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"
+      description: Header name to extract token from (for example "Authorization") that overrides `system.headerName`.
+      default: Authorization
 
 systemParameters:          
   type: object
@@ -181,6 +188,8 @@ systemParameters:
 
     headerName:
       type: string
+      minLength: 1
+      pattern: "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"
       description: Header name to extract token from (default "Authorization").
       default: Authorization
       "wso2/defaultValue": "${config.policy_configurations.jwtauth_v0.headername}"

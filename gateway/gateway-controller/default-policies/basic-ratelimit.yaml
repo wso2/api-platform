@@ -30,8 +30,9 @@ parameters:
           duration:
             type: string
             description: |
-              Specifies the time window for the limit using Go duration format,
-              for example "1s", "1m", "1h", or "24h".
+              Specifies the time window for the limit. Supports integer values
+              with units: ns, us, µs, ms, s, m, h (for example "500ms", "1s",
+              "1m", "1h", "24h").
             pattern: "^[0-9]+(ns|us|µs|ms|s|m|h)$"
 
 systemParameters:
@@ -115,19 +116,25 @@ systemParameters:
 
         connectionTimeout:
           type: string
-          description: Redis connection timeout (Go duration string)
+          description: Redis connection timeout as a Go duration string.
+            Supports units ns, us, µs, ms, s, m, h, including composite and
+            fractional values (for example "500ms", "1.5s", "1m30s").
           default: "5s"
           "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.connection_timeout}"
 
         readTimeout:
           type: string
-          description: Redis read timeout (Go duration string)
+          description: Redis read timeout as a Go duration string. Supports
+            units ns, us, µs, ms, s, m, h, including composite and fractional
+            values (for example "500ms", "1.5s", "1m30s").
           default: "3s"
           "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.read_timeout}"
 
         writeTimeout:
           type: string
-          description: Redis write timeout (Go duration string)
+          description: Redis write timeout as a Go duration string. Supports
+            units ns, us, µs, ms, s, m, h, including composite and fractional
+            values (for example "500ms", "1.5s", "1m30s").
           default: "3s"
           "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.write_timeout}"
 
@@ -149,7 +156,9 @@ systemParameters:
         cleanupInterval:
           type: string
           description: |
-            Interval for cleaning up expired entries (Go duration string).
+            Interval for cleaning up expired entries as a Go duration string.
+            Supports units ns, us, µs, ms, s, m, h, including composite and
+            fractional values (for example "500ms", "1.5s", "1m30s").
             Use "0" to disable periodic cleanup.
           default: "5m"
           "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.memory.cleanup_interval}"

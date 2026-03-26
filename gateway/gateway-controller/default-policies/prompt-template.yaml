@@ -13,6 +13,8 @@ parameters:
       description: |
         Specifies one or more reusable prompt templates. Each template must
         include a unique name and template content.
+        Example request payload:
+        {"model":"gpt-4o-mini","messages":[{"role":"user","content":"template://summarize?topic=climate-change"}]}
       minItems: 1
       items:
         type: object
@@ -38,7 +40,7 @@ parameters:
           - template
     jsonPath:
       type: string
-      x-wso2-policy-advanced-param: true
+      x-wso2-policy-advanced-param: false
       description: |
         Specifies the JSONPath to limit template resolution to a specific
         string field. If empty, template references are resolved across the

@@ -88,6 +88,14 @@ parameters:
             Defaults to "$.choices[0].message.content" (assistant response content).
             Set to an empty string ("") to validate the full payload string.
           default: "$.choices[0].message.content"
+        streamingJsonPath:
+          type: string
+          x-wso2-policy-advanced-param: false
+          description: |
+            JSONPath expression to extract content from SSE streaming delta chunks.
+            Used when the upstream returns a streaming (stream: true) response.
+            Defaults to the standard OpenAI SSE delta content path.
+          default: "$.choices[0].delta.content"
         invert:
           type: boolean
           x-wso2-policy-advanced-param: true

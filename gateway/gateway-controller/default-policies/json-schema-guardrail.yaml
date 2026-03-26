@@ -8,7 +8,7 @@ parameters:
   properties:
     request:
       type: object
-      description: Configuration for request phase validation
+      description: Configuration for request phase validation.
       properties:
         enabled:
           type: boolean
