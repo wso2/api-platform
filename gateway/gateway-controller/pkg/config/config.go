@@ -115,6 +115,7 @@ type Controller struct {
 	LLM          LLMConfig          `koanf:"llm"`
 	Auth         AuthConfig         `koanf:"auth"`
 	Metrics      MetricsConfig      `koanf:"metrics"`
+	Encryption   EncryptionConfig   `koanf:"encryption"`
 }
 
 // MetricsConfig holds Prometheus metrics server configuration
@@ -400,6 +401,23 @@ type APIKeyConfig struct {
 	Issuer string `koanf:"issuer"`
 }
 
+// EncryptionConfig holds encryption provider configuration
+type EncryptionConfig struct {
+	Providers []ProviderConfig `koanf:"providers"`
+}
+
+// ProviderConfig defines configuration for a single encryption provider
+type ProviderConfig struct {
+	Type string                `koanf:"type"` // "aesgcm"
+	Keys []EncryptionKeyConfig `koanf:"keys"`
+}
+
+// EncryptionKeyConfig defines a single encryption key
+type EncryptionKeyConfig struct {
+	Version  string `koanf:"version"` // Key identifier (e.g., "key-v1")
+	FilePath string `koanf:"file"`    // Path to raw binary key file
+}
+
 // LoadConfig loads configuration from file, environment variables, and defaults
 // Priority: Environment variables > Config file > Defaults
 func LoadConfig(configPath string) (*Config, error) {
@@ -558,6 +576,19 @@ func defaultConfig() *Config {
 				InsecureSkipVerify:    false,
 				DeploymentPushEnabled: false,
 				SyncBatchSize:         50,
+			},
+			Encryption: EncryptionConfig{
+				Providers: []ProviderConfig{
+					{
+						Type: "aesgcm",
+						Keys: []EncryptionKeyConfig{
+							{
+								Version:  "aesgcm256-v1",
+								FilePath: "./data/aesgcm-keys/default-aesgcm256-v1.bin",
+							},
+						},
+					},
+				},
 			},
 		},
 		Router: RouterConfig{

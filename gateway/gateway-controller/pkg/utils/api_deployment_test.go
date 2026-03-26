@@ -42,7 +42,7 @@ import (
 
 func TestNewAPIDeploymentService(t *testing.T) {
 	store := storage.NewConfigStore()
-	service := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	service := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 
 	assert.NotNil(t, service)
 	assert.NotNil(t, service.store)
@@ -71,12 +71,12 @@ func TestAPIDeploymentParams(t *testing.T) {
 func TestAPIDeploymentResult(t *testing.T) {
 	now := time.Now()
 	storedCfg := &models.StoredConfig{
-		UUID:      "0000-test-id-0000-000000000000",
-		Kind:      "RestApi",
+		UUID:         "0000-test-id-0000-000000000000",
+		Kind:         "RestApi",
 		DesiredState: models.StateDeployed,
 		Origin:       models.OriginGatewayAPI,
-		CreatedAt: now,
-		UpdatedAt: now,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 
 	result := &APIDeploymentResult{
@@ -90,7 +90,7 @@ func TestAPIDeploymentResult(t *testing.T) {
 
 func TestGetTopicsForUpdate(t *testing.T) {
 	store := storage.NewConfigStore()
-	service := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	service := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 
 	t.Run("Empty config returns empty lists", func(t *testing.T) {
 		// Create a config with invalid spec (will fail parsing)
@@ -140,7 +140,7 @@ func TestGetTopicsForUpdate(t *testing.T) {
 
 func TestGetTopicsForDelete(t *testing.T) {
 	store := storage.NewConfigStore()
-	service := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	service := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 
 	t.Run("Returns topics from topic manager", func(t *testing.T) {
 		storedCfg := models.StoredConfig{
@@ -233,7 +233,7 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 	t.Run("Save new config without DB", func(t *testing.T) {
 		store := storage.NewConfigStore()
 		mockDB := newTestMockDB()
-		service := NewAPIDeploymentService(store, mockDB, nil, nil, nil)
+		service := NewAPIDeploymentService(store, mockDB, nil, nil, nil, nil)
 
 		apiData := api.APIConfigData{
 			DisplayName: "Test API",
@@ -250,8 +250,8 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 			},
 			DesiredState: models.StateDeployed,
 			Origin:       models.OriginGatewayAPI,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			CreatedAt:    time.Now(),
+			UpdatedAt:    time.Now(),
 		}
 
 		affected, err := service.saveOrUpdateConfig(storedCfg, logger)
@@ -267,7 +267,7 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 	t.Run("Update existing config without DB", func(t *testing.T) {
 		store := storage.NewConfigStore()
 		mockDB := newTestMockDB()
-		service := NewAPIDeploymentService(store, mockDB, nil, nil, nil)
+		service := NewAPIDeploymentService(store, mockDB, nil, nil, nil, nil)
 
 		apiData := api.APIConfigData{
 			DisplayName: "Test API",
@@ -285,8 +285,8 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 			},
 			DesiredState: models.StateDeployed,
 			Origin:       models.OriginGatewayAPI,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			CreatedAt:    time.Now(),
+			UpdatedAt:    time.Now(),
 		}
 		store.Add(existingCfg)
 		require.NoError(t, mockDB.SaveConfig(existingCfg))
@@ -307,8 +307,8 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 			},
 			DesiredState: models.StateDeployed,
 			Origin:       models.OriginGatewayAPI,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			CreatedAt:    time.Now(),
+			UpdatedAt:    time.Now(),
 		}
 
 		isUpdate, err := service.saveOrUpdateConfig(updateCfg, logger)
@@ -323,7 +323,7 @@ func TestUpdateExistingConfig(t *testing.T) {
 	t.Run("Updates existing config successfully", func(t *testing.T) {
 		store := storage.NewConfigStore()
 		mockDB := newTestMockDB()
-		service := NewAPIDeploymentService(store, mockDB, nil, nil, nil)
+		service := NewAPIDeploymentService(store, mockDB, nil, nil, nil, nil)
 
 		apiData := api.APIConfigData{
 			DisplayName: "Original API",
@@ -341,8 +341,8 @@ func TestUpdateExistingConfig(t *testing.T) {
 			},
 			DesiredState: models.StateDeployed,
 			Origin:       models.OriginGatewayAPI,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			CreatedAt:    time.Now(),
+			UpdatedAt:    time.Now(),
 		}
 		store.Add(original)
 		require.NoError(t, mockDB.SaveConfig(original))
@@ -374,7 +374,7 @@ func TestUpdateExistingConfig(t *testing.T) {
 func TestDeployAPIConfiguration_ParseError(t *testing.T) {
 	store := storage.NewConfigStore()
 	validator := config.NewAPIValidator()
-	service := NewAPIDeploymentService(store, nil, nil, validator, nil)
+	service := NewAPIDeploymentService(store, nil, nil, validator, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	params := APIDeploymentParams{
@@ -394,7 +394,7 @@ func TestDeployAPIConfiguration_ParseError(t *testing.T) {
 func TestDeployAPIConfiguration_ValidationError(t *testing.T) {
 	store := storage.NewConfigStore()
 	validator := config.NewAPIValidator()
-	service := NewAPIDeploymentService(store, nil, nil, validator, nil)
+	service := NewAPIDeploymentService(store, nil, nil, validator, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Invalid YAML that will pass parsing but fail validation
@@ -424,7 +424,7 @@ spec:
 func TestDeployAPIConfiguration_UnsupportedKind(t *testing.T) {
 	store := storage.NewConfigStore()
 	validator := config.NewAPIValidator()
-	service := NewAPIDeploymentService(store, nil, nil, validator, nil)
+	service := NewAPIDeploymentService(store, nil, nil, validator, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	params := APIDeploymentParams{
@@ -446,7 +446,7 @@ func TestDeployAPIConfiguration_UnsupportedKind(t *testing.T) {
 func TestDeployAPIConfiguration_InferKindFromPayload(t *testing.T) {
 	store := storage.NewConfigStore()
 	validator := config.NewAPIValidator()
-	service := NewAPIDeploymentService(store, nil, nil, validator, nil)
+	service := NewAPIDeploymentService(store, nil, nil, validator, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	t.Run("Infers RestApi kind from payload", func(t *testing.T) {
@@ -506,7 +506,7 @@ spec:
 func TestDeployAPIConfiguration_EmptyKindInPayload(t *testing.T) {
 	store := storage.NewConfigStore()
 	validator := config.NewAPIValidator()
-	service := NewAPIDeploymentService(store, nil, nil, validator, nil)
+	service := NewAPIDeploymentService(store, nil, nil, validator, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	yamlData := `
@@ -534,7 +534,7 @@ spec:
 
 func TestAPIDeploymentService_Fields(t *testing.T) {
 	store := storage.NewConfigStore()
-	service := NewAPIDeploymentService(store, nil, nil, nil, nil)
+	service := NewAPIDeploymentService(store, nil, nil, nil, nil, nil)
 
 	assert.Equal(t, store, service.store)
 	assert.Nil(t, service.db)
@@ -547,7 +547,7 @@ func TestAPIDeploymentService_Fields(t *testing.T) {
 func TestDeployAPIConfiguration_WebSubParseError(t *testing.T) {
 	store := storage.NewConfigStore()
 	validator := config.NewAPIValidator()
-	service := NewAPIDeploymentService(store, nil, nil, validator, nil)
+	service := NewAPIDeploymentService(store, nil, nil, validator, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Create a WebSub API with invalid spec structure
@@ -601,7 +601,7 @@ func TestDeployAPIConfiguration_WebSubTopicOperations(t *testing.T) {
 				TimeoutSeconds:        1,
 			},
 		}
-		service := NewAPIDeploymentService(store, nil, nil, validator, routerConfig)
+		service := NewAPIDeploymentService(store, nil, nil, validator, routerConfig, nil)
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 		// Create a valid WebSub API
@@ -647,7 +647,7 @@ spec:
 				TimeoutSeconds:        1,
 			},
 		}
-		service := NewAPIDeploymentService(store, nil, nil, validator, routerConfig)
+		service := NewAPIDeploymentService(store, nil, nil, validator, routerConfig, nil)
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 		// Add existing WebSub API with topics
@@ -669,8 +669,8 @@ spec:
 			},
 			DesiredState: models.StateDeployed,
 			Origin:       models.OriginGatewayAPI,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			CreatedAt:    time.Now(),
+			UpdatedAt:    time.Now(),
 		}
 		store.Add(existingCfg)
 		store.TopicManager.Add(existingCfg.UUID, "/existing/1.0.0/old-topic")
@@ -710,7 +710,7 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 	t.Run("Successfully saves new config without DB", func(t *testing.T) {
 		store := storage.NewConfigStore()
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-		service := NewAPIDeploymentService(store, newTestMockDB(), nil, nil, nil)
+		service := NewAPIDeploymentService(store, newTestMockDB(), nil, nil, nil, nil)
 
 		apiData := api.APIConfigData{
 			DisplayName: "New API",
@@ -727,8 +727,8 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 			},
 			DesiredState: models.StateDeployed,
 			Origin:       models.OriginGatewayAPI,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			CreatedAt:    time.Now(),
+			UpdatedAt:    time.Now(),
 		}
 
 		affected, err := service.saveOrUpdateConfig(newCfg, logger)
@@ -762,13 +762,13 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 			},
 			DesiredState: models.StateDeployed,
 			Origin:       models.OriginGatewayAPI,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			CreatedAt:    time.Now(),
+			UpdatedAt:    time.Now(),
 		}
 		store.Add(existingCfg)
 		require.NoError(t, mockDB.SaveConfig(existingCfg))
 
-		service := NewAPIDeploymentService(store, mockDB, nil, nil, nil)
+		service := NewAPIDeploymentService(store, mockDB, nil, nil, nil, nil)
 
 		// Try to save with same ID (should update instead)
 		updateCfg := &models.StoredConfig{
@@ -780,8 +780,8 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 			},
 			DesiredState: models.StateDeployed,
 			Origin:       models.OriginGatewayAPI,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			CreatedAt:    time.Now(),
+			UpdatedAt:    time.Now(),
 		}
 
 		isUpdate, err := service.saveOrUpdateConfig(updateCfg, logger)
@@ -796,7 +796,7 @@ func TestUpdateExistingConfig_Rollback(t *testing.T) {
 		store := storage.NewConfigStore()
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 		mockDB := newTestMockDB()
-		service := NewAPIDeploymentService(store, mockDB, nil, nil, nil)
+		service := NewAPIDeploymentService(store, mockDB, nil, nil, nil, nil)
 
 		apiData := api.APIConfigData{
 			DisplayName: "Original API",
@@ -814,8 +814,8 @@ func TestUpdateExistingConfig_Rollback(t *testing.T) {
 			},
 			DesiredState: models.StateDeployed,
 			Origin:       models.OriginGatewayAPI,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			CreatedAt:    time.Now(),
+			UpdatedAt:    time.Now(),
 		}
 		store.Add(original)
 		require.NoError(t, mockDB.SaveConfig(original))
@@ -921,7 +921,7 @@ func TestSendTopicRequestToHub_RetryLogic(t *testing.T) {
 			TimeoutSeconds:        1,
 		},
 	}
-	service := NewAPIDeploymentService(store, nil, nil, nil, routerConfig)
+	service := NewAPIDeploymentService(store, nil, nil, nil, routerConfig, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	t.Run("Context timeout", func(t *testing.T) {
@@ -960,7 +960,7 @@ func TestRegisterAndUnregisterTopicWithHub(t *testing.T) {
 			TimeoutSeconds:        1,
 		},
 	}
-	service := NewAPIDeploymentService(store, nil, nil, nil, routerConfig)
+	service := NewAPIDeploymentService(store, nil, nil, nil, routerConfig, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	t.Run("RegisterTopicWithHub calls sendTopicRequestToHub", func(t *testing.T) {

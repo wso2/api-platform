@@ -62,6 +62,7 @@ type MockStorage struct {
 	templates         map[string]*models.StoredLLMProviderTemplate
 	apiKeys           map[string]*models.APIKey
 	certs             []*models.StoredCertificate
+	secrets           map[string]*models.Secret
 	subscriptions     map[string]*models.Subscription
 	subscriptionPlans map[string]*models.SubscriptionPlan
 	saveErr           error
@@ -77,6 +78,7 @@ func NewMockStorage() *MockStorage {
 		templates:         make(map[string]*models.StoredLLMProviderTemplate),
 		apiKeys:           make(map[string]*models.APIKey),
 		certs:             make([]*models.StoredCertificate, 0),
+		secrets:           make(map[string]*models.Secret),
 		subscriptions:     make(map[string]*models.Subscription),
 		subscriptionPlans: make(map[string]*models.SubscriptionPlan),
 	}
@@ -728,6 +730,72 @@ func (m *MockControlPlaneClient) PushAPIDeployment(apiID string, cfg *models.Sto
 	return nil
 }
 
+// Secret management methods
+
+func (m *MockStorage) SaveSecret(secret *models.Secret) error {
+	if m.saveErr != nil {
+		return m.saveErr
+	}
+	m.secrets[secret.Handle] = secret
+	return nil
+}
+
+func (m *MockStorage) GetSecrets() ([]models.SecretMeta, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	secrets := make([]models.SecretMeta, 0, len(m.secrets))
+	for handle, secret := range m.secrets {
+		secrets = append(secrets, models.SecretMeta{
+			Handle:      handle,
+			DisplayName: secret.DisplayName,
+			CreatedAt:   secret.CreatedAt,
+			UpdatedAt:   secret.UpdatedAt,
+		})
+	}
+	return secrets, nil
+}
+
+func (m *MockStorage) GetSecret(handle string) (*models.Secret, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	if secret, ok := m.secrets[handle]; ok {
+		return secret, nil
+	}
+	return nil, errors.New("secret not found")
+}
+
+func (m *MockStorage) UpdateSecret(secret *models.Secret) (*models.Secret, error) {
+	if m.updateErr != nil {
+		return nil, m.updateErr
+	}
+	if _, ok := m.secrets[secret.Handle]; !ok {
+		return nil, errors.New("secret not found")
+	}
+	m.secrets[secret.Handle] = secret
+	return secret, nil
+}
+
+func (m *MockStorage) DeleteSecret(handle string) error {
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	if _, ok := m.secrets[handle]; !ok {
+		return errors.New("secret not found")
+	}
+	delete(m.secrets, handle)
+	return nil
+}
+
+func (m *MockStorage) SecretExists(handle string) (bool, error) {
+	if m.getErr != nil {
+		return false, m.getErr
+	}
+	_, ok := m.secrets[handle]
+	return ok, nil
+}
+
 func (m *MockControlPlaneClient) Close() error {
 	return nil
 }
@@ -783,7 +851,7 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 		systemConfig:      systemCfg,
 	}
 
-	deploymentService := utils.NewAPIDeploymentService(store, db, nil, validator, routerCfg)
+	deploymentService := utils.NewAPIDeploymentService(store, db, nil, validator, routerCfg, nil)
 	server.deploymentService = deploymentService
 	server.mcpDeploymentService = utils.NewMCPDeploymentService(store, db, nil, nil, nil)
 	server.llmDeploymentService = utils.NewLLMDeploymentService(
@@ -809,7 +877,7 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 		policyDefs, &server.policyDefMu,
 		deploymentService, nil, nil,
 		routerCfg, systemCfg,
-		httpClient, parser, validator, logger, server.eventHub,
+		httpClient, parser, validator, logger, server.eventHub, nil,
 	)
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
 
@@ -1008,7 +1076,7 @@ func attachTestEventHub(server *APIServer, hub eventhub.EventHub, gatewayID stri
 			server.policyDefinitions, &server.policyDefMu,
 			nil, nil, nil,
 			server.routerConfig, server.systemConfig,
-			server.httpClient, server.parser, server.validator, server.logger, hub,
+			server.httpClient, server.parser, server.validator, server.logger, hub, nil,
 		)
 		server.RestAPIHandler = NewRestAPIHandler(restAPIService, server.logger)
 	}

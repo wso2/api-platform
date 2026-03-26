@@ -15,16 +15,18 @@ This document captures how the **Subscription Design** (including Subscription P
     - Status: `ACTIVE`, `INACTIVE`.
   - Go model: `SubscriptionPlan` in `platform-api/src/internal/model/subscription_plan.go`.
 
-- **Subscriptions**
-  - `subscriptions` table updated:
-    - `application_id` is now **nullable** (optional).
-    - `subscription_token VARCHAR(512)` — stores **encrypted** token (AES-256-GCM) for retrieval on GET; legacy rows have hash.
-    - `subscription_token_hash VARCHAR(64) NOT NULL` — SHA-256 hash for uniqueness and gateway sync.
-    - New `subscription_plan_uuid VARCHAR(40)` — FK to `subscription_plans(uuid)`.
-    - Unique constraint: `(api_uuid, subscription_token_hash)` for token-based; `(api_uuid, application_id, organization_uuid)` for app-based.
-    - Index on `subscription_token_hash`.
+- **Subscriptions** (subscriber-scoped within an organization)
+  - `subscriptions` table includes:
+    - `subscriber_id VARCHAR(255) NOT NULL` — identifies the subscriber for this API; pairs with `api_uuid` for uniqueness within the org.
+    - `application_id VARCHAR(255)` — **nullable** / **optional** (legacy or app-linked metadata; not the primary subscription key).
+    - `subscription_token VARCHAR(512) NOT NULL` — stores the **encrypted** opaque token (AES-256-GCM) for retrieval; older rows may contain a legacy **hash-only** payload in this column.
+    - `subscription_token_hash VARCHAR(64) NOT NULL` — SHA-256 hex hash for uniqueness and gateway sync (DB/repo concern; not a field on the `Subscription` struct).
+    - `subscription_plan_uuid VARCHAR(40)` — **optional** FK to `subscription_plans(uuid, organization_uuid)`.
+    - **Uniqueness:** `UNIQUE(api_uuid, subscriber_id, organization_uuid)` (at most one subscription per API + subscriber in the org) and `UNIQUE(api_uuid, subscription_token_hash)` (distinct tokens).
+    - Indexes include `subscription_token_hash` and `(organization_uuid, subscriber_id)` for list filters (see `schema.postgres.sql` / `schema.sqlite.sql`).
   - Encryption key: `DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY` (32 bytes, 64 hex or 44 base64); falls back to `JWT_SECRET_KEY`.
-  - Go model: `Subscription` with `ApplicationID *string`, `SubscriptionToken string` (decrypted for API), `SubscriptionTokenHash` (internal).
+  - Go model `Subscription` (`platform-api/src/internal/model/subscription.go`): `SubscriberID string` (`subscriber_id`), `ApplicationID *string` (**optional**), `SubscriptionPlanID *string` (**optional**), `SubscriptionToken string` (plaintext for JSON on create **response** / after decrypt on read — the column is encrypted at rest).
+  - **Repository token behaviour:** `Create` generates a random token if missing, encrypts for `subscription_token`, stores hash in `subscription_token_hash`. `GetByID` / `ListByFilters` decrypt `subscription_token` for the API; if decryption fails (e.g. legacy hash-only row), `subscriptionToken` in the model is left **empty** so the handler omits or returns an empty token without contradicting “decrypted for API”.
 
 ### 1.2 Repositories, Services, and Handlers
 
@@ -40,9 +42,9 @@ This document captures how the **Subscription Design** (including Subscription P
   - `PUT /api/v1/subscription-plans/{planId}`
   - `DELETE /api/v1/subscription-plans/{planId}`
 
-- **Subscription Repository** — Updated to handle new columns; generates subscription token via `crypto/rand`; encrypts before storage; decrypts on read for GET/List. Legacy hashed tokens return empty string.
-- **Subscription Service** — `CreateSubscription` now accepts optional `applicationId *string` and `subscriptionPlanId *string`.
-- **Subscription Handler** — `POST /api/v1/subscriptions` body: `{ apiId (required), applicationId?, subscriptionPlanId?, status? }`. Only `apiId` is required; `applicationId` is optional for token-based subscriptions. Response includes `subscriptionToken` (decrypted, visible on GET/List), `subscriptionPlanId`, and all other subscription fields.
+- **Subscription Repository** — Persists `subscriber_id`; generates token when absent; encrypts before storage; decrypts on `GetByID` / list reads (legacy non-decryptable rows → empty `subscriptionToken`). See bullets above.
+- **Subscription Service** — `CreateSubscription(apiId, orgUUID, subscriberID string, applicationId *string, subscriptionPlanId *string, status string)` requires non-empty **`subscriberID`**; **`applicationId`** and **`subscriptionPlanId`** remain **optional** pointers.
+- **Subscription Handler** — `POST /api/v1/subscriptions` JSON: **`apiId`** and **`subscriberId`** required; **`applicationId`**, **`subscriptionPlanId`**, **`status`** optional. Response includes **`subscriberId`**, generated **`subscriptionToken`** (when present/decryptable), optional plan id, etc. `GET`/`PUT`/`DELETE /api/v1/subscriptions/{subscriptionId}` require query **`subscriberId`** (non-empty); must match the stored subscriber or the API returns **`403 Forbidden`**.
 
 ### 1.3 API Configuration
 

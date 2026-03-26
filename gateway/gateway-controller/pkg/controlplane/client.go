@@ -36,6 +36,7 @@ import (
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 
 	"github.com/gorilla/websocket"
 	"github.com/wso2/api-platform/common/eventhub"
@@ -126,9 +127,10 @@ type Client struct {
 	subscriptionResourceService *utils.SubscriptionResourceService
 	eventHub                    eventhub.EventHub
 	gatewayID                   string
-	gatewayPath                 string     // cached gateway path from well-known discovery
-	syncOnce                    sync.Once  // ensures deployment sync runs only on first connect
+	gatewayPath                 string      // cached gateway path from well-known discovery
+	syncOnce                    sync.Once   // ensures deployment sync runs only on first connect
 	isFirstConnect              atomic.Bool // true on first connect, flipped to false after
+	policyResolver              *resolver.PolicyResolver
 }
 
 // NewClient creates a new control plane client
@@ -149,10 +151,11 @@ func NewClient(
 	templateDefinitions map[string]*api.LLMProviderTemplate,
 	subSnapshotManager utils.SubscriptionSnapshotUpdater,
 	eventHubInstance eventhub.EventHub,
+	policyResolver *resolver.PolicyResolver,
 ) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig)
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig, policyResolver)
 	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, apiKeyConfig)
 	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subSnapshotManager)
 
@@ -488,6 +491,11 @@ func (c *Client) GetGatewayPath() string {
 	c.state.mu.RLock()
 	defer c.state.mu.RUnlock()
 	return c.gatewayPath
+}
+
+// isOnPrem returns true when the control plane is an on-prem deployment.
+func (c *Client) isOnPrem() bool {
+	return c.GetGatewayPath() != ""
 }
 
 // discoverGatewayPath fetches the gateway websocket base path from the control plane well-known endpoint.
@@ -1164,7 +1172,24 @@ func (c *Client) updatePolicyForDeployment(apiID, correlationID string, result *
 		return nil
 	}
 
-	storedPolicy := policy.DerivePolicyFromAPIConfig(result.StoredConfig, c.routerConfig, c.systemConfig, c.policyDefinitions)
+	// Resolve secrets
+	resolvedCfg, validationErrors := c.policyResolver.ResolvePolicies(result.StoredConfig)
+	if len(validationErrors) > 0 {
+		errMsgs := make([]string, 0, len(validationErrors))
+		for _, ve := range validationErrors {
+			errMsgs = append(errMsgs, ve.Message)
+		}
+		errMsg := strings.Join(errMsgs, "; ")
+
+		slog.Error("Policy resolution failed",
+			slog.String("config_handle", result.StoredConfig.Handle),
+			slog.String("errors", errMsg),
+		)
+
+		return fmt.Errorf("policy resolution failed with %d errors: %s", len(validationErrors), errMsg)
+	}
+
+	storedPolicy := policy.DerivePolicyFromAPIConfig(resolvedCfg, c.routerConfig, c.systemConfig, c.policyDefinitions)
 
 	if storedPolicy != nil {
 		// Add or update policy
@@ -3693,6 +3718,14 @@ func (c *Client) pushGatewayManifest(gatewayID string, policies []models.PolicyD
 // pushGatewayManifestOnConnect collects all loaded policy definitions and POSTs
 // them to the control plane immediately after the connection is established.
 func (c *Client) pushGatewayManifestOnConnect(gatewayID string) {
+	// Skip for on-prem control planes
+	if c.isOnPrem() {
+		c.logger.Debug("Skipping gateway manifest push: on-prem control plane detected",
+			slog.String("gateway_id", gatewayID),
+		)
+		return
+	}
+
 	c.logger.Info("Pushing gateway manifest on connect",
 		slog.String("gateway_id", gatewayID),
 	)

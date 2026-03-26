@@ -32,6 +32,7 @@ const (
 type Subscription struct {
 	UUID               string             `json:"id" db:"uuid"`
 	APIUUID            string             `json:"apiId" db:"api_uuid"`
+	SubscriberID      string             `json:"subscriberId" db:"subscriber_id"`
 	ApplicationID      *string            `json:"applicationId,omitempty" db:"application_id"`
 	SubscriptionToken  string             `json:"subscriptionToken" db:"subscription_token"` // Decrypted for API response
 	SubscriptionPlanID *string            `json:"subscriptionPlanId,omitempty" db:"subscription_plan_uuid"`

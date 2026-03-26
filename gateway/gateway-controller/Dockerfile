@@ -88,6 +88,7 @@ COPY --from=builder /build/controller .
 COPY default-policies /app/default-policies
 COPY lua /app/lua
 COPY default-llm-provider-templates /app/default-llm-provider-templates
+
 RUN mkdir -p /app/data
 
 EXPOSE 2345 9090 18000
@@ -106,7 +107,9 @@ ARG ENABLE_COVERAGE=false
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends \
+    apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
     ca-certificates \
     wget && \
     rm -rf /var/lib/apt/lists/*

@@ -71,7 +71,7 @@ spec:
 		validator := config.NewAPIValidator()
 		fullCfg := &config.Config{Router: *routerCfg}
 		snapshotManager := xds.NewSnapshotManager(store, logger, routerCfg, db, fullCfg)
-		svc := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerCfg)
+		svc := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerCfg, nil)
 		return svc, db
 	}
 

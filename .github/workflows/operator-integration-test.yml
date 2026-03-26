@@ -230,6 +230,12 @@ jobs:
 
           kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=gateway-operator -n operator --timeout=120s
 
+      - name: Create encryption key secret
+        run: |
+          kubectl create secret generic gateway-encryption-keys \
+            --from-file=default-aesgcm256-v1.bin=gateway/it/it-aesgcm-keys/default-aesgcm256-v1.bin \
+            --namespace default
+
       - name: Create test APIGateway
         run: |
           # Create ConfigMap with gateway values pointing to test images
@@ -657,6 +663,10 @@ jobs:
                     # Existing ConfigMap containing custom CA certificates
                     # ConfigMap should contain one or more keys with PEM-encoded certificates
                     configMapName: ""
+                  encryptionKeys:
+                    enabled: true
+                    secretName: gateway-encryption-keys
+                    mountPath: /app/data/aesgcm-keys
                   logging:
                     level: info
                   storage:

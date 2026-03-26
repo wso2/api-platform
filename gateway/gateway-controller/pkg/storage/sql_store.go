@@ -2406,3 +2406,245 @@ func (s *sqlStore) DeleteSubscriptionsForAPINotIn(apiID string, ids []string) er
 	}
 	return nil
 }
+
+// SaveSecret persists a new encrypted secret
+func (s *sqlStore) SaveSecret(secret *models.Secret) error {
+	startTime := time.Now()
+	table := "secrets"
+
+	query := `
+	INSERT INTO secrets (gateway_id, handle, display_name, description, ciphertext, created_at, updated_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?)
+	`
+
+	now := time.Now().UTC()
+	_, err := s.exec(query,
+		s.gatewayId,
+		secret.Handle,
+		secret.DisplayName,
+		secret.Description,
+		secret.Ciphertext,
+		now,
+		now,
+	)
+
+	if err != nil {
+		if s.isUniqueViolation(err) {
+			metrics.DatabaseOperationsTotal.WithLabelValues("insert", table, "error").Inc()
+			metrics.StorageErrorsTotal.WithLabelValues("insert", "conflict").Inc()
+			return fmt.Errorf("%w: secret with id '%s' already exists", ErrConflict, secret.Handle)
+		}
+		metrics.DatabaseOperationsTotal.WithLabelValues("insert", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("insert", "exec_error").Inc()
+		s.logger.Error("Failed to save secret",
+			slog.String("secret_handle", secret.Handle),
+			slog.Any("error", err),
+		)
+		return fmt.Errorf("failed to save secret: %w", err)
+	}
+
+	metrics.DatabaseOperationsTotal.WithLabelValues("insert", table, "success").Inc()
+	metrics.DatabaseOperationDurationSeconds.WithLabelValues("insert", table).Observe(time.Since(startTime).Seconds())
+
+	s.logger.Debug("Secret saved successfully",
+		slog.String("secret_handle", secret.Handle),
+	)
+
+	return nil
+}
+
+// GetSecrets retrieves metadata for all secrets (no ciphertext)
+func (s *sqlStore) GetSecrets() ([]models.SecretMeta, error) {
+	startTime := time.Now()
+	table := "secrets"
+
+	query := `SELECT handle, display_name, created_at, updated_at FROM secrets WHERE gateway_id = ? ORDER BY created_at DESC`
+
+	rows, err := s.query(query, s.gatewayId)
+	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("read", "query_error").Inc()
+		return nil, fmt.Errorf("failed to query secrets: %w", err)
+	}
+	defer rows.Close()
+
+	var secrets []models.SecretMeta
+	for rows.Next() {
+		var secret models.SecretMeta
+		if err := rows.Scan(&secret.Handle, &secret.DisplayName, &secret.CreatedAt, &secret.UpdatedAt); err != nil {
+			metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "error").Inc()
+			metrics.StorageErrorsTotal.WithLabelValues("read", "scan_error").Inc()
+			return nil, fmt.Errorf("failed to scan secret meta: %w", err)
+		}
+		secrets = append(secrets, secret)
+	}
+
+	if err := rows.Err(); err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("read", "rows_error").Inc()
+		return nil, fmt.Errorf("error iterating secrets: %w", err)
+	}
+
+	metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "success").Inc()
+	metrics.DatabaseOperationDurationSeconds.WithLabelValues("read", table).Observe(time.Since(startTime).Seconds())
+
+	s.logger.Debug("Secrets retrieved successfully",
+		slog.Int("count", len(secrets)),
+	)
+
+	return secrets, nil
+}
+
+// GetSecret retrieves a secret by Handle
+func (s *sqlStore) GetSecret(handle string) (*models.Secret, error) {
+	startTime := time.Now()
+	table := "secrets"
+
+	query := `
+	SELECT handle, display_name, description, ciphertext, created_at, updated_at
+	FROM secrets
+	WHERE gateway_id = ? AND handle = ?
+	`
+
+	var secret models.Secret
+	err := s.queryRow(query, s.gatewayId, handle).Scan(
+		&secret.Handle,
+		&secret.DisplayName,
+		&secret.Description,
+		&secret.Ciphertext,
+		&secret.CreatedAt,
+		&secret.UpdatedAt,
+	)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("read", "not_found").Inc()
+		return nil, fmt.Errorf("%w: id=%s", ErrNotFound, handle)
+	}
+
+	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("read", "query_error").Inc()
+		s.logger.Error("Failed to get secret",
+			slog.String("secret_handle", handle),
+			slog.Any("error", err),
+		)
+		return nil, fmt.Errorf("failed to get secret: %w", err)
+	}
+
+	metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "success").Inc()
+	metrics.DatabaseOperationDurationSeconds.WithLabelValues("read", table).Observe(time.Since(startTime).Seconds())
+
+	s.logger.Debug("Secret retrieved successfully",
+		slog.String("secret_handle", secret.Handle),
+	)
+
+	return &secret, nil
+}
+
+// UpdateSecret updates an existing secret and returns the updated model with timestamps
+func (s *sqlStore) UpdateSecret(secret *models.Secret) (*models.Secret, error) {
+	startTime := time.Now()
+	table := "secrets"
+
+	query := `
+	UPDATE secrets
+	SET display_name = ?, description = ?, ciphertext = ?, updated_at = ?
+	WHERE gateway_id = ? AND handle = ?
+	RETURNING handle, display_name, description, ciphertext, created_at, updated_at
+	`
+
+	now := time.Now().UTC()
+	row := s.queryRow(query,
+		secret.DisplayName,
+		secret.Description,
+		secret.Ciphertext,
+		now,
+		s.gatewayId,
+		secret.Handle,
+	)
+
+	var updated models.Secret
+	err := row.Scan(&updated.Handle, &updated.DisplayName, &updated.Description, &updated.Ciphertext, &updated.CreatedAt, &updated.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
+			metrics.StorageErrorsTotal.WithLabelValues("update", "not_found").Inc()
+			return nil, fmt.Errorf("%w: id=%s", ErrNotFound, secret.Handle)
+		}
+		metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("update", "exec_error").Inc()
+		s.logger.Error("Failed to update secret",
+			slog.String("secret_handle", secret.Handle),
+			slog.Any("error", err),
+		)
+		return nil, fmt.Errorf("failed to update secret: %w", err)
+	}
+
+	metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "success").Inc()
+	metrics.DatabaseOperationDurationSeconds.WithLabelValues("update", table).Observe(time.Since(startTime).Seconds())
+
+	s.logger.Debug("Secret updated successfully",
+		slog.String("secret_handle", secret.Handle),
+	)
+
+	return &updated, nil
+}
+
+// DeleteSecret permanently removes a secret
+func (s *sqlStore) DeleteSecret(handle string) error {
+	startTime := time.Now()
+	table := "secrets"
+
+	query := `DELETE FROM secrets WHERE gateway_id = ? AND handle = ?`
+
+	result, err := s.exec(query, s.gatewayId, handle)
+	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("delete", "exec_error").Inc()
+		s.logger.Error("Failed to delete secret",
+			slog.String("secret_handle", handle),
+			slog.Any("error", err),
+		)
+		return fmt.Errorf("failed to delete secret: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("delete", "rows_affected_error").Inc()
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("delete", "not_found").Inc()
+		return fmt.Errorf("%w: id=%s", ErrNotFound, handle)
+	}
+
+	metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "success").Inc()
+	metrics.DatabaseOperationDurationSeconds.WithLabelValues("delete", table).Observe(time.Since(startTime).Seconds())
+
+	s.logger.Debug("Secret deleted successfully",
+		slog.String("secret_handle", handle),
+	)
+
+	return nil
+}
+
+// SecretExists checks if a secret with the given handle exists
+func (s *sqlStore) SecretExists(handle string) (bool, error) {
+	query := `SELECT EXISTS(SELECT 1 FROM secrets WHERE gateway_id = ? AND handle = ?)`
+
+	var exists bool
+	err := s.queryRow(query, s.gatewayId, handle).Scan(&exists)
+	if err != nil {
+		s.logger.Error("Failed to check secret existence",
+			slog.String("secret_handle", handle),
+			slog.Any("error", err),
+		)
+		return false, fmt.Errorf("failed to check secret existence: %w", err)
+	}
+
+	return exists, nil
+}

@@ -47,7 +47,6 @@ curl -X POST "$BASE_URL/api/v1/rest-apis" \
         "name": "subscription-validation",
         "version": "v0",
         "params": {
-          "enabled": true,
           "subscriptionKeyHeader": "Subscription-Key"
         }
       }
@@ -133,6 +132,7 @@ curl -X POST "$BASE_URL/api/v1/subscriptions" \
   -H "Content-Type: application/json" \
   -d '{
     "apiId": "c9f2b6ae-1234-5678-9abc-def012345678",
+    "subscriberId": "user-123",
     "subscriptionPlanId": "plan-uuid-1"
   }'
 ```
@@ -142,6 +142,7 @@ curl -X POST "$BASE_URL/api/v1/subscriptions" \
 {
   "id": "sub-uuid-1",
   "apiId": "c9f2b6ae-1234-5678-9abc-def012345678",
+  "subscriberId": "user-123",
   "subscriptionToken": "a3f8c9d2e1b0...64-char-hex-token",
   "subscriptionPlanId": "plan-uuid-1",
   "organizationId": "org-uuid",
@@ -151,7 +152,7 @@ curl -X POST "$BASE_URL/api/v1/subscriptions" \
 }
 ```
 
-### 2.2 Create a Subscription (Legacy with ApplicationId)
+### 2.2 Create a Subscription (Optional ApplicationId)
 
 ```bash
 curl -X POST "$BASE_URL/api/v1/subscriptions" \
@@ -159,6 +160,7 @@ curl -X POST "$BASE_URL/api/v1/subscriptions" \
   -H "Content-Type: application/json" \
   -d '{
     "apiId": "c9f2b6ae-1234-5678-9abc-def012345678",
+    "subscriberId": "user-123",
     "applicationId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "status": "ACTIVE"
   }'
@@ -171,9 +173,35 @@ curl -X GET "$BASE_URL/api/v1/subscriptions?apiId=c9f2b6ae-1234-5678-9abc-def012
   -H "$AUTH_HEADER"
 ```
 
-### 2.4 Update / Delete Subscriptions
+```bash
+curl -X GET "$BASE_URL/api/v1/subscriptions?subscriberId=user-123" \
+  -H "$AUTH_HEADER"
+```
 
-Same as before — use subscription UUID in path.
+```bash
+curl -X GET "$BASE_URL/api/v1/subscriptions?apiId=c9f2b6ae-1234-5678-9abc-def012345678&subscriberId=user-123" \
+  -H "$AUTH_HEADER"
+```
+
+### 2.4 Get, Update, Delete subscription by ID
+
+`subscriberId` is a **required query parameter** on get/update/delete; it must match the subscription's subscriber (returns `403` if it does not).
+
+```bash
+# Get
+curl -X GET "$BASE_URL/api/v1/subscriptions/$SUBSCRIPTION_ID?subscriberId=user-123" \
+  -H "$AUTH_HEADER"
+
+# Update status
+curl -X PUT "$BASE_URL/api/v1/subscriptions/$SUBSCRIPTION_ID?subscriberId=user-123" \
+  -H "$AUTH_HEADER" \
+  -H "Content-Type: application/json" \
+  -d '{"status":"INACTIVE"}'
+
+# Delete
+curl -X DELETE "$BASE_URL/api/v1/subscriptions/$SUBSCRIPTION_ID?subscriberId=user-123" \
+  -H "$AUTH_HEADER"
+```
 
 ---
 
@@ -234,7 +262,6 @@ spec:
     - name: subscription-validation
       version: v0
       params:
-        enabled: true
         subscriptionKeyHeader: Subscription-Key
   operations:
     - method: GET
