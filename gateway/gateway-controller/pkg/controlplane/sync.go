@@ -133,8 +133,12 @@ func computeSyncDiff(remote []models.ControlPlaneDeployment, local []*models.Sto
 
 		localCfg, exists := localMap[dep.ArtifactID]
 		if !exists {
-			// Not in local DB — needs full fetch
-			result.toFetch = append(result.toFetch, dep)
+			// Not in local DB — only fetch if the remote state is deployed.
+			// There is no point creating an artifact locally when the control
+			// plane already considers it undeployed (e.g. fresh gateway DB).
+			if remoteState, valid := models.ParseDesiredState(dep.State); valid && remoteState == models.StateDeployed {
+				result.toFetch = append(result.toFetch, dep)
+			}
 			continue
 		}
 
