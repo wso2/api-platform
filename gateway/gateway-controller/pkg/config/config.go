@@ -948,6 +948,18 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Validate EventHub configuration
+	eh := &c.Controller.EventHub
+	if eh.PollInterval <= 0 {
+		return fmt.Errorf("event_hub.poll_interval must be positive, got: %s", eh.PollInterval)
+	}
+	if eh.CleanupInterval <= 0 {
+		return fmt.Errorf("event_hub.cleanup_interval must be positive, got: %s", eh.CleanupInterval)
+	}
+	if eh.RetentionPeriod <= 0 {
+		return fmt.Errorf("event_hub.retention_period must be positive, got: %s", eh.RetentionPeriod)
+	}
+
 	// Validate event gateway configuration if enabled
 	if c.Router.EventGateway.Enabled {
 		if err := c.validateEventGatewayConfig(); err != nil {
