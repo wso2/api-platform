@@ -1097,8 +1097,8 @@ paths:
     post:
       summary: Create subscription
       description: |
-        Creates an application-level subscription for the specified API.
-        The application is identified by applicationId (from DevPortal/STS). Only one subscription per API-application pair is allowed.
+        Creates a subscription for the specified API.
+        `subscriberId` identifies the unique subscriber for this API, allowing multiple subscribers to create subscriptions for the same API.
       operationId: CreateSubscription
       tags:
         - Subscriptions
@@ -1128,8 +1128,8 @@ paths:
     get:
       summary: List subscriptions
       description: |
-        Returns application-level subscriptions filtered by API and/or application.
-        Optional query parameters apiId, applicationId and status filter the list.
+        Returns subscriptions filtered by API and/or application.
+        Optional query parameters apiId, subscriberId, applicationId and status filter the list.
         Supports pagination via limit and offset.
       operationId: ListSubscriptions
       tags:
@@ -1141,6 +1141,13 @@ paths:
           description: Filter by API ID (UUID or handle)
           schema:
             type: string
+        - name: subscriberId
+          in: query
+          required: false
+          description: Filter by subscriber ID
+          schema:
+            type: string
+            minLength: 1
         - name: applicationId
           in: query
           required: false
@@ -1186,7 +1193,9 @@ paths:
   /subscriptions/{subscriptionId}:
     get:
       summary: Get subscription by ID
-      description: Returns a single subscription by ID (scoped to organization).
+      description: |
+        Returns a single subscription by ID (scoped to organization).
+        Query parameter `subscriberId` is required and must match the subscription's subscriber for access control.
       operationId: GetSubscription
       tags:
         - Subscriptions
@@ -1198,6 +1207,13 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: subscriberId
+          in: query
+          required: true
+          description: Subscriber ID; must match the subscription's subscriberId.
+          schema:
+            type: string
+            minLength: 1
       responses:
         '200':
           description: Subscription details
@@ -1209,13 +1225,17 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
     put:
       summary: Update subscription
-      description: Updates a subscription (e.g. status).
+      description: |
+        Updates a subscription (e.g. status).
+        Query parameter `subscriberId` is required and must match the subscription's subscriber for access control.
       operationId: UpdateSubscription
       tags:
         - Subscriptions
@@ -1227,6 +1247,13 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: subscriberId
+          in: query
+          required: true
+          description: Subscriber ID; must match the subscription's subscriberId.
+          schema:
+            type: string
+            minLength: 1
       requestBody:
         required: true
         content:
@@ -1244,13 +1271,17 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
     delete:
       summary: Delete subscription
-      description: Removes the application subscription for the API.
+      description: |
+        Removes the subscription for the API.
+        Query parameter `subscriberId` is required and must match the subscription's subscriber for access control.
       operationId: DeleteSubscription
       tags:
         - Subscriptions
@@ -1262,6 +1293,13 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: subscriberId
+          in: query
+          required: true
+          description: Subscriber ID; must match the subscription's subscriberId.
+          schema:
+            type: string
+            minLength: 1
       responses:
         '204':
           description: Subscription deleted (no content)
@@ -1269,6 +1307,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -5992,11 +6032,17 @@ components:
       type: object
       required:
         - apiId
+        - subscriberId
       properties:
         apiId:
           type: string
           description: API handle or UUID (REST API identifier)
           example: "c9f2b6ae-1234-5678-9abc-def012345678"
+        subscriberId:
+          type: string
+          minLength: 1
+          description: Unique subscriber identifier for the subscription (required)
+          example: "user-123"
         applicationId:
           type: string
           description: Application ID (from DevPortal/STS). Optional in token-based subscriptions.
@@ -6030,6 +6076,10 @@ components:
           type: string
           format: uuid
           description: REST API UUID
+        subscriberId:
+          type: string
+          minLength: 1
+          description: Unique subscriber identifier for this API (required)
         applicationId:
           type: string
           description: Application ID (optional for token-based subscriptions)

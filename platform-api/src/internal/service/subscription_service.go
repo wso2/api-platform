@@ -105,7 +105,7 @@ func (s *SubscriptionService) GetAPIHandleMap(uuids []string, orgUUID string) (m
 }
 
 // CreateSubscription creates a new subscription for an API
-func (s *SubscriptionService) CreateSubscription(apiId, orgUUID string, applicationId *string, subscriptionPlanId *string, status string) (*model.Subscription, error) {
+func (s *SubscriptionService) CreateSubscription(apiId, orgUUID string, subscriberID string, applicationId *string, subscriptionPlanId *string, status string) (*model.Subscription, error) {
 	apiUUID, err := s.resolveAPIUUID(apiId, orgUUID)
 	if err != nil {
 		return nil, err
@@ -120,8 +120,10 @@ func (s *SubscriptionService) CreateSubscription(apiId, orgUUID string, applicat
 		}
 	}
 
-	appID := derefString(applicationId)
-	exists, err := s.subscriptionRepo.ExistsByAPIAndApplication(apiUUID, appID, orgUUID)
+	if subscriberID == "" {
+		return nil, fmt.Errorf("subscriberId is required")
+	}
+	exists, err := s.subscriptionRepo.ExistsByAPIAndSubscriber(apiUUID, subscriberID, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -131,6 +133,7 @@ func (s *SubscriptionService) CreateSubscription(apiId, orgUUID string, applicat
 
 	sub := &model.Subscription{
 		APIUUID:            apiUUID,
+		SubscriberID:       subscriberID,
 		ApplicationID:      applicationId,
 		SubscriptionPlanID: subscriptionPlanId,
 		OrganizationUUID:   orgUUID,
@@ -184,9 +187,9 @@ func (s *SubscriptionService) GetSubscription(subscriptionId, orgUUID string) (*
 	return sub, nil
 }
 
-// ListSubscriptionsByFilters returns subscriptions filtered by API and/or application with pagination.
+// ListSubscriptionsByFilters returns subscriptions filtered by API, subscriber and/or application with pagination.
 // It returns the list, total count matching filters, and any error.
-func (s *SubscriptionService) ListSubscriptionsByFilters(orgUUID string, apiId *string, applicationID *string, status *string, limit, offset int) ([]*model.Subscription, int, error) {
+func (s *SubscriptionService) ListSubscriptionsByFilters(orgUUID string, apiId *string, subscriberID *string, applicationID *string, status *string, limit, offset int) ([]*model.Subscription, int, error) {
 	var apiUUID *string
 	if apiId != nil && *apiId != "" {
 		resolved, err := s.resolveAPIUUID(*apiId, orgUUID)
@@ -195,19 +198,19 @@ func (s *SubscriptionService) ListSubscriptionsByFilters(orgUUID string, apiId *
 		}
 		apiUUID = &resolved
 	}
-	list, err := s.subscriptionRepo.ListByFilters(orgUUID, apiUUID, applicationID, status, limit, offset)
+	list, err := s.subscriptionRepo.ListByFilters(orgUUID, apiUUID, subscriberID, applicationID, status, limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}
-	total, err := s.subscriptionRepo.CountByFilters(orgUUID, apiUUID, applicationID, status)
+	total, err := s.subscriptionRepo.CountByFilters(orgUUID, apiUUID, subscriberID, applicationID, status)
 	if err != nil {
 		return nil, 0, err
 	}
 	return list, total, nil
 }
 
-// UpdateSubscription updates a subscription (e.g. status)
-func (s *SubscriptionService) UpdateSubscription(subscriptionId, orgUUID, status string) (*model.Subscription, error) {
+// UpdateSubscription updates a subscription (e.g. status). subscriberID must match the stored subscriber_id.
+func (s *SubscriptionService) UpdateSubscription(subscriptionId, orgUUID, subscriberID, status string) (*model.Subscription, error) {
 	sub, err := s.subscriptionRepo.GetByID(subscriptionId, orgUUID)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionNotFound) {
@@ -217,6 +220,9 @@ func (s *SubscriptionService) UpdateSubscription(subscriptionId, orgUUID, status
 	}
 	if sub == nil {
 		return nil, constants.ErrSubscriptionNotFound
+	}
+	if sub.SubscriberID != subscriberID {
+		return nil, constants.ErrSubscriptionSubscriberMismatch
 	}
 	if status != "" {
 		st := model.SubscriptionStatus(status)
@@ -260,8 +266,8 @@ func (s *SubscriptionService) UpdateSubscription(subscriptionId, orgUUID, status
 	return sub, nil
 }
 
-// DeleteSubscription removes a subscription
-func (s *SubscriptionService) DeleteSubscription(subscriptionId, orgUUID string) error {
+// DeleteSubscription removes a subscription. subscriberID must match the stored subscriber_id.
+func (s *SubscriptionService) DeleteSubscription(subscriptionId, orgUUID, subscriberID string) error {
 	sub, err := s.subscriptionRepo.GetByID(subscriptionId, orgUUID)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionNotFound) {
@@ -271,6 +277,9 @@ func (s *SubscriptionService) DeleteSubscription(subscriptionId, orgUUID string)
 	}
 	if sub == nil {
 		return constants.ErrSubscriptionNotFound
+	}
+	if sub.SubscriberID != subscriberID {
+		return constants.ErrSubscriptionSubscriberMismatch
 	}
 
 	if err := s.subscriptionRepo.Delete(subscriptionId, orgUUID); err != nil {
