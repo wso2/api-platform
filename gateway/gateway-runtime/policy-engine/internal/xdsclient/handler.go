@@ -34,7 +34,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
 )
 
@@ -349,9 +349,12 @@ func (h *ResourceHandler) buildPolicyChain(routeKey string, config *policyengine
 	requiresRequestBody := false
 	requiresResponseBody := false
 	hasExecutionConditions := false
+	supportsRequestStreaming := true
+	supportsResponseStreaming := true
+	hasRequestBodyPolicy := false
+	hasResponseBodyPolicy := false
 
 	for _, policyConfig := range config.Policies {
-		// Create metadata with route and API information
 		metadata := policy.PolicyMetadata{
 			RouteName:  routeKey,
 			APIId:      apiMetadata.APIId,
@@ -359,24 +362,17 @@ func (h *ResourceHandler) buildPolicyChain(routeKey string, config *policyengine
 			APIVersion: apiMetadata.Version,
 		}
 
-		// Check if attachedTo is present in parameters and set it in metadata
 		if val, ok := policyConfig.Parameters["attachedTo"]; ok {
 			if attachedTo, ok := val.(string); ok {
 				metadata.AttachedTo = policy.Level(attachedTo)
 			}
 		}
 
-		// Get instance using factory with metadata and params
-		// GetInstance returns the policy and merged params (initParams + runtime params)
 		impl, mergedParams, err := h.registry.GetInstance(policyConfig.Name, policyConfig.Version, metadata, policyConfig.Parameters)
 		if err != nil {
-			// Fail the entire chain rather than silently omitting a policy.
-			// A security policy (e.g. api-key-auth) that fails to instantiate must not
-			// be silently skipped — doing so would let traffic pass without that policy.
 			return nil, fmt.Errorf("failed to create policy instance %s:%s: %w", policyConfig.Name, policyConfig.Version, err)
 		}
 
-		// Build PolicySpec with merged params so OnRequest/OnResponse receive merged values
 		spec := policy.PolicySpec{
 			Name:               policyConfig.Name,
 			Version:            policyConfig.Version,
@@ -387,31 +383,45 @@ func (h *ResourceHandler) buildPolicyChain(routeKey string, config *policyengine
 			},
 		}
 
-		// Check if policy has CEL execution condition
 		if policyConfig.ExecutionCondition != nil && *policyConfig.ExecutionCondition != "" {
 			hasExecutionConditions = true
 		}
 
-		// Add to policy list
 		policyList = append(policyList, impl)
 		policySpecs = append(policySpecs, spec)
 
-		// Get policy mode and update body requirements
 		mode := impl.Mode()
 		if mode.RequestBodyMode == policy.BodyModeBuffer || mode.RequestBodyMode == policy.BodyModeStream {
 			requiresRequestBody = true
+			hasRequestBodyPolicy = true
+			if _, streaming := impl.(policy.StreamingRequestPolicy); !streaming {
+				supportsRequestStreaming = false
+			}
 		}
 		if mode.ResponseBodyMode == policy.BodyModeBuffer || mode.ResponseBodyMode == policy.BodyModeStream {
 			requiresResponseBody = true
+			hasResponseBodyPolicy = true
+			if _, streaming := impl.(policy.StreamingResponsePolicy); !streaming {
+				supportsResponseStreaming = false
+			}
 		}
 	}
 
+	if !hasRequestBodyPolicy {
+		supportsRequestStreaming = false
+	}
+	if !hasResponseBodyPolicy {
+		supportsResponseStreaming = false
+	}
+
 	chain := &registry.PolicyChain{
-		Policies:               policyList,
-		PolicySpecs:            policySpecs,
-		RequiresRequestBody:    requiresRequestBody,
-		RequiresResponseBody:   requiresResponseBody,
-		HasExecutionConditions: hasExecutionConditions,
+		Policies:                 policyList,
+		PolicySpecs:              policySpecs,
+		RequiresRequestBody:      requiresRequestBody,
+		RequiresResponseBody:     requiresResponseBody,
+		HasExecutionConditions:   hasExecutionConditions,
+		SupportsRequestStreaming:  supportsRequestStreaming,
+		SupportsResponseStreaming: supportsResponseStreaming,
 	}
 
 	return chain, nil

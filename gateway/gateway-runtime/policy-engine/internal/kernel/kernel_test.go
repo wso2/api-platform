@@ -26,7 +26,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
 // =============================================================================
@@ -557,16 +557,14 @@ func TestBuildAnalyticsStruct_MultipleTypes(t *testing.T) {
 func TestBuildAnalyticsStruct_WithExecutionContext(t *testing.T) {
 	// Create a mock execution context with SharedContext
 	execCtx := &PolicyExecutionContext{
-		requestContext: &policy.RequestContext{
-			SharedContext: &policy.SharedContext{
-				APIId:         "api-123",
-				APIName:       "PetStore",
-				APIVersion:    "v1.0.0",
-				APIContext:    "/petstore",
-				OperationPath: "/pets/{id}",
-				APIKind:       "REST",
-				ProjectID:     "proj-456",
-			},
+		sharedCtx: &policy.SharedContext{
+			APIId:         "api-123",
+			APIName:       "PetStore",
+			APIVersion:    "v1.0.0",
+			APIContext:    "/petstore",
+			OperationPath: "/pets/{id}",
+			APIKind:       "REST",
+			ProjectID:     "proj-456",
 		},
 	}
 
@@ -595,12 +593,10 @@ func TestBuildAnalyticsStruct_WithExecutionContext(t *testing.T) {
 func TestBuildAnalyticsStruct_WithPartialSharedContext(t *testing.T) {
 	// Create execution context with only some fields populated
 	execCtx := &PolicyExecutionContext{
-		requestContext: &policy.RequestContext{
-			SharedContext: &policy.SharedContext{
-				APIName:    "TestAPI",
-				APIVersion: "v2.0",
-				// Other fields empty
-			},
+		sharedCtx: &policy.SharedContext{
+			APIName:    "TestAPI",
+			APIVersion: "v2.0",
+			// Other fields empty
 		},
 	}
 
@@ -622,9 +618,7 @@ func TestBuildAnalyticsStruct_WithPartialSharedContext(t *testing.T) {
 
 func TestBuildAnalyticsStruct_WithNilSharedContext(t *testing.T) {
 	execCtx := &PolicyExecutionContext{
-		requestContext: &policy.RequestContext{
-			SharedContext: nil,
-		},
+		sharedCtx: nil,
 	}
 
 	data := map[string]any{
@@ -641,7 +635,7 @@ func TestBuildAnalyticsStruct_WithNilSharedContext(t *testing.T) {
 
 func TestBuildAnalyticsStruct_WithNilRequestContext(t *testing.T) {
 	execCtx := &PolicyExecutionContext{
-		requestContext: nil,
+		sharedCtx: nil,
 	}
 
 	data := map[string]any{

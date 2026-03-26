@@ -359,7 +359,7 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 		(*execCtx).upstreamBasePath = routeMetadata.UpstreamBasePath
 		(*execCtx).apiContext = routeMetadata.Context
 		(*execCtx).upstreamDefinitionPaths = routeMetadata.UpstreamDefinitionPaths
-		(*execCtx).buildRequestContext(req.GetRequestHeaders(), routeMetadata)
+		(*execCtx).buildRequestContexts(req.GetRequestHeaders(), routeMetadata)
 		return &routeMetadata
 	}
 
@@ -383,7 +383,7 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 	(*execCtx).upstreamBasePath = routeMetadata.UpstreamBasePath
 	(*execCtx).apiContext = routeMetadata.Context
 	(*execCtx).upstreamDefinitionPaths = routeMetadata.UpstreamDefinitionPaths
-	(*execCtx).buildRequestContext(req.GetRequestHeaders(), routeMetadata)
+	(*execCtx).buildRequestContexts(req.GetRequestHeaders(), routeMetadata)
 	return &routeMetadata
 }
 

@@ -25,7 +25,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/testutils"
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
 // =============================================================================
@@ -84,13 +84,13 @@ func TestEvaluateRequestCondition_SimpleExpressions(t *testing.T) {
 			expected:   false,
 		},
 		{
-			name:       "Processing phase is request",
-			expression: `processing.phase == "request"`,
+			name:       "Processing phase is request_body",
+			expression: `processing.phase == "request_body"`,
 			expected:   true,
 		},
 		{
-			name:       "Processing phase is not response",
-			expression: `processing.phase == "response"`,
+			name:       "Processing phase is not response_body",
+			expression: `processing.phase == "response_body"`,
 			expected:   false,
 		},
 		{
@@ -107,7 +107,7 @@ func TestEvaluateRequestCondition_SimpleExpressions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := evaluator.EvaluateRequestCondition(tt.expression, reqCtx)
+			result, err := evaluator.EvaluateRequestBodyCondition(tt.expression, reqCtx)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -157,7 +157,7 @@ func TestEvaluateRequestCondition_ComplexExpressions(t *testing.T) {
 		},
 		{
 			name:       "Three conditions with AND",
-			expression: `request.Method == "GET" && request.Path.startsWith("/api") && processing.phase == "request"`,
+			expression: `request.Method == "GET" && request.Path.startsWith("/api") && processing.phase == "request_body"`,
 			expected:   true,
 		},
 		{
@@ -169,7 +169,7 @@ func TestEvaluateRequestCondition_ComplexExpressions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := evaluator.EvaluateRequestCondition(tt.expression, reqCtx)
+			result, err := evaluator.EvaluateRequestBodyCondition(tt.expression, reqCtx)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -198,7 +198,7 @@ func TestEvaluateRequestCondition_InvalidExpression(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := evaluator.EvaluateRequestCondition(tt.expression, reqCtx)
+			_, err := evaluator.EvaluateRequestBodyCondition(tt.expression, reqCtx)
 			assert.Error(t, err)
 		})
 	}
@@ -211,7 +211,7 @@ func TestEvaluateRequestCondition_NonBooleanResult(t *testing.T) {
 	reqCtx := testutils.NewTestRequestContext()
 
 	// Expression that returns string instead of boolean
-	_, err = evaluator.EvaluateRequestCondition(`request.Method`, reqCtx)
+	_, err = evaluator.EvaluateRequestBodyCondition(`request.Method`, reqCtx)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "must return boolean")
 }
@@ -262,20 +262,20 @@ func TestEvaluateResponseCondition_SimpleExpressions(t *testing.T) {
 			expected:   false,
 		},
 		{
-			name:       "Processing phase is response",
-			expression: `processing.phase == "response"`,
+			name:       "Processing phase is response_body",
+			expression: `processing.phase == "response_body"`,
 			expected:   true,
 		},
 		{
-			name:       "Processing phase is not request",
-			expression: `processing.phase == "request"`,
+			name:       "Processing phase is not request_body",
+			expression: `processing.phase == "request_body"`,
 			expected:   false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := evaluator.EvaluateResponseCondition(tt.expression, respCtx)
+			result, err := evaluator.EvaluateResponseBodyCondition(tt.expression, respCtx)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -312,7 +312,7 @@ func TestEvaluateResponseCondition_CrossPhaseAccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := evaluator.EvaluateResponseCondition(tt.expression, respCtx)
+			result, err := evaluator.EvaluateResponseBodyCondition(tt.expression, respCtx)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -383,7 +383,7 @@ func TestEvaluateResponseCondition_StatusRanges(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			respCtx := testutils.NewTestResponseContext()
 			respCtx.ResponseStatus = tt.status
-			result, err := evaluator.EvaluateResponseCondition(tt.expression, respCtx)
+			result, err := evaluator.EvaluateResponseBodyCondition(tt.expression, respCtx)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -396,7 +396,7 @@ func TestEvaluateResponseCondition_InvalidExpression(t *testing.T) {
 
 	respCtx := testutils.NewTestResponseContext()
 
-	_, err = evaluator.EvaluateResponseCondition(`response.ResponseStatus ==`, respCtx)
+	_, err = evaluator.EvaluateResponseBodyCondition(`response.ResponseStatus ==`, respCtx)
 	assert.Error(t, err)
 }
 
@@ -406,7 +406,7 @@ func TestEvaluateResponseCondition_NonBooleanResult(t *testing.T) {
 
 	respCtx := testutils.NewTestResponseContext()
 
-	_, err = evaluator.EvaluateResponseCondition(`response.ResponseStatus`, respCtx)
+	_, err = evaluator.EvaluateResponseBodyCondition(`response.ResponseStatus`, respCtx)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "must return boolean")
 }
@@ -423,12 +423,12 @@ func TestCELEvaluator_ProgramCaching(t *testing.T) {
 	expression := `request.Method == "GET"`
 
 	// First evaluation - compiles the program
-	result1, err := evaluator.EvaluateRequestCondition(expression, reqCtx)
+	result1, err := evaluator.EvaluateRequestBodyCondition(expression, reqCtx)
 	require.NoError(t, err)
 	assert.True(t, result1)
 
 	// Second evaluation - should use cached program
-	result2, err := evaluator.EvaluateRequestCondition(expression, reqCtx)
+	result2, err := evaluator.EvaluateRequestBodyCondition(expression, reqCtx)
 	require.NoError(t, err)
 	assert.True(t, result2)
 
@@ -446,12 +446,12 @@ func TestCELEvaluator_DifferentExpressions(t *testing.T) {
 		`request.Method == "GET"`,
 		`request.Method == "POST"`,
 		`request.Path.startsWith("/api")`,
-		`processing.phase == "request"`,
+		`processing.phase == "request_body"`,
 	}
 
 	// Evaluate each expression
 	for _, expr := range expressions {
-		_, err := evaluator.EvaluateRequestCondition(expr, reqCtx)
+		_, err := evaluator.EvaluateRequestBodyCondition(expr, reqCtx)
 		require.NoError(t, err, "Expression should evaluate without error: %s", expr)
 	}
 }
@@ -465,7 +465,7 @@ func TestCELEvaluator_ConcurrentAccess(t *testing.T) {
 		`request.Method == "GET"`,
 		`request.Method == "POST"`,
 		`request.Path.startsWith("/api")`,
-		`processing.phase == "request"`,
+		`processing.phase == "request_body"`,
 	}
 
 	var wg sync.WaitGroup
@@ -477,7 +477,7 @@ func TestCELEvaluator_ConcurrentAccess(t *testing.T) {
 			go func(e string) {
 				defer wg.Done()
 				ctx := testutils.NewTestRequestContext()
-				_, err := evaluator.EvaluateRequestCondition(e, ctx)
+				_, err := evaluator.EvaluateRequestBodyCondition(e, ctx)
 				if err != nil {
 					errors <- err
 				}
@@ -504,7 +504,7 @@ func TestEvaluateResponseCondition_ZeroStatus(t *testing.T) {
 	respCtx := testutils.NewTestResponseContext()
 	respCtx.ResponseStatus = 0
 
-	result, err := evaluator.EvaluateResponseCondition(`response.ResponseStatus == 0`, respCtx)
+	result, err := evaluator.EvaluateResponseBodyCondition(`response.ResponseStatus == 0`, respCtx)
 	require.NoError(t, err)
 	assert.True(t, result)
 }
@@ -516,7 +516,7 @@ func TestEvaluateRequestCondition_EmptyPath(t *testing.T) {
 	reqCtx := testutils.NewTestRequestContext()
 	reqCtx.Path = ""
 
-	result, err := evaluator.EvaluateRequestCondition(`request.Path == ""`, reqCtx)
+	result, err := evaluator.EvaluateRequestBodyCondition(`request.Path == ""`, reqCtx)
 	require.NoError(t, err)
 	assert.True(t, result)
 }
@@ -527,7 +527,7 @@ func TestEvaluateRequestCondition_PathEndsWith(t *testing.T) {
 
 	reqCtx := testutils.NewTestRequestContext()
 
-	result, err := evaluator.EvaluateRequestCondition(`request.Path.endsWith("123")`, reqCtx)
+	result, err := evaluator.EvaluateRequestBodyCondition(`request.Path.endsWith("123")`, reqCtx)
 	require.NoError(t, err)
 	assert.True(t, result)
 }
@@ -538,7 +538,7 @@ func TestEvaluateRequestCondition_PathSize(t *testing.T) {
 
 	reqCtx := testutils.NewTestRequestContext()
 
-	result, err := evaluator.EvaluateRequestCondition(`size(request.Path) > 0`, reqCtx)
+	result, err := evaluator.EvaluateRequestBodyCondition(`size(request.Path) > 0`, reqCtx)
 	require.NoError(t, err)
 	assert.True(t, result)
 }
@@ -554,7 +554,7 @@ func TestEvaluateRequestCondition_MethodComparison(t *testing.T) {
 			reqCtx := testutils.NewTestRequestContext()
 			reqCtx.Method = method
 
-			result, err := evaluator.EvaluateRequestCondition(`request.Method == "`+method+`"`, reqCtx)
+			result, err := evaluator.EvaluateRequestBodyCondition(`request.Method == "`+method+`"`, reqCtx)
 			require.NoError(t, err)
 			assert.True(t, result)
 		})
@@ -648,7 +648,7 @@ func TestEvaluateRequestCondition_HeaderOperations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := evaluator.EvaluateRequestCondition(tt.expression, ctx)
+			result, err := evaluator.EvaluateRequestBodyCondition(tt.expression, ctx)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -683,7 +683,7 @@ func TestEvaluateRequestCondition_HeaderOperations_EmptyHeaders(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := evaluator.EvaluateRequestCondition(tt.expression, ctx)
+			result, err := evaluator.EvaluateRequestBodyCondition(tt.expression, ctx)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -762,7 +762,7 @@ func TestEvaluateResponseCondition_HeaderOperations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := evaluator.EvaluateResponseCondition(tt.expression, ctx)
+			result, err := evaluator.EvaluateResponseBodyCondition(tt.expression, ctx)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -798,7 +798,7 @@ func TestEvaluateResponseCondition_HeaderOperations_EmptyHeaders(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := evaluator.EvaluateResponseCondition(tt.expression, ctx)
+			result, err := evaluator.EvaluateResponseBodyCondition(tt.expression, ctx)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -884,9 +884,9 @@ func TestCELEvaluator_RealWorldExpressions(t *testing.T) {
 			var err error
 
 			if tt.phase == "request" {
-				result, err = evaluator.EvaluateRequestCondition(tt.expression, tt.setupReq())
+				result, err = evaluator.EvaluateRequestBodyCondition(tt.expression, tt.setupReq())
 			} else {
-				result, err = evaluator.EvaluateResponseCondition(tt.expression, tt.setupResp())
+				result, err = evaluator.EvaluateResponseBodyCondition(tt.expression, tt.setupResp())
 			}
 
 			require.NoError(t, err)

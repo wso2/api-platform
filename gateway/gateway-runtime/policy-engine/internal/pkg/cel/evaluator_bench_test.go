@@ -21,7 +21,7 @@ package cel
 import (
 	"testing"
 
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
 // =============================================================================
@@ -100,7 +100,7 @@ func BenchmarkCELEvaluateRequestCondition(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(`request.Method == "GET"`, reqCtx)
+			_, _ = evaluator.EvaluateRequestBodyCondition(`request.Method == "GET"`, reqCtx)
 		}
 	})
 
@@ -108,7 +108,7 @@ func BenchmarkCELEvaluateRequestCondition(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(`request.Path.startsWith("/petstore")`, reqCtx)
+			_, _ = evaluator.EvaluateRequestBodyCondition(`request.Path.startsWith("/petstore")`, reqCtx)
 		}
 	})
 
@@ -116,7 +116,7 @@ func BenchmarkCELEvaluateRequestCondition(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(`"authorization" in request.Headers`, reqCtx)
+			_, _ = evaluator.EvaluateRequestBodyCondition(`"authorization" in request.Headers`, reqCtx)
 		}
 	})
 
@@ -124,7 +124,7 @@ func BenchmarkCELEvaluateRequestCondition(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(
+			_, _ = evaluator.EvaluateRequestBodyCondition(
 				`request.Method == "GET" && request.Path.startsWith("/petstore") && request.Scheme == "https"`,
 				reqCtx)
 		}
@@ -134,16 +134,16 @@ func BenchmarkCELEvaluateRequestCondition(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(`"custom_key" in request.Metadata`, reqCtx)
+			_, _ = evaluator.EvaluateRequestBodyCondition(`"custom_key" in request.Metadata`, reqCtx)
 		}
 	})
 
 	b.Run("ProcessingPhaseCheck", func(b *testing.B) {
-		expr := `processing.phase == "request"`
+		expr := `processing.phase == "request_body"`
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx)
+			_, _ = evaluator.EvaluateRequestBodyCondition(expr, reqCtx)
 		}
 	})
 }
@@ -159,12 +159,12 @@ func BenchmarkCELEvaluateRequestCondition_CacheHit(b *testing.B) {
 	expr := `request.Method == "GET"`
 
 	// Warm up cache
-	_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx)
+	_, _ = evaluator.EvaluateRequestBodyCondition(expr, reqCtx)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx)
+		_, _ = evaluator.EvaluateRequestBodyCondition(expr, reqCtx)
 	}
 }
 
@@ -177,7 +177,7 @@ func BenchmarkCELEvaluateRequestCondition_CacheMiss(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		// Create fresh evaluator each iteration to force cache miss
 		evaluator, _ := NewCELEvaluator()
-		_, _ = evaluator.EvaluateRequestCondition(`request.Method == "GET"`, reqCtx)
+		_, _ = evaluator.EvaluateRequestBodyCondition(`request.Method == "GET"`, reqCtx)
 	}
 }
 
@@ -198,7 +198,7 @@ func BenchmarkCELEvaluateResponseCondition(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateResponseCondition(`response.ResponseStatus == 200`, respCtx)
+			_, _ = evaluator.EvaluateResponseBodyCondition(`response.ResponseStatus == 200`, respCtx)
 		}
 	})
 
@@ -206,7 +206,7 @@ func BenchmarkCELEvaluateResponseCondition(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateResponseCondition(
+			_, _ = evaluator.EvaluateResponseBodyCondition(
 				`response.ResponseStatus >= 200 && response.ResponseStatus < 300`,
 				respCtx)
 		}
@@ -216,7 +216,7 @@ func BenchmarkCELEvaluateResponseCondition(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateResponseCondition(`"content-type" in response.ResponseHeaders`, respCtx)
+			_, _ = evaluator.EvaluateResponseBodyCondition(`"content-type" in response.ResponseHeaders`, respCtx)
 		}
 	})
 
@@ -225,7 +225,7 @@ func BenchmarkCELEvaluateResponseCondition(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateResponseCondition(
+			_, _ = evaluator.EvaluateResponseBodyCondition(
 				`response.RequestMethod == "GET" && response.ResponseStatus == 200`,
 				respCtx)
 		}
@@ -236,7 +236,7 @@ func BenchmarkCELEvaluateResponseCondition(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateResponseCondition(expr, respCtx)
+			_, _ = evaluator.EvaluateResponseBodyCondition(expr, respCtx)
 		}
 	})
 }
@@ -254,7 +254,7 @@ func BenchmarkCELEvaluateRequestCondition_Parallel(b *testing.B) {
 
 	// Warm up cache
 	reqCtx := buildBenchRequestContext()
-	_, _ = evaluator.EvaluateRequestCondition(`request.Method == "GET"`, reqCtx)
+	_, _ = evaluator.EvaluateRequestBodyCondition(`request.Method == "GET"`, reqCtx)
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -262,7 +262,7 @@ func BenchmarkCELEvaluateRequestCondition_Parallel(b *testing.B) {
 		// Each goroutine uses its own context to avoid data races
 		ctx := buildBenchRequestContext()
 		for pb.Next() {
-			_, _ = evaluator.EvaluateRequestCondition(`request.Method == "GET"`, ctx)
+			_, _ = evaluator.EvaluateRequestBodyCondition(`request.Method == "GET"`, ctx)
 		}
 	})
 }
@@ -286,7 +286,7 @@ func BenchmarkCELEvaluateRequestCondition_ParallelDifferentExprs(b *testing.B) {
 	// Warm up cache
 	reqCtx := buildBenchRequestContext()
 	for _, expr := range expressions {
-		_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx)
+		_, _ = evaluator.EvaluateRequestBodyCondition(expr, reqCtx)
 	}
 
 	b.ReportAllocs()
@@ -296,7 +296,7 @@ func BenchmarkCELEvaluateRequestCondition_ParallelDifferentExprs(b *testing.B) {
 		i := 0
 		for pb.Next() {
 			expr := expressions[i%len(expressions)]
-			_, _ = evaluator.EvaluateRequestCondition(expr, ctx)
+			_, _ = evaluator.EvaluateRequestBodyCondition(expr, ctx)
 			i++
 		}
 	})
@@ -317,61 +317,61 @@ func BenchmarkCELExpressionComplexity(b *testing.B) {
 
 	b.Run("Trivial", func(b *testing.B) {
 		expr := `true`
-		_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx) // warm cache
+		_, _ = evaluator.EvaluateRequestBodyCondition(expr, reqCtx) // warm cache
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx)
+			_, _ = evaluator.EvaluateRequestBodyCondition(expr, reqCtx)
 		}
 	})
 
 	b.Run("SingleField", func(b *testing.B) {
 		expr := `request.Method == "GET"`
-		_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx) // warm cache
+		_, _ = evaluator.EvaluateRequestBodyCondition(expr, reqCtx) // warm cache
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx)
+			_, _ = evaluator.EvaluateRequestBodyCondition(expr, reqCtx)
 		}
 	})
 
 	b.Run("TwoConditionsAnd", func(b *testing.B) {
 		expr := `request.Method == "GET" && request.Scheme == "https"`
-		_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx) // warm cache
+		_, _ = evaluator.EvaluateRequestBodyCondition(expr, reqCtx) // warm cache
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx)
+			_, _ = evaluator.EvaluateRequestBodyCondition(expr, reqCtx)
 		}
 	})
 
 	b.Run("ThreeConditionsAnd", func(b *testing.B) {
 		expr := `request.Method == "GET" && request.Scheme == "https" && request.Path.startsWith("/petstore")`
-		_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx) // warm cache
+		_, _ = evaluator.EvaluateRequestBodyCondition(expr, reqCtx) // warm cache
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx)
+			_, _ = evaluator.EvaluateRequestBodyCondition(expr, reqCtx)
 		}
 	})
 
 	b.Run("FiveConditionsOr", func(b *testing.B) {
 		expr := `request.Method == "GET" || request.Method == "POST" || request.Method == "PUT" || request.Method == "DELETE" || request.Method == "PATCH"`
-		_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx) // warm cache
+		_, _ = evaluator.EvaluateRequestBodyCondition(expr, reqCtx) // warm cache
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx)
+			_, _ = evaluator.EvaluateRequestBodyCondition(expr, reqCtx)
 		}
 	})
 
 	b.Run("NestedLogic", func(b *testing.B) {
 		expr := `(request.Method == "GET" || request.Method == "HEAD") && (request.Scheme == "https" || request.Scheme == "http") && request.Path.startsWith("/petstore")`
-		_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx) // warm cache
+		_, _ = evaluator.EvaluateRequestBodyCondition(expr, reqCtx) // warm cache
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx)
+			_, _ = evaluator.EvaluateRequestBodyCondition(expr, reqCtx)
 		}
 	})
 }
@@ -392,59 +392,59 @@ func BenchmarkCELRealWorldExpressions(b *testing.B) {
 
 	b.Run("AuthHeaderRequired", func(b *testing.B) {
 		expr := `"authorization" in request.Headers`
-		_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx) // warm cache
+		_, _ = evaluator.EvaluateRequestBodyCondition(expr, reqCtx) // warm cache
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx)
+			_, _ = evaluator.EvaluateRequestBodyCondition(expr, reqCtx)
 		}
 	})
 
 	b.Run("MethodAndPath", func(b *testing.B) {
 		expr := `request.Method == "POST" && request.Path.startsWith("/api/v1/")`
-		_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx) // warm cache
+		_, _ = evaluator.EvaluateRequestBodyCondition(expr, reqCtx) // warm cache
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateRequestCondition(expr, reqCtx)
+			_, _ = evaluator.EvaluateRequestBodyCondition(expr, reqCtx)
 		}
 	})
 
 	b.Run("ErrorResponseOnly", func(b *testing.B) {
 		expr := `response.ResponseStatus >= 400`
-		_, _ = evaluator.EvaluateResponseCondition(expr, respCtx) // warm cache
+		_, _ = evaluator.EvaluateResponseBodyCondition(expr, respCtx) // warm cache
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateResponseCondition(expr, respCtx)
+			_, _ = evaluator.EvaluateResponseBodyCondition(expr, respCtx)
 		}
 	})
 
 	b.Run("SuccessResponseOnly", func(b *testing.B) {
 		expr := `response.ResponseStatus >= 200 && response.ResponseStatus < 300`
-		_, _ = evaluator.EvaluateResponseCondition(expr, respCtx) // warm cache
+		_, _ = evaluator.EvaluateResponseBodyCondition(expr, respCtx) // warm cache
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, _ = evaluator.EvaluateResponseCondition(expr, respCtx)
+			_, _ = evaluator.EvaluateResponseBodyCondition(expr, respCtx)
 		}
 	})
 
 	b.Run("DualPhaseExpression", func(b *testing.B) {
 		// Expression that works in both phases using processing.phase
-		reqExpr := `processing.phase == "request" && request.Method == "GET"`
+		reqExpr := `processing.phase == "request_body" && request.Method == "GET"`
 		respExpr := `processing.phase == "response" && response.ResponseStatus == 200`
 
-		_, _ = evaluator.EvaluateRequestCondition(reqExpr, reqCtx)    // warm cache
-		_, _ = evaluator.EvaluateResponseCondition(respExpr, respCtx) // warm cache
+		_, _ = evaluator.EvaluateRequestBodyCondition(reqExpr, reqCtx)    // warm cache
+		_, _ = evaluator.EvaluateResponseBodyCondition(respExpr, respCtx) // warm cache
 
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			if i%2 == 0 {
-				_, _ = evaluator.EvaluateRequestCondition(reqExpr, reqCtx)
+				_, _ = evaluator.EvaluateRequestBodyCondition(reqExpr, reqCtx)
 			} else {
-				_, _ = evaluator.EvaluateResponseCondition(respExpr, respCtx)
+				_, _ = evaluator.EvaluateResponseBodyCondition(respExpr, respCtx)
 			}
 		}
 	})

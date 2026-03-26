@@ -31,7 +31,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
 // =============================================================================
@@ -383,9 +383,10 @@ func TestTranslateRequestActionsCore_EmptyResult(t *testing.T) {
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
-	execCtx.requestContext = &policy.RequestContext{
+	execCtx.sharedCtx = &policy.SharedContext{}
+	execCtx.requestBodyCtx = &policy.RequestContext{
 		Path:          "/api/test",
-		SharedContext: &policy.SharedContext{},
+		SharedContext: execCtx.sharedCtx,
 	}
 
 	result := &executor.RequestExecutionResult{
@@ -409,9 +410,10 @@ func TestTranslateRequestActionsCore_WithSetHeaders(t *testing.T) {
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
-	execCtx.requestContext = &policy.RequestContext{
+	execCtx.sharedCtx = &policy.SharedContext{}
+	execCtx.requestBodyCtx = &policy.RequestContext{
 		Path:          "/api/test",
-		SharedContext: &policy.SharedContext{},
+		SharedContext: execCtx.sharedCtx,
 	}
 
 	result := &executor.RequestExecutionResult{
@@ -419,8 +421,10 @@ func TestTranslateRequestActionsCore_WithSetHeaders(t *testing.T) {
 			{
 				Skipped: false,
 				Action: policy.UpstreamRequestModifications{
-					SetHeaders: map[string]string{
-						"x-custom": "value",
+					UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
+						HeadersToSet: map[string]string{
+							"x-custom": "value",
+						},
 					},
 				},
 			},
@@ -442,9 +446,10 @@ func TestTranslateRequestActionsCore_WithBodyModification(t *testing.T) {
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
-	execCtx.requestContext = &policy.RequestContext{
+	execCtx.sharedCtx = &policy.SharedContext{}
+	execCtx.requestBodyCtx = &policy.RequestContext{
 		Path:          "/api/test",
-		SharedContext: &policy.SharedContext{},
+		SharedContext: execCtx.sharedCtx,
 	}
 
 	result := &executor.RequestExecutionResult{
@@ -483,9 +488,10 @@ func TestTranslateRequestActionsCore_ShortCircuit(t *testing.T) {
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
-	execCtx.requestContext = &policy.RequestContext{
+	execCtx.sharedCtx = &policy.SharedContext{}
+	execCtx.requestBodyCtx = &policy.RequestContext{
 		Path:          "/api/test",
-		SharedContext: &policy.SharedContext{},
+		SharedContext: execCtx.sharedCtx,
 	}
 
 	result := &executor.RequestExecutionResult{
@@ -572,9 +578,10 @@ func TestTranslateRequestActionsCore_SkippedPolicy(t *testing.T) {
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
-	execCtx.requestContext = &policy.RequestContext{
+	execCtx.sharedCtx = &policy.SharedContext{}
+	execCtx.requestBodyCtx = &policy.RequestContext{
 		Path:          "/api/test",
-		SharedContext: &policy.SharedContext{},
+		SharedContext: execCtx.sharedCtx,
 	}
 
 	result := &executor.RequestExecutionResult{
@@ -582,8 +589,10 @@ func TestTranslateRequestActionsCore_SkippedPolicy(t *testing.T) {
 			{
 				Skipped: true, // This policy was skipped
 				Action: policy.UpstreamRequestModifications{
-					SetHeaders: map[string]string{
-						"should-not-appear": "value",
+					UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
+						HeadersToSet: map[string]string{
+							"should-not-appear": "value",
+						},
 					},
 				},
 			},
@@ -604,9 +613,10 @@ func TestTranslateRequestActionsCore_WithQueryParams(t *testing.T) {
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
-	execCtx.requestContext = &policy.RequestContext{
+	execCtx.sharedCtx = &policy.SharedContext{}
+	execCtx.requestBodyCtx = &policy.RequestContext{
 		Path:          "/api/test",
-		SharedContext: &policy.SharedContext{},
+		SharedContext: execCtx.sharedCtx,
 	}
 
 	result := &executor.RequestExecutionResult{
@@ -614,8 +624,10 @@ func TestTranslateRequestActionsCore_WithQueryParams(t *testing.T) {
 			{
 				Skipped: false,
 				Action: policy.UpstreamRequestModifications{
-					AddQueryParameters: map[string][]string{
-						"added": {"param"},
+					UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
+						QueryParametersToAdd: map[string][]string{
+							"added": {"param"},
+						},
 					},
 				},
 			},
@@ -636,9 +648,10 @@ func TestTranslateRequestActionsCore_WithPathOverride(t *testing.T) {
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
-	execCtx.requestContext = &policy.RequestContext{
+	execCtx.sharedCtx = &policy.SharedContext{}
+	execCtx.requestBodyCtx = &policy.RequestContext{
 		Path:          "/api/test",
-		SharedContext: &policy.SharedContext{},
+		SharedContext: execCtx.sharedCtx,
 	}
 
 	newPath := "/new/path"
@@ -647,7 +660,9 @@ func TestTranslateRequestActionsCore_WithPathOverride(t *testing.T) {
 			{
 				Skipped: false,
 				Action: policy.UpstreamRequestModifications{
-					Path: &newPath,
+					UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
+						Path: &newPath,
+					},
 				},
 			},
 		},
@@ -671,12 +686,13 @@ func TestTranslateResponseActionsCore_ShortCircuit(t *testing.T) {
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
-	execCtx.requestContext = &policy.RequestContext{
+	execCtx.sharedCtx = &policy.SharedContext{}
+	execCtx.requestBodyCtx = &policy.RequestContext{
 		Path:          "/api/test",
-		SharedContext: &policy.SharedContext{},
+		SharedContext: execCtx.sharedCtx,
 	}
-	execCtx.responseContext = &policy.ResponseContext{
-		SharedContext: &policy.SharedContext{},
+	execCtx.responseBodyCtx = &policy.ResponseContext{
+		SharedContext: execCtx.sharedCtx,
 		ResponseHeaders: policy.NewHeaders(map[string][]string{
 			"content-type": {"application/json"},
 		}),
@@ -710,12 +726,13 @@ func TestTranslateResponseActionsCore_NoShortCircuit(t *testing.T) {
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
-	execCtx.requestContext = &policy.RequestContext{
+	execCtx.sharedCtx = &policy.SharedContext{}
+	execCtx.requestBodyCtx = &policy.RequestContext{
 		Path:          "/api/test",
-		SharedContext: &policy.SharedContext{},
+		SharedContext: execCtx.sharedCtx,
 	}
-	execCtx.responseContext = &policy.ResponseContext{
-		SharedContext: &policy.SharedContext{},
+	execCtx.responseBodyCtx = &policy.ResponseContext{
+		SharedContext: execCtx.sharedCtx,
 		ResponseHeaders: policy.NewHeaders(map[string][]string{
 			"content-type": {"application/json"},
 		}),
@@ -726,8 +743,10 @@ func TestTranslateResponseActionsCore_NoShortCircuit(t *testing.T) {
 		Results: []executor.ResponsePolicyResult{
 			{
 				Skipped: false,
-				Action: policy.UpstreamResponseModifications{
-					SetHeaders: map[string]string{"x-response": "modified"},
+				Action: policy.DownstreamResponseModifications{
+					DownstreamResponseHeaderModifications: policy.DownstreamResponseHeaderModifications{
+						HeadersToSet: map[string]string{"x-response": "modified"},
+					},
 				},
 			},
 		},
