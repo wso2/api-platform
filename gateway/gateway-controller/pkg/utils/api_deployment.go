@@ -34,6 +34,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
@@ -78,6 +79,7 @@ type APIDeploymentService struct {
 	httpClient      *http.Client
 	eventHub        eventhub.EventHub
 	gatewayID       string
+	policyResolver  *resolver.PolicyResolver
 }
 
 // NewAPIDeploymentService creates a new API deployment service
@@ -87,6 +89,7 @@ func NewAPIDeploymentService(
 	snapshotManager *xds.SnapshotManager,
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
+	policyResolver *resolver.PolicyResolver,
 ) *APIDeploymentService {
 	return &APIDeploymentService{
 		store:           store,
@@ -96,6 +99,7 @@ func NewAPIDeploymentService(
 		validator:       validator,
 		httpClient:      &http.Client{Timeout: 10 * time.Second},
 		routerConfig:    routerConfig,
+		policyResolver:  policyResolver,
 	}
 }
 
@@ -148,6 +152,7 @@ func isReplicaSyncedKind(kind string) bool {
 }
 
 // DeployAPIConfiguration handles the complete API configuration deployment process
+// Important: The APIDeploymentResult contains resolved secrets. Do not expose them in responses.
 func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams) (*APIDeploymentResult, error) {
 	if !models.IsValidOrigin(params.Origin) {
 		return nil, fmt.Errorf("invalid or missing origin: %q", params.Origin)
@@ -372,6 +377,13 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 
 	// Try to save/update the configuration
 	var saveErr error
+
+	// Resolve policy configuration (handles secret resolution)
+	resolvedCfg, saveErr := s.resolvePolicyConfiguration(storedCfg)
+	if saveErr != nil {
+		return nil, saveErr
+	}
+
 	isUpdate, saveErr = s.saveOrUpdateConfig(storedCfg, params.Logger)
 	if saveErr != nil {
 		return nil, saveErr
@@ -415,9 +427,30 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	}
 
 	return &APIDeploymentResult{
-		StoredConfig: storedCfg,
+		StoredConfig: resolvedCfg,
 		IsUpdate:     isUpdate,
 	}, nil
+}
+
+// resolvePolicyConfiguration resolves policy templates and secret references in the configuration.
+// Returns the resolved configuration or an error if policy resolution fails.
+func (s *APIDeploymentService) resolvePolicyConfiguration(storedCfg *models.StoredConfig) (*models.StoredConfig, error) {
+	resolvedCfg, validationErrors := s.policyResolver.ResolvePolicies(storedCfg)
+	if len(validationErrors) > 0 {
+		errMsgs := make([]string, 0, len(validationErrors))
+		for _, ve := range validationErrors {
+			errMsgs = append(errMsgs, ve.Message)
+		}
+		errMsg := strings.Join(errMsgs, "; ")
+
+		slog.Error("Policy resolution failed",
+			slog.String("config_handle", storedCfg.Handle),
+			slog.String("errors", errMsg),
+		)
+
+		return nil, fmt.Errorf("policy resolution failed with %d errors: %s", len(validationErrors), errMsg)
+	}
+	return resolvedCfg, nil
 }
 
 func (s *APIDeploymentService) GetTopicsForUpdate(apiConfig models.StoredConfig) ([]string, []string) {

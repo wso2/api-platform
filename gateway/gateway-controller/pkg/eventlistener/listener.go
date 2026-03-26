@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
@@ -61,6 +62,7 @@ type EventListener struct {
 	logger              *slog.Logger
 	systemConfig        *config.Config
 	policyDefinitions   map[string]models.PolicyDefinition
+	policyResolver      *resolver.PolicyResolver
 
 	eventCh <-chan eventhub.Event
 	ctx     context.Context
@@ -81,6 +83,7 @@ func NewEventListener(
 	logger *slog.Logger,
 	systemConfig *config.Config,
 	policyDefinitions map[string]models.PolicyDefinition,
+	policyResolver *resolver.PolicyResolver,
 ) *EventListener {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &EventListener{
@@ -96,6 +99,7 @@ func NewEventListener(
 		logger:              logger,
 		systemConfig:        systemConfig,
 		policyDefinitions:   policyDefinitions,
+		policyResolver:      policyResolver,
 		ctx:                 ctx,
 		cancel:              cancel,
 	}

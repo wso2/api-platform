@@ -270,7 +270,26 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		DeployedAt:          params.DeployedAt,
 	}
 
+	// Get resolved stored config before persisting
+	resolvedCfg, validationErrors := s.deploymentService.policyResolver.ResolvePolicies(storedCfg)
+	if len(validationErrors) > 0 {
+		// Aggregate errors into a single error message
+		errMsgs := make([]string, 0, len(validationErrors))
+		for _, ve := range validationErrors {
+			errMsgs = append(errMsgs, ve.Message)
+		}
+		errMsg := strings.Join(errMsgs, "; ")
+
+		slog.Error("Policy resolution failed",
+			slog.String("config_handle", storedCfg.Handle),
+			slog.String("errors", errMsg),
+		)
+
+		return nil, fmt.Errorf("policy resolution failed with %d errors: %s", len(validationErrors), errMsg)
+	}
+
 	// Save or update
+	// Important: Do not persist the resolved configuration
 	isUpdate, err := s.deploymentService.saveOrUpdateConfig(storedCfg, params.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to save or update LLM provider configuration: %w", err)
@@ -330,7 +349,7 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		}()
 	}
 
-	return &APIDeploymentResult{StoredConfig: storedCfg, IsUpdate: isUpdate}, nil
+	return &APIDeploymentResult{StoredConfig: resolvedCfg, IsUpdate: isUpdate}, nil
 }
 
 // DeployLLMProxyConfiguration parses, validates, transforms and persists the provider, then triggers xDS
@@ -410,7 +429,26 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 		DeployedAt:          params.DeployedAt,
 	}
 
+	// Get resolved stored config before persisting
+	resolvedCfg, validationErrors := s.deploymentService.policyResolver.ResolvePolicies(storedCfg)
+	if len(validationErrors) > 0 {
+		// Aggregate errors into a single error message
+		errMsgs := make([]string, 0, len(validationErrors))
+		for _, ve := range validationErrors {
+			errMsgs = append(errMsgs, ve.Message)
+		}
+		errMsg := strings.Join(errMsgs, "; ")
+
+		slog.Error("Policy resolution failed",
+			slog.String("config_handle", storedCfg.Handle),
+			slog.String("errors", errMsg),
+		)
+
+		return nil, fmt.Errorf("policy resolution failed with %d errors: %s", len(validationErrors), errMsg)
+	}
+
 	// Save or update
+	// Important: Do not persist the resolved configuration
 	isUpdate, err := s.deploymentService.saveOrUpdateConfig(storedCfg, params.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to save or update LLM proxy configuration: %w", err)
@@ -452,7 +490,7 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 		}()
 	}
 
-	return &APIDeploymentResult{StoredConfig: storedCfg, IsUpdate: isUpdate}, nil
+	return &APIDeploymentResult{StoredConfig: resolvedCfg, IsUpdate: isUpdate}, nil
 }
 
 // LLMTemplateParams Template params for CRUD

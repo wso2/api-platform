@@ -1,113 +1,113 @@
 version: v1
 policies:
     - name: token-based-ratelimit
-      version: v0.8.3
+      version: v0.9.2
       gomodule: github.com/wso2/gateway-controllers/policies/token-based-ratelimit@v0
     - name: advanced-ratelimit
-      version: v0.3.2
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/advanced-ratelimit@v0
     - name: analytics-header-filter
-      version: v0.2.1
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/analytics-header-filter@v0
     - name: api-key-auth
-      version: v0.8.1
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/api-key-auth@v0
     - name: aws-bedrock-guardrail
-      version: v0.2.1
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/aws-bedrock-guardrail@v0
     - name: azure-content-safety-content-moderation
-      version: v0.8.1
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/azure-content-safety-content-moderation@v0
     - name: basic-auth
-      version: v0.8.1
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/basic-auth@v0
     - name: basic-ratelimit
-      version: v0.8.3
+      version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/basic-ratelimit@v0
     - name: content-length-guardrail
-      version: v0.2.1
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/content-length-guardrail@v0
     - name: cors
-      version: v0.8.0
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/cors@v0
     - name: dynamic-endpoint
-      version: v0.2.0
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/dynamic-endpoint@v0
     - name: json-schema-guardrail
-      version: v0.2.1
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/json-schema-guardrail@v0
     - name: jwt-auth
-      version: v0.8.2
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v0
     - name: log-message
-      version: v0.2.1
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/log-message@v0
     - name: mcp-acl-list
-      version: v0.2.2
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-acl-list@v0
     - name: mcp-auth
-      version: v0.2.3
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-auth@v0
     - name: mcp-authz
-      version: v0.2.3
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-authz@v0
     - name: mcp-rewrite
-      version: v0.2.1
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-rewrite@v0
     - name: model-round-robin
-      version: v0.8.1
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/model-round-robin@v0
     - name: model-weighted-round-robin
-      version: v0.2.2
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/model-weighted-round-robin@v0
     - name: pii-masking-regex
-      version: v0.8.2
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/pii-masking-regex@v0
     - name: prompt-decorator
-      version: v0.8.1
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/prompt-decorator@v0
     - name: prompt-template
-      version: v0.8.1
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/prompt-template@v0
     - name: regex-guardrail
-      version: v0.2.1
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/regex-guardrail@v0
     - name: remove-headers
-      version: v0.8.0
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/remove-headers@v0
     - name: request-rewrite
-      version: v0.2.3
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/request-rewrite@v0
     - name: respond
-      version: v0.2.1
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/respond@v0
     - name: semantic-cache
-      version: v0.8.1
+      version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/semantic-cache@v0
     - name: semantic-prompt-guard
-      version: v0.8.1
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/semantic-prompt-guard@v0
     - name: sentence-count-guardrail
-      version: v0.2.3
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/sentence-count-guardrail@v0
     - name: set-headers
-      version: v0.8.0
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/set-headers@v0
     - name: url-guardrail
-      version: v0.2.1
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/url-guardrail@v0
     - name: word-count-guardrail
-      version: v0.2.3
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/word-count-guardrail@v0
     - name: json-xml-mediator
-      version: v0.8.0
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/json-xml-mediator@v0
     - name: subscription-validation
-      version: v0.3.0
+      version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/subscription-validation@v0
     - name: llm-cost
-      version: v0.1.1
+      version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/llm-cost@v0
     - name: llm-cost-based-ratelimit
-      version: v0.1.0
+      version: v0.9.2
       gomodule: github.com/wso2/gateway-controllers/policies/llm-cost-based-ratelimit@v0

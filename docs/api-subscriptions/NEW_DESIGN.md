@@ -199,7 +199,7 @@ policies: [Gold, Silver]
               - name: subscription-validation
                 version: v0
                 params:
-                  enabled: true
+                  subscriptionKeyHeader: Subscription-Key
 ```                   
 
 
@@ -224,38 +224,49 @@ API developers need to manually attach the subscription validation policy to the
 
 - This option is only available for Self Hosted GW APIs.
 - Subscription Token will be generated(Opaque String) and will be visible in the API Overview UI.
-- Implement UI/REST CRUD/DB for Subscription Token in Platform-API+Choreo APIM(Here, we can’t reuse existing choreo-apim /subscriptions POST as it is since applicationId is a required value).
-   Remove applicationId required field. Only apiId will be required.
-   If the subscription is for a Self Hosted GW API, /subscription POST response will have a subscriptionToken otherwise for a normal API existing behaviour is preserved.
-- Subscription Token will be preserved in the platform-api DB and will be propagated to gateway and will be stored in gateway DB as well.
+- Implement UI/REST CRUD/DB for Subscription Token in Platform-API+Choreo APIM (existing Choreo `/subscriptions` flows that require `applicationId` do not match this contract; here **`applicationId` is optional**).
+- **Create subscription (Platform-API JSON):** **`apiId`** and **`subscriberId`** are **required**. **`subscriptionPlanId`**, **`applicationId`**, and **`status`** are **optional**. The server generates **`subscriptionToken`** (opaque); clients do **not** send it on `POST`.
+- Subscription token is stored in the platform-api DB (encrypted at rest), propagated to the gateway, and stored in the gateway DB for validation.
 
-	Following REST APIs will be created in Both Platform-API and Gateway Controller to persist subscriptions.
+Following REST APIs persist subscriptions (Platform-API uses **camelCase** in JSON; the database uses **snake_case** columns below).
 
 ```
-POST /api/v1/subscriptions with apiId,subscriptionToken,subscription-plan and applicationId(optional) in the body
-GET /api/v1/subscriptions?apiId={apiId}
-GET /api/v1/subscriptions?applicationId={appId}
-GET/PUT/DELETE /api/v1/subscriptions/{subscriptionId}
+POST   /api/v1/subscriptions
+         Body (required):  apiId, subscriberId
+         Body (optional): subscriptionPlanId, applicationId, status
+         Response: includes subscriptionToken (generated), subscriptionPlanId (if set), subscriberId, apiId, etc.
+
+GET    /api/v1/subscriptions?apiId={apiId}&subscriberId={subscriberId}&applicationId={applicationId}&status={status}&limit={n}&offset={n}
+         Query parameters are all optional filters; apiId may be API UUID or handle. subscriberId must be non-empty when provided (min length 1).
+
+GET    /api/v1/subscriptions/{subscriptionId}?subscriberId={subscriberId}   (required; must match subscription)
+PUT    /api/v1/subscriptions/{subscriptionId}?subscriberId={subscriberId}     e.g. update status
+DELETE /api/v1/subscriptions/{subscriptionId}?subscriberId={subscriberId}
 ```
 
-DB changes
+DB changes (column names match `schema.postgres.sql` / `schema.sqlite.sql`; JSON field `subscriberId` maps to **`subscriber_id`**, `subscriptionPlanId` to **`subscription_plan_uuid`**, etc.)
+
 ```
 CREATE TABLE IF NOT EXISTS subscriptions (
    uuid VARCHAR(40) PRIMARY KEY,
    api_uuid VARCHAR(40) NOT NULL,
+   subscriber_id VARCHAR(255) NOT NULL,
    application_id VARCHAR(255),
-   subscriptionToken VARCHAR(255),
-   subscription_plan_uuid VARCHAR(255),
+   subscription_token VARCHAR(512) NOT NULL,
+   subscription_token_hash VARCHAR(64) NOT NULL,
+   subscription_plan_uuid VARCHAR(40),
    organization_uuid VARCHAR(40) NOT NULL,
    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
    FOREIGN KEY (api_uuid) REFERENCES rest_apis(uuid) ON DELETE CASCADE,
    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-  FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE,
+   FOREIGN KEY (subscription_plan_uuid, organization_uuid)
+     REFERENCES subscription_plans(uuid, organization_uuid) ON DELETE RESTRICT,
    FOREIGN KEY (api_uuid, organization_uuid)
      REFERENCES artifacts(uuid, organization_uuid) ON DELETE CASCADE,
-   UNIQUE(api_uuid, subscriptionToken),
+   UNIQUE(api_uuid, subscription_token_hash),
+   UNIQUE(api_uuid, subscriber_id, organization_uuid),
    CHECK (status IN ('ACTIVE', 'INACTIVE', 'REVOKED'))
 );
 ```
@@ -268,16 +279,16 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 
 - During the API request flow,
 
-#### If the API has subscription validation enabled.**
+#### If the API has subscription validation enabled
 
 - If the request has a subscription-key request header (or token in the configured cookie), use it to check SubscriptionDataStore and validate the subscription for that particular API.
-- If the request doesn’t have a subscription-key request header, fallback to validate against applicationId which was set to request context by the OAuth2/JWT/API-Key token validation. (This is to cater old way of subscription validation for old APIs)
+- If the request doesn’t have a subscription-key request header, fall back to validating against **`applicationId`** carried in request metadata (e.g. `x-wso2-application-id` from OAuth2/JWT/API-Key policy claim mappings). This is legacy behaviour for older APIs; it is separate from the optional **`applicationId`** field on the subscription record.
 - If this Subscription has a usage limit, rate limit based on the counts.
 - Implement subscription-rate-limit keys in SubscriptionDataStore
 
 Ratelimit Key : Subscription Token
 Ratelimit Count: Available Count
 
-#### If the API subscription validation disabled.
+#### If the API subscription validation is disabled
 
 - No subscription validation happens.

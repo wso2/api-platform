@@ -938,6 +938,9 @@ type CreateSubscriptionRequest struct {
 	// Status Subscription status (default ACTIVE)
 	Status *CreateSubscriptionRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
 
+	// SubscriberId Unique subscriber identifier for the subscription (required)
+	SubscriberId string `binding:"required" json:"subscriberId" yaml:"subscriberId"`
+
 	// SubscriptionPlanId Subscription plan UUID. Links the subscription to rate limit and billing configuration.
 	SubscriptionPlanId *string `json:"subscriptionPlanId,omitempty" yaml:"subscriptionPlanId,omitempty"`
 }
@@ -2576,6 +2579,9 @@ type Subscription struct {
 	OrganizationId *openapi_types.UUID `json:"organizationId,omitempty" yaml:"organizationId,omitempty"`
 	Status         *SubscriptionStatus `json:"status,omitempty" yaml:"status,omitempty"`
 
+	// SubscriberId Unique subscriber identifier for this API (required)
+	SubscriberId *string `json:"subscriberId,omitempty" yaml:"subscriberId,omitempty"`
+
 	// SubscriptionPlanId Subscription plan UUID
 	SubscriptionPlanId *string `json:"subscriptionPlanId,omitempty" yaml:"subscriptionPlanId,omitempty"`
 
@@ -3282,6 +3288,9 @@ type ListSubscriptionsParams struct {
 	// ApiId Filter by API ID (UUID or handle)
 	ApiId *string `form:"apiId,omitempty" json:"apiId,omitempty" yaml:"apiId,omitempty"`
 
+	// SubscriberId Filter by subscriber ID
+	SubscriberId *string `form:"subscriberId,omitempty" json:"subscriberId,omitempty" yaml:"subscriberId,omitempty"`
+
 	// ApplicationId Filter by application ID
 	ApplicationId *string `form:"applicationId,omitempty" json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
 
@@ -3297,6 +3306,24 @@ type ListSubscriptionsParams struct {
 
 // ListSubscriptionsParamsStatus defines parameters for ListSubscriptions.
 type ListSubscriptionsParamsStatus string
+
+// DeleteSubscriptionParams defines parameters for DeleteSubscription.
+type DeleteSubscriptionParams struct {
+	// SubscriberId Subscriber ID; must match the subscription's subscriberId.
+	SubscriberId string `form:"subscriberId" json:"subscriberId" yaml:"subscriberId"`
+}
+
+// GetSubscriptionParams defines parameters for GetSubscription.
+type GetSubscriptionParams struct {
+	// SubscriberId Subscriber ID; must match the subscription's subscriberId.
+	SubscriberId string `form:"subscriberId" json:"subscriberId" yaml:"subscriberId"`
+}
+
+// UpdateSubscriptionParams defines parameters for UpdateSubscription.
+type UpdateSubscriptionParams struct {
+	// SubscriberId Subscriber ID; must match the subscription's subscriberId.
+	SubscriberId string `form:"subscriberId" json:"subscriberId" yaml:"subscriberId"`
+}
 
 // CreateApplicationJSONRequestBody defines body for CreateApplication for application/json ContentType.
 type CreateApplicationJSONRequestBody = CreateApplicationRequest

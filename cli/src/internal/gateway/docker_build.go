@@ -19,6 +19,7 @@
 package gateway
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -69,6 +70,10 @@ func BuildGatewayImages(config DockerBuildConfig) error {
 		}
 	}
 
+	if err := ensureBuildLockInControllerContext(config.TempDir); err != nil {
+		return err
+	}
+
 	fmt.Println("  ✓ Gateway-builder completed")
 
 	// Step 2: Build the two images
@@ -91,6 +96,26 @@ func BuildGatewayImages(config DockerBuildConfig) error {
 				return err
 			}
 		}
+	}
+
+	return nil
+}
+
+func ensureBuildLockInControllerContext(tempDir string) error {
+	buildLockSrc := filepath.Join(tempDir, "build-lock.yaml")
+	if _, err := os.Stat(buildLockSrc); err != nil {
+		return fmt.Errorf("build-lock.yaml not found in gateway-builder output: %w", err)
+	}
+
+	buildLockDst := filepath.Join(tempDir, "output", "gateway-controller", "build-lock.yaml")
+	if _, err := os.Stat(buildLockDst); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("failed to access gateway-controller build-lock.yaml: %w", err)
+	}
+
+	if err := utils.CopyFile(buildLockSrc, buildLockDst); err != nil {
+		return fmt.Errorf("failed to copy build-lock.yaml into gateway-controller build context: %w", err)
 	}
 
 	return nil

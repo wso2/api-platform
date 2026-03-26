@@ -123,7 +123,7 @@ func createIntegrationTestClientWithConfig(t *testing.T, cfg config.ControlPlane
 		APIKey: *apiKeyConfig,
 	}
 
-	client := NewClient(cfg, logger, store, db, nil, nil, routerConfig, nil, nil, apiKeyConfig, nil, systemConfig, nil, nil, nil, nil, mockHub)
+	client := NewClient(cfg, logger, store, db, nil, nil, routerConfig, nil, nil, apiKeyConfig, nil, systemConfig, nil, nil, nil, nil, mockHub, nil)
 	require.NotNil(t, client.eventHub)
 	require.Equal(t, "test-gateway", client.gatewayID)
 	return client

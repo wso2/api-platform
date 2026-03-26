@@ -190,12 +190,12 @@ type SubscriptionRepository interface {
 	GetByID(subscriptionID, orgUUID string) (*model.Subscription, error)
 	// ListByFilters returns subscriptions filtered by API and/or application for an organization.
 	// If apiUUID is nil, all APIs are considered. If applicationID is nil, all applications are considered.
-	ListByFilters(orgUUID string, apiUUID *string, applicationID *string, status *string, limit, offset int) ([]*model.Subscription, error)
+	ListByFilters(orgUUID string, apiUUID *string, subscriberID *string, applicationID *string, status *string, limit, offset int) ([]*model.Subscription, error)
 	// CountByFilters returns the total count of subscriptions matching the same filters as ListByFilters.
-	CountByFilters(orgUUID string, apiUUID *string, applicationID *string, status *string) (int, error)
+	CountByFilters(orgUUID string, apiUUID *string, subscriberID *string, applicationID *string, status *string) (int, error)
 	Update(sub *model.Subscription) error
 	Delete(subscriptionID, orgUUID string) error
-	ExistsByAPIAndApplication(apiUUID, applicationID, orgUUID string) (bool, error)
+	ExistsByAPIAndSubscriber(apiUUID, subscriberID, orgUUID string) (bool, error)
 }
 
 // APIPublicationRepository interface defines operations for API publication tracking
