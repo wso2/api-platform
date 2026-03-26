@@ -106,6 +106,8 @@ func (l *EventListener) handleMCPProxyDelete(event eventhub.Event) {
 		slog.String("proxy_id", entityID),
 		slog.String("event_id", event.EventID))
 
+	existingConfig, _ := l.store.Get(entityID)
+
 	if err := l.store.Delete(entityID); err != nil && !storage.IsNotFoundError(err) {
 		l.logger.Error("Failed to delete MCP proxy from memory store",
 			slog.String("proxy_id", entityID),
@@ -115,9 +117,8 @@ func (l *EventListener) handleMCPProxyDelete(event eventhub.Event) {
 
 	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after MCP proxy deletion")
 
-	if l.policyManager != nil {
-		policyID := entityID + "-policies"
-		if err := l.policyManager.RemovePolicy(policyID); err != nil && !storage.IsPolicyNotFoundError(err) {
+	if l.policyManager != nil && existingConfig != nil {
+		if err := l.policyManager.DeleteAPIConfig(existingConfig.Kind, existingConfig.Handle); err != nil {
 			l.logger.Warn("Failed to remove policy after MCP proxy deletion",
 				slog.String("proxy_id", entityID),
 				slog.Any("error", err))

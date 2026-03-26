@@ -34,7 +34,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
-	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -161,8 +160,10 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 			go s.waitForDeploymentAndPush(result.StoredConfig.UUID, params.CorrelationID, log)
 		}
 
-		// Build and add policy config derived from API configuration
-		s.updatePolicyForConfig(result.StoredConfig, result.IsUpdate, log)
+	// Build and add policy config derived from API configuration.
+	// In event-driven mode the EventListener handles this after replaying the event.
+	if s.eventHub == nil {
+		s.updatePolicyForConfig(result.StoredConfig, log)
 	}
 
 	return &CreateResult{
@@ -342,48 +343,14 @@ func (s *RestAPIService) Delete(params DeleteParams) (*DeleteResult, error) {
 	return &DeleteResult{Handle: params.Handle}, nil
 }
 
-// updatePolicyForConfig builds and adds/removes policy config derived from an API configuration.
-func (s *RestAPIService) updatePolicyForConfig(cfg *models.StoredConfig, isUpdate bool, log *slog.Logger) {
+// updatePolicyForConfig upserts the runtime config for an API into the policy engine.
+func (s *RestAPIService) updatePolicyForConfig(cfg *models.StoredConfig, log *slog.Logger) {
 	if s.policyManager == nil {
 		return
 	}
-
-	storedPolicy := s.buildStoredPolicyFromAPI(cfg)
-	if storedPolicy != nil {
-		if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-			log.Error("Failed to add derived policy configuration", slog.Any("error", err))
-		} else {
-			log.Info("Derived policy configuration added",
-				slog.String("policy_id", storedPolicy.ID),
-				slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-		}
-	} else if isUpdate {
-		policyID := cfg.UUID + "-policies"
-		if err := s.policyManager.RemovePolicy(policyID); err != nil {
-			if storage.IsPolicyNotFoundError(err) {
-				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
-			} else {
-				log.Error("Failed to remove policy configuration",
-					slog.Any("error", err),
-					slog.String("policy_id", policyID))
-			}
-		} else {
-			log.Info("Derived policy configuration removed (API no longer has policies)",
-				slog.String("policy_id", policyID))
-		}
+	if err := s.policyManager.UpsertAPIConfig(cfg); err != nil {
+		log.Error("Failed to upsert runtime config", slog.Any("error", err))
 	}
-}
-
-// buildStoredPolicyFromAPI constructs a StoredPolicyConfig from an API config.
-func (s *RestAPIService) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.StoredPolicyConfig {
-	s.policyDefMu.RLock()
-	defsCopy := make(map[string]models.PolicyDefinition, len(s.policyDefinitions))
-	for k, v := range s.policyDefinitions {
-		defsCopy[k] = v
-	}
-	s.policyDefMu.RUnlock()
-
-	return policybuilder.DerivePolicyFromAPIConfig(cfg, s.routerConfig, s.systemConfig, defsCopy)
 }
 
 // waitForDeploymentAndPush waits for API deployment to complete and pushes it to the control plane.

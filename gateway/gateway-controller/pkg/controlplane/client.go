@@ -42,7 +42,6 @@ import (
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
@@ -664,6 +663,15 @@ func (c *Client) refreshSubscriptionSnapshot() {
 // and persists them locally. This must run before subscription sync since
 // subscriptions reference plans via foreign key.
 func (c *Client) syncSubscriptionPlans(gatewayID string) {
+
+	// Skip for on-prem control planes
+	if c.isOnPrem() {
+		c.logger.Debug("Skipping subscription plan bulk sync: on-prem control plane detected",
+			slog.String("gateway_id", gatewayID),
+		)
+		return
+	}
+
 	if c.apiUtilsService == nil || c.db == nil {
 		return
 	}
@@ -732,6 +740,15 @@ func (c *Client) syncSubscriptionPlans(gatewayID string) {
 // time the sync was scheduled, ensuring we don't cross-contaminate state across
 // reconnects.
 func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
+
+	// Skip for on-prem control planes
+	if c.isOnPrem() {
+		c.logger.Debug("Skipping subscription bulk sync: on-prem control plane detected",
+			slog.String("gateway_id", gatewayID),
+		)
+		return
+	}
+
 	if c.apiUtilsService == nil || c.db == nil || c.store == nil {
 		return
 	}
@@ -1164,14 +1181,6 @@ func (c *Client) updatePolicyForDeployment(apiID, correlationID string, result *
 		return nil
 	}
 
-	// Guard against nil systemConfig before deriving policies
-	if c.systemConfig == nil {
-		c.logger.Warn("Cannot derive policies: systemConfig is nil",
-			slog.String("api_id", apiID),
-			slog.String("correlation_id", correlationID))
-		return nil
-	}
-
 	// Resolve secrets
 	resolvedCfg, validationErrors := c.policyResolver.ResolvePolicies(result.StoredConfig)
 	if len(validationErrors) > 0 {
@@ -1189,47 +1198,16 @@ func (c *Client) updatePolicyForDeployment(apiID, correlationID string, result *
 		return fmt.Errorf("policy resolution failed with %d errors: %s", len(validationErrors), errMsg)
 	}
 
-	storedPolicy := policy.DerivePolicyFromAPIConfig(resolvedCfg, c.routerConfig, c.systemConfig, c.policyDefinitions)
-
-	if storedPolicy != nil {
-		// Add or update policy
-		if err := c.policyManager.AddPolicy(storedPolicy); err != nil {
-			c.logger.Error("Failed to update policy engine snapshot",
-				slog.Any("error", err),
-				slog.String("api_id", apiID),
-				slog.String("correlation_id", correlationID))
-			return fmt.Errorf("failed to add policy: %w", err)
-		}
-		c.logger.Info("Successfully updated policy engine snapshot",
+	if err := c.policyManager.UpsertAPIConfig(resolvedCfg); err != nil {
+		c.logger.Error("Failed to upsert runtime config for deployment",
+			slog.Any("error", err),
 			slog.String("api_id", apiID),
-			slog.String("policy_id", storedPolicy.ID),
 			slog.String("correlation_id", correlationID))
-	} else if result.IsUpdate {
-		// No policies but this is an update, so remove any existing policies
-		policyID := result.StoredConfig.UUID + "-policies"
-		if err := c.policyManager.RemovePolicy(policyID); err != nil {
-			// Only treat "policy not found" as non-error (API may never have had policies)
-			// Other errors (storage failures, snapshot update failures) should be logged as errors
-			if storage.IsPolicyNotFoundError(err) {
-				c.logger.Debug("No policy configuration to remove",
-					slog.String("api_id", apiID),
-					slog.String("policy_id", policyID),
-					slog.String("correlation_id", correlationID))
-			} else {
-				c.logger.Error("Failed to remove policy configuration",
-					slog.Any("error", err),
-					slog.String("api_id", apiID),
-					slog.String("policy_id", policyID),
-					slog.String("correlation_id", correlationID))
-				return fmt.Errorf("failed to remove policy: %w", err)
-			}
-		} else {
-			c.logger.Info("Derived policy configuration removed (API no longer has policies)",
-				slog.String("api_id", apiID),
-				slog.String("policy_id", policyID),
-				slog.String("correlation_id", correlationID))
-		}
+		return fmt.Errorf("failed to upsert runtime config: %w", err)
 	}
+	c.logger.Info("Successfully updated policy engine snapshot",
+		slog.String("api_id", apiID),
+		slog.String("correlation_id", correlationID))
 
 	return nil
 }
@@ -1492,45 +1470,30 @@ func (c *Client) findAPIConfig(apiID string) (*models.StoredConfig, error) {
 	return nil, fmt.Errorf("memory store error while fetching config: %w", err)
 }
 
-// removePolicyConfiguration removes policy configuration with proper error handling
-// Returns true if resources were actually removed (not just "not found")
-func (c *Client) removePolicyConfiguration(apiID, correlationID string, isOrphaned bool) {
-	if c.policyManager == nil {
+// removePolicyConfiguration removes runtime config from the policy engine.
+// cfg must be non-nil; if it is nil (e.g. orphaned resource), the call is a no-op.
+func (c *Client) removePolicyConfiguration(cfg *models.StoredConfig, correlationID string, isOrphaned bool) {
+	if c.policyManager == nil || cfg == nil {
 		return
 	}
 
-	policyID := apiID + "-policies"
-	if err := c.policyManager.RemovePolicy(policyID); err != nil {
-		// Only treat "policy not found" as non-error (API may never have had policies)
-		// Other errors (storage failures, snapshot update failures) should be logged as warnings
-		if storage.IsPolicyNotFoundError(err) {
-			c.logger.Debug("No derived policy configuration to remove (API had no policies)",
-				slog.String("api_id", apiID),
-				slog.String("policy_id", policyID),
-				slog.String("correlation_id", correlationID),
-			)
-			return
-		}
-		c.logger.Warn("Failed to remove derived policy configuration",
+	if err := c.policyManager.DeleteAPIConfig(cfg.Kind, cfg.Handle); err != nil {
+		c.logger.Warn("Failed to remove runtime policy configuration",
 			slog.Any("error", err),
-			slog.String("api_id", apiID),
-			slog.String("policy_id", policyID),
+			slog.String("api_id", cfg.UUID),
 			slog.String("correlation_id", correlationID),
 		)
 		return
 	}
 
-	// Successfully removed
 	if isOrphaned {
 		c.logger.Debug("Checked and cleaned up orphaned policy configuration",
-			slog.String("policy_id", policyID),
-			slog.String("api_id", apiID),
+			slog.String("api_id", cfg.UUID),
 			slog.String("correlation_id", correlationID),
 		)
 	} else {
-		c.logger.Info("Successfully removed derived policy configuration",
-			slog.String("api_id", apiID),
-			slog.String("policy_id", policyID),
+		c.logger.Info("Successfully removed runtime policy configuration",
+			slog.String("api_id", cfg.UUID),
 			slog.String("correlation_id", correlationID),
 		)
 	}
@@ -1629,8 +1592,8 @@ func (c *Client) cleanupOrphanedResources(apiID, correlationID string) {
 			slog.String("api_id", apiID),
 		)
 
-		// Check and clean up stale policy configuration
-		c.removePolicyConfiguration(apiID, correlationID, true)
+		// Check and clean up stale policy configuration (cfg is nil for orphaned resources)
+		c.removePolicyConfiguration(nil, correlationID, true)
 
 		// Update xDS snapshot to remove any stale routes
 		c.updateXDSSnapshotAsync(apiID, correlationID, true, false)
@@ -1738,7 +1701,7 @@ func (c *Client) performFullAPIDeletion(apiID string, apiConfig *models.StoredCo
 		c.updateXDSSnapshotAsync(apiID, correlationID, false, false)
 
 		// 7. Remove derived policy configuration (after all other operations)
-		c.removePolicyConfiguration(apiID, correlationID, false)
+		c.removePolicyConfiguration(apiConfig, correlationID, false)
 	}
 
 	c.logger.Info("Successfully processed API deletion event",
