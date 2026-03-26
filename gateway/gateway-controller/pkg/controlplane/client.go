@@ -855,6 +855,14 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 // is established. Upserts fetched keys into the DB, reconciles deletions per artifact,
 // then reloads the in-memory store and refreshes the xDS snapshot once.
 func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
+	// Skip for on-prem control planes
+	if c.isOnPrem() {
+		c.logger.Debug("Skipping API Key bulk sync: on-prem control plane detected",
+			slog.String("gateway_id", gatewayID),
+		)
+		return
+	}
+
 	if c.apiUtilsService == nil || c.db == nil || c.store == nil || c.apiKeyStore == nil {
 		return
 	}
