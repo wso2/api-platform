@@ -296,6 +296,7 @@ func TestStart_SubscribesWithTrimmedGatewayID(t *testing.T) {
 			},
 		},
 		nil,
+		nil,
 	)
 
 	require.NoError(t, listener.Start())

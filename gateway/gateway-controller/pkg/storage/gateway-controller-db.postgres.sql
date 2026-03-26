@@ -207,3 +207,18 @@ CREATE TABLE IF NOT EXISTS application_api_keys (
 
 CREATE INDEX IF NOT EXISTS idx_app_api_keys_application_uuid ON application_api_keys(application_uuid, gateway_id);
 CREATE INDEX IF NOT EXISTS idx_app_api_keys_apikey ON application_api_keys(api_key_id, gateway_id);
+
+-- Table for encrypted secrets (gateway_id + handle form the composite PK)
+-- provider and key_version are self-describing inside the ciphertext envelope
+CREATE TABLE IF NOT EXISTS secrets (
+    gateway_id TEXT NOT NULL,
+    handle TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    description TEXT,
+    ciphertext BYTEA NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (gateway_id, handle)
+);
+
+CREATE INDEX IF NOT EXISTS idx_secrets_updated_at ON secrets(updated_at);

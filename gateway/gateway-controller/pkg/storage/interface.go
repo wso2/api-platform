@@ -279,6 +279,39 @@ type Storage interface {
 	// Returns an error if the certificate does not exist.
 	DeleteCertificate(id string) error
 
+	// SaveSecret persists a new encrypted secret.
+	//
+	// Returns an error if a secret with the same handle already exists.
+	// Implementations should ensure this operation is atomic.
+	SaveSecret(secret *models.Secret) error
+
+	// GetSecrets retrieves metadata for all secrets.
+	//
+	// Returns non-sensitive metadata (handle, display_name, timestamps) without
+	// ciphertext or values. Returns an empty slice if no secrets exist.
+	GetSecrets() ([]models.SecretMeta, error)
+
+	// GetSecret retrieves a secret by handle.
+	//
+	// Returns error if the secret does not exist.
+	GetSecret(handle string) (*models.Secret, error)
+
+	// UpdateSecret updates an existing secret.
+	//
+	// Returns the updated secret (including database-assigned timestamps) or error
+	// if the secret does not exist. Implementations should ensure this operation is atomic.
+	UpdateSecret(secret *models.Secret) (*models.Secret, error)
+
+	// DeleteSecret permanently removes a secret.
+	//
+	// Returns error if the secret does not exist.
+	DeleteSecret(handle string) error
+
+	// SecretExists checks if a secret with the given handle exists.
+	//
+	// Returns true if the secret exists, false otherwise.
+	SecretExists(handle string) (bool, error)
+
 	// GetDB returns the underlying *sql.DB for direct access.
 	// Used by EventHub for event synchronization.
 	// Returns nil for non-SQL backends.
