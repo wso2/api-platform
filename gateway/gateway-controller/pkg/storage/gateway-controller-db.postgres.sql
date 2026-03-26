@@ -20,11 +20,6 @@ CREATE TABLE IF NOT EXISTS artifacts (
     UNIQUE(gateway_id, kind, handle)
 );
 
-CREATE INDEX IF NOT EXISTS idx_artifacts_desired_state ON artifacts(desired_state);
-CREATE INDEX IF NOT EXISTS idx_artifacts_deployment_id ON artifacts(deployment_id);
-CREATE INDEX IF NOT EXISTS idx_artifacts_kind ON artifacts(kind);
-CREATE INDEX IF NOT EXISTS idx_artifacts_gateway_id ON artifacts(gateway_id);
-
 -- Per-resource-type tables
 
 CREATE TABLE IF NOT EXISTS rest_apis (
@@ -86,10 +81,6 @@ CREATE TABLE IF NOT EXISTS certificates (
     UNIQUE(gateway_id, name)
 );
 
-CREATE INDEX IF NOT EXISTS idx_cert_name ON certificates(name);
-CREATE INDEX IF NOT EXISTS idx_cert_expiry ON certificates(not_after);
-CREATE INDEX IF NOT EXISTS idx_certificates_gateway_id ON certificates(gateway_id);
-
 -- LLM Provider Templates table
 CREATE TABLE IF NOT EXISTS llm_provider_templates (
     uuid TEXT NOT NULL,
@@ -101,9 +92,6 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     PRIMARY KEY (gateway_id, uuid),
     UNIQUE(gateway_id, handle)
 );
-
-CREATE INDEX IF NOT EXISTS idx_template_handle ON llm_provider_templates(handle);
-CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_gateway_id ON llm_provider_templates(gateway_id);
 
 -- Table for API keys
 CREATE TABLE IF NOT EXISTS api_keys (
@@ -126,14 +114,8 @@ CREATE TABLE IF NOT EXISTS api_keys (
     PRIMARY KEY (gateway_id, api_key)
 );
 
-CREATE INDEX IF NOT EXISTS idx_api_key ON api_keys(api_key);
-CREATE INDEX IF NOT EXISTS idx_api_key_api ON api_keys(artifact_uuid);
 CREATE INDEX IF NOT EXISTS idx_api_key_status ON api_keys(status);
-CREATE INDEX IF NOT EXISTS idx_api_key_expiry ON api_keys(expires_at);
 CREATE INDEX IF NOT EXISTS idx_created_by ON api_keys(created_by);
-CREATE INDEX IF NOT EXISTS idx_api_key_source ON api_keys(source);
-CREATE INDEX IF NOT EXISTS idx_api_key_external_ref ON api_keys(external_ref_id);
-CREATE INDEX IF NOT EXISTS idx_api_keys_gateway_id ON api_keys(gateway_id);
 
 -- Subscription plans table (organization-scoped rate/billing plans)
 CREATE TABLE IF NOT EXISTS subscription_plans (
@@ -168,10 +150,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     FOREIGN KEY (gateway_id, subscription_plan_id) REFERENCES subscription_plans(gateway_id, uuid),
     UNIQUE(gateway_id, api_id, subscription_token_hash)
 );
-CREATE INDEX IF NOT EXISTS idx_subscriptions_api_id ON subscriptions(api_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_application_id ON subscriptions(application_id);
-CREATE INDEX IF NOT EXISTS idx_subscriptions_gateway_id ON subscriptions(gateway_id);
-CREATE INDEX IF NOT EXISTS idx_subscriptions_token ON subscriptions(subscription_token_hash);
 
 -- Table for gateway states (used by eventhub for multi-replica sync)
 CREATE TABLE IF NOT EXISTS gateway_states (
@@ -206,8 +185,6 @@ CREATE TABLE IF NOT EXISTS applications (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (gateway_id, application_uuid)
 );
-CREATE INDEX IF NOT EXISTS idx_applications_application_id ON applications(application_id);
-
 -- Application to API key mappings
 CREATE TABLE IF NOT EXISTS application_api_keys (
     application_uuid TEXT NOT NULL,
@@ -220,7 +197,6 @@ CREATE TABLE IF NOT EXISTS application_api_keys (
     FOREIGN KEY (gateway_id, api_key_id) REFERENCES api_keys(gateway_id, uuid) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_app_api_keys_application_uuid ON application_api_keys(gateway_id, application_uuid);
 CREATE INDEX IF NOT EXISTS idx_app_api_keys_apikey ON application_api_keys(gateway_id, api_key_id);
 
 -- Table for encrypted secrets (gateway_id + handle form the composite PK)
@@ -235,5 +211,3 @@ CREATE TABLE IF NOT EXISTS secrets (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (gateway_id, handle)
 );
-
-CREATE INDEX IF NOT EXISTS idx_secrets_updated_at ON secrets(updated_at);

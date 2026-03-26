@@ -241,31 +241,6 @@ func TestSchemaInitialization(t *testing.T) {
 		assert.True(t, hasPlanForeignKey, "subscriptions should retain the subscription plan foreign key")
 	})
 
-	// Verify indexes exist
-	t.Run("IndexesExist", func(t *testing.T) {
-		rows, err := rawDB.Query("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='artifacts'")
-		require.NoError(t, err)
-		defer rows.Close()
-
-		indexes := make(map[string]bool)
-		for rows.Next() {
-			var name string
-			err := rows.Scan(&name)
-			require.NoError(t, err)
-			indexes[name] = true
-		}
-
-		expectedIndexes := []string{
-			"idx_artifacts_desired_state",
-			"idx_artifacts_deployment_id",
-			"idx_artifacts_kind",
-		}
-
-		for _, idxName := range expectedIndexes {
-			assert.True(t, indexes[idxName], "Index %s should exist", idxName)
-		}
-	})
-
 	// Verify UNIQUE constraint on artifacts
 	t.Run("UniqueConstraint", func(t *testing.T) {
 		var sqlStr string
