@@ -204,3 +204,111 @@ func TestGetResponseBodyMode_WithChainNotRequiringBody(t *testing.T) {
 
 	assert.Equal(t, BodyModeSkip, mode)
 }
+
+// =============================================================================
+// splitPoliciesByBodyMode Tests
+// =============================================================================
+
+// mockPolicyWithBodyMode is a test helper that creates a policy with a specific body mode
+type mockPolicyWithBodyMode struct {
+	name     string
+	bodyMode policy.BodyProcessingMode
+}
+
+func (m *mockPolicyWithBodyMode) Mode() policy.ProcessingMode {
+	return policy.ProcessingMode{
+		RequestHeaderMode: policy.HeaderModeProcess,
+		RequestBodyMode:   m.bodyMode,
+	}
+}
+func (m *mockPolicyWithBodyMode) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
+	return nil
+}
+func (m *mockPolicyWithBodyMode) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
+	return nil
+}
+
+func TestSplitPoliciesByBodyMode_AllHeaderOnly(t *testing.T) {
+	pol1 := &mockPolicyWithBodyMode{name: "auth", bodyMode: policy.BodyModeSkip}
+	pol2 := &mockPolicyWithBodyMode{name: "rate-limit", bodyMode: policy.BodyModeSkip}
+	policies := []policy.Policy{pol1, pol2}
+	specs := []policy.PolicySpec{
+		{Name: "auth", Version: "v1"},
+		{Name: "rate-limit", Version: "v1"},
+	}
+
+	headerPols, headerSpecs, bodyPols, bodySpecs := splitPoliciesByBodyMode(policies, specs)
+
+	assert.Len(t, headerPols, 2)
+	assert.Len(t, headerSpecs, 2)
+	assert.Len(t, bodyPols, 0)
+	assert.Len(t, bodySpecs, 0)
+	assert.Equal(t, "auth", headerSpecs[0].Name)
+	assert.Equal(t, "rate-limit", headerSpecs[1].Name)
+}
+
+func TestSplitPoliciesByBodyMode_AllBodyRequired(t *testing.T) {
+	pol1 := &mockPolicyWithBodyMode{name: "analytics", bodyMode: policy.BodyModeBuffer}
+	pol2 := &mockPolicyWithBodyMode{name: "llm-cost", bodyMode: policy.BodyModeBuffer}
+	policies := []policy.Policy{pol1, pol2}
+	specs := []policy.PolicySpec{
+		{Name: "analytics", Version: "v1"},
+		{Name: "llm-cost", Version: "v1"},
+	}
+
+	headerPols, headerSpecs, bodyPols, bodySpecs := splitPoliciesByBodyMode(policies, specs)
+
+	assert.Len(t, headerPols, 0)
+	assert.Len(t, headerSpecs, 0)
+	assert.Len(t, bodyPols, 2)
+	assert.Len(t, bodySpecs, 2)
+}
+
+func TestSplitPoliciesByBodyMode_MixedPolicies(t *testing.T) {
+	pol1 := &mockPolicyWithBodyMode{name: "rate-limit", bodyMode: policy.BodyModeSkip}
+	pol2 := &mockPolicyWithBodyMode{name: "llm-cost", bodyMode: policy.BodyModeBuffer}
+	pol3 := &mockPolicyWithBodyMode{name: "set-headers", bodyMode: policy.BodyModeSkip}
+	policies := []policy.Policy{pol1, pol2, pol3}
+	specs := []policy.PolicySpec{
+		{Name: "rate-limit", Version: "v1"},
+		{Name: "llm-cost", Version: "v1"},
+		{Name: "set-headers", Version: "v1"},
+	}
+
+	headerPols, headerSpecs, bodyPols, bodySpecs := splitPoliciesByBodyMode(policies, specs)
+
+	assert.Len(t, headerPols, 2)
+	assert.Len(t, headerSpecs, 2)
+	assert.Equal(t, "rate-limit", headerSpecs[0].Name)
+	assert.Equal(t, "set-headers", headerSpecs[1].Name)
+
+	assert.Len(t, bodyPols, 1)
+	assert.Len(t, bodySpecs, 1)
+	assert.Equal(t, "llm-cost", bodySpecs[0].Name)
+}
+
+func TestSplitPoliciesByBodyMode_StreamModeTreatedAsBody(t *testing.T) {
+	pol1 := &mockPolicyWithBodyMode{name: "streaming", bodyMode: policy.BodyModeStream}
+	pol2 := &mockPolicyWithBodyMode{name: "auth", bodyMode: policy.BodyModeSkip}
+	policies := []policy.Policy{pol1, pol2}
+	specs := []policy.PolicySpec{
+		{Name: "streaming", Version: "v1"},
+		{Name: "auth", Version: "v1"},
+	}
+
+	headerPols, headerSpecs, bodyPols, bodySpecs := splitPoliciesByBodyMode(policies, specs)
+
+	assert.Len(t, headerPols, 1)
+	assert.Equal(t, "auth", headerSpecs[0].Name)
+	assert.Len(t, bodyPols, 1)
+	assert.Equal(t, "streaming", bodySpecs[0].Name)
+}
+
+func TestSplitPoliciesByBodyMode_EmptyInput(t *testing.T) {
+	headerPols, headerSpecs, bodyPols, bodySpecs := splitPoliciesByBodyMode(nil, nil)
+
+	assert.Nil(t, headerPols)
+	assert.Nil(t, headerSpecs)
+	assert.Nil(t, bodyPols)
+	assert.Nil(t, bodySpecs)
+}

@@ -74,6 +74,12 @@ type PolicyExecutionContext struct {
 	// Used when UpstreamName is set to compute the correct path transformation
 	upstreamDefinitionPaths map[string]string
 
+	// Deferred policies and specs for body phase execution
+	// When body buffering is needed, header-only policies execute in the headers phase
+	// and body-requiring policies are deferred to the body phase
+	deferredPolicies []policy.Policy
+	deferredSpecs    []policy.PolicySpec
+
 	// Reference to server components
 	server *ExternalProcessorServer
 }
@@ -179,10 +185,40 @@ func (ec *PolicyExecutionContext) processRequestHeaders(
 	// Check if this is end of stream (no body coming)
 	endOfStream := ec.requestContext.Body != nil && ec.requestContext.Body.EndOfStream
 
-	// If policy chain requires request body AND body is coming, skip processing headers separately
-	// Headers and body will be processed together in processRequestBody phase
-	// However, if EndOfStream is true, there's no body coming, so process immediately
+	// If policy chain requires request body AND body is coming, split execution:
+	// - Header-only policies (BodyModeSkip) execute now in the headers phase
+	// - Body-requiring policies are deferred to the body phase
+	// This ensures header mutations (e.g., upstream auth) are applied in the headers phase
+	// where Envoy reliably processes them, rather than deferring everything to the body
+	// phase where header mutations may not be applied to the upstream request.
 	if ec.policyChain.RequiresRequestBody && !endOfStream {
+		headerPolicies, headerSpecs, bodyPolicies, bodySpecs := splitPoliciesByBodyMode(
+			ec.policyChain.Policies, ec.policyChain.PolicySpecs)
+
+		// Store body-requiring policies for deferred execution in processRequestBody
+		ec.deferredPolicies = bodyPolicies
+		ec.deferredSpecs = bodySpecs
+
+		if len(headerPolicies) > 0 {
+			// Execute header-only policies now
+			execResult, err := ec.server.executor.ExecuteRequestPolicies(
+				ctx,
+				headerPolicies,
+				ec.requestContext,
+				headerSpecs,
+				ec.requestContext.SharedContext.APIName,
+				ec.routeKey,
+				ec.policyChain.HasExecutionConditions,
+			)
+			if err != nil {
+				return ec.handlePolicyError(ctx, err, "request_headers"), nil
+			}
+
+			// Translate result — this includes ModeOverride to tell Envoy to buffer body
+			return TranslateRequestHeadersActions(execResult, ec.policyChain, ec)
+		}
+
+		// No header-only policies; return empty response with ModeOverride
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_RequestHeaders{
 				RequestHeaders: &extprocv3.HeadersResponse{},
@@ -214,7 +250,7 @@ func (ec *PolicyExecutionContext) processRequestBody(
 	ctx context.Context,
 	body *extprocv3.HttpBody,
 ) (*extprocv3.ProcessingResponse, error) {
-	// If policy chain requires request body, execute policies with both headers and body
+	// If policy chain requires request body, execute body-requiring policies with both headers and body
 	if ec.policyChain.RequiresRequestBody {
 		// Update request context with body data
 		ec.requestContext.Body = &policy.Body{
@@ -223,12 +259,21 @@ func (ec *PolicyExecutionContext) processRequestBody(
 			Present:     true,
 		}
 
-		// Execute request policy chain with headers and body
+		// Use deferred (body-requiring) policies if available from split execution,
+		// otherwise fall back to full chain (e.g., when EndOfStream was true in headers phase)
+		policies := ec.policyChain.Policies
+		specs := ec.policyChain.PolicySpecs
+		if ec.deferredPolicies != nil {
+			policies = ec.deferredPolicies
+			specs = ec.deferredSpecs
+		}
+
+		// Execute body-requiring policies with headers and body
 		execResult, err := ec.server.executor.ExecuteRequestPolicies(
 			ctx,
-			ec.policyChain.Policies,
+			policies,
 			ec.requestContext,
-			ec.policyChain.PolicySpecs,
+			specs,
 			ec.requestContext.SharedContext.APIName,
 			ec.routeKey,
 			ec.policyChain.HasExecutionConditions,

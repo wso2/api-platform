@@ -125,3 +125,26 @@ func (k *Kernel) GetResponseBodyMode(routeKey string) BodyMode {
 	}
 	return determineResponseBodyMode(chain)
 }
+
+// splitPoliciesByBodyMode separates policies into header-only and body-requiring groups.
+// Header-only policies (RequestBodyMode == BodyModeSkip or empty) can execute in the
+// headers phase, while body-requiring policies must wait for the body phase.
+// Both returned slices preserve the original relative ordering within each group.
+func splitPoliciesByBodyMode(
+	policies []policy.Policy,
+	specs []policy.PolicySpec,
+) (headerPolicies []policy.Policy, headerSpecs []policy.PolicySpec,
+	bodyPolicies []policy.Policy, bodySpecs []policy.PolicySpec) {
+
+	for i, pol := range policies {
+		mode := pol.Mode()
+		if mode.RequestBodyMode == policy.BodyModeBuffer || mode.RequestBodyMode == policy.BodyModeStream {
+			bodyPolicies = append(bodyPolicies, pol)
+			bodySpecs = append(bodySpecs, specs[i])
+		} else {
+			headerPolicies = append(headerPolicies, pol)
+			headerSpecs = append(headerSpecs, specs[i])
+		}
+	}
+	return
+}

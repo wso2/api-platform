@@ -627,3 +627,167 @@ func TestInitializeExecutionContext_WithPolicyChain(t *testing.T) {
 	assert.Equal(t, "/api/v1/pets", execCtx.requestContext.Path)
 	assert.Equal(t, "GET", execCtx.requestContext.Method)
 }
+
+// =============================================================================
+// Integration Test: Upstream auth header with body buffering (Issue #1474)
+// =============================================================================
+
+func TestProcess_UpstreamAuthHeader_WithBodyBuffering(t *testing.T) {
+	// Regression test for https://github.com/wso2/api-platform/issues/1474
+	// Verifies that upstream auth headers (from set-headers policy) are included
+	// in the headers-phase response even when another policy requires body buffering.
+	// Previously, ALL policies were deferred to the body phase, causing Envoy to
+	// not apply the auth header mutations to the upstream request.
+
+	kernel := NewKernel()
+	tracer := otel.Tracer("test")
+	chainExecutor := executor.NewChainExecutor(nil, nil, tracer)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+
+	// Body-requiring policy (e.g., llm-cost reads the request body)
+	bodyPolicy := &bodyBufferingMockPolicy{
+		name: "llm-cost",
+		onReqFn: func(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
+			return policy.UpstreamRequestModifications{}
+		},
+	}
+
+	// Header-only policy that sets upstream auth (e.g., set-headers for Anthropic x-api-key)
+	authPolicy := &headerOnlyMockPolicy{
+		name: "set-headers",
+		onReqFn: func(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
+			return policy.UpstreamRequestModifications{
+				SetHeaders: map[string]string{
+					"x-api-key":     "sk-ant-test-key-123",
+					"authorization": "Bearer sk-ant-test-key-123",
+				},
+			}
+		},
+	}
+
+	chain := &registry.PolicyChain{
+		Policies:    []policy.Policy{bodyPolicy, authPolicy},
+		PolicySpecs: []policy.PolicySpec{
+			{Name: "llm-cost", Version: "v1", Enabled: true},
+			{Name: "set-headers", Version: "v0", Enabled: true},
+		},
+		RequiresRequestBody: true,
+	}
+	kernel.RegisterRoute("llm-route", chain)
+
+	// Simulate the ext_proc stream: request headers → request body
+	reqHeaders := &extprocv3.ProcessingRequest{
+		Request: &extprocv3.ProcessingRequest_RequestHeaders{
+			RequestHeaders: &extprocv3.HttpHeaders{
+				Headers: &corev3.HeaderMap{
+					Headers: []*corev3.HeaderValue{
+						{Key: ":path", RawValue: []byte("/v1/messages")},
+						{Key: ":method", RawValue: []byte("POST")},
+						{Key: ":authority", RawValue: []byte("llm.example.com")},
+						{Key: ":scheme", RawValue: []byte("https")},
+						{Key: "content-type", RawValue: []byte("application/json")},
+					},
+				},
+				EndOfStream: false,
+			},
+		},
+		Attributes: map[string]*structpb.Struct{
+			constants.ExtProcFilter: {
+				Fields: map[string]*structpb.Value{
+					"xds.route_name": structpb.NewStringValue("llm-route"),
+				},
+			},
+		},
+	}
+
+	reqBody := &extprocv3.ProcessingRequest{
+		Request: &extprocv3.ProcessingRequest_RequestBody{
+			RequestBody: &extprocv3.HttpBody{
+				Body:        []byte(`{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"Hello"}]}`),
+				EndOfStream: true,
+			},
+		},
+	}
+
+	stream := newMockStream([]*extprocv3.ProcessingRequest{reqHeaders, reqBody})
+
+	err := server.Process(stream)
+
+	require.NoError(t, err)
+	require.Len(t, stream.responses, 2, "expected 2 responses: headers + body")
+
+	// === Verify headers-phase response ===
+	headersResp := stream.responses[0].GetRequestHeaders()
+	require.NotNil(t, headersResp, "first response should be RequestHeaders")
+
+	// Header mutations should include the auth headers from set-headers policy
+	require.NotNil(t, headersResp.Response, "headers response should have CommonResponse")
+	require.NotNil(t, headersResp.Response.HeaderMutation, "headers response should have header mutations")
+
+	authHeaderFound := false
+	for _, hdr := range headersResp.Response.HeaderMutation.SetHeaders {
+		if hdr.Header.Key == "x-api-key" {
+			assert.Equal(t, "sk-ant-test-key-123", string(hdr.Header.RawValue))
+			authHeaderFound = true
+		}
+	}
+	assert.True(t, authHeaderFound,
+		"x-api-key header MUST be in headers-phase response so Envoy applies it to the upstream request")
+
+	// ModeOverride should request body buffering
+	require.NotNil(t, stream.responses[0].ModeOverride)
+	assert.Equal(t, extprocconfigv3.ProcessingMode_BUFFERED,
+		stream.responses[0].ModeOverride.RequestBodyMode)
+
+	// === Verify body-phase response ===
+	bodyResp := stream.responses[1].GetRequestBody()
+	require.NotNil(t, bodyResp, "second response should be RequestBody")
+}
+
+// headerOnlyMockPolicy - policy that only processes headers (BodyModeSkip)
+type headerOnlyMockPolicy struct {
+	name    string
+	onReqFn func(*policy.RequestContext, map[string]interface{}) policy.RequestAction
+}
+
+func (p *headerOnlyMockPolicy) Mode() policy.ProcessingMode {
+	return policy.ProcessingMode{
+		RequestHeaderMode:  policy.HeaderModeProcess,
+		RequestBodyMode:    policy.BodyModeSkip,
+		ResponseHeaderMode: policy.HeaderModeProcess,
+		ResponseBodyMode:   policy.BodyModeSkip,
+	}
+}
+func (p *headerOnlyMockPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
+	if p.onReqFn != nil {
+		return p.onReqFn(ctx, params)
+	}
+	return nil
+}
+func (p *headerOnlyMockPolicy) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
+	return nil
+}
+
+// bodyBufferingMockPolicy - policy that requires body buffering
+type bodyBufferingMockPolicy struct {
+	name    string
+	onReqFn func(*policy.RequestContext, map[string]interface{}) policy.RequestAction
+}
+
+func (p *bodyBufferingMockPolicy) Mode() policy.ProcessingMode {
+	return policy.ProcessingMode{
+		RequestHeaderMode:  policy.HeaderModeProcess,
+		RequestBodyMode:    policy.BodyModeBuffer,
+		ResponseHeaderMode: policy.HeaderModeProcess,
+		ResponseBodyMode:   policy.BodyModeSkip,
+	}
+}
+func (p *bodyBufferingMockPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
+	if p.onReqFn != nil {
+		return p.onReqFn(ctx, params)
+	}
+	return nil
+}
+func (p *bodyBufferingMockPolicy) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
+	return nil
+}

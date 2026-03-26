@@ -33,6 +33,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/testutils"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 // =============================================================================
@@ -422,6 +423,228 @@ func TestBuildResponseContext_EndOfStream(t *testing.T) {
 	require.NotNil(t, execCtx.responseContext.ResponseBody)
 	assert.True(t, execCtx.responseContext.ResponseBody.EndOfStream)
 	assert.False(t, execCtx.responseContext.ResponseBody.Present)
+}
+
+// =============================================================================
+// processRequestHeaders Split Execution Tests
+// =============================================================================
+
+func TestProcessRequestHeaders_SplitExecution_HeaderOnlyPoliciesRunInHeadersPhase(t *testing.T) {
+	// When body buffering is needed, header-only policies (like set-headers for upstream auth)
+	// should execute in the headers phase so their header mutations are applied by Envoy.
+	kernel := NewKernel()
+	tracer := noop.NewTracerProvider().Tracer("test")
+	chainExecutor := executor.NewChainExecutor(nil, nil, tracer)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+
+	// Create a header-only policy that sets an auth header
+	authPolicy := &testutils.ConfigurableMockPolicy{
+		Name:    "set-headers",
+		Version: "v0",
+		MockMode: policy.ProcessingMode{
+			RequestHeaderMode: policy.HeaderModeProcess,
+			RequestBodyMode:   policy.BodyModeSkip,
+		},
+		OnReqFn: func(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
+			return policy.UpstreamRequestModifications{
+				SetHeaders: map[string]string{"x-api-key": "sk-test-key"},
+			}
+		},
+	}
+
+	// Create a body-requiring policy
+	bodyPolicy := &testutils.ConfigurableMockPolicy{
+		Name:    "llm-cost",
+		Version: "v1",
+		MockMode: policy.ProcessingMode{
+			RequestHeaderMode: policy.HeaderModeProcess,
+			RequestBodyMode:   policy.BodyModeBuffer,
+		},
+		OnReqFn: func(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
+			return policy.UpstreamRequestModifications{}
+		},
+	}
+
+	chain := &registry.PolicyChain{
+		Policies:            []policy.Policy{bodyPolicy, authPolicy},
+		PolicySpecs:         []policy.PolicySpec{
+			{Name: "llm-cost", Version: "v1", Enabled: true},
+			{Name: "set-headers", Version: "v0", Enabled: true},
+		},
+		RequiresRequestBody: true,
+	}
+
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	// Build request context with body coming (EndOfStream = false)
+	headers := &extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":path", RawValue: []byte("/v1/messages")},
+				{Key: ":method", RawValue: []byte("POST")},
+			},
+		},
+		EndOfStream: false,
+	}
+	execCtx.buildRequestContext(headers, RouteMetadata{})
+
+	resp, err := execCtx.processRequestHeaders(context.Background())
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Response should be a HeadersResponse (not empty) with header mutations
+	headersResp := resp.GetRequestHeaders()
+	require.NotNil(t, headersResp, "expected HeadersResponse, got %T", resp.Response)
+
+	// Should have header mutation with the auth header
+	require.NotNil(t, headersResp.Response, "expected CommonResponse with header mutations")
+	require.NotNil(t, headersResp.Response.HeaderMutation, "expected header mutation")
+
+	// Find the x-api-key header in mutations
+	found := false
+	for _, hdr := range headersResp.Response.HeaderMutation.SetHeaders {
+		if hdr.Header.Key == "x-api-key" {
+			assert.Equal(t, "sk-test-key", string(hdr.Header.RawValue))
+			found = true
+		}
+	}
+	assert.True(t, found, "x-api-key header should be in header mutations")
+
+	// ModeOverride should still request body buffering
+	require.NotNil(t, resp.ModeOverride)
+	assert.Equal(t, extprocconfigv3.ProcessingMode_BUFFERED, resp.ModeOverride.RequestBodyMode)
+
+	// Body policies should be deferred
+	assert.Len(t, execCtx.deferredPolicies, 1)
+	assert.Len(t, execCtx.deferredSpecs, 1)
+	assert.Equal(t, "llm-cost", execCtx.deferredSpecs[0].Name)
+}
+
+func TestProcessRequestHeaders_SplitExecution_NoHeaderOnlyPolicies(t *testing.T) {
+	// When all policies require body, headers phase should return empty response
+	kernel := NewKernel()
+	tracer := noop.NewTracerProvider().Tracer("test")
+	chainExecutor := executor.NewChainExecutor(nil, nil, tracer)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+
+	bodyPolicy := &testutils.ConfigurableMockPolicy{
+		MockMode: policy.ProcessingMode{
+			RequestHeaderMode: policy.HeaderModeProcess,
+			RequestBodyMode:   policy.BodyModeBuffer,
+		},
+	}
+
+	chain := &registry.PolicyChain{
+		Policies:            []policy.Policy{bodyPolicy},
+		PolicySpecs:         []policy.PolicySpec{{Name: "body-pol", Version: "v1", Enabled: true}},
+		RequiresRequestBody: true,
+	}
+
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	headers := &extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":path", RawValue: []byte("/test")},
+			},
+		},
+		EndOfStream: false,
+	}
+	execCtx.buildRequestContext(headers, RouteMetadata{})
+
+	resp, err := execCtx.processRequestHeaders(context.Background())
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	headersResp := resp.GetRequestHeaders()
+	require.NotNil(t, headersResp)
+	// Should be empty (no CommonResponse mutations)
+	assert.Nil(t, headersResp.Response)
+	// ModeOverride should still request buffering
+	require.NotNil(t, resp.ModeOverride)
+	assert.Equal(t, extprocconfigv3.ProcessingMode_BUFFERED, resp.ModeOverride.RequestBodyMode)
+}
+
+func TestProcessRequestBody_UsesDeferredPolicies(t *testing.T) {
+	// Body phase should only execute deferred (body-requiring) policies
+	kernel := NewKernel()
+	tracer := noop.NewTracerProvider().Tracer("test")
+	chainExecutor := executor.NewChainExecutor(nil, nil, tracer)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+
+	bodyPolicyExecuted := false
+	bodyPolicy := &testutils.ConfigurableMockPolicy{
+		MockMode: policy.ProcessingMode{
+			RequestHeaderMode: policy.HeaderModeProcess,
+			RequestBodyMode:   policy.BodyModeBuffer,
+		},
+		OnReqFn: func(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
+			bodyPolicyExecuted = true
+			return policy.UpstreamRequestModifications{}
+		},
+	}
+
+	authPolicyExecuted := false
+	authPolicy := &testutils.ConfigurableMockPolicy{
+		MockMode: policy.ProcessingMode{
+			RequestHeaderMode: policy.HeaderModeProcess,
+			RequestBodyMode:   policy.BodyModeSkip,
+		},
+		OnReqFn: func(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
+			authPolicyExecuted = true
+			return policy.UpstreamRequestModifications{
+				SetHeaders: map[string]string{"x-api-key": "sk-test-key"},
+			}
+		},
+	}
+
+	chain := &registry.PolicyChain{
+		Policies:            []policy.Policy{bodyPolicy, authPolicy},
+		PolicySpecs:         []policy.PolicySpec{
+			{Name: "llm-cost", Version: "v1", Enabled: true},
+			{Name: "set-headers", Version: "v0", Enabled: true},
+		},
+		RequiresRequestBody: true,
+	}
+
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	// Build request context
+	headers := &extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":path", RawValue: []byte("/v1/messages")},
+				{Key: ":method", RawValue: []byte("POST")},
+			},
+		},
+		EndOfStream: false,
+	}
+	execCtx.buildRequestContext(headers, RouteMetadata{})
+
+	// First: process headers phase (splits and executes header-only policies)
+	_, err := execCtx.processRequestHeaders(context.Background())
+	require.NoError(t, err)
+
+	// Auth policy should have executed in headers phase
+	assert.True(t, authPolicyExecuted, "auth policy should execute in headers phase")
+	assert.False(t, bodyPolicyExecuted, "body policy should NOT execute in headers phase")
+
+	// Reset flags
+	authPolicyExecuted = false
+
+	// Now: process body phase (should only execute deferred body policies)
+	body := &extprocv3.HttpBody{
+		Body:        []byte(`{"model":"claude-3"}`),
+		EndOfStream: true,
+	}
+	resp, err := execCtx.processRequestBody(context.Background(), body)
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	assert.True(t, bodyPolicyExecuted, "body policy should execute in body phase")
+	assert.False(t, authPolicyExecuted, "auth policy should NOT execute again in body phase")
 }
 
 func TestBuildResponseContext_InvalidStatus(t *testing.T) {
