@@ -371,7 +371,7 @@ func (c *Client) processSyncStatusUpdates(deployments []models.ControlPlaneDeplo
 				EntityID:  dep.ArtifactID,
 				EventID:   correlationID,
 			}
-			if err := c.eventHub.PublishEvent(gatewayID, evt); err != nil {
+			if err := c.eventHub.PublishEvent(c.gatewayID, evt); err != nil {
 				c.logger.Error("Failed to publish sync status update event",
 					slog.String("artifact_id", dep.ArtifactID),
 					slog.Any("error", err),
