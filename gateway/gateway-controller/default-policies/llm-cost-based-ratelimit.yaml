@@ -1,5 +1,5 @@
 name: llm-cost-based-ratelimit
-version: v0.9.2
+version: v0.9.3
 description: |
   A specialized rate limiting policy for LLMs that limits usage based on monetary budgets.
   The policy reads costs from SharedContext.Metadata under "x-llm-cost" (set by the llm-cost
