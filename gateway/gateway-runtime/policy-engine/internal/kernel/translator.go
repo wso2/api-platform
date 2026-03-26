@@ -277,21 +277,19 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 		}
 	}
 
-	// If the request body was decompressed, always forward the decompressed body to Envoy.
-	// Upstream APIs (e.g. Anthropic) do not accept compressed request bodies, so we must
-	// never re-compress the request. Content-Encoding removal is handled in the header phase
-	// (TranslateRequestHeadersActions) to avoid ClearRouteCache side-effects in the body phase.
-	if execCtx.requestContentEncoding != "" && execCtx.requestContext != nil && execCtx.requestContext.Body != nil {
-		if !bodyModified {
-			// No policy changed the body, but we still must send the decompressed version
-			// so Envoy replaces the original compressed bytes before forwarding to upstream.
-			bodyMutation = &extprocv3.BodyMutation{
-				Mutation: &extprocv3.BodyMutation_Body{
-					Body: execCtx.requestContext.Body.Content,
-				},
-			}
-			finalBodyLength = len(execCtx.requestContext.Body.Content)
-			bodyModified = true
+	// Re-compress request body if a policy modified it, to preserve the original Content-Encoding.
+	// If no policy modified the body, the original compressed bytes are forwarded unchanged.
+	if bodyModified && execCtx.requestContentEncoding != "" {
+		originalBody := bodyMutation.Mutation.(*extprocv3.BodyMutation_Body).Body
+		recompressed, err := recompressBody(originalBody, execCtx.requestContentEncoding)
+		if err != nil {
+			slog.Warn("Failed to re-compress request body, sending uncompressed",
+				"encoding", execCtx.requestContentEncoding,
+				"error", err,
+			)
+		} else {
+			bodyMutation.Mutation.(*extprocv3.BodyMutation_Body).Body = recompressed
+			finalBodyLength = len(recompressed)
 		}
 	}
 
@@ -319,16 +317,6 @@ func TranslateRequestHeadersActions(result *executor.RequestExecutionResult, cha
 	}
 	if immediateResp != nil {
 		return immediateResp, nil
-	}
-
-	// If we will decompress the request body for policies, proactively remove Content-Encoding
-	// here in the header phase. Removing it in the body phase combined with ClearRouteCache
-	// can cause upstream auth headers (e.g. x-api-key) to be dropped by Envoy.
-	if chain.RequiresRequestBody && execCtx.requestContentEncoding != "" {
-		if headerMutation.RemoveHeaders == nil {
-			headerMutation.RemoveHeaders = make([]string, 0, 1)
-		}
-		headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, "content-encoding")
 	}
 
 	// Build ProcessingResponse for request headers
