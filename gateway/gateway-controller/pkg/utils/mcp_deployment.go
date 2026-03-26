@@ -526,7 +526,16 @@ func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID string, logg
 		return nil, fmt.Errorf("failed to fetch MCP proxy configuration")
 	}
 
-	// Delete from database first (only if persistent mode)
+	// Remove runtime config first, before touching the source of truth.
+	// If this fails the DB/store still hold the record so the caller can retry.
+	if s.policyManager != nil {
+		if err := s.policyManager.DeleteAPIConfig(cfg.Kind, cfg.Handle); err != nil {
+			logger.Error("Failed to remove runtime config for MCP proxy", slog.Any("error", err))
+			return nil, fmt.Errorf("failed to remove runtime config for MCP proxy: %w", err)
+		}
+	}
+
+	// Delete from database (only if persistent mode)
 	if s.db != nil {
 		if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 			logger.Error("Failed to delete config from database", slog.Any("error", err))
@@ -554,16 +563,6 @@ func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID string, logg
 				logger.Error("Failed to update xDS snapshot", slog.Any("error", err))
 			}
 		}()
-	}
-
-	// Remove derived policy configuration
-	if s.policyManager != nil {
-		policyID := cfg.UUID + "-policies"
-		if err := s.policyManager.RemovePolicy(policyID); err != nil {
-			logger.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
-		} else {
-			logger.Info("Derived policy configuration removed", slog.String("policy_id", policyID))
-		}
 	}
 
 	return cfg, nil

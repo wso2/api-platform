@@ -177,8 +177,8 @@ func TestHandleAPIKeyUpsert_StoreConflictStopsBeforeXDS(t *testing.T) {
 	db := setupSQLiteDBForEventListenerTests(t)
 	xdsManager := &mockAPIKeyXDSManager{}
 	cfg := testRestStoredConfig("api-1", "test-api", "Test API", "v1.0.0", models.StateDeployed)
-	conflicting := testAPIKey("existing-key", "test-key", "Existing Key", cfg.UUID)
-	current := testAPIKey("incoming-key", "test-key", "Incoming Key", cfg.UUID)
+	conflicting := testAPIKey("existing-key", "test-key", cfg.UUID)
+	current := testAPIKey("incoming-key", "test-key", cfg.UUID)
 
 	require.NoError(t, store.StoreAPIKey(conflicting))
 	require.NoError(t, db.SaveConfig(cfg))
@@ -276,7 +276,7 @@ func TestHandleAPIKeyRevoke_WithoutStoreReturnsEarly(t *testing.T) {
 func TestHandleAPIKeyRevoke_WithMissingConfigSkipsXDS(t *testing.T) {
 	store := storage.NewConfigStore()
 	xdsManager := &mockAPIKeyXDSManager{}
-	apiKey := testAPIKey("key-1", "test-key", "Test Key", "api-1")
+	apiKey := testAPIKey("key-1", "test-key", "api-1")
 	require.NoError(t, store.StoreAPIKey(apiKey))
 
 	listener := &EventListener{

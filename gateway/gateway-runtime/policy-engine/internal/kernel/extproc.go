@@ -341,9 +341,6 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 		// Metadata is pre-populated from xDS — no request-time parsing needed
 		routeMetadata := rc.Metadata
 		routeMetadata.RouteName = routeKey
-		routeMetadata.DefaultUpstreamCluster = rc.DefaultUpstreamCluster
-		routeMetadata.UpstreamBasePath = rc.UpstreamBasePath
-		routeMetadata.UpstreamDefinitionPaths = rc.UpstreamDefinitionPaths
 
 		// Resolve policy chain key (route-key resolver: policyChainKey = routeKey)
 		policyChainKey := routeKey // For route-key resolver, this is always the same
@@ -358,10 +355,10 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 		}
 
 		*execCtx = newPolicyExecutionContext(s, routeKey, chain)
-		(*execCtx).defaultUpstreamCluster = rc.DefaultUpstreamCluster
-		(*execCtx).upstreamBasePath = rc.UpstreamBasePath
+		(*execCtx).defaultUpstreamCluster = routeMetadata.DefaultUpstreamCluster
+		(*execCtx).upstreamBasePath = routeMetadata.UpstreamBasePath
 		(*execCtx).apiContext = routeMetadata.Context
-		(*execCtx).upstreamDefinitionPaths = rc.UpstreamDefinitionPaths
+		(*execCtx).upstreamDefinitionPaths = routeMetadata.UpstreamDefinitionPaths
 		(*execCtx).buildRequestContext(req.GetRequestHeaders(), routeMetadata)
 		return &routeMetadata
 	}

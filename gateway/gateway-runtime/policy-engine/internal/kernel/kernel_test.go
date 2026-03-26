@@ -37,8 +37,8 @@ func TestNewKernel(t *testing.T) {
 	kernel := NewKernel()
 
 	require.NotNil(t, kernel)
-	assert.NotNil(t, kernel.Routes)
-	assert.Empty(t, kernel.Routes)
+	assert.NotNil(t, kernel.PolicyChains)
+	assert.Empty(t, kernel.PolicyChains)
 }
 
 // =============================================================================
@@ -51,8 +51,8 @@ func TestRegisterRoute(t *testing.T) {
 
 	kernel.RegisterRoute("test-route", chain)
 
-	assert.Len(t, kernel.Routes, 1)
-	assert.Equal(t, chain, kernel.Routes["test-route"])
+	assert.Len(t, kernel.PolicyChains, 1)
+	assert.Equal(t, chain, kernel.PolicyChains["test-route"])
 }
 
 func TestRegisterRoute_Multiple(t *testing.T) {
@@ -63,9 +63,9 @@ func TestRegisterRoute_Multiple(t *testing.T) {
 	kernel.RegisterRoute("route-1", chain1)
 	kernel.RegisterRoute("route-2", chain2)
 
-	assert.Len(t, kernel.Routes, 2)
-	assert.Equal(t, chain1, kernel.Routes["route-1"])
-	assert.Equal(t, chain2, kernel.Routes["route-2"])
+	assert.Len(t, kernel.PolicyChains, 2)
+	assert.Equal(t, chain1, kernel.PolicyChains["route-1"])
+	assert.Equal(t, chain2, kernel.PolicyChains["route-2"])
 }
 
 func TestRegisterRoute_OverwriteExisting(t *testing.T) {
@@ -76,8 +76,8 @@ func TestRegisterRoute_OverwriteExisting(t *testing.T) {
 	kernel.RegisterRoute("test-route", chain1)
 	kernel.RegisterRoute("test-route", chain2)
 
-	assert.Len(t, kernel.Routes, 1)
-	assert.Equal(t, chain2, kernel.Routes["test-route"])
+	assert.Len(t, kernel.PolicyChains, 1)
+	assert.Equal(t, chain2, kernel.PolicyChains["test-route"])
 }
 
 // =============================================================================
@@ -120,10 +120,10 @@ func TestUnregisterRoute(t *testing.T) {
 	chain := &registry.PolicyChain{}
 
 	kernel.RegisterRoute("test-route", chain)
-	assert.Len(t, kernel.Routes, 1)
+	assert.Len(t, kernel.PolicyChains, 1)
 
 	kernel.UnregisterRoute("test-route")
-	assert.Empty(t, kernel.Routes)
+	assert.Empty(t, kernel.PolicyChains)
 }
 
 func TestUnregisterRoute_NonExistent(t *testing.T) {
@@ -132,7 +132,7 @@ func TestUnregisterRoute_NonExistent(t *testing.T) {
 	// Should not panic
 	kernel.UnregisterRoute("nonexistent")
 
-	assert.Empty(t, kernel.Routes)
+	assert.Empty(t, kernel.PolicyChains)
 }
 
 func TestUnregisterRoute_PreservesOthers(t *testing.T) {
@@ -145,9 +145,9 @@ func TestUnregisterRoute_PreservesOthers(t *testing.T) {
 
 	kernel.UnregisterRoute("route-1")
 
-	assert.Len(t, kernel.Routes, 1)
-	assert.Nil(t, kernel.Routes["route-1"])
-	assert.Equal(t, chain2, kernel.Routes["route-2"])
+	assert.Len(t, kernel.PolicyChains, 1)
+	assert.Nil(t, kernel.PolicyChains["route-1"])
+	assert.Equal(t, chain2, kernel.PolicyChains["route-2"])
 }
 
 // =============================================================================
@@ -161,7 +161,7 @@ func TestApplyWholeRoutes_Empty(t *testing.T) {
 
 	kernel.ApplyWholeRoutes(map[string]*registry.PolicyChain{})
 
-	assert.Empty(t, kernel.Routes)
+	assert.Empty(t, kernel.PolicyChains)
 }
 
 func TestApplyWholeRoutes_ReplaceAll(t *testing.T) {
@@ -176,9 +176,9 @@ func TestApplyWholeRoutes_ReplaceAll(t *testing.T) {
 
 	kernel.ApplyWholeRoutes(newRoutes)
 
-	assert.Len(t, kernel.Routes, 1)
-	assert.Nil(t, kernel.Routes["old-route"])
-	assert.Equal(t, newChain, kernel.Routes["new-route"])
+	assert.Len(t, kernel.PolicyChains, 1)
+	assert.Nil(t, kernel.PolicyChains["old-route"])
+	assert.Equal(t, newChain, kernel.PolicyChains["new-route"])
 }
 
 func TestApplyWholeRoutes_MultipleRoutes(t *testing.T) {
@@ -196,7 +196,7 @@ func TestApplyWholeRoutes_MultipleRoutes(t *testing.T) {
 
 	kernel.ApplyWholeRoutes(newRoutes)
 
-	assert.Len(t, kernel.Routes, 3)
+	assert.Len(t, kernel.PolicyChains, 3)
 }
 
 // =============================================================================
@@ -238,8 +238,8 @@ func TestDumpRoutes_ReturnsCopy(t *testing.T) {
 	dump["new-route"] = &registry.PolicyChain{}
 
 	// Original should be unchanged
-	assert.Len(t, kernel.Routes, 1)
-	assert.Nil(t, kernel.Routes["new-route"])
+	assert.Len(t, kernel.PolicyChains, 1)
+	assert.Nil(t, kernel.PolicyChains["new-route"])
 }
 
 // =============================================================================
@@ -707,7 +707,8 @@ func TestExtractMetadataFromRouteMetadata_WithProjectID(t *testing.T) {
 func TestNewConfigLoader(t *testing.T) {
 	// Create a minimal kernel for testing
 	kernel := &Kernel{
-		Routes: make(map[string]*registry.PolicyChain),
+		PolicyChains: make(map[string]*registry.PolicyChain),
+		RouteConfigs: make(map[string]*RouteConfig),
 	}
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
@@ -720,7 +721,8 @@ func TestNewConfigLoader(t *testing.T) {
 
 func TestLoadFromFile_FileNotFound(t *testing.T) {
 	kernel := &Kernel{
-		Routes: make(map[string]*registry.PolicyChain),
+		PolicyChains: make(map[string]*registry.PolicyChain),
+		RouteConfigs: make(map[string]*RouteConfig),
 	}
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
@@ -748,7 +750,8 @@ this is not valid yaml as a list
 	require.NoError(t, err)
 
 	kernel := &Kernel{
-		Routes: make(map[string]*registry.PolicyChain),
+		PolicyChains: make(map[string]*registry.PolicyChain),
+		RouteConfigs: make(map[string]*RouteConfig),
 	}
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
@@ -769,7 +772,8 @@ func TestLoadFromFile_EmptyFile(t *testing.T) {
 	require.NoError(t, err)
 
 	kernel := &Kernel{
-		Routes: make(map[string]*registry.PolicyChain),
+		PolicyChains: make(map[string]*registry.PolicyChain),
+		RouteConfigs: make(map[string]*RouteConfig),
 	}
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
@@ -791,7 +795,8 @@ func TestLoadFromFile_EmptyList(t *testing.T) {
 	require.NoError(t, err)
 
 	kernel := &Kernel{
-		Routes: make(map[string]*registry.PolicyChain),
+		PolicyChains: make(map[string]*registry.PolicyChain),
+		RouteConfigs: make(map[string]*RouteConfig),
 	}
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
@@ -816,7 +821,8 @@ func TestLoadFromFile_ValidationError_EmptyRouteKey(t *testing.T) {
 	require.NoError(t, err)
 
 	kernel := &Kernel{
-		Routes: make(map[string]*registry.PolicyChain),
+		PolicyChains: make(map[string]*registry.PolicyChain),
+		RouteConfigs: make(map[string]*RouteConfig),
 	}
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
@@ -844,7 +850,8 @@ func TestLoadFromFile_ValidationError_EmptyPolicyName(t *testing.T) {
 	require.NoError(t, err)
 
 	kernel := &Kernel{
-		Routes: make(map[string]*registry.PolicyChain),
+		PolicyChains: make(map[string]*registry.PolicyChain),
+		RouteConfigs: make(map[string]*RouteConfig),
 	}
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
@@ -872,7 +879,8 @@ func TestLoadFromFile_ValidationError_EmptyPolicyVersion(t *testing.T) {
 	require.NoError(t, err)
 
 	kernel := &Kernel{
-		Routes: make(map[string]*registry.PolicyChain),
+		PolicyChains: make(map[string]*registry.PolicyChain),
+		RouteConfigs: make(map[string]*RouteConfig),
 	}
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
@@ -900,7 +908,8 @@ func TestLoadFromFile_ValidationError_PolicyNotInRegistry(t *testing.T) {
 	require.NoError(t, err)
 
 	kernel := &Kernel{
-		Routes: make(map[string]*registry.PolicyChain),
+		PolicyChains: make(map[string]*registry.PolicyChain),
+		RouteConfigs: make(map[string]*RouteConfig),
 	}
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
@@ -928,7 +937,8 @@ func TestLoadFromFile_ValidationError_PolicyNotRegistered(t *testing.T) {
 	require.NoError(t, err)
 
 	kernel := &Kernel{
-		Routes: make(map[string]*registry.PolicyChain),
+		PolicyChains: make(map[string]*registry.PolicyChain),
+		RouteConfigs: make(map[string]*RouteConfig),
 	}
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
