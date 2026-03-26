@@ -20,6 +20,7 @@ package utils
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -44,6 +45,10 @@ type SubscriptionResourceService struct {
 
 // NewSubscriptionResourceService creates a new service for subscription-related resources.
 func NewSubscriptionResourceService(db storage.Storage, snapshotUpdater SubscriptionSnapshotUpdater) *SubscriptionResourceService {
+	if db == nil {
+		panic("SubscriptionResourceService requires non-nil storage")
+	}
+
 	return &SubscriptionResourceService{
 		db:              db,
 		snapshotUpdater: snapshotUpdater,
@@ -154,6 +159,16 @@ func (s *SubscriptionResourceService) requireDB() storage.Storage {
 	return s.db
 }
 
+func (s *SubscriptionResourceService) requireReplicaSyncDependencies() error {
+	if s.eventHub == nil {
+		return fmt.Errorf("SubscriptionResourceService requires EventHub")
+	}
+	if strings.TrimSpace(s.gatewayID) == "" {
+		return fmt.Errorf("SubscriptionResourceService requires gateway ID")
+	}
+	return nil
+}
+
 func (s *SubscriptionResourceService) persistAndSync(
 	eventType eventhub.EventType,
 	action string,
@@ -163,43 +178,19 @@ func (s *SubscriptionResourceService) persistAndSync(
 	logger *slog.Logger,
 	persist func() error,
 ) error {
-	if s.db == nil {
-		return storage.ErrDatabaseUnavailable
-	}
 	if logger == nil {
 		logger = slog.Default()
+	}
+	if err := s.requireReplicaSyncDependencies(); err != nil {
+		return err
 	}
 
 	if err := persist(); err != nil {
 		return err
 	}
 
-	if s.shouldPublishReplicaSyncEvent(logger, eventType, action, entityID) {
-		s.publishEvent(eventType, action, entityID, correlationID, logger)
-		return nil
-	}
-
-	if refreshSubscriptionSnapshot {
-		return s.refreshSubscriptionSnapshot(entityID, correlationID, logger)
-	}
-
+	s.publishEvent(eventType, action, entityID, correlationID, logger)
 	return nil
-}
-
-func (s *SubscriptionResourceService) shouldPublishReplicaSyncEvent(logger *slog.Logger, eventType eventhub.EventType, action, entityID string) bool {
-	if s.eventHub == nil {
-		return false
-	}
-
-	if strings.TrimSpace(s.gatewayID) == "" {
-		logger.Warn("Skipping event publish because gateway ID is not configured",
-			slog.String("event_type", string(eventType)),
-			slog.String("action", action),
-			slog.String("entity_id", entityID))
-		return false
-	}
-
-	return true
 }
 
 func (s *SubscriptionResourceService) publishEvent(eventType eventhub.EventType, action, entityID, correlationID string, logger *slog.Logger) {

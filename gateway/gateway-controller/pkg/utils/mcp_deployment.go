@@ -19,7 +19,6 @@
 package utils
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -74,6 +73,10 @@ func NewMCPDeploymentService(
 	policyManager *policyxds.PolicyManager,
 	policyValidator *config.PolicyValidator,
 ) *MCPDeploymentService {
+	if db == nil {
+		panic("MCPDeploymentService requires non-nil storage")
+	}
+
 	return &MCPDeploymentService{
 		store:           store,
 		db:              db,
@@ -114,22 +117,22 @@ func (s *MCPDeploymentService) SetEventHub(eventHub eventhub.EventHub, gatewayID
 	s.gatewayID = gatewayID
 }
 
-func (s *MCPDeploymentService) isEventDriven() bool {
-	return s.eventHub != nil
+func (s *MCPDeploymentService) requireReplicaSyncDependencies() error {
+	if s.eventHub == nil {
+		return fmt.Errorf("MCPDeploymentService requires EventHub")
+	}
+	if strings.TrimSpace(s.gatewayID) == "" {
+		return fmt.Errorf("MCPDeploymentService requires gateway ID")
+	}
+	return nil
 }
 
 func (s *MCPDeploymentService) publishMCPProxyEvent(action, entityID, correlationID string, logger *slog.Logger) {
-	if s.eventHub == nil {
-		return
+	if err := s.requireReplicaSyncDependencies(); err != nil {
+		panic(err.Error())
 	}
 	if logger == nil {
 		logger = slog.Default()
-	}
-	if strings.TrimSpace(s.gatewayID) == "" {
-		logger.Warn("Skipping MCP proxy event publish because gateway ID is not configured",
-			slog.String("action", action),
-			slog.String("entity_id", entityID))
-		return
 	}
 
 	event := eventhub.Event{
@@ -169,18 +172,7 @@ func (s *MCPDeploymentService) hydrateStoredMCPConfig(cfg *models.StoredConfig) 
 }
 
 func (s *MCPDeploymentService) getMCPProxyByID(id string) (*models.StoredConfig, error) {
-	if s.db != nil {
-		cfg, err := s.db.GetConfig(id)
-		if err == nil {
-			s.hydrateStoredMCPConfig(cfg)
-			return cfg, nil
-		}
-		if !isMCPNotFoundError(err) {
-			return nil, err
-		}
-	}
-
-	cfg, err := s.store.Get(id)
+	cfg, err := s.db.GetConfig(id)
 	if err != nil {
 		return nil, err
 	}
@@ -192,6 +184,9 @@ func (s *MCPDeploymentService) getMCPProxyByID(id string) (*models.StoredConfig,
 func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams) (*APIDeploymentResult, error) {
 	if !models.IsValidOrigin(params.Origin) {
 		return nil, fmt.Errorf("invalid or missing origin: %q", params.Origin)
+	}
+	if err := s.requireReplicaSyncDependencies(); err != nil {
+		return nil, err
 	}
 
 	mcpConfig, apiConfig, err := s.parseValidateAndTransform(params)
@@ -215,11 +210,9 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 		return nil, err
 	}
 
-	existingConfigs := s.store.GetAllByKind(string(api.Mcp))
-	if s.db != nil {
-		if storedConfigs, err := s.db.GetAllConfigsByKind(string(api.Mcp)); err == nil {
-			existingConfigs = storedConfigs
-		}
+	existingConfigs, err := s.db.GetAllConfigsByKind(string(api.Mcp))
+	if err != nil {
+		return nil, fmt.Errorf("failed to list MCP proxy configurations from database: %w", err)
 	}
 	for _, cfg := range existingConfigs {
 		if cfg.UUID == apiID {
@@ -294,26 +287,11 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 			slog.String("correlation_id", params.CorrelationID))
 	}
 
-	if s.isEventDriven() {
-		action := "CREATE"
-		if isUpdate {
-			action = "UPDATE"
-		}
-		s.publishMCPProxyEvent(action, apiID, params.CorrelationID, params.Logger)
-	} else if s.snapshotManager != nil {
-		// Update xDS snapshot asynchronously
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-
-			if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
-				params.Logger.Error("Failed to update xDS snapshot",
-					slog.Any("error", err),
-					slog.String("api_id", apiID),
-					slog.String("correlation_id", params.CorrelationID))
-			}
-		}()
+	action := "CREATE"
+	if isUpdate {
+		action = "UPDATE"
 	}
+	s.publishMCPProxyEvent(action, apiID, params.CorrelationID, params.Logger)
 
 	return &APIDeploymentResult{
 		StoredConfig: storedCfg,
@@ -326,52 +304,22 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 // inserted or updated. Callers should only publish EventHub events and update xDS
 // snapshots when affected=true.
 func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig, logger *slog.Logger) (bool, error) {
-	if s.db != nil {
-		affected, err := s.db.UpsertConfig(storedCfg)
-		if err != nil {
-			return false, fmt.Errorf("failed to upsert config to database: %w", err)
-		}
-		if !affected {
-			logger.Debug("Skipped stale MCP configuration (newer version exists in DB)",
-				slog.String("api_id", storedCfg.UUID),
-				slog.String("displayName", storedCfg.DisplayName),
-				slog.String("version", storedCfg.Version))
-			return false, nil
-		}
-
-		// In event-driven mode, the EventListener will update the in-memory store
-		// via event processing. Only update the store inline for non-event-driven mode.
-		if !s.isEventDriven() {
-			if existing, _ := s.store.Get(storedCfg.UUID); existing != nil {
-				storedCfg.CreatedAt = existing.CreatedAt
-				if err := s.store.Update(storedCfg); err != nil {
-					logger.Warn("Failed to update config in memory store after DB upsert",
-						slog.String("api_id", storedCfg.UUID),
-						slog.Any("error", err))
-				}
-			} else {
-				if err := s.store.Add(storedCfg); err != nil {
-					logger.Warn("Failed to add config to memory store after DB upsert",
-						slog.String("api_id", storedCfg.UUID),
-						slog.Any("error", err))
-				}
-			}
-		}
-
-		return true, nil
+	if err := s.requireReplicaSyncDependencies(); err != nil {
+		return false, err
 	}
 
-	// Memory-only mode (no database): use in-memory store directly
-	if existing, _ := s.store.Get(storedCfg.UUID); existing != nil {
-		storedCfg.CreatedAt = existing.CreatedAt
-		if err := s.store.Update(storedCfg); err != nil {
-			return false, fmt.Errorf("failed to update config in memory store: %w", err)
-		}
-	} else {
-		if err := s.store.Add(storedCfg); err != nil {
-			return false, fmt.Errorf("failed to add config to memory store: %w", err)
-		}
+	affected, err := s.db.UpsertConfig(storedCfg)
+	if err != nil {
+		return false, fmt.Errorf("failed to upsert config to database: %w", err)
 	}
+	if !affected {
+		logger.Debug("Skipped stale MCP configuration (newer version exists in DB)",
+			slog.String("api_id", storedCfg.UUID),
+			slog.String("displayName", storedCfg.DisplayName),
+			slog.String("version", storedCfg.Version))
+		return false, nil
+	}
+
 	return true, nil
 }
 
@@ -414,41 +362,23 @@ func (s *MCPDeploymentService) parseValidateAndTransform(params MCPDeploymentPar
 	return &mcpConfig, &apiConfig, nil
 }
 
-// ListMCPProxies returns all stored MCP proxy configurations with their
-// derived RestAPI Configuration hydrated from StoredConfig.SourceConfiguration.
-func (s *MCPDeploymentService) ListMCPProxies() []*models.StoredConfig {
-	configs := s.store.GetAllByKind(string(api.Mcp))
-	if s.db != nil {
-		if storedConfigs, err := s.db.GetAllConfigsByKind(string(api.Mcp)); err == nil {
-			configs = storedConfigs
-		}
+// ListMCPProxies returns all stored MCP proxy configurations from the database.
+func (s *MCPDeploymentService) ListMCPProxies() ([]*models.StoredConfig, error) {
+	configs, err := s.db.GetAllConfigsByKind(string(api.Mcp))
+	if err != nil {
+		return nil, err
 	}
-	for _, cfg := range configs {
-		s.hydrateStoredMCPConfig(cfg)
-	}
-	return configs
+	return configs, nil
 }
 
 // GetMCPProxyByHandle returns an MCP proxy configuration by its handle (metadata.name)
 func (s *MCPDeploymentService) GetMCPProxyByHandle(handle string) (*models.StoredConfig, error) {
-	if s.db != nil {
-		cfg, err := s.db.GetConfigByKindAndHandle(models.KindMcp, handle)
-		if err == nil {
-			s.hydrateStoredMCPConfig(cfg)
-			return cfg, nil
-		}
+	cfg, err := s.db.GetConfigByKindAndHandle(models.KindMcp, handle)
+	if err != nil {
 		if isMCPNotFoundError(err) {
 			return nil, storage.ErrNotFound
 		}
 		return nil, err
-	}
-
-	cfg, err := s.store.GetByKindAndHandle(models.KindMcp, handle)
-	if err != nil {
-		return nil, err
-	}
-	if cfg == nil {
-		return nil, storage.ErrNotFound
 	}
 	s.hydrateStoredMCPConfig(cfg)
 	return cfg, nil
@@ -498,36 +428,15 @@ func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID string, logg
 		}
 	}
 
-	// Delete from database (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.DeleteConfig(cfg.UUID); err != nil {
-			logger.Error("Failed to delete config from database", slog.Any("error", err))
-			return nil, fmt.Errorf("failed to delete configuration from database: %w", err)
-		}
+	if err := s.requireReplicaSyncDependencies(); err != nil {
+		return nil, err
 	}
 
-	if s.isEventDriven() {
-		s.publishMCPProxyEvent("DELETE", cfg.UUID, correlationID, logger)
-		return cfg, nil
+	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
+		logger.Error("Failed to delete config from database", slog.Any("error", err))
+		return nil, fmt.Errorf("failed to delete configuration from database: %w", err)
 	}
-
-	// Delete from in-memory store
-	if err := s.store.Delete(cfg.UUID); err != nil {
-		logger.Error("Failed to delete config from memory store", slog.Any("error", err))
-		return nil, fmt.Errorf("failed to delete configuration from memory store: %w", err)
-	}
-
-	if s.snapshotManager != nil {
-		// Update xDS snapshot asynchronously
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
-				logger.Error("Failed to update xDS snapshot", slog.Any("error", err))
-			}
-		}()
-	}
-
+	s.publishMCPProxyEvent("DELETE", cfg.UUID, correlationID, logger)
 	return cfg, nil
 }
 
@@ -560,35 +469,18 @@ func (s *MCPDeploymentService) UndeployMCPProxy(
 	updated.DeployedAt = &undeployedAt
 	updated.UpdatedAt = time.Now()
 
+	if err := s.requireReplicaSyncDependencies(); err != nil {
+		return nil, err
+	}
+
 	// Timestamp-guarded upsert: only writes if deployed_at is newer than what's in DB.
-	if s.db != nil {
-		affected, err := s.db.UpsertConfig(&updated)
-		if err != nil {
-			return nil, fmt.Errorf("failed to upsert configuration in database: %w", err)
-		}
-		if !affected {
-			return nil, ErrMCPUndeployStale
-		}
+	affected, err := s.db.UpsertConfig(&updated)
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert configuration in database: %w", err)
 	}
-
-	if s.isEventDriven() {
-		s.publishMCPProxyEvent("UPDATE", updated.UUID, correlationID, logger)
-		return &updated, nil
+	if !affected {
+		return nil, ErrMCPUndeployStale
 	}
-
-	if err := s.store.Update(&updated); err != nil {
-		return nil, fmt.Errorf("failed to update configuration in memory store: %w", err)
-	}
-
-	if s.snapshotManager != nil {
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
-				logger.Error("Failed to update xDS snapshot", slog.Any("error", err))
-			}
-		}()
-	}
-
+	s.publishMCPProxyEvent("UPDATE", updated.UUID, correlationID, logger)
 	return &updated, nil
 }

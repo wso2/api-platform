@@ -92,6 +92,10 @@ func NewAPIDeploymentService(
 	routerConfig *config.RouterConfig,
 	policyResolver *resolver.PolicyResolver,
 ) *APIDeploymentService {
+	if db == nil {
+		panic("APIDeploymentService requires non-nil storage")
+	}
+
 	return &APIDeploymentService{
 		store:           store,
 		db:              db,
@@ -104,26 +108,27 @@ func NewAPIDeploymentService(
 	}
 }
 
-// SetEventHub sets the EventHub for event-driven synchronization.
-// When set, the deployment service publishes events instead of directly
-// updating in-memory stores and xDS snapshots.
+// SetEventHub wires replica-sync publishing for write paths.
 func (s *APIDeploymentService) SetEventHub(eventHub eventhub.EventHub, gatewayID string) {
 	s.eventHub = eventHub
 	s.gatewayID = gatewayID
 }
 
+func (s *APIDeploymentService) requireReplicaSyncDependencies() error {
+	if s.eventHub == nil {
+		return fmt.Errorf("APIDeploymentService requires EventHub")
+	}
+	if strings.TrimSpace(s.gatewayID) == "" {
+		return fmt.Errorf("APIDeploymentService requires gateway ID")
+	}
+	return nil
+}
+
 // TODO: (VirajSalaka) We do not need gatewayID in the event as it is part of the publishEvent.
 // publishEvent publishes an event to the EventHub for async processing.
 func (s *APIDeploymentService) publishEvent(eventType eventhub.EventType, action, entityID, correlationID string, logger *slog.Logger) {
-	if s.eventHub == nil {
-		return
-	}
-	if strings.TrimSpace(s.gatewayID) == "" {
-		logger.Warn("Skipping event publish because gateway ID is not configured",
-			slog.String("event_type", string(eventType)),
-			slog.String("action", action),
-			slog.String("entity_id", entityID))
-		return
+	if err := s.requireReplicaSyncDependencies(); err != nil {
+		panic(err.Error())
 	}
 	event := eventhub.Event{
 		GatewayID:           s.gatewayID,
@@ -143,20 +148,14 @@ func (s *APIDeploymentService) publishEvent(eventType eventhub.EventType, action
 	}
 }
 
-func isReplicaSyncedKind(kind string) bool {
-	switch kind {
-	case models.KindRestApi, models.KindWebSubApi, models.KindLlmProvider, models.KindLlmProxy, models.KindMcp:
-		return true
-	default:
-		return false
-	}
-}
-
 // DeployAPIConfiguration handles the complete API configuration deployment process
 // Important: The APIDeploymentResult contains resolved secrets. Do not expose them in responses.
 func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams) (*APIDeploymentResult, error) {
 	if !models.IsValidOrigin(params.Origin) {
 		return nil, fmt.Errorf("invalid or missing origin: %q", params.Origin)
+	}
+	if err := s.requireReplicaSyncDependencies(); err != nil {
+		return nil, err
 	}
 
 	var (
@@ -427,27 +426,11 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 			slog.String("correlation_id", params.CorrelationID))
 	}
 
-	if s.eventHub != nil {
-		// Event-driven mode: publish event for async processing by EventListener
-		action := "CREATE"
-		if isUpdate {
-			action = "UPDATE"
-		}
-		s.publishEvent(eventhub.EventTypeAPI, action, apiID, params.CorrelationID, params.Logger)
-	} else if s.snapshotManager != nil {
-		// Memory-only mode: update xDS snapshot inline
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-
-			if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
-				params.Logger.Error("Failed to update xDS snapshot",
-					slog.Any("error", err),
-					slog.String("api_id", apiID),
-					slog.String("correlation_id", params.CorrelationID))
-			}
-		}()
+	action := "CREATE"
+	if isUpdate {
+		action = "UPDATE"
 	}
+	s.publishEvent(eventhub.EventTypeAPI, action, apiID, params.CorrelationID, params.Logger)
 
 	return &APIDeploymentResult{
 		StoredConfig: resolvedCfg,
@@ -532,65 +515,23 @@ func (s *APIDeploymentService) GetTopicsForDelete(apiConfig models.StoredConfig)
 }
 
 // saveOrUpdateConfig performs a timestamp-guarded upsert of the API configuration.
-//
-// When a persistent database is available, it uses UpsertConfig (INSERT ... ON CONFLICT
-// with deployed_at timestamp guard) so that stale events never overwrite newer data.
-// Returns (affected bool, error) where affected=true means the DB row was actually
-// inserted or updated. Callers should only publish EventHub events and update xDS
-// snapshots when affected=true.
-//
-// When running in memory-only mode (no database), it falls back to the in-memory store's
-// Add/Update which always succeeds (affected=true).
 func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig, logger *slog.Logger) (bool, error) {
-	if s.db != nil {
-		affected, err := s.db.UpsertConfig(storedCfg)
-		if err != nil {
-			return false, fmt.Errorf("failed to upsert config to database: %w", err)
-		}
-		if !affected {
-			logger.Debug("Skipped stale API configuration (newer version exists in DB)",
-				slog.String("api_id", storedCfg.UUID),
-				slog.String("displayName", storedCfg.DisplayName),
-				slog.String("version", storedCfg.Version))
-			return false, nil
-		}
-
-		// In event-driven mode, the EventListener will update the in-memory store
-		// via event processing. Only update the store inline for non-event types.
-		if s.eventHub == nil || !isReplicaSyncedKind(storedCfg.Kind) {
-			if existing, _ := s.store.Get(storedCfg.UUID); existing != nil {
-				// Preserve CreatedAt from existing record (UpsertConfig SQL doesn't
-				// touch created_at on conflict, so the memory store should match).
-				storedCfg.CreatedAt = existing.CreatedAt
-				if err := s.store.Update(storedCfg); err != nil {
-					logger.Warn("Failed to update config in memory store after DB upsert",
-						slog.String("api_id", storedCfg.UUID),
-						slog.Any("error", err))
-				}
-			} else {
-				if err := s.store.Add(storedCfg); err != nil {
-					logger.Warn("Failed to add config to memory store after DB upsert",
-						slog.String("api_id", storedCfg.UUID),
-						slog.Any("error", err))
-				}
-			}
-		}
-
-		return true, nil
+	if err := s.requireReplicaSyncDependencies(); err != nil {
+		return false, err
 	}
 
-	// Memory-only mode (no database): use in-memory store directly
-	if existing, _ := s.store.Get(storedCfg.UUID); existing != nil {
-		// Preserve CreatedAt from existing record on updates
-		storedCfg.CreatedAt = existing.CreatedAt
-		if err := s.store.Update(storedCfg); err != nil {
-			return false, fmt.Errorf("failed to update config in memory store: %w", err)
-		}
-	} else {
-		if err := s.store.Add(storedCfg); err != nil {
-			return false, fmt.Errorf("failed to add config to memory store: %w", err)
-		}
+	affected, err := s.db.UpsertConfig(storedCfg)
+	if err != nil {
+		return false, fmt.Errorf("failed to upsert config to database: %w", err)
 	}
+	if !affected {
+		logger.Debug("Skipped stale API configuration (newer version exists in DB)",
+			slog.String("api_id", storedCfg.UUID),
+			slog.String("displayName", storedCfg.DisplayName),
+			slog.String("version", storedCfg.Version))
+		return false, nil
+	}
+
 	return true, nil
 }
 

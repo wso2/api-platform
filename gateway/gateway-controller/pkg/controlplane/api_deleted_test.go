@@ -54,9 +54,9 @@ type mockStorageForDeletion struct {
 	removeKeyCallCount           int
 	removeSubscriptionCallCount  int
 	lastSubscriptionCleanupAPIID string
-	upsertAffected     *bool // nil = default (true); non-nil = use this value
-	upsertErr          error
-	upsertCallCount    int
+	upsertAffected               *bool // nil = default (true); non-nil = use this value
+	upsertErr                    error
+	upsertCallCount              int
 }
 
 func newMockStorageForDeletion() *mockStorageForDeletion {
@@ -813,7 +813,7 @@ func TestClient_findAPIConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("Returns config from memory when not in database", func(t *testing.T) {
+	t.Run("Returns ErrNotFound when config exists only in memory store", func(t *testing.T) {
 		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 		store := storage.NewConfigStore()
 		db := newMockStorageForDeletion()
@@ -828,12 +828,9 @@ func TestClient_findAPIConfig(t *testing.T) {
 			db:     db,
 		}
 
-		config, err := client.findAPIConfig(apiID)
-		if err != nil {
-			t.Errorf("Expected to find API config in memory store, got error: %v", err)
-		}
-		if config.UUID != apiID {
-			t.Errorf("Expected API ID %s, got %s", apiID, config.UUID)
+		_, err := client.findAPIConfig(apiID)
+		if !storage.IsNotFoundError(err) {
+			t.Errorf("Expected ErrNotFound when API exists only in memory store, got: %v", err)
 		}
 	})
 

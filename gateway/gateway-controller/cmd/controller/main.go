@@ -144,21 +144,21 @@ func main() {
 		os.Exit(1)
 	}
 	eventHubDB := eventHubStorage.GetDB()
-	if eventHubDB != nil {
-		eventHubInstance = eventhub.New(eventHubDB, log, eventhub.DefaultConfig())
-		if err := eventHubInstance.Initialize(); err != nil {
-			log.Error("Failed to initialize EventHub", slog.Any("error", err))
-			os.Exit(1)
-		}
-		if err := eventHubInstance.RegisterGateway(cfg.Controller.Server.GatewayID); err != nil {
-			log.Error("Failed to register gateway with EventHub", slog.Any("error", err))
-			os.Exit(1)
-		}
-		log.Info("EventHub initialized for multi-replica sync",
-			slog.String("gateway_id", cfg.Controller.Server.GatewayID))
-	} else {
-		log.Warn("EventHub storage returned nil DB, skipping EventHub initialization")
+	if eventHubDB == nil {
+		log.Error("EventHub storage returned nil database handle")
+		os.Exit(1)
 	}
+	eventHubInstance = eventhub.New(eventHubDB, log, eventhub.DefaultConfig())
+	if err := eventHubInstance.Initialize(); err != nil {
+		log.Error("Failed to initialize EventHub", slog.Any("error", err))
+		os.Exit(1)
+	}
+	if err := eventHubInstance.RegisterGateway(cfg.Controller.Server.GatewayID); err != nil {
+		log.Error("Failed to register gateway with EventHub", slog.Any("error", err))
+		os.Exit(1)
+	}
+	log.Info("EventHub initialized for multi-replica sync",
+		slog.String("gateway_id", cfg.Controller.Server.GatewayID))
 
 	// Initialize in-memory config store
 	configStore := storage.NewConfigStore()
@@ -501,28 +501,26 @@ func main() {
 
 	// Initialize EventListener for multi-replica sync (consumes EventHub events)
 	var evtListener *eventlistener.EventListener
-	if eventHubInstance != nil {
-		evtListener = eventlistener.NewEventListener(
-			eventHubInstance,
-			configStore,
-			db,
-			snapshotManager,
-			subscriptionSnapshotManager,
-			apiKeyXDSManager,
-			lazyResourceXDSManager,
-			policyManager,
-			&cfg.Router,
-			log,
-			cfg,
-			policyDefinitions,
-			policyResolver,
-		)
-		if err := evtListener.Start(); err != nil {
-			log.Error("Failed to start event listener", slog.Any("error", err))
-			os.Exit(1)
-		}
-		log.Info("EventListener started for multi-replica sync")
+	evtListener = eventlistener.NewEventListener(
+		eventHubInstance,
+		configStore,
+		db,
+		snapshotManager,
+		subscriptionSnapshotManager,
+		apiKeyXDSManager,
+		lazyResourceXDSManager,
+		policyManager,
+		&cfg.Router,
+		log,
+		cfg,
+		policyDefinitions,
+		policyResolver,
+	)
+	if err := evtListener.Start(); err != nil {
+		log.Error("Failed to start event listener", slog.Any("error", err))
+		os.Exit(1)
 	}
+	log.Info("EventListener started for multi-replica sync")
 
 	// Initialize API server with the configured validator and API key manager
 	apiServer := handlers.NewAPIServer(
@@ -647,10 +645,8 @@ func main() {
 	if evtListener != nil {
 		evtListener.Stop()
 	}
-	if eventHubInstance != nil {
-		if err := eventHubInstance.Close(); err != nil {
-			log.Warn("Failed to close EventHub cleanly", slog.Any("error", err))
-		}
+	if err := eventHubInstance.Close(); err != nil {
+		log.Warn("Failed to close EventHub cleanly", slog.Any("error", err))
 	}
 	if eventHubStorage != nil {
 		if err := eventHubStorage.Close(); err != nil {

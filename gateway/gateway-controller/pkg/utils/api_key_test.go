@@ -43,7 +43,7 @@ func TestNewAPIKeyService(t *testing.T) {
 		Algorithm:            constants.HashingAlgorithmSHA256,
 	}
 
-	service := NewAPIKeyService(store, nil, nil, apiKeyConfig)
+	service := newTestAPIKeyService(store, nil, nil, apiKeyConfig)
 	assert.NotNil(t, service)
 	assert.Equal(t, store, service.store)
 	assert.Equal(t, apiKeyConfig, service.apiKeyConfig)
@@ -683,7 +683,7 @@ func TestCreateAPIKey_ConfigLookup(t *testing.T) {
 		t.Fatalf("failed to seed config in database: %v", err)
 	}
 
-	service := NewAPIKeyService(store, db, nil, newTestAPIKeyConfig())
+	service := newTestAPIKeyService(store, db, nil, newTestAPIKeyConfig())
 	user := &commonmodels.AuthContext{
 		UserID: "creator-user",
 		Roles:  []string{"developer"},
@@ -736,7 +736,7 @@ func TestUpdateAPIKey_ConfigLookup(t *testing.T) {
 		t.Fatalf("failed to seed API key in memory store: %v", err)
 	}
 
-	service := NewAPIKeyService(store, db, nil, newTestAPIKeyConfig())
+	service := newTestAPIKeyService(store, db, nil, newTestAPIKeyConfig())
 	user := &commonmodels.AuthContext{
 		UserID: "creator-user",
 		Roles:  []string{"developer"},
@@ -793,7 +793,7 @@ func TestRegenerateAPIKey_ConfigLookup(t *testing.T) {
 		t.Fatalf("failed to seed API key in memory store: %v", err)
 	}
 
-	service := NewAPIKeyService(store, db, nil, newTestAPIKeyConfig())
+	service := newTestAPIKeyService(store, db, nil, newTestAPIKeyConfig())
 	user := &commonmodels.AuthContext{
 		UserID: "creator-user",
 		Roles:  []string{"developer"},
