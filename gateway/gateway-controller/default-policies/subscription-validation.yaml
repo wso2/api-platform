@@ -1,10 +1,10 @@
 name: subscription-validation
-version: v0.9.1
+version: v0.9.2
 description: |
   Validates that the request has an active subscription to the
   requested API. Checks the Subscription-Key header first; if not found,
-  checks the subscription key cookie (when configured); falls back to
-  application_id from request metadata (set by auth policy).
+  checks the subscription key cookie (when configured).
+  
   If the subscription plan has throttle limits, enforces rate limiting
   keyed by the subscription token.
 
