@@ -22,6 +22,7 @@ package models
 type PolicyDefinition struct {
 	Name             string                  `json:"name" yaml:"name"`
 	Version          string                  `json:"version" yaml:"version"`
+	DisplayName      string                  `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 	Description      *string                 `json:"description,omitempty" yaml:"description,omitempty"`
 	Parameters       *map[string]interface{} `json:"parameters,omitempty" yaml:"parameters,omitempty"`
 	SystemParameters *map[string]interface{} `json:"systemParameters,omitempty" yaml:"systemParameters,omitempty"`

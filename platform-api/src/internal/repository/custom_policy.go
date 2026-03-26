@@ -41,15 +41,16 @@ func NewCustomPolicyRepo(db *database.DB) CustomPolicyRepository {
 func (r *CustomPolicyRepo) InsertCustomPolicy(policy *model.CustomPolicy) error {
 	now := time.Now()
 	query := `
-		INSERT INTO gateway_custom_policies (uuid, organization_uuid, name, version, description, policy_definition, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO gateway_custom_policies (uuid, organization_uuid, name, display_name, version, description, policy_definition, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(organization_uuid, name, version) DO UPDATE SET
+			display_name     = excluded.display_name,
 			description      = excluded.description,
 			policy_definition = excluded.policy_definition,
 			updated_at       = excluded.updated_at
 	`
 	_, err := r.db.Exec(r.db.Rebind(query),
-		policy.UUID, policy.OrganizationUUID, policy.Name, policy.Version,
+		policy.UUID, policy.OrganizationUUID, policy.Name, policy.DisplayName, policy.Version,
 		policy.Description, policy.PolicyDefinition, now, now,
 	)
 	return err
@@ -58,13 +59,13 @@ func (r *CustomPolicyRepo) InsertCustomPolicy(policy *model.CustomPolicy) error 
 // GetCustomPolicyByNameAndVersion retrieves a custom policy by org, name, and version.
 func (r *CustomPolicyRepo) GetCustomPolicyByNameAndVersion(orgUUID, name, version string) (*model.CustomPolicy, error) {
 	query := `
-		SELECT uuid, organization_uuid, name, version, description, policy_definition, created_at, updated_at
+		SELECT uuid, organization_uuid, name, display_name, version, description, policy_definition, created_at, updated_at
 		FROM gateway_custom_policies
 		WHERE organization_uuid = ? AND name = ? AND version = ?
 	`
 	p := &model.CustomPolicy{}
 	err := r.db.QueryRow(r.db.Rebind(query), orgUUID, name, version).Scan(
-		&p.UUID, &p.OrganizationUUID, &p.Name, &p.Version,
+		&p.UUID, &p.OrganizationUUID, &p.Name, &p.DisplayName, &p.Version,
 		&p.Description, &p.PolicyDefinition, &p.CreatedAt, &p.UpdatedAt,
 	)
 	if err != nil {
@@ -79,7 +80,7 @@ func (r *CustomPolicyRepo) GetCustomPolicyByNameAndVersion(orgUUID, name, versio
 // ListCustomPolicyByOrganization retrieves all custom policies for an organization.
 func (r *CustomPolicyRepo) ListCustomPolicyByOrganization(orgUUID string) ([]*model.CustomPolicy, error) {
 	query := `
-		SELECT uuid, organization_uuid, name, version, description, policy_definition, created_at, updated_at
+		SELECT uuid, organization_uuid, name, display_name, version, description, policy_definition, created_at, updated_at
 		FROM gateway_custom_policies
 		WHERE organization_uuid = ?
 		ORDER BY name, version
@@ -94,7 +95,7 @@ func (r *CustomPolicyRepo) ListCustomPolicyByOrganization(orgUUID string) ([]*mo
 	for rows.Next() {
 		p := &model.CustomPolicy{}
 		if err := rows.Scan(
-			&p.UUID, &p.OrganizationUUID, &p.Name, &p.Version,
+			&p.UUID, &p.OrganizationUUID, &p.Name, &p.DisplayName, &p.Version,
 			&p.Description, &p.PolicyDefinition, &p.CreatedAt, &p.UpdatedAt,
 		); err != nil {
 			return nil, err
@@ -112,11 +113,11 @@ func (r *CustomPolicyRepo) UpdateCustomPolicy(policy *model.CustomPolicy, oldVer
 	now := time.Now()
 	query := `
 		UPDATE gateway_custom_policies
-		SET version = ?, description = ?, policy_definition = ?, updated_at = ?
+		SET version = ?, display_name = ?, description = ?, policy_definition = ?, updated_at = ?
 		WHERE organization_uuid = ? AND name = ? AND version = ?
 	`
 	_, err := r.db.Exec(r.db.Rebind(query),
-		policy.Version, policy.Description, policy.PolicyDefinition, now,
+		policy.Version, policy.DisplayName, policy.Description, policy.PolicyDefinition, now,
 		policy.OrganizationUUID, policy.Name, oldVersion,
 	)
 	return err
@@ -125,13 +126,13 @@ func (r *CustomPolicyRepo) UpdateCustomPolicy(policy *model.CustomPolicy, oldVer
 // GetCustomPolicyByUUID retrieves a custom policy by its UUID, scoped to an organization.
 func (r *CustomPolicyRepo) GetCustomPolicyByUUID(orgUUID, policyUUID string) (*model.CustomPolicy, error) {
 	query := `
-		SELECT uuid, organization_uuid, name, version, description, policy_definition, created_at, updated_at
+		SELECT uuid, organization_uuid, name, display_name, version, description, policy_definition, created_at, updated_at
 		FROM gateway_custom_policies
 		WHERE organization_uuid = ? AND uuid = ?
 	`
 	p := &model.CustomPolicy{}
 	err := r.db.QueryRow(r.db.Rebind(query), orgUUID, policyUUID).Scan(
-		&p.UUID, &p.OrganizationUUID, &p.Name, &p.Version,
+		&p.UUID, &p.OrganizationUUID, &p.Name, &p.DisplayName, &p.Version,
 		&p.Description, &p.PolicyDefinition, &p.CreatedAt, &p.UpdatedAt,
 	)
 	if err != nil {
@@ -146,7 +147,7 @@ func (r *CustomPolicyRepo) GetCustomPolicyByUUID(orgUUID, policyUUID string) (*m
 // GetCustomPoliciesByName retrieves all versions of a custom policy for a given org and name.
 func (r *CustomPolicyRepo) GetCustomPoliciesByName(orgUUID, name string) ([]*model.CustomPolicy, error) {
 	query := `
-		SELECT uuid, organization_uuid, name, version, description, policy_definition, created_at, updated_at
+		SELECT uuid, organization_uuid, name, display_name, version, description, policy_definition, created_at, updated_at
 		FROM gateway_custom_policies
 		WHERE organization_uuid = ? AND name = ?
 		ORDER BY version
@@ -161,7 +162,7 @@ func (r *CustomPolicyRepo) GetCustomPoliciesByName(orgUUID, name string) ([]*mod
 	for rows.Next() {
 		p := &model.CustomPolicy{}
 		if err := rows.Scan(
-			&p.UUID, &p.OrganizationUUID, &p.Name, &p.Version,
+			&p.UUID, &p.OrganizationUUID, &p.Name, &p.DisplayName, &p.Version,
 			&p.Description, &p.PolicyDefinition, &p.CreatedAt, &p.UpdatedAt,
 		); err != nil {
 			return nil, err

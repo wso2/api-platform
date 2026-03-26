@@ -27,6 +27,7 @@ type CustomPolicy struct {
 	UUID             string          `json:"uuid" db:"uuid"`
 	OrganizationUUID string          `json:"organizationUuid" db:"organization_uuid"`
 	Name             string          `json:"name" db:"name"`
+	DisplayName      string          `json:"displayName" db:"display_name"`
 	Version          string          `json:"version" db:"version"`
 	Description      *string         `json:"description,omitempty" db:"description"`
 	PolicyDefinition json.RawMessage `json:"policyDefinition" db:"policy_definition"`

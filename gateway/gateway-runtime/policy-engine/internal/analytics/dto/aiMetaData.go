@@ -22,6 +22,7 @@ type AIMetadata struct {
 	Model         string `json:"model"`
 	VendorName    string `json:"vendorName"`
 	VendorVersion string `json:"vendorVersion"`
+	LLMCost       any    `json:"llmCost,omitempty"`
 }
 
 // GetModel returns the model.
@@ -52,4 +53,14 @@ func (a *AIMetadata) GetVendorVersion() string {
 // SetVendorVersion sets the vendor version.
 func (a *AIMetadata) SetVendorVersion(vendorVersion string) {
 	a.VendorVersion = vendorVersion
+}
+
+// GetLLMCost returns the LLM cost.
+func (a *AIMetadata) GetLLMCost() any {
+	return a.LLMCost
+}
+
+// SetLLMCost sets the LLM cost.
+func (a *AIMetadata) SetLLMCost(llmCost any) {
+	a.LLMCost = llmCost
 }

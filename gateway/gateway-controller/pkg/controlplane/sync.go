@@ -90,19 +90,20 @@ func (c *Client) syncDeployments(gatewayID string) {
 		slog.Int("to_delete", len(diff.toDelete)),
 	)
 
-	// 4. Process fetches in chunked batches (dependency order: providers → proxies → REST APIs)
+	// 4. Process deletions for orphaned artifacts first (reverse dependency order: REST APIs → proxies → providers)
+	//    Deleting before fetching frees resources and avoids transient route conflicts.
+	if len(diff.toDelete) > 0 {
+		c.processSyncDeletions(diff.toDelete, gatewayID)
+	}
+
+	// 5. Process fetches in chunked batches (dependency order: providers → proxies → REST APIs)
 	if len(diff.toFetch) > 0 {
 		c.processSyncFetches(diff.toFetch, gatewayID)
 	}
 
-	// 5. Process status-only updates (undeploy)
+	// 6. Process status-only updates
 	if len(diff.toUpdateStatus) > 0 {
 		c.processSyncStatusUpdates(diff.toUpdateStatus, gatewayID)
-	}
-
-	// 6. Process deletions for orphaned artifacts (reverse dependency order: REST APIs → proxies → providers)
-	if len(diff.toDelete) > 0 {
-		c.processSyncDeletions(diff.toDelete, gatewayID)
 	}
 
 	c.logger.Info("Deployment sync completed",
@@ -146,7 +147,12 @@ func computeSyncDiff(remote []models.ControlPlaneDeployment, local []*models.Sto
 
 		// 2. Same deployment ID but state differs (either direction):
 		//    remote undeployed / local deployed, or remote deployed / local undeployed.
-		if dep.State != string(localCfg.DesiredState) {
+		remoteState, valid := models.ParseDesiredState(dep.State)
+		if !valid {
+			// Unrecognised state — skip rather than persisting an invalid value.
+			continue
+		}
+		if remoteState != localCfg.DesiredState {
 			result.toUpdateStatus = append(result.toUpdateStatus, dep)
 			continue
 		}
@@ -326,8 +332,16 @@ func (c *Client) processSyncStatusUpdates(deployments []models.ControlPlaneDeplo
 		}
 
 		// Map remote state to local desired state
+		desiredState, ok := models.ParseDesiredState(dep.State)
+		if !ok {
+			c.logger.Error("Skipping sync status update: unrecognised remote state",
+				slog.String("artifact_id", dep.ArtifactID),
+				slog.String("remote_state", dep.State),
+			)
+			continue
+		}
 		deployedAt := dep.DeployedAt
-		cfg.DesiredState = models.DesiredState(dep.State)
+		cfg.DesiredState = desiredState
 		cfg.DeploymentID = dep.DeploymentID
 		cfg.DeployedAt = &deployedAt
 		cfg.UpdatedAt = time.Now()
@@ -357,7 +371,7 @@ func (c *Client) processSyncStatusUpdates(deployments []models.ControlPlaneDeplo
 				EntityID:  dep.ArtifactID,
 				EventID:   correlationID,
 			}
-			if err := c.eventHub.PublishEvent(gatewayID, evt); err != nil {
+			if err := c.eventHub.PublishEvent(c.gatewayID, evt); err != nil {
 				c.logger.Error("Failed to publish sync status update event",
 					slog.String("artifact_id", dep.ArtifactID),
 					slog.Any("error", err),
