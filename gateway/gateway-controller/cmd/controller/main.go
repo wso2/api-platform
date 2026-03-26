@@ -138,7 +138,12 @@ func main() {
 	var eventHubInstance eventhub.EventHub
 	var eventHubStorage storage.Storage
 	// Create separate storage connection for EventHub (avoids SQLite lock contention)
-	eventHubStorage, err = storage.NewStorage(toBackendConfig(cfg), log)
+	ehBackendCfg := toBackendConfig(cfg)
+	ehBackendCfg.Postgres.MaxOpenConns = cfg.Controller.EventHub.Database.MaxOpenConns
+	ehBackendCfg.Postgres.MaxIdleConns = cfg.Controller.EventHub.Database.MaxIdleConns
+	ehBackendCfg.Postgres.ConnMaxLifetime = cfg.Controller.EventHub.Database.ConnMaxLifetime
+	ehBackendCfg.Postgres.ConnMaxIdleTime = cfg.Controller.EventHub.Database.ConnMaxIdleTime
+	eventHubStorage, err = storage.NewStorage(ehBackendCfg, log)
 	if err != nil {
 		log.Error("Failed to initialize EventHub storage", slog.Any("error", err))
 		os.Exit(1)

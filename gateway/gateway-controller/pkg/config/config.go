@@ -130,9 +130,18 @@ type MetricsConfig struct {
 
 // EventHubConfig holds EventHub configuration for multi-replica sync
 type EventHubConfig struct {
-	PollInterval    time.Duration `koanf:"poll_interval"`
-	CleanupInterval time.Duration `koanf:"cleanup_interval"`
-	RetentionPeriod time.Duration `koanf:"retention_period"`
+	PollInterval    time.Duration          `koanf:"poll_interval"`
+	CleanupInterval time.Duration          `koanf:"cleanup_interval"`
+	RetentionPeriod time.Duration          `koanf:"retention_period"`
+	Database        EventHubDatabaseConfig `koanf:"database"`
+}
+
+// EventHubDatabaseConfig holds connection pool settings for the EventHub database connection
+type EventHubDatabaseConfig struct {
+	MaxOpenConns    int           `koanf:"max_open_conns"`
+	MaxIdleConns    int           `koanf:"max_idle_conns"`
+	ConnMaxLifetime time.Duration `koanf:"conn_max_lifetime"`
+	ConnMaxIdleTime time.Duration `koanf:"conn_max_idle_time"`
 }
 
 // AuthConfig holds authentication related configuration
@@ -589,6 +598,12 @@ func defaultConfig() *Config {
 				PollInterval:    3 * time.Second,
 				CleanupInterval: 10 * time.Minute,
 				RetentionPeriod: 1 * time.Hour,
+				Database: EventHubDatabaseConfig{
+					MaxOpenConns:    5,
+					MaxIdleConns:    2,
+					ConnMaxLifetime: 30 * time.Minute,
+					ConnMaxIdleTime: 5 * time.Minute,
+				},
 			},
 			Encryption: EncryptionConfig{
 				Providers: []ProviderConfig{
