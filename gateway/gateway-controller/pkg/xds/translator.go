@@ -232,7 +232,7 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 		prefixPath := strings.TrimSuffix(fullPath, "/*")
 		pathSpecifier = &route.RouteMatch_SafeRegex{
 			SafeRegex: &matcher.RegexMatcher{
-				Regex: "^" + regexp.QuoteMeta(prefixPath) + ".*$",
+				Regex: "^" + regexp.QuoteMeta(prefixPath) + "(?:/.*)?$",
 			},
 		}
 	} else if hasParams {
@@ -320,8 +320,11 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	if isWildcardPath || hasParams || isRootPath {
 		r.Match.PathSpecifier = pathSpecifier
 	} else {
-		r.Match.PathSpecifier = &route.RouteMatch_Path{
-			Path: fullPath,
+		// Accept both /path and /path/ but preserve the trailing slash in the rewrite.
+		r.Match.PathSpecifier = &route.RouteMatch_SafeRegex{
+			SafeRegex: &matcher.RegexMatcher{
+				Regex: "^" + regexp.QuoteMeta(fullPath) + "/?$",
+			},
 		}
 	}
 
@@ -344,11 +347,23 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	}
 
 	escapedContext := regexp.QuoteMeta(contextWithVersion)
-	r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
-		Pattern: &matcher.RegexMatcher{
-			Regex: "^" + escapedContext + "(.*)$",
-		},
-		Substitution: upstreamPath + "\\1",
+	if isRootPath {
+		// Root path ("/") matches both /ctx and /ctx/. Using a non-capturing pattern
+		// avoids an empty capture group when the trailing slash is absent, which would
+		// produce an empty rewritten path. Always normalize to upstreamPath+"/".
+		r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
+			Pattern: &matcher.RegexMatcher{
+				Regex: "^" + escapedContext + "/?$",
+			},
+			Substitution: upstreamPath + "/",
+		}
+	} else {
+		r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
+			Pattern: &matcher.RegexMatcher{
+				Regex: "^" + escapedContext + "(.*)$",
+			},
+			Substitution: upstreamPath + "\\1",
+		}
 	}
 
 	return r
@@ -1703,12 +1718,13 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 
 	var pathSpecifier *route.RouteMatch_SafeRegex
 	if isWildcardPath {
-		// For wildcard paths, match anything after the prefix (with or without a slash separator).
-		// e.g. context /weather/v1.0 + path /* → ^/weather/v1\.0.*$
+		// For wildcard paths, require end-of-string or a slash after the prefix to avoid
+		// matching sibling paths (e.g. /api2 must not match /api/*).
+		// e.g. context /weather/v1.0 + path /* → ^/weather/v1\.0(?:/.*)?$
 		prefixPath := strings.TrimSuffix(fullPath, "/*")
 		pathSpecifier = &route.RouteMatch_SafeRegex{
 			SafeRegex: &matcher.RegexMatcher{
-				Regex: "^" + regexp.QuoteMeta(prefixPath) + ".*$",
+				Regex: "^" + regexp.QuoteMeta(prefixPath) + "(?:/.*)?$",
 			},
 		}
 	} else if hasParams {
@@ -1838,9 +1854,11 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	if isWildcardPath || hasParams || isRootPath {
 		r.Match.PathSpecifier = pathSpecifier
 	} else {
-		// Use exact path matching for non-parameterized paths
-		r.Match.PathSpecifier = &route.RouteMatch_Path{
-			Path: fullPath,
+		// Accept both /path and /path/ but preserve the trailing slash in the rewrite.
+		r.Match.PathSpecifier = &route.RouteMatch_SafeRegex{
+			SafeRegex: &matcher.RegexMatcher{
+				Regex: "^" + regexp.QuoteMeta(fullPath) + "/?$",
+			},
 		}
 	}
 
@@ -1868,11 +1886,23 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 		contextWithVersion = ConstructFullPath(context, apiVersion, "")
 	}
 	escapedContext := regexp.QuoteMeta(contextWithVersion)
-	r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
-		Pattern: &matcher.RegexMatcher{
-			Regex: "^" + escapedContext + "(.*)$",
-		},
-		Substitution: upstreamPath + "\\1",
+	if isRootPath {
+		// Root path ("/") matches both /ctx and /ctx/. Using a non-capturing pattern
+		// avoids an empty capture group when the trailing slash is absent, which would
+		// produce an empty rewritten path. Always normalize to upstreamPath+"/".
+		r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
+			Pattern: &matcher.RegexMatcher{
+				Regex: "^" + escapedContext + "/?$",
+			},
+			Substitution: upstreamPath + "/",
+		}
+	} else {
+		r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
+			Pattern: &matcher.RegexMatcher{
+				Regex: "^" + escapedContext + "(.*)$",
+			},
+			Substitution: upstreamPath + "\\1",
+		}
 	}
 
 	return r

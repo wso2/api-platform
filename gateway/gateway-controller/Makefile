@@ -28,7 +28,7 @@ LDFLAGS := -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.Bu
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-controller
 
-.PHONY: help generate build test generate-listener-certs push build-coverage-image build-debug clean
+.PHONY: help generate build test generate-listener-certs push build-coverage-image build-debug clean build-and-push-multiarch generate-postman-collection
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
