@@ -154,9 +154,11 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 		return nil, err
 	}
 
-	// Push to control plane asynchronously if connected
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
-		go s.waitForDeploymentAndPush(result.StoredConfig.UUID, params.CorrelationID, log)
+	if !result.IsStale {
+		// Push to control plane asynchronously if connected
+		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
+			go s.waitForDeploymentAndPush(result.StoredConfig.UUID, params.CorrelationID, log)
+		}
 	}
 
 	// Build and add policy config derived from API configuration.

@@ -74,6 +74,7 @@ type GatewayDeploymentInfo struct {
 	Kind         string    `json:"kind"`         // Artifact type: RestAPI, LLMProvider, LLMProxy
 	State        string    `json:"state"`        // Deployment state: DEPLOYED or UNDEPLOYED
 	DeployedAt   time.Time `json:"deployedAt"`   // Timestamp when the deployment action was performed
+	Etag         string    `json:"etag"`         // Deterministic UUIDv7 derived from deploymentId + deployedAt
 }
 
 // GatewayDeploymentsResponse represents the response for listing gateway deployments
@@ -84,4 +85,32 @@ type GatewayDeploymentsResponse struct {
 // DeploymentsBatchFetchRequest represents the request body for batch fetching deployments
 type DeploymentsBatchFetchRequest struct {
 	DeploymentIDs []string `json:"deploymentIds" binding:"required,min=1"`
+}
+
+// GatewaySubscriptionPlanInfo represents a subscription plan in internal gateway responses.
+type GatewaySubscriptionPlanInfo struct {
+	ID                 string                 `json:"id"`
+	PlanName           string                 `json:"planName"`
+	BillingPlan        string                 `json:"billingPlan,omitempty"`
+	StopOnQuotaReach   bool                   `json:"stopOnQuotaReach"`
+	ThrottleLimitCount *int                   `json:"throttleLimitCount,omitempty"`
+	ThrottleLimitUnit  string                 `json:"throttleLimitUnit,omitempty"`
+	ExpiryTime         *time.Time             `json:"expiryTime,omitempty"`
+	Status             string                 `json:"status"`
+	CreatedAt          time.Time              `json:"createdAt"`
+	UpdatedAt          time.Time              `json:"updatedAt"`
+	Etag               string                 `json:"etag"` // Deterministic UUIDv7 derived from id + updatedAt
+}
+
+// GatewaySubscriptionInfo represents a subscription in internal gateway responses.
+type GatewaySubscriptionInfo struct {
+	ID                string    `json:"id"`
+	APIID             string    `json:"apiId"`
+	ApplicationID     *string   `json:"applicationId,omitempty"`
+	SubscriptionToken string    `json:"subscriptionToken"`
+	SubscriptionPlanID *string  `json:"subscriptionPlanId,omitempty"`
+	Status            string    `json:"status"`
+	CreatedAt         time.Time `json:"createdAt"`
+	UpdatedAt         time.Time `json:"updatedAt"`
+	Etag              string    `json:"etag"` // Deterministic UUIDv7 derived from id + updatedAt
 }

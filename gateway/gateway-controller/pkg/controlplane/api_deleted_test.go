@@ -49,8 +49,11 @@ type mockStorageForDeletion struct {
 	getErr             error
 	removeKeyErr       error
 	replaceErr         error
+	upsertAffected     *bool // nil = default (true); non-nil = use this value
+	upsertErr          error
 	deleteCallCount    int
 	removeKeyCallCount int
+	upsertCallCount    int
 }
 
 func newMockStorageForDeletion() *mockStorageForDeletion {
@@ -83,6 +86,21 @@ func (m *mockStorageForDeletion) UpdateConfig(config *models.StoredConfig) error
 	return nil
 }
 
+func (m *mockStorageForDeletion) UpsertConfig(config *models.StoredConfig) (bool, error) {
+	m.upsertCallCount++
+	if m.upsertErr != nil {
+		return false, m.upsertErr
+	}
+	affected := true
+	if m.upsertAffected != nil {
+		affected = *m.upsertAffected
+	}
+	if affected {
+		m.configs[config.UUID] = config
+	}
+	return affected, nil
+}
+
 func (m *mockStorageForDeletion) DeleteConfig(id string) error {
 	m.deleteCallCount++
 	if m.deleteErr != nil {
@@ -108,6 +126,16 @@ func (m *mockStorageForDeletion) GetAllConfigsByKind(kind string) ([]*models.Sto
 	var configs []*models.StoredConfig
 	for _, config := range m.configs {
 		if config.Kind == kind {
+			configs = append(configs, config)
+		}
+	}
+	return configs, nil
+}
+
+func (m *mockStorageForDeletion) GetAllConfigsByOrigin(origin models.Origin) ([]*models.StoredConfig, error) {
+	var configs []*models.StoredConfig
+	for _, config := range m.configs {
+		if config.Origin == origin {
 			configs = append(configs, config)
 		}
 	}

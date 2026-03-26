@@ -429,25 +429,26 @@ func TestMCPDeploymentService_SaveOrUpdateConfig(t *testing.T) {
 			UpdatedAt:    time.Now(),
 		}
 
-		isUpdate, err := service.saveOrUpdateConfig(storedCfg, logger)
+		affected, err := service.saveOrUpdateConfig(storedCfg, logger)
 		assert.NoError(t, err)
-		assert.False(t, isUpdate)
+		assert.True(t, affected)
 
-		// Verify config was added
+		// Verify config was added to memory store
 		retrieved, err := store.Get(storedCfg.UUID)
 		assert.NoError(t, err)
 		assert.Equal(t, storedCfg.UUID, retrieved.UUID)
 	})
 }
 
-func TestMCPDeploymentService_UpdateExistingConfig(t *testing.T) {
+func TestMCPDeploymentService_SaveOrUpdateConfig_UpdatesExisting(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	t.Run("Updates existing config", func(t *testing.T) {
+	t.Run("Updates existing config via upsert", func(t *testing.T) {
 		store := storage.NewConfigStore()
-		db := newTestMockDB()
+		db := newTestSQLiteStorage(t, logger)
 		service := NewMCPDeploymentService(store, db, nil, nil, nil)
 
+		now := time.Now()
 		apiData := api.APIConfigData{
 			DisplayName: "Original MCP",
 			Version:     "1.0.0",
@@ -468,13 +469,15 @@ func TestMCPDeploymentService_UpdateExistingConfig(t *testing.T) {
 			},
 			DesiredState: models.StateDeployed,
 			Origin:       models.OriginGatewayAPI,
-			CreatedAt:    time.Now(),
-			UpdatedAt:    time.Now(),
+			CreatedAt:    now,
+			UpdatedAt:    now,
+			DeployedAt:   &now,
 		}
-		db.SaveConfig(original)
-		store.Add(original)
+		require.NoError(t, db.SaveConfig(original))
+		require.NoError(t, store.Add(original))
 
-		// Create updated config
+		// Create updated config with newer timestamp
+		later := now.Add(time.Second)
 		newApiData := api.APIConfigData{
 			DisplayName: "Original MCP",
 			Version:     "1.0.0",
@@ -494,40 +497,50 @@ func TestMCPDeploymentService_UpdateExistingConfig(t *testing.T) {
 			},
 			DesiredState: models.StateDeployed,
 			Origin:       models.OriginGatewayAPI,
+			DeployedAt:   &later,
 		}
 
-		isUpdate, err := service.updateExistingConfig(newConfig, logger)
+		affected, err := service.saveOrUpdateConfig(newConfig, logger)
 		assert.NoError(t, err)
-		assert.True(t, isUpdate)
+		assert.True(t, affected)
 	})
 
-	t.Run("Error when config not found", func(t *testing.T) {
+	t.Run("Creates new config when not found", func(t *testing.T) {
 		store := storage.NewConfigStore()
-		service := NewMCPDeploymentService(store, newTestMockDB(), nil, nil, nil)
+		db := newTestSQLiteStorage(t, logger)
+		service := NewMCPDeploymentService(store, db, nil, nil, nil)
 
+		now := time.Now()
 		apiData := api.APIConfigData{
-			DisplayName: "Non-existent MCP",
+			DisplayName: "New MCP",
 			Version:     "1.0.0",
-			Context:     "/non-existent",
+			Context:     "/new",
 		}
 
 		newConfig := &models.StoredConfig{
-			UUID:        "0000-non-existent-config-0000-000000000000",
+			UUID:        "0000-new-config-0000-000000000000",
 			Kind:        string(api.Mcp),
-			Handle:      "non-existent-mcp",
-			DisplayName: "Non-existent MCP",
+			Handle:      "new-mcp",
+			DisplayName: "New MCP",
 			Version:     "1.0.0",
 			Configuration: api.RestAPI{
 				Kind:     api.RestApi,
-				Metadata: api.Metadata{Name: "non-existent-mcp"},
+				Metadata: api.Metadata{Name: "new-mcp"},
 				Spec:     apiData,
 			},
 			DesiredState: models.StateDeployed,
 			Origin:       models.OriginGatewayAPI,
+			DeployedAt:   &now,
 		}
 
-		_, err := service.updateExistingConfig(newConfig, logger)
-		assert.Error(t, err)
+		affected, err := service.saveOrUpdateConfig(newConfig, logger)
+		assert.NoError(t, err)
+		assert.True(t, affected)
+
+		// Verify config was created in store
+		retrieved, err := store.Get(newConfig.UUID)
+		assert.NoError(t, err)
+		assert.Equal(t, newConfig.UUID, retrieved.UUID)
 	})
 }
 
@@ -610,7 +623,7 @@ spec:
   upstream:
     url: "http://localhost:8080"
 `
-	created, err := service.CreateMCPProxy(MCPDeploymentParams{
+	result, err := service.CreateMCPProxy(MCPDeploymentParams{
 		Data:          []byte(yamlData),
 		ContentType:   "application/yaml",
 		Origin:        models.OriginGatewayAPI,
@@ -618,6 +631,7 @@ spec:
 		Logger:        logger,
 	})
 	require.NoError(t, err)
+	created := result.StoredConfig
 
 	storedInDB, err := db.GetConfig(created.UUID)
 	require.NoError(t, err)

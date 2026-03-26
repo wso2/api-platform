@@ -982,6 +982,130 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
 
 
+  /subscription-plans:
+    get:
+      summary: List subscription plans
+      description: |
+        Retrieves all subscription plans for the authenticated gateway's organization.
+        Used by gateways to bulk-sync subscription plans on startup and reconnect.
+
+        Each plan includes an `etag` field — a deterministic UUIDv7 derived from
+        `id + updatedAt` — that the gateway uses as the EventHub correlation ID
+        for replica-sync deduplication.
+
+        **Authentication**: Requires `api-key` header with a valid gateway token.
+      operationId: getSubscriptionPlans
+      tags:
+        - Gateway Internal APIs
+      responses:
+        '200':
+          description: Successfully retrieved subscription plans
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GatewaySubscriptionPlanInfo'
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 500
+                message: "Internal Server Error"
+                description: "Failed to get subscription plans"
+
+  /apis/{apiId}/subscriptions:
+    get:
+      summary: List subscriptions for an API
+      description: |
+        Retrieves all subscriptions for a specific API deployed on the authenticated gateway.
+        Used by gateways to bulk-sync subscriptions on startup and reconnect.
+
+        The gateway must have an active deployment for the requested API; otherwise
+        a 403 Forbidden is returned.
+
+        Each subscription includes an `etag` field — a deterministic UUIDv7 derived from
+        `id + updatedAt` — that the gateway uses as the EventHub correlation ID
+        for replica-sync deduplication.
+
+        **Authentication**: Requires `api-key` header with a valid gateway token.
+      operationId: getSubscriptionsForAPI
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          description: The unique identifier (UUID) of the API
+          schema:
+            type: string
+            format: uuid
+            example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Successfully retrieved subscriptions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GatewaySubscriptionInfo'
+        '400':
+          description: Bad request - API ID missing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 400
+                message: "Bad Request"
+                description: "API ID is required"
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - API not deployed on this gateway
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 403
+                message: "Forbidden"
+                description: "API is not deployed on this gateway"
+        '404':
+          description: API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 404
+                message: "Not Found"
+                description: "API not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 500
+                message: "Internal Server Error"
+                description: "Failed to get subscriptions"
+
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -1028,6 +1152,7 @@ components:
         - kind
         - state
         - deployedAt
+        - etag
       properties:
         artifactId:
           type: string
@@ -1058,6 +1183,15 @@ components:
           format: date-time
           description: Timestamp when the deployment action was performed
           example: "2026-03-04T10:30:00Z"
+        etag:
+          type: string
+          format: uuid
+          description: >
+            Deterministic UUIDv7 derived from deploymentId + deployedAt.
+            Used as the primary key in the gateway event table for
+            EventHub-based HA synchronization. Enables natural deduplication
+            between WebSocket events and sync responses.
+          example: "019575a0-1234-7abc-8def-1234567890ab"
 
     GatewayDeploymentsResponse:
       type: object
@@ -1083,6 +1217,126 @@ components:
           items:
             type: string
           example: ["dep-789", "dep-456", "dep-111"]
+
+    # ==========================================
+    # Subscription Sync Schemas
+    # ==========================================
+
+    GatewaySubscriptionPlanInfo:
+      type: object
+      description: Subscription plan information for gateway sync
+      required:
+        - id
+        - planName
+        - stopOnQuotaReach
+        - status
+        - createdAt
+        - updatedAt
+        - etag
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier of the subscription plan
+        planName:
+          type: string
+          description: Human-readable name of the plan
+          example: "Gold Plan"
+        billingPlan:
+          type: string
+          description: Billing plan type
+          example: "MONTHLY"
+        stopOnQuotaReach:
+          type: boolean
+          description: Whether to stop serving requests when quota is reached
+        throttleLimitCount:
+          type: integer
+          description: Maximum number of requests allowed in the throttle window
+          example: 1000
+        throttleLimitUnit:
+          type: string
+          description: Time unit for the throttle window
+          enum:
+            - Min
+            - Hour
+            - Day
+            - Month
+          example: "Hour"
+        expiryTime:
+          type: string
+          format: date-time
+          description: When the plan expires (optional)
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - INACTIVE
+          example: "ACTIVE"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        etag:
+          type: string
+          format: uuid
+          description: >
+            Deterministic UUIDv7 derived from id + updatedAt.
+            Used as the EventHub correlation ID for replica-sync deduplication.
+          example: "019575a0-1234-7abc-8def-1234567890ab"
+
+    GatewaySubscriptionInfo:
+      type: object
+      description: Subscription information for gateway sync
+      required:
+        - id
+        - apiId
+        - subscriptionToken
+        - status
+        - createdAt
+        - updatedAt
+        - etag
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier of the subscription
+        apiId:
+          type: string
+          format: uuid
+          description: UUID of the subscribed API
+        applicationId:
+          type: string
+          format: uuid
+          description: UUID of the subscribing application (optional)
+        subscriptionToken:
+          type: string
+          description: Token used to authenticate subscription requests
+        subscriptionPlanId:
+          type: string
+          format: uuid
+          description: UUID of the associated subscription plan (optional)
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - INACTIVE
+            - REVOKED
+          example: "ACTIVE"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        etag:
+          type: string
+          format: uuid
+          description: >
+            Deterministic UUIDv7 derived from id + updatedAt.
+            Used as the EventHub correlation ID for replica-sync deduplication.
+          example: "019575a0-5678-7def-8abc-abcdef012345"
 
     # ==========================================
     # API Deployment Notification Schemas

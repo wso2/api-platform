@@ -723,7 +723,7 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 
 	// Delegate to service which parses/validates/transforms and persists
 	// Important: The result stored configuration contains resolved secrets. Do not expose them in responses.
-	stored, err := s.llmDeploymentService.CreateLLMProvider(utils.LLMDeploymentParams{
+	result, err := s.llmDeploymentService.CreateLLMProvider(utils.LLMDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
 		CorrelationID: correlationID,
@@ -743,8 +743,12 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 		return
 	}
 
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
-		go s.waitForDeploymentAndPush(stored.UUID, correlationID, log)
+	stored := result.StoredConfig
+
+	if !result.IsStale {
+		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
+			go s.waitForDeploymentAndPush(stored.UUID, correlationID, log)
+		}
 	}
 
 	log.Info("LLM provider created successfully",
@@ -756,9 +760,9 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 		Message: stringPtr("LLM provider created successfully"),
 		Id:      stringPtr(stored.Handle), CreatedAt: timePtr(stored.CreatedAt)})
 
-	// In EventHub mode the listener rebuilds local runtime state after replaying
-	// the provider event, so the writer should not mutate local state inline.
-	if s.policyManager != nil && s.eventHub == nil {
+	// In EventHub mode the listener rebuilds local policy state after replaying
+	// the provider event, so the writer should not mutate local policies inline.
+	if !result.IsStale && s.policyManager != nil && s.eventHub == nil {
 		if err := s.policyManager.UpsertAPIConfig(stored); err != nil {
 			log.Error("Failed to upsert runtime config after LLM provider create", slog.Any("error", err))
 		}
@@ -833,7 +837,7 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 
 	// Delegate to service update wrapper
 	// Important: The result stored configuration contains resolved secrets. Do not expose them in responses.
-	updated, err := s.llmDeploymentService.UpdateLLMProvider(id, utils.LLMDeploymentParams{
+	result, err := s.llmDeploymentService.UpdateLLMProvider(id, utils.LLMDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
 		Origin:        models.OriginGatewayAPI,
@@ -853,6 +857,8 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 		return
 	}
 
+	updated := result.StoredConfig
+
 	c.JSON(http.StatusOK, api.LLMProviderUpdateResponse{
 		Id:        stringPtr(updated.Handle),
 		Message:   stringPtr("LLM provider updated successfully"),
@@ -860,9 +866,9 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 		UpdatedAt: timePtr(updated.UpdatedAt),
 	})
 
-	// In EventHub mode the listener rebuilds local runtime state after replaying
-	// the provider event, so the writer should not mutate local state inline.
-	if s.policyManager != nil && s.eventHub == nil {
+	// In EventHub mode the listener rebuilds local policy state after replaying
+	// the provider event, so the writer should not mutate local policies inline.
+	if !result.IsStale && s.policyManager != nil && s.eventHub == nil {
 		if err := s.policyManager.UpsertAPIConfig(updated); err != nil {
 			log.Error("Failed to upsert runtime config after LLM provider update", slog.Any("error", err))
 		}
@@ -977,7 +983,7 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 
 	// Delegate to service which parses/validates/transforms and persists
 	// Important: The result stored configuration contains resolved secrets. Do not expose them in responses.
-	stored, err := s.llmDeploymentService.CreateLLMProxy(utils.LLMDeploymentParams{
+	result, err := s.llmDeploymentService.CreateLLMProxy(utils.LLMDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
 		CorrelationID: correlationID,
@@ -997,8 +1003,12 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 		return
 	}
 
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
-		go s.waitForDeploymentAndPush(stored.UUID, correlationID, log)
+	stored := result.StoredConfig
+
+	if !result.IsStale {
+		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
+			go s.waitForDeploymentAndPush(stored.UUID, correlationID, log)
+		}
 	}
 
 	log.Info("LLM proxy created successfully",
@@ -1010,9 +1020,9 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 		Message: stringPtr("LLM proxy created successfully"),
 		Id:      stringPtr(stored.Handle), CreatedAt: timePtr(stored.CreatedAt)})
 
-	// In EventHub mode the listener rebuilds local runtime state after replaying
-	// the proxy event, so the writer should not mutate local state inline.
-	if s.policyManager != nil && s.eventHub == nil {
+	// In EventHub mode the listener rebuilds local policy state after replaying
+	// the proxy event, so the writer should not mutate local policies inline.
+	if !result.IsStale && s.policyManager != nil && s.eventHub == nil {
 		if err := s.policyManager.UpsertAPIConfig(stored); err != nil {
 			log.Error("Failed to upsert runtime config after LLM proxy create", slog.Any("error", err))
 		}
@@ -1084,7 +1094,7 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Delegate to service update wrapper
-	updated, err := s.llmDeploymentService.UpdateLLMProxy(id, utils.LLMDeploymentParams{
+	result, err := s.llmDeploymentService.UpdateLLMProxy(id, utils.LLMDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
 		Origin:        models.OriginGatewayAPI,
@@ -1104,6 +1114,8 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 		return
 	}
 
+	updated := result.StoredConfig
+
 	c.JSON(http.StatusOK, api.LLMProxyUpdateResponse{
 		Id:        stringPtr(updated.Handle),
 		Message:   stringPtr("LLM proxy updated successfully"),
@@ -1113,7 +1125,7 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 
 	// In EventHub mode the listener rebuilds local policy state after replaying
 	// the proxy event, so the writer should not mutate local policies inline.
-	if s.policyManager != nil && s.eventHub == nil {
+	if !result.IsStale && s.policyManager != nil && s.eventHub == nil {
 		if err := s.policyManager.UpsertAPIConfig(updated); err != nil {
 			log.Error("Failed to upsert runtime config for LLM proxy", slog.Any("error", err))
 		}
@@ -1172,7 +1184,6 @@ func (s *APIServer) DeleteLLMProxy(c *gin.Context, id string) {
 	}
 }
 
-
 // convertAPIPolicy converts generated api.Policy to policyenginev1.PolicyInstance.
 // resolvedVersion is the full semver (e.g. v1.0.0) to send to the policy engine.
 func convertAPIPolicy(p api.Policy, attachedTo policy.Level, resolvedVersion string) policyenginev1.PolicyInstance {
@@ -1218,7 +1229,7 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Deploy MCP configuration using the utility service
-	cfg, err := s.mcpDeploymentService.CreateMCPProxy(utils.MCPDeploymentParams{
+	result, err := s.mcpDeploymentService.CreateMCPProxy(utils.MCPDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
 		ID:            "", // Empty to generate new UUID
@@ -1243,6 +1254,8 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 		return
 	}
 
+	cfg := result.StoredConfig
+
 	// Return success response (id is the handle)
 	c.JSON(http.StatusCreated, api.MCPProxyCreateResponse{
 		Status:    stringPtr("success"),
@@ -1250,6 +1263,10 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 		Id:        stringPtr(cfg.Handle),
 		CreatedAt: timePtr(cfg.CreatedAt),
 	})
+
+	if result.IsStale {
+		return
+	}
 
 	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
 		go s.waitForDeploymentAndPush(cfg.UUID, correlationID, log)

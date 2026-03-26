@@ -76,6 +76,16 @@ type Storage interface {
 	// Implementations should ensure this operation is atomic and thread-safe.
 	UpdateConfig(cfg *models.StoredConfig) error
 
+	// UpsertConfig performs a timestamp-guarded insert-or-update of an API configuration.
+	// It inserts the config if it does not exist, or updates it only if the incoming
+	// deployed_at timestamp is newer than the existing one. This prevents stale events
+	// (from sync or WebSocket) from overwriting newer data.
+	//
+	// Returns (true, nil) if the row was actually inserted or updated.
+	// Returns (false, nil) if the row exists with a newer deployed_at (stale event — no-op).
+	// Returns (false, error) on database errors.
+	UpsertConfig(cfg *models.StoredConfig) (bool, error)
+
 	// DeleteConfig removes an API configuration by ID.
 	//
 	// Returns an error if the configuration does not exist.
@@ -107,6 +117,14 @@ type Storage interface {
 	// Returns an empty slice if no configurations of the specified kind exist.
 	// May be expensive for large datasets; consider pagination in future versions.
 	GetAllConfigsByKind(kind string) ([]*models.StoredConfig, error)
+
+	// GetAllConfigsByOrigin retrieves artifact metadata for all configs with the
+	// given origin. Only the artifacts table is queried (no resource-table JOINs),
+	// so the Configuration field will be nil. This is intended for sync diff
+	// computation where only metadata (UUID, Kind, DesiredState, DeployedAt) is needed.
+	//
+	// Returns an empty slice if no configurations of the specified origin exist.
+	GetAllConfigsByOrigin(origin models.Origin) ([]*models.StoredConfig, error)
 
 	// ========================================
 	// LLM Provider Template Methods

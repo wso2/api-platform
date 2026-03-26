@@ -150,6 +150,22 @@ func (m *MockStorage) UpdateConfig(cfg *models.StoredConfig) error {
 	return nil
 }
 
+func (m *MockStorage) UpsertConfig(cfg *models.StoredConfig) (bool, error) {
+	if m.updateErr != nil {
+		return false, m.updateErr
+	}
+	if cfg.Handle == "" {
+		return false, fmt.Errorf("handle (metadata.name) is required and cannot be empty")
+	}
+	if existing, ok := m.configs[cfg.UUID]; ok {
+		if existing.DeployedAt != nil && cfg.DeployedAt != nil && !existing.DeployedAt.Before(*cfg.DeployedAt) {
+			return false, nil
+		}
+	}
+	m.configs[cfg.UUID] = cfg
+	return true, nil
+}
+
 func (m *MockStorage) DeleteConfig(id string) error {
 	if m.deleteErr != nil {
 		return m.deleteErr
@@ -201,6 +217,19 @@ func (m *MockStorage) GetAllConfigsByKind(kind string) ([]*models.StoredConfig, 
 	result := make([]*models.StoredConfig, 0)
 	for _, cfg := range m.configs {
 		if cfg.Kind == kind {
+			result = append(result, cfg)
+		}
+	}
+	return result, nil
+}
+
+func (m *MockStorage) GetAllConfigsByOrigin(origin models.Origin) ([]*models.StoredConfig, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	result := make([]*models.StoredConfig, 0)
+	for _, cfg := range m.configs {
+		if cfg.Origin == origin {
 			result = append(result, cfg)
 		}
 	}

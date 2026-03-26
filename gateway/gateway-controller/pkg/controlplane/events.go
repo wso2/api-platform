@@ -246,6 +246,32 @@ type MCPProxyUndeployedEvent struct {
 	CorrelationID string                         `json:"correlationId"`
 }
 
+// LLMProviderDeletedEventPayload represents the payload of an LLM provider deletion event
+type LLMProviderDeletedEventPayload struct {
+	ProviderID string `json:"providerId"`
+}
+
+// LLMProviderDeletedEvent represents the complete LLM provider deletion event
+type LLMProviderDeletedEvent struct {
+	Type          string                          `json:"type"`
+	Payload       LLMProviderDeletedEventPayload  `json:"payload"`
+	Timestamp     string                          `json:"timestamp"`
+	CorrelationID string                          `json:"correlationId"`
+}
+
+// LLMProxyDeletedEventPayload represents the payload of an LLM proxy deletion event
+type LLMProxyDeletedEventPayload struct {
+	ProxyID string `json:"proxyId"`
+}
+
+// LLMProxyDeletedEvent represents the complete LLM proxy deletion event
+type LLMProxyDeletedEvent struct {
+	Type          string                       `json:"type"`
+	Payload       LLMProxyDeletedEventPayload  `json:"payload"`
+	Timestamp     string                       `json:"timestamp"`
+	CorrelationID string                       `json:"correlationId"`
+}
+
 // MCPProxyDeletedEventPayload represents the payload of an MCP proxy deletion event
 type MCPProxyDeletedEventPayload struct {
 	ProxyID string `json:"proxyId"`

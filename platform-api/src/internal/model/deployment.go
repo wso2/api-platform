@@ -77,7 +77,7 @@ type DeploymentInfo struct {
 	Handle       string           `json:"handle" db:"handle"` // Artifact handle (apiId)
 	Kind         string           `json:"kind" db:"kind"`     // Artifact kind: RestAPI, LLMProvider, LLMProxy, MCPProxy
 	Status       DeploymentStatus `json:"status" db:"status"`
-	UpdatedAt    time.Time        `json:"updatedAt" db:"updated_at"` // DeployedAt timestamp
+	PerformedAt  time.Time        `json:"performedAt" db:"performed_at"` // When the deploy/undeploy action was initiated
 }
 
 // DeploymentMetadata represents the metadata section of the API deployment YAML

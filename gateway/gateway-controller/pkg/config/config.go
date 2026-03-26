@@ -387,6 +387,7 @@ type ControlPlaneConfig struct {
 	PollingInterval       time.Duration `koanf:"polling_interval"`        // Reconciliation polling interval
 	InsecureSkipVerify    bool          `koanf:"insecure_skip_verify"`    // Skip TLS certificate verification (insecure, dev/test only)
 	DeploymentPushEnabled bool          `koanf:"deployment_push_enabled"` // Push API deployments to control plane (default: false)
+	SyncBatchSize         int           `koanf:"sync_batch_size"`         // Number of deployments to fetch per batch request during startup sync (default: 50)
 }
 
 // APIKeyConfig represents the configuration for API keys
@@ -463,6 +464,8 @@ func LoadConfig(configPath string) (*Config, error) {
 			return "controller.controlplane.insecure_skip_verify"
 		case "controller_controlplane_deployment_push_enabled":
 			return "controller.controlplane.deployment_push_enabled"
+		case "controller_controlplane_sync_batch_size":
+			return "controller.controlplane.sync_batch_size"
 		default:
 			// For other env vars, use standard mapping (underscore to dot)
 			// Step 1: Convert double underscore "__" into a temporary placeholder
@@ -572,6 +575,7 @@ func defaultConfig() *Config {
 				PollingInterval:       15 * time.Minute,
 				InsecureSkipVerify:    false,
 				DeploymentPushEnabled: false,
+				SyncBatchSize:         50,
 			},
 			Encryption: EncryptionConfig{
 				Providers: []ProviderConfig{
@@ -1028,6 +1032,11 @@ func (c *Config) validateControlPlaneConfig() error {
 	// Validate polling interval
 	if cp.PollingInterval <= 0 {
 		return fmt.Errorf("controlplane.polling_interval must be positive, got: %s", cp.PollingInterval)
+	}
+
+	// Validate sync batch size
+	if cp.SyncBatchSize <= 0 {
+		return fmt.Errorf("controlplane.sync_batch_size must be positive, got: %d", cp.SyncBatchSize)
 	}
 
 	return nil

@@ -49,6 +49,11 @@ func (m *testMockDB) UpdateConfig(cfg *models.StoredConfig) error {
 	return nil
 }
 
+func (m *testMockDB) UpsertConfig(cfg *models.StoredConfig) (bool, error) {
+	m.configs[cfg.UUID] = cfg
+	return true, nil
+}
+
 func (m *testMockDB) DeleteConfig(id string) error {
 	delete(m.configs, id)
 	return nil
@@ -82,6 +87,16 @@ func (m *testMockDB) GetAllConfigsByKind(kind string) ([]*models.StoredConfig, e
 	result := make([]*models.StoredConfig, 0)
 	for _, cfg := range m.configs {
 		if cfg.Kind == kind {
+			result = append(result, cfg)
+		}
+	}
+	return result, nil
+}
+
+func (m *testMockDB) GetAllConfigsByOrigin(origin models.Origin) ([]*models.StoredConfig, error) {
+	result := make([]*models.StoredConfig, 0)
+	for _, cfg := range m.configs {
+		if cfg.Origin == origin {
 			result = append(result, cfg)
 		}
 	}

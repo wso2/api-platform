@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -34,6 +35,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
@@ -186,6 +188,45 @@ func TestGenerateUUID(t *testing.T) {
 	})
 }
 
+func TestGenerateDeterministicUUIDv7(t *testing.T) {
+	t.Run("Deterministic - same input produces same UUID", func(t *testing.T) {
+		deploymentID := "dep-789"
+		performedAt := time.Date(2026, 3, 4, 10, 30, 0, 0, time.UTC)
+
+		uuid1 := GenerateDeterministicUUIDv7(deploymentID, performedAt)
+		uuid2 := GenerateDeterministicUUIDv7(deploymentID, performedAt)
+		assert.Equal(t, uuid1, uuid2)
+	})
+
+	t.Run("Valid UUID format", func(t *testing.T) {
+		result := GenerateDeterministicUUIDv7("dep-123", time.Now())
+		assert.Len(t, result, 36)
+		// Verify version 7 (character at position 14 should be '7')
+		assert.Equal(t, byte('7'), result[14])
+	})
+
+	t.Run("Different deploymentIDs produce different UUIDs", func(t *testing.T) {
+		ts := time.Date(2026, 3, 4, 10, 30, 0, 0, time.UTC)
+		uuid1 := GenerateDeterministicUUIDv7("dep-111", ts)
+		uuid2 := GenerateDeterministicUUIDv7("dep-222", ts)
+		assert.NotEqual(t, uuid1, uuid2)
+	})
+
+	t.Run("Different timestamps produce different UUIDs", func(t *testing.T) {
+		deploymentID := "dep-789"
+		uuid1 := GenerateDeterministicUUIDv7(deploymentID, time.Date(2026, 3, 4, 10, 0, 0, 0, time.UTC))
+		uuid2 := GenerateDeterministicUUIDv7(deploymentID, time.Date(2026, 3, 4, 11, 0, 0, 0, time.UTC))
+		assert.NotEqual(t, uuid1, uuid2)
+	})
+
+	t.Run("Time ordering - later timestamp produces lexicographically greater UUID", func(t *testing.T) {
+		deploymentID := "dep-789"
+		earlier := GenerateDeterministicUUIDv7(deploymentID, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+		later := GenerateDeterministicUUIDv7(deploymentID, time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+		assert.True(t, earlier < later, "UUIDv7 with earlier timestamp should sort before later timestamp")
+	})
+}
+
 func TestSaveOrUpdateConfig(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -213,9 +254,9 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 			UpdatedAt:    time.Now(),
 		}
 
-		isUpdate, err := service.saveOrUpdateConfig(storedCfg, logger)
+		affected, err := service.saveOrUpdateConfig(storedCfg, logger)
 		assert.NoError(t, err)
-		assert.False(t, isUpdate)
+		assert.True(t, affected) // New insert affects the store
 
 		// Verify config was added
 		retrieved, err := store.Get(storedCfg.UUID)
@@ -324,9 +365,9 @@ func TestUpdateExistingConfig(t *testing.T) {
 			Origin:       models.OriginGatewayAPI,
 		}
 
-		isUpdate, err := service.updateExistingConfig(newConfig, original, logger)
+		affected, err := service.saveOrUpdateConfig(newConfig, logger)
 		assert.NoError(t, err)
-		assert.True(t, isUpdate)
+		assert.True(t, affected)
 	})
 }
 
@@ -690,9 +731,9 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 			UpdatedAt:    time.Now(),
 		}
 
-		isUpdate, err := service.saveOrUpdateConfig(newCfg, logger)
+		affected, err := service.saveOrUpdateConfig(newCfg, logger)
 		assert.NoError(t, err)
-		assert.False(t, isUpdate)
+		assert.True(t, affected) // New insert affects the store
 
 		// Verify it was added
 		retrieved, err := store.Get(newCfg.UUID)
@@ -799,10 +840,76 @@ func TestUpdateExistingConfig_Rollback(t *testing.T) {
 			Origin:       models.OriginGatewayAPI,
 		}
 
-		isUpdate, err := service.updateExistingConfig(newConfig, original, logger)
+		affected, err := service.saveOrUpdateConfig(newConfig, logger)
 		assert.NoError(t, err)
-		assert.True(t, isUpdate)
+		assert.True(t, affected)
 	})
+}
+
+// TestSaveOrUpdateConfig_StaleEvent verifies that when a newer config already exists in the DB,
+// saveOrUpdateConfig returns affected=false (IsStale=true) and does not modify the DB row.
+func TestSaveOrUpdateConfig_StaleEvent(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	metrics.Init()
+
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+	db, err := storage.NewStorage(storage.BackendConfig{
+		Type:       "sqlite",
+		SQLitePath: dbPath,
+		GatewayID:  "test-gw",
+	}, logger)
+	require.NoError(t, err)
+
+	store := storage.NewConfigStore()
+	service := NewAPIDeploymentService(store, db, nil, nil, nil, nil)
+
+	newerTime := time.Now()
+	olderTime := newerTime.Add(-10 * time.Minute)
+
+	// First: insert a config with the newer timestamp
+	newerCfg := &models.StoredConfig{
+		UUID:         "00000000-0000-0000-0000-000000000001",
+		Kind:         string(api.RestApi),
+		Handle:       "test-api",
+		DisplayName:  "Test API",
+		Version:      "1.0.0",
+		DeploymentID: "dep-2",
+		DesiredState: models.StateDeployed,
+		Origin:       models.OriginControlPlane,
+		CreatedAt:    newerTime,
+		UpdatedAt:    newerTime,
+		DeployedAt:   &newerTime,
+	}
+
+	affected, err := service.saveOrUpdateConfig(newerCfg, logger)
+	require.NoError(t, err)
+	assert.True(t, affected, "First insert should affect the DB")
+
+	// Second: attempt to upsert with an older timestamp — should be stale
+	staleCfg := &models.StoredConfig{
+		UUID:         "00000000-0000-0000-0000-000000000001",
+		Kind:         string(api.RestApi),
+		Handle:       "test-api",
+		DisplayName:  "Test API Stale",
+		Version:      "0.9.0",
+		DeploymentID: "dep-1",
+		DesiredState: models.StateDeployed,
+		Origin:       models.OriginControlPlane,
+		CreatedAt:    olderTime,
+		UpdatedAt:    olderTime,
+		DeployedAt:   &olderTime,
+	}
+
+	affected, err = service.saveOrUpdateConfig(staleCfg, logger)
+	require.NoError(t, err)
+	assert.False(t, affected, "Stale event should not affect the DB")
+
+	// Verify the DB still has the newer config
+	stored, err := db.GetConfig("00000000-0000-0000-0000-000000000001")
+	require.NoError(t, err)
+	assert.Equal(t, "dep-2", stored.DeploymentID, "DB should still have the newer deployment")
+	assert.Equal(t, "1.0.0", stored.Version, "DB should still have the newer version")
 }
 
 func TestSendTopicRequestToHub_RetryLogic(t *testing.T) {
