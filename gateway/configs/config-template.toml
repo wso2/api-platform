@@ -99,6 +99,14 @@ format = "json"
 enabled = true
 port = 9091
 
+[controller.event_hub]
+# Interval at which events are polled from the database
+poll_interval = "3s"
+# Interval at which old events are cleaned up
+cleanup_interval = "10m"
+# How long events are retained before being deleted
+retention_period = "1h"
+
 # =============================================================================
 # ROUTER CONFIGURATION
 # =============================================================================

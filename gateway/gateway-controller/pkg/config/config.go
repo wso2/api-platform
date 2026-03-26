@@ -116,6 +116,7 @@ type Controller struct {
 	Auth         AuthConfig         `koanf:"auth"`
 	Metrics      MetricsConfig      `koanf:"metrics"`
 	Encryption   EncryptionConfig   `koanf:"encryption"`
+	EventHub     EventHubConfig     `koanf:"event_hub"`
 }
 
 // MetricsConfig holds Prometheus metrics server configuration
@@ -125,6 +126,13 @@ type MetricsConfig struct {
 
 	// Port is the port for the metrics HTTP server
 	Port int `koanf:"port"`
+}
+
+// EventHubConfig holds EventHub configuration for multi-replica sync
+type EventHubConfig struct {
+	PollInterval    time.Duration `koanf:"poll_interval"`
+	CleanupInterval time.Duration `koanf:"cleanup_interval"`
+	RetentionPeriod time.Duration `koanf:"retention_period"`
 }
 
 // AuthConfig holds authentication related configuration
@@ -576,6 +584,11 @@ func defaultConfig() *Config {
 				InsecureSkipVerify:    false,
 				DeploymentPushEnabled: false,
 				SyncBatchSize:         50,
+			},
+			EventHub: EventHubConfig{
+				PollInterval:    3 * time.Second,
+				CleanupInterval: 10 * time.Minute,
+				RetentionPeriod: 1 * time.Hour,
 			},
 			Encryption: EncryptionConfig{
 				Providers: []ProviderConfig{

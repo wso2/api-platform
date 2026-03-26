@@ -145,7 +145,11 @@ func main() {
 	}
 	eventHubDB := eventHubStorage.GetDB()
 	if eventHubDB != nil {
-		eventHubInstance = eventhub.New(eventHubDB, log, eventhub.DefaultConfig())
+		eventHubInstance = eventhub.New(eventHubDB, log, eventhub.Config{
+			PollInterval:    cfg.Controller.EventHub.PollInterval,
+			CleanupInterval: cfg.Controller.EventHub.CleanupInterval,
+			RetentionPeriod: cfg.Controller.EventHub.RetentionPeriod,
+		})
 		if err := eventHubInstance.Initialize(); err != nil {
 			log.Error("Failed to initialize EventHub", slog.Any("error", err))
 			os.Exit(1)
