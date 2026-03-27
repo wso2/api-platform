@@ -84,6 +84,16 @@ type PolicyExecutionContext struct {
 	// Used when UpstreamName is set to compute the correct path transformation.
 	upstreamDefinitionPaths map[string]string
 
+	// requestContentEncoding stores the Content-Encoding of the incoming request (e.g. "gzip", "br").
+	// The body is decompressed before being passed to policies, and re-compressed using this value
+	// before being forwarded to the upstream.
+	requestContentEncoding string
+
+	// responseContentEncoding stores the Content-Encoding of the upstream response (e.g. "gzip", "br").
+	// The body is decompressed before being passed to policies, and re-compressed using this value
+	// before being sent back to the downstream client.
+	responseContentEncoding string
+
 	// requestBodyProcessedInline is set when body policies are executed during the
 	// headers phase because the request carries no body (GET, Content-Length: 0, etc.).
 	// getModeOverride() returns RequestBodyMode=NONE when this is true so that Envoy
@@ -95,12 +105,18 @@ type PolicyExecutionContext struct {
 	isStreamingRequest       bool
 	requestStreamAccumulator []byte
 	requestStreamContext     *policy.RequestStreamContext
+	// requestStreamDecomp performs per-chunk decompression for compressed streaming
+	// request bodies. Nil when the request is not Content-Encoded.
+	requestStreamDecomp *streamDecompressor
 
 	// isStreamingResponse is set to true during response headers processing when
 	// streaming indicators are detected AND the policy chain supports streaming.
 	isStreamingResponse   bool
 	streamAccumulator     []byte
 	responseStreamContext *policy.ResponseStreamContext
+	// responseStreamDecomp performs per-chunk decompression for compressed streaming
+	// response bodies. Nil when the response is not Content-Encoded.
+	responseStreamDecomp *streamDecompressor
 
 	// Reference to server components
 	server *ExternalProcessorServer
@@ -326,8 +342,26 @@ func (ec *PolicyExecutionContext) processRequestBody(
 	}
 
 	if ec.policyChain.RequiresRequestBody {
+		// Decompress body if Content-Encoding was set, so policies receive plain bytes.
+		bodyContent := body.Body
+		if ec.requestContentEncoding != "" {
+			decompressed, err := decompressBody(body.Body, ec.requestContentEncoding)
+			if err != nil {
+				slog.Warn("Failed to decompress request body, passing raw bytes to policies",
+					"request_id", ec.requestID,
+					"encoding", ec.requestContentEncoding,
+					"error", err,
+				)
+				// Clear encoding so translator doesn't attempt to recompress raw compressed bytes
+				ec.requestContentEncoding = ""
+			} else {
+				bodyContent = decompressed
+			}
+		}
+
+		// Update request context with body data
 		ec.requestBodyCtx.Body = &policy.Body{
-			Content:     body.Body,
+			Content:     bodyContent,
 			EndOfStream: body.EndOfStream,
 			Present:     true,
 		}
@@ -365,6 +399,75 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 		EndOfStream: body.EndOfStream,
 	}
 
+	// Compressed request: decompress this chunk, pass directly to policies,
+	// recompress the output. No kernel accumulation — policy implementations
+	// handle their own internal state across chunks.
+	if ec.requestContentEncoding != "" {
+		if ec.requestStreamDecomp == nil {
+			ec.requestStreamDecomp = newStreamDecompressor(ec.requestContentEncoding)
+		}
+		decompressed, err := ec.requestStreamDecomp.FeedChunk(chunk.Chunk, chunk.EndOfStream)
+		if err != nil {
+			slog.Warn("[streaming] per-chunk request decompression error; disabling decompression",
+				"request_id", ec.requestID,
+				"encoding", ec.requestContentEncoding,
+				"error", err,
+			)
+			ec.requestStreamDecomp.Close()
+			ec.requestStreamDecomp = nil
+			ec.requestContentEncoding = ""
+		} else {
+			chunk.Chunk = decompressed
+		}
+
+		// Suppress empty intermediate chunks.
+		if len(chunk.Chunk) == 0 && !chunk.EndOfStream {
+			return &extprocv3.ProcessingResponse{
+				Response: &extprocv3.ProcessingResponse_RequestBody{
+					RequestBody: &extprocv3.BodyResponse{
+						Response: &extprocv3.CommonResponse{
+							BodyMutation: &extprocv3.BodyMutation{
+								Mutation: &extprocv3.BodyMutation_StreamedResponse{
+									StreamedResponse: &extprocv3.StreamedBodyResponse{},
+								},
+							},
+						},
+					},
+				},
+			}, nil
+		}
+
+		slog.Debug("[streaming] request chunk decompressed",
+			"route", ec.routeKey,
+			"decompressed_bytes", len(chunk.Chunk),
+			"end_of_stream", chunk.EndOfStream,
+		)
+
+		if chunk.EndOfStream {
+			ec.requestBodyCtx.Body = &policy.Body{
+				Content:     chunk.Chunk,
+				EndOfStream: true,
+				Present:     true,
+			}
+		}
+
+		execResult, err := ec.server.executor.ExecuteStreamingRequestPolicies(
+			ctx,
+			ec.policyChain.Policies,
+			ec.requestStreamContext,
+			chunk,
+			ec.policyChain.PolicySpecs,
+			ec.sharedCtx.APIName,
+			ec.routeKey,
+			ec.policyChain.HasExecutionConditions,
+		)
+		if err != nil {
+			return ec.handlePolicyError(ctx, err, "request_body_streaming"), nil
+		}
+		return TranslateStreamingRequestChunkAction(execResult, chunk, ec)
+	}
+
+	// Uncompressed (chunked): use the existing accumulation path.
 	if len(chunk.Chunk) > 0 {
 		ec.requestStreamAccumulator = append(ec.requestStreamAccumulator, chunk.Chunk...)
 	}
@@ -530,8 +633,26 @@ func (ec *PolicyExecutionContext) processResponseBody(
 	)
 
 	if ec.policyChain.RequiresResponseBody {
+		// Decompress body if Content-Encoding was set, so policies receive plain JSON.
+		bodyContent := body.Body
+		if ec.responseContentEncoding != "" {
+			decompressed, err := decompressBody(body.Body, ec.responseContentEncoding)
+			if err != nil {
+				slog.Warn("Failed to decompress response body, passing raw bytes to policies",
+					"request_id", ec.requestID,
+					"encoding", ec.responseContentEncoding,
+					"error", err,
+				)
+				// Clear encoding so translator doesn't attempt to recompress raw compressed bytes
+				ec.responseContentEncoding = ""
+			} else {
+				bodyContent = decompressed
+			}
+		}
+
+		// Update response context with body data
 		ec.responseBodyCtx.ResponseBody = &policy.Body{
-			Content:     body.Body,
+			Content:     bodyContent,
 			EndOfStream: body.EndOfStream,
 			Present:     true,
 		}
@@ -569,6 +690,70 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 		EndOfStream: body.EndOfStream,
 	}
 
+	// Compressed response: decompress this chunk, pass directly to policies,
+	// recompress the output. No kernel accumulation — policy implementations
+	// handle their own internal state across chunks.
+	if ec.responseContentEncoding != "" {
+		if ec.responseStreamDecomp == nil {
+			ec.responseStreamDecomp = newStreamDecompressor(ec.responseContentEncoding)
+		}
+		decompressed, err := ec.responseStreamDecomp.FeedChunk(chunk.Chunk, chunk.EndOfStream)
+		if err != nil {
+			slog.Warn("[streaming] per-chunk response decompression error; disabling decompression",
+				"request_id", ec.requestID,
+				"encoding", ec.responseContentEncoding,
+				"error", err,
+			)
+			ec.responseStreamDecomp.Close()
+			ec.responseStreamDecomp = nil
+			ec.responseContentEncoding = ""
+		} else {
+			chunk.Chunk = decompressed
+		}
+
+		// Suppress empty intermediate chunks — the decoder needed more input to
+		// produce a full block. The client already expects compressed data so
+		// sending nothing is correct here.
+		if len(chunk.Chunk) == 0 && !chunk.EndOfStream {
+			return &extprocv3.ProcessingResponse{
+				Response: &extprocv3.ProcessingResponse_ResponseBody{
+					ResponseBody: &extprocv3.BodyResponse{
+						Response: &extprocv3.CommonResponse{
+							BodyMutation: &extprocv3.BodyMutation{
+								Mutation: &extprocv3.BodyMutation_StreamedResponse{
+									StreamedResponse: &extprocv3.StreamedBodyResponse{},
+								},
+							},
+						},
+					},
+				},
+			}, nil
+		}
+
+		slog.Debug("[streaming] response chunk decompressed",
+			"route", ec.routeKey,
+			"decompressed_bytes", len(chunk.Chunk),
+			"end_of_stream", chunk.EndOfStream,
+		)
+
+		execResult, err := ec.server.executor.ExecuteStreamingResponsePolicies(
+			ctx,
+			ec.policyChain.Policies,
+			ec.responseStreamContext,
+			chunk,
+			ec.policyChain.PolicySpecs,
+			ec.sharedCtx.APIName,
+			ec.routeKey,
+			ec.policyChain.HasExecutionConditions,
+		)
+		if err != nil {
+			return ec.handlePolicyError(ctx, err, "response_body_streaming"), nil
+		}
+		return TranslateStreamingResponseChunkAction(execResult, chunk, ec)
+	}
+
+	// Uncompressed (SSE / plain chunked): use the existing accumulation path so
+	// policies that need multiple chunks (e.g. waiting for a full SSE event) still work.
 	if len(chunk.Chunk) > 0 {
 		ec.streamAccumulator = append(ec.streamAccumulator, chunk.Chunk...)
 	}
@@ -673,6 +858,8 @@ func (ec *PolicyExecutionContext) buildRequestContexts(headers *extprocv3.HttpHe
 				if requestID == "" {
 					requestID = value
 				}
+			case "content-encoding":
+				ec.requestContentEncoding = value
 			}
 		}
 	}
@@ -744,6 +931,9 @@ func (ec *PolicyExecutionContext) buildRequestContexts(headers *extprocv3.HttpHe
 	// Detect request streaming at context-build time while headers are available.
 	// Only enable streaming when the client actually sends a streaming body
 	// (chunked transfer encoding or SSE content type).
+	// Compressed requests are allowed into the streaming path — the body is
+	// decompressed before policies run and recompressed before forwarding to
+	// the upstream, preserving the original Content-Encoding header.
 	if ec.policyChain.SupportsRequestStreaming && isStreamingClientRequest(wrappedHeaders) {
 		ec.isStreamingRequest = true
 	}
@@ -763,7 +953,9 @@ func (ec *PolicyExecutionContext) buildResponseContexts(headers *extprocv3.HttpH
 			value := string(header.RawValue)
 			responseHeadersMap[key] = append(responseHeadersMap[key], value)
 
-			if key == ":status" {
+			switch key {
+			case ":status":
+				// Convert status string to int
 				_, err := fmt.Sscanf(value, "%d", &responseStatus)
 				if err != nil {
 					slog.Warn("Failed to parse response status code",
@@ -772,6 +964,8 @@ func (ec *PolicyExecutionContext) buildResponseContexts(headers *extprocv3.HttpH
 						"error", err,
 					)
 				}
+			case "content-encoding":
+				ec.responseContentEncoding = value
 			}
 		}
 	}

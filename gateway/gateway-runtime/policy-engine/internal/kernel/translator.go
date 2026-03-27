@@ -140,7 +140,7 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "set", value: value})
 				}
 
-	// Collect RemoveHeader operations (deprecated flat field)
+				// Collect RemoveHeader operations (deprecated flat field)
 				for _, key := range mods.HeadersToRemove {
 					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "remove", value: ""})
 				}
@@ -299,6 +299,25 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 		}
 		if _, ok := dynamicMetadata[extProcNS]["upstream_base_path"]; !ok {
 			dynamicMetadata[extProcNS]["upstream_base_path"] = execCtx.upstreamBasePath
+		}
+	}
+
+	// Re-compress request body if a policy modified it, to preserve the original Content-Encoding.
+	// If no policy modified the body, the original compressed bytes are forwarded unchanged.
+	if bodyModified && execCtx.requestContentEncoding != "" {
+		originalBody := bodyMutation.Mutation.(*extprocv3.BodyMutation_Body).Body
+		recompressed, err := recompressBody(originalBody, execCtx.requestContentEncoding)
+		if err != nil {
+			slog.Warn("Failed to re-compress request body, sending uncompressed",
+				"encoding", execCtx.requestContentEncoding,
+				"error", err,
+			)
+			// Remove Content-Encoding so the upstream does not try to decompress an uncompressed body.
+			headerOps["content-encoding"] = append(headerOps["content-encoding"], &headerOp{opType: "remove", value: ""})
+			finalBodyLength = len(originalBody)
+		} else {
+			bodyMutation.Mutation.(*extprocv3.BodyMutation_Body).Body = recompressed
+			finalBodyLength = len(recompressed)
 		}
 	}
 
@@ -915,7 +934,7 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "set", value: value})
 				}
 
-	// Collect RemoveHeader operations (deprecated flat field)
+				// Collect RemoveHeader operations (deprecated flat field)
 				for _, key := range mods.HeadersToRemove {
 					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "remove", value: ""})
 				}
@@ -966,6 +985,25 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 					}
 				}
 			}
+		}
+	}
+
+	// Re-compress body if a policy modified it and the original response was compressed.
+	// Policies receive decompressed bodies; the downstream client expects the original encoding.
+	if bodyModified && execCtx.responseContentEncoding != "" {
+		originalBody := bodyMutation.Mutation.(*extprocv3.BodyMutation_Body).Body
+		recompressed, err := recompressBody(originalBody, execCtx.responseContentEncoding)
+		if err != nil {
+			slog.Warn("Failed to re-compress response body, sending uncompressed",
+				"encoding", execCtx.responseContentEncoding,
+				"error", err,
+			)
+			// Remove Content-Encoding so the client does not try to decompress an uncompressed body.
+			headerOps["content-encoding"] = append(headerOps["content-encoding"], &headerOp{opType: "remove", value: ""})
+			finalBodyLength = len(originalBody)
+		} else {
+			bodyMutation.Mutation.(*extprocv3.BodyMutation_Body).Body = recompressed
+			finalBodyLength = len(recompressed)
 		}
 	}
 
@@ -1191,6 +1229,22 @@ func TranslateStreamingRequestChunkAction(result *executor.StreamingRequestExecu
 		outputBody = originalChunk.Chunk
 	}
 
+	// Re-compress the output if the original request was Content-Encoded.
+	// The upstream receives the Content-Encoding header as-is, so the body
+	// bytes must match the encoding the upstream expects.
+	if execCtx.requestContentEncoding != "" {
+		recompressed, err := recompressBody(outputBody, execCtx.requestContentEncoding)
+		if err != nil {
+			slog.Warn("[streaming] failed to re-compress request body; sending uncompressed — Content-Encoding mismatch",
+				"encoding", execCtx.requestContentEncoding,
+				"error", err,
+			)
+			execCtx.requestContentEncoding = ""
+		} else {
+			outputBody = recompressed
+		}
+	}
+
 	analyticsData := make(map[string]any)
 	dynamicMetadata := make(map[string]map[string]interface{})
 	for _, pr := range result.Results {
@@ -1245,6 +1299,23 @@ func TranslateStreamingResponseChunkAction(result *executor.StreamingResponseExe
 		outputBody = result.FinalChunk.Chunk
 	} else {
 		outputBody = originalChunk.Chunk
+	}
+
+	// Re-compress the output if the original response was Content-Encoded.
+	// Response headers (including Content-Encoding) are already committed downstream
+	// in streaming mode and cannot be changed — the body must match the encoding
+	// the client expects.
+	if execCtx.responseContentEncoding != "" {
+		recompressed, err := recompressBody(outputBody, execCtx.responseContentEncoding)
+		if err != nil {
+			slog.Warn("[streaming] failed to re-compress response body; sending uncompressed — Content-Encoding mismatch",
+				"encoding", execCtx.responseContentEncoding,
+				"error", err,
+			)
+			execCtx.responseContentEncoding = ""
+		} else {
+			outputBody = recompressed
+		}
 	}
 
 	analyticsData := make(map[string]any)
