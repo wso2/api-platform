@@ -106,24 +106,30 @@ func NewAPIServer(
 	secretService *secrets.SecretService,
 	policyResolver *resolver.PolicyResolver,
 ) *APIServer {
-	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.Router, policyResolver)
-	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, &systemConfig.APIKey)
-	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subscriptionSnapshotUpdater)
-
-	// Set EventHub on services for event-driven synchronization
-	if eventHub != nil {
-		gatewayID := systemConfig.Controller.Server.GatewayID
-		deploymentService.SetEventHub(eventHub, gatewayID)
-		apiKeyService.SetEventHub(eventHub, gatewayID)
-		subscriptionResourceService.SetEventHub(eventHub, gatewayID)
+	if db == nil {
+		panic("APIServer requires non-nil storage")
 	}
+	if eventHub == nil {
+		panic("APIServer requires non-nil EventHub")
+	}
+	if systemConfig == nil {
+		panic("APIServer requires non-nil system config")
+	}
+	gatewayID := strings.TrimSpace(systemConfig.Controller.Server.GatewayID)
+	if gatewayID == "" {
+		panic("APIServer requires non-empty gateway ID")
+	}
+
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.Router, policyResolver, eventHub, gatewayID)
+	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, &systemConfig.APIKey, eventHub, gatewayID)
+	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subscriptionSnapshotUpdater, eventHub, gatewayID)
 
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
 	parser := config.NewParser()
 	httpClient := &http.Client{Timeout: 10 * time.Second}
 	routerConfig := &systemConfig.Router
-	mcpDeploymentService := utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager, policyValidator)
+	mcpDeploymentService := utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager, policyValidator, eventHub, gatewayID)
 
 	server := &APIServer{
 		store:                store,
@@ -147,15 +153,10 @@ func NewAPIServer(
 		httpClient:                  httpClient,
 		systemConfig:                systemConfig,
 		eventHub:                    eventHub,
-		gatewayID:                   systemConfig.Controller.Server.GatewayID,
+		gatewayID:                   gatewayID,
 		subscriptionSnapshotUpdater: subscriptionSnapshotUpdater,
 		subscriptionResourceService: subscriptionResourceService,
 	}
-	if eventHub != nil {
-		server.llmDeploymentService.SetEventHub(eventHub, systemConfig.Controller.Server.GatewayID)
-		server.mcpDeploymentService.SetEventHub(eventHub, systemConfig.Controller.Server.GatewayID)
-	}
-
 	// Create RestAPI service and handler
 	restAPIService := restapi.NewRestAPIService(
 		store, db, snapshotManager, policyManager,
@@ -178,10 +179,7 @@ func (s *APIServer) getSubscriptionResourceService() *utils.SubscriptionResource
 		return s.subscriptionResourceService
 	}
 
-	s.subscriptionResourceService = utils.NewSubscriptionResourceService(s.db, s.subscriptionSnapshotUpdater)
-	if s.eventHub != nil {
-		s.subscriptionResourceService.SetEventHub(s.eventHub, s.gatewayID)
-	}
+	s.subscriptionResourceService = utils.NewSubscriptionResourceService(s.db, s.subscriptionSnapshotUpdater, s.eventHub, s.gatewayID)
 
 	return s.subscriptionResourceService
 }
@@ -268,7 +266,16 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 
 	configs := s.store.GetAllByKind(kind)
 	if kind == string(api.Mcp) && s.mcpDeploymentService != nil {
-		configs = s.mcpDeploymentService.ListMCPProxies()
+		var err error
+		configs, err = s.mcpDeploymentService.ListMCPProxies()
+		if err != nil {
+			s.logger.Error("Failed to list MCP proxies", slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to list MCP proxies",
+			})
+			return
+		}
 	}
 
 	// Filter based on kind to return appropriate response format
@@ -760,13 +767,6 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 		Message: stringPtr("LLM provider created successfully"),
 		Id:      stringPtr(stored.Handle), CreatedAt: timePtr(stored.CreatedAt)})
 
-	// In EventHub mode the listener rebuilds local policy state after replaying
-	// the provider event, so the writer should not mutate local policies inline.
-	if !result.IsStale && s.policyManager != nil && s.eventHub == nil {
-		if err := s.policyManager.UpsertAPIConfig(stored); err != nil {
-			log.Error("Failed to upsert runtime config after LLM provider create", slog.Any("error", err))
-		}
-	}
 }
 
 // GetLLMProviderById implements ServerInterface.GetLLMProviderById
@@ -866,13 +866,6 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 		UpdatedAt: timePtr(updated.UpdatedAt),
 	})
 
-	// In EventHub mode the listener rebuilds local policy state after replaying
-	// the provider event, so the writer should not mutate local policies inline.
-	if !result.IsStale && s.policyManager != nil && s.eventHub == nil {
-		if err := s.policyManager.UpsertAPIConfig(updated); err != nil {
-			log.Error("Failed to upsert runtime config after LLM provider update", slog.Any("error", err))
-		}
-	}
 }
 
 // DeleteLLMProvider implements ServerInterface.DeleteLLMProvider
@@ -905,26 +898,6 @@ func (s *APIServer) DeleteLLMProvider(c *gin.Context, id string) {
 		"id":      cfg.Handle,
 	})
 
-	if s.eventHub == nil && s.apiKeyXDSManager != nil {
-		apiName, apiVersion := cfg.DisplayName, cfg.Version
-		if apiName != "" {
-			if err := s.apiKeyXDSManager.RemoveAPIKeysByAPI(cfg.UUID, apiName, apiVersion, correlationID); err != nil {
-				log.Warn("Failed to remove LLM provider API keys from policy engine",
-					slog.Any("error", err),
-					slog.String("api_id", cfg.UUID),
-					slog.String("api_name", apiName),
-					slog.String("api_version", apiVersion))
-			}
-		}
-	}
-
-	// In EventHub mode the listener removes local runtime state after replaying
-	// the delete event, so the writer should not race that cleanup inline.
-	if s.policyManager != nil && s.eventHub == nil {
-		if err := s.policyManager.DeleteAPIConfig(cfg.Kind, cfg.Handle); err != nil {
-			log.Warn("Failed to remove runtime config after LLM provider delete", slog.Any("error", err))
-		}
-	}
 }
 
 // ListLLMProxies implements ServerInterface.ListLLMProxies
@@ -1020,13 +993,6 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 		Message: stringPtr("LLM proxy created successfully"),
 		Id:      stringPtr(stored.Handle), CreatedAt: timePtr(stored.CreatedAt)})
 
-	// In EventHub mode the listener rebuilds local policy state after replaying
-	// the proxy event, so the writer should not mutate local policies inline.
-	if !result.IsStale && s.policyManager != nil && s.eventHub == nil {
-		if err := s.policyManager.UpsertAPIConfig(stored); err != nil {
-			log.Error("Failed to upsert runtime config after LLM proxy create", slog.Any("error", err))
-		}
-	}
 }
 
 // GetLLMProxyById implements ServerInterface.GetLLMProxyById
@@ -1123,13 +1089,6 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 		UpdatedAt: timePtr(updated.UpdatedAt),
 	})
 
-	// In EventHub mode the listener rebuilds local policy state after replaying
-	// the proxy event, so the writer should not mutate local policies inline.
-	if !result.IsStale && s.policyManager != nil && s.eventHub == nil {
-		if err := s.policyManager.UpsertAPIConfig(updated); err != nil {
-			log.Error("Failed to upsert runtime config for LLM proxy", slog.Any("error", err))
-		}
-	}
 }
 
 // DeleteLLMProxy implements ServerInterface.DeleteLLMProxy
@@ -1162,26 +1121,6 @@ func (s *APIServer) DeleteLLMProxy(c *gin.Context, id string) {
 		"id":      cfg.Handle,
 	})
 
-	if s.eventHub == nil && s.apiKeyXDSManager != nil {
-		apiName, apiVersion := cfg.DisplayName, cfg.Version
-		if apiName != "" {
-			if err := s.apiKeyXDSManager.RemoveAPIKeysByAPI(cfg.UUID, apiName, apiVersion, correlationID); err != nil {
-				log.Warn("Failed to remove LLM proxy API keys from policy engine",
-					slog.Any("error", err),
-					slog.String("api_id", cfg.UUID),
-					slog.String("api_name", apiName),
-					slog.String("api_version", apiVersion))
-			}
-		}
-	}
-
-	// In EventHub mode the listener removes local policy state after replaying
-	// the delete event, so the writer should not race that cleanup inline.
-	if s.policyManager != nil && s.eventHub == nil {
-		if err := s.policyManager.DeleteAPIConfig(cfg.Kind, cfg.Handle); err != nil {
-			log.Warn("Failed to remove runtime config for LLM proxy", slog.Any("error", err))
-		}
-	}
 }
 
 // convertAPIPolicy converts generated api.Policy to policyenginev1.PolicyInstance.
@@ -1272,11 +1211,6 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 		go s.waitForDeploymentAndPush(cfg.UUID, correlationID, log)
 	}
 
-	if s.policyManager != nil {
-		if err := s.policyManager.UpsertAPIConfig(cfg); err != nil {
-			log.Error("Failed to upsert runtime config for MCP proxy", slog.Any("error", err))
-		}
-	}
 }
 
 // ListMCPProxies implements ServerInterface.ListMCPProxies
@@ -1286,7 +1220,15 @@ func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesPara
 		s.SearchDeployments(c, string(api.Mcp))
 		return
 	}
-	configs := s.mcpDeploymentService.ListMCPProxies()
+	configs, err := s.mcpDeploymentService.ListMCPProxies()
+	if err != nil {
+		s.logger.Error("Failed to list MCP proxies", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to list MCP proxies",
+		})
+		return
+	}
 
 	items := make([]api.MCPProxyListItem, len(configs))
 	for i, cfg := range configs {
@@ -1441,14 +1383,6 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 	log.Info("MCP proxy configuration updated",
 		slog.String("id", updated.UUID),
 		slog.String("handle", handle))
-
-	// In EventHub mode the listener rebuilds local runtime state after replaying
-	// the provider event, so the writer should not mutate local state inline.
-	if s.policyManager != nil && s.eventHub == nil {
-		if err := s.policyManager.UpsertAPIConfig(updated); err != nil {
-			log.Error("Failed to upsert runtime config after MCP proxy update", slog.Any("error", err))
-		}
-	}
 
 	// Return success response (id is the handle)
 	c.JSON(http.StatusOK, api.MCPProxyUpdateResponse{
@@ -1647,29 +1581,24 @@ func (s *APIServer) BuildConfigDumpResponse(log *slog.Logger) (*adminapi.ConfigD
 	var certificates []adminapi.CertificateResponse
 	totalBytes := 0
 
-	if s.db == nil {
-		// Memory-only mode: return empty certificate list
-		log.Debug("Storage is memory-only, returning empty certificate list")
-	} else {
-		certs, err := s.db.ListCertificates()
-		if err != nil {
-			return nil, fmt.Errorf("failed to retrieve certificates: %w", err)
-		}
+	certs, err := s.db.ListCertificates()
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve certificates: %w", err)
+	}
 
-		for _, cert := range certs {
-			totalBytes += len(cert.Certificate)
+	for _, cert := range certs {
+		totalBytes += len(cert.Certificate)
 
-			certStatus := "success"
-			certificates = append(certificates, adminapi.CertificateResponse{
-				Id:       &cert.UUID,
-				Name:     &cert.Name,
-				Subject:  &cert.Subject,
-				Issuer:   &cert.Issuer,
-				NotAfter: &cert.NotAfter,
-				Count:    &cert.CertCount,
-				Status:   &certStatus,
-			})
-		}
+		certStatus := "success"
+		certificates = append(certificates, adminapi.CertificateResponse{
+			Id:       &cert.UUID,
+			Name:     &cert.Name,
+			Subject:  &cert.Subject,
+			Issuer:   &cert.Issuer,
+			NotAfter: &cert.NotAfter,
+			Count:    &cert.CertCount,
+			Status:   &certStatus,
+		})
 	}
 
 	// Calculate statistics
@@ -2062,14 +1991,6 @@ func (s *APIServer) ListAPIKeys(c *gin.Context, id string) {
 // It first attempts a direct ID lookup; if that fails, it falls back to handle-based resolution.
 // Returns (apiID, nil) on success; on failure writes the HTTP response and returns ("", err).
 func (s *APIServer) resolveAPIIDByHandle(c *gin.Context, handle string, log *slog.Logger) (string, error) {
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return "", fmt.Errorf("database not available")
-	}
-
 	// First, try treating the input as a deployment ID.
 	cfgByID, err := s.db.GetConfig(handle)
 	if err != nil {
@@ -2134,15 +2055,6 @@ func (s *APIServer) CreateSubscription(c *gin.Context) {
 	correlationID := middleware.GetCorrelationID(c)
 	if correlationID != "" {
 		log = log.With(slog.String("correlation_id", correlationID))
-	}
-
-	if s.db == nil {
-		log.Error("Database storage not available for subscription creation")
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
 	}
 
 	var req api.SubscriptionCreateRequest
@@ -2264,15 +2176,6 @@ func (s *APIServer) CreateSubscription(c *gin.Context) {
 func (s *APIServer) ListSubscriptions(c *gin.Context, params api.ListSubscriptionsParams) {
 	log := middleware.GetLogger(c, s.logger)
 
-	if s.db == nil {
-		log.Error("Database storage not available for listing subscriptions")
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
-
 	var apiID, appID, status *string
 	if params.ApiId != nil && *params.ApiId != "" {
 		// Normalize apiId to the internal deployment ID (accepts handle or deployment ID).
@@ -2317,15 +2220,6 @@ func (s *APIServer) ListSubscriptions(c *gin.Context, params api.ListSubscriptio
 func (s *APIServer) GetSubscription(c *gin.Context, subscriptionId string) {
 	log := middleware.GetLogger(c, s.logger)
 
-	if s.db == nil {
-		log.Error("Database storage not available for getting subscription")
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
-
 	sub, err := s.db.GetSubscriptionByID(subscriptionId, "")
 	if err != nil {
 		if storage.IsNotFoundError(err) {
@@ -2349,15 +2243,6 @@ func (s *APIServer) UpdateSubscription(c *gin.Context, subscriptionId string) {
 	correlationID := middleware.GetCorrelationID(c)
 	if correlationID != "" {
 		log = log.With(slog.String("correlation_id", correlationID))
-	}
-
-	if s.db == nil {
-		log.Error("Database storage not available for updating subscription")
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
 	}
 
 	sub, err := s.db.GetSubscriptionByID(subscriptionId, "")
@@ -2413,15 +2298,6 @@ func (s *APIServer) DeleteSubscription(c *gin.Context, subscriptionId string) {
 	correlationID := middleware.GetCorrelationID(c)
 	if correlationID != "" {
 		log = log.With(slog.String("correlation_id", correlationID))
-	}
-
-	if s.db == nil {
-		log.Error("Database storage not available for deleting subscription")
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
 	}
 
 	sub, err := s.db.GetSubscriptionByID(subscriptionId, "")
@@ -2482,11 +2358,6 @@ func (s *APIServer) CreateSubscriptionPlan(c *gin.Context) {
 	correlationID := middleware.GetCorrelationID(c)
 	if correlationID != "" {
 		log = log.With(slog.String("correlation_id", correlationID))
-	}
-
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Database storage not available"})
-		return
 	}
 
 	var req api.SubscriptionPlanCreateRequest
@@ -2560,11 +2431,6 @@ func (s *APIServer) CreateSubscriptionPlan(c *gin.Context) {
 func (s *APIServer) ListSubscriptionPlans(c *gin.Context) {
 	log := middleware.GetLogger(c, s.logger)
 
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Database storage not available"})
-		return
-	}
-
 	list, err := s.db.ListSubscriptionPlans("")
 	if err != nil {
 		log.Error("Failed to list subscription plans", slog.Any("error", err))
@@ -2582,11 +2448,6 @@ func (s *APIServer) ListSubscriptionPlans(c *gin.Context) {
 // GetSubscriptionPlan implements ServerInterface.GetSubscriptionPlan (GET /subscription-plans/{planId})
 func (s *APIServer) GetSubscriptionPlan(c *gin.Context, planId string) {
 	log := middleware.GetLogger(c, s.logger)
-
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Database storage not available"})
-		return
-	}
 
 	plan, err := s.db.GetSubscriptionPlanByID(planId, "")
 	if err != nil {
@@ -2611,11 +2472,6 @@ func (s *APIServer) UpdateSubscriptionPlan(c *gin.Context, planId string) {
 	correlationID := middleware.GetCorrelationID(c)
 	if correlationID != "" {
 		log = log.With(slog.String("correlation_id", correlationID))
-	}
-
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Database storage not available"})
-		return
 	}
 
 	existing, err := s.db.GetSubscriptionPlanByID(planId, "")
@@ -2697,11 +2553,6 @@ func (s *APIServer) DeleteSubscriptionPlan(c *gin.Context, planId string) {
 	correlationID := middleware.GetCorrelationID(c)
 	if correlationID != "" {
 		log = log.With(slog.String("correlation_id", correlationID))
-	}
-
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Database storage not available"})
-		return
 	}
 
 	if err := s.getSubscriptionResourceService().DeleteSubscriptionPlan(planId, correlationID, log); err != nil {

@@ -20,7 +20,6 @@ package eventlistener
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"runtime/debug"
 	"strings"
@@ -85,6 +84,23 @@ func NewEventListener(
 	policyDefinitions map[string]models.PolicyDefinition,
 	policyResolver *resolver.PolicyResolver,
 ) *EventListener {
+	if eventHub == nil {
+		panic("event listener requires non-nil EventHub")
+	}
+	if db == nil {
+		panic("event listener requires non-nil storage")
+	}
+	if systemConfig == nil {
+		panic("event listener requires non-nil system config")
+	}
+	if logger == nil {
+		panic("event listener requires non-nil logger")
+	}
+	gatewayID := strings.TrimSpace(systemConfig.Controller.Server.GatewayID)
+	if gatewayID == "" {
+		panic("event listener requires non-empty gateway ID")
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	return &EventListener{
 		eventHub:            eventHub,
@@ -107,14 +123,7 @@ func NewEventListener(
 
 // Start begins listening for events
 func (l *EventListener) Start() error {
-	if l.systemConfig == nil {
-		return fmt.Errorf("event listener requires system configuration")
-	}
-
 	gatewayID := strings.TrimSpace(l.systemConfig.Controller.Server.GatewayID)
-	if gatewayID == "" {
-		return fmt.Errorf("event listener requires controller.server.gateway_id")
-	}
 
 	ch, err := l.eventHub.Subscribe(gatewayID)
 	if err != nil {
