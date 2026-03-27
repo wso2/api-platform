@@ -112,6 +112,7 @@ func getFeaturePaths() []string {
 		"features/azure-content-safety.feature",
 		"features/aws-bedrock-guardrail.feature",
 		"features/semantic-cache.feature",
+		"features/semantic-tool-filtering.feature",
 		"features/semantic-prompt-guard.feature",
 		"features/request-rewrite.feature",
 		"features/respond.feature",
