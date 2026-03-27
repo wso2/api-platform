@@ -140,7 +140,7 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "set", value: value})
 				}
 
-	// Collect RemoveHeader operations (deprecated flat field)
+				// Collect RemoveHeader operations (deprecated flat field)
 				for _, key := range mods.HeadersToRemove {
 					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "remove", value: ""})
 				}
@@ -934,7 +934,7 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "set", value: value})
 				}
 
-	// Collect RemoveHeader operations (deprecated flat field)
+				// Collect RemoveHeader operations (deprecated flat field)
 				for _, key := range mods.HeadersToRemove {
 					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "remove", value: ""})
 				}
@@ -1283,6 +1283,23 @@ func TranslateStreamingResponseChunkAction(result *executor.StreamingResponseExe
 		outputBody = result.FinalChunk.Chunk
 	} else {
 		outputBody = originalChunk.Chunk
+	}
+
+	// Re-compress the output if the original response was Content-Encoded.
+	// Response headers (including Content-Encoding) are already committed downstream
+	// in streaming mode and cannot be changed — the body must match the encoding
+	// the client expects.
+	if execCtx.responseContentEncoding != "" {
+		recompressed, err := recompressBody(outputBody, execCtx.responseContentEncoding)
+		if err != nil {
+			slog.Warn("[streaming] failed to re-compress response body; sending uncompressed — Content-Encoding mismatch",
+				"encoding", execCtx.responseContentEncoding,
+				"error", err,
+			)
+			execCtx.responseContentEncoding = ""
+		} else {
+			outputBody = recompressed
+		}
 	}
 
 	analyticsData := make(map[string]any)

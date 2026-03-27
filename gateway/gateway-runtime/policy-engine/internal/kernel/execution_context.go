@@ -635,6 +635,30 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 		)
 	}
 
+	// Compressed response bodies (gzip, br, etc.) cannot be decompressed
+	// mid-stream — the full payload is required. Suppress intermediate chunks
+	// and defer policy execution until EndOfStream or the force-flush threshold.
+	if ec.responseContentEncoding != "" && !chunk.EndOfStream && !shouldForceFlush {
+		slog.Debug("[streaming] deferring compressed response chunk — waiting for EndOfStream",
+			"route", ec.routeKey,
+			"accumulated_bytes", len(ec.streamAccumulator),
+			"encoding", ec.responseContentEncoding,
+		)
+		return &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_ResponseBody{
+				ResponseBody: &extprocv3.BodyResponse{
+					Response: &extprocv3.CommonResponse{
+						BodyMutation: &extprocv3.BodyMutation{
+							Mutation: &extprocv3.BodyMutation_StreamedResponse{
+								StreamedResponse: &extprocv3.StreamedBodyResponse{},
+							},
+						},
+					},
+				},
+			},
+		}, nil
+	}
+
 	// Consult streaming policies to decide whether to flush now.
 	if !chunk.EndOfStream && !shouldForceFlush && ec.anyPolicyNeedsMoreResponseData(ec.streamAccumulator) {
 		slog.Debug("[streaming] accumulating — waiting for more response data",
@@ -666,6 +690,26 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 		"end_of_stream", flushChunk.EndOfStream,
 	)
 	ec.streamAccumulator = nil
+
+	// Decompress the accumulated body if Content-Encoding was set, so policies
+	// receive plain bytes. TranslateStreamingResponseChunkAction will re-compress
+	// the output before forwarding — response headers are already committed, so
+	// the encoding must be preserved.
+	if ec.responseContentEncoding != "" {
+		decompressed, err := decompressBody(flushChunk.Chunk, ec.responseContentEncoding)
+		if err != nil {
+			slog.Warn("[streaming] failed to decompress response body, passing raw bytes to policies",
+				"request_id", ec.requestID,
+				"encoding", ec.responseContentEncoding,
+				"error", err,
+			)
+			// Clear so the translator skips recompression; Content-Encoding mismatch
+			// is unavoidable but raw bytes are better than a crash.
+			ec.responseContentEncoding = ""
+		} else {
+			flushChunk.Chunk = decompressed
+		}
+	}
 
 	execResult, err := ec.server.executor.ExecuteStreamingResponsePolicies(
 		ctx,
@@ -792,7 +836,10 @@ func (ec *PolicyExecutionContext) buildRequestContexts(headers *extprocv3.HttpHe
 	// Detect request streaming at context-build time while headers are available.
 	// Only enable streaming when the client actually sends a streaming body
 	// (chunked transfer encoding or SSE content type).
-	if ec.policyChain.SupportsRequestStreaming && isStreamingClientRequest(wrappedHeaders) {
+	// Compressed request bodies (Content-Encoding: gzip, br, etc.) cannot be
+	// decompressed mid-stream; fall back to the buffered path which already handles
+	// decompression correctly.
+	if ec.policyChain.SupportsRequestStreaming && isStreamingClientRequest(wrappedHeaders) && ec.requestContentEncoding == "" {
 		ec.isStreamingRequest = true
 	}
 }
