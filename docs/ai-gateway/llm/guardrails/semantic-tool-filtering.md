@@ -50,7 +50,6 @@ Add the following configuration section under the root level in your `config.tom
 embedding_provider = "MISTRAL" # Supported: MISTRAL, OPENAI, AZURE_OPENAI
 embedding_provider_endpoint = "https://api.mistral.ai/v1/embeddings"
 embedding_provider_model = "mistral-embed"
-embedding_provider_dimension = 1024
 embedding_provider_api_key = ""
 ```
 
