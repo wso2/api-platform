@@ -499,6 +499,14 @@ func (s *MCPDeploymentService) undeployMCPViaREST(existing *models.StoredConfig,
 	existing.UpdatedAt = time.Now()
 	// Preserve DeployedAt to track when it was last deployed
 
+	// Update the deployment state in the stored management payload so it stays
+	// consistent with the top-level DesiredState when read back from the database.
+	if src, ok := existing.SourceConfiguration.(api.MCPProxyConfiguration); ok {
+		state := api.MCPProxyConfigDataDeploymentStateUndeployed
+		src.Spec.DeploymentState = &state
+		existing.SourceConfiguration = src
+	}
+
 	if s.db != nil {
 		if err := s.db.UpdateConfig(existing); err != nil {
 			return nil, fmt.Errorf("failed to persist undeployment: %w", err)

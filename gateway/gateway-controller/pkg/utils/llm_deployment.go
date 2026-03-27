@@ -42,15 +42,16 @@ const (
 
 // LLMDeploymentParams carries input to deploy/update a provider
 type LLMDeploymentParams struct {
-	Data          []byte        // Raw configuration data (YAML/JSON)
-	ContentType   string        // Content type for parsing
-	ID            string        // Optional ID; if empty, generated
-	DeploymentID  string        // Platform deployment ID (empty for gateway-api origin)
-	Origin        models.Origin // Origin of the deployment: "control_plane" or "gateway_api"
-	DeployedAt    *time.Time    // Deployment timestamp from platform event (nil for gateway-api origin)
-	CorrelationID string        // Correlation ID for tracking
-	Logger        *slog.Logger  // Logger
-	IsUpdate      bool          // True when the caller has resolved this as an update (e.g. from DB lookup)
+	Data          []byte              // Raw configuration data (YAML/JSON)
+	ContentType   string              // Content type for parsing
+	ID            string              // Optional ID; if empty, generated
+	DeploymentID  string              // Platform deployment ID (empty for gateway-api origin)
+	Origin        models.Origin       // Origin of the deployment: "control_plane" or "gateway_api"
+	DeployedAt    *time.Time          // Deployment timestamp from platform event (nil for gateway-api origin)
+	CorrelationID string              // Correlation ID for tracking
+	Logger        *slog.Logger        // Logger
+	IsUpdate      bool                // True when the caller has resolved this as an update (e.g. from DB lookup)
+	DesiredState  models.DesiredState // Desired deployment state; empty defaults to StateDeployed
 }
 
 // LLMDeploymentService encapsulates validate+transform+persist+deploy for LLM Providers
@@ -259,6 +260,11 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	if deployedAt == nil {
 		deployedAt = &now
 	}
+	desiredState := params.DesiredState
+	if desiredState == "" {
+		desiredState = models.StateDeployed
+	}
+
 	storedCfg := &models.StoredConfig{
 		UUID:                apiID,
 		Kind:                string(api.LlmProvider),
@@ -267,7 +273,7 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		Version:             providerConfig.Spec.Version,
 		Configuration:       apiConfig,
 		SourceConfiguration: providerConfig,
-		DesiredState:        models.StateDeployed,
+		DesiredState:        desiredState,
 		DeploymentID:        params.DeploymentID,
 		Origin:              params.Origin,
 		CreatedAt:           now,
@@ -436,6 +442,11 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 	if deployedAt == nil {
 		deployedAt = &now
 	}
+	proxyDesiredState := params.DesiredState
+	if proxyDesiredState == "" {
+		proxyDesiredState = models.StateDeployed
+	}
+
 	storedCfg := &models.StoredConfig{
 		UUID:                apiID,
 		Kind:                string(api.LlmProxy),
@@ -444,7 +455,7 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 		Version:             proxyConfig.Spec.Version,
 		Configuration:       apiConfig,
 		SourceConfiguration: proxyConfig,
-		DesiredState:        models.StateDeployed,
+		DesiredState:        proxyDesiredState,
 		DeploymentID:        params.DeploymentID,
 		Origin:              params.Origin,
 		CreatedAt:           now,
@@ -1123,7 +1134,9 @@ func matchesFilters(config *models.StoredConfig, params any) bool {
 	return true
 }
 
-// UpdateLLMProvider updates an existing provider identified by name+version using DeployLLMProviderConfiguration
+// UpdateLLMProvider updates an existing provider identified by name+version using DeployLLMProviderConfiguration.
+// The full config is always applied. If deploymentState is "undeployed", the provider is also
+// removed from router traffic while preserving the updated configuration.
 func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploymentParams) (*APIDeploymentResult, error) {
 	existing, err := s.GetLLMProviderByHandle(handle)
 	if err != nil {
@@ -1133,11 +1146,11 @@ func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploy
 		return nil, fmt.Errorf("LLM provider configuration with handle '%s' not found", handle)
 	}
 
-	// Check if this is an undeployment request
+	// Extract deploymentState from the incoming config
 	if isUndeploy, err := s.isLLMProviderUndeployRequest(params); err != nil {
 		return nil, err
 	} else if isUndeploy {
-		return s.undeployLLMConfig(existing, eventhub.EventTypeLLMProvider, params)
+		params.DesiredState = models.StateUndeployed
 	}
 
 	// Ensure Deploy uses existing ID so it performs an update
@@ -1235,7 +1248,9 @@ func (s *LLMDeploymentService) CreateLLMProxy(params LLMDeploymentParams) (*APID
 	return s.DeployLLMProxyConfiguration(params)
 }
 
-// UpdateLLMProxy updates an existing provider identified by name+version using DeployLLMProxyConfiguration
+// UpdateLLMProxy updates an existing proxy identified by name+version using DeployLLMProxyConfiguration.
+// The full config is always applied. If deploymentState is "undeployed", the proxy is also
+// removed from router traffic while preserving the updated configuration.
 func (s *LLMDeploymentService) UpdateLLMProxy(id string, params LLMDeploymentParams) (*APIDeploymentResult, error) {
 	existing, err := s.GetLLMProxyByHandle(id)
 	if err != nil {
@@ -1245,11 +1260,11 @@ func (s *LLMDeploymentService) UpdateLLMProxy(id string, params LLMDeploymentPar
 		return nil, fmt.Errorf("LLM proxy configuration with handle '%s' not found", id)
 	}
 
-	// Check if this is an undeployment request
+	// Extract deploymentState from the incoming config
 	if isUndeploy, err := s.isLLMProxyUndeployRequest(params); err != nil {
 		return nil, err
 	} else if isUndeploy {
-		return s.undeployLLMConfig(existing, eventhub.EventTypeLLMProxy, params)
+		params.DesiredState = models.StateUndeployed
 	}
 
 	// Ensure Deploy uses existing ID so it performs an update
@@ -1278,41 +1293,6 @@ func (s *LLMDeploymentService) isLLMProxyUndeployRequest(params LLMDeploymentPar
 		*proxyConfig.Spec.DeploymentState == api.LLMProxyConfigDataDeploymentStateUndeployed, nil
 }
 
-// undeployLLMConfig handles undeployment for both LLM Provider and LLM Proxy configs.
-// It updates the DesiredState to StateUndeployed, preserves DeployedAt, and publishes an event.
-func (s *LLMDeploymentService) undeployLLMConfig(existing *models.StoredConfig, eventType eventhub.EventType, params LLMDeploymentParams) (*APIDeploymentResult, error) {
-	existing.DesiredState = models.StateUndeployed
-	existing.UpdatedAt = time.Now()
-	// Preserve DeployedAt to track when it was last deployed
-
-	if err := s.db.UpdateConfig(existing); err != nil {
-		return nil, fmt.Errorf("failed to persist undeployment: %w", err)
-	}
-
-	if s.isEventDriven() {
-		s.deploymentService.publishEvent(eventType, "UPDATE", existing.UUID, params.CorrelationID, params.Logger)
-	} else {
-		if err := s.store.Update(existing); err != nil {
-			return nil, fmt.Errorf("failed to update config in memory store: %w", err)
-		}
-
-		// Update xDS snapshot asynchronously (undeployed APIs will be filtered out)
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
-				params.Logger.Error("Failed to update xDS snapshot", slog.Any("error", err))
-			}
-		}()
-	}
-
-	params.Logger.Info("LLM configuration undeployed",
-		slog.String("id", existing.UUID),
-		slog.String("handle", existing.Handle),
-		slog.String("kind", existing.Kind))
-
-	return &APIDeploymentResult{StoredConfig: existing, IsUpdate: true, IsStale: false}, nil
-}
 
 func (s *LLMDeploymentService) GetLLMProxyByHandle(handle string) (*models.StoredConfig, error) {
 	cfg, err := s.db.GetConfigByKindAndHandle(string(api.LlmProxy), handle)
