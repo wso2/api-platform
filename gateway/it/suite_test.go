@@ -123,6 +123,7 @@ func getFeaturePaths() []string {
 		"features/api-keys.feature",
 		"features/api-with-policies.feature",
 		"features/llm-proxies.feature",
+		"features/startup-db-bootstrap.feature",
 		"features/search-deployments.feature",
 		"features/policy-engine-admin.feature",
 		"features/cel-conditions.feature",
@@ -310,6 +311,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	// Register step definitions
 	if testState != nil {
 		RegisterHealthSteps(ctx, testState, httpSteps)
+		RegisterComposeSteps(ctx, composeManager)
 		RegisterMetricsSteps(ctx, testState, httpSteps)
 		RegisterAuthSteps(ctx, testState, httpSteps)
 		RegisterAPISteps(ctx, testState, httpSteps)
