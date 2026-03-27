@@ -74,7 +74,7 @@ path = "./data/gateway.db"
 definitions_path = "./default-policies"
 
 [controller.event_hub]
-poll_interval = "1s"
+poll_interval = "200ms"
 cleanup_interval = "10m"
 retention_period = "1h"
 
