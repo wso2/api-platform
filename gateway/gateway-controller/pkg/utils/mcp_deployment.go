@@ -388,6 +388,10 @@ func (s *MCPDeploymentService) UpdateMCPProxy(handle string, params MCPDeploymen
 		return nil, err
 	} else if isUndeploy {
 		params.DesiredState = models.StateUndeployed
+		// DeployedAt left nil — deploy method will set time.Now() to mark undeployment time
+	} else {
+		// Normal config update: preserve existing DeployedAt (set during initial creation)
+		params.DeployedAt = existing.DeployedAt
 	}
 
 	// Ensure Deploy uses existing ID so it performs an update

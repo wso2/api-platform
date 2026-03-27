@@ -199,24 +199,6 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, correlatio
 	}
 
 	if success {
-		// For direct artifacts (no deployment_id), set deployed_at here.
-		// Platform-deployed artifacts get deployed_at from the WebSocket event timestamp
-		// during SaveConfig/UpdateConfig.
-		if cfg.DeploymentID == "" {
-			now := time.Now()
-			cfg.DeployedAt = &now
-			cfg.UpdatedAt = now
-
-			if err := s.db.UpdateConfig(cfg); err != nil {
-				log.Error("Failed to update config status in database", slog.Any("error", err), slog.String("id", configID))
-			}
-
-			// Update in-memory store
-			if err := s.store.Update(cfg); err != nil {
-				log.Error("Failed to update config status in memory", slog.Any("error", err), slog.String("id", configID))
-			}
-		}
-
 		log.Info("Configuration deployed successfully",
 			slog.String("id", configID),
 			slog.String("kind", cfg.Kind),

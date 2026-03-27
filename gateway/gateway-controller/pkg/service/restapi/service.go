@@ -290,13 +290,13 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 	existing.UpdatedAt = now
 
 	if desiredState == models.StateUndeployed {
-		// Undeployment: preserve DeployedAt to track when it was last deployed
+		// Undeployment: update DeployedAt to mark when this state change happened
+		existing.DeployedAt = &now
 		log.Info("Undeploying API configuration",
 			slog.String("id", existing.UUID),
 			slog.String("handle", params.Handle))
 	} else {
-		// Deployment: reset DeployedAt (will be set by status callback on success)
-		existing.DeployedAt = nil
+		// Normal config update: preserve existing DeployedAt (already set during initial creation)
 
 		// Resolve policy configuration (handles secret resolution)
 		// Blocks the update if there are policy resolution errors to prevent storing configs with unresolved secrets
