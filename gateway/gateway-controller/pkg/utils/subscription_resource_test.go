@@ -105,8 +105,7 @@ func TestSubscriptionResourceServiceSaveSubscription_PublishesAfterDBWrite(t *te
 	db := newRecordingSubscriptionDB(&calls)
 	updater := &recordingSubscriptionUpdater{}
 	hub := &recordingSubscriptionEventHub{calls: &calls}
-	service := NewSubscriptionResourceService(db, updater)
-	service.SetEventHub(hub, "gateway-1")
+	service := NewSubscriptionResourceService(db, updater, hub, "gateway-1")
 
 	sub := &models.Subscription{
 		ID:                "sub-1",
@@ -129,33 +128,12 @@ func TestSubscriptionResourceServiceSaveSubscription_PublishesAfterDBWrite(t *te
 	assert.Zero(t, updater.calls)
 }
 
-func TestSubscriptionResourceServiceSaveSubscription_RefreshesSnapshotWithoutEventHub(t *testing.T) {
-	calls := []string{}
-	db := newRecordingSubscriptionDB(&calls)
-	updater := &recordingSubscriptionUpdater{}
-	service := NewSubscriptionResourceService(db, updater)
-
-	sub := &models.Subscription{
-		ID:                "sub-2",
-		APIID:             "api-2",
-		SubscriptionToken: "plain-token",
-		Status:            models.SubscriptionStatusActive,
-	}
-
-	err := service.SaveSubscription(sub, "corr-sub-local", newSubscriptionResourceTestLogger())
-	require.NoError(t, err)
-
-	assert.Equal(t, []string{"save_subscription"}, calls)
-	assert.Equal(t, 1, updater.calls)
-}
-
 func TestSubscriptionResourceServiceReplaceApplicationMappings_PublishesWithoutLocalRefresh(t *testing.T) {
 	calls := []string{}
 	db := newRecordingSubscriptionDB(&calls)
 	updater := &recordingSubscriptionUpdater{}
 	hub := &recordingSubscriptionEventHub{calls: &calls}
-	service := NewSubscriptionResourceService(db, updater)
-	service.SetEventHub(hub, "gateway-2")
+	service := NewSubscriptionResourceService(db, updater, hub, "gateway-2")
 
 	application := &models.StoredApplication{
 		ApplicationID:   "app-123",

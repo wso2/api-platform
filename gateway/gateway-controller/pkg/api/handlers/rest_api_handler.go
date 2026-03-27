@@ -24,6 +24,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -252,22 +253,22 @@ func (h *RestAPIHandler) mapCreateError(c *gin.Context, err error) {
 		return
 	}
 
-	c.JSON(http.StatusBadRequest, api.ErrorResponse{
+	if isRestAPICreateBadRequest(err) {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 		Status:  "error",
-		Message: err.Error(),
+		Message: "Failed to create configuration",
 	})
 }
 
 // mapGetError maps service errors to HTTP responses for GetByHandle.
 func (h *RestAPIHandler) mapGetError(c *gin.Context, log *slog.Logger, handle string, err error) {
-	if errors.Is(err, restapi.ErrDatabaseUnavailable) {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
-
 	log.Warn("API configuration not found", slog.String("handle", handle))
 	c.JSON(http.StatusNotFound, api.ErrorResponse{
 		Status:  "error",
@@ -315,14 +316,6 @@ func (h *RestAPIHandler) mapUpdateError(c *gin.Context, handle string, err error
 		return
 	}
 
-	if errors.Is(err, restapi.ErrDatabaseUnavailable) {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
-
 	if errors.Is(err, restapi.ErrNotFound) {
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
@@ -347,15 +340,6 @@ func (h *RestAPIHandler) mapUpdateError(c *gin.Context, handle string, err error
 
 // mapDeleteError maps service errors to HTTP responses for Delete.
 func (h *RestAPIHandler) mapDeleteError(c *gin.Context, log *slog.Logger, handle string, err error) {
-	if errors.Is(err, restapi.ErrDatabaseUnavailable) {
-		log.Error("Database storage not available")
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
-
 	if errors.Is(err, restapi.ErrNotFound) {
 		log.Warn("API configuration not found", slog.String("handle", handle))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
@@ -368,6 +352,18 @@ func (h *RestAPIHandler) mapDeleteError(c *gin.Context, log *slog.Logger, handle
 	// Topic lifecycle or internal errors
 	c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 		Status:  "error",
-		Message: err.Error(),
+		Message: "Failed to delete configuration",
 	})
+}
+
+func isRestAPICreateBadRequest(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "failed to parse configuration") ||
+		strings.Contains(message, "resource kind is required") ||
+		strings.Contains(message, "unsupported resource kind") ||
+		strings.Contains(message, "invalid or missing origin")
 }
