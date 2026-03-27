@@ -200,9 +200,7 @@ func (a *AnalyticsPolicy) OnRequestBody(ctx *policy.RequestContext, params map[s
 
 	if len(analyticsMetadata) > 0 {
 		return policy.UpstreamRequestModifications{
-			UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
-				AnalyticsMetadata: analyticsMetadata,
-			},
+			AnalyticsMetadata: analyticsMetadata,
 		}
 	}
 	return nil
@@ -313,9 +311,7 @@ func (a *AnalyticsPolicy) OnResponseBody(ctx *policy.ResponseContext, params map
 
 	if len(analyticsMetadata) > 0 {
 		return policy.DownstreamResponseModifications{
-			DownstreamResponseHeaderModifications: policy.DownstreamResponseHeaderModifications{
-				AnalyticsMetadata: analyticsMetadata,
-			},
+			AnalyticsMetadata: analyticsMetadata,
 		}
 	}
 	return nil
