@@ -1,3 +1,6 @@
+---
+title: "Overview"
+---
 # Log Message
 
 ## Overview
@@ -5,6 +8,8 @@
 The Log Message policy provides the capability to log the payload and headers of request/response messages.
 This policy operates on both the request flow (logging client requests) and the response flow (logging responses from upstream services before returning to clients).
 It is designed for observability and debugging purposes without modifying the actual request/response data.
+
+The policy also supports streaming (SSE) payloads, logging each chunk independently as it arrives for real-time observability into streaming LLM responses.
 
 ## Features
 
@@ -16,10 +21,11 @@ It is designed for observability and debugging purposes without modifying the ac
 - **Flow Identification**: Logs are tagged with mediation flow (REQUEST/RESPONSE)
 - **Non-intrusive**: Does not modify request/response data, only logs for observability
 - **Case-insensitive Header Handling**: Header exclusion works regardless of header name casing
+- **Streaming Support**: Logs streaming (SSE) request and response chunks independently as they arrive, providing real-time visibility without buffering or latency overhead
 
 ## Configuration
 
-The Log Message policy supports configuration of logging behavior through separate parameters for request and response flows. This allows you to control what information is logged for requests and responses independently, and which headers should be excluded for security reasons.
+Log Message policy uses a single-level configuration where all parameters are configured in the API definition YAML.
 
 ### User Parameters (API Definition)
 
@@ -27,18 +33,27 @@ These parameters are configured per-API/route by the API developer:
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `logRequestPayload` | boolean | No | `false` | Enables logging of request payloads. When set to `true`, the request bodies will be logged. When set to `false`, request payloads will not be logged. |
-| `logRequestHeaders` | boolean | No | `false` | Enables logging of request headers. When set to `true`, the request headers will be logged. When set to `false`, request headers will not be logged. |
-| `excludedRequestHeaders` | string | No | `""` | A comma-separated list of header names to exclude from request logging when `logRequestHeaders` is enabled. Example: `"Authorization,X-API-Key"` will exclude these headers from being logged. This parameter is optional and only applies when `logRequestHeaders` is true. Header names are case-insensitive. |
-| `logResponsePayload` | boolean | No | `false` | Enables logging of response payloads. When set to `true`, the response bodies will be logged. When set to `false`, response payloads will not be logged. |
-| `logResponseHeaders` | boolean | No | `false` | Enables logging of response headers. When set to `true`, the response headers will be logged. When set to `false`, response headers will not be logged. |
-| `excludedResponseHeaders` | string | No | `""` | A comma-separated list of header names to exclude from response logging when `logResponseHeaders` is enabled. Example: `"Authorization,X-API-Key"` will exclude these headers from being logged. This parameter is optional and only applies when `logResponseHeaders` is true. Header names are case-insensitive. |
+| `request` | object | No* | - | Configuration for request logging. |
+| `request.payload` | boolean | No | `false` | Enables logging of request payloads. When set to `true`, the request bodies will be logged. |
+| `request.headers` | boolean | No | `false` | Enables logging of request headers. When set to `true`, the request headers will be logged. |
+| `request.excludeHeaders` | array | No | `[]` | An array of header names to exclude from request logging when `request.headers` is enabled. Example: `["Authorization", "X-API-Key"]` will exclude these headers from being logged. Header names are case-insensitive. |
+| `response` | object | No* | - | Configuration for response logging. |
+| `response.payload` | boolean | No | `false` | Enables logging of response payloads. When set to `true`, the response bodies will be logged. |
+| `response.headers` | boolean | No | `false` | Enables logging of response headers. When set to `true`, the response headers will be logged. |
+| `response.excludeHeaders` | array | No | `[]` | An array of header names to exclude from response logging when `response.headers` is enabled. Example: `["Set-Cookie", "X-Internal-Token"]` will exclude these headers from being logged. Header names are case-insensitive. |
 
-### System Parameters
+*At least one of `request` or `response` must be provided.
 
-This policy does not require any system-level configuration parameters.
+**Note:**
 
-## API Definition Examples
+Inside the `gateway/build.yaml`, ensure the policy module is added under `policies:`:
+
+```yaml
+- name: log-message
+  gomodule: github.com/wso2/gateway-controllers/policies/log-message@v0
+```
+
+## Reference Scenarios
 
 ### Example 1: Default Behavior (No Logging)
 
@@ -58,7 +73,7 @@ spec:
       url: http://backend-service:8080
   policies:
     - name: log-message
-      version: v0.1.0
+      version: v0
       # No params specified - defaults to all false (no logging)
   operations:
     - method: GET
@@ -85,12 +100,14 @@ spec:
       url: http://user-service:8080
   policies:
     - name: log-message
-      version: v0.1.0
+      version: v0
       params:
-        logRequestPayload: true
-        logRequestHeaders: true
-        logResponsePayload: true
-        logResponseHeaders: true
+        request:
+          payload: true
+          headers: true
+        response:
+          payload: true
+          headers: true
   operations:
     - method: GET
       path: /profile
@@ -118,18 +135,17 @@ spec:
       url: http://backend-service:8080
   policies:
     - name: log-message
-      version: v0.1.0
+      version: v0
       params:
-        logRequestPayload: true
-        logRequestHeaders: true
-        logResponsePayload: false
-        logResponseHeaders: false
+        request:
+          payload: true
+          headers: true
   operations:
     - method: POST
       path: /sensitive-data
 ```
 
-### Example 3: Response-Only Logging
+### Example 4: Response-Only Logging
 
 Log only response payloads and headers, skip request logging:
 
@@ -147,17 +163,17 @@ spec:
       url: http://backend-service:8080
   policies:
     - name: log-message
-      version: v0.1.0
+      version: v0
       params:
-        # Request parameters default to false (omitted)
-        logResponsePayload: true
-        logResponseHeaders: true
+        response:
+          payload: true
+          headers: true
   operations:
     - method: GET
       path: /public-data
 ```
 
-### Example 4: Headers with Different Exclusions
+### Example 5: Headers with Different Exclusions
 
 Log headers but exclude different sensitive headers for requests vs responses:
 
@@ -175,14 +191,21 @@ spec:
       url: http://payment-service:8080
   policies:
     - name: log-message
-      version: v0.1.0
+      version: v0
       params:
-        logRequestPayload: true
-        logRequestHeaders: true
-        excludedRequestHeaders: "Authorization,X-API-Key,X-Payment-Token"
-        logResponsePayload: true
-        logResponseHeaders: true
-        excludedResponseHeaders: "Set-Cookie,X-Internal-Token"
+        request:
+          payload: true
+          headers: true
+          excludeHeaders:
+            - Authorization
+            - X-API-Key
+            - X-Payment-Token
+        response:
+          payload: true
+          headers: true
+          excludeHeaders:
+            - Set-Cookie
+            - X-Internal-Token
   operations:
     - method: GET
       path: /transactions
@@ -190,7 +213,7 @@ spec:
       path: /charge
 ```
 
-### Example 5: Selective Logging
+### Example 6: Selective Logging
 
 Log only request payloads and response headers:
 
@@ -208,18 +231,18 @@ spec:
       url: http://backend-service:8080
   policies:
     - name: log-message
-      version: v0.1.0
+      version: v0
       params:
-        logRequestPayload: true
-        logRequestHeaders: false
-        logResponsePayload: false
-        logResponseHeaders: true
+        request:
+          payload: true
+        response:
+          headers: true
   operations:
     - method: POST
       path: /analyze
 ```
 
-### Example 6: Operation-Specific Logging
+### Example 7: Operation-Specific Logging
 
 Apply different logging configurations to different operations:
 
@@ -240,206 +263,108 @@ spec:
       path: /public-data
       policies:
         - name: log-message
-          version: v0.1.0
+          version: v0
           params:
-            logRequestPayload: false
-            logRequestHeaders: true
-            excludedRequestHeaders: "Authorization"
-            logResponsePayload: true
-            logResponseHeaders: false
+            request:
+              headers: true
+              excludeHeaders:
+                - Authorization
+            response:
+              payload: true
     - method: POST
       path: /sensitive-operation
       policies:
         - name: log-message
-          version: v0.1.0
+          version: v0
           params:
-            logRequestPayload: true
-            logRequestHeaders: false
-            logResponsePayload: false
-            logResponseHeaders: false
+            request:
+              payload: true
     - method: PUT
       path: /debug-endpoint
       policies:
         - name: log-message
-          version: v0.1.0
+          version: v0
           params:
-            logRequestPayload: true
-            logRequestHeaders: true
-            excludedRequestHeaders: "Authorization,X-Debug-Token"
-            logResponsePayload: true
-            logResponseHeaders: true
-            excludedResponseHeaders: "X-Internal-Key,Set-Cookie"
+            request:
+              payload: true
+              headers: true
+              excludeHeaders:
+                - Authorization
+                - X-Debug-Token
+            response:
+              payload: true
+              headers: true
+              excludeHeaders:
+                - X-Internal-Key
+                - Set-Cookie
 ```
 
-## Log Format and Examples
+### Example 8: Streaming LLM Response Logging
 
-The policy outputs structured JSON logs with the following format:
+Log streaming SSE response payloads from an LLM provider for real-time observability:
 
-```json
-{
-  "mediation-flow": "REQUEST|RESPONSE|FAULT",
-  "request-id": "unique-request-identifier",
-  "http-method": "GET|POST|PUT|DELETE|etc",
-  "resource-path": "/api/path/to/resource",
-  "payload": "request/response body content",
-  "headers": {
-    "header-name": "header-value",
-    "multi-value-header": ["value1", "value2"]
-  }
-}
+```yaml
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProvider
+metadata:
+  name: streaming-log-provider
+spec:
+  displayName: Streaming Log Provider
+  version: v1.0
+  template: openai
+  vhost: openai
+  upstream:
+    url: "https://api.openai.com/v1"
+    auth:
+      type: api-key
+      header: Authorization
+      value: Bearer <openai-apikey>
+  accessControl:
+    mode: deny_all
+    exceptions:
+      - path: /chat/completions
+        methods: [POST]
+  policies:
+    - name: log-message
+      version: v0
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            request:
+              payload: true
+            response:
+              payload: true
 ```
 
-### Log Fields Description
+When the upstream returns a streaming response (`stream: true`), each SSE chunk is logged independently as it arrives. No buffering or accumulation is performed, providing real-time visibility into the token stream without added latency.
 
-- **mediation-flow**: Identifies the flow phase (`REQUEST` or `RESPONSE`)
-- **request-id**: Value from `x-request-id` header for request correlation (shows `<request-id-unavailable>` if not present)
-- **http-method**: HTTP method (GET, POST, PUT, DELETE, etc.)
-- **resource-path**: The API resource path being accessed
-- **payload**: Request/response body content (only included if `logPayload: true`)
-- **headers**: HTTP headers map (only included if `logHeaders: true`)
+## How it Works
 
-### Request Log Example
+* The log-message policy automatically masks only the `Authorization` header with `"***"` by default (case-insensitive), preventing accidental exposure of bearer tokens and basic auth credentials carried in that header.
+* Administrators can configure **header exclusions** separately for requests and responses using `request.excludeHeaders` and `response.excludeHeaders` arrays; excluded headers are completely omitted from log output.
+* Sensitive headers other than `Authorization` (for example `X-API-Key`, `Cookie`, or `Set-Cookie`) are not masked automatically and should be explicitly excluded when header logging is enabled.
+* The policy supports **request ID correlation** by extracting the `x-request-id` header, using the same ID in both request and response logs, or `<request-id-unavailable>` if absent, enabling end-to-end tracing.
+* **Content processing** is non-intrusive: request and response bodies are buffered in memory, headers are filtered for security, and flows are automatically identified and tagged as REQUEST or RESPONSE.
+* When content is missing or empty, the policy still creates log entries with placeholders -- omitting payloads or headers fields as needed, and providing fallback values for missing request IDs.
 
-```json
-{
-  "mediation-flow": "REQUEST",
-  "request-id": "req-12345-abcde",
-  "http-method": "POST",
-  "resource-path": "/users/v1.0/profile",
-  "payload": "{\"name\":\"John Doe\",\"email\":\"john@example.com\"}",
-  "headers": {
-    "content-type": "application/json",
-    "user-agent": "MyApp/1.0",
-    "authorization": "***",
-    "x-custom-header": "custom-value"
-  }
-}
+### Streaming (SSE) Processing
+
+When the upstream returns an SSE streaming response, each SSE event arrives as a `data:` line containing a JSON payload, for example:
+
+```
+data: {"choices":[{"delta":{"content":"token"}}]}
 ```
 
-### Response Log Example
+The log-message policy uses a **no-buffering pattern** for streaming:
 
-```json
-{
-  "mediation-flow": "RESPONSE",
-  "request-id": "req-12345-abcde", 
-  "http-method": "POST",
-  "resource-path": "/users/v1.0/profile",
-  "payload": "{\"status\":\"success\",\"userId\":123}",
-  "headers": {
-    "content-type": "application/json",
-    "cache-control": "no-cache",
-    "x-response-time": "45ms"
-  }
-}
-```
+1. **Immediate Processing**: `NeedsMoreResponseData` always returns `false`. Each chunk is logged independently as soon as it arrives, with no accumulation or delay.
+2. **Per-Chunk Logging**: Every streaming chunk (both request and response) is logged as a separate structured JSON log record, including the chunk payload, request ID, HTTP method, and resource path.
+3. **No Modification**: The policy never modifies or blocks streaming data. Chunks pass through untouched after being logged.
+4. **Bidirectional Streaming**: Both request and response streaming chunks are supported. `NeedsMoreRequestData` and `NeedsMoreResponseData` both return `false`.
+5. **Error Handling**: Since this policy is read-only and never intervenes, there are no SSE error events to inject. Logging failures are reported via `slog.Error` without affecting the stream.
 
-### Payload-Only Log Example
-
-```json
-{
-  "mediation-flow": "REQUEST",
-  "request-id": "req-67890-fghij",
-  "http-method": "GET",
-  "resource-path": "/secure/v1.0/data",
-  "payload": "{\"query\":\"user-data\",\"filters\":[\"active\"]}"
-}
-```
-
-## Policy Behavior
-
-### Logging Control
-
-The policy behavior is controlled by separate boolean parameters for request and response flows:
-
-- **Request Flow Control**:
-  - `logRequestPayload: true`: Includes request body content in logs
-  - `logRequestPayload: false`: Excludes request payload from logs
-  - `logRequestHeaders: true`: Includes request headers in logs (with security filtering)
-  - `logRequestHeaders: false`: Excludes request headers from logs
-
-- **Response Flow Control**:
-  - `logResponsePayload: true`: Includes response body content in logs
-  - `logResponsePayload: false`: Excludes response payload from logs
-  - `logResponseHeaders: true`: Includes response headers in logs (with security filtering)
-  - `logResponseHeaders: false`: Excludes response headers from logs
-
-- **Independent Control**: Request and response logging can be configured independently
-- **Skipping Flows**: If both payload and headers are disabled for a flow, that entire flow is skipped
-
-### Security Features
-
-#### Automatic Authorization Masking
-
-- **Authorization headers** are automatically masked with `"***"` regardless of exclusion settings
-- This prevents accidental logging of bearer tokens, basic auth credentials, and API keys in Authorization headers
-- Applies to headers with name `authorization` (case-insensitive)
-
-#### Configurable Header Exclusion
-
-- Use `excludedRequestHeaders` parameter to exclude sensitive headers from request logging
-- Use `excludedResponseHeaders` parameter to exclude sensitive headers from response logging
-- Header names are case-insensitive (`"authorization"`, `"Authorization"`, `"AUTHORIZATION"` all work)
-- Multiple headers can be excluded using comma separation: `"Authorization,X-API-Key,Cookie"`
-- Excluded headers are completely omitted from the log output
-- Different exclusion lists can be configured for requests vs responses
-
-#### Request ID Correlation
-
-- Extracts `x-request-id` header value for request correlation
-- Same request ID appears in both REQUEST and RESPONSE logs
-- Shows `<request-id-unavailable>` if the header is not present
-- Enables tracing requests across the entire request/response lifecycle
-
-### Content Processing
-
-- **Non-intrusive**: The policy does not modify request or response data
-- **Memory buffering**: Request and response bodies are buffered for logging
-- **Header processing**: All headers are processed for filtering and security
-- **Flow identification**: Automatically identifies and tags REQUEST vs RESPONSE flows
-
-### Empty or Missing Content
-
-- **Empty Request Body**: Log entry created without payload field
-- **Empty Response Body**: Log entry created without payload field
-- **Missing Headers**: Log entry created without headers field
-- **No Request ID**: Uses `<request-id-unavailable>` as fallback value
-
-## Common Use Cases
-
-1. **API Debugging**: Log full request/response details for troubleshooting API issues
-2. **Security Monitoring**: Monitor API usage patterns while protecting sensitive headers
-3. **Performance Analysis**: Track request/response sizes and patterns
-4. **Compliance Logging**: Maintain audit trails for regulatory compliance
-5. **Integration Testing**: Verify request/response formats during development
-6. **Error Investigation**: Capture request details when errors occur
-7. **Request Correlation**: Track requests across microservices using request IDs
-
-## Best Practices
-
-1. **Sensitive Data Protection**: Always exclude authentication and sensitive headers using `excludedHeaders`
-2. **Performance Consideration**: Be mindful of logging large payloads in high-traffic scenarios
-3. **Log Storage**: Ensure adequate log storage capacity when enabling payload logging
-4. **Request ID Usage**: Include `x-request-id` headers in client requests for better traceability
-5. **Selective Logging**: Use operation-specific policies to log different levels of detail for different endpoints
-6. **Header Filtering**: Regularly review and update excluded headers list as new sensitive headers are introduced
-7. **Log Retention**: Implement appropriate log retention policies for compliance and storage management
-
-## Security Considerations
-
-1. **Authorization Masking**: Authorization headers are automatically masked to prevent token exposure
-2. **Sensitive Headers**: Use `excludedHeaders` to exclude headers containing API keys, tokens, or personal data
-3. **Payload Content**: Be aware that payload logging may capture sensitive business data
-4. **Log Access Control**: Restrict access to logs containing request/response data to authorized personnel only
-5. **Log Transmission**: Ensure secure transmission and storage of logs containing sensitive information
-6. **Compliance**: Consider data privacy regulations (GDPR, CCPA) when logging request/response data
-
-## Performance Considerations
-
-- **Memory Usage**: Request and response bodies are buffered in memory during processing
-- **Processing Overhead**: JSON marshaling and logging add CPU overhead to each request
-- **Log Volume**: Payload logging can generate significant log volume in high-traffic scenarios  
-- **Storage Impact**: Large payloads increase log storage requirements
-- **I/O Operations**: Frequent logging may impact I/O performance
+This no-buffering approach provides real-time observability into streaming LLM responses without adding latency or memory overhead.
 
 ## Limitations
 
@@ -449,23 +374,22 @@ The policy behavior is controlled by separate boolean parameters for request and
 4. **Real-time Constraints**: Logging overhead may not be suitable for ultra-low-latency requirements
 5. **Log Format**: Output format is fixed JSON structure and cannot be customized
 
-## Troubleshooting
 
-### Common Issues
+## Notes
 
-1. **No Logs Generated**: If no parameters are specified, all logging is disabled by default. Set the appropriate parameters to `true` for the flows you want to log (`logRequestPayload`, `logRequestHeaders`, `logResponsePayload`, `logResponseHeaders`)
-2. **Missing Logs**: Verify the appropriate parameters are set to `true` for the flows you want to log
-3. **Sensitive Data Exposure**: Ensure `excludedRequestHeaders` and `excludedResponseHeaders` include all sensitive header names
-4. **Performance Degradation**: Consider disabling payload logging for large file uploads/downloads
-5. **Log Volume**: Monitor disk space and log rotation when enabling comprehensive logging
-6. **Request Correlation**: Include `x-request-id` header in client requests for proper correlation
+**Sensitive Data Protection and Security**
 
-### Configuration Validation
+Protect sensitive data by excluding authentication and confidential headers, relying on default masking only for the `Authorization` header, and carefully evaluating the sensitivity of logged payload content. Regularly review the excluded headers list to ensure headers with credentials or personal data are not logged, and apply selective logging per operation. Beyond technical controls, control log access and handling by restricting log visibility to authorized personnel and ensuring secure transmission and storage of logs. Maintain compliance with data privacy regulations such as GDPR and CCPA by aligning your logging practices accordingly.
 
-- **Optional Parameters**: All logging parameters are optional and default to `false` (no logging by default)
-- **Parameter Types**: Ensure boolean values are used for all logging parameters when specified
-- **Header Names**: Verify excluded header names are spelled correctly (case-insensitive matching)
-- **Comma Separation**: Ensure proper comma separation in excluded headers parameters without extra spaces
+**Performance and Resource Management**
+
+Payload buffering, JSON marshaling, and logging introduce additional memory and CPU usage per request. In high-traffic environments, high log volume and large payloads can significantly increase storage and I/O pressure. To mitigate performance impact, avoid large payload logging in high-traffic scenarios, manage log storage proactively, and enforce appropriate log retention policies. Enable detailed logging selectively to minimize performance degradation rather than logging everything by default.
+
+**Operational Best Practices**
+
+Improve traceability by including `x-request-id` headers in client requests to correlate logs across systems and monitor log volume and disk usage continuously. Be aware that logging is disabled by default; ensure the relevant request/response logging parameters are explicitly set to `true`. Verify that sensitive headers are excluded and disable payload logging for large uploads and downloads to avoid both security exposure and performance slowdown. All logging parameters are optional, must be boolean, and default to `false`. Ensure excluded header names are correctly spelled, case-insensitive, and properly comma-separated in your configuration.
+
+
 
 ## Related Policies
 
