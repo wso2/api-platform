@@ -168,17 +168,6 @@ func main() {
 		log.Error("Failed to initialize EventHub", slog.Any("error", err))
 		os.Exit(1)
 	}
-	if err := eventHubInstance.RegisterGateway(cfg.Controller.Server.GatewayID); err != nil {
-		log.Error("Failed to register gateway with EventHub", slog.Any("error", err))
-		os.Exit(1)
-	}
-	log.Info("EventHub initialized for multi-replica sync",
-		slog.String("gateway_id", cfg.Controller.Server.GatewayID))
-	eventHubInstance = eventhub.New(eventHubDB, log, eventhub.DefaultConfig())
-	if err := eventHubInstance.Initialize(); err != nil {
-		log.Error("Failed to initialize EventHub", slog.Any("error", err))
-		os.Exit(1)
-	}
 	if err := eventHubInstance.RegisterGateway(gatewayID); err != nil {
 		log.Error("Failed to register gateway with EventHub", slog.Any("error", err))
 		os.Exit(1)
