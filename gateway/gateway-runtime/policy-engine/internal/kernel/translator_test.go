@@ -421,10 +421,8 @@ func TestTranslateRequestActionsCore_WithSetHeaders(t *testing.T) {
 			{
 				Skipped: false,
 				Action: policy.UpstreamRequestModifications{
-					UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
-						HeadersToSet: map[string]string{
-							"x-custom": "value",
-						},
+					HeadersToSet: map[string]string{
+						"x-custom": "value",
 					},
 				},
 			},
@@ -589,10 +587,8 @@ func TestTranslateRequestActionsCore_SkippedPolicy(t *testing.T) {
 			{
 				Skipped: true, // This policy was skipped
 				Action: policy.UpstreamRequestModifications{
-					UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
-						HeadersToSet: map[string]string{
-							"should-not-appear": "value",
-						},
+					HeadersToSet: map[string]string{
+						"should-not-appear": "value",
 					},
 				},
 			},
@@ -624,10 +620,8 @@ func TestTranslateRequestActionsCore_WithQueryParams(t *testing.T) {
 			{
 				Skipped: false,
 				Action: policy.UpstreamRequestModifications{
-					UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
-						QueryParametersToAdd: map[string][]string{
-							"added": {"param"},
-						},
+					QueryParametersToAdd: map[string][]string{
+						"added": {"param"},
 					},
 				},
 			},
@@ -660,9 +654,7 @@ func TestTranslateRequestActionsCore_WithPathOverride(t *testing.T) {
 			{
 				Skipped: false,
 				Action: policy.UpstreamRequestModifications{
-					UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
-						Path: &newPath,
-					},
+					Path: &newPath,
 				},
 			},
 		},
@@ -744,9 +736,7 @@ func TestTranslateResponseActionsCore_NoShortCircuit(t *testing.T) {
 			{
 				Skipped: false,
 				Action: policy.DownstreamResponseModifications{
-					DownstreamResponseHeaderModifications: policy.DownstreamResponseHeaderModifications{
-						HeadersToSet: map[string]string{"x-response": "modified"},
-					},
+					HeadersToSet: map[string]string{"x-response": "modified"},
 				},
 			},
 		},

@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
-	"github.com/wso2/api-platform/sdk/utils"
+	"github.com/wso2/api-platform/sdk/core/utils"
 )
 
 const (
@@ -106,11 +106,20 @@ type LLMProviderAnalyticsInfo struct {
 
 var ins = &AnalyticsPolicy{}
 
-func GetPolicyV2(
+func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
 ) (policy.Policy, error) {
 	return ins, nil
+}
+
+// GetPolicyV2 is an alias for GetPolicy, provided for compatibility with the
+// Builder-generated plugin registry which calls GetPolicyV2 on all plugins.
+func GetPolicyV2(
+	metadata policy.PolicyMetadata,
+	params map[string]interface{},
+) (policy.Policy, error) {
+	return GetPolicy(metadata, params)
 }
 
 // Mode returns the processing mode for this policy.
@@ -200,9 +209,7 @@ func (a *AnalyticsPolicy) OnRequestBody(ctx *policy.RequestContext, params map[s
 
 	if len(analyticsMetadata) > 0 {
 		return policy.UpstreamRequestModifications{
-			UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
-				AnalyticsMetadata: analyticsMetadata,
-			},
+			AnalyticsMetadata: analyticsMetadata,
 		}
 	}
 	return nil
@@ -313,9 +320,7 @@ func (a *AnalyticsPolicy) OnResponseBody(ctx *policy.ResponseContext, params map
 
 	if len(analyticsMetadata) > 0 {
 		return policy.DownstreamResponseModifications{
-			DownstreamResponseHeaderModifications: policy.DownstreamResponseHeaderModifications{
-				AnalyticsMetadata: analyticsMetadata,
-			},
+			AnalyticsMetadata: analyticsMetadata,
 		}
 	}
 	return nil

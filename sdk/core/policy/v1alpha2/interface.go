@@ -76,7 +76,7 @@ const (
 	// BodyModeSkip — don't process body; the phase method is not called.
 	BodyModeSkip BodyProcessingMode = "SKIP"
 
-	// BodyModeBuffer — buffer the complete body before invoking OnRequest/OnResponse.
+	// BodyModeBuffer — buffer the complete body before invoking OnRequestBody/OnResponseBody.
 	BodyModeBuffer BodyProcessingMode = "BUFFER"
 
 	// BodyModeStream — process body in streaming chunks.

@@ -22,7 +22,7 @@ require (
 	github.com/prometheus/client_model v0.6.2
 	github.com/stretchr/testify v1.11.1
 	github.com/wso2/api-platform/common v0.0.0
-	github.com/wso2/api-platform/sdk v0.4.1
+	github.com/wso2/api-platform/sdk/core v0.0.0
 	github.com/xeipuuv/gojsonschema v1.2.0
 	google.golang.org/grpc v1.79.3
 	google.golang.org/protobuf v1.36.11
@@ -86,7 +86,6 @@ require (
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	github.com/woodsbury/decimal128 v1.3.0 // indirect
-	github.com/wso2/api-platform/sdk/core v0.0.0 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20180127040702-4e3ac2762d5f // indirect
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
@@ -102,7 +101,5 @@ require (
 )
 
 replace github.com/wso2/api-platform/common => ../../common
-
-replace github.com/wso2/api-platform/sdk => ../../sdk
 
 replace github.com/wso2/api-platform/sdk/core => ../../sdk/core

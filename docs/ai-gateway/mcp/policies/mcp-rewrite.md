@@ -1,3 +1,6 @@
+---
+title: "Overview"
+---
 # MCP Rewrite
 
 ## Overview
@@ -22,27 +25,59 @@ The MCP Rewrite policy uses a single-level configuration model where all paramet
 
 These parameters are configured per MCP Proxy by the API developer:
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `tools` | array | No | List of tools to expose and optionally rewrite. Each entry must include `name` and `description`, and should include `inputSchema`. When provided (non-empty), only these tools are included in tools/list responses. |
-| `tools[].name` | string | Yes | User-facing tool name exposed to clients (1-256 characters). |
-| `tools[].description` | string | Yes | User-facing tool description returned in tools/list. |
-| `tools[].inputSchema` | string | Yes | Tool input schema returned in tools/list. |
-| `tools[].outputSchema` | string | No | Tool output schema returned in tools/list. |
-| `tools[].target` | string | No | Backend tool name to use when forwarding requests. If omitted, the `name` is used. |
-| `resources` | array | No | List of resources to expose and optionally rewrite. Each entry must include `name` and `uri`. When provided (non-empty), only these resources are included in resources/list responses. |
-| `resources[].name` | string | Yes | User-facing resource identifier exposed to clients (1-1024 characters). |
-| `resources[].uri` | string | Yes | User-facing resource URI returned in resources/list (1-2048 characters). |
-| `resources[].description` | string | No | User-facing resource description returned in resources/list. |
-| `resources[].target` | string | No | Backend resource identifier (URI) to use when forwarding requests. If omitted, the `uri` is used. |
-| `prompts` | array | No | List of prompts to expose and optionally rewrite. Each entry must include `name`. When provided (non-empty), only these prompts are included in prompts/list responses. |
-| `prompts[].name` | string | Yes | User-facing prompt name exposed to clients (1-256 characters). |
-| `prompts[].description` | string | No | User-facing prompt description returned in prompts/list. |
-| `prompts[].target` | string | No | Backend prompt name to use when forwarding requests. If omitted, the `name` is used. |
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `tools` | `ToolRewriteConfig` array | Conditional | - | List of tools to expose and optionally rewrite. Omit to allow all tools. Set `[]` to deny all tools. When provided with entries, only these tools are included in `tools/list` responses and unlisted `tools/call` requests are rejected. |
+| `resources` | `ResourceRewriteConfig` array | Conditional | - | List of resources to expose and optionally rewrite. Omit to allow all resources. Set `[]` to deny all resources. When provided with entries, only these resources are included in `resources/list` responses and unlisted `resources/read` requests are rejected. |
+| `prompts` | `PromptRewriteConfig` array | Conditional | - | List of prompts to expose and optionally rewrite. Omit to allow all prompts. Set `[]` to deny all prompts. When provided with entries, only these prompts are included in `prompts/list` responses and unlisted `prompts/get` requests are rejected. |
+
+> **Note**: At least one of `tools`, `resources`, or `prompts` must be specified.
+
+### ToolRewriteConfig Configuration
+
+Each `ToolRewriteConfig` object supports the following fields:
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `name` | string | Yes | - | User-facing tool name exposed to clients (1-256 characters). |
+| `description` | string | Yes | - | User-facing tool description returned in `tools/list`. |
+| `inputSchema` | string | Yes | - | Tool input schema returned in `tools/list`. |
+| `outputSchema` | string | No | - | Tool output schema returned in `tools/list`. |
+| `target` | string | No | - | Backend tool name to use when forwarding requests. If omitted, `name` is used. |
+
+### ResourceRewriteConfig Configuration
+
+Each `ResourceRewriteConfig` object supports the following fields:
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `name` | string | Yes | - | User-facing resource identifier exposed to clients (1-1024 characters). |
+| `uri` | string | Yes | - | User-facing resource URI returned in `resources/list` (1-2048 characters). |
+| `description` | string | No | - | User-facing resource description returned in `resources/list`. |
+| `target` | string | No | - | Backend resource identifier (URI) to use when forwarding requests. If omitted, `uri` is used. |
+
+### PromptRewriteConfig Configuration
+
+Each `PromptRewriteConfig` object supports the following fields:
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `name` | string | Yes | - | User-facing prompt name exposed to clients (1-256 characters). |
+| `description` | string | No | - | User-facing prompt description returned in `prompts/list`. |
+| `target` | string | No | - | Backend prompt name to use when forwarding requests. If omitted, `name` is used. |
 
 > **Note**: Additional custom fields can be included in `tools`, `resources`, and `prompts` definitions and will be returned in the corresponding list responses.
 
-## MCP Proxy Definition Examples
+**Note:**
+
+Inside the `gateway/build.yaml`, ensure the policy module is added under `policies:`:
+
+```yaml
+- name: mcp-rewrite
+  gomodule: github.com/wso2/gateway-controllers/policies/mcp-rewrite@v0
+```
+
+## Reference Scenarios
 
 ### Example 1: Basic Tool Rewriting
 
@@ -61,7 +96,7 @@ spec:
     url: https://mcp-backend:8080
   policies:
     - name: mcp-rewrite
-      version: v0.1.0
+      version: v0
       params:
         tools:
           - name: list-files
@@ -93,7 +128,7 @@ spec:
     url: https://mcp-backend:8080
   policies:
     - name: mcp-rewrite
-      version: v0.1.0
+      version: v0
       params:
         resources:
           - name: user-docs
@@ -125,7 +160,7 @@ spec:
     url: https://mcp-backend:8080
   policies:
     - name: mcp-rewrite
-      version: v0.1.0
+      version: v0
       params:
         tools:
           - name: create-document
@@ -140,8 +175,3 @@ spec:
   tools:
     ...
 ```
-
-## Use Cases
-
-1. **Semantic Naming**: Use user-friendly names in the API while keeping backend names internal or legacy.
-2. **AI Readiness**: Redefine name, description, input schema, etc. in a way that is friendly to the AI agents.
