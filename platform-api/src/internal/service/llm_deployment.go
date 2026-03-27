@@ -305,7 +305,7 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 	// Broadcast LLM provider deployment event to gateway
 	if s.gatewayEventsService != nil {
 		deploymentEvent := &model.LLMProviderDeploymentEvent{
-			ProviderId:   provider.ID,
+			ProviderId:   provider.UUID,
 			DeploymentID: deploymentID,
 			PerformedAt:  performedAt,
 		}
@@ -1108,7 +1108,7 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 	// Broadcast LLM proxy deployment event to gateway
 	if s.gatewayEventsService != nil {
 		deploymentEvent := &model.LLMProxyDeploymentEvent{
-			ProxyId:      proxy.ID,
+			ProxyId:      proxy.UUID,
 			DeploymentID: deploymentID,
 			PerformedAt:  performedAt,
 		}
