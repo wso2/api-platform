@@ -522,7 +522,7 @@ func TestTranslateRequestActionsCore_ShortCircuit_PreservesPriorRequestAnalytics
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
-	execCtx.requestContext = &policy.RequestContext{
+	execCtx.requestBodyCtx = &policy.RequestContext{
 		Path: "/api/test",
 		SharedContext: &policy.SharedContext{
 			APIId: "api-1",
