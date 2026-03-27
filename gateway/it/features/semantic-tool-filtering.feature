@@ -27,7 +27,7 @@ Feature: Semantic Tool Filtering policy
 
   Scenario: By Rank mode keeps only the most relevant tool in JSON payload
     Given I authenticate using basic auth as "admin"
-    When I create this AI API:
+    When I create this LLM provider:
       """
       apiVersion: gateway.api-platform.wso2.com/v1alpha1
       kind: LlmProvider

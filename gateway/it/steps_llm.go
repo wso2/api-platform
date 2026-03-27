@@ -229,9 +229,7 @@ func RegisterLLMSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 
 	// LLM Provider CRUD steps
 	ctx.Step(`^I create this LLM provider:$`, createLLMProvider)
-	ctx.Step(`^I create this AI API:$`, createLLMProvider)
-	ctx.Step(`^I deploy this AI API configuration:$`, createLLMProvider)
-
+	
 	ctx.Step(`^I update the LLM provider "([^"]*)" with:$`, func(providerID string, body *godog.DocString) error {
 		httpSteps.SetHeader("Content-Type", "application/yaml")
 		err := httpSteps.SendPUTToService("gateway-controller", "/llm-providers/"+providerID, body)
