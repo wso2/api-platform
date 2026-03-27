@@ -14,11 +14,11 @@ type CountLettersPolicy struct{}
 
 var ins = &CountLettersPolicy{}
 
-func GetPolicyV2(
+func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
 ) (policy.Policy, error) {
-	slog.Debug("[Count Letters]: GetPolicyV2 called")
+	slog.Debug("[Count Letters]: GetPolicy called")
 	return ins, nil
 }
 
@@ -30,11 +30,6 @@ func (p *CountLettersPolicy) Mode() policy.ProcessingMode {
 		ResponseHeaderMode: policy.HeaderModeSkip, // Don't process response headers
 		ResponseBodyMode:   policy.BodyModeBuffer, // Need full buffered response body
 	}
-}
-
-// OnRequestBody is not used by this policy (only processes response body)
-func (p *CountLettersPolicy) OnRequestBody(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	return nil // No request processing needed
 }
 
 // OnResponseBody counts letters in the response body and replaces it with the count

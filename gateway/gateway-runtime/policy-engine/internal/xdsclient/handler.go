@@ -35,7 +35,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
-	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
+	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
 
 // StoredPolicyConfig represents stored policy configuration from gateway-controller

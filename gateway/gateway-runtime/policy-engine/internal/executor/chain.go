@@ -248,6 +248,12 @@ func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyL
 			continue
 		}
 
+		// Skip if the policy's mode says to skip request body processing
+		if pol.Mode().RequestBodyMode == policy.BodyModeSkip {
+			span.End()
+			continue
+		}
+
 		// Check if policy is enabled
 		if !spec.Enabled {
 			if span.IsRecording() {
@@ -555,6 +561,12 @@ func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policy
 			continue
 		}
 
+		// Skip if the policy's mode says to skip response body processing
+		if pol.Mode().ResponseBodyMode == policy.BodyModeSkip {
+			span.End()
+			continue
+		}
+
 		// Check if policy is enabled
 		if !spec.Enabled {
 			if span.IsRecording() {
@@ -719,6 +731,12 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 			continue
 		}
 
+		// Skip if the policy's mode says to skip request body processing
+		if pol.Mode().RequestBodyMode == policy.BodyModeSkip {
+			span.End()
+			continue
+		}
+
 		if !spec.Enabled {
 			metrics.PolicySkippedTotal.WithLabelValues(spec.Name, "", "", "disabled").Inc()
 			span.End()
@@ -851,6 +869,12 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 
 		streamingPol, ok := pol.(policy.StreamingResponsePolicy)
 		if !ok {
+			span.End()
+			continue
+		}
+
+		// Skip if the policy's mode says to skip response body processing
+		if pol.Mode().ResponseBodyMode == policy.BodyModeSkip {
 			span.End()
 			continue
 		}

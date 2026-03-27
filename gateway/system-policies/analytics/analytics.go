@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
-	"github.com/wso2/api-platform/sdk/utils"
+	"github.com/wso2/api-platform/sdk/core/utils"
 )
 
 const (
@@ -106,11 +106,20 @@ type LLMProviderAnalyticsInfo struct {
 
 var ins = &AnalyticsPolicy{}
 
-func GetPolicyV2(
+func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
 ) (policy.Policy, error) {
 	return ins, nil
+}
+
+// GetPolicyV2 is an alias for GetPolicy, provided for compatibility with the
+// Builder-generated plugin registry which calls GetPolicyV2 on all plugins.
+func GetPolicyV2(
+	metadata policy.PolicyMetadata,
+	params map[string]interface{},
+) (policy.Policy, error) {
+	return GetPolicy(metadata, params)
 }
 
 // Mode returns the processing mode for this policy.
