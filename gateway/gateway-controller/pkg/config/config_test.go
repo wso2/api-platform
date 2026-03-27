@@ -57,6 +57,11 @@ func validConfig() *Config {
 			Metrics: MetricsConfig{
 				Enabled: false,
 			},
+			EventHub: EventHubConfig{
+				PollInterval:    3 * time.Second,
+				CleanupInterval: 10 * time.Minute,
+				RetentionPeriod: 1 * time.Hour,
+			},
 		},
 		APIKey: APIKeyConfig{
 			APIKeysPerUserPerAPI: 5,

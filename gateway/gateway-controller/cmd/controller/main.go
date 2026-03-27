@@ -138,12 +138,18 @@ func main() {
 	var eventHubInstance eventhub.EventHub
 	var eventHubStorage storage.Storage
 	// Create separate storage connection for EventHub (avoids SQLite lock contention)
-	eventHubStorage, err = storage.NewStorage(toBackendConfig(cfg), log)
+	ehBackendCfg := toBackendConfig(cfg)
+	ehBackendCfg.Postgres.MaxOpenConns = cfg.Controller.EventHub.Database.MaxOpenConns
+	ehBackendCfg.Postgres.MaxIdleConns = cfg.Controller.EventHub.Database.MaxIdleConns
+	ehBackendCfg.Postgres.ConnMaxLifetime = cfg.Controller.EventHub.Database.ConnMaxLifetime
+	ehBackendCfg.Postgres.ConnMaxIdleTime = cfg.Controller.EventHub.Database.ConnMaxIdleTime
+	eventHubStorage, err = storage.NewStorage(ehBackendCfg, log)
 	if err != nil {
 		log.Error("Failed to initialize EventHub storage", slog.Any("error", err))
 		os.Exit(1)
 	}
 	eventHubDB := eventHubStorage.GetDB()
+
 	gatewayID := strings.TrimSpace(cfg.Controller.Server.GatewayID)
 	if eventHubDB == nil {
 		log.Error("EventHub storage returned nil database handle")
@@ -153,7 +159,11 @@ func main() {
 		log.Error("EventHub requires non-empty gateway ID")
 		os.Exit(1)
 	}
-	eventHubInstance = eventhub.New(eventHubDB, log, eventhub.DefaultConfig())
+	eventHubInstance = eventhub.New(eventHubDB, log, eventhub.Config{
+		PollInterval:    cfg.Controller.EventHub.PollInterval,
+		CleanupInterval: cfg.Controller.EventHub.CleanupInterval,
+		RetentionPeriod: cfg.Controller.EventHub.RetentionPeriod,
+	})
 	if err := eventHubInstance.Initialize(); err != nil {
 		log.Error("Failed to initialize EventHub", slog.Any("error", err))
 		os.Exit(1)

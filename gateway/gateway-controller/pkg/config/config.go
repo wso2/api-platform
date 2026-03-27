@@ -116,6 +116,7 @@ type Controller struct {
 	Auth         AuthConfig         `koanf:"auth"`
 	Metrics      MetricsConfig      `koanf:"metrics"`
 	Encryption   EncryptionConfig   `koanf:"encryption"`
+	EventHub     EventHubConfig     `koanf:"event_hub"`
 }
 
 // MetricsConfig holds Prometheus metrics server configuration
@@ -125,6 +126,22 @@ type MetricsConfig struct {
 
 	// Port is the port for the metrics HTTP server
 	Port int `koanf:"port"`
+}
+
+// EventHubConfig holds EventHub configuration for multi-replica sync
+type EventHubConfig struct {
+	PollInterval    time.Duration          `koanf:"poll_interval"`
+	CleanupInterval time.Duration          `koanf:"cleanup_interval"`
+	RetentionPeriod time.Duration          `koanf:"retention_period"`
+	Database        EventHubDatabaseConfig `koanf:"database"`
+}
+
+// EventHubDatabaseConfig holds connection pool settings for the EventHub database connection
+type EventHubDatabaseConfig struct {
+	MaxOpenConns    int           `koanf:"max_open_conns"`
+	MaxIdleConns    int           `koanf:"max_idle_conns"`
+	ConnMaxLifetime time.Duration `koanf:"conn_max_lifetime"`
+	ConnMaxIdleTime time.Duration `koanf:"conn_max_idle_time"`
 }
 
 // AuthConfig holds authentication related configuration
@@ -577,6 +594,17 @@ func defaultConfig() *Config {
 				DeploymentPushEnabled: false,
 				SyncBatchSize:         50,
 			},
+			EventHub: EventHubConfig{
+				PollInterval:    3 * time.Second,
+				CleanupInterval: 10 * time.Minute,
+				RetentionPeriod: 1 * time.Hour,
+				Database: EventHubDatabaseConfig{
+					MaxOpenConns:    5,
+					MaxIdleConns:    2,
+					ConnMaxLifetime: 30 * time.Minute,
+					ConnMaxIdleTime: 5 * time.Minute,
+				},
+			},
 			Encryption: EncryptionConfig{
 				Providers: []ProviderConfig{
 					{
@@ -918,6 +946,18 @@ func (c *Config) Validate() error {
 		if c.Router.HTTPSPort < 1 || c.Router.HTTPSPort > 65535 {
 			return fmt.Errorf("router.https_port must be between 1 and 65535, got: %d", c.Router.HTTPSPort)
 		}
+	}
+
+	// Validate EventHub configuration
+	eh := &c.Controller.EventHub
+	if eh.PollInterval <= 0 {
+		return fmt.Errorf("event_hub.poll_interval must be positive, got: %s", eh.PollInterval)
+	}
+	if eh.CleanupInterval <= 0 {
+		return fmt.Errorf("event_hub.cleanup_interval must be positive, got: %s", eh.CleanupInterval)
+	}
+	if eh.RetentionPeriod <= 0 {
+		return fmt.Errorf("event_hub.retention_period must be positive, got: %s", eh.RetentionPeriod)
 	}
 
 	// Validate event gateway configuration if enabled

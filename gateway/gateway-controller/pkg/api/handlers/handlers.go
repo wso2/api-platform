@@ -1578,7 +1578,7 @@ func (s *APIServer) BuildConfigDumpResponse(log *slog.Logger) (*adminapi.ConfigD
 	})
 
 	// Get all certificates
-	var certificates []adminapi.CertificateResponse
+	certificates := make([]adminapi.CertificateResponse, 0)
 	totalBytes := 0
 
 	certs, err := s.db.ListCertificates()

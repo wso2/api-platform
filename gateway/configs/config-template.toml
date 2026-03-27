@@ -99,6 +99,21 @@ format = "json"
 enabled = true
 port = 9091
 
+[controller.event_hub]
+# Interval at which events are polled from the database
+poll_interval = "3s"
+# Interval at which old events are cleaned up
+cleanup_interval = "10m"
+# How long events are retained before being deleted
+retention_period = "1h"
+
+[controller.event_hub.database]
+# Connection pool settings for the EventHub database connection
+max_open_conns = 5
+max_idle_conns = 2
+conn_max_lifetime = "30m"
+conn_max_idle_time = "5m"
+
 # =============================================================================
 # ROUTER CONFIGURATION
 # =============================================================================
