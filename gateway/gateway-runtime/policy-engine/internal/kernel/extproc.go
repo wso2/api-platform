@@ -336,6 +336,9 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 	// Extract route key from Envoy attributes (just xds.route_name, lightweight)
 	routeKey := s.extractRouteKey(req)
 
+	slog.DebugContext(ctx, "initializeExecutionContext: looking up route",
+		"route_key", routeKey)
+
 	// Try new path: RouteConfigs + PolicyChains
 	if rc := s.kernel.GetRouteConfig(routeKey); rc != nil {
 		// Metadata is pre-populated from xDS — no request-time parsing needed
@@ -359,13 +362,20 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 		(*execCtx).upstreamBasePath = routeMetadata.UpstreamBasePath
 		(*execCtx).apiContext = routeMetadata.Context
 		(*execCtx).upstreamDefinitionPaths = routeMetadata.UpstreamDefinitionPaths
-		(*execCtx).buildRequestContext(req.GetRequestHeaders(), routeMetadata)
+		(*execCtx).buildRequestContexts(req.GetRequestHeaders(), routeMetadata)
 		return &routeMetadata
 	}
 
 	// Fallback: legacy path using extractRouteMetadata (prototext.Unmarshal from Envoy route metadata)
+	slog.DebugContext(ctx, "initializeExecutionContext: RouteConfig not found, falling back to legacy path",
+		"route_key", routeKey)
 	routeMetadata := s.extractRouteMetadata(req)
 
+	slog.DebugContext(ctx, "initializeExecutionContext: legacy path looking up policy chain",
+		"route_key", routeKey,
+		"legacy_route_name", routeMetadata.RouteName,
+		"keys_match", routeKey == routeMetadata.RouteName,
+		"registered_chains", s.kernel.DumpRouteKeys())
 	chain := s.kernel.GetPolicyChainForKey(routeMetadata.RouteName)
 	if chain == nil {
 		slog.InfoContext(ctx, "No policy chain found for route, skipping all processing",
@@ -383,7 +393,7 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 	(*execCtx).upstreamBasePath = routeMetadata.UpstreamBasePath
 	(*execCtx).apiContext = routeMetadata.Context
 	(*execCtx).upstreamDefinitionPaths = routeMetadata.UpstreamDefinitionPaths
-	(*execCtx).buildRequestContext(req.GetRequestHeaders(), routeMetadata)
+	(*execCtx).buildRequestContexts(req.GetRequestHeaders(), routeMetadata)
 	return &routeMetadata
 }
 
@@ -407,7 +417,7 @@ func (s *ExternalProcessorServer) extractRouteKey(req *extprocv3.ProcessingReque
 
 // skipAllProcessing returns a response that skips all processing phases
 func (s *ExternalProcessorServer) skipAllProcessing(routeMetadata RouteMetadata) *extprocv3.ProcessingResponse {
-	// Build analytics metadata using route metadataeven when skipping policy processing
+	// Build analytics metadata using route metadata even when skipping policy processing
 	analyticsData := extractMetadataFromRouteMetadata(routeMetadata)
 
 	// Build the analytics struct
