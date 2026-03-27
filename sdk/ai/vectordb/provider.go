@@ -1,4 +1,4 @@
-package vectordbproviders
+package vectordb
 
 import "fmt"
 

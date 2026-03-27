@@ -138,17 +138,13 @@ func (p *headerModifyPolicy) Mode() policy.ProcessingMode {
 
 func (p *headerModifyPolicy) OnRequestBody(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
 	return policy.UpstreamRequestModifications{
-		UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
-			HeadersToSet: map[string]string{"x-bench-header": "bench-value"},
-		},
+		HeadersToSet: map[string]string{"x-bench-header": "bench-value"},
 	}
 }
 
 func (p *headerModifyPolicy) OnResponseBody(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
 	return policy.DownstreamResponseModifications{
-		DownstreamResponseHeaderModifications: policy.DownstreamResponseHeaderModifications{
-			HeadersToSet: map[string]string{"x-bench-resp": "bench-resp-value"},
-		},
+		HeadersToSet: map[string]string{"x-bench-resp": "bench-resp-value"},
 	}
 }
 
@@ -541,10 +537,8 @@ func BenchmarkTranslateRequestHeadersActions(b *testing.B) {
 			"WithHeaderMods",
 			[]executor.RequestPolicyResult{
 				{PolicyName: "p1", PolicyVersion: "v1.0", Action: policy.UpstreamRequestModifications{
-					UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
-						HeadersToSet:    map[string]string{"x-added": "val1", "x-added2": "val2"},
-						HeadersToRemove: []string{"x-remove-me"},
-					},
+					HeadersToSet:    map[string]string{"x-added": "val1", "x-added2": "val2"},
+					HeadersToRemove: []string{"x-remove-me"},
 				}, Skipped: false},
 			},
 		},
@@ -552,15 +546,11 @@ func BenchmarkTranslateRequestHeadersActions(b *testing.B) {
 			"MultiplePolicesWithMods",
 			[]executor.RequestPolicyResult{
 				{PolicyName: "p1", PolicyVersion: "v1.0", Action: policy.UpstreamRequestModifications{
-					UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
-						HeadersToSet: map[string]string{"x-p1": "v1"},
-					},
+					HeadersToSet: map[string]string{"x-p1": "v1"},
 				}, Skipped: false},
 				{PolicyName: "p2", PolicyVersion: "v1.0", Action: policy.UpstreamRequestModifications{
-					UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
-						HeadersToSet:    map[string]string{"x-p2": "v2"},
-						HeadersToRemove: []string{"x-p1"},
-					},
+					HeadersToSet:    map[string]string{"x-p2": "v2"},
+					HeadersToRemove: []string{"x-p1"},
 				}, Skipped: false},
 				{PolicyName: "p3", PolicyVersion: "v1.0", Action: nil, Skipped: true},
 			},

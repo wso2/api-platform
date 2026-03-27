@@ -463,11 +463,9 @@ func (p *trackingPolicyImpl) OnResponseBody(*policy.ResponseContext, map[string]
 func TestApplyRequestModifications_SetHeaders(t *testing.T) {
 	ctx := testutils.NewTestRequestContext()
 	mods := policy.UpstreamRequestModifications{
-		UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
-			HeadersToSet: map[string]string{
-				"x-new-header": "new-value",
-				"content-type": "text/plain", // Override existing
-			},
+		HeadersToSet: map[string]string{
+			"x-new-header": "new-value",
+			"content-type": "text/plain", // Override existing
 		},
 	}
 
@@ -485,9 +483,7 @@ func TestApplyRequestModifications_SetHeaders(t *testing.T) {
 func TestApplyRequestModifications_RemoveHeaders(t *testing.T) {
 	ctx := testutils.NewTestRequestContext()
 	mods := policy.UpstreamRequestModifications{
-		UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
-			HeadersToRemove: []string{"content-type"},
-		},
+		HeadersToRemove: []string{"content-type"},
 	}
 
 	applyRequestModifications(ctx, &mods)
@@ -515,9 +511,7 @@ func TestApplyRequestModifications_UpdatePath(t *testing.T) {
 	ctx := testutils.NewTestRequestContext()
 	newPath := "/new/path"
 	mods := policy.UpstreamRequestModifications{
-		UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
-			Path: &newPath,
-		},
+		Path: &newPath,
 	}
 
 	applyRequestModifications(ctx, &mods)
@@ -529,9 +523,7 @@ func TestApplyRequestModifications_UpdateMethod(t *testing.T) {
 	ctx := testutils.NewTestRequestContext()
 	newMethod := "POST"
 	mods := policy.UpstreamRequestModifications{
-		UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
-			Method: &newMethod,
-		},
+		Method: &newMethod,
 	}
 
 	applyRequestModifications(ctx, &mods)
@@ -543,11 +535,9 @@ func TestApplyRequestModifications_AddQueryParameters(t *testing.T) {
 	ctx := testutils.NewTestRequestContext()
 	ctx.Path = "/test/path"
 	mods := policy.UpstreamRequestModifications{
-		UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
-			QueryParametersToAdd: map[string][]string{
-				"foo": {"bar"},
-				"baz": {"qux"},
-			},
+		QueryParametersToAdd: map[string][]string{
+			"foo": {"bar"},
+			"baz": {"qux"},
 		},
 	}
 
@@ -561,9 +551,7 @@ func TestApplyRequestModifications_RemoveQueryParameters(t *testing.T) {
 	ctx := testutils.NewTestRequestContext()
 	ctx.Path = "/test/path?foo=bar&baz=qux&keep=me"
 	mods := policy.UpstreamRequestModifications{
-		UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
-			QueryParametersToRemove: []string{"foo", "baz"},
-		},
+		QueryParametersToRemove: []string{"foo", "baz"},
 	}
 
 	applyRequestModifications(ctx, &mods)
@@ -580,10 +568,8 @@ func TestApplyRequestModifications_RemoveQueryParameters(t *testing.T) {
 func TestApplyResponseModifications_SetHeaders(t *testing.T) {
 	ctx := testutils.NewTestResponseContext()
 	mods := policy.DownstreamResponseModifications{
-		DownstreamResponseHeaderModifications: policy.DownstreamResponseHeaderModifications{
-			HeadersToSet: map[string]string{
-				"x-response-header": "response-value",
-			},
+		HeadersToSet: map[string]string{
+			"x-response-header": "response-value",
 		},
 	}
 
@@ -597,9 +583,7 @@ func TestApplyResponseModifications_SetHeaders(t *testing.T) {
 func TestApplyResponseModifications_RemoveHeaders(t *testing.T) {
 	ctx := testutils.NewTestResponseContext()
 	mods := policy.DownstreamResponseModifications{
-		DownstreamResponseHeaderModifications: policy.DownstreamResponseHeaderModifications{
-			HeadersToRemove: []string{"content-type"},
-		},
+		HeadersToRemove: []string{"content-type"},
 	}
 
 	applyResponseModifications(ctx, &mods)

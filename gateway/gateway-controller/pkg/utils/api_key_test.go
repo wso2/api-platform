@@ -458,13 +458,15 @@ func TestFilterAPIKeysByUser(t *testing.T) {
 }
 
 func TestBuildAPIKeyResponse(t *testing.T) {
-	service := &APIKeyService{
-		store: storage.NewConfigStore(),
-		apiKeyConfig: &config.APIKeyConfig{
+	service := newTestAPIKeyService(
+		storage.NewConfigStore(),
+		nil,
+		nil,
+		&config.APIKeyConfig{
 			APIKeysPerUserPerAPI: 10,
 			Algorithm:            constants.HashingAlgorithmSHA256,
 		},
-	}
+	)
 
 	t.Run("Nil API key returns error response", func(t *testing.T) {
 		response := service.buildAPIKeyResponse(nil, "0000-test-handle-0000-000000000000", "", false)
@@ -732,9 +734,6 @@ func TestUpdateAPIKey_ConfigLookup(t *testing.T) {
 	if err := db.SaveAPIKey(existingKey); err != nil {
 		t.Fatalf("failed to seed API key in database: %v", err)
 	}
-	if err := store.StoreAPIKey(existingKey); err != nil {
-		t.Fatalf("failed to seed API key in memory store: %v", err)
-	}
 
 	service := newTestAPIKeyService(store, db, nil, newTestAPIKeyConfig())
 	user := &commonmodels.AuthContext{
@@ -789,9 +788,6 @@ func TestRegenerateAPIKey_ConfigLookup(t *testing.T) {
 	if err := db.SaveAPIKey(existingKey); err != nil {
 		t.Fatalf("failed to seed API key in database: %v", err)
 	}
-	if err := store.StoreAPIKey(existingKey); err != nil {
-		t.Fatalf("failed to seed API key in memory store: %v", err)
-	}
 
 	service := newTestAPIKeyService(store, db, nil, newTestAPIKeyConfig())
 	user := &commonmodels.AuthContext{
@@ -826,6 +822,160 @@ func TestRegenerateAPIKey_ConfigLookup(t *testing.T) {
 	}
 	if regeneratedKey.APIKey == existingKey.APIKey {
 		t.Fatal("expected regenerated API key hash to change")
+	}
+}
+
+func TestRevokeAPIKey_ConfigLookup(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store := storage.NewConfigStore()
+	db := newTestSQLiteStorage(t, logger)
+	cfg := newTestStoredRESTConfig("db-fallback-revoke", "billing-api")
+
+	if err := db.SaveConfig(cfg); err != nil {
+		t.Fatalf("failed to seed config in database: %v", err)
+	}
+
+	existingKey := newTestStoredAPIKey(cfg.UUID, "local-key", "creator-user", "local")
+	if err := db.SaveAPIKey(existingKey); err != nil {
+		t.Fatalf("failed to seed API key in database: %v", err)
+	}
+
+	service := newTestAPIKeyService(store, db, nil, newTestAPIKeyConfig())
+	user := &commonmodels.AuthContext{
+		UserID: "creator-user",
+		Roles:  []string{"developer"},
+	}
+
+	result, err := service.RevokeAPIKey(APIKeyRevocationParams{
+		Handle:        cfg.Handle,
+		APIKeyName:    existingKey.Name,
+		User:          user,
+		CorrelationID: "corr-revoke-db-fallback",
+		Logger:        logger,
+	})
+	if err != nil {
+		t.Fatalf("RevokeAPIKey returned error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected revoke result")
+	}
+
+	_, err = db.GetAPIKeysByAPIAndName(cfg.UUID, existingKey.Name)
+	if !storage.IsNotFoundError(err) {
+		t.Fatalf("expected API key to be removed from database, got err=%v", err)
+	}
+}
+
+func TestListAPIKeys_UsesDatabaseLookup(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store := storage.NewConfigStore()
+	db := newTestSQLiteStorage(t, logger)
+	cfg := newTestStoredRESTConfig("db-list-keys", "payments-api")
+
+	if err := db.SaveConfig(cfg); err != nil {
+		t.Fatalf("failed to seed config in database: %v", err)
+	}
+
+	userKey := newTestStoredAPIKey(cfg.UUID, "user-key", "creator-user", "local")
+	otherUserKey := newTestStoredAPIKey(cfg.UUID, "other-user-key", "other-user", "local")
+	revokedKey := newTestStoredAPIKey(cfg.UUID, "revoked-key", "creator-user", "local")
+	revokedKey.Status = models.APIKeyStatusRevoked
+
+	for _, key := range []*models.APIKey{userKey, otherUserKey, revokedKey} {
+		if err := db.SaveAPIKey(key); err != nil {
+			t.Fatalf("failed to seed API key %q in database: %v", key.Name, err)
+		}
+	}
+
+	service := newTestAPIKeyService(store, db, nil, newTestAPIKeyConfig())
+	user := &commonmodels.AuthContext{
+		UserID: "creator-user",
+		Roles:  []string{"developer"},
+	}
+
+	result, err := service.ListAPIKeys(ListAPIKeyParams{
+		Handle:        cfg.Handle,
+		User:          user,
+		CorrelationID: "corr-list-db-authoritative",
+		Logger:        logger,
+	})
+	if err != nil {
+		t.Fatalf("ListAPIKeys returned error: %v", err)
+	}
+	if result == nil || result.Response.ApiKeys == nil {
+		t.Fatal("expected list result")
+	}
+	if len(*result.Response.ApiKeys) != 1 {
+		t.Fatalf("expected 1 visible API key, got %d", len(*result.Response.ApiKeys))
+	}
+	if (*result.Response.ApiKeys)[0].Name != userKey.Name {
+		t.Fatalf("expected API key %q, got %q", userKey.Name, (*result.Response.ApiKeys)[0].Name)
+	}
+}
+
+func TestCreateAPIKey_LimitUsesDatabaseCount(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store := storage.NewConfigStore()
+	db := newTestSQLiteStorage(t, logger)
+	cfg := newTestStoredRESTConfig("db-limit-count", "catalog-api")
+
+	if err := db.SaveConfig(cfg); err != nil {
+		t.Fatalf("failed to seed config in database: %v", err)
+	}
+
+	existingKey := newTestStoredAPIKey(cfg.UUID, "existing-key", "creator-user", "local")
+	if err := db.SaveAPIKey(existingKey); err != nil {
+		t.Fatalf("failed to seed API key in database: %v", err)
+	}
+
+	apiKeyConfig := &config.APIKeyConfig{
+		APIKeysPerUserPerAPI: 1,
+		Algorithm:            constants.HashingAlgorithmSHA256,
+	}
+	service := newTestAPIKeyService(store, db, nil, apiKeyConfig)
+	user := &commonmodels.AuthContext{
+		UserID: "creator-user",
+		Roles:  []string{"developer"},
+	}
+
+	_, err := service.CreateAPIKey(APIKeyCreationParams{
+		Handle:        cfg.Handle,
+		Request:       api.APIKeyCreationRequest{},
+		User:          user,
+		CorrelationID: "corr-create-db-limit",
+		Logger:        logger,
+	})
+	if err == nil {
+		t.Fatal("expected CreateAPIKey to fail when database count reaches the limit")
+	}
+	if !strings.Contains(err.Error(), "API key limit exceeded") {
+		t.Fatalf("expected limit error, got %v", err)
+	}
+}
+
+func TestCheckAPIKeyNameExists_UsesDatabase(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store := storage.NewConfigStore()
+	db := newTestSQLiteStorage(t, logger)
+	cfg := newTestStoredRESTConfig("db-name-exists", "ledger-api")
+
+	if err := db.SaveConfig(cfg); err != nil {
+		t.Fatalf("failed to seed config in database: %v", err)
+	}
+
+	existingKey := newTestStoredAPIKey(cfg.UUID, "existing-key", "creator-user", "local")
+	if err := db.SaveAPIKey(existingKey); err != nil {
+		t.Fatalf("failed to seed API key in database: %v", err)
+	}
+
+	service := newTestAPIKeyService(store, db, nil, newTestAPIKeyConfig())
+
+	exists, err := service.checkAPIKeyNameExists(cfg.UUID, existingKey.Name)
+	if err != nil {
+		t.Fatalf("checkAPIKeyNameExists returned error: %v", err)
+	}
+	if !exists {
+		t.Fatal("expected API key name existence check to use the database")
 	}
 }
 

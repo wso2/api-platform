@@ -74,6 +74,27 @@ type MockStorage struct {
 	unavailable       bool
 }
 
+func cloneAPIKey(apiKey *models.APIKey) *models.APIKey {
+	if apiKey == nil {
+		return nil
+	}
+
+	cloned := *apiKey
+	if apiKey.ExpiresAt != nil {
+		expiresAt := *apiKey.ExpiresAt
+		cloned.ExpiresAt = &expiresAt
+	}
+	if apiKey.ExternalRefId != nil {
+		externalRefID := *apiKey.ExternalRefId
+		cloned.ExternalRefId = &externalRefID
+	}
+	if apiKey.Issuer != nil {
+		issuer := *apiKey.Issuer
+		cloned.Issuer = &issuer
+	}
+	return &cloned
+}
+
 func NewMockStorage() *MockStorage {
 	return &MockStorage{
 		configs:           make(map[string]*models.StoredConfig),
@@ -286,7 +307,7 @@ func (m *MockStorage) SaveAPIKey(apiKey *models.APIKey) error {
 	if m.saveErr != nil {
 		return m.saveErr
 	}
-	m.apiKeys[apiKey.UUID] = apiKey
+	m.apiKeys[apiKey.UUID] = cloneAPIKey(apiKey)
 	return nil
 }
 
@@ -294,7 +315,7 @@ func (m *MockStorage) UpsertAPIKey(apiKey *models.APIKey) error {
 	if m.saveErr != nil {
 		return m.saveErr
 	}
-	m.apiKeys[apiKey.UUID] = apiKey
+	m.apiKeys[apiKey.UUID] = cloneAPIKey(apiKey)
 	return nil
 }
 
@@ -303,7 +324,7 @@ func (m *MockStorage) GetAPIKeyByID(id string) (*models.APIKey, error) {
 		return nil, m.getErr
 	}
 	if key, ok := m.apiKeys[id]; ok {
-		return key, nil
+		return cloneAPIKey(key), nil
 	}
 	return nil, errors.New("API key not found")
 }
@@ -314,7 +335,7 @@ func (m *MockStorage) GetAPIKeyByUUID(uuid string) (*models.APIKey, error) {
 	}
 	for _, apiKey := range m.apiKeys {
 		if apiKey.UUID == uuid {
-			return apiKey, nil
+			return cloneAPIKey(apiKey), nil
 		}
 	}
 	return nil, storage.ErrNotFound
@@ -326,7 +347,7 @@ func (m *MockStorage) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 	}
 	for _, apiKey := range m.apiKeys {
 		if apiKey.APIKey == key {
-			return apiKey, nil
+			return cloneAPIKey(apiKey), nil
 		}
 	}
 	return nil, errors.New("API key not found")
@@ -339,7 +360,7 @@ func (m *MockStorage) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) {
 	result := make([]*models.APIKey, 0)
 	for _, key := range m.apiKeys {
 		if key.ArtifactUUID == apiId {
-			result = append(result, key)
+			result = append(result, cloneAPIKey(key))
 		}
 	}
 	return result, nil
@@ -351,7 +372,7 @@ func (m *MockStorage) GetAllAPIKeys() ([]*models.APIKey, error) {
 	}
 	result := make([]*models.APIKey, 0, len(m.apiKeys))
 	for _, key := range m.apiKeys {
-		result = append(result, key)
+		result = append(result, cloneAPIKey(key))
 	}
 	return result, nil
 }
@@ -362,7 +383,7 @@ func (m *MockStorage) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey
 	}
 	for _, key := range m.apiKeys {
 		if key.ArtifactUUID == apiId && key.Name == name {
-			return key, nil
+			return cloneAPIKey(key), nil
 		}
 	}
 	return nil, errors.New("API key not found")
@@ -372,7 +393,7 @@ func (m *MockStorage) UpdateAPIKey(apiKey *models.APIKey) error {
 	if m.updateErr != nil {
 		return m.updateErr
 	}
-	m.apiKeys[apiKey.UUID] = apiKey
+	m.apiKeys[apiKey.UUID] = cloneAPIKey(apiKey)
 	return nil
 }
 
