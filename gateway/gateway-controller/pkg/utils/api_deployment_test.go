@@ -27,6 +27,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -587,7 +588,12 @@ func TestDeployAPIConfiguration_WebSubTopicOperations(t *testing.T) {
 			http.Error(w, "hub error", http.StatusInternalServerError)
 		})
 		listener, err := net.Listen("tcp4", "127.0.0.1:0")
-		require.NoError(t, err)
+		if err != nil {
+			if strings.Contains(err.Error(), "operation not permitted") {
+				t.Skipf("skipping test: local listener unavailable in this environment: %v", err)
+			}
+			require.NoError(t, err)
+		}
 		server := &http.Server{Handler: handler}
 		go func() {
 			_ = server.Serve(listener)
