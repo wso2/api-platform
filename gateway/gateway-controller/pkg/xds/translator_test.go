@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"regexp"
 	"testing"
 	"time"
 
@@ -467,32 +468,32 @@ func TestTranslator_PathToRegex(t *testing.T) {
 		{
 			name:     "Simple path",
 			path:     "/api/users",
-			expected: "^/api/users$",
+			expected: "^/api/users/?$",
 		},
 		{
 			name:     "Path with parameter",
 			path:     "/api/users/{id}",
-			expected: "^/api/users/[^/]+$",
+			expected: "^/api/users/[^/]+/?$",
 		},
 		{
 			name:     "Path with multiple parameters",
 			path:     "/api/{resource}/{id}",
-			expected: "^/api/[^/]+/[^/]+$",
+			expected: "^/api/[^/]+/[^/]+/?$",
 		},
 		{
 			name:     "Path with dots (version)",
 			path:     "/api/v1.0/users",
-			expected: "^/api/v1\\.0/users$",
+			expected: "^/api/v1\\.0/users/?$",
 		},
 		{
 			name:     "Root path",
 			path:     "/",
-			expected: "^/$",
+			expected: "^//?$",
 		},
 		{
 			name:     "Path with special chars",
 			path:     "/api/data.json",
-			expected: "^/api/data\\.json$",
+			expected: "^/api/data\\.json/?$",
 		},
 	}
 
@@ -1402,6 +1403,381 @@ func TestTranslator_CreateRoute_Basic(t *testing.T) {
 	assert.NotNil(t, route)
 	assert.Contains(t, route.Name, "GET")
 	assert.Contains(t, route.Name, "/api/users")
+	// Verify regex matching with optional trailing slash
+	safeRegex := route.Match.GetSafeRegex()
+	assert.NotNil(t, safeRegex)
+	assert.Equal(t, "^/api/users/?$", safeRegex.GetRegex())
+}
+
+func TestTranslator_CreateRoute_TrailingSlash(t *testing.T) {
+	translator := createTestTranslator()
+
+	tests := []struct {
+		name          string
+		context       string
+		apiVersion    string
+		path          string
+		expectedRegex string
+	}{
+		{
+			name:          "Root operation path — primary bug scenario (context + / = trailing slash)",
+			context:       "/v1/users",
+			apiVersion:    "v1",
+			path:          "/",
+			expectedRegex: "^/v1/users/?$",
+		},
+		{
+			name:          "Standard path creates slash-agnostic route",
+			context:       "/api",
+			apiVersion:    "v1",
+			path:          "/users",
+			expectedRegex: "^/api/users/?$",
+		},
+		{
+			name:          "Root context with path",
+			context:       "/",
+			apiVersion:    "v1",
+			path:          "/status",
+			expectedRegex: "^/status/?$",
+		},
+		{
+			name:          "Path with special characters (dots)",
+			context:       "/api",
+			apiVersion:    "v1",
+			path:          "/data.json",
+			expectedRegex: "^/api/data\\.json/?$",
+		},
+		{
+			name:          "Version placeholder in context with root path",
+			context:       "/api/$version",
+			apiVersion:    "v1.0",
+			path:          "/",
+			expectedRegex: "^/api/v1\\.0/?$",
+		},
+		{
+			name:          "Version placeholder in context with operation path",
+			context:       "/test-api/$version",
+			apiVersion:    "v1.0",
+			path:          "/users",
+			expectedRegex: "^/test-api/v1\\.0/users/?$",
+		},
+		{
+			name:          "Deep nested context with root path",
+			context:       "/api/v1/internal",
+			apiVersion:    "v1",
+			path:          "/",
+			expectedRegex: "^/api/v1/internal/?$",
+		},
+		{
+			name:          "Multi-segment operation path",
+			context:       "/api",
+			apiVersion:    "v1",
+			path:          "/users/profile",
+			expectedRegex: "^/api/users/profile/?$",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := translator.createRoute(
+				"api-123", "test-api", tt.apiVersion, tt.context, "GET", tt.path,
+				"test-cluster", "", "localhost", "API", "", "", nil, "proj-001", nil, false, "", nil,
+			)
+			assert.NotNil(t, r)
+			safeRegex := r.Match.GetSafeRegex()
+			assert.NotNil(t, safeRegex, "expected SafeRegex match, got %T", r.Match.GetPathSpecifier())
+			assert.Equal(t, tt.expectedRegex, safeRegex.GetRegex())
+		})
+	}
+}
+
+func TestTranslator_CreateRoute_TrailingSlash_RegexActuallyMatches(t *testing.T) {
+	translator := createTestTranslator()
+
+	tests := []struct {
+		name       string
+		context    string
+		apiVersion string
+		opPath     string
+		matchPaths []string
+		noMatch    []string
+	}{
+		{
+			name:       "Root operation — matches with and without trailing slash",
+			context:    "/v1/users",
+			apiVersion: "v1",
+			opPath:     "/",
+			matchPaths: []string{"/v1/users", "/v1/users/"},
+			noMatch:    []string{"/v1/users/extra", "/v1/user", "/v1/users//"},
+		},
+		{
+			name:       "Standard path — matches with and without trailing slash",
+			context:    "/test-api/$version",
+			apiVersion: "v1.0",
+			opPath:     "/users",
+			matchPaths: []string{"/test-api/v1.0/users", "/test-api/v1.0/users/"},
+			noMatch:    []string{"/test-api/v1.0/users/123", "/test-api/v1.0/user"},
+		},
+		{
+			name:       "Root context with path",
+			context:    "/",
+			apiVersion: "v1",
+			opPath:     "/health",
+			matchPaths: []string{"/health", "/health/"},
+			noMatch:    []string{"/health/check", "/healthz"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := translator.createRoute(
+				"api-123", "test-api", tt.apiVersion, tt.context, "GET", tt.opPath,
+				"test-cluster", "", "localhost", "API", "", "", nil, "proj-001", nil, false, "", nil,
+			)
+			require.NotNil(t, r)
+			safeRegex := r.Match.GetSafeRegex()
+			require.NotNil(t, safeRegex)
+
+			re := regexp.MustCompile(safeRegex.GetRegex())
+			for _, path := range tt.matchPaths {
+				assert.True(t, re.MatchString(path), "regex %s should match %s", safeRegex.GetRegex(), path)
+			}
+			for _, path := range tt.noMatch {
+				assert.False(t, re.MatchString(path), "regex %s should NOT match %s", safeRegex.GetRegex(), path)
+			}
+		})
+	}
+}
+
+func TestTranslator_CreateRoute_ParameterizedTrailingSlash(t *testing.T) {
+	translator := createTestTranslator()
+
+	tests := []struct {
+		name          string
+		context       string
+		apiVersion    string
+		path          string
+		expectedRegex string
+		matchPaths    []string
+		noMatch       []string
+	}{
+		{
+			name:          "Single parameter",
+			context:       "/api",
+			apiVersion:    "v1",
+			path:          "/{id}",
+			expectedRegex: "^/api/[^/]+/?$",
+			matchPaths:    []string{"/api/123", "/api/123/", "/api/abc"},
+			noMatch:       []string{"/api/", "/api/123/extra", "/api"},
+		},
+		{
+			name:          "Multiple parameters",
+			context:       "/weather/$version",
+			apiVersion:    "v1.0",
+			path:          "/{country_code}/{city}",
+			expectedRegex: "^/weather/v1\\.0/[^/]+/[^/]+/?$",
+			matchPaths:    []string{"/weather/v1.0/us/seattle", "/weather/v1.0/us/seattle/"},
+			noMatch:       []string{"/weather/v1.0/us", "/weather/v1.0/us/seattle/extra"},
+		},
+		{
+			name:          "Parameter after static segment",
+			context:       "/v1/users",
+			apiVersion:    "v1",
+			path:          "/{id}",
+			expectedRegex: "^/v1/users/[^/]+/?$",
+			matchPaths:    []string{"/v1/users/123", "/v1/users/123/"},
+			noMatch:       []string{"/v1/users", "/v1/users/", "/v1/users/123/orders"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := translator.createRoute(
+				"api-123", "test-api", tt.apiVersion, tt.context, "GET", tt.path,
+				"test-cluster", "", "localhost", "API", "", "", nil, "proj-001", nil, false, "", nil,
+			)
+			require.NotNil(t, r)
+			safeRegex := r.Match.GetSafeRegex()
+			require.NotNil(t, safeRegex)
+			assert.Equal(t, tt.expectedRegex, safeRegex.GetRegex())
+
+			re := regexp.MustCompile(safeRegex.GetRegex())
+			for _, path := range tt.matchPaths {
+				assert.True(t, re.MatchString(path), "regex %s should match %s", safeRegex.GetRegex(), path)
+			}
+			for _, path := range tt.noMatch {
+				assert.False(t, re.MatchString(path), "regex %s should NOT match %s", safeRegex.GetRegex(), path)
+			}
+		})
+	}
+}
+
+func TestTranslator_CreateRouteFromRDC_TrailingSlash(t *testing.T) {
+	translator := createTestTranslator()
+
+	tests := []struct {
+		name          string
+		fullPath      string
+		opPath        string
+		expectedRegex string
+		matchPaths    []string
+		noMatch       []string
+	}{
+		{
+			name:          "Plain path gets slash-agnostic regex",
+			fullPath:      "/api/users",
+			opPath:        "/users",
+			expectedRegex: "^/api/users/?$",
+			matchPaths:    []string{"/api/users", "/api/users/"},
+			noMatch:       []string{"/api/users/123"},
+		},
+		{
+			name:          "Root operation path (context + /)",
+			fullPath:      "/v1/users/",
+			opPath:        "/",
+			expectedRegex: "^/v1/users/?$",
+			matchPaths:    []string{"/v1/users", "/v1/users/"},
+			noMatch:       []string{"/v1/users/extra"},
+		},
+		{
+			name:          "Parameterized path gets slash-agnostic regex",
+			fullPath:      "/api/users/{id}",
+			opPath:        "/users/{id}",
+			expectedRegex: "^/api/users/[^/]+/?$",
+			matchPaths:    []string{"/api/users/123", "/api/users/123/"},
+			noMatch:       []string{"/api/users", "/api/users/123/extra"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rdc := &models.RuntimeDeployConfig{
+				UpstreamClusters: map[string]*models.UpstreamCluster{
+					"test-cluster": {BasePath: "/backend"},
+				},
+			}
+			rdcRoute := &models.Route{
+				Method:        "GET",
+				Path:          tt.fullPath,
+				OperationPath: tt.opPath,
+				Upstream: models.RouteUpstream{
+					ClusterKey: "test-cluster",
+				},
+			}
+
+			r := translator.createRouteFromRDC("test-route", rdcRoute, rdc)
+			require.NotNil(t, r)
+			safeRegex := r.Match.GetSafeRegex()
+			require.NotNil(t, safeRegex, "expected SafeRegex match for path %s", tt.fullPath)
+			assert.Equal(t, tt.expectedRegex, safeRegex.GetRegex())
+
+			re := regexp.MustCompile(safeRegex.GetRegex())
+			for _, path := range tt.matchPaths {
+				assert.True(t, re.MatchString(path), "regex %s should match %s", safeRegex.GetRegex(), path)
+			}
+			for _, path := range tt.noMatch {
+				assert.False(t, re.MatchString(path), "regex %s should NOT match %s", safeRegex.GetRegex(), path)
+			}
+		})
+	}
+}
+
+func TestTranslator_CreateRoute_WildcardUnchanged(t *testing.T) {
+	translator := createTestTranslator()
+
+	r := translator.createRoute(
+		"api-123", "test-api", "v1", "/api", "GET", "/*",
+		"test-cluster", "", "localhost", "API", "", "", nil, "proj-001", nil, false, "", nil,
+	)
+	require.NotNil(t, r)
+	safeRegex := r.Match.GetSafeRegex()
+	require.NotNil(t, safeRegex)
+	// Wildcard routes use prefix matching, not the trailing slash pattern
+	assert.Contains(t, safeRegex.GetRegex(), "/.*$")
+	assert.NotContains(t, safeRegex.GetRegex(), "/?$")
+}
+
+func TestTranslator_CreateRoute_MixedOperations(t *testing.T) {
+	translator := createTestTranslator()
+
+	// Simulate an API with multiple operations mixing root and non-root paths
+	operations := []struct {
+		method string
+		path   string
+	}{
+		{"GET", "/"},
+		{"GET", "/{id}"},
+		{"POST", "/"},
+	}
+
+	context := "/v1/users"
+	for _, op := range operations {
+		r := translator.createRoute(
+			"api-123", "test-api", "v1", context, op.method, op.path,
+			"test-cluster", "", "localhost", "API", "", "", nil, "proj-001", nil, false, "", nil,
+		)
+		require.NotNil(t, r)
+		safeRegex := r.Match.GetSafeRegex()
+		require.NotNil(t, safeRegex, "expected SafeRegex for method=%s path=%s", op.method, op.path)
+		assert.Contains(t, safeRegex.GetRegex(), "/?$",
+			"all non-wildcard routes should have optional trailing slash for method=%s path=%s", op.method, op.path)
+	}
+}
+
+func TestTranslator_CreateRoute_RegexRewrite(t *testing.T) {
+	translator := createTestTranslator()
+
+	tests := []struct {
+		name                 string
+		context              string
+		apiVersion           string
+		path                 string
+		upstreamPath         string
+		expectedRewriteRegex string
+		expectedSubstitution string
+	}{
+		{
+			name:                 "Root operation rewrites to upstream root",
+			context:              "/v1/users",
+			apiVersion:           "v1",
+			path:                 "/",
+			upstreamPath:         "",
+			expectedRewriteRegex: "^/v1/users/?(.*)$",
+			expectedSubstitution: "/\\1",
+		},
+		{
+			name:                 "Standard path rewrites correctly",
+			context:              "/api",
+			apiVersion:           "v1",
+			path:                 "/users",
+			upstreamPath:         "/backend",
+			expectedRewriteRegex: "^/api/?(.*)$",
+			expectedSubstitution: "/backend/\\1",
+		},
+		{
+			name:                 "Version placeholder in context",
+			context:              "/weather/$version",
+			apiVersion:           "v1.0",
+			path:                 "/{country}/{city}",
+			upstreamPath:         "/api/v2",
+			expectedRewriteRegex: "^/weather/v1\\.0/?(.*)$",
+			expectedSubstitution: "/api/v2/\\1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := translator.createRoute(
+				"api-123", "test-api", tt.apiVersion, tt.context, "GET", tt.path,
+				"test-cluster", tt.upstreamPath, "localhost", "API", "", "", nil, "proj-001", nil, false, "", nil,
+			)
+			require.NotNil(t, r)
+			rewrite := r.GetRoute().GetRegexRewrite()
+			require.NotNil(t, rewrite)
+			assert.Equal(t, tt.expectedRewriteRegex, rewrite.GetPattern().GetRegex())
+			assert.Equal(t, tt.expectedSubstitution, rewrite.GetSubstitution())
+		})
+	}
 }
 
 func TestTranslator_ExtractTemplateHandle_ValidLLMProvider(t *testing.T) {

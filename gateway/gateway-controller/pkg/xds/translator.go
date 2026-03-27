@@ -166,6 +166,17 @@ func ConstructFullPath(context, apiVersion, path string) string {
 	return contextWithVersion + path
 }
 
+// slashAgnosticRegex builds a regex that matches fullPath with or without a trailing slash.
+// It normalizes a trailing slash from the input (e.g. "/api/users/" becomes "/api/users")
+// and produces a pattern like "^/api/users/?$".
+func slashAgnosticRegex(fullPath string) string {
+	normalizedPath := strings.TrimSuffix(fullPath, "/")
+	if normalizedPath == "" {
+		normalizedPath = "/"
+	}
+	return "^" + regexp.QuoteMeta(normalizedPath) + "/?$"
+}
+
 // GetCertStore returns the certificate store instance
 func (t *Translator) GetCertStore() *certstore.CertStore {
 	return t.certStore
@@ -315,8 +326,11 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	if isWildcardPath || hasParams {
 		r.Match.PathSpecifier = pathSpecifier
 	} else {
-		r.Match.PathSpecifier = &route.RouteMatch_Path{
-			Path: fullPath,
+		// Use regex with optional trailing slash for slash-agnostic matching
+		r.Match.PathSpecifier = &route.RouteMatch_SafeRegex{
+			SafeRegex: &matcher.RegexMatcher{
+				Regex: slashAgnosticRegex(fullPath),
+			},
 		}
 	}
 
@@ -341,9 +355,9 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	escapedContext := regexp.QuoteMeta(contextWithVersion)
 	r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
 		Pattern: &matcher.RegexMatcher{
-			Regex: "^" + escapedContext + "(.*)$",
+			Regex: "^" + escapedContext + "/?(.*)$",
 		},
-		Substitution: upstreamPath + "\\1",
+		Substitution: upstreamPath + "/\\1",
 	}
 
 	return r
@@ -1825,9 +1839,11 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	if isWildcardPath || hasParams {
 		r.Match.PathSpecifier = pathSpecifier
 	} else {
-		// Use exact path matching for non-parameterized paths
-		r.Match.PathSpecifier = &route.RouteMatch_Path{
-			Path: fullPath,
+		// Use regex with optional trailing slash for slash-agnostic matching
+		r.Match.PathSpecifier = &route.RouteMatch_SafeRegex{
+			SafeRegex: &matcher.RegexMatcher{
+				Regex: slashAgnosticRegex(fullPath),
+			},
 		}
 	}
 
@@ -1857,9 +1873,9 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	escapedContext := regexp.QuoteMeta(contextWithVersion)
 	r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
 		Pattern: &matcher.RegexMatcher{
-			Regex: "^" + escapedContext + "(.*)$",
+			Regex: "^" + escapedContext + "/?(.*)$",
 		},
-		Substitution: upstreamPath + "\\1",
+		Substitution: upstreamPath + "/\\1",
 	}
 
 	return r
@@ -2636,8 +2652,8 @@ func (t *Translator) pathToRegex(path string) string {
 		}
 	}
 
-	// Anchor the regex to match the entire path
-	return "^" + regex + "$"
+	// Anchor the regex to match the entire path, with optional trailing slash
+	return "^" + regex + "/?$"
 }
 
 // sanitizeClusterName creates a valid cluster name from a hostname and scheme

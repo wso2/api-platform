@@ -62,6 +62,54 @@ Feature: API Deployment and Invocation
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
 
+  Scenario: API routes match both with and without trailing slash
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: slash-test-api-v1.0
+      spec:
+        displayName: Slash-Test-API
+        version: v1.0
+        context: /slashtest/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v2
+        operations:
+          - method: GET
+            path: /users
+          - method: GET
+            path: /
+      """
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+    And I wait for 2 seconds
+
+    # Test /users without trailing slash
+    When I send a GET request to "http://localhost:8080/slashtest/v1.0/users"
+    Then the response should be successful
+
+    # Test /users with trailing slash
+    When I send a GET request to "http://localhost:8080/slashtest/v1.0/users/"
+    Then the response should be successful
+
+    # Test root path without trailing slash (context only)
+    When I send a GET request to "http://localhost:8080/slashtest/v1.0"
+    Then the response should be successful
+
+    # Test root path with trailing slash
+    When I send a GET request to "http://localhost:8080/slashtest/v1.0/"
+    Then the response should be successful
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "slash-test-api-v1.0"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+
   Scenario: Deploy an HTTP API with labels and verify they are stored
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:

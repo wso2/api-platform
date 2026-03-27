@@ -193,6 +193,42 @@ func TestSortRoutesByPriority_EmptyAndSingleRoute(t *testing.T) {
 	assert.Equal(t, "single", result[0].Name)
 }
 
+func TestSortRoutesByPriority_RegexOnlyRoutes(t *testing.T) {
+	// After the trailing slash fix, all non-wildcard routes are regex.
+	// Verify that regex routes sort correctly by pattern length (longer = higher priority).
+	shortRegex := &route.Route{
+		Name: "short-regex",
+		Match: &route.RouteMatch{
+			PathSpecifier: &route.RouteMatch_SafeRegex{
+				SafeRegex: &matcher.RegexMatcher{Regex: "^/api/?$"},
+			},
+		},
+	}
+	longRegex := &route.Route{
+		Name: "long-regex",
+		Match: &route.RouteMatch{
+			PathSpecifier: &route.RouteMatch_SafeRegex{
+				SafeRegex: &matcher.RegexMatcher{Regex: "^/api/users/profile/?$"},
+			},
+		},
+	}
+	paramRegex := &route.Route{
+		Name: "param-regex",
+		Match: &route.RouteMatch{
+			PathSpecifier: &route.RouteMatch_SafeRegex{
+				SafeRegex: &matcher.RegexMatcher{Regex: "^/api/users/[^/]+/?$"},
+			},
+		},
+	}
+
+	routes := []*route.Route{shortRegex, paramRegex, longRegex}
+	sorted := SortRoutesByPriority(routes)
+
+	assert.Equal(t, "long-regex", sorted[0].Name, "Longest regex should be first")
+	assert.Equal(t, "param-regex", sorted[1].Name, "Medium regex should be second")
+	assert.Equal(t, "short-regex", sorted[2].Name, "Shortest regex should be last")
+}
+
 func TestSortRoutesByPriority_ComplexScenario(t *testing.T) {
 	// A complex scenario mixing all criteria
 	catchAll := &route.Route{
