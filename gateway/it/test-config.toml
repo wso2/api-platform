@@ -73,6 +73,14 @@ path = "./data/gateway.db"
 [controller.policies]
 definitions_path = "./default-policies"
 
+[controller.event_hub]
+# Interval at which events are polled from the database
+poll_interval = "1s"
+# Interval at which old events are cleaned up
+cleanup_interval = "10m"
+# How long events are retained before being deleted
+retention_period = "1h"
+
 [router]
 gateway_host = "*"
 listener_port = 8080
