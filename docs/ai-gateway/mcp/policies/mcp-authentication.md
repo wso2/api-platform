@@ -1,3 +1,6 @@
+---
+title: "Overview"
+---
 # MCP Authentication
 
 ## Overview
@@ -6,36 +9,47 @@ The MCP Authentication policy is designed to secure traffic to Model Context Pro
 
 ## Features
 
-- **Access Token Validation**: Validates JWT access tokens using configured key managers. Please refer the [JWT Authentication Policy](../../../gateway/policies/jwt-authentication.md) for more information on how the key validation works.
+- **Access Token Validation**: Validates JWT access tokens using configured key managers. Please refer to the [JWT Authentication Policy](../../../gateway/policies/jwt-authentication.md) for more information on how the key validation works.
+- **Resource-Specific Security**: Configure authentication independently for tools, resources, prompts, and JSON-RPC methods.
+- **Exception Lists**: Exclude specific resources from authentication using exception lists.
 - **Protected Resource Metadata**: Intercepts `GET /.well-known/oauth-protected-resource` requests to return resource metadata, including authorization servers and supported scopes.
 - **Standardized Error Handling**: Returns `WWW-Authenticate` headers with `resource_metadata` on authentication failures.
-- **Configurable Validation**: Supports issuer, audience, scope, and custom claim validation.
-- **Claim Mapping**: Maps token claims to downstream headers.
+- **Claim Mapping**: Maps token claims to downstream headers for use by backend services.
+- **Configurable Issuers**: Specify which key managers to use for token validation and metadata publication.
 
 ## Configuration
 
 The MCP Authentication policy uses a two-level configuration model:
 
-- **System Parameters**: Configured by the administrator in `config.toml` under `policy_configurations.mcpauth_v0` or `policy_configurations.jwtauth_v0` depending on the parameter.
-- **User Parameters**: Configured per MCP proxy in the configuration yaml.
-
 ### System Parameters (config.toml)
 
-These parameters are set by the administrator and apply globally to all MCP authentication policies:
+Configured by the administrator in `config.toml` under `policy_configurations.mcpauth_v0` or `policy_configurations.jwtauth_v0` depending on the parameter.
 
-| Parameter | Type | Required | Path | Description |
-|-----------|------|----------|----------|-------------|
-| `keymanagers` | array | Yes | jwtauth_v0 | List of key manager definitions. Each entry must include a unique `name` and either `jwks` (for remote JWKS or local certificates) configuration. |
-| `gatewayhost` | string | No | mcpauth_v0 | The outward-facing gateway host name which will be used when deriving the values related to protected resource metadata in headers and body. The gateway will fall back to this if there are no vhosts defined in the MCP proxy configuration. |
+| Parameter | Type | Required | Default | Path | Description |
+|-----------|------|----------|---------|------|-------------|
+| `keyManagers` | `KeyManager` array | Yes | - | jwtauth_v0 | List of key manager definitions. Each entry must include a unique `name` and `issuer`, and either `jwks.remote` or `jwks.local` configuration. |
+| `jwksCacheTtl` | string | No | - | jwtauth_v0 | Duration string for JWKS caching (e.g., `"5m"`). If omitted a default is used. |
+| `jwksFetchTimeout` | string | No | - | jwtauth_v0 | Timeout for HTTP fetch of JWKS (e.g., `"5s"`). |
+| `jwksFetchRetryCount` | integer | No | - | jwtauth_v0 | Number of retries for JWKS fetch on transient failures. |
+| `jwksFetchRetryInterval` | string | No | - | jwtauth_v0 | Interval between JWKS fetch retries (e.g., `"2s"`). |
+| `allowedAlgorithms` | string array | No | - | jwtauth_v0 | Allowed JWT signing algorithms (e.g., `["RS256", "ES256"]`). |
+| `leeway` | string | No | - | jwtauth_v0 | Clock skew allowance for `exp`/`nbf` checks (e.g., `"30s"`). |
+| `authHeaderScheme` | string | No | `"Bearer"` | jwtauth_v0 | Expected scheme prefix in the authorization header. |
+| `headerName` | string | No | `"Authorization"` | jwtauth_v0 | Header name to extract the token from. |
+| `onFailureStatusCode` | integer | No | `401` | jwtauth_v0 | HTTP status code returned on authentication failure. Allowed values: `401`, `403`. |
+| `errorMessageFormat` | string | No | `"json"` | jwtauth_v0 | Format of the error response. Allowed values: `"json"`, `"plain"`, `"minimal"`. |
+| `errorMessage` | string | No | - | jwtauth_v0 | Custom error message to include in the response body on authentication failure. |
+| `validateIssuer` | boolean | No | - | jwtauth_v0 | Whether to validate the token's issuer claim against configured key managers. |
+| `gatewayHost` | string | No | `"localhost"` | mcpauth_v0 | The outward-facing gateway host name used when deriving the protected resource metadata URL and response. |
 
-#### Key Manager Configuration
+#### KeyManager Configuration
 
-Each key manager in the `keymanagers` array supports the following structure:
+Each key manager in the `keyManagers` array supports the following structure:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | Yes | Unique name for this key manager (used in user-level `issuers` configuration). |
-| `issuer` | string | No | Optional issuer (iss) value associated with keys from this provider. |
+| `issuer` | string | Yes | Issuer (`iss`) value associated with keys from this provider. |
 | `jwks.remote.uri` | string | Conditional | JWKS endpoint URL. Required if using remote JWKS. |
 | `jwks.remote.certificatePath` | string | No | Path to CA certificate file for validating self-signed JWKS endpoints. |
 | `jwks.remote.skipTlsVerify` | boolean | No | If true, skip TLS certificate verification. Use with caution. |
@@ -44,58 +58,78 @@ Each key manager in the `keymanagers` array supports the following structure:
 
 > **Note**: Either `jwks.remote` or `jwks.local` must be specified, but not both.
 
-### User Parameters (API Definition)
-
-These parameters are configured per-API/route by the API developer:
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `issuers` | array | No | - | List of issuer names (referencing entries in `system.keymanagers`). This list is sent as `authorization_servers` in the protected resource metadata response. If omitted, all configured key managers are used. |
-| `requiredScopes` | array | No | - | List of scopes that should be included in the token. These are also advertised in the protected resource metadata. |
-| `audiences` | array | No | - | List of acceptable audience values; token must contain at least one. |
-| `requiredClaims` | object | No | - | Map of claimName → expectedValue for custom claim validation. |
-| `claimMappings` | object | No | - | Map of claimName → downstream header name to expose claims for downstream services. |
-
-## System Configuration Example
-
-Add the following to your `gateway/configs/config.toml` file under `policy_configurations`:
+#### System Configuration Example
 
 ```toml
 [policy_configurations.mcpauth_v0]
-gatewayhost = "gw.example.com"
+gatewayHost = "gw.example.com"
 
 [policy_configurations.jwtauth_v0]
-jwkscachettl = "5m"
-jwksfetchtimeout = "5s"
-jwksfetchretrycount = 3
-jwksfetchretryinterval = "2s"
-allowedalgorithms = ["RS256", "ES256"]
+jwksCacheTtl = "5m"
+jwksFetchTimeout = "5s"
+jwksFetchRetryCount = 3
+jwksFetchRetryInterval = "2s"
+allowedAlgorithms = ["RS256", "ES256"]
 leeway = "30s"
-authheaderscheme = "Bearer"
-headername = "Authorization"
-onfailurestatuscode = 401
-errormessageformat = "json"
-errormessage = "Authentication failed."
-validateissuer = true
+authHeaderScheme = "Bearer"
+headerName = "Authorization"
+onFailureStatusCode = 401
+errorMessageFormat = "json"
+errorMessage = "Authentication failed."
+validateIssuer = true
 
-[[policy_configurations.jwtauth_v0.keymanagers]]
+[[policy_configurations.jwtauth_v0.keyManagers]]
 name = "PrimaryIDP"
 issuer = "https://idp.example.com/oauth2/token"
 
-[policy_configurations.jwtauth_v0.keymanagers.jwks.remote]
+[policy_configurations.jwtauth_v0.keyManagers.jwks.remote]
 uri = "https://idp.example.com/oauth2/jwks"
 skipTlsVerify = false
 
-[[policy_configurations.jwtauth_v0.keymanagers]]
+[[policy_configurations.jwtauth_v0.keyManagers]]
 name = "SecondaryIDP"
 issuer = "https://auth.example.org/oauth2/token"
 
-[policy_configurations.jwtauth_v0.keymanagers.jwks.remote]
+[policy_configurations.jwtauth_v0.keyManagers.jwks.remote]
 uri = "https://auth.example.org/oauth2/jwks"
 skipTlsVerify = false
 ```
 
-## MCP Proxy Definition Examples
+### User Parameters (API Definition)
+
+These parameters are configured per-API/route by the API developer:
+
+#### Resource Type Configuration
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `tools` | `SecurityConfig` object | No | `{"enabled": true}` | Security configuration for MCP tools. |
+| `resources` | `SecurityConfig` object | No | `{"enabled": true}` | Security configuration for MCP resources. |
+| `prompts` | `SecurityConfig` object | No | `{"enabled": true}` | Security configuration for MCP prompts. |
+| `methods` | `SecurityConfig` object | No | `{"enabled": true}` | Security configuration for MCP (JSON-RPC) methods. |
+| `issuers` | string array | No | `[]` | List of issuer names from `system.keyManagers` to publish in protected resource metadata and use for token validation. If empty, runtime uses all configured key managers. |
+| `requiredScopes` | string array | No | `[]` | List of scopes that should be included in the token generated through MCP auth flow. These are advertised in the protected resource metadata but **not enforced** by this policy. Use the MCP Authorization policy to enforce scopes. |
+| `claimMappings` | object | No | `{}` | Map of claimName → downstream header or context key to expose claims for downstream services. |
+
+#### SecurityConfig Object
+
+Each resource type configuration supports the following structure:
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `enabled` | boolean | No | `true` | Whether security is enabled for this resource type. |
+| `exceptions` | string array | No | `[]` | List of resource names to exclude from security checks. |
+
+**Note:**
+
+Inside the `gateway/build.yaml`, ensure the policy module is added under `policies:`:
+
+```yaml
+- name: mcp-auth
+  gomodule: github.com/wso2/gateway-controllers/policies/mcp-auth@v0
+```
+
+## Reference Scenarios
 
 ### Example 1: Basic MCP Authentication
 
@@ -115,7 +149,7 @@ spec:
     url: https://mcp-backend:8080
   policies:
     - name: mcp-auth
-      version: v0.1.1
+      version: v0
       params:
         issuers:
           - PrimaryIDP
@@ -123,9 +157,9 @@ spec:
     ...
 ```
 
-### Example 2: Scope and Audience Validation
+### Example 2: Disable Security for Specific Tools
 
-Require specific scopes and audiences:
+Disable authentication for specific tools while keeping it enabled for others:
 
 ```yaml
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
@@ -141,12 +175,47 @@ spec:
     url: https://mcp-backend:8080
   policies:
     - name: mcp-auth
-      version: v0.1.1
+      version: v0
       params:
         issuers:
           - PrimaryIDP
-        audiences:
-          - https://mcp-api.example.com
+        tools:
+          enabled: true
+          exceptions:
+            - health_check
+            - list_public_resources
+        resources:
+          enabled: true
+        prompts:
+          enabled: true
+        methods:
+          enabled: true
+  tools:
+    ...
+```
+
+### Example 3: Scope Advertisement in Protected Resource Metadata
+
+Advertise required scopes in the protected resource metadata (scopes are not enforced by this policy):
+
+```yaml
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Mcp
+metadata:
+    name: mcp-server-api-v1.0
+spec:
+  displayName: mcp-server-api
+  version: v1.0
+  context: /mcpserver
+  vhost: mcp1.gw.example.com
+  upstream:
+    url: https://mcp-backend:8080
+  policies:
+    - name: mcp-auth
+      version: v0
+      params:
+        issuers:
+          - PrimaryIDP
         requiredScopes:
           - mcp:read
           - mcp:write
@@ -154,8 +223,66 @@ spec:
     ...
 ```
 
-## Use Cases
+### Example 4: Claim Mapping for Downstream Services
 
-1.  **MCP Server Security**: Protect Model Context Protocol servers by requiring valid access tokens from trusted identity providers.
-2.  **Resource Discovery**: Enable MCP clients to discover authorization requirements (authorization servers and scopes) via the standard `.well-known/oauth-protected-resource` endpoint.
-3.  **Multi-Provider Support**: Allow MCP clients to authenticate using tokens from different identity providers (e.g., different organizations or tenants).
+Map JWT claims to downstream headers for use by backend services:
+
+```yaml
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Mcp
+metadata:
+    name: mcp-server-api-v1.0
+spec:
+  displayName: mcp-server-api
+  version: v1.0
+  context: /mcpserver
+  vhost: mcp1.gw.example.com
+  upstream:
+    url: https://mcp-backend:8080
+  policies:
+    - name: mcp-auth
+      version: v0
+      params:
+        issuers:
+          - PrimaryIDP
+        claimMappings:
+          sub: x-user-id
+          email: x-user-email
+          department: x-user-department
+  tools:
+    ...
+```
+
+### Example 5: Disable Authentication for Resources
+
+Completely disable authentication for MCP resources while keeping it for tools:
+
+```yaml
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Mcp
+metadata:
+    name: mcp-server-api-v1.0
+spec:
+  displayName: mcp-server-api
+  version: v1.0
+  context: /mcpserver
+  vhost: mcp1.gw.example.com
+  upstream:
+    url: https://mcp-backend:8080
+  policies:
+    - name: mcp-auth
+      version: v0
+      params:
+        issuers:
+          - PrimaryIDP
+        tools:
+          enabled: true
+        resources:
+          enabled: false
+        prompts:
+          enabled: true
+        methods:
+          enabled: true
+  tools:
+    ...
+```

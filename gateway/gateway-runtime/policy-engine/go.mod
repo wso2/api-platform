@@ -15,7 +15,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/stretchr/testify v1.11.1
 	github.com/wso2/api-platform/common v0.0.0-00010101000000-000000000000
-	github.com/wso2/api-platform/sdk v0.4.4
+	github.com/wso2/api-platform/sdk/core v0.0.0
 	go.opentelemetry.io/otel v1.40.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.39.0
 	go.opentelemetry.io/otel/sdk v1.40.0
@@ -50,7 +50,6 @@ require (
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
-	github.com/wso2/api-platform/sdk/core v0.0.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.39.0 // indirect
 	go.opentelemetry.io/otel/metric v1.40.0 // indirect
@@ -64,7 +63,5 @@ require (
 )
 
 replace github.com/wso2/api-platform/common => ../../../common
-
-replace github.com/wso2/api-platform/sdk => ../../../sdk
 
 replace github.com/wso2/api-platform/sdk/core => ../../../sdk/core

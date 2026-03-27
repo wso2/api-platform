@@ -75,8 +75,6 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 
 	// Check for required methods
 	hasMode := false
-	hasOnRequest := false
-	hasOnResponse := false
 	hasNewPolicy := false
 
 	for _, file := range files {
@@ -91,8 +89,8 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 					"hasReceiver", hasReceiver,
 					"phase", "validation")
 
-				// Check for GetPolicy factory function (v1alpha: GetPolicy, v1alpha2: GetPolicyV2)
-				if methodName == "GetPolicy" || methodName == "GetPolicyV2" {
+				// Check for GetPolicy factory function
+				if methodName == "GetPolicy" {
 					hasNewPolicy = true
 					slog.Debug("Found GetPolicy factory function", "name", methodName, "phase", "validation")
 				}
@@ -103,22 +101,8 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 					case "Mode":
 						hasMode = true
 						slog.Debug("Found Mode method", "phase", "validation")
-					// v1alpha
-					case "OnRequest":
-						hasOnRequest = true
-						slog.Debug("Found OnRequest method", "phase", "validation")
-					// v1alpha2: RequestPolicy, RequestHeaderPolicy, StreamingRequestPolicy
-					case "OnRequestBody", "OnRequestHeaders", "OnRequestBodyChunk":
-						hasOnRequest = true
-						slog.Debug("Found request phase method", "name", methodName, "phase", "validation")
-					// v1alpha
-					case "OnResponse":
-						hasOnResponse = true
-						slog.Debug("Found OnResponse method", "phase", "validation")
-					// v1alpha2: ResponsePolicy, ResponseHeaderPolicy, StreamingResponsePolicy
-					case "OnResponseBody", "OnResponseHeaders", "OnResponseBodyChunk":
-						hasOnResponse = true
-						slog.Debug("Found response phase method", "name", methodName, "phase", "validation")
+						// v1alpha
+
 					}
 				}
 			}
@@ -129,8 +113,6 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 	slog.Debug("Interface validation summary",
 		"policy", policy.Name,
 		"hasMode", hasMode,
-		"hasOnRequest", hasOnRequest,
-		"hasOnResponse", hasOnResponse,
 		"hasNewPolicy", hasNewPolicy,
 		"phase", "validation")
 
@@ -141,24 +123,6 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 			PolicyVersion: policy.Version,
 			FilePath:      policy.Path,
 			Message:       "missing required Mode() method implementation",
-		})
-	}
-
-	if !hasOnRequest {
-		errors = append(errors, types.ValidationError{
-			PolicyName:    policy.Name,
-			PolicyVersion: policy.Version,
-			FilePath:      policy.Path,
-			Message:       "missing required OnRequest() method implementation",
-		})
-	}
-
-	if !hasOnResponse {
-		errors = append(errors, types.ValidationError{
-			PolicyName:    policy.Name,
-			PolicyVersion: policy.Version,
-			FilePath:      policy.Path,
-			Message:       "missing required OnResponse() method implementation",
 		})
 	}
 

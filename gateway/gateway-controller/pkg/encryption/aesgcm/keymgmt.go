@@ -24,6 +24,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
 )
@@ -58,6 +59,9 @@ func NewKeyManager(keyConfigs []KeyConfig, logger *slog.Logger) (*KeyManager, er
 		logger: logger,
 	}
 
+	// Read development mode flag once
+	devMode := strings.EqualFold(os.Getenv("APIP_GW_DEVELOPMENT_MODE"), "true")
+
 	// Load all keys
 	for i, config := range keyConfigs {
 		// Avoid duplicate key override
@@ -67,7 +71,7 @@ func NewKeyManager(keyConfigs []KeyConfig, logger *slog.Logger) (*KeyManager, er
 
 		// Auto-generate the key file on first run only in development mode.
 		if _, err := os.Stat(config.FilePath); os.IsNotExist(err) {
-			if os.Getenv("APIP_GW_CONTROLLER_ENVIRONMENT") != "development" {
+			if !devMode {
 				return nil, fmt.Errorf(
 					"encryption key file not found for version %s at %s — "+
 						"provision a key file or run in development mode to auto-generate one",
