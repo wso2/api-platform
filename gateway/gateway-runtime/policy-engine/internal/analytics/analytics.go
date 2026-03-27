@@ -341,9 +341,6 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 			parsedLLMCost = rawCost
 		}
 	}
-	if parsedLLMCost != nil {
-		event.Properties[constants.LLMCostPropertyKey] = parsedLLMCost
-	}
 
 	// Process AI related metadata only if all the required metadata are present
 	if keyValuePairsFromMetadata[AIProviderNameMetadataKey] != "" ||
