@@ -76,3 +76,5 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/llm-cost@v0
   - name: llm-cost-based-ratelimit
     gomodule: github.com/wso2/gateway-controllers/policies/llm-cost-based-ratelimit@v0
+  - name: semantic-tool-filtering
+    gomodule: github.com/wso2/gateway-controllers/policies/semantic-tool-filtering@v0
