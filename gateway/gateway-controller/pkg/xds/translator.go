@@ -333,7 +333,8 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	if uc, ok := rdc.UpstreamClusters[rdcRoute.Upstream.ClusterKey]; ok {
 		upstreamPath = uc.BasePath
 	}
-	if upstreamPath == "/" {
+	upstreamIsRoot := upstreamPath == "/" || upstreamPath == ""
+	if upstreamIsRoot {
 		upstreamPath = ""
 	}
 
@@ -356,6 +357,17 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 				Regex: "^" + escapedContext + "/?$",
 			},
 			Substitution: upstreamPath + "/",
+		}
+	} else if isWildcardPath && upstreamIsRoot {
+		// Special case: upstream path is "/" with a wildcard operation path.
+		// The trailing slash is consumed into the pattern so \\1 never captures an empty
+		// string — upstream always receives at least "/".
+		// /context → /, /context/ → /, /context/foo → /foo
+		r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
+			Pattern: &matcher.RegexMatcher{
+				Regex: "^" + escapedContext + "/?(.*)$",
+			},
+			Substitution: "/\\1",
 		}
 	} else {
 		r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
@@ -1872,13 +1884,13 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	// Use RegexRewrite to strip the context (with version substituted if present) and prepend upstream path
 	// Pattern captures everything after the context
 	// Escape special regex characters (e.g., dots in version like v1.0)
-	if upstreamPath == "/" {
+	upstreamIsRoot := upstreamPath == "/" || upstreamPath == ""
+	if upstreamIsRoot {
 		upstreamPath = ""
 	}
 	// For wildcard routes, construct the regex to match everything after the prefix
 	var contextWithVersion string
 	if isWildcardPath {
-		// TODO: (renuka) Can't understand this code. Check with Nimsara.
 		// Remove the /* from the end before constructing the context
 		pathWithoutWildcard := strings.TrimSuffix(path, "/*")
 		contextWithVersion = ConstructFullPath(context, apiVersion, pathWithoutWildcard)
@@ -1895,6 +1907,17 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 				Regex: "^" + escapedContext + "/?$",
 			},
 			Substitution: upstreamPath + "/",
+		}
+	} else if isWildcardPath && upstreamIsRoot {
+		// Special case: upstream path is "/" or "" with a wildcard operation path.
+		// The trailing slash is consumed into the pattern so \\1 never captures an empty
+		// string — upstream always receives at least "/".
+		// /context → /, /context/ → /, /context/foo → /foo
+		r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
+			Pattern: &matcher.RegexMatcher{
+				Regex: "^" + escapedContext + "/?(.*)$",
+			},
+			Substitution: "/\\1",
 		}
 	} else {
 		r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
