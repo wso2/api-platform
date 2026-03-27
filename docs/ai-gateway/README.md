@@ -4,8 +4,8 @@ A gateway for managing and securing AI traffic, including Large Language Model (
 
 ## Quick Start
 
-- [LLM Quick Start Guide](llm/quick-start-guide.md) - Set up the gateway and route traffic to LLM providers like OpenAI
-- [MCP Quick Start Guide](mcp/quick-start-guide.md) - Set up the gateway and route traffic to MCP servers
+- [LLM Quick Start Guide](llm/quick-start-guide.md) - Set up the gateway, verify the controller admin health endpoint, and route traffic to LLM providers like OpenAI
+- [MCP Quick Start Guide](mcp/quick-start-guide.md) - Set up the gateway, verify the controller admin health endpoint, and route traffic to MCP servers
 
 ## Key Concepts
 
@@ -58,6 +58,7 @@ An MCP Proxy routes Model Context Protocol traffic to MCP servers. MCP is a prot
 | 8080 | Router | HTTP traffic |
 | 8443 | Router | HTTPS traffic |
 | 9090 | Gateway-Controller | REST API |
+| 9094 | Gateway-Controller Admin | Health and admin endpoints |
 
 ## Architecture
 
@@ -78,7 +79,7 @@ An MCP Proxy routes Model Context Protocol traffic to MCP servers. MCP is a prot
 
 **How it works:**
 
-1. Administrators configure LLM Providers and MCP Proxies via the Gateway-Controller API
+1. Administrators verify the Gateway-Controller admin health endpoint and configure LLM Providers and MCP Proxies via the Gateway-Controller API
 2. Developers create LLM Proxies to build AI applications on top of available providers
 3. The gateway routes traffic, applies policies, and manages authentication
 
