@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"regexp"
 	"testing"
 	"time"
 
@@ -467,22 +468,22 @@ func TestTranslator_PathToRegex(t *testing.T) {
 		{
 			name:     "Simple path",
 			path:     "/api/users",
-			expected: "^/api/users$",
+			expected: "^/api/users/?$",
 		},
 		{
 			name:     "Path with parameter",
 			path:     "/api/users/{id}",
-			expected: "^/api/users/[^/]+$",
+			expected: "^/api/users/[^/]+/?$",
 		},
 		{
 			name:     "Path with multiple parameters",
 			path:     "/api/{resource}/{id}",
-			expected: "^/api/[^/]+/[^/]+$",
+			expected: "^/api/[^/]+/[^/]+/?$",
 		},
 		{
 			name:     "Path with dots (version)",
 			path:     "/api/v1.0/users",
-			expected: "^/api/v1\\.0/users$",
+			expected: "^/api/v1\\.0/users/?$",
 		},
 		{
 			name:     "Root path",
@@ -492,7 +493,7 @@ func TestTranslator_PathToRegex(t *testing.T) {
 		{
 			name:     "Path with special chars",
 			path:     "/api/data.json",
-			expected: "^/api/data\\.json$",
+			expected: "^/api/data\\.json/?$",
 		},
 	}
 
@@ -1886,4 +1887,281 @@ func TestTranslator_CreateDynamicFwdListenerForWebSubHub(t *testing.T) {
 		assert.Equal(t, "0.0.0.0", listener.GetAddress().GetSocketAddress().GetAddress())
 		assert.Equal(t, core.SocketAddress_TCP, listener.GetAddress().GetSocketAddress().GetProtocol())
 	})
+}
+
+// Tests for issue #1414: Trailing slash handling
+// Verifies that generated regex patterns match paths both with and without trailing slash
+
+func TestTrailingSlash_PathToRegex_MatchesBothForms(t *testing.T) {
+	translator := createTestTranslator()
+
+	tests := []struct {
+		name          string
+		path          string
+		shouldMatch   []string
+		shouldNotMatch []string
+	}{
+		{
+			name: "Simple path matches with and without trailing slash",
+			path: "/api/users",
+			shouldMatch: []string{
+				"/api/users",
+				"/api/users/",
+			},
+			shouldNotMatch: []string{
+				"/api/users/extra",
+				"/api/usersx",
+				"/api/user",
+				"/other/api/users",
+			},
+		},
+		{
+			name: "Parameterized path matches with and without trailing slash",
+			path: "/api/users/{id}",
+			shouldMatch: []string{
+				"/api/users/123",
+				"/api/users/123/",
+				"/api/users/abc",
+				"/api/users/abc/",
+			},
+			shouldNotMatch: []string{
+				"/api/users/",
+				"/api/users/123/extra",
+				"/api/users",
+			},
+		},
+		{
+			name: "Version path with dots matches with and without trailing slash",
+			path: "/api/v1.0/data",
+			shouldMatch: []string{
+				"/api/v1.0/data",
+				"/api/v1.0/data/",
+			},
+			shouldNotMatch: []string{
+				"/api/v1X0/data",
+				"/api/v1.0/data/extra",
+			},
+		},
+		{
+			name: "Root path only matches exact root",
+			path: "/",
+			shouldMatch: []string{
+				"/",
+			},
+			shouldNotMatch: []string{
+				"//",
+				"/anything",
+			},
+		},
+		{
+			name: "Multiple parameters match with and without trailing slash",
+			path: "/api/{resource}/{id}",
+			shouldMatch: []string{
+				"/api/users/123",
+				"/api/users/123/",
+				"/api/items/abc",
+				"/api/items/abc/",
+			},
+			shouldNotMatch: []string{
+				"/api/users",
+				"/api/users/",
+				"/api/users/123/extra",
+			},
+		},
+		{
+			name: "Nested path matches with and without trailing slash",
+			path: "/v1/organizations/{orgId}/users/{userId}",
+			shouldMatch: []string{
+				"/v1/organizations/org1/users/user1",
+				"/v1/organizations/org1/users/user1/",
+			},
+			shouldNotMatch: []string{
+				"/v1/organizations/org1/users",
+				"/v1/organizations/org1/users/user1/extra",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			regexPattern := translator.pathToRegex(tt.path)
+			re := regexp.MustCompile(regexPattern)
+
+			for _, path := range tt.shouldMatch {
+				assert.True(t, re.MatchString(path),
+					"Pattern %q should match %q", regexPattern, path)
+			}
+			for _, path := range tt.shouldNotMatch {
+				assert.False(t, re.MatchString(path),
+					"Pattern %q should NOT match %q", regexPattern, path)
+			}
+		})
+	}
+}
+
+func TestTrailingSlash_CreateRoute_ExactPath_UsesOptionalTrailingSlashRegex(t *testing.T) {
+	translator := createTestTranslator()
+
+	r := translator.createRoute(
+		"api-123",
+		"test-api",
+		"v1",
+		"/api",
+		"GET",
+		"/users",
+		"test-cluster",
+		"",
+		"localhost",
+		"API",
+		"",
+		"",
+		nil,
+		"proj-001",
+		nil,
+		false,
+		"",
+		nil,
+	)
+
+	require.NotNil(t, r)
+	require.NotNil(t, r.Match)
+
+	// Verify the path specifier is SafeRegex (not exact path)
+	safeRegex := r.Match.GetSafeRegex()
+	require.NotNil(t, safeRegex, "Exact paths should use SafeRegex for optional trailing slash")
+
+	regexPattern := safeRegex.GetRegex()
+	assert.Contains(t, regexPattern, "/?$",
+		"Regex should end with /?$ for optional trailing slash")
+
+	// Verify the regex matches both forms
+	re := regexp.MustCompile(regexPattern)
+	assert.True(t, re.MatchString("/api/users"), "Should match without trailing slash")
+	assert.True(t, re.MatchString("/api/users/"), "Should match with trailing slash")
+	assert.False(t, re.MatchString("/api/users/extra"), "Should not match with extra path segments")
+}
+
+func TestTrailingSlash_CreateRoute_ParameterizedPath_UsesOptionalTrailingSlashRegex(t *testing.T) {
+	translator := createTestTranslator()
+
+	r := translator.createRoute(
+		"api-123",
+		"test-api",
+		"v1",
+		"/api",
+		"GET",
+		"/users/{id}",
+		"test-cluster",
+		"",
+		"localhost",
+		"API",
+		"",
+		"",
+		nil,
+		"proj-001",
+		nil,
+		false,
+		"",
+		nil,
+	)
+
+	require.NotNil(t, r)
+	require.NotNil(t, r.Match)
+
+	safeRegex := r.Match.GetSafeRegex()
+	require.NotNil(t, safeRegex, "Parameterized paths should use SafeRegex")
+
+	regexPattern := safeRegex.GetRegex()
+	assert.Contains(t, regexPattern, "/?$",
+		"Regex should end with /?$ for optional trailing slash")
+
+	re := regexp.MustCompile(regexPattern)
+	assert.True(t, re.MatchString("/api/users/123"), "Should match without trailing slash")
+	assert.True(t, re.MatchString("/api/users/123/"), "Should match with trailing slash")
+	assert.False(t, re.MatchString("/api/users/"), "Should not match empty parameter")
+	assert.False(t, re.MatchString("/api/users/123/extra"), "Should not match with extra segments")
+}
+
+func TestTrailingSlash_CreateRoute_VersionContext_UsesOptionalTrailingSlashRegex(t *testing.T) {
+	translator := createTestTranslator()
+
+	r := translator.createRoute(
+		"api-123",
+		"test-api",
+		"v1.0",
+		"/weather/$version",
+		"GET",
+		"/data",
+		"test-cluster",
+		"/api/v2",
+		"localhost",
+		"API",
+		"",
+		"",
+		nil,
+		"proj-001",
+		nil,
+		false,
+		"",
+		nil,
+	)
+
+	require.NotNil(t, r)
+	safeRegex := r.Match.GetSafeRegex()
+	require.NotNil(t, safeRegex)
+
+	regexPattern := safeRegex.GetRegex()
+	re := regexp.MustCompile(regexPattern)
+
+	// After version substitution, context becomes /weather/v1.0, full path = /weather/v1.0/data
+	assert.True(t, re.MatchString("/weather/v1.0/data"), "Should match without trailing slash")
+	assert.True(t, re.MatchString("/weather/v1.0/data/"), "Should match with trailing slash")
+	assert.False(t, re.MatchString("/weather/v1.0/datax"), "Should not match modified path")
+}
+
+func TestTrailingSlash_CreateRoute_PreservesTrailingSlashInRewrite(t *testing.T) {
+	translator := createTestTranslator()
+
+	r := translator.createRoute(
+		"api-123",
+		"test-api",
+		"v1.0",
+		"/weather/$version",
+		"GET",
+		"/data",
+		"test-cluster",
+		"/api/v2",
+		"localhost",
+		"API",
+		"",
+		"",
+		nil,
+		"proj-001",
+		nil,
+		false,
+		"",
+		nil,
+	)
+
+	require.NotNil(t, r)
+
+	// Verify regex rewrite captures the trailing slash
+	rewrite := r.GetRoute().GetRegexRewrite()
+	require.NotNil(t, rewrite)
+
+	rewritePattern := regexp.MustCompile(rewrite.GetPattern().GetRegex())
+	substitution := rewrite.GetSubstitution()
+
+	// Without trailing slash: /weather/v1.0/data -> captures /data
+	matches := rewritePattern.FindStringSubmatch("/weather/v1.0/data")
+	require.Len(t, matches, 2, "Should have one capture group")
+	assert.Equal(t, "/data", matches[1])
+
+	// With trailing slash: /weather/v1.0/data/ -> captures /data/
+	matches = rewritePattern.FindStringSubmatch("/weather/v1.0/data/")
+	require.Len(t, matches, 2, "Should have one capture group")
+	assert.Equal(t, "/data/", matches[1])
+
+	// Verify the substitution pattern preserves the captured path
+	assert.Contains(t, substitution, "\\1", "Substitution should reference capture group")
 }

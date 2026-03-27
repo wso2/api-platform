@@ -241,3 +241,51 @@ func TestSortRoutesByPriority_ComplexScenario(t *testing.T) {
 	assert.Equal(t, "api-prefix", sorted[2].Name, "Longer prefix should be third")
 	assert.Equal(t, "catch-all", sorted[3].Name, "Root catch-all should be last")
 }
+
+func TestSortRoutesByPriority_ExactLikeRegexVsParameterizedRegex(t *testing.T) {
+	// Exact-like regex (no wildcard patterns) should sort above parameterized regex
+	// at the same path depth, matching the priority of true exact matches
+	exactLikeRegex := &route.Route{
+		Name: "exact-like",
+		Match: &route.RouteMatch{
+			PathSpecifier: &route.RouteMatch_SafeRegex{
+				SafeRegex: &matcher.RegexMatcher{Regex: "^/api/v1/users/?$"},
+			},
+		},
+	}
+	paramRegex := &route.Route{
+		Name: "parameterized",
+		Match: &route.RouteMatch{
+			PathSpecifier: &route.RouteMatch_SafeRegex{
+				SafeRegex: &matcher.RegexMatcher{Regex: "^/api/v1/[^/]+/?$"},
+			},
+		},
+	}
+
+	routes := []*route.Route{paramRegex, exactLikeRegex}
+	sorted := SortRoutesByPriority(routes)
+
+	assert.Equal(t, "exact-like", sorted[0].Name, "Exact-like regex should be first")
+	assert.Equal(t, "parameterized", sorted[1].Name, "Parameterized regex should be second")
+}
+
+func TestIsExactLikeRegex(t *testing.T) {
+	tests := []struct {
+		name     string
+		regex    string
+		expected bool
+	}{
+		{"exact-like with trailing slash", "^/api/users/?$", true},
+		{"exact-like without trailing slash", "^/api/users$", true},
+		{"parameterized path", "^/api/users/[^/]+/?$", false},
+		{"wildcard path", "^/api/users/.*$", false},
+		{"one-or-more wildcard", "^/api/users/.+$", false},
+		{"root path", "^/$", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, isExactLikeRegex(tt.regex))
+		})
+	}
+}

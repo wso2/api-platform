@@ -20,6 +20,7 @@ package xds
 
 import (
 	"sort"
+	"strings"
 
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 )
@@ -118,16 +119,29 @@ func getPathMatchType(match *route.RouteMatch) int {
 		return pathMatchTypeNone
 	}
 
-	switch match.GetPathSpecifier().(type) {
+	switch ps := match.GetPathSpecifier().(type) {
 	case *route.RouteMatch_Path:
 		return pathMatchTypeExact
 	case *route.RouteMatch_SafeRegex:
+		// Exact-like regex (no wildcard patterns) gets exact priority
+		if ps.SafeRegex != nil && isExactLikeRegex(ps.SafeRegex.GetRegex()) {
+			return pathMatchTypeExact
+		}
 		return pathMatchTypeRegex
 	case *route.RouteMatch_Prefix:
 		return pathMatchTypePrefix
 	default:
 		return pathMatchTypeNone
 	}
+}
+
+// isExactLikeRegex returns true if the regex pattern represents an exact path
+// (possibly with optional trailing slash) rather than a parameterized or wildcard path.
+// It detects character classes ([...]) and quantified wildcards (.*, .+) as non-exact patterns.
+func isExactLikeRegex(regex string) bool {
+	return !strings.ContainsAny(regex, "[]") &&
+		!strings.Contains(regex, ".*") &&
+		!strings.Contains(regex, ".+")
 }
 
 // pathMatchCount returns the length of the path pattern.
@@ -142,7 +156,12 @@ func pathMatchCount(match *route.RouteMatch) int {
 		return len(ps.Path)
 	case *route.RouteMatch_SafeRegex:
 		if ps.SafeRegex != nil {
-			return len(ps.SafeRegex.GetRegex())
+			// Strip regex anchoring to get effective path length
+			r := ps.SafeRegex.GetRegex()
+			r = strings.TrimPrefix(r, "^")
+			r = strings.TrimSuffix(r, "/?$")
+			r = strings.TrimSuffix(r, "$")
+			return len(r)
 		}
 		return 0
 	case *route.RouteMatch_Prefix:

@@ -315,8 +315,11 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	if isWildcardPath || hasParams {
 		r.Match.PathSpecifier = pathSpecifier
 	} else {
-		r.Match.PathSpecifier = &route.RouteMatch_Path{
-			Path: fullPath,
+		// Use regex matching with optional trailing slash for non-parameterized paths
+		r.Match.PathSpecifier = &route.RouteMatch_SafeRegex{
+			SafeRegex: &matcher.RegexMatcher{
+				Regex: "^" + regexp.QuoteMeta(fullPath) + "/?$",
+			},
 		}
 	}
 
@@ -1825,9 +1828,11 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	if isWildcardPath || hasParams {
 		r.Match.PathSpecifier = pathSpecifier
 	} else {
-		// Use exact path matching for non-parameterized paths
-		r.Match.PathSpecifier = &route.RouteMatch_Path{
-			Path: fullPath,
+		// Use regex matching with optional trailing slash for non-parameterized paths
+		r.Match.PathSpecifier = &route.RouteMatch_SafeRegex{
+			SafeRegex: &matcher.RegexMatcher{
+				Regex: "^" + regexp.QuoteMeta(fullPath) + "/?$",
+			},
 		}
 	}
 
@@ -2636,8 +2641,12 @@ func (t *Translator) pathToRegex(path string) string {
 		}
 	}
 
-	// Anchor the regex to match the entire path
-	return "^" + regex + "$"
+	// Anchor the regex to match the entire path, with optional trailing slash
+	// Special-case root path to avoid matching "//"
+	if path == "/" {
+		return "^/$"
+	}
+	return "^" + regex + "/?$"
 }
 
 // sanitizeClusterName creates a valid cluster name from a hostname and scheme
