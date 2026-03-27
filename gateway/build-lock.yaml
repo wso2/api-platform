@@ -10,7 +10,7 @@ policies:
       version: v0.9.0
       gomodule: github.com/wso2/gateway-controllers/policies/analytics-header-filter@v0
     - name: api-key-auth
-      version: v0.9.0
+      version: v0.9.1
       gomodule: github.com/wso2/gateway-controllers/policies/api-key-auth@v0
     - name: aws-bedrock-guardrail
       version: v0.9.0

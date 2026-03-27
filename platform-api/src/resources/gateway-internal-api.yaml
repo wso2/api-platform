@@ -936,6 +936,10 @@ paths:
                         type: string
                         description: Semantic version of the policy
                         example: "v0.8.0"
+                      displayName:
+                        type: string
+                        description: Display name of the policy
+                        example: "Set WSO2 Headers"
                       description:
                         type: string
                         description: Human-readable description of the policy

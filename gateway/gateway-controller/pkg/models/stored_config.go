@@ -48,6 +48,19 @@ const (
 	StateUndeployed DesiredState = "undeployed" // User wants this configuration removed from Router
 )
 
+// ParseDesiredState normalises and validates a string into a DesiredState.
+// Returns the matching state and true, or ("", false) for unrecognised values.
+func ParseDesiredState(s string) (DesiredState, bool) {
+	switch strings.ToLower(s) {
+	case string(StateDeployed):
+		return StateDeployed, true
+	case string(StateUndeployed):
+		return StateUndeployed, true
+	default:
+		return "", false
+	}
+}
+
 // Origin identifies how an artifact was created.
 type Origin string
 

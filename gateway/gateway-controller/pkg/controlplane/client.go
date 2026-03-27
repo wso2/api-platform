@@ -787,6 +787,14 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 		}
 
 		apiID := cfg.UUID
+
+		// Check the DB (already updated by syncDeployments) for the current
+		// desired state. The in-memory store may still show the old state
+		// because EventHub events are processed asynchronously.
+		if dbCfg, err := c.db.GetConfig(apiID); err == nil && dbCfg.DesiredState == models.StateUndeployed {
+			continue
+		}
+
 		subs, err := c.apiUtilsService.FetchSubscriptionsForAPI(apiID)
 		if err != nil {
 			c.logger.Warn("Failed to bulk-sync subscriptions for API",
@@ -1676,6 +1684,17 @@ func (c *Client) cleanupOrphanedResources(apiID, correlationID string) {
 		)
 	} else {
 		c.logger.Debug("Cleaned up any stale API keys from database",
+			slog.String("api_id", apiID),
+		)
+	}
+
+	if err := c.db.DeleteSubscriptionsForAPINotIn(apiID, nil); err != nil {
+		c.logger.Warn("Failed to remove stale subscriptions from database",
+			slog.String("api_id", apiID),
+			slog.Any("error", err),
+		)
+	} else {
+		c.logger.Debug("Cleaned up any stale subscriptions from database",
 			slog.String("api_id", apiID),
 		)
 	}
