@@ -82,9 +82,9 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 					}
 				}
 
-				dropAction := mods.DropHeadersFromAnalytics
+				dropAction := mods.AnalyticsHeaderFilter
 				if dropAction.Action != "" || len(dropAction.Headers) > 0 {
-					originalHeaders := execCtx.requestContext.Headers.GetAll()
+					originalHeaders := execCtx.requestBodyCtx.Headers.GetAll()
 					shortCircuitAnalyticsData["request_headers"] = finalizeAnalyticsHeaders(dropAction, originalHeaders)
 				}
 			}

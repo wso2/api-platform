@@ -77,9 +77,13 @@ type McpClientInfo struct {
 }
 
 type McpServerInfo struct {
-	ProtocolVersion string `json:"protocolVersion,omitempty"`
-	Name            string `json:"name,omitempty"`
-	Version         string `json:"version,omitempty"`
+	ProtocolVersion string                `json:"protocolVersion,omitempty"`
+	ServerInfo      *McpServerInfoDetails `json:"serverInfo,omitempty"`
+}
+
+type McpServerInfoDetails struct {
+	Name    string `json:"name,omitempty"`
+	Version string `json:"version,omitempty"`
 }
 
 type McpResponseAnalyticsProperties struct {
