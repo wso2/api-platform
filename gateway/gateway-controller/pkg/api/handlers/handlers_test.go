@@ -47,6 +47,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
@@ -825,6 +826,8 @@ func createTestAPIServer() *APIServer {
 func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	store := storage.NewConfigStore()
+	hub := &mockEventHub{}
+	gatewayID := "test-gateway"
 
 	vhosts := &config.VHostsConfig{
 		Main:    config.VHostEntry{Default: "localhost"},
@@ -834,6 +837,7 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 	parser := config.NewParser()
 	validator := config.NewAPIValidator()
 	policyDefs := make(map[string]models.PolicyDefinition)
+	policyResolver := resolver.NewPolicyResolver(policyDefs, nil)
 	routerCfg := &config.RouterConfig{
 		GatewayHost: "localhost",
 		VHosts:      *vhosts,
@@ -843,7 +847,11 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 	}
 	httpClient := &http.Client{Timeout: 10 * time.Second}
 	systemCfg := &config.Config{
-		Controller: config.Controller{},
+		Controller: config.Controller{
+			Server: config.ServerConfig{
+				GatewayID: gatewayID,
+			},
+		},
 		Router: config.RouterConfig{
 			GatewayHost: "localhost",
 			VHosts:      *vhosts,
@@ -860,17 +868,20 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 		store:             store,
 		db:                db,
 		logger:            logger,
+		eventHub:          hub,
 		parser:            parser,
 		validator:         validator,
 		policyDefinitions: policyDefs,
 		routerConfig:      routerCfg,
 		httpClient:        httpClient,
 		systemConfig:      systemCfg,
+		gatewayID:         gatewayID,
+		policyResolver:    policyResolver,
 	}
 
-	deploymentService := utils.NewAPIDeploymentService(store, db, nil, validator, routerCfg, nil)
+	deploymentService := utils.NewAPIDeploymentService(store, db, nil, validator, routerCfg, policyResolver, hub, gatewayID)
 	server.deploymentService = deploymentService
-	server.mcpDeploymentService = utils.NewMCPDeploymentService(store, db, nil, nil, nil)
+	server.mcpDeploymentService = utils.NewMCPDeploymentService(store, db, nil, nil, nil, hub, gatewayID)
 	server.llmDeploymentService = utils.NewLLMDeploymentService(
 		store,
 		db,
@@ -884,9 +895,9 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 	)
 
 	// Initialize API key service (needed for API key operations)
-	apiKeyService := utils.NewAPIKeyService(store, db, nil, &server.systemConfig.APIKey)
+	apiKeyService := utils.NewAPIKeyService(store, db, nil, &server.systemConfig.APIKey, hub, gatewayID)
 	server.apiKeyService = apiKeyService
-	server.subscriptionResourceService = utils.NewSubscriptionResourceService(db, nil)
+	server.subscriptionResourceService = utils.NewSubscriptionResourceService(db, nil, hub, gatewayID)
 
 	// Initialize RestAPI service and handler
 	restAPIService := restapi.NewRestAPIService(
@@ -894,7 +905,7 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 		policyDefs, &server.policyDefMu,
 		deploymentService, nil, nil,
 		routerCfg, systemCfg,
-		httpClient, parser, validator, logger, server.eventHub, nil,
+		httpClient, parser, validator, logger, hub, policyResolver,
 	)
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
 
@@ -1087,30 +1098,38 @@ func attachTestEventHub(server *APIServer, hub eventhub.EventHub, gatewayID stri
 	if server.systemConfig != nil {
 		server.systemConfig.Controller.Server.GatewayID = gatewayID
 	}
+	policyResolver := server.policyResolver
+	if policyResolver == nil {
+		policyResolver = resolver.NewPolicyResolver(server.policyDefinitions, nil)
+		server.policyResolver = policyResolver
+	}
+	policyValidator := config.NewPolicyValidator(server.policyDefinitions)
+	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(server.policyDefinitions)
+	server.deploymentService = utils.NewAPIDeploymentService(server.store, server.db, server.snapshotManager, server.validator, server.routerConfig, policyResolver, hub, gatewayID)
+	server.apiKeyService = utils.NewAPIKeyService(server.store, server.db, server.apiKeyXDSManager, &server.systemConfig.APIKey, hub, gatewayID)
+	server.subscriptionResourceService = utils.NewSubscriptionResourceService(server.db, server.subscriptionSnapshotUpdater, hub, gatewayID)
+	server.mcpDeploymentService = utils.NewMCPDeploymentService(server.store, server.db, server.snapshotManager, server.policyManager, policyValidator, hub, gatewayID)
+	server.llmDeploymentService = utils.NewLLMDeploymentService(
+		server.store,
+		server.db,
+		server.snapshotManager,
+		nil,
+		map[string]*api.LLMProviderTemplate{},
+		server.deploymentService,
+		server.routerConfig,
+		policyVersionResolver,
+		policyValidator,
+	)
+
 	if server.RestAPIHandler != nil {
 		restAPIService := restapi.NewRestAPIService(
 			server.store, server.db, nil, nil,
 			server.policyDefinitions, &server.policyDefMu,
-			nil, nil, nil,
+			server.deploymentService, server.apiKeyXDSManager, nil,
 			server.routerConfig, server.systemConfig,
-			server.httpClient, server.parser, server.validator, server.logger, hub, nil,
+			server.httpClient, server.parser, server.validator, server.logger, hub, policyResolver,
 		)
 		server.RestAPIHandler = NewRestAPIHandler(restAPIService, server.logger)
-	}
-	if server.apiKeyService != nil {
-		server.apiKeyService.SetEventHub(hub, gatewayID)
-	}
-	if server.deploymentService != nil {
-		server.deploymentService.SetEventHub(hub, gatewayID)
-	}
-	if server.llmDeploymentService != nil {
-		server.llmDeploymentService.SetEventHub(hub, gatewayID)
-	}
-	if server.mcpDeploymentService != nil {
-		server.mcpDeploymentService.SetEventHub(hub, gatewayID)
-	}
-	if server.subscriptionResourceService != nil {
-		server.subscriptionResourceService.SetEventHub(hub, gatewayID)
 	}
 }
 
@@ -1447,17 +1466,6 @@ func TestGetConfigDumpWithCertificates(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
-// TestGetConfigDumpNoDB tests config dump without database
-func TestGetConfigDumpNoDB(t *testing.T) {
-	server := createTestAPIServer()
-	server.db = nil
-
-	c, w := createTestContext("GET", "/config_dump", nil)
-	server.GetConfigDump(c)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-}
-
 // TestGetConfigDumpDBError tests config dump with database error
 func TestGetConfigDumpDBError(t *testing.T) {
 	server := createTestAPIServer()
@@ -1516,6 +1524,30 @@ func TestHandleStatusUpdateNotFound(t *testing.T) {
 // Note: This test requires a full deployment service setup, so we skip it
 func TestCreateRestAPIInvalidBody(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
+}
+
+func TestCreateRestAPIDBError(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+	mockDB.updateErr = errors.New("db write error")
+
+	body := createTestRestAPIRequestBody(t, "test-handle", "test-display-name", "v1.0.0", "/test")
+	c, w := createTestContextWithHeader("POST", "/rest-apis", body, map[string]string{
+		"Content-Type": "application/json",
+	})
+
+	server.CreateRestAPI(c)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Empty(t, mockHub.publishedEvents)
+
+	var response api.ErrorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	assert.Equal(t, "error", response.Status)
+	assert.Equal(t, "Failed to create configuration", response.Message)
+	assert.NotContains(t, w.Body.String(), "db write error")
 }
 
 // TestUpdateRestAPIInvalidBody tests UpdateRestAPI with invalid request body
@@ -3461,6 +3493,12 @@ func TestDeleteRestAPIDBError(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Empty(t, mockHub.publishedEvents)
 
+	var response api.ErrorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	assert.Equal(t, "error", response.Status)
+	assert.Equal(t, "Failed to delete configuration", response.Message)
+	assert.NotContains(t, w.Body.String(), "db delete error")
+
 	stored, err := mockDB.GetConfig(cfg.UUID)
 	require.NoError(t, err)
 	assert.Equal(t, cfg.UUID, stored.UUID)
@@ -3487,6 +3525,12 @@ func TestUpdateRestAPIDBError(t *testing.T) {
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Empty(t, mockHub.publishedEvents)
+
+	var response api.ErrorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	assert.Equal(t, "error", response.Status)
+	assert.Equal(t, "Failed to update configuration", response.Message)
+	assert.NotContains(t, w.Body.String(), "db update error")
 }
 
 // TestGetMCPProxyByIdDBUnavailable tests GetMCPProxyById with DB unavailable

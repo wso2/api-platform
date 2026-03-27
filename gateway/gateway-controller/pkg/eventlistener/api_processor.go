@@ -70,13 +70,6 @@ func (l *EventListener) handleAPICreateOrUpdate(event eventhub.Event) {
 		slog.String("action", event.Action),
 		slog.String("event_id", event.EventID))
 
-	// Fetch the latest config from the database (it was already persisted by the publishing replica)
-	if l.db == nil {
-		l.logger.Warn("Database not available, cannot process API event",
-			slog.String("api_id", entityID))
-		return
-	}
-
 	storedConfig, err := l.db.GetConfig(entityID)
 	if err != nil {
 		l.logger.Error("Failed to fetch API configuration from database",

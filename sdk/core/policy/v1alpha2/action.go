@@ -174,6 +174,16 @@ var (
 //     RequestHeaderPolicy or RequestPolicy to reject before the body starts.
 //   - For response chunks: the client has already received the response headers
 //     and status; injecting a new response mid-stream is physically impossible.
+//
+// Mid-stream error handling:
+// If the kernel encounters an error while processing a streaming chunk it will
+// call StreamingRequestPolicy.OnStreamError / StreamingResponsePolicy.OnStreamError
+// on all enabled policies in the chain so they can release held resources.
+// The kernel then closes the gRPC ext_proc stream, which causes Envoy to abort
+// the HTTP/2 stream with a RESET_STREAM. The downstream client will see an
+// abrupt connection close rather than a structured HTTP error response.
+// There is no recovery path — once chunk processing has started, a clean
+// error response is not possible.
 
 // RequestChunkAction is returned by StreamingRequestPolicy.OnRequestBodyChunk.
 // Only the chunk payload can be modified. Request headers, path, method, and

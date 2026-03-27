@@ -48,12 +48,6 @@ func (l *EventListener) handleMCPProxyCreateOrUpdate(event eventhub.Event) {
 		slog.String("action", event.Action),
 		slog.String("event_id", event.EventID))
 
-	if l.db == nil {
-		l.logger.Warn("Database not available, cannot process MCP proxy event",
-			slog.String("proxy_id", entityID))
-		return
-	}
-
 	storedConfig, err := l.db.GetConfig(entityID)
 	if err != nil {
 		l.logger.Error("Failed to fetch MCP proxy configuration from database",

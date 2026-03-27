@@ -21,7 +21,6 @@ package utils
 import (
 	"context"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
@@ -43,17 +42,23 @@ type SubscriptionResourceService struct {
 }
 
 // NewSubscriptionResourceService creates a new service for subscription-related resources.
-func NewSubscriptionResourceService(db storage.Storage, snapshotUpdater SubscriptionSnapshotUpdater) *SubscriptionResourceService {
+func NewSubscriptionResourceService(
+	db storage.Storage,
+	snapshotUpdater SubscriptionSnapshotUpdater,
+	eventHub eventhub.EventHub,
+	gatewayID string,
+) *SubscriptionResourceService {
+	if db == nil {
+		panic("SubscriptionResourceService requires non-nil storage")
+	}
+	trimmedGatewayID := requireReplicaSyncWiring("SubscriptionResourceService", eventHub, gatewayID)
+
 	return &SubscriptionResourceService{
 		db:              db,
 		snapshotUpdater: snapshotUpdater,
+		eventHub:        eventHub,
+		gatewayID:       trimmedGatewayID,
 	}
-}
-
-// SetEventHub configures EventHub publishing for replica-synced subscription resources.
-func (s *SubscriptionResourceService) SetEventHub(eventHub eventhub.EventHub, gatewayID string) {
-	s.eventHub = eventHub
-	s.gatewayID = gatewayID
 }
 
 // SaveSubscription stores a new subscription and publishes a replica-sync event after the DB write succeeds.
@@ -163,9 +168,6 @@ func (s *SubscriptionResourceService) persistAndSync(
 	logger *slog.Logger,
 	persist func() error,
 ) error {
-	if s.db == nil {
-		return storage.ErrDatabaseUnavailable
-	}
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -174,32 +176,8 @@ func (s *SubscriptionResourceService) persistAndSync(
 		return err
 	}
 
-	if s.shouldPublishReplicaSyncEvent(logger, eventType, action, entityID) {
-		s.publishEvent(eventType, action, entityID, correlationID, logger)
-		return nil
-	}
-
-	if refreshSubscriptionSnapshot {
-		return s.refreshSubscriptionSnapshot(entityID, correlationID, logger)
-	}
-
+	s.publishEvent(eventType, action, entityID, correlationID, logger)
 	return nil
-}
-
-func (s *SubscriptionResourceService) shouldPublishReplicaSyncEvent(logger *slog.Logger, eventType eventhub.EventType, action, entityID string) bool {
-	if s.eventHub == nil {
-		return false
-	}
-
-	if strings.TrimSpace(s.gatewayID) == "" {
-		logger.Warn("Skipping event publish because gateway ID is not configured",
-			slog.String("event_type", string(eventType)),
-			slog.String("action", action),
-			slog.String("entity_id", entityID))
-		return false
-	}
-
-	return true
 }
 
 func (s *SubscriptionResourceService) publishEvent(eventType eventhub.EventType, action, entityID, correlationID string, logger *slog.Logger) {

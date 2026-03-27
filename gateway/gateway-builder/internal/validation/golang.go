@@ -91,10 +91,10 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 					"hasReceiver", hasReceiver,
 					"phase", "validation")
 
-				// Check for GetPolicy factory function
-				if methodName == "GetPolicy" {
+				// Check for GetPolicy factory function (v1alpha: GetPolicy, v1alpha2: GetPolicyV2)
+				if methodName == "GetPolicy" || methodName == "GetPolicyV2" {
 					hasNewPolicy = true
-					slog.Debug("Found GetPolicy factory function", "phase", "validation")
+					slog.Debug("Found GetPolicy factory function", "name", methodName, "phase", "validation")
 				}
 
 				// Check for interface methods
@@ -103,12 +103,22 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 					case "Mode":
 						hasMode = true
 						slog.Debug("Found Mode method", "phase", "validation")
+					// v1alpha
 					case "OnRequest":
 						hasOnRequest = true
 						slog.Debug("Found OnRequest method", "phase", "validation")
+					// v1alpha2: RequestPolicy, RequestHeaderPolicy, StreamingRequestPolicy
+					case "OnRequestBody", "OnRequestHeaders", "OnRequestBodyChunk":
+						hasOnRequest = true
+						slog.Debug("Found request phase method", "name", methodName, "phase", "validation")
+					// v1alpha
 					case "OnResponse":
 						hasOnResponse = true
 						slog.Debug("Found OnResponse method", "phase", "validation")
+					// v1alpha2: ResponsePolicy, ResponseHeaderPolicy, StreamingResponsePolicy
+					case "OnResponseBody", "OnResponseHeaders", "OnResponseBodyChunk":
+						hasOnResponse = true
+						slog.Debug("Found response phase method", "name", methodName, "phase", "validation")
 					}
 				}
 			}

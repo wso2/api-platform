@@ -1,5 +1,5 @@
 name: json-schema-guardrail
-version: v0.2.1
+version: v0.9.0
 description: |
   Validate request or response content against a JSON Schema.
 
@@ -8,7 +8,7 @@ parameters:
   properties:
     request:
       type: object
-      description: Configuration for request phase validation
+      description: Configuration for request phase validation.
       properties:
         enabled:
           type: boolean

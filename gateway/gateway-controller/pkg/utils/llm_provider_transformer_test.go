@@ -124,8 +124,9 @@ func setupTestTransformer(t *testing.T) (*LLMProviderTransformer, *storage.Confi
 
 func TestNewLLMProviderTransformer(t *testing.T) {
 	store := storage.NewConfigStore()
+	db := newTestMockDB()
 	cfg := loadDummyConfig()
-	transformer := NewLLMProviderTransformer(store, nil, &cfg, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, db, &cfg, newTestPolicyVersionResolver())
 
 	assert.NotNil(t, transformer, "Transformer should not be nil")
 	assert.NotNil(t, transformer.store, "Store should not be nil")

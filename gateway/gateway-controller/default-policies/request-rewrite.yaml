@@ -1,5 +1,5 @@
 name: request-rewrite
-version: v0.2.3
+version: v0.9.0
 description: |
   Rewrite request paths, query parameters, and HTTP methods before forwarding upstream, with optional header and query match conditions to apply rewrites only when criteria are met.
 

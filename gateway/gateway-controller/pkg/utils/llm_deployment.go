@@ -19,7 +19,6 @@
 package utils
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -79,6 +78,14 @@ func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 	policyVersionResolver PolicyVersionResolver,
 	policyValidator *config.PolicyValidator,
 ) *LLMDeploymentService {
+	if db == nil {
+		panic("LLMDeploymentService requires non-nil storage")
+	}
+	if deploymentService == nil {
+		panic("LLMDeploymentService requires APIDeploymentService")
+	}
+	requireReplicaSyncWiring("LLMDeploymentService", deploymentService.eventHub, deploymentService.gatewayID)
+
 	service := &LLMDeploymentService{
 		store:               store,
 		db:                  db,
@@ -103,35 +110,15 @@ func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 	return service
 }
 
-// SetEventHub configures EventHub publishing for replica-synced LLM provider flows.
-func (s *LLMDeploymentService) SetEventHub(eventHub eventhub.EventHub, gatewayID string) {
-	if s.deploymentService != nil {
-		s.deploymentService.SetEventHub(eventHub, gatewayID)
-	}
-}
-
-func (s *LLMDeploymentService) isEventDriven() bool {
-	return s.deploymentService != nil && s.deploymentService.eventHub != nil
-}
-
 func (s *LLMDeploymentService) publishLLMProviderEvent(action, entityID, correlationID string, logger *slog.Logger) {
-	if s.deploymentService == nil {
-		return
-	}
 	s.deploymentService.publishEvent(eventhub.EventTypeLLMProvider, action, entityID, correlationID, logger)
 }
 
 func (s *LLMDeploymentService) publishLLMProxyEvent(action, entityID, correlationID string, logger *slog.Logger) {
-	if s.deploymentService == nil {
-		return
-	}
 	s.deploymentService.publishEvent(eventhub.EventTypeLLMProxy, action, entityID, correlationID, logger)
 }
 
 func (s *LLMDeploymentService) publishLLMTemplateEvent(action, entityID, correlationID string, logger *slog.Logger) {
-	if s.deploymentService == nil {
-		return
-	}
 	s.deploymentService.publishEvent(eventhub.EventTypeLLMTemplate, action, entityID, correlationID, logger)
 }
 
@@ -340,39 +327,11 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	// In multi-replica mode the database write above is the only local mutation
 	// on the write path. Store, lazy-resource, xDS, and policy updates happen in
 	// the EventListener after all replicas consume the same event.
-	if s.isEventDriven() {
-		action := "CREATE"
-		if isUpdate {
-			action = "UPDATE"
-		}
-		s.publishLLMProviderEvent(action, apiID, params.CorrelationID, params.Logger)
-	} else {
-		// Publish provider-to-template mapping as lazy resource for policy engine
-		if providerConfig.Metadata.Name != "" && providerConfig.Spec.Template != "" {
-			if err := s.publishProviderTemplateMappingAsLazyResource(
-				providerConfig.Metadata.Name,
-				providerConfig.Spec.Template,
-				params.CorrelationID,
-			); err != nil {
-				params.Logger.Warn("Failed to publish provider-to-template mapping",
-					slog.String("provider_name", providerConfig.Metadata.Name),
-					slog.String("template_handle", providerConfig.Spec.Template),
-					slog.Any("error", err))
-			}
-		}
-
-		// Update xDS snapshot asynchronously
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
-				params.Logger.Error("Failed to update xDS snapshot",
-					slog.Any("error", err),
-					slog.String("api_uuid", apiID),
-					slog.String("correlation_id", params.CorrelationID))
-			}
-		}()
+	action := "CREATE"
+	if isUpdate {
+		action = "UPDATE"
 	}
+	s.publishLLMProviderEvent(action, apiID, params.CorrelationID, params.Logger)
 
 	return &APIDeploymentResult{StoredConfig: resolvedCfg, IsUpdate: isUpdate, IsStale: false}, nil
 }
@@ -521,25 +480,11 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 			slog.String("correlation_id", params.CorrelationID))
 	}
 
-	if s.isEventDriven() {
-		action := "CREATE"
-		if isUpdate {
-			action = "UPDATE"
-		}
-		s.publishLLMProxyEvent(action, apiID, params.CorrelationID, params.Logger)
-	} else {
-		// Update xDS snapshot asynchronously
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
-				params.Logger.Error("Failed to update xDS snapshot",
-					slog.Any("error", err),
-					slog.String("api_id", apiID),
-					slog.String("correlation_id", params.CorrelationID))
-			}
-		}()
+	action := "CREATE"
+	if isUpdate {
+		action = "UPDATE"
 	}
+	s.publishLLMProxyEvent(action, apiID, params.CorrelationID, params.Logger)
 
 	return &APIDeploymentResult{StoredConfig: resolvedCfg, IsUpdate: isUpdate, IsStale: false}, nil
 }
@@ -602,50 +547,7 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 		return nil, fmt.Errorf("failed to save template to database: %w", err)
 	}
 
-	if s.isEventDriven() {
-		s.publishLLMTemplateEvent("CREATE", stored.UUID, params.CorrelationID, params.Logger)
-		return stored, nil
-	}
-
-	// Add to memory store (with rollback if it fails)
-	if err := s.store.AddTemplate(stored); err != nil {
-		// Rollback: Remove from DB if memory store fails
-		if delErr := s.db.DeleteLLMProviderTemplate(stored.UUID); delErr != nil {
-			if params.Logger != nil {
-				params.Logger.Error("Failed to rollback template from database after memory store failure",
-					slog.String("template_handle", tmpl.Metadata.Name),
-					slog.Any("rollback_error", delErr))
-			}
-		}
-		return nil, fmt.Errorf("failed to add template to memory store: %w", err)
-	}
-
-	// Publish to policy engine via lazy resource xDS
-	// Following API key pattern: xDS operations are critical
-	if err := s.publishTemplateAsLazyResource(tmpl, ""); err != nil {
-		// Rollback: Remove from memory store and DB if xDS publish fails
-		if delErr := s.store.DeleteTemplate(stored.UUID); delErr != nil {
-			if params.Logger != nil {
-				params.Logger.Error("Failed to rollback template from memory store after xDS failure",
-					slog.String("template_handle", tmpl.Metadata.Name),
-					slog.Any("rollback_error", delErr))
-			}
-		}
-		if delErr := s.db.DeleteLLMProviderTemplate(stored.UUID); delErr != nil {
-			if params.Logger != nil {
-				params.Logger.Error("Failed to rollback template from database after xDS failure",
-					slog.String("template_handle", tmpl.Metadata.Name),
-					slog.Any("rollback_error", delErr))
-			}
-		}
-		if params.Logger != nil {
-			params.Logger.Error("Failed to publish template to policy engine via lazy resource xDS",
-				slog.String("template_handle", tmpl.Metadata.Name),
-				slog.Any("error", err))
-		}
-		return nil, fmt.Errorf("failed to publish template to policy engine: %w", err)
-	}
-
+	s.publishLLMTemplateEvent("CREATE", stored.UUID, params.CorrelationID, params.Logger)
 	return stored, nil
 }
 
@@ -813,49 +715,7 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 		return nil, fmt.Errorf("failed to update template in database: %w", err)
 	}
 
-	if s.isEventDriven() {
-		s.publishLLMTemplateEvent("UPDATE", updated.UUID, params.CorrelationID, params.Logger)
-		return updated, nil
-	}
-
-	// Update memory store (with rollback if it fails)
-	if err := s.store.UpdateTemplate(updated); err != nil {
-		// Rollback: Revert DB update if memory store update fails
-		if rollbackErr := s.db.UpdateLLMProviderTemplate(existing); rollbackErr != nil {
-			if params.Logger != nil {
-				params.Logger.Error("Failed to rollback template in database after memory store update failure",
-					slog.String("template_handle", handle),
-					slog.Any("rollback_error", rollbackErr))
-			}
-		}
-		return nil, fmt.Errorf("failed to update template in memory store: %w", err)
-	}
-
-	// Publish updated template to policy engine via lazy resource xDS
-	if err := s.publishTemplateAsLazyResource(tmpl, ""); err != nil {
-		// Rollback: Revert memory store and DB if xDS publish fails
-		if rollbackErr := s.store.UpdateTemplate(existing); rollbackErr != nil {
-			if params.Logger != nil {
-				params.Logger.Error("Failed to rollback template in memory store after xDS failure",
-					slog.String("template_handle", handle),
-					slog.Any("rollback_error", rollbackErr))
-			}
-		}
-		if rollbackErr := s.db.UpdateLLMProviderTemplate(existing); rollbackErr != nil {
-			if params.Logger != nil {
-				params.Logger.Error("Failed to rollback template in database after xDS failure",
-					slog.String("template_handle", handle),
-					slog.Any("rollback_error", rollbackErr))
-			}
-		}
-		if params.Logger != nil {
-			params.Logger.Error("Failed to publish updated template to policy engine via lazy resource xDS",
-				slog.String("template_handle", handle),
-				slog.Any("error", err))
-		}
-		return nil, fmt.Errorf("failed to publish updated template to policy engine: %w", err)
-	}
-
+	s.publishLLMTemplateEvent("UPDATE", updated.UUID, params.CorrelationID, params.Logger)
 	return updated, nil
 }
 
@@ -866,55 +726,10 @@ func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle, correlationID s
 		return nil, fmt.Errorf("template with handle '%s' not found", handle)
 	}
 
-	if s.isEventDriven() {
-		if err := s.db.DeleteLLMProviderTemplate(tmpl.UUID); err != nil {
-			return nil, fmt.Errorf("failed to delete template from database: %w", err)
-		}
-		s.publishLLMTemplateEvent("DELETE", tmpl.UUID, correlationID, logger)
-		return tmpl, nil
-	}
-
-	// Remove from policy engine via lazy resource xDS (ID = handle)
-	if s.lazyResourceManager != nil {
-		if err := s.lazyResourceManager.RemoveResourceByIDAndType(handle, LazyResourceTypeLLMProviderTemplate, ""); err != nil {
-			// Don't fail deletion if xDS publish fails; just log.
-			slog.Warn("Failed to remove LLM provider template from policy engine via lazy resource xDS",
-				slog.String("template_id", tmpl.UUID),
-				slog.Any("error", err))
-		}
-	}
-
 	if err := s.db.DeleteLLMProviderTemplate(tmpl.UUID); err != nil {
-		// Rollback: Re-add to lazy resource store if database deletion fails.
-		// publishTemplateAsLazyResource restores the template in lazy resources when
-		// s.db.DeleteLLMProviderTemplate fails (only if lazy resource manager is available).
-		if s.lazyResourceManager != nil {
-			if rollbackErr := s.publishTemplateAsLazyResource(&tmpl.Configuration, ""); rollbackErr != nil {
-				slog.Error("Failed to rollback lazy resource after database deletion failure",
-					slog.String("template_handle", handle),
-					slog.Any("rollback_error", rollbackErr))
-			}
-		}
 		return nil, fmt.Errorf("failed to delete template from database: %w", err)
 	}
-	if err := s.store.DeleteTemplate(tmpl.UUID); err != nil {
-		// Rollback: Re-add to DB and lazy resource if memory deletion fails
-		if rollbackErr := s.db.SaveLLMProviderTemplate(tmpl); rollbackErr != nil {
-			slog.Error("Failed to rollback template to database after memory store deletion failure",
-				slog.String("template_handle", handle),
-				slog.Any("rollback_error", rollbackErr))
-		}
-		if s.lazyResourceManager != nil {
-			if rollbackErr := s.publishTemplateAsLazyResource(&tmpl.Configuration, ""); rollbackErr != nil {
-				slog.Error("Failed to rollback lazy resource after memory store deletion failure",
-					slog.String("template_handle", handle),
-					slog.Any("rollback_error", rollbackErr))
-			}
-		}
-
-		return nil, fmt.Errorf("failed to delete template from memory store: %w", err)
-	}
-
+	s.publishLLMTemplateEvent("DELETE", tmpl.UUID, correlationID, logger)
 	return tmpl, nil
 }
 
@@ -1177,33 +992,7 @@ func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID string,
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 		return cfg, fmt.Errorf("failed to delete configuration from database: %w", err)
 	}
-	if s.isEventDriven() {
-		s.publishLLMProviderEvent("DELETE", cfg.UUID, correlationID, logger)
-		return cfg, nil
-	}
-	if err := s.store.RemoveAPIKeysByAPI(cfg.UUID); err != nil && !storage.IsNotFoundError(err) {
-		return cfg, fmt.Errorf("failed to delete LLM provider API keys from memory store: %w", err)
-	}
-	if err := s.store.Delete(cfg.UUID); err != nil {
-		return cfg, fmt.Errorf("failed to delete configuration from memory store: %w", err)
-	}
-
-	// Remove provider-to-template mapping lazy resource
-	if err := s.removeProviderTemplateMappingLazyResource(handle, correlationID); err != nil {
-		logger.Warn("Failed to remove provider-to-template mapping",
-			slog.String("provider_name", handle),
-			slog.Any("error", err))
-	}
-
-	// Update xDS snapshot asynchronously
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
-			logger.Error("Failed to update xDS snapshot", slog.Any("error", err))
-		}
-	}()
-
+	s.publishLLMProviderEvent("DELETE", cfg.UUID, correlationID, logger)
 	return cfg, nil
 }
 
@@ -1318,25 +1107,6 @@ func (s *LLMDeploymentService) DeleteLLMProxy(handle, correlationID string, logg
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 		return cfg, fmt.Errorf("failed to delete configuration from database: %w", err)
 	}
-	if s.isEventDriven() {
-		s.publishLLMProxyEvent("DELETE", cfg.UUID, correlationID, logger)
-		return cfg, nil
-	}
-	if err := s.store.RemoveAPIKeysByAPI(cfg.UUID); err != nil && !storage.IsNotFoundError(err) {
-		return cfg, fmt.Errorf("failed to delete LLM proxy API keys from memory store: %w", err)
-	}
-	if err := s.store.Delete(cfg.UUID); err != nil {
-		return cfg, fmt.Errorf("failed to delete configuration from memory store: %w", err)
-	}
-
-	// Update xDS snapshot asynchronously
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
-			logger.Error("Failed to update xDS snapshot", slog.Any("error", err))
-		}
-	}()
-
+	s.publishLLMProxyEvent("DELETE", cfg.UUID, correlationID, logger)
 	return cfg, nil
 }
