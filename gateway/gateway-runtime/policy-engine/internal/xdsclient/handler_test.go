@@ -30,7 +30,7 @@ import (
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
-	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
+	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
 
 // =============================================================================
