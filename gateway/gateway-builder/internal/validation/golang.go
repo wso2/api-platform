@@ -89,7 +89,7 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 					"hasReceiver", hasReceiver,
 					"phase", "validation")
 
-				// Check for GetPolicy factory function (v1alpha: GetPolicy, v1alpha2: GetPolicyV2)
+				// Check for GetPolicy factory function
 				if methodName == "GetPolicy" {
 					hasNewPolicy = true
 					slog.Debug("Found GetPolicy factory function", "name", methodName, "phase", "validation")

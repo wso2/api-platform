@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
-	"github.com/wso2/api-platform/sdk/utils"
+	"github.com/wso2/api-platform/sdk/core/utils"
 )
 
 const (
@@ -106,7 +106,7 @@ type LLMProviderAnalyticsInfo struct {
 
 var ins = &AnalyticsPolicy{}
 
-func GetPolicyV2(
+func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
 ) (policy.Policy, error) {

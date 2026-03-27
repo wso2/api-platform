@@ -12,11 +12,11 @@ type UppercaseBodyPolicy struct{}
 
 var ins = &UppercaseBodyPolicy{}
 
-func GetPolicyV2(
+func GetPolicy(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
 ) (policy.Policy, error) {
-	slog.Debug("[Uppercase Body]: GetPolicyV2 called")
+	slog.Debug("[Uppercase Body]: GetPolicy called")
 	return ins, nil
 }
 
@@ -57,8 +57,3 @@ func (p *UppercaseBodyPolicy) OnRequestBody(ctx *policy.RequestContext, params m
 	}
 }
 
-// OnResponseBody is not used by this policy (only modifies request body)
-func (p *UppercaseBodyPolicy) OnResponseBody(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	slog.Debug("[Uppercase Body]: OnResponseBody called (no-op)")
-	return nil // No response processing needed
-}
