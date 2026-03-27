@@ -1229,6 +1229,22 @@ func TranslateStreamingRequestChunkAction(result *executor.StreamingRequestExecu
 		outputBody = originalChunk.Chunk
 	}
 
+	// Re-compress the output if the original request was Content-Encoded.
+	// The upstream receives the Content-Encoding header as-is, so the body
+	// bytes must match the encoding the upstream expects.
+	if execCtx.requestContentEncoding != "" {
+		recompressed, err := recompressBody(outputBody, execCtx.requestContentEncoding)
+		if err != nil {
+			slog.Warn("[streaming] failed to re-compress request body; sending uncompressed — Content-Encoding mismatch",
+				"encoding", execCtx.requestContentEncoding,
+				"error", err,
+			)
+			execCtx.requestContentEncoding = ""
+		} else {
+			outputBody = recompressed
+		}
+	}
+
 	analyticsData := make(map[string]any)
 	dynamicMetadata := make(map[string]map[string]interface{})
 	for _, pr := range result.Results {
