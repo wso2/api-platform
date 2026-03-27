@@ -445,7 +445,7 @@ Feature: Sandbox Routing
             path: /chat/completions
       """
     Then the response should be successful
-    And I wait for 2 seconds
+    And I wait for 3 seconds
 
     When I clear all headers
     And I set header "Content-Type" to "application/json"

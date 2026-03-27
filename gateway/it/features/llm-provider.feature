@@ -497,7 +497,7 @@ Feature: LLM Provider Management
             mode: allow_all
         """
     Then the response status code should be 201
-    And I wait for 2 seconds
+    And I wait for 3 seconds
 
     # Invoke chat completions endpoint
     When I set header "Content-Type" to "application/json"
@@ -547,7 +547,7 @@ Feature: LLM Provider Management
                 methods: [POST]
         """
     Then the response status code should be 201
-    And I wait for 2 seconds
+    And I wait for 3 seconds
 
     # Allowed endpoint should work
     When I set header "Content-Type" to "application/json"
@@ -590,7 +590,7 @@ Feature: LLM Provider Management
             mode: allow_all
         """
     Then the response status code should be 201
-    And I wait for 2 seconds
+    And I wait for 3 seconds
 
     # Request should succeed (mock validates auth header presence)
     When I set header "Content-Type" to "application/json"
