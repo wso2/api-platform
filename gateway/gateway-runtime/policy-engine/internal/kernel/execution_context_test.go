@@ -481,7 +481,7 @@ func TestBuildRequestContext_DetectsContentEncoding(t *testing.T) {
 		},
 	}
 
-	execCtx.buildRequestContext(headers, RouteMetadata{})
+	execCtx.buildRequestContexts(headers, RouteMetadata{})
 
 	assert.Equal(t, "gzip", execCtx.requestContentEncoding)
 }
@@ -503,7 +503,7 @@ func TestBuildRequestContext_DetectsBrotliEncoding(t *testing.T) {
 		},
 	}
 
-	execCtx.buildRequestContext(headers, RouteMetadata{})
+	execCtx.buildRequestContexts(headers, RouteMetadata{})
 
 	assert.Equal(t, "br", execCtx.requestContentEncoding)
 }
@@ -525,7 +525,7 @@ func TestBuildRequestContext_NoContentEncoding(t *testing.T) {
 		},
 	}
 
-	execCtx.buildRequestContext(headers, RouteMetadata{})
+	execCtx.buildRequestContexts(headers, RouteMetadata{})
 
 	assert.Empty(t, execCtx.requestContentEncoding)
 }
@@ -538,7 +538,7 @@ func TestBuildResponseContext_DetectsContentEncoding(t *testing.T) {
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 
-	execCtx.buildRequestContext(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{}}, RouteMetadata{})
+	execCtx.buildRequestContexts(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{}}, RouteMetadata{})
 
 	respHeaders := &extprocv3.HttpHeaders{
 		Headers: &corev3.HeaderMap{
@@ -549,7 +549,7 @@ func TestBuildResponseContext_DetectsContentEncoding(t *testing.T) {
 		},
 	}
 
-	execCtx.buildResponseContext(respHeaders)
+	execCtx.buildResponseContexts(respHeaders)
 
 	assert.Equal(t, "gzip", execCtx.responseContentEncoding)
 }
@@ -562,7 +562,7 @@ func TestBuildResponseContext_DetectsBrotliEncoding(t *testing.T) {
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 
-	execCtx.buildRequestContext(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{}}, RouteMetadata{})
+	execCtx.buildRequestContexts(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{}}, RouteMetadata{})
 
 	respHeaders := &extprocv3.HttpHeaders{
 		Headers: &corev3.HeaderMap{
@@ -573,7 +573,7 @@ func TestBuildResponseContext_DetectsBrotliEncoding(t *testing.T) {
 		},
 	}
 
-	execCtx.buildResponseContext(respHeaders)
+	execCtx.buildResponseContexts(respHeaders)
 
 	assert.Equal(t, "br", execCtx.responseContentEncoding)
 }
@@ -586,7 +586,7 @@ func TestBuildResponseContext_NoContentEncoding(t *testing.T) {
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 
-	execCtx.buildRequestContext(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{}}, RouteMetadata{})
+	execCtx.buildRequestContexts(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{}}, RouteMetadata{})
 
 	respHeaders := &extprocv3.HttpHeaders{
 		Headers: &corev3.HeaderMap{
@@ -597,7 +597,7 @@ func TestBuildResponseContext_NoContentEncoding(t *testing.T) {
 		},
 	}
 
-	execCtx.buildResponseContext(respHeaders)
+	execCtx.buildResponseContexts(respHeaders)
 
 	assert.Empty(t, execCtx.responseContentEncoding)
 }
@@ -620,7 +620,7 @@ func TestProcessResponseBody_DecompressesGzip(t *testing.T) {
 			if ctx.ResponseBody != nil {
 				capturedBody = ctx.ResponseBody.Content
 			}
-			return policy.UpstreamResponseModifications{}
+			return policy.DownstreamResponseModifications{}
 		},
 	}
 
@@ -632,10 +632,10 @@ func TestProcessResponseBody_DecompressesGzip(t *testing.T) {
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 
 	// Build request context
-	execCtx.buildRequestContext(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{}}, RouteMetadata{})
+	execCtx.buildRequestContexts(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{}}, RouteMetadata{})
 
 	// Build response context with gzip content-encoding
-	execCtx.buildResponseContext(&extprocv3.HttpHeaders{
+	execCtx.buildResponseContexts(&extprocv3.HttpHeaders{
 		Headers: &corev3.HeaderMap{
 			Headers: []*corev3.HeaderValue{
 				{Key: ":status", RawValue: []byte("200")},
@@ -670,7 +670,7 @@ func TestProcessResponseBody_DecompressesBrotli(t *testing.T) {
 			if ctx.ResponseBody != nil {
 				capturedBody = ctx.ResponseBody.Content
 			}
-			return policy.UpstreamResponseModifications{}
+			return policy.DownstreamResponseModifications{}
 		},
 	}
 
@@ -681,8 +681,8 @@ func TestProcessResponseBody_DecompressesBrotli(t *testing.T) {
 	}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 
-	execCtx.buildRequestContext(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{}}, RouteMetadata{})
-	execCtx.buildResponseContext(&extprocv3.HttpHeaders{
+	execCtx.buildRequestContexts(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{}}, RouteMetadata{})
+	execCtx.buildResponseContexts(&extprocv3.HttpHeaders{
 		Headers: &corev3.HeaderMap{
 			Headers: []*corev3.HeaderValue{
 				{Key: ":status", RawValue: []byte("200")},
@@ -716,7 +716,7 @@ func TestProcessResponseBody_NoEncoding_PassesThrough(t *testing.T) {
 			if ctx.ResponseBody != nil {
 				capturedBody = ctx.ResponseBody.Content
 			}
-			return policy.UpstreamResponseModifications{}
+			return policy.DownstreamResponseModifications{}
 		},
 	}
 
@@ -727,8 +727,8 @@ func TestProcessResponseBody_NoEncoding_PassesThrough(t *testing.T) {
 	}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 
-	execCtx.buildRequestContext(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{}}, RouteMetadata{})
-	execCtx.buildResponseContext(&extprocv3.HttpHeaders{
+	execCtx.buildRequestContexts(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{}}, RouteMetadata{})
+	execCtx.buildResponseContexts(&extprocv3.HttpHeaders{
 		Headers: &corev3.HeaderMap{
 			Headers: []*corev3.HeaderValue{
 				{Key: ":status", RawValue: []byte("200")},
@@ -763,7 +763,7 @@ func TestProcessRequestBody_DecompressesGzip(t *testing.T) {
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 
 	// Build request context with gzip content-encoding
-	execCtx.buildRequestContext(&extprocv3.HttpHeaders{
+	execCtx.buildRequestContexts(&extprocv3.HttpHeaders{
 		Headers: &corev3.HeaderMap{
 			Headers: []*corev3.HeaderValue{
 				{Key: ":path", RawValue: []byte("/api/chat")},
@@ -782,8 +782,8 @@ func TestProcessRequestBody_DecompressesGzip(t *testing.T) {
 
 	require.NoError(t, err)
 	// Body set on requestContext should be the decompressed JSON, not the raw compressed bytes
-	require.NotNil(t, execCtx.requestContext.Body)
-	assert.Equal(t, originalJSON, execCtx.requestContext.Body.Content)
+	require.NotNil(t, execCtx.requestBodyCtx.Body)
+	assert.Equal(t, originalJSON, execCtx.requestBodyCtx.Body.Content)
 }
 
 func TestProcessRequestBody_NoEncoding_PassesThrough(t *testing.T) {
@@ -797,7 +797,7 @@ func TestProcessRequestBody_NoEncoding_PassesThrough(t *testing.T) {
 	}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 
-	execCtx.buildRequestContext(&extprocv3.HttpHeaders{
+	execCtx.buildRequestContexts(&extprocv3.HttpHeaders{
 		Headers: &corev3.HeaderMap{
 			Headers: []*corev3.HeaderValue{
 				{Key: ":path", RawValue: []byte("/api/chat")},
@@ -813,6 +813,6 @@ func TestProcessRequestBody_NoEncoding_PassesThrough(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	require.NotNil(t, execCtx.requestContext.Body)
-	assert.Equal(t, plainJSON, execCtx.requestContext.Body.Content)
+	require.NotNil(t, execCtx.requestBodyCtx.Body)
+	assert.Equal(t, plainJSON, execCtx.requestBodyCtx.Body.Content)
 }
