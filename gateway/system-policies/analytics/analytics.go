@@ -113,6 +113,15 @@ func GetPolicy(
 	return ins, nil
 }
 
+// GetPolicyV2 is an alias for GetPolicy, provided for compatibility with the
+// Builder-generated plugin registry which calls GetPolicyV2 on all plugins.
+func GetPolicyV2(
+	metadata policy.PolicyMetadata,
+	params map[string]interface{},
+) (policy.Policy, error) {
+	return GetPolicy(metadata, params)
+}
+
 // Mode returns the processing mode for this policy.
 // ResponseBodyMode is BodyModeStream so the kernel keeps streaming enabled when
 // all other policies in the chain also support streaming. The buffered fallback
