@@ -39,7 +39,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
 // =============================================================================
@@ -116,11 +116,11 @@ func (p *passthroughPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-func (p *passthroughPolicy) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
+func (p *passthroughPolicy) OnRequestBody(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
 	return nil // passthrough - no modifications
 }
 
-func (p *passthroughPolicy) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
+func (p *passthroughPolicy) OnResponseBody(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
 	return nil // passthrough - no modifications
 }
 
@@ -136,15 +136,19 @@ func (p *headerModifyPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-func (p *headerModifyPolicy) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
+func (p *headerModifyPolicy) OnRequestBody(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
 	return policy.UpstreamRequestModifications{
-		SetHeaders: map[string]string{"x-bench-header": "bench-value"},
+		UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
+			HeadersToSet: map[string]string{"x-bench-header": "bench-value"},
+		},
 	}
 }
 
-func (p *headerModifyPolicy) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
-	return policy.UpstreamResponseModifications{
-		SetHeaders: map[string]string{"x-bench-resp": "bench-resp-value"},
+func (p *headerModifyPolicy) OnResponseBody(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
+	return policy.DownstreamResponseModifications{
+		DownstreamResponseHeaderModifications: policy.DownstreamResponseHeaderModifications{
+			HeadersToSet: map[string]string{"x-bench-resp": "bench-resp-value"},
+		},
 	}
 }
 
@@ -160,7 +164,7 @@ func (p *shortCircuitPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-func (p *shortCircuitPolicy) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
+func (p *shortCircuitPolicy) OnRequestBody(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
 	return policy.ImmediateResponse{
 		StatusCode: 401,
 		Headers:    map[string]string{"content-type": "application/json"},
@@ -168,7 +172,7 @@ func (p *shortCircuitPolicy) OnRequest(*policy.RequestContext, map[string]interf
 	}
 }
 
-func (p *shortCircuitPolicy) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
+func (p *shortCircuitPolicy) OnResponseBody(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
 	return nil
 }
 
@@ -451,7 +455,7 @@ func BenchmarkBuildRequestContext(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			ec := newPolicyExecutionContext(server, "bench-route", chain)
-			ec.buildRequestContext(req.GetRequestHeaders(), routeMetadata)
+			ec.buildRequestContexts(req.GetRequestHeaders(), routeMetadata)
 		}
 	})
 
@@ -476,7 +480,7 @@ func BenchmarkBuildRequestContext(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			ec := newPolicyExecutionContext(server, "bench-route", chain)
-			ec.buildRequestContext(reqNoID.GetRequestHeaders(), routeMetadata)
+			ec.buildRequestContexts(reqNoID.GetRequestHeaders(), routeMetadata)
 		}
 	})
 }
@@ -493,8 +497,8 @@ func BenchmarkBuildResponseContext(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		ec := newPolicyExecutionContext(server, "bench-route", chain)
-		ec.buildRequestContext(req.GetRequestHeaders(), routeMetadata)
-		ec.buildResponseContext(respHeaders)
+		ec.buildRequestContexts(req.GetRequestHeaders(), routeMetadata)
+		ec.buildResponseContexts(respHeaders)
 	}
 }
 
@@ -537,8 +541,10 @@ func BenchmarkTranslateRequestHeadersActions(b *testing.B) {
 			"WithHeaderMods",
 			[]executor.RequestPolicyResult{
 				{PolicyName: "p1", PolicyVersion: "v1.0", Action: policy.UpstreamRequestModifications{
-					SetHeaders:    map[string]string{"x-added": "val1", "x-added2": "val2"},
-					RemoveHeaders: []string{"x-remove-me"},
+					UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
+						HeadersToSet:    map[string]string{"x-added": "val1", "x-added2": "val2"},
+						HeadersToRemove: []string{"x-remove-me"},
+					},
 				}, Skipped: false},
 			},
 		},
@@ -546,11 +552,15 @@ func BenchmarkTranslateRequestHeadersActions(b *testing.B) {
 			"MultiplePolicesWithMods",
 			[]executor.RequestPolicyResult{
 				{PolicyName: "p1", PolicyVersion: "v1.0", Action: policy.UpstreamRequestModifications{
-					SetHeaders: map[string]string{"x-p1": "v1"},
+					UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
+						HeadersToSet: map[string]string{"x-p1": "v1"},
+					},
 				}, Skipped: false},
 				{PolicyName: "p2", PolicyVersion: "v1.0", Action: policy.UpstreamRequestModifications{
-					SetHeaders:    map[string]string{"x-p2": "v2"},
-					RemoveHeaders: []string{"x-p1"},
+					UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
+						HeadersToSet:    map[string]string{"x-p2": "v2"},
+						HeadersToRemove: []string{"x-p1"},
+					},
 				}, Skipped: false},
 				{PolicyName: "p3", PolicyVersion: "v1.0", Action: nil, Skipped: true},
 			},
@@ -567,7 +577,7 @@ func BenchmarkTranslateRequestHeadersActions(b *testing.B) {
 			ec := newPolicyExecutionContext(server, "bench-route", chain)
 			req := buildRequestHeadersProcessingRequest("bench-route")
 			routeMetadata := RouteMetadata{RouteName: "bench-route", APIName: "PetStore"}
-			ec.buildRequestContext(req.GetRequestHeaders(), routeMetadata)
+			ec.buildRequestContexts(req.GetRequestHeaders(), routeMetadata)
 
 			execResult := &executor.RequestExecutionResult{
 				Results:        sc.results,

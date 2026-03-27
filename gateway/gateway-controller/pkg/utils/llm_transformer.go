@@ -26,6 +26,10 @@ type pathMethodKey struct {
 }
 
 func NewLLMProviderTransformer(store *storage.ConfigStore, db storage.Storage, routerConfig *config.RouterConfig, policyVersionResolver PolicyVersionResolver) *LLMProviderTransformer {
+	if db == nil {
+		panic("LLMProviderTransformer requires non-nil storage")
+	}
+
 	return &LLMProviderTransformer{
 		store:                 store,
 		db:                    db,
@@ -86,31 +90,24 @@ func (t *LLMProviderTransformer) resolvePolicyVersion(name string) (string, erro
 
 func (t *LLMProviderTransformer) getTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
 	templates, err := t.db.GetAllLLMProviderTemplates()
-	if err == nil {
-		for _, tmpl := range templates {
-			if tmpl.GetHandle() == handle {
-				return tmpl, nil
-			}
-		}
-		return nil, fmt.Errorf("%w: template with handle '%s' not found", storage.ErrNotFound, handle)
-	}
-	if !storage.IsDatabaseUnavailableError(err) {
+	if err != nil {
 		return nil, err
 	}
 
-	return t.store.GetTemplateByHandle(handle)
+	for _, tmpl := range templates {
+		if tmpl.GetHandle() == handle {
+			return tmpl, nil
+		}
+	}
+	return nil, fmt.Errorf("%w: template with handle '%s' not found", storage.ErrNotFound, handle)
 }
 
 func (t *LLMProviderTransformer) getProviderByHandle(handle string) (*models.StoredConfig, error) {
 	cfg, err := t.db.GetConfigByKindAndHandle(string(api.LlmProvider), handle)
-	if err == nil {
-		return cfg, nil
-	}
-	if !storage.IsDatabaseUnavailableError(err) {
+	if err != nil {
 		return nil, err
 	}
-
-	return t.store.GetByKindAndHandle(string(api.LlmProvider), handle)
+	return cfg, nil
 }
 
 func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration,

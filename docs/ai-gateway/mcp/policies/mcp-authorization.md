@@ -1,3 +1,6 @@
+---
+title: "Overview"
+---
 # MCP Authorization
 
 ## Overview
@@ -11,11 +14,12 @@ The MCP Authorization policy provides fine-grained access control for Model Cont
 - **Tool-Level Access Control**: Restrict access to specific MCP tools based on user claims and scopes
 - **Resource-Level Access Control**: Control access to specific MCP resources based on authorization rules
 - **Prompt-Level Access Control**: Manage access to specific MCP prompts
-- **JSON-RPC Method-Level Access Control**: Apply authorization rules at the JSON-RPC method level (e.g., `tools/call`, `resources/read`, `prompts/get`) for fine-grained control. Only methods under `tools/`, `resources/`, and `prompts/` are evaluated.
-- **Flexible Rule-Based Authorization**: Define multiple authorization rules with attribute matching (exact or wildcard)
+- **JSON-RPC Method-Level Access Control**: Apply authorization rules at the JSON-RPC method level (e.g., `tools/call`, `resources/read`, `prompts/get`) for fine-grained control
+- **Flexible Rule-Based Authorization**: Define multiple authorization rules with name matching (exact or wildcard `*`)
 - **Claim-Based Validation**: Validate custom claims (e.g., department, role, team) in user tokens
 - **Scope-Based Validation**: Require specific OAuth scopes for accessing protected resources
-- **Wildcard Matching**: Use wildcard patterns ("*") to create default rules for all resources of a type
+- **Wildcard Matching**: Use wildcard patterns (`*`) to create default rules for all resources of a type
+- **Rule Specificity**: Exact-name rules are evaluated before wildcards, and all matching rules must pass
 
 ## Configuration
 
@@ -27,14 +31,33 @@ These parameters are configured per MCP Proxy by the API developer:
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `rules` | array | Yes | - | List of authorization rules that define access control policies for MCP resources. |
-| `rules[].attribute` | object | Yes | - | The MCP resource attribute to which the authorization rule applies. |
-| `rules[].attribute.type` | string | Yes | - | Type of MCP resource: "tool", "resource", "prompt", "method". |
-| `rules[].attribute.name` | string | No | - | Name or identifier of the resource. Use "*" for wildcard matching (applies to all resources of the specified type). Examples: "list_files" for tools, "file:///some_resource" for resources, "weather_summary" for prompts, "tools/call" for methods. |
-| `rules[].requiredScopes` | array | No | - | List of OAuth scopes required to access this resource. The token must contain all of the specified scopes. |
-| `rules[].requiredClaims` | object | No | - | Map of claim names to expected values. All specified claims must be present in the token with matching values. |
+| `tools` | `AuthzRule` array | No | `[]` | Authorization rules for MCP tools. |
+| `resources` | `AuthzRule` array | No | `[]` | Authorization rules for MCP resources. |
+| `prompts` | `AuthzRule` array | No | `[]` | Authorization rules for MCP prompts. |
+| `methods` | `AuthzRule` array | No | `[]` | Authorization rules for MCP (JSON-RPC) methods. |
 
-## MCP Proxy Definition Examples
+### AuthzRule Configuration
+
+Each authorization rule object supports the following fields:
+
+> Each rule must specify at least one of `requiredScopes` (with at least one scope) or `requiredClaims` (with at least one claim). Rules with both are also valid — in that case, both conditions must pass.
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `name` | string | Yes | `"*"` | Name of the resource to authorize, or `*` to match all resources of this type (1–256 characters). |
+| `requiredScopes` | string array | Conditional | `[]` | List of OAuth scopes required to access this resource. The token must contain all specified scopes. |
+| `requiredClaims` | object | Conditional | `{}` | Map of claim names to expected values. All specified claims must be present in the token with matching values. |
+
+**Note:**
+
+Inside the `gateway/build.yaml`, ensure the policy module is added under `policies:`:
+
+```yaml
+- name: mcp-authz
+  gomodule: github.com/wso2/gateway-controllers/policies/mcp-authz@v0
+```
+
+## Reference Scenarios
 
 ### Example 1: Basic Tool Access Control
 
@@ -54,32 +77,42 @@ spec:
     url: https://mcp-backend:8080
   policies:
     - name: mcp-auth
-      version: v0.1.1
+      version: v0
       params:
         issuers:
           - PrimaryIDP
     - name: mcp-authz
-      version: v0.1.0
+      version: v0
       params:
-        rules:
-          - attribute:
-              type: tool
-              name: list_files
+        tools:
+          - name: list_files
             requiredScopes:
               - mcp:tool:read
-          - attribute:
-              type: tool
-              name: create_file
+          - name: create_file
             requiredScopes:
               - mcp:tool:write
-          - attribute:
-              type: tool
-              name: "*"
+          - name: "*"
             requiredScopes:
               - mcp:tool:execute
   tools:
     ...
 ```
+
+**Authorization decision examples:**
+
+**Scenario 1**: User with scope `mcp:tool:read` attempts to call `list_files` tool
+- Rule: `name="list_files", requiredScopes=["mcp:tool:read"]`
+- Result: ✅ Access Granted
+
+**Scenario 2**: User with scope `mcp:tool:execute` (no write scope) attempts to call `create_file` tool
+- Rule: `name="create_file", requiredScopes=["mcp:tool:write"]`
+- Result: ❌ Access Denied (insufficient scopes)
+
+**Scenario 3**: User with scopes `mcp:tool:write` and `mcp:tool:execute` attempts to call `create_file` tool
+- Matching rules:
+  - `name="create_file", requiredScopes=["mcp:tool:write"]`
+  - `name="*", requiredScopes=["mcp:tool:execute"]`
+- Result: ✅ Access Granted (both matching rules pass)
 
 ### Example 2: Claim-Based Resource Access
 
@@ -99,29 +132,39 @@ spec:
     url: https://mcp-backend:8080
   policies:
     - name: mcp-auth
-      version: v0.1.1
+      version: v0
       params:
         issuers:
           - PrimaryIDP
     - name: mcp-authz
-      version: v0.1.0
+      version: v0
       params:
-        rules:
-          - attribute:
-              type: resource
-              name: "file:///private/main"
+        resources:
+          - name: "file:///private/main"
             requiredClaims:
               department: "engineering"
             requiredScopes:
               - mcp:resource:read
-          - attribute:
-              type: resource
-              name: "file:///public/main"
+          - name: "file:///public/main"
             requiredScopes:
               - mcp:resource:read
   tools:
     ...
 ```
+
+**Authorization decision examples:**
+
+**Scenario 4**: User with claim `department="engineering"` and scope `mcp:resource:read` attempts to read resource `file:///private/main`
+- Rule: `name="file:///private/main", requiredClaims={department="engineering"}, requiredScopes=["mcp:resource:read"]`
+- Result: ✅ Access Granted
+
+**Scenario 5**: User with claim `department="finance"` (no engineering) and scope `mcp:resource:read` attempts to read resource `file:///private/main`
+- Rule: `name="file:///private/main", requiredClaims={department="engineering"}, requiredScopes=["mcp:resource:read"]`
+- Result: ❌ Access Denied (claim mismatch)
+
+**Scenario 6**: User with claim `department="engineering"` but no `mcp:resource:read` scope attempts to read resource `file:///private/main`
+- Rule: `name="file:///private/main", requiredClaims={department="engineering"}, requiredScopes=["mcp:resource:read"]`
+- Result: ❌ Access Denied (scope mismatch)
 
 ### Example 3: Role-Based Prompt Access
 
@@ -141,31 +184,68 @@ spec:
     url: https://mcp-backend:8080
   policies:
     - name: mcp-auth
-      version: v0.1.1
+      version: v0
       params:
         issuers:
           - PrimaryIDP
     - name: mcp-authz
-      version: v0.1.0
+      version: v0
       params:
-        rules:
-          - attribute:
-              type: prompt
-              name: "admin_summary"
+        prompts:
+          - name: "admin_summary"
             requiredClaims:
               role: "admin"
             requiredScopes:
               - mcp:prompt:admin
-          - attribute:
-              type: prompt
-              name: "*"
+          - name: "*"
             requiredScopes:
               - mcp:prompt:read
   tools:
     ...
 ```
 
-### Example 4: Multi-Level Authorization
+### Example 4: Method-Level Authorization
+
+Apply authorization at the JSON-RPC method level:
+
+```yaml
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Mcp
+metadata:
+  name: mcp-server-api-v1.0
+spec:
+  displayName: mcp-server-api
+  version: v1.0
+  context: /mcpserver
+  vhost: mcp1.gw.example.com
+  upstream:
+    url: https://mcp-backend:8080
+  policies:
+    - name: mcp-auth
+      version: v0
+      params:
+        issuers:
+          - PrimaryIDP
+    - name: mcp-authz
+      version: v0
+      params:
+        methods:
+          - name: "tools/call"
+            requiredScopes:
+              - mcp:method:tools:call
+          - name: "resources/write"
+            requiredClaims:
+              role: "admin"
+            requiredScopes:
+              - mcp:method:resources:write
+          - name: "*"
+            requiredScopes:
+              - mcp:method:general
+  tools:
+    ...
+```
+
+### Example 5: Multi-Level Authorization
 
 Combine different resource types with varying access requirements:
 
@@ -183,68 +263,67 @@ spec:
     url: https://mcp-backend:8080
   policies:
     - name: mcp-auth
-      version: v0.1.1
+      version: v0
       params:
         issuers:
           - PrimaryIDP
         requiredScopes:
           - mcp:access
     - name: mcp-authz
-      version: v0.1.0
+      version: v0
       params:
-        rules:
-          # Restrictive tool access
-          - attribute:
-              type: tool
-              name: "execute_command"
+        # Restrictive tool access
+        tools:
+          - name: "execute_command"
             requiredClaims:
               department: "platform"
               role: "admin"
             requiredScopes:
               - mcp:tool:execute:admin
-          # General tool access
-          - attribute:
-              type: tool
-              name: "*"
+          - name: "*"
             requiredScopes:
               - mcp:tool:execute
-          # Resource access for finance department
-          - attribute:
-              type: resource
-              name: "file:///finance/*"
+        # Resource access for finance department
+        resources:
+          - name: "file:///finance/*"
             requiredClaims:
               department: "finance"
             requiredScopes:
               - mcp:resource:read:finance
-          # Public resources
-          - attribute:
-              type: resource
-              name: "*"
+          - name: "*"
             requiredScopes:
               - mcp:resource:read
+        # Prompt access
+        prompts:
+          - name: "admin_dashboard"
+            requiredClaims:
+              role: "admin"
+            requiredScopes:
+              - mcp:prompt:admin
   tools:
     ...
 ```
 
-## Authorization Decision Examples
+## Authorization Logic
 
-**Scenario 1**: User with scope `mcp:tool:read` attempts to call `list_files` tool
-- Rule: `attribute.type="tool", attribute.name="list_files", requiredScopes=["mcp:tool:read"]`
-- Result: ✅ Access Granted
+The MCP Authorization policy evaluates rules using the following logic:
 
-**Scenario 2**: User with scope `mcp:tool:execute` (no write scope) attempts to call `create_file` tool
-- Rule: `attribute.type="tool", attribute.name="create_file", requiredScopes=["mcp:tool:write"]`
-- Result: ❌ Access Denied (insufficient scopes)
+1. **Specificity Ordering**: Exact-name rules are evaluated before wildcard (`*`) rules
+2. **Match All**: All rules that match the resource name are evaluated
+3. **All Must Pass**: For access to be granted, all matching rules must pass (both claims and scopes)
+4. **Default Allow**: If no rules match the resource, access is allowed (default permit)
 
-**Scenario 3**: User with claim `department="engineering"` attempts to read resource `file:///private/code`
-- Rule: `attribute.type="resource", attribute.name="file:///private/code", requiredClaims={department="engineering"}`
-- Result: ✅ Access Granted
+### Examples
 
-**Scenario 4**: User with claim `department="finance"` (no engineering) attempts to read resource `file:///private/code`
-- Rule: `attribute.type="resource", attribute.name="file:///private/code", requiredClaims={department="engineering"}`
-- Result: ❌ Access Denied (claim mismatch)
+| Resource | Rules Defined | User Token | Result |
+|----------|--------------|------------|--------|
+| `list_files` | `[{name:"list_files", scopes:["read"]}, {name:"*", scopes:["execute"]}]` | Scopes: `["read", "execute"]` | ✅ Allowed |
+| `list_files` | `[{name:"list_files", scopes:["read"]}, {name:"*", scopes:["execute"]}]` | Scopes: `["execute"]` | ❌ Denied (exact rule fails) |
+| `delete_file` | `[{name:"list_files", scopes:["read"]}, {name:"*", scopes:["execute"]}]` | Scopes: `["execute"]` | ✅ Allowed (only wildcard matches) |
+| `admin_tool` | `[{name:"admin_tool", claims:{role:"admin"}, scopes:["write"]}]` | Claims: `{role:"admin"}`, Scopes: `["write"]` | ✅ Allowed |
+| `admin_tool` | `[{name:"admin_tool", claims:{role:"admin"}, scopes:["write"]}]` | Claims: `{role:"user"}`, Scopes: `["write"]` | ❌ Denied (claim mismatch) |
 
-## Error Handling
+## Notes
 
 When authorization fails, the policy returns:
 - **HTTP Status**: `403 Forbidden`

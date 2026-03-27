@@ -240,30 +240,44 @@ func stringPtr(v string) *string {
 	return &v
 }
 
-func TestStart_RequiresSystemConfig(t *testing.T) {
-	listener := &EventListener{
-		logger: newTestLogger(),
-	}
-
-	err := listener.Start()
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "system configuration")
+func TestNewEventListener_RequiresSystemConfig(t *testing.T) {
+	require.PanicsWithValue(t, "event listener requires non-nil system config", func() {
+		NewEventListener(
+			&mockEventHub{subscribeCh: make(chan eventhub.Event)},
+			storage.NewConfigStore(),
+			setupSQLiteDBForEventListenerTests(t),
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			newTestLogger(),
+			nil,
+			nil,
+			nil,
+		)
+	})
 }
 
-func TestStart_RequiresGatewayID(t *testing.T) {
-	listener := &EventListener{
-		eventHub: &mockEventHub{subscribeCh: make(chan eventhub.Event)},
-		logger:   newTestLogger(),
-		systemConfig: &config.Config{
-			Controller: config.Controller{},
-		},
-	}
-
-	err := listener.Start()
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "controller.server.gateway_id")
+func TestNewEventListener_RequiresGatewayID(t *testing.T) {
+	require.PanicsWithValue(t, "event listener requires non-empty gateway ID", func() {
+		NewEventListener(
+			&mockEventHub{subscribeCh: make(chan eventhub.Event)},
+			storage.NewConfigStore(),
+			setupSQLiteDBForEventListenerTests(t),
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			newTestLogger(),
+			&config.Config{Controller: config.Controller{}},
+			nil,
+			nil,
+		)
+	})
 }
 
 func TestStart_SubscribesWithTrimmedGatewayID(t *testing.T) {
@@ -271,7 +285,7 @@ func TestStart_SubscribesWithTrimmedGatewayID(t *testing.T) {
 	listener := NewEventListener(
 		hub,
 		storage.NewConfigStore(),
-		nil,
+		setupSQLiteDBForEventListenerTests(t),
 		nil,
 		nil,
 		nil,

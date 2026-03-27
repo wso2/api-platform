@@ -47,10 +47,6 @@ func (l *EventListener) syncAPIConfigForAPIKeyEvent(apiID string) (*models.Store
 		return cfg, nil
 	}
 
-	if l.db == nil {
-		return nil, err
-	}
-
 	cfg, err = l.db.GetConfig(apiID)
 	if err != nil {
 		return nil, err
@@ -85,11 +81,6 @@ func (l *EventListener) handleAPIKeyUpsert(event eventhub.Event) {
 		slog.String("api_key_id", keyID),
 		slog.String("event_id", event.EventID))
 
-	if l.db == nil {
-		l.logger.Warn("Database not available, cannot process API key event",
-			slog.String("api_key_id", keyID))
-		return
-	}
 	if l.store == nil {
 		l.logger.Warn("In-memory store not available, cannot process API key event",
 			slog.String("api_key_id", keyID))

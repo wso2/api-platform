@@ -116,6 +116,13 @@ type ResponsePolicy interface {
 // OnRequestBody when streaming is not possible (e.g. the chain has a
 // non-streaming policy). NeedsMoreRequestData is called after each chunk;
 // return true to accumulate before OnRequestBodyChunk is invoked.
+//
+// Error handling limitation: if an error occurs after one or more chunks have
+// already been forwarded to upstream, the upstream connection is already in
+// progress and the error cannot be cleanly surfaced — the stream will be
+// aborted. Policies that hold per-stream resources should handle cleanup in
+// their own error paths; there is currently no dedicated error-notification
+// hook on this interface.
 type StreamingRequestPolicy interface {
 	RequestPolicy
 	OnRequestBodyChunk(ctx *RequestStreamContext, chunk *StreamBody, params map[string]interface{}) RequestChunkAction
@@ -127,6 +134,15 @@ type StreamingRequestPolicy interface {
 // buffered mode when any policy in the chain does not implement this interface.
 // The kernel upgrades to FULL_DUPLEX_STREAMED only when every response policy
 // in the chain implements StreamingResponsePolicy.
+//
+// Error handling limitation: once the kernel has entered FULL_DUPLEX_STREAMED
+// mode and flushed at least one chunk downstream, the response status and
+// headers are committed to the client. A mid-stream error cannot be surfaced
+// as a clean HTTP error response — Envoy will abort the HTTP/2 stream or reset
+// the connection. ImmediateResponse is silently ignored in this context. There
+// is currently no dedicated error-notification hook on this interface; a future
+// OnStreamError method is planned to allow cleanup of per-stream resources
+// (open connections, partial buffers, token counters for billing).
 type StreamingResponsePolicy interface {
 	ResponsePolicy
 	OnResponseBodyChunk(ctx *ResponseStreamContext, chunk *StreamBody, params map[string]interface{}) ResponseChunkAction

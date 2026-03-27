@@ -23,7 +23,7 @@ import (
 	"sync"
 
 	"github.com/wso2/api-platform/common/version"
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
 // PolicyEntry holds a policy definition and its factory function together
