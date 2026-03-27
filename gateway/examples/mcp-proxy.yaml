@@ -41,23 +41,17 @@ spec:
   #   - name: mcp-authz
   #     version: v0
   #     params:
-  #       rules:
-  #         - attribute:
-  #             type: "tool"
-  #             name: "viewPizzaMenu"
+  #       tools:
+  #         - name: "viewPizzaMenu"
   #           requiredScopes:
   #             - "mcp:tools:invoke"
-  #         - attribute:
-  #             type: "tool"
-  #             name: "echo"
+  #         - name: "echo"
   #           requiredScopes:
   #             - "mcp:tools:invoke"
-  #         - attribute:
-  #             type: "prompt"
-  #             name: "complex_prompt"
+  #       prompts:
+  #         - name: "complex_prompt"
   #           requiredClaims:
   #             sub: "harry@gmail.com"
-      
   #   - name: mcp-acl-list
   #     version: v0
   #     params:
