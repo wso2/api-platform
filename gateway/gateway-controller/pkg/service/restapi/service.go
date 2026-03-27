@@ -291,7 +291,8 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 
 	if desiredState == models.StateUndeployed {
 		// Undeployment: update DeployedAt to mark when this state change happened
-		existing.DeployedAt = &now
+		truncatedNow := now.Truncate(time.Millisecond)
+		existing.DeployedAt = &truncatedNow
 		log.Info("Undeploying API configuration",
 			slog.String("id", existing.UUID),
 			slog.String("handle", params.Handle))

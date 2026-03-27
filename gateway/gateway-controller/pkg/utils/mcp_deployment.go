@@ -221,7 +221,8 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 	now := time.Now()
 	deployedAt := params.DeployedAt
 	if deployedAt == nil {
-		deployedAt = &now
+		truncated := now.Truncate(time.Millisecond)
+		deployedAt = &truncated
 	}
 	mcpDesiredState := params.DesiredState
 	if mcpDesiredState == "" {
@@ -462,9 +463,9 @@ func (s *MCPDeploymentService) UndeployMCPProxy(
 		return nil, ErrMCPDeploymentIDMismatch
 	}
 
-	undeployedAt := time.Now()
+	undeployedAt := time.Now().Truncate(time.Millisecond)
 	if performedAt != nil && !performedAt.IsZero() {
-		undeployedAt = *performedAt
+		undeployedAt = (*performedAt).Truncate(time.Millisecond)
 	}
 
 	updated := *cfg

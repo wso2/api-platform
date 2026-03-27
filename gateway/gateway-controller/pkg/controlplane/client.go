@@ -1367,9 +1367,9 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 
 	// Fetch API definition and deploy
 	// (deploymentService handles DB + event publishing when eventHub is set)
-	performedAt := deployedEvent.Payload.PerformedAt
+	performedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if performedAt.IsZero() {
-		performedAt = time.Now()
+		performedAt = time.Now().Truncate(time.Millisecond)
 	}
 	result, err := c.fetchAndDeployAPI(apiID, deployedEvent.Payload.DeploymentID, &performedAt, deployedEvent.CorrelationID)
 	if err != nil {
@@ -1474,9 +1474,9 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 
 	// Set status to undeployed (preserve config, keys, and policies)
 	// Use CP event timestamp for consistent sync ordering; fall back to local time if not provided
-	apiUndeployPerformedAt := undeployedEvent.Payload.PerformedAt
+	apiUndeployPerformedAt := undeployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if apiUndeployPerformedAt.IsZero() {
-		apiUndeployPerformedAt = time.Now()
+		apiUndeployPerformedAt = time.Now().Truncate(time.Millisecond)
 	}
 	apiConfig.DesiredState = models.StateUndeployed
 	apiConfig.DeploymentID = undeployedEvent.Payload.DeploymentID
@@ -1833,9 +1833,9 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 	}
 
 	// Create LLM proxy configuration from YAML using the deployment service
-	llmProxyPerformedAt := deployedEvent.Payload.PerformedAt
+	llmProxyPerformedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if llmProxyPerformedAt.IsZero() {
-		llmProxyPerformedAt = time.Now()
+		llmProxyPerformedAt = time.Now().Truncate(time.Millisecond)
 	}
 	result, err := c.apiUtilsService.CreateLLMProxyFromYAML(yamlData, proxyID, deployedEvent.Payload.DeploymentID, &llmProxyPerformedAt, deployedEvent.CorrelationID, c.llmDeploymentService)
 	if err != nil {
@@ -1937,9 +1937,9 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 	}
 
 	// Create LLM provider configuration from YAML using the deployment service
-	llmProviderPerformedAt := deployedEvent.Payload.PerformedAt
+	llmProviderPerformedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if llmProviderPerformedAt.IsZero() {
-		llmProviderPerformedAt = time.Now()
+		llmProviderPerformedAt = time.Now().Truncate(time.Millisecond)
 	}
 	result, err := c.apiUtilsService.CreateLLMProviderFromYAML(yamlData, providerID, deployedEvent.Payload.DeploymentID, &llmProviderPerformedAt, deployedEvent.CorrelationID, c.llmDeploymentService)
 	if err != nil {
@@ -2043,9 +2043,9 @@ func (c *Client) handleLLMProviderUndeployedEvent(event map[string]interface{}) 
 	}
 
 	// Soft undeploy: set desired_state to undeployed (preserve config, keys, and policies)
-	performedAt := undeployedEvent.Payload.PerformedAt
+	performedAt := undeployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if performedAt.IsZero() {
-		performedAt = time.Now()
+		performedAt = time.Now().Truncate(time.Millisecond)
 	}
 	providerConfig.DesiredState = models.StateUndeployed
 	providerConfig.DeploymentID = undeployedEvent.Payload.DeploymentID
@@ -2164,9 +2164,9 @@ func (c *Client) handleLLMProxyUndeployedEvent(event map[string]interface{}) {
 	}
 
 	// Soft undeploy: set desired_state to undeployed (preserve config, keys, and policies)
-	performedAt := undeployedEvent.Payload.PerformedAt
+	performedAt := undeployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if performedAt.IsZero() {
-		performedAt = time.Now()
+		performedAt = time.Now().Truncate(time.Millisecond)
 	}
 	proxyConfig.DesiredState = models.StateUndeployed
 	proxyConfig.DeploymentID = undeployedEvent.Payload.DeploymentID
@@ -2428,9 +2428,9 @@ func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
 	}
 
 	// Create MCP proxy configuration from YAML using the deployment service
-	mcpPerformedAt := deployedEvent.Payload.PerformedAt
+	mcpPerformedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if mcpPerformedAt.IsZero() {
-		mcpPerformedAt = time.Now()
+		mcpPerformedAt = time.Now().Truncate(time.Millisecond)
 	}
 	result, err := c.apiUtilsService.CreateMCPProxyFromYAML(yamlData, proxyID, deployedEvent.Payload.DeploymentID, &mcpPerformedAt, deployedEvent.CorrelationID, c.mcpDeploymentService)
 	if err != nil {

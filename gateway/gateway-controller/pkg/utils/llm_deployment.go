@@ -245,7 +245,8 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	now := time.Now()
 	deployedAt := params.DeployedAt
 	if deployedAt == nil {
-		deployedAt = &now
+		truncated := now.Truncate(time.Millisecond)
+		deployedAt = &truncated
 	}
 	desiredState := params.DesiredState
 	if desiredState == "" {
@@ -399,7 +400,8 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 	now := time.Now()
 	deployedAt := params.DeployedAt
 	if deployedAt == nil {
-		deployedAt = &now
+		truncated := now.Truncate(time.Millisecond)
+		deployedAt = &truncated
 	}
 	proxyDesiredState := params.DesiredState
 	if proxyDesiredState == "" {
