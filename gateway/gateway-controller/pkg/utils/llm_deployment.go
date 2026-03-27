@@ -970,8 +970,9 @@ func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploy
 		params.DesiredState = models.StateUndeployed
 		// DeployedAt left nil — deploy method will set time.Now() to mark undeployment time
 	} else {
-		// Normal config update: preserve existing DeployedAt (set during initial creation)
-		params.DeployedAt = existing.DeployedAt
+		// Advance DeployedAt so the timestamp-guarded upsert accepts the update.
+		now := time.Now().Truncate(time.Millisecond)
+		params.DeployedAt = &now
 	}
 
 	// Ensure Deploy uses existing ID so it performs an update
@@ -1062,8 +1063,9 @@ func (s *LLMDeploymentService) UpdateLLMProxy(id string, params LLMDeploymentPar
 		params.DesiredState = models.StateUndeployed
 		// DeployedAt left nil — deploy method will set time.Now() to mark undeployment time
 	} else {
-		// Normal config update: preserve existing DeployedAt (set during initial creation)
-		params.DeployedAt = existing.DeployedAt
+		// Advance DeployedAt so the timestamp-guarded upsert accepts the update.
+		now := time.Now().Truncate(time.Millisecond)
+		params.DeployedAt = &now
 	}
 
 	// Ensure Deploy uses existing ID so it performs an update
