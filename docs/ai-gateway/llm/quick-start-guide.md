@@ -22,18 +22,18 @@ docker compose version
 Replace ${version} with the actual release version of the API Platform Gateway.
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/ai-gateway/v0.5.0/ai-gateway-v0.5.0.zip
+wget https://github.com/wso2/api-platform/releases/download/ai-gateway-v1.0.0-rc/ai-gateway-v1.0.0-rc.zip
 
 # Unzip the downloaded distribution.
-unzip ai-gateway-v0.5.0.zip
+unzip ai-gateway-v1.0.0-rc.zip
 
 
 # Start the complete stack
-cd ai-gateway-v0.5.0/
+cd ai-gateway-v1.0.0-rc/
 docker compose up -d
 
-# Verify gateway controller is running
-curl http://localhost:9090/health
+# Verify gateway controller admin endpoint is running
+curl http://localhost:9094/health
 ```
 
 ## Deploy an OpenAI LLM provider configuration
@@ -53,12 +53,13 @@ spec:
   displayName: OpenAI Provider
   version: v1.0
   template: openai
+  vhost: api.openai.local
   upstream:
     url: https://api.openai.com/v1
     auth:
       type: api-key
       header: Authorization
-      value: Bearer <openai-apikey>
+      value: <openai-apikey>
   accessControl:
     mode: deny_all
     exceptions:
@@ -76,8 +77,9 @@ To test LLM provider traffic routing through the gateway, invoke the following r
 ```bash
 curl -X POST https://localhost:8443/chat/completions \
   -H "Content-Type: application/json" \
+  -H "Host: api.openai.local" \
   -d '{
-    "model": "gpt-4",
+    "model": "gpt-4o-mini",
     "messages": [
       {
         "role": "user",
@@ -99,9 +101,9 @@ curl -X POST http://localhost:9090/llm-proxies \
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProxy
 metadata:
-  name: docs-assistant
+  name: openai-assistant
 spec:
-  displayName: Docs Assistant
+  displayName: OpenAI Assistant
   version: v1.0
   context: /assistant
   provider: openai-provider
@@ -115,7 +117,7 @@ To test LLM proxy traffic routing through the gateway and consume the LLM provid
 curl -X POST "https://localhost:8443/assistant/chat/completions" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gpt-4",
+    "model": "gpt-4o-mini",
     "messages": [
       {
         "role": "user",

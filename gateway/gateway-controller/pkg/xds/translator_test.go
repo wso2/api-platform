@@ -22,12 +22,14 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"regexp"
 	"testing"
 	"time"
 
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
+	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	resource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/stretchr/testify/assert"
@@ -501,6 +503,129 @@ func TestTranslator_PathToRegex(t *testing.T) {
 			result := translator.pathToRegex(tt.path)
 			assert.Equal(t, tt.expected, result)
 		})
+	}
+}
+
+func TestTranslator_CreateRoute_PathSpecifier(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	tests := []struct {
+		name          string
+		context       string
+		apiVersion    string
+		path          string
+		expectedRegex string
+	}{
+		{
+			name:          "Wildcard /* uses boundary-aware regex",
+			context:       "/weather/$version",
+			apiVersion:    "v1.0",
+			path:          "/*",
+			expectedRegex: `^/weather/v1\.0(?:/.*)?$`,
+		},
+		{
+			name:          "Wildcard /* on plain context uses boundary-aware regex",
+			context:       "/api",
+			apiVersion:    "v1",
+			path:          "/*",
+			expectedRegex: `^/api(?:/.*)?$`,
+		},
+		{
+			name:          "Root path / matches with and without trailing slash",
+			context:       "/weather/$version",
+			apiVersion:    "v1.0",
+			path:          "/",
+			expectedRegex: `^/weather/v1\.0/?$`,
+		},
+		{
+			name:          "Root path / on plain context",
+			context:       "/api",
+			apiVersion:    "v1",
+			path:          "/",
+			expectedRegex: `^/api/?$`,
+		},
+		{
+			name:          "Exact path accepts optional trailing slash",
+			context:       "/weather/$version",
+			apiVersion:    "v1.0",
+			path:          "/forecast",
+			expectedRegex: `^/weather/v1\.0/forecast/?$`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := translator.createRoute(
+				"test-id", "TestAPI", tt.apiVersion, tt.context,
+				"GET", tt.path, "test-cluster", "/",
+				"localhost", "http/rest", "", "", nil, "", nil,
+				false, "", nil,
+			)
+			require.NotNil(t, r)
+			{
+				regex, ok := r.Match.PathSpecifier.(*route.RouteMatch_SafeRegex)
+				require.True(t, ok, "expected RouteMatch_SafeRegex specifier")
+				assert.Equal(t, tt.expectedRegex, regex.SafeRegex.Regex)
+			}
+			// Method header matcher must always be present
+			require.Len(t, r.Match.Headers, 1)
+			assert.Equal(t, ":method", r.Match.Headers[0].Name)
+		})
+	}
+}
+
+func TestTranslator_WildcardRegexBoundary(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	type wildcardCase struct {
+		context    string
+		apiVersion string
+		path       string
+		shouldMatch    []string
+		shouldNotMatch []string
+	}
+
+	cases := []wildcardCase{
+		{
+			context:    "/weather/$version",
+			apiVersion: "v1.0",
+			path:       "/*",
+			shouldMatch:    []string{"/weather/v1.0", "/weather/v1.0/", "/weather/v1.0/forecast", "/weather/v1.0/a/b/c"},
+			shouldNotMatch: []string{"/weather/v1.0beta", "/weather/v1.0extra"},
+		},
+		{
+			context:    "/api",
+			apiVersion: "v1",
+			path:       "/*",
+			shouldMatch:    []string{"/api", "/api/", "/api/users", "/api/v2/items"},
+			shouldNotMatch: []string{"/api2", "/apixyz"},
+		},
+	}
+
+	for _, tc := range cases {
+		r := translator.createRoute(
+			"test-id", "TestAPI", tc.apiVersion, tc.context,
+			"GET", tc.path, "test-cluster", "/",
+			"localhost", "http/rest", "", "", nil, "", nil,
+			false, "", nil,
+		)
+		require.NotNil(t, r)
+		regexSpec, ok := r.Match.PathSpecifier.(*route.RouteMatch_SafeRegex)
+		require.True(t, ok)
+		re := regexp.MustCompile(regexSpec.SafeRegex.Regex)
+
+		for _, p := range tc.shouldMatch {
+			assert.True(t, re.MatchString(p), "regex %q should match %q", regexSpec.SafeRegex.Regex, p)
+		}
+		for _, p := range tc.shouldNotMatch {
+			assert.False(t, re.MatchString(p), "regex %q should NOT match %q", regexSpec.SafeRegex.Regex, p)
+		}
 	}
 }
 

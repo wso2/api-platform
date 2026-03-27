@@ -24,7 +24,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
+	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"

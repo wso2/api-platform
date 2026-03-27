@@ -6,10 +6,15 @@ under incremental API scale and runtime traffic.
 ## Test Environment
 
 - Deployment: Docker Compose (GitHub Actions runner)
-- Gateway version: `0.5.0`
+- Gateway version: `1.0.0`
 - Backend: Netty HTTP Echo Service
 - Test tool: Apache JMeter
 - Traffic pattern: Random API invocation across deployed APIs
+
+## Resource Allocation
+
+- Default resource allocations: 0.2 vCPU, 256MB memory.
+- 300 TPS  for 50 APIs, each API with 8 resources.
 
 ---
 
@@ -23,11 +28,6 @@ under incremental API scale and runtime traffic.
 
 ![Controller Memory](controller_memory_vs_api_count.png)
 
----
-
-## Throughput Over Time (TPS)
-
-![TPS over Time](tps_over_time.png)
 
 ---
 

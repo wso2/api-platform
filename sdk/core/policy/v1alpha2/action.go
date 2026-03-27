@@ -104,11 +104,19 @@ type RequestAction interface {
 type UpstreamRequestModifications struct {
 	Body []byte // nil = passthrough; []byte{} = clear body
 
-	// Embeds all header and routing mutations available at the header phase.
-	UpstreamRequestHeaderModifications
+	HeadersToSet    map[string]string // overwrite header (last write wins)
+	HeadersToRemove []string          // remove by name (case-insensitive)
+
+	// Routing mutations — applied before the request is forwarded to upstream.
+	UpstreamName            *string             // route to a named upstream definition (nil = no change)
+	Path                    *string             // rewrite the request path (nil = no change)
+	Method                  *string             // rewrite the request method (nil = no change)
+	QueryParametersToAdd    map[string][]string // add or replace query parameters
+	QueryParametersToRemove []string            // remove query parameters by name
 
 	AnalyticsMetadata     map[string]any            // custom analytics metadata
 	DynamicMetadata       map[string]map[string]any // dynamic metadata by namespace
+	AnalyticsHeaderFilter DropHeaderAction          // headers to exclude from analytics
 }
 
 func (UpstreamRequestModifications) isRequestAction()    {}
@@ -135,11 +143,12 @@ type DownstreamResponseModifications struct {
 	Body       []byte // nil = passthrough; []byte{} = clear body
 	StatusCode *int   // nil = no change
 
-	// Embeds all header mutations available at the response phase.
-	DownstreamResponseHeaderModifications
+	HeadersToSet    map[string]string // overwrite header (last write wins)
+	HeadersToRemove []string          // remove by name (case-insensitive)
 
 	AnalyticsMetadata     map[string]any            // custom analytics metadata
 	DynamicMetadata       map[string]map[string]any // dynamic metadata by namespace
+	AnalyticsHeaderFilter DropHeaderAction          // headers to exclude from analytics
 }
 
 func (DownstreamResponseModifications) isResponseAction()   {}

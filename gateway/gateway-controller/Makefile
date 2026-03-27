@@ -33,7 +33,7 @@ REPO_ROOT := $(shell git rev-parse --show-toplevel)
 APIDOCS_TOOLS_DIR := $(REPO_ROOT)/tools/apidocs
 DOCS_OUT_DIR := $(REPO_ROOT)/docs/gateway/gateway-rest-api
 
-.PHONY: help generate build test generate-listener-certs push build-coverage-image build-debug generate-apidocs
+.PHONY: help generate build test generate-listener-certs push build-coverage-image build-debug clean build-and-push-multiarch generate-postman-collection
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -142,3 +142,8 @@ generate-apidocs: ## Generate REST API docs from OpenAPI specs
 	@bash $(APIDOCS_TOOLS_DIR)/split-openapi.sh /tmp/gw-openapi.md $(DOCS_OUT_DIR)
 	@rm -f /tmp/gw-openapi.md
 	@echo "REST API docs generated at $(DOCS_OUT_DIR)"
+
+clean: ## Remove SQLite database files from data/
+	@echo "Cleaning database files from data/..."
+	@rm -f data/*.db data/*.db-shm data/*.db-wal
+	@echo "Done."

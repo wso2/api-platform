@@ -58,17 +58,13 @@ func (p *HeaderModifyingPolicy) Mode() policy.ProcessingMode {
 
 func (p *HeaderModifyingPolicy) OnRequestBody(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
 	return policy.UpstreamRequestModifications{
-		UpstreamRequestHeaderModifications: policy.UpstreamRequestHeaderModifications{
-			HeadersToSet: map[string]string{p.Key: p.Value},
-		},
+		HeadersToSet: map[string]string{p.Key: p.Value},
 	}
 }
 
 func (p *HeaderModifyingPolicy) OnResponseBody(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
 	return policy.DownstreamResponseModifications{
-		DownstreamResponseHeaderModifications: policy.DownstreamResponseHeaderModifications{
-			HeadersToSet: map[string]string{p.Key: p.Value},
-		},
+		HeadersToSet: map[string]string{p.Key: p.Value},
 	}
 }
 
