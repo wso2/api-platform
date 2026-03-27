@@ -33,7 +33,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/testutils"
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
 // newTestExecutor returns a ChainExecutor with a no-op tracer suitable for tests
@@ -225,19 +225,19 @@ func TestBuildRequestContext_BasicHeaders(t *testing.T) {
 		Vhost:      "api.example.com",
 	}
 
-	execCtx.buildRequestContext(headers, routeMetadata)
+	execCtx.buildRequestContexts(headers, routeMetadata)
 
-	require.NotNil(t, execCtx.requestContext)
-	assert.Equal(t, "/api/pets", execCtx.requestContext.Path)
-	assert.Equal(t, "POST", execCtx.requestContext.Method)
-	assert.Equal(t, "api.example.com", execCtx.requestContext.Authority)
-	assert.Equal(t, "https", execCtx.requestContext.Scheme)
-	assert.Equal(t, "api.example.com", execCtx.requestContext.Vhost)
+	require.NotNil(t, execCtx.requestBodyCtx)
+	assert.Equal(t, "/api/pets", execCtx.requestBodyCtx.Path)
+	assert.Equal(t, "POST", execCtx.requestBodyCtx.Method)
+	assert.Equal(t, "api.example.com", execCtx.requestBodyCtx.Authority)
+	assert.Equal(t, "https", execCtx.requestBodyCtx.Scheme)
+	assert.Equal(t, "api.example.com", execCtx.requestBodyCtx.Vhost)
 
 	// Check SharedContext
-	require.NotNil(t, execCtx.requestContext.SharedContext)
-	assert.Equal(t, "PetStore", execCtx.requestContext.SharedContext.APIName)
-	assert.Equal(t, "v1.0", execCtx.requestContext.SharedContext.APIVersion)
+	require.NotNil(t, execCtx.sharedCtx)
+	assert.Equal(t, "PetStore", execCtx.sharedCtx.APIName)
+	assert.Equal(t, "v1.0", execCtx.sharedCtx.APIVersion)
 
 	// Request ID should be generated
 	assert.NotEmpty(t, execCtx.requestID)
@@ -261,11 +261,11 @@ func TestBuildRequestContext_WithRequestID(t *testing.T) {
 		},
 	}
 
-	execCtx.buildRequestContext(headers, RouteMetadata{})
+	execCtx.buildRequestContexts(headers, RouteMetadata{})
 
 	// Should use existing request ID
 	assert.Equal(t, "custom-request-id", execCtx.requestID)
-	assert.Equal(t, "custom-request-id", execCtx.requestContext.SharedContext.RequestID)
+	assert.Equal(t, "custom-request-id", execCtx.sharedCtx.RequestID)
 }
 
 func TestBuildRequestContext_EndOfStream(t *testing.T) {
@@ -285,13 +285,13 @@ func TestBuildRequestContext_EndOfStream(t *testing.T) {
 		EndOfStream: true,
 	}
 
-	execCtx.buildRequestContext(headers, RouteMetadata{})
+	execCtx.buildRequestContexts(headers, RouteMetadata{})
 
 	// Body should be marked as end of stream with no content
-	require.NotNil(t, execCtx.requestContext.Body)
-	assert.True(t, execCtx.requestContext.Body.EndOfStream)
-	assert.False(t, execCtx.requestContext.Body.Present)
-	assert.Nil(t, execCtx.requestContext.Body.Content)
+	require.NotNil(t, execCtx.requestBodyCtx.Body)
+	assert.True(t, execCtx.requestBodyCtx.Body.EndOfStream)
+	assert.False(t, execCtx.requestBodyCtx.Body.Present)
+	assert.Nil(t, execCtx.requestBodyCtx.Body.Content)
 }
 
 func TestBuildRequestContext_WithTemplateAndProvider(t *testing.T) {
@@ -317,13 +317,13 @@ func TestBuildRequestContext_WithTemplateAndProvider(t *testing.T) {
 		ProjectID:      "proj-123",
 	}
 
-	execCtx.buildRequestContext(headers, routeMetadata)
+	execCtx.buildRequestContexts(headers, routeMetadata)
 
 	// Check SharedContext metadata
-	require.NotNil(t, execCtx.requestContext.SharedContext.Metadata)
-	assert.Equal(t, "gpt-4", execCtx.requestContext.SharedContext.Metadata["template_handle"])
-	assert.Equal(t, "openai", execCtx.requestContext.SharedContext.Metadata["provider_name"])
-	assert.Equal(t, "proj-123", execCtx.requestContext.SharedContext.ProjectID)
+	require.NotNil(t, execCtx.sharedCtx.Metadata)
+	assert.Equal(t, "gpt-4", execCtx.sharedCtx.Metadata["template_handle"])
+	assert.Equal(t, "openai", execCtx.sharedCtx.Metadata["provider_name"])
+	assert.Equal(t, "proj-123", execCtx.sharedCtx.ProjectID)
 }
 
 func TestBuildRequestContext_MultipleHeaderValues(t *testing.T) {
@@ -344,10 +344,10 @@ func TestBuildRequestContext_MultipleHeaderValues(t *testing.T) {
 		},
 	}
 
-	execCtx.buildRequestContext(headers, RouteMetadata{})
+	execCtx.buildRequestContexts(headers, RouteMetadata{})
 
 	// Should have both accept values
-	acceptValues := execCtx.requestContext.Headers.GetAll()["accept"]
+	acceptValues := execCtx.requestBodyCtx.Headers.GetAll()["accept"]
 	assert.Len(t, acceptValues, 2)
 	assert.Contains(t, acceptValues, "application/json")
 	assert.Contains(t, acceptValues, "text/plain")
@@ -374,7 +374,7 @@ func TestBuildResponseContext_BasicHeaders(t *testing.T) {
 			},
 		},
 	}
-	execCtx.buildRequestContext(reqHeaders, RouteMetadata{})
+	execCtx.buildRequestContexts(reqHeaders, RouteMetadata{})
 
 	// Now build response context
 	respHeaders := &extprocv3.HttpHeaders{
@@ -387,17 +387,17 @@ func TestBuildResponseContext_BasicHeaders(t *testing.T) {
 		EndOfStream: false,
 	}
 
-	execCtx.buildResponseContext(respHeaders)
+	execCtx.buildResponseContexts(respHeaders)
 
-	require.NotNil(t, execCtx.responseContext)
-	assert.Equal(t, 200, execCtx.responseContext.ResponseStatus)
+	require.NotNil(t, execCtx.responseBodyCtx)
+	assert.Equal(t, 200, execCtx.responseBodyCtx.ResponseStatus)
 
 	// Should have same SharedContext as request
-	assert.Equal(t, execCtx.requestContext.SharedContext, execCtx.responseContext.SharedContext)
+	assert.Equal(t, execCtx.sharedCtx, execCtx.responseBodyCtx.SharedContext)
 
 	// Should have request data
-	assert.Equal(t, "/api/pets", execCtx.responseContext.RequestPath)
-	assert.Equal(t, "GET", execCtx.responseContext.RequestMethod)
+	assert.Equal(t, "/api/pets", execCtx.responseBodyCtx.RequestPath)
+	assert.Equal(t, "GET", execCtx.responseBodyCtx.RequestMethod)
 }
 
 func TestBuildResponseContext_EndOfStream(t *testing.T) {
@@ -412,7 +412,7 @@ func TestBuildResponseContext_EndOfStream(t *testing.T) {
 	reqHeaders := &extprocv3.HttpHeaders{
 		Headers: &corev3.HeaderMap{},
 	}
-	execCtx.buildRequestContext(reqHeaders, RouteMetadata{})
+	execCtx.buildRequestContexts(reqHeaders, RouteMetadata{})
 
 	// Build response context with end of stream
 	respHeaders := &extprocv3.HttpHeaders{
@@ -424,11 +424,11 @@ func TestBuildResponseContext_EndOfStream(t *testing.T) {
 		EndOfStream: true,
 	}
 
-	execCtx.buildResponseContext(respHeaders)
+	execCtx.buildResponseContexts(respHeaders)
 
-	require.NotNil(t, execCtx.responseContext.ResponseBody)
-	assert.True(t, execCtx.responseContext.ResponseBody.EndOfStream)
-	assert.False(t, execCtx.responseContext.ResponseBody.Present)
+	require.NotNil(t, execCtx.responseBodyCtx.ResponseBody)
+	assert.True(t, execCtx.responseBodyCtx.ResponseBody.EndOfStream)
+	assert.False(t, execCtx.responseBodyCtx.ResponseBody.Present)
 }
 
 func TestBuildResponseContext_InvalidStatus(t *testing.T) {
@@ -443,7 +443,7 @@ func TestBuildResponseContext_InvalidStatus(t *testing.T) {
 	reqHeaders := &extprocv3.HttpHeaders{
 		Headers: &corev3.HeaderMap{},
 	}
-	execCtx.buildRequestContext(reqHeaders, RouteMetadata{})
+	execCtx.buildRequestContexts(reqHeaders, RouteMetadata{})
 
 	// Build response context with invalid status
 	respHeaders := &extprocv3.HttpHeaders{
@@ -455,9 +455,9 @@ func TestBuildResponseContext_InvalidStatus(t *testing.T) {
 	}
 
 	// Should not panic, status will be 0
-	execCtx.buildResponseContext(respHeaders)
+	execCtx.buildResponseContexts(respHeaders)
 
-	assert.Equal(t, 0, execCtx.responseContext.ResponseStatus)
+	assert.Equal(t, 0, execCtx.responseBodyCtx.ResponseStatus)
 }
 
 // =============================================================================

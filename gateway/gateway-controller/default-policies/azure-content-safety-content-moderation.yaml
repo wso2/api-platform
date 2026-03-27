@@ -1,5 +1,5 @@
 name: azure-content-safety-content-moderation
-version: v0.8.1
+version: v0.9.0
 description: |
   Validates request and response content with Azure Content Safety moderation
   checks.

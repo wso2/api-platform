@@ -72,9 +72,9 @@ func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecution
 	}
 
 	// Add system-level metadata if context is provided
-	if execCtx != nil && execCtx.requestContext != nil && execCtx.requestContext.SharedContext != nil {
+	if execCtx != nil && execCtx.sharedCtx != nil {
 
-		sharedCtx := execCtx.requestContext.SharedContext
+		sharedCtx := execCtx.sharedCtx
 		if sharedCtx.APIId != "" {
 			fields[APIIDKey] = structpb.NewStringValue(sharedCtx.APIId)
 		}

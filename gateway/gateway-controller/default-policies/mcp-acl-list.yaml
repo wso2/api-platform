@@ -1,5 +1,5 @@
 name: mcp-acl-list
-version: v0.2.2
+version: v0.9.0
 description: |
   Control MCP tool, resource, and prompt access with allow/deny mode plus exceptions, apply the same rules to requests and list responses, and avoid rewriting capability names or entry fields.
 

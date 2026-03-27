@@ -1,5 +1,5 @@
 name: log-message
-version: v0.2.1
+version: v0.9.0
 description: |
   Log request and response payloads and headers for observability without changing traffic.
 
