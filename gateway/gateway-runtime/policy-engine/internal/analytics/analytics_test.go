@@ -439,15 +439,17 @@ func TestPrepareAnalyticEvent_WithLLMCost(t *testing.T) {
 	analytics := NewAnalytics(cfg)
 
 	logEntry := createLogEntryWithMetadata(map[string]string{
+		AIProviderNameMetadataKey:    "openai",
 		constants.LLMCostMetadataKey: "0.0000423100",
 	})
 
 	event := analytics.prepareAnalyticEvent(logEntry)
 
 	require.NotNil(t, event)
-	llmCost, ok := event.Properties[constants.LLMCostPropertyKey]
+	aiMetadata, ok := event.Properties["aiMetadata"]
 	require.True(t, ok)
-	assert.Equal(t, 0.00004231, llmCost)
+	require.NotNil(t, aiMetadata)
+	assert.Equal(t, 0.00004231, aiMetadata.(dto.AIMetadata).LLMCost)
 }
 
 func TestPrepareAnalyticEvent_WithGuardrailMetadata(t *testing.T) {
