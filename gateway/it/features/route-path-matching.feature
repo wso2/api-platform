@@ -229,12 +229,12 @@ Feature: Route Path Matching
     # Without trailing slash — upstream must not receive one
     When I send a GET request to "http://localhost:8080/route-exact-upstream/v1.0/weather"
     Then the response status code should be 200
-    And the JSON response field "url" should be "/anything/weather"
+    And the JSON response field "url" should be "http://echo-backend/anything/weather"
 
     # With trailing slash — upstream must receive it
     When I send a GET request to "http://localhost:8080/route-exact-upstream/v1.0/weather/"
     Then the response status code should be 200
-    And the JSON response field "url" should be "/anything/weather/"
+    And the JSON response field "url" should be "http://echo-backend/anything/weather/"
 
     When I delete the API "route-exact-upstream-slash-api"
     Then the response should be successful
