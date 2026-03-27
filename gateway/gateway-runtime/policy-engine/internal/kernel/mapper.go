@@ -19,6 +19,7 @@
 package kernel
 
 import (
+	"log/slog"
 	"sync"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
@@ -105,7 +106,26 @@ func (k *Kernel) ApplyWholeRouteConfigs(newConfigs map[string]*RouteConfig) {
 func (k *Kernel) ApplyWholeRoutes(newRoutes map[string]*registry.PolicyChain) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
+	keys := make([]string, 0, len(newRoutes))
+	for key := range newRoutes {
+		keys = append(keys, key)
+	}
+	slog.Debug("ApplyWholeRoutes: replacing policy chains",
+		"count", len(newRoutes),
+		"routes", keys)
 	k.PolicyChains = newRoutes
+}
+
+// DumpRouteKeys returns the keys of all registered policy chains for debugging.
+// Cheaper than DumpRoutes as it only copies keys, not chain structs.
+func (k *Kernel) DumpRouteKeys() []string {
+	k.mu.RLock()
+	defer k.mu.RUnlock()
+	keys := make([]string, 0, len(k.PolicyChains))
+	for key := range k.PolicyChains {
+		keys = append(keys, key)
+	}
+	return keys
 }
 
 // DumpRoutes returns a copy of all policy chain mappings for debugging.
