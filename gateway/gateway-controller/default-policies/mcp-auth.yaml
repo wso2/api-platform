@@ -1,5 +1,5 @@
 name: mcp-auth
-version: v0.9.1
+version: v0.9.2
 description: |
   Secure Model Context Protocol traffic by validating bearer access tokens for MCP resources using the underlying JWT authentication runtime.
 
@@ -7,6 +7,78 @@ parameters:
   type: object
   additionalProperties: false
   properties:
+    tools:
+      type: object
+      x-wso2-policy-advanced-param: false
+      description: Security configuration for MCP tools.
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+          description: Whether security is enabled for tools.
+          default: true
+        exceptions:
+          type: array
+          x-wso2-policy-advanced-param: true
+          description: List of tool names to exclude from security checks.
+          default: []
+          items:
+            type: string
+
+    resources:
+      type: object
+      x-wso2-policy-advanced-param: false
+      description: Security configuration for MCP resources.
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+          description: Whether security is enabled for resources.
+          default: true
+        exceptions:
+          type: array
+          x-wso2-policy-advanced-param: true
+          description: List of resource URIs to exclude from security checks.
+          default: []
+          items:
+            type: string
+
+    prompts:
+      type: object
+      x-wso2-policy-advanced-param: false
+      description: Security configuration for MCP prompts.
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+          description: Whether security is enabled for prompts.
+          default: true
+        exceptions:
+          type: array
+          x-wso2-policy-advanced-param: true
+          description: List of prompt names to exclude from security checks.
+          default: []
+          items:
+            type: string
+
+    methods:
+      type: object
+      x-wso2-policy-advanced-param: false
+      description: Security configuration for MCP (JSON-RPC) methods.
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+          description: Whether security is enabled for methods.
+          default: true
+        exceptions:
+          type: array
+          x-wso2-policy-advanced-param: true
+          description: List of method names to exclude from security checks.
+          default: []
+          items:
+            type: string
+
     issuers:
       type: array
       x-wso2-policy-advanced-param: true
@@ -20,25 +92,11 @@ parameters:
       x-wso2-policy-advanced-param: true
       description: >-
         List of scopes that should be included in the token generated through MCP auth flow.
-        List of scopes that must be present in the token (space-delimited 'scope' claim or array 'scp').
+        This will be used only to inform the MCP client about the scopes to be included in the token through the protected resource metadata endpoint, 
+        and the runtime will not enforce scope checks based on this list. 
+        To enforce scopes for specific tools, resources, prompts, or methods, use the `MCP Authorization` policy.
       default: []
       items:
-        type: string
-
-    audiences:
-      type: array
-      x-wso2-policy-advanced-param: true
-      description: List of acceptable audience values; token must contain at least one.
-      default: []
-      items:
-        type: string
-
-    requiredClaims:
-      type: object
-      x-wso2-policy-advanced-param: true
-      description: Map of claimName -> expectedValue. Runtime may support equality or regex-based matching.
-      default: {}
-      additionalProperties:
         type: string
 
     claimMappings:
