@@ -19,20 +19,22 @@ docker --version
 docker compose version
 ```
 
+Replace `${version}` with the API Platform AI Gateway release version you want to run.
+
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/ai-gateway/v0.5.0/ai-gateway-v0.5.0.zip
+wget https://github.com/wso2/api-platform/releases/download/ai-gateway-v1.0.0-rc/ai-gateway-v1.0.0-rc.zip
 
 # Unzip the downloaded distribution.
-unzip ai-gateway-v0.5.0.zip
+unzip ai-gateway-v1.0.0-rc.zip
 
 
 # Start the complete stack
-cd ai-gateway-v0.5.0/
-docker compose up -d
+cd ai-gateway-v1.0.0-rc/
+docker compose -p ai-gateway up -d
 
-# Verify gateway controller is running
-curl http://localhost:9090/health
+# Verify gateway controller admin endpoint is running
+curl http://localhost:9094/health
 ```
 
 ## Deploy an MCP proxy configuration
@@ -40,7 +42,7 @@ curl http://localhost:9090/health
 Start the sample MCP server
 
 ```bash
-docker run -p 3001:3001 --name everything --network gateway_gateway-network rakhitharr/mcp-everything:v3
+docker run -p 3001:3001 --name everything --network ai-gateway_gateway-network rakhitharr/mcp-everything:v3
 ```
 
 Run the following command to deploy the MCP proxy.
@@ -86,13 +88,13 @@ When stopping the gateway, you have two options:
 ### Option 1: Stop runtime, keep data (persisted proxies and configuration)
 
 ```bash
-docker compose down
+docker compose -p ai-gateway down
 ```
 
-This stops the containers but preserves the `controller-data` volume. When you restart with `docker compose up`, all your API configurations will be restored.
+This stops the containers but preserves the `controller-data` volume. When you restart with `docker compose -p ai-gateway up`, all your API configurations will be restored.
 
 ### Option 2: Complete shutdown with data cleanup (fresh start)
 ```bash
-docker compose down -v
+docker compose -p ai-gateway down -v
 ```
 This stops containers and removes the `controller-data` volume. Next startup will be a clean slate with no persisted proxies or configuration.
