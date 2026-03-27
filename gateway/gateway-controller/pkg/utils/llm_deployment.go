@@ -1132,6 +1132,14 @@ func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploy
 	if existing == nil {
 		return nil, fmt.Errorf("LLM provider configuration with handle '%s' not found", handle)
 	}
+
+	// Check if this is an undeployment request
+	if isUndeploy, err := s.isLLMProviderUndeployRequest(params); err != nil {
+		return nil, err
+	} else if isUndeploy {
+		return s.undeployLLMConfig(existing, eventhub.EventTypeLLMProvider, params)
+	}
+
 	// Ensure Deploy uses existing ID so it performs an update
 	params.ID = existing.UUID
 	params.IsUpdate = true
@@ -1236,10 +1244,74 @@ func (s *LLMDeploymentService) UpdateLLMProxy(id string, params LLMDeploymentPar
 	if existing == nil {
 		return nil, fmt.Errorf("LLM proxy configuration with handle '%s' not found", id)
 	}
+
+	// Check if this is an undeployment request
+	if isUndeploy, err := s.isLLMProxyUndeployRequest(params); err != nil {
+		return nil, err
+	} else if isUndeploy {
+		return s.undeployLLMConfig(existing, eventhub.EventTypeLLMProxy, params)
+	}
+
 	// Ensure Deploy uses existing ID so it performs an update
 	params.ID = existing.UUID
 	params.IsUpdate = true
 	return s.DeployLLMProxyConfiguration(params)
+}
+
+// isLLMProviderUndeployRequest parses just enough of the provider config to check if deploymentState is "undeployed".
+func (s *LLMDeploymentService) isLLMProviderUndeployRequest(params LLMDeploymentParams) (bool, error) {
+	var providerConfig api.LLMProviderConfiguration
+	if err := s.parser.Parse(params.Data, params.ContentType, &providerConfig); err != nil {
+		return false, fmt.Errorf("failed to parse provider configuration: %w", err)
+	}
+	return providerConfig.Spec.DeploymentState != nil &&
+		*providerConfig.Spec.DeploymentState == api.LLMProviderConfigDataDeploymentStateUndeployed, nil
+}
+
+// isLLMProxyUndeployRequest parses just enough of the proxy config to check if deploymentState is "undeployed".
+func (s *LLMDeploymentService) isLLMProxyUndeployRequest(params LLMDeploymentParams) (bool, error) {
+	var proxyConfig api.LLMProxyConfiguration
+	if err := s.parser.Parse(params.Data, params.ContentType, &proxyConfig); err != nil {
+		return false, fmt.Errorf("failed to parse proxy configuration: %w", err)
+	}
+	return proxyConfig.Spec.DeploymentState != nil &&
+		*proxyConfig.Spec.DeploymentState == api.LLMProxyConfigDataDeploymentStateUndeployed, nil
+}
+
+// undeployLLMConfig handles undeployment for both LLM Provider and LLM Proxy configs.
+// It updates the DesiredState to StateUndeployed, preserves DeployedAt, and publishes an event.
+func (s *LLMDeploymentService) undeployLLMConfig(existing *models.StoredConfig, eventType eventhub.EventType, params LLMDeploymentParams) (*APIDeploymentResult, error) {
+	existing.DesiredState = models.StateUndeployed
+	existing.UpdatedAt = time.Now()
+	// Preserve DeployedAt to track when it was last deployed
+
+	if err := s.db.UpdateConfig(existing); err != nil {
+		return nil, fmt.Errorf("failed to persist undeployment: %w", err)
+	}
+
+	if s.isEventDriven() {
+		s.deploymentService.publishEvent(eventType, "UPDATE", existing.UUID, params.CorrelationID, params.Logger)
+	} else {
+		if err := s.store.Update(existing); err != nil {
+			return nil, fmt.Errorf("failed to update config in memory store: %w", err)
+		}
+
+		// Update xDS snapshot asynchronously (undeployed APIs will be filtered out)
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
+				params.Logger.Error("Failed to update xDS snapshot", slog.Any("error", err))
+			}
+		}()
+	}
+
+	params.Logger.Info("LLM configuration undeployed",
+		slog.String("id", existing.UUID),
+		slog.String("handle", existing.Handle),
+		slog.String("kind", existing.Kind))
+
+	return &APIDeploymentResult{StoredConfig: existing, IsUpdate: true, IsStale: false}, nil
 }
 
 func (s *LLMDeploymentService) GetLLMProxyByHandle(handle string) (*models.StoredConfig, error) {

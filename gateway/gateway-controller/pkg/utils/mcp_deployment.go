@@ -466,6 +466,13 @@ func (s *MCPDeploymentService) UpdateMCPProxy(handle string, params MCPDeploymen
 		return nil, fmt.Errorf("MCP proxy configuration with handle '%s' not found", handle)
 	}
 
+	// Check if this is an undeployment request
+	if isUndeploy, err := s.isMCPUndeployRequest(params); err != nil {
+		return nil, err
+	} else if isUndeploy {
+		return s.undeployMCPViaREST(existing, params)
+	}
+
 	// Ensure Deploy uses existing ID so it performs an update
 	params.ID = existing.UUID
 	res, err := s.DeployMCPConfiguration(params)
@@ -473,6 +480,54 @@ func (s *MCPDeploymentService) UpdateMCPProxy(handle string, params MCPDeploymen
 		return nil, err
 	}
 	return res.StoredConfig, nil
+}
+
+// isMCPUndeployRequest parses just enough of the MCP config to check if deploymentState is "undeployed".
+func (s *MCPDeploymentService) isMCPUndeployRequest(params MCPDeploymentParams) (bool, error) {
+	var mcpConfig api.MCPProxyConfiguration
+	if err := s.parser.Parse(params.Data, params.ContentType, &mcpConfig); err != nil {
+		return false, fmt.Errorf("failed to parse MCP proxy configuration: %w", err)
+	}
+	return mcpConfig.Spec.DeploymentState != nil &&
+		*mcpConfig.Spec.DeploymentState == api.MCPProxyConfigDataDeploymentStateUndeployed, nil
+}
+
+// undeployMCPViaREST handles undeployment initiated via the REST API update endpoint.
+// It updates DesiredState to StateUndeployed, preserves DeployedAt, and publishes an event.
+func (s *MCPDeploymentService) undeployMCPViaREST(existing *models.StoredConfig, params MCPDeploymentParams) (*models.StoredConfig, error) {
+	existing.DesiredState = models.StateUndeployed
+	existing.UpdatedAt = time.Now()
+	// Preserve DeployedAt to track when it was last deployed
+
+	if s.db != nil {
+		if err := s.db.UpdateConfig(existing); err != nil {
+			return nil, fmt.Errorf("failed to persist undeployment: %w", err)
+		}
+	}
+
+	if s.isEventDriven() {
+		s.publishMCPProxyEvent("UPDATE", existing.UUID, params.CorrelationID, params.Logger)
+	} else {
+		if err := s.store.Update(existing); err != nil {
+			return nil, fmt.Errorf("failed to update config in memory store: %w", err)
+		}
+
+		if s.snapshotManager != nil {
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
+					params.Logger.Error("Failed to update xDS snapshot", slog.Any("error", err))
+				}
+			}()
+		}
+	}
+
+	params.Logger.Info("MCP proxy configuration undeployed",
+		slog.String("id", existing.UUID),
+		slog.String("handle", existing.Handle))
+
+	return existing, nil
 }
 
 // DeleteMCPProxy deletes an MCP proxy by handle using store/db and updates snapshot
