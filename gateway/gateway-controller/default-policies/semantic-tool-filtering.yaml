@@ -45,6 +45,7 @@ parameters:
         JSONPath expression to extract the user's query from the request body.
         Example: "$.messages[-1].content"
       default: "$.messages[-1].content"
+      pattern: '^(?:\$\.)?[A-Za-z_][A-Za-z0-9_]*(?:(?:\[[0-9\-]+\])?(?:\.[A-Za-z_][A-Za-z0-9_]*)?)*$'
     toolsJSONPath:
       type: string
       x-wso2-policy-advanced-param: true
@@ -52,7 +53,7 @@ parameters:
         JSONPath expression to extract the tools array from the request body (used when toolsIsJson is true).
         Example: "$.tools"
       default: "$.tools"
-      pattern: '^(?:\$\.)?[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$'
+      pattern: '^(?:\$\.)?[A-Za-z_][A-Za-z0-9_]*(?:(?:\[[0-9\-]+\])?(?:\.[A-Za-z_][A-Za-z0-9_]*)?)*$'
     userQueryIsJson:
       type: boolean
       x-wso2-policy-advanced-param: true
