@@ -53,7 +53,7 @@ Feature: Test MCP CRUD and connectivity
         And the response should be valid JSON
         And the JSON response field "status" should be "success"
         And the JSON response field "count" should be 1
-        And I wait for 4 seconds
+        And I wait for 2 seconds
     
         When I use the MCP Client to send an initialize request to "http://127.0.0.1:8080/everything/mcp"
         Then the response should be successful
@@ -118,7 +118,7 @@ Feature: Test MCP CRUD and connectivity
         Then the response should be successful
         And the response should be valid JSON
         And the JSON response field "status" should be "success"
-        And I wait for 4 seconds
+        And I wait for 2 seconds
 
         When I use the MCP Client to send a tools/call request with invalid params to "http://127.0.0.1:8080/invalid-tools/mcp"
         Then the response status code should be 400
@@ -208,7 +208,7 @@ Feature: Test MCP CRUD and connectivity
         Then the response should be successful
         And the response should be valid JSON
         And the JSON response field "status" should be "success"
-        And I wait for 4 seconds
+        And I wait for 2 seconds
         
         Given I authenticate using basic auth as "admin"
         When I get the MCP proxy "labeled-mcp-v1.0"

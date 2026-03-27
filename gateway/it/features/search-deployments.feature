@@ -180,7 +180,7 @@ Feature: Search Deployments API
             path: /test
       """
     Then the response should be successful
-    And I wait for 4 seconds
+    And I wait for 2 seconds
     # Search by status via /apis endpoint
     When I send a GET request to the "gateway-controller" service at "/rest-apis?status=DEPLOYED"
     Then the response should be successful

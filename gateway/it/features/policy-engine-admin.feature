@@ -120,7 +120,7 @@ Feature: Policy Engine Admin API
     Then the config dump should contain route with basePath "/admin-delete-test/v1"
     When I delete the API "admin-delete-test-api-v1"
     Then the response should be successful
-    And I wait for 4 seconds
+    And I wait for 2 seconds
     And I send a GET request to the policy-engine config dump endpoint
     Then the config dump should not contain route with basePath "/admin-delete-test/v1"
 
@@ -263,7 +263,7 @@ Feature: Policy Engine Admin API
           - method: POST
             path: /new-endpoint
       """
-    And I wait for 4 seconds
+    And I wait for 2 seconds
     And I send a GET request to the policy-engine config dump endpoint
     Then the config dump should contain route with basePath "/xds-update/v1"
     And I delete the API "xds-update-api-v1"

@@ -553,7 +553,7 @@ Feature: Rate Limiting
             path: /handle
       """
     Then the response should be successful
-    And I wait for 4 seconds
+    And I wait for 2 seconds
 
     # Verify rate limit state was preserved - should still be 429
     When I send a GET request to "http://localhost:8080/ratelimit-update-test/v1.0/resource"
@@ -842,7 +842,7 @@ Feature: Rate Limiting
                         - type: routename
       """
     Then the response should be successful
-    And I wait for 4 seconds
+    And I wait for 2 seconds
 
     # Send 12 requests - should succeed (12/12 for 1h, 12/10000 for 24h)
     When I send 12 GET requests to "http://localhost:8080/ratelimit-multilimits/v1.0/resource"
@@ -2636,7 +2636,7 @@ Feature: Rate Limiting
   #                       - type: apiname
   #     """
   #   Then the response should be successful
-  #   And I wait for 4 seconds
+  #   And I wait for 2 seconds
 
   #   # CRITICAL TEST: route2 should still have 5 remaining requests
   #   # If the bug exists, the shared limiter would have been deleted and

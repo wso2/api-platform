@@ -50,7 +50,7 @@ Feature: API Deployment and Invocation
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
-    And I wait for 4 seconds
+    And I wait for 2 seconds
     When I send a GET request to "http://localhost:8080/weather/v1.0/us/seattle"
     Then the response should be successful
     And the response should be valid JSON
@@ -88,7 +88,7 @@ Feature: API Deployment and Invocation
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
-    And I wait for 4 seconds
+    And I wait for 2 seconds
     
     Given I authenticate using basic auth as "admin"
     When I get the API "labeled-api-v1.0"
