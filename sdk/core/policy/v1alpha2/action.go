@@ -106,6 +106,9 @@ type UpstreamRequestModifications struct {
 
 	// Embeds all header and routing mutations available at the header phase.
 	UpstreamRequestHeaderModifications
+
+	AnalyticsMetadata     map[string]any            // custom analytics metadata
+	DynamicMetadata       map[string]map[string]any // dynamic metadata by namespace
 }
 
 func (UpstreamRequestModifications) isRequestAction()    {}
@@ -134,6 +137,9 @@ type DownstreamResponseModifications struct {
 
 	// Embeds all header mutations available at the response phase.
 	DownstreamResponseHeaderModifications
+
+	AnalyticsMetadata     map[string]any            // custom analytics metadata
+	DynamicMetadata       map[string]map[string]any // dynamic metadata by namespace
 }
 
 func (DownstreamResponseModifications) isResponseAction()   {}
