@@ -144,7 +144,6 @@ func main() {
 		os.Exit(1)
 	}
 	eventHubDB := eventHubStorage.GetDB()
-	eventHubDB := eventHubStorage.GetDB()
 	gatewayID := strings.TrimSpace(cfg.Controller.Server.GatewayID)
 	if eventHubDB == nil {
 		log.Error("EventHub storage returned nil database handle")
