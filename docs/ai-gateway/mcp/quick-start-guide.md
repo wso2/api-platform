@@ -23,7 +23,7 @@ Replace `${version}` with the API Platform AI Gateway release version you want t
 
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/ai-gateway%2Fv1.0.0-rc/wso2apip-ai-gateway-1.0.0-rc.zip
+wget https://github.com/wso2/api-platform/releases/download/ai-gateway/v1.0.0-rc/wso2apip-ai-gateway-1.0.0-rc.zip
 
 # Unzip the downloaded distribution.
 unzip wso2apip-ai-gateway-1.0.0-rc.zip
