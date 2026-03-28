@@ -11,8 +11,7 @@ For step-by-step instructions on setting up and running the gateway using Docker
 | Component | Purpose |
 |-----------|---------|
 | **Gateway-Controller** | Control plane that manages API configurations and dynamically configures the Router |
-| **Router** | Data plane (Envoy Proxy) that routes HTTP/HTTPS traffic to backend services |
-| **Policy Engine** | Processes requests/responses through configurable policies (authentication, rate limiting, etc.) |
+| **Gateway-Runtime** | Data plane (Envoy Proxy) that routes HTTP/HTTPS traffic to backend services and Processes requests/responses through configurable policies (authentication, rate limiting, etc.)|
 | **Policy Builder** | Build-time tooling for compiling custom policy implementations |
 
 ### CLI Tool (ap)
