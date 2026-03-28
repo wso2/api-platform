@@ -143,7 +143,7 @@ operations:
     path: /protected
     policies:
       - name: jwt-auth
-        version: v0.1.0
+        version: v1
         params:                    # These are user parameters
           issuers:
             - test-jwks
@@ -176,7 +176,7 @@ policy_configurations:
 ```yaml
 policies:
   - name: jwt-auth
-    version: v0.1.0
+    version: v1
     params:
       issuers:
         - test-jwks

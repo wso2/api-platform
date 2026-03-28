@@ -41,7 +41,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
                 url: http://mcp-server-backend:3001
               policies:
                 - name: non-existing-policy
-                  version: v0
+                  version: v1
                   params: {}
               tools: []
               resources: []
@@ -68,7 +68,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
                 url: http://mcp-server-backend:3001
               policies:
                 - name: mcp-auth
-                  version: v0
+                  version: v1
                   params:
                     issuers:
                       - mock-jwks
@@ -111,7 +111,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
                 url: http://mcp-server-backend:3001
               policies:
                 - name: mcp-auth
-                  version: v0
+                  version: v1
                   params:
                     issuers:
                       - mock-jwks
@@ -151,7 +151,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
                 url: http://mcp-server-backend:3001
               policies:
                 - name: mcp-auth
-                  version: v0
+                  version: v1
                   params:
                     issuers:
                       - mock-jwks
@@ -198,12 +198,12 @@ Feature: Test how MCP Proxies behave when various policies are applied.
                 url: http://mcp-server-backend:3001
               policies:
                 - name: mcp-auth
-                  version: v0
+                  version: v1
                   params:
                     issuers:
                       - mock-jwks
                 - name: mcp-authz
-                  version: v0
+                  version: v1
                   params:
                     tools:
                       - name: "add"
@@ -256,12 +256,12 @@ Feature: Test how MCP Proxies behave when various policies are applied.
                 url: http://mcp-server-backend:3001
               policies:
                 - name: mcp-auth
-                  version: v0
+                  version: v1
                   params:
                     issuers:
                       - mock-jwks
                 - name: mcp-authz
-                  version: v0
+                  version: v1
                   params:
                     tools:
                       - name: "add"
@@ -307,7 +307,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
                 url: http://mcp-server-backend:3001
               policies:
                 - name: mcp-acl-list
-                  version: v0
+                  version: v1
                   params:
                     tools:
                       mode: deny
@@ -347,7 +347,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
                 url: http://mcp-server-backend:3001
               policies:
                 - name: mcp-acl-list
-                  version: v0
+                  version: v1
                   params:
                     tools:
                       mode: allow
@@ -392,7 +392,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
                 url: http://mcp-server-backend:3001
               policies:
                 - name: mcp-rewrite
-                  version: v0
+                  version: v1
                   params:
                     tools:
                       - name: sum
@@ -456,7 +456,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
                 url: http://mcp-server-backend:3001
               policies:
                 - name: cors
-                  version: v0
+                  version: v1
                   params:
                     allowedOrigins:
                       - "http://example.com"

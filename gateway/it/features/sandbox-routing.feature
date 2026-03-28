@@ -255,7 +255,7 @@ Feature: Sandbox Routing
             path: /whoami
             policies:
               - name: set-headers
-                version: v0
+                version: v1
                 params:
                   response:
                     headers:
@@ -691,7 +691,7 @@ Feature: Sandbox Routing
             path: /whoami
             policies:
               - name: set-headers
-                version: v0
+                version: v1
                 params:
                   response:
                     headers:
@@ -748,7 +748,7 @@ Feature: Sandbox Routing
             path: /whoami
             policies:
               - name: set-headers
-                version: v0
+                version: v1
                 params:
                   response:
                     headers:
@@ -873,7 +873,7 @@ Feature: Sandbox Routing
             path: /whoami
             policies:
               - name: set-headers
-                version: v0
+                version: v1
                 params:
                   response:
                     headers:

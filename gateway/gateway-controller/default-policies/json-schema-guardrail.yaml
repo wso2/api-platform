@@ -1,5 +1,5 @@
 name: json-schema-guardrail
-version: v0.9.0
+version: v1.0.0
 description: |
   Validate request or response content against a JSON Schema.
 

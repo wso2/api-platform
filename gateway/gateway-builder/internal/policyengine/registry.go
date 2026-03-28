@@ -110,8 +110,11 @@ func generateImportAlias(name, version string) string {
 
 // sanitizeIdentifier converts a string to a valid Go identifier
 func sanitizeIdentifier(s string) string {
-	// Remove 'v' prefix from versions
-	s = strings.TrimPrefix(s, "v")
+	// Replace 'v' prefix with '_' so versions like v1.0.0 → _1_0_0
+	// (avoids stripping the prefix entirely, which would cause collisions between v1/v2 only if names differ)
+	if strings.HasPrefix(s, "v") {
+		s = "_" + s[1:]
+	}
 
 	// Replace invalid characters.
 	var result strings.Builder

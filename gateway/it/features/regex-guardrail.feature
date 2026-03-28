@@ -51,7 +51,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""
@@ -103,7 +103,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""
@@ -154,7 +154,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""
@@ -208,7 +208,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""
@@ -259,7 +259,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""
@@ -314,7 +314,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: "$.code"
@@ -372,7 +372,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: "$.user.username"
@@ -434,7 +434,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: "$.nonexistent.field"
@@ -486,7 +486,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""
@@ -537,7 +537,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""
@@ -579,7 +579,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""
@@ -636,7 +636,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""
@@ -686,7 +686,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""
@@ -747,7 +747,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""
@@ -805,7 +805,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""
@@ -859,7 +859,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""
@@ -913,7 +913,7 @@ Feature: Regex Guardrail
             path: /echo
             policies:
               - name: regex-guardrail
-                version: v0
+                version: v1
                 params:
                   response:
                     jsonPath: "$.method"
@@ -957,7 +957,7 @@ Feature: Regex Guardrail
             path: /echo
             policies:
               - name: regex-guardrail
-                version: v0
+                version: v1
                 params:
                   response:
                     jsonPath: ""
@@ -998,7 +998,7 @@ Feature: Regex Guardrail
             path: /echo
             policies:
               - name: regex-guardrail
-                version: v0
+                version: v1
                 params:
                   response:
                     jsonPath: "$.host"
@@ -1045,7 +1045,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""
@@ -1095,7 +1095,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""
@@ -1152,7 +1152,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""
@@ -1203,7 +1203,7 @@ Feature: Regex Guardrail
             path: /validate
             policies:
               - name: regex-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""

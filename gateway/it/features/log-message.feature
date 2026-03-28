@@ -28,7 +28,7 @@ Feature: Log Message Policy Integration Tests
             path: /test
             policies:
               - name: log-message
-                version: v0
+                version: v1
                 params:
                   request:
                     payload: true
@@ -64,7 +64,7 @@ Feature: Log Message Policy Integration Tests
             path: /info
             policies:
               - name: log-message
-                version: v0
+                version: v1
                 params:
                   response:
                     payload: true
@@ -95,7 +95,7 @@ Feature: Log Message Policy Integration Tests
             path: /test
             policies:
               - name: log-message
-                version: v0
+                version: v1
                 params:
                   request:
                     payload: true
@@ -139,7 +139,7 @@ Feature: Log Message Policy Integration Tests
             path: /info
             policies:
               - name: log-message
-                version: v0
+                version: v1
                 params:
                   request:
                     headers: true
@@ -169,7 +169,7 @@ Feature: Log Message Policy Integration Tests
             path: /info
             policies:
               - name: log-message
-                version: v0
+                version: v1
                 params:
                   response:
                     headers: true
@@ -203,7 +203,7 @@ Feature: Log Message Policy Integration Tests
             path: /test
             policies:
               - name: log-message
-                version: v0
+                version: v1
                 params:
                   request:
                     payload: true
@@ -239,7 +239,7 @@ Feature: Log Message Policy Integration Tests
             path: /info
             policies:
               - name: log-message
-                version: v0
+                version: v1
                 params:
                   response:
                     payload: true
@@ -273,7 +273,7 @@ Feature: Log Message Policy Integration Tests
             path: /info
             policies:
               - name: log-message
-                version: v0
+                version: v1
                 params:
                   request:
                     headers: true
@@ -305,7 +305,7 @@ Feature: Log Message Policy Integration Tests
             path: /info
             policies:
               - name: log-message
-                version: v0
+                version: v1
                 params:
                   response:
                     headers: true
@@ -341,14 +341,14 @@ Feature: Log Message Policy Integration Tests
             path: /test
             policies:
               - name: set-headers
-                version: v0
+                version: v1
                 params:
                   request:
                     headers:
                       - name: X-Custom-Header
                         value: CustomValue
               - name: log-message
-                version: v0
+                version: v1
                 params:
                   request:
                     headers: true
@@ -383,7 +383,7 @@ Feature: Log Message Policy Integration Tests
             path: /info
             policies:
               - name: log-message
-                version: v0
+                version: v1
                 params:
                   request:
                     headers: true
@@ -391,7 +391,7 @@ Feature: Log Message Policy Integration Tests
             path: /echo
             policies:
               - name: log-message
-                version: v0
+                version: v1
                 params:
                   request:
                     payload: true
@@ -400,7 +400,7 @@ Feature: Log Message Policy Integration Tests
             path: /echo
             policies:
               - name: log-message
-                version: v0
+                version: v1
                 params:
                   request:
                     payload: true
@@ -410,7 +410,7 @@ Feature: Log Message Policy Integration Tests
             path: /echo
             policies:
               - name: log-message
-                version: v0
+                version: v1
                 params:
                   response:
                     headers: true
@@ -459,7 +459,7 @@ Feature: Log Message Policy Integration Tests
             path: /test
             policies:
               - name: log-message
-                version: v0
+                version: v1
                 params:
                   request:
                     payload: true

@@ -142,7 +142,7 @@ spec:
         methods: [POST]
   policies:
     - name: semantic-cache
-      version: v0.1.0
+      version: v1
       paths:
         - path: /chat/completions
           methods: [POST]

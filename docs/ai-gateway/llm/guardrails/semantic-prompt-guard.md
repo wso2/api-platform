@@ -139,7 +139,7 @@ spec:
         methods: [POST]
   policies:
     - name: semantic-prompt-guard
-      version: v0.1.0
+      version: v1
       paths:
         - path: /chat/completions
           methods: [POST]
@@ -219,7 +219,7 @@ spec:
         methods: [POST]
   policies:
     - name: semantic-prompt-guard
-      version: v0.1.0
+      version: v1
       paths:
         - path: /chat/completions
           methods: [POST]
@@ -241,7 +241,7 @@ Use both allow and deny lists for comprehensive filtering:
 ```yaml
 policies:
   - name: semantic-prompt-guard
-    version: v0.1.0
+    version: v1
     paths:
       - path: /chat/completions
         methods: [POST]
@@ -267,7 +267,7 @@ Configure semantic prompt guardrail with Azure OpenAI and extended timeout:
 ```yaml
 policies:
   - name: semantic-prompt-guard
-    version: v0.1.0
+    version: v1
     paths:
       - path: /chat/completions
         methods: [POST]
