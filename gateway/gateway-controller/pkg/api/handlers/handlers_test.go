@@ -1507,13 +1507,13 @@ func TestHandleStatusUpdate(t *testing.T) {
 	cfg := createTestStoredConfig("0000-test-id-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
 	_ = server.store.Add(cfg)
 
-	// Test successful deployment
+	// Test successful deployment — callback only logs, does not modify DeployedAt
+	// (DeployedAt is set at creation/undeployment time, not by the xDS callback)
 	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, "corr-id-1")
 
-	// Verify status updated
+	// Verify config is still accessible and state unchanged
 	updatedCfg, _ := server.store.Get("0000-test-id-0000-000000000000")
 	assert.Equal(t, models.StateDeployed, updatedCfg.DesiredState)
-	assert.NotNil(t, updatedCfg.DeployedAt)
 }
 
 // TestHandleStatusUpdateFailure tests status update for failed deployment

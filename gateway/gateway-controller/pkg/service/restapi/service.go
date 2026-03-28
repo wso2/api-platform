@@ -276,20 +276,35 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 		return nil, ErrNotFound
 	}
 
+	// Extract deploymentState from spec (defaults to "deployed" if not specified)
+	desiredState := models.StateDeployed
+	if apiConfig.Spec.DeploymentState != nil && *apiConfig.Spec.DeploymentState == api.APIConfigDataDeploymentStateUndeployed {
+		desiredState = models.StateUndeployed
+	}
+
 	// Update stored configuration
 	now := time.Now()
 	existing.Configuration = apiConfig
 	existing.SourceConfiguration = apiConfig
-	existing.DesiredState = models.StateDeployed
+	existing.DesiredState = desiredState
 	existing.UpdatedAt = now
-	existing.DeployedAt = nil
 
-	// Resolve policy configuration (handles secret resolution)
-	// Resolved config is not used here since we only want to check if the secret resolution succeeded
-	// Blocks the update if there are policy resolution errors (e.g. due to missing secrets) to prevent storing configs with unresolved secrets
-	_, err = s.resolvePolicyConfiguration(existing)
-	if err != nil {
-		return nil, err
+	if desiredState == models.StateUndeployed {
+		// Undeployment: update DeployedAt to mark when this state change happened
+		truncatedNow := now.Truncate(time.Millisecond)
+		existing.DeployedAt = &truncatedNow
+		log.Info("Undeploying API configuration",
+			slog.String("id", existing.UUID),
+			slog.String("handle", params.Handle))
+	} else {
+		// Normal config update: preserve existing DeployedAt (already set during initial creation)
+
+		// Resolve policy configuration (handles secret resolution)
+		// Blocks the update if there are policy resolution errors to prevent storing configs with unresolved secrets
+		_, err = s.resolvePolicyConfiguration(existing)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Dual-write: database first, then in-memory
@@ -302,7 +317,8 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 
 	log.Info("API configuration updated",
 		slog.String("id", existing.UUID),
-		slog.String("handle", params.Handle))
+		slog.String("handle", params.Handle),
+		slog.String("desired_state", string(desiredState)))
 
 	return &UpdateResult{Config: existing}, nil
 }
