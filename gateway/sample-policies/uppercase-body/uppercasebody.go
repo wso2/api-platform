@@ -1,6 +1,7 @@
 package uppercasebody
 
 import (
+	"context"
 	"log/slog"
 	"strings"
 
@@ -31,7 +32,7 @@ func (p *UppercaseBodyPolicy) Mode() policy.ProcessingMode {
 }
 
 // OnRequestBody transforms the request body to uppercase
-func (p *UppercaseBodyPolicy) OnRequestBody(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
+func (p *UppercaseBodyPolicy) OnRequestBody(_ context.Context, ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
 	slog.Debug("[Uppercase Body]: OnRequestBody called", "hasBody", ctx.Body != nil && ctx.Body.Present)
 
 	// Check if body is present

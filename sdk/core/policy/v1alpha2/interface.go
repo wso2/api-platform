@@ -5,6 +5,8 @@
 // at chain-build time — once at startup, with zero per-request overhead.
 package policyv1alpha2
 
+import "context"
+
 // Policy is the base interface all policies must implement.
 // Mode declares the policy's processing requirements for each phase; the kernel
 // uses this at chain-build time to configure buffering and ext_proc modes.
@@ -88,27 +90,27 @@ const (
 // RequestHeaderPolicy processes request headers.
 // Implement this to modify or inspect headers before the request body is read.
 type RequestHeaderPolicy interface {
-	OnRequestHeaders(ctx *RequestHeaderContext, params map[string]interface{}) RequestHeaderAction
+	OnRequestHeaders(ctx context.Context, reqCtx *RequestHeaderContext, params map[string]interface{}) RequestHeaderAction
 }
 
 // ResponseHeaderPolicy processes response headers.
 // Implement this to modify or inspect response headers before the response body is read.
 type ResponseHeaderPolicy interface {
-	OnResponseHeaders(ctx *ResponseHeaderContext, params map[string]interface{}) ResponseHeaderAction
+	OnResponseHeaders(ctx context.Context, respCtx *ResponseHeaderContext, params map[string]interface{}) ResponseHeaderAction
 }
 
 // RequestPolicy processes the complete buffered request body.
 // If any policy in the chain implements this interface, the request body is
 // buffered before any policy in the chain executes.
 type RequestPolicy interface {
-	OnRequestBody(ctx *RequestContext, params map[string]interface{}) RequestAction
+	OnRequestBody(ctx context.Context, reqCtx *RequestContext, params map[string]interface{}) RequestAction
 }
 
 // ResponsePolicy processes the complete buffered response body.
 // If any policy in the chain implements only ResponsePolicy (not
 // StreamingResponsePolicy), the entire chain uses BUFFERED mode.
 type ResponsePolicy interface {
-	OnResponseBody(ctx *ResponseContext, params map[string]interface{}) ResponseAction
+	OnResponseBody(ctx context.Context, respCtx *ResponseContext, params map[string]interface{}) ResponseAction
 }
 
 // StreamingRequestPolicy processes the request body chunk-by-chunk.
@@ -125,7 +127,7 @@ type ResponsePolicy interface {
 // hook on this interface.
 type StreamingRequestPolicy interface {
 	RequestPolicy
-	OnRequestBodyChunk(ctx *RequestStreamContext, chunk *StreamBody, params map[string]interface{}) RequestChunkAction
+	OnRequestBodyChunk(ctx context.Context, reqCtx *RequestStreamContext, chunk *StreamBody, params map[string]interface{}) RequestChunkAction
 	NeedsMoreRequestData(accumulated []byte) bool
 }
 
@@ -145,6 +147,6 @@ type StreamingRequestPolicy interface {
 // (open connections, partial buffers, token counters for billing).
 type StreamingResponsePolicy interface {
 	ResponsePolicy
-	OnResponseBodyChunk(ctx *ResponseStreamContext, chunk *StreamBody, params map[string]interface{}) ResponseChunkAction
+	OnResponseBodyChunk(ctx context.Context, respCtx *ResponseStreamContext, chunk *StreamBody, params map[string]interface{}) ResponseChunkAction
 	NeedsMoreResponseData(accumulated []byte) bool
 }

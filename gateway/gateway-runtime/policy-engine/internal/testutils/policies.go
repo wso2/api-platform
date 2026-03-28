@@ -19,6 +19,8 @@
 package testutils
 
 import (
+	"context"
+
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
@@ -32,11 +34,11 @@ func (p *NoopPolicy) Mode() policy.ProcessingMode {
 	return policy.ProcessingMode{}
 }
 
-func (p *NoopPolicy) OnRequestBody(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
+func (p *NoopPolicy) OnRequestBody(_ context.Context, _ *policy.RequestContext, _ map[string]interface{}) policy.RequestAction {
 	return nil
 }
 
-func (p *NoopPolicy) OnResponseBody(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
+func (p *NoopPolicy) OnResponseBody(_ context.Context, _ *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
 	return nil
 }
 
@@ -56,13 +58,13 @@ func (p *HeaderModifyingPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-func (p *HeaderModifyingPolicy) OnRequestBody(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
+func (p *HeaderModifyingPolicy) OnRequestBody(_ context.Context, _ *policy.RequestContext, _ map[string]interface{}) policy.RequestAction {
 	return policy.UpstreamRequestModifications{
 		HeadersToSet: map[string]string{p.Key: p.Value},
 	}
 }
 
-func (p *HeaderModifyingPolicy) OnResponseBody(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
+func (p *HeaderModifyingPolicy) OnResponseBody(_ context.Context, _ *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
 	return policy.DownstreamResponseModifications{
 		HeadersToSet: map[string]string{p.Key: p.Value},
 	}
@@ -83,14 +85,14 @@ func (p *ShortCircuitingPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-func (p *ShortCircuitingPolicy) OnRequestBody(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
+func (p *ShortCircuitingPolicy) OnRequestBody(_ context.Context, _ *policy.RequestContext, _ map[string]interface{}) policy.RequestAction {
 	return policy.ImmediateResponse{
 		StatusCode: p.StatusCode,
 		Body:       p.Body,
 	}
 }
 
-func (p *ShortCircuitingPolicy) OnResponseBody(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
+func (p *ShortCircuitingPolicy) OnResponseBody(_ context.Context, _ *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
 	return nil
 }
 
@@ -110,14 +112,14 @@ func (p *ConfigurableMockPolicy) Mode() policy.ProcessingMode {
 	return p.MockMode
 }
 
-func (p *ConfigurableMockPolicy) OnRequestBody(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
+func (p *ConfigurableMockPolicy) OnRequestBody(_ context.Context, ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
 	if p.OnReqFn != nil {
 		return p.OnReqFn(ctx, params)
 	}
 	return nil
 }
 
-func (p *ConfigurableMockPolicy) OnResponseBody(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
+func (p *ConfigurableMockPolicy) OnResponseBody(_ context.Context, ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
 	if p.OnRespFn != nil {
 		return p.OnRespFn(ctx, params)
 	}
@@ -137,11 +139,11 @@ func (p *SimpleMockPolicy) Mode() policy.ProcessingMode {
 	return policy.ProcessingMode{}
 }
 
-func (p *SimpleMockPolicy) OnRequestBody(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
+func (p *SimpleMockPolicy) OnRequestBody(_ context.Context, _ *policy.RequestContext, _ map[string]interface{}) policy.RequestAction {
 	return nil
 }
 
-func (p *SimpleMockPolicy) OnResponseBody(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
+func (p *SimpleMockPolicy) OnResponseBody(_ context.Context, _ *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
 	return nil
 }
 

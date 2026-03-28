@@ -2,6 +2,7 @@ package analytics
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -132,7 +133,7 @@ func (a *AnalyticsPolicy) Mode() policy.ProcessingMode {
 }
 
 // OnRequestBody performs Analytics collection process during the request phase (buffered).
-func (a *AnalyticsPolicy) OnRequestBody(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
+func (a *AnalyticsPolicy) OnRequestBody(_ context.Context, ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
 	slog.Debug("Analytics system policy: OnRequestBody called")
 	allowPayloads := getAllowPayloadsFlag(params)
 	analyticsMetadata := make(map[string]any)
@@ -213,7 +214,7 @@ func (a *AnalyticsPolicy) OnRequestBody(ctx *policy.RequestContext, params map[s
 
 // OnResponseBody performs Analytics collection during the response phase (buffered fallback).
 // Called when the chain is in buffered mode (e.g. another policy does not support streaming).
-func (a *AnalyticsPolicy) OnResponseBody(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
+func (a *AnalyticsPolicy) OnResponseBody(_ context.Context, ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
 	slog.Debug("Analytics system policy: OnResponseBody called")
 	allowPayloads := getAllowPayloadsFlag(params)
 
@@ -325,7 +326,7 @@ func (a *AnalyticsPolicy) OnResponseBody(ctx *policy.ResponseContext, params map
 // OnResponseBodyChunk handles streaming response body chunks.
 // Chunks are accumulated in SharedContext.Metadata. On EndOfStream the accumulated
 // bytes are parsed and analytics metadata is emitted on the final ResponseChunkAction.
-func (a *AnalyticsPolicy) OnResponseBodyChunk(ctx *policy.ResponseStreamContext, chunk *policy.StreamBody, params map[string]interface{}) policy.ResponseChunkAction {
+func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.ResponseStreamContext, chunk *policy.StreamBody, params map[string]interface{}) policy.ResponseChunkAction {
 	slog.Debug("Analytics system policy: OnResponseBodyChunk called")
 	if ctx.SharedContext.Metadata == nil {
 		ctx.SharedContext.Metadata = make(map[string]interface{})
