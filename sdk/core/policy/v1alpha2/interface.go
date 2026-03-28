@@ -117,12 +117,11 @@ type ResponsePolicy interface {
 // non-streaming policy). NeedsMoreRequestData is called after each chunk;
 // return true to accumulate before OnRequestBodyChunk is invoked.
 //
-// Error handling limitation: if an error occurs after one or more chunks have
-// already been forwarded to upstream, the upstream connection is already in
-// progress and the error cannot be cleanly surfaced — the stream will be
-// aborted. Policies that hold per-stream resources should handle cleanup in
-// their own error paths; there is currently no dedicated error-notification
-// hook on this interface.
+// Error handling: if an error occurs after one or more chunks have already been
+// forwarded to upstream, the stream will be aborted and the kernel will invoke
+// RequestLifecyclePolicy.OnRequestComplete(CompletionError, ...) on all policies
+// in the chain that implement RequestLifecyclePolicy. Implement that interface to
+// release any per-stream resources (partial buffers, in-flight calls, open spans).
 type StreamingRequestPolicy interface {
 	RequestPolicy
 	OnRequestBodyChunk(ctx *RequestStreamContext, chunk *StreamBody, params map[string]interface{}) RequestChunkAction
@@ -135,16 +134,110 @@ type StreamingRequestPolicy interface {
 // The kernel upgrades to FULL_DUPLEX_STREAMED only when every response policy
 // in the chain implements StreamingResponsePolicy.
 //
-// Error handling limitation: once the kernel has entered FULL_DUPLEX_STREAMED
-// mode and flushed at least one chunk downstream, the response status and
-// headers are committed to the client. A mid-stream error cannot be surfaced
-// as a clean HTTP error response — Envoy will abort the HTTP/2 stream or reset
-// the connection. ImmediateResponse is silently ignored in this context. There
-// is currently no dedicated error-notification hook on this interface; a future
-// OnStreamError method is planned to allow cleanup of per-stream resources
-// (open connections, partial buffers, token counters for billing).
+// Error handling: once the kernel has entered FULL_DUPLEX_STREAMED mode and
+// flushed at least one chunk downstream, the response status and headers are
+// committed to the client. A mid-stream error cannot be surfaced as a clean HTTP
+// error response — Envoy will abort the HTTP/2 stream with a RESET_STREAM.
+// The kernel will invoke RequestLifecyclePolicy.OnRequestComplete(CompletionError, ...)
+// on all policies in the chain that implement RequestLifecyclePolicy. Implement
+// that interface to release per-stream resources (open connections, partial
+// buffers, token counters for billing).
 type StreamingResponsePolicy interface {
 	ResponsePolicy
 	OnResponseBodyChunk(ctx *ResponseStreamContext, chunk *StreamBody, params map[string]interface{}) ResponseChunkAction
 	NeedsMoreResponseData(accumulated []byte) bool
 }
+
+// ─── Lifecycle hooks ──────────────────────────────────────────────────────────
+
+// CloseablePolicy is implemented by policies that hold instance-level resources
+// that must be released when the policy instance is decommissioned.
+//
+// The kernel calls Close() when an API is updated or deleted via xDS and the
+// policy chain is being replaced. Before calling Close(), the kernel drains all
+// in-flight requests on the retiring chain — no On* phase methods will be
+// invoked concurrently with or after Close(). Close() is called with a bounded
+// timeout (default: 30s); the kernel logs an error if Close() exceeds that
+// budget.
+//
+// Typical resources that require Close():
+//   - HTTP client connection pools
+//   - Database or cache connection pools
+//   - Background goroutines started in the PolicyFactory
+//   - File handles or OS resources
+//   - Registered callbacks or subscribers on shared services
+//
+// Close() must be idempotent. Return an error only for failures that warrant a
+// log entry; partial cleanup errors should be handled and suppressed internally.
+type CloseablePolicy interface {
+	Close() error
+}
+
+// RequestLifecyclePolicy is implemented by policies that hold per-request
+// resources that need explicit notification when a request ends.
+//
+// OnRequestComplete is called exactly once per request after all phase methods
+// have returned — or as soon as the kernel detects an abnormal request end
+// (client disconnect, upstream error, mid-stream failure). It fires for both
+// streaming and non-streaming request paths.
+//
+// The cause parameter indicates why the request ended:
+//   - CompletionNormal: the request completed the full pipeline successfully.
+//   - CompletionCancelled: the client disconnected before the response was delivered.
+//   - CompletionError: an upstream or policy error ended the request early.
+//
+// The shared context carries the RequestID, API metadata, and the Metadata map
+// populated during the request — useful for finalising observability spans,
+// billing records, or accumulated state (e.g. token counts for partial LLM
+// responses interrupted by a client disconnect).
+//
+// Important: the Go context passed to On* phase methods is already cancelled
+// when OnRequestComplete runs for non-normal causes. Use a fresh context for
+// any cleanup I/O (the kernel provides a short-lived background context with a
+// bounded timeout).
+type RequestLifecyclePolicy interface {
+	OnRequestComplete(cause CompletionCause, shared *SharedContext)
+}
+
+// CompletionCause describes why a request ended, passed to
+// RequestLifecyclePolicy.OnRequestComplete.
+type CompletionCause uint8
+
+const (
+	// CompletionNormal indicates the request completed the full pipeline without error.
+	CompletionNormal CompletionCause = iota
+
+	// CompletionCancelled indicates the client disconnected before the response
+	// was fully delivered (e.g., HTTP/2 RST_STREAM, TCP close mid-flight).
+	CompletionCancelled
+
+	// CompletionError indicates an upstream error, policy error, or mid-stream
+	// processing failure ended the request before normal completion.
+	CompletionError
+)
+
+// ─── Default implementations ─────────────────────────────────────────────────
+
+// PolicyBase provides no-op default implementations for the optional lifecycle
+// hooks — CloseablePolicy and RequestLifecyclePolicy. Embedding PolicyBase in
+// a policy struct satisfies these interfaces with safe defaults; override only
+// the hooks your policy actually needs.
+//
+// PolicyBase intentionally does NOT implement the base Policy interface — it
+// does not provide Mode(). Policy authors must still implement Mode() themselves.
+//
+// Example:
+//
+//	type MyPolicy struct {
+//	    policyv1alpha2.PolicyBase
+//	    pool *ConnectionPool
+//	}
+//
+//	func (p *MyPolicy) Mode() policyv1alpha2.ProcessingMode { ... }
+//
+//	// Only Close needs overriding — OnRequestComplete stays as no-op.
+//	func (p *MyPolicy) Close() error { return p.pool.Close() }
+type PolicyBase struct{}
+
+func (PolicyBase) Close() error                                           { return nil }
+func (PolicyBase) OnRequestComplete(CompletionCause, *SharedContext) {}
