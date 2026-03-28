@@ -23,14 +23,14 @@ Replace `${version}` with the API Platform AI Gateway release version you want t
 
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/ai-gateway-v1.0.0-rc/ai-gateway-v1.0.0-rc.zip
+wget https://github.com/wso2/api-platform/releases/download/ai-gateway%2Fv1.0.0-rc/wso2apip-ai-gateway-1.0.0-rc.zip
 
 # Unzip the downloaded distribution.
-unzip ai-gateway-v1.0.0-rc.zip
+unzip wso2apip-ai-gateway-1.0.0-rc.zip
 
 
 # Start the complete stack
-cd ai-gateway-v1.0.0-rc/
+cd wso2apip-ai-gateway-1.0.0-rc/
 docker compose -p ai-gateway up -d
 
 # Verify gateway controller admin endpoint is running
@@ -48,7 +48,7 @@ docker run -p 3001:3001 --name everything --network ai-gateway_gateway-network r
 Run the following command to deploy the MCP proxy.
 
 ```bash
-curl -X POST http://localhost:9090/mcp-proxies \
+curl -X PUT http://localhost:9090/mcp-proxies/everything-mcp-v1.0 \
   -H "Content-Type: application/yaml" \
   -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
@@ -61,11 +61,9 @@ spec:
   version: v1.0
   context: /everything
   specVersion: "2025-06-18"
+  # vhost: "mcp1.api-platform.com"
   upstream:
     url: http://everything:3001
-  tools: []
-  resources: []
-  prompts: []
 EOF
 ```
 To test MCP traffic routing through the gateway, add the following URL to your MCP client and connect to the server.
