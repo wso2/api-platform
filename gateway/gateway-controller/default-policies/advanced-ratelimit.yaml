@@ -256,7 +256,7 @@ systemParameters:
         fixed-window for simple interval counting.
       enum: ["gcra", "fixed-window"]
       default: "fixed-window"
-      "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.algorithm}"
+      "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.algorithm}"
 
     backend:
       type: string
@@ -265,7 +265,7 @@ systemParameters:
         for distributed limits.
       enum: ["memory", "redis"]
       default: "memory"
-      "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.backend}"
+      "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.backend}"
 
     redis:
       type: object
@@ -276,7 +276,7 @@ systemParameters:
           type: string
           description: Specifies the Redis host name or IP address.
           default: "localhost"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.host}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.host}"
 
         port:
           type: integer
@@ -284,17 +284,17 @@ systemParameters:
           minimum: 1
           maximum: 65535
           default: 6379
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.port}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.port}"
 
         password:
           type: string
           description: Specifies the optional Redis authentication password.
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.password}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.password}"
 
         username:
           type: string
           description: Specifies the optional Redis ACL username.
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.username}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.username}"
 
         db:
           type: integer
@@ -302,13 +302,13 @@ systemParameters:
           minimum: 0
           maximum: 15
           default: 0
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.db}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.db}"
 
         keyPrefix:
           type: string
           description: Specifies the prefix used for all Redis keys.
           default: "ratelimit:v1:"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.key_prefix}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.key_prefix}"
 
         failureMode:
           type: string
@@ -317,7 +317,7 @@ systemParameters:
             closed blocks requests.
           enum: ["open", "closed"]
           default: "open"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.failure_mode}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.failure_mode}"
 
         connectionTimeout:
           type: string
@@ -326,7 +326,7 @@ systemParameters:
             composite and fractional values (for example "500ms", "1.5s",
             "1m30s").
           default: "5s"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.connection_timeout}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.connection_timeout}"
 
         readTimeout:
           type: string
@@ -335,7 +335,7 @@ systemParameters:
             composite and fractional values (for example "500ms", "1.5s",
             "1m30s").
           default: "3s"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.read_timeout}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.read_timeout}"
 
         writeTimeout:
           type: string
@@ -344,7 +344,7 @@ systemParameters:
             composite and fractional values (for example "500ms", "1.5s",
             "1m30s").
           default: "3s"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.write_timeout}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.write_timeout}"
 
     memory:
       type: object
@@ -358,7 +358,7 @@ systemParameters:
           minimum: 100
           maximum: 10000000
           default: 10000
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.memory.max_entries}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.memory.max_entries}"
 
         cleanupInterval:
           type: string
@@ -368,7 +368,7 @@ systemParameters:
             fractional values (for example "500ms", "1.5s", "1m30s").
             Use "0" to disable cleanup.
           default: "5m"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.memory.cleanup_interval}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.memory.cleanup_interval}"
 
     headers:
       type: object
@@ -380,7 +380,7 @@ systemParameters:
           description: |
             Includes X-RateLimit-Limit, X-RateLimit-Remaining, and X-RateLimit-Reset headers.
           default: true
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.headers.include_x_rate_limit}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.headers.include_x_rate_limit}"
 
         includeIETF:
           type: boolean
@@ -388,11 +388,11 @@ systemParameters:
             Includes RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, and
             RateLimit-Policy headers.
           default: true
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.headers.include_ietf}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.headers.include_ietf}"
 
         includeRetryAfter:
           type: boolean
           description: |
             Includes the Retry-After header on 429 responses.
           default: true
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.headers.include_retry_after}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.headers.include_retry_after}"

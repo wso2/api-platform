@@ -23,24 +23,24 @@ The MCP Authentication policy uses a two-level configuration model:
 
 ### System Parameters (config.toml)
 
-Configured by the administrator in `config.toml` under `policy_configurations.mcpauth_v0` or `policy_configurations.jwtauth_v0` depending on the parameter.
+Configured by the administrator in `config.toml` under `policy_configurations.mcpauth_v1` or `policy_configurations.jwtauth_v1` depending on the parameter.
 
 | Parameter | Type | Required | Default | Path | Description |
 |-----------|------|----------|---------|------|-------------|
-| `keyManagers` | `KeyManager` array | Yes | - | jwtauth_v0 | List of key manager definitions. Each entry must include a unique `name` and `issuer`, and either `jwks.remote` or `jwks.local` configuration. |
-| `jwksCacheTtl` | string | No | - | jwtauth_v0 | Duration string for JWKS caching (e.g., `"5m"`). If omitted a default is used. |
-| `jwksFetchTimeout` | string | No | - | jwtauth_v0 | Timeout for HTTP fetch of JWKS (e.g., `"5s"`). |
-| `jwksFetchRetryCount` | integer | No | - | jwtauth_v0 | Number of retries for JWKS fetch on transient failures. |
-| `jwksFetchRetryInterval` | string | No | - | jwtauth_v0 | Interval between JWKS fetch retries (e.g., `"2s"`). |
-| `allowedAlgorithms` | string array | No | - | jwtauth_v0 | Allowed JWT signing algorithms (e.g., `["RS256", "ES256"]`). |
-| `leeway` | string | No | - | jwtauth_v0 | Clock skew allowance for `exp`/`nbf` checks (e.g., `"30s"`). |
-| `authHeaderScheme` | string | No | `"Bearer"` | jwtauth_v0 | Expected scheme prefix in the authorization header. |
-| `headerName` | string | No | `"Authorization"` | jwtauth_v0 | Header name to extract the token from. |
-| `onFailureStatusCode` | integer | No | `401` | jwtauth_v0 | HTTP status code returned on authentication failure. Allowed values: `401`, `403`. |
-| `errorMessageFormat` | string | No | `"json"` | jwtauth_v0 | Format of the error response. Allowed values: `"json"`, `"plain"`, `"minimal"`. |
-| `errorMessage` | string | No | - | jwtauth_v0 | Custom error message to include in the response body on authentication failure. |
-| `validateIssuer` | boolean | No | - | jwtauth_v0 | Whether to validate the token's issuer claim against configured key managers. |
-| `gatewayHost` | string | No | `"localhost"` | mcpauth_v0 | The outward-facing gateway host name used when deriving the protected resource metadata URL and response. |
+| `keyManagers` | `KeyManager` array | Yes | - | jwtauth_v1 | List of key manager definitions. Each entry must include a unique `name` and `issuer`, and either `jwks.remote` or `jwks.local` configuration. |
+| `jwksCacheTtl` | string | No | - | jwtauth_v1 | Duration string for JWKS caching (e.g., `"5m"`). If omitted a default is used. |
+| `jwksFetchTimeout` | string | No | - | jwtauth_v1 | Timeout for HTTP fetch of JWKS (e.g., `"5s"`). |
+| `jwksFetchRetryCount` | integer | No | - | jwtauth_v1 | Number of retries for JWKS fetch on transient failures. |
+| `jwksFetchRetryInterval` | string | No | - | jwtauth_v1 | Interval between JWKS fetch retries (e.g., `"2s"`). |
+| `allowedAlgorithms` | string array | No | - | jwtauth_v1 | Allowed JWT signing algorithms (e.g., `["RS256", "ES256"]`). |
+| `leeway` | string | No | - | jwtauth_v1 | Clock skew allowance for `exp`/`nbf` checks (e.g., `"30s"`). |
+| `authHeaderScheme` | string | No | `"Bearer"` | jwtauth_v1 | Expected scheme prefix in the authorization header. |
+| `headerName` | string | No | `"Authorization"` | jwtauth_v1 | Header name to extract the token from. |
+| `onFailureStatusCode` | integer | No | `401` | jwtauth_v1 | HTTP status code returned on authentication failure. Allowed values: `401`, `403`. |
+| `errorMessageFormat` | string | No | `"json"` | jwtauth_v1 | Format of the error response. Allowed values: `"json"`, `"plain"`, `"minimal"`. |
+| `errorMessage` | string | No | - | jwtauth_v1 | Custom error message to include in the response body on authentication failure. |
+| `validateIssuer` | boolean | No | - | jwtauth_v1 | Whether to validate the token's issuer claim against configured key managers. |
+| `gatewayHost` | string | No | `"localhost"` | mcpauth_v1 | The outward-facing gateway host name used when deriving the protected resource metadata URL and response. |
 
 #### KeyManager Configuration
 
@@ -61,10 +61,10 @@ Each key manager in the `keyManagers` array supports the following structure:
 #### System Configuration Example
 
 ```toml
-[policy_configurations.mcpauth_v0]
+[policy_configurations.mcpauth_v1]
 gatewayHost = "gw.example.com"
 
-[policy_configurations.jwtauth_v0]
+[policy_configurations.jwtauth_v1]
 jwksCacheTtl = "5m"
 jwksFetchTimeout = "5s"
 jwksFetchRetryCount = 3
@@ -78,19 +78,19 @@ errorMessageFormat = "json"
 errorMessage = "Authentication failed."
 validateIssuer = true
 
-[[policy_configurations.jwtauth_v0.keyManagers]]
+[[policy_configurations.jwtauth_v1.keyManagers]]
 name = "PrimaryIDP"
 issuer = "https://idp.example.com/oauth2/token"
 
-[policy_configurations.jwtauth_v0.keyManagers.jwks.remote]
+[policy_configurations.jwtauth_v1.keyManagers.jwks.remote]
 uri = "https://idp.example.com/oauth2/jwks"
 skipTlsVerify = false
 
-[[policy_configurations.jwtauth_v0.keyManagers]]
+[[policy_configurations.jwtauth_v1.keyManagers]]
 name = "SecondaryIDP"
 issuer = "https://auth.example.org/oauth2/token"
 
-[policy_configurations.jwtauth_v0.keyManagers.jwks.remote]
+[policy_configurations.jwtauth_v1.keyManagers.jwks.remote]
 uri = "https://auth.example.org/oauth2/jwks"
 skipTlsVerify = false
 ```
