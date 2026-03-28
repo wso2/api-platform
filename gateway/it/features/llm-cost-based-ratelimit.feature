@@ -61,7 +61,7 @@ Feature: LLM Cost-Based Rate Limiting
           mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -71,7 +71,7 @@ Feature: LLM Cost-Based Rate Limiting
                     - amount: 0.000236
                       duration: "1h"
           - name: llm-cost
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -147,7 +147,7 @@ Feature: LLM Cost-Based Rate Limiting
           mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -159,7 +159,7 @@ Feature: LLM Cost-Based Rate Limiting
                     - amount: 0.001180
                       duration: "1h"
           - name: llm-cost
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -233,7 +233,7 @@ Feature: LLM Cost-Based Rate Limiting
           mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -243,7 +243,7 @@ Feature: LLM Cost-Based Rate Limiting
                     - amount: 0.000280
                       duration: "1h"
           - name: llm-cost
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -317,7 +317,7 @@ Feature: LLM Cost-Based Rate Limiting
           mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -327,7 +327,7 @@ Feature: LLM Cost-Based Rate Limiting
                     - amount: 0.001
                       duration: "1h"
           - name: llm-cost
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -398,7 +398,7 @@ Feature: LLM Cost-Based Rate Limiting
           mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -408,7 +408,7 @@ Feature: LLM Cost-Based Rate Limiting
                     - amount: 0.000236
                       duration: "1h"
           - name: llm-cost
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -436,7 +436,7 @@ Feature: LLM Cost-Based Rate Limiting
           mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -446,7 +446,7 @@ Feature: LLM Cost-Based Rate Limiting
                     - amount: 0.000236
                       duration: "1h"
           - name: llm-cost
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -532,7 +532,7 @@ Feature: LLM Cost-Based Rate Limiting
           mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -542,7 +542,7 @@ Feature: LLM Cost-Based Rate Limiting
                     - amount: 0.000236
                       duration: "1h"
           - name: llm-cost
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -627,7 +627,7 @@ Feature: LLM Cost-Based Rate Limiting
           mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -637,7 +637,7 @@ Feature: LLM Cost-Based Rate Limiting
                     - amount: 0.000236
                       duration: "10s"
           - name: llm-cost
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -719,7 +719,7 @@ Feature: LLM Cost-Based Rate Limiting
           mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -729,7 +729,7 @@ Feature: LLM Cost-Based Rate Limiting
                     - amount: 0.000075
                       duration: "1h"
           - name: llm-cost
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -807,7 +807,7 @@ Feature: LLM Cost-Based Rate Limiting
           mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -817,7 +817,7 @@ Feature: LLM Cost-Based Rate Limiting
                     - amount: 0.004620
                       duration: "1h"
           - name: llm-cost
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -890,7 +890,7 @@ Feature: LLM Cost-Based Rate Limiting
           mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -900,7 +900,7 @@ Feature: LLM Cost-Based Rate Limiting
                     - amount: 0.011600
                       duration: "1h"
           - name: llm-cost
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -972,7 +972,7 @@ Feature: LLM Cost-Based Rate Limiting
           mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -982,7 +982,7 @@ Feature: LLM Cost-Based Rate Limiting
                     - amount: 0.040280
                       duration: "1h"
           - name: llm-cost
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -1055,7 +1055,7 @@ Feature: LLM Cost-Based Rate Limiting
           mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -1065,7 +1065,7 @@ Feature: LLM Cost-Based Rate Limiting
                     - amount: 0.000150
                       duration: "1h"
           - name: llm-cost
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -1138,7 +1138,7 @@ Feature: LLM Cost-Based Rate Limiting
           mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -1148,7 +1148,7 @@ Feature: LLM Cost-Based Rate Limiting
                     - amount: 0.000300
                       duration: "1h"
           - name: llm-cost
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -1221,7 +1221,7 @@ Feature: LLM Cost-Based Rate Limiting
           mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -1231,7 +1231,7 @@ Feature: LLM Cost-Based Rate Limiting
                     - amount: 0.000312
                       duration: "1h"
           - name: llm-cost
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -1304,7 +1304,7 @@ Feature: LLM Cost-Based Rate Limiting
           mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -1314,7 +1314,7 @@ Feature: LLM Cost-Based Rate Limiting
                     - amount: 0.001300
                       duration: "1h"
           - name: llm-cost
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -1386,7 +1386,7 @@ Feature: LLM Cost-Based Rate Limiting
           mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -1396,7 +1396,7 @@ Feature: LLM Cost-Based Rate Limiting
                     - amount: 0.001000
                       duration: "1h"
           - name: llm-cost
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -1468,7 +1468,7 @@ Feature: LLM Cost-Based Rate Limiting
           mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -1478,7 +1478,7 @@ Feature: LLM Cost-Based Rate Limiting
                     - amount: 0.002100
                       duration: "1h"
           - name: llm-cost
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -1550,7 +1550,7 @@ Feature: LLM Cost-Based Rate Limiting
           mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -1560,7 +1560,7 @@ Feature: LLM Cost-Based Rate Limiting
                     - amount: 0.000600
                       duration: "1h"
           - name: llm-cost
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -1632,7 +1632,7 @@ Feature: LLM Cost-Based Rate Limiting
           mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -1642,7 +1642,7 @@ Feature: LLM Cost-Based Rate Limiting
                     - amount: 0.000924
                       duration: "1h"
           - name: llm-cost
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -1714,7 +1714,7 @@ Feature: LLM Cost-Based Rate Limiting
           mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -1724,7 +1724,7 @@ Feature: LLM Cost-Based Rate Limiting
                     - amount: 0.020600
                       duration: "1h"
           - name: llm-cost
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -1795,7 +1795,7 @@ Feature: LLM Cost-Based Rate Limiting
           mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -1805,7 +1805,7 @@ Feature: LLM Cost-Based Rate Limiting
                     - amount: 0.000050
                       duration: "1h"
           - name: llm-cost
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -1875,7 +1875,7 @@ Feature: LLM Cost-Based Rate Limiting
           mode: allow_all
         policies:
           - name: llm-cost-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:
@@ -1885,7 +1885,7 @@ Feature: LLM Cost-Based Rate Limiting
                     - amount: 0.000001
                       duration: "1h"
           - name: llm-cost
-            version: v0
+            version: v1
             paths:
               - path: /*
                 methods:

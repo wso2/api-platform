@@ -51,7 +51,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -104,7 +104,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -148,7 +148,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -203,7 +203,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -259,7 +259,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -318,7 +318,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -382,7 +382,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -435,7 +435,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -483,7 +483,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -535,7 +535,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -578,7 +578,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -626,7 +626,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -684,7 +684,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -728,7 +728,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -785,7 +785,7 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true

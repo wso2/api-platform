@@ -53,7 +53,7 @@ Feature: Subscription Validation
             path: /health
             policies:
               - name: subscription-validation
-                version: v0
+                version: v1
                 params:
                   subscriptionKeyHeader: "Subscription-Key"
       """

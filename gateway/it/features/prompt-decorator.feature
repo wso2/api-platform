@@ -51,7 +51,7 @@ Feature: Prompt Decorator
             path: /chat
             policies:
               - name: prompt-decorator
-                version: v0
+                version: v1
                 params:
                   promptDecoratorConfig:
                     messages:
@@ -103,7 +103,7 @@ Feature: Prompt Decorator
             path: /chat
             policies:
               - name: prompt-decorator
-                version: v0
+                version: v1
                 params:
                   promptDecoratorConfig:
                     messages:
@@ -156,7 +156,7 @@ Feature: Prompt Decorator
             path: /chat
             policies:
               - name: prompt-decorator
-                version: v0
+                version: v1
                 params:
                   promptDecoratorConfig:
                     messages:
@@ -214,7 +214,7 @@ Feature: Prompt Decorator
             path: /complete
             policies:
               - name: prompt-decorator
-                version: v0
+                version: v1
                 params:
                   promptDecoratorConfig:
                     text: "Summarize the following:"
@@ -262,7 +262,7 @@ Feature: Prompt Decorator
             path: /complete
             policies:
               - name: prompt-decorator
-                version: v0
+                version: v1
                 params:
                   promptDecoratorConfig:
                     text: "Please be brief."
@@ -314,7 +314,7 @@ Feature: Prompt Decorator
             path: /chat
             policies:
               - name: prompt-decorator
-                version: v0
+                version: v1
                 params:
                   promptDecoratorConfig:
                     text: "Format your answer in JSON."
@@ -365,7 +365,7 @@ Feature: Prompt Decorator
             path: /chat
             policies:
               - name: prompt-decorator
-                version: v0
+                version: v1
                 params:
                   promptDecoratorConfig:
                     text: "Be creative!"
@@ -419,7 +419,7 @@ Feature: Prompt Decorator
             path: /complete
             policies:
               - name: prompt-decorator
-                version: v0
+                version: v1
                 params:
                   promptDecoratorConfig:
                     text: "Answer concisely:"
@@ -474,7 +474,7 @@ Feature: Prompt Decorator
             path: /chat
             policies:
               - name: prompt-decorator
-                version: v0
+                version: v1
                 params:
                   promptDecoratorConfig:
                     messages:
@@ -521,7 +521,7 @@ Feature: Prompt Decorator
             path: /chat
             policies:
               - name: prompt-decorator
-                version: v0
+                version: v1
                 params:
                   promptDecoratorConfig:
                     messages:
@@ -574,7 +574,7 @@ Feature: Prompt Decorator
             path: /chat
             policies:
               - name: prompt-decorator
-                version: v0
+                version: v1
                 params:
                   promptDecoratorConfig:
                     messages:
@@ -627,7 +627,7 @@ Feature: Prompt Decorator
             path: /chat
             policies:
               - name: prompt-decorator
-                version: v0
+                version: v1
                 params:
                   promptDecoratorConfig:
                     messages:
@@ -678,7 +678,7 @@ Feature: Prompt Decorator
             path: /chat
             policies:
               - name: prompt-decorator
-                version: v0
+                version: v1
                 params:
                   promptDecoratorConfig:
                     messages:
@@ -729,7 +729,7 @@ Feature: Prompt Decorator
             path: /chat
             policies:
               - name: prompt-decorator
-                version: v0
+                version: v1
                 params:
                   promptDecoratorConfig:
                     messages:

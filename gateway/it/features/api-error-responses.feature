@@ -64,7 +64,7 @@ Feature: API Error Responses
             url: http://sample-backend:9080
         policies:
           - name: respond
-            version: v0
+            version: v1
             params:
               statusCode: "200"
         operations:
@@ -94,7 +94,7 @@ Feature: API Error Responses
             url: http://sample-backend:9080
         policies:
           - name: policy-does-not-exist
-            version: v0
+            version: v1
         operations:
           - method: GET
             path: /test

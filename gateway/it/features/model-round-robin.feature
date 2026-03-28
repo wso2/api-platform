@@ -31,7 +31,7 @@ Feature: Model Round-Robin Load Balancing Policy
             path: /chat
             policies:
               - name: model-round-robin
-                version: v0
+                version: v1
                 params:
                   models:
                     - model: model-a
@@ -95,7 +95,7 @@ Feature: Model Round-Robin Load Balancing Policy
             path: /chat
             policies:
               - name: model-round-robin
-                version: v0
+                version: v1
                 params:
                   models:
                     - model: model-alpha
@@ -157,7 +157,7 @@ Feature: Model Round-Robin Load Balancing Policy
             path: /chat
             policies:
               - name: model-round-robin
-                version: v0
+                version: v1
                 params:
                   models:
                     - model: gpt-3.5-turbo
@@ -223,7 +223,7 @@ Feature: Model Round-Robin Load Balancing Policy
             path: /chat
             policies:
               - name: model-round-robin
-                version: v0
+                version: v1
                 params:
                   models:
                     - model: header-model-1
@@ -288,7 +288,7 @@ Feature: Model Round-Robin Load Balancing Policy
             path: /chat
             policies:
               - name: model-round-robin
-                version: v0
+                version: v1
                 params:
                   models:
                     - model: query-model-1
@@ -341,7 +341,7 @@ Feature: Model Round-Robin Load Balancing Policy
             path: /models/*
             policies:
               - name: model-round-robin
-                version: v0
+                version: v1
                 params:
                   models:
                     - model: path-model-x
@@ -400,7 +400,7 @@ Feature: Model Round-Robin Load Balancing Policy
             path: /chat
             policies:
               - name: model-round-robin
-                version: v0
+                version: v1
                 params:
                   models:
                     - model: nested-model-1
@@ -459,7 +459,7 @@ Feature: Model Round-Robin Load Balancing Policy
             path: /chat
             policies:
               - name: model-round-robin
-                version: v0
+                version: v1
                 params:
                   models:
                     - model: first-model
@@ -524,7 +524,7 @@ Feature: Model Round-Robin Load Balancing Policy
             path: /chat
             policies:
               - name: model-round-robin
-                version: v0
+                version: v1
                 params:
                   models:
                     - model: model-1
@@ -581,7 +581,7 @@ Feature: Model Round-Robin Load Balancing Policy
             path: /chat
             policies:
               - name: model-round-robin
-                version: v0
+                version: v1
                 params:
                   models:
                     - model: model-x
@@ -641,7 +641,7 @@ Feature: Model Round-Robin Load Balancing Policy
             path: /chat
             policies:
               - name: model-round-robin
-                version: v0
+                version: v1
                 params:
                   models:
                     - model: model-one
@@ -702,7 +702,7 @@ Feature: Model Round-Robin Load Balancing Policy
             path: /chat
             policies:
               - name: model-round-robin
-                version: v0
+                version: v1
                 params:
                   models:
                     - model: selected-model
@@ -742,7 +742,7 @@ Feature: Model Round-Robin Load Balancing Policy
             path: /chat
             policies:
               - name: model-round-robin
-                version: v0
+                version: v1
                 params:
                   models:
                     - model: selected-model
@@ -783,7 +783,7 @@ Feature: Model Round-Robin Load Balancing Policy
             path: /chat
             policies:
               - name: model-round-robin
-                version: v0
+                version: v1
                 params:
                   models:
                     - model: selected-model
@@ -824,7 +824,7 @@ Feature: Model Round-Robin Load Balancing Policy
             path: /chat
             policies:
               - name: model-round-robin
-                version: v0
+                version: v1
                 params:
                   models:
                     - model: selected-model
@@ -865,7 +865,7 @@ Feature: Model Round-Robin Load Balancing Policy
             path: /chat
             policies:
               - name: model-round-robin
-                version: v0
+                version: v1
                 params:
                   models:
                     - model: primary-instance

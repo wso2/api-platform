@@ -24,7 +24,7 @@ Feature: Request Transformation Policy Integration Tests
             path: /api/v1
             policies:
               - name: request-rewrite
-                version: v0
+                version: v1
                 params:
                   pathRewrite:
                     type: ReplacePrefixMatch
@@ -57,7 +57,7 @@ Feature: Request Transformation Policy Integration Tests
             path: /api/v1
             policies:
               - name: request-rewrite
-                version: v0
+                version: v1
                 params:
                   pathRewrite:
                     type: ReplaceFullPath
@@ -90,7 +90,7 @@ Feature: Request Transformation Policy Integration Tests
             path: /api/v1
             policies:
               - name: request-rewrite
-                version: v0
+                version: v1
                 params:
                   pathRewrite:
                     type: ReplaceRegexMatch
@@ -125,7 +125,7 @@ Feature: Request Transformation Policy Integration Tests
             path: /*
             policies:
               - name: request-rewrite
-                version: v0
+                version: v1
                 params:
                   pathRewrite:
                     type: ReplaceRegexMatch
@@ -160,7 +160,7 @@ Feature: Request Transformation Policy Integration Tests
             path: /*
             policies:
               - name: request-rewrite
-                version: v0
+                version: v1
                 params:
                   pathRewrite:
                     type: ReplaceRegexMatch
@@ -195,7 +195,7 @@ Feature: Request Transformation Policy Integration Tests
             path: /*
             policies:
               - name: request-rewrite
-                version: v0
+                version: v1
                 params:
                   pathRewrite:
                     type: ReplaceRegexMatch
@@ -230,7 +230,7 @@ Feature: Request Transformation Policy Integration Tests
             path: /search
             policies:
               - name: request-rewrite
-                version: v0
+                version: v1
                 params:
                   queryRewrite:
                     rules:
@@ -271,7 +271,7 @@ Feature: Request Transformation Policy Integration Tests
             path: /test/*
             policies:
               - name: request-rewrite
-                version: v0
+                version: v1
                 params:
                   methodRewrite: POST
       """
@@ -299,7 +299,7 @@ Feature: Request Transformation Policy Integration Tests
             url: http://echo-backend:80/anything
         policies:
           - name: request-rewrite
-            version: v0
+            version: v1
             params:
               pathRewrite:
                 type: ReplacePrefixMatch
@@ -332,7 +332,7 @@ Feature: Request Transformation Policy Integration Tests
             url: http://echo-backend:80/anything
         policies:
           - name: request-rewrite
-            version: v0
+            version: v1
             params:
               methodRewrite: POST
         operations:
@@ -366,7 +366,7 @@ Feature: Request Transformation Policy Integration Tests
             path: /api/v1
             policies:
               - name: request-rewrite
-                version: v0
+                version: v1
                 params:
                   match:
                     headers:

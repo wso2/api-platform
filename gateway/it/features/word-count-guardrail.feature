@@ -51,7 +51,7 @@ Feature: Word Count Guardrail
             path: /validate
             policies:
               - name: word-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 1
@@ -102,7 +102,7 @@ Feature: Word Count Guardrail
             path: /validate
             policies:
               - name: word-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 5
@@ -157,7 +157,7 @@ Feature: Word Count Guardrail
             path: /chat
             policies:
               - name: word-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 1
@@ -220,7 +220,7 @@ Feature: Word Count Guardrail
             path: /validate
             policies:
               - name: word-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 5
@@ -283,7 +283,7 @@ Feature: Word Count Guardrail
             path: /validate
             policies:
               - name: word-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 1
@@ -334,7 +334,7 @@ Feature: Word Count Guardrail
             path: /validate
             policies:
               - name: word-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 1
@@ -377,7 +377,7 @@ Feature: Word Count Guardrail
             path: /validate
             policies:
               - name: word-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 5
@@ -446,7 +446,7 @@ Feature: Word Count Guardrail
             path: /validate
             policies:
               - name: word-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 1
@@ -505,7 +505,7 @@ Feature: Word Count Guardrail
             path: /chat
             policies:
               - name: word-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 1
@@ -569,7 +569,7 @@ Feature: Word Count Guardrail
             path: /validate
             policies:
               - name: word-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 1
@@ -622,7 +622,7 @@ Feature: Word Count Guardrail
             path: /validate
             policies:
               - name: word-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 1
@@ -673,7 +673,7 @@ Feature: Word Count Guardrail
             path: /validate
             policies:
               - name: word-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 1
@@ -730,7 +730,7 @@ Feature: Word Count Guardrail
             path: /validate
             policies:
               - name: word-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 1

@@ -49,7 +49,7 @@ Feature: Azure Content Safety Content Moderation Policy
             path: /validate
             policies:
               - name: azure-content-safety-content-moderation
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""
@@ -94,7 +94,7 @@ Feature: Azure Content Safety Content Moderation Policy
             path: /validate
             policies:
               - name: azure-content-safety-content-moderation
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: "$.message"
@@ -137,7 +137,7 @@ Feature: Azure Content Safety Content Moderation Policy
             path: /validate
             policies:
               - name: azure-content-safety-content-moderation
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: "$.message"
@@ -180,7 +180,7 @@ Feature: Azure Content Safety Content Moderation Policy
             path: /validate
             policies:
               - name: azure-content-safety-content-moderation
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: "$.message"
@@ -232,7 +232,7 @@ Feature: Azure Content Safety Content Moderation Policy
             path: /validate
             policies:
               - name: azure-content-safety-content-moderation
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: "$.message"
@@ -276,7 +276,7 @@ Feature: Azure Content Safety Content Moderation Policy
             path: /validate
             policies:
               - name: azure-content-safety-content-moderation
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: "$.message"
@@ -337,7 +337,7 @@ Feature: Azure Content Safety Content Moderation Policy
             path: /validate
             policies:
               - name: azure-content-safety-content-moderation
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: "$.message"
@@ -395,7 +395,7 @@ Feature: Azure Content Safety Content Moderation Policy
             path: /chat
             policies:
               - name: azure-content-safety-content-moderation
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: "$.data.content"
@@ -460,7 +460,7 @@ Feature: Azure Content Safety Content Moderation Policy
             path: /validate
             policies:
               - name: azure-content-safety-content-moderation
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: "$.message"
@@ -508,7 +508,7 @@ Feature: Azure Content Safety Content Moderation Policy
             path: /validate
             policies:
               - name: azure-content-safety-content-moderation
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""
@@ -550,7 +550,7 @@ Feature: Azure Content Safety Content Moderation Policy
             path: /validate
             policies:
               - name: azure-content-safety-content-moderation
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: "$.message"
@@ -596,7 +596,7 @@ Feature: Azure Content Safety Content Moderation Policy
             path: /validate
             policies:
               - name: azure-content-safety-content-moderation
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: "$.message"
