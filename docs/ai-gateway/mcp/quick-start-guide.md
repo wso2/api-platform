@@ -61,9 +61,11 @@ spec:
   version: v1.0
   context: /everything
   specVersion: "2025-06-18"
-  # vhost: "mcp1.api-platform.com"
   upstream:
     url: http://everything:3001
+  tools: []
+  resources: []
+  prompts: []
 EOF
 ```
 To test MCP traffic routing through the gateway, add the following URL to your MCP client and connect to the server.
