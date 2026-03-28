@@ -29,7 +29,7 @@ unzip wso2apip-ai-gateway-1.0.0-rc.zip
 
 
 # Start the complete stack
-cd wso2apip-ai-gateway-1.0.0-rc/
+cd wso2apip-ai-gateway-1.0.0/
 docker compose up -d
 
 # Verify gateway controller admin endpoint is running
