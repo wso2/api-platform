@@ -48,7 +48,7 @@ docker run -p 3001:3001 --name everything --network ai-gateway_gateway-network r
 Run the following command to deploy the MCP proxy.
 
 ```bash
-curl -X PUT http://localhost:9090/mcp-proxies/everything-mcp-v1.0 \
+curl -X POST http://localhost:9090/mcp-proxies \
   -H "Content-Type: application/yaml" \
   -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
