@@ -216,28 +216,4 @@ const (
 	CompletionError
 )
 
-// ─── Default implementations ─────────────────────────────────────────────────
-
-// PolicyBase provides no-op default implementations for the optional lifecycle
-// hooks — CloseablePolicy and RequestLifecyclePolicy. Embedding PolicyBase in
-// a policy struct satisfies these interfaces with safe defaults; override only
-// the hooks your policy actually needs.
-//
-// PolicyBase intentionally does NOT implement the base Policy interface — it
-// does not provide Mode(). Policy authors must still implement Mode() themselves.
-//
-// Example:
-//
-//	type MyPolicy struct {
-//	    policyv1alpha2.PolicyBase
-//	    pool *ConnectionPool
-//	}
-//
-//	func (p *MyPolicy) Mode() policyv1alpha2.ProcessingMode { ... }
-//
-//	// Only Close needs overriding — OnRequestComplete stays as no-op.
-//	func (p *MyPolicy) Close() error { return p.pool.Close() }
-type PolicyBase struct{}
-
-func (PolicyBase) Close() error                                           { return nil }
-func (PolicyBase) OnRequestComplete(CompletionCause, *SharedContext) {}
+// PolicyBase is defined in policy_base.go.
