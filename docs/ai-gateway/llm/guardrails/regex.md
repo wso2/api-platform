@@ -93,7 +93,7 @@ spec:
         methods: [GET]
   policies:
     - name: regex-guardrail
-      version: v0.1.0
+      version: v1
       paths:
         - path: /chat/completions
           methods: [POST]

@@ -84,7 +84,7 @@ spec:
         methods: [GET]
   policies:
     - name: word-count-guardrail
-      version: v0.1.0
+      version: v1
       paths:
         - path: /chat/completions
           methods: [POST]

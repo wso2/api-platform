@@ -69,7 +69,7 @@ By default `build.yaml` uses `gomodule:` entries — policies compile from the G
 1. **Find the exact version compiled into the image:** look up the policy in `gateway/build-lock.yaml`. The `version` field is the resolved version and the `gomodule` field gives the module path:
    ```yaml
    - name: api-key-auth
-     version: v0.8.0
+     version: v1.8.0
      gomodule: github.com/wso2/gateway-controllers/policies/api-key-auth@v0
    ```
 

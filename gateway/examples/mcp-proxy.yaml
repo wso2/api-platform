@@ -34,12 +34,12 @@ spec:
     #   value: 12345
   # policies:
   #   - name: mcp-auth
-  #     version: v0
+  #     version: v1
   #     params:
   #       issuers:
   #         - PrimaryIdp
   #   - name: mcp-authz
-  #     version: v0
+  #     version: v1
   #     params:
   #       tools:
   #         - name: "viewPizzaMenu"
@@ -53,7 +53,7 @@ spec:
   #           requiredClaims:
   #             sub: "harry@gmail.com"
   #   - name: mcp-acl-list
-  #     version: v0
+  #     version: v1
   #     params:
   #       tools:
   #         mode: deny
