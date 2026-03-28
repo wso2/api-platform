@@ -158,3 +158,10 @@ func (b *PolicyBase) Close() error {
 //   - CompletionCancelled: client disconnected mid-flight.
 //   - CompletionError: upstream or policy error ended the request early.
 func (b *PolicyBase) OnRequestComplete(CompletionCause, *SharedContext) {}
+
+// Compile-time checks: PolicyBase must satisfy both lifecycle interfaces.
+// If either interface changes, this file will fail to compile with a clear error.
+var (
+	_ CloseablePolicy        = (*PolicyBase)(nil)
+	_ RequestLifecyclePolicy = (*PolicyBase)(nil)
+)

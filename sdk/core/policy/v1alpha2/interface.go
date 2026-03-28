@@ -216,4 +216,7 @@ const (
 	CompletionError
 )
 
-// PolicyBase is defined in policy_base.go.
+// ─── Default implementations ─────────────────────────────────────────────────
+//
+// PolicyBase provides concrete default implementations for CloseablePolicy and
+// RequestLifecyclePolicy, plus goroutine lifecycle utilities. See policy_base.go.
