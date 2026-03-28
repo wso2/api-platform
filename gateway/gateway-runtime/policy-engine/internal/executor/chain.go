@@ -58,9 +58,9 @@ type RequestHeaderExecutionResult struct {
 // ExecuteRequestHeaderPolicies invokes each RequestHeaderPolicy in the chain.
 // Policies that do not implement RequestHeaderPolicy are skipped silently.
 func (c *ChainExecutor) ExecuteRequestHeaderPolicies(
-	traceCtx context.Context,
+	ctx context.Context,
 	policyList []policy.Policy,
-	ctx *policy.RequestHeaderContext,
+	reqCtx *policy.RequestHeaderContext,
 	specs []policy.PolicySpec,
 	api, route string,
 	hasExecutionConditions bool,
@@ -75,7 +75,7 @@ func (c *ChainExecutor) ExecuteRequestHeaderPolicies(
 		spec := specs[i]
 		policyStartTime := time.Now()
 
-		_, span := c.tracer.Start(traceCtx, fmt.Sprintf(constants.SpanPolicyRequestFormat, spec.Name),
+		_, span := c.tracer.Start(ctx, fmt.Sprintf(constants.SpanPolicyRequestFormat, spec.Name),
 			trace.WithSpanKind(trace.SpanKindInternal))
 		if span.IsRecording() {
 			span.SetAttributes(
@@ -109,7 +109,7 @@ func (c *ChainExecutor) ExecuteRequestHeaderPolicies(
 		// Evaluate execution condition if present and if chain has any CEL conditions
 		if hasExecutionConditions && spec.ExecutionCondition != nil && *spec.ExecutionCondition != "" {
 			if c.celEvaluator != nil {
-				conditionMet, err := c.celEvaluator.EvaluateRequestHeaderCondition(*spec.ExecutionCondition, ctx)
+				conditionMet, err := c.celEvaluator.EvaluateRequestHeaderCondition(*spec.ExecutionCondition, reqCtx)
 				if err != nil {
 					if span.IsRecording() {
 						span.RecordError(err)
@@ -142,12 +142,12 @@ func (c *ChainExecutor) ExecuteRequestHeaderPolicies(
 			return nil, fmt.Errorf("failed to clone parameters for policy %s:%s: %w", spec.Name, spec.Version, err)
 		}
 
-		action := headerPol.OnRequestHeaders(ctx, params)
+		action := headerPol.OnRequestHeaders(ctx, reqCtx, params)
 		executionTime := time.Since(policyStartTime)
 
-		// Apply header mutations to ctx so subsequent policies and CEL conditions see the mutated state
+		// Apply header mutations to reqCtx so subsequent policies and CEL conditions see the mutated state
 		if mod, ok := action.(policy.UpstreamRequestHeaderModifications); ok {
-			internalHeaders := ctx.Headers.UnsafeInternalValues()
+			internalHeaders := reqCtx.Headers.UnsafeInternalValues()
 			for k, v := range mod.HeadersToSet {
 				internalHeaders[strings.ToLower(k)] = []string{v}
 			}
@@ -155,10 +155,10 @@ func (c *ChainExecutor) ExecuteRequestHeaderPolicies(
 				delete(internalHeaders, strings.ToLower(k))
 			}
 			if mod.Path != nil {
-				ctx.Path = *mod.Path
+				reqCtx.Path = *mod.Path
 			}
 			if mod.Method != nil {
-				ctx.Method = *mod.Method
+				reqCtx.Method = *mod.Method
 			}
 		}
 
@@ -216,7 +216,7 @@ type RequestExecutionResult struct {
 
 // ExecuteRequestPolicies executes request policies with condition evaluation
 // hasExecutionConditions indicates if any policy in the chain has CEL conditions; when false, CEL evaluation is skipped entirely
-func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyList []policy.Policy, ctx *policy.RequestContext, specs []policy.PolicySpec, api, route string, hasExecutionConditions bool) (*RequestExecutionResult, error) {
+func (c *ChainExecutor) ExecuteRequestPolicies(ctx context.Context, policyList []policy.Policy, reqCtx *policy.RequestContext, specs []policy.PolicySpec, api, route string, hasExecutionConditions bool) (*RequestExecutionResult, error) {
 	startTime := time.Now()
 	result := &RequestExecutionResult{
 		Results:        make([]RequestPolicyResult, 0, len(policyList)),
@@ -229,7 +229,7 @@ func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyL
 		policyStartTime := time.Now()
 
 		// Create span for individual policy execution - NoOp if tracing disabled
-		_, span := c.tracer.Start(traceCtx, fmt.Sprintf(constants.SpanPolicyRequestFormat, spec.Name),
+		_, span := c.tracer.Start(ctx, fmt.Sprintf(constants.SpanPolicyRequestFormat, spec.Name),
 			trace.WithSpanKind(trace.SpanKindInternal))
 
 		// Add policy metadata attributes
@@ -274,7 +274,7 @@ func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyL
 		// Skip this block entirely when no policies in the chain have CEL conditions
 		if hasExecutionConditions && spec.ExecutionCondition != nil && *spec.ExecutionCondition != "" {
 			if c.celEvaluator != nil {
-				conditionMet, err := c.celEvaluator.EvaluateRequestBodyCondition(*spec.ExecutionCondition, ctx)
+				conditionMet, err := c.celEvaluator.EvaluateRequestBodyCondition(*spec.ExecutionCondition, reqCtx)
 				if err != nil {
 					if span.IsRecording() {
 						span.RecordError(err)
@@ -311,7 +311,7 @@ func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyL
 		}
 
 		slog.Debug("[body] calling OnRequestBody", "policy", spec.Name, "version", spec.Version, "route", route)
-		action := rp.OnRequestBody(ctx, params)
+		action := rp.OnRequestBody(ctx, reqCtx, params)
 		executionTime := time.Since(policyStartTime)
 
 		// Record policy execution metrics
@@ -349,7 +349,7 @@ func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyL
 
 			// Apply modifications to context
 			if mods, ok := action.(policy.UpstreamRequestModifications); ok {
-				applyRequestModifications(ctx, &mods)
+				applyRequestModifications(reqCtx, &mods)
 			}
 		}
 
@@ -382,9 +382,9 @@ type ResponseHeaderExecutionResult struct {
 // ExecuteResponseHeaderPolicies invokes each ResponseHeaderPolicy in the chain (reverse order).
 // Policies that do not implement ResponseHeaderPolicy are skipped silently.
 func (c *ChainExecutor) ExecuteResponseHeaderPolicies(
-	traceCtx context.Context,
+	ctx context.Context,
 	policyList []policy.Policy,
-	ctx *policy.ResponseHeaderContext,
+	respCtx *policy.ResponseHeaderContext,
 	specs []policy.PolicySpec,
 	api, route string,
 	hasExecutionConditions bool,
@@ -399,7 +399,7 @@ func (c *ChainExecutor) ExecuteResponseHeaderPolicies(
 		spec := specs[i]
 		policyStartTime := time.Now()
 
-		_, span := c.tracer.Start(traceCtx, fmt.Sprintf(constants.SpanPolicyResponseFormat, spec.Name),
+		_, span := c.tracer.Start(ctx, fmt.Sprintf(constants.SpanPolicyResponseFormat, spec.Name),
 			trace.WithSpanKind(trace.SpanKindInternal))
 		if span.IsRecording() {
 			span.SetAttributes(
@@ -430,7 +430,7 @@ func (c *ChainExecutor) ExecuteResponseHeaderPolicies(
 
 		if hasExecutionConditions && spec.ExecutionCondition != nil && *spec.ExecutionCondition != "" {
 			if c.celEvaluator != nil {
-				conditionMet, err := c.celEvaluator.EvaluateResponseHeaderCondition(*spec.ExecutionCondition, ctx)
+				conditionMet, err := c.celEvaluator.EvaluateResponseHeaderCondition(*spec.ExecutionCondition, respCtx)
 				if err != nil {
 					span.End()
 					return nil, fmt.Errorf("condition evaluation failed for policy %s:%s: %w", spec.Name, spec.Version, err)
@@ -459,12 +459,12 @@ func (c *ChainExecutor) ExecuteResponseHeaderPolicies(
 			return nil, fmt.Errorf("failed to clone parameters for policy %s:%s: %w", spec.Name, spec.Version, err)
 		}
 
-		action := headerPol.OnResponseHeaders(ctx, params)
+		action := headerPol.OnResponseHeaders(ctx, respCtx, params)
 		executionTime := time.Since(policyStartTime)
 
-		// Apply header mutations to ctx so subsequent policies and CEL conditions see the mutated state
+		// Apply header mutations to respCtx so subsequent policies and CEL conditions see the mutated state
 		if mod, ok := action.(policy.DownstreamResponseHeaderModifications); ok {
-			internalHeaders := ctx.ResponseHeaders.UnsafeInternalValues()
+			internalHeaders := respCtx.ResponseHeaders.UnsafeInternalValues()
 			for k, v := range mod.HeadersToSet {
 				internalHeaders[strings.ToLower(k)] = []string{v}
 			}
@@ -528,7 +528,7 @@ type ResponseExecutionResult struct {
 
 // ExecuteResponsePolicies executes response policies with condition evaluation
 // hasExecutionConditions indicates if any policy in the chain has CEL conditions; when false, CEL evaluation is skipped entirely
-func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policyList []policy.Policy, ctx *policy.ResponseContext, specs []policy.PolicySpec, api, route string, hasExecutionConditions bool) (*ResponseExecutionResult, error) {
+func (c *ChainExecutor) ExecuteResponsePolicies(ctx context.Context, policyList []policy.Policy, respCtx *policy.ResponseContext, specs []policy.PolicySpec, api, route string, hasExecutionConditions bool) (*ResponseExecutionResult, error) {
 	startTime := time.Now()
 	result := &ResponseExecutionResult{
 		Results: make([]ResponsePolicyResult, 0, len(policyList)),
@@ -542,7 +542,7 @@ func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policy
 		policyStartTime := time.Now()
 
 		// Create span for individual policy execution - NoOp if tracing disabled
-		_, span := c.tracer.Start(traceCtx, fmt.Sprintf(constants.SpanPolicyResponseFormat, spec.Name),
+		_, span := c.tracer.Start(ctx, fmt.Sprintf(constants.SpanPolicyResponseFormat, spec.Name),
 			trace.WithSpanKind(trace.SpanKindInternal))
 
 		// Add policy metadata attributes
@@ -587,7 +587,7 @@ func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policy
 		// Skip this block entirely when no policies in the chain have CEL conditions
 		if hasExecutionConditions && spec.ExecutionCondition != nil && *spec.ExecutionCondition != "" {
 			if c.celEvaluator != nil {
-				conditionMet, err := c.celEvaluator.EvaluateResponseBodyCondition(*spec.ExecutionCondition, ctx)
+				conditionMet, err := c.celEvaluator.EvaluateResponseBodyCondition(*spec.ExecutionCondition, respCtx)
 				if err != nil {
 					if span.IsRecording() {
 						span.RecordError(err)
@@ -624,7 +624,7 @@ func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policy
 		}
 
 		slog.Debug("[body] calling OnResponseBody", "policy", spec.Name, "version", spec.Version, "route", route)
-		action := rp.OnResponseBody(ctx, params)
+		action := rp.OnResponseBody(ctx, respCtx, params)
 		executionTime := time.Since(policyStartTime)
 
 		// Record policy execution metrics
@@ -661,7 +661,7 @@ func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policy
 			}
 
 			if mods, ok := action.(policy.DownstreamResponseModifications); ok {
-				applyResponseModifications(ctx, &mods)
+				applyResponseModifications(respCtx, &mods)
 			}
 		}
 
@@ -695,9 +695,9 @@ type StreamingRequestExecutionResult struct {
 // Policies are executed in forward order (first to last). Each policy sees the
 // (possibly mutated) chunk from the previous policy.
 func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
-	traceCtx context.Context,
+	ctx context.Context,
 	policyList []policy.Policy,
-	ctx *policy.RequestStreamContext,
+	reqCtx *policy.RequestStreamContext,
 	chunk *policy.StreamBody,
 	specs []policy.PolicySpec,
 	api, route string,
@@ -715,7 +715,7 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 		spec := specs[i]
 		policyStartTime := time.Now()
 
-		_, span := c.tracer.Start(traceCtx, fmt.Sprintf(constants.SpanPolicyRequestFormat, spec.Name),
+		_, span := c.tracer.Start(ctx, fmt.Sprintf(constants.SpanPolicyRequestFormat, spec.Name),
 			trace.WithSpanKind(trace.SpanKindInternal))
 		if span.IsRecording() {
 			span.SetAttributes(
@@ -749,7 +749,7 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 
 		if hasExecutionConditions && spec.ExecutionCondition != nil && *spec.ExecutionCondition != "" {
 			if c.celEvaluator != nil {
-				conditionMet, err := c.celEvaluator.EvaluateStreamingRequestCondition(*spec.ExecutionCondition, ctx)
+				conditionMet, err := c.celEvaluator.EvaluateStreamingRequestCondition(*spec.ExecutionCondition, reqCtx)
 				if err != nil {
 					if span.IsRecording() {
 						span.RecordError(err)
@@ -781,7 +781,7 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 		}
 
 		slog.Debug("[streaming] calling OnRequestBodyChunk", "policy", spec.Name, "version", spec.Version, "route", route, "end_of_stream", currentChunk.EndOfStream)
-		action := streamingPol.OnRequestBodyChunk(ctx, currentChunk, params)
+		action := streamingPol.OnRequestBodyChunk(ctx, reqCtx, currentChunk, params)
 		executionTime := time.Since(policyStartTime)
 
 		metrics.PolicyExecutionsTotal.WithLabelValues(spec.Name, spec.Version, api, route, "executed").Inc()
@@ -837,9 +837,9 @@ type StreamingResponseExecutionResult struct {
 // ExecuteStreamingResponsePolicies executes streaming response policies chunk-by-chunk.
 // Policies are executed in reverse order (last to first), mirroring the buffered response path.
 func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
-	traceCtx context.Context,
+	ctx context.Context,
 	policyList []policy.Policy,
-	ctx *policy.ResponseStreamContext,
+	respCtx *policy.ResponseStreamContext,
 	chunk *policy.StreamBody,
 	specs []policy.PolicySpec,
 	api, route string,
@@ -857,7 +857,7 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 		spec := specs[i]
 		policyStartTime := time.Now()
 
-		_, span := c.tracer.Start(traceCtx, fmt.Sprintf(constants.SpanPolicyResponseFormat, spec.Name),
+		_, span := c.tracer.Start(ctx, fmt.Sprintf(constants.SpanPolicyResponseFormat, spec.Name),
 			trace.WithSpanKind(trace.SpanKindInternal))
 		if span.IsRecording() {
 			span.SetAttributes(
@@ -894,7 +894,7 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 
 		if hasExecutionConditions && spec.ExecutionCondition != nil && *spec.ExecutionCondition != "" {
 			if c.celEvaluator != nil {
-				conditionMet, err := c.celEvaluator.EvaluateStreamingResponseCondition(*spec.ExecutionCondition, ctx)
+				conditionMet, err := c.celEvaluator.EvaluateStreamingResponseCondition(*spec.ExecutionCondition, respCtx)
 				if err != nil {
 					if span.IsRecording() {
 						span.RecordError(err)
@@ -928,7 +928,7 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 		}
 
 		slog.Debug("[streaming] calling OnResponseBodyChunk", "policy", spec.Name, "version", spec.Version, "route", route, "end_of_stream", currentChunk.EndOfStream)
-		action := streamingPol.OnResponseBodyChunk(ctx, currentChunk, params)
+		action := streamingPol.OnResponseBodyChunk(ctx, respCtx, currentChunk, params)
 		executionTime := time.Since(policyStartTime)
 
 		metrics.PolicyExecutionsTotal.WithLabelValues(spec.Name, spec.Version, api, route, "executed").Inc()

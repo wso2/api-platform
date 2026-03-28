@@ -114,11 +114,11 @@ func (p *passthroughPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-func (p *passthroughPolicy) OnRequestBody(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
+func (p *passthroughPolicy) OnRequestBody(_ context.Context, _ *policy.RequestContext, _ map[string]interface{}) policy.RequestAction {
 	return nil
 }
 
-func (p *passthroughPolicy) OnResponseBody(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
+func (p *passthroughPolicy) OnResponseBody(_ context.Context, _ *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
 	return nil
 }
 
@@ -134,13 +134,13 @@ func (p *headerModifyPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-func (p *headerModifyPolicy) OnRequestBody(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
+func (p *headerModifyPolicy) OnRequestBody(_ context.Context, _ *policy.RequestContext, _ map[string]interface{}) policy.RequestAction {
 	return policy.UpstreamRequestModifications{
 		HeadersToSet: map[string]string{"x-bench-header": "bench-value"},
 	}
 }
 
-func (p *headerModifyPolicy) OnResponseBody(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
+func (p *headerModifyPolicy) OnResponseBody(_ context.Context, _ *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
 	return policy.DownstreamResponseModifications{
 		HeadersToSet: map[string]string{"x-bench-resp": "bench-resp-value"},
 	}
@@ -158,7 +158,7 @@ func (p *shortCircuitPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-func (p *shortCircuitPolicy) OnRequestBody(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
+func (p *shortCircuitPolicy) OnRequestBody(_ context.Context, _ *policy.RequestContext, _ map[string]interface{}) policy.RequestAction {
 	return policy.ImmediateResponse{
 		StatusCode: 401,
 		Headers:    map[string]string{"content-type": "application/json"},
@@ -166,7 +166,7 @@ func (p *shortCircuitPolicy) OnRequestBody(*policy.RequestContext, map[string]in
 	}
 }
 
-func (p *shortCircuitPolicy) OnResponseBody(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
+func (p *shortCircuitPolicy) OnResponseBody(_ context.Context, _ *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
 	return nil
 }
 
