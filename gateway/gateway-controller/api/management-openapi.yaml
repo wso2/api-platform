@@ -2434,7 +2434,7 @@ components:
               path: /pet
               policies:
                 - name: log-message
-                  version: v0
+                  version: v1
                   params:
                     request:
                       payload: true

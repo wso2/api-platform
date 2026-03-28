@@ -42,7 +42,7 @@ Feature: CORS Policy
             url: http://sample-backend:9080/api/v1
         policies:
           - name: cors
-            version: v0
+            version: v1
             params:
               allowedOrigins:
                 - "http://example.com"
@@ -138,7 +138,7 @@ Feature: CORS Policy
             url: http://sample-backend:9080/api/v1
         policies:
           - name: cors
-            version: v0
+            version: v1
             params:
               allowedOrigins:
                 - "http://example.com"
@@ -221,7 +221,7 @@ Feature: CORS Policy
             url: http://sample-backend:9080/api/v1
         policies:
           - name: cors
-            version: v0
+            version: v1
             params:
               allowedOrigins:
                 - "*"

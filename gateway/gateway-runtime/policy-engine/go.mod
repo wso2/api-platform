@@ -16,7 +16,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/stretchr/testify v1.11.1
 	github.com/wso2/api-platform/common v0.0.0-00010101000000-000000000000
-	github.com/wso2/api-platform/sdk/core v0.1.6
+	github.com/wso2/api-platform/sdk/core v0.2.0
 	go.opentelemetry.io/otel v1.40.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.39.0
 	go.opentelemetry.io/otel/sdk v1.40.0
@@ -64,5 +64,3 @@ require (
 )
 
 replace github.com/wso2/api-platform/common => ../../../common
-
-

@@ -48,7 +48,7 @@ Feature: Semantic Tool Filtering policy
           mode: allow_all
         policies:
           - name: semantic-tool-filtering
-            version: v0
+            version: v1
             paths:
               - path: /gemini/v1/models/gemini-1.5-flash-002:generateContent
                 methods: [POST]
@@ -60,7 +60,7 @@ Feature: Semantic Tool Filtering policy
                   userQueryIsJson: true
                   toolsIsJson: true
           - name: request-rewrite
-            version: v0
+            version: v1
             paths:
               - path: /gemini/v1/models/gemini-1.5-flash-002:generateContent
                 methods: [POST]

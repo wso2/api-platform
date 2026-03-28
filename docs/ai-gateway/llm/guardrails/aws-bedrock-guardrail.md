@@ -137,7 +137,7 @@ spec:
         methods: [POST]
   policies:
     - name: aws-bedrock-guardrail
-      version: v0.1.0
+      version: v1
       paths:
         - path: /chat/completions
           methods: [POST]
@@ -193,7 +193,7 @@ Configure to redact PII:
 ```yaml
 policies:
   - name: aws-bedrock-guardrail
-    version: v0.1.0
+    version: v1
     paths:
       - path: /chat/completions
         methods: [POST]

@@ -71,7 +71,7 @@ spec:
       url: https://api-platform162t63.example.io/api/v1
   policies:
     - name: analytics-header-filter
-      version: v0.1.0
+      version: v1
       params:
         requestHeadersToFilter:
           operation: deny

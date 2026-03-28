@@ -201,15 +201,15 @@ Configures per-quota dynamic cost extraction from request or response data. Valu
 ##### Memory Backend Configuration
 
 ```toml
-[policy_configurations.ratelimit_v0]
+[policy_configurations.ratelimit_v1]
 algorithm = "fixed-window"
 backend = "memory"
 
-[policy_configurations.ratelimit_v0.memory]
+[policy_configurations.ratelimit_v1.memory]
 max_entries = 10000
 cleanup_interval = "5m"
 
-[policy_configurations.ratelimit_v0.headers]
+[policy_configurations.ratelimit_v1.headers]
 include_x_rate_limit = true
 include_ietf = true
 include_retry_after = true
@@ -220,11 +220,11 @@ include_retry_after = true
 For distributed rate limiting across multiple gateway instances:
 
 ```toml
-[policy_configurations.ratelimit_v0]
+[policy_configurations.ratelimit_v1]
 algorithm = "fixed-window"
 backend = "redis"
 
-[policy_configurations.ratelimit_v0.redis]
+[policy_configurations.ratelimit_v1.redis]
 host = "redis.example.com"
 port = 6379
 password = "your-redis-password"
@@ -235,7 +235,7 @@ connection_timeout = "5s"
 read_timeout = "3s"
 write_timeout = "3s"
 
-[policy_configurations.ratelimit_v0.headers]
+[policy_configurations.ratelimit_v1.headers]
 include_x_rate_limit = true
 include_ietf = true
 include_retry_after = true
