@@ -77,13 +77,9 @@ type McpClientInfo struct {
 }
 
 type McpServerInfo struct {
-	ProtocolVersion string                `json:"protocolVersion,omitempty"`
-	ServerInfo      *McpServerInfoDetails `json:"serverInfo,omitempty"`
-}
-
-type McpServerInfoDetails struct {
-	Name    string `json:"name,omitempty"`
-	Version string `json:"version,omitempty"`
+	ProtocolVersion string `json:"protocolVersion,omitempty"`
+	Name            string `json:"name,omitempty"`
+	Version         string `json:"version,omitempty"`
 }
 
 type McpResponseAnalyticsProperties struct {
@@ -330,6 +326,7 @@ func (a *AnalyticsPolicy) OnResponseBody(ctx *policy.ResponseContext, params map
 // Chunks are accumulated in SharedContext.Metadata. On EndOfStream the accumulated
 // bytes are parsed and analytics metadata is emitted on the final ResponseChunkAction.
 func (a *AnalyticsPolicy) OnResponseBodyChunk(ctx *policy.ResponseStreamContext, chunk *policy.StreamBody, params map[string]interface{}) policy.ResponseChunkAction {
+	slog.Debug("Analytics system policy: OnResponseBodyChunk called")
 	if ctx.SharedContext.Metadata == nil {
 		ctx.SharedContext.Metadata = make(map[string]interface{})
 	}
@@ -673,20 +670,13 @@ func extractMCPPayloadFromAccumulated(accumulated []byte, responseHeaders *polic
 func extractMCPResponseAnalyticsProps(payload map[string]interface{}) *McpResponseAnalyticsProperties {
 	props := McpResponseAnalyticsProperties{}
 
-	serverInfoDetails := McpServerInfoDetails{
-		Name:    extractStringFromJsonpath(payload, ServerInfoNameJsonPath),
-		Version: extractStringFromJsonpath(payload, ServerInfoVersionJsonPath),
-	}
-
 	serverInfo := McpServerInfo{
 		ProtocolVersion: extractStringFromJsonpath(payload, ServerProtocolVersionJsonPath),
+		Name:            extractStringFromJsonpath(payload, ServerInfoNameJsonPath),
+		Version:         extractStringFromJsonpath(payload, ServerInfoVersionJsonPath),
 	}
 
-	if serverInfoDetails.Name != "" || serverInfoDetails.Version != "" {
-		serverInfo.ServerInfo = &serverInfoDetails
-	}
-
-	if serverInfo.ProtocolVersion != "" || serverInfo.ServerInfo != nil {
+	if serverInfo.Name != "" || serverInfo.Version != "" {
 		props.ServerInfo = &serverInfo
 	}
 

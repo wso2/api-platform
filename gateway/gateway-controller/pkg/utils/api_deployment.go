@@ -246,7 +246,8 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	now := time.Now()
 	deployedAt := params.DeployedAt
 	if deployedAt == nil {
-		deployedAt = &now
+		truncated := now.Truncate(time.Millisecond)
+		deployedAt = &truncated
 	}
 	storedCfg := &models.StoredConfig{
 		UUID:                apiID,

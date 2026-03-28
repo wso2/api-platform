@@ -42,14 +42,15 @@ var ErrMCPDeploymentIDMismatch = errors.New("mcp proxy deployment id mismatch")
 var ErrMCPUndeployStale = errors.New("mcp proxy undeploy skipped: newer version exists")
 
 type MCPDeploymentParams struct {
-	Data          []byte        // Raw configuration data (YAML/JSON)
-	ContentType   string        // Content type for parsing
-	ID            string        // ID (if provided, used for updates; if empty, generates new UUID)
-	DeploymentID  string        // Platform deployment ID (empty for gateway-api origin)
-	Origin        models.Origin // Origin of the deployment: "control_plane" or "gateway_api"
-	DeployedAt    *time.Time    // Deployment timestamp from platform event (nil for gateway-api origin)
-	CorrelationID string        // Correlation ID for tracking
-	Logger        *slog.Logger  // Logger instance
+	Data          []byte              // Raw configuration data (YAML/JSON)
+	ContentType   string              // Content type for parsing
+	ID            string              // ID (if provided, used for updates; if empty, generates new UUID)
+	DeploymentID  string              // Platform deployment ID (empty for gateway-api origin)
+	Origin        models.Origin       // Origin of the deployment: "control_plane" or "gateway_api"
+	DeployedAt    *time.Time          // Deployment timestamp from platform event (nil for gateway-api origin)
+	CorrelationID string              // Correlation ID for tracking
+	Logger        *slog.Logger        // Logger instance
+	DesiredState  models.DesiredState // Desired deployment state; empty defaults to StateDeployed
 }
 
 // MCPDeploymentService provides utilities for MCP proxy configuration deployment
@@ -220,8 +221,14 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 	now := time.Now()
 	deployedAt := params.DeployedAt
 	if deployedAt == nil {
-		deployedAt = &now
+		truncated := now.Truncate(time.Millisecond)
+		deployedAt = &truncated
 	}
+	mcpDesiredState := params.DesiredState
+	if mcpDesiredState == "" {
+		mcpDesiredState = models.StateDeployed
+	}
+
 	storedCfg := &models.StoredConfig{
 		UUID:                apiID,
 		Kind:                string(api.Mcp),
@@ -230,7 +237,7 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 		Version:             mcpConfig.Spec.Version,
 		Configuration:       *apiConfig,
 		SourceConfiguration: *mcpConfig,
-		DesiredState:        models.StateDeployed,
+		DesiredState:        mcpDesiredState,
 		DeploymentID:        params.DeploymentID,
 		Origin:              params.Origin,
 		CreatedAt:           now,
@@ -368,11 +375,25 @@ func (s *MCPDeploymentService) CreateMCPProxy(params MCPDeploymentParams) (*APID
 	return s.DeployMCPConfiguration(params)
 }
 
-// UpdateMCPProxy updates an existing MCP proxy identified by its handle
+// UpdateMCPProxy updates an existing MCP proxy identified by its handle.
+// The full config is always applied. If deploymentState is "undeployed", the proxy is also
+// removed from router traffic while preserving the updated configuration.
 func (s *MCPDeploymentService) UpdateMCPProxy(handle string, params MCPDeploymentParams, logger *slog.Logger) (*models.StoredConfig, error) {
 	existing, err := s.GetMCPProxyByHandle(handle)
 	if err != nil || existing == nil {
 		return nil, fmt.Errorf("MCP proxy configuration with handle '%s' not found", handle)
+	}
+
+	// Extract deploymentState from the incoming config
+	if isUndeploy, err := s.isMCPUndeployRequest(params); err != nil {
+		return nil, err
+	} else if isUndeploy {
+		params.DesiredState = models.StateUndeployed
+		// DeployedAt left nil — deploy method will set time.Now() to mark undeployment time
+	} else {
+		// Advance DeployedAt so the timestamp-guarded upsert accepts the update.
+		now := time.Now().Truncate(time.Millisecond)
+		params.DeployedAt = &now
 	}
 
 	// Ensure Deploy uses existing ID so it performs an update
@@ -382,6 +403,16 @@ func (s *MCPDeploymentService) UpdateMCPProxy(handle string, params MCPDeploymen
 		return nil, err
 	}
 	return res.StoredConfig, nil
+}
+
+// isMCPUndeployRequest parses just enough of the MCP config to check if deploymentState is "undeployed".
+func (s *MCPDeploymentService) isMCPUndeployRequest(params MCPDeploymentParams) (bool, error) {
+	var mcpConfig api.MCPProxyConfiguration
+	if err := s.parser.Parse(params.Data, params.ContentType, &mcpConfig); err != nil {
+		return false, fmt.Errorf("failed to parse MCP proxy configuration: %w", err)
+	}
+	return mcpConfig.Spec.DeploymentState != nil &&
+		*mcpConfig.Spec.DeploymentState == api.MCPProxyConfigDataDeploymentStateUndeployed, nil
 }
 
 // DeleteMCPProxy deletes an MCP proxy by handle using store/db and updates snapshot
@@ -433,9 +464,9 @@ func (s *MCPDeploymentService) UndeployMCPProxy(
 		return nil, ErrMCPDeploymentIDMismatch
 	}
 
-	undeployedAt := time.Now()
+	undeployedAt := time.Now().Truncate(time.Millisecond)
 	if performedAt != nil && !performedAt.IsZero() {
-		undeployedAt = *performedAt
+		undeployedAt = (*performedAt).Truncate(time.Millisecond)
 	}
 
 	updated := *cfg

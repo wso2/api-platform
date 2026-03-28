@@ -2575,6 +2575,12 @@ components:
           minItems: 1
           items:
             $ref: "#/components/schemas/Operation"
+        deploymentState:
+          type: string
+          description: Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.
+          enum: [deployed, undeployed]
+          default: deployed
+          example: deployed
 
     UpstreamDefinition:
       type: object
@@ -2768,6 +2774,12 @@ components:
           description: List of API-level policies applied to all operations unless overridden
           items:
             $ref: '#/components/schemas/Policy'
+        deploymentState:
+          type: string
+          description: Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.
+          enum: [deployed, undeployed]
+          default: deployed
+          example: deployed
 
     # Simplified AsyncAPI Channel object represented as an OpenAPI schema.
     Channel:
@@ -3467,6 +3479,12 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MCPPrompt"
+        deploymentState:
+          type: string
+          description: Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the MCP Proxy is removed from router traffic but configuration and policies are preserved for potential redeployment.
+          enum: [deployed, undeployed]
+          default: deployed
+          example: deployed
 
     MCPTool:
       type: object
@@ -4148,6 +4166,12 @@ components:
           description: List of policies applied only to this operation (overrides or adds to API-level policies)
           items:
             $ref: "#/components/schemas/LLMPolicy"
+        deploymentState:
+          type: string
+          description: Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the LLM Provider is removed from router traffic but configuration and policies are preserved for potential redeployment.
+          enum: [deployed, undeployed]
+          default: deployed
+          example: deployed
 
     UpstreamAuth:
       type: object
@@ -4337,7 +4361,13 @@ components:
           description: List of policies applied only to this operation (overrides or adds to API-level policies)
           items:
             $ref: "#/components/schemas/LLMPolicy"
-    
+        deploymentState:
+          type: string
+          description: Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the LLM Proxy is removed from router traffic but configuration and policies are preserved for potential redeployment.
+          enum: [deployed, undeployed]
+          default: deployed
+          example: deployed
+
     SecretConfiguration:
       type: object
       required:

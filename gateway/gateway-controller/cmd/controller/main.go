@@ -111,6 +111,7 @@ func main() {
 		slog.Bool("access_logs_enabled", cfg.Router.AccessLogs.Enabled),
 		slog.String("control_plane_host", cfg.Controller.ControlPlane.Host),
 		slog.Bool("control_plane_token_configured", cfg.Controller.ControlPlane.Token != ""),
+		slog.Bool("skip_invalid_deployments_on_startup", cfg.Controller.Server.SkipInvalidDeploymentsOnStartup),
 	)
 
 	if !cfg.Controller.Auth.Basic.Enabled && !cfg.Controller.Auth.IDP.Enabled {
@@ -254,16 +255,45 @@ func main() {
 	}
 	log.Info("Loaded encryption providers")
 
-	// MCP proxies are stored in their source form and need to be rehydrated into
-	// the derived RestAPI representation before startup snapshot and policy work.
-	for _, storedCfg := range configStore.GetAllByKind(string(api.Mcp)) {
-		if err := utils.HydrateStoredMCPConfig(storedCfg); err != nil {
-			log.Error("Failed to hydrate stored MCP proxy configuration",
-				slog.String("id", storedCfg.UUID),
-				slog.String("handle", storedCfg.Handle),
-				slog.Any("error", err))
-			os.Exit(1)
+	// Load policy definitions from files before any startup hydration or policy derivation.
+	policyLoader := utils.NewPolicyLoader(log)
+	policyDir := cfg.Controller.Policies.DefinitionsPath
+	log.Info("Loading policy definitions from directory", slog.String("directory", policyDir))
+	policyDefinitions, err := policyLoader.LoadPoliciesFromDirectory(policyDir)
+	if err != nil {
+		log.Error("Failed to load policy definitions", slog.Any("error", err))
+		os.Exit(1)
+	}
+	log.Info("Policy definitions loaded", slog.Int("count", len(policyDefinitions)))
+
+	// Detect custom policies from build-lock.yaml.
+	localPolicies, err := policyLoader.GetCustomPolicyNames(cfg.Controller.Policies.BuildLockPath)
+	if err != nil {
+		log.Warn("Could not read build-lock.yaml, Custom policies will not be marked in the gateway manifest",
+			slog.String("path", cfg.Controller.Policies.BuildLockPath),
+			slog.Any("error", err))
+	}
+	for key, def := range policyDefinitions {
+		def.ManagedBy = "wso2"
+		if localPolicies[def.Name+"|"+def.Version] {
+			def.ManagedBy = "customer"
 		}
+		policyDefinitions[key] = def
+	}
+
+	// MCP proxies and LLM artifacts are stored in source form and need to be
+	// rehydrated into their derived RestAPI representations before startup
+	// snapshot and policy work.
+	if err := hydrateStoredConfigsFromDatabaseOnStartup(
+		configStore,
+		db,
+		&cfg.Router,
+		policyDefinitions,
+		log,
+		cfg.Controller.Server.SkipInvalidDeploymentsOnStartup,
+	); err != nil {
+		log.Error("Failed to hydrate stored configurations required for startup", slog.Any("error", err))
+		os.Exit(1)
 	}
 
 	// Initialize xDS snapshot manager with router config
@@ -324,32 +354,6 @@ func main() {
 		cancel()
 	}
 
-	// Load policy definitions from files (must be before policy derivation and validator)
-	policyLoader := utils.NewPolicyLoader(log)
-	policyDir := cfg.Controller.Policies.DefinitionsPath
-	log.Info("Loading policy definitions from directory", slog.String("directory", policyDir))
-	policyDefinitions, err := policyLoader.LoadPoliciesFromDirectory(policyDir)
-	if err != nil {
-		log.Error("Failed to load policy definitions", slog.Any("error", err))
-		os.Exit(1)
-	}
-	log.Info("Policy definitions loaded", slog.Int("count", len(policyDefinitions)))
-
-	// detect custom policies from build-lock.yaml
-	localPolicies, err := policyLoader.GetCustomPolicyNames(cfg.Controller.Policies.BuildLockPath)
-	if err != nil {
-		log.Warn("Could not read build-lock.yaml, Custom policies will not be marked in the gateway manifest",
-			slog.String("path", cfg.Controller.Policies.BuildLockPath),
-			slog.Any("error", err))
-	}
-	for key, def := range policyDefinitions {
-		def.ManagedBy = "wso2"
-		if localPolicies[def.Name+"|"+def.Version] {
-			def.ManagedBy = "customer"
-		}
-		policyDefinitions[key] = def
-	}
-
 	// Initialize policy xDS server
 	log.Info("Initializing Policy xDS server", slog.Int("port", cfg.Controller.PolicyServer.Port))
 
@@ -372,45 +376,25 @@ func main() {
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
 	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
 	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
-	policyManager.SetTransformers(transform.NewRegistry(restTransformer, llmTransformer))
+	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer)
+	policyManager.SetTransformers(transformerRegistry)
 
 	// Load runtime configs from existing API configurations on startup.
 	// We write directly to runtimeStore to avoid triggering N separate snapshot updates;
 	// the single UpdateSnapshot call below covers all of them.
 	log.Info("Loading runtime configs from existing API configurations")
 	loadedAPIs := configStore.GetAll()
-	loadedCount := 0
-	for _, apiConfig := range loadedAPIs {
-		// MCP proxies hydrate into RestAPI form, so they can participate in the
-		// same policy bootstrapping path as the other routed artifacts.
-		if apiConfig.Kind == "RestApi" || apiConfig.Kind == "WebSubApi" || apiConfig.Kind == "Mcp" {
-			resolvedCfg, validationErrors := policyResolver.ResolvePolicies(apiConfig)
-			if len(validationErrors) > 0 {
-				errMsgs := make([]string, 0, len(validationErrors))
-				for _, ve := range validationErrors {
-					errMsgs = append(errMsgs, ve.Message)
-				}
-				log.Warn("Policy resolution failed during startup load, skipping policy derivation",
-					slog.String("api_id", apiConfig.UUID),
-					slog.String("errors", strings.Join(errMsgs, "; ")),
-				)
-				// Continue to load other APIs
-				continue
-			}
-			rdc, err := restTransformer.Transform(resolvedCfg)
-			if apiConfig.Kind == "LlmProvider" || apiConfig.Kind == "LlmProxy" {
-				rdc, err = llmTransformer.Transform(apiConfig)
-			}
-			if err != nil {
-				log.Warn("Failed to transform API config at startup",
-					slog.String("api_id", apiConfig.UUID),
-					slog.String("kind", apiConfig.Kind),
-					slog.Any("error", err))
-				continue
-			}
-			runtimeStore.Set(storage.Key(apiConfig.Kind, apiConfig.Handle), rdc)
-			loadedCount++
-		}
+	loadedCount, err := loadRuntimeConfigsFromExistingAPIConfigurations(
+		loadedAPIs,
+		runtimeStore,
+		policyResolver,
+		transformerRegistry,
+		log,
+		cfg.Controller.Server.SkipInvalidDeploymentsOnStartup,
+	)
+	if err != nil {
+		log.Error("Failed to load runtime configs from API configurations", slog.Any("error", err))
+		os.Exit(1)
 	}
 	log.Info("Loaded runtime configs from API configurations",
 		slog.Int("total_apis", len(loadedAPIs)),
