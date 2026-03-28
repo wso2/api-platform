@@ -101,18 +101,18 @@ systemParameters:
     keyManagers:
       type: array
       description: List of key manager definitions
-      "wso2/defaultValue": "${config.policy_configurations.jwtauth_v010.keymanagers}"
+      "wso2/defaultValue": "${config.policy_configurations.jwtauth_v1.keymanagers}"
     jwksCacheTtl:
       type: string
-      "wso2/defaultValue": "${config.policy_configurations.jwtauth_v010.jwkscachettl}"
+      "wso2/defaultValue": "${config.policy_configurations.jwtauth_v1.jwkscachettl}"
 ```
 
-The `"wso2/defaultValue"` path `${config.policy_configurations.jwtauth_v010.keymanagers}` tells the gateway to fetch the value from:
+The `"wso2/defaultValue"` path `${config.policy_configurations.jwtauth_v1.keymanagers}` tells the gateway to fetch the value from:
 
 ```yaml
 # In gateway/it/test-config.yaml
 policy_configurations:
-  jwtauth_v010:
+  jwtauth_v1:
     keyManagers:
       - name: test-jwks
         issuer: http://mock-jwks.default.svc.cluster.local:8080/token
@@ -162,7 +162,7 @@ operations:
 2. **Add to test-config.yaml**:
 ```yaml
 policy_configurations:
-  jwtauth_v010:
+  jwtauth_v1:
     keyManagers:
       - name: test-jwks
         issuer: http://mock-jwks:8080/token
