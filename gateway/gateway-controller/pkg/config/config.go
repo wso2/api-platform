@@ -201,10 +201,11 @@ type TracingConfig struct {
 
 // ServerConfig holds server-related configuration
 type ServerConfig struct {
-	APIPort         int           `koanf:"api_port"`
-	XDSPort         int           `koanf:"xds_port"`
-	ShutdownTimeout time.Duration `koanf:"shutdown_timeout"`
-	GatewayID       string        `koanf:"gateway_id"`
+	APIPort                         int           `koanf:"api_port"`
+	XDSPort                         int           `koanf:"xds_port"`
+	ShutdownTimeout                 time.Duration `koanf:"shutdown_timeout"`
+	GatewayID                       string        `koanf:"gateway_id"`
+	SkipInvalidDeploymentsOnStartup bool          `koanf:"skip_invalid_deployments_on_startup"`
 }
 
 // AdminServerConfig holds controller admin HTTP server configuration.
@@ -522,10 +523,11 @@ func defaultConfig() *Config {
 	return &Config{
 		Controller: Controller{
 			Server: ServerConfig{
-				APIPort:         9090,
-				XDSPort:         18000,
-				ShutdownTimeout: 15 * time.Second,
-				GatewayID:       constants.PlatformGatewayId,
+				APIPort:                         9090,
+				XDSPort:                         18000,
+				ShutdownTimeout:                 15 * time.Second,
+				GatewayID:                       constants.PlatformGatewayId,
+				SkipInvalidDeploymentsOnStartup: false,
 			},
 			AdminServer: AdminServerConfig{
 				Enabled:    true,
