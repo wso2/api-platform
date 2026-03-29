@@ -272,3 +272,75 @@ Go linting configured via `.golangci.yml` (in `kubernetes/gateway-operator/`):
 | Policy Engine Metrics | 9003 | HTTP |
 | Debug: Controller (dlv) | 2345 | TCP |
 | Debug: Runtime (dlv) | 2346 | TCP |
+
+## Gateway Controller REST API Usage
+
+The gateway controller REST API is served on port **9090** with **no base path prefix** — routes are registered at the root (e.g., `/llm-providers`, `/rest-apis`, not `/api/v1/...`).
+
+### Authentication
+
+Dev mode uses basic auth configured in `gateway/configs/config.toml`:
+
+```bash
+# Default dev credentials
+curl -u admin:admin http://localhost:9090/llm-providers
+```
+
+There is no `/health` endpoint on the management API. A request without credentials returning `{"error":"no valid authentication credentials provided"}` confirms the server is running.
+
+### Key API Endpoints
+
+```
+GET    /llm-providers                  # List LLM providers
+POST   /llm-providers                  # Create LLM provider
+GET    /llm-providers/:id              # Get LLM provider by handle
+PUT    /llm-providers/:id              # Update LLM provider
+DELETE /llm-providers/:id              # Delete LLM provider
+
+GET    /llm-proxies                    # List LLM proxies
+POST   /llm-proxies                    # Create LLM proxy
+GET    /llm-proxies/:id               # Get LLM proxy by handle
+PUT    /llm-proxies/:id               # Update LLM proxy
+DELETE /llm-proxies/:id               # Delete LLM proxy
+
+GET    /llm-provider-templates         # List provider templates
+POST   /llm-provider-templates         # Create template
+GET    /rest-apis                      # List REST APIs
+POST   /rest-apis                      # Create REST API
+```
+
+### Content Types
+
+The API accepts both YAML (`Content-Type: application/yaml`) and JSON (`Content-Type: application/json`).
+
+### Example: Deploy an LLM Provider
+
+```bash
+curl -u admin:admin -X POST http://localhost:9090/llm-providers \
+  -H "Content-Type: application/yaml" \
+  -d '
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProvider
+metadata:
+  name: my-openai-provider
+spec:
+  displayName: My OpenAI Provider
+  version: v1.0
+  template: openai
+  vhost: api.openai.local
+  upstream:
+    url: "https://api.openai.com/v1"
+  accessControl:
+    mode: allow_all
+'
+```
+
+Note: `spec.accessControl.mode` (`allow_all` or `deny_all`) is a **required field** for LLM providers.
+
+### Stale Database on Startup
+
+If the controller fails on startup with errors like `no such column: m.gateway_id`, the SQLite database schema is outdated. Fix by removing the Docker volume:
+
+```bash
+cd gateway && docker compose down -v && docker compose up -d
+```
