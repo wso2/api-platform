@@ -122,6 +122,16 @@ cd gateway
 make test-integration          # Run integration tests (requires running images)
 make test-integration-all      # Build coverage images + run tests (30m timeout)
 make test-postgres             # Run with PostgreSQL backend
+
+# Run a specific feature file
+cd gateway/it
+IT_FEATURE_PATHS=features/health.feature make test
+
+# Multiple feature files (comma-separated)
+IT_FEATURE_PATHS=features/health.feature,features/metrics.feature make test
+
+# Filter by Godog tag (add @wip tag to your scenario in the .feature file)
+go test -v ./... -godog.tags="@wip"
 ```
 
 **Test artifacts:**
