@@ -20,6 +20,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -726,6 +727,10 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 				Status:  "error",
 				Message: utils.PolicyDefinitionMissingUserMessage,
 			})
+			return
+		}
+		if errors.Is(err, utils.ErrLLMProviderAlreadyExists) {
+			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: "LLM provider with the same name already exists"})
 			return
 		}
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})

@@ -20,6 +20,7 @@ package utils
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -33,6 +34,10 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
+
+// ErrLLMProviderAlreadyExists is returned when a CREATE is attempted for a provider
+// whose handle (metadata.name) already exists.
+var ErrLLMProviderAlreadyExists = errors.New("LLM provider already exists")
 
 const (
 	LazyResourceTypeLLMProviderTemplate     = "LlmProviderTemplate"
@@ -273,6 +278,13 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	if !isUpdate && params.ID != "" {
 		if existing, err := s.db.GetConfig(params.ID); err == nil && existing != nil {
 			isUpdate = true
+		}
+	}
+
+	// Reject duplicate creates: if this is not an update, fail if a provider with the same handle exists.
+	if !isUpdate {
+		if _, err := s.db.GetConfigByKindAndHandle(string(api.LlmProvider), providerConfig.Metadata.Name); err == nil {
+			return nil, fmt.Errorf("%w: handle %q", ErrLLMProviderAlreadyExists, providerConfig.Metadata.Name)
 		}
 	}
 
