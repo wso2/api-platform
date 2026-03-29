@@ -8,48 +8,6 @@ WSO2 API Platform is a cloud-native API management platform with a policy-first 
 **Go Version:** 1.26.1
 **Docker Registry:** `ghcr.io/wso2/api-platform`
 
-## Repository Structure
-
-```
-api-platform/
-├── gateway/                 # Core API Gateway (Envoy + Go control plane)
-│   ├── gateway-controller/  # xDS control plane, REST API (Go, Gin)
-│   ├── gateway-runtime/     # Envoy router + policy engine
-│   │   └── policy-engine/   # gRPC ext_proc service (Go)
-│   ├── gateway-builder/     # Policy compilation tool (Go)
-│   ├── system-policies/     # Built-in policies (analytics, etc.)
-│   ├── sample-policies/     # Example policies
-│   ├── dev-policies/        # Development policy templates
-│   ├── it/                  # Integration tests (Godog/BDD)
-│   ├── configs/             # Configuration examples
-│   └── examples/            # API configuration samples
-├── platform-api/            # Backend API service (Go, Gin, PostgreSQL/SQLite)
-├── cli/                     # CLI tool (Go)
-├── common/                  # Shared Go utilities and models
-├── sdk/
-│   ├── core/                # Core SDK (Go)
-│   └── ai/                  # AI SDK (Go)
-├── portals/
-│   ├── developer-portal/    # Developer portal (Node.js)
-│   └── management-portal/   # Management portal (Node.js)
-├── kubernetes/
-│   ├── gateway-operator/    # Kubernetes operator (Go)
-│   └── helm/                # Helm charts
-├── sts/                     # Security Token Service (OAuth2/OIDC)
-├── distribution/            # Docker Compose deployments
-│   └── all-in-one/          # Full platform stack
-├── samples/                 # Sample applications
-├── tests/                   # Mock servers for integration testing
-├── docs/                    # Documentation
-├── concepts/                # API specification docs
-├── guidelines/              # Code and documentation guidelines
-├── scripts/                 # Build and utility scripts
-├── tools/                   # Development tools
-├── go.work                  # Go workspace definition
-├── Makefile                 # Root build orchestration
-└── VERSION                  # Platform version (0.0.1-SNAPSHOT)
-```
-
 ## Gateway Architecture
 
 ```
