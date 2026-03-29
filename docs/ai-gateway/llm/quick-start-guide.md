@@ -106,7 +106,8 @@ spec:
   displayName: OpenAI Assistant
   version: v1.0
   context: /assistant
-  provider: openai-provider
+  provider:
+    id: openai-provider
   policies: []
 EOF
 ```
