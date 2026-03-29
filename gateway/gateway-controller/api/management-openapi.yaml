@@ -2522,8 +2522,8 @@ components:
           example: v1.0
         context:
           type: string
-          description: Base path for all API routes (must start with /, no trailing slash)
-          pattern: '^\/[a-zA-Z0-9_\-\/]*[^\/]$'
+          description: Base path for all API routes (must start with /, no trailing slash). Supports $version placeholder.
+          pattern: '^\/[a-zA-Z0-9_\-\/$]*[^\/]$'
           minLength: 1
           maxLength: 200
           example: /weather
@@ -2742,8 +2742,8 @@ components:
           example: v1.0
         context:
           type: string
-          description: Base path for all API routes (must start with /, no trailing slash)
-          pattern: '^\/[a-zA-Z0-9_\-\/]*[^\/]$'
+          description: Base path for all API routes (must start with /, no trailing slash). Supports $version placeholder.
+          pattern: '^\/[a-zA-Z0-9_\-\/$]*[^\/]$'
           minLength: 1
           maxLength: 200
           example: /weather
