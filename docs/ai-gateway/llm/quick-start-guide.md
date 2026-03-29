@@ -77,7 +77,6 @@ To test LLM provider traffic routing through the gateway, invoke the following r
 ```bash
 curl -X POST https://localhost:8443/chat/completions \
   -H "Content-Type: application/json" \
-  -H "Host: api.openai.local" \
   -d '{
     "model": "gpt-4o-mini",
     "messages": [
