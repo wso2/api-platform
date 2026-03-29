@@ -508,7 +508,7 @@ paths:
       description: Create a subscription plan that defines rate limits and access tiers for API subscriptions.
       operationId: createSubscriptionPlan
       tags:
-        - Rest API Management
+        - Subscription Plan Management
       requestBody:
         required: true
         content:
@@ -545,7 +545,7 @@ paths:
       description: List all subscription plans available in the Gateway.
       operationId: listSubscriptionPlans
       tags:
-        - Rest API Management
+        - Subscription Plan Management
       responses:
         '200':
           description: List of subscription plans
@@ -566,7 +566,7 @@ paths:
       description: Get the details of a subscription plan by its ID.
       operationId: getSubscriptionPlan
       tags:
-        - Rest API Management
+        - Subscription Plan Management
       parameters:
         - name: planId
           in: path
@@ -597,7 +597,7 @@ paths:
       description: Update an existing subscription plan in the Gateway.
       operationId: updateSubscriptionPlan
       tags:
-        - Rest API Management
+        - Subscription Plan Management
       parameters:
         - name: planId
           in: path
@@ -633,7 +633,7 @@ paths:
       description: Delete a subscription plan from the Gateway.
       operationId: deleteSubscriptionPlan
       tags:
-        - Rest API Management
+        - Subscription Plan Management
       parameters:
         - name: planId
           in: path
@@ -662,7 +662,7 @@ paths:
       description: Subscribe an application to a RestAPI in the Gateway.
       operationId: createSubscription
       tags:
-        - Rest API Management
+        - Subscription Management
       requestBody:
         required: true
         content:
@@ -699,7 +699,7 @@ paths:
       description: List subscriptions in the Gateway, optionally filtered by API, application, or status.
       operationId: listSubscriptions
       tags:
-        - Rest API Management
+        - Subscription Management
       parameters:
         - name: apiId
           in: query
@@ -738,7 +738,7 @@ paths:
       description: Get the details of a subscription by its ID.
       operationId: getSubscription
       tags:
-        - Rest API Management
+        - Subscription Management
       parameters:
         - name: subscriptionId
           in: path
@@ -769,7 +769,7 @@ paths:
       description: Update an existing subscription in the Gateway.
       operationId: updateSubscription
       tags:
-        - Rest API Management
+        - Subscription Management
       parameters:
         - name: subscriptionId
           in: path
@@ -805,7 +805,7 @@ paths:
       description: Delete a subscription from the Gateway.
       operationId: deleteSubscription
       tags:
-        - Rest API Management
+        - Subscription Management
       parameters:
         - name: subscriptionId
           in: path
@@ -4625,3 +4625,9 @@ tags:
     description: CRUD operations for LLM Proxy configurations
   - name: Secrets Management
     description: CRUD operations for Secrets
+  - name: Subscription Management
+    description: CRUD operations for Subscriptions
+  - name: Subscription Plan Management
+    description: CRUD operations for Subscription Plans
+  - name: WebSub API Management
+    description: CRUD operations for WebSub APIs
