@@ -139,20 +139,6 @@ Mock servers in `/tests/mock-servers/`:
 - AWS Bedrock Guardrails mock
 - Mock platform API
 
-## Key Technologies & Dependencies
-
-| Component | Framework/Library | Purpose |
-|---|---|---|
-| Gateway Controller | Gin, go-control-plane, bbolt | REST API, xDS, embedded store |
-| Policy Engine | gRPC, ext_proc, CEL | Policy evaluation |
-| Router | Envoy Proxy 1.35.3 | Data plane routing |
-| Platform API | Gin, oapi-codegen, pgx | Backend service |
-| CLI | cobra (likely) | CLI framework |
-| Kubernetes | controller-runtime | Operator |
-| Portals | Node.js | Web UIs |
-
-**Key Go libraries:** testify, gorilla/websocket, prometheus/client_golang, jackc/pgx, mattn/go-sqlite3
-
 ## Configuration
 
 Environment variables use the `APIP_GW_` prefix:
@@ -168,30 +154,6 @@ GATEWAY_CONTROLLER_HOST=gateway-controller   # Used by runtime to find controlle
 
 Config files: `gateway/configs/config.toml`
 
-## Go Workspace Modules
-
-All Go modules are linked via `go.work`:
-
-- `cli/it`, `cli/src`
-- `common`
-- `gateway/gateway-builder`, `gateway/gateway-controller`, `gateway/gateway-runtime/policy-engine`
-- `gateway/it`
-- `gateway/sample-policies/count-letters`, `gateway/sample-policies/uppercase-body`
-- `gateway/system-policies/analytics`
-- `platform-api/src`
-- `samples/sample-service`
-- `sdk/core`, `sdk/ai`
-- `tests/mock-servers/mock-platform-api`
-
-## Version Files
-
-| Component | File | Current Version |
-|---|---|---|
-| Platform | `/VERSION` | 0.0.1-SNAPSHOT |
-| Gateway | `/gateway/VERSION` | 1.1.0-SNAPSHOT |
-| Platform API | `/platform-api/VERSION` | 0.9.0-SNAPSHOT |
-| CLI | `/cli/VERSION` | 0.6.0-SNAPSHOT |
-
 ## Code Patterns
 
 - **API Design:** OpenAPI specs + oapi-codegen for Go server/client generation
@@ -202,34 +164,6 @@ All Go modules are linked via `go.work`:
 - **Logging:** Leveled logging (debug, info, warn, error)
 - **Policies:** Go plugins compiled via gateway-builder, evaluated with CEL expressions
 - **Communication:** xDS (controller-to-router), gRPC ext_proc (router-to-policy-engine), REST + WebSocket (platform-api-to-controller)
-
-## Linting
-
-Go linting configured via `.golangci.yml` (in `kubernetes/gateway-operator/`):
-- gofmt, goimports, govet, staticcheck, errcheck, gosimple, unused, misspell, gocyclo, dupl, lll
-
-## CI/CD (GitHub Actions)
-
-- **PR checks:** `gateway-integration-test.yml`, `platform-api-pr-check.yml`
-- **Releases:** `gateway-release.yml`, `platform-api-release.yml`, `cli-release.yml`
-- **Security:** `go-scan.yaml`, `trivy-scan.yaml`, `jfrog-scan.yaml`
-- **Coverage:** `codecov.yml`
-- **Performance:** `perf-gateway.yml`
-
-## Important Ports Summary
-
-| Service | Port | Protocol |
-|---|---|---|
-| Gateway Controller REST API | 9090 | HTTP |
-| Gateway Controller xDS | 18000 | gRPC |
-| Gateway Controller Metrics | 9091 | HTTP |
-| Router HTTP | 8080 | HTTP |
-| Router HTTPS | 8443 | HTTPS |
-| Router Admin | 9901 | HTTP |
-| Policy Engine Admin | 9002 | HTTP |
-| Policy Engine Metrics | 9003 | HTTP |
-| Debug: Controller (dlv) | 2345 | TCP |
-| Debug: Runtime (dlv) | 2346 | TCP |
 
 ## Gateway Controller REST API Usage
 
