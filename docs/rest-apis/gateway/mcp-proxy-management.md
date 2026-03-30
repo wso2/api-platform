@@ -93,7 +93,8 @@ Add a new MCPProxy to the Gateway.
           }
         ]
       }
-    ]
+    ],
+    "deploymentState": "deployed"
   }
 }
 ```
@@ -347,7 +348,8 @@ Required roles: `admin`, `developer`
               }
             ]
           }
-        ]
+        ],
+        "deploymentState": "deployed"
       }
     },
     "metadata": {
@@ -459,7 +461,8 @@ Update an existing MCPProxy in the Gateway.
           }
         ]
       }
-    ]
+    ],
+    "deploymentState": "deployed"
   }
 }
 ```

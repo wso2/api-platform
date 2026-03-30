@@ -63,7 +63,8 @@ Add a new LLM proxy to the Gateway. A proxy defines how to interact with an LLM 
           }
         ]
       }
-    ]
+    ],
+    "deploymentState": "deployed"
   }
 }
 ```
@@ -282,7 +283,8 @@ Required roles: `admin`, `developer`
               }
             ]
           }
-        ]
+        ],
+        "deploymentState": "deployed"
       }
     },
     "deploymentStatus": "deployed",
@@ -364,7 +366,8 @@ Update an existing LLM proxy in the Gateway.
           }
         ]
       }
-    ]
+    ],
+    "deploymentState": "deployed"
   }
 }
 ```

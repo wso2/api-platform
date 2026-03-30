@@ -77,7 +77,8 @@ Add a new LLM provider to the Gateway. A provider defines how to interact with a
           }
         ]
       }
-    ]
+    ],
+    "deploymentState": "deployed"
   }
 }
 ```
@@ -310,7 +311,8 @@ Required roles: `admin`, `developer`
               }
             ]
           }
-        ]
+        ],
+        "deploymentState": "deployed"
       }
     },
     "deploymentStatus": "deployed",
@@ -406,7 +408,8 @@ Update an existing LLM provider in the Gateway.
           }
         ]
       }
-    ]
+    ],
+    "deploymentState": "deployed"
   }
 }
 ```

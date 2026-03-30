@@ -51,7 +51,7 @@ Add a new RestAPI to the Gateway.
         "policies": [
           {
             "name": "log-message",
-            "version": "v0",
+            "version": "v1",
             "params": {
               "request": {
                 "payload": true,
@@ -287,7 +287,7 @@ Required roles: `admin`, `developer`
             "policies": [
               {
                 "name": "log-message",
-                "version": "v0",
+                "version": "v1",
                 "params": {
                   "request": {
                     "payload": true,
@@ -383,7 +383,7 @@ Update an existing RestAPI in the Gateway.
         "policies": [
           {
             "name": "log-message",
-            "version": "v0",
+            "version": "v1",
             "params": {
               "request": {
                 "payload": true,

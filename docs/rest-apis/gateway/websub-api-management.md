@@ -63,7 +63,8 @@ Add a new WebSubAPI to the Gateway.
         "executionCondition": "request.metadata[authenticated] != true",
         "params": {}
       }
-    ]
+    ],
+    "deploymentState": "deployed"
   }
 }
 ```
@@ -287,7 +288,8 @@ Required roles: `admin`, `developer`
             "executionCondition": "request.metadata[authenticated] != true",
             "params": {}
           }
-        ]
+        ],
+        "deploymentState": "deployed"
       }
     },
     "metadata": {
@@ -371,7 +373,8 @@ Update an existing WebSubAPI in the Gateway.
         "executionCondition": "request.metadata[authenticated] != true",
         "params": {}
       }
-    ]
+    ],
+    "deploymentState": "deployed"
   }
 }
 ```
