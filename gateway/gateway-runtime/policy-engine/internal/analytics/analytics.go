@@ -465,6 +465,19 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 				mcpAnalytics["mcp_response_properties"] = mcpResponseProps
 			}
 		}
+		// Additionally, if there's an error code in the response properties from policies, add it to the response props
+		if mcpErrorCode, ok := keyValuePairsFromMetadata["mcpErrorCode"]; ok && mcpErrorCode != "" {
+			if _, exists := mcpAnalytics["errorCode"]; !exists {
+				if code, err := strconv.Atoi(mcpErrorCode); err == nil {
+					mcpAnalytics["errorCode"] = code
+				} else {
+					slog.Debug("Invalid MCP error code format; storing raw value", "mcpErrorCode", mcpErrorCode, "error", err)
+					mcpAnalytics["errorCode"] = mcpErrorCode
+				}
+			} else {
+				slog.Debug("MCP error code already exists in mcpAnalytics, skipping adding it again", "mcpErrorCode", mcpErrorCode)
+			}
+		}
 		event.Properties["mcpAnalytics"] = mcpAnalytics
 	}
 
