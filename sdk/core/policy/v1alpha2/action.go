@@ -211,6 +211,14 @@ type RequestChunkAction struct {
 type ResponseChunkAction struct {
 	Body []byte // nil = passthrough; non-nil bytes replace the chunk
 
+	// TerminateStream instructs the policy engine to stop executing remaining policies
+	// in the chain and close the stream after delivering Body to the client. This is
+	// the correct way to signal guardrail intervention mid-stream: the policy sets Body
+	// to a final SSE event (e.g. an error or [DONE] frame) and sets TerminateStream to
+	// true. Because response headers are already committed, no HTTP-level error status
+	// can be sent — the stream is closed cleanly after the final chunk is delivered.
+	TerminateStream bool
+
 	// Analytics — accumulates incremental data across chunks (e.g. per-SSE-event token counts).
 	AnalyticsMetadata map[string]any
 	DynamicMetadata   map[string]map[string]any
