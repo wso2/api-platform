@@ -1980,6 +1980,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict (duplicate key or conflicting update)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: LLM provider not found
           content:
@@ -2124,6 +2130,12 @@ paths:
                 $ref: "#/components/schemas/APIKeyCreationResponse"
         '400':
           description: Invalid request (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict (duplicate key or conflicting update)
           content:
             application/json:
               schema:
@@ -2472,6 +2484,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict (duplicate key or conflicting update)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: LLM proxy not found
           content:
@@ -2616,6 +2634,12 @@ paths:
                 $ref: "#/components/schemas/APIKeyCreationResponse"
         '400':
           description: Invalid request (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict (duplicate key or conflicting update)
           content:
             application/json:
               schema:
