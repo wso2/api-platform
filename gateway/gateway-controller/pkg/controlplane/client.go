@@ -869,14 +869,23 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 		issuer = c.systemConfig.APIKey.Issuer
 	}
 
-	// Build a per-kind map of artifact UUIDs from the in-memory config store.
-	configs := c.store.GetAll()
+	// Read from DB rather than the in-memory store. On a fresh gateway the
+	// in-memory store may still be empty because the EventHub event from
+	// syncDeployments hasn't been polled yet by the EventListener.
+	configs, dbErr := c.db.GetAllConfigs()
+	if dbErr != nil {
+		c.logger.Error("Failed to load configs for API key sync", slog.Any("error", dbErr))
+		return
+	}
 	artifactUUIDsByKind := make(map[string][]string)
 	for _, cfg := range configs {
 		if cfg == nil {
 			continue
 		}
 		if cfg.Kind != models.KindLlmProvider && cfg.Kind != models.KindLlmProxy && cfg.Kind != models.KindRestApi {
+			continue
+		}
+		if cfg.DesiredState == models.StateUndeployed {
 			continue
 		}
 		artifactUUIDsByKind[cfg.Kind] = append(artifactUUIDsByKind[cfg.Kind], cfg.UUID)
