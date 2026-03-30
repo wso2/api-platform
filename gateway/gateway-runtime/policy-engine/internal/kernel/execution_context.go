@@ -196,6 +196,12 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 
 	if ec.policyChain.RequiresResponseBody {
 		mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_BUFFERED
+		if ec.isStreamingResponse {
+			mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED
+			slog.Debug("[mode] upgraded response body mode to FULL_DUPLEX_STREAMED",
+				"route", ec.routeKey,
+			)
+		}
 	} else {
 		mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_NONE
 	}
@@ -204,7 +210,7 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 	mode.RequestTrailerMode = extprocconfigv3.ProcessingMode_SKIP
 	mode.ResponseTrailerMode = extprocconfigv3.ProcessingMode_SKIP
 
-	slog.Debug("[mode] getModeOverride (request-headers phase)",
+	slog.Debug("[mode] getModeOverride (headers phase)",
 		"route", ec.routeKey,
 		"requires_request_body", ec.policyChain.RequiresRequestBody,
 		"requires_response_body", ec.policyChain.RequiresResponseBody,
@@ -606,13 +612,6 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 	resp, err := TranslateResponseHeaderActions(execResult, ec)
 	if err != nil {
 		return nil, err
-	}
-
-	if ec.isStreamingResponse {
-		resp.ModeOverride = ec.getStreamingResponseModeOverride()
-		slog.Debug("[mode] upgraded response body mode to FULL_DUPLEX_STREAMED",
-			"route", ec.routeKey,
-		)
 	}
 
 	return resp, nil
