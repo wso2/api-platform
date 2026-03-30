@@ -298,6 +298,12 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	// Save or update using timestamp-guarded upsert.
 	// affected=false means a newer version already exists (stale event — no-op).
 	affected, err := s.deploymentService.saveOrUpdateConfig(storedCfg, params.Logger)
+	if err != nil {
+		params.Logger.Error("Failed to save or update LLM provider configuration",
+			slog.String("handle", storedCfg.Handle),
+			slog.Any("error", err))
+		return nil, fmt.Errorf("failed to save or update LLM provider configuration")
+	}
 
 	if !affected {
 		// Stale event — DB was not modified. Return success but skip event publishing, lazy-resource, and xDS update.
@@ -1093,7 +1099,6 @@ func (s *LLMDeploymentService) isLLMProxyUndeployRequest(params LLMDeploymentPar
 	return proxyConfig.Spec.DeploymentState != nil &&
 		*proxyConfig.Spec.DeploymentState == api.LLMProxyConfigDataDeploymentStateUndeployed, nil
 }
-
 
 func (s *LLMDeploymentService) GetLLMProxyByHandle(handle string) (*models.StoredConfig, error) {
 	cfg, err := s.db.GetConfigByKindAndHandle(string(api.LlmProxy), handle)

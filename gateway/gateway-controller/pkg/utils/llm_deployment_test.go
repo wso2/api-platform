@@ -19,6 +19,8 @@
 package utils
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -32,7 +34,9 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"gopkg.in/yaml.v3"
 )
 
 type llmPublishedEvent struct {
@@ -42,6 +46,11 @@ type llmPublishedEvent struct {
 
 type mockLLMEventHub struct {
 	publishedEvents []llmPublishedEvent
+}
+
+type failingUpsertDB struct {
+	*testMockDB
+	err error
 }
 
 func (m *mockLLMEventHub) Initialize() error {
@@ -78,6 +87,10 @@ func (m *mockLLMEventHub) CleanUpEvents() error {
 
 func (m *mockLLMEventHub) Close() error {
 	return nil
+}
+
+func (m *failingUpsertDB) UpsertConfig(*models.StoredConfig) (bool, error) {
+	return false, m.err
 }
 
 func TestLLMDeploymentParams(t *testing.T) {
@@ -122,6 +135,34 @@ metadata:
 spec:
   displayName: %s
 `, handle, displayName))
+}
+
+func testLLMProviderYAML(t *testing.T, handle, displayName, template string) []byte {
+	t.Helper()
+
+	cfg := api.LLMProviderConfiguration{
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.LlmProvider,
+		Metadata: api.Metadata{
+			Name: handle,
+		},
+		Spec: api.LLMProviderConfigData{
+			DisplayName: displayName,
+			Version:     "1.0.0",
+			Template:    template,
+			Upstream: api.LLMProviderConfigData_Upstream{
+				Url: stringPtr("https://example.com"),
+			},
+			AccessControl: api.LLMAccessControl{
+				Mode: api.AllowAll,
+			},
+		},
+	}
+
+	yamlData, err := yaml.Marshal(cfg)
+	require.NoError(t, err)
+
+	return yamlData
 }
 
 func testStoredLLMTemplate(uuid, handle, displayName string) *models.StoredLLMProviderTemplate {
@@ -655,6 +696,42 @@ func TestLLMDeploymentService_DeployLLMProviderConfiguration_ParseError(t *testi
 	_, err := service.DeployLLMProviderConfiguration(params)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to parse")
+}
+
+func TestLLMDeploymentService_DeployLLMProviderConfiguration_SaveErrorReturnsSanitizedError(t *testing.T) {
+	store := storage.NewConfigStore()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	db := &failingUpsertDB{
+		testMockDB: newTestMockDB(),
+		err: errors.New(
+			"failed to upsert artifact: UNIQUE constraint failed: artifacts.gateway_id, artifacts.kind, artifacts.handle",
+		),
+	}
+	template := testStoredLLMTemplate("0000-template-1-0000-000000000000", "openai", "OpenAI Template")
+	require.NoError(t, db.SaveLLMProviderTemplate(template))
+
+	mockHub := &mockLLMEventHub{}
+	policyResolver := resolver.NewPolicyResolver(map[string]models.PolicyDefinition{}, nil)
+	apiDeploymentService := newTestAPIDeploymentServiceWithHub(store, db, nil, nil, routerConfig, policyResolver, mockHub, "test-gateway")
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+
+	var logOutput bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logOutput, nil))
+
+	_, err := service.DeployLLMProviderConfiguration(LLMDeploymentParams{
+		Data:          testLLMProviderYAML(t, "hotel-booking-provider", "Hotel Booking Provider", "openai"),
+		ContentType:   "application/yaml",
+		CorrelationID: "test-corr",
+		Logger:        logger,
+		Origin:        models.OriginGatewayAPI,
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, "failed to save or update LLM provider configuration", err.Error())
+	assert.NotContains(t, err.Error(), "UNIQUE constraint failed")
+	assert.Contains(t, logOutput.String(), "Failed to save or update LLM provider configuration")
+	assert.Contains(t, logOutput.String(), "UNIQUE constraint failed")
+	assert.Empty(t, mockHub.publishedEvents)
 }
 
 func TestLLMDeploymentService_DeployLLMProxyConfiguration_ParseError(t *testing.T) {
