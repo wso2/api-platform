@@ -1353,8 +1353,8 @@ func TranslateStreamingResponseChunkAction(result *executor.StreamingResponseExe
 
 	// If a policy terminated the stream early (e.g. guardrail intervention), force
 	// EndOfStream so Envoy closes the connection cleanly after delivering the final chunk.
-	endOfStream := originalChunk.EndOfStream || result.ShortCircuited
-	if result.ShortCircuited {
+	endOfStream := originalChunk.EndOfStream || result.StreamTerminated
+	if result.StreamTerminated {
 		slog.Info("[streaming] stream terminated by policy; forcing EndOfStream on final chunk")
 	}
 
