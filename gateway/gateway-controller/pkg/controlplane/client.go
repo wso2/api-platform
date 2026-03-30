@@ -733,7 +733,10 @@ func (c *Client) syncSubscriptionPlans(gatewayID string) {
 }
 
 // syncSubscriptionsForExistingAPIs performs a one-time bulk sync of subscriptions
-// for all currently known REST APIs after the WebSocket connection is established.
+// for all REST APIs persisted in the local DB after the WebSocket connection is
+// established. Enumeration uses the DB (not the in-memory config store) so bulk
+// sync still runs when EventHub is enabled: deployment sync writes rows to the DB
+// before the EventListener updates the store.
 // The gatewayID parameter is a stable snapshot of the gateway identifier at the
 // time the sync was scheduled, ensuring we don't cross-contaminate state across
 // reconnects.
@@ -747,14 +750,22 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 		return
 	}
 
-	if c.apiUtilsService == nil || c.store == nil {
+	if c.apiUtilsService == nil || c.db == nil {
 		return
 	}
 
 	resourceService := c.getSubscriptionResourceService()
 
-	configs := c.store.GetAll()
-	for _, cfg := range configs {
+	restCfgs, err := c.db.GetAllConfigsByKind(models.KindRestApi)
+	if err != nil {
+		c.logger.Warn("Failed to list REST APIs from DB for subscription bulk sync",
+			slog.String("gateway_id", gatewayID),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	for _, cfg := range restCfgs {
 		// Abort promptly if the client is shutting down.
 		select {
 		case <-c.ctx.Done():
@@ -769,16 +780,10 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 		if cfg == nil {
 			continue
 		}
-		if cfg.Kind != string(api.RestApi) {
-			continue
-		}
 
 		apiID := cfg.UUID
 
-		// Check the DB (already updated by syncDeployments) for the current
-		// desired state. The in-memory store may still show the old state
-		// because EventHub events are processed asynchronously.
-		if dbCfg, err := c.db.GetConfig(apiID); err == nil && dbCfg.DesiredState == models.StateUndeployed {
+		if cfg.DesiredState == models.StateUndeployed {
 			continue
 		}
 

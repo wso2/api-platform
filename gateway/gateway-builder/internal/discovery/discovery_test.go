@@ -39,7 +39,7 @@ policies:
   - name: test-policy
     filePath: ./policies/test
 `
-	lockPath := filepath.Join(tmpDir, "build-lock.yaml")
+	lockPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	testutils.WriteFile(t, lockPath, manifestContent)
 
 	manifest, err := LoadBuildFile(lockPath)
@@ -60,7 +60,7 @@ func TestLoadBuildFile_FileNotFound(t *testing.T) {
 func TestLoadBuildFile_InvalidYAML(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	lockPath := filepath.Join(tmpDir, "build-lock.yaml")
+	lockPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	testutils.WriteFile(t, lockPath, "invalid: yaml: content: -")
 
 	_, err := LoadBuildFile(lockPath)
@@ -76,7 +76,7 @@ func TestLoadBuildFile_MissingVersion(t *testing.T) {
   - name: test-policy
     filePath: ./policies/test
 `
-	lockPath := filepath.Join(tmpDir, "build-lock.yaml")
+	lockPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	testutils.WriteFile(t, lockPath, manifestContent)
 
 	_, err := LoadBuildFile(lockPath)
@@ -93,7 +93,7 @@ policies:
   - name: test-policy
     filePath: ./policies/test
 `
-	lockPath := filepath.Join(tmpDir, "build-lock.yaml")
+	lockPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	testutils.WriteFile(t, lockPath, manifestContent)
 
 	_, err := LoadBuildFile(lockPath)
@@ -108,7 +108,7 @@ func TestLoadBuildFile_NoPolicies(t *testing.T) {
 	manifestContent := `version: v1
 policies: []
 `
-	lockPath := filepath.Join(tmpDir, "build-lock.yaml")
+	lockPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	testutils.WriteFile(t, lockPath, manifestContent)
 
 	_, err := LoadBuildFile(lockPath)
@@ -124,7 +124,7 @@ func TestLoadBuildFile_PolicyMissingName(t *testing.T) {
 policies:
   - filePath: ./policies/test
 `
-	lockPath := filepath.Join(tmpDir, "build-lock.yaml")
+	lockPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	testutils.WriteFile(t, lockPath, manifestContent)
 
 	_, err := LoadBuildFile(lockPath)
@@ -140,7 +140,7 @@ func TestLoadBuildFile_PolicyMissingPathAndModule(t *testing.T) {
 policies:
   - name: test-policy
 `
-	lockPath := filepath.Join(tmpDir, "build-lock.yaml")
+	lockPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	testutils.WriteFile(t, lockPath, manifestContent)
 
 	_, err := LoadBuildFile(lockPath)
@@ -159,7 +159,7 @@ policies:
   - name: test-policy
     filePath: ./policies/test
 `
-	lockPath := filepath.Join(tmpDir, "build-lock.yaml")
+	lockPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	testutils.WriteFile(t, lockPath, manifestContent)
 
 	_, err := LoadBuildFile(lockPath)
@@ -178,7 +178,7 @@ policies:
     filePath: ./policies/test
     gomodule: github.com/example/test
 `
-	lockPath := filepath.Join(tmpDir, "build-lock.yaml")
+	lockPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	testutils.WriteFile(t, lockPath, manifestContent)
 
 	manifest, err := LoadBuildFile(lockPath)
@@ -382,7 +382,7 @@ policies:
   - name: ratelimit
     filePath: ./policies/ratelimit/v1.0.0
 `
-	manifestPath := filepath.Join(tmpDir, "build-lock.yaml")
+	manifestPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	testutils.WriteFile(t, manifestPath, manifestContent)
 
 	// Discover policies
@@ -423,7 +423,7 @@ policies:
   - name: jwt-auth
     filePath: ./policies/jwt-auth
 `
-	manifestPath := filepath.Join(tmpDir, "build-lock.yaml")
+	manifestPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	testutils.WriteFile(t, manifestPath, manifestContent)
 
 	policies, err := DiscoverPoliciesFromBuildFile(manifestPath, "")
@@ -450,7 +450,7 @@ policies:
   - name: missing-policy
     filePath: ./nonexistent-policy
 `
-	manifestPath := filepath.Join(tmpDir, "build-lock.yaml")
+	manifestPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	testutils.WriteFile(t, manifestPath, manifestContent)
 
 	policies, err := DiscoverPoliciesFromBuildFile(manifestPath, "")
@@ -468,7 +468,7 @@ func TestDiscoverPoliciesFromBuildFile_NoFilePathOrGomodule(t *testing.T) {
 policies:
   - name: incomplete-policy
 `
-	manifestPath := filepath.Join(tmpDir, "build-lock.yaml")
+	manifestPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	testutils.WriteFile(t, manifestPath, manifestContent)
 
 	policies, err := DiscoverPoliciesFromBuildFile(manifestPath, "")
@@ -495,7 +495,7 @@ policies:
   - name: my-policy
     filePath: ./policies/my-policy
 `
-	manifestPath := filepath.Join(tmpDir, "build-lock.yaml")
+	manifestPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	testutils.WriteFile(t, manifestPath, manifestContent)
 
 	policies, err := DiscoverPoliciesFromBuildFile(manifestPath, "")
@@ -521,7 +521,7 @@ policies:
   - name: noversion
     filePath: ./policies/noversion
 `
-	manifestPath := filepath.Join(tmpDir, "build-lock.yaml")
+	manifestPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	testutils.WriteFile(t, manifestPath, manifestContent)
 
 	policies, err := DiscoverPoliciesFromBuildFile(manifestPath, "")
@@ -546,7 +546,7 @@ policies:
   - name: invalid
     filePath: ./policies/invalid
 `
-	manifestPath := filepath.Join(tmpDir, "build-lock.yaml")
+	manifestPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	testutils.WriteFile(t, manifestPath, manifestContent)
 
 	policies, err := DiscoverPoliciesFromBuildFile(manifestPath, "")
@@ -575,7 +575,7 @@ policies:
   - name: ratelimit
     filePath: ./ratelimit
 `
-	manifestPath := filepath.Join(tmpDir, "manifest", "build-lock.yaml")
+	manifestPath := filepath.Join(tmpDir, "manifest", "build-manifest.yaml")
 	testutils.CreateDir(t, filepath.Dir(manifestPath))
 	testutils.WriteFile(t, manifestPath, manifestContent)
 
@@ -593,7 +593,7 @@ func TestDiscoverPoliciesFromBuildFile_EmptyManifest(t *testing.T) {
 	manifestContent := `version: v1
 policies: []
 `
-	manifestPath := filepath.Join(tmpDir, "build-lock.yaml")
+	manifestPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	testutils.WriteFile(t, manifestPath, manifestContent)
 
 	policies, err := DiscoverPoliciesFromBuildFile(manifestPath, "")
@@ -620,7 +620,7 @@ policies:
   - name: baddef
     filePath: ./policies/baddef
 `
-	manifestPath := filepath.Join(tmpDir, "build-lock.yaml")
+	manifestPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	testutils.WriteFile(t, manifestPath, manifestContent)
 
 	policies, err := DiscoverPoliciesFromBuildFile(manifestPath, "")
@@ -655,7 +655,7 @@ policies:
   - name: sysparam-policy
     filePath: ./policies/sysparam-policy
 `
-	manifestPath := filepath.Join(tmpDir, "build-lock.yaml")
+	manifestPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	testutils.WriteFile(t, manifestPath, manifestContent)
 
 	policies, err := DiscoverPoliciesFromBuildFile(manifestPath, "")
@@ -781,7 +781,7 @@ policies:
   - name: remote-policy
     gomodule: github.com/nonexistent-org-12345/fake-policy@v1.0.0
 `
-	manifestPath := filepath.Join(tmpDir, "build-lock.yaml")
+	manifestPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	testutils.WriteFile(t, manifestPath, manifestContent)
 
 	_, err := DiscoverPoliciesFromBuildFile(manifestPath, "")
@@ -810,7 +810,7 @@ policies:
   - name: local-policy
     filePath: ./policies/local-policy
 `
-	manifestPath := filepath.Join(tmpDir, "build-lock.yaml")
+	manifestPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	testutils.WriteFile(t, manifestPath, manifestContent)
 
 	policies, err := DiscoverPoliciesFromBuildFile(manifestPath, "")
