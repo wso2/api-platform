@@ -829,7 +829,7 @@ type StreamingResponsePolicyResult struct {
 // StreamingResponseExecutionResult represents the result of executing all streaming response policies
 type StreamingResponseExecutionResult struct {
 	Results             []StreamingResponsePolicyResult
-	ShortCircuited      bool // true if a policy set TerminateStream and the chain was stopped early
+	StreamTerminated      bool // true if a policy set TerminateStream and the chain was stopped early
 	FinalAction         *policy.ResponseChunkAction
 	FinalChunk          *policy.StreamBody
 	TotalExecutionTime  time.Duration
@@ -966,7 +966,7 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 				"version", spec.Version,
 				"route", route,
 			)
-			result.ShortCircuited = true
+			result.StreamTerminated = true
 			break
 		}
 	}

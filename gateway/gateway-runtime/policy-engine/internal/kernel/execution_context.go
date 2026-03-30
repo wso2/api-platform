@@ -778,7 +778,7 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 		if err != nil {
 			return ec.handlePolicyError(ctx, err, "response_body_streaming"), nil
 		}
-		if execResult.ShortCircuited {
+		if execResult.StreamTerminated {
 			ec.streamTerminated = true
 		}
 		return TranslateStreamingResponseChunkAction(execResult, chunk, ec)
@@ -859,7 +859,7 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 		return ec.handlePolicyError(ctx, err, "response_body_streaming"), nil
 	}
 
-	if execResult.ShortCircuited {
+	if execResult.StreamTerminated {
 		ec.streamTerminated = true
 	}
 	return TranslateStreamingResponseChunkAction(execResult, flushChunk, ec)
