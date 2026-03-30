@@ -22,7 +22,7 @@ curl -X POST http://localhost:9090/rest-apis \
 
 Add a new RestAPI to the Gateway.
 
-> Body parameter
+> Payload
 
 ```json
 {
@@ -51,7 +51,7 @@ Add a new RestAPI to the Gateway.
         "policies": [
           {
             "name": "log-message",
-            "version": "v0",
+            "version": "v1",
             "params": {
               "request": {
                 "payload": true,
@@ -82,6 +82,15 @@ Add a new RestAPI to the Gateway.
 }
 ```
 
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
+
 <h3 id="create-a-new-restapi-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
@@ -110,10 +119,6 @@ Add a new RestAPI to the Gateway.
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - API with same name and version already exists|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## List all RestAPIs
 
 <a id="opIdlistRestAPIs"></a>
@@ -131,6 +136,15 @@ curl -X GET http://localhost:9090/rest-apis \
 ```
 
 List RestAPIs registered in the Gateway, optionally filtered by name, version, context, or status.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="list-all-restapis-parameters">Parameters</h3>
 
@@ -201,10 +215,6 @@ Status Code **200**
 |status|deployed|
 |status|undeployed|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Get RestAPI by id
 
 <a id="opIdgetRestAPIById"></a>
@@ -222,6 +232,15 @@ curl -X GET http://localhost:9090/rest-apis/{id} \
 ```
 
 Get a RestAPI by its ID.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="get-restapi-by-id-parameters">Parameters</h3>
 
@@ -268,7 +287,7 @@ Get a RestAPI by its ID.
             "policies": [
               {
                 "name": "log-message",
-                "version": "v0",
+                "version": "v1",
                 "params": {
                   "request": {
                     "payload": true,
@@ -315,10 +334,6 @@ Get a RestAPI by its ID.
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Update an existing RestAPI
 
 <a id="opIdupdateRestAPI"></a>
@@ -339,7 +354,7 @@ curl -X PUT http://localhost:9090/rest-apis/{id} \
 
 Update an existing RestAPI in the Gateway.
 
-> Body parameter
+> Payload
 
 ```json
 {
@@ -368,7 +383,7 @@ Update an existing RestAPI in the Gateway.
         "policies": [
           {
             "name": "log-message",
-            "version": "v0",
+            "version": "v1",
             "params": {
               "request": {
                 "payload": true,
@@ -398,6 +413,15 @@ Update an existing RestAPI in the Gateway.
   }
 }
 ```
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="update-an-existing-restapi-parameters">Parameters</h3>
 
@@ -432,10 +456,6 @@ Update an existing RestAPI in the Gateway.
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Delete a RestAPI
 
 <a id="opIddeleteRestAPI"></a>
@@ -453,6 +473,15 @@ curl -X DELETE http://localhost:9090/rest-apis/{id} \
 ```
 
 Delete a RestAPI from the Gateway.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="delete-a-restapi-parameters">Parameters</h3>
 
@@ -494,10 +523,6 @@ Status Code **200**
 |» message|string|false|none|none|
 |» id|string|false|none|none|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Create a new API key for an API
 
 <a id="opIdcreateAPIKey"></a>
@@ -518,7 +543,7 @@ curl -X POST http://localhost:9090/rest-apis/{id}/api-keys \
 
 Generate a new API key for a RestAPI in the Gateway. The key is a 32-byte random value encoded in hexadecimal, prefixed with `apip_`. Use the API Key policy on the API to validate incoming requests with this key.
 
-> Body parameter
+> Payload
 
 ```json
 {
@@ -534,6 +559,15 @@ Generate a new API key for a RestAPI in the Gateway. The key is a 32-byte random
   "issuer": "api-platform-devportal"
 }
 ```
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `consumer`
+
+</aside>
 
 <h3 id="create-a-new-api-key-for-an-api-parameters">Parameters</h3>
 
@@ -579,10 +613,6 @@ Generate a new API key for a RestAPI in the Gateway. The key is a 32-byte random
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Get the list of API keys for an API
 
 <a id="opIdlistAPIKeys"></a>
@@ -600,6 +630,15 @@ curl -X GET http://localhost:9090/rest-apis/{id}/api-keys \
 ```
 
 List all API keys for a RestAPI in the Gateway.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `consumer`
+
+</aside>
 
 <h3 id="get-the-list-of-api-keys-for-an-api-parameters">Parameters</h3>
 
@@ -644,10 +683,6 @@ List all API keys for a RestAPI in the Gateway.
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Regenerate API key for an API
 
 <a id="opIdregenerateAPIKey"></a>
@@ -668,7 +703,7 @@ curl -X POST http://localhost:9090/rest-apis/{id}/api-keys/{apiKeyName}/regenera
 
 Regenerate an existing API key for a RestAPI in the Gateway. The previous key is revoked and replaced with a new 32-byte random value encoded in hexadecimal, prefixed with `apip_`.
 
-> Body parameter
+> Payload
 
 ```json
 {
@@ -679,6 +714,15 @@ Regenerate an existing API key for a RestAPI in the Gateway. The previous key is
   "expiresAt": "2026-12-08T10:30:00Z"
 }
 ```
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `consumer`
+
+</aside>
 
 <h3 id="regenerate-api-key-for-an-api-parameters">Parameters</h3>
 
@@ -727,10 +771,6 @@ Regenerate an existing API key for a RestAPI in the Gateway. The previous key is
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Update an API key with a new regenerated value
 
 <a id="opIdupdateAPIKey"></a>
@@ -751,7 +791,7 @@ curl -X PUT http://localhost:9090/rest-apis/{id}/api-keys/{apiKeyName} \
 
 Update an API key with a custom value instead of auto-generating one.
 
-> Body parameter
+> Payload
 
 ```json
 {
@@ -767,6 +807,15 @@ Update an API key with a custom value instead of auto-generating one.
   "issuer": "api-platform-devportal"
 }
 ```
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `consumer`
+
+</aside>
 
 <h3 id="update-an-api-key-with-a-new-regenerated-value-parameters">Parameters</h3>
 
@@ -815,10 +864,6 @@ Update an API key with a custom value instead of auto-generating one.
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|API or API key not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Revoke an API key
 
 <a id="opIdrevokeAPIKey"></a>
@@ -836,6 +881,15 @@ curl -X DELETE http://localhost:9090/rest-apis/{id}/api-keys/{apiKeyName} \
 ```
 
 Revoke an API key. Once revoked, it can no longer be used to authenticate requests.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `consumer`
+
+</aside>
 
 <h3 id="revoke-an-api-key-parameters">Parameters</h3>
 
@@ -870,10 +924,6 @@ Revoke an API key. Once revoked, it can no longer be used to authenticate reques
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Create a subscription plan
 
 <a id="opIdcreateSubscriptionPlan"></a>
@@ -894,7 +944,7 @@ curl -X POST http://localhost:9090/subscription-plans \
 
 Create a subscription plan that defines rate limits and access tiers for API subscriptions.
 
-> Body parameter
+> Payload
 
 ```json
 {
@@ -907,6 +957,15 @@ Create a subscription plan that defines rate limits and access tiers for API sub
   "status": "ACTIVE"
 }
 ```
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="create-a-subscription-plan-parameters">Parameters</h3>
 
@@ -943,10 +1002,6 @@ Create a subscription plan that defines rate limits and access tiers for API sub
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## List subscription plans
 
 <a id="opIdlistSubscriptionPlans"></a>
@@ -964,6 +1019,15 @@ curl -X GET http://localhost:9090/subscription-plans \
 ```
 
 List all subscription plans available in the Gateway.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 > Example responses
 
@@ -997,10 +1061,6 @@ List all subscription plans available in the Gateway.
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of subscription plans|[SubscriptionPlanListResponse](schemas.md#schemasubscriptionplanlistresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Get a subscription plan by ID
 
 <a id="opIdgetSubscriptionPlan"></a>
@@ -1018,6 +1078,15 @@ curl -X GET http://localhost:9090/subscription-plans/{planId} \
 ```
 
 Get the details of a subscription plan by its ID.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="get-a-subscription-plan-by-id-parameters">Parameters</h3>
 
@@ -1053,10 +1122,6 @@ Get the details of a subscription plan by its ID.
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Update a subscription plan
 
 <a id="opIdupdateSubscriptionPlan"></a>
@@ -1077,7 +1142,7 @@ curl -X PUT http://localhost:9090/subscription-plans/{planId} \
 
 Update an existing subscription plan in the Gateway.
 
-> Body parameter
+> Payload
 
 ```json
 {
@@ -1090,6 +1155,15 @@ Update an existing subscription plan in the Gateway.
   "status": "ACTIVE"
 }
 ```
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="update-a-subscription-plan-parameters">Parameters</h3>
 
@@ -1126,10 +1200,6 @@ Update an existing subscription plan in the Gateway.
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Delete a subscription plan
 
 <a id="opIddeleteSubscriptionPlan"></a>
@@ -1147,6 +1217,15 @@ curl -X DELETE http://localhost:9090/subscription-plans/{planId} \
 ```
 
 Delete a subscription plan from the Gateway.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="delete-a-subscription-plan-parameters">Parameters</h3>
 
@@ -1179,10 +1258,6 @@ Delete a subscription plan from the Gateway.
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Create a subscription
 
 <a id="opIdcreateSubscription"></a>
@@ -1203,7 +1278,7 @@ curl -X POST http://localhost:9090/subscriptions \
 
 Subscribe an application to a RestAPI in the Gateway.
 
-> Body parameter
+> Payload
 
 ```json
 {
@@ -1214,6 +1289,15 @@ Subscribe an application to a RestAPI in the Gateway.
   "status": "ACTIVE"
 }
 ```
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="create-a-subscription-parameters">Parameters</h3>
 
@@ -1248,10 +1332,6 @@ Subscribe an application to a RestAPI in the Gateway.
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - subscription already exists|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## List subscriptions
 
 <a id="opIdlistSubscriptions"></a>
@@ -1269,6 +1349,15 @@ curl -X GET http://localhost:9090/subscriptions \
 ```
 
 List subscriptions in the Gateway, optionally filtered by API, application, or status.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="list-subscriptions-parameters">Parameters</h3>
 
@@ -1316,10 +1405,6 @@ List subscriptions in the Gateway, optionally filtered by API, application, or s
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of subscriptions|[SubscriptionListResponse](schemas.md#schemasubscriptionlistresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Get a subscription by ID
 
 <a id="opIdgetSubscription"></a>
@@ -1337,6 +1422,15 @@ curl -X GET http://localhost:9090/subscriptions/{subscriptionId} \
 ```
 
 Get the details of a subscription by its ID.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="get-a-subscription-by-id-parameters">Parameters</h3>
 
@@ -1370,10 +1464,6 @@ Get the details of a subscription by its ID.
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Subscription not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Update a subscription
 
 <a id="opIdupdateSubscription"></a>
@@ -1394,13 +1484,22 @@ curl -X PUT http://localhost:9090/subscriptions/{subscriptionId} \
 
 Update an existing subscription in the Gateway.
 
-> Body parameter
+> Payload
 
 ```json
 {
   "status": "ACTIVE"
 }
 ```
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="update-a-subscription-parameters">Parameters</h3>
 
@@ -1435,10 +1534,6 @@ Update an existing subscription in the Gateway.
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Subscription not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Delete a subscription
 
 <a id="opIddeleteSubscription"></a>
@@ -1456,6 +1551,15 @@ curl -X DELETE http://localhost:9090/subscriptions/{subscriptionId} \
 ```
 
 Delete a subscription from the Gateway.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="delete-a-subscription-parameters">Parameters</h3>
 
@@ -1487,7 +1591,3 @@ Delete a subscription from the Gateway.
 |204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Subscription deleted|None|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Subscription not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
-
-<aside class="success">
-This operation does not require authentication
-</aside>

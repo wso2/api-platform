@@ -1,5 +1,8 @@
 <aside class="warning">
-To perform this operation, you must be authenticated by means of one of the following methods:
-{{= data.utils.getAuthenticationStr(data) }}
+This operation requires <strong>Basic Auth</strong> authentication.
+{{? data.operation['x-basicauth-roles'] && data.operation['x-basicauth-roles'].length}}
+
+Required roles: {{= data.operation['x-basicauth-roles'].map(function(r){return '`'+r+'`';}).join(', ') }}
+{{?}}
 </aside>
 
