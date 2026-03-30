@@ -43,7 +43,7 @@ The API Platform covers the complete API lifecycle:
 
 ## Architecture
 
-TODO: add image
+
 
 ## Quick Start
 
