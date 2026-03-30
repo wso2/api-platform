@@ -241,6 +241,26 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		}
 	}
 
+	// Check for duplicate LLM provider configurations
+	handle := providerConfig.Metadata.Name
+	existingConfigs, err := s.db.GetAllConfigsByKind(string(api.LlmProvider))
+	if err != nil {
+		return nil, fmt.Errorf("failed to list LLM provider configurations from database: %w", err)
+	}
+	for _, cfg := range existingConfigs {
+		if cfg.UUID == apiID {
+			continue
+		}
+		if cfg.DisplayName == providerConfig.Spec.DisplayName && cfg.Version == providerConfig.Spec.Version {
+			return nil, fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists",
+				storage.ErrConflict, providerConfig.Spec.DisplayName, providerConfig.Spec.Version)
+		}
+		if handle != "" && cfg.Handle == handle {
+			return nil, fmt.Errorf("%w: configuration with handle '%s' already exists",
+				storage.ErrConflict, handle)
+		}
+	}
+
 	// Create stored configuration
 	now := time.Now()
 	deployedAt := params.DeployedAt
@@ -393,6 +413,26 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 		apiID, err = GenerateUUID()
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate API ID: %w", err)
+		}
+	}
+
+	// Check for duplicate LLM proxy configurations
+	proxyHandle := proxyConfig.Metadata.Name
+	existingProxyConfigs, err := s.db.GetAllConfigsByKind(string(api.LlmProxy))
+	if err != nil {
+		return nil, fmt.Errorf("failed to list LLM proxy configurations from database: %w", err)
+	}
+	for _, cfg := range existingProxyConfigs {
+		if cfg.UUID == apiID {
+			continue
+		}
+		if cfg.DisplayName == proxyConfig.Spec.DisplayName && cfg.Version == proxyConfig.Spec.Version {
+			return nil, fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists",
+				storage.ErrConflict, proxyConfig.Spec.DisplayName, proxyConfig.Spec.Version)
+		}
+		if proxyHandle != "" && cfg.Handle == proxyHandle {
+			return nil, fmt.Errorf("%w: configuration with handle '%s' already exists",
+				storage.ErrConflict, proxyHandle)
 		}
 	}
 

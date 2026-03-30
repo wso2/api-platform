@@ -721,6 +721,13 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 	})
 	if err != nil {
 		log.Error("Failed to create LLM provider", slog.Any("error", err))
+		if storage.IsConflictError(err) {
+			c.JSON(http.StatusConflict, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+			return
+		}
 		if utils.IsPolicyDefinitionMissingError(err) {
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
@@ -947,6 +954,13 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 	})
 	if err != nil {
 		log.Error("Failed to create LLM proxy", slog.Any("error", err))
+		if storage.IsConflictError(err) {
+			c.JSON(http.StatusConflict, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+			return
+		}
 		if utils.IsPolicyDefinitionMissingError(err) {
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",

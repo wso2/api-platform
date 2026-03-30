@@ -1082,3 +1082,146 @@ func TestLLMDeploymentService_InitializeOOBTemplates_UpdateExisting(t *testing.T
 	assert.NoError(t, err)
 	assert.Equal(t, "Updated Template", found.Configuration.Spec.DisplayName)
 }
+
+func testLLMProviderYAML(handle, displayName, version string) []byte {
+	return []byte(fmt.Sprintf(`
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProvider
+metadata:
+  name: %s
+spec:
+  displayName: %s
+  version: %s
+  template: openai
+  upstream:
+    url: https://api.openai.com
+  accessControl:
+    mode: allow_all
+`, handle, displayName, version))
+}
+
+func testLLMProxyYAML(handle, displayName, version, providerHandle string) []byte {
+	return []byte(fmt.Sprintf(`
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProxy
+metadata:
+  name: %s
+spec:
+  displayName: %s
+  version: %s
+  provider: %s
+  accessControl:
+    mode: allow_all
+`, handle, displayName, version, providerHandle))
+}
+
+func setupLLMDeploymentServiceWithTemplate(t *testing.T) (*LLMDeploymentService, *testMockDB) {
+	t.Helper()
+	store := storage.NewConfigStore()
+	db := newTestMockDB()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	mockHub := &mockLLMEventHub{}
+	apiDeploymentService := newTestAPIDeploymentServiceWithHub(store, db, nil, nil, routerConfig, nil, mockHub, "test-gateway")
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+
+	// Save a template so the transformer can find it
+	template := testStoredLLMTemplate("template-uuid", "openai", "OpenAI")
+	require.NoError(t, db.SaveLLMProviderTemplate(template))
+
+	return service, db
+}
+
+func TestLLMDeploymentService_DeployLLMProviderConfiguration_DuplicateHandle(t *testing.T) {
+	service, _ := setupLLMDeploymentServiceWithTemplate(t)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	params := LLMDeploymentParams{
+		Data:          testLLMProviderYAML("my-provider", "My Provider", "v1.0"),
+		ContentType:   "application/yaml",
+		CorrelationID: "corr-1",
+		Logger:        logger,
+		Origin:        models.OriginGatewayAPI,
+	}
+
+	// First deploy should succeed
+	result, err := service.DeployLLMProviderConfiguration(params)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Second deploy with same handle should return conflict
+	params2 := LLMDeploymentParams{
+		Data:          testLLMProviderYAML("my-provider", "Different Name", "v2.0"),
+		ContentType:   "application/yaml",
+		CorrelationID: "corr-2",
+		Logger:        logger,
+		Origin:        models.OriginGatewayAPI,
+	}
+
+	_, err = service.DeployLLMProviderConfiguration(params2)
+	require.Error(t, err)
+	assert.True(t, storage.IsConflictError(err), "expected conflict error, got: %v", err)
+	assert.Contains(t, err.Error(), "my-provider")
+}
+
+func TestLLMDeploymentService_DeployLLMProviderConfiguration_DuplicateDisplayNameAndVersion(t *testing.T) {
+	service, _ := setupLLMDeploymentServiceWithTemplate(t)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	params := LLMDeploymentParams{
+		Data:          testLLMProviderYAML("provider-one", "My Provider", "v1.0"),
+		ContentType:   "application/yaml",
+		CorrelationID: "corr-1",
+		Logger:        logger,
+		Origin:        models.OriginGatewayAPI,
+	}
+
+	// First deploy should succeed
+	result, err := service.DeployLLMProviderConfiguration(params)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Second deploy with different handle but same displayName+version should conflict
+	params2 := LLMDeploymentParams{
+		Data:          testLLMProviderYAML("provider-two", "My Provider", "v1.0"),
+		ContentType:   "application/yaml",
+		CorrelationID: "corr-2",
+		Logger:        logger,
+		Origin:        models.OriginGatewayAPI,
+	}
+
+	_, err = service.DeployLLMProviderConfiguration(params2)
+	require.Error(t, err)
+	assert.True(t, storage.IsConflictError(err), "expected conflict error, got: %v", err)
+	assert.Contains(t, err.Error(), "My Provider")
+	assert.Contains(t, err.Error(), "v1.0")
+}
+
+func TestLLMDeploymentService_DeployLLMProviderConfiguration_DifferentNameAndVersion_Succeeds(t *testing.T) {
+	service, _ := setupLLMDeploymentServiceWithTemplate(t)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	params := LLMDeploymentParams{
+		Data:          testLLMProviderYAML("provider-one", "Provider One", "v1.0"),
+		ContentType:   "application/yaml",
+		CorrelationID: "corr-1",
+		Logger:        logger,
+		Origin:        models.OriginGatewayAPI,
+	}
+
+	result, err := service.DeployLLMProviderConfiguration(params)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Different handle and different displayName+version should succeed
+	params2 := LLMDeploymentParams{
+		Data:          testLLMProviderYAML("provider-two", "Provider Two", "v1.0"),
+		ContentType:   "application/yaml",
+		CorrelationID: "corr-2",
+		Logger:        logger,
+		Origin:        models.OriginGatewayAPI,
+	}
+
+	result2, err := service.DeployLLMProviderConfiguration(params2)
+	require.NoError(t, err)
+	require.NotNil(t, result2)
+}
