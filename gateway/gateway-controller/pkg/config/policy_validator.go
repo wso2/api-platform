@@ -59,6 +59,45 @@ func BuildLatestVersionIndex(definitions map[string]models.PolicyDefinition) map
 	return index
 }
 
+// ValidateLLMPolicies validates all LLM policies by checking that
+// each referenced policy name and version exists in the loaded definitions,
+// and that per-path parameters conform to the policy's JSON schema.
+func (pv *PolicyValidator) ValidateLLMPolicies(policies *[]api.LLMPolicy) []ValidationError {
+	var errors []ValidationError
+
+	if policies == nil {
+		return errors
+	}
+
+	for i, llmPolicy := range *policies {
+		fieldPath := fmt.Sprintf("spec.policies[%d]", i)
+
+		// Convert each path entry to an api.Policy to reuse validatePolicy
+		for j, pathEntry := range llmPolicy.Paths {
+			pathFieldPath := fmt.Sprintf("%s.paths[%d]", fieldPath, j)
+			policy := api.Policy{
+				Name:    llmPolicy.Name,
+				Version: llmPolicy.Version,
+				Params:  &pathEntry.Params,
+			}
+			errs := pv.validatePolicy(policy, pathFieldPath)
+			errors = append(errors, errs...)
+		}
+
+		// If no paths, still validate name and version
+		if len(llmPolicy.Paths) == 0 {
+			policy := api.Policy{
+				Name:    llmPolicy.Name,
+				Version: llmPolicy.Version,
+			}
+			errs := pv.validatePolicy(policy, fieldPath)
+			errors = append(errors, errs...)
+		}
+	}
+
+	return errors
+}
+
 // ValidateMCPProxyPolicies validates all policies in an MCP proxy configuration
 func (pv *PolicyValidator) ValidateMCPProxyPolicies(mcpConfig *api.MCPProxyConfiguration) []ValidationError {
 	var errors []ValidationError

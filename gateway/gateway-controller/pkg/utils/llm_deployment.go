@@ -210,26 +210,27 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		return nil, fmt.Errorf("provider validation failed with %d error(s): %s", len(validationErrors), strings.Join(errs, "; "))
 	}
 
+	// Validate policies against loaded policy definitions (before transformation,
+	// which injects template parameters that would fail schema validation)
+	if s.policyValidator != nil {
+		policyErrors := s.policyValidator.ValidateLLMPolicies(providerConfig.Spec.Policies)
+		if len(policyErrors) > 0 {
+			errs := make([]string, 0, len(policyErrors))
+			for i, e := range policyErrors {
+				if params.Logger != nil {
+					params.Logger.Warn("Policy validation error", slog.String("field", e.Field), slog.String("message", e.Message))
+				}
+				errs = append(errs, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
+			}
+			return nil, fmt.Errorf("policy validation failed with %d error(s): %s", len(policyErrors), strings.Join(errs, "; "))
+		}
+	}
+
 	// Transform to RestAPI configuration
 	_, err := s.transformer.Transform(&providerConfig, &apiConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform LLM provider to API configuration: %w", err)
 	}
-
-	// Validate policies against loaded policy definitions
-	// if s.policyValidator != nil {
-	// 	policyErrors := s.policyValidator.ValidatePolicies(&apiConfig)
-	// 	if len(policyErrors) > 0 {
-	// 		errs := make([]string, 0, len(policyErrors))
-	// 		for i, e := range policyErrors {
-	// 			if params.Logger != nil {
-	// 				params.Logger.Warn("Policy validation error", slog.String("field", e.Field), slog.String("message", e.Message))
-	// 			}
-	// 			errs = append(errs, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
-	// 		}
-	// 		return nil, fmt.Errorf("policy validation failed with %d error(s): %s", len(policyErrors), strings.Join(errs, "; "))
-	// 	}
-	// }
 
 	// Generate API ID if not provided
 	apiID := params.ID
@@ -365,26 +366,27 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 		return nil, fmt.Errorf("proxy validation failed with %d error(s): %s", len(validationErrors), strings.Join(errs, "; "))
 	}
 
+	// Validate policies against loaded policy definitions (before transformation,
+	// which injects template parameters that would fail schema validation)
+	if s.policyValidator != nil {
+		policyErrors := s.policyValidator.ValidateLLMPolicies(proxyConfig.Spec.Policies)
+		if len(policyErrors) > 0 {
+			errs := make([]string, 0, len(policyErrors))
+			for i, e := range policyErrors {
+				if params.Logger != nil {
+					params.Logger.Warn("Policy validation error", slog.String("field", e.Field), slog.String("message", e.Message))
+				}
+				errs = append(errs, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
+			}
+			return nil, fmt.Errorf("policy validation failed with %d error(s): %s", len(policyErrors), strings.Join(errs, "; "))
+		}
+	}
+
 	// Transform to RestAPI configuration
 	_, err := s.transformer.Transform(&proxyConfig, &apiConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to transform LLM proxy to API configuration: %w", err)
 	}
-
-	// Validate policies against loaded policy definitions
-	// if s.policyValidator != nil {
-	// 	policyErrors := s.policyValidator.ValidatePolicies(&apiConfig)
-	// 	if len(policyErrors) > 0 {
-	// 		errs := make([]string, 0, len(policyErrors))
-	// 		for i, e := range policyErrors {
-	// 			if params.Logger != nil {
-	// 				params.Logger.Warn("Policy validation error", slog.String("field", e.Field), slog.String("message", e.Message))
-	// 			}
-	// 			errs = append(errs, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
-	// 		}
-	// 		return nil, fmt.Errorf("policy validation failed with %d error(s): %s", len(policyErrors), strings.Join(errs, "; "))
-	// 	}
-	// }
 
 	// Generate API ID if not provided
 	apiID := params.ID

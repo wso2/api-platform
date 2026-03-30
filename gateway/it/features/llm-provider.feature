@@ -387,6 +387,37 @@ Feature: LLM Provider Management
     When I delete the LLM provider "policy-provider"
     Then the response status code should be 200
 
+  Scenario: LLM provider with non-existing policy should fail
+    Given I authenticate using basic auth as "admin"
+    When I create this LLM provider:
+        """
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProvider
+        metadata:
+          name: invalid-policy-provider
+        spec:
+          displayName: Provider With Invalid Policy
+          version: v1.0
+          template: openai
+          upstream:
+            url: https://mock-openapi-https:9443/openai/v1
+            auth:
+              type: api-key
+              header: Authorization
+              value: Bearer sk-test
+          accessControl:
+            mode: allow_all
+          policies:
+            - name: non-existing-policy
+              version: v1
+              paths:
+                - path: /chat/completions
+                  methods: [POST]
+                  params: {}
+        """
+    Then the response status code should be 400
+    And the response should be valid JSON
+
   # ========================================
   # Scenario Group 8: Error Scenarios
   # ========================================

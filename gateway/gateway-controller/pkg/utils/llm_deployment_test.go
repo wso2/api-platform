@@ -143,6 +143,236 @@ func testStoredLLMTemplate(uuid, handle, displayName string) *models.StoredLLMPr
 	}
 }
 
+// ========================================
+// Policy validation tests for LLM providers
+// ========================================
+
+func TestLLMDeploymentService_CreateLLMProvider_InvalidPolicyName(t *testing.T) {
+	store := storage.NewConfigStore()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	db := newTestMockDB()
+	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, routerConfig, nil)
+
+	// Create validator with known policy definitions
+	policyDefs := map[string]models.PolicyDefinition{
+		"set-headers|v1.0.0": {
+			Name:    "set-headers",
+			Version: "v1.0.0",
+		},
+	}
+	policyValidator := config.NewPolicyValidator(policyDefs)
+
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, policyValidator)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	// LLM provider YAML with invalid policy name "set-headerssss"
+	yamlData := `
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProvider
+metadata:
+  name: invalid-policy-provider
+spec:
+  displayName: Provider With Invalid Policy
+  version: v1.0
+  template: openai
+  upstream:
+    url: "https://api.openai.com/v1"
+  accessControl:
+    mode: allow_all
+  policies:
+    - name: set-headerssss
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params: {}
+`
+	params := LLMDeploymentParams{
+		Data:        []byte(yamlData),
+		ContentType: "application/yaml",
+		Logger:      logger,
+		Origin:      models.OriginGatewayAPI,
+	}
+
+	_, err := service.CreateLLMProvider(params)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "policy validation failed")
+	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestLLMDeploymentService_CreateLLMProvider_ValidPolicyPassesValidation(t *testing.T) {
+	// Test that a valid policy name passes the policy validation step.
+	// We directly call ValidateLLMPolicies to isolate the validation from the
+	// deeper deployment flow (which requires PolicyResolver, DB, etc.)
+	policyDefs := map[string]models.PolicyDefinition{
+		"set-headers|v1.0.0": {
+			Name:    "set-headers",
+			Version: "v1.0.0",
+		},
+	}
+	policyValidator := config.NewPolicyValidator(policyDefs)
+
+	policies := &[]api.LLMPolicy{
+		{
+			Name:    "set-headers",
+			Version: "v1",
+			Paths: []api.LLMPolicyPath{
+				{
+					Path:    "/chat/completions",
+					Methods: []api.LLMPolicyPathMethods{"POST"},
+					Params:  map[string]interface{}{},
+				},
+			},
+		},
+	}
+
+	errors := policyValidator.ValidateLLMPolicies(policies)
+	assert.Empty(t, errors, "Valid policy should not produce validation errors")
+}
+
+func TestLLMDeploymentService_CreateLLMProvider_PolicyVersionNotFound(t *testing.T) {
+	store := storage.NewConfigStore()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	db := newTestMockDB()
+	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, routerConfig, nil)
+
+	policyDefs := map[string]models.PolicyDefinition{
+		"set-headers|v1.0.0": {
+			Name:    "set-headers",
+			Version: "v1.0.0",
+		},
+	}
+	policyValidator := config.NewPolicyValidator(policyDefs)
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, policyValidator)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	// Valid policy name but non-existent version v99
+	yamlData := `
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProvider
+metadata:
+  name: bad-version-provider
+spec:
+  displayName: Provider With Bad Version
+  version: v1.0
+  template: openai
+  upstream:
+    url: "https://api.openai.com/v1"
+  accessControl:
+    mode: allow_all
+  policies:
+    - name: set-headers
+      version: v99
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params: {}
+`
+	params := LLMDeploymentParams{
+		Data:        []byte(yamlData),
+		ContentType: "application/yaml",
+		Logger:      logger,
+		Origin:      models.OriginGatewayAPI,
+	}
+
+	_, err := service.CreateLLMProvider(params)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "policy validation failed")
+	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestLLMDeploymentService_CreateLLMProvider_NilPolicyValidatorSkipsValidation(t *testing.T) {
+	store := storage.NewConfigStore()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	db := newTestMockDB()
+	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, routerConfig, nil)
+
+	// Pass nil policy validator — should skip policy validation
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	yamlData := `
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProvider
+metadata:
+  name: no-validator-provider
+spec:
+  displayName: Provider Without Validator
+  version: v1.0
+  template: openai
+  upstream:
+    url: "https://api.openai.com/v1"
+  accessControl:
+    mode: allow_all
+  policies:
+    - name: totally-fake-policy
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params: {}
+`
+	params := LLMDeploymentParams{
+		Data:        []byte(yamlData),
+		ContentType: "application/yaml",
+		Logger:      logger,
+		Origin:      models.OriginGatewayAPI,
+	}
+
+	_, err := service.CreateLLMProvider(params)
+	// Should NOT fail with policy validation error (nil validator is skipped)
+	if err != nil {
+		assert.NotContains(t, err.Error(), "policy validation failed")
+	}
+}
+
+func TestLLMDeploymentService_CreateLLMProxy_InvalidPolicyName(t *testing.T) {
+	store := storage.NewConfigStore()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	db := newTestMockDB()
+	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, routerConfig, nil)
+
+	policyDefs := map[string]models.PolicyDefinition{
+		"set-headers|v1.0.0": {
+			Name:    "set-headers",
+			Version: "v1.0.0",
+		},
+	}
+	policyValidator := config.NewPolicyValidator(policyDefs)
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, policyValidator)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	yamlData := `
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProxy
+metadata:
+  name: invalid-policy-proxy
+spec:
+  displayName: Proxy With Invalid Policy
+  version: v1.0
+  provider:
+    id: some-provider-id
+  policies:
+    - name: non-existent-policy
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params: {}
+`
+	params := LLMDeploymentParams{
+		Data:        []byte(yamlData),
+		ContentType: "application/yaml",
+		Logger:      logger,
+		Origin:      models.OriginGatewayAPI,
+	}
+
+	_, err := service.CreateLLMProxy(params)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "policy validation failed")
+	assert.Contains(t, err.Error(), "not found")
+}
+
 func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 	t.Run("Empty store returns empty list", func(t *testing.T) {
 		store := storage.NewConfigStore()

@@ -867,6 +867,299 @@ func boolPtr(b bool) *bool {
 	return &b
 }
 
+// ========================================
+// ValidateLLMPolicies tests
+// ========================================
+
+func TestValidateLLMPolicies_NilPolicies(t *testing.T) {
+	validator := NewPolicyValidator(map[string]models.PolicyDefinition{})
+	errors := validator.ValidateLLMPolicies(nil)
+	if len(errors) != 0 {
+		t.Errorf("Expected no errors for nil policies, got %d", len(errors))
+	}
+}
+
+func TestValidateLLMPolicies_EmptyPolicies(t *testing.T) {
+	validator := NewPolicyValidator(map[string]models.PolicyDefinition{})
+	policies := &[]api.LLMPolicy{}
+	errors := validator.ValidateLLMPolicies(policies)
+	if len(errors) != 0 {
+		t.Errorf("Expected no errors for empty policies, got %d", len(errors))
+	}
+}
+
+func TestValidateLLMPolicies_NonExistentPolicyName(t *testing.T) {
+	policyDefs := map[string]models.PolicyDefinition{
+		"set-headers|v1.0.0": {
+			Name:    "set-headers",
+			Version: "v1.0.0",
+		},
+	}
+	validator := NewPolicyValidator(policyDefs)
+
+	policies := &[]api.LLMPolicy{
+		{
+			Name:    "set-headerssss",
+			Version: "v1",
+			Paths: []api.LLMPolicyPath{
+				{
+					Path:    "/chat/completions",
+					Methods: []api.LLMPolicyPathMethods{"POST"},
+					Params:  map[string]interface{}{},
+				},
+			},
+		},
+	}
+
+	errors := validator.ValidateLLMPolicies(policies)
+	if len(errors) == 0 {
+		t.Fatal("Expected validation errors for non-existent policy name, got none")
+	}
+	if !strings.Contains(errors[0].Message, "not found") {
+		t.Errorf("Expected 'not found' in error message, got: %s", errors[0].Message)
+	}
+}
+
+func TestValidateLLMPolicies_ValidPolicyName(t *testing.T) {
+	policyDefs := map[string]models.PolicyDefinition{
+		"set-headers|v1.0.0": {
+			Name:    "set-headers",
+			Version: "v1.0.0",
+		},
+	}
+	validator := NewPolicyValidator(policyDefs)
+
+	policies := &[]api.LLMPolicy{
+		{
+			Name:    "set-headers",
+			Version: "v1",
+			Paths: []api.LLMPolicyPath{
+				{
+					Path:    "/chat/completions",
+					Methods: []api.LLMPolicyPathMethods{"POST"},
+					Params:  map[string]interface{}{},
+				},
+			},
+		},
+	}
+
+	errors := validator.ValidateLLMPolicies(policies)
+	if len(errors) != 0 {
+		t.Errorf("Expected no errors for valid policy, got %d: %v", len(errors), errors)
+	}
+}
+
+func TestValidateLLMPolicies_PolicyExistsButVersionNotFound(t *testing.T) {
+	policyDefs := map[string]models.PolicyDefinition{
+		"set-headers|v1.0.0": {
+			Name:    "set-headers",
+			Version: "v1.0.0",
+		},
+	}
+	validator := NewPolicyValidator(policyDefs)
+
+	policies := &[]api.LLMPolicy{
+		{
+			Name:    "set-headers",
+			Version: "v99",
+			Paths: []api.LLMPolicyPath{
+				{
+					Path:    "/chat/completions",
+					Methods: []api.LLMPolicyPathMethods{"POST"},
+					Params:  map[string]interface{}{},
+				},
+			},
+		},
+	}
+
+	errors := validator.ValidateLLMPolicies(policies)
+	if len(errors) == 0 {
+		t.Fatal("Expected validation errors for non-existent version, got none")
+	}
+	if !strings.Contains(errors[0].Message, "not found") {
+		t.Errorf("Expected 'not found' in error message, got: %s", errors[0].Message)
+	}
+}
+
+func TestValidateLLMPolicies_InvalidPolicyParameters(t *testing.T) {
+	policyDefs := map[string]models.PolicyDefinition{
+		"set-headers|v1.0.0": {
+			Name:    "set-headers",
+			Version: "v1.0.0",
+			Parameters: &map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"request": map[string]interface{}{
+						"type": "object",
+					},
+				},
+				"required":             []interface{}{"request"},
+				"additionalProperties": false,
+			},
+		},
+	}
+	validator := NewPolicyValidator(policyDefs)
+
+	policies := &[]api.LLMPolicy{
+		{
+			Name:    "set-headers",
+			Version: "v1",
+			Paths: []api.LLMPolicyPath{
+				{
+					Path:    "/chat/completions",
+					Methods: []api.LLMPolicyPathMethods{"POST"},
+					Params: map[string]interface{}{
+						"invalidField": "invalidValue",
+					},
+				},
+			},
+		},
+	}
+
+	errors := validator.ValidateLLMPolicies(policies)
+	if len(errors) == 0 {
+		t.Fatal("Expected validation errors for invalid params, got none")
+	}
+}
+
+func TestValidateLLMPolicies_MultiplePoliciesOneInvalid(t *testing.T) {
+	policyDefs := map[string]models.PolicyDefinition{
+		"set-headers|v1.0.0": {
+			Name:    "set-headers",
+			Version: "v1.0.0",
+		},
+	}
+	validator := NewPolicyValidator(policyDefs)
+
+	policies := &[]api.LLMPolicy{
+		{
+			Name:    "set-headers",
+			Version: "v1",
+			Paths: []api.LLMPolicyPath{
+				{
+					Path:    "/chat/completions",
+					Methods: []api.LLMPolicyPathMethods{"POST"},
+					Params:  map[string]interface{}{},
+				},
+			},
+		},
+		{
+			Name:    "non-existent-policy",
+			Version: "v1",
+			Paths: []api.LLMPolicyPath{
+				{
+					Path:    "/chat/completions",
+					Methods: []api.LLMPolicyPathMethods{"POST"},
+					Params:  map[string]interface{}{},
+				},
+			},
+		},
+	}
+
+	errors := validator.ValidateLLMPolicies(policies)
+	if len(errors) == 0 {
+		t.Fatal("Expected validation errors when one policy is invalid, got none")
+	}
+	// The valid policy should pass, the invalid one should fail
+	foundNotFound := false
+	for _, e := range errors {
+		if strings.Contains(e.Message, "not found") {
+			foundNotFound = true
+		}
+	}
+	if !foundNotFound {
+		t.Errorf("Expected a 'not found' error for invalid policy, got: %v", errors)
+	}
+}
+
+func TestValidateLLMPolicies_PolicyWithNoPaths(t *testing.T) {
+	// Empty policy definitions — no policies loaded
+	policyDefs := map[string]models.PolicyDefinition{}
+	validator := NewPolicyValidator(policyDefs)
+
+	policies := &[]api.LLMPolicy{
+		{
+			Name:    "non-existent-policy",
+			Version: "v1",
+			Paths:   []api.LLMPolicyPath{},
+		},
+	}
+
+	errors := validator.ValidateLLMPolicies(policies)
+	if len(errors) == 0 {
+		t.Fatal("Expected validation errors for non-existent policy with no paths, got none")
+	}
+	if !strings.Contains(errors[0].Message, "not found") {
+		t.Errorf("Expected 'not found' in error message, got: %s", errors[0].Message)
+	}
+}
+
+func TestValidateLLMPolicies_MultiplePathsSamePolicy(t *testing.T) {
+	policyDefs := map[string]models.PolicyDefinition{
+		"set-headers|v1.0.0": {
+			Name:    "set-headers",
+			Version: "v1.0.0",
+		},
+	}
+	validator := NewPolicyValidator(policyDefs)
+
+	policies := &[]api.LLMPolicy{
+		{
+			Name:    "set-headers",
+			Version: "v1",
+			Paths: []api.LLMPolicyPath{
+				{
+					Path:    "/chat/completions",
+					Methods: []api.LLMPolicyPathMethods{"POST"},
+					Params:  map[string]interface{}{},
+				},
+				{
+					Path:    "/embeddings",
+					Methods: []api.LLMPolicyPathMethods{"POST"},
+					Params:  map[string]interface{}{},
+				},
+			},
+		},
+	}
+
+	errors := validator.ValidateLLMPolicies(policies)
+	if len(errors) != 0 {
+		t.Errorf("Expected no errors for valid policy with multiple paths, got %d: %v", len(errors), errors)
+	}
+}
+
+func TestValidateLLMPolicies_FullSemverRejected(t *testing.T) {
+	policyDefs := map[string]models.PolicyDefinition{
+		"set-headers|v1.0.0": {
+			Name:    "set-headers",
+			Version: "v1.0.0",
+		},
+	}
+	validator := NewPolicyValidator(policyDefs)
+
+	policies := &[]api.LLMPolicy{
+		{
+			Name:    "set-headers",
+			Version: "v1.0.0",
+			Paths: []api.LLMPolicyPath{
+				{
+					Path:    "/chat/completions",
+					Methods: []api.LLMPolicyPathMethods{"POST"},
+					Params:  map[string]interface{}{},
+				},
+			},
+		},
+	}
+
+	errors := validator.ValidateLLMPolicies(policies)
+	if len(errors) == 0 {
+		t.Fatal("Expected validation errors for full semver version, got none")
+	}
+	if !strings.Contains(errors[0].Message, "major-only") {
+		t.Errorf("Expected 'major-only' in error message, got: %s", errors[0].Message)
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) > 0 && len(substr) > 0 && (s == substr || len(s) >= len(substr) && s[:len(substr)] == substr || stringContains(s, substr))
 }
