@@ -227,9 +227,29 @@ func RegisterLLMSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 		return assertLazyResourceDisplayName(body, templateID, expectedDisplayName)
 	})
 
+	// Secret CRUD steps
+	ctx.Step(`^I create this secret:$`, func(body *godog.DocString) error {
+		httpSteps.SetHeader("Content-Type", "application/yaml")
+		err := httpSteps.SendPOSTToService("gateway-controller", "/secrets", body)
+		if err != nil {
+			return err
+		}
+		time.Sleep(policyPropagationDelay)
+		return nil
+	})
+
+	ctx.Step(`^I delete the secret "([^"]*)"$`, func(secretID string) error {
+		err := httpSteps.SendDELETEToService("gateway-controller", "/secrets/"+secretID)
+		if err != nil {
+			return err
+		}
+		time.Sleep(policyPropagationDelay)
+		return nil
+	})
+
 	// LLM Provider CRUD steps
 	ctx.Step(`^I create this LLM provider:$`, createLLMProvider)
-	
+
 	ctx.Step(`^I update the LLM provider "([^"]*)" with:$`, func(providerID string, body *godog.DocString) error {
 		httpSteps.SetHeader("Content-Type", "application/yaml")
 		err := httpSteps.SendPUTToService("gateway-controller", "/llm-providers/"+providerID, body)

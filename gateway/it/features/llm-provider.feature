@@ -609,3 +609,60 @@ Feature: LLM Provider Management
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider "invoke-auth-provider"
     Then the response status code should be 200
+
+  Scenario: Invoke LLM provider - verify upstream auth with secret reference
+    Given I authenticate using basic auth as "admin"
+    When I create this secret:
+        """
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: Secret
+        metadata:
+          name: test-upstream-auth-key
+        spec:
+          displayName: Test Upstream Auth Key
+          value: Bearer sk-test-secret-resolved-key
+        """
+    Then the response status code should be 201
+
+    When I create this LLM provider:
+        """
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProvider
+        metadata:
+          name: invoke-secret-auth-provider
+        spec:
+          displayName: Invoke Secret Auth Provider
+          version: v1.0
+          template: openai
+          context: /llm-secret-auth-test
+          upstream:
+            url: http://mock-openapi:4010/openai/v1
+            auth:
+              type: api-key
+              header: Authorization
+              value: $secret{test-upstream-auth-key}
+          accessControl:
+            mode: allow_all
+        """
+    Then the response status code should be 201
+    And I wait for 3 seconds
+
+    # Request should succeed - the secret must be resolved for the mock to accept it
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/llm-secret-auth-test/chat/completions" with body:
+      """
+      {
+        "model": "gpt-4",
+        "messages": [{"role": "user", "content": "Test secret auth"}]
+      }
+      """
+    Then the response status code should be 200
+    And the response should be valid JSON
+    And the JSON response field "object" should be "chat.completion"
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "invoke-secret-auth-provider"
+    Then the response status code should be 200
+    Given I authenticate using basic auth as "admin"
+    When I delete the secret "test-upstream-auth-key"

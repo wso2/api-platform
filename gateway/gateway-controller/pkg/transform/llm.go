@@ -55,19 +55,25 @@ func NewLLMTransformer(
 
 // Transform converts a StoredConfig (LLM Provider or LLM Proxy) into RuntimeDeployConfig.
 func (t *LLMTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeDeployConfig, error) {
-	// Step 1: Transform LLM config → RestAPI using existing transformer
+	// Step 1: Get or generate the RestAPI configuration.
+	// If Configuration is already a hydrated RestAPI (e.g., with resolved secrets),
+	// use it directly instead of regenerating from SourceConfiguration.
 	var restAPI api.RestAPI
-	var err error
-	switch sc := cfg.SourceConfiguration.(type) {
-	case api.LLMProviderConfiguration:
-		_, err = t.llmTransformer.Transform(&sc, &restAPI)
-	case api.LLMProxyConfiguration:
-		_, err = t.llmTransformer.Transform(&sc, &restAPI)
-	default:
-		return nil, fmt.Errorf("unsupported LLM source configuration type: %T", cfg.SourceConfiguration)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("LLM transformation failed: %w", err)
+	if existingRestAPI, ok := cfg.Configuration.(api.RestAPI); ok {
+		restAPI = existingRestAPI
+	} else {
+		var err error
+		switch sc := cfg.SourceConfiguration.(type) {
+		case api.LLMProviderConfiguration:
+			_, err = t.llmTransformer.Transform(&sc, &restAPI)
+		case api.LLMProxyConfiguration:
+			_, err = t.llmTransformer.Transform(&sc, &restAPI)
+		default:
+			return nil, fmt.Errorf("unsupported LLM source configuration type: %T", cfg.SourceConfiguration)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("LLM transformation failed: %w", err)
+		}
 	}
 
 	// Step 2: Build a temporary StoredConfig with the RestAPI result
