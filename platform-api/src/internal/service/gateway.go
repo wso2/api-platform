@@ -271,7 +271,7 @@ func (s *GatewayService) SyncCustomPolicy(gatewayID, orgID, policyName, version 
 	policy := &model.CustomPolicy{
 		OrganizationUUID: orgID,
 		Name:             policyName,
-		DisplayName:      found.DisplayName,
+		DisplayName:      utils.StringPtrIfNotEmpty(found.DisplayName),
 		Version:          version,
 		Description:      found.Description,
 		PolicyDefinition: policyDefJSON,
