@@ -1948,6 +1948,7 @@ paths:
       summary: Create a new API key for an LLM provider
       description: Generate a new API key for an LLM provider in the Gateway.
       operationId: createLLMProviderAPIKey
+      x-basicauth-roles: [admin, consumer]
       tags:
         - LLM Provider Management
       parameters:
@@ -2003,6 +2004,7 @@ paths:
       summary: Get the list of API keys for an LLM provider
       description: List all API keys for an LLM provider in the Gateway.
       operationId: listLLMProviderAPIKeys
+      x-basicauth-roles: [admin, consumer]
       tags:
         - LLM Provider Management
       parameters:
@@ -2038,6 +2040,7 @@ paths:
       summary: Regenerate API key for an LLM provider
       description: Regenerate an existing API key for an LLM provider in the Gateway.
       operationId: regenerateLLMProviderAPIKey
+      x-basicauth-roles: [admin, consumer]
       tags:
         - LLM Provider Management
       parameters:
@@ -2095,6 +2098,7 @@ paths:
       summary: Update an API key for an LLM provider
       description: Update an API key with a custom value instead of auto-generating one.
       operationId: updateLLMProviderAPIKey
+      x-basicauth-roles: [admin, consumer]
       tags:
         - LLM Provider Management
       parameters:
@@ -2156,6 +2160,7 @@ paths:
       summary: Revoke an API key for an LLM provider
       description: Revoke an API key. Once revoked, it can no longer be used to authenticate requests.
       operationId: revokeLLMProviderAPIKey
+      x-basicauth-roles: [admin, consumer]
       tags:
         - LLM Provider Management
       parameters:
@@ -2452,6 +2457,7 @@ paths:
       summary: Create a new API key for an LLM proxy
       description: Generate a new API key for an LLM proxy in the Gateway.
       operationId: createLLMProxyAPIKey
+      x-basicauth-roles: [admin, consumer]
       tags:
         - LLM Proxy Management
       parameters:
@@ -2507,6 +2513,7 @@ paths:
       summary: Get the list of API keys for an LLM proxy
       description: List all API keys for an LLM proxy in the Gateway.
       operationId: listLLMProxyAPIKeys
+      x-basicauth-roles: [admin, consumer]
       tags:
         - LLM Proxy Management
       parameters:
@@ -2542,6 +2549,7 @@ paths:
       summary: Regenerate API key for an LLM proxy
       description: Regenerate an existing API key for an LLM proxy in the Gateway.
       operationId: regenerateLLMProxyAPIKey
+      x-basicauth-roles: [admin, consumer]
       tags:
         - LLM Proxy Management
       parameters:
@@ -2599,6 +2607,7 @@ paths:
       summary: Update an API key for an LLM proxy
       description: Update an API key with a custom value instead of auto-generating one.
       operationId: updateLLMProxyAPIKey
+      x-basicauth-roles: [admin, consumer]
       tags:
         - LLM Proxy Management
       parameters:
@@ -2660,6 +2669,7 @@ paths:
       summary: Revoke an API key for an LLM proxy
       description: Revoke an API key. Once revoked, it can no longer be used to authenticate requests.
       operationId: revokeLLMProxyAPIKey
+      x-basicauth-roles: [admin, consumer]
       tags:
         - LLM Proxy Management
       parameters:
