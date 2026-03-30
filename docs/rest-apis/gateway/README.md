@@ -4,9 +4,7 @@
 REST API for managing API configurations in the WSO2 API Platform Gateway.
 
 Base URLs:
-
 * <a href="http://localhost:9090">http://localhost:9090</a>
-
 * <a href="http://gateway-controller:9090">http://gateway-controller:9090</a>
 
 ## Table of Contents
