@@ -455,7 +455,7 @@ func TestSQLiteStorage_GetConfigByKindNameAndVersion(t *testing.T) {
 	assert.Equal(t, found.UUID, cfg.UUID)
 
 	_, err = storage.GetConfigByKindNameAndVersion(cfg.Kind, "missing", cfg.Version)
-	assert.Assert(t, err != nil)
+	assert.Assert(t, errors.Is(err, ErrNotFound))
 }
 
 func TestLoadLLMProviderTemplatesFromDatabase_Success(t *testing.T) {
@@ -610,7 +610,7 @@ func TestSQLiteStorage_GetLLMProviderTemplateByHandle(t *testing.T) {
 	assert.Equal(t, found.UUID, template.UUID)
 
 	_, err = storage.GetLLMProviderTemplateByHandle("missing-template")
-	assert.Assert(t, err != nil)
+	assert.Assert(t, errors.Is(err, ErrNotFound))
 }
 
 func TestSQLiteStorage_SaveCertificate_UniqueConstraintError(t *testing.T) {

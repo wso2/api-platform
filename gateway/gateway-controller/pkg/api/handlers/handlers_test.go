@@ -3619,6 +3619,46 @@ func TestUpdateRestAPIDBError(t *testing.T) {
 	assert.NotContains(t, w.Body.String(), "db update error")
 }
 
+func TestUpdateRestAPISyncsDisplayNameAndVersion(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	existing := createTestStoredConfig("0000-test-id-0000-000000000000", "original-display-name", "v1.0.0", "/original")
+	existing.Handle = "test-handle"
+	require.NoError(t, mockDB.SaveConfig(existing))
+
+	body := createTestRestAPIRequestBody(t, "test-handle", "updated-display-name", "v2.0.0", "/updated")
+	c, w := createTestContextWithHeader("PUT", "/rest-apis/test-handle", body, map[string]string{
+		"Content-Type": "application/json",
+	})
+
+	server.UpdateRestAPI(c, "test-handle")
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	stored, err := mockDB.GetConfig(existing.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, "updated-display-name", stored.DisplayName)
+	assert.Equal(t, "v2.0.0", stored.Version)
+
+	displayName := "updated-display-name"
+	version := "v2.0.0"
+	c, w = createTestContext("GET", "/rest-apis?displayName=updated-display-name&version=v2.0.0", nil)
+	c.Request.URL.RawQuery = "displayName=updated-display-name&version=v2.0.0"
+	server.ListRestAPIs(c, api.ListRestAPIsParams{
+		DisplayName: &displayName,
+		Version:     &version,
+	})
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var response map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	assert.Equal(t, float64(1), response["count"])
+	assert.Len(t, mockHub.publishedEvents, 1)
+}
+
 // TestGetMCPProxyByIdDBUnavailable tests GetMCPProxyById with DB unavailable
 // Note: This test requires full deployment service setup
 func TestGetMCPProxyByIdDBUnavailable(t *testing.T) {

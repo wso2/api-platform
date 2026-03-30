@@ -312,6 +312,8 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 
 	// Update stored configuration
 	now := time.Now()
+	existing.DisplayName = apiConfig.Spec.DisplayName
+	existing.Version = apiConfig.Spec.Version
 	existing.Configuration = apiConfig
 	existing.SourceConfiguration = apiConfig
 	existing.DesiredState = desiredState
