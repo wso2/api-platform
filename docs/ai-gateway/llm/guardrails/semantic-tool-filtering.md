@@ -26,10 +26,10 @@ This policy helps reduce token consumption and improve LLM response quality by s
 | selectionMode | string | Yes | `By Rank` | Method used to filter tools: `By Rank` (selects top-K) or `By Threshold` (selects based on score). |
 | limit | integer | No | `5` | The number of most relevant tools to include (used if selectionMode is `By Rank`). |
 | threshold | number | No | `0.7` | Similarity threshold for filtering (0.0 to 1.0). Only tools with a score above this value are included (used if selectionMode is `By Threshold`). |
-| queryJSONPath | string | No | `$.messages[-1].content` | JSONPath expression to extract the user's query from the request body. |
-| toolsJSONPath | string | No | `$.tools` | JSONPath expression to extract the tools array from the request body (used when `toolsIsJson` is true). |
-| userQueryIsJson | boolean | No | `true` | Specifies format of user query. `true`: use `queryJSONPath`. `false`: extract from text using `<userq>` tags. |
-| toolsIsJson | boolean | No | `true` | Specifies format of tools definition. `true`: use `toolsJSONPath`. `false`: extract from text using `<toolname>`/`<tooldescription>` tags. |
+| queryJSONPath | string | Yes | `$.messages[-1].content` | JSONPath expression to extract the user's query from the request body. |
+| toolsJSONPath | string | Yes | `$.tools` | JSONPath expression to extract the tools definition from the request body. It can point to the array itself, such as `$.tools`, or to the iterated object inside each array item, such as `$.tools[*].function`. |
+| userQueryIsJson | boolean | Yes | `true` | Specifies format of user query. `true`: use `queryJSONPath`. `false`: extract from text using `<userq>` tags. |
+| toolsIsJson | boolean | Yes | `true` | Specifies format of tools definition. `true`: use `toolsJSONPath`. `false`: extract from text using `<toolname>`/`<tooldescription>` tags. |
 
 ### System Parameters (From config.toml)
 
@@ -39,7 +39,7 @@ These parameters are configured in the gateway's `config.toml` to set up the emb
 |-----------|------|----------|---------|-------------|
 | embeddingProvider | string | Yes | - | Embedding provider: `OPENAI`, `MISTRAL`, or `AZURE_OPENAI`. |
 | embeddingEndpoint | string | Yes | - | Endpoint URL for the embedding service. |
-| embeddingModel | string | Yes | - | Model name (e.g., `text-embedding-3-small` or `mistral-embed`). |
+| embeddingModel | string | Conditional | - | Model name (e.g., `text-embedding-3-small` or `mistral-embed`). Required for `OPENAI` and `MISTRAL`; optional for `AZURE_OPENAI` (deployment name is derived from the endpoint). |
 | apiKey | string | Yes | - | API key for the embedding service. |
 
 #### Sample System Configuration
@@ -50,6 +50,7 @@ Add the following configuration section under the root level in your `config.tom
 embedding_provider = "MISTRAL" # Supported: MISTRAL, OPENAI, AZURE_OPENAI
 embedding_provider_endpoint = "https://api.mistral.ai/v1/embeddings"
 embedding_provider_model = "mistral-embed"
+embedding_provider_dimension = 1024
 embedding_provider_api_key = ""
 ```
 
@@ -77,7 +78,7 @@ policies:
       name: semantic-tool-filtering
       parameters:
         selectionMode: "By Rank"
-        Limit: 3
+        limit: 3
         queryJSONPath: "$.contents[0].parts[0].text"
         toolsJSONPath: "$.tools[0].function_declarations"
         userQueryIsJson: true
@@ -124,25 +125,9 @@ policies:
 
 The policy will interpret the request, calculate embeddings, and filter the `tools` array to include only the top 3 matches (e.g., `get_weather`, `book_venue`, `send_email`).
 
-### Scenario 2: Filtering Tools by Threshold
+### Scenario 1b: OpenAI/Mistral-style Function Wrappers
 
-In this scenario, only tools with a semantic similarity score of 0.7 or higher are included.
-
-**Configuration:**
-
-```yaml
-type: http
-policies:
-  - policy:
-      name: semantic-tool-filtering
-      parameters:
-        selectionMode: "By Threshold"
-        Threshold: 0.7
-```
-
-### Scenario 3: Text Format (XML-like Tags)
-
-This scenario handles cases where the user query and tool definitions are embedded in a text payload using custom tags.
+If the request wraps each tool as an object with a nested `function`, configure the iterator path so the policy reads `name` and `description` from the nested object while still filtering the parent `tools` array.
 
 **Configuration:**
 
@@ -153,9 +138,76 @@ policies:
       name: semantic-tool-filtering
       parameters:
         selectionMode: "By Rank"
-        Limit: 3
+        limit: 3
+        queryJSONPath: "$.messages[-1].content"
+        toolsJSONPath: "$.tools[*].function"
+        userQueryIsJson: true
+        toolsIsJson: true
+```
+
+**Request:**
+
+```json
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "What tools can help me check the weather?"
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Get current weather"
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "send_email",
+        "description": "Send an email notification"
+      }
+    }
+  ]
+}
+```
+
+### Scenario 2: Filtering Tools by Threshold
+
+In this scenario, only tools with a semantic similarity score of 0.7 or higher are included.
+
+**Configuration:**
+
+```yaml
+policies:
+  - policy:
+      name: semantic-tool-filtering
+      parameters:
+        selectionMode: "By Threshold"
+        threshold: 0.7
+        # Rest of the parameters
+```
+
+### Scenario 3: Text Format (XML-like Tags)
+
+This scenario handles cases where the user query and tool definitions are embedded in a text payload using custom tags.
+
+**Configuration:**
+
+```yaml
+policies:
+  - policy:
+      name: semantic-tool-filtering
+      parameters:
+        selectionMode: "By Rank"
+        limit: 3
         userQueryIsJson: false
         toolsIsJson: false
+        queryJSONPath: "$.messages[-1].content.text"
+        toolsJSONPath: "$.messages[-1].content.text"
+
 ```
 
 **Request Body:**
@@ -175,40 +227,3 @@ policies:
 ```
 
 The policy extracts `<userq>` as the query and `<toolname>`/`<tooldescription>` as tools, then performs filtering. After the filtering process, the tags are removed.
-
-### Example full request for Gemini api creation and attaching policy
-```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: LlmProvider
-metadata:
-  name: tool-filtered-agent
-spec:
-  displayName: Gemini tool filtered agent
-  version: v1.0
-  template: "gemini"
-  upstream:
-    url: "https://generativelanguage.googleapis.com/v1beta/models"
-    auth:
-      type: api-key
-      header: x-goog-api-key
-      value: <gemini-api-key>
-  accessControl:
-    mode: deny_all
-    exceptions:
-      - path: /gemini-3-flash-preview:generateContent
-        methods: [POST]
-  policies:
-      - name: semantic-tool-filtering
-        version: v0
-        paths:
-          - path: /gemini-3-flash-preview:generateContent
-            methods: [POST]
-            params:
-               selectionMode: "By Rank"
-               limit: 2
-               queryJSONPath: "$.contents[0].parts[0].text"     
-               toolsJSONPath: "$.tools[0].function_declarations"                  
-               userQueryIsJson: true                 
-               toolsIsJson: true
-```
- - Request endpoint: - [Gemini request](https://localhost:8443/gemini-3-flash-preview:generateContent)
