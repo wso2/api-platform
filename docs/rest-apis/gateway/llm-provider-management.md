@@ -22,7 +22,7 @@ curl -X POST http://localhost:9090/llm-providers \
 
 Add a new LLM provider to the Gateway. A provider defines how to interact with an LLM service, including upstream endpoints, authentication, access control, and policies.
 
-> Body parameter
+> Payload
 
 ```json
 {
@@ -77,10 +77,20 @@ Add a new LLM provider to the Gateway. A provider defines how to interact with a
           }
         ]
       }
-    ]
+    ],
+    "deploymentState": "deployed"
   }
 }
 ```
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`
+
+</aside>
 
 <h3 id="create-a-new-llm-provider-parameters">Parameters</h3>
 
@@ -110,10 +120,6 @@ Add a new LLM provider to the Gateway. A provider defines how to interact with a
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - Provider with same name and version already exists|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## List all LLM providers
 
 <a id="opIdlistLLMProviders"></a>
@@ -131,6 +137,15 @@ curl -X GET http://localhost:9090/llm-providers \
 ```
 
 List LLM providers registered in the Gateway, optionally filtered by name, version, context, status, or vhost.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="list-all-llm-providers-parameters">Parameters</h3>
 
@@ -202,10 +217,6 @@ Status Code **200**
 |status|deployed|
 |status|undeployed|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Get LLM provider by identifier
 
 <a id="opIdgetLLMProviderById"></a>
@@ -223,6 +234,15 @@ curl -X GET http://localhost:9090/llm-providers/{id} \
 ```
 
 Get an LLM provider by its ID.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="get-llm-provider-by-identifier-parameters">Parameters</h3>
 
@@ -291,7 +311,8 @@ Get an LLM provider by its ID.
               }
             ]
           }
-        ]
+        ],
+        "deploymentState": "deployed"
       }
     },
     "deploymentStatus": "deployed",
@@ -311,10 +332,6 @@ Get an LLM provider by its ID.
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|LLM provider details|[LLMProviderDetailResponse](schemas.md#schemallmproviderdetailresponse)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
-
-<aside class="success">
-This operation does not require authentication
-</aside>
 
 ## Update an existing LLM provider
 
@@ -336,7 +353,7 @@ curl -X PUT http://localhost:9090/llm-providers/{id} \
 
 Update an existing LLM provider in the Gateway.
 
-> Body parameter
+> Payload
 
 ```json
 {
@@ -391,10 +408,20 @@ Update an existing LLM provider in the Gateway.
           }
         ]
       }
-    ]
+    ],
+    "deploymentState": "deployed"
   }
 }
 ```
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`
+
+</aside>
 
 <h3 id="update-an-existing-llm-provider-parameters">Parameters</h3>
 
@@ -425,10 +452,6 @@ Update an existing LLM provider in the Gateway.
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Delete an LLM provider
 
 <a id="opIddeleteLLMProvider"></a>
@@ -446,6 +469,15 @@ curl -X DELETE http://localhost:9090/llm-providers/{id} \
 ```
 
 Delete an LLM provider from the Gateway.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`
+
+</aside>
 
 <h3 id="delete-an-llm-provider-parameters">Parameters</h3>
 
@@ -482,7 +514,3 @@ Status Code **200**
 |» status|string|false|none|none|
 |» message|string|false|none|none|
 |» id|string|false|none|none|
-
-<aside class="success">
-This operation does not require authentication
-</aside>
