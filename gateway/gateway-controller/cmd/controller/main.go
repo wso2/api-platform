@@ -266,11 +266,11 @@ func main() {
 	}
 	log.Info("Policy definitions loaded", slog.Int("count", len(policyDefinitions)))
 
-	// Detect custom policies from build-lock.yaml.
-	localPolicies, err := policyLoader.GetCustomPolicyNames(cfg.Controller.Policies.BuildLockPath)
+	// Detect custom policies from build-manifest.yaml.
+	localPolicies, err := policyLoader.GetCustomPolicyNames(cfg.Controller.Policies.BuildManifestPath)
 	if err != nil {
-		log.Warn("Could not read build-lock.yaml, Custom policies will not be marked in the gateway manifest",
-			slog.String("path", cfg.Controller.Policies.BuildLockPath),
+		log.Warn("Could not read build-manifest.yaml, Custom policies will not be marked in the gateway manifest",
+			slog.String("path", cfg.Controller.Policies.BuildManifestPath),
 			slog.Any("error", err))
 	}
 	for key, def := range policyDefinitions {
