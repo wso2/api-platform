@@ -184,23 +184,24 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 }
 
 func (s *RestAPIService) validateArtifactConflicts(kind, currentID, displayName, version, handle string) error {
-	existingConfigs, err := s.db.GetAllConfigsByKind(kind)
-	if err != nil {
-		return fmt.Errorf("failed to list existing %s configurations from database: %w", kind, err)
-	}
-
-	for _, cfg := range existingConfigs {
-		if cfg == nil || cfg.UUID == currentID {
-			continue
-		}
-		if cfg.DisplayName == displayName && cfg.Version == version {
+	existingByNameVersion, err := s.db.GetConfigByKindNameAndVersion(kind, displayName, version)
+	if err == nil {
+		if existingByNameVersion != nil && existingByNameVersion.UUID != currentID {
 			return fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists",
 				storage.ErrConflict, displayName, version)
 		}
-		if handle != "" && cfg.Handle == handle {
+	} else if !storage.IsNotFoundError(err) {
+		return fmt.Errorf("failed to check existing %s name/version conflict: %w", kind, err)
+	}
+
+	existingByHandle, err := s.db.GetConfigByKindAndHandle(kind, handle)
+	if err == nil {
+		if existingByHandle != nil && existingByHandle.UUID != currentID {
 			return fmt.Errorf("%w: configuration with handle '%s' already exists",
 				storage.ErrConflict, handle)
 		}
+	} else if !storage.IsNotFoundError(err) {
+		return fmt.Errorf("failed to check existing %s handle conflict: %w", kind, err)
 	}
 
 	return nil

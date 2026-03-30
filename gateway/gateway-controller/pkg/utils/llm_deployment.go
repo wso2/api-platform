@@ -119,7 +119,7 @@ func (s *LLMDeploymentService) publishLLMProxyEvent(action, entityID, correlatio
 }
 
 func (s *LLMDeploymentService) validateTemplateHandleConflict(handle string) error {
-	existing, err := s.GetLLMProviderTemplateByHandle(handle)
+	existing, err := s.db.GetLLMProviderTemplateByHandle(handle)
 	if err == nil && existing != nil {
 		return fmt.Errorf("%w: template with handle '%s' already exists", storage.ErrConflict, handle)
 	}
@@ -802,14 +802,9 @@ func (s *LLMDeploymentService) ListLLMProviderTemplates(displayName *string) []*
 
 // GetLLMProviderTemplateByHandle returns template by handle
 func (s *LLMDeploymentService) GetLLMProviderTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
-	templates, err := s.db.GetAllLLMProviderTemplates()
+	template, err := s.db.GetLLMProviderTemplateByHandle(handle)
 	if err == nil {
-		for _, template := range templates {
-			if template.GetHandle() == handle {
-				return template, nil
-			}
-		}
-		return nil, fmt.Errorf("%w: template with handle '%s' not found", storage.ErrNotFound, handle)
+		return template, nil
 	}
 	if !storage.IsDatabaseUnavailableError(err) {
 		return nil, err

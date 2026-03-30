@@ -203,7 +203,7 @@ func (m *MockStorage) GetConfig(id string) (*models.StoredConfig, error) {
 	if cfg, ok := m.configs[id]; ok {
 		return cfg, nil
 	}
-	return nil, errors.New("config not found")
+	return nil, storage.ErrNotFound
 }
 
 func (m *MockStorage) GetConfigByKindAndHandle(kind string, handle string) (*models.StoredConfig, error) {
@@ -218,7 +218,19 @@ func (m *MockStorage) GetConfigByKindAndHandle(kind string, handle string) (*mod
 			return cfg, nil
 		}
 	}
-	return nil, errors.New("config not found")
+	return nil, storage.ErrNotFound
+}
+
+func (m *MockStorage) GetConfigByKindNameAndVersion(kind, displayName, version string) (*models.StoredConfig, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	for _, cfg := range m.configs {
+		if cfg.Kind == kind && cfg.DisplayName == displayName && cfg.Version == version {
+			return cfg, nil
+		}
+	}
+	return nil, storage.ErrNotFound
 }
 
 func (m *MockStorage) GetAllConfigs() ([]*models.StoredConfig, error) {
@@ -301,6 +313,18 @@ func (m *MockStorage) GetAllLLMProviderTemplates() ([]*models.StoredLLMProviderT
 		result = append(result, tmpl)
 	}
 	return result, nil
+}
+
+func (m *MockStorage) GetLLMProviderTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	for _, tmpl := range m.templates {
+		if tmpl.GetHandle() == handle {
+			return tmpl, nil
+		}
+	}
+	return nil, storage.ErrNotFound
 }
 
 func (m *MockStorage) SaveAPIKey(apiKey *models.APIKey) error {

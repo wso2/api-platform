@@ -89,17 +89,7 @@ func (t *LLMProviderTransformer) resolvePolicyVersion(name string) (string, erro
 }
 
 func (t *LLMProviderTransformer) getTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
-	templates, err := t.db.GetAllLLMProviderTemplates()
-	if err != nil {
-		return nil, err
-	}
-
-	for _, tmpl := range templates {
-		if tmpl.GetHandle() == handle {
-			return tmpl, nil
-		}
-	}
-	return nil, fmt.Errorf("%w: template with handle '%s' not found", storage.ErrNotFound, handle)
+	return t.db.GetLLMProviderTemplateByHandle(handle)
 }
 
 func (t *LLMProviderTransformer) getProviderByHandle(handle string) (*models.StoredConfig, error) {
