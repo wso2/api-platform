@@ -143,7 +143,7 @@ Feature: Configuration Dump Endpoint
             path: /test
             policies:
               - name: cors
-                version: v0
+                version: v1
                 params:
                   allowedOrigins:
                     - "http://example.com"

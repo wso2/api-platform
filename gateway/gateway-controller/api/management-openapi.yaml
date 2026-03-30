@@ -12,12 +12,16 @@ servers:
   - url: http://gateway-controller:9090
     description: Docker/Kubernetes deployment
 
+security:
+  - basicAuth: []
+
 paths:
   /rest-apis:
     post:
       summary: Create a new RestAPI
       description: Add a new RestAPI to the Gateway.
       operationId: createRestAPI
+      x-basicauth-roles: [admin, developer]
       tags:
         - Rest API Management
       requestBody:
@@ -59,6 +63,7 @@ paths:
       summary: List all RestAPIs
       description: List RestAPIs registered in the Gateway, optionally filtered by name, version, context, or status.
       operationId: listRestAPIs
+      x-basicauth-roles: [admin, developer]
       tags:
         - Rest API Management
       parameters:
@@ -121,6 +126,7 @@ paths:
       summary: Get RestAPI by id
       description: Get a RestAPI by its ID.
       operationId: getRestAPIById
+      x-basicauth-roles: [admin, developer]
       tags:
         - Rest API Management
       parameters:
@@ -159,6 +165,7 @@ paths:
       summary: Update an existing RestAPI
       description: Update an existing RestAPI in the Gateway.
       operationId: updateRestAPI
+      x-basicauth-roles: [admin, developer]
       tags:
         - Rest API Management
       parameters:
@@ -209,6 +216,7 @@ paths:
       summary: Delete a RestAPI
       description: Delete a RestAPI from the Gateway.
       operationId: deleteRestAPI
+      x-basicauth-roles: [admin, developer]
       tags:
         - Rest API Management
       parameters:
@@ -255,6 +263,7 @@ paths:
       summary: Create a new API key for an API
       description: Generate a new API key for a RestAPI in the Gateway. The key is a 32-byte random value encoded in hexadecimal, prefixed with `apip_`. Use the API Key policy on the API to validate incoming requests with this key.
       operationId: createAPIKey
+      x-basicauth-roles: [admin, consumer]
       tags:
         - Rest API Management
       parameters:
@@ -305,6 +314,7 @@ paths:
       summary: Get the list of API keys for an API
       description: List all API keys for a RestAPI in the Gateway.
       operationId: listAPIKeys
+      x-basicauth-roles: [admin, consumer]
       tags:
         - Rest API Management
       parameters:
@@ -341,6 +351,7 @@ paths:
       summary: Regenerate API key for an API
       description: Regenerate an existing API key for a RestAPI in the Gateway. The previous key is revoked and replaced with a new 32-byte random value encoded in hexadecimal, prefixed with `apip_`.
       operationId: regenerateAPIKey
+      x-basicauth-roles: [admin, consumer]
       tags:
         - Rest API Management
       parameters:
@@ -400,6 +411,7 @@ paths:
       summary: Update an API key with a new regenerated value
       description: Update an API key with a custom value instead of auto-generating one.
       operationId: updateAPIKey
+      x-basicauth-roles: [admin, consumer]
       tags:
         - Rest API Management
       parameters:
@@ -457,6 +469,7 @@ paths:
       summary: Revoke an API key
       description: Revoke an API key. Once revoked, it can no longer be used to authenticate requests.
       operationId: revokeAPIKey
+      x-basicauth-roles: [admin, consumer]
       tags:
         - Rest API Management
       parameters:
@@ -507,6 +520,7 @@ paths:
       summary: Create a subscription plan
       description: Create a subscription plan that defines rate limits and access tiers for API subscriptions.
       operationId: createSubscriptionPlan
+      x-basicauth-roles: [admin, developer]
       tags:
         - Rest API Management
       requestBody:
@@ -544,6 +558,7 @@ paths:
       summary: List subscription plans
       description: List all subscription plans available in the Gateway.
       operationId: listSubscriptionPlans
+      x-basicauth-roles: [admin, developer]
       tags:
         - Rest API Management
       responses:
@@ -565,6 +580,7 @@ paths:
       summary: Get a subscription plan by ID
       description: Get the details of a subscription plan by its ID.
       operationId: getSubscriptionPlan
+      x-basicauth-roles: [admin, developer]
       tags:
         - Rest API Management
       parameters:
@@ -596,6 +612,7 @@ paths:
       summary: Update a subscription plan
       description: Update an existing subscription plan in the Gateway.
       operationId: updateSubscriptionPlan
+      x-basicauth-roles: [admin, developer]
       tags:
         - Rest API Management
       parameters:
@@ -632,6 +649,7 @@ paths:
       summary: Delete a subscription plan
       description: Delete a subscription plan from the Gateway.
       operationId: deleteSubscriptionPlan
+      x-basicauth-roles: [admin, developer]
       tags:
         - Rest API Management
       parameters:
@@ -661,6 +679,7 @@ paths:
       summary: Create a subscription
       description: Subscribe an application to a RestAPI in the Gateway.
       operationId: createSubscription
+      x-basicauth-roles: [admin, developer]
       tags:
         - Rest API Management
       requestBody:
@@ -698,6 +717,7 @@ paths:
       summary: List subscriptions
       description: List subscriptions in the Gateway, optionally filtered by API, application, or status.
       operationId: listSubscriptions
+      x-basicauth-roles: [admin, developer]
       tags:
         - Rest API Management
       parameters:
@@ -737,6 +757,7 @@ paths:
       summary: Get a subscription by ID
       description: Get the details of a subscription by its ID.
       operationId: getSubscription
+      x-basicauth-roles: [admin, developer]
       tags:
         - Rest API Management
       parameters:
@@ -768,6 +789,7 @@ paths:
       summary: Update a subscription
       description: Update an existing subscription in the Gateway.
       operationId: updateSubscription
+      x-basicauth-roles: [admin, developer]
       tags:
         - Rest API Management
       parameters:
@@ -804,6 +826,7 @@ paths:
       summary: Delete a subscription
       description: Delete a subscription from the Gateway.
       operationId: deleteSubscription
+      x-basicauth-roles: [admin, developer]
       tags:
         - Rest API Management
       parameters:
@@ -833,6 +856,7 @@ paths:
       summary: Create a new WebSubAPI
       description: Add a new WebSubAPI to the Gateway.
       operationId: createWebSubAPI
+      x-basicauth-roles: [admin, developer]
       tags:
         - WebSub API Management
       requestBody:
@@ -874,6 +898,7 @@ paths:
       summary: List all WebSubAPIs
       description: List WebSubAPIs registered in the Gateway, optionally filtered by name, version, context, or status.
       operationId: listWebSubAPIs
+      x-basicauth-roles: [admin, developer]
       tags:
         - WebSub API Management
       parameters:
@@ -936,6 +961,7 @@ paths:
       summary: Get WebSubAPI by id
       description: Get a WebSubAPI by its ID.
       operationId: getWebSubAPIById
+      x-basicauth-roles: [admin, developer]
       tags:
         - WebSub API Management
       parameters:
@@ -974,6 +1000,7 @@ paths:
       summary: Update an existing WebSubAPI
       description: Update an existing WebSubAPI in the Gateway.
       operationId: updateWebSubAPI
+      x-basicauth-roles: [admin, developer]
       tags:
         - WebSub API Management
       parameters:
@@ -1024,6 +1051,7 @@ paths:
       summary: Delete a WebSubAPI
       description: Delete a WebSubAPI from the Gateway.
       operationId: deleteWebSubAPI
+      x-basicauth-roles: [admin, developer]
       tags:
         - WebSub API Management
       parameters:
@@ -1072,6 +1100,7 @@ paths:
         Retrieve all custom TLS certificates currently loaded in the certificate store.
         These certificates are used for verifying HTTPS upstream connections.
       operationId: listCertificates
+      x-basicauth-roles: [admin, developer]
       tags:
         - Certificate Management
       responses:
@@ -1092,6 +1121,7 @@ paths:
       summary: Upload a new certificate
       description: Upload a new TLS certificate (PEM format) to the Gateway. The certificate is loaded dynamically without restarting the Gateway.
       operationId: uploadCertificate
+      x-basicauth-roles: [admin, developer]
       tags:
         - Certificate Management
       requestBody:
@@ -1132,6 +1162,7 @@ paths:
       summary: Delete a certificate
       description: Delete a certificate from the Gateway. The change is applied dynamically without restarting the Gateway.
       operationId: deleteCertificate
+      x-basicauth-roles: [admin]
       tags:
         - Certificate Management
       parameters:
@@ -1177,6 +1208,7 @@ paths:
       summary: Manually reload certificates
       description: Manually trigger a reload of all certificates from the filesystem into the Gateway.
       operationId: reloadCertificates
+      x-basicauth-roles: [admin]
       tags:
         - Certificate Management
       responses:
@@ -1209,6 +1241,7 @@ paths:
       summary: Create a new MCPProxy
       description: Add a new MCPProxy to the Gateway.
       operationId: createMCPProxy
+      x-basicauth-roles: [admin, developer]
       tags:
         - MCP Proxy Management
       requestBody:
@@ -1250,6 +1283,7 @@ paths:
       summary: List all MCPProxies
       description: List MCPProxies registered in the Gateway, optionally filtered by name, version, context, or status.
       operationId: listMCPProxies
+      x-basicauth-roles: [admin, developer]
       tags:
         - MCP Proxy Management
       parameters:
@@ -1312,6 +1346,7 @@ paths:
       summary: Get MCPProxy by id
       description: Get an MCPProxy by its ID.
       operationId: getMCPProxyById
+      x-basicauth-roles: [admin, developer]
       tags:
         - MCP Proxy Management
       parameters:
@@ -1350,6 +1385,7 @@ paths:
       summary: Update an existing MCPProxy
       description: Update an existing MCPProxy in the Gateway.
       operationId: updateMCPProxy
+      x-basicauth-roles: [admin, developer]
       tags:
         - MCP Proxy Management
       parameters:
@@ -1400,6 +1436,7 @@ paths:
       summary: Delete a MCPProxy
       description: Delete an MCPProxy from the Gateway.
       operationId: deleteMCPProxy
+      x-basicauth-roles: [admin, developer]
       tags:
         - MCP Proxy Management
       parameters:
@@ -1446,6 +1483,7 @@ paths:
       summary: Create a new LLM provider template
       description: Add a new LLM provider template to the Gateway. A template defines token tracking and model extraction metadata for an LLM provider.
       operationId: createLLMProviderTemplate
+      x-basicauth-roles: [admin]
       tags:
         - LLM Provider Template Management
       requestBody:
@@ -1487,6 +1525,7 @@ paths:
       summary: List all LLM provider templates
       description: List LLM provider templates registered in the Gateway, optionally filtered by name.
       operationId: listLLMProviderTemplates
+      x-basicauth-roles: [admin]
       tags:
         - LLM Provider Template Management
       parameters:
@@ -1527,6 +1566,7 @@ paths:
       summary: Get LLM provider template by id
       description: Get an LLM provider template by its ID.
       operationId: getLLMProviderTemplateById
+      x-basicauth-roles: [admin]
       tags:
         - LLM Provider Template Management
       parameters:
@@ -1564,6 +1604,7 @@ paths:
       summary: Update an existing LLM provider template
       description: Update an existing LLM provider template in the Gateway.
       operationId: updateLLMProviderTemplate
+      x-basicauth-roles: [admin]
       tags:
         - LLM Provider Template Management
       parameters:
@@ -1613,6 +1654,7 @@ paths:
       summary: Delete an LLM provider template
       description: Delete an LLM provider template from the Gateway.
       operationId: deleteLLMProviderTemplate
+      x-basicauth-roles: [admin]
       tags:
         - LLM Provider Template Management
       parameters:
@@ -1658,6 +1700,7 @@ paths:
       summary: Create a new LLM provider
       description: Add a new LLM provider to the Gateway. A provider defines how to interact with an LLM service, including upstream endpoints, authentication, access control, and policies.
       operationId: createLLMProvider
+      x-basicauth-roles: [admin]
       tags:
         - LLM Provider Management
       requestBody:
@@ -1700,6 +1743,7 @@ paths:
       summary: List all LLM providers
       description: List LLM providers registered in the Gateway, optionally filtered by name, version, context, status, or vhost.
       operationId: listLLMProviders
+      x-basicauth-roles: [admin, developer]
       tags:
         - LLM Provider Management
       parameters:
@@ -1769,6 +1813,7 @@ paths:
       summary: Get LLM provider by identifier
       description: Get an LLM provider by its ID.
       operationId: getLLMProviderById
+      x-basicauth-roles: [admin, developer]
       tags:
         - LLM Provider Management
       parameters:
@@ -1806,6 +1851,7 @@ paths:
       summary: Update an existing LLM provider
       description: Update an existing LLM provider in the Gateway.
       operationId: updateLLMProvider
+      x-basicauth-roles: [admin]
       tags:
         - LLM Provider Management
       parameters:
@@ -1856,6 +1902,7 @@ paths:
       summary: Delete an LLM provider
       description: Delete an LLM provider from the Gateway.
       operationId: deleteLLMProvider
+      x-basicauth-roles: [admin]
       tags:
         - LLM Provider Management
       parameters:
@@ -1901,6 +1948,7 @@ paths:
       summary: Create a new LLM proxy
       description: Add a new LLM proxy to the Gateway. A proxy defines how to interact with an LLM service deployed in the Gateway, including authentication and policies.
       operationId: createLLMProxy
+      x-basicauth-roles: [admin, developer]
       tags:
         - LLM Proxy Management
       requestBody:
@@ -1943,6 +1991,7 @@ paths:
       summary: List all LLM proxies
       description: List LLM proxies registered in the Gateway, optionally filtered by name, version, context, status, or vhost.
       operationId: listLLMProxies
+      x-basicauth-roles: [admin, developer]
       tags:
         - LLM Proxy Management
       parameters:
@@ -2012,6 +2061,7 @@ paths:
       summary: Get LLM proxy by unique identifier
       description: Get an LLM proxy by its ID.
       operationId: getLLMProxyById
+      x-basicauth-roles: [admin, developer]
       tags:
         - LLM Proxy Management
       parameters:
@@ -2049,6 +2099,7 @@ paths:
       summary: Update an existing LLM proxy
       description: Update an existing LLM proxy in the Gateway.
       operationId: updateLLMProxy
+      x-basicauth-roles: [admin, developer]
       tags:
         - LLM Proxy Management
       parameters:
@@ -2099,6 +2150,7 @@ paths:
       summary: Delete an LLM proxy
       description: Delete an LLM proxy from the Gateway.
       operationId: deleteLLMProxy
+      x-basicauth-roles: [admin, developer]
       tags:
         - LLM Proxy Management
       parameters:
@@ -2148,6 +2200,7 @@ paths:
         Retrieve a list of all stored secrets. Returns secret identifiers without
         the actual secret values for security purposes.
       operationId: listSecrets
+      x-basicauth-roles: [admin]
       responses:
         '200':
           description: List of secrets retrieved successfully
@@ -2176,6 +2229,7 @@ paths:
         Stores a new secret encrypted at rest. The secret ID must be unique.
         The value is encrypted using the primary encryption provider before persistence.
       operationId: createSecret
+      x-basicauth-roles: [admin]
       requestBody:
         required: true
         content:
@@ -2249,6 +2303,7 @@ paths:
         encryption provider chain before being returned. If all providers fail to
         decrypt the secret, a 500 error is returned with a generic message.
       operationId: getSecret
+      x-basicauth-roles: [admin]
       responses:
         '200':
           description: Secret retrieved and decrypted successfully
@@ -2304,6 +2359,7 @@ paths:
         using the current primary encryption provider, enabling automatic migration
         to newer keys during updates. Old secrets remain readable via the provider chain.
       operationId: updateSecret
+      x-basicauth-roles: [admin]
       requestBody:
         required: true
         content:
@@ -2361,6 +2417,7 @@ paths:
         no recovery mechanism. The operation is idempotent - deleting a non-existent
         secret returns 404.
       operationId: deleteSecret
+      x-basicauth-roles: [admin]
       responses:
         '200':
           description: Secret deleted successfully (no content)
@@ -2390,6 +2447,10 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
 
 components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
   schemas:
     RestAPI:
       type: object
@@ -2434,7 +2495,7 @@ components:
               path: /pet
               policies:
                 - name: log-message
-                  version: v0
+                  version: v1
                   params:
                     request:
                       payload: true

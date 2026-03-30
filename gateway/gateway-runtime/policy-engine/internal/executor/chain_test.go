@@ -446,12 +446,12 @@ func (p *trackingPolicyImpl) Mode() policy.ProcessingMode {
 	return policy.ProcessingMode{}
 }
 
-func (p *trackingPolicyImpl) OnRequestBody(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
+func (p *trackingPolicyImpl) OnRequestBody(_ context.Context, _ *policy.RequestContext, _ map[string]interface{}) policy.RequestAction {
 	*p.executionOrder = append(*p.executionOrder, p.name)
 	return nil
 }
 
-func (p *trackingPolicyImpl) OnResponseBody(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
+func (p *trackingPolicyImpl) OnResponseBody(_ context.Context, _ *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
 	*p.executionOrder = append(*p.executionOrder, p.name)
 	return nil
 }

@@ -1,6 +1,7 @@
 package countletters
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -33,7 +34,7 @@ func (p *CountLettersPolicy) Mode() policy.ProcessingMode {
 }
 
 // OnResponseBody counts letters in the response body and replaces it with the count
-func (p *CountLettersPolicy) OnResponseBody(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
+func (p *CountLettersPolicy) OnResponseBody(_ context.Context, ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
 	slog.Debug("[Count Letters]: OnResponseBody called", "hasBody", ctx.ResponseBody != nil && ctx.ResponseBody.Present)
 
 	// Check if response body is present

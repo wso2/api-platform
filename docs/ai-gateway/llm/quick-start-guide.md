@@ -22,14 +22,14 @@ docker compose version
 Replace ${version} with the actual release version of the API Platform Gateway.
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/ai-gateway-v1.0.0-rc/ai-gateway-v1.0.0-rc.zip
+wget https://github.com/wso2/api-platform/releases/download/ai-gateway/v1.0.0-rc/wso2apip-ai-gateway-1.0.0-rc.zip
 
 # Unzip the downloaded distribution.
-unzip ai-gateway-v1.0.0-rc.zip
+unzip wso2apip-ai-gateway-1.0.0-rc.zip
 
 
 # Start the complete stack
-cd ai-gateway-v1.0.0-rc/
+cd wso2apip-ai-gateway-1.0.0/
 docker compose up -d
 
 # Verify gateway controller admin endpoint is running
@@ -53,7 +53,7 @@ spec:
   displayName: OpenAI Provider
   version: v1.0
   template: openai
-  vhost: api.openai.local
+  context: /openai/latest
   upstream:
     url: https://api.openai.com/v1
     auth:
@@ -75,9 +75,8 @@ EOF
 To test LLM provider traffic routing through the gateway, invoke the following request.
 
 ```bash
-curl -X POST https://localhost:8443/chat/completions \
+curl -X POST https://localhost:8443/openai/latest/chat/completions \
   -H "Content-Type: application/json" \
-  -H "Host: api.openai.local" \
   -d '{
     "model": "gpt-4o-mini",
     "messages": [
@@ -106,7 +105,8 @@ spec:
   displayName: OpenAI Assistant
   version: v1.0
   context: /assistant
-  provider: openai-provider
+  provider:
+    id: openai-provider
   policies: []
 EOF
 ```

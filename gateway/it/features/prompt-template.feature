@@ -51,7 +51,7 @@ Feature: Prompt Template
             path: /complete
             policies:
               - name: prompt-template
-                version: v0
+                version: v1
                 params:
                   templates: [{"name": "translate", "template": "Translate from [[from]] to [[to]]: [[text]]"}]
       """
@@ -96,7 +96,7 @@ Feature: Prompt Template
             path: /complete
             policies:
               - name: prompt-template
-                version: v0
+                version: v1
                 params:
                   templates: [{"name": "greeting", "template": "You are a friendly assistant. Greet the user warmly."}]
       """
@@ -145,7 +145,7 @@ Feature: Prompt Template
             path: /complete
             policies:
               - name: prompt-template
-                version: v0
+                version: v1
                 params:
                   templates: [{"name": "translate", "template": "Translate from [[from]] to [[to]]: [[text]]"}, {"name": "summarize", "template": "Summarize in [[length]] sentences: [[content]]"}]
       """
@@ -199,7 +199,7 @@ Feature: Prompt Template
             path: /chat
             policies:
               - name: prompt-template
-                version: v0
+                version: v1
                 params:
                   templates: [{"name": "system", "template": "You are a [[role]] assistant."}, {"name": "task", "template": "Your task is to [[action]]."}]
       """
@@ -252,7 +252,7 @@ Feature: Prompt Template
             path: /complete
             policies:
               - name: prompt-template
-                version: v0
+                version: v1
                 params:
                   templates: [{"name": "analyze", "template": "Analyze this: [[text]]"}]
       """
@@ -297,7 +297,7 @@ Feature: Prompt Template
             path: /complete
             policies:
               - name: prompt-template
-                version: v0
+                version: v1
                 params:
                   templates: [{"name": "format", "template": "Format: [[pattern]]"}]
       """
@@ -345,7 +345,7 @@ Feature: Prompt Template
             path: /complete
             policies:
               - name: prompt-template
-                version: v0
+                version: v1
                 params:
                   templates: [{"name": "question", "template": "Answer this question: [[q]]"}]
       """
@@ -389,7 +389,7 @@ Feature: Prompt Template
             path: /chat
             policies:
               - name: prompt-template
-                version: v0
+                version: v1
                 params:
                   templates: [{"name": "intro", "template": "I need help with [[topic]]."}]
       """
@@ -439,7 +439,7 @@ Feature: Prompt Template
             path: /complete
             policies:
               - name: prompt-template
-                version: v0
+                version: v1
                 params:
                   templates: [{"name": "existing", "template": "This exists"}]
       """
@@ -486,7 +486,7 @@ Feature: Prompt Template
             path: /complete
             policies:
               - name: prompt-template
-                version: v0
+                version: v1
                 params:
                   templates: [{"name": "test", "template": "Test"}]
       """
@@ -526,7 +526,7 @@ Feature: Prompt Template
             path: /complete
             policies:
               - name: prompt-template
-                version: v0
+                version: v1
                 params:
                   templates: [{"name": "test", "template": "Test [[param]]"}]
       """
@@ -574,7 +574,7 @@ Feature: Prompt Template
             path: /translate
             policies:
               - name: prompt-template
-                version: v0
+                version: v1
                 params:
                   templates: [{"name": "translate", "template": "You are a professional translator. Translate the following text from [[sourceLang]] to [[targetLang]]. Maintain the original tone and context.\n\nText: [[text]]\n\nTranslation:"}]
       """
@@ -618,7 +618,7 @@ Feature: Prompt Template
             path: /review
             policies:
               - name: prompt-template
-                version: v0
+                version: v1
                 params:
                   templates: [{"name": "review", "template": "Review this [[language]] code for bugs, performance issues, and best practices:\n\n[[code]]"}]
       """
@@ -662,7 +662,7 @@ Feature: Prompt Template
             path: /analyze
             policies:
               - name: prompt-template
-                version: v0
+                version: v1
                 params:
                   templates: [{"name": "sentiment", "template": "Analyze the sentiment of the following text. Classify as positive, negative, or neutral:\n\n[[text]]"}]
       """

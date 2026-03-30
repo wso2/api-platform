@@ -745,6 +745,15 @@ func TranslateResponseHeaderActions(result *executor.ResponseHeaderExecutionResu
 	dynamicMetadata := make(map[string]map[string]interface{})
 	headerMutation := &extprocv3.HeaderMutation{}
 
+	// Seed with request-phase analytics so they are not lost when RequiresResponseBody=false
+	// and TranslateResponseBodyActions (which also seeds from context) is never called.
+	for key, value := range execCtx.analyticsMetadata {
+		if key != "request_headers" {
+			analyticsData[key] = value
+		}
+	}
+	mergeDynamicMetadata(dynamicMetadata, execCtx.dynamicMetadata)
+
 	for _, pr := range result.Results {
 		if pr.Skipped || pr.Action == nil {
 			continue
@@ -1320,6 +1329,16 @@ func TranslateStreamingResponseChunkAction(result *executor.StreamingResponseExe
 
 	analyticsData := make(map[string]any)
 	dynamicMetadata := make(map[string]map[string]interface{})
+
+	// Seed with request-phase analytics so they are not lost when the final streaming
+	// chunk overwrites the analytics_data set by TranslateResponseHeaderActions.
+	for key, value := range execCtx.analyticsMetadata {
+		if key != "request_headers" {
+			analyticsData[key] = value
+		}
+	}
+	mergeDynamicMetadata(dynamicMetadata, execCtx.dynamicMetadata)
+
 	for _, pr := range result.Results {
 		if pr.Skipped || pr.Action == nil {
 			continue

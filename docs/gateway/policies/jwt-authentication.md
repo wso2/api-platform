@@ -58,7 +58,7 @@ Each entry in `keymanagers` must include a unique `name` and either `jwks.remote
 #### Sample System Configuration
 
 ```toml
-[policy_configurations.jwtauth_v0]
+[policy_configurations.jwtauth_v1]
 jwkscachettl = "5m"
 jwksfetchtimeout = "5s"
 jwksfetchretrycount = 3
@@ -72,19 +72,19 @@ errormessageformat = "json"
 errormessage = "Authentication failed"
 validateissuer = true
 
-[[policy_configurations.jwtauth_v0.keymanagers]]
+[[policy_configurations.jwtauth_v1.keymanagers]]
 name = "PrimaryIDP"
 issuer = "https://idp.example.com/oauth2/token"
 
-[policy_configurations.jwtauth_v0.keymanagers.jwks.remote]
+[policy_configurations.jwtauth_v1.keymanagers.jwks.remote]
 uri = "https://idp.example.com/oauth2/jwks"
 skipTlsVerify = false
 
-[[policy_configurations.jwtauth_v0.keymanagers]]
+[[policy_configurations.jwtauth_v1.keymanagers]]
 name = "SecondaryIDP"
 issuer = "https://auth.example.org/oauth2/token"
 
-[policy_configurations.jwtauth_v0.keymanagers.jwks.remote]
+[policy_configurations.jwtauth_v1.keymanagers.jwks.remote]
 uri = "https://auth.example.org/oauth2/jwks"
 skipTlsVerify = false
 ```

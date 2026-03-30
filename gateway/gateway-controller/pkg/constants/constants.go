@@ -121,21 +121,18 @@ const (
 	WEBSUB_HUB_DYNAMIC_HTTPS_PORT  = 8445
 
 	// LLM Transformer constants
-	UPSTREAM_AUTH_APIKEY_POLICY_NAME    = "set-headers"
-	UPSTREAM_AUTH_APIKEY_POLICY_VERSION = "v0"
-	UPSTREAM_AUTH_APIKEY_POLICY_PARAMS  = "request:\n" +
+	UPSTREAM_AUTH_APIKEY_POLICY_NAME   = "set-headers"
+	UPSTREAM_AUTH_APIKEY_POLICY_PARAMS = "request:\n" +
 		"  headers:\n" +
 		"    - name: '%s'\n" +
 		"      value: '%s'\n"
-	PROXY_HOST__HEADER_POLICY_NAME    = "set-headers"
-	PROXY_HOST__HEADER_POLICY_VERSION = "v0"
-	PROXY_HOST__HEADER_POLICY_PARAMS  = "request:\n" +
+	PROXY_HOST__HEADER_POLICY_NAME   = "set-headers"
+	PROXY_HOST__HEADER_POLICY_PARAMS = "request:\n" +
 		"  headers:\n" +
 		"    - name: Host\n" +
 		"      value: '%s'\n"
 
-	ACCESS_CONTROL_DENY_POLICY_NAME    = "respond"
-	ACCESS_CONTROL_DENY_POLICY_VERSION = "v0"
+	ACCESS_CONTROL_DENY_POLICY_NAME = "respond"
 	// YAML for default 404 respond policy params
 	ACCESS_CONTROL_DENY_POLICY_PARAMS = "statusCode: 404\n" +
 		"body: \"{\\\"message\\\": \\\"Resource not found.\\\"}\"\n" +
@@ -143,9 +140,8 @@ const (
 		"  - name: Content-Type\n" +
 		"    value: application/json\n"
 
-	SET_HEADERS_POLICY_NAME    = "set-headers"
-	SET_HEADERS_POLICY_VERSION = "v0"
-	SET_HEADERS_POLICY_PARAMS  = "request:\n" +
+	SET_HEADERS_POLICY_NAME   = "set-headers"
+	SET_HEADERS_POLICY_PARAMS = "request:\n" +
 		"  headers:\n" +
 		"    - name: '%s'\n" +
 		"      value: '%s'\n"
@@ -168,7 +164,7 @@ const (
 
 	// System policy constants
 	ANALYTICS_SYSTEM_POLICY_NAME    = "wso2_apip_sys_analytics"
-	ANALYTICS_SYSTEM_POLICY_VERSION = "v0"
+	ANALYTICS_SYSTEM_POLICY_VERSION = "v1"
 )
 
 var WILDCARD_HTTP_METHODS = []string{

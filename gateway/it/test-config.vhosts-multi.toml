@@ -212,21 +212,21 @@ port = 9003
 # =============================================================================
 
 
-[[policy_configurations.jwtauth_v0.keymanagers]]
+[[policy_configurations.jwtauth_v1.keymanagers]]
 name = "mock-jwks"
 issuer = "http://mock-jwks:8080/token"
 
-[policy_configurations.jwtauth_v0.keymanagers.jwks.remote]
+[policy_configurations.jwtauth_v1.keymanagers.jwks.remote]
 uri = "http://mock-jwks:8080/jwks"
 
-[[policy_configurations.jwtauth_v0.keymanagers]]
+[[policy_configurations.jwtauth_v1.keymanagers]]
 name = "wrong-issuer-km"
 issuer = "http://expected-issuer.com"
 
-[policy_configurations.jwtauth_v0.keymanagers.jwks.remote]
+[policy_configurations.jwtauth_v1.keymanagers.jwks.remote]
 uri = "http://mock-jwks:8080/jwks"
 
-[policy_configurations.ratelimit_v0]
+[policy_configurations.ratelimit_v1]
 algorithm = "fixed-window"
 
 

@@ -2,6 +2,7 @@ package analytics
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -77,18 +78,14 @@ type McpClientInfo struct {
 }
 
 type McpServerInfo struct {
-	ProtocolVersion string                `json:"protocolVersion,omitempty"`
-	ServerInfo      *McpServerInfoDetails `json:"serverInfo,omitempty"`
-}
-
-type McpServerInfoDetails struct {
-	Name    string `json:"name,omitempty"`
-	Version string `json:"version,omitempty"`
+	ProtocolVersion string `json:"protocolVersion,omitempty"`
+	Name            string `json:"name,omitempty"`
+	Version         string `json:"version,omitempty"`
 }
 
 type McpResponseAnalyticsProperties struct {
-	IsError    bool           `json:"isError,omitempty"`
-	ErrorCode  int            `json:"errorCode,omitempty"`
+	IsError    *bool          `json:"isError,omitempty"`
+	ErrorCode  *int           `json:"errorCode,omitempty"`
 	ServerInfo *McpServerInfo `json:"serverInfo,omitempty"`
 }
 
@@ -136,7 +133,7 @@ func (a *AnalyticsPolicy) Mode() policy.ProcessingMode {
 }
 
 // OnRequestBody performs Analytics collection process during the request phase (buffered).
-func (a *AnalyticsPolicy) OnRequestBody(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
+func (a *AnalyticsPolicy) OnRequestBody(_ context.Context, ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
 	slog.Debug("Analytics system policy: OnRequestBody called")
 	allowPayloads := getAllowPayloadsFlag(params)
 	analyticsMetadata := make(map[string]any)
@@ -217,7 +214,7 @@ func (a *AnalyticsPolicy) OnRequestBody(ctx *policy.RequestContext, params map[s
 
 // OnResponseBody performs Analytics collection during the response phase (buffered fallback).
 // Called when the chain is in buffered mode (e.g. another policy does not support streaming).
-func (a *AnalyticsPolicy) OnResponseBody(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
+func (a *AnalyticsPolicy) OnResponseBody(_ context.Context, ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
 	slog.Debug("Analytics system policy: OnResponseBody called")
 	allowPayloads := getAllowPayloadsFlag(params)
 
@@ -329,7 +326,8 @@ func (a *AnalyticsPolicy) OnResponseBody(ctx *policy.ResponseContext, params map
 // OnResponseBodyChunk handles streaming response body chunks.
 // Chunks are accumulated in SharedContext.Metadata. On EndOfStream the accumulated
 // bytes are parsed and analytics metadata is emitted on the final ResponseChunkAction.
-func (a *AnalyticsPolicy) OnResponseBodyChunk(ctx *policy.ResponseStreamContext, chunk *policy.StreamBody, params map[string]interface{}) policy.ResponseChunkAction {
+func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.ResponseStreamContext, chunk *policy.StreamBody, params map[string]interface{}) policy.ResponseChunkAction {
+	slog.Debug("Analytics system policy: OnResponseBodyChunk called")
 	if ctx.SharedContext.Metadata == nil {
 		ctx.SharedContext.Metadata = make(map[string]interface{})
 	}
@@ -673,34 +671,27 @@ func extractMCPPayloadFromAccumulated(accumulated []byte, responseHeaders *polic
 func extractMCPResponseAnalyticsProps(payload map[string]interface{}) *McpResponseAnalyticsProperties {
 	props := McpResponseAnalyticsProperties{}
 
-	serverInfoDetails := McpServerInfoDetails{
-		Name:    extractStringFromJsonpath(payload, ServerInfoNameJsonPath),
-		Version: extractStringFromJsonpath(payload, ServerInfoVersionJsonPath),
-	}
-
 	serverInfo := McpServerInfo{
 		ProtocolVersion: extractStringFromJsonpath(payload, ServerProtocolVersionJsonPath),
+		Name:            extractStringFromJsonpath(payload, ServerInfoNameJsonPath),
+		Version:         extractStringFromJsonpath(payload, ServerInfoVersionJsonPath),
 	}
 
-	if serverInfoDetails.Name != "" || serverInfoDetails.Version != "" {
-		serverInfo.ServerInfo = &serverInfoDetails
-	}
-
-	if serverInfo.ProtocolVersion != "" || serverInfo.ServerInfo != nil {
+	if serverInfo.Name != "" || serverInfo.Version != "" {
 		props.ServerInfo = &serverInfo
 	}
 
 	isError, err := extractBoolFromJsonpath(payload, IsErrorJsonPath)
 	if err == nil {
-		props.IsError = isError
+		props.IsError = &isError
 	}
 
 	errorCode, err := extractIntFromJsonpath(payload, JsonRpcErrorCodeJsonPath)
 	if err == nil {
-		props.ErrorCode = errorCode
+		props.ErrorCode = &errorCode
 	}
 
-	if props.IsError || props.ErrorCode != 0 || props.ServerInfo != nil {
+	if props.IsError != nil || props.ErrorCode != nil || props.ServerInfo != nil {
 		return &props
 	}
 	return nil

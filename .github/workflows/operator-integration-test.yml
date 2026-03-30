@@ -549,7 +549,7 @@ jobs:
                       format: json
 
                   policy_configurations:
-                    jwtauth_v0:
+                    jwtauth_v1:
                       keymanagers:
                       - name: WSO2KeyManager1
                         issuer: https://api.asgardeo.io/t/tharsanan1995/oauth2/token
@@ -912,7 +912,7 @@ jobs:
                 url: http://httpbin.default.svc.cluster.local:80
             policies:
               - name: jwt-auth
-                version: v0
+                version: v1
                 params:
                   issuers:
                     - MockKeyManager
@@ -990,7 +990,7 @@ jobs:
                 url: http://httpbin.default.svc.cluster.local:80
             policies:
               - name: jwt-auth
-                version: v0
+                version: v1
                 params:
                   issuers:
                     - DummyKeyManager

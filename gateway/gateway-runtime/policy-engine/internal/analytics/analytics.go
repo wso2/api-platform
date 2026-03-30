@@ -341,9 +341,6 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 			parsedLLMCost = rawCost
 		}
 	}
-	if parsedLLMCost != nil {
-		event.Properties[constants.LLMCostPropertyKey] = parsedLLMCost
-	}
 
 	// Process AI related metadata only if all the required metadata are present
 	if keyValuePairsFromMetadata[AIProviderNameMetadataKey] != "" ||
@@ -466,6 +463,19 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 				slog.Debug("Failed to unmarshal MCP response properties", "error", err)
 				// Fallback to raw string if parsing fails
 				mcpAnalytics["mcp_response_properties"] = mcpResponseProps
+			}
+		}
+		// Additionally, if there's an error code in the response properties from policies, add it to the response props
+		if mcpErrorCode, ok := keyValuePairsFromMetadata["mcpErrorCode"]; ok && mcpErrorCode != "" {
+			if _, exists := mcpAnalytics["errorCode"]; !exists {
+				if code, err := strconv.Atoi(mcpErrorCode); err == nil {
+					mcpAnalytics["errorCode"] = code
+				} else {
+					slog.Debug("Invalid MCP error code format; storing raw value", "mcpErrorCode", mcpErrorCode, "error", err)
+					mcpAnalytics["errorCode"] = mcpErrorCode
+				}
+			} else {
+				slog.Debug("MCP error code already exists in mcpAnalytics, skipping adding it again", "mcpErrorCode", mcpErrorCode)
 			}
 		}
 		event.Properties["mcpAnalytics"] = mcpAnalytics

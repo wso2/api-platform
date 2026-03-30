@@ -20,7 +20,7 @@ curl -X POST http://localhost:9090/websub-apis \
 
 Add a new WebSubAPI to the Gateway.
 
-> Body parameter
+> Payload
 
 ```json
 {
@@ -63,10 +63,20 @@ Add a new WebSubAPI to the Gateway.
         "executionCondition": "request.metadata[authenticated] != true",
         "params": {}
       }
-    ]
+    ],
+    "deploymentState": "deployed"
   }
 }
 ```
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="create-a-new-websubapi-parameters">Parameters</h3>
 
@@ -96,10 +106,6 @@ Add a new WebSubAPI to the Gateway.
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - WebSub API with same name and version already exists|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## List all WebSubAPIs
 
 <a id="opIdlistWebSubAPIs"></a>
@@ -117,6 +123,15 @@ curl -X GET http://localhost:9090/websub-apis \
 ```
 
 List WebSubAPIs registered in the Gateway, optionally filtered by name, version, context, or status.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="list-all-websubapis-parameters">Parameters</h3>
 
@@ -187,10 +202,6 @@ Status Code **200**
 |status|deployed|
 |status|undeployed|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Get WebSubAPI by id
 
 <a id="opIdgetWebSubAPIById"></a>
@@ -208,6 +219,15 @@ curl -X GET http://localhost:9090/websub-apis/{id} \
 ```
 
 Get a WebSubAPI by its ID.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="get-websubapi-by-id-parameters">Parameters</h3>
 
@@ -268,7 +288,8 @@ Get a WebSubAPI by its ID.
             "executionCondition": "request.metadata[authenticated] != true",
             "params": {}
           }
-        ]
+        ],
+        "deploymentState": "deployed"
       }
     },
     "metadata": {
@@ -288,10 +309,6 @@ Get a WebSubAPI by its ID.
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|WebSubAPI details|[WebSubAPIDetailResponse](schemas.md#schemawebsubapidetailresponse)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|WebSubAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
-
-<aside class="success">
-This operation does not require authentication
-</aside>
 
 ## Update an existing WebSubAPI
 
@@ -313,7 +330,7 @@ curl -X PUT http://localhost:9090/websub-apis/{id} \
 
 Update an existing WebSubAPI in the Gateway.
 
-> Body parameter
+> Payload
 
 ```json
 {
@@ -356,10 +373,20 @@ Update an existing WebSubAPI in the Gateway.
         "executionCondition": "request.metadata[authenticated] != true",
         "params": {}
       }
-    ]
+    ],
+    "deploymentState": "deployed"
   }
 }
 ```
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="update-an-existing-websubapi-parameters">Parameters</h3>
 
@@ -394,10 +421,6 @@ Update an existing WebSubAPI in the Gateway.
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|WebSubAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Delete a WebSubAPI
 
 <a id="opIddeleteWebSubAPI"></a>
@@ -415,6 +438,15 @@ curl -X DELETE http://localhost:9090/websub-apis/{id} \
 ```
 
 Delete a WebSubAPI from the Gateway.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="delete-a-websubapi-parameters">Parameters</h3>
 
@@ -455,7 +487,3 @@ Status Code **200**
 |» status|string|false|none|none|
 |» message|string|false|none|none|
 |» id|string|false|none|none|
-
-<aside class="success">
-This operation does not require authentication
-</aside>

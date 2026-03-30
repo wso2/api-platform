@@ -22,18 +22,26 @@ Replace `${version}` with the API Platform Gateway release version you want to r
 
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/gateway-v1.0.0-rc/gateway-v1.0.0-rc.zip
+wget https://github.com/wso2/api-platform/releases/download/gateway/v1.0.0-rc/wso2apip-api-gateway-1.0.0-rc.zip
 
 # Unzip the downloaded distribution.
-unzip gateway-v1.0.0-rc.zip
+unzip wso2apip-api-gateway-1.0.0-rc.zip
 
 
 # Start the complete stack
-cd gateway-v1.0.0-rc/
-docker compose up -d
+cd wso2apip-api-gateway-1.0.0/
+docker compose -p gateway up -d
 
 # Verify gateway controller admin endpoint is running
 curl http://localhost:9094/health
+
+# Start the sample backend used by the quick start API
+docker run -d \
+  --name sample-backend \
+  --network gateway_gateway-network \
+  -p 15000:5000 \
+  ghcr.io/wso2/api-platform/sample-service:latest \
+  -addr :5000 -pretty
 
 # Deploy an API configuration
 curl -X POST http://localhost:9090/rest-apis \
@@ -82,12 +90,16 @@ When stopping the gateway, you have two options:
 
 **Option 1: Stop runtime, keep data (persisted APIs and configuration)**
 ```bash
-docker compose down
+docker stop sample-backend
+docker rm sample-backend
+docker compose -p gateway down
 ```
-This stops the containers but preserves the `controller-data` volume. When you restart with `docker compose up`, all your API configurations will be restored.
+This stops the containers but preserves the `controller-data` volume. When you restart with `docker compose -p gateway up`, all your API configurations will be restored.
 
 **Option 2: Complete shutdown with data cleanup (fresh start)**
 ```bash
-docker compose down -v
+docker stop sample-backend
+docker rm sample-backend
+docker compose -p gateway down -v
 ```
 This stops containers and removes the `controller-data` volume. Next startup will be a clean slate with no persisted APIs or configuration.
