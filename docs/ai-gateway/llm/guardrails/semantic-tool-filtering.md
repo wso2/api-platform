@@ -72,7 +72,6 @@ This scenario demonstrates filtering tools to select the top 3 most relevant one
 **Configuration:**
 
 ```yaml
-type: http
 policies:
   - policy:
       name: semantic-tool-filtering
@@ -132,7 +131,6 @@ If the request wraps each tool as an object with a nested `function`, configure 
 **Configuration:**
 
 ```yaml
-type: http
 policies:
   - policy:
       name: semantic-tool-filtering
