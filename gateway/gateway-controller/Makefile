@@ -31,7 +31,7 @@ IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-controller
 # Doc generation
 REPO_ROOT := $(shell git rev-parse --show-toplevel)
 APIDOCS_TOOLS_DIR := $(REPO_ROOT)/tools/apidocs
-DOCS_OUT_DIR := $(REPO_ROOT)/docs/gateway/gateway-rest-api
+DOCS_OUT_DIR := $(REPO_ROOT)/docs/rest-apis/gateway
 
 .PHONY: help generate build test generate-listener-certs push build-coverage-image build-debug generate-apidocs
 
