@@ -84,8 +84,8 @@ type McpServerInfo struct {
 }
 
 type McpResponseAnalyticsProperties struct {
-	IsError    bool           `json:"isError,omitempty"`
-	ErrorCode  int            `json:"errorCode,omitempty"`
+	IsError    *bool          `json:"isError,omitempty"`
+	ErrorCode  *int           `json:"errorCode,omitempty"`
 	ServerInfo *McpServerInfo `json:"serverInfo,omitempty"`
 }
 
@@ -683,15 +683,15 @@ func extractMCPResponseAnalyticsProps(payload map[string]interface{}) *McpRespon
 
 	isError, err := extractBoolFromJsonpath(payload, IsErrorJsonPath)
 	if err == nil {
-		props.IsError = isError
+		props.IsError = &isError
 	}
 
 	errorCode, err := extractIntFromJsonpath(payload, JsonRpcErrorCodeJsonPath)
 	if err == nil {
-		props.ErrorCode = errorCode
+		props.ErrorCode = &errorCode
 	}
 
-	if props.IsError || props.ErrorCode != 0 || props.ServerInfo != nil {
+	if props.IsError != nil || props.ErrorCode != nil || props.ServerInfo != nil {
 		return &props
 	}
 	return nil

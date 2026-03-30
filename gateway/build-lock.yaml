@@ -43,7 +43,7 @@ policies:
       version: v1.0.0
       gomodule: github.com/wso2/gateway-controllers/policies/log-message@v1
     - name: mcp-acl-list
-      version: v1.0.0
+      version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-acl-list@v1
     - name: mcp-auth
       version: v1.0.0
@@ -52,7 +52,7 @@ policies:
       version: v1.0.0
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-authz@v1
     - name: mcp-rewrite
-      version: v1.0.0
+      version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-rewrite@v1
     - name: model-round-robin
       version: v1.0.0
