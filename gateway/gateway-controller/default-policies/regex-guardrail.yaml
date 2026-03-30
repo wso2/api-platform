@@ -1,5 +1,5 @@
 name: regex-guardrail
-version: v0.2.1
+version: v1.0.0
 description: |
   Validate request or response content against regex patterns using optional JSONPath extraction and optional inverted matching.
 
@@ -74,6 +74,14 @@ parameters:
             If empty, validates the entire payload as a string.
             Examples: "$.messages", "$.data.content", "$.items[0].text"
           default: "$.choices[0].message.content"
+        streamingJsonPath:
+          type: string
+          x-wso2-policy-advanced-param: false
+          description: |
+            JSONPath expression to extract content from SSE streaming delta chunks.
+            Used when the upstream returns a streaming (stream: true) response.
+            Defaults to the standard OpenAI SSE delta content path.
+          default: "$.choices[0].delta.content"
         invert:
           type: boolean
           x-wso2-policy-advanced-param: true

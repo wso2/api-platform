@@ -80,6 +80,7 @@ func (a *AssertSteps) Register(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the JSON response field "([^"]*)" should be (\d+)$`, a.jsonFieldShouldBeInt)
 	ctx.Step(`^the JSON response field "([^"]*)" should be (true|false)$`, a.jsonFieldShouldBeBool)
 	ctx.Step(`^the JSON response should have (\d+) items$`, a.jsonShouldHaveItems)
+	ctx.Step(`^the JSON response array field "([^"]*)" should have (\d+) items$`, a.jsonArrayFieldShouldHaveItems)
 
 	// Echoed header assertions (for sample-backend /echo endpoint)
 	ctx.Step(`^the response should contain echoed header "([^"]*)" with value "([^"]*)"$`, a.echoedHeaderShouldBe)
@@ -365,6 +366,25 @@ func (a *AssertSteps) jsonShouldHaveItems(expected int) error {
 	if len(arr) != expected {
 		return fmt.Errorf("expected %d items, got %d", expected, len(arr))
 	}
+	return nil
+}
+
+// jsonArrayFieldShouldHaveItems asserts that a JSON field is an array with N items.
+func (a *AssertSteps) jsonArrayFieldShouldHaveItems(field string, expected int) error {
+	value, err := a.getJSONField(field)
+	if err != nil {
+		return err
+	}
+
+	arr, ok := value.([]interface{})
+	if !ok {
+		return fmt.Errorf("expected JSON field %q to be array, got %T", field, value)
+	}
+
+	if len(arr) != expected {
+		return fmt.Errorf("expected JSON array field %q to have %d items, got %d", field, expected, len(arr))
+	}
+
 	return nil
 }
 

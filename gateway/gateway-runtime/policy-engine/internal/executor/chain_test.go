@@ -26,7 +26,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/testutils"
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 	"go.opentelemetry.io/otel/trace/noop"
 )
 
@@ -42,14 +42,42 @@ type mockCELEvaluator struct {
 	responseErr    error
 }
 
-func (m *mockCELEvaluator) EvaluateRequestCondition(expression string, ctx *policy.RequestContext) (bool, error) {
+func (m *mockCELEvaluator) EvaluateRequestHeaderCondition(expression string, ctx *policy.RequestHeaderContext) (bool, error) {
 	if m.requestErr != nil {
 		return false, m.requestErr
 	}
 	return m.requestResult, nil
 }
 
-func (m *mockCELEvaluator) EvaluateResponseCondition(expression string, ctx *policy.ResponseContext) (bool, error) {
+func (m *mockCELEvaluator) EvaluateRequestBodyCondition(expression string, ctx *policy.RequestContext) (bool, error) {
+	if m.requestErr != nil {
+		return false, m.requestErr
+	}
+	return m.requestResult, nil
+}
+
+func (m *mockCELEvaluator) EvaluateResponseHeaderCondition(expression string, ctx *policy.ResponseHeaderContext) (bool, error) {
+	if m.responseErr != nil {
+		return false, m.responseErr
+	}
+	return m.responseResult, nil
+}
+
+func (m *mockCELEvaluator) EvaluateResponseBodyCondition(expression string, ctx *policy.ResponseContext) (bool, error) {
+	if m.responseErr != nil {
+		return false, m.responseErr
+	}
+	return m.responseResult, nil
+}
+
+func (m *mockCELEvaluator) EvaluateStreamingRequestCondition(expression string, ctx *policy.RequestStreamContext) (bool, error) {
+	if m.requestErr != nil {
+		return false, m.requestErr
+	}
+	return m.requestResult, nil
+}
+
+func (m *mockCELEvaluator) EvaluateStreamingResponseCondition(expression string, ctx *policy.ResponseStreamContext) (bool, error) {
 	if m.responseErr != nil {
 		return false, m.responseErr
 	}
@@ -418,12 +446,12 @@ func (p *trackingPolicyImpl) Mode() policy.ProcessingMode {
 	return policy.ProcessingMode{}
 }
 
-func (p *trackingPolicyImpl) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
+func (p *trackingPolicyImpl) OnRequestBody(_ context.Context, _ *policy.RequestContext, _ map[string]interface{}) policy.RequestAction {
 	*p.executionOrder = append(*p.executionOrder, p.name)
 	return nil
 }
 
-func (p *trackingPolicyImpl) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
+func (p *trackingPolicyImpl) OnResponseBody(_ context.Context, _ *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
 	*p.executionOrder = append(*p.executionOrder, p.name)
 	return nil
 }
@@ -435,7 +463,7 @@ func (p *trackingPolicyImpl) OnResponse(*policy.ResponseContext, map[string]inte
 func TestApplyRequestModifications_SetHeaders(t *testing.T) {
 	ctx := testutils.NewTestRequestContext()
 	mods := policy.UpstreamRequestModifications{
-		SetHeaders: map[string]string{
+		HeadersToSet: map[string]string{
 			"x-new-header": "new-value",
 			"content-type": "text/plain", // Override existing
 		},
@@ -455,27 +483,13 @@ func TestApplyRequestModifications_SetHeaders(t *testing.T) {
 func TestApplyRequestModifications_RemoveHeaders(t *testing.T) {
 	ctx := testutils.NewTestRequestContext()
 	mods := policy.UpstreamRequestModifications{
-		RemoveHeaders: []string{"content-type"},
+		HeadersToRemove: []string{"content-type"},
 	}
 
 	applyRequestModifications(ctx, &mods)
 
 	vals := ctx.Headers.Get("content-type")
 	assert.Nil(t, vals)
-}
-
-func TestApplyRequestModifications_AppendHeaders(t *testing.T) {
-	ctx := testutils.NewTestRequestContext()
-	mods := policy.UpstreamRequestModifications{
-		AppendHeaders: map[string][]string{
-			"x-multi": {"value1", "value2"},
-		},
-	}
-
-	applyRequestModifications(ctx, &mods)
-
-	vals := ctx.Headers.Get("x-multi")
-	assert.Equal(t, []string{"value1", "value2"}, vals)
 }
 
 func TestApplyRequestModifications_UpdateBody(t *testing.T) {
@@ -521,7 +535,7 @@ func TestApplyRequestModifications_AddQueryParameters(t *testing.T) {
 	ctx := testutils.NewTestRequestContext()
 	ctx.Path = "/test/path"
 	mods := policy.UpstreamRequestModifications{
-		AddQueryParameters: map[string][]string{
+		QueryParametersToAdd: map[string][]string{
 			"foo": {"bar"},
 			"baz": {"qux"},
 		},
@@ -537,7 +551,7 @@ func TestApplyRequestModifications_RemoveQueryParameters(t *testing.T) {
 	ctx := testutils.NewTestRequestContext()
 	ctx.Path = "/test/path?foo=bar&baz=qux&keep=me"
 	mods := policy.UpstreamRequestModifications{
-		RemoveQueryParameters: []string{"foo", "baz"},
+		QueryParametersToRemove: []string{"foo", "baz"},
 	}
 
 	applyRequestModifications(ctx, &mods)
@@ -553,8 +567,8 @@ func TestApplyRequestModifications_RemoveQueryParameters(t *testing.T) {
 
 func TestApplyResponseModifications_SetHeaders(t *testing.T) {
 	ctx := testutils.NewTestResponseContext()
-	mods := policy.UpstreamResponseModifications{
-		SetHeaders: map[string]string{
+	mods := policy.DownstreamResponseModifications{
+		HeadersToSet: map[string]string{
 			"x-response-header": "response-value",
 		},
 	}
@@ -568,8 +582,8 @@ func TestApplyResponseModifications_SetHeaders(t *testing.T) {
 
 func TestApplyResponseModifications_RemoveHeaders(t *testing.T) {
 	ctx := testutils.NewTestResponseContext()
-	mods := policy.UpstreamResponseModifications{
-		RemoveHeaders: []string{"content-type"},
+	mods := policy.DownstreamResponseModifications{
+		HeadersToRemove: []string{"content-type"},
 	}
 
 	applyResponseModifications(ctx, &mods)
@@ -578,24 +592,10 @@ func TestApplyResponseModifications_RemoveHeaders(t *testing.T) {
 	assert.Nil(t, vals)
 }
 
-func TestApplyResponseModifications_AppendHeaders(t *testing.T) {
-	ctx := testutils.NewTestResponseContext()
-	mods := policy.UpstreamResponseModifications{
-		AppendHeaders: map[string][]string{
-			"x-multi-resp": {"val1", "val2"},
-		},
-	}
-
-	applyResponseModifications(ctx, &mods)
-
-	vals := ctx.ResponseHeaders.Get("x-multi-resp")
-	assert.Equal(t, []string{"val1", "val2"}, vals)
-}
-
 func TestApplyResponseModifications_UpdateBody(t *testing.T) {
 	ctx := testutils.NewTestResponseContext()
 	newBody := []byte(`{"response": "modified"}`)
-	mods := policy.UpstreamResponseModifications{
+	mods := policy.DownstreamResponseModifications{
 		Body: newBody,
 	}
 
@@ -610,7 +610,7 @@ func TestApplyResponseModifications_UpdateBody(t *testing.T) {
 func TestApplyResponseModifications_UpdateStatusCode(t *testing.T) {
 	ctx := testutils.NewTestResponseContext()
 	newStatus := 404
-	mods := policy.UpstreamResponseModifications{
+	mods := policy.DownstreamResponseModifications{
 		StatusCode: &newStatus,
 	}
 

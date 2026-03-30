@@ -52,12 +52,6 @@ func (l *EventListener) handleLLMTemplateCreateOrUpdate(event eventhub.Event) {
 		slog.String("action", event.Action),
 		slog.String("event_id", event.EventID))
 
-	if l.db == nil {
-		l.logger.Warn("Database not available, cannot process LLM template event",
-			slog.String("template_id", entityID))
-		return
-	}
-
 	storedTemplate, err := l.db.GetLLMProviderTemplate(entityID)
 	if err != nil {
 		l.logger.Error("Failed to fetch LLM template from database",

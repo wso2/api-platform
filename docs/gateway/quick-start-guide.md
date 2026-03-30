@@ -2,8 +2,7 @@
 
 ### Using Docker Compose (Recommended)
 
-```bash
-## Prerequisites
+### Prerequisites
 
 A Docker-compatible container runtime such as:
 
@@ -14,27 +13,38 @@ A Docker-compatible container runtime such as:
 
 Ensure `docker` and `docker compose` commands are available.
 
-    docker --version
-    docker compose version
+```bash
+docker --version
+docker compose version
 ```
+
+Replace `${version}` with the API Platform Gateway release version you want to run.
 
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/gateway/v0.5.0/gateway-v0.5.0.zip
+wget https://github.com/wso2/api-platform/releases/download/gateway/v1.0.0-rc/wso2apip-api-gateway-1.0.0-rc.zip
 
 # Unzip the downloaded distribution.
-unzip gateway-v0.5.0.zip
+unzip wso2apip-api-gateway-1.0.0-rc.zip
 
 
 # Start the complete stack
-cd gateway-v0.5.0/
-docker compose up -d
+cd wso2apip-api-gateway-1.0.0/
+docker compose -p gateway up -d
 
-# Verify gateway controller is running
-curl http://localhost:9090/health
+# Verify gateway controller admin endpoint is running
+curl http://localhost:9094/health
+
+# Start the sample backend used by the quick start API
+docker run -d \
+  --name sample-backend \
+  --network gateway_gateway-network \
+  -p 15000:5000 \
+  ghcr.io/wso2/api-platform/sample-service:latest \
+  -addr :5000 -pretty
 
 # Deploy an API configuration
-curl -X POST http://localhost:9090/apis \
+curl -X POST http://localhost:9090/rest-apis \
   -u admin:admin \
   -H "Content-Type: application/yaml" \
   --data-binary @- <<'EOF'
@@ -50,17 +60,17 @@ spec:
     main:
       url: http://sample-backend:5000/api/v2
   policies:
-    - name: modify-headers
-      version: v0.1.1
+    - name: set-headers
+      version: v1
       params:
-        requestHeaders:
-          - action: SET
-            name: operation-level-req-header
-            value: hello
-        responseHeaders:
-          - action: SET
-            name: operation-level-res-header
-            value: world
+        request:
+          headers:
+            - name: x-quickstart-request-header
+              value: hello
+        response:
+          headers:
+            - name: x-quickstart-response-header
+              value: world
   operations:
     - method: GET
       path: /{country_code}/{city}
@@ -70,8 +80,8 @@ EOF
 
 
 # Test routing through the gateway
-curl http://localhost:8080/weather/v1.0/us/seattle
-curl https://localhost:8443/weather/v1.0/us/seattle -k
+curl -i http://localhost:8080/weather/v1.0/us/seattle
+curl -ik https://localhost:8443/weather/v1.0/us/seattle
 ```
 
 ### Stopping the Gateway
@@ -80,12 +90,16 @@ When stopping the gateway, you have two options:
 
 **Option 1: Stop runtime, keep data (persisted APIs and configuration)**
 ```bash
-docker compose down
+docker stop sample-backend
+docker rm sample-backend
+docker compose -p gateway down
 ```
-This stops the containers but preserves the `controller-data` volume. When you restart with `docker compose up`, all your API configurations will be restored.
+This stops the containers but preserves the `controller-data` volume. When you restart with `docker compose -p gateway up`, all your API configurations will be restored.
 
 **Option 2: Complete shutdown with data cleanup (fresh start)**
 ```bash
-docker compose down -v
+docker stop sample-backend
+docker rm sample-backend
+docker compose -p gateway down -v
 ```
 This stops containers and removes the `controller-data` volume. Next startup will be a clean slate with no persisted APIs or configuration.

@@ -108,6 +108,22 @@ func NewRestAPIService(
 	eventHub eventhub.EventHub,
 	policyResolver *resolver.PolicyResolver,
 ) *RestAPIService {
+	if db == nil {
+		panic("RestAPIService requires non-nil storage")
+	}
+	if eventHub == nil {
+		panic("RestAPIService requires non-nil EventHub")
+	}
+	if deploymentService == nil {
+		panic("RestAPIService requires APIDeploymentService")
+	}
+	if systemConfig == nil {
+		panic("RestAPIService requires non-nil system config")
+	}
+	if strings.TrimSpace(systemConfig.Controller.Server.GatewayID) == "" {
+		panic("RestAPIService requires non-empty gateway ID")
+	}
+
 	return &RestAPIService{
 		store:              store,
 		db:                 db,
@@ -159,12 +175,6 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
 			go s.waitForDeploymentAndPush(result.StoredConfig.UUID, params.CorrelationID, log)
 		}
-	}
-
-	// Build and add policy config derived from API configuration.
-	// In event-driven mode the EventListener handles this after replaying the event.
-	if s.eventHub == nil {
-		s.updatePolicyForConfig(result.StoredConfig, log)
 	}
 
 	return &CreateResult{
@@ -266,20 +276,35 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 		return nil, ErrNotFound
 	}
 
+	// Extract deploymentState from spec (defaults to "deployed" if not specified)
+	desiredState := models.StateDeployed
+	if apiConfig.Spec.DeploymentState != nil && *apiConfig.Spec.DeploymentState == api.APIConfigDataDeploymentStateUndeployed {
+		desiredState = models.StateUndeployed
+	}
+
 	// Update stored configuration
 	now := time.Now()
 	existing.Configuration = apiConfig
 	existing.SourceConfiguration = apiConfig
-	existing.DesiredState = models.StateDeployed
+	existing.DesiredState = desiredState
 	existing.UpdatedAt = now
-	existing.DeployedAt = nil
 
-	// Resolve policy configuration (handles secret resolution)
-	// Resolved config is not used here since we only want to check if the secret resolution succeeded
-	// Blocks the update if there are policy resolution errors (e.g. due to missing secrets) to prevent storing configs with unresolved secrets
-	_, err = s.resolvePolicyConfiguration(existing)
-	if err != nil {
-		return nil, err
+	if desiredState == models.StateUndeployed {
+		// Undeployment: update DeployedAt to mark when this state change happened
+		truncatedNow := now.Truncate(time.Millisecond)
+		existing.DeployedAt = &truncatedNow
+		log.Info("Undeploying API configuration",
+			slog.String("id", existing.UUID),
+			slog.String("handle", params.Handle))
+	} else {
+		// Normal config update: preserve existing DeployedAt (already set during initial creation)
+
+		// Resolve policy configuration (handles secret resolution)
+		// Blocks the update if there are policy resolution errors to prevent storing configs with unresolved secrets
+		_, err = s.resolvePolicyConfiguration(existing)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Dual-write: database first, then in-memory
@@ -292,7 +317,8 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 
 	log.Info("API configuration updated",
 		slog.String("id", existing.UUID),
-		slog.String("handle", params.Handle))
+		slog.String("handle", params.Handle),
+		slog.String("desired_state", string(desiredState)))
 
 	return &UpdateResult{Config: existing}, nil
 }
@@ -485,19 +511,7 @@ func timePtr(t time.Time) *time.Time {
 
 // publishEvent publishes an event to the event hub
 func (s *RestAPIService) publishEvent(eventType eventhub.EventType, action, entityID, correlationID string, logger *slog.Logger) {
-	if s.eventHub == nil {
-		return
-	}
-
 	gatewayID := strings.TrimSpace(s.systemConfig.Controller.Server.GatewayID)
-	if gatewayID == "" {
-		logger.Warn("Skipping event hub publish because gateway ID is not configured",
-			slog.String("event_type", string(eventType)),
-			slog.String("action", action),
-			slog.String("entity_id", entityID))
-		return
-	}
-
 	event := eventhub.Event{
 		GatewayID:           gatewayID,
 		OriginatedTimestamp: time.Now(),

@@ -165,7 +165,7 @@ type Storage interface {
 	// Implementations should ensure this operation is atomic (all-or-nothing).
 	SaveAPIKey(apiKey *models.APIKey) error
 
-	// UpsertAPIKey inserts or updates an API key identified by (artifact_uuid, name, gateway_id).
+	// UpsertAPIKey inserts or updates an API key identified by (gateway_id, artifact_uuid, name).
 	//
 	// If a key with the same name already exists for the artifact, it is updated only when the
 	// incoming record's updated_at is strictly newer than the stored one — preventing a slow

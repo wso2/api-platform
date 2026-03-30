@@ -41,7 +41,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
                 url: http://mcp-server-backend:3001
               policies:
                 - name: non-existing-policy
-                  version: v0
+                  version: v1
                   params: {}
               tools: []
               resources: []
@@ -68,7 +68,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
                 url: http://mcp-server-backend:3001
               policies:
                 - name: mcp-auth
-                  version: v0
+                  version: v1
                   params:
                     issuers:
                       - mock-jwks
@@ -111,7 +111,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
                 url: http://mcp-server-backend:3001
               policies:
                 - name: mcp-auth
-                  version: v0
+                  version: v1
                   params:
                     issuers:
                       - mock-jwks
@@ -134,7 +134,54 @@ Feature: Test how MCP Proxies behave when various policies are applied.
         When I delete the MCP proxy "mcp-auth-valid-token-test"
         Then the response should be successful
 
-    Scenario: Deploy and MCP proxy with mcp-authz policy and verify whether 403 is returned for unauthorized access
+    Scenario: Deploy an MCP Proxy with mcp-auth policy restricting only tools
+        Given I authenticate using basic auth as "admin"
+        When I deploy this MCP configuration:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            kind: Mcp
+            metadata:
+              name: mcp-auth-tools-only-test
+            spec:
+              displayName: MCP Auth Tools Only Test
+              version: v1.0
+              context: /mcptoolsonly
+              specVersion: "2025-06-18"
+              upstream:
+                url: http://mcp-server-backend:3001
+              policies:
+                - name: mcp-auth
+                  version: v1
+                  params:
+                    issuers:
+                      - mock-jwks
+                    methods:
+                      enabled: false
+            """
+
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response field "status" should be "success"
+        And I wait for 2 seconds
+
+        When I use the MCP Client to send an initialize request to "http://127.0.0.1:8080/mcptoolsonly/mcp"
+        Then the response should be successful
+
+        And I use the MCP Client to send "add" tools/call request to "http://127.0.0.1:8080/mcptoolsonly/mcp"
+        Then the response status code should be 401
+        And the response header "WWW-Authenticate" should contain "http://localhost:8080/mcptoolsonly/.well-known/oauth-protected-resource"
+        
+        When I get a JWT token from the mock JWKS server with issuer "http://mock-jwks:8080/token"
+        And I use the MCP Client to send a tools/call request to "http://127.0.0.1:8080/mcptoolsonly/mcp" with the JWT token
+        Then the response should be successful
+
+        # Cleanup
+        And I clear all headers
+        Given I authenticate using basic auth as "admin"
+        When I delete the MCP proxy "mcp-auth-tools-only-test"
+        Then the response should be successful
+
+    Scenario: Deploy an MCP proxy with mcp-authz policy and verify whether 403 is returned for unauthorized access
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
             """
@@ -151,22 +198,18 @@ Feature: Test how MCP Proxies behave when various policies are applied.
                 url: http://mcp-server-backend:3001
               policies:
                 - name: mcp-auth
-                  version: v0
+                  version: v1
                   params:
                     issuers:
                       - mock-jwks
                 - name: mcp-authz
-                  version: v0
+                  version: v1
                   params:
-                    rules:
-                      - attribute:
-                          type: "tool"
-                          name: "add"
+                    tools:
+                      - name: "add"
                         requiredScopes:
                           - "add-scope"
-                      - attribute:
-                          type: "tool"
-                          name: "echo"
+                      - name: "echo"
                         requiredScopes:
                           - "echo-scope"
             """
@@ -213,22 +256,18 @@ Feature: Test how MCP Proxies behave when various policies are applied.
                 url: http://mcp-server-backend:3001
               policies:
                 - name: mcp-auth
-                  version: v0
+                  version: v1
                   params:
                     issuers:
                       - mock-jwks
                 - name: mcp-authz
-                  version: v0
+                  version: v1
                   params:
-                    rules:
-                      - attribute:
-                          type: "tool"
-                          name: "add"
+                    tools:
+                      - name: "add"
                         requiredScopes:
                           - "add-scope"
-                      - attribute:
-                          type: "tool"
-                          name: "echo"
+                      - name: "echo"
                         requiredScopes:
                           - "echo-scope"
             """
@@ -268,7 +307,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
                 url: http://mcp-server-backend:3001
               policies:
                 - name: mcp-acl-list
-                  version: v0
+                  version: v1
                   params:
                     tools:
                       mode: deny
@@ -308,7 +347,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
                 url: http://mcp-server-backend:3001
               policies:
                 - name: mcp-acl-list
-                  version: v0
+                  version: v1
                   params:
                     tools:
                       mode: allow
@@ -353,7 +392,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
                 url: http://mcp-server-backend:3001
               policies:
                 - name: mcp-rewrite
-                  version: v0
+                  version: v1
                   params:
                     tools:
                       - name: sum
@@ -417,7 +456,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
                 url: http://mcp-server-backend:3001
               policies:
                 - name: cors
-                  version: v0
+                  version: v1
                   params:
                     allowedOrigins:
                       - "http://example.com"

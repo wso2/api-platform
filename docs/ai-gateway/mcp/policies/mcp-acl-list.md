@@ -1,8 +1,11 @@
-# MCP ACL List
+---
+title: "Overview"
+---
+# MCP Access Control List
 
 ## Overview
 
-The MCP ACL List policy provides access control for Model Context Protocol (MCP) tools, resources, and prompts using an allow/deny mode with exceptions. This policy filters list responses and enforces access rules on request paths based on configured mode and exceptions. Unlike the [MCP Rewrite policy](./mcp-rewrite.md), this policy does not rewrite capability names or modify list entry contents—it purely controls visibility and access.
+The MCP Access Control Logic(***ACL***) List policy provides access control for Model Context Protocol (***MCP***) tools, resources, and prompts using an allow/deny mode with exceptions. This policy filters list responses and enforces access rules on request paths based on configured mode and exceptions. Unlike the [MCP Rewrite policy](./mcp-rewrite.md), this policy does not rewrite capability names or modify list entry contents -- it purely controls visibility and access.
 
 The policy operates on three types of MCP capabilities: tools, resources, and prompts. For each type, you can specify a mode (allow or deny) and a list of exceptions. Requests for capabilities not matching the access control rules are rejected with an appropriate error.
 
@@ -23,19 +26,42 @@ The MCP ACL List policy uses a single-level configuration model where all parame
 
 These parameters are configured per MCP Proxy by the API developer:
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `tools` | object | No | ACL configuration for tools with `mode` (allow or deny) and optional `exceptions` list. |
-| `tools.mode` | string | Yes | ACL mode for tools: "allow" (allow all except exceptions) or "deny" (deny all except exceptions). |
-| `tools.exceptions` | array | No | List of tool names that are exceptions to the mode (1-256 characters each). |
-| `resources` | object | No | ACL configuration for resources with `mode` (allow or deny) and optional `exceptions` list. |
-| `resources.mode` | string | Yes | ACL mode for resources: "allow" (allow all except exceptions) or "deny" (deny all except exceptions). |
-| `resources.exceptions` | array | No | List of resource URIs that are exceptions to the mode (1-2048 characters each). |
-| `prompts` | object | No | ACL configuration for prompts with `mode` (allow or deny) and optional `exceptions` list. |
-| `prompts.mode` | string | Yes | ACL mode for prompts: "allow" (allow all except exceptions) or "deny" (deny all except exceptions). |
-| `prompts.exceptions` | array | No | List of prompt names that are exceptions to the mode (1-256 characters each). |
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `tools` | `ToolACLConfig` object | Conditional | - | ACL configuration for tools. |
+| `resources` | `ResourceACLConfig` object | Conditional | - | ACL configuration for resources. |
+| `prompts` | `PromptACLConfig` object | Conditional | - | ACL configuration for prompts. |
 
-## Access Control Logic
+> **Note**: At least one of `tools`, `resources`, or `prompts` must be specified.
+
+### ToolACLConfig Configuration
+
+Each `ToolACLConfig` object supports the following fields:
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `mode` | string | No | `"deny"` | ACL mode for tools: `allow` (allow all except listed exceptions) or `deny` (deny all except listed exceptions). |
+| `exceptions` | string array | No | - | List of tool names that are exceptions to the selected mode. Tool names must be 1-256 characters. |
+
+### ResourceACLConfig Configuration
+
+Each `ResourceACLConfig` object supports the following fields:
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `mode` | string | No | `"deny"` | ACL mode for resources: `allow` (allow all except listed exceptions) or `deny` (deny all except listed exceptions). |
+| `exceptions` | string array | No | - | List of resource URIs that are exceptions to the selected mode. Resource URIs must be 1-2048 characters. |
+
+### PromptACLConfig Configuration
+
+Each `PromptACLConfig` object supports the following fields:
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `mode` | string | No | `"deny"` | ACL mode for prompts: `allow` (allow all except listed exceptions) or `deny` (deny all except listed exceptions). |
+| `exceptions` | string array | No | - | List of prompt names that are exceptions to the selected mode. Prompt names must be 1-256 characters. |
+
+
 
 For each capability type (tools, resources, prompts):
 
@@ -43,7 +69,16 @@ For each capability type (tools, resources, prompts):
 - **mode: allow, exceptions: [...]**: Allow all capabilities except those listed in exceptions.
 - **mode: deny, exceptions: [...]**: Deny all capabilities except those listed in exceptions.
 
-## MCP Proxy Definition Examples
+**Note:**
+
+Inside the `gateway/build.yaml`, ensure the policy module is added under `policies:`:
+
+```yaml
+- name: mcp-acl-list
+  gomodule: github.com/wso2/gateway-controllers/policies/mcp-acl-list@v0
+```
+
+## Reference Scenarios
 
 ### Example 1: Deny Specific Tools
 
@@ -62,7 +97,7 @@ spec:
     url: https://mcp-backend:8080
   policies:
     - name: mcp-acl-list
-      version: v0.1.0
+      version: v0
       params:
         tools:
           mode: allow
@@ -90,7 +125,7 @@ spec:
     url: https://mcp-backend:8080
   policies:
     - name: mcp-acl-list
-      version: v0.1.0
+      version: v0
       params:
         resources:
           mode: deny
@@ -118,7 +153,7 @@ spec:
     url: https://mcp-backend:8080
   policies:
     - name: mcp-acl-list
-      version: v0.1.0
+      version: v0
       params:
         tools:
           mode: allow
@@ -138,16 +173,10 @@ spec:
     ...
 ```
 
-## Use Cases
 
-1. **Sensitive Operation Blocking**: Deny access to tools or resources that perform sensitive operations (e.g., delete, modify system configuration).
-2. **Public API Restriction**: Allow only specific public resources while denying access to internal resources.
-3. **Role-Based Access**: Combine this policy with authentication/authorization policies to implement role-based access control.
-4. **Gradual Feature Rollout**: Deny access to beta or experimental tools while they are being tested.
-5. **Compliance and Security**: Enforce compliance policies by denying access to resources or tools that are not approved for a specific tenant or environment.
-6. **Cost Control**: Deny access to expensive or resource-intensive operations.
+## Notes
 
-## Comparison with MCP Rewrite Policy
+**Comparison with MCP Rewrite Policy**
 
 | Aspect | MCP ACL List | MCP Rewrite |
 |--------|--------------|-------------|
@@ -159,3 +188,12 @@ spec:
 | **Metadata Modification** | No | Yes |
 
 Both policies can be used together: use MCP ACL List for access control and MCP Rewrite for name mapping.
+
+**Access control and security enforcement**
+Deny access to sensitive operations, internal resources, or non-approved tools to meet security and compliance requirements.
+
+**Policy-driven authorization**
+Combine with authentication and authorization policies to implement role-based access and tenant- or environment-specific restrictions.
+
+**Operational governance**
+Control costs and risk by restricting access to expensive, experimental, or beta features during rollout phases.

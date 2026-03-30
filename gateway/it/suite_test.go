@@ -112,6 +112,7 @@ func getFeaturePaths() []string {
 		"features/azure-content-safety.feature",
 		"features/aws-bedrock-guardrail.feature",
 		"features/semantic-cache.feature",
+		"features/semantic-tool-filtering.feature",
 		"features/semantic-prompt-guard.feature",
 		"features/request-rewrite.feature",
 		"features/respond.feature",
@@ -123,6 +124,7 @@ func getFeaturePaths() []string {
 		"features/api-keys.feature",
 		"features/api-with-policies.feature",
 		"features/llm-proxies.feature",
+		"features/startup-db-bootstrap.feature",
 		"features/search-deployments.feature",
 		"features/policy-engine-admin.feature",
 		"features/cel-conditions.feature",
@@ -132,6 +134,7 @@ func getFeaturePaths() []string {
 		"features/subscription-validation.feature",
 		"features/llm-cost-based-ratelimit.feature",
 		"features/log-message.feature",
+		"features/route-path-matching.feature",
 		// These tests require different gateway configurations and are not included in the default suite run.
 		// "features/vhost-routing-single.feature", // cd it && make test-vhosts-single
 		// "features/vhost-routing-multi.feature", // cd it && make test-vhosts-multi
@@ -310,6 +313,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	// Register step definitions
 	if testState != nil {
 		RegisterHealthSteps(ctx, testState, httpSteps)
+		RegisterComposeSteps(ctx, composeManager)
 		RegisterMetricsSteps(ctx, testState, httpSteps)
 		RegisterAuthSteps(ctx, testState, httpSteps)
 		RegisterAPISteps(ctx, testState, httpSteps)

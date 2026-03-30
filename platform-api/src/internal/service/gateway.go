@@ -44,6 +44,7 @@ import (
 type GatewayPolicyInput struct {
 	Name             string                 `json:"name"`
 	Version          string                 `json:"version"`
+	DisplayName      string                 `json:"displayName,omitempty"`
 	Description      *string                `json:"description,omitempty"`
 	Parameters       map[string]interface{} `json:"parameters,omitempty"`
 	SystemParameters map[string]interface{} `json:"systemParameters,omitempty"`
@@ -55,6 +56,7 @@ type GatewayPolicyInput struct {
 type GatewayPolicyDefinition struct {
 	Name             string                 `json:"name"`
 	Version          string                 `json:"version"`
+	DisplayName      string                 `json:"displayName,omitempty"`
 	Description      *string                `json:"description,omitempty"`
 	ManagedBy        string                 `json:"managedBy"`
 	PolicyDefinition map[string]interface{} `json:"policyDefinition,omitempty"`
@@ -119,6 +121,7 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID string, policie
 		entry := GatewayPolicyDefinition{
 			Name:        strings.ToLower(p.Name),
 			Version:     p.Version,
+			DisplayName: p.DisplayName,
 			Description: p.Description,
 			ManagedBy:   p.ManagedBy,
 		}
@@ -268,6 +271,7 @@ func (s *GatewayService) SyncCustomPolicy(gatewayID, orgID, policyName, version 
 	policy := &model.CustomPolicy{
 		OrganizationUUID: orgID,
 		Name:             policyName,
+		DisplayName:      utils.StringPtrIfNotEmpty(found.DisplayName),
 		Version:          version,
 		Description:      found.Description,
 		PolicyDefinition: policyDefJSON,

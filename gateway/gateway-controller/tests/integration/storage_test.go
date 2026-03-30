@@ -100,6 +100,92 @@ func createTestConfig(name, version string) *models.StoredConfig {
 	}
 }
 
+func TestSQLiteStorage_GatewayIsolationForSharedUUIDs(t *testing.T) {
+	metrics.SetEnabled(false)
+	metrics.Init()
+
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "shared.db")
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	gatewayA, err := storage.NewStorage(storage.BackendConfig{
+		Type:       "sqlite",
+		SQLitePath: dbPath,
+		GatewayID:  "gateway-a",
+	}, logger)
+	require.NoError(t, err)
+	defer gatewayA.Close()
+
+	gatewayB, err := storage.NewStorage(storage.BackendConfig{
+		Type:       "sqlite",
+		SQLitePath: dbPath,
+		GatewayID:  "gateway-b",
+	}, logger)
+	require.NoError(t, err)
+	defer gatewayB.Close()
+
+	setContext := func(cfg *models.StoredConfig, context string) {
+		restCfg := cfg.Configuration.(api.RestAPI)
+		restCfg.Spec.Context = context
+		cfg.Configuration = restCfg
+
+		sourceCfg := cfg.SourceConfiguration.(api.RestAPI)
+		sourceCfg.Spec.Context = context
+		cfg.SourceConfiguration = sourceCfg
+	}
+
+	cfgA := createTestConfig("SharedAPI", "v1.0")
+	cfgA.UUID = "shared-config-uuid"
+	setContext(cfgA, "/gateway-a")
+
+	cfgB := createTestConfig("SharedAPI", "v1.0")
+	cfgB.UUID = cfgA.UUID
+	setContext(cfgB, "/gateway-b")
+
+	require.NoError(t, gatewayA.SaveConfig(cfgA))
+	require.NoError(t, gatewayB.SaveConfig(cfgB))
+
+	retrievedA, err := gatewayA.GetConfig(cfgA.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, "/gateway-a", retrievedA.Configuration.(api.RestAPI).Spec.Context)
+
+	retrievedB, err := gatewayB.GetConfig(cfgB.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, "/gateway-b", retrievedB.Configuration.(api.RestAPI).Spec.Context)
+
+	byHandleA, err := gatewayA.GetConfigByKindAndHandle(models.KindRestApi, cfgA.Handle)
+	require.NoError(t, err)
+	assert.Equal(t, "/gateway-a", byHandleA.Configuration.(api.RestAPI).Spec.Context)
+
+	byHandleB, err := gatewayB.GetConfigByKindAndHandle(models.KindRestApi, cfgB.Handle)
+	require.NoError(t, err)
+	assert.Equal(t, "/gateway-b", byHandleB.Configuration.(api.RestAPI).Spec.Context)
+
+	allConfigsA, err := gatewayA.GetAllConfigs()
+	require.NoError(t, err)
+	require.Len(t, allConfigsA, 1)
+	assert.Equal(t, "/gateway-a", allConfigsA[0].Configuration.(api.RestAPI).Spec.Context)
+
+	allConfigsByKindA, err := gatewayA.GetAllConfigsByKind(models.KindRestApi)
+	require.NoError(t, err)
+	require.Len(t, allConfigsByKindA, 1)
+	assert.Equal(t, "/gateway-a", allConfigsByKindA[0].Configuration.(api.RestAPI).Spec.Context)
+
+	setContext(cfgA, "/gateway-a-updated")
+	cfgA.DesiredState = models.StateUndeployed
+	require.NoError(t, gatewayA.UpdateConfig(cfgA))
+
+	retrievedA, err = gatewayA.GetConfig(cfgA.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, models.StateUndeployed, retrievedA.DesiredState)
+	assert.Equal(t, "/gateway-a-updated", retrievedA.Configuration.(api.RestAPI).Spec.Context)
+
+	retrievedB, err = gatewayB.GetConfig(cfgB.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, models.StateDeployed, retrievedB.DesiredState)
+	assert.Equal(t, "/gateway-b", retrievedB.Configuration.(api.RestAPI).Spec.Context)
+}
+
 func TestSQLiteStorage_CRUD(t *testing.T) {
 	db, _, cleanup := setupTestDB(t)
 	defer cleanup()

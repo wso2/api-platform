@@ -22,25 +22,35 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	extprocconfigv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/google/uuid"
 
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
+
+// maxStreamAccumulatorSize caps the amount of data accumulated before forcing
+// a flush, preventing unbounded memory growth from large streaming bodies.
+const maxStreamAccumulatorSize = 10 * 1024 * 1024 // 10 MB
 
 // PolicyExecutionContext manages the lifecycle of a single request through the policy chain.
 // This context is created when a request arrives and lives until the response is completed.
 // It encapsulates all state needed for processing both request and response phases.
 type PolicyExecutionContext struct {
-	// Request context that carries request data and metadata
-	requestContext *policy.RequestContext
+	// Per-phase contexts — built lazily as each phase is processed.
+	requestHeaderCtx  *policy.RequestHeaderContext
+	requestBodyCtx    *policy.RequestContext
+	responseHeaderCtx *policy.ResponseHeaderContext
+	responseBodyCtx   *policy.ResponseContext
 
-	// Response context that carries response data and metadata
-	responseContext *policy.ResponseContext
+	// Shared context that spans the entire request/response lifecycle.
+	// Pointed to by each per-phase context's SharedContext field.
+	sharedCtx *policy.SharedContext
 
 	// Policy chain for this request
 	policyChain *registry.PolicyChain
@@ -51,28 +61,62 @@ type PolicyExecutionContext struct {
 	// Request ID for correlation
 	requestID string
 
-	// Analytics metadata to be shared across request and response phases
-	// This is for us to share any analyticd related data internally between phases
-	// without currupting the metadata map used by the policies
+	// Analytics metadata to be shared across request and response phases.
+	// Used internally to propagate analytics data between phases without
+	// contaminating the policy-visible metadata map.
 	analyticsMetadata map[string]interface{}
 
 	// Dynamic metadata to be shared across request and response phases
 	dynamicMetadata map[string]map[string]interface{}
 
-	// Default upstream cluster for dynamic cluster routing
-	// Set from route metadata when the route uses cluster_header routing
+	// Default upstream cluster for dynamic cluster routing.
+	// Set from route metadata when the route uses cluster_header routing.
 	defaultUpstreamCluster string
 
 	// Upstream base path for the main upstream (e.g., /anything)
 	upstreamBasePath string
 
-	// API context path (e.g., /weather/v1.0)
-	// Used for computing path transformations when UpstreamName changes the upstream
+	// API context path (e.g., /weather/v1.0).
+	// Used for computing path transformations when UpstreamName changes the upstream.
 	apiContext string
 
-	// Maps upstream definition names to their URL paths
-	// Used when UpstreamName is set to compute the correct path transformation
+	// Maps upstream definition names to their URL paths.
+	// Used when UpstreamName is set to compute the correct path transformation.
 	upstreamDefinitionPaths map[string]string
+
+	// requestContentEncoding stores the Content-Encoding of the incoming request (e.g. "gzip", "br").
+	// The body is decompressed before being passed to policies, and re-compressed using this value
+	// before being forwarded to the upstream.
+	requestContentEncoding string
+
+	// responseContentEncoding stores the Content-Encoding of the upstream response (e.g. "gzip", "br").
+	// The body is decompressed before being passed to policies, and re-compressed using this value
+	// before being sent back to the downstream client.
+	responseContentEncoding string
+
+	// requestBodyProcessedInline is set when body policies are executed during the
+	// headers phase because the request carries no body (GET, Content-Length: 0, etc.).
+	// getModeOverride() returns RequestBodyMode=NONE when this is true so that Envoy
+	// does not attempt to deliver a body message that will never arrive.
+	requestBodyProcessedInline bool
+
+	// isStreamingRequest is set when SupportsRequestStreaming is true and the client
+	// sends a streaming body — the request body will be processed chunk-by-chunk.
+	isStreamingRequest       bool
+	requestStreamAccumulator []byte
+	requestStreamContext     *policy.RequestStreamContext
+	// requestStreamDecomp performs per-chunk decompression for compressed streaming
+	// request bodies. Nil when the request is not Content-Encoded.
+	requestStreamDecomp *streamDecompressor
+
+	// isStreamingResponse is set to true during response headers processing when
+	// streaming indicators are detected AND the policy chain supports streaming.
+	isStreamingResponse   bool
+	streamAccumulator     []byte
+	responseStreamContext *policy.ResponseStreamContext
+	// responseStreamDecomp performs per-chunk decompression for compressed streaming
+	// response bodies. Nil when the response is not Content-Encoded.
+	responseStreamDecomp *streamDecompressor
 
 	// Reference to server components
 	server *ExternalProcessorServer
@@ -94,17 +138,13 @@ func newPolicyExecutionContext(
 }
 
 // handlePolicyError creates a generic error response for policy execution failures.
-// It logs the full error details internally while returning only a generic message to the client.
-// This prevents information disclosure of internal policy configuration and implementation details.
 func (ec *PolicyExecutionContext) handlePolicyError(
 	ctx context.Context,
 	err error,
 	phase string,
 ) *extprocv3.ProcessingResponse {
-	// Generate unique error ID for correlation between client response and server logs
 	errorID := uuid.New().String()
 
-	// Log full error details with structured logging for troubleshooting
 	slog.ErrorContext(ctx, "Policy execution failed",
 		"error_id", errorID,
 		"request_id", ec.requestID,
@@ -113,10 +153,8 @@ func (ec *PolicyExecutionContext) handlePolicyError(
 		"error", err,
 	)
 
-	// Build generic error response body (JSON format)
 	errorBody := fmt.Sprintf(`{"error":"Internal Server Error","error_id":"%s"}`, errorID)
 
-	// Return generic 500 response with correlation ID
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 			ImmediateResponse: &extprocv3.ImmediateResponse{
@@ -133,32 +171,24 @@ func (ec *PolicyExecutionContext) handlePolicyError(
 	}
 }
 
-// getModeOverride returns the ProcessingMode override for this execution context
-// This tells Envoy which phases to process based on policy chain requirements
+// getModeOverride returns the ProcessingMode override for this execution context.
+// Response body is always set to BUFFERED here (never FULL_DUPLEX_STREAMED).
+// The upgrade to streaming happens at response-headers phase via
+// getStreamingResponseModeOverride when a streaming upstream response is detected.
 func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingMode {
 	mode := &extprocconfigv3.ProcessingMode{}
 
-	// Set request body mode based on policy chain requirements
-	if ec.policyChain.RequiresRequestBody {
-		mode.RequestBodyMode = extprocconfigv3.ProcessingMode_BUFFERED
-	} else {
+	switch {
+	case !ec.policyChain.RequiresRequestBody || ec.requestBodyProcessedInline:
 		mode.RequestBodyMode = extprocconfigv3.ProcessingMode_NONE
+	case ec.isStreamingRequest:
+		mode.RequestBodyMode = extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED
+	default:
+		mode.RequestBodyMode = extprocconfigv3.ProcessingMode_BUFFERED
 	}
 
-	// Set response header mode based on whether any policies process response headers
-	hasResponseHeaderProcessing := false
-	for _, pol := range ec.policyChain.Policies {
-		if pol.Mode().ResponseHeaderMode == policy.HeaderModeProcess {
-			hasResponseHeaderProcessing = true
-			break
-		}
-	}
-
-	// TODO: (renuka) Do the optimization to skip response headers if not needed by checking the var hasResponseHeaderProcessing
-	_ = hasResponseHeaderProcessing
 	mode.ResponseHeaderMode = extprocconfigv3.ProcessingMode_SEND
 
-	// Set response body mode based on policy chain requirements
 	if ec.policyChain.RequiresResponseBody {
 		mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_BUFFERED
 	} else {
@@ -169,35 +199,61 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 	mode.RequestTrailerMode = extprocconfigv3.ProcessingMode_SKIP
 	mode.ResponseTrailerMode = extprocconfigv3.ProcessingMode_SKIP
 
+	slog.Debug("[mode] getModeOverride (request-headers phase)",
+		"route", ec.routeKey,
+		"requires_request_body", ec.policyChain.RequiresRequestBody,
+		"requires_response_body", ec.policyChain.RequiresResponseBody,
+		"supports_response_streaming", ec.policyChain.SupportsResponseStreaming,
+		"is_streaming_request", ec.isStreamingRequest,
+		"request_body_mode", mode.RequestBodyMode.String(),
+		"response_header_mode", mode.ResponseHeaderMode.String(),
+		"response_body_mode", mode.ResponseBodyMode.String(),
+	)
+
 	return mode
 }
 
-// processRequestHeaders processes request headers phase
+// getStreamingResponseModeOverride returns a ModeOverride that upgrades the response
+// body processing to FULL_DUPLEX_STREAMED. RequestBodyMode is explicitly set to match
+// the value already negotiated at request-headers time so that Envoy does not revert
+// the request body mode to the filter-level default when this override is applied.
+func (ec *PolicyExecutionContext) getStreamingResponseModeOverride() *extprocconfigv3.ProcessingMode {
+	var requestBodyMode extprocconfigv3.ProcessingMode_BodySendMode
+	switch {
+	case !ec.policyChain.RequiresRequestBody:
+		requestBodyMode = extprocconfigv3.ProcessingMode_NONE
+	case ec.isStreamingRequest:
+		requestBodyMode = extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED
+	default:
+		requestBodyMode = extprocconfigv3.ProcessingMode_BUFFERED
+	}
+	return &extprocconfigv3.ProcessingMode{
+		RequestBodyMode:     requestBodyMode,
+		ResponseBodyMode:    extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED,
+		RequestTrailerMode:  extprocconfigv3.ProcessingMode_SKIP,
+		ResponseTrailerMode: extprocconfigv3.ProcessingMode_SKIP,
+	}
+}
+
+// ─── Phase processing methods ────────────────────────────────────────────────
+
+// processRequestHeaders processes request headers phase.
+// Header policies (OnRequestHeaders) always execute here regardless of whether
+// body is required. Body policies (OnRequestBody) execute separately at body phase
+// with headers already available in RequestContext.
+//
+// For bodyless requests (GET, Content-Length: 0, etc.) Envoy never sends a RequestBody
+// phase. If the policy chain requires body processing, body policies are executed inline
+// here with Body=nil so they still run on every request regardless of HTTP method.
 func (ec *PolicyExecutionContext) processRequestHeaders(
 	ctx context.Context,
 ) (*extprocv3.ProcessingResponse, error) {
-	// Check if this is end of stream (no body coming)
-	endOfStream := ec.requestContext.Body != nil && ec.requestContext.Body.EndOfStream
-
-	// If policy chain requires request body AND body is coming, skip processing headers separately
-	// Headers and body will be processed together in processRequestBody phase
-	// However, if EndOfStream is true, there's no body coming, so process immediately
-	if ec.policyChain.RequiresRequestBody && !endOfStream {
-		return &extprocv3.ProcessingResponse{
-			Response: &extprocv3.ProcessingResponse_RequestHeaders{
-				RequestHeaders: &extprocv3.HeadersResponse{},
-			},
-			ModeOverride: ec.getModeOverride(),
-		}, nil
-	}
-
-	// Execute request policy chain with headers only
-	execResult, err := ec.server.executor.ExecuteRequestPolicies(
+	execResult, err := ec.server.executor.ExecuteRequestHeaderPolicies(
 		ctx,
 		ec.policyChain.Policies,
-		ec.requestContext,
+		ec.requestHeaderCtx,
 		ec.policyChain.PolicySpecs,
-		ec.requestContext.SharedContext.APIName,
+		ec.sharedCtx.APIName,
 		ec.routeKey,
 		ec.policyChain.HasExecutionConditions,
 	)
@@ -205,8 +261,75 @@ func (ec *PolicyExecutionContext) processRequestHeaders(
 		return ec.handlePolicyError(ctx, err, "request_headers"), nil
 	}
 
-	// Translate execution result to ext_proc response (includes analytics metadata)
-	return TranslateRequestHeadersActions(execResult, ec.policyChain, ec)
+	// Propagate header mutations into the shared in-memory context so that body-phase
+	// policies (OnRequestBody / OnRequestBodyChunk) observe the post-mutation headers.
+	if !execResult.ShortCircuited {
+		applyRequestHeaderMutations(ec.requestHeaderCtx.Headers, execResult.Results)
+		ec.syncRequestPseudoHeaders()
+	}
+
+	// For bodyless requests Envoy skips the RequestBody ext_proc phase entirely.
+	// Execute body policies inline now so they run on every request, receiving a nil body.
+	if !execResult.ShortCircuited && ec.policyChain.RequiresRequestBody && ec.requestHasNoBody() {
+		return ec.processRequestBodyForEmptyRequest(ctx, execResult)
+	}
+
+	return TranslateRequestHeaderActions(execResult, ec.policyChain, ec)
+}
+
+// requestHasNoBody returns true when the request carries no body and Envoy will not
+// deliver a RequestBody ext_proc phase for this request.
+func (ec *PolicyExecutionContext) requestHasNoBody() bool {
+	// Envoy sets EndOfStream=true in the request-headers message when no body follows.
+	if ec.requestBodyCtx.Body != nil && ec.requestBodyCtx.Body.EndOfStream {
+		return true
+	}
+	// GET and HEAD requests must not carry a body (RFC 9110).
+	switch strings.ToUpper(ec.requestHeaderCtx.Method) {
+	case "GET", "HEAD":
+		return true
+	}
+	// Content-Length: 0 explicitly signals an empty body.
+	if cl := ec.requestHeaderCtx.Headers.Get("content-length"); len(cl) > 0 && cl[0] == "0" {
+		return true
+	}
+	return false
+}
+
+// processRequestBodyForEmptyRequest executes body policies inline during the headers phase
+// for requests that carry no body. The body context is set to Present=false / EndOfStream=true
+// so policies can inspect headers-only state and short-circuit if necessary.
+func (ec *PolicyExecutionContext) processRequestBodyForEmptyRequest(
+	ctx context.Context,
+	headerResult *executor.RequestHeaderExecutionResult,
+) (*extprocv3.ProcessingResponse, error) {
+	// Ensure the body context reflects a nil/absent body.
+	if ec.requestBodyCtx.Body == nil {
+		ec.requestBodyCtx.Body = &policy.Body{Content: nil, EndOfStream: true, Present: false}
+	}
+
+	slog.DebugContext(ctx, "[no-body] executing request body policies inline during headers phase",
+		"route", ec.routeKey,
+		"method", ec.requestHeaderCtx.Method,
+	)
+
+	bodyResult, err := ec.server.executor.ExecuteRequestPolicies(
+		ctx,
+		ec.policyChain.Policies,
+		ec.requestBodyCtx,
+		ec.policyChain.PolicySpecs,
+		ec.sharedCtx.APIName,
+		ec.routeKey,
+		ec.policyChain.HasExecutionConditions,
+	)
+	if err != nil {
+		return ec.handlePolicyError(ctx, err, "request_body_no_body"), nil
+	}
+
+	// Signal to getModeOverride() that no further RequestBody phase is expected.
+	ec.requestBodyProcessedInline = true
+
+	return TranslateRequestHeaderActionsWithBodyMerge(headerResult, bodyResult, ec)
 }
 
 // processRequestBody processes request body phase
@@ -214,22 +337,41 @@ func (ec *PolicyExecutionContext) processRequestBody(
 	ctx context.Context,
 	body *extprocv3.HttpBody,
 ) (*extprocv3.ProcessingResponse, error) {
-	// If policy chain requires request body, execute policies with both headers and body
+	if ec.isStreamingRequest {
+		return ec.processStreamingRequestBody(ctx, body)
+	}
+
 	if ec.policyChain.RequiresRequestBody {
+		// Decompress body if Content-Encoding was set, so policies receive plain bytes.
+		bodyContent := body.Body
+		if ec.requestContentEncoding != "" {
+			decompressed, err := decompressBody(body.Body, ec.requestContentEncoding)
+			if err != nil {
+				slog.Warn("Failed to decompress request body, passing raw bytes to policies",
+					"request_id", ec.requestID,
+					"encoding", ec.requestContentEncoding,
+					"error", err,
+				)
+				// Clear encoding so translator doesn't attempt to recompress raw compressed bytes
+				ec.requestContentEncoding = ""
+			} else {
+				bodyContent = decompressed
+			}
+		}
+
 		// Update request context with body data
-		ec.requestContext.Body = &policy.Body{
-			Content:     body.Body,
+		ec.requestBodyCtx.Body = &policy.Body{
+			Content:     bodyContent,
 			EndOfStream: body.EndOfStream,
 			Present:     true,
 		}
 
-		// Execute request policy chain with headers and body
 		execResult, err := ec.server.executor.ExecuteRequestPolicies(
 			ctx,
 			ec.policyChain.Policies,
-			ec.requestContext,
+			ec.requestBodyCtx,
 			ec.policyChain.PolicySpecs,
-			ec.requestContext.SharedContext.APIName,
+			ec.sharedCtx.APIName,
 			ec.routeKey,
 			ec.policyChain.HasExecutionConditions,
 		)
@@ -237,10 +379,9 @@ func (ec *PolicyExecutionContext) processRequestBody(
 			return ec.handlePolicyError(ctx, err, "request_body"), nil
 		}
 
-		// Translate execution result to ext_proc response (includes analytics metadata and short-circuit handling)
 		return TranslateRequestBodyActions(execResult, ec.policyChain, ec)
 	}
-	// If policies don't require body, just allow it through unmodified
+
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestBody{
 			RequestBody: &extprocv3.BodyResponse{},
@@ -248,32 +389,204 @@ func (ec *PolicyExecutionContext) processRequestBody(
 	}, nil
 }
 
-// processResponseHeaders processes response headers phase
-func (ec *PolicyExecutionContext) processResponseHeaders(
+// processStreamingRequestBody handles streaming request body chunks
+func (ec *PolicyExecutionContext) processStreamingRequestBody(
 	ctx context.Context,
-	headers *extprocv3.HttpHeaders,
+	body *extprocv3.HttpBody,
 ) (*extprocv3.ProcessingResponse, error) {
-	// Build ResponseContext from stored request context and response headers
-	ec.buildResponseContext(headers)
+	chunk := &policy.StreamBody{
+		Chunk:       body.Body,
+		EndOfStream: body.EndOfStream,
+	}
 
-	// If policy chain requires response body AND body is coming, skip processing headers separately
-	// Headers and body will be processed together in processResponseBody phase
-	// However, if EndOfStream is true, there's no body coming, so process immediately
-	if ec.policyChain.RequiresResponseBody && !headers.EndOfStream {
+	// Compressed request: decompress this chunk, pass directly to policies,
+	// recompress the output. No kernel accumulation — policy implementations
+	// handle their own internal state across chunks.
+	if ec.requestContentEncoding != "" {
+		if ec.requestStreamDecomp == nil {
+			ec.requestStreamDecomp = newStreamDecompressor(ec.requestContentEncoding)
+		}
+		decompressed, err := ec.requestStreamDecomp.FeedChunk(chunk.Chunk, chunk.EndOfStream)
+		if err != nil {
+			slog.Warn("[streaming] per-chunk request decompression error; disabling decompression",
+				"request_id", ec.requestID,
+				"encoding", ec.requestContentEncoding,
+				"error", err,
+			)
+			ec.requestStreamDecomp.Close()
+			ec.requestStreamDecomp = nil
+			ec.requestContentEncoding = ""
+		} else {
+			chunk.Chunk = decompressed
+		}
+
+		// Suppress empty intermediate chunks.
+		if len(chunk.Chunk) == 0 && !chunk.EndOfStream {
+			return &extprocv3.ProcessingResponse{
+				Response: &extprocv3.ProcessingResponse_RequestBody{
+					RequestBody: &extprocv3.BodyResponse{
+						Response: &extprocv3.CommonResponse{
+							BodyMutation: &extprocv3.BodyMutation{
+								Mutation: &extprocv3.BodyMutation_StreamedResponse{
+									StreamedResponse: &extprocv3.StreamedBodyResponse{},
+								},
+							},
+						},
+					},
+				},
+			}, nil
+		}
+
+		slog.Debug("[streaming] request chunk decompressed",
+			"route", ec.routeKey,
+			"decompressed_bytes", len(chunk.Chunk),
+			"end_of_stream", chunk.EndOfStream,
+		)
+
+		if chunk.EndOfStream {
+			ec.requestBodyCtx.Body = &policy.Body{
+				Content:     chunk.Chunk,
+				EndOfStream: true,
+				Present:     true,
+			}
+		}
+
+		execResult, err := ec.server.executor.ExecuteStreamingRequestPolicies(
+			ctx,
+			ec.policyChain.Policies,
+			ec.requestStreamContext,
+			chunk,
+			ec.policyChain.PolicySpecs,
+			ec.sharedCtx.APIName,
+			ec.routeKey,
+			ec.policyChain.HasExecutionConditions,
+		)
+		if err != nil {
+			return ec.handlePolicyError(ctx, err, "request_body_streaming"), nil
+		}
+		return TranslateStreamingRequestChunkAction(execResult, chunk, ec)
+	}
+
+	// Uncompressed (chunked): use the existing accumulation path.
+	if len(chunk.Chunk) > 0 {
+		ec.requestStreamAccumulator = append(ec.requestStreamAccumulator, chunk.Chunk...)
+	}
+
+	slog.Debug("[streaming] request chunk received",
+		"route", ec.routeKey,
+		"chunk_bytes", len(chunk.Chunk),
+		"accumulated_bytes", len(ec.requestStreamAccumulator),
+		"end_of_stream", chunk.EndOfStream,
+	)
+
+	shouldForceFlush := len(ec.requestStreamAccumulator) >= maxStreamAccumulatorSize
+	if shouldForceFlush {
+		slog.Warn("[streaming] request accumulator size limit exceeded, forcing flush",
+			"route", ec.routeKey,
+			"accumulated_bytes", len(ec.requestStreamAccumulator),
+			"max_size", maxStreamAccumulatorSize,
+		)
+	}
+
+	// Consult streaming policies to decide whether to flush now.
+	// In FULL_DUPLEX_STREAMED mode an empty BodyResponse passes the chunk through unchanged,
+	// so we must explicitly suppress it with an empty StreamedBodyResponse while accumulating.
+	if !chunk.EndOfStream && !shouldForceFlush && ec.anyPolicyNeedsMoreRequestData(ec.requestStreamAccumulator) {
+		slog.Debug("[streaming] accumulating — waiting for more request data",
+			"route", ec.routeKey,
+			"accumulated_bytes", len(ec.requestStreamAccumulator),
+		)
 		return &extprocv3.ProcessingResponse{
-			Response: &extprocv3.ProcessingResponse_ResponseHeaders{
-				ResponseHeaders: &extprocv3.HeadersResponse{},
+			Response: &extprocv3.ProcessingResponse_RequestBody{
+				RequestBody: &extprocv3.BodyResponse{
+					Response: &extprocv3.CommonResponse{
+						BodyMutation: &extprocv3.BodyMutation{
+							Mutation: &extprocv3.BodyMutation_StreamedResponse{
+								StreamedResponse: &extprocv3.StreamedBodyResponse{},
+							},
+						},
+					},
+				},
 			},
 		}, nil
 	}
 
-	// Execute response policy chain with headers only
-	execResult, err := ec.server.executor.ExecuteResponsePolicies(
+	flushChunk := &policy.StreamBody{
+		Chunk:       ec.requestStreamAccumulator,
+		EndOfStream: chunk.EndOfStream,
+	}
+	slog.Debug("[streaming] flushing accumulated request data to policies",
+		"route", ec.routeKey,
+		"flush_bytes", len(flushChunk.Chunk),
+		"end_of_stream", flushChunk.EndOfStream,
+	)
+	ec.requestStreamAccumulator = nil
+
+	// Populate requestBodyCtx.Body on the EOS flush so that buildResponseContexts
+	// (called during processResponseHeaders) exposes the accumulated request payload
+	// to response-phase policies via ResponseHeaderContext/ResponseContext/ResponseStreamContext.
+	// In non-streaming mode processRequestBody always sets this field; the streaming
+	// path must do the same so response phases never see a nil RequestBody.
+	if flushChunk.EndOfStream {
+		ec.requestBodyCtx.Body = &policy.Body{
+			Content:     flushChunk.Chunk,
+			EndOfStream: true,
+			Present:     true,
+		}
+	}
+
+	execResult, err := ec.server.executor.ExecuteStreamingRequestPolicies(
 		ctx,
 		ec.policyChain.Policies,
-		ec.responseContext,
+		ec.requestStreamContext,
+		flushChunk,
 		ec.policyChain.PolicySpecs,
-		ec.responseContext.SharedContext.APIName,
+		ec.sharedCtx.APIName,
+		ec.routeKey,
+		ec.policyChain.HasExecutionConditions,
+	)
+	if err != nil {
+		ec.requestStreamAccumulator = nil
+		return ec.handlePolicyError(ctx, err, "request_body_streaming"), nil
+	}
+
+	return TranslateStreamingRequestChunkAction(execResult, flushChunk, ec)
+}
+
+// processResponseHeaders processes response headers phase.
+// Header policies (OnResponseHeaders) always execute here regardless of whether
+// body is required. Body policies (OnResponseBody) execute separately at body phase.
+func (ec *PolicyExecutionContext) processResponseHeaders(
+	ctx context.Context,
+	headers *extprocv3.HttpHeaders,
+) (*extprocv3.ProcessingResponse, error) {
+	ec.buildResponseContexts(headers)
+
+	// Detect streaming response: upgrade when chain supports streaming AND
+	// upstream signals chunked/SSE AND body is coming (not EndOfStream).
+	hasStreamingHeaders := isStreamingUpstreamResponse(ec.responseHeaderCtx.ResponseHeaders)
+	slog.Debug("[mode] response headers received — streaming detection",
+		"route", ec.routeKey,
+		"supports_response_streaming", ec.policyChain.SupportsResponseStreaming,
+		"headers_end_of_stream", headers.EndOfStream,
+		"streaming_headers_detected", hasStreamingHeaders,
+		"content_type", ec.responseHeaderCtx.ResponseHeaders.Get("content-type"),
+		"transfer_encoding", ec.responseHeaderCtx.ResponseHeaders.Get("transfer-encoding"),
+	)
+	if ec.policyChain.SupportsResponseStreaming && !headers.EndOfStream && hasStreamingHeaders {
+		ec.isStreamingResponse = true
+	}
+	slog.Debug("[mode] streaming response decision",
+		"route", ec.routeKey,
+		"is_streaming_response", ec.isStreamingResponse,
+	)
+
+	execResult, err := ec.server.executor.ExecuteResponseHeaderPolicies(
+		ctx,
+		ec.policyChain.Policies,
+		ec.responseHeaderCtx,
+		ec.policyChain.PolicySpecs,
+		ec.sharedCtx.APIName,
 		ec.routeKey,
 		ec.policyChain.HasExecutionConditions,
 	)
@@ -281,8 +594,23 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 		return ec.handlePolicyError(ctx, err, "response_headers"), nil
 	}
 
-	// Translate execution result to ext_proc response (includes analytics metadata)
-	return TranslateResponseHeadersActions(execResult, ec)
+	// Propagate header mutations into the shared in-memory context so that body-phase
+	// policies (OnResponseBody / OnResponseBodyChunk) observe the post-mutation headers.
+	applyResponseHeaderMutations(ec.responseHeaderCtx.ResponseHeaders, execResult.Results)
+
+	resp, err := TranslateResponseHeaderActions(execResult, ec)
+	if err != nil {
+		return nil, err
+	}
+
+	if ec.isStreamingResponse {
+		resp.ModeOverride = ec.getStreamingResponseModeOverride()
+		slog.Debug("[mode] upgraded response body mode to FULL_DUPLEX_STREAMED",
+			"route", ec.routeKey,
+		)
+	}
+
+	return resp, nil
 }
 
 // processResponseBody processes response body phase
@@ -290,22 +618,51 @@ func (ec *PolicyExecutionContext) processResponseBody(
 	ctx context.Context,
 	body *extprocv3.HttpBody,
 ) (*extprocv3.ProcessingResponse, error) {
-	// If policy chain requires response body, execute policies with both headers and body
+	if ec.isStreamingResponse {
+		slog.Debug("[body] routing to streaming response body handler",
+			"route", ec.routeKey,
+			"chunk_bytes", len(body.Body),
+			"end_of_stream", body.EndOfStream,
+		)
+		return ec.processStreamingResponseBody(ctx, body)
+	}
+	slog.Debug("[body] routing to buffered response body handler",
+		"route", ec.routeKey,
+		"body_bytes", len(body.Body),
+		"end_of_stream", body.EndOfStream,
+	)
+
 	if ec.policyChain.RequiresResponseBody {
+		// Decompress body if Content-Encoding was set, so policies receive plain JSON.
+		bodyContent := body.Body
+		if ec.responseContentEncoding != "" {
+			decompressed, err := decompressBody(body.Body, ec.responseContentEncoding)
+			if err != nil {
+				slog.Warn("Failed to decompress response body, passing raw bytes to policies",
+					"request_id", ec.requestID,
+					"encoding", ec.responseContentEncoding,
+					"error", err,
+				)
+				// Clear encoding so translator doesn't attempt to recompress raw compressed bytes
+				ec.responseContentEncoding = ""
+			} else {
+				bodyContent = decompressed
+			}
+		}
+
 		// Update response context with body data
-		ec.responseContext.ResponseBody = &policy.Body{
-			Content:     body.Body,
+		ec.responseBodyCtx.ResponseBody = &policy.Body{
+			Content:     bodyContent,
 			EndOfStream: body.EndOfStream,
 			Present:     true,
 		}
 
-		// Execute response policy chain with headers and body
 		execResult, err := ec.server.executor.ExecuteResponsePolicies(
 			ctx,
 			ec.policyChain.Policies,
-			ec.responseContext,
+			ec.responseBodyCtx,
 			ec.policyChain.PolicySpecs,
-			ec.responseContext.SharedContext.APIName,
+			ec.sharedCtx.APIName,
 			ec.routeKey,
 			ec.policyChain.HasExecutionConditions,
 		)
@@ -313,11 +670,9 @@ func (ec *PolicyExecutionContext) processResponseBody(
 			return ec.handlePolicyError(ctx, err, "response_body"), nil
 		}
 
-		// Translate execution result to ext_proc response (includes analytics metadata)
 		return TranslateResponseBodyActions(execResult, ec)
 	}
 
-	// If policies don't require body, just allow it through unmodified
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ResponseBody{
 			ResponseBody: &extprocv3.BodyResponse{},
@@ -325,22 +680,171 @@ func (ec *PolicyExecutionContext) processResponseBody(
 	}, nil
 }
 
-// buildRequestContext converts Envoy headers to RequestContext
-func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHeaders, routeMetadata RouteMetadata) {
-	// Create headers map for internal manipulation
-	headersMap := make(map[string][]string)
+// processStreamingResponseBody handles streaming response body chunks
+func (ec *PolicyExecutionContext) processStreamingResponseBody(
+	ctx context.Context,
+	body *extprocv3.HttpBody,
+) (*extprocv3.ProcessingResponse, error) {
+	chunk := &policy.StreamBody{
+		Chunk:       body.Body,
+		EndOfStream: body.EndOfStream,
+	}
 
-	// Variables to store pseudo-headers and request ID
+	// Compressed response: decompress this chunk, pass directly to policies,
+	// recompress the output. No kernel accumulation — policy implementations
+	// handle their own internal state across chunks.
+	if ec.responseContentEncoding != "" {
+		if ec.responseStreamDecomp == nil {
+			ec.responseStreamDecomp = newStreamDecompressor(ec.responseContentEncoding)
+		}
+		decompressed, err := ec.responseStreamDecomp.FeedChunk(chunk.Chunk, chunk.EndOfStream)
+		if err != nil {
+			slog.Warn("[streaming] per-chunk response decompression error; disabling decompression",
+				"request_id", ec.requestID,
+				"encoding", ec.responseContentEncoding,
+				"error", err,
+			)
+			ec.responseStreamDecomp.Close()
+			ec.responseStreamDecomp = nil
+			ec.responseContentEncoding = ""
+		} else {
+			chunk.Chunk = decompressed
+		}
+
+		// Suppress empty intermediate chunks — the decoder needed more input to
+		// produce a full block. The client already expects compressed data so
+		// sending nothing is correct here.
+		if len(chunk.Chunk) == 0 && !chunk.EndOfStream {
+			return &extprocv3.ProcessingResponse{
+				Response: &extprocv3.ProcessingResponse_ResponseBody{
+					ResponseBody: &extprocv3.BodyResponse{
+						Response: &extprocv3.CommonResponse{
+							BodyMutation: &extprocv3.BodyMutation{
+								Mutation: &extprocv3.BodyMutation_StreamedResponse{
+									StreamedResponse: &extprocv3.StreamedBodyResponse{},
+								},
+							},
+						},
+					},
+				},
+			}, nil
+		}
+
+		slog.Debug("[streaming] response chunk decompressed",
+			"route", ec.routeKey,
+			"decompressed_bytes", len(chunk.Chunk),
+			"end_of_stream", chunk.EndOfStream,
+		)
+
+		execResult, err := ec.server.executor.ExecuteStreamingResponsePolicies(
+			ctx,
+			ec.policyChain.Policies,
+			ec.responseStreamContext,
+			chunk,
+			ec.policyChain.PolicySpecs,
+			ec.sharedCtx.APIName,
+			ec.routeKey,
+			ec.policyChain.HasExecutionConditions,
+		)
+		if err != nil {
+			return ec.handlePolicyError(ctx, err, "response_body_streaming"), nil
+		}
+		return TranslateStreamingResponseChunkAction(execResult, chunk, ec)
+	}
+
+	// Uncompressed (SSE / plain chunked): use the existing accumulation path so
+	// policies that need multiple chunks (e.g. waiting for a full SSE event) still work.
+	if len(chunk.Chunk) > 0 {
+		ec.streamAccumulator = append(ec.streamAccumulator, chunk.Chunk...)
+	}
+
+	slog.Debug("[streaming] response chunk received",
+		"route", ec.routeKey,
+		"chunk_bytes", len(chunk.Chunk),
+		"accumulated_bytes", len(ec.streamAccumulator),
+		"end_of_stream", chunk.EndOfStream,
+	)
+
+	shouldForceFlush := len(ec.streamAccumulator) >= maxStreamAccumulatorSize
+	if shouldForceFlush {
+		slog.Warn("[streaming] response accumulator size limit exceeded, forcing flush",
+			"route", ec.routeKey,
+			"accumulated_bytes", len(ec.streamAccumulator),
+			"max_size", maxStreamAccumulatorSize,
+		)
+	}
+
+	// Consult streaming policies to decide whether to flush now.
+	if !chunk.EndOfStream && !shouldForceFlush && ec.anyPolicyNeedsMoreResponseData(ec.streamAccumulator) {
+		slog.Debug("[streaming] accumulating — waiting for more response data",
+			"route", ec.routeKey,
+			"accumulated_bytes", len(ec.streamAccumulator),
+		)
+		return &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_ResponseBody{
+				ResponseBody: &extprocv3.BodyResponse{
+					Response: &extprocv3.CommonResponse{
+						BodyMutation: &extprocv3.BodyMutation{
+							Mutation: &extprocv3.BodyMutation_StreamedResponse{
+								StreamedResponse: &extprocv3.StreamedBodyResponse{},
+							},
+						},
+					},
+				},
+			},
+		}, nil
+	}
+
+	flushChunk := &policy.StreamBody{
+		Chunk:       ec.streamAccumulator,
+		EndOfStream: chunk.EndOfStream,
+	}
+	slog.Debug("[streaming] flushing accumulated response data to policies",
+		"route", ec.routeKey,
+		"flush_bytes", len(flushChunk.Chunk),
+		"end_of_stream", flushChunk.EndOfStream,
+	)
+	ec.streamAccumulator = nil
+
+	execResult, err := ec.server.executor.ExecuteStreamingResponsePolicies(
+		ctx,
+		ec.policyChain.Policies,
+		ec.responseStreamContext,
+		flushChunk,
+		ec.policyChain.PolicySpecs,
+		ec.sharedCtx.APIName,
+		ec.routeKey,
+		ec.policyChain.HasExecutionConditions,
+	)
+	if err != nil {
+		ec.streamAccumulator = nil
+		// NOTE: Mid-stream error — response headers and any previously flushed chunks
+		// are already committed to the downstream client. The ImmediateResponse
+		// returned by handlePolicyError is silently ignored by Envoy in
+		// FULL_DUPLEX_STREAMED mode; Envoy will abort the HTTP/2 stream with a
+		// RESET_STREAM. The client sees an abrupt connection close, not a structured
+		// HTTP error response. There is no recovery path once streaming has started.
+		return ec.handlePolicyError(ctx, err, "response_body_streaming"), nil
+	}
+
+	return TranslateStreamingResponseChunkAction(execResult, flushChunk, ec)
+}
+
+// ─── Context builders ────────────────────────────────────────────────────────
+
+// buildRequestContexts converts Envoy request headers into per-phase context objects.
+// Both requestHeaderCtx and requestBodyCtx are initialized here; requestBodyCtx.Body
+// is populated later in processRequestBody when body data arrives.
+func (ec *PolicyExecutionContext) buildRequestContexts(headers *extprocv3.HttpHeaders, routeMetadata RouteMetadata) {
+	headersMap := make(map[string][]string)
 	var path, method, authority, scheme, requestID string
 
-	// Extract headers, pseudo-headers, and request ID in a single loop
 	if headers.Headers != nil {
 		for _, header := range headers.Headers.GetHeaders() {
 			key := header.Key
 			value := string(header.RawValue)
 			headersMap[key] = append(headersMap[key], value)
 
-			// Extract pseudo-headers and request ID
 			switch key {
 			case ":path":
 				path = value
@@ -351,19 +855,19 @@ func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHea
 			case ":scheme":
 				scheme = value
 			case "x-request-id":
-				if requestID == "" { // Take first occurrence
+				if requestID == "" {
 					requestID = value
 				}
+			case "content-encoding":
+				ec.requestContentEncoding = value
 			}
 		}
 	}
 
-	// Generate request ID if not present in headers
 	if requestID == "" {
 		requestID = uuid.New().String()
 	}
 
-	// Create shared context that will persist across request/response phases
 	sharedCtx := &policy.SharedContext{
 		RequestID:     requestID,
 		ProjectID:     routeMetadata.ProjectID,
@@ -375,19 +879,21 @@ func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHea
 		OperationPath: routeMetadata.OperationPath,
 		Metadata:      make(map[string]interface{}),
 	}
-	// Add template handle to metadata for LLM provider/proxy scenarios
 	if routeMetadata.TemplateHandle != "" {
 		sharedCtx.Metadata["template_handle"] = routeMetadata.TemplateHandle
 	}
-	// Add provider name to metadata for LLM provider/proxy scenarios
 	if routeMetadata.ProviderName != "" {
 		sharedCtx.Metadata["provider_name"] = routeMetadata.ProviderName
 	}
 
-	// Build context with Headers wrapper and pseudo-headers
-	ctx := &policy.RequestContext{
+	ec.sharedCtx = sharedCtx
+	ec.requestID = requestID
+
+	wrappedHeaders := policy.NewHeaders(headersMap)
+
+	ec.requestHeaderCtx = &policy.RequestHeaderContext{
 		SharedContext: sharedCtx,
-		Headers:       policy.NewHeaders(headersMap),
+		Headers:       wrappedHeaders,
 		Path:          path,
 		Method:        method,
 		Authority:     authority,
@@ -395,37 +901,60 @@ func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHea
 		Vhost:         routeMetadata.Vhost,
 	}
 
-	// Set request ID in execution context from SharedContext
-	ec.requestID = requestID
-
-	// Initialize Body with EndOfStream from headers (for requests without body)
-	// This will be overwritten if processRequestBody is called
+	// requestBodyCtx shares the same shared context and headers; Body is set later.
+	var bodyEOS *policy.Body
 	if headers.EndOfStream {
-		ctx.Body = &policy.Body{
-			Content:     nil,
-			EndOfStream: true,
-			Present:     false,
-		}
+		bodyEOS = &policy.Body{EndOfStream: true}
+	}
+	ec.requestBodyCtx = &policy.RequestContext{
+		SharedContext: sharedCtx,
+		Headers:       wrappedHeaders,
+		Body:          bodyEOS,
+		Path:          path,
+		Method:        method,
+		Authority:     authority,
+		Scheme:        scheme,
+		Vhost:         routeMetadata.Vhost,
 	}
 
-	ec.requestContext = ctx
+	// Build the streaming context once; reused across all chunks for this request.
+	ec.requestStreamContext = &policy.RequestStreamContext{
+		SharedContext: sharedCtx,
+		Headers:       wrappedHeaders,
+		Path:          path,
+		Method:        method,
+		Authority:     authority,
+		Scheme:        scheme,
+		Vhost:         routeMetadata.Vhost,
+	}
+
+	// Detect request streaming at context-build time while headers are available.
+	// Only enable streaming when the client actually sends a streaming body
+	// (chunked transfer encoding or SSE content type).
+	// Compressed requests are allowed into the streaming path — the body is
+	// decompressed before policies run and recompressed before forwarding to
+	// the upstream, preserving the original Content-Encoding header.
+	if ec.policyChain.SupportsRequestStreaming && isStreamingClientRequest(wrappedHeaders) {
+		ec.isStreamingRequest = true
+	}
 }
 
-// buildResponseContext converts Envoy response headers and stored request context
-func (ec *PolicyExecutionContext) buildResponseContext(headers *extprocv3.HttpHeaders) {
-	// Create response headers map for internal manipulation
+// buildResponseContexts converts Envoy response headers and stored request state into
+// per-phase response context objects. All three response contexts share the same
+// ResponseHeaders instance so that mutations applied by header-phase policies are
+// immediately visible to body-phase policies.
+func (ec *PolicyExecutionContext) buildResponseContexts(headers *extprocv3.HttpHeaders) {
 	responseHeadersMap := make(map[string][]string)
 	var responseStatus int
 
-	// Extract response headers
 	if headers.Headers != nil {
 		for _, header := range headers.Headers.GetHeaders() {
 			key := header.Key
 			value := string(header.RawValue)
 			responseHeadersMap[key] = append(responseHeadersMap[key], value)
 
-			// Extract status from pseudo-header
-			if key == ":status" {
+			switch key {
+			case ":status":
 				// Convert status string to int
 				_, err := fmt.Sscanf(value, "%d", &responseStatus)
 				if err != nil {
@@ -435,28 +964,226 @@ func (ec *PolicyExecutionContext) buildResponseContext(headers *extprocv3.HttpHe
 						"error", err,
 					)
 				}
+			case "content-encoding":
+				ec.responseContentEncoding = value
 			}
 		}
 	}
 
-	ctx := &policy.ResponseContext{
-		SharedContext:   ec.requestContext.SharedContext, // Reuse same shared context from request phase
-		RequestHeaders:  ec.requestContext.Headers,
-		RequestBody:     ec.requestContext.Body,
-		RequestPath:     ec.requestContext.Path,
-		RequestMethod:   ec.requestContext.Method,
-		ResponseHeaders: policy.NewHeaders(responseHeadersMap),
+	responseHeaders := policy.NewHeaders(responseHeadersMap)
+
+	ec.responseHeaderCtx = &policy.ResponseHeaderContext{
+		SharedContext:   ec.sharedCtx,
+		RequestHeaders:  ec.requestHeaderCtx.Headers,
+		RequestBody:     ec.requestBodyCtx.Body,
+		RequestPath:     ec.requestHeaderCtx.Path,
+		RequestMethod:   ec.requestHeaderCtx.Method,
+		ResponseHeaders: responseHeaders,
 		ResponseStatus:  responseStatus,
 	}
 
-	// Initialize ResponseBody with EndOfStream from headers (for responses without body)
-	// This will be overwritten if processResponseBody is called
+	var responseBodyEOS *policy.Body
 	if headers.EndOfStream {
-		ctx.ResponseBody = &policy.Body{
-			Content:     nil,
-			EndOfStream: true,
-			Present:     false,
+		responseBodyEOS = &policy.Body{EndOfStream: true}
+	}
+	ec.responseBodyCtx = &policy.ResponseContext{
+		SharedContext:   ec.sharedCtx,
+		RequestHeaders:  ec.requestHeaderCtx.Headers,
+		RequestBody:     ec.requestBodyCtx.Body,
+		RequestPath:     ec.requestHeaderCtx.Path,
+		RequestMethod:   ec.requestHeaderCtx.Method,
+		ResponseHeaders: responseHeaders,
+		ResponseBody:    responseBodyEOS,
+		ResponseStatus:  responseStatus,
+	}
+
+	// Build the streaming context once; reused across all chunks for this response.
+	ec.responseStreamContext = &policy.ResponseStreamContext{
+		SharedContext:   ec.sharedCtx,
+		RequestHeaders:  ec.requestHeaderCtx.Headers,
+		RequestBody:     ec.requestBodyCtx.Body,
+		RequestPath:     ec.requestHeaderCtx.Path,
+		RequestMethod:   ec.requestHeaderCtx.Method,
+		ResponseHeaders: responseHeaders,
+		ResponseStatus:  responseStatus,
+	}
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+// isStreamingClientRequest detects if the client request indicates a streaming
+// body based on transfer-encoding: chunked or content-type: text/event-stream.
+func isStreamingClientRequest(headers *policy.Headers) bool {
+	if teValues := headers.Get("transfer-encoding"); len(teValues) > 0 {
+		if strings.Contains(strings.ToLower(teValues[0]), "chunked") {
+			return true
 		}
 	}
-	ec.responseContext = ctx
+	if ctValues := headers.Get("content-type"); len(ctValues) > 0 {
+		if strings.HasPrefix(strings.ToLower(ctValues[0]), "text/event-stream") {
+			return true
+		}
+	}
+	return false
+}
+
+// isStreamingUpstreamResponse detects if the upstream response is a streaming
+// response based on transfer-encoding: chunked or content-type: text/event-stream.
+func isStreamingUpstreamResponse(headers *policy.Headers) bool {
+	if teValues := headers.Get("transfer-encoding"); len(teValues) > 0 {
+		if strings.Contains(strings.ToLower(teValues[0]), "chunked") {
+			return true
+		}
+	}
+	if ctValues := headers.Get("content-type"); len(ctValues) > 0 {
+		if strings.HasPrefix(strings.ToLower(ctValues[0]), "text/event-stream") {
+			return true
+		}
+	}
+	return false
+}
+
+// applyRequestHeaderMutations applies RequestHeaderAction mutations from all policy
+// results into the shared in-memory Headers object so that body-phase policies see
+// the post-mutation state of the request headers.
+//
+// requestHeaderCtx, requestBodyCtx, and requestStreamContext all point to the same
+// *Headers instance, so one in-place update covers all three.
+func applyRequestHeaderMutations(headers *policy.Headers, results []executor.RequestHeaderPolicyResult) {
+	values := headers.UnsafeInternalValues()
+	for _, pr := range results {
+		if pr.Skipped || pr.Action == nil {
+			continue
+		}
+		mods, ok := pr.Action.(policy.UpstreamRequestHeaderModifications)
+		if !ok {
+			continue
+		}
+		for k, v := range mods.HeadersToSet {
+			values[strings.ToLower(k)] = []string{v}
+		}
+		for _, k := range mods.HeadersToRemove {
+			delete(values, strings.ToLower(k))
+		}
+	}
+}
+
+// syncRequestPseudoHeaders reads :path, :method, :authority, and :scheme from the
+// shared request Headers (which may have been mutated by header-phase policies) and
+// writes the updated values back into the explicit fields of requestHeaderCtx,
+// requestBodyCtx, and requestStreamContext. This keeps the separate struct fields
+// in sync with the Headers map so that body/stream-phase policies observe a
+// consistent view of the request.
+func (ec *PolicyExecutionContext) syncRequestPseudoHeaders() {
+	values := ec.requestHeaderCtx.Headers.UnsafeInternalValues()
+	if v := values[":path"]; len(v) > 0 {
+		ec.requestHeaderCtx.Path = v[0]
+		ec.requestBodyCtx.Path = v[0]
+		ec.requestStreamContext.Path = v[0]
+	}
+	if v := values[":method"]; len(v) > 0 {
+		ec.requestHeaderCtx.Method = v[0]
+		ec.requestBodyCtx.Method = v[0]
+		ec.requestStreamContext.Method = v[0]
+	}
+	if v := values[":authority"]; len(v) > 0 {
+		ec.requestHeaderCtx.Authority = v[0]
+		ec.requestBodyCtx.Authority = v[0]
+		ec.requestStreamContext.Authority = v[0]
+	}
+	if v := values[":scheme"]; len(v) > 0 {
+		ec.requestHeaderCtx.Scheme = v[0]
+		ec.requestBodyCtx.Scheme = v[0]
+		ec.requestStreamContext.Scheme = v[0]
+	}
+}
+
+// applyResponseHeaderMutations applies ResponseHeaderAction mutations from all policy
+// results into the shared in-memory Headers object so that body-phase policies see
+// the post-mutation state of the response headers.
+//
+// responseHeaderCtx, responseBodyCtx, and responseStreamContext all point to the same
+// *Headers instance, so one in-place update covers all three.
+func applyResponseHeaderMutations(headers *policy.Headers, results []executor.ResponseHeaderPolicyResult) {
+	values := headers.UnsafeInternalValues()
+	for _, pr := range results {
+		if pr.Skipped || pr.Action == nil {
+			continue
+		}
+		mods, ok := pr.Action.(policy.DownstreamResponseHeaderModifications)
+		if !ok {
+			continue
+		}
+		for k, v := range mods.HeadersToSet {
+			values[strings.ToLower(k)] = []string{v}
+		}
+		for _, k := range mods.HeadersToRemove {
+			delete(values, strings.ToLower(k))
+		}
+	}
+}
+
+// anyPolicyNeedsMoreRequestData returns true if any streaming request policy that
+// would actually execute (enabled and condition met) is not yet ready to process
+// the accumulated bytes.
+func (ec *PolicyExecutionContext) anyPolicyNeedsMoreRequestData(accumulated []byte) bool {
+	specs := ec.policyChain.PolicySpecs
+	celEval := ec.server.executor.GetCELEvaluator()
+	for i, pol := range ec.policyChain.Policies {
+		spec := specs[i]
+		if !spec.Enabled {
+			continue
+		}
+		if ec.policyChain.HasExecutionConditions && spec.ExecutionCondition != nil && *spec.ExecutionCondition != "" {
+			if celEval != nil {
+				conditionMet, err := celEval.EvaluateStreamingRequestCondition(*spec.ExecutionCondition, ec.requestStreamContext)
+				if err == nil && !conditionMet {
+					continue
+				}
+				// On error: fall through and treat as condition met (conservative)
+			}
+		}
+		if sp, ok := pol.(policy.StreamingRequestPolicy); ok {
+			if sp.NeedsMoreRequestData(accumulated) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// anyPolicyNeedsMoreResponseData returns true if any streaming response policy that
+// would actually execute (enabled and condition met) is not yet ready to process
+// the accumulated bytes.
+func (ec *PolicyExecutionContext) anyPolicyNeedsMoreResponseData(accumulated []byte) bool {
+	specs := ec.policyChain.PolicySpecs
+	celEval := ec.server.executor.GetCELEvaluator()
+	for i, pol := range ec.policyChain.Policies {
+		spec := specs[i]
+		if !spec.Enabled {
+			continue
+		}
+		if ec.policyChain.HasExecutionConditions && spec.ExecutionCondition != nil && *spec.ExecutionCondition != "" {
+			if celEval != nil {
+				conditionMet, err := celEval.EvaluateStreamingResponseCondition(*spec.ExecutionCondition, ec.responseStreamContext)
+				if err == nil && !conditionMet {
+					continue
+				}
+				// On error: fall through and treat as condition met (conservative)
+			}
+		}
+		if sp, ok := pol.(policy.StreamingResponsePolicy); ok {
+			needs := sp.NeedsMoreResponseData(accumulated)
+			slog.Debug("[streaming] NeedsMoreResponseData",
+				"route", ec.routeKey,
+				"policy", spec.Name,
+				"accumulated_bytes", len(accumulated),
+				"needs_more", needs,
+			)
+			if needs {
+				return true
+			}
+		}
+	}
+	return false
 }

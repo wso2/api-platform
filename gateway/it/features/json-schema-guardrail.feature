@@ -30,7 +30,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -69,7 +69,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -109,7 +109,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -149,7 +149,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -192,7 +192,7 @@ Feature: JSON Schema Guardrail Policy
             path: /echo
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   response:
                     jsonPath: ""
@@ -231,7 +231,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -277,7 +277,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -316,7 +316,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -355,7 +355,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -398,7 +398,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -438,7 +438,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -478,7 +478,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -522,7 +522,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -563,7 +563,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -608,7 +608,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -647,7 +647,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -686,7 +686,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -725,7 +725,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -764,7 +764,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -807,7 +807,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -846,7 +846,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -889,7 +889,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -927,7 +927,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -966,7 +966,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -1009,7 +1009,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -1049,7 +1049,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -1089,7 +1089,7 @@ Feature: JSON Schema Guardrail Policy
             path: /check
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     enabled: true
@@ -1129,7 +1129,7 @@ Feature: JSON Schema Guardrail Policy
             path: /echo
             policies:
               - name: json-schema-guardrail
-                version: v0
+                version: v1
                 params:
                   response:
                     jsonPath: ""

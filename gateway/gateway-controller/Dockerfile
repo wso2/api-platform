@@ -29,7 +29,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # Copy go mod files for dependencies (needed for go.mod replace directive)
 # Copying only the mod files first ensures that the go mod download cache 
 # is only invalidated when dependencies change, not when source code changes.
-COPY --from=sdk go.mod go.sum /sdk/
 COPY --from=sdk-core go.mod /sdk/core/
 COPY --from=common go.mod go.sum /common/
 
@@ -37,7 +36,6 @@ COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
 
-COPY --from=sdk . /sdk
 COPY --from=sdk-core . /sdk/core
 COPY --from=common . /common
 COPY . ./
@@ -65,11 +63,11 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         go build $COVER_FLAG \
         -gcflags "all=-N -l" \
         -ldflags "-X main.Version=${VERSION} -X main.GitCommit=${GIT_COMMIT} -X main.BuildDate=${BUILD_DATE}" \
-        -o controller cmd/controller/main.go; \
+        -o controller ./cmd/controller; \
     else \
         go build $COVER_FLAG \
         -ldflags "-X main.Version=${VERSION} -X main.GitCommit=${GIT_COMMIT} -X main.BuildDate=${BUILD_DATE}" \
-        -o controller cmd/controller/main.go; \
+        -o controller ./cmd/controller; \
     fi
 
 # Stage: debug (select with --target debug; NOT part of the default build)

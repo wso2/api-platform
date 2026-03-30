@@ -35,25 +35,28 @@ import (
 
 // mockStorageForDeletion implements storage.Storage interface for deletion testing
 type mockStorageForDeletion struct {
-	configs            map[string]*models.StoredConfig
-	secrets            map[string]*models.Secret
-	subscriptions      map[string]*models.Subscription
-	apiKeysByUUID      map[string]*models.APIKey
-	replacedMappings   []*models.ApplicationAPIKeyMapping
-	replacedAppID      string
-	replacedAppUUID    string
-	replacedAppName    string
-	replacedAppType    string
-	deleteErr          error
-	updateErr          error
-	getErr             error
-	removeKeyErr       error
-	replaceErr         error
-	upsertAffected     *bool // nil = default (true); non-nil = use this value
-	upsertErr          error
-	deleteCallCount    int
-	removeKeyCallCount int
-	upsertCallCount    int
+	configs                      map[string]*models.StoredConfig
+	secrets                      map[string]*models.Secret
+	subscriptions                map[string]*models.Subscription
+	apiKeysByUUID                map[string]*models.APIKey
+	replacedMappings             []*models.ApplicationAPIKeyMapping
+	replacedAppID                string
+	replacedAppUUID              string
+	replacedAppName              string
+	replacedAppType              string
+	deleteErr                    error
+	updateErr                    error
+	getErr                       error
+	removeKeyErr                 error
+	removeSubscriptionErr        error
+	replaceErr                   error
+	deleteCallCount              int
+	removeKeyCallCount           int
+	removeSubscriptionCallCount  int
+	lastSubscriptionCleanupAPIID string
+	upsertAffected               *bool // nil = default (true); non-nil = use this value
+	upsertErr                    error
+	upsertCallCount              int
 }
 
 func newMockStorageForDeletion() *mockStorageForDeletion {
@@ -285,6 +288,11 @@ func (m *mockStorageForDeletion) DeleteSubscriptionPlansNotIn(ids []string) erro
 }
 
 func (m *mockStorageForDeletion) DeleteSubscriptionsForAPINotIn(apiID string, ids []string) error {
+	m.removeSubscriptionCallCount++
+	m.lastSubscriptionCleanupAPIID = apiID
+	if m.removeSubscriptionErr != nil {
+		return m.removeSubscriptionErr
+	}
 	return nil
 }
 
@@ -624,6 +632,12 @@ func TestClient_handleAPIDeletedEvent_OrphanedCleanup(t *testing.T) {
 	if db.removeKeyCallCount != 1 {
 		t.Errorf("Expected RemoveAPIKeysAPI to be called for orphan cleanup, got %d", db.removeKeyCallCount)
 	}
+	if db.removeSubscriptionCallCount != 1 {
+		t.Errorf("Expected DeleteSubscriptionsForAPINotIn to be called for orphan cleanup, got %d", db.removeSubscriptionCallCount)
+	}
+	if db.lastSubscriptionCleanupAPIID != apiID {
+		t.Errorf("expected subscription cleanup for API %s, got %s", apiID, db.lastSubscriptionCleanupAPIID)
+	}
 
 	if len(hub.publishedEvents) != 1 {
 		t.Fatalf("expected one orphan cleanup event, got %d", len(hub.publishedEvents))
@@ -799,7 +813,7 @@ func TestClient_findAPIConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("Returns config from memory when not in database", func(t *testing.T) {
+	t.Run("Returns ErrNotFound when config exists only in memory store", func(t *testing.T) {
 		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 		store := storage.NewConfigStore()
 		db := newMockStorageForDeletion()
@@ -814,12 +828,9 @@ func TestClient_findAPIConfig(t *testing.T) {
 			db:     db,
 		}
 
-		config, err := client.findAPIConfig(apiID)
-		if err != nil {
-			t.Errorf("Expected to find API config in memory store, got error: %v", err)
-		}
-		if config.UUID != apiID {
-			t.Errorf("Expected API ID %s, got %s", apiID, config.UUID)
+		_, err := client.findAPIConfig(apiID)
+		if !storage.IsNotFoundError(err) {
+			t.Errorf("Expected ErrNotFound when API exists only in memory store, got: %v", err)
 		}
 	})
 

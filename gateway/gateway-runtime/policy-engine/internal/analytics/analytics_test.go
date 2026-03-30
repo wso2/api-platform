@@ -282,6 +282,8 @@ func TestAIMetadataKeys(t *testing.T) {
 	assert.Equal(t, "aitoken:modelid", ModelIDMetadataKey)
 	assert.Equal(t, "ai:providername", AIProviderNameMetadataKey)
 	assert.Equal(t, "ai:providerversion", AIProviderAPIVersionMetadataKey)
+	assert.Equal(t, "x-llm-cost", constants.LLMCostMetadataKey)
+	assert.Equal(t, "llmCost", constants.LLMCostPropertyKey)
 }
 
 func TestResponseDetailConstants(t *testing.T) {
@@ -430,6 +432,48 @@ func TestPrepareAnalyticEvent_WithUserID(t *testing.T) {
 	userID, ok := event.Properties[UserIDMetadataKey]
 	require.True(t, ok)
 	assert.Equal(t, "user-123", userID)
+}
+
+func TestPrepareAnalyticEvent_WithLLMCost(t *testing.T) {
+	cfg := &config.Config{}
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadata(map[string]string{
+		AIProviderNameMetadataKey: "openai",
+		ModelIDMetadataKey:        "gpt-4",
+		constants.LLMCostMetadataKey: "0.0000423100",
+	})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	aiMetadataValue, ok := event.Properties["aiMetadata"]
+	require.True(t, ok)
+	aiMetadata, ok := aiMetadataValue.(dto.AIMetadata)
+	require.True(t, ok)
+	assert.Equal(t, 0.00004231, aiMetadata.LLMCost)
+}
+
+func TestPrepareAnalyticEvent_WithGuardrailMetadata(t *testing.T) {
+	cfg := &config.Config{}
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadataValues(map[string]*structpb.Value{
+		constants.GuardrailHitMetadataKey:  structpb.NewBoolValue(true),
+		constants.GuardrailNameMetadataKey: structpb.NewStringValue("word-count-guardrail"),
+	})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	guardrailHit, exists := event.Properties[constants.GuardrailHitMetadataKey]
+	require.True(t, exists)
+	assert.IsType(t, true, guardrailHit)
+	assert.Equal(t, true, guardrailHit)
+
+	guardrailName, exists := event.Properties[constants.GuardrailNameMetadataKey]
+	require.True(t, exists)
+	assert.Equal(t, "word-count-guardrail", guardrailName)
 }
 
 func TestPrepareAnalyticEvent_WithRequestResponseHeaders(t *testing.T) {
@@ -590,6 +634,11 @@ func createLogEntryWithMetadata(metadata map[string]string) *v3.HTTPAccessLogEnt
 		fields[key] = structpb.NewStringValue(value)
 	}
 
+	return createLogEntryWithMetadataValues(fields)
+}
+
+func createLogEntryWithMetadataValues(metadata map[string]*structpb.Value) *v3.HTTPAccessLogEntry {
+
 	return &v3.HTTPAccessLogEntry{
 		CommonProperties: &v3.AccessLogCommon{
 			Metadata: &corev3.Metadata{
@@ -597,7 +646,7 @@ func createLogEntryWithMetadata(metadata map[string]string) *v3.HTTPAccessLogEnt
 					constants.ExtProcFilterName: {
 						Fields: map[string]*structpb.Value{
 							"analytics_data": structpb.NewStructValue(&structpb.Struct{
-								Fields: fields,
+								Fields: metadata,
 							}),
 						},
 					},

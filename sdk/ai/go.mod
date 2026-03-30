@@ -1,6 +1,6 @@
 module github.com/wso2/api-platform/sdk/ai
 
-go 1.25.1
+go 1.26.1
 
 require (
 	github.com/goccy/go-json v0.10.5
@@ -122,4 +122,3 @@ require (
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
-replace github.com/wso2/api-platform/sdk/core => ../core

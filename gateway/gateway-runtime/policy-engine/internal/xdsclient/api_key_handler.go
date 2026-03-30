@@ -26,7 +26,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/common/apikey"
-	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
+	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -129,19 +129,21 @@ func (h *APIKeyOperationHandler) handleStoreOperation(operation policyenginev1.A
 		"correlation_id", operation.CorrelationID)
 
 	ak := &apikey.APIKey{
-		ID:         operation.APIKey.ID,
-		Name:       operation.APIKey.Name,
-		APIKey:     operation.APIKey.APIKey, // hashed key
-		APIId:      operation.APIKey.APIId,
-		Operations: operation.APIKey.Operations,
-		Status:         apikey.APIKeyStatus(operation.APIKey.Status),
-		CreatedAt:      operation.APIKey.CreatedAt,
-		CreatedBy:      operation.APIKey.CreatedBy,
-		UpdatedAt:      operation.APIKey.UpdatedAt,
-		ExpiresAt:      operation.APIKey.ExpiresAt,
-		Source:         operation.APIKey.Source,
-		Issuer:         operation.APIKey.Issuer,
-		AllowedTargets: operation.APIKey.AllowedTargets,
+		ID:              operation.APIKey.ID,
+		Name:            operation.APIKey.Name,
+		APIKey:          operation.APIKey.APIKey, // hashed key
+		APIId:           operation.APIKey.APIId,
+		ApplicationID:   operation.APIKey.ApplicationID,
+		ApplicationName: operation.APIKey.ApplicationName,
+		Operations:      operation.APIKey.Operations,
+		Status:          apikey.APIKeyStatus(operation.APIKey.Status),
+		CreatedAt:       operation.APIKey.CreatedAt,
+		CreatedBy:       operation.APIKey.CreatedBy,
+		UpdatedAt:       operation.APIKey.UpdatedAt,
+		ExpiresAt:       operation.APIKey.ExpiresAt,
+		Source:          operation.APIKey.Source,
+		Issuer:          operation.APIKey.Issuer,
+		AllowedTargets:  operation.APIKey.AllowedTargets,
 	}
 
 	// Store the API key in the policy validation store
@@ -209,19 +211,21 @@ func (h *APIKeyOperationHandler) replaceAllAPIKeys(apiKeyDataList []APIKeyData) 
 	// Then, add all API keys from the new state
 	for i, apiKeyData := range apiKeyDataList {
 		ak := &apikey.APIKey{
-			ID:         apiKeyData.ID,
-			Name:       apiKeyData.Name,
-			APIKey:     apiKeyData.APIKey, // hashed key
-			APIId:      apiKeyData.APIId,
-			Operations: apiKeyData.Operations,
-			Status:         apikey.APIKeyStatus(apiKeyData.Status),
-			CreatedAt:      apiKeyData.CreatedAt,
-			CreatedBy:      apiKeyData.CreatedBy,
-			UpdatedAt:      apiKeyData.UpdatedAt,
-			ExpiresAt:      apiKeyData.ExpiresAt,
-			Source:         apiKeyData.Source,
-			Issuer:         apiKeyData.Issuer,
-			AllowedTargets: apiKeyData.AllowedTargets,
+			ID:              apiKeyData.ID,
+			Name:            apiKeyData.Name,
+			APIKey:          apiKeyData.APIKey, // hashed key
+			APIId:           apiKeyData.APIId,
+			ApplicationID:   apiKeyData.ApplicationID,
+			ApplicationName: apiKeyData.ApplicationName,
+			Operations:      apiKeyData.Operations,
+			Status:          apikey.APIKeyStatus(apiKeyData.Status),
+			CreatedAt:       apiKeyData.CreatedAt,
+			CreatedBy:       apiKeyData.CreatedBy,
+			UpdatedAt:       apiKeyData.UpdatedAt,
+			ExpiresAt:       apiKeyData.ExpiresAt,
+			Source:          apiKeyData.Source,
+			Issuer:          apiKeyData.Issuer,
+			AllowedTargets:  apiKeyData.AllowedTargets,
 		}
 
 		// Store the API key in the policy validation store
@@ -250,17 +254,19 @@ type APIKeyStateResource struct {
 
 // APIKeyData represents an API key in the state resource
 type APIKeyData struct {
-	ID             string     `json:"id"`
-	Name           string     `json:"name"`
-	APIKey         string     `json:"apiKey"`
-	APIId          string     `json:"apiId"`
-	Operations     string     `json:"operations"`
-	Status         string     `json:"status"`
-	CreatedAt      time.Time  `json:"createdAt"`
-	CreatedBy      string     `json:"createdBy"`
-	UpdatedAt      time.Time  `json:"updatedAt"`
-	ExpiresAt      *time.Time `json:"expiresAt"`
-	Source         string     `json:"source"` // "local" | "external"
-	Issuer         *string    `json:"issuer,omitempty"`
-	AllowedTargets string     `json:"allowedTargets"`
+	ID              string     `json:"id"`
+	Name            string     `json:"name"`
+	APIKey          string     `json:"apiKey"`
+	APIId           string     `json:"apiId"`
+	ApplicationID   string     `json:"applicationId,omitempty"`
+	ApplicationName string     `json:"applicationName,omitempty"`
+	Operations      string     `json:"operations"`
+	Status          string     `json:"status"`
+	CreatedAt       time.Time  `json:"createdAt"`
+	CreatedBy       string     `json:"createdBy"`
+	UpdatedAt       time.Time  `json:"updatedAt"`
+	ExpiresAt       *time.Time `json:"expiresAt"`
+	Source          string     `json:"source"` // "local" | "external"
+	Issuer          *string    `json:"issuer,omitempty"`
+	AllowedTargets  string     `json:"allowedTargets"`
 }

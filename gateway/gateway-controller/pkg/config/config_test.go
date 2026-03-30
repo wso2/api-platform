@@ -57,6 +57,11 @@ func validConfig() *Config {
 			Metrics: MetricsConfig{
 				Enabled: false,
 			},
+			EventHub: EventHubConfig{
+				PollInterval:    3 * time.Second,
+				CleanupInterval: 10 * time.Minute,
+				RetentionPeriod: 1 * time.Hour,
+			},
 		},
 		APIKey: APIKeyConfig{
 			APIKeysPerUserPerAPI: 5,
@@ -1359,6 +1364,7 @@ func TestDefaultConfig(t *testing.T) {
 	assert.NotNil(t, cfg)
 	assert.Equal(t, "sqlite", cfg.Controller.Storage.Type)
 	assert.Equal(t, "info", cfg.Controller.Logging.Level)
+	assert.False(t, cfg.Controller.Server.SkipInvalidDeploymentsOnStartup)
 	assert.Equal(t, uint32(5000), cfg.Router.Upstream.Timeouts.ConnectTimeoutMs, "default router.upstream.timeouts.connect_timeout_ms should be 5s (5000 ms)")
 }
 

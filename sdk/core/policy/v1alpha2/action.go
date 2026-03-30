@@ -104,8 +104,19 @@ type RequestAction interface {
 type UpstreamRequestModifications struct {
 	Body []byte // nil = passthrough; []byte{} = clear body
 
-	// Embeds all header and routing mutations available at the header phase.
-	UpstreamRequestHeaderModifications
+	HeadersToSet    map[string]string // overwrite header (last write wins)
+	HeadersToRemove []string          // remove by name (case-insensitive)
+
+	// Routing mutations — applied before the request is forwarded to upstream.
+	UpstreamName            *string             // route to a named upstream definition (nil = no change)
+	Path                    *string             // rewrite the request path (nil = no change)
+	Method                  *string             // rewrite the request method (nil = no change)
+	QueryParametersToAdd    map[string][]string // add or replace query parameters
+	QueryParametersToRemove []string            // remove query parameters by name
+
+	AnalyticsMetadata     map[string]any            // custom analytics metadata
+	DynamicMetadata       map[string]map[string]any // dynamic metadata by namespace
+	AnalyticsHeaderFilter DropHeaderAction          // headers to exclude from analytics
 }
 
 func (UpstreamRequestModifications) isRequestAction()    {}
@@ -132,8 +143,12 @@ type DownstreamResponseModifications struct {
 	Body       []byte // nil = passthrough; []byte{} = clear body
 	StatusCode *int   // nil = no change
 
-	// Embeds all header mutations available at the response phase.
-	DownstreamResponseHeaderModifications
+	HeadersToSet    map[string]string // overwrite header (last write wins)
+	HeadersToRemove []string          // remove by name (case-insensitive)
+
+	AnalyticsMetadata     map[string]any            // custom analytics metadata
+	DynamicMetadata       map[string]map[string]any // dynamic metadata by namespace
+	AnalyticsHeaderFilter DropHeaderAction          // headers to exclude from analytics
 }
 
 func (DownstreamResponseModifications) isResponseAction()   {}
@@ -168,6 +183,16 @@ var (
 //     RequestHeaderPolicy or RequestPolicy to reject before the body starts.
 //   - For response chunks: the client has already received the response headers
 //     and status; injecting a new response mid-stream is physically impossible.
+//
+// Mid-stream error handling:
+// If the kernel encounters an error while processing a streaming chunk it will
+// call StreamingRequestPolicy.OnStreamError / StreamingResponsePolicy.OnStreamError
+// on all enabled policies in the chain so they can release held resources.
+// The kernel then closes the gRPC ext_proc stream, which causes Envoy to abort
+// the HTTP/2 stream with a RESET_STREAM. The downstream client will see an
+// abrupt connection close rather than a structured HTTP error response.
+// There is no recovery path — once chunk processing has started, a clean
+// error response is not possible.
 
 // RequestChunkAction is returned by StreamingRequestPolicy.OnRequestBodyChunk.
 // Only the chunk payload can be modified. Request headers, path, method, and

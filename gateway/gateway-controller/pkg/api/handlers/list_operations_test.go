@@ -46,7 +46,7 @@ func createTestServerWithLLM() *APIServer {
 		nil, // snapshotManager
 		nil, // lazyResourceManager
 		make(map[string]*api.LLMProviderTemplate),
-		nil, // deploymentService
+		server.deploymentService,
 		server.routerConfig,
 		policyVersionResolver,
 		policyValidator,
@@ -253,11 +253,11 @@ func TestListLLMProvidersWithData(t *testing.T) {
 
 	now := time.Now()
 	provider := &models.StoredConfig{
-		UUID:        "0000-provider1-0000-000000000000",
-		Kind:        "LlmProvider",
-		Handle:      "openai-provider",
-		DisplayName: "OpenAI Provider",
-		Version:     "1.0.0",
+		UUID:         "0000-provider1-0000-000000000000",
+		Kind:         "LlmProvider",
+		Handle:       "openai-provider",
+		DisplayName:  "OpenAI Provider",
+		Version:      "1.0.0",
 		DesiredState: "deployed",
 		Origin:       models.OriginGatewayAPI,
 		SourceConfiguration: api.LLMProviderConfiguration{
@@ -320,11 +320,11 @@ func TestListLLMProxiesWithData(t *testing.T) {
 
 	now := time.Now()
 	proxy := &models.StoredConfig{
-		UUID:        "0000-proxy1-0000-000000000000",
-		Kind:        "LlmProxy",
-		Handle:      "0000-llm-proxy-1-0000-000000000000",
-		DisplayName: "LLM Proxy 1",
-		Version:     "1.0.0",
+		UUID:         "0000-proxy1-0000-000000000000",
+		Kind:         "LlmProxy",
+		Handle:       "0000-llm-proxy-1-0000-000000000000",
+		DisplayName:  "LLM Proxy 1",
+		Version:      "1.0.0",
 		DesiredState: "deployed",
 		Origin:       models.OriginGatewayAPI,
 		SourceConfiguration: api.LLMProxyConfiguration{
