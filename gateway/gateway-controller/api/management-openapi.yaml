@@ -1943,6 +1943,250 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /llm-providers/{id}/api-keys:
+    post:
+      summary: Create a new API key for an LLM provider
+      description: Generate a new API key for an LLM provider in the Gateway.
+      operationId: createLLMProviderAPIKey
+      tags:
+        - LLM Provider Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of the LLM provider to generate the key for
+          schema:
+            type: string
+          example: wso2-openai-provider
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreationRequest"
+      responses:
+        '201':
+          description: API key created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: LLM provider not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: Get the list of API keys for an LLM provider
+      description: List all API keys for an LLM provider in the Gateway.
+      operationId: listLLMProviderAPIKeys
+      tags:
+        - LLM Provider Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of the LLM provider to retrieve keys for
+          schema:
+            type: string
+          example: wso2-openai-provider
+      responses:
+        '200':
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyListResponse"
+        '404':
+          description: LLM provider not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /llm-providers/{id}/api-keys/{apiKeyName}/regenerate:
+    post:
+      summary: Regenerate API key for an LLM provider
+      description: Regenerate an existing API key for an LLM provider in the Gateway.
+      operationId: regenerateLLMProviderAPIKey
+      tags:
+        - LLM Provider Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of the LLM provider
+          schema:
+            type: string
+          example: wso2-openai-provider
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to regenerate
+          schema:
+            type: string
+          example: provider-api-key
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+      responses:
+        '200':
+          description: API key rotated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: LLM provider or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /llm-providers/{id}/api-keys/{apiKeyName}:
+    put:
+      summary: Update an API key for an LLM provider
+      description: Update an API key with a custom value instead of auto-generating one.
+      operationId: updateLLMProviderAPIKey
+      tags:
+        - LLM Provider Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of the LLM provider
+          schema:
+            type: string
+          example: wso2-openai-provider
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to update
+          schema:
+            type: string
+          example: provider-api-key
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+      responses:
+        '200':
+          description: API key updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid request (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: LLM provider or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Revoke an API key for an LLM provider
+      description: Revoke an API key. Once revoked, it can no longer be used to authenticate requests.
+      operationId: revokeLLMProviderAPIKey
+      tags:
+        - LLM Provider Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of the LLM provider
+          schema:
+            type: string
+          example: wso2-openai-provider
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to revoke
+          schema:
+            type: string
+          example: provider-api-key
+      responses:
+        '200':
+          description: API key revoked successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyRevocationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: LLM provider or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /llm-proxies:
     post:
       summary: Create a new LLM proxy
@@ -2180,6 +2424,250 @@ paths:
                     example: wso2-docs-assistant
         '404':
           description: LLM proxy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /llm-proxies/{id}/api-keys:
+    post:
+      summary: Create a new API key for an LLM proxy
+      description: Generate a new API key for an LLM proxy in the Gateway.
+      operationId: createLLMProxyAPIKey
+      tags:
+        - LLM Proxy Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of the LLM proxy to generate the key for
+          schema:
+            type: string
+          example: wso2-docs-assistant
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreationRequest"
+      responses:
+        '201':
+          description: API key created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: LLM proxy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: Get the list of API keys for an LLM proxy
+      description: List all API keys for an LLM proxy in the Gateway.
+      operationId: listLLMProxyAPIKeys
+      tags:
+        - LLM Proxy Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of the LLM proxy to retrieve keys for
+          schema:
+            type: string
+          example: wso2-docs-assistant
+      responses:
+        '200':
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyListResponse"
+        '404':
+          description: LLM proxy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /llm-proxies/{id}/api-keys/{apiKeyName}/regenerate:
+    post:
+      summary: Regenerate API key for an LLM proxy
+      description: Regenerate an existing API key for an LLM proxy in the Gateway.
+      operationId: regenerateLLMProxyAPIKey
+      tags:
+        - LLM Proxy Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of the LLM proxy
+          schema:
+            type: string
+          example: wso2-docs-assistant
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to regenerate
+          schema:
+            type: string
+          example: proxy-api-key
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+      responses:
+        '200':
+          description: API key rotated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: LLM proxy or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /llm-proxies/{id}/api-keys/{apiKeyName}:
+    put:
+      summary: Update an API key for an LLM proxy
+      description: Update an API key with a custom value instead of auto-generating one.
+      operationId: updateLLMProxyAPIKey
+      tags:
+        - LLM Proxy Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of the LLM proxy
+          schema:
+            type: string
+          example: wso2-docs-assistant
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to update
+          schema:
+            type: string
+          example: proxy-api-key
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+      responses:
+        '200':
+          description: API key updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid request (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: LLM proxy or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Revoke an API key for an LLM proxy
+      description: Revoke an API key. Once revoked, it can no longer be used to authenticate requests.
+      operationId: revokeLLMProxyAPIKey
+      tags:
+        - LLM Proxy Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of the LLM proxy
+          schema:
+            type: string
+          example: wso2-docs-assistant
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to revoke
+          schema:
+            type: string
+          example: proxy-api-key
+      responses:
+        '200':
+          description: API key revoked successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyRevocationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: LLM proxy or API key not found
           content:
             application/json:
               schema:

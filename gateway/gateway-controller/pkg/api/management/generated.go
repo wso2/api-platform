@@ -1828,11 +1828,29 @@ type CreateLLMProviderJSONRequestBody = LLMProviderConfiguration
 // UpdateLLMProviderJSONRequestBody defines body for UpdateLLMProvider for application/json ContentType.
 type UpdateLLMProviderJSONRequestBody = LLMProviderConfiguration
 
+// CreateLLMProviderAPIKeyJSONRequestBody defines body for CreateLLMProviderAPIKey for application/json ContentType.
+type CreateLLMProviderAPIKeyJSONRequestBody = APIKeyCreationRequest
+
+// UpdateLLMProviderAPIKeyJSONRequestBody defines body for UpdateLLMProviderAPIKey for application/json ContentType.
+type UpdateLLMProviderAPIKeyJSONRequestBody = APIKeyUpdateRequest
+
+// RegenerateLLMProviderAPIKeyJSONRequestBody defines body for RegenerateLLMProviderAPIKey for application/json ContentType.
+type RegenerateLLMProviderAPIKeyJSONRequestBody = APIKeyRegenerationRequest
+
 // CreateLLMProxyJSONRequestBody defines body for CreateLLMProxy for application/json ContentType.
 type CreateLLMProxyJSONRequestBody = LLMProxyConfiguration
 
 // UpdateLLMProxyJSONRequestBody defines body for UpdateLLMProxy for application/json ContentType.
 type UpdateLLMProxyJSONRequestBody = LLMProxyConfiguration
+
+// CreateLLMProxyAPIKeyJSONRequestBody defines body for CreateLLMProxyAPIKey for application/json ContentType.
+type CreateLLMProxyAPIKeyJSONRequestBody = APIKeyCreationRequest
+
+// UpdateLLMProxyAPIKeyJSONRequestBody defines body for UpdateLLMProxyAPIKey for application/json ContentType.
+type UpdateLLMProxyAPIKeyJSONRequestBody = APIKeyUpdateRequest
+
+// RegenerateLLMProxyAPIKeyJSONRequestBody defines body for RegenerateLLMProxyAPIKey for application/json ContentType.
+type RegenerateLLMProxyAPIKeyJSONRequestBody = APIKeyRegenerationRequest
 
 // CreateMCPProxyJSONRequestBody defines body for CreateMCPProxy for application/json ContentType.
 type CreateMCPProxyJSONRequestBody = MCPProxyConfiguration
@@ -2323,6 +2341,21 @@ type ServerInterface interface {
 	// Update an existing LLM provider
 	// (PUT /llm-providers/{id})
 	UpdateLLMProvider(c *gin.Context, id string)
+	// Get the list of API keys for an LLM provider
+	// (GET /llm-providers/{id}/api-keys)
+	ListLLMProviderAPIKeys(c *gin.Context, id string)
+	// Create a new API key for an LLM provider
+	// (POST /llm-providers/{id}/api-keys)
+	CreateLLMProviderAPIKey(c *gin.Context, id string)
+	// Revoke an API key for an LLM provider
+	// (DELETE /llm-providers/{id}/api-keys/{apiKeyName})
+	RevokeLLMProviderAPIKey(c *gin.Context, id string, apiKeyName string)
+	// Update an API key for an LLM provider
+	// (PUT /llm-providers/{id}/api-keys/{apiKeyName})
+	UpdateLLMProviderAPIKey(c *gin.Context, id string, apiKeyName string)
+	// Regenerate API key for an LLM provider
+	// (POST /llm-providers/{id}/api-keys/{apiKeyName}/regenerate)
+	RegenerateLLMProviderAPIKey(c *gin.Context, id string, apiKeyName string)
 	// List all LLM proxies
 	// (GET /llm-proxies)
 	ListLLMProxies(c *gin.Context, params ListLLMProxiesParams)
@@ -2338,6 +2371,21 @@ type ServerInterface interface {
 	// Update an existing LLM proxy
 	// (PUT /llm-proxies/{id})
 	UpdateLLMProxy(c *gin.Context, id string)
+	// Get the list of API keys for an LLM proxy
+	// (GET /llm-proxies/{id}/api-keys)
+	ListLLMProxyAPIKeys(c *gin.Context, id string)
+	// Create a new API key for an LLM proxy
+	// (POST /llm-proxies/{id}/api-keys)
+	CreateLLMProxyAPIKey(c *gin.Context, id string)
+	// Revoke an API key for an LLM proxy
+	// (DELETE /llm-proxies/{id}/api-keys/{apiKeyName})
+	RevokeLLMProxyAPIKey(c *gin.Context, id string, apiKeyName string)
+	// Update an API key for an LLM proxy
+	// (PUT /llm-proxies/{id}/api-keys/{apiKeyName})
+	UpdateLLMProxyAPIKey(c *gin.Context, id string, apiKeyName string)
+	// Regenerate API key for an LLM proxy
+	// (POST /llm-proxies/{id}/api-keys/{apiKeyName}/regenerate)
+	RegenerateLLMProxyAPIKey(c *gin.Context, id string, apiKeyName string)
 	// List all MCPProxies
 	// (GET /mcp-proxies)
 	ListMCPProxies(c *gin.Context, params ListMCPProxiesParams)
@@ -2799,6 +2847,153 @@ func (siw *ServerInterfaceWrapper) UpdateLLMProvider(c *gin.Context) {
 	siw.Handler.UpdateLLMProvider(c, id)
 }
 
+// ListLLMProviderAPIKeys operation middleware
+func (siw *ServerInterfaceWrapper) ListLLMProviderAPIKeys(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListLLMProviderAPIKeys(c, id)
+}
+
+// CreateLLMProviderAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) CreateLLMProviderAPIKey(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateLLMProviderAPIKey(c, id)
+}
+
+// RevokeLLMProviderAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) RevokeLLMProviderAPIKey(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "apiKeyName" -------------
+	var apiKeyName string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "apiKeyName", c.Param("apiKeyName"), &apiKeyName, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyName: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.RevokeLLMProviderAPIKey(c, id, apiKeyName)
+}
+
+// UpdateLLMProviderAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) UpdateLLMProviderAPIKey(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "apiKeyName" -------------
+	var apiKeyName string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "apiKeyName", c.Param("apiKeyName"), &apiKeyName, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyName: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateLLMProviderAPIKey(c, id, apiKeyName)
+}
+
+// RegenerateLLMProviderAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) RegenerateLLMProviderAPIKey(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "apiKeyName" -------------
+	var apiKeyName string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "apiKeyName", c.Param("apiKeyName"), &apiKeyName, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyName: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.RegenerateLLMProviderAPIKey(c, id, apiKeyName)
+}
+
 // ListLLMProxies operation middleware
 func (siw *ServerInterfaceWrapper) ListLLMProxies(c *gin.Context) {
 
@@ -2950,6 +3145,153 @@ func (siw *ServerInterfaceWrapper) UpdateLLMProxy(c *gin.Context) {
 	}
 
 	siw.Handler.UpdateLLMProxy(c, id)
+}
+
+// ListLLMProxyAPIKeys operation middleware
+func (siw *ServerInterfaceWrapper) ListLLMProxyAPIKeys(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListLLMProxyAPIKeys(c, id)
+}
+
+// CreateLLMProxyAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) CreateLLMProxyAPIKey(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateLLMProxyAPIKey(c, id)
+}
+
+// RevokeLLMProxyAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) RevokeLLMProxyAPIKey(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "apiKeyName" -------------
+	var apiKeyName string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "apiKeyName", c.Param("apiKeyName"), &apiKeyName, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyName: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.RevokeLLMProxyAPIKey(c, id, apiKeyName)
+}
+
+// UpdateLLMProxyAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) UpdateLLMProxyAPIKey(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "apiKeyName" -------------
+	var apiKeyName string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "apiKeyName", c.Param("apiKeyName"), &apiKeyName, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyName: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateLLMProxyAPIKey(c, id, apiKeyName)
+}
+
+// RegenerateLLMProxyAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) RegenerateLLMProxyAPIKey(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "apiKeyName" -------------
+	var apiKeyName string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "apiKeyName", c.Param("apiKeyName"), &apiKeyName, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyName: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.RegenerateLLMProxyAPIKey(c, id, apiKeyName)
 }
 
 // ListMCPProxies operation middleware
@@ -3938,11 +4280,21 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.DELETE(options.BaseURL+"/llm-providers/:id", wrapper.DeleteLLMProvider)
 	router.GET(options.BaseURL+"/llm-providers/:id", wrapper.GetLLMProviderById)
 	router.PUT(options.BaseURL+"/llm-providers/:id", wrapper.UpdateLLMProvider)
+	router.GET(options.BaseURL+"/llm-providers/:id/api-keys", wrapper.ListLLMProviderAPIKeys)
+	router.POST(options.BaseURL+"/llm-providers/:id/api-keys", wrapper.CreateLLMProviderAPIKey)
+	router.DELETE(options.BaseURL+"/llm-providers/:id/api-keys/:apiKeyName", wrapper.RevokeLLMProviderAPIKey)
+	router.PUT(options.BaseURL+"/llm-providers/:id/api-keys/:apiKeyName", wrapper.UpdateLLMProviderAPIKey)
+	router.POST(options.BaseURL+"/llm-providers/:id/api-keys/:apiKeyName/regenerate", wrapper.RegenerateLLMProviderAPIKey)
 	router.GET(options.BaseURL+"/llm-proxies", wrapper.ListLLMProxies)
 	router.POST(options.BaseURL+"/llm-proxies", wrapper.CreateLLMProxy)
 	router.DELETE(options.BaseURL+"/llm-proxies/:id", wrapper.DeleteLLMProxy)
 	router.GET(options.BaseURL+"/llm-proxies/:id", wrapper.GetLLMProxyById)
 	router.PUT(options.BaseURL+"/llm-proxies/:id", wrapper.UpdateLLMProxy)
+	router.GET(options.BaseURL+"/llm-proxies/:id/api-keys", wrapper.ListLLMProxyAPIKeys)
+	router.POST(options.BaseURL+"/llm-proxies/:id/api-keys", wrapper.CreateLLMProxyAPIKey)
+	router.DELETE(options.BaseURL+"/llm-proxies/:id/api-keys/:apiKeyName", wrapper.RevokeLLMProxyAPIKey)
+	router.PUT(options.BaseURL+"/llm-proxies/:id/api-keys/:apiKeyName", wrapper.UpdateLLMProxyAPIKey)
+	router.POST(options.BaseURL+"/llm-proxies/:id/api-keys/:apiKeyName/regenerate", wrapper.RegenerateLLMProxyAPIKey)
 	router.GET(options.BaseURL+"/mcp-proxies", wrapper.ListMCPProxies)
 	router.POST(options.BaseURL+"/mcp-proxies", wrapper.CreateMCPProxy)
 	router.DELETE(options.BaseURL+"/mcp-proxies/:id", wrapper.DeleteMCPProxy)
