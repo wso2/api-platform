@@ -118,6 +118,17 @@ func (s *LLMDeploymentService) publishLLMProxyEvent(action, entityID, correlatio
 	s.deploymentService.publishEvent(eventhub.EventTypeLLMProxy, action, entityID, correlationID, logger)
 }
 
+func (s *LLMDeploymentService) validateTemplateHandleConflict(handle string) error {
+	existing, err := s.GetLLMProviderTemplateByHandle(handle)
+	if err == nil && existing != nil {
+		return fmt.Errorf("%w: template with handle '%s' already exists", storage.ErrConflict, handle)
+	}
+	if err != nil && !storage.IsNotFoundError(err) {
+		return err
+	}
+	return nil
+}
+
 func (s *LLMDeploymentService) publishLLMTemplateEvent(action, entityID, correlationID string, logger *slog.Logger) {
 	s.deploymentService.publishEvent(eventhub.EventTypeLLMTemplate, action, entityID, correlationID, logger)
 }
@@ -274,6 +285,16 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		if existing, err := s.db.GetConfig(params.ID); err == nil && existing != nil {
 			isUpdate = true
 		}
+	}
+
+	if err := s.deploymentService.validateArtifactConflicts(
+		string(api.LlmProvider),
+		storedCfg.UUID,
+		storedCfg.DisplayName,
+		storedCfg.Version,
+		storedCfg.Handle,
+	); err != nil {
+		return nil, err
 	}
 
 	// Get resolved stored config before persisting
@@ -437,6 +458,16 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 		}
 	}
 
+	if err := s.deploymentService.validateArtifactConflicts(
+		string(api.LlmProxy),
+		storedCfg.UUID,
+		storedCfg.DisplayName,
+		storedCfg.Version,
+		storedCfg.Handle,
+	); err != nil {
+		return nil, err
+	}
+
 	// Get resolved stored config before persisting
 	resolvedCfg, validationErrors := s.deploymentService.policyResolver.ResolvePolicies(storedCfg)
 	if len(validationErrors) > 0 {
@@ -538,6 +569,10 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 	id, err := GenerateUUID()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate template ID: %w", err)
+	}
+
+	if err := s.validateTemplateHandleConflict(tmpl.Metadata.Name); err != nil {
+		return nil, err
 	}
 
 	stored := &models.StoredLLMProviderTemplate{

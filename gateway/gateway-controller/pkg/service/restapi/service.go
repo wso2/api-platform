@@ -183,6 +183,29 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 	}, nil
 }
 
+func (s *RestAPIService) validateArtifactConflicts(kind, currentID, displayName, version, handle string) error {
+	existingConfigs, err := s.db.GetAllConfigsByKind(kind)
+	if err != nil {
+		return fmt.Errorf("failed to list existing %s configurations from database: %w", kind, err)
+	}
+
+	for _, cfg := range existingConfigs {
+		if cfg == nil || cfg.UUID == currentID {
+			continue
+		}
+		if cfg.DisplayName == displayName && cfg.Version == version {
+			return fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists",
+				storage.ErrConflict, displayName, version)
+		}
+		if handle != "" && cfg.Handle == handle {
+			return fmt.Errorf("%w: configuration with handle '%s' already exists",
+				storage.ErrConflict, handle)
+		}
+	}
+
+	return nil
+}
+
 // List returns REST API configurations, optionally filtered.
 func (s *RestAPIService) List(params api.ListRestAPIsParams) (*ListResult, error) {
 	configs, err := s.db.GetAllConfigsByKind(string(api.RestApi))
@@ -280,6 +303,10 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 	desiredState := models.StateDeployed
 	if apiConfig.Spec.DeploymentState != nil && *apiConfig.Spec.DeploymentState == api.APIConfigDataDeploymentStateUndeployed {
 		desiredState = models.StateUndeployed
+	}
+
+	if err := s.validateArtifactConflicts(models.KindRestApi, existing.UUID, apiConfig.Spec.DisplayName, apiConfig.Spec.Version, existing.Handle); err != nil {
+		return nil, err
 	}
 
 	// Update stored configuration
