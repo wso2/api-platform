@@ -102,20 +102,20 @@ func BuildGatewayImages(config DockerBuildConfig) error {
 }
 
 func ensureBuildLockInControllerContext(tempDir string) error {
-	buildLockSrc := filepath.Join(tempDir, "build-lock.yaml")
-	if _, err := os.Stat(buildLockSrc); err != nil {
-		return fmt.Errorf("build-lock.yaml not found in gateway-builder output: %w", err)
+	buildManifestSrc := filepath.Join(tempDir, "build-manifest.yaml")
+	if _, err := os.Stat(buildManifestSrc); err != nil {
+		return fmt.Errorf("build-manifest.yaml not found in gateway-builder output: %w", err)
 	}
 
-	buildLockDst := filepath.Join(tempDir, "output", "gateway-controller", "build-lock.yaml")
-	if _, err := os.Stat(buildLockDst); err == nil {
+	buildManifestDst := filepath.Join(tempDir, "output", "gateway-controller", "build-manifest.yaml")
+	if _, err := os.Stat(buildManifestDst); err == nil {
 		return nil
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("failed to access gateway-controller build-lock.yaml: %w", err)
+		return fmt.Errorf("failed to access gateway-controller build-manifest.yaml: %w", err)
 	}
 
-	if err := utils.CopyFile(buildLockSrc, buildLockDst); err != nil {
-		return fmt.Errorf("failed to copy build-lock.yaml into gateway-controller build context: %w", err)
+	if err := utils.CopyFile(buildManifestSrc, buildManifestDst); err != nil {
+		return fmt.Errorf("failed to copy build-manifest.yaml into gateway-controller build context: %w", err)
 	}
 
 	return nil
