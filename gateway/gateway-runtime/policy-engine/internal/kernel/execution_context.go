@@ -694,7 +694,7 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 	// downstream — suppress them with an empty streamed response so we do not attempt
 	// to write to a closed downstream connection.
 	if ec.streamTerminated {
-		slog.Debug("[streaming] suppressing orphaned upstream chunk after stream termination",
+		slog.Warn("[streaming] received upstream chunk after stream was already terminated; suppressing",
 			"route", ec.routeKey,
 			"chunk_bytes", len(body.Body),
 			"end_of_stream", body.EndOfStream,
