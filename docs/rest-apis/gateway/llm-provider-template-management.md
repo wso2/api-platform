@@ -22,7 +22,7 @@ curl -X POST http://localhost:9090/llm-provider-templates \
 
 Add a new LLM provider template to the Gateway. A template defines token tracking and model extraction metadata for an LLM provider.
 
-> Body parameter
+> Payload
 
 ```json
 {
@@ -97,6 +97,15 @@ Add a new LLM provider template to the Gateway. A template defines token trackin
 }
 ```
 
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`
+
+</aside>
+
 <h3 id="create-a-new-llm-provider-template-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
@@ -125,10 +134,6 @@ Add a new LLM provider template to the Gateway. A template defines token trackin
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - Template with same name already exists|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## List all LLM provider templates
 
 <a id="opIdlistLLMProviderTemplates"></a>
@@ -146,6 +151,15 @@ curl -X GET http://localhost:9090/llm-provider-templates \
 ```
 
 List LLM provider templates registered in the Gateway, optionally filtered by name.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`
+
+</aside>
 
 <h3 id="list-all-llm-provider-templates-parameters">Parameters</h3>
 
@@ -193,10 +207,6 @@ Status Code **200**
 |»» createdAt|string(date-time)|false|none|none|
 |»» updatedAt|string(date-time)|false|none|none|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Get LLM provider template by id
 
 <a id="opIdgetLLMProviderTemplateById"></a>
@@ -214,6 +224,15 @@ curl -X GET http://localhost:9090/llm-provider-templates/{id} \
 ```
 
 Get an LLM provider template by its ID.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`
+
+</aside>
 
 <h3 id="get-llm-provider-template-by-id-parameters">Parameters</h3>
 
@@ -316,10 +335,6 @@ Get an LLM provider template by its ID.
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider template not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Update an existing LLM provider template
 
 <a id="opIdupdateLLMProviderTemplate"></a>
@@ -340,7 +355,7 @@ curl -X PUT http://localhost:9090/llm-provider-templates/{id} \
 
 Update an existing LLM provider template in the Gateway.
 
-> Body parameter
+> Payload
 
 ```json
 {
@@ -415,6 +430,15 @@ Update an existing LLM provider template in the Gateway.
 }
 ```
 
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`
+
+</aside>
+
 <h3 id="update-an-existing-llm-provider-template-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
@@ -444,10 +468,6 @@ Update an existing LLM provider template in the Gateway.
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider template not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Delete an LLM provider template
 
 <a id="opIddeleteLLMProviderTemplate"></a>
@@ -465,6 +485,15 @@ curl -X DELETE http://localhost:9090/llm-provider-templates/{id} \
 ```
 
 Delete an LLM provider template from the Gateway.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`
+
+</aside>
 
 <h3 id="delete-an-llm-provider-template-parameters">Parameters</h3>
 
@@ -501,7 +530,3 @@ Status Code **200**
 |» status|string|false|none|none|
 |» message|string|false|none|none|
 |» id|string|false|none|none|
-
-<aside class="success">
-This operation does not require authentication
-</aside>

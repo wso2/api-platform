@@ -22,7 +22,7 @@ curl -X POST http://localhost:9090/mcp-proxies \
 
 Add a new MCPProxy to the Gateway.
 
-> Body parameter
+> Payload
 
 ```json
 {
@@ -98,6 +98,15 @@ Add a new MCPProxy to the Gateway.
 }
 ```
 
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
+
 <h3 id="create-a-new-mcpproxy-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
@@ -126,10 +135,6 @@ Add a new MCPProxy to the Gateway.
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - MCP Proxy with same name and version already exists|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## List all MCPProxies
 
 <a id="opIdlistMCPProxies"></a>
@@ -147,6 +152,15 @@ curl -X GET http://localhost:9090/mcp-proxies \
 ```
 
 List MCPProxies registered in the Gateway, optionally filtered by name, version, context, or status.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="list-all-mcpproxies-parameters">Parameters</h3>
 
@@ -219,10 +233,6 @@ Status Code **200**
 |status|deployed|
 |status|undeployed|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Get MCPProxy by id
 
 <a id="opIdgetMCPProxyById"></a>
@@ -240,6 +250,15 @@ curl -X GET http://localhost:9090/mcp-proxies/{id} \
 ```
 
 Get an MCPProxy by its ID.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="get-mcpproxy-by-id-parameters">Parameters</h3>
 
@@ -349,10 +368,6 @@ Get an MCPProxy by its ID.
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|MCPProxy not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Update an existing MCPProxy
 
 <a id="opIdupdateMCPProxy"></a>
@@ -373,7 +388,7 @@ curl -X PUT http://localhost:9090/mcp-proxies/{id} \
 
 Update an existing MCPProxy in the Gateway.
 
-> Body parameter
+> Payload
 
 ```json
 {
@@ -449,6 +464,15 @@ Update an existing MCPProxy in the Gateway.
 }
 ```
 
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
+
 <h3 id="update-an-existing-mcpproxy-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
@@ -482,10 +506,6 @@ Update an existing MCPProxy in the Gateway.
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|MCPProxy not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Delete a MCPProxy
 
 <a id="opIddeleteMCPProxy"></a>
@@ -503,6 +523,15 @@ curl -X DELETE http://localhost:9090/mcp-proxies/{id} \
 ```
 
 Delete an MCPProxy from the Gateway.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="delete-a-mcpproxy-parameters">Parameters</h3>
 
@@ -543,7 +572,3 @@ Status Code **200**
 |» status|string|false|none|none|
 |» message|string|false|none|none|
 |» id|string|false|none|none|
-
-<aside class="success">
-This operation does not require authentication
-</aside>

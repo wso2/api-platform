@@ -22,7 +22,7 @@ curl -X POST http://localhost:9090/llm-proxies \
 
 Add a new LLM proxy to the Gateway. A proxy defines how to interact with an LLM service deployed in the Gateway, including authentication and policies.
 
-> Body parameter
+> Payload
 
 ```json
 {
@@ -68,6 +68,15 @@ Add a new LLM proxy to the Gateway. A proxy defines how to interact with an LLM 
 }
 ```
 
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
+
 <h3 id="create-a-new-llm-proxy-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
@@ -96,10 +105,6 @@ Add a new LLM proxy to the Gateway. A proxy defines how to interact with an LLM 
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - Proxy with same name and version already exists|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## List all LLM proxies
 
 <a id="opIdlistLLMProxies"></a>
@@ -117,6 +122,15 @@ curl -X GET http://localhost:9090/llm-proxies \
 ```
 
 List LLM proxies registered in the Gateway, optionally filtered by name, version, context, status, or vhost.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="list-all-llm-proxies-parameters">Parameters</h3>
 
@@ -188,10 +202,6 @@ Status Code **200**
 |status|deployed|
 |status|undeployed|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Get LLM proxy by unique identifier
 
 <a id="opIdgetLLMProxyById"></a>
@@ -209,6 +219,15 @@ curl -X GET http://localhost:9090/llm-proxies/{id} \
 ```
 
 Get an LLM proxy by its ID.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="get-llm-proxy-by-unique-identifier-parameters">Parameters</h3>
 
@@ -284,10 +303,6 @@ Get an LLM proxy by its ID.
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM proxy not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Update an existing LLM proxy
 
 <a id="opIdupdateLLMProxy"></a>
@@ -308,7 +323,7 @@ curl -X PUT http://localhost:9090/llm-proxies/{id} \
 
 Update an existing LLM proxy in the Gateway.
 
-> Body parameter
+> Payload
 
 ```json
 {
@@ -354,6 +369,15 @@ Update an existing LLM proxy in the Gateway.
 }
 ```
 
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
+
 <h3 id="update-an-existing-llm-proxy-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
@@ -383,10 +407,6 @@ Update an existing LLM proxy in the Gateway.
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM proxy not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Delete an LLM proxy
 
 <a id="opIddeleteLLMProxy"></a>
@@ -404,6 +424,15 @@ curl -X DELETE http://localhost:9090/llm-proxies/{id} \
 ```
 
 Delete an LLM proxy from the Gateway.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="delete-an-llm-proxy-parameters">Parameters</h3>
 
@@ -440,7 +469,3 @@ Status Code **200**
 |» status|string|false|none|none|
 |» message|string|false|none|none|
 |» id|string|false|none|none|
-
-<aside class="success">
-This operation does not require authentication
-</aside>

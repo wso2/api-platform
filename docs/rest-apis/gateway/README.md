@@ -11,6 +11,15 @@ Base URLs:
 
 ## Table of Contents
 
+### [Authentication](authentication.md)
+
+- [Overview](authentication.md#overview)
+- [How It Works](authentication.md#how-it-works)
+- [Configuration](authentication.md#configuration)
+- [Role Mapping Semantics](authentication.md#role-mapping-semantics)
+- [Troubleshooting (What you’ll observe)](authentication.md#troubleshooting-what-youll-observe)
+- [Testing](authentication.md#testing)
+
 ### [Rest API Management](rest-api-management.md)
 
 - [Create a new RestAPI](rest-api-management.md#create-a-new-restapi)
