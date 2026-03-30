@@ -16,8 +16,12 @@ import (
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/adminserver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption/aesgcm"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventlistener"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/subscriptionxds"
 
 	"github.com/gin-gonic/gin"
@@ -30,9 +34,9 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
-	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
@@ -107,6 +111,7 @@ func main() {
 		slog.Bool("access_logs_enabled", cfg.Router.AccessLogs.Enabled),
 		slog.String("control_plane_host", cfg.Controller.ControlPlane.Host),
 		slog.Bool("control_plane_token_configured", cfg.Controller.ControlPlane.Token != ""),
+		slog.Bool("skip_invalid_deployments_on_startup", cfg.Controller.Server.SkipInvalidDeploymentsOnStartup),
 	)
 
 	if !cfg.Controller.Auth.Basic.Enabled && !cfg.Controller.Auth.IDP.Enabled {
@@ -134,27 +139,42 @@ func main() {
 	var eventHubInstance eventhub.EventHub
 	var eventHubStorage storage.Storage
 	// Create separate storage connection for EventHub (avoids SQLite lock contention)
-	eventHubStorage, err = storage.NewStorage(toBackendConfig(cfg), log)
+	ehBackendCfg := toBackendConfig(cfg)
+	ehBackendCfg.Postgres.MaxOpenConns = cfg.Controller.EventHub.Database.MaxOpenConns
+	ehBackendCfg.Postgres.MaxIdleConns = cfg.Controller.EventHub.Database.MaxIdleConns
+	ehBackendCfg.Postgres.ConnMaxLifetime = cfg.Controller.EventHub.Database.ConnMaxLifetime
+	ehBackendCfg.Postgres.ConnMaxIdleTime = cfg.Controller.EventHub.Database.ConnMaxIdleTime
+	eventHubStorage, err = storage.NewStorage(ehBackendCfg, log)
 	if err != nil {
 		log.Error("Failed to initialize EventHub storage", slog.Any("error", err))
 		os.Exit(1)
 	}
 	eventHubDB := eventHubStorage.GetDB()
-	if eventHubDB != nil {
-		eventHubInstance = eventhub.New(eventHubDB, log, eventhub.DefaultConfig())
-		if err := eventHubInstance.Initialize(); err != nil {
-			log.Error("Failed to initialize EventHub", slog.Any("error", err))
-			os.Exit(1)
-		}
-		if err := eventHubInstance.RegisterGateway(cfg.Controller.Server.GatewayID); err != nil {
-			log.Error("Failed to register gateway with EventHub", slog.Any("error", err))
-			os.Exit(1)
-		}
-		log.Info("EventHub initialized for multi-replica sync",
-			slog.String("gateway_id", cfg.Controller.Server.GatewayID))
-	} else {
-		log.Warn("EventHub storage returned nil DB, skipping EventHub initialization")
+
+	gatewayID := strings.TrimSpace(cfg.Controller.Server.GatewayID)
+	if eventHubDB == nil {
+		log.Error("EventHub storage returned nil database handle")
+		os.Exit(1)
 	}
+	if gatewayID == "" {
+		log.Error("EventHub requires non-empty gateway ID")
+		os.Exit(1)
+	}
+	eventHubInstance = eventhub.New(eventHubDB, log, eventhub.Config{
+		PollInterval:    cfg.Controller.EventHub.PollInterval,
+		CleanupInterval: cfg.Controller.EventHub.CleanupInterval,
+		RetentionPeriod: cfg.Controller.EventHub.RetentionPeriod,
+	})
+	if err := eventHubInstance.Initialize(); err != nil {
+		log.Error("Failed to initialize EventHub", slog.Any("error", err))
+		os.Exit(1)
+	}
+	if err := eventHubInstance.RegisterGateway(gatewayID); err != nil {
+		log.Error("Failed to register gateway with EventHub", slog.Any("error", err))
+		os.Exit(1)
+	}
+	log.Info("EventHub initialized for multi-replica sync",
+		slog.String("gateway_id", gatewayID))
 
 	// Initialize in-memory config store
 	configStore := storage.NewConfigStore()
@@ -168,6 +188,10 @@ func main() {
 	lazyResourceStore := storage.NewLazyResourceStore(log)
 	lazyResourceSnapshotManager := lazyresourcexds.NewLazyResourceSnapshotManager(lazyResourceStore, log)
 	lazyResourceXDSManager := lazyresourcexds.NewLazyResourceStateManager(lazyResourceStore, lazyResourceSnapshotManager, log)
+
+	// Initialize encryption providers for secret management
+	var encryptionProviderManager *encryption.ProviderManager
+	var secretsService *secrets.SecretService
 
 	// Load configurations from database on startup
 	log.Info("Loading configurations from database")
@@ -189,16 +213,87 @@ func main() {
 	}
 	log.Info("Loaded API keys", slog.Int("count", apiKeyXDSManager.GetAPIKeyCount()))
 
-	// MCP proxies are stored in their source form and need to be rehydrated into
-	// the derived RestAPI representation before startup snapshot and policy work.
-	for _, storedCfg := range configStore.GetAllByKind(string(api.Mcp)) {
-		if err := utils.HydrateStoredMCPConfig(storedCfg); err != nil {
-			log.Error("Failed to hydrate stored MCP proxy configuration",
-				slog.String("id", storedCfg.UUID),
-				slog.String("handle", storedCfg.Handle),
-				slog.Any("error", err))
+	log.Info("Loading encryption providers")
+	if len(cfg.Controller.Encryption.Providers) > 0 {
+		log.Info("Initializing encryption providers", slog.Int("provider_count", len(cfg.Controller.Encryption.Providers)))
+
+		// Initialize encryption providers
+		var providers []encryption.EncryptionProvider
+		for _, providerConfig := range cfg.Controller.Encryption.Providers {
+			switch providerConfig.Type {
+			case "aesgcm":
+				// Convert config keys to AES-GCM key configs
+				var keyConfigs []aesgcm.KeyConfig
+				for _, keyConf := range providerConfig.Keys {
+					keyConfigs = append(keyConfigs, aesgcm.KeyConfig{
+						Version:  keyConf.Version,
+						FilePath: keyConf.FilePath,
+					})
+				}
+
+				provider, err := aesgcm.NewAESGCMProvider(keyConfigs, log)
+				if err != nil {
+					log.Error("Failed to initialize AES-GCM provider", slog.Any("error", err))
+					os.Exit(1)
+				}
+				providers = append(providers, provider)
+
+			default:
+				log.Error("Unsupported encryption provider type", slog.String("type", providerConfig.Type))
+				os.Exit(1)
+			}
+		}
+
+		// Create provider manager
+		encryptionProviderManager, err = encryption.NewProviderManager(providers, log)
+		if err != nil {
+			log.Error("Failed to initialize provider manager", slog.Any("error", err))
 			os.Exit(1)
 		}
+		// Create secrets service
+		secretsService = secrets.NewSecretsService(db, encryptionProviderManager, log)
+	}
+	log.Info("Loaded encryption providers")
+
+	// Load policy definitions from files before any startup hydration or policy derivation.
+	policyLoader := utils.NewPolicyLoader(log)
+	policyDir := cfg.Controller.Policies.DefinitionsPath
+	log.Info("Loading policy definitions from directory", slog.String("directory", policyDir))
+	policyDefinitions, err := policyLoader.LoadPoliciesFromDirectory(policyDir)
+	if err != nil {
+		log.Error("Failed to load policy definitions", slog.Any("error", err))
+		os.Exit(1)
+	}
+	log.Info("Policy definitions loaded", slog.Int("count", len(policyDefinitions)))
+
+	// Detect custom policies from build-lock.yaml.
+	localPolicies, err := policyLoader.GetCustomPolicyNames(cfg.Controller.Policies.BuildLockPath)
+	if err != nil {
+		log.Warn("Could not read build-lock.yaml, Custom policies will not be marked in the gateway manifest",
+			slog.String("path", cfg.Controller.Policies.BuildLockPath),
+			slog.Any("error", err))
+	}
+	for key, def := range policyDefinitions {
+		def.ManagedBy = "wso2"
+		if localPolicies[def.Name+"|"+def.Version] {
+			def.ManagedBy = "customer"
+		}
+		policyDefinitions[key] = def
+	}
+
+	// MCP proxies and LLM artifacts are stored in source form and need to be
+	// rehydrated into their derived RestAPI representations before startup
+	// snapshot and policy work.
+	if err := hydrateStoredConfigsFromDatabaseOnStartup(
+		configStore,
+		db,
+		&cfg.Router,
+		policyDefinitions,
+		log,
+		cfg.Controller.Server.SkipInvalidDeploymentsOnStartup,
+	); err != nil {
+		log.Error("Failed to hydrate stored configurations required for startup", slog.Any("error", err))
+		os.Exit(1)
 	}
 
 	// Initialize xDS snapshot manager with router config
@@ -259,69 +354,51 @@ func main() {
 		cancel()
 	}
 
-	// Load policy definitions from files (must be before policy derivation and validator)
-	policyLoader := utils.NewPolicyLoader(log)
-	policyDir := cfg.Controller.Policies.DefinitionsPath
-	log.Info("Loading policy definitions from directory", slog.String("directory", policyDir))
-	policyDefinitions, err := policyLoader.LoadPoliciesFromDirectory(policyDir)
-	if err != nil {
-		log.Error("Failed to load policy definitions", slog.Any("error", err))
-		os.Exit(1)
-	}
-	log.Info("Policy definitions loaded", slog.Int("count", len(policyDefinitions)))
-
-	// detect custom policies from build-lock.yaml
-	localPolicies, err := policyLoader.GetCustomPolicyNames(cfg.Controller.Policies.BuildLockPath)
-	if err != nil {
-		log.Warn("Could not read build-lock.yaml, Custom policies will not be marked in the gateway manifest",
-			slog.String("path", cfg.Controller.Policies.BuildLockPath),
-			slog.Any("error", err))
-	}
-	for key, def := range policyDefinitions {
-		def.ManagedBy = "wso2"
-		if localPolicies[def.Name+"|"+def.Version] {
-			def.ManagedBy = "customer"
-		}
-		policyDefinitions[key] = def
-	}
-
-	// Initialize policy store and policy xDS server
+	// Initialize policy xDS server
 	log.Info("Initializing Policy xDS server", slog.Int("port", cfg.Controller.PolicyServer.Port))
 
-	// Initialize policy store
-	policyStore := storage.NewPolicyStore()
+	// Initialize policy resolver
+	policyResolver := resolver.NewPolicyResolver(policyDefinitions, secretsService)
 
-	// Initialize policy snapshot manager
-	policySnapshotManager := policyxds.NewSnapshotManager(policyStore, log)
+	// Initialize policy snapshot manager and runtime config store
+	policySnapshotManager := policyxds.NewSnapshotManager(log)
+	runtimeStore := storage.NewRuntimeConfigStore()
+	policySnapshotManager.SetRuntimeStore(runtimeStore)
 
 	// Initialize subscription snapshot manager (driven by DB storage)
 	subscriptionSnapshotManager := subscriptionxds.NewSnapshotManager(db, log)
-	// Initialize policy manager (used to derive policies from API configurations)
-	policyManager := policyxds.NewPolicyManager(policyStore, policySnapshotManager, log)
 
-	// Load policies from existing API configurations on startup
-	log.Info("Deriving policies from loaded API configurations")
+	// Initialize policy manager
+	policyManager := policyxds.NewPolicyManager(policySnapshotManager, log)
+	policyManager.SetRuntimeStore(runtimeStore)
+
+	// Build transformer registry for StoredConfig → RuntimeDeployConfig conversion
+	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
+	restTransformer := transform.NewRestAPITransformer(&cfg.Router, cfg, policyDefinitions)
+	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
+	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer)
+	policyManager.SetTransformers(transformerRegistry)
+
+	// Load runtime configs from existing API configurations on startup.
+	// We write directly to runtimeStore to avoid triggering N separate snapshot updates;
+	// the single UpdateSnapshot call below covers all of them.
+	log.Info("Loading runtime configs from existing API configurations")
 	loadedAPIs := configStore.GetAll()
-	derivedCount := 0
-	for _, apiConfig := range loadedAPIs {
-		// MCP proxies hydrate into RestAPI form, so they can participate in the
-		// same policy bootstrapping path as the other routed artifacts.
-		if apiConfig.Kind == "RestApi" || apiConfig.Kind == "WebSubApi" || apiConfig.Kind == "Mcp" {
-			storedPolicy := policybuilder.DerivePolicyFromAPIConfig(apiConfig, &cfg.Router, cfg, policyDefinitions)
-			if storedPolicy != nil {
-				if err := policyStore.Set(storedPolicy); err != nil {
-					log.Warn("Failed to load policy from API",
-						slog.String("api_id", apiConfig.UUID),
-						slog.Any("error", err))
-				} else {
-					derivedCount++
-				}
-			}
-		}
+	loadedCount, err := loadRuntimeConfigsFromExistingAPIConfigurations(
+		loadedAPIs,
+		runtimeStore,
+		policyResolver,
+		transformerRegistry,
+		log,
+		cfg.Controller.Server.SkipInvalidDeploymentsOnStartup,
+	)
+	if err != nil {
+		log.Error("Failed to load runtime configs from API configurations", slog.Any("error", err))
+		os.Exit(1)
 	}
-	log.Info("Loaded policies from API configurations",
+	log.Info("Loaded runtime configs from API configurations",
 		slog.Int("total_apis", len(loadedAPIs)),
-		slog.Int("policies_derived", derivedCount))
+		slog.Int("configs_loaded", loadedCount))
 
 	// Generate initial policy snapshot
 	log.Info("Generating initial policy xDS snapshot")
@@ -374,7 +451,22 @@ func main() {
 	validator.SetPolicyValidator(policyValidator)
 
 	// Initialize and start control plane client with dependencies for API creation and API key management
-	cpClient := controlplane.NewClient(cfg.Controller.ControlPlane, log, configStore, db, snapshotManager, validator, &cfg.Router, apiKeyXDSManager, &cfg.APIKey, policyManager, cfg, policyDefinitions, lazyResourceXDSManager, templateDefinitions, subscriptionSnapshotManager, eventHubInstance)
+	cpClient := controlplane.NewClient(
+		cfg.Controller.ControlPlane,
+		log, configStore,
+		db, snapshotManager,
+		validator,
+		&cfg.Router,
+		apiKeyXDSManager, apiKeyStore,
+		&cfg.APIKey,
+		policyManager,
+		cfg, policyDefinitions,
+		lazyResourceXDSManager,
+		templateDefinitions,
+		subscriptionSnapshotManager,
+		eventHubInstance,
+		policyResolver,
+	)
 	if err := cpClient.Start(); err != nil {
 		log.Error("Failed to start control plane client", slog.Any("error", err))
 		// Don't fail startup - gateway can run in degraded mode without control plane
@@ -408,31 +500,46 @@ func main() {
 
 	// Initialize EventListener for multi-replica sync (consumes EventHub events)
 	var evtListener *eventlistener.EventListener
-	if eventHubInstance != nil {
-		evtListener = eventlistener.NewEventListener(
-			eventHubInstance,
-			configStore,
-			db,
-			snapshotManager,
-			subscriptionSnapshotManager,
-			apiKeyXDSManager,
-			lazyResourceXDSManager,
-			policyManager,
-			&cfg.Router,
-			log,
-			cfg,
-			policyDefinitions,
-		)
-		if err := evtListener.Start(); err != nil {
-			log.Error("Failed to start event listener", slog.Any("error", err))
-			os.Exit(1)
-		}
-		log.Info("EventListener started for multi-replica sync")
+	evtListener = eventlistener.NewEventListener(
+		eventHubInstance,
+		configStore,
+		db,
+		snapshotManager,
+		subscriptionSnapshotManager,
+		apiKeyXDSManager,
+		lazyResourceXDSManager,
+		policyManager,
+		&cfg.Router,
+		log,
+		cfg,
+		policyDefinitions,
+		policyResolver,
+	)
+	if err := evtListener.Start(); err != nil {
+		log.Error("Failed to start event listener", slog.Any("error", err))
+		os.Exit(1)
 	}
+	log.Info("EventListener started for multi-replica sync")
 
 	// Initialize API server with the configured validator and API key manager
-	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, lazyResourceXDSManager, log, cpClient,
-		policyDefinitions, templateDefinitions, validator, apiKeyXDSManager, cfg, eventHubInstance, subscriptionSnapshotManager)
+	apiServer := handlers.NewAPIServer(
+		configStore,
+		db,
+		snapshotManager,
+		policyManager,
+		lazyResourceXDSManager,
+		log,
+		cpClient,
+		policyDefinitions,
+		templateDefinitions,
+		validator,
+		apiKeyXDSManager,
+		cfg,
+		eventHubInstance,
+		subscriptionSnapshotManager,
+		secretsService,
+		policyResolver,
+	)
 
 	// Ensure initial lazy resource snapshot includes default templates loaded from files.
 	// At this point, the API server initialization has already persisted/published OOB templates.
@@ -537,10 +644,8 @@ func main() {
 	if evtListener != nil {
 		evtListener.Stop()
 	}
-	if eventHubInstance != nil {
-		if err := eventHubInstance.Close(); err != nil {
-			log.Warn("Failed to close EventHub cleanly", slog.Any("error", err))
-		}
+	if err := eventHubInstance.Close(); err != nil {
+		log.Warn("Failed to close EventHub cleanly", slog.Any("error", err))
 	}
 	if eventHubStorage != nil {
 		if err := eventHubStorage.Close(); err != nil {
@@ -646,6 +751,12 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		"GET /subscription-plans/:planId":    {"admin", "developer"},
 		"PUT /subscription-plans/:planId":    {"admin", "developer"},
 		"DELETE /subscription-plans/:planId": {"admin", "developer"},
+
+		"POST /secrets":       {"admin"},
+		"GET /secrets":        {"admin"},
+		"GET /secrets/:id":    {"admin"},
+		"PUT /secrets/:id":    {"admin"},
+		"DELETE /secrets/:id": {"admin"},
 	}
 	basicAuth := commonmodels.BasicAuth{Enabled: false}
 	idpAuth := commonmodels.IDPConfig{Enabled: false}

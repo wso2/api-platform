@@ -22,6 +22,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
@@ -54,6 +55,7 @@ func NewSubscriptionHandler(subscriptionService *service.SubscriptionService, su
 // CreateSubscriptionRequest is the body for POST /api/v1/subscriptions
 type CreateSubscriptionRequest struct {
 	APIID              string  `json:"apiId" binding:"required"`
+	SubscriberID       string  `json:"subscriberId" binding:"required"`
 	ApplicationID      *string `json:"applicationId,omitempty"`
 	SubscriptionPlanID *string `json:"subscriptionPlanId,omitempty"`
 	Status             string  `json:"status,omitempty"`
@@ -83,13 +85,17 @@ func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API ID is required"))
 		return
 	}
+	if req.SubscriberID == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "subscriberId is required"))
+		return
+	}
 	switch req.Status {
 	case "", "ACTIVE", "INACTIVE", "REVOKED":
 	default:
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid status value"))
 		return
 	}
-	sub, err := h.subscriptionService.CreateSubscription(req.APIID, orgId, req.ApplicationID, req.SubscriptionPlanID, req.Status)
+	sub, err := h.subscriptionService.CreateSubscription(req.APIID, orgId, req.SubscriberID, req.ApplicationID, req.SubscriptionPlanID, req.Status)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "API not found"))
@@ -109,6 +115,7 @@ func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
 // ListSubscriptions handles GET /api/v1/subscriptions
 func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 	apiId := c.Query("apiId")
+	subscriberID := c.Query("subscriberId")
 	applicationID := c.Query("applicationId")
 	status := c.Query("status")
 
@@ -119,9 +126,12 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 		return
 	}
 
-	var apiIDPtr, appIDPtr, statusPtr *string
+	var apiIDPtr, subscriberIDPtr, appIDPtr, statusPtr *string
 	if apiId != "" {
 		apiIDPtr = &apiId
+	}
+	if subscriberID != "" {
+		subscriberIDPtr = &subscriberID
 	}
 	if applicationID != "" {
 		appIDPtr = &applicationID
@@ -148,7 +158,7 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 	if err != nil || offset < 0 {
 		offset = 0
 	}
-	list, total, err := h.subscriptionService.ListSubscriptionsByFilters(orgId, apiIDPtr, appIDPtr, statusPtr, limit, offset)
+	list, total, err := h.subscriptionService.ListSubscriptionsByFilters(orgId, apiIDPtr, subscriberIDPtr, appIDPtr, statusPtr, limit, offset)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "API not found"))
@@ -195,7 +205,7 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"subscriptions": items,
-		"count":          len(items),
+		"count":         len(items),
 		"pagination": gin.H{
 			"total":  total,
 			"offset": offset,
@@ -254,10 +264,18 @@ func (h *SubscriptionHandler) UpdateSubscription(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid subscription status"))
 		return
 	}
-	sub, err := h.subscriptionService.UpdateSubscription(subscriptionId, orgId, req.Status)
+	subscriberID, ok := requireSubscriptionSubscriberQuery(c)
+	if !ok {
+		return
+	}
+	sub, err := h.subscriptionService.UpdateSubscription(subscriptionId, orgId, subscriberID, req.Status)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription not found"))
+			return
+		}
+		if errors.Is(err, constants.ErrSubscriptionSubscriberMismatch) {
+			c.JSON(http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", "subscriberId does not match this subscription"))
 			return
 		}
 		h.slogger.Error("Failed to update subscription", "subscriptionId", subscriptionId, "organizationId", orgId, "error", err)
@@ -280,10 +298,18 @@ func (h *SubscriptionHandler) DeleteSubscription(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Subscription ID is required"))
 		return
 	}
-	err := h.subscriptionService.DeleteSubscription(subscriptionId, orgId)
+	subscriberID, ok := requireSubscriptionSubscriberQuery(c)
+	if !ok {
+		return
+	}
+	err := h.subscriptionService.DeleteSubscription(subscriptionId, orgId, subscriberID)
 	if err != nil {
 		if errors.Is(err, constants.ErrSubscriptionNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Subscription not found"))
+			return
+		}
+		if errors.Is(err, constants.ErrSubscriptionSubscriberMismatch) {
+			c.JSON(http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", "subscriberId does not match this subscription"))
 			return
 		}
 		h.slogger.Error("Failed to delete subscription", "subscriptionId", subscriptionId, "organizationId", orgId, "error", err)
@@ -294,6 +320,15 @@ func (h *SubscriptionHandler) DeleteSubscription(c *gin.Context) {
 }
 
 // RegisterRoutes registers subscription routes under the given router
+func requireSubscriptionSubscriberQuery(c *gin.Context) (string, bool) {
+	q := strings.TrimSpace(c.Query("subscriberId"))
+	if q == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "subscriberId query parameter is required"))
+		return "", false
+	}
+	return q, true
+}
+
 func (h *SubscriptionHandler) RegisterRoutes(r *gin.Engine) {
 	subGroup := r.Group("/api/v1/subscriptions")
 	{
@@ -314,6 +349,7 @@ func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, or
 	resp := gin.H{
 		"id":             sub.UUID,
 		"apiId":          apiIdForResponse,
+		"subscriberId":   sub.SubscriberID,
 		"organizationId": sub.OrganizationUUID,
 		"status":         string(sub.Status),
 		"createdAt":      sub.CreatedAt,
@@ -349,6 +385,7 @@ func (h *SubscriptionHandler) toSubscriptionResponseWithMaps(sub *model.Subscrip
 	resp := gin.H{
 		"id":             sub.UUID,
 		"apiId":          apiIdForResponse,
+		"subscriberId":   sub.SubscriberID,
 		"organizationId": sub.OrganizationUUID,
 		"status":         string(sub.Status),
 		"createdAt":      sub.CreatedAt,

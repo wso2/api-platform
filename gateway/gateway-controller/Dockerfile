@@ -1,6 +1,6 @@
 # Stage 1: Build the Go application
 # Using Debian-based image for better cross-compilation support
-FROM --platform=$BUILDPLATFORM golang:1.25.7-bookworm AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.1-bookworm AS builder
 ARG TARGETARCH
 ARG VERSION=0.0.1-SNAPSHOT
 ARG GIT_COMMIT=unknown
@@ -29,7 +29,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # Copy go mod files for dependencies (needed for go.mod replace directive)
 # Copying only the mod files first ensures that the go mod download cache 
 # is only invalidated when dependencies change, not when source code changes.
-COPY --from=sdk go.mod go.sum /sdk/
 COPY --from=sdk-core go.mod /sdk/core/
 COPY --from=common go.mod go.sum /common/
 
@@ -37,7 +36,6 @@ COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
 
-COPY --from=sdk . /sdk
 COPY --from=sdk-core . /sdk/core
 COPY --from=common . /common
 COPY . ./
@@ -65,17 +63,17 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         go build $COVER_FLAG \
         -gcflags "all=-N -l" \
         -ldflags "-X main.Version=${VERSION} -X main.GitCommit=${GIT_COMMIT} -X main.BuildDate=${BUILD_DATE}" \
-        -o controller cmd/controller/main.go; \
+        -o controller ./cmd/controller; \
     else \
         go build $COVER_FLAG \
         -ldflags "-X main.Version=${VERSION} -X main.GitCommit=${GIT_COMMIT} -X main.BuildDate=${BUILD_DATE}" \
-        -o controller cmd/controller/main.go; \
+        -o controller ./cmd/controller; \
     fi
 
 # Stage: debug (select with --target debug; NOT part of the default build)
 # Full Go image needed to install dlv via go install; acceptable for dev-only use.
 # Runs as root — dlv requires ptrace; container security settings handle isolation.
-FROM golang:1.25.7-bookworm AS debug
+FROM golang:1.26.1-bookworm AS debug
 WORKDIR /app
 
 # Install dlv (Delve debugger)
@@ -88,6 +86,7 @@ COPY --from=builder /build/controller .
 COPY default-policies /app/default-policies
 COPY lua /app/lua
 COPY default-llm-provider-templates /app/default-llm-provider-templates
+
 RUN mkdir -p /app/data
 
 EXPOSE 2345 9090 18000
@@ -97,8 +96,8 @@ ENTRYPOINT ["/go/bin/dlv", "exec", "/app/controller", \
             "--listen=:2345", "--headless=true", \
             "--api-version=2", "--accept-multiclient", "--"]
 
-# Stage 2: Runtime image (Debian slim for glibc compatibility)
-FROM debian:bookworm-slim AS production
+# Stage 2: Runtime image (Ubuntu LTS for glibc compatibility and newer runtime packages)
+FROM ubuntu:24.04 AS production
 
 # Re-declare ARGs after FROM to use them in this stage
 ARG VERSION=0.0.1-SNAPSHOT
@@ -106,9 +105,12 @@ ARG ENABLE_COVERAGE=false
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends \
+    apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
     ca-certificates \
-    wget
+    wget && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -121,7 +123,7 @@ RUN mkdir -p /app/data && \
     if [ "$ENABLE_COVERAGE" = "true" ]; then mkdir -p /coverage; fi
 
 RUN groupadd -r -g 10001 wso2 && \
-    useradd -r -u 10001 -g wso2 -s /sbin/nologin -c "WSO2 Application User" wso2 && \
+    useradd -r -u 10001 -g wso2 -s /usr/sbin/nologin -c "WSO2 Application User" wso2 && \
     chown -R wso2:wso2 /app/data && \
     chmod -R 755 /app/data && \
     if [ "$ENABLE_COVERAGE" = "true" ]; then \

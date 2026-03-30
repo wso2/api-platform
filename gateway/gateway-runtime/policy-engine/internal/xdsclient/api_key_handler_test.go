@@ -50,16 +50,18 @@ func createValidAPIKeyStateResource(t *testing.T) *anypb.Any {
 		Timestamp: time.Now().Unix(),
 		APIKeys: []APIKeyData{
 			{
-				ID:         "key-1",
-				Name:       "test-key",
-				APIKey:     apikey.ComputeAPIKeyHash("test-api-key-value"),
-				APIId:      "api-1",
-				Operations: `["*"]`,
-				Status:     "active",
-				CreatedAt:  time.Now(),
-				CreatedBy:  "admin",
-				UpdatedAt:  time.Now(),
-				Source:     "external",
+				ID:              "key-1",
+				Name:            "test-key",
+				APIKey:          apikey.ComputeAPIKeyHash("test-api-key-value"),
+				APIId:           "api-1",
+				ApplicationID:   "app-123",
+				ApplicationName: "App 123",
+				Operations:      `["*"]`,
+				Status:          "active",
+				CreatedAt:       time.Now(),
+				CreatedBy:       "admin",
+				UpdatedAt:       time.Now(),
+				Source:          "external",
 			},
 		},
 	}
@@ -195,9 +197,15 @@ func TestHandleAPIKeyOperation_ValidResource(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Verify the API key was stored
-	valid, err := store.ValidateAPIKey("api-1", "*", "GET", "test-api-key-value", "")
+	validatedKey, err := store.ResolveValidatedAPIKey("api-1", "*", "GET", "test-api-key-value", "")
 	assert.NoError(t, err)
-	assert.True(t, valid)
+	assert.NotNil(t, validatedKey)
+
+	resolvedKey, err := store.GetAPIKeyByID("api-1", "key-1")
+	assert.NoError(t, err)
+	assert.NotNil(t, resolvedKey)
+	assert.Equal(t, "app-123", resolvedKey.ApplicationID)
+	assert.Equal(t, "App 123", resolvedKey.ApplicationName)
 }
 
 // TestReplaceAllAPIKeys_ClearsExistingKeys tests that replaceAllAPIKeys clears existing keys first
@@ -242,13 +250,13 @@ func TestReplaceAllAPIKeys_ClearsExistingKeys(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Old key should no longer be valid
-	valid, _ := store.ValidateAPIKey("api-1", "*", "GET", "old-api-key-value", "")
-	assert.False(t, valid)
+	resolvedKey, _ := store.ResolveValidatedAPIKey("api-1", "*", "GET", "old-api-key-value", "")
+	assert.Nil(t, resolvedKey)
 
 	// New key should be valid
-	valid, err = store.ValidateAPIKey("api-1", "*", "GET", "new-api-key-value", "")
+	resolvedKey, err = store.ResolveValidatedAPIKey("api-1", "*", "GET", "new-api-key-value", "")
 	assert.NoError(t, err)
-	assert.True(t, valid)
+	assert.NotNil(t, resolvedKey)
 }
 
 // TestReplaceAllAPIKeys_EmptyList tests replacing with an empty list clears all keys
@@ -278,6 +286,6 @@ func TestReplaceAllAPIKeys_EmptyList(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Key should no longer be valid
-	valid, _ := store.ValidateAPIKey("api-1", "*", "GET", "api-key-value", "")
-	assert.False(t, valid)
+	resolvedKey, _ := store.ResolveValidatedAPIKey("api-1", "*", "GET", "api-key-value", "")
+	assert.Nil(t, resolvedKey)
 }

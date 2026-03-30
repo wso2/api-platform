@@ -1815,16 +1815,39 @@ func (s *APIService) refreshCustomPolicyUsages(apiUUID, orgUUID string, apiModel
 		}
 	}
 
-	// Step 2: resolve which refs are synced custom policies for this org
+	// Step 2: resolve which refs are synced custom policies for this org.
+	// Policies are stored with a full semver (e.g. "v1.1.0") but APIs store
+	// only the major version (e.g. "v1"). Match by major version, similar to the
+	// same logic used in SyncCustomPolicy.
 	newSet := make(map[string]bool)
 	for _, ref := range refs {
-		cp, err := s.customPolicyRepo.GetCustomPolicyByNameAndVersion(orgUUID, ref.name, ref.version)
+		identifiedSyncedPolicies, err := s.customPolicyRepo.GetCustomPoliciesByName(orgUUID, strings.ToLower(ref.name))
 		if err != nil {
 			s.slogger.Warn("Failed to lookup custom policy during usage refresh", "name", ref.name, "version", ref.version, "orgUUID", orgUUID, "error", err)
 			continue
 		}
-		if cp != nil {
-			newSet[cp.UUID] = true
+		parsedPolicyVersion, err := parseVersion(ref.version)
+		if err != nil {
+			// if version parse error happens, exact version will be evaluated
+			for _, cp := range identifiedSyncedPolicies {
+				if cp.Version == ref.version {
+					newSet[cp.UUID] = true
+					break
+				}
+			}
+			continue
+		}
+		// evaluates parsed policy version
+		for _, syncedPolicy := range identifiedSyncedPolicies {
+			cpVer, err := parseVersion(syncedPolicy.Version)
+			if err != nil {
+				s.slogger.Warn("Failed to parse stored custom policy version during usage refresh", "name", syncedPolicy.Name, "version", syncedPolicy.Version, "error", err)
+				continue
+			}
+			if cpVer.Major == parsedPolicyVersion.Major {
+				newSet[syncedPolicy.UUID] = true
+				break
+			}
 		}
 	}
 

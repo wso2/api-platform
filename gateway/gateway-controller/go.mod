@@ -1,9 +1,9 @@
 module github.com/wso2/api-platform/gateway/gateway-controller
 
-go 1.25.7
+go 1.26.1
 
 require (
-	github.com/envoyproxy/go-control-plane v0.13.5-0.20251024222203-75eaa193e329
+	github.com/envoyproxy/go-control-plane v0.14.0
 	github.com/envoyproxy/go-control-plane/envoy v1.36.0
 	github.com/getkin/kin-openapi v0.133.0
 	github.com/gin-gonic/gin v1.11.0
@@ -22,9 +22,9 @@ require (
 	github.com/prometheus/client_model v0.6.2
 	github.com/stretchr/testify v1.11.1
 	github.com/wso2/api-platform/common v0.0.0
-	github.com/wso2/api-platform/sdk v0.4.1
+	github.com/wso2/api-platform/sdk/core v0.2.1
 	github.com/xeipuuv/gojsonschema v1.2.0
-	google.golang.org/grpc v1.78.0
+	google.golang.org/grpc v1.79.3
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 	gotest.tools/v3 v3.5.2
@@ -41,10 +41,10 @@ require (
 	github.com/bytedance/sonic/loader v0.4.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
-	github.com/cncf/xds/go v0.0.0-20251022180443-0feb69152e9f // indirect
+	github.com/cncf/xds/go v0.0.0-20251210132809-ee656c7534f5 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/envoyproxy/go-control-plane/ratelimit v0.1.0 // indirect
-	github.com/envoyproxy/protoc-gen-validate v1.2.1 // indirect
+	github.com/envoyproxy/protoc-gen-validate v1.3.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.12 // indirect
 	github.com/gin-contrib/sse v1.1.0 // indirect
@@ -86,14 +86,12 @@ require (
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	github.com/woodsbury/decimal128 v1.3.0 // indirect
-	github.com/wso2/api-platform/sdk/core v0.0.0 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20180127040702-4e3ac2762d5f // indirect
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
-	go.opentelemetry.io/otel/sdk/metric v1.39.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	golang.org/x/arch v0.23.0 // indirect
 	golang.org/x/crypto v0.48.0 // indirect
-	golang.org/x/net v0.50.0 // indirect
+	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
@@ -102,11 +100,4 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260128011058-8636f8732409 // indirect
 )
 
-// combinedWatcher is using "github.com/envoyproxy/go-control-plane/pkg/server/stream/v3" StreamState which is not available in v0.14.0
-replace github.com/envoyproxy/go-control-plane v0.13.5-0.20251024222203-75eaa193e329 => github.com/envoyproxy/go-control-plane v0.13.4
-
 replace github.com/wso2/api-platform/common => ../../common
-
-replace github.com/wso2/api-platform/sdk => ../../sdk
-
-replace github.com/wso2/api-platform/sdk/core => ../../sdk/core

@@ -21,8 +21,8 @@ package controlplane
 import (
 	"encoding/json"
 	"log/slog"
+	"net"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -57,10 +57,15 @@ func (m *integrationTestEventHub) CleanUpEvents() error { return nil }
 
 func (m *integrationTestEventHub) Close() error { return nil }
 
-// mockWebSocketServer creates a mock WebSocket server for testing
-func mockWebSocketServer(t *testing.T, handler func(*websocket.Conn)) *httptest.Server {
+type mockHTTPServer struct {
+	URL   string
+	Close func()
+}
+
+// mockWebSocketServer creates a mock WebSocket server for testing.
+func mockWebSocketServer(t *testing.T, handler func(*websocket.Conn)) *mockHTTPServer {
 	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	httpHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			t.Logf("Failed to upgrade connection: %v", err)
@@ -68,7 +73,23 @@ func mockWebSocketServer(t *testing.T, handler func(*websocket.Conn)) *httptest.
 		}
 		defer conn.Close()
 		handler(conn)
-	}))
+	})
+
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	server := &http.Server{Handler: httpHandler}
+	go func() {
+		_ = server.Serve(listener)
+	}()
+
+	return &mockHTTPServer{
+		URL: "http://" + listener.Addr().String(),
+		Close: func() {
+			_ = server.Close()
+			_ = listener.Close()
+		},
+	}
 }
 
 func createIntegrationTestClient(t *testing.T) *Client {
@@ -97,6 +118,7 @@ func createIntegrationTestClientWithConfig(t *testing.T, cfg config.ControlPlane
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	store := storage.NewConfigStore()
+	db := newMockStorageForDeletion()
 	mockHub := &integrationTestEventHub{}
 
 	routerConfig := &config.RouterConfig{
@@ -122,7 +144,7 @@ func createIntegrationTestClientWithConfig(t *testing.T, cfg config.ControlPlane
 		APIKey: *apiKeyConfig,
 	}
 
-	client := NewClient(cfg, logger, store, newMockStorageForDeletion(), nil, nil, routerConfig, nil, apiKeyConfig, nil, systemConfig, nil, nil, nil, nil, mockHub)
+	client := NewClient(cfg, logger, store, db, nil, nil, routerConfig, nil, nil, apiKeyConfig, nil, systemConfig, nil, nil, nil, nil, mockHub, nil)
 	require.NotNil(t, client.eventHub)
 	require.Equal(t, "test-gateway", client.gatewayID)
 	return client

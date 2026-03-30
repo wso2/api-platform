@@ -81,7 +81,7 @@ Feature: Policy Engine Admin API
             path: /info
             policies:
               - name: set-headers
-                version: v0
+                version: v1
                 params:
                   request:
                     headers:
@@ -145,7 +145,7 @@ Feature: Policy Engine Admin API
             path: /test
             policies:
               - name: set-headers
-                version: v0
+                version: v1
                 params:
                   request:
                     headers:

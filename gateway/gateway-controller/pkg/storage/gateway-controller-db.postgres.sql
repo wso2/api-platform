@@ -3,7 +3,7 @@
 
 -- Base table for all artifact types
 CREATE TABLE IF NOT EXISTS artifacts (
-    uuid TEXT PRIMARY KEY,
+    uuid TEXT NOT NULL,
     gateway_id TEXT NOT NULL,
     display_name TEXT NOT NULL,
     version TEXT NOT NULL,
@@ -15,52 +15,58 @@ CREATE TABLE IF NOT EXISTS artifacts (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deployed_at TIMESTAMPTZ,
+    PRIMARY KEY (gateway_id, uuid),
     UNIQUE(gateway_id, kind, display_name, version),
     UNIQUE(gateway_id, kind, handle)
 );
 
-CREATE INDEX IF NOT EXISTS idx_artifacts_desired_state ON artifacts(desired_state);
-CREATE INDEX IF NOT EXISTS idx_artifacts_deployment_id ON artifacts(deployment_id);
-CREATE INDEX IF NOT EXISTS idx_artifacts_kind ON artifacts(kind);
-CREATE INDEX IF NOT EXISTS idx_artifacts_gateway_id ON artifacts(gateway_id);
-
 -- Per-resource-type tables
 
 CREATE TABLE IF NOT EXISTS rest_apis (
-    uuid TEXT PRIMARY KEY,
+    uuid TEXT NOT NULL,
+    gateway_id TEXT NOT NULL,
     configuration TEXT NOT NULL,
-    FOREIGN KEY(uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS websub_apis (
-    uuid TEXT PRIMARY KEY,
+    uuid TEXT NOT NULL,
+    gateway_id TEXT NOT NULL,
     configuration TEXT NOT NULL,
-    FOREIGN KEY(uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS llm_providers (
-    uuid TEXT PRIMARY KEY,
+    uuid TEXT NOT NULL,
+    gateway_id TEXT NOT NULL,
     configuration TEXT NOT NULL,
-    FOREIGN KEY(uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS llm_proxies (
-    uuid TEXT PRIMARY KEY,
+    uuid TEXT NOT NULL,
+    gateway_id TEXT NOT NULL,
     configuration TEXT NOT NULL,
     provider_uuid TEXT NOT NULL,
-    FOREIGN KEY(uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    FOREIGN KEY(provider_uuid) REFERENCES llm_providers(uuid) ON DELETE RESTRICT
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE,
+    FOREIGN KEY(gateway_id, provider_uuid) REFERENCES llm_providers(gateway_id, uuid) ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS mcp_proxies (
-    uuid TEXT PRIMARY KEY,
+    uuid TEXT NOT NULL,
+    gateway_id TEXT NOT NULL,
     configuration TEXT NOT NULL,
-    FOREIGN KEY(uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
 );
 
 -- Table for custom TLS certificates
 CREATE TABLE IF NOT EXISTS certificates (
-    uuid TEXT PRIMARY KEY,
+    uuid TEXT NOT NULL,
     gateway_id TEXT NOT NULL,
     name TEXT NOT NULL,
     certificate BYTEA NOT NULL,
@@ -71,26 +77,21 @@ CREATE TABLE IF NOT EXISTS certificates (
     cert_count INTEGER NOT NULL DEFAULT 1,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(name, gateway_id)
+    PRIMARY KEY (gateway_id, uuid),
+    UNIQUE(gateway_id, name)
 );
-
-CREATE INDEX IF NOT EXISTS idx_cert_name ON certificates(name);
-CREATE INDEX IF NOT EXISTS idx_cert_expiry ON certificates(not_after);
-CREATE INDEX IF NOT EXISTS idx_certificates_gateway_id ON certificates(gateway_id);
 
 -- LLM Provider Templates table
 CREATE TABLE IF NOT EXISTS llm_provider_templates (
-    uuid TEXT PRIMARY KEY,
+    uuid TEXT NOT NULL,
     gateway_id TEXT NOT NULL,
     handle TEXT NOT NULL,
     configuration TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(handle, gateway_id)
+    PRIMARY KEY (gateway_id, uuid),
+    UNIQUE(gateway_id, handle)
 );
-
-CREATE INDEX IF NOT EXISTS idx_template_handle ON llm_provider_templates(handle);
-CREATE INDEX IF NOT EXISTS idx_llm_provider_templates_gateway_id ON llm_provider_templates(gateway_id);
 
 -- Table for API keys
 CREATE TABLE IF NOT EXISTS api_keys (
@@ -108,24 +109,17 @@ CREATE TABLE IF NOT EXISTS api_keys (
     source TEXT NOT NULL DEFAULT 'local',
     external_ref_id TEXT NULL,
     issuer TEXT NULL DEFAULT NULL,
-    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
-    UNIQUE (artifact_uuid, name, gateway_id),
-    UNIQUE (uuid, gateway_id),
-    PRIMARY KEY (api_key, gateway_id)
+    UNIQUE (gateway_id, artifact_uuid, name),
+    UNIQUE (gateway_id, uuid),
+    PRIMARY KEY (gateway_id, api_key)
 );
 
-CREATE INDEX IF NOT EXISTS idx_api_key ON api_keys(api_key);
-CREATE INDEX IF NOT EXISTS idx_api_key_api ON api_keys(artifact_uuid);
 CREATE INDEX IF NOT EXISTS idx_api_key_status ON api_keys(status);
-CREATE INDEX IF NOT EXISTS idx_api_key_expiry ON api_keys(expires_at);
 CREATE INDEX IF NOT EXISTS idx_created_by ON api_keys(created_by);
-CREATE INDEX IF NOT EXISTS idx_api_key_source ON api_keys(source);
-CREATE INDEX IF NOT EXISTS idx_api_key_external_ref ON api_keys(external_ref_id);
-CREATE INDEX IF NOT EXISTS idx_api_keys_gateway_id ON api_keys(gateway_id);
 
 -- Subscription plans table (organization-scoped rate/billing plans)
 CREATE TABLE IF NOT EXISTS subscription_plans (
-    uuid TEXT PRIMARY KEY,
+    uuid TEXT NOT NULL,
     gateway_id TEXT NOT NULL,
     plan_name TEXT NOT NULL,
     billing_plan TEXT,
@@ -136,13 +130,14 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
     status TEXT NOT NULL CHECK(status IN ('ACTIVE', 'INACTIVE')) DEFAULT 'ACTIVE',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (gateway_id, uuid),
     UNIQUE(gateway_id, plan_name)
 );
 
--- Subscriptions table (application-level subscriptions for REST APIs)
+-- Subscriptions table (application-level subscriptions for REST APIs, even before deployment)
 -- subscription_token_hash: for xDS validation and request validation (Platform-API stores original token)
 CREATE TABLE IF NOT EXISTS subscriptions (
-    uuid TEXT PRIMARY KEY,
+    uuid TEXT NOT NULL,
     gateway_id TEXT NOT NULL,
     api_id TEXT NOT NULL,
     application_id TEXT,
@@ -151,14 +146,11 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     status TEXT NOT NULL CHECK(status IN ('ACTIVE', 'INACTIVE', 'REVOKED')) DEFAULT 'ACTIVE',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (api_id) REFERENCES rest_apis(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (subscription_plan_id) REFERENCES subscription_plans(uuid) ON DELETE SET NULL,
-    UNIQUE(api_id, subscription_token_hash, gateway_id)
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY (gateway_id, subscription_plan_id) REFERENCES subscription_plans(gateway_id, uuid),
+    UNIQUE(gateway_id, api_id, subscription_token_hash)
 );
-CREATE INDEX IF NOT EXISTS idx_subscriptions_api_id ON subscriptions(api_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_application_id ON subscriptions(application_id);
-CREATE INDEX IF NOT EXISTS idx_subscriptions_gateway_id ON subscriptions(gateway_id);
-CREATE INDEX IF NOT EXISTS idx_subscriptions_token ON subscriptions(subscription_token_hash);
 
 -- Table for gateway states (used by eventhub for multi-replica sync)
 CREATE TABLE IF NOT EXISTS gateway_states (
@@ -177,22 +169,22 @@ CREATE TABLE IF NOT EXISTS events (
     entity_id TEXT NOT NULL,
     event_id TEXT NOT NULL,
     event_data TEXT NOT NULL,
-    PRIMARY KEY (event_id),
+    PRIMARY KEY (gateway_id, event_id),
     FOREIGN KEY (gateway_id) REFERENCES gateway_states(gateway_id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_gateway_id_processed_timestamp ON events(gateway_id, processed_timestamp);
 -- Applications
 CREATE TABLE IF NOT EXISTS applications (
-    application_uuid TEXT PRIMARY KEY,
+    application_uuid TEXT NOT NULL,
+    gateway_id TEXT NOT NULL,
     application_id TEXT NOT NULL,
     application_name TEXT NOT NULL,
     application_type TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (gateway_id, application_uuid)
 );
-CREATE INDEX IF NOT EXISTS idx_applications_application_id ON applications(application_id);
-
 -- Application to API key mappings
 CREATE TABLE IF NOT EXISTS application_api_keys (
     application_uuid TEXT NOT NULL,
@@ -200,10 +192,22 @@ CREATE TABLE IF NOT EXISTS application_api_keys (
     gateway_id TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (application_uuid, api_key_id, gateway_id),
-    FOREIGN KEY (application_uuid) REFERENCES applications(application_uuid) ON DELETE CASCADE,
-    FOREIGN KEY (api_key_id, gateway_id) REFERENCES api_keys(uuid, gateway_id) ON DELETE CASCADE
+    PRIMARY KEY (gateway_id, application_uuid, api_key_id),
+    FOREIGN KEY (gateway_id, application_uuid) REFERENCES applications(gateway_id, application_uuid) ON DELETE CASCADE,
+    FOREIGN KEY (gateway_id, api_key_id) REFERENCES api_keys(gateway_id, uuid) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_app_api_keys_application_uuid ON application_api_keys(application_uuid, gateway_id);
-CREATE INDEX IF NOT EXISTS idx_app_api_keys_apikey ON application_api_keys(api_key_id, gateway_id);
+CREATE INDEX IF NOT EXISTS idx_app_api_keys_apikey ON application_api_keys(gateway_id, api_key_id);
+
+-- Table for encrypted secrets (gateway_id + handle form the composite PK)
+-- provider and key_version are self-describing inside the ciphertext envelope
+CREATE TABLE IF NOT EXISTS secrets (
+    gateway_id TEXT NOT NULL,
+    handle TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    description TEXT,
+    ciphertext BYTEA NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (gateway_id, handle)
+);

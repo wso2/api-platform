@@ -101,7 +101,7 @@ spec:
         methods: [GET]
   policies:
     - name: url-guardrail
-      version: v0.1.0
+      version: v1
       paths:
         - path: /chat/completions
           methods: [POST]

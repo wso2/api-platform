@@ -26,6 +26,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/common/eventhub"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
@@ -34,6 +35,17 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
+
+type integrationTestEventHub struct{}
+
+func (integrationTestEventHub) Initialize() error                               { return nil }
+func (integrationTestEventHub) RegisterGateway(string) error                    { return nil }
+func (integrationTestEventHub) PublishEvent(string, eventhub.Event) error       { return nil }
+func (integrationTestEventHub) Subscribe(string) (<-chan eventhub.Event, error) { return nil, nil }
+func (integrationTestEventHub) Unsubscribe(string, <-chan eventhub.Event) error { return nil }
+func (integrationTestEventHub) UnsubscribeAll(string) error                     { return nil }
+func (integrationTestEventHub) CleanUpEvents() error                            { return nil }
+func (integrationTestEventHub) Close() error                                    { return nil }
 
 func TestVhostMaterializationOnDeploy(t *testing.T) {
 	const mainDefault = "*.gw.example.com"
@@ -71,7 +83,7 @@ spec:
 		validator := config.NewAPIValidator()
 		fullCfg := &config.Config{Router: *routerCfg}
 		snapshotManager := xds.NewSnapshotManager(store, logger, routerCfg, db, fullCfg)
-		svc := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerCfg)
+		svc := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerCfg, nil, integrationTestEventHub{}, "test-gateway")
 		return svc, db
 	}
 

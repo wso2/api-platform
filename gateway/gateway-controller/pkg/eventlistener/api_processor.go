@@ -20,13 +20,13 @@ package eventlistener
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
-	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
 
@@ -70,17 +70,20 @@ func (l *EventListener) handleAPICreateOrUpdate(event eventhub.Event) {
 		slog.String("action", event.Action),
 		slog.String("event_id", event.EventID))
 
-	// Fetch the latest config from the database (it was already persisted by the publishing replica)
-	if l.db == nil {
-		l.logger.Warn("Database not available, cannot process API event",
-			slog.String("api_id", entityID))
-		return
-	}
-
 	storedConfig, err := l.db.GetConfig(entityID)
 	if err != nil {
 		l.logger.Error("Failed to fetch API configuration from database",
 			slog.String("api_id", entityID),
+			slog.Any("error", err))
+		return
+	}
+
+	// Resolve policy configuration (handles secret resolution)
+	resolvedCfg, err := l.resolvePolicyConfiguration(storedConfig)
+	if err != nil {
+		l.logger.Error("Failed to resolve policy configuration for API",
+			slog.String("api_id", entityID),
+			slog.String("event_id", event.EventID),
 			slog.Any("error", err))
 		return
 	}
@@ -109,7 +112,7 @@ func (l *EventListener) handleAPICreateOrUpdate(event eventhub.Event) {
 	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after replica sync")
 
 	// Update policies
-	l.updatePoliciesForAPI(storedConfig, event.EventID)
+	l.updatePoliciesForAPI(resolvedCfg, event.EventID)
 
 	l.logger.Info("Successfully processed API create/update event",
 		slog.String("api_id", entityID),
@@ -164,15 +167,12 @@ func (l *EventListener) handleAPIDelete(event eventhub.Event) {
 	// Update xDS snapshot
 	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after API deletion")
 
-	// Remove policies
-	if l.policyManager != nil {
-		policyID := entityID + "-policies"
-		if err := l.policyManager.RemovePolicy(policyID); err != nil {
-			if !storage.IsPolicyNotFoundError(err) {
-				l.logger.Warn("Failed to remove policy after API deletion",
-					slog.String("api_id", entityID),
-					slog.Any("error", err))
-			}
+	// Remove runtime config for the deleted API
+	if l.policyManager != nil && existingConfig != nil {
+		if err := l.policyManager.DeleteAPIConfig(existingConfig.Kind, existingConfig.Handle); err != nil {
+			l.logger.Warn("Failed to remove runtime config after API deletion",
+				slog.String("api_id", entityID),
+				slog.Any("error", err))
 		}
 	}
 
@@ -181,38 +181,39 @@ func (l *EventListener) handleAPIDelete(event eventhub.Event) {
 		slog.String("event_id", event.EventID))
 }
 
-// updatePoliciesForAPI derives and updates policy configuration for an API
+// updatePoliciesForAPI upserts the RuntimeDeployConfig for an API into the policy xDS store.
 func (l *EventListener) updatePoliciesForAPI(cfg *models.StoredConfig, correlationID string) {
-	if l.policyManager == nil || l.systemConfig == nil {
+	if l.policyManager == nil {
 		return
 	}
 
-	// Policies are derived only for artifact kinds that can expose route-level policies.
-	if cfg.Kind != string(api.RestApi) && cfg.Kind != string(api.WebSubApi) &&
-		cfg.Kind != string(api.LlmProvider) && cfg.Kind != string(api.LlmProxy) &&
-		cfg.Kind != string(api.Mcp) {
-		return
+	if err := l.policyManager.UpsertAPIConfig(cfg); err != nil {
+		l.logger.Error("Failed to upsert runtime config from replica sync",
+			slog.String("api_id", cfg.UUID),
+			slog.String("correlation_id", correlationID),
+			slog.Any("error", err))
 	}
+}
 
-	storedPolicy := policybuilder.DerivePolicyFromAPIConfig(cfg, l.routerConfig, l.systemConfig, l.policyDefinitions)
-	if storedPolicy != nil {
-		if err := l.policyManager.AddPolicy(storedPolicy); err != nil {
-			l.logger.Error("Failed to update policy from replica sync",
-				slog.String("api_id", cfg.UUID),
-				slog.String("correlation_id", correlationID),
-				slog.Any("error", err))
+// resolvePolicyConfiguration resolves policy templates and secret references in the configuration.
+// Returns the resolved configuration or an error if policy resolution fails.
+func (l *EventListener) resolvePolicyConfiguration(storedCfg *models.StoredConfig) (*models.StoredConfig, error) {
+	resolvedCfg, validationErrors := l.policyResolver.ResolvePolicies(storedCfg)
+	if len(validationErrors) > 0 {
+		errMsgs := make([]string, 0, len(validationErrors))
+		for _, ve := range validationErrors {
+			errMsgs = append(errMsgs, ve.Message)
 		}
-	} else {
-		policyID := cfg.UUID + "-policies"
-		if existingPolicy, err := l.policyManager.GetPolicy(policyID); err == nil && existingPolicy != nil {
-			if err := l.policyManager.RemovePolicy(policyID); err != nil && !storage.IsPolicyNotFoundError(err) {
-				l.logger.Error("Failed to remove policy from replica sync",
-					slog.String("api_id", cfg.UUID),
-					slog.String("correlation_id", correlationID),
-					slog.Any("error", err))
-			}
-		}
+		errMsg := strings.Join(errMsgs, "; ")
+
+		slog.Error("Policy resolution failed",
+			slog.String("config_handle", storedCfg.Handle),
+			slog.String("errors", errMsg),
+		)
+
+		return nil, fmt.Errorf("policy resolution failed with %d errors: %s", len(validationErrors), errMsg)
 	}
+	return resolvedCfg, nil
 }
 
 // extractAPINameVersion extracts the display name and version from a StoredConfig.

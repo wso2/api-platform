@@ -20,6 +20,7 @@ package models
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
@@ -46,6 +47,19 @@ const (
 	StateDeployed   DesiredState = "deployed"   // User wants this configuration active in Router
 	StateUndeployed DesiredState = "undeployed" // User wants this configuration removed from Router
 )
+
+// ParseDesiredState normalises and validates a string into a DesiredState.
+// Returns the matching state and true, or ("", false) for unrecognised values.
+func ParseDesiredState(s string) (DesiredState, bool) {
+	switch strings.ToLower(s) {
+	case string(StateDeployed):
+		return StateDeployed, true
+	case string(StateUndeployed):
+		return StateUndeployed, true
+	default:
+		return "", false
+	}
+}
 
 // Origin identifies how an artifact was created.
 type Origin string
@@ -82,26 +96,26 @@ func (c *StoredConfig) GetCompositeKey() string {
 	return fmt.Sprintf("%s:%s:%s", c.Kind, c.DisplayName, c.Version)
 }
 
-// GetContext returns the context path from SourceConfiguration.
+// GetContext returns the context path from SourceConfiguration with $version resolved.
 func (c *StoredConfig) GetContext() (string, error) {
 	switch sc := c.SourceConfiguration.(type) {
 	case api.RestAPI:
-		return sc.Spec.Context, nil
+		return strings.ReplaceAll(sc.Spec.Context, "$version", c.Version), nil
 	case api.WebSubAPI:
-		return sc.Spec.Context, nil
+		return strings.ReplaceAll(sc.Spec.Context, "$version", c.Version), nil
 	case api.LLMProviderConfiguration:
 		if sc.Spec.Context != nil {
-			return *sc.Spec.Context, nil
+			return strings.ReplaceAll(*sc.Spec.Context, "$version", c.Version), nil
 		}
 		return "", nil
 	case api.LLMProxyConfiguration:
 		if sc.Spec.Context != nil {
-			return *sc.Spec.Context, nil
+			return strings.ReplaceAll(*sc.Spec.Context, "$version", c.Version), nil
 		}
 		return "", nil
 	case api.MCPProxyConfiguration:
 		if sc.Spec.Context != nil {
-			return *sc.Spec.Context, nil
+			return strings.ReplaceAll(*sc.Spec.Context, "$version", c.Version), nil
 		}
 		return "", nil
 	}

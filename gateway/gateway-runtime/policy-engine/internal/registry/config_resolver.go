@@ -27,7 +27,7 @@ import (
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
-	policyv1alpha "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	policyv1alpha "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
 // ConfigResolver resolves ${...} CEL expressions from a configuration map

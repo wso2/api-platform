@@ -63,12 +63,6 @@ func (l *EventListener) handleLLMProviderCreateOrUpdate(event eventhub.Event) {
 		slog.String("action", event.Action),
 		slog.String("event_id", event.EventID))
 
-	if l.db == nil {
-		l.logger.Warn("Database not available, cannot process LLM provider event",
-			slog.String("provider_id", entityID))
-		return
-	}
-
 	// The event only tells replicas which artifact changed. Re-read the full row
 	// from the database so every replica rebuilds from the same canonical payload.
 	storedConfig, err := l.db.GetConfig(entityID)
@@ -87,6 +81,16 @@ func (l *EventListener) handleLLMProviderCreateOrUpdate(event eventhub.Event) {
 	if err := l.hydrateLLMConfig(storedConfig); err != nil {
 		l.logger.Error("Failed to hydrate LLM provider configuration from source",
 			slog.String("provider_id", entityID),
+			slog.Any("error", err))
+		return
+	}
+
+	// Resolve policy configuration (handles secret resolution)
+	resolvedCfg, err := l.resolvePolicyConfiguration(storedConfig)
+	if err != nil {
+		l.logger.Error("Failed to resolve policy configuration for API",
+			slog.String("api_id", entityID),
+			slog.String("event_id", event.EventID),
 			slog.Any("error", err))
 		return
 	}
@@ -119,7 +123,7 @@ func (l *EventListener) handleLLMProviderCreateOrUpdate(event eventhub.Event) {
 	}
 
 	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after LLM provider replica sync")
-	l.updatePoliciesForAPI(storedConfig, event.EventID)
+	l.updatePoliciesForAPI(resolvedCfg, event.EventID)
 
 	l.logger.Info("Successfully processed LLM provider create/update event",
 		slog.String("provider_id", entityID),
@@ -133,12 +137,6 @@ func (l *EventListener) handleLLMProxyCreateOrUpdate(event eventhub.Event) {
 		slog.String("proxy_id", entityID),
 		slog.String("action", event.Action),
 		slog.String("event_id", event.EventID))
-
-	if l.db == nil {
-		l.logger.Warn("Database not available, cannot process LLM proxy event",
-			slog.String("proxy_id", entityID))
-		return
-	}
 
 	storedConfig, err := l.db.GetConfig(entityID)
 	if err != nil {
@@ -156,6 +154,16 @@ func (l *EventListener) handleLLMProxyCreateOrUpdate(event eventhub.Event) {
 	if err := l.hydrateLLMConfig(storedConfig); err != nil {
 		l.logger.Error("Failed to hydrate LLM proxy configuration from source",
 			slog.String("proxy_id", entityID),
+			slog.Any("error", err))
+		return
+	}
+
+	// Resolve policy configuration (handles secret resolution)
+	resolvedCfg, err := l.resolvePolicyConfiguration(storedConfig)
+	if err != nil {
+		l.logger.Error("Failed to resolve policy configuration for API",
+			slog.String("api_id", entityID),
+			slog.String("event_id", event.EventID),
 			slog.Any("error", err))
 		return
 	}
@@ -178,7 +186,7 @@ func (l *EventListener) handleLLMProxyCreateOrUpdate(event eventhub.Event) {
 	}
 
 	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after LLM proxy replica sync")
-	l.updatePoliciesForAPI(storedConfig, event.EventID)
+	l.updatePoliciesForAPI(resolvedCfg, event.EventID)
 
 	l.logger.Info("Successfully processed LLM proxy create/update event",
 		slog.String("proxy_id", entityID),
@@ -238,10 +246,9 @@ func (l *EventListener) handleLLMProviderDelete(event eventhub.Event) {
 
 	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after LLM provider deletion")
 
-	if l.policyManager != nil {
-		policyID := entityID + "-policies"
-		if err := l.policyManager.RemovePolicy(policyID); err != nil && !storage.IsPolicyNotFoundError(err) {
-			l.logger.Warn("Failed to remove policy after LLM provider deletion",
+	if l.policyManager != nil && existingConfig != nil {
+		if err := l.policyManager.DeleteAPIConfig(existingConfig.Kind, existingConfig.Handle); err != nil {
+			l.logger.Warn("Failed to remove runtime config after LLM provider deletion",
 				slog.String("provider_id", entityID),
 				slog.Any("error", err))
 		}
@@ -296,10 +303,9 @@ func (l *EventListener) handleLLMProxyDelete(event eventhub.Event) {
 
 	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after LLM proxy deletion")
 
-	if l.policyManager != nil {
-		policyID := entityID + "-policies"
-		if err := l.policyManager.RemovePolicy(policyID); err != nil && !storage.IsPolicyNotFoundError(err) {
-			l.logger.Warn("Failed to remove policy after LLM proxy deletion",
+	if l.policyManager != nil && existingConfig != nil {
+		if err := l.policyManager.DeleteAPIConfig(existingConfig.Kind, existingConfig.Handle); err != nil {
+			l.logger.Warn("Failed to remove runtime config after LLM proxy deletion",
 				slog.String("proxy_id", entityID),
 				slog.Any("error", err))
 		}
@@ -311,36 +317,7 @@ func (l *EventListener) handleLLMProxyDelete(event eventhub.Event) {
 }
 
 func (l *EventListener) hydrateLLMConfig(cfg *models.StoredConfig) error {
-	if cfg == nil {
-		return nil
-	}
-	if _, ok := cfg.Configuration.(api.RestAPI); ok {
-		return nil
-	}
-
-	transformer := utils.NewLLMProviderTransformer(
-		l.store,
-		l.db,
-		l.routerConfig,
-		utils.NewLoadedPolicyVersionResolver(l.policyDefinitions),
-	)
-
-	var restAPI api.RestAPI
-	switch source := cfg.SourceConfiguration.(type) {
-	case api.LLMProviderConfiguration:
-		if _, err := transformer.Transform(&source, &restAPI); err != nil {
-			return err
-		}
-	case api.LLMProxyConfiguration:
-		if _, err := transformer.Transform(&source, &restAPI); err != nil {
-			return err
-		}
-	default:
-		return fmt.Errorf("unexpected LLM source configuration type %T", cfg.SourceConfiguration)
-	}
-
-	cfg.Configuration = restAPI
-	return nil
+	return utils.HydrateLLMConfig(cfg, l.store, l.db, l.routerConfig, l.policyDefinitions)
 }
 
 func (l *EventListener) syncProviderTemplateMapping(cfg *models.StoredConfig, correlationID string) error {

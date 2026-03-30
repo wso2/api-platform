@@ -45,23 +45,6 @@ func TestProcessAPIEvent_UnknownActionLogsWarning(t *testing.T) {
 	assert.Contains(t, logBuf.String(), "Unknown API event action")
 }
 
-func TestHandleAPICreateOrUpdate_WithoutDBDoesNotAddConfig(t *testing.T) {
-	store := storage.NewConfigStore()
-	listener := &EventListener{
-		store:  store,
-		logger: newTestLogger(),
-	}
-
-	listener.handleAPICreateOrUpdate(eventhub.Event{
-		Action:   "CREATE",
-		EntityID: "missing-api",
-		EventID:  "corr-no-db",
-	})
-
-	_, err := store.Get("missing-api")
-	require.ErrorIs(t, err, storage.ErrNotFound)
-}
-
 func TestHandleAPICreateOrUpdate_MissingConfigInDBDoesNotAddConfig(t *testing.T) {
 	store := storage.NewConfigStore()
 	db := setupSQLiteDBForEventListenerTests(t)
@@ -136,23 +119,6 @@ func TestHandleAPIKeyUpsert_InvalidEntityIDDoesNotCallXDS(t *testing.T) {
 	assert.Empty(t, xdsManager.storeCalls)
 }
 
-func TestHandleAPIKeyUpsert_WithoutDBDoesNotStoreKey(t *testing.T) {
-	store := storage.NewConfigStore()
-	listener := &EventListener{
-		store:  store,
-		logger: newTestLogger(),
-	}
-
-	listener.handleAPIKeyUpsert(eventhub.Event{
-		Action:   "CREATE",
-		EntityID: apikey.BuildAPIKeyEntityID("api-1", "key-1"),
-		EventID:  "corr-no-db",
-	})
-
-	_, err := store.GetAPIKeyByName("api-1", "test-key")
-	require.ErrorIs(t, err, storage.ErrNotFound)
-}
-
 func TestHandleAPIKeyUpsert_MissingAPIKeyInDBDoesNotStoreKey(t *testing.T) {
 	store := storage.NewConfigStore()
 	db := setupSQLiteDBForEventListenerTests(t)
@@ -177,8 +143,8 @@ func TestHandleAPIKeyUpsert_StoreConflictStopsBeforeXDS(t *testing.T) {
 	db := setupSQLiteDBForEventListenerTests(t)
 	xdsManager := &mockAPIKeyXDSManager{}
 	cfg := testRestStoredConfig("api-1", "test-api", "Test API", "v1.0.0", models.StateDeployed)
-	conflicting := testAPIKey("existing-key", "test-key", "Existing Key", cfg.UUID)
-	current := testAPIKey("incoming-key", "test-key", "Incoming Key", cfg.UUID)
+	conflicting := testAPIKey("existing-key", "test-key", cfg.UUID)
+	current := testAPIKey("incoming-key", "test-key", cfg.UUID)
 
 	require.NoError(t, store.StoreAPIKey(conflicting))
 	require.NoError(t, db.SaveConfig(cfg))
@@ -201,22 +167,6 @@ func TestHandleAPIKeyUpsert_StoreConflictStopsBeforeXDS(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, conflicting.Name, storedKey.Name)
 	assert.Empty(t, xdsManager.storeCalls)
-}
-
-func TestSyncAPIConfigForAPIKeyEvent_UsesStoreConfigWithoutDB(t *testing.T) {
-	store := storage.NewConfigStore()
-	cfg := testRestStoredConfig("api-1", "test-api", "Test API", "v1.0.0", models.StateDeployed)
-	require.NoError(t, store.Add(cfg))
-
-	listener := &EventListener{
-		store:  store,
-		logger: newTestLogger(),
-	}
-
-	resolved, err := listener.syncAPIConfigForAPIKeyEvent(cfg.UUID)
-
-	require.NoError(t, err)
-	assert.Same(t, cfg, resolved)
 }
 
 func TestSyncAPIConfigForAPIKeyEvent_LogsWarningWhenMemorySyncFails(t *testing.T) {
@@ -275,12 +225,14 @@ func TestHandleAPIKeyRevoke_WithoutStoreReturnsEarly(t *testing.T) {
 
 func TestHandleAPIKeyRevoke_WithMissingConfigSkipsXDS(t *testing.T) {
 	store := storage.NewConfigStore()
+	db := setupSQLiteDBForEventListenerTests(t)
 	xdsManager := &mockAPIKeyXDSManager{}
-	apiKey := testAPIKey("key-1", "test-key", "Test Key", "api-1")
+	apiKey := testAPIKey("key-1", "test-key", "api-1")
 	require.NoError(t, store.StoreAPIKey(apiKey))
 
 	listener := &EventListener{
 		store:            store,
+		db:               db,
 		apiKeyXDSManager: xdsManager,
 		logger:           newTestLogger(),
 	}

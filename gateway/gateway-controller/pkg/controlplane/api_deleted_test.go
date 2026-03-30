@@ -35,26 +35,34 @@ import (
 
 // mockStorageForDeletion implements storage.Storage interface for deletion testing
 type mockStorageForDeletion struct {
-	configs            map[string]*models.StoredConfig
-	subscriptions      map[string]*models.Subscription
-	apiKeysByUUID      map[string]*models.APIKey
-	replacedMappings   []*models.ApplicationAPIKeyMapping
-	replacedAppID      string
-	replacedAppUUID    string
-	replacedAppName    string
-	replacedAppType    string
-	deleteErr          error
-	updateErr          error
-	getErr             error
-	removeKeyErr       error
-	replaceErr         error
-	deleteCallCount    int
-	removeKeyCallCount int
+	configs                      map[string]*models.StoredConfig
+	secrets                      map[string]*models.Secret
+	subscriptions                map[string]*models.Subscription
+	apiKeysByUUID                map[string]*models.APIKey
+	replacedMappings             []*models.ApplicationAPIKeyMapping
+	replacedAppID                string
+	replacedAppUUID              string
+	replacedAppName              string
+	replacedAppType              string
+	deleteErr                    error
+	updateErr                    error
+	getErr                       error
+	removeKeyErr                 error
+	removeSubscriptionErr        error
+	replaceErr                   error
+	deleteCallCount              int
+	removeKeyCallCount           int
+	removeSubscriptionCallCount  int
+	lastSubscriptionCleanupAPIID string
+	upsertAffected               *bool // nil = default (true); non-nil = use this value
+	upsertErr                    error
+	upsertCallCount              int
 }
 
 func newMockStorageForDeletion() *mockStorageForDeletion {
 	return &mockStorageForDeletion{
 		configs:       make(map[string]*models.StoredConfig),
+		secrets:       make(map[string]*models.Secret),
 		subscriptions: make(map[string]*models.Subscription),
 		apiKeysByUUID: make(map[string]*models.APIKey),
 	}
@@ -79,6 +87,21 @@ func (m *mockStorageForDeletion) GetConfig(id string) (*models.StoredConfig, err
 func (m *mockStorageForDeletion) UpdateConfig(config *models.StoredConfig) error {
 	m.configs[config.UUID] = config
 	return nil
+}
+
+func (m *mockStorageForDeletion) UpsertConfig(config *models.StoredConfig) (bool, error) {
+	m.upsertCallCount++
+	if m.upsertErr != nil {
+		return false, m.upsertErr
+	}
+	affected := true
+	if m.upsertAffected != nil {
+		affected = *m.upsertAffected
+	}
+	if affected {
+		m.configs[config.UUID] = config
+	}
+	return affected, nil
 }
 
 func (m *mockStorageForDeletion) DeleteConfig(id string) error {
@@ -112,6 +135,16 @@ func (m *mockStorageForDeletion) GetAllConfigsByKind(kind string) ([]*models.Sto
 	return configs, nil
 }
 
+func (m *mockStorageForDeletion) GetAllConfigsByOrigin(origin models.Origin) ([]*models.StoredConfig, error) {
+	var configs []*models.StoredConfig
+	for _, config := range m.configs {
+		if config.Origin == origin {
+			configs = append(configs, config)
+		}
+	}
+	return configs, nil
+}
+
 func (m *mockStorageForDeletion) GetConfigByKindAndHandle(kind string, handle string) (*models.StoredConfig, error) {
 	for _, config := range m.configs {
 		if config.Kind == kind && config.Handle == handle {
@@ -126,6 +159,10 @@ func (m *mockStorageForDeletion) Close() error {
 }
 
 func (m *mockStorageForDeletion) SaveAPIKey(key *models.APIKey) error {
+	return nil
+}
+
+func (m *mockStorageForDeletion) UpsertAPIKey(key *models.APIKey) error {
 	return nil
 }
 
@@ -251,6 +288,19 @@ func (m *mockStorageForDeletion) DeleteSubscriptionPlansNotIn(ids []string) erro
 }
 
 func (m *mockStorageForDeletion) DeleteSubscriptionsForAPINotIn(apiID string, ids []string) error {
+	m.removeSubscriptionCallCount++
+	m.lastSubscriptionCleanupAPIID = apiID
+	if m.removeSubscriptionErr != nil {
+		return m.removeSubscriptionErr
+	}
+	return nil
+}
+
+func (m *mockStorageForDeletion) ListAPIKeysForArtifactsNotIn(artifactUUIDs []string, keyUUIDs []string) ([]*models.APIKey, error) {
+	return nil, nil
+}
+
+func (m *mockStorageForDeletion) DeleteAPIKeysByUUIDs(uuids []string) error {
 	return nil
 }
 
@@ -371,6 +421,71 @@ func (m *mockStorageForDeletion) GetAllLLMProviderTemplates() ([]*models.StoredL
 
 func (m *mockStorageForDeletion) DeleteLLMProviderTemplate(id string) error {
 	return nil
+}
+
+// Secret methods (not used in deletion tests but required by interface)
+func (m *mockStorageForDeletion) SaveSecret(secret *models.Secret) error {
+	if m.deleteErr != nil { // reuse existing error fields only if needed
+		return m.deleteErr
+	}
+	m.secrets[secret.Handle] = secret
+	return nil
+}
+
+func (m *mockStorageForDeletion) GetSecrets() ([]models.SecretMeta, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	secrets := make([]models.SecretMeta, 0, len(m.secrets))
+	for handle, secret := range m.secrets {
+		secrets = append(secrets, models.SecretMeta{
+			Handle:      handle,
+			DisplayName: secret.DisplayName,
+			CreatedAt:   secret.CreatedAt,
+			UpdatedAt:   secret.UpdatedAt,
+		})
+	}
+	return secrets, nil
+}
+
+func (m *mockStorageForDeletion) GetSecret(handle string) (*models.Secret, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	if s, ok := m.secrets[handle]; ok {
+		return s, nil
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *mockStorageForDeletion) UpdateSecret(secret *models.Secret) (*models.Secret, error) {
+	if m.updateErr != nil {
+		return nil, m.updateErr
+	}
+	if _, ok := m.secrets[secret.Handle]; !ok {
+		return nil, storage.ErrNotFound
+	}
+	m.secrets[secret.Handle] = secret
+	return secret, nil
+}
+
+func (m *mockStorageForDeletion) DeleteSecret(handle string) error {
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	if _, ok := m.secrets[handle]; !ok {
+		return storage.ErrNotFound
+	}
+	delete(m.secrets, handle)
+	return nil
+}
+
+func (m *mockStorageForDeletion) SecretExists(handle string) (bool, error) {
+	if m.getErr != nil {
+		return false, m.getErr
+	}
+	_, ok := m.secrets[handle]
+	return ok, nil
 }
 
 func (m *mockStorageForDeletion) GetDB() *sql.DB {
@@ -516,6 +631,12 @@ func TestClient_handleAPIDeletedEvent_OrphanedCleanup(t *testing.T) {
 	// Verify orphaned cleanup was attempted
 	if db.removeKeyCallCount != 1 {
 		t.Errorf("Expected RemoveAPIKeysAPI to be called for orphan cleanup, got %d", db.removeKeyCallCount)
+	}
+	if db.removeSubscriptionCallCount != 1 {
+		t.Errorf("Expected DeleteSubscriptionsForAPINotIn to be called for orphan cleanup, got %d", db.removeSubscriptionCallCount)
+	}
+	if db.lastSubscriptionCleanupAPIID != apiID {
+		t.Errorf("expected subscription cleanup for API %s, got %s", apiID, db.lastSubscriptionCleanupAPIID)
 	}
 
 	if len(hub.publishedEvents) != 1 {
@@ -692,7 +813,7 @@ func TestClient_findAPIConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("Returns config from memory when not in database", func(t *testing.T) {
+	t.Run("Returns ErrNotFound when config exists only in memory store", func(t *testing.T) {
 		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 		store := storage.NewConfigStore()
 		db := newMockStorageForDeletion()
@@ -707,12 +828,9 @@ func TestClient_findAPIConfig(t *testing.T) {
 			db:     db,
 		}
 
-		config, err := client.findAPIConfig(apiID)
-		if err != nil {
-			t.Errorf("Expected to find API config in memory store, got error: %v", err)
-		}
-		if config.UUID != apiID {
-			t.Errorf("Expected API ID %s, got %s", apiID, config.UUID)
+		_, err := client.findAPIConfig(apiID)
+		if !storage.IsNotFoundError(err) {
+			t.Errorf("Expected ErrNotFound when API exists only in memory store, got: %v", err)
 		}
 	})
 

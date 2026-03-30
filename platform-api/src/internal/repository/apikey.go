@@ -136,6 +136,55 @@ func (r *APIKeyRepo) ListByArtifact(artifactUUID string) ([]*model.APIKey, error
 	return keys, rows.Err()
 }
 
+// ListByGatewayAndKind retrieves all API keys for artifacts of the given kind that are
+// currently deployed on the specified gateway within the organisation.
+// When issuer is non-empty only keys whose issuer column matches are returned;
+// an empty issuer returns keys regardless of their issuer value.
+func (r *APIKeyRepo) ListByGatewayAndKind(gatewayID, orgID, kind, issuer string) ([]*model.APIKey, error) {
+	base := `
+		SELECT k.uuid, k.artifact_uuid, k.name, k.masked_api_key, k.api_key_hashes,
+		       k.status, k.created_at, k.created_by, k.updated_at, k.expires_at,
+		       k.issuer, k.allowed_targets
+		FROM api_keys k
+		INNER JOIN artifacts a ON k.artifact_uuid = a.uuid
+		INNER JOIN deployment_status s ON s.artifact_uuid = a.uuid
+		WHERE s.gateway_uuid = ?
+		  AND s.organization_uuid = ?
+		  AND a.kind = ?
+		  AND s.status_desired = 'DEPLOYED'`
+
+	args := []any{gatewayID, orgID, kind}
+	if issuer != "" {
+		base += "\n\t\t  AND k.issuer = ?"
+		args = append(args, issuer)
+	}
+	base += "\n\t\tORDER BY k.created_at DESC"
+
+	rows, err := r.db.Query(r.db.Rebind(base), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var keys []*model.APIKey
+	for rows.Next() {
+		key := &model.APIKey{}
+		var issuerVal sql.NullString
+		if err := rows.Scan(
+			&key.UUID, &key.ArtifactUUID, &key.Name, &key.MaskedAPIKey, &key.APIKeyHashes,
+			&key.Status, &key.CreatedAt, &key.CreatedBy, &key.UpdatedAt, &key.ExpiresAt,
+			&issuerVal, &key.AllowedTargets,
+		); err != nil {
+			return nil, err
+		}
+		if issuerVal.Valid {
+			key.Issuer = &issuerVal.String
+		}
+		keys = append(keys, key)
+	}
+	return keys, rows.Err()
+}
+
 // Delete removes an API key record permanently
 func (r *APIKeyRepo) Delete(artifactUUID, name string) error {
 	query := `DELETE FROM api_keys WHERE artifact_uuid = ? AND name = ?`

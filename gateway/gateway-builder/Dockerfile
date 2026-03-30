@@ -17,7 +17,7 @@
 # --------------------------------------------------------------------
 
 # Gateway Builder Image
-FROM --platform=$BUILDPLATFORM golang:1.25.7-bookworm AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.1-bookworm AS builder
 ARG TARGETARCH
 
 # Build arguments for version information
@@ -44,11 +44,10 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
 
 # Copy SDK (needed for go.mod replace directive)
-COPY --from=sdk . /workspace/sdk
 COPY --from=sdk-core . /workspace/sdk/core
 
-# Pre-download Go dependencies for SDK
-WORKDIR /workspace/sdk
+# Pre-download Go dependencies for SDK core
+WORKDIR /workspace/sdk/core
 RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
 
@@ -75,7 +74,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     -o /usr/local/bin/gateway-builder \
     ./cmd/builder
 
-FROM golang:1.25.7-bookworm
+FROM golang:1.26.1-bookworm
 
 # Install runtime dependencies
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -92,7 +91,6 @@ COPY --from=builder /usr/local/bin/gateway-builder /usr/local/bin/gateway-builde
 COPY --from=policy-engine . /api-platform/gateway/gateway-runtime/policy-engine
 COPY --from=system-policies . /api-platform/gateway/system-policies
 COPY --from=common . /api-platform/common
-COPY --from=sdk . /api-platform/sdk
 COPY --from=sdk-core . /api-platform/sdk/core
 
 # Set working directory

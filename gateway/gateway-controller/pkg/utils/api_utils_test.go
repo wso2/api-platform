@@ -19,15 +19,19 @@
 package utils
 
 import (
+	"archive/tar"
 	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -36,6 +40,22 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
+
+func newHTTPTestServer(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+
+	defer func() {
+		if r := recover(); r != nil {
+			msg := fmt.Sprint(r)
+			if strings.Contains(msg, "failed to listen on a port") || strings.Contains(msg, "bind: operation not permitted") {
+				t.Skipf("skipping test: local listener unavailable in this environment: %v", r)
+			}
+			panic(r)
+		}
+	}()
+
+	return httptest.NewServer(handler)
+}
 
 func TestNewAPIUtilsService(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -67,7 +87,7 @@ func TestAPIUtilsService_FetchAPIDefinition(t *testing.T) {
 
 	t.Run("Successful fetch", func(t *testing.T) {
 		expectedData := []byte("test zip content")
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "/apis/test-api-123", r.URL.Path)
 			assert.Equal(t, "test-token", r.Header.Get("api-key"))
 			assert.Equal(t, "application/zip", r.Header.Get("Accept"))
@@ -88,7 +108,7 @@ func TestAPIUtilsService_FetchAPIDefinition(t *testing.T) {
 	})
 
 	t.Run("Server returns error", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
 			w.Write([]byte("API not found"))
 		}))
@@ -200,19 +220,19 @@ func TestAPIUtilsService_PushAPIDeployment(t *testing.T) {
 	// Helper function to create minimal test StoredConfig
 	createTestStoredConfig := func() *models.StoredConfig {
 		return &models.StoredConfig{
-			UUID:      "0000-test-api-0000-000000000000",
-			Kind:      "RestApi",
+			UUID:         "0000-test-api-0000-000000000000",
+			Kind:         "RestApi",
 			DesiredState: models.StateDeployed,
 			Origin:       models.OriginGatewayAPI,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			CreatedAt:    time.Now(),
+			UpdatedAt:    time.Now(),
 			// Configuration will be marshaled in the HTTP request body
 			Configuration: api.RestAPI{},
 		}
 	}
 
 	t.Run("Successful push", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "POST", r.Method)
 			assert.Equal(t, "/apis/0000-test-api-0000-000000000000/gateway-deployments", r.URL.Path)
 			assert.Equal(t, "test-token", r.Header.Get("api-key"))
@@ -243,7 +263,7 @@ func TestAPIUtilsService_PushAPIDeployment(t *testing.T) {
 	})
 
 	t.Run("With deployment ID", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "POST", r.Method)
 			assert.Equal(t, "/apis/0000-test-api-0000-000000000000/gateway-deployments", r.URL.Path)
 			assert.Contains(t, r.URL.RawQuery, "deploymentId=rev-123")
@@ -265,7 +285,7 @@ func TestAPIUtilsService_PushAPIDeployment(t *testing.T) {
 	})
 
 	t.Run("HTTP error response", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(`{"error": "internal server error"}`))
 		}))
@@ -373,6 +393,258 @@ func createTestZip(t *testing.T, files map[string][]byte) []byte {
 	require.NoError(t, err)
 
 	return buf.Bytes()
+}
+
+func createTestTarGz(t *testing.T, files map[string][]byte) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gzWriter := gzip.NewWriter(&buf)
+	tarWriter := tar.NewWriter(gzWriter)
+
+	for name, content := range files {
+		header := &tar.Header{
+			Name: name,
+			Size: int64(len(content)),
+			Mode: 0644,
+		}
+		err := tarWriter.WriteHeader(header)
+		require.NoError(t, err)
+		_, err = tarWriter.Write(content)
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, tarWriter.Close())
+	require.NoError(t, gzWriter.Close())
+	return buf.Bytes()
+}
+
+func TestAPIUtilsService_FetchControlPlaneDeployments(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	t.Run("Full sync (no since parameter)", func(t *testing.T) {
+		deployedAt := time.Date(2026, 3, 4, 10, 30, 0, 0, time.UTC)
+		expectedResponse := models.ControlPlaneDeploymentsResponse{
+			Deployments: []models.ControlPlaneDeployment{
+				{
+					ArtifactID:   "api-123",
+					DeploymentID: "dep-789",
+					Kind:         "RestApi",
+					State:        "DEPLOYED",
+					DeployedAt:   deployedAt,
+				},
+				{
+					ArtifactID:   "llm-001",
+					DeploymentID: "dep-111",
+					Kind:         "LlmProvider",
+					State:        "DEPLOYED",
+					DeployedAt:   deployedAt,
+				},
+			},
+		}
+
+		server := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "GET", r.Method)
+			assert.Equal(t, "/deployments", r.URL.Path)
+			assert.Empty(t, r.URL.Query().Get("since"))
+			assert.Equal(t, "test-token", r.Header.Get("api-key"))
+			assert.Equal(t, "application/json", r.Header.Get("Accept"))
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(expectedResponse)
+		}))
+		defer server.Close()
+
+		cfg := PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}
+		svc := NewAPIUtilsService(cfg, logger)
+
+		result, err := svc.FetchControlPlaneDeployments(nil)
+		assert.NoError(t, err)
+		assert.Len(t, result, 2)
+		assert.Equal(t, "api-123", result[0].ArtifactID)
+		assert.Equal(t, "dep-789", result[0].DeploymentID)
+		assert.Equal(t, "RestApi", result[0].Kind)
+		assert.Equal(t, "DEPLOYED", result[0].State)
+	})
+
+	t.Run("Incremental sync (with since parameter)", func(t *testing.T) {
+		since := time.Date(2026, 3, 4, 10, 0, 0, 0, time.UTC)
+		server := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "GET", r.Method)
+			assert.Equal(t, "/deployments", r.URL.Path)
+			sinceParam := r.URL.Query().Get("since")
+			assert.NotEmpty(t, sinceParam)
+			// Verify the since parameter is a valid RFC3339 timestamp
+			parsedSince, err := time.Parse(time.RFC3339, sinceParam)
+			assert.NoError(t, err)
+			assert.True(t, parsedSince.Equal(since))
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(models.ControlPlaneDeploymentsResponse{
+				Deployments: []models.ControlPlaneDeployment{},
+			})
+		}))
+		defer server.Close()
+
+		cfg := PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}
+		svc := NewAPIUtilsService(cfg, logger)
+
+		result, err := svc.FetchControlPlaneDeployments(&since)
+		assert.NoError(t, err)
+		assert.Empty(t, result)
+	})
+
+	t.Run("Server returns error", func(t *testing.T) {
+		server := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("internal error"))
+		}))
+		defer server.Close()
+
+		cfg := PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}
+		svc := NewAPIUtilsService(cfg, logger)
+
+		result, err := svc.FetchControlPlaneDeployments(nil)
+		assert.Error(t, err)
+		assert.Nil(t, result)
+		assert.Contains(t, err.Error(), "500")
+	})
+
+	t.Run("Connection error", func(t *testing.T) {
+		cfg := PlatformAPIConfig{BaseURL: "http://localhost:99999", Token: "test-token", Timeout: 1 * time.Second}
+		svc := NewAPIUtilsService(cfg, logger)
+
+		result, err := svc.FetchControlPlaneDeployments(nil)
+		assert.Error(t, err)
+		assert.Nil(t, result)
+	})
+}
+
+func TestAPIUtilsService_BatchFetchDeployments(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	t.Run("Successful batch fetch", func(t *testing.T) {
+		expectedTarGz := createTestTarGz(t, map[string][]byte{
+			"dep-789/api-abc.yaml": []byte("apiVersion: v1"),
+		})
+
+		server := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "POST", r.Method)
+			assert.Equal(t, "/deployments/fetch-batch", r.URL.Path)
+			assert.Equal(t, "test-token", r.Header.Get("api-key"))
+			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+			assert.Equal(t, "application/x-tar+gzip", r.Header.Get("Accept"))
+
+			// Verify request body
+			body, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+			var req models.BatchFetchRequest
+			err = json.Unmarshal(body, &req)
+			require.NoError(t, err)
+			assert.Equal(t, []string{"dep-789", "dep-456"}, req.DeploymentIDs)
+
+			w.Header().Set("Content-Type", "application/gzip")
+			w.WriteHeader(http.StatusOK)
+			w.Write(expectedTarGz)
+		}))
+		defer server.Close()
+
+		cfg := PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}
+		svc := NewAPIUtilsService(cfg, logger)
+
+		result, err := svc.BatchFetchDeployments([]string{"dep-789", "dep-456"})
+		assert.NoError(t, err)
+		assert.NotEmpty(t, result)
+	})
+
+	t.Run("Server returns error", func(t *testing.T) {
+		server := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("bad request"))
+		}))
+		defer server.Close()
+
+		cfg := PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}
+		svc := NewAPIUtilsService(cfg, logger)
+
+		result, err := svc.BatchFetchDeployments([]string{"dep-789"})
+		assert.Error(t, err)
+		assert.Nil(t, result)
+		assert.Contains(t, err.Error(), "400")
+	})
+}
+
+func TestAPIUtilsService_ExtractDeploymentsFromBatchZip(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	cfg := PlatformAPIConfig{BaseURL: "http://localhost"}
+	svc := NewAPIUtilsService(cfg, logger)
+
+	t.Run("Extract multiple deployments", func(t *testing.T) {
+		yamlContent1 := []byte("apiVersion: v1\nkind: RestApi\nmetadata:\n  name: api-1")
+		yamlContent2 := []byte("apiVersion: v1\nkind: LlmProvider\nmetadata:\n  name: provider-1")
+
+		tarGzData := createTestTarGz(t, map[string][]byte{
+			"dep-789/api-abc.yaml":          yamlContent1,
+			"dep-456/llm-provider-xyz.yaml": yamlContent2,
+		})
+
+		result, err := svc.ExtractDeploymentsFromBatchZip(tarGzData)
+		assert.NoError(t, err)
+		assert.Len(t, result, 2)
+		assert.Equal(t, yamlContent1, result["dep-789"])
+		assert.Equal(t, yamlContent2, result["dep-456"])
+	})
+
+	t.Run("Skip non-YAML files", func(t *testing.T) {
+		tarGzData := createTestTarGz(t, map[string][]byte{
+			"dep-789/api-abc.yaml": []byte("valid yaml"),
+			"dep-789/readme.txt":   []byte("not yaml"),
+		})
+
+		result, err := svc.ExtractDeploymentsFromBatchZip(tarGzData)
+		assert.NoError(t, err)
+		assert.Len(t, result, 1)
+		assert.Equal(t, []byte("valid yaml"), result["dep-789"])
+	})
+
+	t.Run("Empty archive", func(t *testing.T) {
+		tarGzData := createTestTarGz(t, map[string][]byte{})
+
+		result, err := svc.ExtractDeploymentsFromBatchZip(tarGzData)
+		assert.NoError(t, err)
+		assert.Empty(t, result)
+	})
+
+	t.Run("Invalid archive data", func(t *testing.T) {
+		result, err := svc.ExtractDeploymentsFromBatchZip([]byte("not a tar.gz"))
+		assert.Error(t, err)
+		assert.Nil(t, result)
+	})
+
+	t.Run("Path traversal entries are skipped", func(t *testing.T) {
+		tarGzData := createTestTarGz(t, map[string][]byte{
+			"../../../etc/malicious.yaml": []byte("malicious"),
+			"dep-789/../dep-456/api.yaml": []byte("sneaky overwrite"),
+			"dep-789/api-abc.yaml":        []byte("valid content"),
+		})
+
+		result, err := svc.ExtractDeploymentsFromBatchZip(tarGzData)
+		assert.NoError(t, err)
+		assert.Len(t, result, 1)
+		assert.Equal(t, []byte("valid content"), result["dep-789"])
+		assert.NotContains(t, result, "dep-456", "internal ../ path should not create a dep-456 entry")
+	})
+
+	t.Run("Files at root level are skipped", func(t *testing.T) {
+		tarGzData := createTestTarGz(t, map[string][]byte{
+			"root-file.yaml": []byte("should be skipped"),
+		})
+
+		result, err := svc.ExtractDeploymentsFromBatchZip(tarGzData)
+		assert.NoError(t, err)
+		assert.Empty(t, result)
+	})
 }
 
 // Test for JSON marshaling of APIDeploymentPush

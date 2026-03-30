@@ -27,6 +27,8 @@ import (
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 
 	"io"
 	"net/http"
@@ -46,14 +48,13 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
-	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
-	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
+	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
 
 // APIServer implements the generated ServerInterface
@@ -72,6 +73,8 @@ type APIServer struct {
 	deploymentService           *utils.APIDeploymentService
 	mcpDeploymentService        *utils.MCPDeploymentService
 	llmDeploymentService        *utils.LLMDeploymentService
+	secretService               *secrets.SecretService
+	policyResolver              *resolver.PolicyResolver
 	apiKeyService               *utils.APIKeyService
 	apiKeyXDSManager            *apikeyxds.APIKeyStateManager
 	controlPlaneClient          controlplane.ControlPlaneClient
@@ -100,25 +103,33 @@ func NewAPIServer(
 	systemConfig *config.Config,
 	eventHub eventhub.EventHub,
 	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater,
+	secretService *secrets.SecretService,
+	policyResolver *resolver.PolicyResolver,
 ) *APIServer {
-	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.Router)
-	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, &systemConfig.APIKey)
-	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subscriptionSnapshotUpdater)
-
-	// Set EventHub on services for event-driven synchronization
-	if eventHub != nil {
-		gatewayID := systemConfig.Controller.Server.GatewayID
-		deploymentService.SetEventHub(eventHub, gatewayID)
-		apiKeyService.SetEventHub(eventHub, gatewayID)
-		subscriptionResourceService.SetEventHub(eventHub, gatewayID)
+	if db == nil {
+		panic("APIServer requires non-nil storage")
 	}
+	if eventHub == nil {
+		panic("APIServer requires non-nil EventHub")
+	}
+	if systemConfig == nil {
+		panic("APIServer requires non-nil system config")
+	}
+	gatewayID := strings.TrimSpace(systemConfig.Controller.Server.GatewayID)
+	if gatewayID == "" {
+		panic("APIServer requires non-empty gateway ID")
+	}
+
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.Router, policyResolver, eventHub, gatewayID)
+	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, &systemConfig.APIKey, eventHub, gatewayID)
+	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subscriptionSnapshotUpdater, eventHub, gatewayID)
 
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
 	parser := config.NewParser()
 	httpClient := &http.Client{Timeout: 10 * time.Second}
 	routerConfig := &systemConfig.Router
-	mcpDeploymentService := utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager, policyValidator)
+	mcpDeploymentService := utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager, policyValidator, eventHub, gatewayID)
 
 	server := &APIServer{
 		store:                store,
@@ -133,6 +144,8 @@ func NewAPIServer(
 		mcpDeploymentService: mcpDeploymentService,
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, lazyResourceManager, templateDefinitions,
 			deploymentService, routerConfig, policyVersionResolver, policyValidator),
+		secretService:               secretService,
+		policyResolver:              policyResolver,
 		apiKeyService:               apiKeyService,
 		apiKeyXDSManager:            apiKeyXDSManager,
 		controlPlaneClient:          controlPlaneClient,
@@ -140,15 +153,10 @@ func NewAPIServer(
 		httpClient:                  httpClient,
 		systemConfig:                systemConfig,
 		eventHub:                    eventHub,
-		gatewayID:                   systemConfig.Controller.Server.GatewayID,
+		gatewayID:                   gatewayID,
 		subscriptionSnapshotUpdater: subscriptionSnapshotUpdater,
 		subscriptionResourceService: subscriptionResourceService,
 	}
-	if eventHub != nil {
-		server.llmDeploymentService.SetEventHub(eventHub, systemConfig.Controller.Server.GatewayID)
-		server.mcpDeploymentService.SetEventHub(eventHub, systemConfig.Controller.Server.GatewayID)
-	}
-
 	// Create RestAPI service and handler
 	restAPIService := restapi.NewRestAPIService(
 		store, db, snapshotManager, policyManager,
@@ -156,7 +164,7 @@ func NewAPIServer(
 		deploymentService, apiKeyXDSManager,
 		controlPlaneClient, routerConfig, systemConfig,
 		httpClient, parser, validator, logger,
-		eventHub,
+		eventHub, policyResolver,
 	)
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
 
@@ -171,10 +179,7 @@ func (s *APIServer) getSubscriptionResourceService() *utils.SubscriptionResource
 		return s.subscriptionResourceService
 	}
 
-	s.subscriptionResourceService = utils.NewSubscriptionResourceService(s.db, s.subscriptionSnapshotUpdater)
-	if s.eventHub != nil {
-		s.subscriptionResourceService.SetEventHub(s.eventHub, s.gatewayID)
-	}
+	s.subscriptionResourceService = utils.NewSubscriptionResourceService(s.db, s.subscriptionSnapshotUpdater, s.eventHub, s.gatewayID)
 
 	return s.subscriptionResourceService
 }
@@ -194,24 +199,6 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, correlatio
 	}
 
 	if success {
-		// For direct artifacts (no deployment_id), set deployed_at here.
-		// Platform-deployed artifacts get deployed_at from the WebSocket event timestamp
-		// during SaveConfig/UpdateConfig.
-		if cfg.DeploymentID == "" {
-			now := time.Now()
-			cfg.DeployedAt = &now
-			cfg.UpdatedAt = now
-
-			if err := s.db.UpdateConfig(cfg); err != nil {
-				log.Error("Failed to update config status in database", slog.Any("error", err), slog.String("id", configID))
-			}
-
-			// Update in-memory store
-			if err := s.store.Update(cfg); err != nil {
-				log.Error("Failed to update config status in memory", slog.Any("error", err), slog.String("id", configID))
-			}
-		}
-
 		log.Info("Configuration deployed successfully",
 			slog.String("id", configID),
 			slog.String("kind", cfg.Kind),
@@ -261,7 +248,16 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 
 	configs := s.store.GetAllByKind(kind)
 	if kind == string(api.Mcp) && s.mcpDeploymentService != nil {
-		configs = s.mcpDeploymentService.ListMCPProxies()
+		var err error
+		configs, err = s.mcpDeploymentService.ListMCPProxies()
+		if err != nil {
+			s.logger.Error("Failed to list MCP proxies", slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to list MCP proxies",
+			})
+			return
+		}
 	}
 
 	// Filter based on kind to return appropriate response format
@@ -715,7 +711,8 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Delegate to service which parses/validates/transforms and persists
-	stored, err := s.llmDeploymentService.CreateLLMProvider(utils.LLMDeploymentParams{
+	// Important: The result stored configuration contains resolved secrets. Do not expose them in responses.
+	result, err := s.llmDeploymentService.CreateLLMProvider(utils.LLMDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
 		CorrelationID: correlationID,
@@ -735,8 +732,12 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 		return
 	}
 
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
-		go s.waitForDeploymentAndPush(stored.UUID, correlationID, log)
+	stored := result.StoredConfig
+
+	if !result.IsStale {
+		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
+			go s.waitForDeploymentAndPush(stored.UUID, correlationID, log)
+		}
 	}
 
 	log.Info("LLM provider created successfully",
@@ -748,20 +749,6 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 		Message: stringPtr("LLM provider created successfully"),
 		Id:      stringPtr(stored.Handle), CreatedAt: timePtr(stored.CreatedAt)})
 
-	// In EventHub mode the listener rebuilds local policy state after replaying
-	// the provider event, so the writer should not mutate local policies inline.
-	if s.policyManager != nil && s.eventHub == nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(stored)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to add derived policy configuration", slog.Any("error", err))
-			} else {
-				log.Info("Derived policy configuration added",
-					slog.String("policy_id", storedPolicy.ID),
-					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		}
-	}
 }
 
 // GetLLMProviderById implements ServerInterface.GetLLMProviderById
@@ -831,7 +818,8 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Delegate to service update wrapper
-	updated, err := s.llmDeploymentService.UpdateLLMProvider(id, utils.LLMDeploymentParams{
+	// Important: The result stored configuration contains resolved secrets. Do not expose them in responses.
+	result, err := s.llmDeploymentService.UpdateLLMProvider(id, utils.LLMDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
 		Origin:        models.OriginGatewayAPI,
@@ -851,6 +839,8 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 		return
 	}
 
+	updated := result.StoredConfig
+
 	c.JSON(http.StatusOK, api.LLMProviderUpdateResponse{
 		Id:        stringPtr(updated.Handle),
 		Message:   stringPtr("LLM provider updated successfully"),
@@ -858,30 +848,6 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 		UpdatedAt: timePtr(updated.UpdatedAt),
 	})
 
-	// In EventHub mode the listener rebuilds local policy state after replaying
-	// the provider event, so the writer should not mutate local policies inline.
-	if s.policyManager != nil && s.eventHub == nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(updated)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to update derived policy configuration", slog.Any("error", err))
-			} else {
-				log.Info("Derived policy configuration updated",
-					slog.String("policy_id", storedPolicy.ID),
-					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		} else {
-			// LLM provider no longer has policies, remove the existing policy configuration
-			policyID := updated.UUID + "-policies"
-			if err := s.policyManager.RemovePolicy(policyID); err != nil {
-				// Log at debug level since policy may not exist if LLM provider never had policies
-				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
-			} else {
-				log.Info("Derived policy configuration removed (LLM provider no longer has policies)",
-					slog.String("policy_id", policyID))
-			}
-		}
-	}
 }
 
 // DeleteLLMProvider implements ServerInterface.DeleteLLMProvider
@@ -914,29 +880,6 @@ func (s *APIServer) DeleteLLMProvider(c *gin.Context, id string) {
 		"id":      cfg.Handle,
 	})
 
-	if s.eventHub == nil && s.apiKeyXDSManager != nil {
-		apiName, apiVersion := cfg.DisplayName, cfg.Version
-		if apiName != "" {
-			if err := s.apiKeyXDSManager.RemoveAPIKeysByAPI(cfg.UUID, apiName, apiVersion, correlationID); err != nil {
-				log.Warn("Failed to remove LLM provider API keys from policy engine",
-					slog.Any("error", err),
-					slog.String("api_id", cfg.UUID),
-					slog.String("api_name", apiName),
-					slog.String("api_version", apiVersion))
-			}
-		}
-	}
-
-	// In EventHub mode the listener removes local policy state after replaying
-	// the delete event, so the writer should not race that cleanup inline.
-	if s.policyManager != nil && s.eventHub == nil {
-		policyID := cfg.UUID + "-policies"
-		if err := s.policyManager.RemovePolicy(policyID); err != nil {
-			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
-		} else {
-			log.Info("Derived policy configuration removed", slog.String("policy_id", policyID))
-		}
-	}
 }
 
 // ListLLMProxies implements ServerInterface.ListLLMProxies
@@ -994,7 +937,8 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Delegate to service which parses/validates/transforms and persists
-	stored, err := s.llmDeploymentService.CreateLLMProxy(utils.LLMDeploymentParams{
+	// Important: The result stored configuration contains resolved secrets. Do not expose them in responses.
+	result, err := s.llmDeploymentService.CreateLLMProxy(utils.LLMDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
 		CorrelationID: correlationID,
@@ -1014,8 +958,12 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 		return
 	}
 
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
-		go s.waitForDeploymentAndPush(stored.UUID, correlationID, log)
+	stored := result.StoredConfig
+
+	if !result.IsStale {
+		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
+			go s.waitForDeploymentAndPush(stored.UUID, correlationID, log)
+		}
 	}
 
 	log.Info("LLM proxy created successfully",
@@ -1027,20 +975,6 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 		Message: stringPtr("LLM proxy created successfully"),
 		Id:      stringPtr(stored.Handle), CreatedAt: timePtr(stored.CreatedAt)})
 
-	// In EventHub mode the listener rebuilds local policy state after replaying
-	// the proxy event, so the writer should not mutate local policies inline.
-	if s.policyManager != nil && s.eventHub == nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(stored)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to add derived policy configuration", slog.Any("error", err))
-			} else {
-				log.Info("Derived policy configuration added",
-					slog.String("policy_id", storedPolicy.ID),
-					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		}
-	}
 }
 
 // GetLLMProxyById implements ServerInterface.GetLLMProxyById
@@ -1108,7 +1042,7 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Delegate to service update wrapper
-	updated, err := s.llmDeploymentService.UpdateLLMProxy(id, utils.LLMDeploymentParams{
+	result, err := s.llmDeploymentService.UpdateLLMProxy(id, utils.LLMDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
 		Origin:        models.OriginGatewayAPI,
@@ -1128,6 +1062,8 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 		return
 	}
 
+	updated := result.StoredConfig
+
 	c.JSON(http.StatusOK, api.LLMProxyUpdateResponse{
 		Id:        stringPtr(updated.Handle),
 		Message:   stringPtr("LLM proxy updated successfully"),
@@ -1135,30 +1071,6 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 		UpdatedAt: timePtr(updated.UpdatedAt),
 	})
 
-	// In EventHub mode the listener rebuilds local policy state after replaying
-	// the proxy event, so the writer should not mutate local policies inline.
-	if s.policyManager != nil && s.eventHub == nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(updated)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to update derived policy configuration", slog.Any("error", err))
-			} else {
-				log.Info("Derived policy configuration updated",
-					slog.String("policy_id", storedPolicy.ID),
-					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		} else {
-			// LLM proxy no longer has policies, remove the existing policy configuration
-			policyID := updated.UUID + "-policies"
-			if err := s.policyManager.RemovePolicy(policyID); err != nil {
-				// Log at debug level since policy may not exist if LLM provider never had policies
-				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
-			} else {
-				log.Info("Derived policy configuration removed (LLM provider no longer has policies)",
-					slog.String("policy_id", policyID))
-			}
-		}
-	}
 }
 
 // DeleteLLMProxy implements ServerInterface.DeleteLLMProxy
@@ -1191,49 +1103,6 @@ func (s *APIServer) DeleteLLMProxy(c *gin.Context, id string) {
 		"id":      cfg.Handle,
 	})
 
-	if s.eventHub == nil && s.apiKeyXDSManager != nil {
-		apiName, apiVersion := cfg.DisplayName, cfg.Version
-		if apiName != "" {
-			if err := s.apiKeyXDSManager.RemoveAPIKeysByAPI(cfg.UUID, apiName, apiVersion, correlationID); err != nil {
-				log.Warn("Failed to remove LLM proxy API keys from policy engine",
-					slog.Any("error", err),
-					slog.String("api_id", cfg.UUID),
-					slog.String("api_name", apiName),
-					slog.String("api_version", apiVersion))
-			}
-		}
-	}
-
-	// In EventHub mode the listener removes local policy state after replaying
-	// the delete event, so the writer should not race that cleanup inline.
-	if s.policyManager != nil && s.eventHub == nil {
-		policyID := cfg.UUID + "-policies"
-		if err := s.policyManager.RemovePolicy(policyID); err != nil {
-			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
-		} else {
-			log.Info("Derived policy configuration removed", slog.String("policy_id", policyID))
-		}
-	}
-}
-
-// buildStoredPolicyFromAPI constructs a StoredPolicyConfig from an API config.
-// This is a thread-safe wrapper around policybuilder.DerivePolicyFromAPIConfig that handles
-// locking for the policyDefinitions map.
-//
-// Policy execution order: System Policies -> API Level Policies -> Operation Level Policies
-// Each level does not override the previous one; policies are executed in the given order.
-func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.StoredPolicyConfig {
-	// Copy policy definitions under lock to ensure thread safety
-	// (safe if map is ever mutated from another goroutine)
-	s.policyDefMu.RLock()
-	defsCopy := make(map[string]models.PolicyDefinition, len(s.policyDefinitions))
-	for k, v := range s.policyDefinitions {
-		defsCopy[k] = v
-	}
-	s.policyDefMu.RUnlock()
-
-	// Use the centralized, bug-fixed implementation from pkg/policy
-	return policybuilder.DerivePolicyFromAPIConfig(cfg, s.routerConfig, s.systemConfig, defsCopy)
 }
 
 // convertAPIPolicy converts generated api.Policy to policyenginev1.PolicyInstance.
@@ -1281,7 +1150,7 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Deploy MCP configuration using the utility service
-	cfg, err := s.mcpDeploymentService.CreateMCPProxy(utils.MCPDeploymentParams{
+	result, err := s.mcpDeploymentService.CreateMCPProxy(utils.MCPDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
 		ID:            "", // Empty to generate new UUID
@@ -1306,6 +1175,8 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 		return
 	}
 
+	cfg := result.StoredConfig
+
 	// Return success response (id is the handle)
 	c.JSON(http.StatusCreated, api.MCPProxyCreateResponse{
 		Status:    stringPtr("success"),
@@ -1314,23 +1185,14 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 		CreatedAt: timePtr(cfg.CreatedAt),
 	})
 
+	if result.IsStale {
+		return
+	}
+
 	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
 		go s.waitForDeploymentAndPush(cfg.UUID, correlationID, log)
 	}
 
-	// Build and add policy config derived from API configuration if policies are present
-	if s.policyManager != nil && s.eventHub == nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(cfg)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to add derived policy configuration", slog.Any("error", err))
-			} else {
-				log.Info("Derived policy configuration added",
-					slog.String("policy_id", storedPolicy.ID),
-					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		}
-	}
 }
 
 // ListMCPProxies implements ServerInterface.ListMCPProxies
@@ -1340,7 +1202,15 @@ func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesPara
 		s.SearchDeployments(c, string(api.Mcp))
 		return
 	}
-	configs := s.mcpDeploymentService.ListMCPProxies()
+	configs, err := s.mcpDeploymentService.ListMCPProxies()
+	if err != nil {
+		s.logger.Error("Failed to list MCP proxies", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to list MCP proxies",
+		})
+		return
+	}
 
 	items := make([]api.MCPProxyListItem, len(configs))
 	for i, cfg := range configs {
@@ -1495,30 +1365,6 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 	log.Info("MCP proxy configuration updated",
 		slog.String("id", updated.UUID),
 		slog.String("handle", handle))
-
-	// Rebuild and update derived policy configuration
-	if s.policyManager != nil && s.eventHub == nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(updated)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to update derived policy configuration", slog.Any("error", err))
-			} else {
-				log.Info("Derived policy configuration updated",
-					slog.String("policy_id", storedPolicy.ID),
-					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		} else {
-			// MCP proxy no longer has policies, remove the existing policy configuration
-			policyID := updated.UUID + "-policies"
-			if err := s.policyManager.RemovePolicy(policyID); err != nil {
-				// Log at debug level since policy may not exist if MCP proxy never had policies
-				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
-			} else {
-				log.Info("Derived policy configuration removed (MCP proxy no longer has policies)",
-					slog.String("policy_id", policyID))
-			}
-		}
-	}
 
 	// Return success response (id is the handle)
 	c.JSON(http.StatusOK, api.MCPProxyUpdateResponse{
@@ -1714,32 +1560,27 @@ func (s *APIServer) BuildConfigDumpResponse(log *slog.Logger) (*adminapi.ConfigD
 	})
 
 	// Get all certificates
-	var certificates []adminapi.CertificateResponse
+	certificates := make([]adminapi.CertificateResponse, 0)
 	totalBytes := 0
 
-	if s.db == nil {
-		// Memory-only mode: return empty certificate list
-		log.Debug("Storage is memory-only, returning empty certificate list")
-	} else {
-		certs, err := s.db.ListCertificates()
-		if err != nil {
-			return nil, fmt.Errorf("failed to retrieve certificates: %w", err)
-		}
+	certs, err := s.db.ListCertificates()
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve certificates: %w", err)
+	}
 
-		for _, cert := range certs {
-			totalBytes += len(cert.Certificate)
+	for _, cert := range certs {
+		totalBytes += len(cert.Certificate)
 
-			certStatus := "success"
-			certificates = append(certificates, adminapi.CertificateResponse{
-				Id:       &cert.UUID,
-				Name:     &cert.Name,
-				Subject:  &cert.Subject,
-				Issuer:   &cert.Issuer,
-				NotAfter: &cert.NotAfter,
-				Count:    &cert.CertCount,
-				Status:   &certStatus,
-			})
-		}
+		certStatus := "success"
+		certificates = append(certificates, adminapi.CertificateResponse{
+			Id:       &cert.UUID,
+			Name:     &cert.Name,
+			Subject:  &cert.Subject,
+			Issuer:   &cert.Issuer,
+			NotAfter: &cert.NotAfter,
+			Count:    &cert.CertCount,
+			Status:   &certStatus,
+		})
 	}
 
 	// Calculate statistics
@@ -2132,14 +1973,6 @@ func (s *APIServer) ListAPIKeys(c *gin.Context, id string) {
 // It first attempts a direct ID lookup; if that fails, it falls back to handle-based resolution.
 // Returns (apiID, nil) on success; on failure writes the HTTP response and returns ("", err).
 func (s *APIServer) resolveAPIIDByHandle(c *gin.Context, handle string, log *slog.Logger) (string, error) {
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return "", fmt.Errorf("database not available")
-	}
-
 	// First, try treating the input as a deployment ID.
 	cfgByID, err := s.db.GetConfig(handle)
 	if err != nil {
@@ -2204,15 +2037,6 @@ func (s *APIServer) CreateSubscription(c *gin.Context) {
 	correlationID := middleware.GetCorrelationID(c)
 	if correlationID != "" {
 		log = log.With(slog.String("correlation_id", correlationID))
-	}
-
-	if s.db == nil {
-		log.Error("Database storage not available for subscription creation")
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
 	}
 
 	var req api.SubscriptionCreateRequest
@@ -2334,15 +2158,6 @@ func (s *APIServer) CreateSubscription(c *gin.Context) {
 func (s *APIServer) ListSubscriptions(c *gin.Context, params api.ListSubscriptionsParams) {
 	log := middleware.GetLogger(c, s.logger)
 
-	if s.db == nil {
-		log.Error("Database storage not available for listing subscriptions")
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
-
 	var apiID, appID, status *string
 	if params.ApiId != nil && *params.ApiId != "" {
 		// Normalize apiId to the internal deployment ID (accepts handle or deployment ID).
@@ -2387,15 +2202,6 @@ func (s *APIServer) ListSubscriptions(c *gin.Context, params api.ListSubscriptio
 func (s *APIServer) GetSubscription(c *gin.Context, subscriptionId string) {
 	log := middleware.GetLogger(c, s.logger)
 
-	if s.db == nil {
-		log.Error("Database storage not available for getting subscription")
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
-
 	sub, err := s.db.GetSubscriptionByID(subscriptionId, "")
 	if err != nil {
 		if storage.IsNotFoundError(err) {
@@ -2419,15 +2225,6 @@ func (s *APIServer) UpdateSubscription(c *gin.Context, subscriptionId string) {
 	correlationID := middleware.GetCorrelationID(c)
 	if correlationID != "" {
 		log = log.With(slog.String("correlation_id", correlationID))
-	}
-
-	if s.db == nil {
-		log.Error("Database storage not available for updating subscription")
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
 	}
 
 	sub, err := s.db.GetSubscriptionByID(subscriptionId, "")
@@ -2483,15 +2280,6 @@ func (s *APIServer) DeleteSubscription(c *gin.Context, subscriptionId string) {
 	correlationID := middleware.GetCorrelationID(c)
 	if correlationID != "" {
 		log = log.With(slog.String("correlation_id", correlationID))
-	}
-
-	if s.db == nil {
-		log.Error("Database storage not available for deleting subscription")
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
 	}
 
 	sub, err := s.db.GetSubscriptionByID(subscriptionId, "")
@@ -2552,11 +2340,6 @@ func (s *APIServer) CreateSubscriptionPlan(c *gin.Context) {
 	correlationID := middleware.GetCorrelationID(c)
 	if correlationID != "" {
 		log = log.With(slog.String("correlation_id", correlationID))
-	}
-
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Database storage not available"})
-		return
 	}
 
 	var req api.SubscriptionPlanCreateRequest
@@ -2630,11 +2413,6 @@ func (s *APIServer) CreateSubscriptionPlan(c *gin.Context) {
 func (s *APIServer) ListSubscriptionPlans(c *gin.Context) {
 	log := middleware.GetLogger(c, s.logger)
 
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Database storage not available"})
-		return
-	}
-
 	list, err := s.db.ListSubscriptionPlans("")
 	if err != nil {
 		log.Error("Failed to list subscription plans", slog.Any("error", err))
@@ -2652,11 +2430,6 @@ func (s *APIServer) ListSubscriptionPlans(c *gin.Context) {
 // GetSubscriptionPlan implements ServerInterface.GetSubscriptionPlan (GET /subscription-plans/{planId})
 func (s *APIServer) GetSubscriptionPlan(c *gin.Context, planId string) {
 	log := middleware.GetLogger(c, s.logger)
-
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Database storage not available"})
-		return
-	}
 
 	plan, err := s.db.GetSubscriptionPlanByID(planId, "")
 	if err != nil {
@@ -2681,11 +2454,6 @@ func (s *APIServer) UpdateSubscriptionPlan(c *gin.Context, planId string) {
 	correlationID := middleware.GetCorrelationID(c)
 	if correlationID != "" {
 		log = log.With(slog.String("correlation_id", correlationID))
-	}
-
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Database storage not available"})
-		return
 	}
 
 	existing, err := s.db.GetSubscriptionPlanByID(planId, "")
@@ -2769,11 +2537,6 @@ func (s *APIServer) DeleteSubscriptionPlan(c *gin.Context, planId string) {
 		log = log.With(slog.String("correlation_id", correlationID))
 	}
 
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Database storage not available"})
-		return
-	}
-
 	if err := s.getSubscriptionResourceService().DeleteSubscriptionPlan(planId, correlationID, log); err != nil {
 		if storage.IsNotFoundError(err) {
 			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
@@ -2784,6 +2547,344 @@ func (s *APIServer) DeleteSubscriptionPlan(c *gin.Context, planId string) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+// CreateSecret handles POST /secrets
+func (s *APIServer) CreateSecret(c *gin.Context) {
+	log := middleware.GetLogger(c, s.logger)
+
+	// Read request body
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		log.Error("Failed to read request body", slog.Any("error", err))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to read request body",
+		})
+		return
+	}
+
+	// Get correlation ID from context
+	correlationID := middleware.GetCorrelationID(c)
+
+	// Avoid secretService nil panic
+	if s.secretService == nil {
+		log.Error("Secret service is not initialized properly")
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
+			Message: "Secret service is not initialized properly"})
+		return
+	}
+
+	// Delegate to service which parses/validates/encrypt and persists
+	secret, err := s.secretService.CreateSecret(secrets.SecretParams{
+		Data:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Logger:        log,
+	})
+	if err != nil {
+		log.Error("Failed to encrypt Secret", slog.Any("error", err))
+		if storage.IsConflictError(err) {
+			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	log.Info("Secret created successfully",
+		slog.String("secret_handle", secret.Handle),
+		slog.String("correlation_id", correlationID))
+
+	// Return created secret
+	c.JSON(http.StatusCreated, gin.H{
+		"id":        secret.Handle,
+		"createdAt": secret.CreatedAt,
+		"updatedAt": secret.UpdatedAt,
+	})
+}
+
+// ListSecrets implements ServerInterface.ListSecrets
+// (GET /secrets)
+func (s *APIServer) ListSecrets(c *gin.Context) {
+	log := s.logger
+	correlationID := middleware.GetCorrelationID(c)
+
+	log.Debug("Retrieving secretsList", slog.String("correlation_id", correlationID))
+
+	// Avoid secretService nil panic
+	if s.secretService == nil {
+		log.Error("Secret service is not initialized properly")
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
+			Message: "Secret service is not initialized properly"})
+		return
+	}
+
+	secretsMeta, err := s.secretService.GetSecrets(correlationID)
+	if err != nil {
+		log.Error("Failed to retrieve secretsList",
+			slog.String("correlation_id", correlationID),
+			slog.Any("error", err),
+		)
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to retrieve secretsList",
+		})
+		return
+	}
+
+	// Convert []SecretMeta to API response type
+	secretsList := make([]struct {
+		CreatedAt   time.Time `json:"createdAt" yaml:"createdAt"`
+		DisplayName string    `json:"displayName" yaml:"displayName"`
+		Id          string    `json:"id" yaml:"id"`
+		UpdatedAt   time.Time `json:"updatedAt" yaml:"updatedAt"`
+	}, 0, len(secretsMeta))
+	for _, meta := range secretsMeta {
+		secretsList = append(secretsList, struct {
+			CreatedAt   time.Time `json:"createdAt" yaml:"createdAt"`
+			DisplayName string    `json:"displayName" yaml:"displayName"`
+			Id          string    `json:"id" yaml:"id"`
+			UpdatedAt   time.Time `json:"updatedAt" yaml:"updatedAt"`
+		}{
+			CreatedAt:   meta.CreatedAt,
+			DisplayName: meta.DisplayName,
+			Id:          meta.Handle,
+			UpdatedAt:   meta.UpdatedAt,
+		})
+	}
+
+	c.JSON(http.StatusOK, api.SecretListResponse{
+		Status:     stringPtr("success"),
+		TotalCount: intPtr(len(secretsList)),
+		Secrets:    &secretsList,
+	})
+}
+
+// GetSecret handles GET /secrets/{id}
+func (s *APIServer) GetSecret(c *gin.Context, id string) {
+	log := s.logger
+	correlationID := middleware.GetCorrelationID(c)
+
+	log.Debug("Retrieving secret",
+		slog.String("secret_handle", id),
+		slog.String("correlation_id", correlationID))
+
+	// Validate secret ID format
+	if id == "" {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Missing required field: id",
+		})
+		return
+	}
+	if len(id) > 255 {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Secret ID too long (max 255 characters)",
+		})
+		return
+	}
+
+	// Avoid secretService nil panic
+	if s.secretService == nil {
+		log.Error("Secret service is not initialized properly")
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
+			Message: "Secret service is not initialized properly"})
+		return
+	}
+
+	// Retrieve secret
+	secret, err := s.secretService.Get(id, correlationID)
+	if err != nil {
+		// Check for not found error
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+			return
+		}
+
+		// Generic error for decryption failures (security-first)
+		log.Error("Failed to retrieve secret",
+			slog.String("secret_handle", id),
+			slog.String("correlation_id", correlationID),
+			slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to decrypt secret",
+		})
+		return
+	}
+
+	log.Debug("Secret retrieved successfully",
+		slog.String("secret_handle", secret.Handle),
+		slog.String("correlation_id", correlationID))
+
+	// Reconstruct the SecretConfiguration from stored fields
+	configuration := api.SecretConfiguration{
+		ApiVersion: api.SecretConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.Secret,
+		Metadata: api.Metadata{
+			Name: secret.Handle,
+		},
+		Spec: api.SecretConfigData{
+			DisplayName: secret.DisplayName,
+			Description: secret.Description,
+			Value:       secret.Value,
+		},
+	}
+
+	// Return full secret detail
+	c.JSON(http.StatusOK, gin.H{
+		"status": "success",
+		"secret": gin.H{
+			"id":            secret.Handle,
+			"configuration": configuration,
+			"metadata": gin.H{
+				"createdAt": secret.CreatedAt.Format(time.RFC3339),
+				"updatedAt": secret.UpdatedAt.Format(time.RFC3339),
+			},
+		},
+	})
+}
+
+// UpdateSecret handles PUT /secrets/{id}
+func (s *APIServer) UpdateSecret(c *gin.Context, id string) {
+	log := middleware.GetLogger(c, s.logger)
+
+	// Read request body
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		log.Error("Failed to read request body", slog.Any("error", err))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to read request body",
+		})
+		return
+	}
+
+	// Get correlation ID from context
+	correlationID := middleware.GetCorrelationID(c)
+
+	// Validate secret ID format
+	if id == "" {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Missing required field: id",
+		})
+		return
+	}
+	if len(id) > 255 {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Secret ID too long (max 255 characters)",
+		})
+		return
+	}
+
+	// Avoid secretService nil panic
+	if s.secretService == nil {
+		log.Error("Secret service is not initialized properly")
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
+			Message: "Secret service is not initialized properly"})
+		return
+	}
+
+	// Delegate to service which parses/validates/encrypt and persists
+	secret, err := s.secretService.UpdateSecret(id, secrets.SecretParams{
+		Data:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Logger:        log,
+	})
+	if err != nil {
+		log.Error("Failed to encrypt Secret", slog.Any("error", err))
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if storage.IsConflictError(err) {
+			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	log.Info("Secret updated successfully",
+		slog.String("secret_handle", secret.Handle),
+		slog.String("correlation_id", correlationID))
+
+	// Return created secret
+	c.JSON(http.StatusOK, gin.H{
+		"id":        secret.Handle,
+		"createdAt": secret.CreatedAt,
+		"updatedAt": secret.UpdatedAt,
+	})
+}
+
+// DeleteSecret handles DELETE /secrets/{id}
+func (s *APIServer) DeleteSecret(c *gin.Context, id string) {
+	log := s.logger
+	correlationID := middleware.GetCorrelationID(c)
+
+	log.Debug("Deleting secret",
+		slog.String("secret_id", id),
+		slog.String("correlation_id", correlationID))
+
+	// Validate secret ID format
+	if id == "" {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Missing required field: id",
+		})
+		return
+	}
+	if len(id) > 255 {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Secret ID too long (max 255 characters)",
+		})
+		return
+	}
+
+	// Avoid secretService nil panic
+	if s.secretService == nil {
+		log.Error("Secret service is not initialized properly")
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
+			Message: "Secret service is not initialized properly"})
+		return
+	}
+
+	// Delete secret
+	if err := s.secretService.Delete(id, correlationID); err != nil {
+		// Check for not found error
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+			return
+		}
+
+		// Generic error for storage failures
+		log.Error("Failed to delete secret",
+			slog.String("secret_id", id),
+			slog.String("correlation_id", correlationID),
+			slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to delete secret",
+		})
+		return
+	}
+
+	log.Info("Secret deleted successfully",
+		slog.String("secret_id", id),
+		slog.String("correlation_id", correlationID))
+
+	// Return 200 OK on successful deletion
+	c.Status(http.StatusOK)
 }
 
 func subscriptionPlanToResponse(plan *models.SubscriptionPlan) api.SubscriptionPlanResponse {

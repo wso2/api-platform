@@ -20,7 +20,7 @@
 # Combines Envoy Router and Policy Engine into a single container
 
 # Stage 1: Builder Base
-FROM --platform=$BUILDPLATFORM golang:1.25.7-bookworm AS builder-base
+FROM --platform=$BUILDPLATFORM golang:1.26.1-bookworm AS builder-base
 ARG BUILDARCH
 ARG VERSION=unknown
 ARG GIT_COMMIT=unknown
@@ -38,12 +38,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 WORKDIR /workspace
 
-# Download SDK dependencies first (cached by go.mod/go.sum changes)
-COPY --from=sdk go.mod go.sum /api-platform/sdk/
+# Copy SDK core for go.mod replace directive
 COPY --from=sdk-core go.mod /api-platform/sdk/core/
-WORKDIR /api-platform/sdk
-RUN --mount=type=cache,target=/go/pkg/mod \
-    go mod download
 
 # Download gateway-builder dependencies (cached by go.mod/go.sum changes)
 COPY --from=gateway-builder go.mod go.sum /api-platform/gateway/gateway-builder/
@@ -82,12 +78,8 @@ ENV BUILD_DATE=${BUILD_DATE}
 ENV TARGETARCH=${TARGETARCH}
 ENV ENABLE_DEBUG=${ENABLE_DEBUG}
 
-# Download SDK dependencies (cached by go.mod/go.sum changes)
-COPY --from=sdk go.mod go.sum /api-platform/sdk/
+# Copy SDK core for go.mod replace directive
 COPY --from=sdk-core go.mod /api-platform/sdk/core/
-WORKDIR /api-platform/sdk
-RUN --mount=type=cache,target=/go/pkg/mod \
-    go mod download
 
 # Download common dependencies (cached by go.mod/go.sum changes)
 COPY --from=common go.mod go.sum /api-platform/common/
@@ -103,7 +95,6 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 # Copy all source and policy files
 COPY policy-engine/ /api-platform/gateway/gateway-runtime/policy-engine/
-COPY --from=sdk . /api-platform/sdk
 COPY --from=sdk-core . /api-platform/sdk/core
 COPY --from=common . /api-platform/common
 COPY --from=system-policies . /api-platform/gateway/system-policies/
@@ -127,7 +118,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         -out-dir /api-platform/output
 
 # Stage 3a: dlv installer (builds dlv for the debug stage)
-FROM golang:1.25.7-bookworm AS debug-dlv-builder
+FROM golang:1.26.1-bookworm AS debug-dlv-builder
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go install github.com/go-delve/delve/cmd/dlv@v1.26.0

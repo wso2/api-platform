@@ -1,10 +1,11 @@
 package uppercasebody
 
 import (
+	"context"
 	"log/slog"
 	"strings"
 
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
 // UppercaseBodyPolicy transforms request body text to uppercase
@@ -30,9 +31,9 @@ func (p *UppercaseBodyPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-// OnRequest transforms the request body to uppercase
-func (p *UppercaseBodyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	slog.Debug("[Uppercase Body]: OnRequest called", "hasBody", ctx.Body != nil && ctx.Body.Present)
+// OnRequestBody transforms the request body to uppercase
+func (p *UppercaseBodyPolicy) OnRequestBody(_ context.Context, ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
+	slog.Debug("[Uppercase Body]: OnRequestBody called", "hasBody", ctx.Body != nil && ctx.Body.Present)
 
 	// Check if body is present
 	if ctx.Body == nil || !ctx.Body.Present {
@@ -57,8 +58,3 @@ func (p *UppercaseBodyPolicy) OnRequest(ctx *policy.RequestContext, params map[s
 	}
 }
 
-// OnResponse is not used by this policy (only modifies request body)
-func (p *UppercaseBodyPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	slog.Debug("[Uppercase Body]: OnResponse called (no-op)")
-	return nil // No response processing needed
-}

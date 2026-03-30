@@ -23,7 +23,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
-	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
+	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
 
 func createTestPolicy(id, apiName, version, context string) *models.StoredPolicyConfig {

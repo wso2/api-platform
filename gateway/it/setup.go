@@ -306,6 +306,71 @@ func (cm *ComposeManager) gracefulStop(ctx context.Context) error {
 	return cmd.Run()
 }
 
+// RestartService restarts a single compose service and waits for its health endpoint if one is known.
+func (cm *ComposeManager) RestartService(service string) error {
+	if cm == nil {
+		return fmt.Errorf("compose manager is nil")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	args := []string{"compose", "-p", cm.projectName, "-f", cm.composeFile, "restart", service}
+	cmd := execCommandContext(ctx, "docker", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to restart service %s: %w", service, err)
+	}
+
+	endpoint, ok := serviceHealthEndpoint(service)
+	if !ok {
+		return nil
+	}
+
+	return waitForHealthyEndpoint(ctx, endpoint)
+}
+
+func serviceHealthEndpoint(service string) (string, bool) {
+	switch service {
+	case "gateway-controller":
+		return fmt.Sprintf("http://localhost:%s/health", GatewayControllerAdminPort), true
+	case "router", "gateway-runtime":
+		return fmt.Sprintf("http://localhost:%s/ready", EnvoyAdminPort), true
+	case "policy-engine":
+		return "http://localhost:9002/health", true
+	default:
+		return "", false
+	}
+}
+
+func waitForHealthyEndpoint(ctx context.Context, endpoint string) error {
+	client := &http.Client{Timeout: 5 * time.Second}
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return fmt.Errorf("failed to build health request for %s: %w", endpoint, err)
+		}
+
+		resp, err := client.Do(req)
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return nil
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("service health check timed out for %s: %w", endpoint, ctx.Err())
+		case <-ticker.C:
+		}
+	}
+}
+
 // DumpLogs collects docker compose logs and writes them to the given file path
 func (cm *ComposeManager) DumpLogs(outputFile string) error {
 	if cm == nil {

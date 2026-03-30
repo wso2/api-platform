@@ -34,6 +34,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
@@ -55,6 +56,7 @@ type APIDeploymentParams struct {
 type APIDeploymentResult struct {
 	StoredConfig *models.StoredConfig
 	IsUpdate     bool
+	IsStale      bool // true if the DB row was NOT modified (a newer version already exists)
 }
 
 // ValidationErrorListError wraps validation errors for API configuration.
@@ -78,6 +80,7 @@ type APIDeploymentService struct {
 	httpClient      *http.Client
 	eventHub        eventhub.EventHub
 	gatewayID       string
+	policyResolver  *resolver.PolicyResolver
 }
 
 // NewAPIDeploymentService creates a new API deployment service
@@ -87,7 +90,15 @@ func NewAPIDeploymentService(
 	snapshotManager *xds.SnapshotManager,
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
+	policyResolver *resolver.PolicyResolver,
+	eventHub eventhub.EventHub,
+	gatewayID string,
 ) *APIDeploymentService {
+	if db == nil {
+		panic("APIDeploymentService requires non-nil storage")
+	}
+	trimmedGatewayID := requireReplicaSyncWiring("APIDeploymentService", eventHub, gatewayID)
+
 	return &APIDeploymentService{
 		store:           store,
 		db:              db,
@@ -96,30 +107,15 @@ func NewAPIDeploymentService(
 		validator:       validator,
 		httpClient:      &http.Client{Timeout: 10 * time.Second},
 		routerConfig:    routerConfig,
+		eventHub:        eventHub,
+		gatewayID:       trimmedGatewayID,
+		policyResolver:  policyResolver,
 	}
-}
-
-// SetEventHub sets the EventHub for event-driven synchronization.
-// When set, the deployment service publishes events instead of directly
-// updating in-memory stores and xDS snapshots.
-func (s *APIDeploymentService) SetEventHub(eventHub eventhub.EventHub, gatewayID string) {
-	s.eventHub = eventHub
-	s.gatewayID = gatewayID
 }
 
 // TODO: (VirajSalaka) We do not need gatewayID in the event as it is part of the publishEvent.
 // publishEvent publishes an event to the EventHub for async processing.
 func (s *APIDeploymentService) publishEvent(eventType eventhub.EventType, action, entityID, correlationID string, logger *slog.Logger) {
-	if s.eventHub == nil {
-		return
-	}
-	if strings.TrimSpace(s.gatewayID) == "" {
-		logger.Warn("Skipping event publish because gateway ID is not configured",
-			slog.String("event_type", string(eventType)),
-			slog.String("action", action),
-			slog.String("entity_id", entityID))
-		return
-	}
 	event := eventhub.Event{
 		GatewayID:           s.gatewayID,
 		OriginatedTimestamp: time.Now(),
@@ -138,16 +134,8 @@ func (s *APIDeploymentService) publishEvent(eventType eventhub.EventType, action
 	}
 }
 
-func isReplicaSyncedKind(kind string) bool {
-	switch kind {
-	case models.KindRestApi, models.KindWebSubApi, models.KindLlmProvider, models.KindLlmProxy:
-		return true
-	default:
-		return false
-	}
-}
-
 // DeployAPIConfiguration handles the complete API configuration deployment process
+// Important: The APIDeploymentResult contains resolved secrets. Do not expose them in responses.
 func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams) (*APIDeploymentResult, error) {
 	if !models.IsValidOrigin(params.Origin) {
 		return nil, fmt.Errorf("invalid or missing origin: %q", params.Origin)
@@ -256,6 +244,11 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 
 	// Create stored configuration
 	now := time.Now()
+	deployedAt := params.DeployedAt
+	if deployedAt == nil {
+		truncated := now.Truncate(time.Millisecond)
+		deployedAt = &truncated
+	}
 	storedCfg := &models.StoredConfig{
 		UUID:                apiID,
 		Kind:                kind,
@@ -269,11 +262,52 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		Origin:              params.Origin,
 		CreatedAt:           now,
 		UpdatedAt:           now,
-		DeployedAt:          params.DeployedAt,
+		DeployedAt:          deployedAt,
 	}
 
+	// Compute WebSub topic diff BEFORE persisting — ConfigStore.Add populates TopicManager,
+	// so GetTopicsForUpdate must run while the store still has the old state.
+	var topicsToRegister, topicsToUnregister []string
 	if kind == "WebSubApi" {
-		topicsToRegister, topicsToUnregister := s.GetTopicsForUpdate(*storedCfg)
+		topicsToRegister, topicsToUnregister = s.GetTopicsForUpdate(*storedCfg)
+	}
+
+	// Resolve gateway-default sentinels to the current config values before persisting so that
+	// the stored vhosts are immune to future gateway config changes.
+	if err := resolveVhostSentinels(&storedCfg.Configuration, s.routerConfig); err != nil {
+		return nil, fmt.Errorf("failed to resolve vhost sentinels: %w", err)
+	}
+	// Sync SourceConfiguration so the resolved vhosts are persisted to the database
+	// (the DB layer marshals SourceConfiguration, not Configuration).
+	storedCfg.SourceConfiguration = storedCfg.Configuration
+
+	var saveErr error
+
+	// Resolve policy configuration (handles secret resolution)
+	resolvedCfg, saveErr := s.resolvePolicyConfiguration(storedCfg)
+	if saveErr != nil {
+		return nil, saveErr
+	}
+
+	// Try to save/update the configuration using timestamp-guarded upsert.
+	// affected=true means the row was actually inserted or updated in the DB.
+	// affected=false means a newer version already exists (stale event — no-op).
+	affected, saveErr := s.saveOrUpdateConfig(storedCfg, params.Logger)
+	if saveErr != nil {
+		return nil, saveErr
+	}
+
+	if !affected {
+		// Stale event — DB was not modified. Return success but skip event publishing and xDS update.
+		return &APIDeploymentResult{
+			StoredConfig: storedCfg,
+			IsUpdate:     isUpdate,
+			IsStale:      true,
+		}, nil
+	}
+
+	// WebSub topic registration/deregistration — only after successful, non-stale persistence.
+	if kind == "WebSubApi" {
 		// TODO: Pre configure the dynamic forward proxy rules for event gw
 		// This was communication bridge will be created on the gw startup
 		// Can perform internal communication with websub hub without relying on the dynamic rules
@@ -361,22 +395,6 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		}
 	}
 
-	// Resolve gateway-default sentinels to the current config values before persisting so that
-	// the stored vhosts are immune to future gateway config changes.
-	if err := resolveVhostSentinels(&storedCfg.Configuration, s.routerConfig); err != nil {
-		return nil, fmt.Errorf("failed to resolve vhost sentinels: %w", err)
-	}
-	// Sync SourceConfiguration so the resolved vhosts are persisted to the database
-	// (the DB layer marshals SourceConfiguration, not Configuration).
-	storedCfg.SourceConfiguration = storedCfg.Configuration
-
-	// Try to save/update the configuration
-	var saveErr error
-	isUpdate, saveErr = s.saveOrUpdateConfig(storedCfg, params.Logger)
-	if saveErr != nil {
-		return nil, saveErr
-	}
-
 	// Log success
 	if isUpdate {
 		params.Logger.Info("API configuration updated",
@@ -392,32 +410,38 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 			slog.String("correlation_id", params.CorrelationID))
 	}
 
-	if s.eventHub != nil {
-		// Event-driven mode: publish event for async processing by EventListener
-		action := "CREATE"
-		if isUpdate {
-			action = "UPDATE"
-		}
-		s.publishEvent(eventhub.EventTypeAPI, action, apiID, params.CorrelationID, params.Logger)
-	} else {
-		// Memory-only mode: update xDS snapshot inline
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-
-			if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
-				params.Logger.Error("Failed to update xDS snapshot",
-					slog.Any("error", err),
-					slog.String("api_id", apiID),
-					slog.String("correlation_id", params.CorrelationID))
-			}
-		}()
+	action := "CREATE"
+	if isUpdate {
+		action = "UPDATE"
 	}
+	s.publishEvent(eventhub.EventTypeAPI, action, apiID, params.CorrelationID, params.Logger)
 
 	return &APIDeploymentResult{
-		StoredConfig: storedCfg,
+		StoredConfig: resolvedCfg,
 		IsUpdate:     isUpdate,
+		IsStale:      false,
 	}, nil
+}
+
+// resolvePolicyConfiguration resolves policy templates and secret references in the configuration.
+// Returns the resolved configuration or an error if policy resolution fails.
+func (s *APIDeploymentService) resolvePolicyConfiguration(storedCfg *models.StoredConfig) (*models.StoredConfig, error) {
+	resolvedCfg, validationErrors := s.policyResolver.ResolvePolicies(storedCfg)
+	if len(validationErrors) > 0 {
+		errMsgs := make([]string, 0, len(validationErrors))
+		for _, ve := range validationErrors {
+			errMsgs = append(errMsgs, ve.Message)
+		}
+		errMsg := strings.Join(errMsgs, "; ")
+
+		slog.Error("Policy resolution failed",
+			slog.String("config_handle", storedCfg.Handle),
+			slog.String("errors", errMsg),
+		)
+
+		return nil, fmt.Errorf("policy resolution failed with %d errors: %s", len(validationErrors), errMsg)
+	}
+	return resolvedCfg, nil
 }
 
 func (s *APIDeploymentService) GetTopicsForUpdate(apiConfig models.StoredConfig) ([]string, []string) {
@@ -474,91 +498,21 @@ func (s *APIDeploymentService) GetTopicsForDelete(apiConfig models.StoredConfig)
 	return s.store.TopicManager.GetAllByConfig(apiConfig.UUID)
 }
 
-// saveOrUpdateConfig handles the atomic dual-write operation for saving/updating configuration
+// saveOrUpdateConfig performs a timestamp-guarded upsert of the API configuration.
 func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig, logger *slog.Logger) (bool, error) {
-	existing, _ := s.db.GetConfig(storedCfg.UUID)
-
-	// If config already exists, update it
-	if existing != nil {
-		logger.Info("API configuration already exists, updating",
+	affected, err := s.db.UpsertConfig(storedCfg)
+	if err != nil {
+		return false, fmt.Errorf("failed to upsert config to database: %w", err)
+	}
+	if !affected {
+		logger.Debug("Skipped stale API configuration (newer version exists in DB)",
 			slog.String("api_id", storedCfg.UUID),
 			slog.String("displayName", storedCfg.DisplayName),
 			slog.String("version", storedCfg.Version))
-		return s.updateExistingConfig(storedCfg, existing, logger)
+		return false, nil
 	}
 
-	// Save new config to database first
-	if err := s.db.SaveConfig(storedCfg); err != nil {
-		logger.Info("Error saving new API configuration to database",
-			slog.String("api_id", storedCfg.UUID),
-			slog.String("displayName", storedCfg.DisplayName),
-			slog.String("version", storedCfg.Version))
-		return false, fmt.Errorf("failed to save config to database: %w", err)
-	}
-
-	if s.eventHub == nil || !isReplicaSyncedKind(storedCfg.Kind) {
-		// Add to in-memory store inline
-		if err := s.store.Add(storedCfg); err != nil {
-			// Rollback database write
-			logger.Info("Error adding new API configuration to memory store, rolling back database",
-				slog.String("api_id", storedCfg.UUID),
-				slog.String("displayName", storedCfg.DisplayName),
-				slog.String("version", storedCfg.Version))
-			_ = s.db.DeleteConfig(storedCfg.UUID)
-			return false, fmt.Errorf("failed to add config to memory store: %w", err)
-		}
-	}
-	// In event-driven mode, the EventListener will add to store via event processing
-
-	return false, nil // Successfully created new config
-}
-
-// updateExistingConfig updates an existing API configuration
-func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConfig,
-	existing *models.StoredConfig, logger *slog.Logger) (bool, error) {
-
-	// Backup original state for potential rollback
-	original := *existing
-
-	// Update the existing configuration (including denormalized fields used by secondary indexes)
-	now := time.Now()
-	existing.Kind = newConfig.Kind
-	existing.Handle = newConfig.Handle
-	existing.DisplayName = newConfig.DisplayName
-	existing.Version = newConfig.Version
-	existing.Configuration = newConfig.Configuration
-	existing.SourceConfiguration = newConfig.SourceConfiguration
-	existing.DesiredState = models.StateDeployed
-	existing.DeploymentID = newConfig.DeploymentID
-	existing.Origin = newConfig.Origin
-	existing.UpdatedAt = now
-	existing.DeployedAt = newConfig.DeployedAt
-
-	// Update database first
-	if err := s.db.UpdateConfig(existing); err != nil {
-		return false, fmt.Errorf("failed to update config in database: %w", err)
-	}
-
-	if s.eventHub == nil || !isReplicaSyncedKind(existing.Kind) {
-		// Update in-memory store inline
-		if err := s.store.Update(existing); err != nil {
-			// Rollback DB to original state since memory update failed
-			if rbErr := s.db.UpdateConfig(&original); rbErr != nil {
-				logger.Error("Failed to rollback DB after memory update failure",
-					slog.Any("error", rbErr),
-					slog.String("id", original.UUID),
-					slog.String("displayName", original.DisplayName),
-					slog.String("version", original.Version))
-			}
-			return false, fmt.Errorf("failed to update config in memory store: %w", err)
-		}
-	}
-	// In event-driven mode, the EventListener will update store via event processing
-
-	// Update the newConfig to reflect the changes
-	*newConfig = *existing
-
-	return true, nil // Successfully updated existing config
+	return true, nil
 }
 
 func (s *APIDeploymentService) RegisterTopicWithHub(ctx context.Context, httpClient *http.Client, topic, webSubHubHost string, webSubPort int, logger *slog.Logger) error {

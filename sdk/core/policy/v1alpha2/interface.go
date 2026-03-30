@@ -5,6 +5,8 @@
 // at chain-build time — once at startup, with zero per-request overhead.
 package policyv1alpha2
 
+import "context"
+
 // Policy is the base interface all policies must implement.
 // Mode declares the policy's processing requirements for each phase; the kernel
 // uses this at chain-build time to configure buffering and ext_proc modes.
@@ -76,7 +78,7 @@ const (
 	// BodyModeSkip — don't process body; the phase method is not called.
 	BodyModeSkip BodyProcessingMode = "SKIP"
 
-	// BodyModeBuffer — buffer the complete body before invoking OnRequest/OnResponse.
+	// BodyModeBuffer — buffer the complete body before invoking OnRequestBody/OnResponseBody.
 	BodyModeBuffer BodyProcessingMode = "BUFFER"
 
 	// BodyModeStream — process body in streaming chunks.
@@ -88,27 +90,27 @@ const (
 // RequestHeaderPolicy processes request headers.
 // Implement this to modify or inspect headers before the request body is read.
 type RequestHeaderPolicy interface {
-	OnRequestHeaders(ctx *RequestHeaderContext, params map[string]interface{}) RequestHeaderAction
+	OnRequestHeaders(ctx context.Context, reqCtx *RequestHeaderContext, params map[string]interface{}) RequestHeaderAction
 }
 
 // ResponseHeaderPolicy processes response headers.
 // Implement this to modify or inspect response headers before the response body is read.
 type ResponseHeaderPolicy interface {
-	OnResponseHeaders(ctx *ResponseHeaderContext, params map[string]interface{}) ResponseHeaderAction
+	OnResponseHeaders(ctx context.Context, respCtx *ResponseHeaderContext, params map[string]interface{}) ResponseHeaderAction
 }
 
 // RequestPolicy processes the complete buffered request body.
 // If any policy in the chain implements this interface, the request body is
 // buffered before any policy in the chain executes.
 type RequestPolicy interface {
-	OnRequestBody(ctx *RequestContext, params map[string]interface{}) RequestAction
+	OnRequestBody(ctx context.Context, reqCtx *RequestContext, params map[string]interface{}) RequestAction
 }
 
 // ResponsePolicy processes the complete buffered response body.
 // If any policy in the chain implements only ResponsePolicy (not
 // StreamingResponsePolicy), the entire chain uses BUFFERED mode.
 type ResponsePolicy interface {
-	OnResponseBody(ctx *ResponseContext, params map[string]interface{}) ResponseAction
+	OnResponseBody(ctx context.Context, respCtx *ResponseContext, params map[string]interface{}) ResponseAction
 }
 
 // StreamingRequestPolicy processes the request body chunk-by-chunk.
@@ -116,9 +118,16 @@ type ResponsePolicy interface {
 // OnRequestBody when streaming is not possible (e.g. the chain has a
 // non-streaming policy). NeedsMoreRequestData is called after each chunk;
 // return true to accumulate before OnRequestBodyChunk is invoked.
+//
+// Error handling limitation: if an error occurs after one or more chunks have
+// already been forwarded to upstream, the upstream connection is already in
+// progress and the error cannot be cleanly surfaced — the stream will be
+// aborted. Policies that hold per-stream resources should handle cleanup in
+// their own error paths; there is currently no dedicated error-notification
+// hook on this interface.
 type StreamingRequestPolicy interface {
 	RequestPolicy
-	OnRequestBodyChunk(ctx *RequestStreamContext, chunk *StreamBody, params map[string]interface{}) RequestChunkAction
+	OnRequestBodyChunk(ctx context.Context, reqCtx *RequestStreamContext, chunk *StreamBody, params map[string]interface{}) RequestChunkAction
 	NeedsMoreRequestData(accumulated []byte) bool
 }
 
@@ -127,8 +136,17 @@ type StreamingRequestPolicy interface {
 // buffered mode when any policy in the chain does not implement this interface.
 // The kernel upgrades to FULL_DUPLEX_STREAMED only when every response policy
 // in the chain implements StreamingResponsePolicy.
+//
+// Error handling limitation: once the kernel has entered FULL_DUPLEX_STREAMED
+// mode and flushed at least one chunk downstream, the response status and
+// headers are committed to the client. A mid-stream error cannot be surfaced
+// as a clean HTTP error response — Envoy will abort the HTTP/2 stream or reset
+// the connection. ImmediateResponse is silently ignored in this context. There
+// is currently no dedicated error-notification hook on this interface; a future
+// OnStreamError method is planned to allow cleanup of per-stream resources
+// (open connections, partial buffers, token counters for billing).
 type StreamingResponsePolicy interface {
 	ResponsePolicy
-	OnResponseBodyChunk(ctx *ResponseStreamContext, chunk *StreamBody, params map[string]interface{}) ResponseChunkAction
+	OnResponseBodyChunk(ctx context.Context, respCtx *ResponseStreamContext, chunk *StreamBody, params map[string]interface{}) ResponseChunkAction
 	NeedsMoreResponseData(accumulated []byte) bool
 }

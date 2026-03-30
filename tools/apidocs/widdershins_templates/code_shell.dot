@@ -1,0 +1,7 @@
+{{ var defined_ct = data.allHeaders.find(function(h){ return h.name === 'Content-Type'; }); }}
+{{ if (defined_ct && data.consumes.indexOf('application/json') >= 0) { defined_ct.exampleValues.object = 'application/json'; } }}
+{{ var ext = 'json'; if (defined_ct) { var ct = defined_ct.exampleValues.object; if (ct.indexOf('yaml') >= 0) ext = 'yaml'; else if (ct.indexOf('xml') >= 0) ext = 'xml'; else if (ct.indexOf('text') >= 0) ext = 'txt'; } }}
+curl -X {{=data.methodUpper}} {{=data.url}}{{=data.requiredQueryString}} \
+  -u {username}:{password}{{?data.allHeaders.length || data.operation.requestBody}} \{{?}}
+{{~data.allHeaders :p:index}}  -H '{{=p.name}}: {{=p.exampleValues.object}}'{{?index < data.allHeaders.length-1 || data.operation.requestBody}} \{{?}}
+{{~}}{{?data.operation.requestBody}}  -d @payload.{{=ext}}{{?}}

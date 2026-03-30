@@ -54,11 +54,13 @@ func AuthorizationMiddleware(config models.AuthConfig, logger *slog.Logger) gin.
 		}
 		logger.Debug("User roles", slog.Any("userRoles", userRoles))
 
-		// Determine resource key
+		// Determine resource key.
+		// c.FullPath() returns "" when no registered route matches the request path.
+		// In that case, skip authorization and let Gin return 404.
 		resourcePath := c.FullPath()
 		if resourcePath == "" {
-			// FullPath may be empty for some middleware ordering; fallback to raw path
-			resourcePath = c.Request.URL.Path
+			c.Next()
+			return
 		}
 
 		// Try METHOD + path first

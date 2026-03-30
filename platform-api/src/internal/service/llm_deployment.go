@@ -215,7 +215,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusDeploying
 	}
-	performedAt := time.Now()
+	performedAt := time.Now().Truncate(time.Millisecond)
 	if _, err := s.deploymentRepo.SetCurrentWithDetails(
 		provider.UUID, orgUUID, gatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusDeployed),
@@ -292,7 +292,7 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusDeploying
 	}
-	performedAt := time.Now()
+	performedAt := time.Now().Truncate(time.Millisecond)
 	updatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		provider.UUID, orgUUID, targetDeployment.GatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusDeployed),
@@ -305,7 +305,7 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 	// Broadcast LLM provider deployment event to gateway
 	if s.gatewayEventsService != nil {
 		deploymentEvent := &model.LLMProviderDeploymentEvent{
-			ProviderId:   provider.ID,
+			ProviderId:   provider.UUID,
 			DeploymentID: deploymentID,
 			PerformedAt:  performedAt,
 		}
@@ -365,7 +365,7 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusUndeploying
 	}
-	performedAt := time.Now()
+	performedAt := time.Now().Truncate(time.Millisecond)
 	newUpdatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		provider.UUID, orgUUID, deployment.GatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusUndeployed),
@@ -378,7 +378,7 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 	// Broadcast LLM provider undeployment event to gateway
 	if s.gatewayEventsService != nil {
 		undeploymentEvent := &model.LLMProviderUndeploymentEvent{
-			ProviderId:   provider.ID,
+			ProviderId:   provider.UUID,
 			DeploymentID: deploymentID,
 			PerformedAt:  performedAt,
 		}
@@ -1018,7 +1018,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusDeploying
 	}
-	performedAt := time.Now()
+	performedAt := time.Now().Truncate(time.Millisecond)
 	if _, err := s.deploymentRepo.SetCurrentWithDetails(
 		proxy.UUID, orgUUID, gatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusDeployed),
@@ -1095,7 +1095,7 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusDeploying
 	}
-	performedAt := time.Now()
+	performedAt := time.Now().Truncate(time.Millisecond)
 	updatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		proxy.UUID, orgUUID, targetDeployment.GatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusDeployed),
@@ -1108,7 +1108,7 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 	// Broadcast LLM proxy deployment event to gateway
 	if s.gatewayEventsService != nil {
 		deploymentEvent := &model.LLMProxyDeploymentEvent{
-			ProxyId:      proxy.ID,
+			ProxyId:      proxy.UUID,
 			DeploymentID: deploymentID,
 			PerformedAt:  performedAt,
 		}
@@ -1168,7 +1168,7 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusUndeploying
 	}
-	performedAt := time.Now()
+	performedAt := time.Now().Truncate(time.Millisecond)
 	newUpdatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		proxy.UUID, orgUUID, deployment.GatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusUndeployed),
@@ -1181,7 +1181,7 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 	// Broadcast LLM proxy undeployment event to gateway
 	if s.gatewayEventsService != nil {
 		undeploymentEvent := &model.LLMProxyUndeploymentEvent{
-			ProxyId:      proxy.ID,
+			ProxyId:      proxy.UUID,
 			DeploymentID: deploymentID,
 			PerformedAt:  performedAt,
 		}

@@ -110,11 +110,12 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
 );
 
 -- Subscriptions table (application-level subscriptions for REST APIs)
--- application_id references applications in DevPortal/STS (no FK in platform), optional for token-based subscriptions
 -- subscription_token: encrypted (AES-256-GCM) for retrieval; subscription_token_hash for uniqueness and gateway sync
+-- application_id references applications in DevPortal/STS (no FK in platform), optional for token-based subscriptions
 CREATE TABLE IF NOT EXISTS subscriptions (
     uuid VARCHAR(40) PRIMARY KEY,
     api_uuid VARCHAR(40) NOT NULL,
+    subscriber_id VARCHAR(255) NOT NULL,
     application_id VARCHAR(255),
     subscription_token VARCHAR(512) NOT NULL,
     subscription_token_hash VARCHAR(64) NOT NULL,
@@ -160,6 +161,7 @@ CREATE TABLE IF NOT EXISTS gateway_custom_policies (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255),
     version VARCHAR(15) NOT NULL,
     description TEXT,
     policy_definition TEXT,
@@ -385,6 +387,7 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_application_id ON subscriptions(app
 CREATE INDEX IF NOT EXISTS idx_subscriptions_organization_uuid ON subscriptions(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_token ON subscriptions(subscription_token_hash);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_org_subscriber ON subscriptions(organization_uuid, subscriber_id);
 CREATE INDEX IF NOT EXISTS idx_gateways_org ON gateways(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_gateway_tokens_status ON gateway_tokens(gateway_uuid, status);
 CREATE INDEX IF NOT EXISTS idx_gateway_tokens_hash ON gateway_tokens(token_hash);

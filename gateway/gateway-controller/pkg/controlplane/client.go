@@ -36,12 +36,12 @@ import (
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 
 	"github.com/gorilla/websocket"
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
@@ -118,6 +118,7 @@ type Client struct {
 	llmDeploymentService        *utils.LLMDeploymentService
 	mcpDeploymentService        *utils.MCPDeploymentService
 	apiKeyXDSManager            utils.XDSManager
+	apiKeyStore                 *storage.APIKeyStore
 	routerConfig                *config.RouterConfig
 	policyManager               *policyxds.PolicyManager
 	systemConfig                *config.Config
@@ -126,7 +127,10 @@ type Client struct {
 	subscriptionResourceService *utils.SubscriptionResourceService
 	eventHub                    eventhub.EventHub
 	gatewayID                   string
-	gatewayPath                 string // cached gateway path from well-known discovery
+	gatewayPath                 string      // cached gateway path from well-known discovery
+	syncOnce                    sync.Once   // ensures deployment sync runs only on first connect
+	isFirstConnect              atomic.Bool // true on first connect, flipped to false after
+	policyResolver              *resolver.PolicyResolver
 }
 
 // NewClient creates a new control plane client
@@ -139,6 +143,7 @@ func NewClient(
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
 	apiKeyXDSManager utils.XDSManager,
+	apiKeyStore *storage.APIKeyStore,
 	apiKeyConfig *config.APIKeyConfig,
 	policyManager *policyxds.PolicyManager,
 	systemConfig *config.Config,
@@ -147,20 +152,27 @@ func NewClient(
 	templateDefinitions map[string]*api.LLMProviderTemplate,
 	subSnapshotManager utils.SubscriptionSnapshotUpdater,
 	eventHubInstance eventhub.EventHub,
+	policyResolver *resolver.PolicyResolver,
 ) *Client {
+	if db == nil {
+		panic("control plane client requires non-nil storage")
+	}
+	if eventHubInstance == nil {
+		panic("control plane client requires non-nil EventHub")
+	}
+	if systemConfig == nil {
+		panic("control plane client requires non-nil system config")
+	}
+	gatewayID := strings.TrimSpace(systemConfig.Controller.Server.GatewayID)
+	if gatewayID == "" {
+		panic("control plane client requires non-empty gateway ID")
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 
-	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig)
-	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, apiKeyConfig)
-	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subSnapshotManager)
-
-	var gatewayID string
-	if eventHubInstance != nil {
-		gatewayID = systemConfig.Controller.Server.GatewayID
-		deploymentService.SetEventHub(eventHubInstance, gatewayID)
-		apiKeyService.SetEventHub(eventHubInstance, gatewayID)
-		subscriptionResourceService.SetEventHub(eventHubInstance, gatewayID)
-	}
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig, policyResolver, eventHubInstance, gatewayID)
+	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, apiKeyConfig, eventHubInstance, gatewayID)
+	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subSnapshotManager, eventHubInstance, gatewayID)
 
 	client := &Client{
 		config:                      cfg,
@@ -173,6 +185,7 @@ func NewClient(
 		deploymentService:           deploymentService,
 		apiKeyService:               apiKeyService,
 		apiKeyXDSManager:            apiKeyXDSManager,
+		apiKeyStore:                 apiKeyStore,
 		routerConfig:                routerConfig,
 		policyManager:               policyManager,
 		systemConfig:                systemConfig,
@@ -194,6 +207,8 @@ func NewClient(
 		stopChan: make(chan struct{}),
 	}
 
+	client.isFirstConnect.Store(true)
+
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
 	client.llmDeploymentService = utils.NewLLMDeploymentService(
@@ -207,20 +222,15 @@ func NewClient(
 		policyVersionResolver,
 		policyValidator,
 	)
-	if eventHubInstance != nil {
-		client.llmDeploymentService.SetEventHub(eventHubInstance, gatewayID)
-	}
-
 	client.mcpDeploymentService = utils.NewMCPDeploymentService(
 		store,
 		db,
 		snapshotManager,
 		policyManager,
 		policyValidator,
+		eventHubInstance,
+		gatewayID,
 	)
-	if eventHubInstance != nil {
-		client.mcpDeploymentService.SetEventHub(eventHubInstance, gatewayID)
-	}
 
 	// Initialize API utils service with the proper base URL using the method
 	client.apiUtilsService = utils.NewAPIUtilsService(utils.PlatformAPIConfig{
@@ -237,14 +247,8 @@ func (c *Client) getSubscriptionResourceService() *utils.SubscriptionResourceSer
 	if c.subscriptionResourceService != nil {
 		return c.subscriptionResourceService
 	}
-	if c.db == nil {
-		return nil
-	}
 
-	c.subscriptionResourceService = utils.NewSubscriptionResourceService(c.db, c.subscriptionSnapshotUpdater)
-	if c.eventHub != nil {
-		c.subscriptionResourceService.SetEventHub(c.eventHub, c.gatewayID)
-	}
+	c.subscriptionResourceService = utils.NewSubscriptionResourceService(c.db, c.subscriptionSnapshotUpdater, c.eventHub, c.gatewayID)
 
 	return c.subscriptionResourceService
 }
@@ -390,14 +394,34 @@ func (c *Client) Connect() error {
 	// reading mutable state from goroutines.
 	gatewayID := c.state.GatewayID
 
-	// Perform a one-time bulk sync: plans first (since subscriptions reference
-	// plans via FK), then subscriptions for all known APIs.
-	c.wg.Add(1)
-	go func(gwID string) {
-		defer c.wg.Done()
-		c.syncSubscriptionPlans(gwID)
-		c.syncSubscriptionsForExistingAPIs(gwID)
-	}(gatewayID)
+	// On first connect (startup): run deployment sync first, then subscription
+	// sync sequentially — subscriptions reference APIs via FK, so they must
+	// wait for deployments to land. On reconnects: only subscription sync runs
+	// (deployment reconnect sync is deferred; see proposal doc).
+	c.syncOnce.Do(func() {
+		c.wg.Add(1)
+		go func(gwID string) {
+			defer c.wg.Done()
+			c.syncDeployments(gwID)
+			c.syncSubscriptionPlans(gwID)
+			c.syncSubscriptionsForExistingAPIs(gwID)
+			// Sync API keys for LlmProvider, LlmProxy, and RestApi artifacts.
+			c.syncAPIKeysForExistingArtifacts(gwID)
+		}(gatewayID)
+	})
+
+	// On reconnects (syncOnce already fired): sync subscriptions independently.
+	// Uses atomic flag to skip on first connect since syncOnce goroutine handles it.
+	if !c.isFirstConnect.CompareAndSwap(true, false) {
+		c.wg.Add(1)
+		go func(gwID string) {
+			defer c.wg.Done()
+			c.syncSubscriptionPlans(gwID)
+			c.syncSubscriptionsForExistingAPIs(gwID)
+			// Sync API keys for LlmProvider, LlmProxy, and RestApi artifacts.
+			c.syncAPIKeysForExistingArtifacts(gwID)
+		}(gatewayID)
+	}
 
 	// Push gateway manifest to the control plane on connect
 	c.wg.Add(1)
@@ -468,6 +492,11 @@ func (c *Client) GetGatewayPath() string {
 	c.state.mu.RLock()
 	defer c.state.mu.RUnlock()
 	return c.gatewayPath
+}
+
+// isOnPrem returns true when the control plane is an on-prem deployment.
+func (c *Client) isOnPrem() bool {
+	return c.GetGatewayPath() != ""
 }
 
 // discoverGatewayPath fetches the gateway websocket base path from the control plane well-known endpoint.
@@ -636,9 +665,20 @@ func (c *Client) refreshSubscriptionSnapshot() {
 // and persists them locally. This must run before subscription sync since
 // subscriptions reference plans via foreign key.
 func (c *Client) syncSubscriptionPlans(gatewayID string) {
-	if c.apiUtilsService == nil || c.db == nil {
+
+	// Skip for on-prem control planes
+	if c.isOnPrem() {
+		c.logger.Debug("Skipping subscription plan bulk sync: on-prem control plane detected",
+			slog.String("gateway_id", gatewayID),
+		)
 		return
 	}
+
+	if c.apiUtilsService == nil {
+		return
+	}
+
+	resourceService := c.getSubscriptionResourceService()
 
 	c.logger.Info("Starting bulk sync of subscription plans")
 
@@ -649,7 +689,7 @@ func (c *Client) syncSubscriptionPlans(gatewayID string) {
 	}
 
 	saved := 0
-	fetchedIDs := make([]string, 0, len(plans))
+	fetchedIDs := make(map[string]struct{}, len(plans))
 	for _, plan := range plans {
 		select {
 		case <-c.ctx.Done():
@@ -659,24 +699,33 @@ func (c *Client) syncSubscriptionPlans(gatewayID string) {
 		}
 
 		plan.GatewayID = ""
-		if err := c.db.SaveSubscriptionPlan(&plan); err != nil {
-			if storage.IsConflictError(err) {
-				if err := c.db.UpdateSubscriptionPlan(&plan); err != nil {
-					c.logger.Warn("Failed to update existing subscription plan during bulk sync",
-						slog.String("planId", plan.ID), slog.Any("error", err))
-				}
-			} else {
-				c.logger.Warn("Failed to save subscription plan during bulk sync",
-					slog.String("planId", plan.ID), slog.Any("error", err))
-			}
+		correlationID := plan.Etag
+		if correlationID == "" {
+			correlationID = utils.GenerateDeterministicUUIDv7(plan.ID, plan.UpdatedAt)
+		}
+		if err := resourceService.UpsertSubscriptionPlan(&plan, "CREATE", correlationID, c.logger); err != nil {
+			c.logger.Warn("Failed to upsert subscription plan during bulk sync",
+				slog.String("planId", plan.ID), slog.Any("error", err))
 		} else {
 			saved++
 		}
-		fetchedIDs = append(fetchedIDs, plan.ID)
+		fetchedIDs[plan.ID] = struct{}{}
 	}
 
-	if err := c.db.DeleteSubscriptionPlansNotIn(fetchedIDs); err != nil {
-		c.logger.Warn("Failed to reconcile deleted subscription plans during bulk sync", slog.Any("error", err))
+	// Reconcile orphaned plans: delete plans that exist locally but were not in the remote set
+	localPlans, err := c.db.ListSubscriptionPlans("")
+	if err != nil {
+		c.logger.Warn("Failed to list local subscription plans for orphan reconciliation", slog.Any("error", err))
+	} else {
+		for _, lp := range localPlans {
+			if _, exists := fetchedIDs[lp.ID]; !exists {
+				correlationID := utils.GenerateDeterministicUUIDv7(lp.ID, lp.UpdatedAt)
+				if err := resourceService.DeleteSubscriptionPlan(lp.ID, correlationID, c.logger); err != nil {
+					c.logger.Warn("Failed to delete orphaned subscription plan during bulk sync",
+						slog.String("planId", lp.ID), slog.Any("error", err))
+				}
+			}
+		}
 	}
 
 	c.logger.Info("Subscription plan bulk sync complete",
@@ -689,9 +738,20 @@ func (c *Client) syncSubscriptionPlans(gatewayID string) {
 // time the sync was scheduled, ensuring we don't cross-contaminate state across
 // reconnects.
 func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
-	if c.apiUtilsService == nil || c.db == nil || c.store == nil {
+
+	// Skip for on-prem control planes
+	if c.isOnPrem() {
+		c.logger.Debug("Skipping subscription bulk sync: on-prem control plane detected",
+			slog.String("gateway_id", gatewayID),
+		)
 		return
 	}
+
+	if c.apiUtilsService == nil || c.store == nil {
+		return
+	}
+
+	resourceService := c.getSubscriptionResourceService()
 
 	configs := c.store.GetAll()
 	for _, cfg := range configs {
@@ -714,6 +774,14 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 		}
 
 		apiID := cfg.UUID
+
+		// Check the DB (already updated by syncDeployments) for the current
+		// desired state. The in-memory store may still show the old state
+		// because EventHub events are processed asynchronously.
+		if dbCfg, err := c.db.GetConfig(apiID); err == nil && dbCfg.DesiredState == models.StateUndeployed {
+			continue
+		}
+
 		subs, err := c.apiUtilsService.FetchSubscriptionsForAPI(apiID)
 		if err != nil {
 			c.logger.Warn("Failed to bulk-sync subscriptions for API",
@@ -723,7 +791,7 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 			continue
 		}
 
-		fetchedSubIDs := make([]string, 0, len(subs))
+		fetchedSubIDs := make(map[string]struct{}, len(subs))
 		for i := range subs {
 			select {
 			case <-c.ctx.Done():
@@ -743,42 +811,151 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 			sub.APIID = apiID
 			sub.GatewayID = ""
 
-			if err := c.db.SaveSubscription(&sub); err != nil {
-				if storage.IsConflictError(err) {
-					existing, err2 := c.db.GetSubscriptionByID(sub.ID, "")
-					if err2 != nil || existing == nil {
-						continue
+			correlationID := sub.Etag
+			if correlationID == "" {
+				correlationID = utils.GenerateDeterministicUUIDv7(sub.ID, sub.UpdatedAt)
+			}
+			if err := resourceService.UpsertSubscription(&sub, "CREATE", correlationID, c.logger); err != nil {
+				c.logger.Warn("Failed to upsert subscription during bulk sync",
+					slog.String("subscription_id", sub.ID),
+					slog.String("api_id", apiID),
+					slog.Any("error", err),
+				)
+			}
+			fetchedSubIDs[sub.ID] = struct{}{}
+		}
+
+		// Reconcile orphaned subscriptions: delete subs that exist locally but were not in the remote set
+		localSubs, err := c.db.ListSubscriptionsByAPI(apiID, "", nil, nil)
+		if err != nil {
+			c.logger.Warn("Failed to list local subscriptions for orphan reconciliation",
+				slog.String("api_id", apiID), slog.Any("error", err))
+		} else {
+			for _, ls := range localSubs {
+				if _, exists := fetchedSubIDs[ls.ID]; !exists {
+					correlationID := utils.GenerateDeterministicUUIDv7(ls.ID, ls.UpdatedAt)
+					if err := resourceService.DeleteSubscription(ls.ID, correlationID, c.logger); err != nil {
+						c.logger.Warn("Failed to delete orphaned subscription during bulk sync",
+							slog.String("subscription_id", ls.ID),
+							slog.String("api_id", apiID), slog.Any("error", err))
 					}
-					// Copy all mutable fields from control-plane sub into existing before update.
-					existing.APIID = sub.APIID
-					existing.ApplicationID = sub.ApplicationID
-					existing.SubscriptionToken = sub.SubscriptionToken
-					existing.SubscriptionPlanID = sub.SubscriptionPlanID
-					existing.Status = sub.Status
-					existing.UpdatedAt = sub.UpdatedAt
-					if err := c.db.UpdateSubscription(existing); err != nil {
-						c.logger.Error("Failed to update subscription during bulk sync conflict handling",
-							slog.String("subscription_id", existing.ID),
-							slog.Any("error", err))
-					}
-				} else {
-					c.logger.Warn("Failed to upsert subscription during bulk sync",
-						slog.String("subscription_id", sub.ID),
-						slog.String("api_id", apiID),
-						slog.Any("error", err),
-					)
 				}
 			}
-			fetchedSubIDs = append(fetchedSubIDs, sub.ID)
-		}
-
-		if err := c.db.DeleteSubscriptionsForAPINotIn(apiID, fetchedSubIDs); err != nil {
-			c.logger.Warn("Failed to reconcile deleted subscriptions for API during bulk sync",
-				slog.String("api_id", apiID), slog.Any("error", err))
 		}
 	}
+}
 
-	c.refreshSubscriptionSnapshot()
+// syncAPIKeysForExistingArtifacts performs a one-time bulk sync of API keys for all
+// currently known LlmProvider and LlmProxy artifacts after the WebSocket connection
+// is established. Upserts fetched keys into the DB, reconciles deletions per artifact,
+// then reloads the in-memory store and refreshes the xDS snapshot once.
+func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
+	// Skip for on-prem control planes
+	if c.isOnPrem() {
+		c.logger.Debug("Skipping API Key bulk sync: on-prem control plane detected",
+			slog.String("gateway_id", gatewayID),
+		)
+		return
+	}
+
+	if c.apiUtilsService == nil || c.store == nil || c.apiKeyStore == nil {
+		return
+	}
+
+	c.logger.Info("Starting API key sync at gateway startup")
+
+	issuer := ""
+	if c.systemConfig != nil {
+		issuer = c.systemConfig.APIKey.Issuer
+	}
+
+	// Build a per-kind map of artifact UUIDs from the in-memory config store.
+	configs := c.store.GetAll()
+	artifactUUIDsByKind := make(map[string][]string)
+	for _, cfg := range configs {
+		if cfg == nil {
+			continue
+		}
+		if cfg.Kind != models.KindLlmProvider && cfg.Kind != models.KindLlmProxy && cfg.Kind != models.KindRestApi {
+			continue
+		}
+		artifactUUIDsByKind[cfg.Kind] = append(artifactUUIDsByKind[cfg.Kind], cfg.UUID)
+	}
+
+	for _, kind := range []string{models.KindRestApi, models.KindLlmProvider, models.KindLlmProxy} {
+		select {
+		case <-c.ctx.Done():
+			c.logger.Info("Stopping API key bulk sync due to client context cancellation")
+			return
+		case <-c.stopChan:
+			c.logger.Info("Stopping API key bulk sync due to stop signal")
+			return
+		default:
+		}
+
+		keys, err := c.apiUtilsService.FetchAPIKeysByKind(kind, issuer)
+		if err != nil {
+			c.logger.Warn("Failed to bulk-sync API keys for kind",
+				slog.String("kind", kind),
+				slog.Any("error", err),
+			)
+			continue
+		}
+
+		fetchedUUIDs := make([]string, 0, len(keys))
+		for i := range keys {
+			select {
+			case <-c.ctx.Done():
+				c.logger.Info("Stopping API key bulk sync during key processing due to client context cancellation")
+				return
+			case <-c.stopChan:
+				c.logger.Info("Stopping API key bulk sync during key processing due to stop signal")
+				return
+			default:
+			}
+
+			key := keys[i]
+			if key.UUID == "" {
+				continue
+			}
+
+			if err := c.db.UpsertAPIKey(&key); err != nil {
+				c.logger.Warn("Failed to upsert API key during bulk sync",
+					slog.String("key_uuid", key.UUID),
+					slog.String("artifact_uuid", key.ArtifactUUID),
+					slog.Any("error", err))
+			} else {
+				etag := key.ETag
+				if etag == "" {
+					etag = utils.APIKeyETag(key.ArtifactUUID, key.Name, key.UpdatedAt)
+				}
+				c.apiKeyService.PublishAPIKeyEvent("CREATE", key.ArtifactUUID, key.UUID, etag, c.logger)
+			}
+			fetchedUUIDs = append(fetchedUUIDs, key.UUID)
+		}
+
+		artifactUUIDs := artifactUUIDsByKind[kind]
+		staleKeys, err := c.db.ListAPIKeysForArtifactsNotIn(artifactUUIDs, fetchedUUIDs)
+		if err != nil {
+			c.logger.Warn("Failed to list stale API keys before reconciliation",
+				slog.String("kind", kind), slog.Any("error", err))
+		}
+		if len(staleKeys) > 0 {
+			staleUUIDs := make([]string, len(staleKeys))
+			for i, k := range staleKeys {
+				staleUUIDs[i] = k.UUID
+			}
+			if err := c.db.DeleteAPIKeysByUUIDs(staleUUIDs); err != nil {
+				c.logger.Warn("Failed to reconcile deleted API keys during bulk sync",
+					slog.String("kind", kind), slog.Any("error", err))
+			} else {
+				for _, k := range staleKeys {
+					c.apiKeyService.PublishAPIKeyEvent("DELETE", k.ArtifactUUID, k.UUID,
+						utils.APIKeyETag(k.ArtifactUUID, k.Name, k.UpdatedAt), c.logger)
+				}
+			}
+		}
+	}
 }
 
 // Close closes the WebSocket connection
@@ -1023,6 +1200,10 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 		c.handleLLMProxyDeployedEvent(event)
 	case "llmproxy.undeployed":
 		c.handleLLMProxyUndeployedEvent(event)
+	case "llmprovider.deleted":
+		c.handleLLMProviderDeletedEvent(event)
+	case "llmproxy.deleted":
+		c.handleLLMProxyDeletedEvent(event)
 	case "apikey.created":
 		c.handleAPIKeyCreatedEvent(event)
 	case "apikey.updated":
@@ -1115,55 +1296,33 @@ func (c *Client) updatePolicyForDeployment(apiID, correlationID string, result *
 		return nil
 	}
 
-	// Guard against nil systemConfig before deriving policies
-	if c.systemConfig == nil {
-		c.logger.Warn("Cannot derive policies: systemConfig is nil",
-			slog.String("api_id", apiID),
-			slog.String("correlation_id", correlationID))
-		return nil
+	// Resolve secrets
+	resolvedCfg, validationErrors := c.policyResolver.ResolvePolicies(result.StoredConfig)
+	if len(validationErrors) > 0 {
+		errMsgs := make([]string, 0, len(validationErrors))
+		for _, ve := range validationErrors {
+			errMsgs = append(errMsgs, ve.Message)
+		}
+		errMsg := strings.Join(errMsgs, "; ")
+
+		slog.Error("Policy resolution failed",
+			slog.String("config_handle", result.StoredConfig.Handle),
+			slog.String("errors", errMsg),
+		)
+
+		return fmt.Errorf("policy resolution failed with %d errors: %s", len(validationErrors), errMsg)
 	}
 
-	storedPolicy := policy.DerivePolicyFromAPIConfig(result.StoredConfig, c.routerConfig, c.systemConfig, c.policyDefinitions)
-
-	if storedPolicy != nil {
-		// Add or update policy
-		if err := c.policyManager.AddPolicy(storedPolicy); err != nil {
-			c.logger.Error("Failed to update policy engine snapshot",
-				slog.Any("error", err),
-				slog.String("api_id", apiID),
-				slog.String("correlation_id", correlationID))
-			return fmt.Errorf("failed to add policy: %w", err)
-		}
-		c.logger.Info("Successfully updated policy engine snapshot",
+	if err := c.policyManager.UpsertAPIConfig(resolvedCfg); err != nil {
+		c.logger.Error("Failed to upsert runtime config for deployment",
+			slog.Any("error", err),
 			slog.String("api_id", apiID),
-			slog.String("policy_id", storedPolicy.ID),
 			slog.String("correlation_id", correlationID))
-	} else if result.IsUpdate {
-		// No policies but this is an update, so remove any existing policies
-		policyID := result.StoredConfig.UUID + "-policies"
-		if err := c.policyManager.RemovePolicy(policyID); err != nil {
-			// Only treat "policy not found" as non-error (API may never have had policies)
-			// Other errors (storage failures, snapshot update failures) should be logged as errors
-			if storage.IsPolicyNotFoundError(err) {
-				c.logger.Debug("No policy configuration to remove",
-					slog.String("api_id", apiID),
-					slog.String("policy_id", policyID),
-					slog.String("correlation_id", correlationID))
-			} else {
-				c.logger.Error("Failed to remove policy configuration",
-					slog.Any("error", err),
-					slog.String("api_id", apiID),
-					slog.String("policy_id", policyID),
-					slog.String("correlation_id", correlationID))
-				return fmt.Errorf("failed to remove policy: %w", err)
-			}
-		} else {
-			c.logger.Info("Derived policy configuration removed (API no longer has policies)",
-				slog.String("api_id", apiID),
-				slog.String("policy_id", policyID),
-				slog.String("correlation_id", correlationID))
-		}
+		return fmt.Errorf("failed to upsert runtime config: %w", err)
 	}
+	c.logger.Info("Successfully updated policy engine snapshot",
+		slog.String("api_id", apiID),
+		slog.String("correlation_id", correlationID))
 
 	return nil
 }
@@ -1208,9 +1367,9 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 
 	// Fetch API definition and deploy
 	// (deploymentService handles DB + event publishing when eventHub is set)
-	performedAt := deployedEvent.Payload.PerformedAt
+	performedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if performedAt.IsZero() {
-		performedAt = time.Now()
+		performedAt = time.Now().Truncate(time.Millisecond)
 	}
 	result, err := c.fetchAndDeployAPI(apiID, deployedEvent.Payload.DeploymentID, &performedAt, deployedEvent.CorrelationID)
 	if err != nil {
@@ -1219,14 +1378,15 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 		return
 	}
 
-	// Update policy engine xDS snapshot (best-effort)
-	// Skip when eventHub is set — EventListener handles policy derivation
-	if c.eventHub == nil {
-		if err := c.updatePolicyForDeployment(apiID, deployedEvent.CorrelationID, result); err != nil {
-			c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "api", "deploy", "failed",
-				deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-			return
-		}
+	if result.IsStale {
+		// Stale event — DB was not modified. Do not send ack; in HA mode the
+		// controller that actually processed the event will ack. If all controllers
+		// see stale, platform-API will timeout and handle accordingly.
+		c.logger.Debug("Skipped stale API deploy event (newer version exists in DB)",
+			slog.String("api_id", apiID),
+			slog.String("deployment_id", deployedEvent.Payload.DeploymentID),
+		)
+		return
 	}
 
 	c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "api", "deploy", "success",
@@ -1314,18 +1474,20 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 
 	// Set status to undeployed (preserve config, keys, and policies)
 	// Use CP event timestamp for consistent sync ordering; fall back to local time if not provided
-	apiUndeployPerformedAt := undeployedEvent.Payload.PerformedAt
+	apiUndeployPerformedAt := undeployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if apiUndeployPerformedAt.IsZero() {
-		apiUndeployPerformedAt = time.Now()
+		apiUndeployPerformedAt = time.Now().Truncate(time.Millisecond)
 	}
 	apiConfig.DesiredState = models.StateUndeployed
 	apiConfig.DeploymentID = undeployedEvent.Payload.DeploymentID
 	apiConfig.DeployedAt = &apiUndeployPerformedAt
 	apiConfig.UpdatedAt = time.Now()
 
-	// Update database
-	if err := c.db.UpdateConfig(apiConfig); err != nil {
-		c.logger.Error("Failed to update config status in database",
+	// Timestamp-guarded upsert: only writes if deployed_at is newer than what's in DB.
+	// This prevents stale undeploy events from overwriting newer state.
+	affected, err := c.db.UpsertConfig(apiConfig)
+	if err != nil {
+		c.logger.Error("Failed to upsert config for undeployment",
 			slog.String("api_id", apiID),
 			slog.Any("error", err),
 		)
@@ -1333,35 +1495,25 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
+	if !affected {
+		// Stale event — DB was not modified. Do not send ack; in HA mode the
+		// controller that actually processed the event will ack. If all controllers
+		// see stale, platform-API will timeout and handle accordingly.
+		c.logger.Debug("Skipped stale API undeploy event (newer version exists in DB)",
+			slog.String("api_id", apiID),
+			slog.String("deployment_id", undeployedEvent.Payload.DeploymentID),
+		)
+		return
+	}
 
-	if c.eventHub != nil {
-		// Event-driven mode: publish event; EventListener handles store/xDS
-		evt := eventhub.Event{
-			EventType: eventhub.EventTypeAPI,
-			Action:    "UPDATE",
-			EntityID:  apiID,
-			EventID:   undeployedEvent.CorrelationID,
-		}
-		if err := c.eventHub.PublishEvent(c.gatewayID, evt); err != nil {
-			c.logger.Error("Failed to publish API undeployment event", slog.Any("error", err))
-		}
-	} else {
-		// Update in-memory store
-		if err := c.store.Update(apiConfig); err != nil {
-			c.logger.Error("Failed to update config status in memory store",
-				slog.String("api_id", apiID),
-				slog.Any("error", err),
-			)
-			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "api", "undeploy", "failed",
-				undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-			return
-		}
-
-		// Note: We keep API keys and policies for potential redeploy
-		// They will be reused if the API is redeployed
-
-		// Update xDS snapshot asynchronously (undeployed APIs will be filtered out)
-		c.updateXDSSnapshotAsync(apiID, undeployedEvent.CorrelationID, false, true)
+	evt := eventhub.Event{
+		EventType: eventhub.EventTypeAPI,
+		Action:    "UPDATE",
+		EntityID:  apiID,
+		EventID:   undeployedEvent.CorrelationID,
+	}
+	if err := c.eventHub.PublishEvent(c.gatewayID, evt); err != nil {
+		c.logger.Error("Failed to publish API undeployment event", slog.Any("error", err))
 	}
 
 	c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "api", "undeploy", "success",
@@ -1373,73 +1525,42 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 	)
 }
 
-// findAPIConfig checks if an API exists in database or memory store
-// Returns the config and an error. If the config is not found in either store,
-// returns (nil, storage.ErrNotFound). Other errors indicate actual storage failures.
+// findAPIConfig checks if an API exists in the database.
 func (c *Client) findAPIConfig(apiID string) (*models.StoredConfig, error) {
-	// Check database (source of truth)
 	config, err := c.db.GetConfig(apiID)
 	if err == nil {
 		return config, nil
 	}
-	// If it's a real error (not just "not found"), surface it
-	if !storage.IsNotFoundError(err) {
-		return nil, fmt.Errorf("database error while fetching config: %w", err)
-	}
-	// Config not found in DB, fall through to check memory store
-
-	// Fall back to in-memory store
-	config, err = c.store.Get(apiID)
-	if err == nil {
-		return config, nil
-	}
-	// If memory store also doesn't have it, return not found
 	if storage.IsNotFoundError(err) {
 		return nil, storage.ErrNotFound
 	}
-	// Other memory store errors
-	return nil, fmt.Errorf("memory store error while fetching config: %w", err)
+	return nil, fmt.Errorf("database error while fetching config: %w", err)
 }
 
-// removePolicyConfiguration removes policy configuration with proper error handling
-// Returns true if resources were actually removed (not just "not found")
-func (c *Client) removePolicyConfiguration(apiID, correlationID string, isOrphaned bool) {
-	if c.policyManager == nil {
+// removePolicyConfiguration removes runtime config from the policy engine.
+// cfg must be non-nil; if it is nil (e.g. orphaned resource), the call is a no-op.
+func (c *Client) removePolicyConfiguration(cfg *models.StoredConfig, correlationID string, isOrphaned bool) {
+	if c.policyManager == nil || cfg == nil {
 		return
 	}
 
-	policyID := apiID + "-policies"
-	if err := c.policyManager.RemovePolicy(policyID); err != nil {
-		// Only treat "policy not found" as non-error (API may never have had policies)
-		// Other errors (storage failures, snapshot update failures) should be logged as warnings
-		if storage.IsPolicyNotFoundError(err) {
-			c.logger.Debug("No derived policy configuration to remove (API had no policies)",
-				slog.String("api_id", apiID),
-				slog.String("policy_id", policyID),
-				slog.String("correlation_id", correlationID),
-			)
-			return
-		}
-		c.logger.Warn("Failed to remove derived policy configuration",
+	if err := c.policyManager.DeleteAPIConfig(cfg.Kind, cfg.Handle); err != nil {
+		c.logger.Warn("Failed to remove runtime policy configuration",
 			slog.Any("error", err),
-			slog.String("api_id", apiID),
-			slog.String("policy_id", policyID),
+			slog.String("api_id", cfg.UUID),
 			slog.String("correlation_id", correlationID),
 		)
 		return
 	}
 
-	// Successfully removed
 	if isOrphaned {
 		c.logger.Debug("Checked and cleaned up orphaned policy configuration",
-			slog.String("policy_id", policyID),
-			slog.String("api_id", apiID),
+			slog.String("api_id", cfg.UUID),
 			slog.String("correlation_id", correlationID),
 		)
 	} else {
-		c.logger.Info("Successfully removed derived policy configuration",
-			slog.String("api_id", apiID),
-			slog.String("policy_id", policyID),
+		c.logger.Info("Successfully removed runtime policy configuration",
+			slog.String("api_id", cfg.UUID),
 			slog.String("correlation_id", correlationID),
 		)
 	}
@@ -1507,42 +1628,25 @@ func (c *Client) cleanupOrphanedResources(apiID, correlationID string) {
 		)
 	}
 
-	if c.eventHub != nil {
-		// Event-driven mode: publish event; EventListener handles store/xDS/policy cleanup
-		evt := eventhub.Event{
-			EventType: eventhub.EventTypeAPI,
-			Action:    "DELETE",
-			EntityID:  apiID,
-			EventID:   correlationID,
-		}
-		if err := c.eventHub.PublishEvent(c.gatewayID, evt); err != nil {
-			c.logger.Error("Failed to publish orphan cleanup event", slog.Any("error", err))
-		}
+	if err := c.db.DeleteSubscriptionsForAPINotIn(apiID, nil); err != nil {
+		c.logger.Warn("Failed to remove stale subscriptions from database",
+			slog.String("api_id", apiID),
+			slog.Any("error", err),
+		)
 	} else {
-		// Check and clean up stale API keys from memory store
-		if err := c.store.RemoveAPIKeysByAPI(apiID); err != nil {
-			c.logger.Warn("Failed to remove stale API keys from memory store",
-				slog.String("api_id", apiID),
-				slog.Any("error", err),
-			)
-		} else {
-			c.logger.Debug("Cleaned up any stale API keys from memory store",
-				slog.String("api_id", apiID),
-			)
-		}
-
-		// Note: Cannot remove stale API keys from policy engine via xDS without API config
-		// (requires API name and version which are only available in the config)
-		// The xDS snapshot update below will help clean up stale routes
-		c.logger.Debug("Skipping API key removal from policy engine (requires API config metadata)",
+		c.logger.Debug("Cleaned up any stale subscriptions from database",
 			slog.String("api_id", apiID),
 		)
+	}
 
-		// Check and clean up stale policy configuration
-		c.removePolicyConfiguration(apiID, correlationID, true)
-
-		// Update xDS snapshot to remove any stale routes
-		c.updateXDSSnapshotAsync(apiID, correlationID, true, false)
+	evt := eventhub.Event{
+		EventType: eventhub.EventTypeAPI,
+		Action:    "DELETE",
+		EntityID:  apiID,
+		EventID:   correlationID,
+	}
+	if err := c.eventHub.PublishEvent(c.gatewayID, evt); err != nil {
+		c.logger.Error("Failed to publish orphan cleanup event", slog.Any("error", err))
 	}
 
 	c.logger.Info("Successfully processed stale resource cleanup",
@@ -1582,72 +1686,14 @@ func (c *Client) performFullAPIDeletion(apiID string, apiConfig *models.StoredCo
 		)
 	}
 
-	if c.eventHub != nil {
-		// Event-driven mode: publish event; EventListener handles store/xDS/policy cleanup
-		evt := eventhub.Event{
-			EventType: eventhub.EventTypeAPI,
-			Action:    "DELETE",
-			EntityID:  apiID,
-			EventID:   correlationID,
-		}
-		if err := c.eventHub.PublishEvent(c.gatewayID, evt); err != nil {
-			c.logger.Error("Failed to publish API deletion event", slog.Any("error", err))
-		}
-	} else {
-		// 3. Remove API keys from in-memory ConfigStore
-		if err := c.store.RemoveAPIKeysByAPI(apiID); err != nil {
-			c.logger.Warn("Failed to remove API keys from ConfigStore",
-				slog.String("api_id", apiID),
-				slog.Any("error", err),
-			)
-		} else {
-			c.logger.Info("Successfully removed API keys from ConfigStore",
-				slog.String("api_id", apiID),
-			)
-		}
-
-		// 4. Remove API keys from policy engine via xDS (if we have the config)
-		if apiConfig != nil && c.apiKeyXDSManager != nil {
-			if restCfg, ok := apiConfig.Configuration.(api.RestAPI); ok {
-				apiName := restCfg.Spec.DisplayName
-				apiVersion := restCfg.Spec.Version
-
-				if err := c.apiKeyXDSManager.RemoveAPIKeysByAPI(apiID, apiName, apiVersion, correlationID); err != nil {
-					c.logger.Warn("Failed to remove API keys from policy engine",
-						slog.String("api_id", apiID),
-						slog.String("api_name", apiName),
-						slog.String("api_version", apiVersion),
-						slog.String("correlation_id", correlationID),
-						slog.Any("error", err),
-					)
-				} else {
-					c.logger.Info("Successfully removed API keys from policy engine",
-						slog.String("api_id", apiID),
-						slog.String("api_name", apiName),
-						slog.String("api_version", apiVersion),
-						slog.String("correlation_id", correlationID),
-					)
-				}
-			}
-		}
-
-		// 5. Delete from in-memory store
-		if err := c.store.Delete(apiID); err != nil {
-			c.logger.Error("Failed to delete API configuration from memory store",
-				slog.String("api_id", apiID),
-				slog.Any("error", err),
-			)
-		} else {
-			c.logger.Info("Successfully deleted API configuration from memory store",
-				slog.String("api_id", apiID),
-			)
-		}
-
-		// 6. Update xDS snapshot asynchronously (API will be removed from routes)
-		c.updateXDSSnapshotAsync(apiID, correlationID, false, false)
-
-		// 7. Remove derived policy configuration (after all other operations)
-		c.removePolicyConfiguration(apiID, correlationID, false)
+	evt := eventhub.Event{
+		EventType: eventhub.EventTypeAPI,
+		Action:    "DELETE",
+		EntityID:  apiID,
+		EventID:   correlationID,
+	}
+	if err := c.eventHub.PublishEvent(c.gatewayID, evt); err != nil {
+		c.logger.Error("Failed to publish API deletion event", slog.Any("error", err))
 	}
 
 	c.logger.Info("Successfully processed API deletion event",
@@ -1787,9 +1833,9 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 	}
 
 	// Create LLM proxy configuration from YAML using the deployment service
-	llmProxyPerformedAt := deployedEvent.Payload.PerformedAt
+	llmProxyPerformedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if llmProxyPerformedAt.IsZero() {
-		llmProxyPerformedAt = time.Now()
+		llmProxyPerformedAt = time.Now().Truncate(time.Millisecond)
 	}
 	result, err := c.apiUtilsService.CreateLLMProxyFromYAML(yamlData, proxyID, deployedEvent.Payload.DeploymentID, &llmProxyPerformedAt, deployedEvent.CorrelationID, c.llmDeploymentService)
 	if err != nil {
@@ -1802,13 +1848,12 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 		return
 	}
 
-	// In event-driven mode the EventListener owns local policy convergence.
-	if c.eventHub == nil {
-		if err := c.updatePolicyForDeployment(proxyID, deployedEvent.CorrelationID, result); err != nil {
-			c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "deploy", "failed",
-				deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-			return
-		}
+	if result.IsStale {
+		c.logger.Debug("Skipped stale LLM proxy deploy event (newer version exists in DB)",
+			slog.String("proxy_id", proxyID),
+			slog.String("deployment_id", deployedEvent.Payload.DeploymentID),
+		)
+		return
 	}
 
 	c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "deploy", "success",
@@ -1892,9 +1937,9 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 	}
 
 	// Create LLM provider configuration from YAML using the deployment service
-	llmProviderPerformedAt := deployedEvent.Payload.PerformedAt
+	llmProviderPerformedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if llmProviderPerformedAt.IsZero() {
-		llmProviderPerformedAt = time.Now()
+		llmProviderPerformedAt = time.Now().Truncate(time.Millisecond)
 	}
 	result, err := c.apiUtilsService.CreateLLMProviderFromYAML(yamlData, providerID, deployedEvent.Payload.DeploymentID, &llmProviderPerformedAt, deployedEvent.CorrelationID, c.llmDeploymentService)
 	if err != nil {
@@ -1907,13 +1952,12 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 		return
 	}
 
-	// In event-driven mode, the EventListener owns local policy convergence.
-	if c.eventHub == nil {
-		if err := c.updatePolicyForDeployment(providerID, deployedEvent.CorrelationID, result); err != nil {
-			c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, providerID, "llmprovider", "deploy", "failed",
-				deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-			return
-		}
+	if result.IsStale {
+		c.logger.Debug("Skipped stale LLM provider deploy event (newer version exists in DB)",
+			slog.String("provider_id", providerID),
+			slog.String("deployment_id", deployedEvent.Payload.DeploymentID),
+		)
+		return
 	}
 
 	c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, providerID, "llmprovider", "deploy", "success",
@@ -1925,7 +1969,9 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 	)
 }
 
-// handleLLMProviderUndeployedEvent handles LLM provider undeployment events
+// handleLLMProviderUndeployedEvent handles LLM provider undeployment events.
+// This performs a soft undeploy (set desired_state = undeployed) rather than a hard delete,
+// preserving the config, keys, and policies for potential redeployment.
 func (c *Client) handleLLMProviderUndeployedEvent(event map[string]interface{}) {
 	c.logger.Info("LLM Provider Undeployment Event",
 		slog.Any("payload", event["payload"]),
@@ -1956,19 +2002,25 @@ func (c *Client) handleLLMProviderUndeployedEvent(event map[string]interface{}) 
 		return
 	}
 
-	if c.llmDeploymentService == nil {
-		c.logger.Error("LLM deployment service not available",
-			slog.String("provider_id", providerID),
-			slog.String("correlation_id", undeployedEvent.CorrelationID),
-		)
-		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, providerID, "llmprovider", "undeploy", "failed",
-			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-		return
-	}
+	c.logger.Info("Processing LLM provider undeployment",
+		slog.String("provider_id", providerID),
+		slog.String("deployment_id", undeployedEvent.Payload.DeploymentID),
+		slog.String("correlation_id", undeployedEvent.CorrelationID),
+	)
 
-	cfg, err := c.llmDeploymentService.DeleteLLMProvider(providerID, undeployedEvent.CorrelationID, c.logger)
+	// Look up existing config
+	providerConfig, err := c.findAPIConfig(providerID)
 	if err != nil {
-		c.logger.Error("Failed to delete LLM provider configuration",
+		if storage.IsNotFoundError(err) {
+			c.logger.Warn("LLM provider configuration not found for undeployment",
+				slog.String("provider_id", providerID),
+			)
+			// Still send success ack - the provider is already gone
+			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, providerID, "llmprovider", "undeploy", "success",
+				undeployedEvent.Payload.PerformedAt, "")
+			return
+		}
+		c.logger.Error("Failed to fetch LLM provider configuration for undeployment",
 			slog.String("provider_id", providerID),
 			slog.Any("error", err),
 		)
@@ -1977,17 +2029,56 @@ func (c *Client) handleLLMProviderUndeployedEvent(event map[string]interface{}) 
 		return
 	}
 
-	if c.eventHub == nil {
-		if cfg != nil && c.apiKeyXDSManager != nil && cfg.DisplayName != "" {
-			if err := c.apiKeyXDSManager.RemoveAPIKeysByAPI(cfg.UUID, cfg.DisplayName, cfg.Version, undeployedEvent.CorrelationID); err != nil {
-				c.logger.Warn("Failed to remove LLM provider API keys from policy engine",
-					slog.String("provider_id", providerID),
-					slog.Any("error", err))
-			}
-		}
-		if cfg != nil {
-			c.removePolicyConfiguration(cfg.UUID, undeployedEvent.CorrelationID, false)
-		}
+	// Only process undeploy if the event's DeploymentID matches the current one.
+	if providerConfig.DeploymentID != "" && undeployedEvent.Payload.DeploymentID != "" &&
+		providerConfig.DeploymentID != undeployedEvent.Payload.DeploymentID {
+		c.logger.Warn("Ignoring stale LLM provider undeploy event: deployment ID mismatch",
+			slog.String("provider_id", providerID),
+			slog.String("event_deployment_id", undeployedEvent.Payload.DeploymentID),
+			slog.String("current_deployment_id", providerConfig.DeploymentID),
+		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, providerID, "llmprovider", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "DEPLOYMENT_ID_MISMATCH")
+		return
+	}
+
+	// Soft undeploy: set desired_state to undeployed (preserve config, keys, and policies)
+	performedAt := undeployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
+	if performedAt.IsZero() {
+		performedAt = time.Now().Truncate(time.Millisecond)
+	}
+	providerConfig.DesiredState = models.StateUndeployed
+	providerConfig.DeploymentID = undeployedEvent.Payload.DeploymentID
+	providerConfig.DeployedAt = &performedAt
+	providerConfig.UpdatedAt = time.Now()
+
+	// Timestamp-guarded upsert: only writes if deployed_at is newer than what's in DB.
+	affected, err := c.db.UpsertConfig(providerConfig)
+	if err != nil {
+		c.logger.Error("Failed to upsert config for LLM provider undeployment",
+			slog.String("provider_id", providerID),
+			slog.Any("error", err),
+		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, providerID, "llmprovider", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+		return
+	}
+	if !affected {
+		c.logger.Debug("Skipped stale LLM provider undeploy event (newer version exists in DB)",
+			slog.String("provider_id", providerID),
+			slog.String("deployment_id", undeployedEvent.Payload.DeploymentID),
+		)
+		return
+	}
+
+	evt := eventhub.Event{
+		EventType: eventhub.EventTypeLLMProvider,
+		Action:    "UPDATE",
+		EntityID:  providerID,
+		EventID:   undeployedEvent.CorrelationID,
+	}
+	if err := c.eventHub.PublishEvent(c.gatewayID, evt); err != nil {
+		c.logger.Error("Failed to publish LLM provider undeployment event", slog.Any("error", err))
 	}
 
 	c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, providerID, "llmprovider", "undeploy", "success",
@@ -1999,7 +2090,9 @@ func (c *Client) handleLLMProviderUndeployedEvent(event map[string]interface{}) 
 	)
 }
 
-// handleLLMProxyUndeployedEvent handles LLM proxy undeployment events
+// handleLLMProxyUndeployedEvent handles LLM proxy undeployment events.
+// This performs a soft undeploy (set desired_state = undeployed) rather than a hard delete,
+// preserving the config, keys, and policies for potential redeployment.
 func (c *Client) handleLLMProxyUndeployedEvent(event map[string]interface{}) {
 	c.logger.Info("LLM Proxy Undeployment Event",
 		slog.Any("payload", event["payload"]),
@@ -2030,19 +2123,25 @@ func (c *Client) handleLLMProxyUndeployedEvent(event map[string]interface{}) {
 		return
 	}
 
-	if c.llmDeploymentService == nil {
-		c.logger.Error("LLM deployment service not available",
-			slog.String("proxy_id", proxyID),
-			slog.String("correlation_id", undeployedEvent.CorrelationID),
-		)
-		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "undeploy", "failed",
-			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-		return
-	}
+	c.logger.Info("Processing LLM proxy undeployment",
+		slog.String("proxy_id", proxyID),
+		slog.String("deployment_id", undeployedEvent.Payload.DeploymentID),
+		slog.String("correlation_id", undeployedEvent.CorrelationID),
+	)
 
-	cfg, err := c.llmDeploymentService.DeleteLLMProxy(proxyID, undeployedEvent.CorrelationID, c.logger)
+	// Look up existing config
+	proxyConfig, err := c.findAPIConfig(proxyID)
 	if err != nil {
-		c.logger.Error("Failed to delete LLM proxy configuration",
+		if storage.IsNotFoundError(err) {
+			c.logger.Warn("LLM proxy configuration not found for undeployment",
+				slog.String("proxy_id", proxyID),
+			)
+			// Still send success ack - the proxy is already gone
+			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "undeploy", "success",
+				undeployedEvent.Payload.PerformedAt, "")
+			return
+		}
+		c.logger.Error("Failed to fetch LLM proxy configuration for undeployment",
 			slog.String("proxy_id", proxyID),
 			slog.Any("error", err),
 		)
@@ -2051,17 +2150,56 @@ func (c *Client) handleLLMProxyUndeployedEvent(event map[string]interface{}) {
 		return
 	}
 
-	if c.eventHub == nil {
-		if cfg != nil && c.apiKeyXDSManager != nil && cfg.DisplayName != "" {
-			if err := c.apiKeyXDSManager.RemoveAPIKeysByAPI(cfg.UUID, cfg.DisplayName, cfg.Version, undeployedEvent.CorrelationID); err != nil {
-				c.logger.Warn("Failed to remove LLM proxy API keys from policy engine",
-					slog.String("proxy_id", proxyID),
-					slog.Any("error", err))
-			}
-		}
-		if cfg != nil {
-			c.removePolicyConfiguration(cfg.UUID, undeployedEvent.CorrelationID, false)
-		}
+	// Only process undeploy if the event's DeploymentID matches the current one.
+	if proxyConfig.DeploymentID != "" && undeployedEvent.Payload.DeploymentID != "" &&
+		proxyConfig.DeploymentID != undeployedEvent.Payload.DeploymentID {
+		c.logger.Warn("Ignoring stale LLM proxy undeploy event: deployment ID mismatch",
+			slog.String("proxy_id", proxyID),
+			slog.String("event_deployment_id", undeployedEvent.Payload.DeploymentID),
+			slog.String("current_deployment_id", proxyConfig.DeploymentID),
+		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "DEPLOYMENT_ID_MISMATCH")
+		return
+	}
+
+	// Soft undeploy: set desired_state to undeployed (preserve config, keys, and policies)
+	performedAt := undeployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
+	if performedAt.IsZero() {
+		performedAt = time.Now().Truncate(time.Millisecond)
+	}
+	proxyConfig.DesiredState = models.StateUndeployed
+	proxyConfig.DeploymentID = undeployedEvent.Payload.DeploymentID
+	proxyConfig.DeployedAt = &performedAt
+	proxyConfig.UpdatedAt = time.Now()
+
+	// Timestamp-guarded upsert: only writes if deployed_at is newer than what's in DB.
+	affected, err := c.db.UpsertConfig(proxyConfig)
+	if err != nil {
+		c.logger.Error("Failed to upsert config for LLM proxy undeployment",
+			slog.String("proxy_id", proxyID),
+			slog.Any("error", err),
+		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+		return
+	}
+	if !affected {
+		c.logger.Debug("Skipped stale LLM proxy undeploy event (newer version exists in DB)",
+			slog.String("proxy_id", proxyID),
+			slog.String("deployment_id", undeployedEvent.Payload.DeploymentID),
+		)
+		return
+	}
+
+	evt := eventhub.Event{
+		EventType: eventhub.EventTypeLLMProxy,
+		Action:    "UPDATE",
+		EntityID:  proxyID,
+		EventID:   undeployedEvent.CorrelationID,
+	}
+	if err := c.eventHub.PublishEvent(c.gatewayID, evt); err != nil {
+		c.logger.Error("Failed to publish LLM proxy undeployment event", slog.Any("error", err))
 	}
 
 	c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "undeploy", "success",
@@ -2070,6 +2208,152 @@ func (c *Client) handleLLMProxyUndeployedEvent(event map[string]interface{}) {
 	c.logger.Info("Successfully processed LLM proxy undeployment event",
 		slog.String("proxy_id", proxyID),
 		slog.String("correlation_id", undeployedEvent.CorrelationID),
+	)
+}
+
+// handleLLMProviderDeletedEvent handles LLM provider deletion events.
+// This performs a hard delete, permanently removing the provider and all related resources.
+func (c *Client) handleLLMProviderDeletedEvent(event map[string]interface{}) {
+	c.logger.Info("LLM Provider Deletion Event",
+		slog.Any("payload", event["payload"]),
+		slog.Any("timestamp", event["timestamp"]),
+		slog.Any("correlationId", event["correlationId"]),
+	)
+
+	eventBytes, err := json.Marshal(event)
+	if err != nil {
+		c.logger.Error("Failed to marshal LLM provider deletion event for parsing",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	var deletedEvent LLMProviderDeletedEvent
+	if err := json.Unmarshal(eventBytes, &deletedEvent); err != nil {
+		c.logger.Error("Failed to parse LLM provider deletion event",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	providerID := deletedEvent.Payload.ProviderID
+	if providerID == "" {
+		c.logger.Error("Provider ID is empty in LLM provider deletion event")
+		return
+	}
+
+	if c.llmDeploymentService == nil {
+		c.logger.Error("LLM deployment service not available",
+			slog.String("provider_id", providerID),
+			slog.String("correlation_id", deletedEvent.CorrelationID),
+		)
+		return
+	}
+
+	// Check if provider exists on this gateway
+	providerConfig, err := c.findAPIConfig(providerID)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			c.logger.Warn("LLM provider configuration not found for deletion",
+				slog.String("provider_id", providerID),
+			)
+			return
+		}
+		c.logger.Error("Failed to fetch LLM provider configuration for deletion, aborting",
+			slog.String("provider_id", providerID),
+			slog.String("correlation_id", deletedEvent.CorrelationID),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	// Delete via LLM deployment service (handles DB cleanup, store cleanup,
+	// eventHub publish, template mapping removal, and xDS update)
+	_, err = c.llmDeploymentService.DeleteLLMProvider(providerConfig.Handle, deletedEvent.CorrelationID, c.logger)
+	if err != nil {
+		c.logger.Error("Failed to delete LLM provider configuration",
+			slog.String("provider_id", providerID),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	c.logger.Info("Successfully processed LLM provider deletion event",
+		slog.String("provider_id", providerID),
+		slog.String("correlation_id", deletedEvent.CorrelationID),
+	)
+}
+
+// handleLLMProxyDeletedEvent handles LLM proxy deletion events.
+// This performs a hard delete, permanently removing the proxy and all related resources.
+func (c *Client) handleLLMProxyDeletedEvent(event map[string]interface{}) {
+	c.logger.Info("LLM Proxy Deletion Event",
+		slog.Any("payload", event["payload"]),
+		slog.Any("timestamp", event["timestamp"]),
+		slog.Any("correlationId", event["correlationId"]),
+	)
+
+	eventBytes, err := json.Marshal(event)
+	if err != nil {
+		c.logger.Error("Failed to marshal LLM proxy deletion event for parsing",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	var deletedEvent LLMProxyDeletedEvent
+	if err := json.Unmarshal(eventBytes, &deletedEvent); err != nil {
+		c.logger.Error("Failed to parse LLM proxy deletion event",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	proxyID := deletedEvent.Payload.ProxyID
+	if proxyID == "" {
+		c.logger.Error("Proxy ID is empty in LLM proxy deletion event")
+		return
+	}
+
+	if c.llmDeploymentService == nil {
+		c.logger.Error("LLM deployment service not available",
+			slog.String("proxy_id", proxyID),
+			slog.String("correlation_id", deletedEvent.CorrelationID),
+		)
+		return
+	}
+
+	// Check if proxy exists on this gateway
+	proxyConfig, err := c.findAPIConfig(proxyID)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			c.logger.Warn("LLM proxy configuration not found for deletion",
+				slog.String("proxy_id", proxyID),
+			)
+			return
+		}
+		c.logger.Error("Failed to fetch LLM proxy configuration for deletion, aborting",
+			slog.String("proxy_id", proxyID),
+			slog.String("correlation_id", deletedEvent.CorrelationID),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	// Delete via LLM deployment service (handles DB cleanup, store cleanup,
+	// eventHub publish, and xDS update)
+	_, err = c.llmDeploymentService.DeleteLLMProxy(proxyConfig.Handle, deletedEvent.CorrelationID, c.logger)
+	if err != nil {
+		c.logger.Error("Failed to delete LLM proxy configuration",
+			slog.String("proxy_id", proxyID),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	c.logger.Info("Successfully processed LLM proxy deletion event",
+		slog.String("proxy_id", proxyID),
+		slog.String("correlation_id", deletedEvent.CorrelationID),
 	)
 }
 
@@ -2144,9 +2428,9 @@ func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
 	}
 
 	// Create MCP proxy configuration from YAML using the deployment service
-	mcpPerformedAt := deployedEvent.Payload.PerformedAt
+	mcpPerformedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if mcpPerformedAt.IsZero() {
-		mcpPerformedAt = time.Now()
+		mcpPerformedAt = time.Now().Truncate(time.Millisecond)
 	}
 	result, err := c.apiUtilsService.CreateMCPProxyFromYAML(yamlData, proxyID, deployedEvent.Payload.DeploymentID, &mcpPerformedAt, deployedEvent.CorrelationID, c.mcpDeploymentService)
 	if err != nil {
@@ -2159,13 +2443,15 @@ func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
 		return
 	}
 
-	// In event-driven mode the EventListener owns local policy convergence.
-	if c.eventHub == nil {
-		if err := c.updatePolicyForDeployment(proxyID, deployedEvent.CorrelationID, result); err != nil {
-			c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "deploy", "failed",
-				deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-			return
-		}
+	if result.IsStale {
+		// Stale event — DB was not modified. Do not send ack; in HA mode the
+		// controller that actually processed the event will ack. If all controllers
+		// see stale, platform-API will timeout and handle accordingly.
+		c.logger.Debug("Skipped stale MCP proxy deploy event (newer version exists in DB)",
+			slog.String("proxy_id", proxyID),
+			slog.String("deployment_id", deployedEvent.Payload.DeploymentID),
+		)
+		return
 	}
 
 	c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "deploy", "success",
@@ -2240,6 +2526,13 @@ func (c *Client) handleMCPProxyUndeploymentEvent(event map[string]any) {
 			)
 			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "undeploy", "failed",
 				undeployedEvent.Payload.PerformedAt, "DEPLOYMENT_ID_MISMATCH")
+			return
+		}
+		if errors.Is(err, utils.ErrMCPUndeployStale) {
+			c.logger.Debug("Skipped stale MCP proxy undeploy event (newer version exists in DB)",
+				slog.String("proxy_id", proxyID),
+				slog.String("deployment_id", undeployedEvent.Payload.DeploymentID),
+			)
 			return
 		}
 		c.logger.Error("Failed to undeploy MCP proxy configuration",
@@ -2402,6 +2695,32 @@ func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
 	if payload.UUID != "" {
 		keyUUID = &payload.UUID
 	}
+
+	// Parse authoritative timestamps from the platform API
+	var createdAt, updatedAt *time.Time
+	if payload.CreatedAt != "" {
+		t, err := time.Parse(time.RFC3339, payload.CreatedAt)
+		if err != nil {
+			logger.Warn("Invalid created_at format in API key event, using local time",
+				slog.String("created_at", payload.CreatedAt),
+				slog.Any("error", err),
+			)
+		} else {
+			createdAt = &t
+		}
+	}
+	if payload.UpdatedAt != "" {
+		t, err := time.Parse(time.RFC3339, payload.UpdatedAt)
+		if err != nil {
+			logger.Warn("Invalid updated_at format in API key event, using local time",
+				slog.String("updated_at", payload.UpdatedAt),
+				slog.Any("error", err),
+			)
+		} else {
+			updatedAt = &t
+		}
+	}
+
 	apiKeyCreationRequest := api.APIKeyCreationRequest{
 		MaskedApiKey:  &payload.MaskedApiKey,
 		Name:          &payload.Name,
@@ -2460,6 +2779,8 @@ func (c *Client) handleAPIKeyCreatedEvent(event map[string]interface{}) {
 		&payload.ApiKeyHashes,
 		keyCreatedEvent.CorrelationID,
 		logger,
+		createdAt,
+		updatedAt,
 	)
 	if err != nil {
 		logger.Error("Failed to create external API key", slog.Any("error", err))
@@ -2600,6 +2921,20 @@ func (c *Client) handleAPIKeyUpdatedEvent(event map[string]interface{}) {
 	var duration *int
 	now := time.Now()
 
+	// Parse authoritative updated_at timestamp from the platform API
+	var updatedAt *time.Time
+	if payload.UpdatedAt != "" {
+		t, err := time.Parse(time.RFC3339, payload.UpdatedAt)
+		if err != nil {
+			logger.Warn("Invalid updated_at format in API key updated event, using local time",
+				slog.String("updated_at", payload.UpdatedAt),
+				slog.Any("error", err),
+			)
+		} else {
+			updatedAt = &t
+		}
+	}
+
 	apiKeyCreationRequest := api.APIKeyCreationRequest{
 		MaskedApiKey:  &payload.MaskedApiKey,
 		ExternalRefId: payload.ExternalRefId,
@@ -2658,6 +2993,7 @@ func (c *Client) handleAPIKeyUpdatedEvent(event map[string]interface{}) {
 		evt.UserId,
 		evt.CorrelationID,
 		logger,
+		updatedAt,
 	)
 	if err != nil {
 		logger.Error("Failed to update external API key", slog.Any("error", err))
@@ -2673,15 +3009,7 @@ func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
 		baseLogger = slog.Default()
 	}
 
-	if c.db == nil {
-		baseLogger.Warn("Storage not configured; skipping application.updated persistence")
-		return
-	}
 	resourceService := c.getSubscriptionResourceService()
-	if resourceService == nil {
-		baseLogger.Warn("Subscription resource service not available; skipping application.updated persistence")
-		return
-	}
 
 	eventBytes, err := json.Marshal(event)
 	if err != nil {
@@ -2737,6 +3065,26 @@ func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
 		slog.String("application_type", evt.Payload.ApplicationType),
 	)
 
+	affectedAPIKeyUUIDs := make(map[string]struct{})
+	apiKeysByUUID := make(map[string]*models.APIKey)
+	if c.apiKeyXDSManager != nil {
+		apiKeys, err := c.db.GetAllAPIKeys()
+		if err != nil {
+			logger.Error("Failed to load API keys for xDS refresh after application mapping update", slog.Any("error", err))
+		} else {
+			for _, apiKey := range apiKeys {
+				if apiKey == nil || apiKey.UUID == "" {
+					continue
+				}
+
+				apiKeysByUUID[apiKey.UUID] = apiKey
+				if apiKey.ApplicationID == evt.Payload.ApplicationUuid {
+					affectedAPIKeyUUIDs[apiKey.UUID] = struct{}{}
+				}
+			}
+		}
+	}
+
 	resolvedMappings := make([]*models.ApplicationAPIKeyMapping, 0, len(evt.Payload.Mappings))
 
 	for _, mapping := range evt.Payload.Mappings {
@@ -2767,6 +3115,7 @@ func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
 			ApplicationUUID: evt.Payload.ApplicationUuid,
 			APIKeyID:        apiKey.UUID,
 		})
+		affectedAPIKeyUUIDs[apiKey.UUID] = struct{}{}
 	}
 
 	application := &models.StoredApplication{
@@ -2779,6 +3128,52 @@ func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
 	if err := resourceService.ReplaceApplicationAPIKeyMappings(application, resolvedMappings, evt.CorrelationID, logger); err != nil {
 		logger.Error("Failed to persist application key mappings", slog.Any("error", err))
 		return
+	}
+
+	if c.apiKeyXDSManager != nil {
+		cfgByArtifactUUID := make(map[string]*models.StoredConfig)
+		missingCfgArtifactUUIDs := make(map[string]error)
+
+		for apiKeyUUID := range affectedAPIKeyUUIDs {
+			apiKey := apiKeysByUUID[apiKeyUUID]
+			if apiKey == nil {
+				continue
+			}
+
+			cfg := cfgByArtifactUUID[apiKey.ArtifactUUID]
+			if cfg == nil {
+				if cfgErr, missing := missingCfgArtifactUUIDs[apiKey.ArtifactUUID]; missing {
+					logger.Debug("Skipping API key xDS refresh due to missing API config",
+						slog.String("api_key_uuid", apiKey.UUID),
+						slog.String("artifact_uuid", apiKey.ArtifactUUID),
+						slog.Any("error", cfgErr),
+					)
+					continue
+				}
+
+				cfgLoaded, cfgErr := c.db.GetConfig(apiKey.ArtifactUUID)
+				if cfgErr != nil {
+					missingCfgArtifactUUIDs[apiKey.ArtifactUUID] = cfgErr
+					logger.Debug("Skipping API key xDS refresh due to missing API config",
+						slog.String("api_key_uuid", apiKey.UUID),
+						slog.String("artifact_uuid", apiKey.ArtifactUUID),
+						slog.Any("error", cfgErr),
+					)
+					continue
+				}
+
+				cfg = cfgLoaded
+				cfgByArtifactUUID[apiKey.ArtifactUUID] = cfgLoaded
+			}
+
+			if err := c.apiKeyXDSManager.StoreAPIKey(apiKey.ArtifactUUID, cfg.DisplayName, cfg.Version, apiKey, evt.CorrelationID); err != nil {
+				logger.Error("Failed to refresh API key xDS state after application mapping update",
+					slog.String("api_key_uuid", apiKey.UUID),
+					slog.String("artifact_uuid", apiKey.ArtifactUUID),
+					slog.Any("error", err),
+				)
+			}
+		}
 	}
 
 	logger.Info("Successfully processed application updated event", slog.Int("mapping_count", len(resolvedMappings)))
@@ -2829,16 +3224,7 @@ func (c *Client) handleSubscriptionCreatedEvent(event map[string]interface{}) {
 		baseLogger = slog.Default()
 	}
 
-	// If no database is configured (in-memory mode), ignore subscription persistence.
-	if c.db == nil {
-		baseLogger.Warn("Storage not configured; skipping subscription.created persistence")
-		return
-	}
 	resourceService := c.getSubscriptionResourceService()
-	if resourceService == nil {
-		baseLogger.Warn("Subscription resource service not available; skipping subscription.created persistence")
-		return
-	}
 
 	var createdEvent SubscriptionCreatedEvent
 	if err := utils.MapToStruct(event, &createdEvent); err != nil {
@@ -2889,15 +3275,7 @@ func (c *Client) handleSubscriptionUpdatedEvent(event map[string]interface{}) {
 		baseLogger = slog.Default()
 	}
 
-	if c.db == nil {
-		baseLogger.Warn("Storage not configured; skipping subscription.updated persistence")
-		return
-	}
 	resourceService := c.getSubscriptionResourceService()
-	if resourceService == nil {
-		baseLogger.Warn("Subscription resource service not available; skipping subscription.updated persistence")
-		return
-	}
 
 	var updatedEvent SubscriptionUpdatedEvent
 	if err := utils.MapToStruct(event, &updatedEvent); err != nil {
@@ -2962,15 +3340,7 @@ func (c *Client) handleSubscriptionDeletedEvent(event map[string]interface{}) {
 		baseLogger = slog.Default()
 	}
 
-	if c.db == nil {
-		baseLogger.Warn("Storage not configured; skipping subscription.deleted persistence")
-		return
-	}
 	resourceService := c.getSubscriptionResourceService()
-	if resourceService == nil {
-		baseLogger.Warn("Subscription resource service not available; skipping subscription.deleted persistence")
-		return
-	}
 
 	var deletedEvent SubscriptionDeletedEvent
 	if err := utils.MapToStruct(event, &deletedEvent); err != nil {
@@ -2997,15 +3367,7 @@ func (c *Client) handleSubscriptionDeletedEvent(event map[string]interface{}) {
 // handleSubscriptionPlanCreatedEvent processes subscriptionPlan.created events.
 func (c *Client) handleSubscriptionPlanCreatedEvent(event map[string]interface{}) {
 	baseLogger := c.logger
-	if c.db == nil {
-		baseLogger.Warn("Storage not configured; skipping subscriptionPlan.created persistence")
-		return
-	}
 	resourceService := c.getSubscriptionResourceService()
-	if resourceService == nil {
-		baseLogger.Warn("Subscription resource service not available; skipping subscriptionPlan.created persistence")
-		return
-	}
 
 	var created SubscriptionPlanCreatedEvent
 	if err := utils.MapToStruct(event, &created); err != nil {
@@ -3050,15 +3412,7 @@ func (c *Client) handleSubscriptionPlanCreatedEvent(event map[string]interface{}
 // handleSubscriptionPlanUpdatedEvent processes subscriptionPlan.updated events.
 func (c *Client) handleSubscriptionPlanUpdatedEvent(event map[string]interface{}) {
 	baseLogger := c.logger
-	if c.db == nil {
-		baseLogger.Warn("Storage not configured; skipping subscriptionPlan.updated persistence")
-		return
-	}
 	resourceService := c.getSubscriptionResourceService()
-	if resourceService == nil {
-		baseLogger.Warn("Subscription resource service not available; skipping subscriptionPlan.updated persistence")
-		return
-	}
 
 	var updated SubscriptionPlanUpdatedEvent
 	if err := utils.MapToStruct(event, &updated); err != nil {
@@ -3118,15 +3472,7 @@ func (c *Client) handleSubscriptionPlanUpdatedEvent(event map[string]interface{}
 // handleSubscriptionPlanDeletedEvent processes subscriptionPlan.deleted events.
 func (c *Client) handleSubscriptionPlanDeletedEvent(event map[string]interface{}) {
 	baseLogger := c.logger
-	if c.db == nil {
-		baseLogger.Warn("Storage not configured; skipping subscriptionPlan.deleted persistence")
-		return
-	}
 	resourceService := c.getSubscriptionResourceService()
-	if resourceService == nil {
-		baseLogger.Warn("Subscription resource service not available; skipping subscriptionPlan.deleted persistence")
-		return
-	}
 
 	var deleted SubscriptionPlanDeletedEvent
 	if err := utils.MapToStruct(event, &deleted); err != nil {
@@ -3277,6 +3623,14 @@ func (c *Client) pushGatewayManifest(gatewayID string, policies []models.PolicyD
 // pushGatewayManifestOnConnect collects all loaded policy definitions and POSTs
 // them to the control plane immediately after the connection is established.
 func (c *Client) pushGatewayManifestOnConnect(gatewayID string) {
+	// Skip for on-prem control planes
+	if c.isOnPrem() {
+		c.logger.Debug("Skipping gateway manifest push: on-prem control plane detected",
+			slog.String("gateway_id", gatewayID),
+		)
+		return
+	}
+
 	c.logger.Info("Pushing gateway manifest on connect",
 		slog.String("gateway_id", gatewayID),
 	)

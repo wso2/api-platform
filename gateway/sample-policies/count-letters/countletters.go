@@ -1,12 +1,13 @@
 package countletters
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
 
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
 // CountLettersPolicy counts occurrences of specified letters in the response body
@@ -32,14 +33,9 @@ func (p *CountLettersPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-// OnRequest is not used by this policy (only processes response body)
-func (p *CountLettersPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	return nil // No request processing needed
-}
-
-// OnResponse counts letters in the response body and replaces it with the count
-func (p *CountLettersPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	slog.Debug("[Count Letters]: OnResponse called", "hasBody", ctx.ResponseBody != nil && ctx.ResponseBody.Present)
+// OnResponseBody counts letters in the response body and replaces it with the count
+func (p *CountLettersPolicy) OnResponseBody(_ context.Context, ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
+	slog.Debug("[Count Letters]: OnResponseBody called", "hasBody", ctx.ResponseBody != nil && ctx.ResponseBody.Present)
 
 	// Check if response body is present
 	if ctx.ResponseBody == nil || !ctx.ResponseBody.Present {
@@ -95,7 +91,7 @@ func (p *CountLettersPolicy) OnResponse(ctx *policy.ResponseContext, params map[
 		slog.Debug("[Count Letters]: Generated text output", "size", len(outputBody))
 	}
 
-	return policy.UpstreamResponseModifications{
+	return policy.DownstreamResponseModifications{
 		Body: outputBody,
 	}
 }
@@ -173,7 +169,7 @@ func (p *CountLettersPolicy) generateEmptyResponse(params map[string]interface{}
 		outputBody = []byte("Letter Counts:\n(no response body)")
 	}
 
-	return policy.UpstreamResponseModifications{
+	return policy.DownstreamResponseModifications{
 		Body: outputBody,
 	}
 }

@@ -35,7 +35,7 @@ func TestHandleEvent_APIKeyCreate_SyncsMemoryAndXDS(t *testing.T) {
 	db := setupSQLiteDBForEventListenerTests(t)
 	xdsManager := &mockAPIKeyXDSManager{}
 	cfg := testRestStoredConfig("test-api-id", "test-api", "Test API", "v1.0.0", models.StateDeployed)
-	apiKey := testAPIKey("api-key-id-1", "test-key", "Test Key", cfg.UUID)
+	apiKey := testAPIKey("api-key-id-1", "test-key", cfg.UUID)
 
 	require.NoError(t, db.SaveConfig(cfg))
 	require.NoError(t, db.SaveAPIKey(apiKey))
@@ -76,8 +76,8 @@ func TestHandleEvent_APIKeyUpdate_SyncsMemoryAndXDS(t *testing.T) {
 	db := setupSQLiteDBForEventListenerTests(t)
 	xdsManager := &mockAPIKeyXDSManager{}
 	cfg := testRestStoredConfig("test-api-id", "test-api", "Test API", "v1.0.0", models.StateDeployed)
-	originalKey := testAPIKey("api-key-id-1", "test-key", "Original Key", cfg.UUID)
-	updatedKey := testAPIKey("api-key-id-1", "test-key", "Updated Key", cfg.UUID)
+	originalKey := testAPIKey("api-key-id-1", "test-key", cfg.UUID)
+	updatedKey := testAPIKey("api-key-id-1", "test-key", cfg.UUID)
 
 	require.NoError(t, store.Add(cfg))
 	require.NoError(t, store.StoreAPIKey(originalKey))
@@ -115,7 +115,7 @@ func TestHandleEvent_APIKeyDelete_RemovesMemoryAndXDS(t *testing.T) {
 	store := storage.NewConfigStore()
 	xdsManager := &mockAPIKeyXDSManager{}
 	cfg := testRestStoredConfig("test-api-id", "test-api", "Test API", "v1.0.0", models.StateDeployed)
-	apiKey := testAPIKey("api-key-id-1", "test-key", "Test Key", cfg.UUID)
+	apiKey := testAPIKey("api-key-id-1", "test-key", cfg.UUID)
 
 	require.NoError(t, store.Add(cfg))
 	require.NoError(t, store.StoreAPIKey(apiKey))
@@ -195,7 +195,7 @@ func TestHandleEvent_APIKeyCreate_SyncsMemoryAndXDS_ForLLMProxy(t *testing.T) {
 		},
 		DesiredState: models.StateDeployed,
 	}
-	apiKey := testAPIKey("api-key-id-llm-proxy", "test-key", "Test Key", cfg.UUID)
+	apiKey := testAPIKey("api-key-id-llm-proxy", "test-key", cfg.UUID)
 
 	require.NoError(t, db.SaveConfig(cfg))
 	require.NoError(t, db.SaveAPIKey(apiKey))

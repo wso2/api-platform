@@ -1,0 +1,1493 @@
+<h1 id="gateway-controller-management-api-rest-api-management">Rest API Management</h1>
+
+CRUD operations for Rest APIs
+
+## Create a new RestAPI
+
+<a id="opIdcreateRestAPI"></a>
+
+`POST /rest-apis`
+
+> Code samples
+
+```shell
+
+curl -X POST http://localhost:9090/rest-apis \
+  -u {username}:{password} \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -d @payload.json
+
+```
+
+Add a new RestAPI to the Gateway.
+
+> Body parameter
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "RestApi",
+  "metadata": {
+    "name": "petstore-api-v1.0"
+  },
+  "spec": {
+    "displayName": "Petstore-API",
+    "version": "v1.0",
+    "context": "/petstore/$version",
+    "upstream": {
+      "main": {
+        "url": "https://petstore3.swagger.io/api/v3"
+      }
+    },
+    "operations": [
+      {
+        "method": "PUT",
+        "path": "/pet"
+      },
+      {
+        "method": "POST",
+        "path": "/pet",
+        "policies": [
+          {
+            "name": "log-message",
+            "version": "v0",
+            "params": {
+              "request": {
+                "payload": true,
+                "headers": true
+              }
+            }
+          }
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/pet/findByStatus"
+      },
+      {
+        "method": "GET",
+        "path": "/pet/{petId}"
+      },
+      {
+        "method": "POST",
+        "path": "/pet/{petId}"
+      },
+      {
+        "method": "DELETE",
+        "path": "/pet/{petId}"
+      }
+    ]
+  }
+}
+```
+
+<h3 id="create-a-new-restapi-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|body|body|[RestAPI](schemas.md#schemarestapi)|true|none|
+
+> Example responses
+
+> 201 Response
+
+```json
+{
+  "status": "success",
+  "message": "RestAPI created successfully",
+  "id": "weather-api-v1.0",
+  "createdAt": "2025-10-11T10:30:00Z"
+}
+```
+
+<h3 id="create-a-new-restapi-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|RestAPI created successfully|[RestAPICreateResponse](schemas.md#schemarestapicreateresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - API with same name and version already exists|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## List all RestAPIs
+
+<a id="opIdlistRestAPIs"></a>
+
+`GET /rest-apis`
+
+> Code samples
+
+```shell
+
+curl -X GET http://localhost:9090/rest-apis \
+  -u {username}:{password} \
+  -H 'Accept: application/json'
+
+```
+
+List RestAPIs registered in the Gateway, optionally filtered by name, version, context, or status.
+
+<h3 id="list-all-restapis-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|displayName|query|string|false|Filter by API display name|
+|version|query|string|false|Filter by API version|
+|context|query|string|false|Filter by API context/path|
+|status|query|string|false|Filter by deployment status|
+
+#### Enumerated Values
+
+|Parameter|Value|
+|---|---|
+|status|deployed|
+|status|undeployed|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "status": "success",
+  "count": 5,
+  "apis": [
+    {
+      "id": "weather-api-v1.0",
+      "displayName": "weather-api",
+      "version": "v1.0",
+      "context": "/weather",
+      "status": "deployed",
+      "createdAt": "2025-10-11T10:30:00Z",
+      "updatedAt": "2025-10-11T10:30:00Z"
+    }
+  ]
+}
+```
+
+<h3 id="list-all-restapis-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of RestAPIs|Inline|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<h3 id="list-all-restapis-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» status|string|false|none|none|
+|» count|integer|false|none|none|
+|» apis|[[RestAPIListItem](schemas.md#schemarestapilistitem)]|false|none|none|
+|»» id|string|false|none|none|
+|»» displayName|string|false|none|none|
+|»» version|string|false|none|none|
+|»» context|string|false|none|none|
+|»» status|string|false|none|none|
+|»» createdAt|string(date-time)|false|none|none|
+|»» updatedAt|string(date-time)|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|deployed|
+|status|undeployed|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Get RestAPI by id
+
+<a id="opIdgetRestAPIById"></a>
+
+`GET /rest-apis/{id}`
+
+> Code samples
+
+```shell
+
+curl -X GET http://localhost:9090/rest-apis/{id} \
+  -u {username}:{password} \
+  -H 'Accept: application/json'
+
+```
+
+Get a RestAPI by its ID.
+
+<h3 id="get-restapi-by-id-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|id|path|string|true|Unique public identifier for the API.|
+
+#### Detailed descriptions
+
+**id**: Unique public identifier for the API.
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "status": "success",
+  "api": {
+    "id": "weather-api-v1.0",
+    "configuration": {
+      "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+      "kind": "RestApi",
+      "metadata": {
+        "name": "petstore-api-v1.0"
+      },
+      "spec": {
+        "displayName": "Petstore-API",
+        "version": "v1.0",
+        "context": "/petstore/$version",
+        "upstream": {
+          "main": {
+            "url": "https://petstore3.swagger.io/api/v3"
+          }
+        },
+        "operations": [
+          {
+            "method": "PUT",
+            "path": "/pet"
+          },
+          {
+            "method": "POST",
+            "path": "/pet",
+            "policies": [
+              {
+                "name": "log-message",
+                "version": "v0",
+                "params": {
+                  "request": {
+                    "payload": true,
+                    "headers": true
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "method": "GET",
+            "path": "/pet/findByStatus"
+          },
+          {
+            "method": "GET",
+            "path": "/pet/{petId}"
+          },
+          {
+            "method": "POST",
+            "path": "/pet/{petId}"
+          },
+          {
+            "method": "DELETE",
+            "path": "/pet/{petId}"
+          }
+        ]
+      }
+    },
+    "metadata": {
+      "status": "deployed",
+      "createdAt": "2025-10-11T10:30:00Z",
+      "updatedAt": "2025-10-11T10:30:00Z",
+      "deployedAt": "2025-10-11T10:30:05Z"
+    }
+  }
+}
+```
+
+<h3 id="get-restapi-by-id-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|RestAPI details|[RestAPIDetailResponse](schemas.md#schemarestapidetailresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Update an existing RestAPI
+
+<a id="opIdupdateRestAPI"></a>
+
+`PUT /rest-apis/{id}`
+
+> Code samples
+
+```shell
+
+curl -X PUT http://localhost:9090/rest-apis/{id} \
+  -u {username}:{password} \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -d @payload.json
+
+```
+
+Update an existing RestAPI in the Gateway.
+
+> Body parameter
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "RestApi",
+  "metadata": {
+    "name": "petstore-api-v1.0"
+  },
+  "spec": {
+    "displayName": "Petstore-API",
+    "version": "v1.0",
+    "context": "/petstore/$version",
+    "upstream": {
+      "main": {
+        "url": "https://petstore3.swagger.io/api/v3"
+      }
+    },
+    "operations": [
+      {
+        "method": "PUT",
+        "path": "/pet"
+      },
+      {
+        "method": "POST",
+        "path": "/pet",
+        "policies": [
+          {
+            "name": "log-message",
+            "version": "v0",
+            "params": {
+              "request": {
+                "payload": true,
+                "headers": true
+              }
+            }
+          }
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/pet/findByStatus"
+      },
+      {
+        "method": "GET",
+        "path": "/pet/{petId}"
+      },
+      {
+        "method": "POST",
+        "path": "/pet/{petId}"
+      },
+      {
+        "method": "DELETE",
+        "path": "/pet/{petId}"
+      }
+    ]
+  }
+}
+```
+
+<h3 id="update-an-existing-restapi-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|id|path|string|true|Unique public identifier of the API to update.|
+|body|body|[RestAPI](schemas.md#schemarestapi)|true|none|
+
+#### Detailed descriptions
+
+**id**: Unique public identifier of the API to update.
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "status": "success",
+  "message": "RestAPI updated successfully",
+  "id": "weather-api-v1.0",
+  "updatedAt": "2025-10-11T11:45:00Z"
+}
+```
+
+<h3 id="update-an-existing-restapi-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|RestAPI updated successfully|[RestAPIUpdateResponse](schemas.md#schemarestapiupdateresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Delete a RestAPI
+
+<a id="opIddeleteRestAPI"></a>
+
+`DELETE /rest-apis/{id}`
+
+> Code samples
+
+```shell
+
+curl -X DELETE http://localhost:9090/rest-apis/{id} \
+  -u {username}:{password} \
+  -H 'Accept: application/json'
+
+```
+
+Delete a RestAPI from the Gateway.
+
+<h3 id="delete-a-restapi-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|id|path|string|true|Unique public identifier of the API to delete.|
+
+#### Detailed descriptions
+
+**id**: Unique public identifier of the API to delete.
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "status": "success",
+  "message": "RestAPI deleted successfully",
+  "id": "weather-api-v1.0"
+}
+```
+
+<h3 id="delete-a-restapi-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|RestAPI deleted successfully|Inline|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<h3 id="delete-a-restapi-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» status|string|false|none|none|
+|» message|string|false|none|none|
+|» id|string|false|none|none|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Create a new API key for an API
+
+<a id="opIdcreateAPIKey"></a>
+
+`POST /rest-apis/{id}/api-keys`
+
+> Code samples
+
+```shell
+
+curl -X POST http://localhost:9090/rest-apis/{id}/api-keys \
+  -u {username}:{password} \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -d @payload.json
+
+```
+
+Generate a new API key for a RestAPI in the Gateway. The key is a 32-byte random value encoded in hexadecimal, prefixed with `apip_`. Use the API Key policy on the API to validate incoming requests with this key.
+
+> Body parameter
+
+```json
+{
+  "name": "my-production-key",
+  "apiKey": "xxxxxx-wso2-api-platform-key-xxxxxx-xxxxxxx",
+  "maskedApiKey": "apip_****xyz789",
+  "expiresIn": {
+    "unit": "days",
+    "duration": 30
+  },
+  "expiresAt": "2026-12-08T10:30:00Z",
+  "externalRefId": "cloud-apim-key-98765",
+  "issuer": "api-platform-devportal"
+}
+```
+
+<h3 id="create-a-new-api-key-for-an-api-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|id|path|string|true|Unique public identifier of the API to generate the key for|
+|body|body|[APIKeyCreationRequest](schemas.md#schemaapikeycreationrequest)|true|none|
+
+#### Detailed descriptions
+
+**id**: Unique public identifier of the API to generate the key for
+
+> Example responses
+
+> 201 Response
+
+```json
+{
+  "status": "success",
+  "message": "API key generated successfully",
+  "remainingApiKeyQuota": 9,
+  "apiKey": {
+    "name": "my-production-key",
+    "displayName": "My Production Key",
+    "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+    "apiId": "weather-api-v1.0",
+    "status": "active",
+    "createdAt": "2025-12-08T10:30:00Z",
+    "createdBy": "api_consumer",
+    "expiresAt": "2025-12-08T10:30:00Z",
+    "source": "local",
+    "externalRefId": "cloud-apim-key-98765"
+  }
+}
+```
+
+<h3 id="create-a-new-api-key-for-an-api-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|API key created successfully|[APIKeyCreationResponse](schemas.md#schemaapikeycreationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Get the list of API keys for an API
+
+<a id="opIdlistAPIKeys"></a>
+
+`GET /rest-apis/{id}/api-keys`
+
+> Code samples
+
+```shell
+
+curl -X GET http://localhost:9090/rest-apis/{id}/api-keys \
+  -u {username}:{password} \
+  -H 'Accept: application/json'
+
+```
+
+List all API keys for a RestAPI in the Gateway.
+
+<h3 id="get-the-list-of-api-keys-for-an-api-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|id|path|string|true|Unique public identifier of the API to retrieve the keys for|
+
+#### Detailed descriptions
+
+**id**: Unique public identifier of the API to retrieve the keys for
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "apiKeys": [
+    {
+      "name": "my-production-key",
+      "displayName": "My Production Key",
+      "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+      "apiId": "weather-api-v1.0",
+      "status": "active",
+      "createdAt": "2025-12-08T10:30:00Z",
+      "createdBy": "api_consumer",
+      "expiresAt": "2025-12-08T10:30:00Z",
+      "source": "local",
+      "externalRefId": "cloud-apim-key-98765"
+    }
+  ],
+  "totalCount": 3,
+  "status": "success"
+}
+```
+
+<h3 id="get-the-list-of-api-keys-for-an-api-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of API keys|[APIKeyListResponse](schemas.md#schemaapikeylistresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Regenerate API key for an API
+
+<a id="opIdregenerateAPIKey"></a>
+
+`POST /rest-apis/{id}/api-keys/{apiKeyName}/regenerate`
+
+> Code samples
+
+```shell
+
+curl -X POST http://localhost:9090/rest-apis/{id}/api-keys/{apiKeyName}/regenerate \
+  -u {username}:{password} \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -d @payload.json
+
+```
+
+Regenerate an existing API key for a RestAPI in the Gateway. The previous key is revoked and replaced with a new 32-byte random value encoded in hexadecimal, prefixed with `apip_`.
+
+> Body parameter
+
+```json
+{
+  "expiresIn": {
+    "unit": "days",
+    "duration": 30
+  },
+  "expiresAt": "2026-12-08T10:30:00Z"
+}
+```
+
+<h3 id="regenerate-api-key-for-an-api-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|id|path|string|true|Unique public identifier of the API to generate the key for|
+|apiKeyName|path|string|true|Name of the API key to regenerate|
+|body|body|[APIKeyRegenerationRequest](schemas.md#schemaapikeyregenerationrequest)|true|none|
+
+#### Detailed descriptions
+
+**id**: Unique public identifier of the API to generate the key for
+
+**apiKeyName**: Name of the API key to regenerate
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "status": "success",
+  "message": "API key generated successfully",
+  "remainingApiKeyQuota": 9,
+  "apiKey": {
+    "name": "my-production-key",
+    "displayName": "My Production Key",
+    "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+    "apiId": "weather-api-v1.0",
+    "status": "active",
+    "createdAt": "2025-12-08T10:30:00Z",
+    "createdBy": "api_consumer",
+    "expiresAt": "2025-12-08T10:30:00Z",
+    "source": "local",
+    "externalRefId": "cloud-apim-key-98765"
+  }
+}
+```
+
+<h3 id="regenerate-api-key-for-an-api-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key rotated successfully|[APIKeyCreationResponse](schemas.md#schemaapikeycreationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Update an API key with a new regenerated value
+
+<a id="opIdupdateAPIKey"></a>
+
+`PUT /rest-apis/{id}/api-keys/{apiKeyName}`
+
+> Code samples
+
+```shell
+
+curl -X PUT http://localhost:9090/rest-apis/{id}/api-keys/{apiKeyName} \
+  -u {username}:{password} \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -d @payload.json
+
+```
+
+Update an API key with a custom value instead of auto-generating one.
+
+> Body parameter
+
+```json
+{
+  "name": "my-production-key",
+  "apiKey": "xxxxxx-wso2-api-platform-key-xxxxxx-xxxxxxx",
+  "maskedApiKey": "apip_****xyz789",
+  "expiresIn": {
+    "unit": "days",
+    "duration": 30
+  },
+  "expiresAt": "2026-12-08T10:30:00Z",
+  "externalRefId": "cloud-apim-key-98765",
+  "issuer": "api-platform-devportal"
+}
+```
+
+<h3 id="update-an-api-key-with-a-new-regenerated-value-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|id|path|string|true|Unique public identifier of the API|
+|apiKeyName|path|string|true|Name of the API key to update|
+|body|body|[APIKeyUpdateRequest](schemas.md#schemaapikeyupdaterequest)|true|none|
+
+#### Detailed descriptions
+
+**id**: Unique public identifier of the API
+
+**apiKeyName**: Name of the API key to update
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "status": "success",
+  "message": "API key generated successfully",
+  "remainingApiKeyQuota": 9,
+  "apiKey": {
+    "name": "my-production-key",
+    "displayName": "My Production Key",
+    "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+    "apiId": "weather-api-v1.0",
+    "status": "active",
+    "createdAt": "2025-12-08T10:30:00Z",
+    "createdBy": "api_consumer",
+    "expiresAt": "2025-12-08T10:30:00Z",
+    "source": "local",
+    "externalRefId": "cloud-apim-key-98765"
+  }
+}
+```
+
+<h3 id="update-an-api-key-with-a-new-regenerated-value-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key updated successfully|[APIKeyCreationResponse](schemas.md#schemaapikeycreationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid request (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|API or API key not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Revoke an API key
+
+<a id="opIdrevokeAPIKey"></a>
+
+`DELETE /rest-apis/{id}/api-keys/{apiKeyName}`
+
+> Code samples
+
+```shell
+
+curl -X DELETE http://localhost:9090/rest-apis/{id}/api-keys/{apiKeyName} \
+  -u {username}:{password} \
+  -H 'Accept: application/json'
+
+```
+
+Revoke an API key. Once revoked, it can no longer be used to authenticate requests.
+
+<h3 id="revoke-an-api-key-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|id|path|string|true|Unique public identifier of the API to revoke the key for|
+|apiKeyName|path|string|true|Name of the API key to revoke|
+
+#### Detailed descriptions
+
+**id**: Unique public identifier of the API to revoke the key for
+
+**apiKeyName**: Name of the API key to revoke
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "status": "success",
+  "message": "API key revoked successfully"
+}
+```
+
+<h3 id="revoke-an-api-key-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key revoked successfully|[APIKeyRevocationResponse](schemas.md#schemaapikeyrevocationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Create a subscription plan
+
+<a id="opIdcreateSubscriptionPlan"></a>
+
+`POST /subscription-plans`
+
+> Code samples
+
+```shell
+
+curl -X POST http://localhost:9090/subscription-plans \
+  -u {username}:{password} \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -d @payload.json
+
+```
+
+Create a subscription plan that defines rate limits and access tiers for API subscriptions.
+
+> Body parameter
+
+```json
+{
+  "planName": "string",
+  "billingPlan": "string",
+  "stopOnQuotaReach": true,
+  "throttleLimitCount": 0,
+  "throttleLimitUnit": "Min",
+  "expiryTime": "2019-08-24T14:15:22Z",
+  "status": "ACTIVE"
+}
+```
+
+<h3 id="create-a-subscription-plan-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|body|body|[SubscriptionPlanCreateRequest](schemas.md#schemasubscriptionplancreaterequest)|true|none|
+
+> Example responses
+
+> 201 Response
+
+```json
+{
+  "id": "string",
+  "planName": "string",
+  "billingPlan": "string",
+  "stopOnQuotaReach": true,
+  "throttleLimitCount": 0,
+  "throttleLimitUnit": "string",
+  "expiryTime": "2019-08-24T14:15:22Z",
+  "gatewayId": "string",
+  "status": "ACTIVE",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
+}
+```
+
+<h3 id="create-a-subscription-plan-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Subscription plan created|[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## List subscription plans
+
+<a id="opIdlistSubscriptionPlans"></a>
+
+`GET /subscription-plans`
+
+> Code samples
+
+```shell
+
+curl -X GET http://localhost:9090/subscription-plans \
+  -u {username}:{password} \
+  -H 'Accept: application/json'
+
+```
+
+List all subscription plans available in the Gateway.
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "subscriptionPlans": [
+    {
+      "id": "string",
+      "planName": "string",
+      "billingPlan": "string",
+      "stopOnQuotaReach": true,
+      "throttleLimitCount": 0,
+      "throttleLimitUnit": "string",
+      "expiryTime": "2019-08-24T14:15:22Z",
+      "gatewayId": "string",
+      "status": "ACTIVE",
+      "createdAt": "2019-08-24T14:15:22Z",
+      "updatedAt": "2019-08-24T14:15:22Z"
+    }
+  ],
+  "count": 0
+}
+```
+
+<h3 id="list-subscription-plans-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of subscription plans|[SubscriptionPlanListResponse](schemas.md#schemasubscriptionplanlistresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Get a subscription plan by ID
+
+<a id="opIdgetSubscriptionPlan"></a>
+
+`GET /subscription-plans/{planId}`
+
+> Code samples
+
+```shell
+
+curl -X GET http://localhost:9090/subscription-plans/{planId} \
+  -u {username}:{password} \
+  -H 'Accept: application/json'
+
+```
+
+Get the details of a subscription plan by its ID.
+
+<h3 id="get-a-subscription-plan-by-id-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|planId|path|string|true|none|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "id": "string",
+  "planName": "string",
+  "billingPlan": "string",
+  "stopOnQuotaReach": true,
+  "throttleLimitCount": 0,
+  "throttleLimitUnit": "string",
+  "expiryTime": "2019-08-24T14:15:22Z",
+  "gatewayId": "string",
+  "status": "ACTIVE",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
+}
+```
+
+<h3 id="get-a-subscription-plan-by-id-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription plan details|[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Update a subscription plan
+
+<a id="opIdupdateSubscriptionPlan"></a>
+
+`PUT /subscription-plans/{planId}`
+
+> Code samples
+
+```shell
+
+curl -X PUT http://localhost:9090/subscription-plans/{planId} \
+  -u {username}:{password} \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -d @payload.json
+
+```
+
+Update an existing subscription plan in the Gateway.
+
+> Body parameter
+
+```json
+{
+  "planName": "string",
+  "billingPlan": "string",
+  "stopOnQuotaReach": true,
+  "throttleLimitCount": 0,
+  "throttleLimitUnit": "Min",
+  "expiryTime": "2019-08-24T14:15:22Z",
+  "status": "ACTIVE"
+}
+```
+
+<h3 id="update-a-subscription-plan-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|planId|path|string|true|none|
+|body|body|[SubscriptionPlanUpdateRequest](schemas.md#schemasubscriptionplanupdaterequest)|false|none|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "id": "string",
+  "planName": "string",
+  "billingPlan": "string",
+  "stopOnQuotaReach": true,
+  "throttleLimitCount": 0,
+  "throttleLimitUnit": "string",
+  "expiryTime": "2019-08-24T14:15:22Z",
+  "gatewayId": "string",
+  "status": "ACTIVE",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
+}
+```
+
+<h3 id="update-a-subscription-plan-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription plan updated|[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Delete a subscription plan
+
+<a id="opIddeleteSubscriptionPlan"></a>
+
+`DELETE /subscription-plans/{planId}`
+
+> Code samples
+
+```shell
+
+curl -X DELETE http://localhost:9090/subscription-plans/{planId} \
+  -u {username}:{password} \
+  -H 'Accept: application/json'
+
+```
+
+Delete a subscription plan from the Gateway.
+
+<h3 id="delete-a-subscription-plan-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|planId|path|string|true|none|
+
+> Example responses
+
+> 404 Response
+
+```json
+{
+  "status": "error",
+  "message": "Configuration validation failed",
+  "errors": [
+    {
+      "field": "spec.context",
+      "message": "Context must start with / and cannot end with /"
+    }
+  ]
+}
+```
+
+<h3 id="delete-a-subscription-plan-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Subscription plan deleted|None|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Create a subscription
+
+<a id="opIdcreateSubscription"></a>
+
+`POST /subscriptions`
+
+> Code samples
+
+```shell
+
+curl -X POST http://localhost:9090/subscriptions \
+  -u {username}:{password} \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -d @payload.json
+
+```
+
+Subscribe an application to a RestAPI in the Gateway.
+
+> Body parameter
+
+```json
+{
+  "apiId": "c9f2b6ae-1234-5678-9abc-def012345678",
+  "subscriptionToken": "string",
+  "applicationId": "string",
+  "subscriptionPlanId": "string",
+  "status": "ACTIVE"
+}
+```
+
+<h3 id="create-a-subscription-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|body|body|[SubscriptionCreateRequest](schemas.md#schemasubscriptioncreaterequest)|true|none|
+
+> Example responses
+
+> 201 Response
+
+```json
+{
+  "id": "string",
+  "apiId": "string",
+  "applicationId": "string",
+  "subscriptionToken": "string",
+  "subscriptionPlanId": "string",
+  "gatewayId": "string",
+  "status": "ACTIVE",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
+}
+```
+
+<h3 id="create-a-subscription-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Subscription created|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - subscription already exists|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## List subscriptions
+
+<a id="opIdlistSubscriptions"></a>
+
+`GET /subscriptions`
+
+> Code samples
+
+```shell
+
+curl -X GET http://localhost:9090/subscriptions \
+  -u {username}:{password} \
+  -H 'Accept: application/json'
+
+```
+
+List subscriptions in the Gateway, optionally filtered by API, application, or status.
+
+<h3 id="list-subscriptions-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|apiId|query|string|false|Filter by API ID (deployment ID or handle)|
+|applicationId|query|string|false|none|
+|status|query|string|false|none|
+
+#### Enumerated Values
+
+|Parameter|Value|
+|---|---|
+|status|ACTIVE|
+|status|INACTIVE|
+|status|REVOKED|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "subscriptions": [
+    {
+      "id": "string",
+      "apiId": "string",
+      "applicationId": "string",
+      "subscriptionToken": "string",
+      "subscriptionPlanId": "string",
+      "gatewayId": "string",
+      "status": "ACTIVE",
+      "createdAt": "2019-08-24T14:15:22Z",
+      "updatedAt": "2019-08-24T14:15:22Z"
+    }
+  ],
+  "count": 0
+}
+```
+
+<h3 id="list-subscriptions-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of subscriptions|[SubscriptionListResponse](schemas.md#schemasubscriptionlistresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Get a subscription by ID
+
+<a id="opIdgetSubscription"></a>
+
+`GET /subscriptions/{subscriptionId}`
+
+> Code samples
+
+```shell
+
+curl -X GET http://localhost:9090/subscriptions/{subscriptionId} \
+  -u {username}:{password} \
+  -H 'Accept: application/json'
+
+```
+
+Get the details of a subscription by its ID.
+
+<h3 id="get-a-subscription-by-id-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|subscriptionId|path|string|true|none|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "id": "string",
+  "apiId": "string",
+  "applicationId": "string",
+  "subscriptionToken": "string",
+  "subscriptionPlanId": "string",
+  "gatewayId": "string",
+  "status": "ACTIVE",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
+}
+```
+
+<h3 id="get-a-subscription-by-id-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription details|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Subscription not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Update a subscription
+
+<a id="opIdupdateSubscription"></a>
+
+`PUT /subscriptions/{subscriptionId}`
+
+> Code samples
+
+```shell
+
+curl -X PUT http://localhost:9090/subscriptions/{subscriptionId} \
+  -u {username}:{password} \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -d @payload.json
+
+```
+
+Update an existing subscription in the Gateway.
+
+> Body parameter
+
+```json
+{
+  "status": "ACTIVE"
+}
+```
+
+<h3 id="update-a-subscription-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|subscriptionId|path|string|true|none|
+|body|body|[SubscriptionUpdateRequest](schemas.md#schemasubscriptionupdaterequest)|false|none|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "id": "string",
+  "apiId": "string",
+  "applicationId": "string",
+  "subscriptionToken": "string",
+  "subscriptionPlanId": "string",
+  "gatewayId": "string",
+  "status": "ACTIVE",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
+}
+```
+
+<h3 id="update-a-subscription-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription updated|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Subscription not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Delete a subscription
+
+<a id="opIddeleteSubscription"></a>
+
+`DELETE /subscriptions/{subscriptionId}`
+
+> Code samples
+
+```shell
+
+curl -X DELETE http://localhost:9090/subscriptions/{subscriptionId} \
+  -u {username}:{password} \
+  -H 'Accept: application/json'
+
+```
+
+Delete a subscription from the Gateway.
+
+<h3 id="delete-a-subscription-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|subscriptionId|path|string|true|none|
+
+> Example responses
+
+> 404 Response
+
+```json
+{
+  "status": "error",
+  "message": "Configuration validation failed",
+  "errors": [
+    {
+      "field": "spec.context",
+      "message": "Context must start with / and cannot end with /"
+    }
+  ]
+}
+```
+
+<h3 id="delete-a-subscription-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Subscription deleted|None|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Subscription not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<aside class="success">
+This operation does not require authentication
+</aside>

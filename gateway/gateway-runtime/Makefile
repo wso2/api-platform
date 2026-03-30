@@ -135,10 +135,8 @@ build-and-push-multiarch: ## Build and push Gateway Runtime Docker image for mul
 test: ## Run policy-engine tests
 	cd policy-engine && go test -v $$(go list ./... | grep -v /testutils) -cover -coverprofile=unit-test-coverage.txt
 
-clean: ## Clean Docker images
-	@echo "Cleaning Docker images..."
-	@docker rmi $(IMAGE_NAME):$(VERSION) 2>/dev/null || true
-	@docker rmi $(IMAGE_NAME):latest 2>/dev/null || true
-	@docker rmi $(IMAGE_NAME)-coverage:$(VERSION) 2>/dev/null || true
+clean: ## Clean generated policy-engine files, and restore go.mod/go.sum
 	@rm -rf target
+	@rm -f policy-engine/cmd/policy-engine/build_info.go policy-engine/cmd/policy-engine/plugin_registry.go
+	@git checkout -- policy-engine/go.mod policy-engine/go.sum
 	@echo "Clean completed"

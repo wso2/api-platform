@@ -22,7 +22,7 @@ import (
 	"reflect"
 	"testing"
 
-	policyv1alpha "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	policyv1alpha "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
 func TestExtractDefaultValues_Empty(t *testing.T) {

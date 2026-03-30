@@ -194,6 +194,15 @@ func (s *APIKeyStore) removeFromAPIMapping(apiKey *models.APIKey) {
 	}
 }
 
+// Clear resets all in-memory API key state. Call before reloading from the database
+// to ensure deleted keys are removed from the in-memory store.
+func (s *APIKeyStore) Clear() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.apiKeys = make(map[string]*models.APIKey)
+	s.apiKeysByAPI = make(map[string]map[string]*models.APIKey)
+}
+
 // GetCompositeKey generates a composite key for storing/retrieving API keys
 func GetCompositeKey(apiId, keyName string) string {
 	return fmt.Sprintf("%s:%s", apiId, keyName)

@@ -73,6 +73,14 @@ path = "./data/gateway.db"
 [controller.policies]
 definitions_path = "./default-policies"
 
+[controller.event_hub]
+# Interval at which events are polled from the database
+poll_interval = "200ms"
+# Interval at which old events are cleaned up
+cleanup_interval = "10m"
+# How long events are retained before being deleted
+retention_period = "1h"
+
 [router]
 gateway_host = "*"
 listener_port = 8080
@@ -207,21 +215,21 @@ port = 9003
 # =============================================================================
 
 
-[[policy_configurations.jwtauth_v0.keymanagers]]
+[[policy_configurations.jwtauth_v1.keymanagers]]
 name = "mock-jwks"
 issuer = "http://mock-jwks:8080/token"
 
-[policy_configurations.jwtauth_v0.keymanagers.jwks.remote]
+[policy_configurations.jwtauth_v1.keymanagers.jwks.remote]
 uri = "http://mock-jwks:8080/jwks"
 
-[[policy_configurations.jwtauth_v0.keymanagers]]
+[[policy_configurations.jwtauth_v1.keymanagers]]
 name = "wrong-issuer-km"
 issuer = "http://expected-issuer.com"
 
-[policy_configurations.jwtauth_v0.keymanagers.jwks.remote]
+[policy_configurations.jwtauth_v1.keymanagers.jwks.remote]
 uri = "http://mock-jwks:8080/jwks"
 
-[policy_configurations.ratelimit_v0]
+[policy_configurations.ratelimit_v1]
 algorithm = "fixed-window"
 
 
@@ -255,7 +263,7 @@ als_plain_text = true
 max_message_size = 1000000000
 max_header_limit = 8192
 
-[policy_configurations.llm_cost_v0]
+[policy_configurations.llm_cost_v1]
 pricing_file = "/home/wso2/conf/llm-pricing/model_prices.json"
 
 # =============================================================================

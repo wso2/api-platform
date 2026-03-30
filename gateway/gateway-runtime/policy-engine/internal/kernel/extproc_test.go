@@ -37,7 +37,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
 // =============================================================================
@@ -623,7 +623,7 @@ func TestInitializeExecutionContext_WithPolicyChain(t *testing.T) {
 	assert.Equal(t, "test-route", routeMeta.RouteName)
 	assert.Equal(t, "test-route", execCtx.routeKey)
 	assert.Equal(t, "req-123", execCtx.requestID)
-	assert.NotNil(t, execCtx.requestContext)
-	assert.Equal(t, "/api/v1/pets", execCtx.requestContext.Path)
-	assert.Equal(t, "GET", execCtx.requestContext.Method)
+	assert.NotNil(t, execCtx.requestBodyCtx)
+	assert.Equal(t, "/api/v1/pets", execCtx.requestBodyCtx.Path)
+	assert.Equal(t, "GET", execCtx.requestBodyCtx.Method)
 }

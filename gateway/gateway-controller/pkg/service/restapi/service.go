@@ -34,8 +34,8 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
-	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
@@ -85,6 +85,7 @@ type RestAPIService struct {
 	validator          config.Validator
 	logger             *slog.Logger
 	eventHub           eventhub.EventHub
+	policyResolver     *resolver.PolicyResolver
 }
 
 // NewRestAPIService creates a new RestAPIService.
@@ -105,7 +106,24 @@ func NewRestAPIService(
 	validator config.Validator,
 	logger *slog.Logger,
 	eventHub eventhub.EventHub,
+	policyResolver *resolver.PolicyResolver,
 ) *RestAPIService {
+	if db == nil {
+		panic("RestAPIService requires non-nil storage")
+	}
+	if eventHub == nil {
+		panic("RestAPIService requires non-nil EventHub")
+	}
+	if deploymentService == nil {
+		panic("RestAPIService requires APIDeploymentService")
+	}
+	if systemConfig == nil {
+		panic("RestAPIService requires non-nil system config")
+	}
+	if strings.TrimSpace(systemConfig.Controller.Server.GatewayID) == "" {
+		panic("RestAPIService requires non-empty gateway ID")
+	}
+
 	return &RestAPIService{
 		store:              store,
 		db:                 db,
@@ -123,6 +141,7 @@ func NewRestAPIService(
 		validator:          validator,
 		logger:             logger,
 		eventHub:           eventHub,
+		policyResolver:     policyResolver,
 	}
 }
 
@@ -151,13 +170,12 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 		return nil, err
 	}
 
-	// Push to control plane asynchronously if connected
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
-		go s.waitForDeploymentAndPush(result.StoredConfig.UUID, params.CorrelationID, log)
+	if !result.IsStale {
+		// Push to control plane asynchronously if connected
+		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
+			go s.waitForDeploymentAndPush(result.StoredConfig.UUID, params.CorrelationID, log)
+		}
 	}
-
-	// Build and add policy config derived from API configuration
-	s.updatePolicyForConfig(result.StoredConfig, result.IsUpdate, log)
 
 	return &CreateResult{
 		StoredConfig: result.StoredConfig,
@@ -258,13 +276,36 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 		return nil, ErrNotFound
 	}
 
+	// Extract deploymentState from spec (defaults to "deployed" if not specified)
+	desiredState := models.StateDeployed
+	if apiConfig.Spec.DeploymentState != nil && *apiConfig.Spec.DeploymentState == api.APIConfigDataDeploymentStateUndeployed {
+		desiredState = models.StateUndeployed
+	}
+
 	// Update stored configuration
 	now := time.Now()
 	existing.Configuration = apiConfig
 	existing.SourceConfiguration = apiConfig
-	existing.DesiredState = models.StateDeployed
+	existing.DesiredState = desiredState
 	existing.UpdatedAt = now
-	existing.DeployedAt = nil
+
+	if desiredState == models.StateUndeployed {
+		// Undeployment: update DeployedAt to mark when this state change happened
+		truncatedNow := now.Truncate(time.Millisecond)
+		existing.DeployedAt = &truncatedNow
+		log.Info("Undeploying API configuration",
+			slog.String("id", existing.UUID),
+			slog.String("handle", params.Handle))
+	} else {
+		// Normal config update: preserve existing DeployedAt (already set during initial creation)
+
+		// Resolve policy configuration (handles secret resolution)
+		// Blocks the update if there are policy resolution errors to prevent storing configs with unresolved secrets
+		_, err = s.resolvePolicyConfiguration(existing)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	// Dual-write: database first, then in-memory
 	if err := s.db.UpdateConfig(existing); err != nil {
@@ -276,7 +317,8 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 
 	log.Info("API configuration updated",
 		slog.String("id", existing.UUID),
-		slog.String("handle", params.Handle))
+		slog.String("handle", params.Handle),
+		slog.String("desired_state", string(desiredState)))
 
 	return &UpdateResult{Config: existing}, nil
 }
@@ -328,48 +370,14 @@ func (s *RestAPIService) Delete(params DeleteParams) (*DeleteResult, error) {
 	return &DeleteResult{Handle: params.Handle}, nil
 }
 
-// updatePolicyForConfig builds and adds/removes policy config derived from an API configuration.
-func (s *RestAPIService) updatePolicyForConfig(cfg *models.StoredConfig, isUpdate bool, log *slog.Logger) {
+// updatePolicyForConfig upserts the runtime config for an API into the policy engine.
+func (s *RestAPIService) updatePolicyForConfig(cfg *models.StoredConfig, log *slog.Logger) {
 	if s.policyManager == nil {
 		return
 	}
-
-	storedPolicy := s.buildStoredPolicyFromAPI(cfg)
-	if storedPolicy != nil {
-		if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-			log.Error("Failed to add derived policy configuration", slog.Any("error", err))
-		} else {
-			log.Info("Derived policy configuration added",
-				slog.String("policy_id", storedPolicy.ID),
-				slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-		}
-	} else if isUpdate {
-		policyID := cfg.UUID + "-policies"
-		if err := s.policyManager.RemovePolicy(policyID); err != nil {
-			if storage.IsPolicyNotFoundError(err) {
-				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
-			} else {
-				log.Error("Failed to remove policy configuration",
-					slog.Any("error", err),
-					slog.String("policy_id", policyID))
-			}
-		} else {
-			log.Info("Derived policy configuration removed (API no longer has policies)",
-				slog.String("policy_id", policyID))
-		}
+	if err := s.policyManager.UpsertAPIConfig(cfg); err != nil {
+		log.Error("Failed to upsert runtime config", slog.Any("error", err))
 	}
-}
-
-// buildStoredPolicyFromAPI constructs a StoredPolicyConfig from an API config.
-func (s *RestAPIService) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.StoredPolicyConfig {
-	s.policyDefMu.RLock()
-	defsCopy := make(map[string]models.PolicyDefinition, len(s.policyDefinitions))
-	for k, v := range s.policyDefinitions {
-		defsCopy[k] = v
-	}
-	s.policyDefMu.RUnlock()
-
-	return policybuilder.DerivePolicyFromAPIConfig(cfg, s.routerConfig, s.systemConfig, defsCopy)
 }
 
 // waitForDeploymentAndPush waits for API deployment to complete and pushes it to the control plane.
@@ -469,6 +477,30 @@ func (s *RestAPIService) deregisterWebSubTopics(cfg *models.StoredConfig, log *s
 	return nil
 }
 
+// resolvePolicyConfiguration resolves policy templates and secret references in the configuration.
+// Returns the resolved configuration or an error if policy resolution fails.
+func (s *RestAPIService) resolvePolicyConfiguration(storedCfg *models.StoredConfig) (*models.StoredConfig, error) {
+	if s.policyResolver == nil {
+		return nil, ErrMissingPolicyResolver
+	}
+	resolvedCfg, validationErrors := s.policyResolver.ResolvePolicies(storedCfg)
+	if len(validationErrors) > 0 {
+		errMsgs := make([]string, 0, len(validationErrors))
+		for _, ve := range validationErrors {
+			errMsgs = append(errMsgs, ve.Message)
+		}
+		errMsg := strings.Join(errMsgs, "; ")
+
+		slog.Error("Policy resolution failed",
+			slog.String("config_handle", storedCfg.Handle),
+			slog.String("errors", errMsg),
+		)
+
+		return nil, fmt.Errorf("policy resolution failed with %d errors: %s", len(validationErrors), errMsg)
+	}
+	return resolvedCfg, nil
+}
+
 func stringPtr(s string) *string {
 	return &s
 }
@@ -479,19 +511,7 @@ func timePtr(t time.Time) *time.Time {
 
 // publishEvent publishes an event to the event hub
 func (s *RestAPIService) publishEvent(eventType eventhub.EventType, action, entityID, correlationID string, logger *slog.Logger) {
-	if s.eventHub == nil {
-		return
-	}
-
 	gatewayID := strings.TrimSpace(s.systemConfig.Controller.Server.GatewayID)
-	if gatewayID == "" {
-		logger.Warn("Skipping event hub publish because gateway ID is not configured",
-			slog.String("event_type", string(eventType)),
-			slog.String("action", action),
-			slog.String("entity_id", entityID))
-		return
-	}
-
 	event := eventhub.Event{
 		GatewayID:           gatewayID,
 		OriginatedTimestamp: time.Now(),

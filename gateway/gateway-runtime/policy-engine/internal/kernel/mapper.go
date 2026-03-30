@@ -19,6 +19,7 @@
 package kernel
 
 import (
+	"log/slog"
 	"sync"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
@@ -27,11 +28,7 @@ import (
 // RouteConfig holds metadata and resolver info for a single route.
 // Metadata is pre-populated at deploy time; no request-time parsing needed.
 type RouteConfig struct {
-	Metadata                RouteMetadata
-	ResolverName            string
-	UpstreamBasePath        string
-	UpstreamDefinitionPaths map[string]string
-	DefaultUpstreamCluster  string
+	Metadata RouteMetadata
 }
 
 // RouteMapping maps Envoy metadata keys to PolicyChains for route-specific processing
@@ -52,11 +49,6 @@ type Kernel struct {
 	// PolicyChains maps policyChainKey → PolicyChain (executable chain).
 	// Populated from the PolicyChainTypeURL xDS cache.
 	PolicyChains map[string]*registry.PolicyChain
-
-	// Routes is kept for backward compatibility during migration.
-	// Once migration is complete, this can be removed.
-	// Deprecated: Use RouteConfigs + PolicyChains instead.
-	Routes map[string]*registry.PolicyChain
 }
 
 // NewKernel creates a new Kernel instance
@@ -64,7 +56,6 @@ func NewKernel() *Kernel {
 	return &Kernel{
 		RouteConfigs: make(map[string]*RouteConfig),
 		PolicyChains: make(map[string]*registry.PolicyChain),
-		Routes:       make(map[string]*registry.PolicyChain),
 	}
 }
 
@@ -82,32 +73,26 @@ func (k *Kernel) GetPolicyChain(policyChainKey string) *registry.PolicyChain {
 	return k.PolicyChains[policyChainKey]
 }
 
-// GetPolicyChainForKey retrieves the policy chain for a given metadata key (backward compatible).
+// GetPolicyChainForKey retrieves the policy chain for a given metadata key.
 // Returns nil when no policy chain exists for the route (not an error condition).
 func (k *Kernel) GetPolicyChainForKey(key string) *registry.PolicyChain {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
-
-	// Try new PolicyChains map first
-	if chain, ok := k.PolicyChains[key]; ok {
-		return chain
-	}
-	// Fall back to legacy Routes map
-	return k.Routes[key]
+	return k.PolicyChains[key]
 }
 
-// RegisterRoute registers a policy chain for a route (backward compatible)
+// RegisterRoute registers a policy chain for a route.
 func (k *Kernel) RegisterRoute(metadataKey string, chain *registry.PolicyChain) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
-	k.Routes[metadataKey] = chain
+	k.PolicyChains[metadataKey] = chain
 }
 
-// UnregisterRoute removes a route mapping (backward compatible)
+// UnregisterRoute removes a route mapping.
 func (k *Kernel) UnregisterRoute(metadataKey string) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
-	delete(k.Routes, metadataKey)
+	delete(k.PolicyChains, metadataKey)
 }
 
 // ApplyWholeRouteConfigs atomically replaces all route configs.
@@ -117,30 +102,38 @@ func (k *Kernel) ApplyWholeRouteConfigs(newConfigs map[string]*RouteConfig) {
 	k.RouteConfigs = newConfigs
 }
 
-// ApplyWholePolicyChains atomically replaces all policy chains.
-func (k *Kernel) ApplyWholePolicyChains(newChains map[string]*registry.PolicyChain) {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	k.PolicyChains = newChains
-}
-
-// ApplyWholeRoutes replaces all existing route mappings with the provided set (backward compatible)
+// ApplyWholeRoutes atomically replaces all policy chain mappings.
 func (k *Kernel) ApplyWholeRoutes(newRoutes map[string]*registry.PolicyChain) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
-	k.Routes = newRoutes
+	keys := make([]string, 0, len(newRoutes))
+	for key := range newRoutes {
+		keys = append(keys, key)
+	}
+	slog.Debug("ApplyWholeRoutes: replacing policy chains",
+		"count", len(newRoutes),
+		"routes", keys)
+	k.PolicyChains = newRoutes
 }
 
-// DumpRoutes returns a copy of all route mappings for debugging
+// DumpRouteKeys returns the keys of all registered policy chains for debugging.
+// Cheaper than DumpRoutes as it only copies keys, not chain structs.
+func (k *Kernel) DumpRouteKeys() []string {
+	k.mu.RLock()
+	defer k.mu.RUnlock()
+	keys := make([]string, 0, len(k.PolicyChains))
+	for key := range k.PolicyChains {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+// DumpRoutes returns a copy of all policy chain mappings for debugging.
 func (k *Kernel) DumpRoutes() map[string]*registry.PolicyChain {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 
-	// Merge both maps for debugging visibility
-	dump := make(map[string]*registry.PolicyChain, len(k.Routes)+len(k.PolicyChains))
-	for key, chain := range k.Routes {
-		dump[key] = chain
-	}
+	dump := make(map[string]*registry.PolicyChain, len(k.PolicyChains))
 	for key, chain := range k.PolicyChains {
 		dump[key] = chain
 	}

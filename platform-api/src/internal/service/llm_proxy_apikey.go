@@ -272,6 +272,8 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 		MaskedApiKey: maskedAPIKey,
 		ExpiresAt:    expiresAt,
 		Issuer:       issuer,
+		CreatedAt:    dbKey.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:    dbKey.UpdatedAt.Format(time.RFC3339),
 	}
 
 	targetGateways := filterGatewaysByAllowedTargets(gateways, allowedTargets)

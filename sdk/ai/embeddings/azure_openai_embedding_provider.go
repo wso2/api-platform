@@ -1,4 +1,4 @@
-package embeddingproviders
+package embeddings
 
 import (
 	"bytes"

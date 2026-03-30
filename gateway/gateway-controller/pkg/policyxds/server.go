@@ -125,7 +125,7 @@ func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.AP
 	grpcServer := grpc.NewServer(grpcOpts...)
 
 	// Create combined cache that handles policy chains, route configs, API key state, lazy resources, and subscription state
-	policyCache := snapshotManager.GetCache()
+	policyCache := snapshotManager.GetPolicyCache()
 	routeConfigCache := snapshotManager.GetRouteCache()
 	apiKeyCache := apiKeySnapshotMgr.GetCache()
 	lazyResourceCache := lazyResourceSnapshotMgr.GetCache()

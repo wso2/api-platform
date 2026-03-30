@@ -45,7 +45,9 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
@@ -62,6 +64,7 @@ type MockStorage struct {
 	templates         map[string]*models.StoredLLMProviderTemplate
 	apiKeys           map[string]*models.APIKey
 	certs             []*models.StoredCertificate
+	secrets           map[string]*models.Secret
 	subscriptions     map[string]*models.Subscription
 	subscriptionPlans map[string]*models.SubscriptionPlan
 	saveErr           error
@@ -71,12 +74,34 @@ type MockStorage struct {
 	unavailable       bool
 }
 
+func cloneAPIKey(apiKey *models.APIKey) *models.APIKey {
+	if apiKey == nil {
+		return nil
+	}
+
+	cloned := *apiKey
+	if apiKey.ExpiresAt != nil {
+		expiresAt := *apiKey.ExpiresAt
+		cloned.ExpiresAt = &expiresAt
+	}
+	if apiKey.ExternalRefId != nil {
+		externalRefID := *apiKey.ExternalRefId
+		cloned.ExternalRefId = &externalRefID
+	}
+	if apiKey.Issuer != nil {
+		issuer := *apiKey.Issuer
+		cloned.Issuer = &issuer
+	}
+	return &cloned
+}
+
 func NewMockStorage() *MockStorage {
 	return &MockStorage{
 		configs:           make(map[string]*models.StoredConfig),
 		templates:         make(map[string]*models.StoredLLMProviderTemplate),
 		apiKeys:           make(map[string]*models.APIKey),
 		certs:             make([]*models.StoredCertificate, 0),
+		secrets:           make(map[string]*models.Secret),
 		subscriptions:     make(map[string]*models.Subscription),
 		subscriptionPlans: make(map[string]*models.SubscriptionPlan),
 	}
@@ -147,6 +172,22 @@ func (m *MockStorage) UpdateConfig(cfg *models.StoredConfig) error {
 	return nil
 }
 
+func (m *MockStorage) UpsertConfig(cfg *models.StoredConfig) (bool, error) {
+	if m.updateErr != nil {
+		return false, m.updateErr
+	}
+	if cfg.Handle == "" {
+		return false, fmt.Errorf("handle (metadata.name) is required and cannot be empty")
+	}
+	if existing, ok := m.configs[cfg.UUID]; ok {
+		if existing.DeployedAt != nil && cfg.DeployedAt != nil && !existing.DeployedAt.Before(*cfg.DeployedAt) {
+			return false, nil
+		}
+	}
+	m.configs[cfg.UUID] = cfg
+	return true, nil
+}
+
 func (m *MockStorage) DeleteConfig(id string) error {
 	if m.deleteErr != nil {
 		return m.deleteErr
@@ -204,6 +245,19 @@ func (m *MockStorage) GetAllConfigsByKind(kind string) ([]*models.StoredConfig, 
 	return result, nil
 }
 
+func (m *MockStorage) GetAllConfigsByOrigin(origin models.Origin) ([]*models.StoredConfig, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	result := make([]*models.StoredConfig, 0)
+	for _, cfg := range m.configs {
+		if cfg.Origin == origin {
+			result = append(result, cfg)
+		}
+	}
+	return result, nil
+}
+
 func (m *MockStorage) SaveLLMProviderTemplate(template *models.StoredLLMProviderTemplate) error {
 	if m.saveErr != nil {
 		return m.saveErr
@@ -253,7 +307,15 @@ func (m *MockStorage) SaveAPIKey(apiKey *models.APIKey) error {
 	if m.saveErr != nil {
 		return m.saveErr
 	}
-	m.apiKeys[apiKey.UUID] = apiKey
+	m.apiKeys[apiKey.UUID] = cloneAPIKey(apiKey)
+	return nil
+}
+
+func (m *MockStorage) UpsertAPIKey(apiKey *models.APIKey) error {
+	if m.saveErr != nil {
+		return m.saveErr
+	}
+	m.apiKeys[apiKey.UUID] = cloneAPIKey(apiKey)
 	return nil
 }
 
@@ -262,7 +324,7 @@ func (m *MockStorage) GetAPIKeyByID(id string) (*models.APIKey, error) {
 		return nil, m.getErr
 	}
 	if key, ok := m.apiKeys[id]; ok {
-		return key, nil
+		return cloneAPIKey(key), nil
 	}
 	return nil, errors.New("API key not found")
 }
@@ -273,7 +335,7 @@ func (m *MockStorage) GetAPIKeyByUUID(uuid string) (*models.APIKey, error) {
 	}
 	for _, apiKey := range m.apiKeys {
 		if apiKey.UUID == uuid {
-			return apiKey, nil
+			return cloneAPIKey(apiKey), nil
 		}
 	}
 	return nil, storage.ErrNotFound
@@ -285,7 +347,7 @@ func (m *MockStorage) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 	}
 	for _, apiKey := range m.apiKeys {
 		if apiKey.APIKey == key {
-			return apiKey, nil
+			return cloneAPIKey(apiKey), nil
 		}
 	}
 	return nil, errors.New("API key not found")
@@ -298,7 +360,7 @@ func (m *MockStorage) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) {
 	result := make([]*models.APIKey, 0)
 	for _, key := range m.apiKeys {
 		if key.ArtifactUUID == apiId {
-			result = append(result, key)
+			result = append(result, cloneAPIKey(key))
 		}
 	}
 	return result, nil
@@ -310,7 +372,7 @@ func (m *MockStorage) GetAllAPIKeys() ([]*models.APIKey, error) {
 	}
 	result := make([]*models.APIKey, 0, len(m.apiKeys))
 	for _, key := range m.apiKeys {
-		result = append(result, key)
+		result = append(result, cloneAPIKey(key))
 	}
 	return result, nil
 }
@@ -321,7 +383,7 @@ func (m *MockStorage) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey
 	}
 	for _, key := range m.apiKeys {
 		if key.ArtifactUUID == apiId && key.Name == name {
-			return key, nil
+			return cloneAPIKey(key), nil
 		}
 	}
 	return nil, errors.New("API key not found")
@@ -331,7 +393,7 @@ func (m *MockStorage) UpdateAPIKey(apiKey *models.APIKey) error {
 	if m.updateErr != nil {
 		return m.updateErr
 	}
-	m.apiKeys[apiKey.UUID] = apiKey
+	m.apiKeys[apiKey.UUID] = cloneAPIKey(apiKey)
 	return nil
 }
 
@@ -371,6 +433,14 @@ func (m *MockStorage) RemoveAPIKeyAPIAndName(apiId, name string) error {
 		}
 	}
 	return errors.New("API key not found")
+}
+
+func (m *MockStorage) ListAPIKeysForArtifactsNotIn(artifactUUIDs []string, keyUUIDs []string) ([]*models.APIKey, error) {
+	return nil, nil
+}
+
+func (m *MockStorage) DeleteAPIKeysByUUIDs(uuids []string) error {
+	return nil
 }
 
 func (m *MockStorage) CountActiveAPIKeysByUserAndAPI(apiId, userID string) (int, error) {
@@ -699,6 +769,72 @@ func (m *MockControlPlaneClient) PushAPIDeployment(apiID string, cfg *models.Sto
 	return nil
 }
 
+// Secret management methods
+
+func (m *MockStorage) SaveSecret(secret *models.Secret) error {
+	if m.saveErr != nil {
+		return m.saveErr
+	}
+	m.secrets[secret.Handle] = secret
+	return nil
+}
+
+func (m *MockStorage) GetSecrets() ([]models.SecretMeta, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	secrets := make([]models.SecretMeta, 0, len(m.secrets))
+	for handle, secret := range m.secrets {
+		secrets = append(secrets, models.SecretMeta{
+			Handle:      handle,
+			DisplayName: secret.DisplayName,
+			CreatedAt:   secret.CreatedAt,
+			UpdatedAt:   secret.UpdatedAt,
+		})
+	}
+	return secrets, nil
+}
+
+func (m *MockStorage) GetSecret(handle string) (*models.Secret, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	if secret, ok := m.secrets[handle]; ok {
+		return secret, nil
+	}
+	return nil, errors.New("secret not found")
+}
+
+func (m *MockStorage) UpdateSecret(secret *models.Secret) (*models.Secret, error) {
+	if m.updateErr != nil {
+		return nil, m.updateErr
+	}
+	if _, ok := m.secrets[secret.Handle]; !ok {
+		return nil, errors.New("secret not found")
+	}
+	m.secrets[secret.Handle] = secret
+	return secret, nil
+}
+
+func (m *MockStorage) DeleteSecret(handle string) error {
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	if _, ok := m.secrets[handle]; !ok {
+		return errors.New("secret not found")
+	}
+	delete(m.secrets, handle)
+	return nil
+}
+
+func (m *MockStorage) SecretExists(handle string) (bool, error) {
+	if m.getErr != nil {
+		return false, m.getErr
+	}
+	_, ok := m.secrets[handle]
+	return ok, nil
+}
+
 func (m *MockControlPlaneClient) Close() error {
 	return nil
 }
@@ -711,6 +847,8 @@ func createTestAPIServer() *APIServer {
 func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	store := storage.NewConfigStore()
+	hub := &mockEventHub{}
+	gatewayID := "test-gateway"
 
 	vhosts := &config.VHostsConfig{
 		Main:    config.VHostEntry{Default: "localhost"},
@@ -720,6 +858,7 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 	parser := config.NewParser()
 	validator := config.NewAPIValidator()
 	policyDefs := make(map[string]models.PolicyDefinition)
+	policyResolver := resolver.NewPolicyResolver(policyDefs, nil)
 	routerCfg := &config.RouterConfig{
 		GatewayHost: "localhost",
 		VHosts:      *vhosts,
@@ -729,7 +868,11 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 	}
 	httpClient := &http.Client{Timeout: 10 * time.Second}
 	systemCfg := &config.Config{
-		Controller: config.Controller{},
+		Controller: config.Controller{
+			Server: config.ServerConfig{
+				GatewayID: gatewayID,
+			},
+		},
 		Router: config.RouterConfig{
 			GatewayHost: "localhost",
 			VHosts:      *vhosts,
@@ -746,17 +889,20 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 		store:             store,
 		db:                db,
 		logger:            logger,
+		eventHub:          hub,
 		parser:            parser,
 		validator:         validator,
 		policyDefinitions: policyDefs,
 		routerConfig:      routerCfg,
 		httpClient:        httpClient,
 		systemConfig:      systemCfg,
+		gatewayID:         gatewayID,
+		policyResolver:    policyResolver,
 	}
 
-	deploymentService := utils.NewAPIDeploymentService(store, db, nil, validator, routerCfg)
+	deploymentService := utils.NewAPIDeploymentService(store, db, nil, validator, routerCfg, policyResolver, hub, gatewayID)
 	server.deploymentService = deploymentService
-	server.mcpDeploymentService = utils.NewMCPDeploymentService(store, db, nil, nil, nil)
+	server.mcpDeploymentService = utils.NewMCPDeploymentService(store, db, nil, nil, nil, hub, gatewayID)
 	server.llmDeploymentService = utils.NewLLMDeploymentService(
 		store,
 		db,
@@ -770,9 +916,9 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 	)
 
 	// Initialize API key service (needed for API key operations)
-	apiKeyService := utils.NewAPIKeyService(store, db, nil, &server.systemConfig.APIKey)
+	apiKeyService := utils.NewAPIKeyService(store, db, nil, &server.systemConfig.APIKey, hub, gatewayID)
 	server.apiKeyService = apiKeyService
-	server.subscriptionResourceService = utils.NewSubscriptionResourceService(db, nil)
+	server.subscriptionResourceService = utils.NewSubscriptionResourceService(db, nil, hub, gatewayID)
 
 	// Initialize RestAPI service and handler
 	restAPIService := restapi.NewRestAPIService(
@@ -780,7 +926,7 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 		policyDefs, &server.policyDefMu,
 		deploymentService, nil, nil,
 		routerCfg, systemCfg,
-		httpClient, parser, validator, logger, server.eventHub,
+		httpClient, parser, validator, logger, hub, policyResolver,
 	)
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
 
@@ -973,30 +1119,38 @@ func attachTestEventHub(server *APIServer, hub eventhub.EventHub, gatewayID stri
 	if server.systemConfig != nil {
 		server.systemConfig.Controller.Server.GatewayID = gatewayID
 	}
+	policyResolver := server.policyResolver
+	if policyResolver == nil {
+		policyResolver = resolver.NewPolicyResolver(server.policyDefinitions, nil)
+		server.policyResolver = policyResolver
+	}
+	policyValidator := config.NewPolicyValidator(server.policyDefinitions)
+	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(server.policyDefinitions)
+	server.deploymentService = utils.NewAPIDeploymentService(server.store, server.db, server.snapshotManager, server.validator, server.routerConfig, policyResolver, hub, gatewayID)
+	server.apiKeyService = utils.NewAPIKeyService(server.store, server.db, server.apiKeyXDSManager, &server.systemConfig.APIKey, hub, gatewayID)
+	server.subscriptionResourceService = utils.NewSubscriptionResourceService(server.db, server.subscriptionSnapshotUpdater, hub, gatewayID)
+	server.mcpDeploymentService = utils.NewMCPDeploymentService(server.store, server.db, server.snapshotManager, server.policyManager, policyValidator, hub, gatewayID)
+	server.llmDeploymentService = utils.NewLLMDeploymentService(
+		server.store,
+		server.db,
+		server.snapshotManager,
+		nil,
+		map[string]*api.LLMProviderTemplate{},
+		server.deploymentService,
+		server.routerConfig,
+		policyVersionResolver,
+		policyValidator,
+	)
+
 	if server.RestAPIHandler != nil {
 		restAPIService := restapi.NewRestAPIService(
 			server.store, server.db, nil, nil,
 			server.policyDefinitions, &server.policyDefMu,
-			nil, nil, nil,
+			server.deploymentService, server.apiKeyXDSManager, nil,
 			server.routerConfig, server.systemConfig,
-			server.httpClient, server.parser, server.validator, server.logger, hub,
+			server.httpClient, server.parser, server.validator, server.logger, hub, policyResolver,
 		)
 		server.RestAPIHandler = NewRestAPIHandler(restAPIService, server.logger)
-	}
-	if server.apiKeyService != nil {
-		server.apiKeyService.SetEventHub(hub, gatewayID)
-	}
-	if server.deploymentService != nil {
-		server.deploymentService.SetEventHub(hub, gatewayID)
-	}
-	if server.llmDeploymentService != nil {
-		server.llmDeploymentService.SetEventHub(hub, gatewayID)
-	}
-	if server.mcpDeploymentService != nil {
-		server.mcpDeploymentService.SetEventHub(hub, gatewayID)
-	}
-	if server.subscriptionResourceService != nil {
-		server.subscriptionResourceService.SetEventHub(hub, gatewayID)
 	}
 }
 
@@ -1289,12 +1443,14 @@ func TestGetXDSSyncStatus(t *testing.T) {
 func TestGetXDSSyncStatusWithPolicyVersion(t *testing.T) {
 	server := createTestAPIServer()
 
-	policyStore := storage.NewPolicyStore()
-	snapshotMgr := policyxds.NewSnapshotManager(policyStore, server.logger)
-	server.policyManager = policyxds.NewPolicyManager(policyStore, snapshotMgr, server.logger)
+	runtimeStore := storage.NewRuntimeConfigStore()
+	snapshotMgr := policyxds.NewSnapshotManager(server.logger)
+	snapshotMgr.SetRuntimeStore(runtimeStore)
+	server.policyManager = policyxds.NewPolicyManager(snapshotMgr, server.logger)
+	server.policyManager.SetRuntimeStore(runtimeStore)
 
-	policyStore.IncrementResourceVersion()
-	policyStore.IncrementResourceVersion()
+	runtimeStore.IncrementResourceVersion()
+	runtimeStore.IncrementResourceVersion()
 
 	c, w := createTestContext("GET", "/xds_sync_status", nil)
 	server.GetXDSSyncStatus(c)
@@ -1331,17 +1487,6 @@ func TestGetConfigDumpWithCertificates(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
-// TestGetConfigDumpNoDB tests config dump without database
-func TestGetConfigDumpNoDB(t *testing.T) {
-	server := createTestAPIServer()
-	server.db = nil
-
-	c, w := createTestContext("GET", "/config_dump", nil)
-	server.GetConfigDump(c)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-}
-
 // TestGetConfigDumpDBError tests config dump with database error
 func TestGetConfigDumpDBError(t *testing.T) {
 	server := createTestAPIServer()
@@ -1362,13 +1507,13 @@ func TestHandleStatusUpdate(t *testing.T) {
 	cfg := createTestStoredConfig("0000-test-id-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
 	_ = server.store.Add(cfg)
 
-	// Test successful deployment
+	// Test successful deployment — callback only logs, does not modify DeployedAt
+	// (DeployedAt is set at creation/undeployment time, not by the xDS callback)
 	server.handleStatusUpdate("0000-test-id-0000-000000000000", true, "corr-id-1")
 
-	// Verify status updated
+	// Verify config is still accessible and state unchanged
 	updatedCfg, _ := server.store.Get("0000-test-id-0000-000000000000")
 	assert.Equal(t, models.StateDeployed, updatedCfg.DesiredState)
-	assert.NotNil(t, updatedCfg.DeployedAt)
 }
 
 // TestHandleStatusUpdateFailure tests status update for failed deployment
@@ -1400,6 +1545,30 @@ func TestHandleStatusUpdateNotFound(t *testing.T) {
 // Note: This test requires a full deployment service setup, so we skip it
 func TestCreateRestAPIInvalidBody(t *testing.T) {
 	t.Skip("Skipping test that requires full deployment service setup")
+}
+
+func TestCreateRestAPIDBError(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+	mockDB.updateErr = errors.New("db write error")
+
+	body := createTestRestAPIRequestBody(t, "test-handle", "test-display-name", "v1.0.0", "/test")
+	c, w := createTestContextWithHeader("POST", "/rest-apis", body, map[string]string{
+		"Content-Type": "application/json",
+	})
+
+	server.CreateRestAPI(c)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Empty(t, mockHub.publishedEvents)
+
+	var response api.ErrorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	assert.Equal(t, "error", response.Status)
+	assert.Equal(t, "Failed to create configuration", response.Message)
+	assert.NotContains(t, w.Body.String(), "db write error")
 }
 
 // TestUpdateRestAPIInvalidBody tests UpdateRestAPI with invalid request body
@@ -2116,7 +2285,7 @@ func TestBuildStoredPolicyFromAPINoPolicies(t *testing.T) {
 		Origin:              models.OriginGatewayAPI,
 	}
 
-	result := server.buildStoredPolicyFromAPI(cfg)
+	result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions)
 	assert.Nil(t, result)
 }
 
@@ -2433,7 +2602,7 @@ func TestBuildStoredPolicyFromAPIInvalidKind(t *testing.T) {
 		Origin:              models.OriginGatewayAPI,
 	}
 
-	result := server.buildStoredPolicyFromAPI(cfg)
+	result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions)
 	assert.Nil(t, result)
 }
 
@@ -2989,7 +3158,7 @@ func TestBuildStoredPolicyFromAPIWebSubApi(t *testing.T) {
 		Origin:              models.OriginGatewayAPI,
 	}
 
-	result := server.buildStoredPolicyFromAPI(cfg)
+	result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions)
 	// Should return nil because the spec can't be parsed as WebhookAPIData without proper setup
 	assert.Nil(t, result)
 }
@@ -3116,7 +3285,7 @@ func TestBuildStoredPolicyFromAPIWithVhosts(t *testing.T) {
 		Origin:              models.OriginGatewayAPI,
 	}
 
-	result := server.buildStoredPolicyFromAPI(cfg)
+	result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions)
 	assert.NotNil(t, result)
 	// Should have 2 routes (one for main vhost, one for sandbox)
 	assert.Equal(t, 2, len(result.Configuration.Routes))
@@ -3168,7 +3337,7 @@ func TestBuildStoredPolicyFromAPIOperationPolicies(t *testing.T) {
 		Origin:              models.OriginGatewayAPI,
 	}
 
-	result := server.buildStoredPolicyFromAPI(cfg)
+	result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions)
 	assert.NotNil(t, result)
 	assert.Equal(t, 1, len(result.Configuration.Routes))
 	// Should have both operation-level and API-level policies
@@ -3238,7 +3407,7 @@ func TestBuildStoredPolicyFromAPIWebSubApiWithPolicies(t *testing.T) {
 		Origin:              models.OriginGatewayAPI,
 	}
 
-	result := server.buildStoredPolicyFromAPI(cfg)
+	result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions)
 	// Should return nil since we don't have valid spec data
 	assert.Nil(t, result)
 }
@@ -3345,6 +3514,12 @@ func TestDeleteRestAPIDBError(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Empty(t, mockHub.publishedEvents)
 
+	var response api.ErrorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	assert.Equal(t, "error", response.Status)
+	assert.Equal(t, "Failed to delete configuration", response.Message)
+	assert.NotContains(t, w.Body.String(), "db delete error")
+
 	stored, err := mockDB.GetConfig(cfg.UUID)
 	require.NoError(t, err)
 	assert.Equal(t, cfg.UUID, stored.UUID)
@@ -3371,6 +3546,12 @@ func TestUpdateRestAPIDBError(t *testing.T) {
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Empty(t, mockHub.publishedEvents)
+
+	var response api.ErrorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	assert.Equal(t, "error", response.Status)
+	assert.Equal(t, "Failed to update configuration", response.Message)
+	assert.NotContains(t, w.Body.String(), "db update error")
 }
 
 // TestGetMCPProxyByIdDBUnavailable tests GetMCPProxyById with DB unavailable

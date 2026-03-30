@@ -115,6 +115,7 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
 CREATE TABLE IF NOT EXISTS subscriptions (
     uuid VARCHAR(40) PRIMARY KEY,
     api_uuid VARCHAR(40) NOT NULL,
+    subscriber_id VARCHAR(255) NOT NULL,
     application_id VARCHAR(255),
     subscription_token VARCHAR(512) NOT NULL,
     subscription_token_hash VARCHAR(64) NOT NULL,
@@ -130,10 +131,13 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     FOREIGN KEY (api_uuid, organization_uuid)
       REFERENCES artifacts(uuid, organization_uuid) ON DELETE CASCADE,
     UNIQUE(api_uuid, subscription_token_hash),
-    UNIQUE(api_uuid, application_id, organization_uuid),
+    UNIQUE(api_uuid, subscriber_id, organization_uuid),
     CHECK (status IN ('ACTIVE', 'INACTIVE', 'REVOKED'))
 );
 CREATE INDEX IF NOT EXISTS idx_subscriptions_token ON subscriptions(subscription_token_hash);
+-- Supports list/count filters: WHERE organization_uuid = ? AND subscriber_id = ? (no api_uuid).
+-- The unique constraint on (api_uuid, subscriber_id, organization_uuid) is not ordered for this access path.
+CREATE INDEX IF NOT EXISTS idx_subscriptions_org_subscriber ON subscriptions(organization_uuid, subscriber_id);
 
 -- Gateways table (scoped to organizations)
 -- Must be created before deployments which references it
@@ -161,6 +165,7 @@ CREATE TABLE IF NOT EXISTS gateway_custom_policies (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255),
     version VARCHAR(15) NOT NULL,
     description TEXT,
     policy_definition JSONB,

@@ -18,7 +18,7 @@ func TestDeployAPIConfigurationWebSubKindTopicRegistration(t *testing.T) {
 	var db storage.Storage
 	snapshotManager := &xds.SnapshotManager{}
 	validator := config.NewAPIValidator()
-	service := NewAPIDeploymentService(configStore, db, snapshotManager, validator, nil)
+	service := newTestAPIDeploymentService(configStore, db, snapshotManager, validator, nil, nil)
 
 	// Inline YAML config similar to websubhub.yaml
 	yamlConfig := `kind: WebSubApi
@@ -71,7 +71,7 @@ spec:
 func TestDeployAPIConfigurationWebSubKindRevisionDeployment(t *testing.T) {
 	configStore := storage.NewConfigStore()
 	validator := config.NewAPIValidator()
-	service := NewAPIDeploymentService(configStore, nil, nil, validator, nil)
+	service := newTestAPIDeploymentService(configStore, nil, nil, validator, nil, nil)
 
 	// Inline YAML config similar to websubhub.yaml
 	yamlConfig := `kind: WebSubApi
@@ -161,7 +161,7 @@ spec:
 func TestTopicRegistrationForConcurrentAPIConfigs(t *testing.T) {
 	configStore := storage.NewConfigStore()
 	validator := config.NewAPIValidator()
-	service := NewAPIDeploymentService(configStore, nil, nil, validator, nil)
+	service := newTestAPIDeploymentService(configStore, nil, nil, validator, nil, nil)
 
 	// Two different API YAMLs
 	yamlA := `kind: WebSubApi
@@ -273,7 +273,7 @@ spec:
 func TestTopicDeregistrationOnConfigDeletion(t *testing.T) {
 	configStore := storage.NewConfigStore()
 	validator := config.NewAPIValidator()
-	service := NewAPIDeploymentService(configStore, nil, nil, validator, nil)
+	service := newTestAPIDeploymentService(configStore, nil, nil, validator, nil, nil)
 
 	// Inline YAML config similar to websubhub.yaml
 	yamlConfig := `kind: WebSubApi

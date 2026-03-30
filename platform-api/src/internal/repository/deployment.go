@@ -805,19 +805,19 @@ func (r *DeploymentRepo) GetAllDeploymentsByGateway(gatewayID, orgUUID string, s
 				a.handle,
 				a.kind,
 				s.status,
-				s.updated_at
+				s.performed_at
 			FROM deployment_status s
 			INNER JOIN artifacts a ON s.artifact_uuid = a.uuid
-			WHERE s.gateway_uuid = ? AND s.organization_uuid = ? AND s.updated_at > ?
-			ORDER BY 
-				CASE a.kind 
-					WHEN 'RestApi' THEN 1 
-					WHEN 'LlmProvider' THEN 2 
-					WHEN 'LlmProxy' THEN 3 
-					WHEN 'Mcp' THEN 4 
-					ELSE 5 
+			WHERE s.gateway_uuid = ? AND s.organization_uuid = ? AND s.performed_at > ?
+			ORDER BY
+				CASE a.kind
+					WHEN 'RestApi' THEN 1
+					WHEN 'LlmProvider' THEN 2
+					WHEN 'LlmProxy' THEN 3
+					WHEN 'Mcp' THEN 4
+					ELSE 5
 				END,
-				s.updated_at DESC
+				s.performed_at DESC
 		`
 		args = []interface{}{gatewayID, orgUUID, *since}
 	} else {
@@ -828,19 +828,19 @@ func (r *DeploymentRepo) GetAllDeploymentsByGateway(gatewayID, orgUUID string, s
 				a.handle,
 				a.kind,
 				s.status,
-				s.updated_at
+				s.performed_at
 			FROM deployment_status s
 			INNER JOIN artifacts a ON s.artifact_uuid = a.uuid
 			WHERE s.gateway_uuid = ? AND s.organization_uuid = ?
-			ORDER BY 
-				CASE a.kind 
-					WHEN 'RestApi' THEN 1 
-					WHEN 'LlmProvider' THEN 2 
-					WHEN 'LlmProxy' THEN 3 
-					WHEN 'Mcp' THEN 4 
-					ELSE 5 
+			ORDER BY
+				CASE a.kind
+					WHEN 'RestApi' THEN 1
+					WHEN 'LlmProvider' THEN 2
+					WHEN 'LlmProxy' THEN 3
+					WHEN 'Mcp' THEN 4
+					ELSE 5
 				END,
-				s.updated_at DESC
+				s.performed_at DESC
 		`
 		args = []interface{}{gatewayID, orgUUID}
 	}
@@ -862,7 +862,7 @@ func (r *DeploymentRepo) GetAllDeploymentsByGateway(gatewayID, orgUUID string, s
 			&dep.Handle,
 			&dep.Kind,
 			&statusStr,
-			&dep.UpdatedAt,
+			&dep.PerformedAt,
 		)
 		if err != nil {
 			return nil, err

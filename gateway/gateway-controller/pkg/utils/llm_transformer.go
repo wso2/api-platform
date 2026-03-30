@@ -26,12 +26,48 @@ type pathMethodKey struct {
 }
 
 func NewLLMProviderTransformer(store *storage.ConfigStore, db storage.Storage, routerConfig *config.RouterConfig, policyVersionResolver PolicyVersionResolver) *LLMProviderTransformer {
+	if db == nil {
+		panic("LLMProviderTransformer requires non-nil storage")
+	}
+
 	return &LLMProviderTransformer{
 		store:                 store,
 		db:                    db,
 		routerConfig:          routerConfig,
 		policyVersionResolver: policyVersionResolver,
 	}
+}
+
+// HydrateLLMConfig populates cfg.Configuration with a derived RestAPI for LlmProvider and
+// LlmProxy kinds. These are stored with only SourceConfiguration set (Configuration is nil
+// by design) and must be hydrated before policy derivation or xDS snapshot generation.
+// For other kinds (RestApi, WebSubApi, Mcp) the function is a no-op.
+func HydrateLLMConfig(cfg *models.StoredConfig, store *storage.ConfigStore, db storage.Storage, routerConfig *config.RouterConfig, policyDefinitions map[string]models.PolicyDefinition) error {
+	if cfg == nil {
+		return nil
+	}
+	if _, ok := cfg.Configuration.(api.RestAPI); ok {
+		return nil
+	}
+
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, NewLoadedPolicyVersionResolver(policyDefinitions))
+
+	var restAPI api.RestAPI
+	switch source := cfg.SourceConfiguration.(type) {
+	case api.LLMProviderConfiguration:
+		if _, err := transformer.Transform(&source, &restAPI); err != nil {
+			return err
+		}
+	case api.LLMProxyConfiguration:
+		if _, err := transformer.Transform(&source, &restAPI); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unsupported LLM source configuration type: %T", cfg.SourceConfiguration)
+	}
+
+	cfg.Configuration = restAPI
+	return nil
 }
 
 func (t *LLMProviderTransformer) Transform(input any, output *api.RestAPI) (*api.RestAPI, error) {
@@ -54,31 +90,24 @@ func (t *LLMProviderTransformer) resolvePolicyVersion(name string) (string, erro
 
 func (t *LLMProviderTransformer) getTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
 	templates, err := t.db.GetAllLLMProviderTemplates()
-	if err == nil {
-		for _, tmpl := range templates {
-			if tmpl.GetHandle() == handle {
-				return tmpl, nil
-			}
-		}
-		return nil, fmt.Errorf("%w: template with handle '%s' not found", storage.ErrNotFound, handle)
-	}
-	if !storage.IsDatabaseUnavailableError(err) {
+	if err != nil {
 		return nil, err
 	}
 
-	return t.store.GetTemplateByHandle(handle)
+	for _, tmpl := range templates {
+		if tmpl.GetHandle() == handle {
+			return tmpl, nil
+		}
+	}
+	return nil, fmt.Errorf("%w: template with handle '%s' not found", storage.ErrNotFound, handle)
 }
 
 func (t *LLMProviderTransformer) getProviderByHandle(handle string) (*models.StoredConfig, error) {
 	cfg, err := t.db.GetConfigByKindAndHandle(string(api.LlmProvider), handle)
-	if err == nil {
-		return cfg, nil
-	}
-	if !storage.IsDatabaseUnavailableError(err) {
+	if err != nil {
 		return nil, err
 	}
-
-	return t.store.GetByKindAndHandle(string(api.LlmProvider), handle)
+	return cfg, nil
 }
 
 func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration,
