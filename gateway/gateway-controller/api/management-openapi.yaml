@@ -15,11 +15,12 @@ servers:
 security:
   - basicAuth: []
 
+
 paths:
   /rest-apis:
     post:
       summary: Create a new RestAPI
-      description: Add a new RestAPI to the Gateway.
+      description: Add a new RestAPI to the Gateway -.
       operationId: createRestAPI
       x-basicauth-roles: [admin, developer]
       tags:
