@@ -63,7 +63,7 @@ func (p *BuildFilePolicy) GetVersionResolution(rootResolution string) string {
 	return "exact" // default
 }
 
-// PolicyLock represents the build-lock.yaml structure
+// PolicyLock represents the build-manifest.yaml structure
 type PolicyLock struct {
 	Version  string       `yaml:"version"`
 	Policies []LockPolicy `yaml:"policies"`
