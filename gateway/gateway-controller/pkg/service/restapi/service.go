@@ -431,7 +431,7 @@ func (s *RestAPIService) waitForDeploymentAndPush(configID string, correlationID
 			if err != nil {
 				log.Warn("Config not found while waiting for deployment completion",
 					slog.String("config_id", configID))
-				return
+				continue
 			}
 
 			if cfg.DeployedAt != nil {

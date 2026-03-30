@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -778,6 +779,8 @@ func (m *MockStorage) Close() error {
 // MockControlPlaneClient implements controlplane.ControlPlaneClient for testing
 type MockControlPlaneClient struct {
 	connected bool
+	mu        sync.Mutex
+	pushedIDs []string
 }
 
 func (m *MockControlPlaneClient) Connect() error {
@@ -790,7 +793,16 @@ func (m *MockControlPlaneClient) IsConnected() bool {
 }
 
 func (m *MockControlPlaneClient) PushAPIDeployment(apiID string, cfg *models.StoredConfig, deploymentID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.pushedIDs = append(m.pushedIDs, apiID)
 	return nil
+}
+
+func (m *MockControlPlaneClient) PushCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.pushedIDs)
 }
 
 // Secret management methods
@@ -2399,6 +2411,35 @@ func TestWaitForDeploymentAndNotifyTimeout(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, models.StateDeployed, retrievedCfg.DesiredState)
 	}
+}
+
+func TestWaitForDeploymentAndPush_RetriesUntilConfigAppears(t *testing.T) {
+	server := createTestAPIServer()
+	mockCP := &MockControlPlaneClient{connected: true}
+	server.controlPlaneClient = mockCP
+
+	done := make(chan struct{})
+	go func() {
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		server.waitForDeploymentAndPush("0000-delayed-id-0000-000000000000", "test-correlation", logger)
+		close(done)
+	}()
+
+	// Let the first ticker fire while the config is still absent.
+	time.Sleep(700 * time.Millisecond)
+
+	cfg := createTestStoredConfig("0000-delayed-id-0000-000000000000", "delayed-api", "v1.0.0", "/delayed")
+	deployedAt := time.Now()
+	cfg.DeployedAt = &deployedAt
+	require.NoError(t, server.store.Add(cfg))
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("waitForDeploymentAndPush did not complete after config appeared")
+	}
+
+	require.Equal(t, 1, mockCP.PushCount())
 }
 
 // TestNewAPIServer tests the NewAPIServer constructor
