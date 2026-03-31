@@ -9,7 +9,7 @@
             "type": "go",
             "request": "launch",
             "mode": "auto",
-            "program": "${workspaceFolder}/platform-api/src/cmd/main.go",
+            "program": "${workspaceFolder}/platform-api/src/cmd",
             "cwd": "${workspaceFolder}/platform-api/src",
             "env": {
                 // Database configuration
@@ -26,7 +26,7 @@
             "type": "go",
             "request": "launch",
             "mode": "auto",
-            "program": "${workspaceFolder}/gateway/gateway-controller/cmd/controller/main.go",
+            "program": "${workspaceFolder}/gateway/gateway-controller/cmd/controller",
             "args": [
                 "-config",
                 "${workspaceFolder}/gateway/configs/config.toml",

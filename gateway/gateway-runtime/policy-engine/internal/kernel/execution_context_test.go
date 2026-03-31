@@ -109,6 +109,7 @@ func TestGetModeOverride_NoBodyRequired(t *testing.T) {
 		RequiresResponseBody: false,
 	}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.phase = phaseRequestHeaders
 
 	mode := execCtx.getModeOverride()
 
@@ -130,6 +131,7 @@ func TestGetModeOverride_RequestBodyRequired(t *testing.T) {
 		RequiresResponseBody: false,
 	}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.phase = phaseRequestHeaders
 
 	mode := execCtx.getModeOverride()
 
@@ -147,6 +149,7 @@ func TestGetModeOverride_ResponseBodyRequired(t *testing.T) {
 		RequiresResponseBody: true,
 	}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.phase = phaseRequestHeaders
 
 	mode := execCtx.getModeOverride()
 
@@ -164,6 +167,7 @@ func TestGetModeOverride_BothBodiesRequired(t *testing.T) {
 		RequiresResponseBody: true,
 	}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.phase = phaseRequestHeaders
 
 	mode := execCtx.getModeOverride()
 
@@ -186,6 +190,7 @@ func TestGetModeOverride_ResponseHeaderProcessing(t *testing.T) {
 		Policies: []policy.Policy{mockPol},
 	}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.phase = phaseRequestHeaders
 
 	mode := execCtx.getModeOverride()
 

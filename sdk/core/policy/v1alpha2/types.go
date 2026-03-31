@@ -2,6 +2,17 @@ package policyv1alpha2
 
 import "time"
 
+// APIKind identifies the kind of API being processed.
+type APIKind string
+
+const (
+	APIKindRestApi     APIKind = "RestApi"
+	APIKindLlmProvider APIKind = "LlmProvider"
+	APIKindLlmProxy    APIKind = "LlmProxy"
+	APIKindMCP         APIKind = "Mcp"
+	APIKindWebSubApi   APIKind = "WebSubApi"
+)
+
 // ParameterType defines the type of a policy parameter
 type ParameterType string
 
