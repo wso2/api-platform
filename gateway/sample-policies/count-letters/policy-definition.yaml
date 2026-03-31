@@ -1,5 +1,6 @@
 name: count-letters
 version: v1.0.0
+displayName: Count Letters
 description: |
   Analyzes the response body and counts occurrences of specified letters/characters.
   Replaces the response body with the letter count results in JSON or text format.
