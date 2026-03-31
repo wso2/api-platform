@@ -3695,6 +3695,9 @@ func (c *Client) pushGatewayManifestOnConnect(gatewayID string) {
 
 	policies := make([]models.PolicyDefinition, 0, len(c.policyDefinitions))
 	for _, def := range c.policyDefinitions {
+		if strings.HasPrefix(def.Name, "wso2_apip_sys_") {
+			continue
+		}
 		policies = append(policies, def)
 	}
 
