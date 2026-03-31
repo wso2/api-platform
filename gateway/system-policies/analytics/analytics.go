@@ -132,6 +132,65 @@ func (a *AnalyticsPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
+// OnRequestHeaders collects analytics data available at the request-headers phase.
+// OnRequestBody is called inline for bodyless requests when RequiresRequestBody is true,
+// but OnRequestHeaders acts as a safety net for chains where that condition does not hold,
+// and provides early capture of header-sourced analytics (application ID, MCP session ID).
+func (a *AnalyticsPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.RequestHeaderContext, params map[string]interface{}) policy.RequestHeaderAction {
+	slog.Debug("Analytics system policy: OnRequestHeaders called")
+	analyticsMetadata := make(map[string]any)
+
+	if reqCtx.Headers != nil {
+		if appIDs := reqCtx.Headers.Get("x-wso2-application-id"); len(appIDs) > 0 {
+			analyticsMetadata[ApplicationIDMetadataKey] = appIDs[0]
+		}
+		if appNames := reqCtx.Headers.Get("x-wso2-application-name"); len(appNames) > 0 {
+			analyticsMetadata[ApplicationNameMetadataKey] = appNames[0]
+		}
+	}
+
+	if reqCtx.SharedContext.APIKind == KindMCP && reqCtx.Headers != nil {
+		if sessionIDs := reqCtx.Headers.Get("mcp-session-id"); len(sessionIDs) > 0 {
+			analyticsMetadata["mcp_session_id"] = sessionIDs[0]
+		}
+	}
+
+	if len(analyticsMetadata) > 0 {
+		return policy.UpstreamRequestHeaderModifications{AnalyticsMetadata: analyticsMetadata}
+	}
+	return policy.UpstreamRequestHeaderModifications{}
+}
+
+// OnResponseHeaders collects analytics data available at the response-headers phase.
+// Auth context and response headers are already populated here, so we emit them early
+// rather than waiting for the body phase (which may not be reached for header-only responses).
+func (a *AnalyticsPolicy) OnResponseHeaders(_ context.Context, respCtx *policy.ResponseHeaderContext, params map[string]interface{}) policy.ResponseHeaderAction {
+	slog.Debug("Analytics system policy: OnResponseHeaders called")
+	analyticsMetadata := make(map[string]any)
+
+	for authCtx := respCtx.SharedContext.AuthContext; authCtx != nil; authCtx = authCtx.Previous {
+		if authCtx.Authenticated && authCtx.Subject != "" {
+			analyticsMetadata["x-wso2-user-id"] = authCtx.Subject
+			slog.Debug("Analytics system policy: User ID extracted from AuthContext in OnResponseHeaders",
+				"subject", authCtx.Subject,
+				"authType", authCtx.AuthType,
+			)
+			break
+		}
+	}
+
+	if respCtx.SharedContext.APIKind == KindMCP && respCtx.ResponseHeaders != nil {
+		if sessionIDs := respCtx.ResponseHeaders.Get("mcp-session-id"); len(sessionIDs) > 0 {
+			analyticsMetadata["mcp_session_id"] = sessionIDs[0]
+		}
+	}
+
+	if len(analyticsMetadata) > 0 {
+		return policy.DownstreamResponseHeaderModifications{AnalyticsMetadata: analyticsMetadata}
+	}
+	return policy.DownstreamResponseHeaderModifications{}
+}
+
 // OnRequestBody performs Analytics collection process during the request phase (buffered).
 func (a *AnalyticsPolicy) OnRequestBody(_ context.Context, ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
 	slog.Debug("Analytics system policy: OnRequestBody called")
