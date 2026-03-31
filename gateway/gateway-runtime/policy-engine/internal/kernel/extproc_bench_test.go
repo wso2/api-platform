@@ -513,11 +513,12 @@ func BenchmarkGetModeOverride(b *testing.B) {
 
 	server := newBenchServer(nil)
 	ec := newPolicyExecutionContext(server, "bench-route", chain)
+	ec.phase = phaseRequestHeaders
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = ec.getModeOverride(phaseRequestHeaders)
+		_ = ec.getModeOverride()
 	}
 }
 

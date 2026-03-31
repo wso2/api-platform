@@ -109,8 +109,9 @@ func TestGetModeOverride_NoBodyRequired(t *testing.T) {
 		RequiresResponseBody: false,
 	}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.phase = phaseRequestHeaders
 
-	mode := execCtx.getModeOverride(phaseRequestHeaders)
+	mode := execCtx.getModeOverride()
 
 	require.NotNil(t, mode)
 	assert.Equal(t, extprocconfigv3.ProcessingMode_NONE, mode.RequestBodyMode)
@@ -130,8 +131,9 @@ func TestGetModeOverride_RequestBodyRequired(t *testing.T) {
 		RequiresResponseBody: false,
 	}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.phase = phaseRequestHeaders
 
-	mode := execCtx.getModeOverride(phaseRequestHeaders)
+	mode := execCtx.getModeOverride()
 
 	assert.Equal(t, extprocconfigv3.ProcessingMode_BUFFERED, mode.RequestBodyMode)
 	assert.Equal(t, extprocconfigv3.ProcessingMode_NONE, mode.ResponseBodyMode)
@@ -147,8 +149,9 @@ func TestGetModeOverride_ResponseBodyRequired(t *testing.T) {
 		RequiresResponseBody: true,
 	}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.phase = phaseRequestHeaders
 
-	mode := execCtx.getModeOverride(phaseRequestHeaders)
+	mode := execCtx.getModeOverride()
 
 	assert.Equal(t, extprocconfigv3.ProcessingMode_NONE, mode.RequestBodyMode)
 	assert.Equal(t, extprocconfigv3.ProcessingMode_BUFFERED, mode.ResponseBodyMode)
@@ -164,8 +167,9 @@ func TestGetModeOverride_BothBodiesRequired(t *testing.T) {
 		RequiresResponseBody: true,
 	}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.phase = phaseRequestHeaders
 
-	mode := execCtx.getModeOverride(phaseRequestHeaders)
+	mode := execCtx.getModeOverride()
 
 	assert.Equal(t, extprocconfigv3.ProcessingMode_BUFFERED, mode.RequestBodyMode)
 	assert.Equal(t, extprocconfigv3.ProcessingMode_BUFFERED, mode.ResponseBodyMode)
@@ -186,8 +190,9 @@ func TestGetModeOverride_ResponseHeaderProcessing(t *testing.T) {
 		Policies: []policy.Policy{mockPol},
 	}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.phase = phaseRequestHeaders
 
-	mode := execCtx.getModeOverride(phaseRequestHeaders)
+	mode := execCtx.getModeOverride()
 
 	// Response header mode should still be SEND (optimization not implemented yet)
 	assert.Equal(t, extprocconfigv3.ProcessingMode_SEND, mode.ResponseHeaderMode)
