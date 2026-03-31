@@ -828,10 +828,11 @@ type StreamingResponsePolicyResult struct {
 
 // StreamingResponseExecutionResult represents the result of executing all streaming response policies
 type StreamingResponseExecutionResult struct {
-	Results            []StreamingResponsePolicyResult
-	FinalAction        *policy.ResponseChunkAction
-	FinalChunk         *policy.StreamBody
-	TotalExecutionTime time.Duration
+	Results             []StreamingResponsePolicyResult
+	StreamTerminated      bool // true if a policy set TerminateStream and the chain was stopped early
+	FinalAction         *policy.ResponseChunkAction
+	FinalChunk          *policy.StreamBody
+	TotalExecutionTime  time.Duration
 }
 
 // ExecuteStreamingResponsePolicies executes streaming response policies chunk-by-chunk.
@@ -955,6 +956,19 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 
 		result.FinalAction = &action
 		span.End()
+
+		// Short-circuit: a policy requested stream termination (e.g. guardrail intervened).
+		// Stop executing remaining policies and signal the kernel to close the stream after
+		// delivering the current chunk.
+		if action.TerminateStream {
+			slog.Info("[streaming] policy requested stream termination; stopping chain",
+				"policy", spec.Name,
+				"version", spec.Version,
+				"route", route,
+			)
+			result.StreamTerminated = true
+			break
+		}
 	}
 
 	result.FinalChunk = currentChunk

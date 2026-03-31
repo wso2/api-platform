@@ -153,7 +153,7 @@ func TestBuildInfo_WriteToFile_DirectoryNotExists(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to write build info file")
 }
 
-func TestWriteBuildLockWithVersions_Success(t *testing.T) {
+func TestWriteBuildManifestWithVersions_Success(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	buildFileContent := `version: "1.0"
@@ -175,28 +175,28 @@ policies:
 		},
 	}
 
-	err := WriteBuildLockWithVersions(buildFilePath, discovered)
+	err := WriteBuildManifestWithVersions(buildFilePath, discovered)
 	require.NoError(t, err)
 
-	lockPath := filepath.Join(tmpDir, "build-lock.yaml")
+	lockPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	content, err := os.ReadFile(lockPath)
 	require.NoError(t, err)
 	assert.Contains(t, string(content), "ratelimit")
 	assert.Contains(t, string(content), "v1.0.0")
 }
 
-func TestWriteBuildLockWithVersions_FileNotFound(t *testing.T) {
+func TestWriteBuildManifestWithVersions_FileNotFound(t *testing.T) {
 	tmpDir := t.TempDir()
 	buildFilePath := filepath.Join(tmpDir, "nonexistent.yaml")
 
 	discovered := []*types.DiscoveredPolicy{}
 
-	err := WriteBuildLockWithVersions(buildFilePath, discovered)
+	err := WriteBuildManifestWithVersions(buildFilePath, discovered)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read build file")
 }
 
-func TestWriteBuildLockWithVersions_EmptyBuildFile(t *testing.T) {
+func TestWriteBuildManifestWithVersions_EmptyBuildFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	buildFileContent := `version: "1.0"
@@ -207,15 +207,15 @@ policies: []
 
 	discovered := []*types.DiscoveredPolicy{}
 
-	err := WriteBuildLockWithVersions(buildFilePath, discovered)
+	err := WriteBuildManifestWithVersions(buildFilePath, discovered)
 	require.NoError(t, err)
 
-	lockPath := filepath.Join(tmpDir, "build-lock.yaml")
+	lockPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	_, err = os.Stat(lockPath)
 	assert.NoError(t, err)
 }
 
-func TestWriteBuildLockWithVersions_PolicyNotFound(t *testing.T) {
+func TestWriteBuildManifestWithVersions_PolicyNotFound(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	buildFileContent := `version: "1.0"
@@ -228,12 +228,12 @@ policies:
 
 	discovered := []*types.DiscoveredPolicy{}
 
-	err := WriteBuildLockWithVersions(buildFilePath, discovered)
+	err := WriteBuildManifestWithVersions(buildFilePath, discovered)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to determine version for policy")
 }
 
-func TestWriteBuildLockWithVersions_MultiplePolicies(t *testing.T) {
+func TestWriteBuildManifestWithVersions_MultiplePolicies(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	buildFileContent := `version: "1.0"
@@ -256,10 +256,10 @@ policies:
 		{Name: "jwt-auth", Version: "v0.1.0", Path: jwtAuthDir},
 	}
 
-	err := WriteBuildLockWithVersions(buildFilePath, discovered)
+	err := WriteBuildManifestWithVersions(buildFilePath, discovered)
 	require.NoError(t, err)
 
-	lockPath := filepath.Join(tmpDir, "build-lock.yaml")
+	lockPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	content, err := os.ReadFile(lockPath)
 	require.NoError(t, err)
 	assert.Contains(t, string(content), "ratelimit")
@@ -268,7 +268,7 @@ policies:
 	assert.Contains(t, string(content), "v0.1.0")
 }
 
-func TestWriteBuildLockWithVersions_MultipleCandidatesWithFilePath(t *testing.T) {
+func TestWriteBuildManifestWithVersions_MultipleCandidatesWithFilePath(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	buildFileContent := `version: "1.0"
@@ -289,17 +289,17 @@ policies:
 		{Name: "ratelimit", Version: "v2.0.0", Path: v2Dir},
 	}
 
-	err := WriteBuildLockWithVersions(buildFilePath, discovered)
+	err := WriteBuildManifestWithVersions(buildFilePath, discovered)
 	require.NoError(t, err)
 
-	lockPath := filepath.Join(tmpDir, "build-lock.yaml")
+	lockPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	content, err := os.ReadFile(lockPath)
 	require.NoError(t, err)
 	assert.Contains(t, string(content), "v2.0.0")
 	assert.NotContains(t, string(content), "v1.0.0")
 }
 
-func TestWriteBuildLockWithVersions_GomoduleWithVersion(t *testing.T) {
+func TestWriteBuildManifestWithVersions_GomoduleWithVersion(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	buildFileContent := `version: "1.0"
@@ -325,17 +325,17 @@ policies:
 		},
 	}
 
-	err := WriteBuildLockWithVersions(buildFilePath, discovered)
+	err := WriteBuildManifestWithVersions(buildFilePath, discovered)
 	require.NoError(t, err)
 
-	lockPath := filepath.Join(tmpDir, "build-lock.yaml")
+	lockPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	content, err := os.ReadFile(lockPath)
 	require.NoError(t, err)
 	assert.Contains(t, string(content), "ratelimit")
 	assert.Contains(t, string(content), "v1.0.0")
 }
 
-func TestWriteBuildLockWithVersions_GomoduleWithoutVersion(t *testing.T) {
+func TestWriteBuildManifestWithVersions_GomoduleWithoutVersion(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	buildFileContent := `version: "1.0"
@@ -361,16 +361,16 @@ policies:
 		},
 	}
 
-	err := WriteBuildLockWithVersions(buildFilePath, discovered)
+	err := WriteBuildManifestWithVersions(buildFilePath, discovered)
 	require.NoError(t, err)
 
-	lockPath := filepath.Join(tmpDir, "build-lock.yaml")
+	lockPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	content, err := os.ReadFile(lockPath)
 	require.NoError(t, err)
 	assert.Contains(t, string(content), "v2.0.0")
 }
 
-func TestWriteBuildLockWithVersions_GomoduleNoMatch(t *testing.T) {
+func TestWriteBuildManifestWithVersions_GomoduleNoMatch(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	buildFileContent := `version: "1.0"
@@ -383,12 +383,12 @@ policies:
 
 	discovered := []*types.DiscoveredPolicy{}
 
-	err := WriteBuildLockWithVersions(buildFilePath, discovered)
+	err := WriteBuildManifestWithVersions(buildFilePath, discovered)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to determine version for policy")
 }
 
-func TestWriteBuildLockWithVersions_GomoduleMultipleCandidates(t *testing.T) {
+func TestWriteBuildManifestWithVersions_GomoduleMultipleCandidates(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	buildFileContent := `version: "1.0"
@@ -414,16 +414,16 @@ policies:
 		{Name: "ratelimit", Version: "v2.0.0", Path: v2Dir, GoModPath: v2GoModPath},
 	}
 
-	err := WriteBuildLockWithVersions(buildFilePath, discovered)
+	err := WriteBuildManifestWithVersions(buildFilePath, discovered)
 	require.NoError(t, err)
 
-	lockPath := filepath.Join(tmpDir, "build-lock.yaml")
+	lockPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	content, err := os.ReadFile(lockPath)
 	require.NoError(t, err)
 	assert.Contains(t, string(content), "v2.0.0")
 }
 
-func TestWriteBuildLockWithVersions_GomoduleVersionNormalization(t *testing.T) {
+func TestWriteBuildManifestWithVersions_GomoduleVersionNormalization(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	buildFileContent := `version: "1.0"
@@ -450,16 +450,16 @@ policies:
 		},
 	}
 
-	err := WriteBuildLockWithVersions(buildFilePath, discovered)
+	err := WriteBuildManifestWithVersions(buildFilePath, discovered)
 	require.NoError(t, err)
 
-	lockPath := filepath.Join(tmpDir, "build-lock.yaml")
+	lockPath := filepath.Join(tmpDir, "build-manifest.yaml")
 	content, err := os.ReadFile(lockPath)
 	require.NoError(t, err)
 	assert.Contains(t, string(content), "v1.0.0")
 }
 
-func TestWriteBuildLockWithVersions_InvalidBuildFileYAML(t *testing.T) {
+func TestWriteBuildManifestWithVersions_InvalidBuildFileYAML(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	buildFilePath := filepath.Join(tmpDir, "build.yaml")
@@ -467,7 +467,7 @@ func TestWriteBuildLockWithVersions_InvalidBuildFileYAML(t *testing.T) {
 
 	discovered := []*types.DiscoveredPolicy{}
 
-	err := WriteBuildLockWithVersions(buildFilePath, discovered)
+	err := WriteBuildManifestWithVersions(buildFilePath, discovered)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to parse build file YAML")
 }

@@ -24,7 +24,8 @@ spec:
   displayName: WSO2 Con Assistant
   version: v1.0
   context: /assistant
-  provider: wso2-openai-provider
+  provider: 
+    id: wso2-openai-provider
   policies:
     - name: semanticPromptGuard
       version: v1

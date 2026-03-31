@@ -266,11 +266,11 @@ func main() {
 	}
 	log.Info("Policy definitions loaded", slog.Int("count", len(policyDefinitions)))
 
-	// Detect custom policies from build-lock.yaml.
-	localPolicies, err := policyLoader.GetCustomPolicyNames(cfg.Controller.Policies.BuildLockPath)
+	// Detect custom policies from build-manifest.yaml.
+	localPolicies, err := policyLoader.GetCustomPolicyNames(cfg.Controller.Policies.BuildManifestPath)
 	if err != nil {
-		log.Warn("Could not read build-lock.yaml, Custom policies will not be marked in the gateway manifest",
-			slog.String("path", cfg.Controller.Policies.BuildLockPath),
+		log.Warn("Could not read build-manifest.yaml, Custom policies will not be marked in the gateway manifest",
+			slog.String("path", cfg.Controller.Policies.BuildManifestPath),
 			slog.Any("error", err))
 	}
 	for key, def := range policyDefinitions {
@@ -737,6 +737,18 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		"PUT /rest-apis/:id/api-keys/:apiKeyName":             {"admin", "consumer"},
 		"POST /rest-apis/:id/api-keys/:apiKeyName/regenerate": {"admin", "consumer"},
 		"DELETE /rest-apis/:id/api-keys/:apiKeyName":          {"admin", "consumer"},
+
+		"POST /llm-providers/:id/api-keys":                        {"admin", "consumer"},
+		"GET /llm-providers/:id/api-keys":                         {"admin", "consumer"},
+		"PUT /llm-providers/:id/api-keys/:apiKeyName":             {"admin", "consumer"},
+		"POST /llm-providers/:id/api-keys/:apiKeyName/regenerate": {"admin", "consumer"},
+		"DELETE /llm-providers/:id/api-keys/:apiKeyName":          {"admin", "consumer"},
+
+		"POST /llm-proxies/:id/api-keys":                        {"admin", "consumer"},
+		"GET /llm-proxies/:id/api-keys":                         {"admin", "consumer"},
+		"PUT /llm-proxies/:id/api-keys/:apiKeyName":             {"admin", "consumer"},
+		"POST /llm-proxies/:id/api-keys/:apiKeyName/regenerate": {"admin", "consumer"},
+		"DELETE /llm-proxies/:id/api-keys/:apiKeyName":          {"admin", "consumer"},
 
 		// Root-level subscription endpoints
 		"POST /subscriptions":                   {"admin", "developer"},
