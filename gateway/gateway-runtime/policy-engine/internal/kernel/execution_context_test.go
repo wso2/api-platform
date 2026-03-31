@@ -110,7 +110,7 @@ func TestGetModeOverride_NoBodyRequired(t *testing.T) {
 	}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 
-	mode := execCtx.getModeOverride()
+	mode := execCtx.getModeOverride(phaseRequestHeaders)
 
 	require.NotNil(t, mode)
 	assert.Equal(t, extprocconfigv3.ProcessingMode_NONE, mode.RequestBodyMode)
@@ -131,7 +131,7 @@ func TestGetModeOverride_RequestBodyRequired(t *testing.T) {
 	}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 
-	mode := execCtx.getModeOverride()
+	mode := execCtx.getModeOverride(phaseRequestHeaders)
 
 	assert.Equal(t, extprocconfigv3.ProcessingMode_BUFFERED, mode.RequestBodyMode)
 	assert.Equal(t, extprocconfigv3.ProcessingMode_NONE, mode.ResponseBodyMode)
@@ -148,7 +148,7 @@ func TestGetModeOverride_ResponseBodyRequired(t *testing.T) {
 	}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 
-	mode := execCtx.getModeOverride()
+	mode := execCtx.getModeOverride(phaseRequestHeaders)
 
 	assert.Equal(t, extprocconfigv3.ProcessingMode_NONE, mode.RequestBodyMode)
 	assert.Equal(t, extprocconfigv3.ProcessingMode_BUFFERED, mode.ResponseBodyMode)
@@ -165,7 +165,7 @@ func TestGetModeOverride_BothBodiesRequired(t *testing.T) {
 	}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 
-	mode := execCtx.getModeOverride()
+	mode := execCtx.getModeOverride(phaseRequestHeaders)
 
 	assert.Equal(t, extprocconfigv3.ProcessingMode_BUFFERED, mode.RequestBodyMode)
 	assert.Equal(t, extprocconfigv3.ProcessingMode_BUFFERED, mode.ResponseBodyMode)
@@ -187,7 +187,7 @@ func TestGetModeOverride_ResponseHeaderProcessing(t *testing.T) {
 	}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
 
-	mode := execCtx.getModeOverride()
+	mode := execCtx.getModeOverride(phaseRequestHeaders)
 
 	// Response header mode should still be SEND (optimization not implemented yet)
 	assert.Equal(t, extprocconfigv3.ProcessingMode_SEND, mode.ResponseHeaderMode)

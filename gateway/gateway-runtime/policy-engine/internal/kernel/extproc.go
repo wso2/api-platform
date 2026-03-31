@@ -187,6 +187,9 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		if err != nil {
 			metrics.RequestErrorsTotal.WithLabelValues("request_headers", "processing_failed", rm.RouteName).Inc()
 		}
+		if slog.Default().Enabled(ctx, slog.LevelDebug) {
+			slog.DebugContext(ctx, "ext_proc response", "phase", "request_headers", "resp", prototext.Format(resp))
+		}
 		return resp, err
 
 	case *extprocv3.ProcessingRequest_RequestBody:
@@ -231,6 +234,9 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		if err != nil {
 			metrics.RequestErrorsTotal.WithLabelValues("request_body", "processing_failed", routeName).Inc()
 		}
+		if slog.Default().Enabled(ctx, slog.LevelDebug) {
+			slog.DebugContext(ctx, "ext_proc response", "phase", "request_body", "resp", prototext.Format(resp))
+		}
 		return resp, err
 
 	case *extprocv3.ProcessingRequest_ResponseHeaders:
@@ -269,6 +275,9 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		}
 		if err != nil {
 			metrics.RequestErrorsTotal.WithLabelValues("response_headers", "processing_failed", routeName).Inc()
+		}
+		if slog.Default().Enabled(ctx, slog.LevelDebug) {
+			slog.DebugContext(ctx, "ext_proc response", "phase", "response_headers", "resp", prototext.Format(resp))
 		}
 		return resp, err
 
@@ -313,6 +322,9 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		}
 		if err != nil {
 			metrics.RequestErrorsTotal.WithLabelValues("response_body", "processing_failed", routeName).Inc()
+		}
+		if slog.Default().Enabled(ctx, slog.LevelDebug) {
+			slog.DebugContext(ctx, "ext_proc response", "phase", "response_body", "resp", prototext.Format(resp))
 		}
 		return resp, err
 
