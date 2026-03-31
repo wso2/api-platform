@@ -954,7 +954,7 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 			}
 		case policy.TerminateResponseChunk:
 			if a.Body != nil {
-				currentChunk = &policy.StreamBody{Chunk: a.Body, EndOfStream: currentChunk.EndOfStream}
+				currentChunk = &policy.StreamBody{Chunk: a.Body, EndOfStream: true}
 			}
 		}
 
