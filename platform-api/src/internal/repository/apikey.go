@@ -136,8 +136,9 @@ func (r *APIKeyRepo) ListByArtifact(artifactUUID string) ([]*model.APIKey, error
 	return keys, rows.Err()
 }
 
-// ListByGatewayAndKind retrieves all API keys for artifacts of the given kind that are
-// currently deployed on the specified gateway within the organisation.
+// ListByGatewayAndKind retrieves all API keys for artifacts of the given kind that have
+// an active deployment association on the specified gateway within the organisation
+// (status_desired in DEPLOYED or UNDEPLOYED).
 // When issuer is non-empty only keys whose issuer column matches are returned;
 // an empty issuer returns keys regardless of their issuer value.
 func (r *APIKeyRepo) ListByGatewayAndKind(gatewayID, orgID, kind, issuer string) ([]*model.APIKey, error) {
@@ -151,7 +152,7 @@ func (r *APIKeyRepo) ListByGatewayAndKind(gatewayID, orgID, kind, issuer string)
 		WHERE s.gateway_uuid = ?
 		  AND s.organization_uuid = ?
 		  AND a.kind = ?
-		  AND s.status_desired = 'DEPLOYED'`
+		  AND s.status_desired IN ('DEPLOYED', 'UNDEPLOYED')`
 
 	args := []any{gatewayID, orgID, kind}
 	if issuer != "" {
