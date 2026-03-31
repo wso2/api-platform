@@ -364,6 +364,12 @@ func (ec *PolicyExecutionContext) responseHasNoBody(headers *extprocv3.HttpHeade
 	if cl := ec.responseHeaderCtx.ResponseHeaders.Get("content-length"); len(cl) > 0 && cl[0] == "0" {
 		return true
 	}
+	// RFC 9110: 204 No Content and 304 Not Modified must not include a response body.
+	// 1xx informational responses also have no body but Envoy handles them before ext_proc.
+	switch ec.responseHeaderCtx.ResponseStatus {
+	case 204, 304:
+		return true
+	}
 	return false
 }
 
