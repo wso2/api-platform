@@ -44,7 +44,7 @@ The API Platform covers the complete API lifecycle:
 ## Architecture
 
 ### High-Level Architecture
-![Architecture](docs/images/Govern-your-APIs.webp)
+![High-Level Architecture Diagram showing system components and data/control flows](docs/images/Govern-your-APIs.webp)
 
 ## Quick Start
 
