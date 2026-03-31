@@ -31,7 +31,7 @@ policies:
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/dynamic-endpoint@v1
     - name: host-rewrite
-      version: v1.0.0
+      version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/host-rewrite@v1
     - name: json-schema-guardrail
       version: v1.0.1
