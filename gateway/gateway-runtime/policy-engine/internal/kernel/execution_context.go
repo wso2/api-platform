@@ -38,6 +38,16 @@ import (
 // a flush, preventing unbounded memory growth from large streaming bodies.
 const maxStreamAccumulatorSize = 10 * 1024 * 1024 // 10 MB
 
+// processingPhase identifies the ext_proc phase in which getModeOverride is called.
+type processingPhase int
+
+const (
+	phaseRequestHeaders  processingPhase = iota
+	phaseRequestBody
+	phaseResponseHeaders
+	phaseResponseBody
+)
+
 // PolicyExecutionContext manages the lifecycle of a single request through the policy chain.
 // This context is created when a request arrives and lives until the response is completed.
 // It encapsulates all state needed for processing both request and response phases.
@@ -93,12 +103,6 @@ type PolicyExecutionContext struct {
 	// The body is decompressed before being passed to policies, and re-compressed using this value
 	// before being sent back to the downstream client.
 	responseContentEncoding string
-
-	// requestBodyProcessedInline is set when body policies are executed during the
-	// headers phase because the request carries no body (GET, Content-Length: 0, etc.).
-	// getModeOverride() returns RequestBodyMode=NONE when this is true so that Envoy
-	// does not attempt to deliver a body message that will never arrive.
-	requestBodyProcessedInline bool
 
 	// isStreamingRequest is set when SupportsRequestStreaming is true and the client
 	// sends a streaming body — the request body will be processed chunk-by-chunk.
@@ -180,29 +184,36 @@ func (ec *PolicyExecutionContext) handlePolicyError(
 // Response body is always set to BUFFERED here (never FULL_DUPLEX_STREAMED).
 // The upgrade to streaming happens at response-headers phase via
 // getStreamingResponseModeOverride when a streaming upstream response is detected.
-func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingMode {
+func (ec *PolicyExecutionContext) getModeOverride(phase processingPhase) *extprocconfigv3.ProcessingMode {
 	mode := &extprocconfigv3.ProcessingMode{}
 
-	switch {
-	case !ec.policyChain.RequiresRequestBody || ec.requestBodyProcessedInline:
-		mode.RequestBodyMode = extprocconfigv3.ProcessingMode_NONE
-	case ec.isStreamingRequest:
-		mode.RequestBodyMode = extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED
-	default:
-		mode.RequestBodyMode = extprocconfigv3.ProcessingMode_BUFFERED
-	}
-
-	mode.ResponseHeaderMode = extprocconfigv3.ProcessingMode_SEND
-
-	if ec.policyChain.RequiresResponseBody {
-		mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_BUFFERED
-		if ec.isStreamingResponse {
-			mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED
-			slog.Debug("[mode] upgraded response body mode to FULL_DUPLEX_STREAMED",
-				"route", ec.routeKey,
-			)
+	if ec.policyChain.RequiresRequestBody {
+		if ec.isStreamingRequest {
+			mode.RequestBodyMode = extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED
+		} else {
+			mode.RequestBodyMode = extprocconfigv3.ProcessingMode_BUFFERED
 		}
 	} else {
+		mode.RequestBodyMode = extprocconfigv3.ProcessingMode_NONE
+	}
+
+	if ec.policyChain.RequiresResponseBody {
+		if ec.isStreamingResponse {
+			mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED
+            slog.Debug("[mode] upgraded response body mode to FULL_DUPLEX_STREAMED",
+                "route", ec.routeKey,
+            )
+		} else {
+			mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_BUFFERED
+		}
+	} else {
+		mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_NONE
+	}
+
+	// At response-headers phase we know whether a body will follow. If not, skip it
+	// even if the policy chain declared RequiresResponseBody, to avoid Envoy buffering
+	// a body that will never arrive.
+	if phase == phaseResponseHeaders && ec.responseHasNoBody() {
 		mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_NONE
 	}
 
@@ -210,7 +221,8 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 	mode.RequestTrailerMode = extprocconfigv3.ProcessingMode_SKIP
 	mode.ResponseTrailerMode = extprocconfigv3.ProcessingMode_SKIP
 
-	slog.Debug("[mode] getModeOverride (headers phase)",
+	slog.Debug("[mode] getModeOverride",
+		"phase", phase,
 		"route", ec.routeKey,
 		"requires_request_body", ec.policyChain.RequiresRequestBody,
 		"requires_response_body", ec.policyChain.RequiresResponseBody,
@@ -222,28 +234,6 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 	)
 
 	return mode
-}
-
-// getStreamingResponseModeOverride returns a ModeOverride that upgrades the response
-// body processing to FULL_DUPLEX_STREAMED. RequestBodyMode is explicitly set to match
-// the value already negotiated at request-headers time so that Envoy does not revert
-// the request body mode to the filter-level default when this override is applied.
-func (ec *PolicyExecutionContext) getStreamingResponseModeOverride() *extprocconfigv3.ProcessingMode {
-	var requestBodyMode extprocconfigv3.ProcessingMode_BodySendMode
-	switch {
-	case !ec.policyChain.RequiresRequestBody:
-		requestBodyMode = extprocconfigv3.ProcessingMode_NONE
-	case ec.isStreamingRequest:
-		requestBodyMode = extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED
-	default:
-		requestBodyMode = extprocconfigv3.ProcessingMode_BUFFERED
-	}
-	return &extprocconfigv3.ProcessingMode{
-		RequestBodyMode:     requestBodyMode,
-		ResponseBodyMode:    extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED,
-		RequestTrailerMode:  extprocconfigv3.ProcessingMode_SKIP,
-		ResponseTrailerMode: extprocconfigv3.ProcessingMode_SKIP,
-	}
 }
 
 // ─── Phase processing methods ────────────────────────────────────────────────
@@ -286,6 +276,26 @@ func (ec *PolicyExecutionContext) processRequestHeaders(
 	}
 
 	return TranslateRequestHeaderActions(execResult, ec.policyChain, ec)
+}
+
+// responseHasNoBody returns true when the response carries no body and Envoy will not
+// deliver a ResponseBody ext_proc phase for this response.
+// Note: this is called during the response-headers phase so responseBodyCtx is not yet populated.
+func (ec *PolicyExecutionContext) responseHasNoBody() bool {
+	// 1xx, 204, and 304 responses must not carry a body (RFC 9110).
+	status := ec.responseHeaderCtx.ResponseStatus
+	if status == 204 || status == 304 || (status >= 100 && status < 200) {
+		return true
+	}
+	// Responses to HEAD requests have headers only — no body (RFC 9110).
+	if strings.ToUpper(ec.requestHeaderCtx.Method) == "HEAD" {
+		return true
+	}
+	// Content-Length: 0 explicitly signals an empty body.
+	if cl := ec.responseHeaderCtx.ResponseHeaders.Get("content-length"); len(cl) > 0 && cl[0] == "0" {
+		return true
+	}
+	return false
 }
 
 // requestHasNoBody returns true when the request carries no body and Envoy will not
@@ -336,9 +346,6 @@ func (ec *PolicyExecutionContext) processRequestBodyForEmptyRequest(
 	if err != nil {
 		return ec.handlePolicyError(ctx, err, "request_body_no_body"), nil
 	}
-
-	// Signal to getModeOverride() that no further RequestBody phase is expected.
-	ec.requestBodyProcessedInline = true
 
 	return TranslateRequestHeaderActionsWithBodyMerge(headerResult, bodyResult, ec)
 }
