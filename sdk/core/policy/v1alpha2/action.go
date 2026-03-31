@@ -171,10 +171,8 @@ var (
 	_ ResponseAction       = DownstreamResponseModifications{}
 	_ ResponseAction       = ImmediateResponse{}
 	_ StreamingRequestAction  = ForwardRequestChunk{}
-	_ StreamingRequestAction  = RequestChunkAction{}
 	_ StreamingResponseAction = ForwardResponseChunk{}
 	_ StreamingResponseAction = TerminateResponseChunk{}
-	_ StreamingResponseAction = ResponseChunkAction{}
 )
 
 // ─── Streaming body actions ───────────────────────────────────────────────────
@@ -219,18 +217,6 @@ type ForwardRequestChunk struct {
 
 func (ForwardRequestChunk) isStreamingRequestAction() {}
 
-// Deprecated: RequestChunkAction exists for backward compatibility.
-// Use ForwardRequestChunk instead.
-type RequestChunkAction struct {
-	Body []byte // nil = passthrough; non-nil bytes replace the chunk
-
-	// Analytics — accumulates incremental data across chunks (e.g. token counts).
-	AnalyticsMetadata map[string]any
-	DynamicMetadata   map[string]map[string]any
-}
-
-func (RequestChunkAction) isStreamingRequestAction() {}
-
 // StreamingResponseAction is a sealed oneof returned by StreamingResponsePolicy.OnResponseBodyChunk.
 // Implement ForwardResponseChunk to continue normally, or TerminateResponseChunk to close
 // the stream after this chunk. ImmediateResponse is not available — response headers are
@@ -272,23 +258,3 @@ type TerminateResponseChunk struct {
 
 func (TerminateResponseChunk) isStreamingResponseAction() {}
 func (TerminateResponseChunk) TerminateStream() bool      { return true }
-
-// Deprecated: ResponseChunkAction exists for backward compatibility.
-// Use ForwardResponseChunk or TerminateResponseChunk instead.
-//
-// Note: the TerminateStream field has been renamed to ShouldTerminateStream to avoid
-// a name collision with the StreamingResponseAction interface method of the same name.
-type ResponseChunkAction struct {
-	Body []byte // nil = passthrough; non-nil bytes replace the chunk
-
-	// ShouldTerminateStream instructs the policy engine to close the stream after this chunk.
-	// Renamed from TerminateStream — use TerminateResponseChunk for new code.
-	ShouldTerminateStream bool
-
-	// Analytics — accumulates incremental data across chunks (e.g. per-SSE-event token counts).
-	AnalyticsMetadata map[string]any
-	DynamicMetadata   map[string]map[string]any
-}
-
-func (r ResponseChunkAction) isStreamingResponseAction() {}
-func (r ResponseChunkAction) TerminateStream() bool      { return r.ShouldTerminateStream }
