@@ -91,7 +91,7 @@ func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecution
 			fields[OperationPathKey] = structpb.NewStringValue(sharedCtx.OperationPath)
 		}
 		if sharedCtx.APIKind != "" {
-			fields[APIKindKey] = structpb.NewStringValue(sharedCtx.APIKind)
+			fields[APIKindKey] = structpb.NewStringValue(string(sharedCtx.APIKind))
 		}
 		if sharedCtx.ProjectID != "" {
 			fields[ProjectIDKey] = structpb.NewStringValue(sharedCtx.ProjectID)
