@@ -46,10 +46,6 @@ The API Platform covers the complete API lifecycle:
 ### High-Level Architecture
 ![Architecture](docs/images/Govern-your-APIs.webp)
 
-### Technical Architecture
-
-![Technical Architecture](docs/images/technical-architecture.png)
-
 ## Quick Start
 
 Get up and running in minutes with Docker Compose.
