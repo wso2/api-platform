@@ -22,10 +22,10 @@ Replace `${version}` with the API Platform Gateway release version you want to r
 
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/gateway/v1.0.0-rc/wso2apip-api-gateway-1.0.0-rc.zip
+wget https://github.com/wso2/api-platform/releases/download/gateway/v1.0.0-rc.2/wso2apip-api-gateway-1.0.0-rc2.zip
 
 # Unzip the downloaded distribution.
-unzip wso2apip-api-gateway-1.0.0-rc.zip
+unzip wso2apip-api-gateway-1.0.0-rc2.zip
 
 
 # Start the complete stack
