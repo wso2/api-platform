@@ -106,6 +106,11 @@ type Storage interface {
 	// This is the recommended lookup method for REST API endpoints.
 	GetConfigByKindAndHandle(kind string, handle string) (*models.StoredConfig, error)
 
+	// GetConfigByKindNameAndVersion retrieves an API configuration by kind, display name, and version.
+	//
+	// Returns an error if the configuration is not found.
+	GetConfigByKindNameAndVersion(kind, displayName, version string) (*models.StoredConfig, error)
+
 	// GetAllConfigs retrieves all API configurations.
 	//
 	// Returns an empty slice if no configurations exist.
@@ -158,6 +163,11 @@ type Storage interface {
 	// Returns an empty slice if no templates exist.
 	// May be expensive for large datasets; consider pagination in future versions.
 	GetAllLLMProviderTemplates() ([]*models.StoredLLMProviderTemplate, error)
+
+	// GetLLMProviderTemplateByHandle retrieves an LLM provider template by handle.
+	//
+	// Returns an error if the template is not found.
+	GetLLMProviderTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error)
 
 	// SaveAPIKey persists a new API key.
 	//

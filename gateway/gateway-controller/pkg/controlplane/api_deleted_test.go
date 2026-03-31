@@ -21,7 +21,6 @@ package controlplane
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	"log/slog"
 	"os"
 	"testing"
@@ -151,7 +150,16 @@ func (m *mockStorageForDeletion) GetConfigByKindAndHandle(kind string, handle st
 			return config, nil
 		}
 	}
-	return nil, fmt.Errorf("config not found")
+	return nil, storage.ErrNotFound
+}
+
+func (m *mockStorageForDeletion) GetConfigByKindNameAndVersion(kind, displayName, version string) (*models.StoredConfig, error) {
+	for _, config := range m.configs {
+		if config.Kind == kind && config.DisplayName == displayName && config.Version == version {
+			return config, nil
+		}
+	}
+	return nil, storage.ErrNotFound
 }
 
 func (m *mockStorageForDeletion) Close() error {
@@ -417,6 +425,10 @@ func (m *mockStorageForDeletion) ListLLMProviderTemplates() ([]*models.StoredLLM
 
 func (m *mockStorageForDeletion) GetAllLLMProviderTemplates() ([]*models.StoredLLMProviderTemplate, error) {
 	return nil, nil
+}
+
+func (m *mockStorageForDeletion) GetLLMProviderTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
+	return nil, storage.ErrNotFound
 }
 
 func (m *mockStorageForDeletion) DeleteLLMProviderTemplate(id string) error {

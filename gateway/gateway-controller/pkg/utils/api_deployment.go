@@ -83,6 +83,30 @@ type APIDeploymentService struct {
 	policyResolver  *resolver.PolicyResolver
 }
 
+func (s *APIDeploymentService) validateArtifactConflicts(kind, currentID, displayName, version, handle string) error {
+	existingByNameVersion, err := s.db.GetConfigByKindNameAndVersion(kind, displayName, version)
+	if err == nil {
+		if existingByNameVersion != nil && existingByNameVersion.UUID != currentID {
+			return fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists",
+				storage.ErrConflict, displayName, version)
+		}
+	} else if !storage.IsNotFoundError(err) {
+		return fmt.Errorf("failed to check existing %s name/version conflict: %w", kind, err)
+	}
+
+	existingByHandle, err := s.db.GetConfigByKindAndHandle(kind, handle)
+	if err == nil {
+		if existingByHandle != nil && existingByHandle.UUID != currentID {
+			return fmt.Errorf("%w: configuration with handle '%s' already exists",
+				storage.ErrConflict, handle)
+		}
+	} else if !storage.IsNotFoundError(err) {
+		return fmt.Errorf("failed to check existing %s handle conflict: %w", kind, err)
+	}
+
+	return nil
+}
+
 // NewAPIDeploymentService creates a new API deployment service
 func NewAPIDeploymentService(
 	store *storage.ConfigStore,
@@ -213,33 +237,19 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		}
 	}
 
-	// Determine if this is an update or create by checking if config with apiID already exists
-	var existingConfig *models.StoredConfig
 	var isUpdate bool
 
-	// TODO: (VirajSalaka) Revisit the logic to do these validations from the gateway itself
-
-	// Check for conflicts with other configurations
-
-	if s.store != nil {
-		existingConfig, _ = s.store.Get(apiID)
-		isUpdate = existingConfig != nil
-
-		if conflicting, _ := s.store.GetByKindNameAndVersion(kind, apiName, apiVersion); conflicting != nil {
-			if !isUpdate || conflicting.UUID != apiID {
-				return nil, fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists", storage.ErrConflict, apiName, apiVersion)
-			}
+	if s.db != nil {
+		existingConfig, err := s.db.GetConfig(apiID)
+		if err == nil && existingConfig != nil {
+			isUpdate = true
+		} else if err != nil && !storage.IsNotFoundError(err) && !storage.IsDatabaseUnavailableError(err) {
+			return nil, fmt.Errorf("failed to look up existing configuration: %w", err)
 		}
+	}
 
-		if handle != "" {
-			for _, c := range s.store.GetAll() {
-				if c.Handle == handle {
-					if !isUpdate || c.UUID != apiID {
-						return nil, fmt.Errorf("%w: configuration with handle '%s' already exists", storage.ErrConflict, handle)
-					}
-				}
-			}
-		}
+	if err := s.validateArtifactConflicts(kind, apiID, apiName, apiVersion, handle); err != nil {
+		return nil, err
 	}
 
 	// Create stored configuration

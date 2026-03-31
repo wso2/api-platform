@@ -688,6 +688,53 @@ func (s *sqlStore) GetConfigByKindAndHandle(kind string, handle string) (*models
 	return &cfg, nil
 }
 
+// GetConfigByKindNameAndVersion retrieves a deployment configuration by kind, display name, and version.
+func (s *sqlStore) GetConfigByKindNameAndVersion(kind, displayName, version string) (*models.StoredConfig, error) {
+	artifactQuery := `
+		SELECT uuid, kind, handle, display_name, version, desired_state, deployment_id, origin, created_at, updated_at, deployed_at
+		FROM artifacts
+		WHERE kind = ? AND display_name = ? AND version = ? AND gateway_id = ?
+	`
+
+	var cfg models.StoredConfig
+	var deployedAt sql.NullTime
+	var deploymentID sql.NullString
+
+	err := s.queryRow(artifactQuery, kind, displayName, version, s.gatewayId).Scan(
+		&cfg.UUID,
+		&cfg.Kind,
+		&cfg.Handle,
+		&cfg.DisplayName,
+		&cfg.Version,
+		&cfg.DesiredState,
+		&deploymentID,
+		&cfg.Origin,
+		&cfg.CreatedAt,
+		&cfg.UpdatedAt,
+		&deployedAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("%w: display_name=%s version=%s", ErrNotFound, displayName, version)
+		}
+		return nil, fmt.Errorf("failed to query configuration: %w", err)
+	}
+
+	if deployedAt.Valid {
+		cfg.DeployedAt = &deployedAt.Time
+	}
+	if deploymentID.Valid {
+		cfg.DeploymentID = deploymentID.String
+	}
+
+	if err := s.loadResourceConfig(&cfg); err != nil {
+		return nil, err
+	}
+
+	return &cfg, nil
+}
+
 // GetAllConfigs retrieves all artifact configurations
 // TODO: (renuka) Remove this method once the in memory cache is removed.
 func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
@@ -1275,6 +1322,37 @@ func (s *sqlStore) GetAllLLMProviderTemplates() ([]*models.StoredLLMProviderTemp
 	}
 
 	return templates, nil
+}
+
+// GetLLMProviderTemplateByHandle retrieves an LLM provider template by handle.
+func (s *sqlStore) GetLLMProviderTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
+	query := `
+		SELECT uuid, configuration, created_at, updated_at
+		FROM llm_provider_templates
+		WHERE gateway_id = ? AND handle = ?
+	`
+
+	var template models.StoredLLMProviderTemplate
+	var configJSON string
+
+	err := s.queryRow(query, s.gatewayId, handle).Scan(
+		&template.UUID,
+		&configJSON,
+		&template.CreatedAt,
+		&template.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("%w: handle=%s", ErrNotFound, handle)
+		}
+		return nil, fmt.Errorf("failed to query template: %w", err)
+	}
+
+	if err := json.Unmarshal([]byte(configJSON), &template.Configuration); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal template configuration: %w", err)
+	}
+
+	return &template, nil
 }
 
 // SaveCertificate persists a certificate to the database

@@ -183,6 +183,30 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 	}, nil
 }
 
+func (s *RestAPIService) validateArtifactConflicts(kind, currentID, displayName, version, handle string) error {
+	existingByNameVersion, err := s.db.GetConfigByKindNameAndVersion(kind, displayName, version)
+	if err == nil {
+		if existingByNameVersion != nil && existingByNameVersion.UUID != currentID {
+			return fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists",
+				storage.ErrConflict, displayName, version)
+		}
+	} else if !storage.IsNotFoundError(err) {
+		return fmt.Errorf("failed to check existing %s name/version conflict: %w", kind, err)
+	}
+
+	existingByHandle, err := s.db.GetConfigByKindAndHandle(kind, handle)
+	if err == nil {
+		if existingByHandle != nil && existingByHandle.UUID != currentID {
+			return fmt.Errorf("%w: configuration with handle '%s' already exists",
+				storage.ErrConflict, handle)
+		}
+	} else if !storage.IsNotFoundError(err) {
+		return fmt.Errorf("failed to check existing %s handle conflict: %w", kind, err)
+	}
+
+	return nil
+}
+
 // List returns REST API configurations, optionally filtered.
 func (s *RestAPIService) List(params api.ListRestAPIsParams) (*ListResult, error) {
 	configs, err := s.db.GetAllConfigsByKind(string(api.RestApi))
@@ -282,8 +306,14 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 		desiredState = models.StateUndeployed
 	}
 
+	if err := s.validateArtifactConflicts(models.KindRestApi, existing.UUID, apiConfig.Spec.DisplayName, apiConfig.Spec.Version, existing.Handle); err != nil {
+		return nil, err
+	}
+
 	// Update stored configuration
 	now := time.Now()
+	existing.DisplayName = apiConfig.Spec.DisplayName
+	existing.Version = apiConfig.Spec.Version
 	existing.Configuration = apiConfig
 	existing.SourceConfiguration = apiConfig
 	existing.DesiredState = desiredState
@@ -403,7 +433,7 @@ func (s *RestAPIService) waitForDeploymentAndPush(configID string, correlationID
 			if err != nil {
 				log.Warn("Config not found while waiting for deployment completion",
 					slog.String("config_id", configID))
-				return
+				continue
 			}
 
 			if cfg.DeployedAt != nil {

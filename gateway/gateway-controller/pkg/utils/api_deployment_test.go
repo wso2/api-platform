@@ -425,6 +425,95 @@ spec:
 	assert.Nil(t, result)
 }
 
+func TestDeployAPIConfiguration_DBConflictValidation(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	validator := config.NewAPIValidator()
+
+	t.Run("rejects duplicate name version from database", func(t *testing.T) {
+		store := storage.NewConfigStore()
+		db := newTestMockDB()
+		service := newTestAPIDeploymentService(store, db, nil, validator, nil, nil)
+
+		require.NoError(t, db.SaveConfig(&models.StoredConfig{
+			UUID:        "rest-existing-1",
+			Kind:        string(api.RestApi),
+			Handle:      "existing-rest-api",
+			DisplayName: "Existing Rest API",
+			Version:     "1.0.0",
+		}))
+
+		params := APIDeploymentParams{
+			Data: []byte(`
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: another-rest-api
+spec:
+  displayName: Existing Rest API
+  version: "1.0.0"
+  context: /existing
+  upstream:
+    main:
+      url: https://example.com
+  operations:
+    - method: GET
+      path: /items
+`),
+			ContentType:   "application/yaml",
+			CorrelationID: "test-corr",
+			Origin:        models.OriginGatewayAPI,
+			Logger:        logger,
+		}
+
+		_, err := service.DeployAPIConfiguration(params)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, storage.ErrConflict)
+		assert.Contains(t, err.Error(), "name 'Existing Rest API' and version '1.0.0' already exists")
+	})
+
+	t.Run("rejects duplicate handle from database", func(t *testing.T) {
+		store := storage.NewConfigStore()
+		db := newTestMockDB()
+		service := newTestAPIDeploymentService(store, db, nil, validator, nil, nil)
+
+		require.NoError(t, db.SaveConfig(&models.StoredConfig{
+			UUID:        "rest-existing-2",
+			Kind:        string(api.RestApi),
+			Handle:      "existing-rest-api",
+			DisplayName: "Existing Rest API",
+			Version:     "1.0.0",
+		}))
+
+		params := APIDeploymentParams{
+			Data: []byte(`
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: existing-rest-api
+spec:
+  displayName: Another Rest API
+  version: "2.0.0"
+  context: /another
+  upstream:
+    main:
+      url: https://example.com
+  operations:
+    - method: GET
+      path: /items
+`),
+			ContentType:   "application/yaml",
+			CorrelationID: "test-corr",
+			Origin:        models.OriginGatewayAPI,
+			Logger:        logger,
+		}
+
+		_, err := service.DeployAPIConfiguration(params)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, storage.ErrConflict)
+		assert.Contains(t, err.Error(), "handle 'existing-rest-api' already exists")
+	})
+}
+
 func TestDeployAPIConfiguration_UnsupportedKind(t *testing.T) {
 	store := storage.NewConfigStore()
 	validator := config.NewAPIValidator()

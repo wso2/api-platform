@@ -19,6 +19,8 @@
 package utils
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -32,7 +34,9 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"gopkg.in/yaml.v3"
 )
 
 type llmPublishedEvent struct {
@@ -42,6 +46,11 @@ type llmPublishedEvent struct {
 
 type mockLLMEventHub struct {
 	publishedEvents []llmPublishedEvent
+}
+
+type failingUpsertDB struct {
+	*testMockDB
+	err error
 }
 
 func (m *mockLLMEventHub) Initialize() error {
@@ -78,6 +87,10 @@ func (m *mockLLMEventHub) CleanUpEvents() error {
 
 func (m *mockLLMEventHub) Close() error {
 	return nil
+}
+
+func (m *failingUpsertDB) UpsertConfig(*models.StoredConfig) (bool, error) {
+	return false, m.err
 }
 
 func TestLLMDeploymentParams(t *testing.T) {
@@ -122,6 +135,59 @@ metadata:
 spec:
   displayName: %s
 `, handle, displayName))
+}
+
+func testLLMProviderYAML(t *testing.T, handle, displayName, template string) []byte {
+	t.Helper()
+
+	cfg := api.LLMProviderConfiguration{
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.LlmProvider,
+		Metadata: api.Metadata{
+			Name: handle,
+		},
+		Spec: api.LLMProviderConfigData{
+			DisplayName: displayName,
+			Version:     "1.0.0",
+			Template:    template,
+			Upstream: api.LLMProviderConfigData_Upstream{
+				Url: stringPtr("https://example.com"),
+			},
+			AccessControl: api.LLMAccessControl{
+				Mode: api.AllowAll,
+			},
+		},
+	}
+
+	yamlData, err := yaml.Marshal(cfg)
+	require.NoError(t, err)
+
+	return yamlData
+}
+
+func testLLMProxyYAML(t *testing.T, handle, displayName, providerHandle string) []byte {
+	t.Helper()
+
+	cfg := api.LLMProxyConfiguration{
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.LlmProxy,
+		Metadata: api.Metadata{
+			Name: handle,
+		},
+		Spec: api.LLMProxyConfigData{
+			DisplayName: displayName,
+			Version:     "1.0.0",
+			Context:     stringPtr("/chat"),
+			Provider: api.LLMProxyProvider{
+				Id: providerHandle,
+			},
+		},
+	}
+
+	yamlData, err := yaml.Marshal(cfg)
+	require.NoError(t, err)
+
+	return yamlData
 }
 
 func testStoredLLMTemplate(uuid, handle, displayName string) *models.StoredLLMProviderTemplate {
@@ -566,6 +632,28 @@ func TestLLMDeploymentService_CreateLLMProviderTemplate_WithDBAndEventHubPublish
 	require.Error(t, err)
 }
 
+func TestLLMDeploymentService_CreateLLMProviderTemplate_HandleConflict(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	store := storage.NewConfigStore()
+	db := newTestMockDB()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil, nil)
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+
+	require.NoError(t, db.SaveLLMProviderTemplate(testStoredLLMTemplate("template-existing-id", "openai", "OpenAI Template")))
+
+	_, err := service.CreateLLMProviderTemplate(LLMTemplateParams{
+		Spec:          testLLMTemplateYAML("openai", "OpenAI Template"),
+		ContentType:   "application/yaml",
+		CorrelationID: "corr-llm-template-create-conflict",
+		Logger:        logger,
+	})
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, storage.ErrConflict)
+	assert.Contains(t, err.Error(), "template with handle 'openai' already exists")
+}
+
 func TestLLMDeploymentService_UpdateLLMProviderTemplate_WithDBAndEventHubPublishesUpdate(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	store := storage.NewConfigStore()
@@ -657,6 +745,104 @@ func TestLLMDeploymentService_DeployLLMProviderConfiguration_ParseError(t *testi
 	assert.Contains(t, err.Error(), "failed to parse")
 }
 
+func TestLLMDeploymentService_DeployLLMProviderConfiguration_SaveErrorReturnsSanitizedError(t *testing.T) {
+	store := storage.NewConfigStore()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	db := &failingUpsertDB{
+		testMockDB: newTestMockDB(),
+		err: errors.New(
+			"failed to upsert artifact: UNIQUE constraint failed: artifacts.gateway_id, artifacts.kind, artifacts.handle",
+		),
+	}
+	template := testStoredLLMTemplate("0000-template-1-0000-000000000000", "openai", "OpenAI Template")
+	require.NoError(t, db.SaveLLMProviderTemplate(template))
+
+	mockHub := &mockLLMEventHub{}
+	policyResolver := resolver.NewPolicyResolver(map[string]models.PolicyDefinition{}, nil)
+	apiDeploymentService := newTestAPIDeploymentServiceWithHub(store, db, nil, nil, routerConfig, policyResolver, mockHub, "test-gateway")
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+
+	var logOutput bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logOutput, nil))
+
+	_, err := service.DeployLLMProviderConfiguration(LLMDeploymentParams{
+		Data:          testLLMProviderYAML(t, "hotel-booking-provider", "Hotel Booking Provider", "openai"),
+		ContentType:   "application/yaml",
+		CorrelationID: "test-corr",
+		Logger:        logger,
+		Origin:        models.OriginGatewayAPI,
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, "failed to save or update LLM provider configuration", err.Error())
+	assert.NotContains(t, err.Error(), "UNIQUE constraint failed")
+	assert.Contains(t, logOutput.String(), "Failed to save or update LLM provider configuration")
+	assert.Contains(t, logOutput.String(), "UNIQUE constraint failed")
+	assert.Empty(t, mockHub.publishedEvents)
+}
+
+func TestLLMDeploymentService_DeployLLMProviderConfiguration_ConflictValidation(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	t.Run("rejects duplicate name version from database", func(t *testing.T) {
+		store := storage.NewConfigStore()
+		db := newTestMockDB()
+		routerConfig := &config.RouterConfig{ListenerPort: 8080}
+		require.NoError(t, db.SaveLLMProviderTemplate(testStoredLLMTemplate("template-openai-id", "openai", "OpenAI Template")))
+		require.NoError(t, db.SaveConfig(&models.StoredConfig{
+			UUID:        "provider-existing-id",
+			Kind:        string(api.LlmProvider),
+			Handle:      "existing-provider",
+			DisplayName: "Hotel Booking Provider",
+			Version:     "1.0.0",
+		}))
+
+		apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil, nil)
+		service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+
+		_, err := service.DeployLLMProviderConfiguration(LLMDeploymentParams{
+			Data:          testLLMProviderYAML(t, "new-provider", "Hotel Booking Provider", "openai"),
+			ContentType:   "application/yaml",
+			CorrelationID: "test-corr",
+			Logger:        logger,
+			Origin:        models.OriginGatewayAPI,
+		})
+
+		require.Error(t, err)
+		assert.ErrorIs(t, err, storage.ErrConflict)
+		assert.Contains(t, err.Error(), "name 'Hotel Booking Provider' and version '1.0.0' already exists")
+	})
+
+	t.Run("rejects duplicate handle from database", func(t *testing.T) {
+		store := storage.NewConfigStore()
+		db := newTestMockDB()
+		routerConfig := &config.RouterConfig{ListenerPort: 8080}
+		require.NoError(t, db.SaveLLMProviderTemplate(testStoredLLMTemplate("template-openai-id", "openai", "OpenAI Template")))
+		require.NoError(t, db.SaveConfig(&models.StoredConfig{
+			UUID:        "provider-existing-id",
+			Kind:        string(api.LlmProvider),
+			Handle:      "hotel-booking-provider",
+			DisplayName: "Hotel Booking Provider",
+			Version:     "1.0.0",
+		}))
+
+		apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil, nil)
+		service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+
+		_, err := service.DeployLLMProviderConfiguration(LLMDeploymentParams{
+			Data:          testLLMProviderYAML(t, "hotel-booking-provider", "Another Provider", "openai"),
+			ContentType:   "application/yaml",
+			CorrelationID: "test-corr",
+			Logger:        logger,
+			Origin:        models.OriginGatewayAPI,
+		})
+
+		require.Error(t, err)
+		assert.ErrorIs(t, err, storage.ErrConflict)
+		assert.Contains(t, err.Error(), "handle 'hotel-booking-provider' already exists")
+	})
+}
+
 func TestLLMDeploymentService_DeployLLMProxyConfiguration_ParseError(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
@@ -675,6 +861,94 @@ func TestLLMDeploymentService_DeployLLMProxyConfiguration_ParseError(t *testing.
 	_, err := service.DeployLLMProxyConfiguration(params)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to parse")
+}
+
+func TestLLMDeploymentService_DeployLLMProxyConfiguration_ConflictValidation(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	baseProvider := &models.StoredConfig{
+		UUID:        "provider-a-id",
+		Kind:        string(api.LlmProvider),
+		Handle:      "provider-a",
+		DisplayName: "Provider A",
+		Version:     "1.0.0",
+		SourceConfiguration: api.LLMProviderConfiguration{
+			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.LlmProvider,
+			Metadata: api.Metadata{
+				Name: "provider-a",
+			},
+			Spec: api.LLMProviderConfigData{
+				DisplayName: "Provider A",
+				Version:     "1.0.0",
+				Template:    "openai",
+				Upstream: api.LLMProviderConfigData_Upstream{
+					Url: stringPtr("https://example.com"),
+				},
+				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			},
+		},
+	}
+
+	t.Run("rejects duplicate name version from database", func(t *testing.T) {
+		store := storage.NewConfigStore()
+		db := newTestMockDB()
+		routerConfig := &config.RouterConfig{ListenerPort: 8080}
+		require.NoError(t, db.SaveLLMProviderTemplate(testStoredLLMTemplate("template-openai-id", "openai", "OpenAI Template")))
+		require.NoError(t, db.SaveConfig(baseProvider))
+		require.NoError(t, db.SaveConfig(&models.StoredConfig{
+			UUID:        "proxy-existing-id",
+			Kind:        string(api.LlmProxy),
+			Handle:      "existing-proxy",
+			DisplayName: "Assistant Proxy",
+			Version:     "1.0.0",
+		}))
+
+		apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil, nil)
+		service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+
+		_, err := service.DeployLLMProxyConfiguration(LLMDeploymentParams{
+			Data:          testLLMProxyYAML(t, "new-proxy", "Assistant Proxy", "provider-a"),
+			ContentType:   "application/yaml",
+			CorrelationID: "test-corr",
+			Logger:        logger,
+			Origin:        models.OriginGatewayAPI,
+		})
+
+		require.Error(t, err)
+		assert.ErrorIs(t, err, storage.ErrConflict)
+		assert.Contains(t, err.Error(), "name 'Assistant Proxy' and version '1.0.0' already exists")
+	})
+
+	t.Run("rejects duplicate handle from database", func(t *testing.T) {
+		store := storage.NewConfigStore()
+		db := newTestMockDB()
+		routerConfig := &config.RouterConfig{ListenerPort: 8080}
+		require.NoError(t, db.SaveLLMProviderTemplate(testStoredLLMTemplate("template-openai-id", "openai", "OpenAI Template")))
+		require.NoError(t, db.SaveConfig(baseProvider))
+		require.NoError(t, db.SaveConfig(&models.StoredConfig{
+			UUID:        "proxy-existing-id",
+			Kind:        string(api.LlmProxy),
+			Handle:      "assistant-proxy",
+			DisplayName: "Assistant Proxy",
+			Version:     "1.0.0",
+		}))
+
+		apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil, nil)
+		service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+
+		_, err := service.DeployLLMProxyConfiguration(LLMDeploymentParams{
+			Data:          testLLMProxyYAML(t, "assistant-proxy", "Another Proxy", "provider-a"),
+			ContentType:   "application/yaml",
+			CorrelationID: "test-corr",
+			Logger:        logger,
+			Origin:        models.OriginGatewayAPI,
+		})
+
+		require.Error(t, err)
+		assert.ErrorIs(t, err, storage.ErrConflict)
+		assert.Contains(t, err.Error(), "handle 'assistant-proxy' already exists")
+	})
 }
 
 func TestLLMDeploymentService_UpdateLLMProvider_NotFound(t *testing.T) {
