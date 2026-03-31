@@ -1,5 +1,5 @@
 name: host-rewrite
-version: v1.0.0
+version: v1.0.1
 description: |
   Rewrite the Host header of incoming requests before forwarding to the upstream.
 
@@ -12,7 +12,7 @@ parameters:
       description: The new Host header value to set for the request.
       minLength: 1
       maxLength: 255
-      pattern: "^[a-zA-Z0-9.-]+$"
+      pattern: "^[a-zA-Z0-9.:-]+$"
   required:
     - host
 systemParameters:
