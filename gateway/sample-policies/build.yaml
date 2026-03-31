@@ -4,9 +4,6 @@ gateway:
 policies:
   - name: add-headers
     gomodule: github.com/wso2/gateway-controllers/policies/add-headers@v0
-  # UppercaseBody Policy
-  - name: uppercase-body
-    filePath: ./uppercase-body
-  # CountLetters Policy
-  - name: count-letters
-    filePath: ./count-letters
+  # Transform payload case Policy
+  - name: transform-payload-case
+    filePath: ./transform-payload-case
