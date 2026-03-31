@@ -125,6 +125,13 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 	bodyModified := false
 	var targetUpstreamName *string // Track the target upstream for cluster routing
 
+	// Seed analyticsData from execution context so data set in a previous phase
+	// (e.g. request_headers captured during the request-headers phase) is carried
+	// forward when this function is called again for the request-body phase.
+	for key, value := range execCtx.analyticsMetadata {
+		analyticsData[key] = value
+	}
+
 	path := execCtx.requestBodyCtx.Path
 
 	// Collect all operations in order
@@ -221,7 +228,7 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 		apiKind := execCtx.sharedCtx.APIKind
 		apiId := execCtx.sharedCtx.APIId
 		sanitizedDefName := sanitizeUpstreamDefinitionName(*targetUpstreamName)
-		clusterName := constants.UpstreamDefinitionClusterPrefix + apiKind + "_" + apiId + "_" + sanitizedDefName
+		clusterName := constants.UpstreamDefinitionClusterPrefix + string(apiKind) + "_" + apiId + "_" + sanitizedDefName
 
 		// Set the x-target-upstream header directly for cluster_header routing
 		headerOps[constants.TargetUpstreamHeader] = append(headerOps[constants.TargetUpstreamHeader], &headerOp{
@@ -429,7 +436,7 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 		apiKind := execCtx.sharedCtx.APIKind
 		apiId := execCtx.sharedCtx.APIId
 		sanitizedDefName := sanitizeUpstreamDefinitionName(*targetUpstreamName)
-		clusterName := constants.UpstreamDefinitionClusterPrefix + apiKind + "_" + apiId + "_" + sanitizedDefName
+		clusterName := constants.UpstreamDefinitionClusterPrefix + string(apiKind) + "_" + apiId + "_" + sanitizedDefName
 		headerOps[constants.TargetUpstreamHeader] = append(headerOps[constants.TargetUpstreamHeader], &headerOp{opType: "set", value: clusterName})
 		extProcNS := constants.ExtProcFilterName
 		if execCtx.dynamicMetadata[extProcNS] == nil {
@@ -647,7 +654,7 @@ func TranslateRequestHeaderActionsWithBodyMerge(
 		apiKind := execCtx.sharedCtx.APIKind
 		apiId := execCtx.sharedCtx.APIId
 		sanitizedDefName := sanitizeUpstreamDefinitionName(*targetUpstreamName)
-		clusterName := constants.UpstreamDefinitionClusterPrefix + apiKind + "_" + apiId + "_" + sanitizedDefName
+		clusterName := constants.UpstreamDefinitionClusterPrefix + string(apiKind) + "_" + apiId + "_" + sanitizedDefName
 		headerOps[constants.TargetUpstreamHeader] = append(headerOps[constants.TargetUpstreamHeader], &headerOp{opType: "set", value: clusterName})
 		extProcNS := constants.ExtProcFilterName
 		if execCtx.dynamicMetadata[extProcNS] == nil {
@@ -748,9 +755,7 @@ func TranslateResponseHeaderActions(result *executor.ResponseHeaderExecutionResu
 	// Seed with request-phase analytics so they are not lost when RequiresResponseBody=false
 	// and TranslateResponseBodyActions (which also seeds from context) is never called.
 	for key, value := range execCtx.analyticsMetadata {
-		if key != "request_headers" {
-			analyticsData[key] = value
-		}
+		analyticsData[key] = value
 	}
 	mergeDynamicMetadata(dynamicMetadata, execCtx.dynamicMetadata)
 
@@ -921,10 +926,7 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 
 	// Merge analytics data from request phase stored in execution context
 	for key, value := range execCtx.analyticsMetadata {
-		// Skip request_headers as it's handled separately below
-		if key != "request_headers" {
-			analyticsData[key] = value
-		}
+		analyticsData[key] = value
 	}
 	mergeDynamicMetadata(dynamicMetadata, execCtx.dynamicMetadata)
 	var finalBodyLength int
@@ -1159,7 +1161,7 @@ func TranslateResponseBodyActions(result *executor.ResponseExecutionResult, exec
 // buildDynamicMetadata creates the dynamic metadata structure for analytics and path/method rewrite
 func buildDynamicMetadata(analyticsStruct *structpb.Struct, path *string, method *string, extra map[string]map[string]interface{}) *structpb.Struct {
 	namespaces := make(map[string]*structpb.Struct)
-
+	
 	baseFields := make(map[string]*structpb.Value)
 	if analyticsStruct != nil {
 		baseFields["analytics_data"] = structpb.NewStructValue(analyticsStruct)
@@ -1260,12 +1262,14 @@ func TranslateStreamingRequestChunkAction(result *executor.StreamingRequestExecu
 		if pr.Skipped || pr.Action == nil {
 			continue
 		}
-		for key, value := range pr.Action.AnalyticsMetadata {
-			analyticsData[key] = value
-			execCtx.analyticsMetadata[key] = value
+		if fwd, ok := pr.Action.(policy.ForwardRequestChunk); ok {
+			for key, value := range fwd.AnalyticsMetadata {
+				analyticsData[key] = value
+				execCtx.analyticsMetadata[key] = value
+			}
+			mergeDynamicMetadata(dynamicMetadata, fwd.DynamicMetadata)
+			mergeDynamicMetadata(execCtx.dynamicMetadata, fwd.DynamicMetadata)
 		}
-		mergeDynamicMetadata(dynamicMetadata, pr.Action.DynamicMetadata)
-		mergeDynamicMetadata(execCtx.dynamicMetadata, pr.Action.DynamicMetadata)
 	}
 
 	resp := &extprocv3.ProcessingResponse{
@@ -1343,12 +1347,27 @@ func TranslateStreamingResponseChunkAction(result *executor.StreamingResponseExe
 		if pr.Skipped || pr.Action == nil {
 			continue
 		}
-		for key, value := range pr.Action.AnalyticsMetadata {
+		var am map[string]any
+		var dm map[string]map[string]any
+		switch a := pr.Action.(type) {
+		case policy.ForwardResponseChunk:
+			am, dm = a.AnalyticsMetadata, a.DynamicMetadata
+		case policy.TerminateResponseChunk:
+			am, dm = a.AnalyticsMetadata, a.DynamicMetadata
+		}
+		for key, value := range am {
 			analyticsData[key] = value
 			execCtx.analyticsMetadata[key] = value
 		}
-		mergeDynamicMetadata(dynamicMetadata, pr.Action.DynamicMetadata)
-		mergeDynamicMetadata(execCtx.dynamicMetadata, pr.Action.DynamicMetadata)
+		mergeDynamicMetadata(dynamicMetadata, dm)
+		mergeDynamicMetadata(execCtx.dynamicMetadata, dm)
+	}
+
+	// If a policy terminated the stream early (e.g. guardrail intervention), force
+	// EndOfStream so Envoy closes the connection cleanly after delivering the final chunk.
+	endOfStream := originalChunk.EndOfStream || result.StreamTerminated
+	if result.StreamTerminated {
+		slog.Info("[streaming] stream terminated by policy; forcing EndOfStream on final chunk")
 	}
 
 	resp := &extprocv3.ProcessingResponse{
@@ -1359,7 +1378,7 @@ func TranslateStreamingResponseChunkAction(result *executor.StreamingResponseExe
 						Mutation: &extprocv3.BodyMutation_StreamedResponse{
 							StreamedResponse: &extprocv3.StreamedBodyResponse{
 								Body:        outputBody,
-								EndOfStream: originalChunk.EndOfStream,
+								EndOfStream: endOfStream,
 							},
 						},
 					},

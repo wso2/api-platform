@@ -3311,6 +3311,7 @@ github.com/vmihailenco/tagparser/v2 v2.0.0 h1:y09buUbR+b5aycVFQs/g70pqKVZNBmxwAh
 github.com/vmihailenco/tagparser/v2 v2.0.0/go.mod h1:Wri+At7QHww0WTrCBeu4J6bNtoV6mEfg5OIWRZA9qds=
 github.com/wso2/api-platform/sdk v0.3.14/go.mod h1:bH7GqWEZ+JzECJKPIva7JieYRH5AyuW6w9VI5LiAPBw=
 github.com/wso2/api-platform/sdk/core v0.1.6/go.mod h1:vgNVzR16g9k5cun3VXZ7wDg8UGbPxsVU2TW8EbRCv0o=
+github.com/wso2/api-platform/sdk/core v0.2.4/go.mod h1:vgNVzR16g9k5cun3VXZ7wDg8UGbPxsVU2TW8EbRCv0o=
 github.com/wso2/gateway-controllers/policies/advanced-ratelimit v0.1.1/go.mod h1:zjPJeiHlwgHVoPOcS3/F0NYEwqd+IIwXlE2gvjDcAIk=
 github.com/wso2/gateway-controllers/policies/jwt-auth v0.1.1/go.mod h1:ja+VqRS5BT4nxvoCuSDHFpU+yTmxe8E0bZerfhEJoQ0=
 github.com/xdg-go/pbkdf2 v1.0.0 h1:Su7DPu48wXMwC3bs7MCNG+z4FhcyEuz5dlvchbq0B0c=

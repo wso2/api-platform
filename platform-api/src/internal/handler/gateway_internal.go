@@ -420,12 +420,12 @@ func (h *GatewayInternalAPIHandler) GetSubscriptions(c *gin.Context) {
 			return
 		}
 		if errors.Is(err, constants.ErrDeploymentNotActive) {
-			h.slogger.Error("Subscription list denied - API not deployed on gateway",
+			h.slogger.Error("Subscription list denied - API has no active deployment status on gateway",
 				"apiId", apiID,
 				"organizationId", orgID,
 				"gatewayId", gatewayID)
 			c.JSON(http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden",
-				"API is not deployed on this gateway"))
+				"API is not associated with this gateway"))
 			return
 		}
 		h.slogger.Error("Failed to verify API deployment for subscriptions",

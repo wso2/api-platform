@@ -684,6 +684,10 @@ func TestGenerateAuthConfig(t *testing.T) {
 		// Check some expected resource roles
 		assert.Contains(t, authConfig.ResourceRoles, "POST /rest-apis")
 		assert.Contains(t, authConfig.ResourceRoles, "GET /rest-apis")
+		assert.Contains(t, authConfig.ResourceRoles, "POST /llm-providers/:id/api-keys")
+		assert.Contains(t, authConfig.ResourceRoles, "GET /llm-providers/:id/api-keys")
+		assert.Contains(t, authConfig.ResourceRoles, "POST /llm-proxies/:id/api-keys")
+		assert.Contains(t, authConfig.ResourceRoles, "GET /llm-proxies/:id/api-keys")
 		assert.Contains(t, authConfig.ResourceRoles, "GET /policies")
 		assert.NotContains(t, authConfig.ResourceRoles, "GET /config_dump")
 		assert.NotContains(t, authConfig.ResourceRoles, "GET /xds_sync_status")

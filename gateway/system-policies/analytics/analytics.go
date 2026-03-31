@@ -15,15 +15,6 @@ import (
 )
 
 const (
-	// API Kinds
-	KindAsyncsse       = "async/sse"
-	KindAsyncwebsocket = "async/websocket"
-	KindAsyncwebsub    = "async/websub"
-	KindRestApi        = "RestApi"
-	KindLlmProvider    = "LlmProvider"
-	KindLlmProxy       = "LlmProxy"
-	KindMCP            = "Mcp"
-
 	// Analytics metadata keys for LLM token information
 	// These match the keys defined in policy-engine/internal/analytics/analytics.go
 	PromptTokenCountMetadataKey      = "aitoken:prompttokencount"
@@ -132,6 +123,65 @@ func (a *AnalyticsPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
+// OnRequestHeaders collects analytics data available at the request-headers phase.
+// OnRequestBody is called inline for bodyless requests when RequiresRequestBody is true,
+// but OnRequestHeaders acts as a safety net for chains where that condition does not hold,
+// and provides early capture of header-sourced analytics (application ID, MCP session ID).
+func (a *AnalyticsPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.RequestHeaderContext, params map[string]interface{}) policy.RequestHeaderAction {
+	slog.Debug("Analytics system policy: OnRequestHeaders called")
+	analyticsMetadata := make(map[string]any)
+
+	if reqCtx.Headers != nil {
+		if appIDs := reqCtx.Headers.Get("x-wso2-application-id"); len(appIDs) > 0 {
+			analyticsMetadata[ApplicationIDMetadataKey] = appIDs[0]
+		}
+		if appNames := reqCtx.Headers.Get("x-wso2-application-name"); len(appNames) > 0 {
+			analyticsMetadata[ApplicationNameMetadataKey] = appNames[0]
+		}
+	}
+
+	if reqCtx.SharedContext.APIKind == policy.APIKindMCP && reqCtx.Headers != nil {
+		if sessionIDs := reqCtx.Headers.Get("mcp-session-id"); len(sessionIDs) > 0 {
+			analyticsMetadata["mcp_session_id"] = sessionIDs[0]
+		}
+	}
+
+	if len(analyticsMetadata) > 0 {
+		return policy.UpstreamRequestHeaderModifications{AnalyticsMetadata: analyticsMetadata}
+	}
+	return policy.UpstreamRequestHeaderModifications{}
+}
+
+// OnResponseHeaders collects analytics data available at the response-headers phase.
+// Auth context and response headers are already populated here, so we emit them early
+// rather than waiting for the body phase (which may not be reached for header-only responses).
+func (a *AnalyticsPolicy) OnResponseHeaders(_ context.Context, respCtx *policy.ResponseHeaderContext, params map[string]interface{}) policy.ResponseHeaderAction {
+	slog.Debug("Analytics system policy: OnResponseHeaders called")
+	analyticsMetadata := make(map[string]any)
+
+	for authCtx := respCtx.SharedContext.AuthContext; authCtx != nil; authCtx = authCtx.Previous {
+		if authCtx.Authenticated && authCtx.Subject != "" {
+			analyticsMetadata["x-wso2-user-id"] = authCtx.Subject
+			slog.Debug("Analytics system policy: User ID extracted from AuthContext in OnResponseHeaders",
+				"subject", authCtx.Subject,
+				"authType", authCtx.AuthType,
+			)
+			break
+		}
+	}
+
+	if respCtx.SharedContext.APIKind == policy.APIKindMCP && respCtx.ResponseHeaders != nil {
+		if sessionIDs := respCtx.ResponseHeaders.Get("mcp-session-id"); len(sessionIDs) > 0 {
+			analyticsMetadata["mcp_session_id"] = sessionIDs[0]
+		}
+	}
+
+	if len(analyticsMetadata) > 0 {
+		return policy.DownstreamResponseHeaderModifications{AnalyticsMetadata: analyticsMetadata}
+	}
+	return policy.DownstreamResponseHeaderModifications{}
+}
+
 // OnRequestBody performs Analytics collection process during the request phase (buffered).
 func (a *AnalyticsPolicy) OnRequestBody(_ context.Context, ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
 	slog.Debug("Analytics system policy: OnRequestBody called")
@@ -146,13 +196,13 @@ func (a *AnalyticsPolicy) OnRequestBody(_ context.Context, ctx *policy.RequestCo
 
 	apiKind := ctx.SharedContext.APIKind
 	switch apiKind {
-	case KindRestApi:
+	case policy.APIKindRestApi:
 		// Collect analytics data for REST API scenario
-	case KindLlmProvider:
+	case policy.APIKindLlmProvider:
 		// Collect analytics data for AI API(LLM Provider) specific scenario
-	case KindLlmProxy:
+	case policy.APIKindLlmProxy:
 		// Collect analytics data for LLM Proxy specific scenario
-	case KindMCP:
+	case policy.APIKindMCP:
 		// Collect analytics data specific for MCP scenario from request
 		if ctx.Headers != nil && len(ctx.Headers.GetAll()) > 0 {
 			sessionIDs := ctx.Headers.Get("mcp-session-id")
@@ -234,9 +284,9 @@ func (a *AnalyticsPolicy) OnResponseBody(_ context.Context, ctx *policy.Response
 	apiKind := ctx.SharedContext.APIKind
 	slog.Debug("API kind: ", "apiKind", apiKind)
 	switch apiKind {
-	case KindRestApi:
+	case policy.APIKindRestApi:
 		// Collect analytics data for REST API specific scenario
-	case KindLlmProvider, KindLlmProxy:
+	case policy.APIKindLlmProvider, policy.APIKindLlmProxy:
 		templateHandle, ok := ctx.SharedContext.Metadata["template_handle"].(string)
 		slog.Info("Template handle(extracted from route metadata): ", "templateHandle", templateHandle)
 		if !ok || templateHandle == "" {
@@ -264,7 +314,7 @@ func (a *AnalyticsPolicy) OnResponseBody(_ context.Context, ctx *policy.Response
 				}
 			}
 		}
-	case KindMCP:
+	case policy.APIKindMCP:
 		if ctx.ResponseHeaders != nil && len(ctx.ResponseHeaders.GetAll()) > 0 {
 			if analyticsMetadata["mcp_session_id"] == nil {
 				sessionIDs := ctx.ResponseHeaders.Get("mcp-session-id")
@@ -326,7 +376,7 @@ func (a *AnalyticsPolicy) OnResponseBody(_ context.Context, ctx *policy.Response
 // OnResponseBodyChunk handles streaming response body chunks.
 // Chunks are accumulated in SharedContext.Metadata. On EndOfStream the accumulated
 // bytes are parsed and analytics metadata is emitted on the final ResponseChunkAction.
-func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.ResponseStreamContext, chunk *policy.StreamBody, params map[string]interface{}) policy.ResponseChunkAction {
+func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.ResponseStreamContext, chunk *policy.StreamBody, params map[string]interface{}) policy.StreamingResponseAction {
 	slog.Debug("Analytics system policy: OnResponseBodyChunk called")
 	if ctx.SharedContext.Metadata == nil {
 		ctx.SharedContext.Metadata = make(map[string]interface{})
@@ -338,7 +388,7 @@ func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.Res
 	}
 
 	if !chunk.EndOfStream {
-		return policy.ResponseChunkAction{}
+		return policy.ForwardResponseChunk{}
 	}
 
 	// EndOfStream: consume accumulated bytes and emit analytics.
@@ -356,9 +406,9 @@ func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.Res
 
 	apiKind := ctx.SharedContext.APIKind
 	switch apiKind {
-	case KindRestApi:
+	case policy.APIKindRestApi:
 		// No body analytics for REST API
-	case KindLlmProvider, KindLlmProxy:
+	case policy.APIKindLlmProvider, policy.APIKindLlmProxy:
 		templateHandle, ok := ctx.SharedContext.Metadata["template_handle"].(string)
 		if ok && templateHandle != "" {
 			template, err := getTemplateByHandle(templateHandle)
@@ -381,7 +431,7 @@ func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.Res
 				}
 			}
 		}
-	case KindMCP:
+	case policy.APIKindMCP:
 		if ctx.ResponseHeaders != nil {
 			sessionIDs := ctx.ResponseHeaders.Get("mcp-session-id")
 			if len(sessionIDs) > 0 {
@@ -411,9 +461,9 @@ func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.Res
 	}
 
 	if len(analyticsMetadata) == 0 {
-		return policy.ResponseChunkAction{}
+		return policy.ForwardResponseChunk{}
 	}
-	return policy.ResponseChunkAction{AnalyticsMetadata: analyticsMetadata}
+	return policy.ForwardResponseChunk{AnalyticsMetadata: analyticsMetadata}
 }
 
 // NeedsMoreResponseData always returns false: each chunk is processed immediately

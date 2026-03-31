@@ -68,7 +68,11 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_LoadsLLMConfigsFromData
 
 	assert.NoError(t, err)
 	assert.Equal(t, 3, loadedCount)
-	assert.Equal(t, []string{storage.Key(models.KindRestApi, "rest-api")}, resolver.calls)
+	assert.ElementsMatch(t, []string{
+		storage.Key(models.KindRestApi, "rest-api"),
+		storage.Key(models.KindLlmProvider, "provider-a"),
+		storage.Key(models.KindLlmProxy, "proxy-a"),
+	}, resolver.calls)
 	assert.ElementsMatch(t, []string{
 		storage.Key(models.KindRestApi, "rest-api"),
 		storage.Key(models.KindLlmProvider, "provider-a"),
@@ -112,7 +116,10 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_ContinuesAfterResolutio
 
 	assert.NoError(t, err)
 	assert.Equal(t, 1, loadedCount)
-	assert.Equal(t, []string{storage.Key(models.KindRestApi, "bad-rest")}, resolver.calls)
+	assert.ElementsMatch(t, []string{
+		storage.Key(models.KindRestApi, "bad-rest"),
+		storage.Key(models.KindLlmProvider, "provider-a"),
+	}, resolver.calls)
 	assert.Equal(t, []string{storage.Key(models.KindLlmProvider, "provider-a")}, transformer.calls)
 
 	_, ok := runtimeStore.Get(storage.Key(models.KindRestApi, "bad-rest"))

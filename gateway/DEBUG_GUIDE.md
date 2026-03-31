@@ -66,7 +66,7 @@ No extra steps required. Covered by the `sdk` substitutePath entry.
 
 By default `build.yaml` uses `gomodule:` entries — policies compile from the Go module cache at a path like `/go/pkg/mod/...@vX.Y.Z/` inside the container. Add a `substitutePath` entry in `.vscode/launch.json` to map your local policy checkout to that path — no `build.yaml` changes or image rebuild needed.
 
-1. **Find the exact version compiled into the image:** look up the policy in `gateway/build-lock.yaml`. The `version` field is the resolved version and the `gomodule` field gives the module path:
+1. **Find the exact version compiled into the image:** look up the policy in `gateway/build-manifest.yaml`. The `version` field is the resolved version and the `gomodule` field gives the module path:
    ```yaml
    - name: api-key-auth
      version: v1.8.0

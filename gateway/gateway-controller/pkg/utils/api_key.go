@@ -91,6 +91,7 @@ type APIKeyRevocationResult struct {
 
 // APIKeyRegenerationParams contains parameters for API key regeneration operations
 type APIKeyRegenerationParams struct {
+	Kind          string                        // Artifact kind (e.g. RestApi, LlmProvider, LlmProxy); defaults to RestApi if empty
 	Handle        string                        // API handle/ID
 	APIKeyName    string                        // Name of the API key to regenerate
 	Request       api.APIKeyRegenerationRequest // Request body with regeneration details
@@ -129,6 +130,7 @@ type APIKeyUpdateResult struct {
 
 // ListAPIKeyParams contains parameters for listing API keys
 type ListAPIKeyParams struct {
+	Kind          string                    // Artifact kind (e.g. RestApi, LlmProvider, LlmProxy); defaults to RestApi if empty
 	Handle        string                    // API handle/ID
 	User          *commonmodels.AuthContext // User who initiated the request
 	CorrelationID string                    // Correlation ID for tracking
@@ -670,8 +672,13 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 		slog.String("user", user.UserID),
 		slog.String("correlation_id", params.CorrelationID))
 
+	kind := params.Kind
+	if kind == "" {
+		kind = models.KindRestApi
+	}
+
 	// Get the API configuration
-	config, err := s.getAPIConfigByHandle(models.KindRestApi, params.Handle)
+	config, err := s.getAPIConfigByHandle(kind, params.Handle)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
 			logger.Warn("API configuration not found for API Key regeneration",
@@ -812,8 +819,13 @@ func (s *APIKeyService) ListAPIKeys(params ListAPIKeyParams) (*ListAPIKeyResult,
 	}
 	user := params.User
 
+	kind := params.Kind
+	if kind == "" {
+		kind = models.KindRestApi
+	}
+
 	// Validate that API exists
-	config, err := s.getAPIConfigByHandle(models.KindRestApi, params.Handle)
+	config, err := s.getAPIConfigByHandle(kind, params.Handle)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
 			logger.Warn("API configuration not found for API keys listing",

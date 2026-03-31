@@ -156,8 +156,9 @@ func (s *GatewayInternalAPIService) GetActiveLLMProxyDeploymentByGateway(proxyID
 	return proxyYamlMap, nil
 }
 
-// IsAPIDeployedOnGateway returns nil if the API is deployed on the gateway, ErrAPINotFound if the API
-// does not exist, or ErrDeploymentNotActive if the API exists but is not deployed on the gateway.
+// IsAPIDeployedOnGateway returns nil if the API has an active deployment_status row on the gateway
+// (DEPLOYED or UNDEPLOYED), ErrAPINotFound if the API does not exist, or ErrDeploymentNotActive
+// if no active deployment_status exists for the API+gateway.
 func (s *GatewayInternalAPIService) IsAPIDeployedOnGateway(apiID, gatewayID, orgID string) error {
 	api, err := s.apiRepo.GetAPIByUUID(apiID, orgID)
 	if err != nil {
@@ -169,11 +170,15 @@ func (s *GatewayInternalAPIService) IsAPIDeployedOnGateway(apiID, gatewayID, org
 	if api == nil || api.OrganizationID != orgID {
 		return constants.ErrAPINotFound
 	}
-	deployment, err := s.deploymentRepo.GetCurrentByGateway(apiID, gatewayID, orgID)
+
+	deploymentID, status, _, err := s.deploymentRepo.GetStatus(apiID, orgID, gatewayID)
 	if err != nil {
-		return fmt.Errorf("failed to get deployment: %w", err)
+		return fmt.Errorf("failed to get deployment status: %w", err)
 	}
-	if deployment == nil {
+	if deploymentID == "" {
+		return constants.ErrDeploymentNotActive
+	}
+	if status != model.DeploymentStatusDeployed && status != model.DeploymentStatusUndeployed {
 		return constants.ErrDeploymentNotActive
 	}
 	return nil
@@ -518,7 +523,8 @@ func (s *GatewayInternalAPIService) GetDeploymentContentBatch(orgID, gatewayID s
 	return contentMap, nil
 }
 
-// GetAPIKeysByKind returns all API keys for artifacts of the given kind deployed on the gateway.
+// GetAPIKeysByKind returns all API keys for artifacts of the given kind associated with the gateway
+// via deployment_status (DEPLOYED or UNDEPLOYED).
 // When issuer is non-empty only keys whose issuer matches are returned.
 // Each item carries a stable correlationId derived from (artifactUuid, name, updatedAt).
 // source is always "external" and externalRefId is always null.

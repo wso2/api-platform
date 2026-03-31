@@ -190,7 +190,7 @@ func ExtractTraceContext(ctx context.Context) context.Context {
 	if span.IsValid() {
 		slog.DebugContext(ctx, "Successfully extracted trace", "trace_id", span.TraceID().String())
 	} else {
-		slog.WarnContext(ctx, "No valid trace context extracted")
+		slog.InfoContext(ctx, "No valid trace context extracted")
 	}
 
 	return newCtx
