@@ -1,5 +1,5 @@
 name: advanced-ratelimit
-version: v1.0.1
+version: v1.0.2
 description: |
   Applies advanced rate limits using fixed-window (default) or GCRA algorithms with multi-quota controls,
   configurable key and cost extraction, and memory or Redis storage.
@@ -99,8 +99,25 @@ parameters:
                   x-wso2-policy-advanced-param: false
                   description: |
                     Specifies the CEL expression for cel type and requires a string result.
-                  minLength: 1
                   maxLength: 1024
+              allOf:
+                - if:
+                    properties:
+                      type:
+                        enum: ["header", "metadata", "constant"]
+                    required: ["type"]
+                  then:
+                    required: ["key"]
+                - if:
+                    properties:
+                      type:
+                        const: "cel"
+                    required: ["type"]
+                  then:
+                    required: ["expression"]
+                    properties:
+                      expression:
+                        minLength: 1
 
           costExtraction:
             type: object
@@ -122,7 +139,7 @@ parameters:
                 description: |
                   Defines cost extraction sources. Successful values are summed with multipliers.
                   If all sources fail, default is used.
-                minItems: 1
+                minItems: 0
                 maxItems: 10
                 items:
                   type: object
@@ -146,7 +163,6 @@ parameters:
                       x-wso2-policy-advanced-param: false
                       description: |
                         Specifies the header name or metadata key for header and metadata sources.
-                      minLength: 1
                       maxLength: 256
 
                     jsonPath:
@@ -154,7 +170,6 @@ parameters:
                       x-wso2-policy-advanced-param: false
                       description: |
                         Specifies the JSONPath expression for request_body or response_body sources.
-                      minLength: 1
                       maxLength: 512
 
                     expression:
@@ -163,7 +178,6 @@ parameters:
                       description: |
                         Specifies the CEL expression for request_cel or response_cel and requires
                         a numeric result.
-                      minLength: 1
                       maxLength: 1024
 
                     multiplier:
@@ -173,6 +187,37 @@ parameters:
                         Specifies a multiplier applied to the extracted cost value.
                       minimum: 0
                       default: 1.0
+                  allOf:
+                    - if:
+                        properties:
+                          type:
+                            enum: ["request_header", "request_metadata", "response_header", "response_metadata"]
+                        required: ["type"]
+                      then:
+                        required: ["key"]
+                        properties:
+                          key:
+                            minLength: 1
+                    - if:
+                        properties:
+                          type:
+                            enum: ["request_body", "response_body"]
+                        required: ["type"]
+                      then:
+                        required: ["jsonPath"]
+                        properties:
+                          jsonPath:
+                            minLength: 1
+                    - if:
+                        properties:
+                          type:
+                            enum: ["request_cel", "response_cel"]
+                        required: ["type"]
+                      then:
+                        required: ["expression"]
+                        properties:
+                          expression:
+                            minLength: 1
 
               default:
                 type: number
@@ -214,8 +259,25 @@ parameters:
             x-wso2-policy-advanced-param: false
             description: |
               Specifies the CEL expression for cel type and requires a string result.
-            minLength: 1
             maxLength: 1024
+        allOf:
+          - if:
+              properties:
+                type:
+                  enum: ["header", "metadata", "constant"]
+              required: ["type"]
+            then:
+              required: ["key"]
+          - if:
+              properties:
+                type:
+                  const: "cel"
+              required: ["type"]
+            then:
+              required: ["expression"]
+              properties:
+                expression:
+                  minLength: 1
 
     onRateLimitExceeded:
       type: object
