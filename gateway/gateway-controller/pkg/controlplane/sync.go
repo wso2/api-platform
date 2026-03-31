@@ -92,8 +92,40 @@ func (c *Client) syncDeployments(gatewayID string) {
 
 	// 4. Process deletions for orphaned artifacts first (reverse dependency order: REST APIs → proxies → providers)
 	//    Deleting before fetching frees resources and avoids transient route conflicts.
+	//    Before deleting, check with the platform which artifacts still exist — artifacts
+	//    that exist but have no deployment (e.g., deployment was deleted) should be retained
+	//    to preserve their API keys and subscriptions on the gateway.
 	if len(diff.toDelete) > 0 {
-		c.processSyncDeletions(diff.toDelete, gatewayID)
+		if c.apiUtilsService != nil {
+			existingIDs, err := c.apiUtilsService.CheckArtifactsExist(diff.toDelete)
+			if err != nil {
+				c.logger.Warn("Failed to check artifact existence, proceeding with all deletions",
+					slog.Any("error", err),
+					slog.Int("orphan_count", len(diff.toDelete)),
+				)
+			} else if len(existingIDs) > 0 {
+				// Filter out artifacts that still exist on the platform
+				existingSet := make(map[string]struct{}, len(existingIDs))
+				for _, id := range existingIDs {
+					existingSet[id] = struct{}{}
+				}
+				var actualOrphans []string
+				for _, id := range diff.toDelete {
+					if _, exists := existingSet[id]; !exists {
+						actualOrphans = append(actualOrphans, id)
+					} else {
+						c.logger.Info("Retaining artifact (exists on platform but has no deployment)",
+							slog.String("artifact_id", id),
+						)
+					}
+				}
+				diff.toDelete = actualOrphans
+			}
+		}
+
+		if len(diff.toDelete) > 0 {
+			c.processSyncDeletions(diff.toDelete, gatewayID)
+		}
 	}
 
 	// 5. Process fetches in chunked batches (dependency order: providers → proxies → REST APIs)

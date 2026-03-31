@@ -890,9 +890,6 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 		if cfg.Kind != models.KindLlmProvider && cfg.Kind != models.KindLlmProxy && cfg.Kind != models.KindRestApi {
 			continue
 		}
-		if cfg.DesiredState == models.StateUndeployed {
-			continue
-		}
 		artifactUUIDsByKind[cfg.Kind] = append(artifactUUIDsByKind[cfg.Kind], cfg.UUID)
 	}
 
