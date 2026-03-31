@@ -1687,6 +1687,21 @@ func (c *Client) performFullAPIDeletion(apiID string, apiConfig *models.StoredCo
 		)
 	}
 
+	// 3. Delete all subscriptions from database (no FK cascade)
+	if err := c.db.DeleteSubscriptionsForAPINotIn(apiID, nil); err != nil {
+		c.logger.Warn("Failed to delete subscriptions from database",
+			slog.String("api_id", apiID),
+			slog.Any("error", err),
+		)
+	} else {
+		c.logger.Info("Successfully deleted subscriptions from database",
+			slog.String("api_id", apiID),
+		)
+	}
+
+	// Refresh subscription xDS so policy engine drops tokens immediately.
+	c.refreshSubscriptionSnapshot()
+
 	evt := eventhub.Event{
 		EventType: eventhub.EventTypeAPI,
 		Action:    "DELETE",
