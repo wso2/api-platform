@@ -14,6 +14,9 @@ set -euo pipefail
 INPUT="${1:-openapi.md}"
 OUTDIR="${2:-docs}"
 
+# Files that will never be overwritten if they already exist in OUTDIR
+PROTECTED_FILES=("authentication.md")
+
 if [[ ! -f "$INPUT" ]]; then
   echo "Error: $INPUT not found" >&2
   exit 1
@@ -92,6 +95,17 @@ for ((i = 0; i < num_sections; i++)); do
     if echo "$title" | grep -qi "schema"; then
       schemas_file="$filename"
     fi
+
+    # Skip protected files that already exist
+    is_protected=false
+    for protected in "${PROTECTED_FILES[@]}"; do
+      if [[ "$filename" == "$protected" && -f "$OUTDIR/$filename" ]]; then
+        echo "  Skipping protected file: $filename"
+        is_protected=true
+        break
+      fi
+    done
+    [[ "$is_protected" == true ]] && { section_files+=("$filename"); section_titles+=("$title"); continue; }
 
     echo "$section_content" > "$OUTDIR/$filename"
     section_files+=("$filename")

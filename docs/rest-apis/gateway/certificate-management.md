@@ -21,6 +21,15 @@ curl -X GET http://localhost:9090/certificates \
 Retrieve all custom TLS certificates currently loaded in the certificate store.
 These certificates are used for verifying HTTPS upstream connections.
 
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
+
 > Example responses
 
 > 200 Response
@@ -52,10 +61,6 @@ These certificates are used for verifying HTTPS upstream connections.
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of certificates|[CertificateListResponse](schemas.md#schemacertificatelistresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Upload a new certificate
 
 <a id="opIduploadCertificate"></a>
@@ -76,7 +81,7 @@ curl -X POST http://localhost:9090/certificates \
 
 Upload a new TLS certificate (PEM format) to the Gateway. The certificate is loaded dynamically without restarting the Gateway.
 
-> Body parameter
+> Payload
 
 ```json
 {
@@ -84,6 +89,15 @@ Upload a new TLS certificate (PEM format) to the Gateway. The certificate is loa
   "certificate": "-----BEGIN CERTIFICATE-----\nMIIDXTCCAkWgAwIBAgIJAKL0UG+mRKtjMA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV\n...\n-----END CERTIFICATE-----\n"
 }
 ```
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `developer`
+
+</aside>
 
 <h3 id="upload-a-new-certificate-parameters">Parameters</h3>
 
@@ -116,10 +130,6 @@ Upload a new TLS certificate (PEM format) to the Gateway. The certificate is loa
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid certificate format|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Delete a certificate
 
 <a id="opIddeleteCertificate"></a>
@@ -137,6 +147,15 @@ curl -X DELETE http://localhost:9090/certificates/{id} \
 ```
 
 Delete a certificate from the Gateway. The change is applied dynamically without restarting the Gateway.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`
+
+</aside>
 
 <h3 id="delete-a-certificate-parameters">Parameters</h3>
 
@@ -174,10 +193,6 @@ Status Code **200**
 |» message|string|false|none|none|
 |» id|string|false|none|none|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Manually reload certificates
 
 <a id="opIdreloadCertificates"></a>
@@ -195,6 +210,15 @@ curl -X POST http://localhost:9090/certificates/reload \
 ```
 
 Manually trigger a reload of all certificates from the filesystem into the Gateway.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`
+
+</aside>
 
 > Example responses
 
@@ -224,7 +248,3 @@ Status Code **200**
 |» status|string|false|none|none|
 |» message|string|false|none|none|
 |» totalBytes|integer|false|none|Total bytes of all loaded certificates|
-
-<aside class="success">
-This operation does not require authentication
-</aside>

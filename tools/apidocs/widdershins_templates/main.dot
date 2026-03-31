@@ -5,17 +5,10 @@
 
 {{? data.api.servers }}
 Base URLs:
-{{~data.api.servers :s}}
-* <a href="{{=s.url}}">{{=s.url}}</a>
-{{ for(var v in s.variables) { }}
-    * **{{=v}}** - {{=s.variables[v].description||''}} Default: {{=s.variables[v].default}}
-{{? s.variables[v].enum}}
-{{~ s.variables[v].enum :e}}
-        * {{= e}}
-{{~}}
-{{?}}
-{{ } }}
-{{~}}
+{{~data.api.servers :s}}* <a href="{{=s.url}}">{{=s.url}}</a>
+{{~ Object.keys(s.variables||{}) :v}}    * **{{=v}}** - {{=s.variables[v].description||''}} Default: {{=s.variables[v].default}}
+{{? s.variables[v].enum}}{{~ s.variables[v].enum :e}}        * {{= e}}
+{{~}}{{?}}{{~}}{{~}}
 {{?}}
 
 {{? data.api.info && data.api.info.termsOfService}}<a href="{{=data.api.info.termsOfService}}">Terms of service</a>{{?}}

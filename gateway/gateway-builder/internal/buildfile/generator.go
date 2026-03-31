@@ -99,7 +99,7 @@ func (m *BuildInfo) WriteToFile(path string) error {
 	return nil
 }
 
-func WriteBuildLockWithVersions(buildFilePath string, discovered []*types.DiscoveredPolicy) error {
+func WriteBuildManifestWithVersions(buildFilePath string, discovered []*types.DiscoveredPolicy) error {
 	data, err := os.ReadFile(buildFilePath)
 	if err != nil {
 		return fmt.Errorf("failed to read build file '%s': %w", buildFilePath, err)
@@ -192,15 +192,15 @@ func WriteBuildLockWithVersions(buildFilePath string, discovered []*types.Discov
 		lock.Policies = append(lock.Policies, entry)
 	}
 
-	outPath := filepath.Join(buildFileDir, "build-lock.yaml")
+	outPath := filepath.Join(buildFileDir, "build-manifest.yaml")
 	ydata, err := yaml.Marshal(&lock)
 	if err != nil {
 		return fmt.Errorf("failed to marshal lock YAML: %w", err)
 	}
 
-	slog.Info("Writing build lock with versions", "path", outPath)
+	slog.Info("Writing build manifest with versions", "path", outPath)
 	if err := os.WriteFile(outPath, ydata, 0644); err != nil {
-		return fmt.Errorf("failed to write build lock file '%s': %w", outPath, err)
+		return fmt.Errorf("failed to write build manifest file '%s': %w", outPath, err)
 	}
 
 	return nil

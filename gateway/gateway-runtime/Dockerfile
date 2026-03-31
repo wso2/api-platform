@@ -144,7 +144,7 @@ RUN mkdir -p /app /var/run/api-platform /coverage
 
 COPY --from=debug-dlv-builder /go/bin/dlv /usr/local/bin/dlv
 COPY --from=policy-compiler /api-platform/output/gateway-runtime/policy-engine /app/policy-engine
-COPY --from=policy-compiler /api-platform/gateway/build-lock.yaml /app/build-lock.yaml
+COPY --from=policy-compiler /api-platform/gateway/build-manifest.yaml /app/build-manifest.yaml
 COPY router/config/envoy-bootstrap.yaml /etc/envoy/envoy.yaml
 COPY router/config/config-override.yaml /etc/envoy/config-override.yaml
 COPY docker-entrypoint-debug.sh /usr/local/bin/docker-entrypoint.sh
@@ -184,7 +184,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 RUN mkdir -p /app /var/run/api-platform /coverage
 
 COPY --from=policy-compiler /api-platform/output/gateway-runtime/policy-engine /app/policy-engine
-COPY --from=policy-compiler /api-platform/gateway/build-lock.yaml /app/build-lock.yaml
+COPY --from=policy-compiler /api-platform/gateway/build-manifest.yaml /app/build-manifest.yaml
 COPY router/config/envoy-bootstrap.yaml /etc/envoy/envoy.yaml
 COPY router/config/config-override.yaml /etc/envoy/config-override.yaml
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

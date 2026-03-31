@@ -230,8 +230,8 @@ type PolicyServerTLS struct {
 
 // PoliciesConfig holds policy-related configuration
 type PoliciesConfig struct {
-	DefinitionsPath string `koanf:"definitions_path"` // Directory containing policy definitions
-	BuildLockPath   string `koanf:"build_lock_path"`  // Path to build-lock.yaml for custom policy detection
+	DefinitionsPath   string `koanf:"definitions_path"`    // Directory containing policy definitions
+	BuildManifestPath string `koanf:"build_manifest_path"` // Path to build-manifest.yaml for custom policy detection
 }
 
 type LLMConfig struct {
@@ -543,8 +543,8 @@ func defaultConfig() *Config {
 				},
 			},
 			Policies: PoliciesConfig{
-				DefinitionsPath: "./default-policies",
-				BuildLockPath:   "./build-lock.yaml",
+				DefinitionsPath:   "./default-policies",
+				BuildManifestPath: "./build-manifest.yaml",
 			},
 			LLM: LLMConfig{
 				TemplateDefinitionsPath: "./default-llm-provider-templates",

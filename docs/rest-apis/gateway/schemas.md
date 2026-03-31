@@ -34,7 +34,7 @@
         "policies": [
           {
             "name": "log-message",
-            "version": "v0",
+            "version": "v1",
             "params": {
               "request": {
                 "payload": true,
@@ -130,7 +130,8 @@
         "executionCondition": "request.metadata[authenticated] != true",
         "params": {}
       }
-    ]
+    ],
+    "deploymentState": "deployed"
   }
 }
 
@@ -247,7 +248,8 @@
         }
       ]
     }
-  ]
+  ],
+  "deploymentState": "deployed"
 }
 
 ```
@@ -269,6 +271,14 @@
 |subscriptionPlans|[string]|false|none|List of subscription plan names available for this API|
 |policies|[[Policy](#schemapolicy)]|false|none|List of API-level policies applied to all operations unless overridden|
 |operations|[[Operation](#schemaoperation)]|true|none|List of HTTP operations/routes|
+|deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|deploymentState|deployed|
+|deploymentState|undeployed|
 
 <h2 id="tocS_UpstreamDefinition">UpstreamDefinition</h2>
 
@@ -480,7 +490,8 @@ xor
       "executionCondition": "request.metadata[authenticated] != true",
       "params": {}
     }
-  ]
+  ],
+  "deploymentState": "deployed"
 }
 
 ```
@@ -497,6 +508,14 @@ xor
 |» sandbox|string|false|none|Custom virtual host/domain for sandbox traffic|
 |channels|[[Channel](#schemachannel)]|true|none|List of channels - Async operations(SUB) for WebSub APIs|
 |policies|[[Policy](#schemapolicy)]|false|none|List of API-level policies applied to all operations unless overridden|
+|deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|deploymentState|deployed|
+|deploymentState|undeployed|
 
 <h2 id="tocS_Channel">Channel</h2>
 
@@ -1290,7 +1309,7 @@ Details of an API key
             "policies": [
               {
                 "name": "log-message",
-                "version": "v0",
+                "version": "v1",
                 "params": {
                   "request": {
                     "payload": true,
@@ -1403,7 +1422,8 @@ Details of an API key
             "executionCondition": "request.metadata[authenticated] != true",
             "params": {}
           }
-        ]
+        ],
+        "deploymentState": "deployed"
       }
     },
     "metadata": {
@@ -1514,7 +1534,8 @@ Details of an API key
           }
         ]
       }
-    ]
+    ],
+    "deploymentState": "deployed"
   }
 }
 
@@ -1601,7 +1622,8 @@ Details of an API key
         }
       ]
     }
-  ]
+  ],
+  "deploymentState": "deployed"
 }
 
 ```
@@ -1637,6 +1659,14 @@ continued
 |tools|[[MCPTool](#schemamcptool)]|false|none|none|
 |resources|[[MCPResource](#schemamcpresource)]|false|none|none|
 |prompts|[[MCPPrompt](#schemamcpprompt)]|false|none|none|
+|deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the MCP Proxy is removed from router traffic but configuration and policies are preserved for potential redeployment.|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|deploymentState|deployed|
+|deploymentState|undeployed|
 
 <h2 id="tocS_MCPTool">MCPTool</h2>
 
@@ -1906,7 +1936,8 @@ continued
               }
             ]
           }
-        ]
+        ],
+        "deploymentState": "deployed"
       }
     },
     "metadata": {
@@ -2727,7 +2758,8 @@ continued
               }
             ]
           }
-        ]
+        ],
+        "deploymentState": "deployed"
       }
     },
     "deploymentStatus": "deployed",
@@ -2812,7 +2844,8 @@ continued
               }
             ]
           }
-        ]
+        ],
+        "deploymentState": "deployed"
       }
     },
     "deploymentStatus": "deployed",
@@ -2907,7 +2940,8 @@ continued
           }
         ]
       }
-    ]
+    ],
+    "deploymentState": "deployed"
   }
 }
 
@@ -2978,7 +3012,8 @@ continued
         }
       ]
     }
-  ]
+  ],
+  "deploymentState": "deployed"
 }
 
 ```
@@ -3012,6 +3047,14 @@ continued
 |---|---|---|---|---|
 |accessControl|[LLMAccessControl](#schemallmaccesscontrol)|true|none|none|
 |policies|[[LLMPolicy](#schemallmpolicy)]|false|none|List of policies applied only to this operation (overrides or adds to API-level policies)|
+|deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the LLM Provider is removed from router traffic but configuration and policies are preserved for potential redeployment.|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|deploymentState|deployed|
+|deploymentState|undeployed|
 
 <h2 id="tocS_UpstreamAuth">UpstreamAuth</h2>
 
@@ -3266,7 +3309,8 @@ continued
           }
         ]
       }
-    ]
+    ],
+    "deploymentState": "deployed"
   }
 }
 
@@ -3323,7 +3367,8 @@ continued
         }
       ]
     }
-  ]
+  ],
+  "deploymentState": "deployed"
 }
 
 ```
@@ -3338,6 +3383,14 @@ continued
 |vhost|string|false|none|Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).|
 |provider|[LLMProxyProvider](#schemallmproxyprovider)|true|none|none|
 |policies|[[LLMPolicy](#schemallmpolicy)]|false|none|List of policies applied only to this operation (overrides or adds to API-level policies)|
+|deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the LLM Proxy is removed from router traffic but configuration and policies are preserved for potential redeployment.|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|deploymentState|deployed|
+|deploymentState|undeployed|
 
 <h2 id="tocS_SecretConfiguration">SecretConfiguration</h2>
 

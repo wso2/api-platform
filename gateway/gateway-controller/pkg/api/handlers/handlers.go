@@ -1445,7 +1445,7 @@ func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID stri
 			if err != nil {
 				log.Warn("Config not found while waiting for deployment completion",
 					slog.String("config_id", configID))
-				return
+				continue
 			}
 
 			if cfg.DeployedAt != nil {
@@ -1971,6 +1971,414 @@ func (s *APIServer) ListAPIKeys(c *gin.Context, id string) {
 		slog.String("correlation_id", correlationID))
 
 	// Return the response using the generated schema
+	c.JSON(http.StatusOK, result.Response)
+}
+
+// CreateLLMProviderAPIKey implements ServerInterface.CreateLLMProviderAPIKey
+// (POST /llm-providers/{id}/api-keys)
+func (s *APIServer) CreateLLMProviderAPIKey(c *gin.Context, id string) {
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	user, ok := s.extractAuthenticatedUser(c, "CreateLLMProviderAPIKey", correlationID)
+	if !ok {
+		return
+	}
+
+	var request api.APIKeyCreationRequest
+	if err := s.bindRequestBody(c, &request); err != nil {
+		log.Error("Failed to parse request body for LLM provider API key creation",
+			slog.Any("error", err),
+			slog.String("handle", handle),
+			slog.String("correlation_id", correlationID))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		return
+	}
+
+	params := utils.APIKeyCreationParams{
+		Kind:          models.KindLlmProvider,
+		Handle:        handle,
+		Request:       request,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.CreateAPIKey(params)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
+			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusCreated, result.Response)
+}
+
+// RevokeLLMProviderAPIKey implements ServerInterface.RevokeLLMProviderAPIKey
+// (DELETE /llm-providers/{id}/api-keys/{apiKeyName})
+func (s *APIServer) RevokeLLMProviderAPIKey(c *gin.Context, id string, apiKeyName string) {
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	user, ok := s.extractAuthenticatedUser(c, "RevokeLLMProviderAPIKey", correlationID)
+	if !ok {
+		return
+	}
+
+	params := utils.APIKeyRevocationParams{
+		Kind:          models.KindLlmProvider,
+		Handle:        handle,
+		APIKeyName:    apiKeyName,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.RevokeAPIKey(params)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, result.Response)
+}
+
+// UpdateLLMProviderAPIKey implements ServerInterface.UpdateLLMProviderAPIKey
+// (PUT /llm-providers/{id}/api-keys/{apiKeyName})
+func (s *APIServer) UpdateLLMProviderAPIKey(c *gin.Context, id string, apiKeyName string) {
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	user, ok := s.extractAuthenticatedUser(c, "UpdateLLMProviderAPIKey", correlationID)
+	if !ok {
+		return
+	}
+
+	var request api.APIKeyCreationRequest
+	if err := s.bindRequestBody(c, &request); err != nil {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		return
+	}
+
+	if request.ApiKey == nil || strings.TrimSpace(*request.ApiKey) == "" {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "apiKey is required"})
+		return
+	}
+
+	params := utils.APIKeyUpdateParams{
+		Kind:          models.KindLlmProvider,
+		Handle:        handle,
+		APIKeyName:    apiKeyName,
+		Request:       request,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.UpdateAPIKey(params)
+	if err != nil {
+		if storage.IsOperationNotAllowedError(err) {
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
+			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, result.Response)
+}
+
+// RegenerateLLMProviderAPIKey implements ServerInterface.RegenerateLLMProviderAPIKey
+// (POST /llm-providers/{id}/api-keys/{apiKeyName}/regenerate)
+func (s *APIServer) RegenerateLLMProviderAPIKey(c *gin.Context, id string, apiKeyName string) {
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	user, ok := s.extractAuthenticatedUser(c, "RegenerateLLMProviderAPIKey", correlationID)
+	if !ok {
+		return
+	}
+
+	var request api.APIKeyRegenerationRequest
+	if err := s.bindRequestBody(c, &request); err != nil {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		return
+	}
+
+	params := utils.APIKeyRegenerationParams{
+		Kind:          models.KindLlmProvider,
+		Handle:        handle,
+		APIKeyName:    apiKeyName,
+		Request:       request,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.RegenerateAPIKey(params)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, result.Response)
+}
+
+// ListLLMProviderAPIKeys implements ServerInterface.ListLLMProviderAPIKeys
+// (GET /llm-providers/{id}/api-keys)
+func (s *APIServer) ListLLMProviderAPIKeys(c *gin.Context, id string) {
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	user, ok := s.extractAuthenticatedUser(c, "ListLLMProviderAPIKeys", correlationID)
+	if !ok {
+		return
+	}
+
+	params := utils.ListAPIKeyParams{
+		Kind:          models.KindLlmProvider,
+		Handle:        handle,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.ListAPIKeys(params)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, result.Response)
+}
+
+// CreateLLMProxyAPIKey implements ServerInterface.CreateLLMProxyAPIKey
+// (POST /llm-proxies/{id}/api-keys)
+func (s *APIServer) CreateLLMProxyAPIKey(c *gin.Context, id string) {
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	user, ok := s.extractAuthenticatedUser(c, "CreateLLMProxyAPIKey", correlationID)
+	if !ok {
+		return
+	}
+
+	var request api.APIKeyCreationRequest
+	if err := s.bindRequestBody(c, &request); err != nil {
+		log.Error("Failed to parse request body for LLM proxy API key creation",
+			slog.Any("error", err),
+			slog.String("handle", handle),
+			slog.String("correlation_id", correlationID))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		return
+	}
+
+	params := utils.APIKeyCreationParams{
+		Kind:          models.KindLlmProxy,
+		Handle:        handle,
+		Request:       request,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.CreateAPIKey(params)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
+			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusCreated, result.Response)
+}
+
+// RevokeLLMProxyAPIKey implements ServerInterface.RevokeLLMProxyAPIKey
+// (DELETE /llm-proxies/{id}/api-keys/{apiKeyName})
+func (s *APIServer) RevokeLLMProxyAPIKey(c *gin.Context, id string, apiKeyName string) {
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	user, ok := s.extractAuthenticatedUser(c, "RevokeLLMProxyAPIKey", correlationID)
+	if !ok {
+		return
+	}
+
+	params := utils.APIKeyRevocationParams{
+		Kind:          models.KindLlmProxy,
+		Handle:        handle,
+		APIKeyName:    apiKeyName,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.RevokeAPIKey(params)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, result.Response)
+}
+
+// UpdateLLMProxyAPIKey implements ServerInterface.UpdateLLMProxyAPIKey
+// (PUT /llm-proxies/{id}/api-keys/{apiKeyName})
+func (s *APIServer) UpdateLLMProxyAPIKey(c *gin.Context, id string, apiKeyName string) {
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	user, ok := s.extractAuthenticatedUser(c, "UpdateLLMProxyAPIKey", correlationID)
+	if !ok {
+		return
+	}
+
+	var request api.APIKeyCreationRequest
+	if err := s.bindRequestBody(c, &request); err != nil {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		return
+	}
+
+	if request.ApiKey == nil || strings.TrimSpace(*request.ApiKey) == "" {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "apiKey is required"})
+		return
+	}
+
+	params := utils.APIKeyUpdateParams{
+		Kind:          models.KindLlmProxy,
+		Handle:        handle,
+		APIKeyName:    apiKeyName,
+		Request:       request,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.UpdateAPIKey(params)
+	if err != nil {
+		if storage.IsOperationNotAllowedError(err) {
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
+			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, result.Response)
+}
+
+// RegenerateLLMProxyAPIKey implements ServerInterface.RegenerateLLMProxyAPIKey
+// (POST /llm-proxies/{id}/api-keys/{apiKeyName}/regenerate)
+func (s *APIServer) RegenerateLLMProxyAPIKey(c *gin.Context, id string, apiKeyName string) {
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	user, ok := s.extractAuthenticatedUser(c, "RegenerateLLMProxyAPIKey", correlationID)
+	if !ok {
+		return
+	}
+
+	var request api.APIKeyRegenerationRequest
+	if err := s.bindRequestBody(c, &request); err != nil {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		return
+	}
+
+	params := utils.APIKeyRegenerationParams{
+		Kind:          models.KindLlmProxy,
+		Handle:        handle,
+		APIKeyName:    apiKeyName,
+		Request:       request,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.RegenerateAPIKey(params)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, result.Response)
+}
+
+// ListLLMProxyAPIKeys implements ServerInterface.ListLLMProxyAPIKeys
+// (GET /llm-proxies/{id}/api-keys)
+func (s *APIServer) ListLLMProxyAPIKeys(c *gin.Context, id string) {
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	user, ok := s.extractAuthenticatedUser(c, "ListLLMProxyAPIKeys", correlationID)
+	if !ok {
+		return
+	}
+
+	params := utils.ListAPIKeyParams{
+		Kind:          models.KindLlmProxy,
+		Handle:        handle,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.ListAPIKeys(params)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
 	c.JSON(http.StatusOK, result.Response)
 }
 

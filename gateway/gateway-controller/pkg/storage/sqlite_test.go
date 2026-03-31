@@ -442,6 +442,22 @@ func TestSQLiteStorage_GetAllConfigsByKind_JSONError(t *testing.T) {
 	assert.Assert(t, err != nil)
 }
 
+func TestSQLiteStorage_GetConfigByKindNameAndVersion(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	cfg := createTestStoredConfig()
+	err := storage.SaveConfig(cfg)
+	assert.NilError(t, err)
+
+	found, err := storage.GetConfigByKindNameAndVersion(cfg.Kind, cfg.DisplayName, cfg.Version)
+	assert.NilError(t, err)
+	assert.Equal(t, found.UUID, cfg.UUID)
+
+	_, err = storage.GetConfigByKindNameAndVersion(cfg.Kind, "missing", cfg.Version)
+	assert.Assert(t, errors.Is(err, ErrNotFound))
+}
+
 func TestLoadLLMProviderTemplatesFromDatabase_Success(t *testing.T) {
 	storage := setupTestStorage(t)
 	defer storage.db.Close()
@@ -579,6 +595,22 @@ func TestSQLiteStorage_GetAllLLMProviderTemplates_JSONError(t *testing.T) {
 
 	_, err = storage.GetAllLLMProviderTemplates()
 	assert.Assert(t, err != nil)
+}
+
+func TestSQLiteStorage_GetLLMProviderTemplateByHandle(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	template := createTestLLMProviderTemplate()
+	err := storage.SaveLLMProviderTemplate(template)
+	assert.NilError(t, err)
+
+	found, err := storage.GetLLMProviderTemplateByHandle(template.GetHandle())
+	assert.NilError(t, err)
+	assert.Equal(t, found.UUID, template.UUID)
+
+	_, err = storage.GetLLMProviderTemplateByHandle("missing-template")
+	assert.Assert(t, errors.Is(err, ErrNotFound))
 }
 
 func TestSQLiteStorage_SaveCertificate_UniqueConstraintError(t *testing.T) {

@@ -121,6 +121,11 @@ type PolicyExecutionContext struct {
 	// responseStreamDecomp performs per-chunk decompression for compressed streaming
 	// response bodies. Nil when the response is not Content-Encoded.
 	responseStreamDecomp *streamDecompressor
+	// streamTerminated is set when a policy returns TerminateStream=true. Any
+	// subsequent upstream chunks that Envoy delivers after we have already sent
+	// EndOfStream downstream are silently suppressed — the downstream connection
+	// is already closed and forwarding more data would be undefined behaviour.
+	streamTerminated bool
 
 	// Reference to server components
 	server *ExternalProcessorServer
@@ -193,10 +198,12 @@ func (ec *PolicyExecutionContext) getModeOverride(phase processingPhase) *extpro
 	}
 
 	if ec.policyChain.RequiresResponseBody {
+		mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_BUFFERED
 		if ec.isStreamingResponse {
 			mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED
-		} else {
-			mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_BUFFERED
+			slog.Debug("[mode] upgraded response body mode to FULL_DUPLEX_STREAMED",
+				"route", ec.routeKey,
+			)
 		}
 	} else {
 		mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_NONE
@@ -688,6 +695,31 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 	ctx context.Context,
 	body *extprocv3.HttpBody,
 ) (*extprocv3.ProcessingResponse, error) {
+	// A policy previously terminated the stream (TerminateStream=true). Envoy may
+	// still deliver buffered upstream chunks after we have already sent EndOfStream
+	// downstream — suppress them with an empty streamed response so we do not attempt
+	// to write to a closed downstream connection.
+	if ec.streamTerminated {
+		slog.Warn("[streaming] received upstream chunk after stream was already terminated; suppressing",
+			"route", ec.routeKey,
+			"chunk_bytes", len(body.Body),
+			"end_of_stream", body.EndOfStream,
+		)
+		return &extprocv3.ProcessingResponse{
+			Response: &extprocv3.ProcessingResponse_ResponseBody{
+				ResponseBody: &extprocv3.BodyResponse{
+					Response: &extprocv3.CommonResponse{
+						BodyMutation: &extprocv3.BodyMutation{
+							Mutation: &extprocv3.BodyMutation_StreamedResponse{
+								StreamedResponse: &extprocv3.StreamedBodyResponse{},
+							},
+						},
+					},
+				},
+			},
+		}, nil
+	}
+
 	chunk := &policy.StreamBody{
 		Chunk:       body.Body,
 		EndOfStream: body.EndOfStream,
@@ -751,6 +783,9 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 		)
 		if err != nil {
 			return ec.handlePolicyError(ctx, err, "response_body_streaming"), nil
+		}
+		if execResult.StreamTerminated {
+			ec.streamTerminated = true
 		}
 		return TranslateStreamingResponseChunkAction(execResult, chunk, ec)
 	}
@@ -830,6 +865,9 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 		return ec.handlePolicyError(ctx, err, "response_body_streaming"), nil
 	}
 
+	if execResult.StreamTerminated {
+		ec.streamTerminated = true
+	}
 	return TranslateStreamingResponseChunkAction(execResult, flushChunk, ec)
 }
 

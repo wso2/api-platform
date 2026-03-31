@@ -5,7 +5,7 @@ allow_payloads = false
 enabled_publishers = ["moesif"]
 
 [analytics.publishers.moesif]
-application_id = "<MOESIF_APPLICATION_ID>"
+application_id = "eyJhcHAiOiI0OTM6MzEyMiIsInZlciI6IjIuMSIsIm9yZyI6IjE3Nzo2MDciLCJpYXQiOjE3NzIzMjMyMDB9.ouPbPpBFdII0Kz1bxx2t9c2DFVwRx3QNBlzVqHpnCvw"
 
 [router]
 gateway_host = "*"

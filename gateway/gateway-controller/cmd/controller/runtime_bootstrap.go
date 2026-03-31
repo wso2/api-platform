@@ -186,7 +186,7 @@ func supportsRuntimeBootstrapKind(kind string) bool {
 
 func requiresStartupPolicyResolution(kind string) bool {
 	switch kind {
-	case models.KindRestApi, models.KindWebSubApi, models.KindMcp:
+	case models.KindRestApi, models.KindWebSubApi, models.KindMcp, models.KindLlmProvider, models.KindLlmProxy:
 		return true
 	default:
 		return false
