@@ -856,7 +856,7 @@ func TranslateResponseHeaderActionsWithBodyMerge(
 			if err != nil {
 				return nil, fmt.Errorf("failed to build analytics metadata for immediate response: %w", err)
 			}
-			response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, nil, immResp.DynamicMetadata)
+			response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, immResp.DynamicMetadata)
 			return response, nil
 		}
 	}
@@ -994,7 +994,7 @@ func TranslateResponseHeaderActionsWithBodyMerge(
 	if err != nil {
 		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 	}
-	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, nil, dynamicMetadata)
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, dynamicMetadata)
 
 	return response, nil
 }
