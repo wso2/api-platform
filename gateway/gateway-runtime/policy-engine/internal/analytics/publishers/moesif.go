@@ -156,7 +156,14 @@ func (m *Moesif) Publish(event *dto.Event) {
 			var hMap map[string]interface{}
 			if err := json.Unmarshal([]byte(jsonStr), &hMap); err == nil && len(hMap) > 0 {
 				slog.Debug("Unmarshalled hMap (PUBLISHER): ", "requestHeaders", hMap)
-				headers = hMap
+				merged := make(map[string]interface{})
+				for k, v := range defaultReqHeaders {
+					merged[k] = v
+				}
+				for k, v := range hMap {
+					merged[k] = v
+				}
+				headers = merged
 			} else if err != nil {
 				slog.Warn("Failed to unmarshal request headers", "error", err)
 			}
@@ -170,7 +177,14 @@ func (m *Moesif) Publish(event *dto.Event) {
 			var hMap map[string]interface{}
 			if err := json.Unmarshal([]byte(jsonStr), &hMap); err == nil && len(hMap) > 0 {
 				slog.Debug("Unmarshalled hMap (PUBLISHER): ", "responseHeaders", hMap)
-				rspHeaders = hMap
+				merged := make(map[string]interface{})
+				for k, v := range defaultRspHeaders {
+					merged[k] = v
+				}
+				for k, v := range hMap {
+					merged[k] = v
+				}
+				rspHeaders = merged
 			} else if err != nil {
 				slog.Warn("Failed to unmarshal response headers", "error", err)
 			}

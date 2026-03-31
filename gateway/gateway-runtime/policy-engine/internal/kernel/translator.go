@@ -125,6 +125,13 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 	bodyModified := false
 	var targetUpstreamName *string // Track the target upstream for cluster routing
 
+	// Seed analyticsData from execution context so data set in a previous phase
+	// (e.g. request_headers captured during the request-headers phase) is carried
+	// forward when this function is called again for the request-body phase.
+	for key, value := range execCtx.analyticsMetadata {
+		analyticsData[key] = value
+	}
+
 	path := execCtx.requestBodyCtx.Path
 
 	// Collect all operations in order
@@ -747,10 +754,12 @@ func TranslateResponseHeaderActions(result *executor.ResponseHeaderExecutionResu
 
 	// Seed with request-phase analytics so they are not lost when RequiresResponseBody=false
 	// and TranslateResponseBodyActions (which also seeds from context) is never called.
+	analyticsMetadataKeys := make([]string, 0, len(execCtx.analyticsMetadata))
+	for k := range execCtx.analyticsMetadata {
+		analyticsMetadataKeys = append(analyticsMetadataKeys, k)
+	}
 	for key, value := range execCtx.analyticsMetadata {
-		if key != "request_headers" {
-			analyticsData[key] = value
-		}
+		analyticsData[key] = value
 	}
 	mergeDynamicMetadata(dynamicMetadata, execCtx.dynamicMetadata)
 
@@ -920,11 +929,12 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 	headerMutation = &extprocv3.HeaderMutation{}
 
 	// Merge analytics data from request phase stored in execution context
+	reqMetaKeys := make([]string, 0, len(execCtx.analyticsMetadata))
+	for k := range execCtx.analyticsMetadata {
+		reqMetaKeys = append(reqMetaKeys, k)
+	}
 	for key, value := range execCtx.analyticsMetadata {
-		// Skip request_headers as it's handled separately below
-		if key != "request_headers" {
-			analyticsData[key] = value
-		}
+		analyticsData[key] = value
 	}
 	mergeDynamicMetadata(dynamicMetadata, execCtx.dynamicMetadata)
 	var finalBodyLength int
@@ -1140,6 +1150,10 @@ func TranslateResponseBodyActions(result *executor.ResponseExecutionResult, exec
 	}
 
 	// Add analytics metadata if present
+	analyticsDataKeys := make([]string, 0, len(analyticsData))
+	for k := range analyticsData {
+		analyticsDataKeys = append(analyticsDataKeys, k)
+	}
 	if len(analyticsData) > 0 {
 		analyticsStruct, err := buildAnalyticsStruct(analyticsData, execCtx)
 		if err != nil {
@@ -1159,7 +1173,7 @@ func TranslateResponseBodyActions(result *executor.ResponseExecutionResult, exec
 // buildDynamicMetadata creates the dynamic metadata structure for analytics and path/method rewrite
 func buildDynamicMetadata(analyticsStruct *structpb.Struct, path *string, method *string, extra map[string]map[string]interface{}) *structpb.Struct {
 	namespaces := make(map[string]*structpb.Struct)
-
+	
 	baseFields := make(map[string]*structpb.Value)
 	if analyticsStruct != nil {
 		baseFields["analytics_data"] = structpb.NewStructValue(analyticsStruct)
