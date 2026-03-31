@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -178,6 +179,11 @@ func FetchMCPServerInfo(url string, headerName string, headerValue string) (*api
 		return nil, fmt.Errorf("failed to send notification: %w", err)
 	}
 
+	resp := &api.MCPServerInfoFetchResponse{}
+	if serverInfo != nil {
+		resp.ServerInfo = &serverInfo
+	}
+
 	// Step 3: Fetch tools
 	toolsReq := JsonRPCRequest{
 		JSONRPC: JsonRpcVersion,
@@ -186,14 +192,16 @@ func FetchMCPServerInfo(url string, headerName string, headerValue string) (*api
 	}
 	toolsResp, err := postJSONRPCWithSession(url, toolsReq, sessionID, headerName, headerValue)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get tools: %w", err)
-	}
-	var toolsResult ToolsResult
-	if err := json.Unmarshal(toolsResp, &toolsResult); err != nil {
-		return nil, fmt.Errorf("failed to parse tools response: %w", err)
-	}
-	if toolsResult.Error != nil {
-		return nil, fmt.Errorf("tools/list request returned an error: %s", toolsResult.Error.Message)
+		slog.Default().Warn("Failed to fetch MCP tools, continuing with available info", "error", err)
+	} else {
+		var toolsResult ToolsResult
+		if err := json.Unmarshal(toolsResp, &toolsResult); err != nil {
+			slog.Default().Warn("Failed to parse MCP tools response, continuing with available info", "error", err)
+		} else if toolsResult.Error != nil {
+			slog.Default().Warn("tools/list returned an error, continuing with available info", "error", toolsResult.Error.Message)
+		} else if len(toolsResult.Result.Tools) > 0 {
+			resp.Tools = &toolsResult.Result.Tools
+		}
 	}
 
 	// Step 4: Fetch prompts
@@ -204,14 +212,16 @@ func FetchMCPServerInfo(url string, headerName string, headerValue string) (*api
 	}
 	promptsResp, err := postJSONRPCWithSession(url, promptsReq, sessionID, headerName, headerValue)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get prompts: %w", err)
-	}
-	var promptsResult PromptsResult
-	if err := json.Unmarshal(promptsResp, &promptsResult); err != nil {
-		return nil, fmt.Errorf("failed to parse prompts response: %w", err)
-	}
-	if promptsResult.Error != nil {
-		return nil, fmt.Errorf("prompts/list request returned an error: %s", promptsResult.Error.Message)
+		slog.Default().Warn("Failed to fetch MCP prompts, continuing with available info", "error", err)
+	} else {
+		var promptsResult PromptsResult
+		if err := json.Unmarshal(promptsResp, &promptsResult); err != nil {
+			slog.Default().Warn("Failed to parse MCP prompts response, continuing with available info", "error", err)
+		} else if promptsResult.Error != nil {
+			slog.Default().Warn("prompts/list returned an error, continuing with available info", "error", promptsResult.Error.Message)
+		} else if len(promptsResult.Result.Prompts) > 0 {
+			resp.Prompts = &promptsResult.Result.Prompts
+		}
 	}
 
 	// Step 5: Fetch resources
@@ -222,30 +232,16 @@ func FetchMCPServerInfo(url string, headerName string, headerValue string) (*api
 	}
 	resourcesResp, err := postJSONRPCWithSession(url, resourcesReq, sessionID, headerName, headerValue)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get resources: %w", err)
-	}
-	var resourcesResult ResourcesResult
-	if err := json.Unmarshal(resourcesResp, &resourcesResult); err != nil {
-		return nil, fmt.Errorf("failed to parse resources response: %w", err)
-	}
-	if resourcesResult.Error != nil {
-		return nil, fmt.Errorf("resources/list request returned an error: %s", resourcesResult.Error.Message)
-	}
-
-	// Build response
-	resp := &api.MCPServerInfoFetchResponse{}
-
-	if len(toolsResult.Result.Tools) > 0 {
-		resp.Tools = &toolsResult.Result.Tools
-	}
-	if len(promptsResult.Result.Prompts) > 0 {
-		resp.Prompts = &promptsResult.Result.Prompts
-	}
-	if len(resourcesResult.Result.Resources) > 0 {
-		resp.Resources = &resourcesResult.Result.Resources
-	}
-	if serverInfo != nil {
-		resp.ServerInfo = &serverInfo
+		slog.Default().Warn("Failed to fetch MCP resources, continuing with available info", "error", err)
+	} else {
+		var resourcesResult ResourcesResult
+		if err := json.Unmarshal(resourcesResp, &resourcesResult); err != nil {
+			slog.Default().Warn("Failed to parse MCP resources response, continuing with available info", "error", err)
+		} else if resourcesResult.Error != nil {
+			slog.Default().Warn("resources/list returned an error, continuing with available info", "error", resourcesResult.Error.Message)
+		} else if len(resourcesResult.Result.Resources) > 0 {
+			resp.Resources = &resourcesResult.Result.Resources
+		}
 	}
 
 	return resp, nil
@@ -293,6 +289,9 @@ func initializeMCPServer(url string, headerName string, headerValue string) (str
 	}
 
 	// Check HTTP status code
+	if resp.StatusCode == http.StatusUnauthorized {
+		return "", nil, constants.ErrMCPServerUnauthorized
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", nil, fmt.Errorf("initialize request failed with status %d: %s", resp.StatusCode, string(body))
 	}
