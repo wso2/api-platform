@@ -43,7 +43,7 @@ type SecretSteps struct {
 func NewSecretSteps(state *TestState, httpSteps *steps.HTTPSteps) *SecretSteps {
 	return &SecretSteps{
 		state:      state,
-		httpSteps:   httpSteps,
+		httpSteps:  httpSteps,
 		lastSecret: &secretResponse{},
 	}
 }
@@ -71,10 +71,6 @@ func RegisterSecretSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps
 
 	// Delete secret steps
 	ctx.Step(`^I delete the secret "([^"]*)"$`, secretSteps.deleteSecret)
-
-	// Store secret reference for later use
-	ctx.Step(`^I store the secret name as "([^"]*)"$`, secretSteps.storeSecretName)
-	ctx.Step(`^I use the stored secret "([^"]*)"$`, secretSteps.useStoredSecret)
 }
 
 // createSecret creates a secret with the provided JSON configuration
@@ -181,33 +177,10 @@ func (s *SecretSteps) deleteSecret(name string) error {
 		return err
 	}
 
-	if s.httpSteps.LastResponse().StatusCode == 204 {
+	if s.httpSteps.LastResponse().StatusCode == 200 {
 		if s.lastSecret.name == name {
 			s.lastSecret.exists = false
 		}
 	}
-	return nil
-}
-
-// storeSecretName stores the current secret name for later use
-func (s *SecretSteps) storeSecretName(key string) error {
-	if s.lastSecret.name == "" {
-		return fmt.Errorf("no secret name available to store")
-	}
-	s.state.SetContextValue(key, s.lastSecret.name)
-	return nil
-}
-
-// useStoredSecret retrieves a stored secret name and sets it as the current secret
-func (s *SecretSteps) useStoredSecret(key string) error {
-	val, ok := s.state.GetContextValue(key)
-	if !ok {
-		return fmt.Errorf("no stored secret found with key: %s", key)
-	}
-	name, ok := val.(string)
-	if !ok {
-		return fmt.Errorf("stored value is not a string")
-	}
-	s.lastSecret.name = name
 	return nil
 }

@@ -346,3 +346,78 @@ Feature: Secret Management Operations
   Scenario: Delete secret is idempotent - deleting non-existent secret returns 404
     When I delete the secret "non-existent-secret-99999"
     Then the response status should be 404
+
+  Scenario: Invoke an LLM Provider that uses a secret for configuration
+    When I create a secret named "upstream-secret" with value "ssk-test-auth-key-12345"
+    Then the response status should be 201
+    And the response should be valid JSON
+    And the JSON response field "id" should be "upstream-secret"
+
+    When I create this LLM provider:
+        """
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProvider
+        metadata:
+          name: invoke-auth-provider-secret
+        spec:
+          displayName: Invoke Auth Provider
+          version: v1.0
+          template: openai
+          context: /llm-auth-secret
+          upstream:
+            url: http://mock-openapi:4010/openai/v1
+            auth:
+              type: api-key
+              header: Authorization
+              value: Bearer $secret{upstream-secret}
+          accessControl:
+            mode: allow_all
+        """
+    Then the response status code should be 201
+    And I wait for 3 seconds
+
+    # Request should succeed (mock validates auth header presence)
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/llm-auth-secret/chat/completions" with body:
+      """
+      {
+        "model": "gpt-4",
+        "messages": [{"role": "user", "content": "Test auth"}]
+      }
+      """
+    Then the response status code should be 200
+    And the response should be valid JSON
+    And the JSON response field "object" should be "chat.completion"
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "invoke-auth-provider-secret"
+    Then the response status code should be 200
+
+    When I delete the secret "upstream-secret"
+    Then the response status should be 200
+
+  Scenario: Create LLM Provider with a secret that does not exist
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: invalid-secret-llm-provider
+      spec:
+        displayName: Invalid Secret LLM Provider
+        version: v1.0
+        template: openai
+        context: /invalid-secret-test
+        upstream:
+          url: http://mock-openapi:4010/openai/v1
+          auth:
+            type: api-key
+            header: Authorization
+            value: Bearer $secret{non-existent-secret-abcde}
+        accessControl:
+          mode: allow_all
+      """
+    
+    Then the response status code should be 400
+
