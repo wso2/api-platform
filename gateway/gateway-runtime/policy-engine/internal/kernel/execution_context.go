@@ -188,7 +188,9 @@ func (ec *PolicyExecutionContext) handlePolicyError(
 // The upgrade to streaming happens at response-headers phase via
 // getStreamingResponseModeOverride when a streaming upstream response is detected.
 func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingMode {
-	mode := &extprocconfigv3.ProcessingMode{}
+	mode := &extprocconfigv3.ProcessingMode{
+		ResponseHeaderMode: extprocconfigv3.ProcessingMode_SEND,
+	}
 
 	if ec.policyChain.RequiresRequestBody {
 		if ec.isStreamingRequest {
@@ -210,9 +212,9 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 			// response with empty body, Envoy is not sending a request to the Policy Engine.
 			// Hence skip MCP.
 			mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED
-            slog.Debug("[mode] upgraded response body mode to FULL_DUPLEX_STREAMED",
-                "route", ec.routeKey,
-            )
+			slog.Debug("[mode] upgraded response body mode to FULL_DUPLEX_STREAMED",
+				"route", ec.routeKey,
+			)
 		} else {
 			mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_BUFFERED
 		}
