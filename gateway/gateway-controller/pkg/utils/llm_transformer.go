@@ -679,10 +679,11 @@ func GetUpstreamAuthApikeyPolicyParams(header, value string) (map[string]interfa
 	return m, nil
 }
 
-// GetHostAdditionPolicyParams renders the policy params with given header and value
+// GetHostAdditionPolicyParams renders the policy params with given host value (host-rewrite)
 func GetHostAdditionPolicyParams(value string) (map[string]interface{}, error) {
 	rendered := fmt.Sprintf(constants.PROXY_HOST__HEADER_POLICY_PARAMS, value)
 	var m map[string]interface{}
+	// For host-rewrite, params are simple mapping, so unmarshal into map
 	if err := yaml.Unmarshal([]byte(rendered), &m); err != nil {
 		return nil, err
 	}
