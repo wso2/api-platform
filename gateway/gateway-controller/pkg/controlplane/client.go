@@ -2276,9 +2276,27 @@ func (c *Client) handleLLMProviderDeletedEvent(event map[string]interface{}) {
 	providerConfig, err := c.findAPIConfig(providerID)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			c.logger.Warn("LLM provider configuration not found for deletion",
+			c.logger.Info("LLM provider configuration not found, cleaning up orphaned API keys",
 				slog.String("provider_id", providerID),
+				slog.String("correlation_id", deletedEvent.CorrelationID),
 			)
+			// Clean up any orphaned API keys that may exist for this provider
+			if dbErr := c.db.RemoveAPIKeysAPI(providerID); dbErr != nil {
+				c.logger.Warn("Failed to remove orphaned API keys for LLM provider",
+					slog.String("provider_id", providerID),
+					slog.Any("error", dbErr),
+				)
+			}
+			// Publish DELETE event to EventHub for HA replica sync
+			evt := eventhub.Event{
+				EventType: eventhub.EventTypeLLMProvider,
+				Action:    "DELETE",
+				EntityID:  providerID,
+				EventID:   deletedEvent.CorrelationID,
+			}
+			if pubErr := c.eventHub.PublishEvent(c.gatewayID, evt); pubErr != nil {
+				c.logger.Error("Failed to publish orphan cleanup event for LLM provider", slog.Any("error", pubErr))
+			}
 			return
 		}
 		c.logger.Error("Failed to fetch LLM provider configuration for deletion, aborting",
@@ -2349,9 +2367,27 @@ func (c *Client) handleLLMProxyDeletedEvent(event map[string]interface{}) {
 	proxyConfig, err := c.findAPIConfig(proxyID)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			c.logger.Warn("LLM proxy configuration not found for deletion",
+			c.logger.Info("LLM proxy configuration not found, cleaning up orphaned API keys",
 				slog.String("proxy_id", proxyID),
+				slog.String("correlation_id", deletedEvent.CorrelationID),
 			)
+			// Clean up any orphaned API keys that may exist for this proxy
+			if dbErr := c.db.RemoveAPIKeysAPI(proxyID); dbErr != nil {
+				c.logger.Warn("Failed to remove orphaned API keys for LLM proxy",
+					slog.String("proxy_id", proxyID),
+					slog.Any("error", dbErr),
+				)
+			}
+			// Publish DELETE event to EventHub for HA replica sync
+			evt := eventhub.Event{
+				EventType: eventhub.EventTypeLLMProxy,
+				Action:    "DELETE",
+				EntityID:  proxyID,
+				EventID:   deletedEvent.CorrelationID,
+			}
+			if pubErr := c.eventHub.PublishEvent(c.gatewayID, evt); pubErr != nil {
+				c.logger.Error("Failed to publish orphan cleanup event for LLM proxy", slog.Any("error", pubErr))
+			}
 			return
 		}
 		c.logger.Error("Failed to fetch LLM proxy configuration for deletion, aborting",
