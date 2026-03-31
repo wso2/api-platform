@@ -941,3 +941,74 @@ func MapToStruct(data map[string]interface{}, out interface{}) error {
 
 	return nil
 }
+
+// CheckArtifactsExist checks which artifact UUIDs still exist on the platform.
+// Returns the subset of provided UUIDs that exist. Used during sync to avoid
+// deleting artifacts that still exist but have no active deployment.
+func (s *APIUtilsService) CheckArtifactsExist(artifactIDs []string) ([]string, error) {
+	if len(artifactIDs) == 0 {
+		return nil, nil
+	}
+
+	existsURL := s.getBaseURL() + "/artifacts/exists"
+
+	s.logger.Info("Checking artifact existence on platform",
+		slog.String("url", existsURL),
+		slog.Int("count", len(artifactIDs)),
+	)
+
+	requestBody := struct {
+		ArtifactIDs []string `json:"artifactIds"`
+	}{
+		ArtifactIDs: artifactIDs,
+	}
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal artifact existence request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", existsURL, bytes.NewReader(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Add("api-key", s.config.Token)
+	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("Accept", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check artifact existence: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("artifact existence check failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var response struct {
+		Artifacts []struct {
+			ArtifactID string `json:"artifactId"`
+			Exists     bool   `json:"exists"`
+		} `json:"artifacts"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("failed to decode artifact existence response: %w", err)
+	}
+
+	// Extract only the IDs that exist
+	var existingIDs []string
+	for _, a := range response.Artifacts {
+		if a.Exists {
+			existingIDs = append(existingIDs, a.ArtifactID)
+		}
+	}
+
+	s.logger.Info("Artifact existence check complete",
+		slog.Int("requested", len(artifactIDs)),
+		slog.Int("existing", len(existingIDs)),
+	)
+
+	return existingIDs, nil
+}

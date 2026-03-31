@@ -1,5 +1,5 @@
 name: analytics-header-filter
-version: v1.0.0
+version: v1.0.1
 description: |
   Filters request and response headers from analytics data using configurable allow or deny lists.
 

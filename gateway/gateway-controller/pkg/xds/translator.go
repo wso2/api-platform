@@ -1380,7 +1380,7 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub(isHTTPS bool) (*listen
 		HostTtl: durationpb.New(300 * time.Second),
 
 		// Optional: which DNS families to use (AUTO, V4_ONLY, V6_ONLY)
-		DnsLookupFamily: cluster.Cluster_V4_ONLY,
+		DnsLookupFamily: cluster.Cluster_V4_PREFERRED,
 
 		MaxHosts: &wrapperspb.UInt32Value{Value: 1024},
 	}
@@ -2012,6 +2012,8 @@ func (t *Translator) createCluster(
 		Name:                 name,
 		ConnectTimeout:       durationpb.New(effectiveConnectTimeout),
 		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
+		// Include AAAA so IPv6-only hostnames resolve (otherwise 503 UH).
+		DnsLookupFamily: cluster.Cluster_V4_PREFERRED,
 		LoadAssignment: &endpoint.ClusterLoadAssignment{
 			ClusterName: name,
 			Endpoints:   endpoints,
@@ -2159,6 +2161,10 @@ func (t *Translator) createPolicyEngineCluster() *cluster.Cluster {
 		}
 	}
 
+	if policyEngine.Mode == "tcp" {
+		c.DnsLookupFamily = cluster.Cluster_V4_PREFERRED
+	}
+
 	return c
 }
 
@@ -2211,7 +2217,7 @@ func (t *Translator) createALSCluster() *cluster.Cluster {
 		clusterType = cluster.Cluster_STRICT_DNS
 	}
 
-	return &cluster.Cluster{
+	alsCluster := &cluster.Cluster{
 		Name:                 constants.GRPCAccessLogClusterName,
 		ConnectTimeout:       durationpb.New(5 * time.Second),
 		ClusterDiscoveryType: &cluster.Cluster_Type{Type: clusterType},
@@ -2223,6 +2229,10 @@ func (t *Translator) createALSCluster() *cluster.Cluster {
 		// Enable HTTP/2 for gRPC
 		Http2ProtocolOptions: &core.Http2ProtocolOptions{},
 	}
+	if clusterType == cluster.Cluster_STRICT_DNS {
+		alsCluster.DnsLookupFamily = cluster.Cluster_V4_PREFERRED
+	}
+	return alsCluster
 }
 
 // createOTELCollectorCluster creates an Envoy cluster for OpenTelemetry collector
@@ -2284,6 +2294,7 @@ func (t *Translator) createOTELCollectorCluster() *cluster.Cluster {
 		Name:                 OTELCollectorClusterName,
 		ConnectTimeout:       durationpb.New(5 * time.Second),
 		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
+		DnsLookupFamily:      cluster.Cluster_V4_PREFERRED,
 		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
 		LoadAssignment: &endpoint.ClusterLoadAssignment{
 			ClusterName: OTELCollectorClusterName,
@@ -2346,6 +2357,7 @@ func (t *Translator) createSDSCluster() *cluster.Cluster {
 		Name:                 "sds_cluster",
 		ConnectTimeout:       durationpb.New(5 * time.Second),
 		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
+		DnsLookupFamily:      cluster.Cluster_V4_PREFERRED,
 		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
 		LoadAssignment: &endpoint.ClusterLoadAssignment{
 			ClusterName: "sds_cluster",

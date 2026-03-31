@@ -1,5 +1,5 @@
 name: prompt-decorator
-version: v1.0.0
+version: v1.0.1
 description: |
   Applies configured prompt decorations to request payloads before upstream processing.
 

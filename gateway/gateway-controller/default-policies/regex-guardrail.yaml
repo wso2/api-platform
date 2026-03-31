@@ -1,5 +1,5 @@
 name: regex-guardrail
-version: v1.0.0
+version: v1.0.1
 description: |
   Validate request or response content against regex patterns using optional JSONPath extraction and optional inverted matching.
 

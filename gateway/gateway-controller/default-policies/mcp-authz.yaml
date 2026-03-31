@@ -1,5 +1,5 @@
 name: mcp-authz
-version: v1.0.0
+version: v1.0.1
 description: |
   Authorize MCP tools, resources, prompts, and methods using claim/scope rules after `mcp-auth`; evaluate rules by specificity, require all matching rules to pass, and allow access when no rule matches.
 

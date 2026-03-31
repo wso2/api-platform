@@ -1,5 +1,5 @@
 name: token-based-ratelimit
-version: v1.0.0
+version: v1.0.1
 description: |
   Enforces token-based rate limits for LLM traffic by resolving token extraction
   paths from provider templates and delegating enforcement to the

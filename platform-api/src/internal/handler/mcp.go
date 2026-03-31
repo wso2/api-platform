@@ -225,6 +225,10 @@ func (h *MCPProxyHandler) FetchMCPProxyServerInfo(c *gin.Context) {
 			h.slogger.Error("MCP server URL is unreachable", "error", err, "inputUrl", req.Url)
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", strings.Split(err.Error(), ":")[0]))
 			return
+		case errors.Is(err, constants.ErrMCPServerUnauthorized):
+			h.slogger.Error("MCP server returned 401 Unauthorized", "error", err, "inputUrl", req.Url)
+			c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(400, "Bad Request", "MCP server returned 401 Unauthorized. Check the provided credentials."))
+			return
 		default:
 			h.handleServiceError(c, err)
 			return

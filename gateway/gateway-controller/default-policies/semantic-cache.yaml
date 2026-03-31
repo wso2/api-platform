@@ -1,5 +1,5 @@
 name: semantic-cache
-version: v1.0.0
+version: v1.0.1
 description: |
   Caches LLM responses using semantic similarity over request embeddings to
   reduce repeated upstream calls. Returns cached responses on similarity hits

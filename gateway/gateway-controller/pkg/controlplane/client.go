@@ -783,10 +783,6 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 
 		apiID := cfg.UUID
 
-		if cfg.DesiredState == models.StateUndeployed {
-			continue
-		}
-
 		subs, err := c.apiUtilsService.FetchSubscriptionsForAPI(apiID)
 		if err != nil {
 			c.logger.Warn("Failed to bulk-sync subscriptions for API",
@@ -874,8 +870,14 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 		issuer = c.systemConfig.APIKey.Issuer
 	}
 
-	// Build a per-kind map of artifact UUIDs from the in-memory config store.
-	configs := c.store.GetAll()
+	// Read from DB rather than the in-memory store. On a fresh gateway the
+	// in-memory store may still be empty because the EventHub event from
+	// syncDeployments hasn't been polled yet by the EventListener.
+	configs, dbErr := c.db.GetAllConfigs()
+	if dbErr != nil {
+		c.logger.Error("Failed to load configs for API key sync", slog.Any("error", dbErr))
+		return
+	}
 	artifactUUIDsByKind := make(map[string][]string)
 	for _, cfg := range configs {
 		if cfg == nil {
@@ -1691,6 +1693,21 @@ func (c *Client) performFullAPIDeletion(apiID string, apiConfig *models.StoredCo
 		)
 	}
 
+	// 3. Delete all subscriptions from database (no FK cascade)
+	if err := c.db.DeleteSubscriptionsForAPINotIn(apiID, nil); err != nil {
+		c.logger.Warn("Failed to delete subscriptions from database",
+			slog.String("api_id", apiID),
+			slog.Any("error", err),
+		)
+	} else {
+		c.logger.Info("Successfully deleted subscriptions from database",
+			slog.String("api_id", apiID),
+		)
+	}
+
+	// Refresh subscription xDS so policy engine drops tokens immediately.
+	c.refreshSubscriptionSnapshot()
+
 	evt := eventhub.Event{
 		EventType: eventhub.EventTypeAPI,
 		Action:    "DELETE",
@@ -2259,9 +2276,27 @@ func (c *Client) handleLLMProviderDeletedEvent(event map[string]interface{}) {
 	providerConfig, err := c.findAPIConfig(providerID)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			c.logger.Warn("LLM provider configuration not found for deletion",
+			c.logger.Info("LLM provider configuration not found, cleaning up orphaned API keys",
 				slog.String("provider_id", providerID),
+				slog.String("correlation_id", deletedEvent.CorrelationID),
 			)
+			// Clean up any orphaned API keys that may exist for this provider
+			if dbErr := c.db.RemoveAPIKeysAPI(providerID); dbErr != nil {
+				c.logger.Warn("Failed to remove orphaned API keys for LLM provider",
+					slog.String("provider_id", providerID),
+					slog.Any("error", dbErr),
+				)
+			}
+			// Publish DELETE event to EventHub for HA replica sync
+			evt := eventhub.Event{
+				EventType: eventhub.EventTypeLLMProvider,
+				Action:    "DELETE",
+				EntityID:  providerID,
+				EventID:   deletedEvent.CorrelationID,
+			}
+			if pubErr := c.eventHub.PublishEvent(c.gatewayID, evt); pubErr != nil {
+				c.logger.Error("Failed to publish orphan cleanup event for LLM provider", slog.Any("error", pubErr))
+			}
 			return
 		}
 		c.logger.Error("Failed to fetch LLM provider configuration for deletion, aborting",
@@ -2332,9 +2367,27 @@ func (c *Client) handleLLMProxyDeletedEvent(event map[string]interface{}) {
 	proxyConfig, err := c.findAPIConfig(proxyID)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			c.logger.Warn("LLM proxy configuration not found for deletion",
+			c.logger.Info("LLM proxy configuration not found, cleaning up orphaned API keys",
 				slog.String("proxy_id", proxyID),
+				slog.String("correlation_id", deletedEvent.CorrelationID),
 			)
+			// Clean up any orphaned API keys that may exist for this proxy
+			if dbErr := c.db.RemoveAPIKeysAPI(proxyID); dbErr != nil {
+				c.logger.Warn("Failed to remove orphaned API keys for LLM proxy",
+					slog.String("proxy_id", proxyID),
+					slog.Any("error", dbErr),
+				)
+			}
+			// Publish DELETE event to EventHub for HA replica sync
+			evt := eventhub.Event{
+				EventType: eventhub.EventTypeLLMProxy,
+				Action:    "DELETE",
+				EntityID:  proxyID,
+				EventID:   deletedEvent.CorrelationID,
+			}
+			if pubErr := c.eventHub.PublishEvent(c.gatewayID, evt); pubErr != nil {
+				c.logger.Error("Failed to publish orphan cleanup event for LLM proxy", slog.Any("error", pubErr))
+			}
 			return
 		}
 		c.logger.Error("Failed to fetch LLM proxy configuration for deletion, aborting",
@@ -3642,6 +3695,9 @@ func (c *Client) pushGatewayManifestOnConnect(gatewayID string) {
 
 	policies := make([]models.PolicyDefinition, 0, len(c.policyDefinitions))
 	for _, def := range c.policyDefinitions {
+		if strings.HasPrefix(def.Name, "wso2_apip_sys_") {
+			continue
+		}
 		policies = append(policies, def)
 	}
 

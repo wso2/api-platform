@@ -127,7 +127,7 @@ type ResponsePolicy interface {
 // hook on this interface.
 type StreamingRequestPolicy interface {
 	RequestPolicy
-	OnRequestBodyChunk(ctx context.Context, reqCtx *RequestStreamContext, chunk *StreamBody, params map[string]interface{}) RequestChunkAction
+	OnRequestBodyChunk(ctx context.Context, reqCtx *RequestStreamContext, chunk *StreamBody, params map[string]interface{}) StreamingRequestAction
 	NeedsMoreRequestData(accumulated []byte) bool
 }
 
@@ -147,6 +147,6 @@ type StreamingRequestPolicy interface {
 // (open connections, partial buffers, token counters for billing).
 type StreamingResponsePolicy interface {
 	ResponsePolicy
-	OnResponseBodyChunk(ctx context.Context, respCtx *ResponseStreamContext, chunk *StreamBody, params map[string]interface{}) ResponseChunkAction
+	OnResponseBodyChunk(ctx context.Context, respCtx *ResponseStreamContext, chunk *StreamBody, params map[string]interface{}) StreamingResponseAction
 	NeedsMoreResponseData(accumulated []byte) bool
 }

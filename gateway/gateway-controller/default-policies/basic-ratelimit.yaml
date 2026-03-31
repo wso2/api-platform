@@ -1,5 +1,5 @@
 name: basic-ratelimit
-version: v1.0.0
+version: v1.0.1
 description: |
   Limits request rates by restricting the number of requests allowed within one
   or more defined time windows.

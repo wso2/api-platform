@@ -53,6 +53,7 @@ type ArtifactRepository interface {
 	Exists(kind, handle, orgUUID string) (bool, error)
 	GetByHandle(handle, orgUUID string) (*model.Artifact, error)
 	CountByKindAndOrg(kind, orgUUID string) (int, error)
+	ExistsByUUIDs(uuids []string, orgUUID string) ([]string, error)
 }
 
 // ApplicationRepository defines the interface for application data access

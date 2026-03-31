@@ -173,8 +173,9 @@ var (
 )
 
 var (
-	ErrInvalidURL     = errors.New("invalid URL")
-	ErrURLUnreachable = errors.New("URL is unreachable")
+	ErrInvalidURL            = errors.New("invalid URL")
+	ErrURLUnreachable        = errors.New("URL is unreachable")
+	ErrMCPServerUnauthorized = errors.New("MCP server returned 401 Unauthorized")
 )
 
 var (

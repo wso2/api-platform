@@ -1,5 +1,5 @@
 name: json-xml-mediator
-version: v1.0.0
+version: v1.0.1
 description: |
   Mediates request and response payloads between downstream and upstream JSON/XML formats
 

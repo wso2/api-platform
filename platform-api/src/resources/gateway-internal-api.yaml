@@ -1110,6 +1110,65 @@ paths:
                 message: "Internal Server Error"
                 description: "Failed to get subscriptions"
 
+  /artifacts/exists:
+    post:
+      summary: Check artifact existence
+      description: |
+        Checks which of the provided artifact UUIDs still exist on the platform.
+        Used by the gateway during sync to distinguish orphaned artifacts (deleted on platform)
+        from artifacts that exist but have no active deployment. This prevents the gateway from
+        deleting API keys and subscriptions for artifacts that are still valid on the platform.
+      operationId: checkArtifactsExist
+      tags:
+        - Gateway Internal APIs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArtifactsExistRequest'
+      responses:
+        '200':
+          description: Successfully checked artifact existence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArtifactsExistResponse'
+              example:
+                artifacts:
+                  - artifactId: "550e8400-e29b-41d4-a716-446655440000"
+                    exists: true
+                  - artifactId: "660e8400-e29b-41d4-a716-446655440001"
+                    exists: true
+                  - artifactId: "770e8400-e29b-41d4-a716-446655440002"
+                    exists: false
+        '400':
+          description: Bad request - invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 400
+                message: "Bad Request"
+                description: "Invalid request body: artifactIds is required and must be a non-empty array"
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 500
+                message: "Internal Server Error"
+                description: "Failed to check artifact existence"
+
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -1606,6 +1665,57 @@ components:
           description: Detailed error description
           example: "API ID is required"
       description: Standard error response format used across all endpoints
+
+    ArtifactsExistRequest:
+      type: object
+      description: Request body for checking artifact existence
+      required:
+        - artifactIds
+      properties:
+        artifactIds:
+          type: array
+          description: List of artifact UUIDs to check
+          minItems: 1
+          items:
+            type: string
+            format: uuid
+          example:
+            - "550e8400-e29b-41d4-a716-446655440000"
+            - "660e8400-e29b-41d4-a716-446655440001"
+            - "770e8400-e29b-41d4-a716-446655440002"
+
+    ArtifactsExistResponse:
+      type: object
+      description: |
+        Response containing the existence status of each requested artifact.
+        Each requested artifact ID is returned with a boolean indicating whether it
+        still exists on the platform. Artifacts with `exists: false` have been deleted
+        and can be safely removed from the gateway.
+      required:
+        - artifacts
+      properties:
+        artifacts:
+          type: array
+          description: Existence status for each requested artifact
+          items:
+            $ref: '#/components/schemas/ArtifactExistenceInfo'
+
+    ArtifactExistenceInfo:
+      type: object
+      description: Existence status of a single artifact
+      required:
+        - artifactId
+        - exists
+      properties:
+        artifactId:
+          type: string
+          format: uuid
+          description: The artifact UUID that was checked
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        exists:
+          type: boolean
+          description: Whether the artifact still exists on the platform
+          example: true
 
 tags:
   - name: Gateway Internal APIs
