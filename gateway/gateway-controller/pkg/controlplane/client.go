@@ -783,10 +783,6 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 
 		apiID := cfg.UUID
 
-		if cfg.DesiredState == models.StateUndeployed {
-			continue
-		}
-
 		subs, err := c.apiUtilsService.FetchSubscriptionsForAPI(apiID)
 		if err != nil {
 			c.logger.Warn("Failed to bulk-sync subscriptions for API",
