@@ -118,6 +118,17 @@ func (s *LLMDeploymentService) publishLLMProxyEvent(action, entityID, correlatio
 	s.deploymentService.publishEvent(eventhub.EventTypeLLMProxy, action, entityID, correlationID, logger)
 }
 
+func (s *LLMDeploymentService) validateTemplateHandleConflict(handle string) error {
+	existing, err := s.db.GetLLMProviderTemplateByHandle(handle)
+	if err == nil && existing != nil {
+		return fmt.Errorf("%w: template with handle '%s' already exists", storage.ErrConflict, handle)
+	}
+	if err != nil && !storage.IsNotFoundError(err) {
+		return err
+	}
+	return nil
+}
+
 func (s *LLMDeploymentService) publishLLMTemplateEvent(action, entityID, correlationID string, logger *slog.Logger) {
 	s.deploymentService.publishEvent(eventhub.EventTypeLLMTemplate, action, entityID, correlationID, logger)
 }
@@ -276,28 +287,28 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		}
 	}
 
-	// Get resolved stored config before persisting
-	resolvedCfg, validationErrors := s.deploymentService.policyResolver.ResolvePolicies(storedCfg)
-	if len(validationErrors) > 0 {
-		// Aggregate errors into a single error message
-		errMsgs := make([]string, 0, len(validationErrors))
-		for _, ve := range validationErrors {
-			errMsgs = append(errMsgs, ve.Message)
-		}
-		errMsg := strings.Join(errMsgs, "; ")
-
-		slog.Error("Policy resolution failed",
-			slog.String("config_handle", storedCfg.Handle),
-			slog.String("errors", errMsg),
-		)
-
-		return nil, fmt.Errorf("policy resolution failed with %d errors: %s", len(validationErrors), errMsg)
+	if err := s.deploymentService.validateArtifactConflicts(
+		string(api.LlmProvider),
+		storedCfg.UUID,
+		storedCfg.DisplayName,
+		storedCfg.Version,
+		storedCfg.Handle,
+	); err != nil {
+		return nil, err
 	}
 
 	// Important: Do not persist the resolved configuration
 	// Save or update using timestamp-guarded upsert.
 	// affected=false means a newer version already exists (stale event — no-op).
+	// Policy resolution happens in the EventListener after all replicas consume the
+	// published event, immediately before UpsertAPIConfig is called.
 	affected, err := s.deploymentService.saveOrUpdateConfig(storedCfg, params.Logger)
+	if err != nil {
+		params.Logger.Error("Failed to save or update LLM provider configuration",
+			slog.String("handle", storedCfg.Handle),
+			slog.Any("error", err))
+		return nil, fmt.Errorf("failed to save or update LLM provider configuration")
+	}
 
 	if !affected {
 		// Stale event — DB was not modified. Return success but skip event publishing, lazy-resource, and xDS update.
@@ -334,7 +345,7 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	}
 	s.publishLLMProviderEvent(action, apiID, params.CorrelationID, params.Logger)
 
-	return &APIDeploymentResult{StoredConfig: resolvedCfg, IsUpdate: isUpdate, IsStale: false}, nil
+	return &APIDeploymentResult{StoredConfig: storedCfg, IsUpdate: isUpdate, IsStale: false}, nil
 }
 
 // DeployLLMProxyConfiguration parses, validates, transforms and persists the provider, then triggers xDS
@@ -431,26 +442,20 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 		}
 	}
 
-	// Get resolved stored config before persisting
-	resolvedCfg, validationErrors := s.deploymentService.policyResolver.ResolvePolicies(storedCfg)
-	if len(validationErrors) > 0 {
-		// Aggregate errors into a single error message
-		errMsgs := make([]string, 0, len(validationErrors))
-		for _, ve := range validationErrors {
-			errMsgs = append(errMsgs, ve.Message)
-		}
-		errMsg := strings.Join(errMsgs, "; ")
-
-		slog.Error("Policy resolution failed",
-			slog.String("config_handle", storedCfg.Handle),
-			slog.String("errors", errMsg),
-		)
-
-		return nil, fmt.Errorf("policy resolution failed with %d errors: %s", len(validationErrors), errMsg)
+	if err := s.deploymentService.validateArtifactConflicts(
+		string(api.LlmProxy),
+		storedCfg.UUID,
+		storedCfg.DisplayName,
+		storedCfg.Version,
+		storedCfg.Handle,
+	); err != nil {
+		return nil, err
 	}
 
 	// Important: Do not persist the resolved configuration
 	// Save or update using timestamp-guarded upsert.
+	// Policy resolution happens in the EventListener after all replicas consume the
+	// published event, immediately before UpsertAPIConfig is called.
 	affected, err := s.deploymentService.saveOrUpdateConfig(storedCfg, params.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to save or update LLM proxy configuration: %w", err)
@@ -488,7 +493,7 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 	}
 	s.publishLLMProxyEvent(action, apiID, params.CorrelationID, params.Logger)
 
-	return &APIDeploymentResult{StoredConfig: resolvedCfg, IsUpdate: isUpdate, IsStale: false}, nil
+	return &APIDeploymentResult{StoredConfig: storedCfg, IsUpdate: isUpdate, IsStale: false}, nil
 }
 
 // LLMTemplateParams Template params for CRUD
@@ -532,6 +537,10 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 	id, err := GenerateUUID()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate template ID: %w", err)
+	}
+
+	if err := s.validateTemplateHandleConflict(tmpl.Metadata.Name); err != nil {
+		return nil, err
 	}
 
 	stored := &models.StoredLLMProviderTemplate{
@@ -761,14 +770,9 @@ func (s *LLMDeploymentService) ListLLMProviderTemplates(displayName *string) []*
 
 // GetLLMProviderTemplateByHandle returns template by handle
 func (s *LLMDeploymentService) GetLLMProviderTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
-	templates, err := s.db.GetAllLLMProviderTemplates()
+	template, err := s.db.GetLLMProviderTemplateByHandle(handle)
 	if err == nil {
-		for _, template := range templates {
-			if template.GetHandle() == handle {
-				return template, nil
-			}
-		}
-		return nil, fmt.Errorf("%w: template with handle '%s' not found", storage.ErrNotFound, handle)
+		return template, nil
 	}
 	if !storage.IsDatabaseUnavailableError(err) {
 		return nil, err
@@ -1093,7 +1097,6 @@ func (s *LLMDeploymentService) isLLMProxyUndeployRequest(params LLMDeploymentPar
 	return proxyConfig.Spec.DeploymentState != nil &&
 		*proxyConfig.Spec.DeploymentState == api.LLMProxyConfigDataDeploymentStateUndeployed, nil
 }
-
 
 func (s *LLMDeploymentService) GetLLMProxyByHandle(handle string) (*models.StoredConfig, error) {
 	cfg, err := s.db.GetConfigByKindAndHandle(string(api.LlmProxy), handle)

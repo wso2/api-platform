@@ -61,4 +61,4 @@ User → Gateway-Controller (REST API)
 | [observability/](observability/) | Logging, metrics, and tracing configuration |
 | [resiliency/](resiliency/) | Gateway resiliency features (timeouts, failure handling) |
 | [analytics/](analytics/) | Analytics integrations (Moesif) |
-| [gateway-rest-api/](gateway-rest-api/) | REST API authentication and usage |
+| [gateway-rest-api/](../rest-apis/gateway/) | REST API authentication and usage |

@@ -164,7 +164,7 @@ const (
 
 	// System policy constants
 	ANALYTICS_SYSTEM_POLICY_NAME    = "wso2_apip_sys_analytics"
-	ANALYTICS_SYSTEM_POLICY_VERSION = "v0"
+	ANALYTICS_SYSTEM_POLICY_VERSION = "v1"
 )
 
 var WILDCARD_HTTP_METHODS = []string{

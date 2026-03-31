@@ -28,13 +28,20 @@
 {{? data.operation.description}}{{= data.operation.description }}{{?}}
 
 {{? data.operation.requestBody}}
-> Body parameter
+> Payload
 
 {{? data.bodyParameter.exampleValues.description }}
 > {{= data.bodyParameter.exampleValues.description }}
 {{?}}
 
 {{= data.utils.getBodyParameterExamples(data) }}
+{{?}}
+
+{{ data.security = data.operation.security ? data.operation.security : data.api.security; }}
+{{? data.security && data.security.length }}
+### Authentication
+
+{{#def.authentication}}
 {{?}}
 
 {{? data.parameters && data.parameters.length }}
@@ -45,10 +52,4 @@
 
 {{#def.callbacks}}
 
-{{ data.security = data.operation.security ? data.operation.security : data.api.security; }}
-{{? data.security && data.security.length }}
-{{#def.authentication}}
-{{??}}
-{{#def.authentication_none}}
-{{?}}
 {{= data.tags.endSection }}

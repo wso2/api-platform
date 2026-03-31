@@ -21,6 +21,15 @@ curl -X GET http://localhost:9090/secrets \
 Retrieve a list of all stored secrets. Returns secret identifiers without
 the actual secret values for security purposes.
 
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`
+
+</aside>
+
 > Example responses
 
 > 200 Response
@@ -48,10 +57,6 @@ the actual secret values for security purposes.
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized - authentication required|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Create a new secret
 
 <a id="opIdcreateSecret"></a>
@@ -73,7 +78,7 @@ curl -X POST http://localhost:9090/secrets \
 Stores a new secret encrypted at rest. The secret ID must be unique.
 The value is encrypted using the primary encryption provider before persistence.
 
-> Body parameter
+> Payload
 
 ```json
 {
@@ -94,6 +99,15 @@ The value is encrypted using the primary encryption provider before persistence.
   }
 }
 ```
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`
+
+</aside>
 
 <h3 id="create-a-new-secret-parameters">Parameters</h3>
 
@@ -138,10 +152,6 @@ The value is encrypted using the primary encryption provider before persistence.
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - secret with this ID already exists|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error - encryption failed|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Retrieve a secret
 
 <a id="opIdgetSecret"></a>
@@ -161,6 +171,15 @@ curl -X GET http://localhost:9090/secrets/{id} \
 Retrieves and decrypts a secret. The secret value is decrypted using the
 encryption provider chain before being returned. If all providers fail to
 decrypt the secret, a 500 error is returned with a generic message.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`
+
+</aside>
 
 <h3 id="retrieve-a-secret-parameters">Parameters</h3>
 
@@ -222,10 +241,6 @@ decrypt the secret, a 500 error is returned with a generic message.
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Secret configuration not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error - decryption failed|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Update a secret
 
 <a id="opIdupdateSecret"></a>
@@ -248,7 +263,7 @@ Updates an existing secret with a new value. The new value is encrypted
 using the current primary encryption provider, enabling automatic migration
 to newer keys during updates. Old secrets remain readable via the provider chain.
 
-> Body parameter
+> Payload
 
 ```json
 {
@@ -269,6 +284,15 @@ to newer keys during updates. Old secrets remain readable via the provider chain
   }
 }
 ```
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`
+
+</aside>
 
 <h3 id="update-a-secret-parameters">Parameters</h3>
 
@@ -314,10 +338,6 @@ to newer keys during updates. Old secrets remain readable via the provider chain
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Secret configuration not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error - encryption failed|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Delete a secret
 
 <a id="opIddeleteSecret"></a>
@@ -337,6 +357,15 @@ curl -X DELETE http://localhost:9090/secrets/{id} \
 Permanently deletes a secret from the database. This is a hard delete with
 no recovery mechanism. The operation is idempotent - deleting a non-existent
 secret returns 404.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`
+
+</aside>
 
 <h3 id="delete-a-secret-parameters">Parameters</h3>
 
@@ -378,7 +407,3 @@ secret returns 404.
 |401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized - authentication required|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Secret configuration not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error - database failure|[ErrorResponse](schemas.md#schemaerrorresponse)|
-
-<aside class="success">
-This operation does not require authentication
-</aside>

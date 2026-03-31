@@ -271,16 +271,16 @@ func main() {
 	// Print success summary
 	printDockerfileGenerationSummary(generateResult, buildInfo, outBuildInfoPath)
 
-	if err := buildfile.WriteBuildLockWithVersions(*buildFilePath, policies); err != nil {
-		errors.FatalError(errors.NewGenerationError("failed to write build lock file with versions", err))
+	if err := buildfile.WriteBuildManifestWithVersions(*buildFilePath, policies); err != nil {
+		errors.FatalError(errors.NewGenerationError("failed to write build manifest file with versions", err))
 	}
-	buildLockPath := filepath.Join(filepath.Dir(*buildFilePath), "build-lock.yaml")
-	slog.Info("Build lock file generated with versions", "path", buildLockPath)
-	gcBuildLockDst := filepath.Join(*outputDir, "gateway-controller", "build-lock.yaml")
-	if err := fsutil.CopyFile(buildLockPath, gcBuildLockDst); err != nil {
-		errors.FatalError(errors.NewGenerationError("failed to copy build-lock.yaml into gateway-controller build context", err))
+	buildManifestPath := filepath.Join(filepath.Dir(*buildFilePath), "build-manifest.yaml")
+	slog.Info("Build manifest file generated with versions", "path", buildManifestPath)
+	gcBuildManifestDst := filepath.Join(*outputDir, "gateway-controller", "build-manifest.yaml")
+	if err := fsutil.CopyFile(buildManifestPath, gcBuildManifestDst); err != nil {
+		errors.FatalError(errors.NewGenerationError("failed to copy build-manifest.yaml into gateway-controller build context", err))
 	}
-	slog.Info("Copied build-lock.yaml into gateway-controller build context successfully", "dst", gcBuildLockDst)
+	slog.Info("Copied build-manifest.yaml into gateway-controller build context successfully", "dst", gcBuildManifestDst)
 }
 
 func sanitizeLogValue(value string) string {

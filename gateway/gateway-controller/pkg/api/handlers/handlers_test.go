@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -203,7 +204,7 @@ func (m *MockStorage) GetConfig(id string) (*models.StoredConfig, error) {
 	if cfg, ok := m.configs[id]; ok {
 		return cfg, nil
 	}
-	return nil, errors.New("config not found")
+	return nil, storage.ErrNotFound
 }
 
 func (m *MockStorage) GetConfigByKindAndHandle(kind string, handle string) (*models.StoredConfig, error) {
@@ -218,7 +219,19 @@ func (m *MockStorage) GetConfigByKindAndHandle(kind string, handle string) (*mod
 			return cfg, nil
 		}
 	}
-	return nil, errors.New("config not found")
+	return nil, storage.ErrNotFound
+}
+
+func (m *MockStorage) GetConfigByKindNameAndVersion(kind, displayName, version string) (*models.StoredConfig, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	for _, cfg := range m.configs {
+		if cfg.Kind == kind && cfg.DisplayName == displayName && cfg.Version == version {
+			return cfg, nil
+		}
+	}
+	return nil, storage.ErrNotFound
 }
 
 func (m *MockStorage) GetAllConfigs() ([]*models.StoredConfig, error) {
@@ -301,6 +314,18 @@ func (m *MockStorage) GetAllLLMProviderTemplates() ([]*models.StoredLLMProviderT
 		result = append(result, tmpl)
 	}
 	return result, nil
+}
+
+func (m *MockStorage) GetLLMProviderTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	for _, tmpl := range m.templates {
+		if tmpl.GetHandle() == handle {
+			return tmpl, nil
+		}
+	}
+	return nil, storage.ErrNotFound
 }
 
 func (m *MockStorage) SaveAPIKey(apiKey *models.APIKey) error {
@@ -754,6 +779,8 @@ func (m *MockStorage) Close() error {
 // MockControlPlaneClient implements controlplane.ControlPlaneClient for testing
 type MockControlPlaneClient struct {
 	connected bool
+	mu        sync.Mutex
+	pushedIDs []string
 }
 
 func (m *MockControlPlaneClient) Connect() error {
@@ -766,7 +793,16 @@ func (m *MockControlPlaneClient) IsConnected() bool {
 }
 
 func (m *MockControlPlaneClient) PushAPIDeployment(apiID string, cfg *models.StoredConfig, deploymentID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.pushedIDs = append(m.pushedIDs, apiID)
 	return nil
+}
+
+func (m *MockControlPlaneClient) PushCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.pushedIDs)
 }
 
 // Secret management methods
@@ -2377,6 +2413,35 @@ func TestWaitForDeploymentAndNotifyTimeout(t *testing.T) {
 	}
 }
 
+func TestWaitForDeploymentAndPush_RetriesUntilConfigAppears(t *testing.T) {
+	server := createTestAPIServer()
+	mockCP := &MockControlPlaneClient{connected: true}
+	server.controlPlaneClient = mockCP
+
+	done := make(chan struct{})
+	go func() {
+		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		server.waitForDeploymentAndPush("0000-delayed-id-0000-000000000000", "test-correlation", logger)
+		close(done)
+	}()
+
+	// Let the first ticker fire while the config is still absent.
+	time.Sleep(700 * time.Millisecond)
+
+	cfg := createTestStoredConfig("0000-delayed-id-0000-000000000000", "delayed-api", "v1.0.0", "/delayed")
+	deployedAt := time.Now()
+	cfg.DeployedAt = &deployedAt
+	require.NoError(t, server.store.Add(cfg))
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("waitForDeploymentAndPush did not complete after config appeared")
+	}
+
+	require.Equal(t, 1, mockCP.PushCount())
+}
+
 // TestNewAPIServer tests the NewAPIServer constructor
 func TestNewAPIServer(t *testing.T) {
 	store := storage.NewConfigStore()
@@ -3552,6 +3617,46 @@ func TestUpdateRestAPIDBError(t *testing.T) {
 	assert.Equal(t, "error", response.Status)
 	assert.Equal(t, "Failed to update configuration", response.Message)
 	assert.NotContains(t, w.Body.String(), "db update error")
+}
+
+func TestUpdateRestAPISyncsDisplayNameAndVersion(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	existing := createTestStoredConfig("0000-test-id-0000-000000000000", "original-display-name", "v1.0.0", "/original")
+	existing.Handle = "test-handle"
+	require.NoError(t, mockDB.SaveConfig(existing))
+
+	body := createTestRestAPIRequestBody(t, "test-handle", "updated-display-name", "v2.0.0", "/updated")
+	c, w := createTestContextWithHeader("PUT", "/rest-apis/test-handle", body, map[string]string{
+		"Content-Type": "application/json",
+	})
+
+	server.UpdateRestAPI(c, "test-handle")
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	stored, err := mockDB.GetConfig(existing.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, "updated-display-name", stored.DisplayName)
+	assert.Equal(t, "v2.0.0", stored.Version)
+
+	displayName := "updated-display-name"
+	version := "v2.0.0"
+	c, w = createTestContext("GET", "/rest-apis?displayName=updated-display-name&version=v2.0.0", nil)
+	c.Request.URL.RawQuery = "displayName=updated-display-name&version=v2.0.0"
+	server.ListRestAPIs(c, api.ListRestAPIsParams{
+		DisplayName: &displayName,
+		Version:     &version,
+	})
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var response map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	assert.Equal(t, float64(1), response["count"])
+	assert.Len(t, mockHub.publishedEvents, 1)
 }
 
 // TestGetMCPProxyByIdDBUnavailable tests GetMCPProxyById with DB unavailable

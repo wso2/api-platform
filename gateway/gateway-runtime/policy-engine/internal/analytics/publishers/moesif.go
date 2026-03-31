@@ -99,7 +99,7 @@ func NewMoesif(moesifCfg *config.MoesifPublisherConfig) *Moesif {
 			case <-ticker.C:
 				moesif.mu.Lock()
 				if len(moesif.events) > 0 {
-					slog.Info(fmt.Sprintf("Publishing %d events to Moesif", len(moesif.events)))
+					slog.Debug(fmt.Sprintf("Publishing %d events to Moesif", len(moesif.events)))
 					err := moesif.api.QueueEvents(moesif.events)
 					if err != nil {
 						slog.Error("Error publishing events to Moesif", "error", err)
@@ -128,7 +128,7 @@ func (m *Moesif) Close() {
 func (m *Moesif) Publish(event *dto.Event) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	slog.Info("Preparing event to be published to Moesif")
+	slog.Debug("Preparing event to be published to Moesif")
 	uri := event.API.APIContext + event.Operation.APIResourceTemplate
 	if event.Operation.APIResourceTemplate != "" {
 		uri = event.Operation.APIResourceTemplate

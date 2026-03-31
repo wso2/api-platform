@@ -75,6 +75,15 @@ func (m *testMockDB) GetConfigByKindAndHandle(kind, handle string) (*models.Stor
 	return nil, storage.ErrNotFound
 }
 
+func (m *testMockDB) GetConfigByKindNameAndVersion(kind, displayName, version string) (*models.StoredConfig, error) {
+	for _, cfg := range m.configs {
+		if cfg.Kind == kind && cfg.DisplayName == displayName && cfg.Version == version {
+			return cfg, nil
+		}
+	}
+	return nil, storage.ErrNotFound
+}
+
 func (m *testMockDB) GetAllConfigs() ([]*models.StoredConfig, error) {
 	result := make([]*models.StoredConfig, 0, len(m.configs))
 	for _, cfg := range m.configs {
@@ -129,8 +138,17 @@ func (m *testMockDB) GetAllLLMProviderTemplates() ([]*models.StoredLLMProviderTe
 	return result, nil
 }
 
-func (m *testMockDB) SaveAPIKey(key *models.APIKey) error { return nil }
-func (m *testMockDB) UpsertAPIKey(key *models.APIKey) error                       { return nil }
+func (m *testMockDB) GetLLMProviderTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
+	for _, t := range m.templates {
+		if t.GetHandle() == handle {
+			return t, nil
+		}
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *testMockDB) SaveAPIKey(key *models.APIKey) error   { return nil }
+func (m *testMockDB) UpsertAPIKey(key *models.APIKey) error { return nil }
 func (m *testMockDB) GetAPIKeyByID(id string) (*models.APIKey, error) {
 	return nil, storage.ErrNotFound
 }
@@ -145,9 +163,9 @@ func (m *testMockDB) GetAllAPIKeys() ([]*models.APIKey, error)               { r
 func (m *testMockDB) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey, error) {
 	return nil, storage.ErrNotFound
 }
-func (m *testMockDB) UpdateAPIKey(key *models.APIKey) error           { return nil }
-func (m *testMockDB) DeleteAPIKey(key string) error                   { return nil }
-func (m *testMockDB) DeleteAPIKeysByUUIDs(uuids []string) error          { return nil }
+func (m *testMockDB) UpdateAPIKey(key *models.APIKey) error     { return nil }
+func (m *testMockDB) DeleteAPIKey(key string) error             { return nil }
+func (m *testMockDB) DeleteAPIKeysByUUIDs(uuids []string) error { return nil }
 func (m *testMockDB) ListAPIKeysForArtifactsNotIn(artifactUUIDs []string, keyUUIDs []string) ([]*models.APIKey, error) {
 	return nil, nil
 }

@@ -194,19 +194,22 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 		return nil, err
 	}
 
-	existingConfigs, err := s.db.GetAllConfigsByKind(string(api.Mcp))
-	if err != nil {
-		return nil, fmt.Errorf("failed to list MCP proxy configurations from database: %w", err)
-	}
-	for _, cfg := range existingConfigs {
-		if cfg.UUID == apiID {
-			continue
-		}
-		if cfg.DisplayName == name && cfg.Version == version {
+	existingByNameVersion, err := s.db.GetConfigByKindNameAndVersion(string(api.Mcp), name, version)
+	if err == nil {
+		if existingByNameVersion != nil && existingByNameVersion.UUID != apiID {
 			return nil, fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists", storage.ErrConflict, name, version)
 		}
-		if handle != "" && cfg.Handle == handle {
-			return nil, fmt.Errorf("%w: configuration with handle '%s' already exists", storage.ErrConflict, handle)
+	} else if !storage.IsNotFoundError(err) {
+		return nil, fmt.Errorf("failed to check existing MCP proxy name/version conflict: %w", err)
+	}
+	if handle != "" {
+		existingByHandle, err := s.db.GetConfigByKindAndHandle(string(api.Mcp), handle)
+		if err == nil {
+			if existingByHandle != nil && existingByHandle.UUID != apiID {
+				return nil, fmt.Errorf("%w: configuration with handle '%s' already exists", storage.ErrConflict, handle)
+			}
+		} else if !storage.IsNotFoundError(err) {
+			return nil, fmt.Errorf("failed to check existing MCP proxy handle conflict: %w", err)
 		}
 	}
 

@@ -1351,6 +1351,13 @@ func TranslateStreamingResponseChunkAction(result *executor.StreamingResponseExe
 		mergeDynamicMetadata(execCtx.dynamicMetadata, pr.Action.DynamicMetadata)
 	}
 
+	// If a policy terminated the stream early (e.g. guardrail intervention), force
+	// EndOfStream so Envoy closes the connection cleanly after delivering the final chunk.
+	endOfStream := originalChunk.EndOfStream || result.StreamTerminated
+	if result.StreamTerminated {
+		slog.Info("[streaming] stream terminated by policy; forcing EndOfStream on final chunk")
+	}
+
 	resp := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ResponseBody{
 			ResponseBody: &extprocv3.BodyResponse{
@@ -1359,7 +1366,7 @@ func TranslateStreamingResponseChunkAction(result *executor.StreamingResponseExe
 						Mutation: &extprocv3.BodyMutation_StreamedResponse{
 							StreamedResponse: &extprocv3.StreamedBodyResponse{
 								Body:        outputBody,
-								EndOfStream: originalChunk.EndOfStream,
+								EndOfStream: endOfStream,
 							},
 						},
 					},

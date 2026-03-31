@@ -32,8 +32,8 @@ import (
 const (
 	// BuildFileName is the default name for the build file.
 	BuildFileName = "build.yaml"
-	// BuildLockFileName is the default name for the build lock file.
-	BuildLockFileName = "build-lock.yaml"
+	// BuildManifestFileName is the default name for the build manifest file.
+	BuildManifestFileName = "build-manifest.yaml"
 )
 
 // CreateBuildFile writes a build file with the given raw YAML content.
@@ -42,10 +42,10 @@ func CreateBuildFile(t *testing.T, dir, content string) {
 	WriteFile(t, filepath.Join(dir, BuildFileName), content)
 }
 
-// CreateBuildLock writes a build lock file with the given raw YAML content.
-func CreateBuildLock(t *testing.T, dir, content string) {
+// CreateBuildManifest writes a build manifest file with the given raw YAML content.
+func CreateBuildManifest(t *testing.T, dir, content string) {
 	t.Helper()
-	WriteFile(t, filepath.Join(dir, BuildLockFileName), content)
+	WriteFile(t, filepath.Join(dir, BuildManifestFileName), content)
 }
 
 // BuildFilePolicy represents a policy entry for build file generation helpers.
