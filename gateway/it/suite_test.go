@@ -115,6 +115,7 @@ func getFeaturePaths() []string {
 		"features/semantic-tool-filtering.feature",
 		"features/semantic-prompt-guard.feature",
 		"features/request-rewrite.feature",
+		"features/host-rewrite.feature",
 		"features/respond.feature",
 		"features/llm-provider.feature",
 		"features/certificates.feature",
