@@ -100,6 +100,13 @@ type PolicyExecutionContext struct {
 	// does not attempt to deliver a body message that will never arrive.
 	requestBodyProcessedInline bool
 
+	// responseBodyProcessedInline is set when body policies are executed during the
+	// response-headers phase because the upstream response carries no body
+	// (Content-Length: 0, EndOfStream in headers, etc.).
+	// getModeOverride() returns ResponseBodyMode=NONE when this is true so that Envoy
+	// does not attempt to deliver a body message that will never arrive.
+	responseBodyProcessedInline bool
+
 	// isStreamingRequest is set when SupportsRequestStreaming is true and the client
 	// sends a streaming body — the request body will be processed chunk-by-chunk.
 	isStreamingRequest       bool
@@ -114,6 +121,7 @@ type PolicyExecutionContext struct {
 	isStreamingResponse   bool
 	streamAccumulator     []byte
 	responseStreamContext *policy.ResponseStreamContext
+
 	// responseStreamDecomp performs per-chunk decompression for compressed streaming
 	// response bodies. Nil when the response is not Content-Encoded.
 	responseStreamDecomp *streamDecompressor
@@ -194,16 +202,16 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 
 	mode.ResponseHeaderMode = extprocconfigv3.ProcessingMode_SEND
 
-	if ec.policyChain.RequiresResponseBody {
-		mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_BUFFERED
-		if ec.isStreamingResponse {
-			mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED
-			slog.Debug("[mode] upgraded response body mode to FULL_DUPLEX_STREAMED",
-				"route", ec.routeKey,
-			)
-		}
-	} else {
+	switch {
+	case !ec.policyChain.RequiresResponseBody || ec.responseBodyProcessedInline:
 		mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_NONE
+	case ec.isStreamingResponse:
+		mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED
+		slog.Debug("[mode] upgraded response body mode to FULL_DUPLEX_STREAMED",
+			"route", ec.routeKey,
+		)
+	default:
+		mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_BUFFERED
 	}
 
 	// Always skip trailers (not used by policies)
@@ -216,6 +224,8 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 		"requires_response_body", ec.policyChain.RequiresResponseBody,
 		"supports_response_streaming", ec.policyChain.SupportsResponseStreaming,
 		"is_streaming_request", ec.isStreamingRequest,
+		"request_body_processed_inline", ec.requestBodyProcessedInline,
+		"response_body_processed_inline", ec.responseBodyProcessedInline,
 		"request_body_mode", mode.RequestBodyMode.String(),
 		"response_header_mode", mode.ResponseHeaderMode.String(),
 		"response_body_mode", mode.ResponseBodyMode.String(),
@@ -341,6 +351,58 @@ func (ec *PolicyExecutionContext) processRequestBodyForEmptyRequest(
 	ec.requestBodyProcessedInline = true
 
 	return TranslateRequestHeaderActionsWithBodyMerge(headerResult, bodyResult, ec)
+}
+
+// responseHasNoBody returns true when the upstream response carries no body and Envoy will
+// not deliver a ResponseBody ext_proc phase for this response.
+func (ec *PolicyExecutionContext) responseHasNoBody(headers *extprocv3.HttpHeaders) bool {
+	// Envoy sets EndOfStream=true in the response-headers message when no body follows.
+	if headers.EndOfStream {
+		return true
+	}
+	// Content-Length: 0 explicitly signals an empty body.
+	if cl := ec.responseHeaderCtx.ResponseHeaders.Get("content-length"); len(cl) > 0 && cl[0] == "0" {
+		return true
+	}
+	return false
+}
+
+// processResponseBodyForEmptyResponse executes response body policies inline during the
+// response-headers phase when the upstream response carries no body. The body context is set
+// to Present=false / EndOfStream=true so policies can observe a no-body state.
+func (ec *PolicyExecutionContext) processResponseBodyForEmptyResponse(
+	ctx context.Context,
+	headers *extprocv3.HttpHeaders,
+	headerResult *executor.ResponseHeaderExecutionResult,
+) (*extprocv3.ProcessingResponse, error) {
+	// Ensure the body context reflects a nil/absent body.
+	if ec.responseBodyCtx.ResponseBody == nil {
+		ec.responseBodyCtx.ResponseBody = &policy.Body{Content: nil, EndOfStream: true, Present: false}
+	}
+
+	slog.DebugContext(ctx, "[no-body] executing response body policies inline during response headers phase",
+		"route", ec.routeKey,
+		"status", ec.responseHeaderCtx.ResponseHeaders.Get("status"),
+		"end_of_stream", headers.EndOfStream,
+	)
+
+	bodyResult, err := ec.server.executor.ExecuteResponsePolicies(
+		ctx,
+		ec.policyChain.Policies,
+		ec.responseBodyCtx,
+		ec.policyChain.PolicySpecs,
+		ec.sharedCtx.APIName,
+		ec.routeKey,
+		ec.policyChain.HasExecutionConditions,
+	)
+	if err != nil {
+		return ec.handlePolicyError(ctx, err, "response_body_no_body"), nil
+	}
+
+	// Signal to getModeOverride() that no further ResponseBody phase is expected.
+	ec.responseBodyProcessedInline = true
+
+	return TranslateResponseHeaderActionsWithBodyMerge(headerResult, bodyResult, ec)
 }
 
 // processRequestBody processes request body phase
@@ -567,6 +629,10 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 // processResponseHeaders processes response headers phase.
 // Header policies (OnResponseHeaders) always execute here regardless of whether
 // body is required. Body policies (OnResponseBody) execute separately at body phase.
+//
+// For bodyless responses (Content-Length: 0, EndOfStream in headers, etc.) Envoy never sends
+// a ResponseBody ext_proc phase. If the policy chain requires body processing, body policies
+// are executed inline here with Body=nil so they still run on every response.
 func (ec *PolicyExecutionContext) processResponseHeaders(
 	ctx context.Context,
 	headers *extprocv3.HttpHeaders,
@@ -608,6 +674,12 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 	// Propagate header mutations into the shared in-memory context so that body-phase
 	// policies (OnResponseBody / OnResponseBodyChunk) observe the post-mutation headers.
 	applyResponseHeaderMutations(ec.responseHeaderCtx.ResponseHeaders, execResult.Results)
+
+	// For bodyless responses Envoy skips the ResponseBody ext_proc phase entirely.
+	// Execute body policies inline now so they run on every response, receiving a nil body.
+	if !execResult.ShortCircuited && ec.policyChain.RequiresResponseBody && ec.responseHasNoBody(headers) {
+		return ec.processResponseBodyForEmptyResponse(ctx, headers, execResult)
+	}
 
 	resp, err := TranslateResponseHeaderActions(execResult, ec)
 	if err != nil {

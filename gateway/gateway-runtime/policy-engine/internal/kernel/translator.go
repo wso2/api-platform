@@ -809,6 +809,188 @@ func TranslateResponseHeaderActions(result *executor.ResponseHeaderExecutionResu
 	return response, nil
 }
 
+// TranslateResponseHeaderActionsWithBodyMerge merges results from both the response-headers
+// phase and the response-body phase into a single ResponseHeaders ext_proc response.
+// This is used when a response carries no body (Content-Length: 0, EndOfStream in headers)
+// so body policies are executed inline during the response headers phase.
+//
+// The caller must set execCtx.responseBodyProcessedInline = true before calling this function
+// so that getModeOverride() instructs Envoy to skip the ResponseBody phase (mode = NONE).
+func TranslateResponseHeaderActionsWithBodyMerge(
+	headerResult *executor.ResponseHeaderExecutionResult,
+	bodyResult *executor.ResponseExecutionResult,
+	execCtx *PolicyExecutionContext,
+) (*extprocv3.ProcessingResponse, error) {
+	// Body policies can short-circuit with an immediate response.
+	if bodyResult.ShortCircuited && bodyResult.FinalAction != nil {
+		if immResp, ok := bodyResult.FinalAction.(policy.ImmediateResponse); ok {
+			response := &extprocv3.ProcessingResponse{
+				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+					ImmediateResponse: &extprocv3.ImmediateResponse{
+						Status:  &typev3.HttpStatus{Code: typev3.StatusCode(immResp.StatusCode)},
+						Headers: buildHeaderValueOptions(immResp.Headers),
+						Body:    immResp.Body,
+					},
+				},
+			}
+			analyticsStruct, err := buildAnalyticsStruct(immResp.AnalyticsMetadata, execCtx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to build analytics metadata for immediate response: %w", err)
+			}
+			response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, nil, immResp.DynamicMetadata)
+			return response, nil
+		}
+	}
+
+	headerOps := make(map[string][]*headerOp)
+	analyticsData := make(map[string]any)
+	dynamicMetadata := make(map[string]map[string]interface{})
+	headerMutation := &extprocv3.HeaderMutation{}
+	var bodyMutation *extprocv3.BodyMutation
+	var finalBodyLength int
+	bodyModified := false
+
+	// Seed with existing analytics from prior phases.
+	for key, value := range execCtx.analyticsMetadata {
+		if key != "request_headers" {
+			analyticsData[key] = value
+		}
+	}
+	mergeDynamicMetadata(dynamicMetadata, execCtx.dynamicMetadata)
+
+	// Collect mutations from response-header-phase policies (DownstreamResponseHeaderModifications).
+	for _, pr := range headerResult.Results {
+		if pr.Skipped || pr.Action == nil {
+			continue
+		}
+		mods, ok := pr.Action.(policy.DownstreamResponseHeaderModifications)
+		if !ok {
+			continue
+		}
+		for k, v := range mods.HeadersToSet {
+			headerOps[strings.ToLower(k)] = append(headerOps[strings.ToLower(k)], &headerOp{opType: "set", value: v})
+		}
+		for _, k := range mods.HeadersToRemove {
+			headerOps[strings.ToLower(k)] = append(headerOps[strings.ToLower(k)], &headerOp{opType: "remove", value: ""})
+		}
+		if mods.AnalyticsMetadata != nil {
+			for key, value := range mods.AnalyticsMetadata {
+				analyticsData[key] = value
+				execCtx.analyticsMetadata[key] = value
+			}
+		}
+		if mods.DynamicMetadata != nil {
+			mergeDynamicMetadata(dynamicMetadata, mods.DynamicMetadata)
+			mergeDynamicMetadata(execCtx.dynamicMetadata, mods.DynamicMetadata)
+		}
+		dropAction := mods.AnalyticsHeaderFilter
+		if dropAction.Action != "" || len(dropAction.Headers) > 0 {
+			originalHeaders := execCtx.responseBodyCtx.ResponseHeaders.GetAll()
+			finalizedHeaders := finalizeAnalyticsHeaders(dropAction, originalHeaders)
+			analyticsData["response_headers"] = finalizedHeaders
+			execCtx.analyticsMetadata["response_headers"] = finalizedHeaders
+		}
+	}
+
+	// Collect mutations from response-body-phase policies (DownstreamResponseModifications).
+	for _, pr := range bodyResult.Results {
+		if pr.Skipped || pr.Error != nil {
+			continue
+		}
+		if pr.Action == nil {
+			continue
+		}
+		mods, ok := pr.Action.(policy.DownstreamResponseModifications)
+		if !ok {
+			continue
+		}
+		for k, v := range mods.HeadersToSet {
+			headerOps[strings.ToLower(k)] = append(headerOps[strings.ToLower(k)], &headerOp{opType: "set", value: v})
+		}
+		for _, k := range mods.HeadersToRemove {
+			headerOps[strings.ToLower(k)] = append(headerOps[strings.ToLower(k)], &headerOp{opType: "remove", value: ""})
+		}
+		if mods.Body != nil {
+			bodyMutation = &extprocv3.BodyMutation{
+				Mutation: &extprocv3.BodyMutation_Body{
+					Body: mods.Body,
+				},
+			}
+			finalBodyLength = len(mods.Body)
+			bodyModified = true
+		}
+		if mods.StatusCode != nil {
+			headerOps[":status"] = append(headerOps[":status"], &headerOp{opType: "set", value: fmt.Sprintf("%d", *mods.StatusCode)})
+		}
+		if mods.AnalyticsMetadata != nil {
+			for key, value := range mods.AnalyticsMetadata {
+				analyticsData[key] = value
+				execCtx.analyticsMetadata[key] = value
+			}
+		}
+		if mods.DynamicMetadata != nil {
+			mergeDynamicMetadata(dynamicMetadata, mods.DynamicMetadata)
+			mergeDynamicMetadata(execCtx.dynamicMetadata, mods.DynamicMetadata)
+		}
+		dropAction := mods.AnalyticsHeaderFilter
+		if dropAction.Action != "" || len(dropAction.Headers) > 0 {
+			originalHeaders := execCtx.responseBodyCtx.ResponseHeaders.GetAll()
+			finalizedHeaders := finalizeAnalyticsHeaders(dropAction, originalHeaders)
+			analyticsData["response_headers"] = finalizedHeaders
+			if _, exists := execCtx.analyticsMetadata["request_headers"]; exists {
+				analyticsData["request_headers"] = execCtx.analyticsMetadata["request_headers"]
+			}
+		}
+	}
+
+	// Re-compress body if a policy modified it and the original response was compressed.
+	if bodyModified && execCtx.responseContentEncoding != "" {
+		originalBody := bodyMutation.Mutation.(*extprocv3.BodyMutation_Body).Body
+		recompressed, err := recompressBody(originalBody, execCtx.responseContentEncoding)
+		if err != nil {
+			slog.Warn("Failed to re-compress response body, sending uncompressed",
+				"encoding", execCtx.responseContentEncoding,
+				"error", err,
+			)
+			headerOps["content-encoding"] = append(headerOps["content-encoding"], &headerOp{opType: "remove", value: ""})
+			finalBodyLength = len(originalBody)
+		} else {
+			bodyMutation.Mutation.(*extprocv3.BodyMutation_Body).Body = recompressed
+			finalBodyLength = len(recompressed)
+		}
+	}
+
+	if bodyModified {
+		delete(headerOps, "content-length")
+	}
+
+	mergeHeaderMutations(headerMutation, headerOps)
+
+	if bodyModified {
+		setContentLengthHeader(headerMutation, finalBodyLength)
+	}
+
+	response := &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_ResponseHeaders{
+			ResponseHeaders: &extprocv3.HeadersResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation: headerMutation,
+					BodyMutation:   bodyMutation,
+				},
+			},
+		},
+		ModeOverride: execCtx.getModeOverride(),
+	}
+
+	analyticsStruct, err := buildAnalyticsStruct(analyticsData, execCtx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
+	}
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct, nil, nil, dynamicMetadata)
+
+	return response, nil
+}
+
 // TranslateRequestHeadersActions converts request headers execution result to ext_proc response
 func TranslateRequestHeadersActions(result *executor.RequestExecutionResult, chain *registry.PolicyChain, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
 	headerMutation, bodyMutation, analyticsData, dynamicMetadata, path, method, immediateResp, err := translateRequestActionsCore(result, execCtx)
