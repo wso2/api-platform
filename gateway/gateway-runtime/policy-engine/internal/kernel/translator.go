@@ -754,10 +754,6 @@ func TranslateResponseHeaderActions(result *executor.ResponseHeaderExecutionResu
 
 	// Seed with request-phase analytics so they are not lost when RequiresResponseBody=false
 	// and TranslateResponseBodyActions (which also seeds from context) is never called.
-	analyticsMetadataKeys := make([]string, 0, len(execCtx.analyticsMetadata))
-	for k := range execCtx.analyticsMetadata {
-		analyticsMetadataKeys = append(analyticsMetadataKeys, k)
-	}
 	for key, value := range execCtx.analyticsMetadata {
 		analyticsData[key] = value
 	}
@@ -929,10 +925,6 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 	headerMutation = &extprocv3.HeaderMutation{}
 
 	// Merge analytics data from request phase stored in execution context
-	reqMetaKeys := make([]string, 0, len(execCtx.analyticsMetadata))
-	for k := range execCtx.analyticsMetadata {
-		reqMetaKeys = append(reqMetaKeys, k)
-	}
 	for key, value := range execCtx.analyticsMetadata {
 		analyticsData[key] = value
 	}
@@ -1150,10 +1142,6 @@ func TranslateResponseBodyActions(result *executor.ResponseExecutionResult, exec
 	}
 
 	// Add analytics metadata if present
-	analyticsDataKeys := make([]string, 0, len(analyticsData))
-	for k := range analyticsData {
-		analyticsDataKeys = append(analyticsDataKeys, k)
-	}
 	if len(analyticsData) > 0 {
 		analyticsStruct, err := buildAnalyticsStruct(analyticsData, execCtx)
 		if err != nil {
