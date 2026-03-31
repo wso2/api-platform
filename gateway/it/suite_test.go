@@ -135,6 +135,7 @@ func getFeaturePaths() []string {
 		"features/llm-cost-based-ratelimit.feature",
 		"features/log-message.feature",
 		"features/route-path-matching.feature",
+		"features/secrets.feature",
 		// These tests require different gateway configurations and are not included in the default suite run.
 		// "features/vhost-routing-single.feature", // cd it && make test-vhosts-single
 		// "features/vhost-routing-multi.feature", // cd it && make test-vhosts-multi
@@ -324,6 +325,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		RegisterPolicyEngineSteps(ctx, testState, httpSteps)
 		RegisterAnalyticsSteps(ctx, testState, httpSteps)
 		RegisterSubscriptionSteps(ctx, testState, httpSteps)
+		RegisterSecretSteps(ctx, testState, httpSteps)
 	}
 
 	// Register common HTTP and assertion steps
