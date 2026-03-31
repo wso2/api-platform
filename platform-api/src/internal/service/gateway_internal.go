@@ -46,6 +46,7 @@ type GatewayInternalAPIService struct {
 	orgRepo              repository.OrganizationRepository
 	projectRepo          repository.ProjectRepository
 	apiKeyRepo           repository.APIKeyRepository
+	artifactRepo         repository.ArtifactRepository
 	apiUtil              *utils.APIUtil
 	cfg                  *config.Server
 	slogger              *slog.Logger
@@ -55,7 +56,8 @@ type GatewayInternalAPIService struct {
 func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscriptionRepo repository.SubscriptionRepository,
 	subscriptionPlanRepo repository.SubscriptionPlanRepository, providerRepo repository.LLMProviderRepository,
 	proxyRepo repository.LLMProxyRepository, mcpProxyRepo repository.MCPProxyRepository, deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
-	orgRepo repository.OrganizationRepository, projectRepo repository.ProjectRepository, apiKeyRepo repository.APIKeyRepository, cfg *config.Server, slogger *slog.Logger) *GatewayInternalAPIService {
+	orgRepo repository.OrganizationRepository, projectRepo repository.ProjectRepository, apiKeyRepo repository.APIKeyRepository,
+	artifactRepo repository.ArtifactRepository, cfg *config.Server, slogger *slog.Logger) *GatewayInternalAPIService {
 	return &GatewayInternalAPIService{
 		apiRepo:              apiRepo,
 		subscriptionRepo:     subscriptionRepo,
@@ -68,6 +70,7 @@ func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscription
 		orgRepo:              orgRepo,
 		projectRepo:          projectRepo,
 		apiKeyRepo:           apiKeyRepo,
+		artifactRepo:         artifactRepo,
 		apiUtil:              &utils.APIUtil{},
 		cfg:                  cfg,
 		slogger:              slogger,
@@ -559,4 +562,14 @@ func (s *GatewayInternalAPIService) GetAPIKeysByKind(gatewayID, orgID, kind, iss
 		})
 	}
 	return items, nil
+}
+
+// CheckArtifactsExist returns the subset of provided artifact UUIDs that still exist on the platform.
+// Used by the gateway during sync to distinguish orphaned artifacts (deleted on platform)
+// from artifacts that exist but have no active deployment.
+func (s *GatewayInternalAPIService) CheckArtifactsExist(orgID string, artifactIDs []string) ([]string, error) {
+	if len(artifactIDs) == 0 {
+		return nil, nil
+	}
+	return s.artifactRepo.ExistsByUUIDs(artifactIDs, orgID)
 }

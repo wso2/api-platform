@@ -118,8 +118,12 @@ func TestHandleLLMProviderDeletedEvent_NotFound(t *testing.T) {
 
 	client.handleLLMProviderDeletedEvent(event)
 
-	// Not found — no events published, no errors
-	assert.Empty(t, hub.publishedEvents, "no events should be published when provider not found")
+	// Not found — orphan cleanup publishes DELETE event for HA replica sync
+	require.Len(t, hub.publishedEvents, 1)
+	assert.Equal(t, eventhub.EventTypeLLMProvider, hub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "DELETE", hub.publishedEvents[0].event.Action)
+	assert.Equal(t, "non-existent-provider", hub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-provider-notfound", hub.publishedEvents[0].event.EventID)
 }
 
 func TestHandleLLMProviderDeletedEvent_DBOnlyConfig(t *testing.T) {
@@ -319,7 +323,12 @@ func TestHandleLLMProxyDeletedEvent_NotFound(t *testing.T) {
 
 	client.handleLLMProxyDeletedEvent(event)
 
-	assert.Empty(t, hub.publishedEvents, "no events should be published when proxy not found")
+	// Not found — orphan cleanup publishes DELETE event for HA replica sync
+	require.Len(t, hub.publishedEvents, 1)
+	assert.Equal(t, eventhub.EventTypeLLMProxy, hub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "DELETE", hub.publishedEvents[0].event.Action)
+	assert.Equal(t, "non-existent-proxy", hub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-proxy-notfound", hub.publishedEvents[0].event.EventID)
 }
 
 func TestHandleLLMProxyDeletedEvent_DBOnlyConfig(t *testing.T) {

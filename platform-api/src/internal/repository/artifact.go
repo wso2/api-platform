@@ -19,6 +19,9 @@ package repository
 
 import (
 	"database/sql"
+	"fmt"
+	"strings"
+
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/model"
 	"time"
@@ -100,4 +103,45 @@ func (r *ArtifactRepo) CountByKindAndOrg(kind, orgUUID string) (int, error) {
 		return 0, err
 	}
 	return count, nil
+}
+
+// ExistsByUUIDs returns the subset of provided UUIDs that exist in the artifacts table for the given org.
+func (r *ArtifactRepo) ExistsByUUIDs(uuids []string, orgUUID string) ([]string, error) {
+	if len(uuids) == 0 {
+		return nil, nil
+	}
+
+	// Build placeholders for IN clause
+	placeholders := make([]string, len(uuids))
+	args := make([]interface{}, 0, len(uuids)+1)
+	for i, uuid := range uuids {
+		placeholders[i] = "?"
+		args = append(args, uuid)
+	}
+	args = append(args, orgUUID)
+
+	query := fmt.Sprintf(
+		`SELECT uuid FROM artifacts WHERE uuid IN (%s) AND organization_uuid = ?`,
+		strings.Join(placeholders, ", "),
+	)
+
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check artifact existence: %w", err)
+	}
+	defer rows.Close()
+
+	var existing []string
+	for rows.Next() {
+		var uuid string
+		if err := rows.Scan(&uuid); err != nil {
+			return nil, err
+		}
+		existing = append(existing, uuid)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating artifact UUIDs: %w", err)
+	}
+
+	return existing, nil
 }

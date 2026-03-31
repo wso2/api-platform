@@ -607,6 +607,52 @@ func (h *GatewayInternalAPIHandler) GetLLMProxyAPIKeys(c *gin.Context) {
 	c.JSON(http.StatusOK, keys)
 }
 
+// CheckArtifactsExist handles POST /api/internal/v1/artifacts/exists
+// Returns the subset of provided artifact UUIDs that still exist on the platform.
+// Used by the gateway during sync to avoid deleting artifacts that still exist
+// but have no active deployment (e.g., after deployment deletion).
+func (h *GatewayInternalAPIHandler) CheckArtifactsExist(c *gin.Context) {
+	orgID, _, ok := h.authenticateRequest(c)
+	if !ok {
+		return
+	}
+
+	var req dto.ArtifactsExistRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Invalid request body: artifactIds is required and must be a non-empty array"))
+		return
+	}
+
+	existingIDs, err := h.gatewayInternalService.CheckArtifactsExist(orgID, req.ArtifactIDs)
+	if err != nil {
+		h.slogger.Error("Failed to check artifact existence", "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to check artifact existence"))
+		return
+	}
+
+	// Build a set of existing IDs for O(1) lookup
+	existingSet := make(map[string]struct{}, len(existingIDs))
+	for _, id := range existingIDs {
+		existingSet[id] = struct{}{}
+	}
+
+	// Build response with true/false for every requested ID
+	artifacts := make([]dto.ArtifactExistenceInfo, len(req.ArtifactIDs))
+	for i, id := range req.ArtifactIDs {
+		_, exists := existingSet[id]
+		artifacts[i] = dto.ArtifactExistenceInfo{
+			ArtifactID: id,
+			Exists:     exists,
+		}
+	}
+
+	c.JSON(http.StatusOK, dto.ArtifactsExistResponse{
+		Artifacts: artifacts,
+	})
+}
+
 func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 	orgGroup := r.Group("/api/internal/v1/apis")
 	{
@@ -646,5 +692,10 @@ func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 	gatewayGroup := r.Group("/api/internal/v1/gateways")
 	{
 		gatewayGroup.POST("/:gatewayId/manifest", h.ReceiveGatewayManifest)
+	}
+
+	artifactGroup := r.Group("/api/internal/v1/artifacts")
+	{
+		artifactGroup.POST("/exists", h.CheckArtifactsExist)
 	}
 }
