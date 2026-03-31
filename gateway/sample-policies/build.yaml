@@ -1,6 +1,6 @@
 version: v1
 gateway:
-  version: 1.0.0-rc.2-SNAPSHOT
+  version: 1.0.0-rc.2
 policies:
   - name: set-headers
     gomodule: github.com/wso2/gateway-controllers/policies/set-headers@v1
