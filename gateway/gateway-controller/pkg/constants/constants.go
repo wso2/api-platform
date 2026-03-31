@@ -126,11 +126,8 @@ const (
 		"  headers:\n" +
 		"    - name: '%s'\n" +
 		"      value: '%s'\n"
-	PROXY_HOST__HEADER_POLICY_NAME   = "set-headers"
-	PROXY_HOST__HEADER_POLICY_PARAMS = "request:\n" +
-		"  headers:\n" +
-		"    - name: Host\n" +
-		"      value: '%s'\n"
+	PROXY_HOST__HEADER_POLICY_NAME   = "host-rewrite"
+	PROXY_HOST__HEADER_POLICY_PARAMS = "host: '%s'\n"
 
 	ACCESS_CONTROL_DENY_POLICY_NAME = "respond"
 	// YAML for default 404 respond policy params

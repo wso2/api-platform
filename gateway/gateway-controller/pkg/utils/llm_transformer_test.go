@@ -220,7 +220,8 @@ func TestGetHostAdditionPolicyParams(t *testing.T) {
 		params, err := GetHostAdditionPolicyParams("api.example.com")
 		assert.NoError(t, err)
 		assert.NotNil(t, params)
-		assert.Contains(t, params, "request")
+		assert.Contains(t, params, "host")
+		assert.Equal(t, "api.example.com", params["host"])
 	})
 
 	t.Run("Empty host value", func(t *testing.T) {

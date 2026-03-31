@@ -2983,7 +2983,8 @@ func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 		},
 		MessageTimeout: durationpb.New(time.Duration(policyEngine.MessageTimeoutMs) * time.Millisecond),
 		MutationRules: &mutationrules.HeaderMutationRules{
-			AllowAllRouting: wrapperspb.Bool(true),
+			DisallowSystem:  wrapperspb.Bool(true),
+			DisallowIsError: wrapperspb.Bool(true),
 		},
 		MetadataOptions: &extproc.MetadataOptions{
 			ReceivingNamespaces: &extproc.MetadataOptions_MetadataNamespaces{

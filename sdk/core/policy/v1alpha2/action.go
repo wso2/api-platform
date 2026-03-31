@@ -43,6 +43,7 @@ type UpstreamRequestHeaderModifications struct {
 	// the request body to be available.
 	UpstreamName            *string             // route to a named upstream definition (nil = no change)
 	Path                    *string             // rewrite the request path (nil = no change)
+	Host                    *string             // rewrite the :authority header (nil = no change)
 	Method                  *string             // rewrite the request method (nil = no change)
 	QueryParametersToAdd    map[string][]string // add or replace query parameters
 	QueryParametersToRemove []string            // remove query parameters by name
@@ -110,6 +111,7 @@ type UpstreamRequestModifications struct {
 	// Routing mutations — applied before the request is forwarded to upstream.
 	UpstreamName            *string             // route to a named upstream definition (nil = no change)
 	Path                    *string             // rewrite the request path (nil = no change)
+	Host                    *string             // rewrite the :authority header (nil = no change)
 	Method                  *string             // rewrite the request method (nil = no change)
 	QueryParametersToAdd    map[string][]string // add or replace query parameters
 	QueryParametersToRemove []string            // remove query parameters by name

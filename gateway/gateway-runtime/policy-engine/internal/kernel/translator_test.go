@@ -348,7 +348,7 @@ func TestBuildDynamicMetadata_WithoutPath(t *testing.T) {
 		"key": "value",
 	})
 
-	result := buildDynamicMetadata(analyticsStruct, nil, nil, nil)
+	result := buildDynamicMetadata(analyticsStruct, nil, nil)
 
 	require.NotNil(t, result)
 	require.NotNil(t, result.Fields)
@@ -362,7 +362,7 @@ func TestBuildDynamicMetadata_WithPath(t *testing.T) {
 	})
 	path := "/new/path"
 
-	result := buildDynamicMetadata(analyticsStruct, &path, nil, nil)
+	result := buildDynamicMetadata(analyticsStruct, &RequestMutations{Path: &path}, nil)
 
 	require.NotNil(t, result)
 	// Should include path in metadata
@@ -393,14 +393,14 @@ func TestTranslateRequestActionsCore_EmptyResult(t *testing.T) {
 		Results: []executor.RequestPolicyResult{},
 	}
 
-	headerMutation, bodyMutation, analyticsData, _, pathMutation, _, immResp, err := translateRequestActionsCore(result, execCtx)
+	rsl, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
-	assert.Nil(t, immResp)
-	assert.NotNil(t, headerMutation)
-	assert.Nil(t, bodyMutation)
-	assert.NotNil(t, analyticsData)
-	assert.Nil(t, pathMutation)
+	assert.Nil(t, rsl.ImmediateResp)
+	assert.NotNil(t, rsl.HeaderMutation)
+	assert.Nil(t, rsl.BodyMutation)
+	assert.NotNil(t, rsl.AnalyticsData)
+	assert.Nil(t, rsl.Mutations.Path)
 }
 
 func TestTranslateRequestActionsCore_WithSetHeaders(t *testing.T) {
@@ -429,12 +429,12 @@ func TestTranslateRequestActionsCore_WithSetHeaders(t *testing.T) {
 		},
 	}
 
-	headerMutation, _, _, _, _, _, immResp, err := translateRequestActionsCore(result, execCtx)
+	rsl, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
-	assert.Nil(t, immResp)
-	require.NotNil(t, headerMutation)
-	assert.Len(t, headerMutation.SetHeaders, 1)
+	assert.Nil(t, rsl.ImmediateResp)
+	require.NotNil(t, rsl.HeaderMutation)
+	assert.Len(t, rsl.HeaderMutation.SetHeaders, 1)
 }
 
 func TestTranslateRequestActionsCore_WithBodyModification(t *testing.T) {
@@ -461,16 +461,16 @@ func TestTranslateRequestActionsCore_WithBodyModification(t *testing.T) {
 		},
 	}
 
-	headerMutation, bodyMutation, _, _, _, _, immResp, err := translateRequestActionsCore(result, execCtx)
+	rsl, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
-	assert.Nil(t, immResp)
-	require.NotNil(t, bodyMutation)
-	assert.Equal(t, []byte("modified body"), bodyMutation.GetBody())
+	assert.Nil(t, rsl.ImmediateResp)
+	require.NotNil(t, rsl.BodyMutation)
+	assert.Equal(t, []byte("modified body"), rsl.BodyMutation.GetBody())
 	// Content-Length should be set
-	require.NotNil(t, headerMutation)
+	require.NotNil(t, rsl.HeaderMutation)
 	var foundContentLength bool
-	for _, h := range headerMutation.SetHeaders {
+	for _, h := range rsl.HeaderMutation.SetHeaders {
 		if h.Header.Key == "content-length" {
 			foundContentLength = true
 			assert.Equal(t, []byte("13"), h.Header.RawValue)
@@ -503,12 +503,12 @@ func TestTranslateRequestActionsCore_ShortCircuit(t *testing.T) {
 		},
 	}
 
-	_, _, _, _, _, _, immResp, err := translateRequestActionsCore(result, execCtx)
+	rsl, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
-	require.NotNil(t, immResp)
+	require.NotNil(t, rsl.ImmediateResp)
 
-	immediate := immResp.GetImmediateResponse()
+	immediate := rsl.ImmediateResp.GetImmediateResponse()
 	require.NotNil(t, immediate)
 	assert.Equal(t, uint32(403), uint32(immediate.Status.Code))
 }
@@ -553,12 +553,12 @@ func TestTranslateRequestActionsCore_ShortCircuit_PreservesPriorRequestAnalytics
 		},
 	}
 
-	_, _, _, _, _, _, immResp, err := translateRequestActionsCore(result, execCtx)
+	rsl, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
-	require.NotNil(t, immResp)
+	require.NotNil(t, rsl.ImmediateResp)
 
-	extProcNamespace := immResp.DynamicMetadata.GetFields()[constants.ExtProcFilterName].GetStructValue()
+	extProcNamespace := rsl.ImmediateResp.DynamicMetadata.GetFields()[constants.ExtProcFilterName].GetStructValue()
 	require.NotNil(t, extProcNamespace)
 
 	analyticsData := extProcNamespace.GetFields()["analytics_data"].GetStructValue()
@@ -595,11 +595,11 @@ func TestTranslateRequestActionsCore_SkippedPolicy(t *testing.T) {
 		},
 	}
 
-	headerMutation, _, _, _, _, _, _, err := translateRequestActionsCore(result, execCtx)
+	rsl, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
 	// Skipped policy actions should not be applied
-	assert.Empty(t, headerMutation.SetHeaders)
+	assert.Empty(t, rsl.HeaderMutation.SetHeaders)
 }
 
 func TestTranslateRequestActionsCore_WithQueryParams(t *testing.T) {
@@ -628,11 +628,11 @@ func TestTranslateRequestActionsCore_WithQueryParams(t *testing.T) {
 		},
 	}
 
-	_, _, _, _, pathMutation, _, _, err := translateRequestActionsCore(result, execCtx)
+	rsl, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
-	require.NotNil(t, pathMutation)
-	assert.Contains(t, *pathMutation, "added=param")
+	require.NotNil(t, rsl.Mutations.Path)
+	assert.Contains(t, *rsl.Mutations.Path, "added=param")
 }
 
 func TestTranslateRequestActionsCore_WithPathOverride(t *testing.T) {
@@ -660,11 +660,11 @@ func TestTranslateRequestActionsCore_WithPathOverride(t *testing.T) {
 		},
 	}
 
-	_, _, _, _, pathMutation, _, _, err := translateRequestActionsCore(result, execCtx)
+	rsl, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
-	require.NotNil(t, pathMutation)
-	assert.Equal(t, "/new/path", *pathMutation)
+	require.NotNil(t, rsl.Mutations.Path)
+	assert.Equal(t, "/new/path", *rsl.Mutations.Path)
 }
 
 // =============================================================================

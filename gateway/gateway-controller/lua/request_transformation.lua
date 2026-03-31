@@ -1,4 +1,4 @@
--- Request transformation Lua filter for HTTP method and path rewriting.
+-- Request transformation Lua filter for HTTP method, path, and host rewriting.
 -- Reads target values from dynamic metadata and replaces the corresponding headers.
 -- This filter runs AFTER routing, so path rewrites here do NOT trigger route re-evaluation.
 -- For path rewrites, Lua strips the API context and prepends the upstream base path since
@@ -45,6 +45,30 @@ local function resolve_target_method(metadata)
   local nested = metadata["request_transformation"]
   if type(nested) == "table" then
     return nested["target_method"]
+  end
+
+  return nil
+end
+
+local function resolve_target_host(metadata)
+  if metadata == nil then
+    return nil
+  end
+
+  -- New SDK format: mods.Host sets this
+  local host_key = metadata["host"]
+  if host_key ~= nil then
+    return host_key
+  end
+
+  local direct = metadata["request_transformation.target_host"]
+  if direct ~= nil then
+    return direct
+  end
+
+  local nested = metadata["request_transformation"]
+  if type(nested) == "table" then
+    return nested["target_host"]
   end
 
   return nil
@@ -167,8 +191,8 @@ function envoy_on_request(handle)
       end
     end
 
-    handle:logInfo("path_rewrite: target_path=" .. tostring(target_path) .. 
-      " api_context=" .. tostring(api_context) .. 
+    handle:logInfo("path_rewrite: target_path=" .. tostring(target_path) ..
+      " api_context=" .. tostring(api_context) ..
       " upstream_base_path=" .. tostring(upstream_base_path))
 
     -- Compute the final upstream path
@@ -179,22 +203,29 @@ function envoy_on_request(handle)
     end
   end
 
+  -- Handle host/authority rewriting
+  local target_host = resolve_target_host(extproc_metadata)
+  if target_host ~= nil and type(target_host) == "string" and target_host ~= "" then
+    handle:logInfo("host_rewrite: target_host=" .. tostring(target_host))
+    -- Replace both :authority (HTTP/2) and Host (HTTP/1) for compatibility
+    handle:headers():replace(":authority", target_host)
+    handle:headers():replace("host", target_host)
+  end
+
   -- Handle HTTP method rewriting
   local target_method = resolve_target_method(extproc_metadata)
-  if target_method == nil then
-    return
-  end
+  if target_method ~= nil then
+    local normalized = normalize_method(target_method)
+    if normalized == nil then
+      handle:logWarn("request transformation: target_method is not a string")
+      return
+    end
 
-  local normalized = normalize_method(target_method)
-  if normalized == nil then
-    handle:logWarn("request transformation: target_method is not a string")
-    return
-  end
+    if not allowed_methods[normalized] then
+      handle:logWarn("request transformation: invalid target_method: " .. tostring(target_method))
+      return
+    end
 
-  if not allowed_methods[normalized] then
-    handle:logWarn("request transformation: invalid target_method: " .. tostring(target_method))
-    return
+    handle:headers():replace(":method", normalized)
   end
-
-  handle:headers():replace(":method", normalized)
 end
