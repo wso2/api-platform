@@ -678,7 +678,7 @@ func (c *ChainExecutor) ExecuteResponsePolicies(ctx context.Context, policyList 
 type StreamingRequestPolicyResult struct {
 	PolicyName    string
 	PolicyVersion string
-	Action        *policy.RequestChunkAction
+	Action        policy.StreamingRequestAction
 	ExecutionTime time.Duration
 	Skipped       bool
 }
@@ -686,7 +686,7 @@ type StreamingRequestPolicyResult struct {
 // StreamingRequestExecutionResult represents the result of executing all streaming request policies
 type StreamingRequestExecutionResult struct {
 	Results            []StreamingRequestPolicyResult
-	FinalAction        *policy.RequestChunkAction
+	FinalAction        policy.StreamingRequestAction
 	FinalChunk         *policy.StreamBody
 	TotalExecutionTime time.Duration
 }
@@ -794,19 +794,19 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 		result.Results = append(result.Results, StreamingRequestPolicyResult{
 			PolicyName:    spec.Name,
 			PolicyVersion: spec.Version,
-			Action:        &action,
+			Action:        action,
 			ExecutionTime: executionTime,
 		})
 
 		// Chain the chunk: if a policy mutates the body, downstream policies see the mutated bytes.
-		if action.Body != nil {
+		if fwd, ok := action.(policy.ForwardRequestChunk); ok && fwd.Body != nil {
 			currentChunk = &policy.StreamBody{
-				Chunk:       action.Body,
+				Chunk:       fwd.Body,
 				EndOfStream: currentChunk.EndOfStream,
 			}
 		}
 
-		result.FinalAction = &action
+		result.FinalAction = action
 		span.End()
 	}
 
@@ -821,18 +821,18 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 type StreamingResponsePolicyResult struct {
 	PolicyName    string
 	PolicyVersion string
-	Action        *policy.ResponseChunkAction
+	Action        policy.StreamingResponseAction
 	ExecutionTime time.Duration
 	Skipped       bool
 }
 
 // StreamingResponseExecutionResult represents the result of executing all streaming response policies
 type StreamingResponseExecutionResult struct {
-	Results             []StreamingResponsePolicyResult
-	StreamTerminated      bool // true if a policy set TerminateStream and the chain was stopped early
-	FinalAction         *policy.ResponseChunkAction
-	FinalChunk          *policy.StreamBody
-	TotalExecutionTime  time.Duration
+	Results            []StreamingResponsePolicyResult
+	StreamTerminated   bool // true if a policy returned TerminateResponseChunk and the chain was stopped early
+	FinalAction        policy.StreamingResponseAction
+	FinalChunk         *policy.StreamBody
+	TotalExecutionTime time.Duration
 }
 
 // ExecuteStreamingResponsePolicies executes streaming response policies chunk-by-chunk.
@@ -942,25 +942,29 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 		result.Results = append(result.Results, StreamingResponsePolicyResult{
 			PolicyName:    spec.Name,
 			PolicyVersion: spec.Version,
-			Action:        &action,
+			Action:        action,
 			ExecutionTime: executionTime,
 		})
 
-		// Propagate modified bytes to the next policy in the chain
-		if action.Body != nil {
-			currentChunk = &policy.StreamBody{
-				Chunk:       action.Body,
-				EndOfStream: currentChunk.EndOfStream,
+		// Propagate modified bytes to the next policy in the chain.
+		switch a := action.(type) {
+		case policy.ForwardResponseChunk:
+			if a.Body != nil {
+				currentChunk = &policy.StreamBody{Chunk: a.Body, EndOfStream: currentChunk.EndOfStream}
+			}
+		case policy.TerminateResponseChunk:
+			if a.Body != nil {
+				currentChunk = &policy.StreamBody{Chunk: a.Body, EndOfStream: true}
 			}
 		}
 
-		result.FinalAction = &action
+		result.FinalAction = action
 		span.End()
 
-		// Short-circuit: a policy requested stream termination (e.g. guardrail intervened).
+		// Short-circuit: a policy returned TerminateResponseChunk (e.g. guardrail intervened).
 		// Stop executing remaining policies and signal the kernel to close the stream after
 		// delivering the current chunk.
-		if action.TerminateStream {
+		if action.TerminateStream() {
 			slog.Info("[streaming] policy requested stream termination; stopping chain",
 				"policy", spec.Name,
 				"version", spec.Version,

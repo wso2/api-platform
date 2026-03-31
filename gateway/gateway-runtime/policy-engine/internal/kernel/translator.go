@@ -1260,12 +1260,14 @@ func TranslateStreamingRequestChunkAction(result *executor.StreamingRequestExecu
 		if pr.Skipped || pr.Action == nil {
 			continue
 		}
-		for key, value := range pr.Action.AnalyticsMetadata {
-			analyticsData[key] = value
-			execCtx.analyticsMetadata[key] = value
+		if fwd, ok := pr.Action.(policy.ForwardRequestChunk); ok {
+			for key, value := range fwd.AnalyticsMetadata {
+				analyticsData[key] = value
+				execCtx.analyticsMetadata[key] = value
+			}
+			mergeDynamicMetadata(dynamicMetadata, fwd.DynamicMetadata)
+			mergeDynamicMetadata(execCtx.dynamicMetadata, fwd.DynamicMetadata)
 		}
-		mergeDynamicMetadata(dynamicMetadata, pr.Action.DynamicMetadata)
-		mergeDynamicMetadata(execCtx.dynamicMetadata, pr.Action.DynamicMetadata)
 	}
 
 	resp := &extprocv3.ProcessingResponse{
@@ -1343,12 +1345,20 @@ func TranslateStreamingResponseChunkAction(result *executor.StreamingResponseExe
 		if pr.Skipped || pr.Action == nil {
 			continue
 		}
-		for key, value := range pr.Action.AnalyticsMetadata {
+		var am map[string]any
+		var dm map[string]map[string]any
+		switch a := pr.Action.(type) {
+		case policy.ForwardResponseChunk:
+			am, dm = a.AnalyticsMetadata, a.DynamicMetadata
+		case policy.TerminateResponseChunk:
+			am, dm = a.AnalyticsMetadata, a.DynamicMetadata
+		}
+		for key, value := range am {
 			analyticsData[key] = value
 			execCtx.analyticsMetadata[key] = value
 		}
-		mergeDynamicMetadata(dynamicMetadata, pr.Action.DynamicMetadata)
-		mergeDynamicMetadata(execCtx.dynamicMetadata, pr.Action.DynamicMetadata)
+		mergeDynamicMetadata(dynamicMetadata, dm)
+		mergeDynamicMetadata(execCtx.dynamicMetadata, dm)
 	}
 
 	// If a policy terminated the stream early (e.g. guardrail intervention), force

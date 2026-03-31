@@ -385,7 +385,7 @@ func (a *AnalyticsPolicy) OnResponseBody(_ context.Context, ctx *policy.Response
 // OnResponseBodyChunk handles streaming response body chunks.
 // Chunks are accumulated in SharedContext.Metadata. On EndOfStream the accumulated
 // bytes are parsed and analytics metadata is emitted on the final ResponseChunkAction.
-func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.ResponseStreamContext, chunk *policy.StreamBody, params map[string]interface{}) policy.ResponseChunkAction {
+func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.ResponseStreamContext, chunk *policy.StreamBody, params map[string]interface{}) policy.StreamingResponseAction {
 	slog.Debug("Analytics system policy: OnResponseBodyChunk called")
 	if ctx.SharedContext.Metadata == nil {
 		ctx.SharedContext.Metadata = make(map[string]interface{})
@@ -397,7 +397,7 @@ func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.Res
 	}
 
 	if !chunk.EndOfStream {
-		return policy.ResponseChunkAction{}
+		return policy.ForwardResponseChunk{}
 	}
 
 	// EndOfStream: consume accumulated bytes and emit analytics.
@@ -470,9 +470,9 @@ func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.Res
 	}
 
 	if len(analyticsMetadata) == 0 {
-		return policy.ResponseChunkAction{}
+		return policy.ForwardResponseChunk{}
 	}
-	return policy.ResponseChunkAction{AnalyticsMetadata: analyticsMetadata}
+	return policy.ForwardResponseChunk{AnalyticsMetadata: analyticsMetadata}
 }
 
 // NeedsMoreResponseData always returns false: each chunk is processed immediately

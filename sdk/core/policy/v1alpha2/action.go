@@ -170,6 +170,9 @@ var (
 	_ RequestAction        = ImmediateResponse{}
 	_ ResponseAction       = DownstreamResponseModifications{}
 	_ ResponseAction       = ImmediateResponse{}
+	_ StreamingRequestAction  = ForwardRequestChunk{}
+	_ StreamingResponseAction = ForwardResponseChunk{}
+	_ StreamingResponseAction = TerminateResponseChunk{}
 )
 
 // ─── Streaming body actions ───────────────────────────────────────────────────
@@ -194,10 +197,17 @@ var (
 // There is no recovery path — once chunk processing has started, a clean
 // error response is not possible.
 
-// RequestChunkAction is returned by StreamingRequestPolicy.OnRequestBodyChunk.
-// Only the chunk payload can be modified. Request headers, path, method, and
-// query parameters are all committed — mutations to those fields are ignored.
-type RequestChunkAction struct {
+// StreamingRequestAction is a sealed oneof returned by StreamingRequestPolicy.OnRequestBodyChunk.
+// Implement ForwardRequestChunk to continue normally.
+// ImmediateResponse is not available in chunk actions — request headers are already
+// committed to upstream by the time chunks are processed.
+type StreamingRequestAction interface {
+	isStreamingRequestAction()
+}
+
+// ForwardRequestChunk forwards the chunk to upstream with an optional body replacement.
+// Return this when the chunk should be passed through (Body == nil) or rewritten.
+type ForwardRequestChunk struct {
 	Body []byte // nil = passthrough; non-nil bytes replace the chunk
 
 	// Analytics — accumulates incremental data across chunks (e.g. token counts).
@@ -205,21 +215,46 @@ type RequestChunkAction struct {
 	DynamicMetadata   map[string]map[string]any
 }
 
-// ResponseChunkAction is returned by StreamingResponsePolicy.OnResponseBodyChunk.
-// Only the chunk payload can be modified. Response status and headers are already
-// committed to the downstream client — mutations to those fields are ignored.
-type ResponseChunkAction struct {
-	Body []byte // nil = passthrough; non-nil bytes replace the chunk
+func (ForwardRequestChunk) isStreamingRequestAction() {}
 
-	// TerminateStream instructs the policy engine to stop executing remaining policies
-	// in the chain and close the stream after delivering Body to the client. This is
-	// the correct way to signal guardrail intervention mid-stream: the policy sets Body
-	// to a final SSE event (e.g. an error or [DONE] frame) and sets TerminateStream to
-	// true. Because response headers are already committed, no HTTP-level error status
-	// can be sent — the stream is closed cleanly after the final chunk is delivered.
-	TerminateStream bool
+// StreamingResponseAction is a sealed oneof returned by StreamingResponsePolicy.OnResponseBodyChunk.
+// Implement ForwardResponseChunk to continue normally, or TerminateResponseChunk to close
+// the stream after this chunk. ImmediateResponse is not available — response headers are
+// already committed to the downstream client.
+type StreamingResponseAction interface {
+	isStreamingResponseAction()
+	// TerminateStream returns true when the policy engine should stop executing remaining
+	// policies in the chain and close the stream after delivering this chunk to the client.
+	// This is the correct way to signal guardrail intervention mid-stream: set Body to a
+	// final SSE event (e.g. an error frame or [DONE]) and return TerminateResponseChunk.
+	// Because response headers are already committed, no HTTP-level error status can be
+	// sent — the stream is closed cleanly after the final chunk is delivered.
+	TerminateStream() bool
+}
+
+// ForwardResponseChunk forwards the chunk to the downstream client with an optional body
+// replacement. Return this when processing should continue normally.
+type ForwardResponseChunk struct {
+	Body []byte // nil = passthrough; non-nil bytes replace the chunk
 
 	// Analytics — accumulates incremental data across chunks (e.g. per-SSE-event token counts).
 	AnalyticsMetadata map[string]any
 	DynamicMetadata   map[string]map[string]any
 }
+
+func (ForwardResponseChunk) isStreamingResponseAction() {}
+func (ForwardResponseChunk) TerminateStream() bool      { return false }
+
+// TerminateResponseChunk delivers a final chunk to the downstream client and then closes
+// the stream. Use this for mid-stream guardrail intervention: set Body to a final SSE
+// event (e.g. an error frame or [DONE]) before returning this action.
+type TerminateResponseChunk struct {
+	Body []byte // nil = deliver an empty final chunk before closing
+
+	// Analytics — accumulates incremental data across chunks (e.g. per-SSE-event token counts).
+	AnalyticsMetadata map[string]any
+	DynamicMetadata   map[string]map[string]any
+}
+
+func (TerminateResponseChunk) isStreamingResponseAction() {}
+func (TerminateResponseChunk) TerminateStream() bool      { return true }
