@@ -1,5 +1,5 @@
 name: semantic-tool-filtering
-version: v1.0.1
+version: v1.0.2
 description: |
   Dynamically filters the tools provided within an API request based on their semantic relevance to the
   user query. This policy extracts both the query and the tool definitions from the incoming payload,

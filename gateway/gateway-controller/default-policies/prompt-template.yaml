@@ -1,5 +1,5 @@
 name: prompt-template
-version: v1.0.0
+version: v1.0.1
 description: |
   Applies configured prompt templates to request payloads to transform prompts
   before upstream processing.

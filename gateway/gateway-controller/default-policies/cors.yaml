@@ -1,5 +1,5 @@
 name: cors
-version: v1.0.0
+version: v1.0.1
 description: |
   Applies Cross-Origin Resource Sharing (CORS) rules by handling preflight
   requests and adding CORS headers to responses. Controls cross-origin access

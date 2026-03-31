@@ -1,5 +1,5 @@
 name: model-round-robin
-version: v1.0.0
+version: v1.0.1
 description: |
   Distributes requests across configured AI models in round-robin order to
   balance traffic and reduce overloading on any single model.

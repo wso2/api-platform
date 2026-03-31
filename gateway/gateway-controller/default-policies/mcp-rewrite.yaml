@@ -1,5 +1,5 @@
 name: mcp-rewrite
-version: v1.0.1
+version: v1.0.2
 description: |
   Rewrite MCP tool, resource, and prompt names between client-facing and backend values, and optionally filter list responses to configured entries (omit to allow all, set `[]` to deny all).
 
