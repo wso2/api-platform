@@ -221,7 +221,7 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 		apiKind := execCtx.sharedCtx.APIKind
 		apiId := execCtx.sharedCtx.APIId
 		sanitizedDefName := sanitizeUpstreamDefinitionName(*targetUpstreamName)
-		clusterName := constants.UpstreamDefinitionClusterPrefix + apiKind + "_" + apiId + "_" + sanitizedDefName
+		clusterName := constants.UpstreamDefinitionClusterPrefix + string(apiKind) + "_" + apiId + "_" + sanitizedDefName
 
 		// Set the x-target-upstream header directly for cluster_header routing
 		headerOps[constants.TargetUpstreamHeader] = append(headerOps[constants.TargetUpstreamHeader], &headerOp{
@@ -429,7 +429,7 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 		apiKind := execCtx.sharedCtx.APIKind
 		apiId := execCtx.sharedCtx.APIId
 		sanitizedDefName := sanitizeUpstreamDefinitionName(*targetUpstreamName)
-		clusterName := constants.UpstreamDefinitionClusterPrefix + apiKind + "_" + apiId + "_" + sanitizedDefName
+		clusterName := constants.UpstreamDefinitionClusterPrefix + string(apiKind) + "_" + apiId + "_" + sanitizedDefName
 		headerOps[constants.TargetUpstreamHeader] = append(headerOps[constants.TargetUpstreamHeader], &headerOp{opType: "set", value: clusterName})
 		extProcNS := constants.ExtProcFilterName
 		if execCtx.dynamicMetadata[extProcNS] == nil {
@@ -647,7 +647,7 @@ func TranslateRequestHeaderActionsWithBodyMerge(
 		apiKind := execCtx.sharedCtx.APIKind
 		apiId := execCtx.sharedCtx.APIId
 		sanitizedDefName := sanitizeUpstreamDefinitionName(*targetUpstreamName)
-		clusterName := constants.UpstreamDefinitionClusterPrefix + apiKind + "_" + apiId + "_" + sanitizedDefName
+		clusterName := constants.UpstreamDefinitionClusterPrefix + string(apiKind) + "_" + apiId + "_" + sanitizedDefName
 		headerOps[constants.TargetUpstreamHeader] = append(headerOps[constants.TargetUpstreamHeader], &headerOp{opType: "set", value: clusterName})
 		extProcNS := constants.ExtProcFilterName
 		if execCtx.dynamicMetadata[extProcNS] == nil {
