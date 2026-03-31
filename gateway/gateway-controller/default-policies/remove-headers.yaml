@@ -1,5 +1,5 @@
 name: remove-headers
-version: v1.0.0
+version: v1.0.1
 description: |
   Removes configured headers from requests and/or responses. Header matching is
   case-insensitive, and removing a non-existent header is ignored.

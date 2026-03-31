@@ -1,5 +1,5 @@
 name: respond
-version: v1.0.0
+version: v1.0.1
 description: |
   Return a response directly to the client without forwarding the request to the upstream.
 

@@ -1,5 +1,5 @@
 name: dynamic-endpoint
-version: v1.0.0
+version: v1.0.1
 description: |
   Routes requests to a dynamically specified upstream definition.
   This policy reads an upstream name from parameters and routes the request to that upstream.

@@ -1,5 +1,5 @@
 name: set-headers
-version: v1.0.0
+version: v1.0.1
 description: |
   Sets configured headers on requests and/or responses. If the same header is set
   multiple times, the latest configured value overwrites earlier values.
