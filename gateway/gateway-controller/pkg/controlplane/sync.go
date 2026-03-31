@@ -96,7 +96,9 @@ func (c *Client) syncDeployments(gatewayID string) {
 	//    that exist but have no deployment (e.g., deployment was deleted) should be retained
 	//    to preserve their API keys and subscriptions on the gateway.
 	if len(diff.toDelete) > 0 {
-		if c.apiUtilsService != nil {
+		// Check artifact existence only for non-on-prem control planes.
+		// On-prem CP does not support the /artifacts/exists endpoint.
+		if c.apiUtilsService != nil && !c.isOnPrem() {
 			existingIDs, err := c.apiUtilsService.CheckArtifactsExist(diff.toDelete)
 			if err != nil {
 				c.logger.Warn("Failed to check artifact existence, proceeding with all deletions",
