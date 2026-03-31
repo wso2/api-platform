@@ -33,7 +33,7 @@ cd wso2apip-api-gateway-1.0.0/
 docker compose -p gateway up -d
 
 # Verify gateway controller admin endpoint is running
-curl http://localhost:9094/health
+curl http://localhost:9094/api/v1/health
 
 # Start the sample backend used by the quick start API
 docker run -d \
@@ -44,7 +44,7 @@ docker run -d \
   -addr :5000 -pretty
 
 # Deploy an API configuration
-curl -X POST http://localhost:9090/rest-apis \
+curl -X POST http://localhost:9090/api/v1/rest-apis \
   -u admin:admin \
   -H "Content-Type: application/yaml" \
   --data-binary @- <<'EOF'

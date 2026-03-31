@@ -4,7 +4,7 @@ A complete API gateway system for managing, securing, and routing API traffic to
 
 ## Quick Start
 
-For step-by-step instructions on setting up and running the gateway using Docker Compose, including verifying the Gateway Controller admin health endpoint and deploying a sample REST API via `POST /rest-apis`, see the [Quick Start Guide](quick-start-guide.md).
+For step-by-step instructions on setting up and running the gateway using Docker Compose, including verifying the Gateway Controller admin health endpoint and deploying a sample REST API via `POST /api/v1/rest-apis`, see the [Quick Start Guide](quick-start-guide.md).
 
 ## Components
 
@@ -38,7 +38,7 @@ For the complete list of CLI commands and usage examples, see the [CLI Reference
 ```
 User → Gateway-Controller (REST API)
          ↓
-       Gateway-Controller Admin (/health)
+       Gateway-Controller Admin (/api/v1/health)
          ↓ (validates & persists config)
          ↓
        Router (Envoy Proxy) → Backend Services

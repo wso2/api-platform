@@ -285,7 +285,7 @@ func (m *InfrastructureManager) stopGatewayStack() {
 
 // waitForGatewayHealth waits for the gateway controller to be healthy
 func (m *InfrastructureManager) waitForGatewayHealth() error {
-	healthURL := fmt.Sprintf("http://localhost:%s/health", GatewayControllerPort)
+	healthURL := fmt.Sprintf("http://localhost:%s/api/v1/health", GatewayControllerPort)
 	client := &http.Client{Timeout: 5 * time.Second}
 
 	deadline := time.Now().Add(m.startupTimeout)

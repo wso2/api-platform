@@ -433,7 +433,7 @@ data:
           priorityClassName: ""
           livenessProbe:
             httpGet:
-              path: /health
+              path: /api/v1/health
               port: rest
             initialDelaySeconds: 10
             periodSeconds: 10
@@ -441,7 +441,7 @@ data:
             failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /health
+              path: /api/v1/health
               port: rest
             initialDelaySeconds: 5
             periodSeconds: 5
@@ -545,7 +545,7 @@ data:
           priorityClassName: ""
           livenessProbe:
             httpGet:
-              path: /health
+              path: /api/v1/health
               port: 9002
             initialDelaySeconds: 10
             periodSeconds: 10
@@ -553,7 +553,7 @@ data:
             failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /health
+              path: /api/v1/health
               port: 9002
             initialDelaySeconds: 5
             periodSeconds: 5

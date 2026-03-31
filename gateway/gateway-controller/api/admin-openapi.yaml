@@ -9,9 +9,9 @@ info:
   contact:
     name: WSO2 API Platform Team
 servers:
-  - url: http://localhost:9092
+  - url: http://localhost:9092/api/v1
     description: Local development admin server
-  - url: http://gateway-controller:9092
+  - url: http://gateway-controller:9092/api/v1
     description: Docker/Kubernetes admin server
 
 paths:

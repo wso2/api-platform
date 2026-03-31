@@ -33,7 +33,7 @@ cd wso2apip-ai-gateway-1.0.0/
 docker compose up -d
 
 # Verify gateway controller admin endpoint is running
-curl http://localhost:9094/health
+curl http://localhost:9094/api/v1/health
 ```
 
 ## Deploy an OpenAI LLM provider configuration

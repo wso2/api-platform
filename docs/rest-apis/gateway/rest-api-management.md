@@ -6,13 +6,13 @@ CRUD operations for Rest APIs
 
 <a id="opIdcreateRestAPI"></a>
 
-`POST /rest-apis`
+`POST /api/v1/rest-apis`
 
 > Code samples
 
 ```shell
 
-curl -X POST http://localhost:9090/rest-apis \
+curl -X POST http://localhost:9090/api/v1/rest-apis \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -123,13 +123,13 @@ Required roles: `admin`, `developer`
 
 <a id="opIdlistRestAPIs"></a>
 
-`GET /rest-apis`
+`GET /api/v1/rest-apis`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:9090/rest-apis \
+curl -X GET http://localhost:9090/api/v1/rest-apis \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -219,13 +219,13 @@ Status Code **200**
 
 <a id="opIdgetRestAPIById"></a>
 
-`GET /rest-apis/{id}`
+`GET /api/v1/rest-apis/{id}`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:9090/rest-apis/{id} \
+curl -X GET http://localhost:9090/api/v1/rest-apis/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -338,13 +338,13 @@ Required roles: `admin`, `developer`
 
 <a id="opIdupdateRestAPI"></a>
 
-`PUT /rest-apis/{id}`
+`PUT /api/v1/rest-apis/{id}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT http://localhost:9090/rest-apis/{id} \
+curl -X PUT http://localhost:9090/api/v1/rest-apis/{id} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -460,13 +460,13 @@ Required roles: `admin`, `developer`
 
 <a id="opIddeleteRestAPI"></a>
 
-`DELETE /rest-apis/{id}`
+`DELETE /api/v1/rest-apis/{id}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE http://localhost:9090/rest-apis/{id} \
+curl -X DELETE http://localhost:9090/api/v1/rest-apis/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -527,13 +527,13 @@ Status Code **200**
 
 <a id="opIdcreateAPIKey"></a>
 
-`POST /rest-apis/{id}/api-keys`
+`POST /api/v1/rest-apis/{id}/api-keys`
 
 > Code samples
 
 ```shell
 
-curl -X POST http://localhost:9090/rest-apis/{id}/api-keys \
+curl -X POST http://localhost:9090/api/v1/rest-apis/{id}/api-keys \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -617,13 +617,13 @@ Required roles: `admin`, `consumer`
 
 <a id="opIdlistAPIKeys"></a>
 
-`GET /rest-apis/{id}/api-keys`
+`GET /api/v1/rest-apis/{id}/api-keys`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:9090/rest-apis/{id}/api-keys \
+curl -X GET http://localhost:9090/api/v1/rest-apis/{id}/api-keys \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -687,13 +687,13 @@ Required roles: `admin`, `consumer`
 
 <a id="opIdregenerateAPIKey"></a>
 
-`POST /rest-apis/{id}/api-keys/{apiKeyName}/regenerate`
+`POST /api/v1/rest-apis/{id}/api-keys/{apiKeyName}/regenerate`
 
 > Code samples
 
 ```shell
 
-curl -X POST http://localhost:9090/rest-apis/{id}/api-keys/{apiKeyName}/regenerate \
+curl -X POST http://localhost:9090/api/v1/rest-apis/{id}/api-keys/{apiKeyName}/regenerate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -775,13 +775,13 @@ Required roles: `admin`, `consumer`
 
 <a id="opIdupdateAPIKey"></a>
 
-`PUT /rest-apis/{id}/api-keys/{apiKeyName}`
+`PUT /api/v1/rest-apis/{id}/api-keys/{apiKeyName}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT http://localhost:9090/rest-apis/{id}/api-keys/{apiKeyName} \
+curl -X PUT http://localhost:9090/api/v1/rest-apis/{id}/api-keys/{apiKeyName} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -868,13 +868,13 @@ Required roles: `admin`, `consumer`
 
 <a id="opIdrevokeAPIKey"></a>
 
-`DELETE /rest-apis/{id}/api-keys/{apiKeyName}`
+`DELETE /api/v1/rest-apis/{id}/api-keys/{apiKeyName}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE http://localhost:9090/rest-apis/{id}/api-keys/{apiKeyName} \
+curl -X DELETE http://localhost:9090/api/v1/rest-apis/{id}/api-keys/{apiKeyName} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -928,13 +928,13 @@ Required roles: `admin`, `consumer`
 
 <a id="opIdcreateSubscriptionPlan"></a>
 
-`POST /subscription-plans`
+`POST /api/v1/subscription-plans`
 
 > Code samples
 
 ```shell
 
-curl -X POST http://localhost:9090/subscription-plans \
+curl -X POST http://localhost:9090/api/v1/subscription-plans \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -1006,13 +1006,13 @@ Required roles: `admin`, `developer`
 
 <a id="opIdlistSubscriptionPlans"></a>
 
-`GET /subscription-plans`
+`GET /api/v1/subscription-plans`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:9090/subscription-plans \
+curl -X GET http://localhost:9090/api/v1/subscription-plans \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -1065,13 +1065,13 @@ Required roles: `admin`, `developer`
 
 <a id="opIdgetSubscriptionPlan"></a>
 
-`GET /subscription-plans/{planId}`
+`GET /api/v1/subscription-plans/{planId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:9090/subscription-plans/{planId} \
+curl -X GET http://localhost:9090/api/v1/subscription-plans/{planId} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -1126,13 +1126,13 @@ Required roles: `admin`, `developer`
 
 <a id="opIdupdateSubscriptionPlan"></a>
 
-`PUT /subscription-plans/{planId}`
+`PUT /api/v1/subscription-plans/{planId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT http://localhost:9090/subscription-plans/{planId} \
+curl -X PUT http://localhost:9090/api/v1/subscription-plans/{planId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -1204,13 +1204,13 @@ Required roles: `admin`, `developer`
 
 <a id="opIddeleteSubscriptionPlan"></a>
 
-`DELETE /subscription-plans/{planId}`
+`DELETE /api/v1/subscription-plans/{planId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE http://localhost:9090/subscription-plans/{planId} \
+curl -X DELETE http://localhost:9090/api/v1/subscription-plans/{planId} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -1262,13 +1262,13 @@ Required roles: `admin`, `developer`
 
 <a id="opIdcreateSubscription"></a>
 
-`POST /subscriptions`
+`POST /api/v1/subscriptions`
 
 > Code samples
 
 ```shell
 
-curl -X POST http://localhost:9090/subscriptions \
+curl -X POST http://localhost:9090/api/v1/subscriptions \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -1336,13 +1336,13 @@ Required roles: `admin`, `developer`
 
 <a id="opIdlistSubscriptions"></a>
 
-`GET /subscriptions`
+`GET /api/v1/subscriptions`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:9090/subscriptions \
+curl -X GET http://localhost:9090/api/v1/subscriptions \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -1409,13 +1409,13 @@ Required roles: `admin`, `developer`
 
 <a id="opIdgetSubscription"></a>
 
-`GET /subscriptions/{subscriptionId}`
+`GET /api/v1/subscriptions/{subscriptionId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:9090/subscriptions/{subscriptionId} \
+curl -X GET http://localhost:9090/api/v1/subscriptions/{subscriptionId} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -1468,13 +1468,13 @@ Required roles: `admin`, `developer`
 
 <a id="opIdupdateSubscription"></a>
 
-`PUT /subscriptions/{subscriptionId}`
+`PUT /api/v1/subscriptions/{subscriptionId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT http://localhost:9090/subscriptions/{subscriptionId} \
+curl -X PUT http://localhost:9090/api/v1/subscriptions/{subscriptionId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -1538,13 +1538,13 @@ Required roles: `admin`, `developer`
 
 <a id="opIddeleteSubscription"></a>
 
-`DELETE /subscriptions/{subscriptionId}`
+`DELETE /api/v1/subscriptions/{subscriptionId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE http://localhost:9090/subscriptions/{subscriptionId} \
+curl -X DELETE http://localhost:9090/api/v1/subscriptions/{subscriptionId} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 

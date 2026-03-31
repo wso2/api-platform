@@ -2,7 +2,7 @@
 
 ## Summary
 
-**With the reverted gateway-controller (no changes):** The subscription-validation integration test would **fail** because the gateway-controller's `POST /subscriptions` handler does not accept or generate `subscriptionToken`. The storage layer requires a non-empty token and fails with "plaintext cannot be empty".
+**With the reverted gateway-controller (no changes):** The subscription-validation integration test would **fail** because the gateway-controller's `POST /api/v1/subscriptions` handler does not accept or generate `subscriptionToken`. The storage layer requires a non-empty token and fails with "plaintext cannot be empty".
 
 **Solution:** Mock the platform-api event flow. Platform-api propagates subscription creation to the gateway-controller via WebSocket `subscription.created` events. The IT now uses a mock platform-api that injects these events.
 
@@ -10,7 +10,7 @@
 
 ## Verification Findings
 
-### 1. Gateway-Controller `POST /subscriptions` (REST API)
+### 1. Gateway-Controller `POST /api/v1/subscriptions` (REST API)
 
 - **OpenAPI:** `SubscriptionCreateRequest` does not define `subscriptionToken`.
 - **Handler:** `CreateSubscription` never sets `sub.SubscriptionToken`; it is always empty.
@@ -25,7 +25,7 @@
 
 ### 3. What Works Without Changes
 
-- Routes: `/subscription-plans`, `/subscriptions`, `/apis` at gateway-controller
+- Routes: `/api/v1/subscription-plans`, `/api/v1/subscriptions`, `/api/v1/rest-apis` at gateway-controller
 - Auth: Basic auth for gateway-controller requests
 - API ID resolution: `resolveAPIIDByHandle` maps handle (metadata.name) to deployment ID
 - Encryption key: Set in docker-compose.test.yaml
@@ -48,13 +48,13 @@
    - Gateway depends on mock-platform-api
 
 3. **IT Step**
-   - `I create a subscription for API "X" with plan and token "Y"` now POSTs to mock's `/inject-subscription` instead of gateway's `/subscriptions`
+   - `I create a subscription for API "X" with plan and token "Y"` now POSTs to mock's `/inject-subscription` instead of gateway's `/api/v1/subscriptions`
 
 ### Flow
 
 1. Gateway connects to mock WebSocket → receives `connection.ack`
 2. Sync runs → mock returns 500 → gateway keeps existing plans
-3. IT creates plan via gateway `POST /subscription-plans`
+3. IT creates plan via gateway `POST /api/v1/subscription-plans`
 4. IT deploys API via gateway `POST /apis`
 5. IT calls mock `POST /inject-subscription` with apiHandle, token, planId
 6. Mock reads deployment UUID from SQLite, sends `subscription.created` over WebSocket

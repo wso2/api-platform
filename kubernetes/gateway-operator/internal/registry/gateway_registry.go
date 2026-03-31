@@ -209,5 +209,5 @@ func (r *GatewayRegistry) ListAll() []*GatewayInfo {
 // GetGatewayServiceEndpoint returns the HTTP endpoint for the gateway controller API
 func (g *GatewayInfo) GetGatewayServiceEndpoint() string {
 	// In Kubernetes, services can be accessed via: <service-name>.<namespace>.svc.cluster.local:<port>
-	return fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", g.ServiceName, g.Namespace, g.ServicePort)
+	return fmt.Sprintf("http://%s.%s.svc.cluster.local:%d/api/v1", g.ServiceName, g.Namespace, g.ServicePort)
 }

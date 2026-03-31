@@ -37,7 +37,7 @@ func TestAdminServer_ConfigDumpHandler(t *testing.T) {
 	}
 	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "/config_dump", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/config_dump", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
 	rr := httptest.NewRecorder()
 
@@ -63,7 +63,7 @@ func TestAdminServer_XDSSyncStatusHandler(t *testing.T) {
 	}
 	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "/xds_sync_status", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/xds_sync_status", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
 	rr := httptest.NewRecorder()
 
@@ -80,7 +80,7 @@ func TestAdminServer_IPAllowlist(t *testing.T) {
 	stub := &stubAPIServer{}
 	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"127.0.0.1"}}, stub, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "/xds_sync_status", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/xds_sync_status", nil)
 	req.RemoteAddr = "192.168.1.10:12345"
 	rr := httptest.NewRecorder()
 
@@ -92,7 +92,7 @@ func TestAdminServer_MethodNotAllowed(t *testing.T) {
 	stub := &stubAPIServer{}
 	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, slog.Default())
 
-	req := httptest.NewRequest(http.MethodPost, "/config_dump", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/config_dump", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
 	rr := httptest.NewRecorder()
 
@@ -104,7 +104,7 @@ func TestAdminServer_HealthHandler(t *testing.T) {
 	stub := &stubAPIServer{}
 	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
 	rr := httptest.NewRecorder()
 
@@ -121,7 +121,7 @@ func TestAdminServer_HealthHandler_MethodNotAllowed(t *testing.T) {
 	stub := &stubAPIServer{}
 	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, slog.Default())
 
-	req := httptest.NewRequest(http.MethodPost, "/health", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/health", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
 	rr := httptest.NewRecorder()
 
@@ -134,7 +134,7 @@ func TestAdminServer_HealthHandler_NoIPWhitelist(t *testing.T) {
 	// Restrict IPs to only 127.0.0.1 — health should still be accessible from other IPs
 	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"127.0.0.1"}}, stub, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/health", nil)
 	req.RemoteAddr = "192.168.1.10:12345"
 	rr := httptest.NewRecorder()
 

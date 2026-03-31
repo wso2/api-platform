@@ -682,19 +682,19 @@ func TestGenerateAuthConfig(t *testing.T) {
 		authConfig := generateAuthConfig(cfg)
 
 		// Check some expected resource roles
-		assert.Contains(t, authConfig.ResourceRoles, "POST /rest-apis")
-		assert.Contains(t, authConfig.ResourceRoles, "GET /rest-apis")
-		assert.Contains(t, authConfig.ResourceRoles, "POST /llm-providers/:id/api-keys")
-		assert.Contains(t, authConfig.ResourceRoles, "GET /llm-providers/:id/api-keys")
-		assert.Contains(t, authConfig.ResourceRoles, "POST /llm-proxies/:id/api-keys")
-		assert.Contains(t, authConfig.ResourceRoles, "GET /llm-proxies/:id/api-keys")
-		assert.Contains(t, authConfig.ResourceRoles, "GET /policies")
-		assert.NotContains(t, authConfig.ResourceRoles, "GET /config_dump")
-		assert.NotContains(t, authConfig.ResourceRoles, "GET /xds_sync_status")
+		assert.Contains(t, authConfig.ResourceRoles, "POST /api/v1/rest-apis")
+		assert.Contains(t, authConfig.ResourceRoles, "GET /api/v1/rest-apis")
+		assert.Contains(t, authConfig.ResourceRoles, "POST /api/v1/llm-providers/:id/api-keys")
+		assert.Contains(t, authConfig.ResourceRoles, "GET /api/v1/llm-providers/:id/api-keys")
+		assert.Contains(t, authConfig.ResourceRoles, "POST /api/v1/llm-proxies/:id/api-keys")
+		assert.Contains(t, authConfig.ResourceRoles, "GET /api/v1/llm-proxies/:id/api-keys")
+		assert.Contains(t, authConfig.ResourceRoles, "GET /api/v1/policies")
+		assert.NotContains(t, authConfig.ResourceRoles, "GET /api/v1/config_dump")
+		assert.NotContains(t, authConfig.ResourceRoles, "GET /api/v1/xds_sync_status")
 
 		// Check role assignments
-		assert.Contains(t, authConfig.ResourceRoles["POST /rest-apis"], "admin")
-		assert.Contains(t, authConfig.ResourceRoles["POST /rest-apis"], "developer")
+		assert.Contains(t, authConfig.ResourceRoles["POST /api/v1/rest-apis"], "admin")
+		assert.Contains(t, authConfig.ResourceRoles["POST /api/v1/rest-apis"], "developer")
 	})
 }
 

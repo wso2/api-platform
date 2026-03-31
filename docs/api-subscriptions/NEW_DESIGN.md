@@ -88,10 +88,10 @@
 
 - Implement a default set of plans.(Ex: Gold, Silver, Bronze, Unlimited)
 - Implement a UI/REST/DB to store to default and custom plans.
-- Implement /subscription-plans REST API in platform-api and gateway-controller to store the plans and to select active plans for organization.
+- Implement /api/v1/subscription-plans REST API in platform-api and gateway-controller to store the plans and to select active plans for organization.
 
 ```
-GET/POST/PUT/DELETE /subscription-plans?organizationId=1234
+GET/POST/PUT/DELETE /api/v1/subscription-plans?organizationId=1234
 		{ 
 "planName": "Gold"
        "billingPlan": "Free/Commerical"
@@ -224,7 +224,7 @@ API developers need to manually attach the subscription validation policy to the
 
 - This option is only available for Self Hosted GW APIs.
 - Subscription Token will be generated(Opaque String) and will be visible in the API Overview UI.
-- Implement UI/REST CRUD/DB for Subscription Token in Platform-API+Choreo APIM (existing Choreo `/subscriptions` flows that require `applicationId` do not match this contract; here **`applicationId` is optional**).
+- Implement UI/REST CRUD/DB for Subscription Token in Platform-API+Choreo APIM (existing Choreo `/api/v1/subscriptions` flows that require `applicationId` do not match this contract; here **`applicationId` is optional**).
 - **Create subscription (Platform-API JSON):** **`apiId`** and **`subscriberId`** are **required**. **`subscriptionPlanId`**, **`applicationId`**, and **`status`** are **optional**. The server generates **`subscriptionToken`** (opaque); clients do **not** send it on `POST`.
 - Subscription token is stored in the platform-api DB (encrypted at rest), propagated to the gateway, and stored in the gateway DB for validation.
 

@@ -17,7 +17,7 @@
 - **Platform-API**: `subscription_plans` table, model, repository, service, handler, OpenAPI.
   - **Status:** Implemented. CRUD endpoints at `/api/v1/subscription-plans`.
 - **Gateway-Controller**: `subscription_plans` table, model, storage, handlers, OpenAPI.
-  - **Status:** Implemented. CRUD endpoints at `/subscription-plans`.
+  - **Status:** Implemented. CRUD endpoints at `/api/v1/subscription-plans`.
 
 ### Phase 2 — API-Level Subscription Plans Field
 - `RestAPIConfig` model extended with `SubscriptionPlans []string`.

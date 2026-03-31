@@ -272,7 +272,7 @@ http://localhost:9090
 #### Health Check
 
 ```bash
-GET /health
+GET /api/v1/health
 ```
 
 Response:
@@ -286,7 +286,7 @@ Response:
 #### Create API Configuration
 
 ```bash
-POST /rest-apis
+POST /api/v1/rest-apis
 Content-Type: application/yaml
 
 version: api-platform.wso2.com/v1
@@ -315,24 +315,24 @@ Response:
 #### List All APIs
 
 ```bash
-GET /rest-apis
+GET /api/v1/rest-apis
 ```
 
 #### Get API by Name and Version
 
 ```bash
-GET /rest-apis/{name}/{version}
+GET /api/v1/rest-apis/{name}/{version}
 ```
 
 Example:
 ```bash
-GET /rest-apis/Weather%20API/v1.0
+GET /api/v1/rest-apis/Weather%20API/v1.0
 ```
 
 #### Update API
 
 ```bash
-PUT /rest-apis/{name}/{version}
+PUT /api/v1/rest-apis/{name}/{version}
 Content-Type: application/yaml
 
 <updated configuration>
@@ -340,7 +340,7 @@ Content-Type: application/yaml
 
 Example:
 ```bash
-PUT /rest-apis/Weather%20API/v1.0
+PUT /api/v1/rest-apis/Weather%20API/v1.0
 Content-Type: application/yaml
 
 version: api-platform.wso2.com/v1
@@ -359,12 +359,12 @@ data:
 #### Delete API
 
 ```bash
-DELETE /rest-apis/{name}/{version}
+DELETE /api/v1/rest-apis/{name}/{version}
 ```
 
 Example:
 ```bash
-DELETE /rest-apis/Weather%20API/v1.0
+DELETE /api/v1/rest-apis/Weather%20API/v1.0
 ```
 
 ## Data Storage

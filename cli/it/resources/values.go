@@ -30,7 +30,7 @@ const (
 	GatewayControllerURL = "http://localhost:9090"
 
 	// GatewayControllerHealthURL is the health check endpoint
-	GatewayControllerHealthURL = "http://localhost:9090/health"
+	GatewayControllerHealthURL = "http://localhost:9090/api/v1/health"
 
 	// RouterURL is the gateway router HTTP endpoint
 	RouterURL = "http://localhost:8080"

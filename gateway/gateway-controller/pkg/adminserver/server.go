@@ -26,6 +26,8 @@ type Server struct {
 	logger    *slog.Logger
 }
 
+const adminAPIBasePath = "/api/v1"
+
 // NewServer creates a new admin HTTP server.
 func NewServer(cfg *config.AdminServerConfig, apiServer apiServer, logger *slog.Logger) *Server {
 	s := &Server{
@@ -36,6 +38,7 @@ func NewServer(cfg *config.AdminServerConfig, apiServer apiServer, logger *slog.
 
 	// Use generated handler with IP whitelist middleware for protected endpoints
 	handler := adminapi.HandlerWithOptions(s, adminapi.StdHTTPServerOptions{
+		BaseURL: adminAPIBasePath,
 		Middlewares: []adminapi.MiddlewareFunc{
 			createSelectiveIPWhitelistMiddleware(cfg.AllowedIPs),
 		},
@@ -102,12 +105,12 @@ func (s *Server) GetHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 // createSelectiveIPWhitelistMiddleware creates a middleware that applies IP whitelist
-// to all endpoints except /health (which must be accessible for Docker/k8s health probes).
+// to all endpoints except /api/v1/health (which must be accessible for Docker/k8s health probes).
 func createSelectiveIPWhitelistMiddleware(allowedIPs []string) adminapi.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Skip IP whitelist for health endpoint
-			if r.URL.Path == "/health" {
+			if r.URL.Path == adminAPIBasePath+"/health" {
 				next.ServeHTTP(w, r)
 				return
 			}

@@ -285,32 +285,32 @@ spec:
 
 ```bash
 # Create
-curl -X POST "$ADMIN_BASE_URL/subscription-plans" \
+curl -X POST "$ADMIN_BASE_URL/api/v1/subscription-plans" \
   -H "$ADMIN_AUTH_HEADER" \
   -H "Content-Type: application/json" \
   -d '{"planName": "Gold", "throttleLimitCount": 10000, "throttleLimitUnit": "Hour"}'
 
 # List
-curl -X GET "$ADMIN_BASE_URL/subscription-plans" -H "$ADMIN_AUTH_HEADER"
+curl -X GET "$ADMIN_BASE_URL/api/v1/subscription-plans" -H "$ADMIN_AUTH_HEADER"
 
 # Get by ID
-curl -X GET "$ADMIN_BASE_URL/subscription-plans/$PLAN_ID" -H "$ADMIN_AUTH_HEADER"
+curl -X GET "$ADMIN_BASE_URL/api/v1/subscription-plans/$PLAN_ID" -H "$ADMIN_AUTH_HEADER"
 
 # Update
-curl -X PUT "$ADMIN_BASE_URL/subscription-plans/$PLAN_ID" \
+curl -X PUT "$ADMIN_BASE_URL/api/v1/subscription-plans/$PLAN_ID" \
   -H "$ADMIN_AUTH_HEADER" \
   -H "Content-Type: application/json" \
   -d '{"throttleLimitCount": 20000}'
 
 # Delete
-curl -X DELETE "$ADMIN_BASE_URL/subscription-plans/$PLAN_ID" -H "$ADMIN_AUTH_HEADER"
+curl -X DELETE "$ADMIN_BASE_URL/api/v1/subscription-plans/$PLAN_ID" -H "$ADMIN_AUTH_HEADER"
 ```
 
 ### 5.2 Subscriptions
 
 ```bash
 # Create (with plan)
-curl -X POST "$ADMIN_BASE_URL/subscriptions" \
+curl -X POST "$ADMIN_BASE_URL/api/v1/subscriptions" \
   -H "$ADMIN_AUTH_HEADER" \
   -H "Content-Type: application/json" \
   -d '{
@@ -319,7 +319,7 @@ curl -X POST "$ADMIN_BASE_URL/subscriptions" \
   }'
 
 # Create (legacy with applicationId)
-curl -X POST "$ADMIN_BASE_URL/subscriptions" \
+curl -X POST "$ADMIN_BASE_URL/api/v1/subscriptions" \
   -H "$ADMIN_AUTH_HEADER" \
   -H "Content-Type: application/json" \
   -d '{
@@ -328,20 +328,20 @@ curl -X POST "$ADMIN_BASE_URL/subscriptions" \
   }'
 
 # List by API
-curl -X GET "$ADMIN_BASE_URL/subscriptions?apiId=019cd179-d924-753b-bc60-deba63e0c495" \
+curl -X GET "$ADMIN_BASE_URL/api/v1/subscriptions?apiId=019cd179-d924-753b-bc60-deba63e0c495" \
   -H "$ADMIN_AUTH_HEADER"
 
 # Get by ID
-curl -X GET "$ADMIN_BASE_URL/subscriptions/$SUBSCRIPTION_ID" -H "$ADMIN_AUTH_HEADER"
+curl -X GET "$ADMIN_BASE_URL/api/v1/subscriptions/$SUBSCRIPTION_ID" -H "$ADMIN_AUTH_HEADER"
 
 # Update status
-curl -X PUT "$ADMIN_BASE_URL/subscriptions/$SUBSCRIPTION_ID" \
+curl -X PUT "$ADMIN_BASE_URL/api/v1/subscriptions/$SUBSCRIPTION_ID" \
   -H "$ADMIN_AUTH_HEADER" \
   -H "Content-Type: application/json" \
   -d '{"status": "INACTIVE"}'
 
 # Delete
-curl -X DELETE "$ADMIN_BASE_URL/subscriptions/$SUBSCRIPTION_ID" -H "$ADMIN_AUTH_HEADER"
+curl -X DELETE "$ADMIN_BASE_URL/api/v1/subscriptions/$SUBSCRIPTION_ID" -H "$ADMIN_AUTH_HEADER"
 ```
 
 Response includes `subscriptionToken`, `subscriptionPlanId`, and all subscription fields.

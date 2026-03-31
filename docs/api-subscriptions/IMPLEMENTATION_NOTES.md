@@ -72,9 +72,9 @@ This document captures how the **Subscription Design** (including Subscription P
 
 ### 2.2 Admin REST API
 
-- New `/subscription-plans` CRUD endpoints (OpenAPI + handlers).
-- `/subscriptions` endpoints updated:
-  - `POST /subscriptions` accepts `{ apiId (required), applicationId?, subscriptionPlanId?, status? }`.
+- New `/api/v1/subscription-plans` CRUD endpoints (OpenAPI + handlers).
+- `/api/v1/subscriptions` endpoints updated:
+  - `POST /api/v1/subscriptions` accepts `{ apiId (required), applicationId?, subscriptionPlanId?, status? }`.
   - Response includes `subscriptionToken`, `subscriptionPlanId`, and all subscription fields.
   - `applicationId` is no longer required (optional for token-based subscriptions).
 
@@ -160,5 +160,5 @@ This document captures how the **Subscription Design** (including Subscription P
 - **Storage**: Gateway encrypts the token (AES-256-GCM) before storing. Also stores `subscription_token_hash` for validation and uniqueness.
 - **Schema**: `subscription_token` (encrypted), `subscription_token_hash` (SHA-256). Unique constraint on `(api_id, subscription_token_hash, gateway_id)`.
 - **Token storage**: Gateway stores only `subscription_token_hash` for validation. Use Platform-API to retrieve the original token.
-- **GET /subscriptions**: Decrypts and returns plain token.
+- **GET /api/v1/subscriptions**: Decrypts and returns plain token.
 - **xDS/Policy**: Uses `subscription_token_hash` for validation (policy hashes client token and looks up).

@@ -236,7 +236,7 @@ gateway:
       priorityClassName: ""
       livenessProbe:
         httpGet:
-          path: /health
+          path: /api/v1/health
           port: admin
         initialDelaySeconds: 10
         periodSeconds: 10
@@ -244,7 +244,7 @@ gateway:
         failureThreshold: 3
       readinessProbe:
         httpGet:
-          path: /health
+          path: /api/v1/health
           port: admin
         initialDelaySeconds: 5
         periodSeconds: 5
@@ -347,7 +347,7 @@ gateway:
       priorityClassName: ""
       livenessProbe:
         httpGet:
-          path: /health
+          path: /api/v1/health
           port: 9002
         initialDelaySeconds: 10
         periodSeconds: 10
@@ -355,7 +355,7 @@ gateway:
         failureThreshold: 3
       readinessProbe:
         httpGet:
-          path: /health
+          path: /api/v1/health
           port: 9002
         initialDelaySeconds: 5
         periodSeconds: 5

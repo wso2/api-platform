@@ -37,11 +37,12 @@ const (
 	DefaultGatewayRuntime    = "ghcr.io/wso2/api-platform/gateway-runtime:%s"    // %s = version
 
 	// REST API Endpoints
-	GatewayHealthPath       = "/health"
-	GatewayAPIsPath         = "/rest-apis"
-	GatewayAPIByIDPath      = "/rest-apis/%s"
-	GatewayMCPProxiesPath   = "/mcp-proxies"
-	GatewayMCPProxyByIDPath = "/mcp-proxies/%s"
+	GatewayAPIBasePath      = "/api/v1"
+	GatewayHealthPath       = GatewayAPIBasePath + "/health"
+	GatewayAPIsPath         = GatewayAPIBasePath + "/rest-apis"
+	GatewayAPIByIDPath      = GatewayAPIBasePath + "/rest-apis/%s"
+	GatewayMCPProxiesPath   = GatewayAPIBasePath + "/mcp-proxies"
+	GatewayMCPProxyByIDPath = GatewayAPIBasePath + "/mcp-proxies/%s"
 
 	// Auth Types
 	AuthTypeNone   = "none"
