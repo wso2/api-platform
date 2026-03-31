@@ -87,6 +87,22 @@ type DeploymentsBatchFetchRequest struct {
 	DeploymentIDs []string `json:"deploymentIds" binding:"required,min=1"`
 }
 
+// ArtifactsExistRequest represents the request body for checking artifact existence
+type ArtifactsExistRequest struct {
+	ArtifactIDs []string `json:"artifactIds" binding:"required,min=1"`
+}
+
+// ArtifactExistenceInfo represents the existence status of a single artifact
+type ArtifactExistenceInfo struct {
+	ArtifactID string `json:"artifactId"`
+	Exists     bool   `json:"exists"`
+}
+
+// ArtifactsExistResponse represents the response for checking artifact existence
+type ArtifactsExistResponse struct {
+	Artifacts []ArtifactExistenceInfo `json:"artifacts"`
+}
+
 // GatewaySubscriptionPlanInfo represents a subscription plan in internal gateway responses.
 type GatewaySubscriptionPlanInfo struct {
 	ID                 string                 `json:"id"`

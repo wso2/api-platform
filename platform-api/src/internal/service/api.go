@@ -310,15 +310,17 @@ func (s *APIService) DeleteAPI(apiUUID, orgUUID string) error {
 		return constants.ErrAPINotFound
 	}
 
-	// Get all gateway IDs where this API has an active deployment BEFORE deletion
-	// (deployments will be cascade deleted with the API)
-	var gatewayIDs []string
-	if s.deploymentRepo != nil {
-		ids, err := s.deploymentRepo.GetDeployedGatewayIDs(apiUUID, orgUUID)
+	// Get all gateways in the organization to broadcast deletion event.
+	// We broadcast to all gateways (not just those with active deployments) because
+	// deployment_status rows may have been cascade-deleted when deployments were removed,
+	// leaving stale artifacts on gateways that would otherwise never receive the delete event.
+	var gateways []*model.Gateway
+	if s.gatewayRepo != nil {
+		gws, err := s.gatewayRepo.GetByOrganizationID(orgUUID)
 		if err != nil {
-			s.slogger.Warn("Failed to get gateway IDs for API deletion", "apiUUID", apiUUID, "error", err)
+			s.slogger.Warn("Failed to get gateways for API deletion", "apiUUID", apiUUID, "error", err)
 		} else {
-			gatewayIDs = ids
+			gateways = gws
 		}
 	}
 
@@ -327,17 +329,17 @@ func (s *APIService) DeleteAPI(apiUUID, orgUUID string) error {
 		return fmt.Errorf("failed to delete api: %w", err)
 	}
 
-	// Send deletion events to all gateways where this API was deployed
-	if s.gatewayEventsService != nil && len(gatewayIDs) > 0 {
-		for _, gatewayID := range gatewayIDs {
+	// Send deletion events to all gateways in the organization
+	if s.gatewayEventsService != nil && len(gateways) > 0 {
+		for _, gateway := range gateways {
 			deletionEvent := &model.APIDeletionEvent{
 				ApiId: apiUUID,
 			}
 
-			if err := s.gatewayEventsService.BroadcastAPIDeletionEvent(gatewayID, deletionEvent); err != nil {
-				s.slogger.Warn("Failed to broadcast API deletion event", "gatewayID", gatewayID, "apiUUID", apiUUID, "error", err)
+			if err := s.gatewayEventsService.BroadcastAPIDeletionEvent(gateway.ID, deletionEvent); err != nil {
+				s.slogger.Warn("Failed to broadcast API deletion event", "gatewayID", gateway.ID, "apiUUID", apiUUID, "error", err)
 			} else {
-				s.slogger.Info("API deletion event sent", "gatewayID", gatewayID, "apiUUID", apiUUID)
+				s.slogger.Info("API deletion event sent", "gatewayID", gateway.ID, "apiUUID", apiUUID)
 			}
 		}
 	}

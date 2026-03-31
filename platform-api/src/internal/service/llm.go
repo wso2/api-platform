@@ -47,6 +47,7 @@ type LLMProviderService struct {
 	orgRepo              repository.OrganizationRepository
 	templateSeeder       *LLMTemplateSeeder
 	deploymentRepo       repository.DeploymentRepository
+	gatewayRepo          repository.GatewayRepository
 	gatewayEventsService *GatewayEventsService
 	slogger              *slog.Logger
 }
@@ -56,6 +57,7 @@ type LLMProxyService struct {
 	providerRepo         repository.LLMProviderRepository
 	projectRepo          repository.ProjectRepository
 	deploymentRepo       repository.DeploymentRepository
+	gatewayRepo          repository.GatewayRepository
 	gatewayEventsService *GatewayEventsService
 	slogger              *slog.Logger
 }
@@ -70,6 +72,7 @@ func NewLLMProviderService(
 	orgRepo repository.OrganizationRepository,
 	templateSeeder *LLMTemplateSeeder,
 	deploymentRepo repository.DeploymentRepository,
+	gatewayRepo repository.GatewayRepository,
 	gatewayEventsService *GatewayEventsService,
 	slogger *slog.Logger,
 ) *LLMProviderService {
@@ -79,6 +82,7 @@ func NewLLMProviderService(
 		orgRepo:              orgRepo,
 		templateSeeder:       templateSeeder,
 		deploymentRepo:       deploymentRepo,
+		gatewayRepo:          gatewayRepo,
 		gatewayEventsService: gatewayEventsService,
 		slogger:              slogger,
 	}
@@ -89,6 +93,7 @@ func NewLLMProxyService(
 	providerRepo repository.LLMProviderRepository,
 	projectRepo repository.ProjectRepository,
 	deploymentRepo repository.DeploymentRepository,
+	gatewayRepo repository.GatewayRepository,
 	gatewayEventsService *GatewayEventsService,
 	slogger *slog.Logger,
 ) *LLMProxyService {
@@ -97,6 +102,7 @@ func NewLLMProxyService(
 		providerRepo:         providerRepo,
 		projectRepo:          projectRepo,
 		deploymentRepo:       deploymentRepo,
+		gatewayRepo:          gatewayRepo,
 		gatewayEventsService: gatewayEventsService,
 		slogger:              slogger,
 	}
@@ -530,15 +536,17 @@ func (s *LLMProviderService) Delete(orgUUID, handle string) error {
 		return constants.ErrLLMProviderNotFound
 	}
 
-	// Get all gateway IDs where this provider has an active deployment BEFORE deletion
-	// (deployments will be cascade deleted with the artifact)
-	var gatewayIDs []string
-	if s.deploymentRepo != nil {
-		ids, err := s.deploymentRepo.GetDeployedGatewayIDs(provider.UUID, orgUUID)
+	// Get all gateways in the organization to broadcast deletion event.
+	// We broadcast to all gateways (not just those with active deployments) because
+	// deployment_status rows may have been cascade-deleted when deployments were removed,
+	// leaving stale artifacts on gateways that would otherwise never receive the delete event.
+	var gateways []*model.Gateway
+	if s.gatewayRepo != nil {
+		gws, err := s.gatewayRepo.GetByOrganizationID(orgUUID)
 		if err != nil {
-			s.slogger.Warn("Failed to get gateway IDs for LLM provider deletion", "error", err, "providerUUID", provider.UUID)
+			s.slogger.Warn("Failed to get gateways for LLM provider deletion", "error", err, "providerUUID", provider.UUID)
 		} else {
-			gatewayIDs = ids
+			gateways = gws
 		}
 	}
 
@@ -549,17 +557,17 @@ func (s *LLMProviderService) Delete(orgUUID, handle string) error {
 		return fmt.Errorf("failed to delete provider: %w", err)
 	}
 
-	// Send deletion events to all gateways where this provider was deployed
-	if s.gatewayEventsService != nil && len(gatewayIDs) > 0 {
-		for _, gatewayID := range gatewayIDs {
+	// Send deletion events to all gateways in the organization
+	if s.gatewayEventsService != nil && len(gateways) > 0 {
+		for _, gateway := range gateways {
 			deletionEvent := &model.LLMProviderDeletionEvent{
 				ProviderId: provider.UUID,
 			}
 
-			if err := s.gatewayEventsService.BroadcastLLMProviderDeletionEvent(gatewayID, deletionEvent); err != nil {
-				s.slogger.Warn("Failed to broadcast LLM provider deletion event", "error", err, "gatewayID", gatewayID, "providerUUID", provider.UUID)
+			if err := s.gatewayEventsService.BroadcastLLMProviderDeletionEvent(gateway.ID, deletionEvent); err != nil {
+				s.slogger.Warn("Failed to broadcast LLM provider deletion event", "error", err, "gatewayID", gateway.ID, "providerUUID", provider.UUID)
 			} else {
-				s.slogger.Info("LLM provider deletion event sent", "gatewayID", gatewayID, "providerUUID", provider.UUID)
+				s.slogger.Info("LLM provider deletion event sent", "gatewayID", gateway.ID, "providerUUID", provider.UUID)
 			}
 		}
 	}
@@ -876,15 +884,17 @@ func (s *LLMProxyService) Delete(orgUUID, handle string) error {
 		return constants.ErrLLMProxyNotFound
 	}
 
-	// Get all gateway IDs where this proxy has an active deployment BEFORE deletion
-	// (deployments will be cascade deleted with the artifact)
-	var gatewayIDs []string
-	if s.deploymentRepo != nil {
-		ids, err := s.deploymentRepo.GetDeployedGatewayIDs(proxy.UUID, orgUUID)
+	// Get all gateways in the organization to broadcast deletion event.
+	// We broadcast to all gateways (not just those with active deployments) because
+	// deployment_status rows may have been cascade-deleted when deployments were removed,
+	// leaving stale artifacts on gateways that would otherwise never receive the delete event.
+	var gateways []*model.Gateway
+	if s.gatewayRepo != nil {
+		gws, err := s.gatewayRepo.GetByOrganizationID(orgUUID)
 		if err != nil {
-			s.slogger.Warn("Failed to get gateway IDs for LLM proxy deletion", "error", err, "proxyUUID", proxy.UUID)
+			s.slogger.Warn("Failed to get gateways for LLM proxy deletion", "error", err, "proxyUUID", proxy.UUID)
 		} else {
-			gatewayIDs = ids
+			gateways = gws
 		}
 	}
 
@@ -895,17 +905,17 @@ func (s *LLMProxyService) Delete(orgUUID, handle string) error {
 		return fmt.Errorf("failed to delete proxy: %w", err)
 	}
 
-	// Send deletion events to all gateways where this proxy was deployed
-	if s.gatewayEventsService != nil && len(gatewayIDs) > 0 {
-		for _, gatewayID := range gatewayIDs {
+	// Send deletion events to all gateways in the organization
+	if s.gatewayEventsService != nil && len(gateways) > 0 {
+		for _, gateway := range gateways {
 			deletionEvent := &model.LLMProxyDeletionEvent{
 				ProxyId: proxy.UUID,
 			}
 
-			if err := s.gatewayEventsService.BroadcastLLMProxyDeletionEvent(gatewayID, deletionEvent); err != nil {
-				s.slogger.Warn("Failed to broadcast LLM proxy deletion event", "error", err, "gatewayID", gatewayID, "proxyUUID", proxy.UUID)
+			if err := s.gatewayEventsService.BroadcastLLMProxyDeletionEvent(gateway.ID, deletionEvent); err != nil {
+				s.slogger.Warn("Failed to broadcast LLM proxy deletion event", "error", err, "gatewayID", gateway.ID, "proxyUUID", proxy.UUID)
 			} else {
-				s.slogger.Info("LLM proxy deletion event sent", "gatewayID", gatewayID, "proxyUUID", proxy.UUID)
+				s.slogger.Info("LLM proxy deletion event sent", "gatewayID", gateway.ID, "proxyUUID", proxy.UUID)
 			}
 		}
 	}
