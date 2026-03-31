@@ -101,10 +101,14 @@ func (c *Client) syncDeployments(gatewayID string) {
 		if c.apiUtilsService != nil && !c.isOnPrem() {
 			existingIDs, err := c.apiUtilsService.CheckArtifactsExist(diff.toDelete)
 			if err != nil {
-				c.logger.Warn("Failed to check artifact existence, proceeding with all deletions",
+				c.logger.Warn("Failed to check artifact existence, skipping deletions to avoid data loss",
 					slog.Any("error", err),
 					slog.Int("orphan_count", len(diff.toDelete)),
 				)
+				// Clear toDelete so no orphans are removed — a transient error
+				// (network, CP restart) must not cause destructive deletion of
+				// artifacts that may still exist on the platform.
+				diff.toDelete = nil
 			} else if len(existingIDs) > 0 {
 				// Filter out artifacts that still exist on the platform
 				existingSet := make(map[string]struct{}, len(existingIDs))
