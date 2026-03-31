@@ -363,6 +363,37 @@ func (ec *PolicyExecutionContext) processRequestBodyForEmptyRequest(
 	return TranslateRequestHeaderActionsWithBodyMerge(headerResult, bodyResult, ec)
 }
 
+// processResponseBodyForEmptyResponse executes body policies inline during the response-headers
+// phase for responses that carry no body. The body context is set to Present=false / EndOfStream=true
+// so policies can inspect headers-only state and still run on every response.
+func (ec *PolicyExecutionContext) processResponseBodyForEmptyResponse(
+	ctx context.Context,
+	headerResult *executor.ResponseHeaderExecutionResult,
+) (*extprocv3.ProcessingResponse, error) {
+	// Ensure the body context reflects a nil/absent body.
+	ec.responseBodyCtx.ResponseBody = &policy.Body{Content: nil, EndOfStream: true, Present: false}
+
+	slog.DebugContext(ctx, "[no-body] executing response body policies inline during response-headers phase",
+		"route", ec.routeKey,
+		"status", ec.responseHeaderCtx.ResponseStatus,
+	)
+
+	bodyResult, err := ec.server.executor.ExecuteResponsePolicies(
+		ctx,
+		ec.policyChain.Policies,
+		ec.responseBodyCtx,
+		ec.policyChain.PolicySpecs,
+		ec.sharedCtx.APIName,
+		ec.routeKey,
+		ec.policyChain.HasExecutionConditions,
+	)
+	if err != nil {
+		return ec.handlePolicyError(ctx, err, "response_body_no_body"), nil
+	}
+
+	return TranslateResponseHeaderActionsWithBodyMerge(headerResult, bodyResult, ec)
+}
+
 // processRequestBody processes request body phase
 func (ec *PolicyExecutionContext) processRequestBody(
 	ctx context.Context,
@@ -630,6 +661,12 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 	// Propagate header mutations into the shared in-memory context so that body-phase
 	// policies (OnResponseBody / OnResponseBodyChunk) observe the post-mutation headers.
 	applyResponseHeaderMutations(ec.responseHeaderCtx.ResponseHeaders, execResult.Results)
+
+	// For bodyless responses Envoy skips the ResponseBody ext_proc phase entirely.
+	// Execute body policies inline now so they run on every response, receiving a nil body.
+	if !execResult.ShortCircuited && ec.policyChain.RequiresResponseBody && ec.responseHasNoBody() {
+		return ec.processResponseBodyForEmptyResponse(ctx, execResult)
+	}
 
 	resp, err := TranslateResponseHeaderActions(execResult, ec)
 	if err != nil {
