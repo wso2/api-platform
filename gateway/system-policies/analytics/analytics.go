@@ -15,15 +15,6 @@ import (
 )
 
 const (
-	// API Kinds
-	KindAsyncsse       = "async/sse"
-	KindAsyncwebsocket = "async/websocket"
-	KindAsyncwebsub    = "async/websub"
-	KindRestApi        = "RestApi"
-	KindLlmProvider    = "LlmProvider"
-	KindLlmProxy       = "LlmProxy"
-	KindMCP            = "Mcp"
-
 	// Analytics metadata keys for LLM token information
 	// These match the keys defined in policy-engine/internal/analytics/analytics.go
 	PromptTokenCountMetadataKey      = "aitoken:prompttokencount"
@@ -149,7 +140,7 @@ func (a *AnalyticsPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.Req
 		}
 	}
 
-	if reqCtx.SharedContext.APIKind == KindMCP && reqCtx.Headers != nil {
+	if reqCtx.SharedContext.APIKind == policy.APIKindMCP && reqCtx.Headers != nil {
 		if sessionIDs := reqCtx.Headers.Get("mcp-session-id"); len(sessionIDs) > 0 {
 			analyticsMetadata["mcp_session_id"] = sessionIDs[0]
 		}
@@ -179,7 +170,7 @@ func (a *AnalyticsPolicy) OnResponseHeaders(_ context.Context, respCtx *policy.R
 		}
 	}
 
-	if respCtx.SharedContext.APIKind == KindMCP && respCtx.ResponseHeaders != nil {
+	if respCtx.SharedContext.APIKind == policy.APIKindMCP && respCtx.ResponseHeaders != nil {
 		if sessionIDs := respCtx.ResponseHeaders.Get("mcp-session-id"); len(sessionIDs) > 0 {
 			analyticsMetadata["mcp_session_id"] = sessionIDs[0]
 		}
@@ -205,13 +196,13 @@ func (a *AnalyticsPolicy) OnRequestBody(_ context.Context, ctx *policy.RequestCo
 
 	apiKind := ctx.SharedContext.APIKind
 	switch apiKind {
-	case KindRestApi:
+	case policy.APIKindRestApi:
 		// Collect analytics data for REST API scenario
-	case KindLlmProvider:
+	case policy.APIKindLlmProvider:
 		// Collect analytics data for AI API(LLM Provider) specific scenario
-	case KindLlmProxy:
+	case policy.APIKindLlmProxy:
 		// Collect analytics data for LLM Proxy specific scenario
-	case KindMCP:
+	case policy.APIKindMCP:
 		// Collect analytics data specific for MCP scenario from request
 		if ctx.Headers != nil && len(ctx.Headers.GetAll()) > 0 {
 			sessionIDs := ctx.Headers.Get("mcp-session-id")
@@ -293,9 +284,9 @@ func (a *AnalyticsPolicy) OnResponseBody(_ context.Context, ctx *policy.Response
 	apiKind := ctx.SharedContext.APIKind
 	slog.Debug("API kind: ", "apiKind", apiKind)
 	switch apiKind {
-	case KindRestApi:
+	case policy.APIKindRestApi:
 		// Collect analytics data for REST API specific scenario
-	case KindLlmProvider, KindLlmProxy:
+	case policy.APIKindLlmProvider, policy.APIKindLlmProxy:
 		templateHandle, ok := ctx.SharedContext.Metadata["template_handle"].(string)
 		slog.Info("Template handle(extracted from route metadata): ", "templateHandle", templateHandle)
 		if !ok || templateHandle == "" {
@@ -323,7 +314,7 @@ func (a *AnalyticsPolicy) OnResponseBody(_ context.Context, ctx *policy.Response
 				}
 			}
 		}
-	case KindMCP:
+	case policy.APIKindMCP:
 		if ctx.ResponseHeaders != nil && len(ctx.ResponseHeaders.GetAll()) > 0 {
 			if analyticsMetadata["mcp_session_id"] == nil {
 				sessionIDs := ctx.ResponseHeaders.Get("mcp-session-id")
@@ -415,9 +406,9 @@ func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.Res
 
 	apiKind := ctx.SharedContext.APIKind
 	switch apiKind {
-	case KindRestApi:
+	case policy.APIKindRestApi:
 		// No body analytics for REST API
-	case KindLlmProvider, KindLlmProxy:
+	case policy.APIKindLlmProvider, policy.APIKindLlmProxy:
 		templateHandle, ok := ctx.SharedContext.Metadata["template_handle"].(string)
 		if ok && templateHandle != "" {
 			template, err := getTemplateByHandle(templateHandle)
@@ -440,7 +431,7 @@ func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.Res
 				}
 			}
 		}
-	case KindMCP:
+	case policy.APIKindMCP:
 		if ctx.ResponseHeaders != nil {
 			sessionIDs := ctx.ResponseHeaders.Get("mcp-session-id")
 			if len(sessionIDs) > 0 {

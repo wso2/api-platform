@@ -42,7 +42,7 @@ const maxStreamAccumulatorSize = 10 * 1024 * 1024 // 10 MB
 type processingPhase int
 
 const (
-	phaseRequestHeaders  processingPhase = iota
+	phaseRequestHeaders processingPhase = iota
 	phaseRequestBody
 	phaseResponseHeaders
 	phaseResponseBody
@@ -193,6 +193,9 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 	if ec.policyChain.RequiresRequestBody {
 		if ec.isStreamingRequest {
 			mode.RequestBodyMode = extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED
+			slog.Debug("[mode] upgraded request body mode to FULL_DUPLEX_STREAMED",
+				"route", ec.routeKey,
+			)
 		} else {
 			mode.RequestBodyMode = extprocconfigv3.ProcessingMode_BUFFERED
 		}
@@ -202,7 +205,10 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 
 	if ec.policyChain.RequiresResponseBody {
 		mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_BUFFERED
-		if ec.isStreamingResponse {
+		if ec.isStreamingResponse && (ec.sharedCtx == nil || ec.sharedCtx.APIKind != policy.APIKindMCP) {
+			// Disable streaming for MCP APIs, as there is an issue with Envoy, when Upstream MCP server sends a Transfer Encoding Chunk
+			// response with empty body, Envoy is not sending a request to the Policy Engine.
+			// Hence skip MCP.
 			mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED
 			slog.Debug("[mode] upgraded response body mode to FULL_DUPLEX_STREAMED",
 				"route", ec.routeKey,
@@ -922,7 +928,7 @@ func (ec *PolicyExecutionContext) buildRequestContexts(headers *extprocv3.HttpHe
 		APIId:         routeMetadata.APIId,
 		APIName:       routeMetadata.APIName,
 		APIVersion:    routeMetadata.APIVersion,
-		APIKind:       routeMetadata.APIKind,
+		APIKind:       policy.APIKind(routeMetadata.APIKind),
 		APIContext:    routeMetadata.Context,
 		OperationPath: routeMetadata.OperationPath,
 		Metadata:      make(map[string]interface{}),
