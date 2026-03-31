@@ -2,8 +2,6 @@ version: v1
 gateway:
   version: 1.0.0-rc.2-SNAPSHOT
 policies:
-  - name: token-based-ratelimit
-    gomodule: github.com/wso2/gateway-controllers/policies/token-based-ratelimit@v1
   - name: advanced-ratelimit
     gomodule: github.com/wso2/gateway-controllers/policies/advanced-ratelimit@v1
   - name: analytics-header-filter
@@ -24,10 +22,18 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/cors@v1
   - name: dynamic-endpoint
     gomodule: github.com/wso2/gateway-controllers/policies/dynamic-endpoint@v1
+  - name: host-rewrite
+    gomodule: github.com/wso2/gateway-controllers/policies/host-rewrite@v0
   - name: json-schema-guardrail
     gomodule: github.com/wso2/gateway-controllers/policies/json-schema-guardrail@v1
+  - name: json-xml-mediator
+    gomodule: github.com/wso2/gateway-controllers/policies/json-xml-mediator@v1
   - name: jwt-auth
     gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v1
+  - name: llm-cost
+    gomodule: github.com/wso2/gateway-controllers/policies/llm-cost@v1
+  - name: llm-cost-based-ratelimit
+    gomodule: github.com/wso2/gateway-controllers/policies/llm-cost-based-ratelimit@v1
   - name: log-message
     gomodule: github.com/wso2/gateway-controllers/policies/log-message@v1
   - name: mcp-acl-list
@@ -60,21 +66,17 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/semantic-cache@v1
   - name: semantic-prompt-guard
     gomodule: github.com/wso2/gateway-controllers/policies/semantic-prompt-guard@v1
+  - name: semantic-tool-filtering
+    gomodule: github.com/wso2/gateway-controllers/policies/semantic-tool-filtering@v1
   - name: sentence-count-guardrail
     gomodule: github.com/wso2/gateway-controllers/policies/sentence-count-guardrail@v1
   - name: set-headers
     gomodule: github.com/wso2/gateway-controllers/policies/set-headers@v1
+  - name: subscription-validation
+    gomodule: github.com/wso2/gateway-controllers/policies/subscription-validation@v1
+  - name: token-based-ratelimit
+    gomodule: github.com/wso2/gateway-controllers/policies/token-based-ratelimit@v1
   - name: url-guardrail
     gomodule: github.com/wso2/gateway-controllers/policies/url-guardrail@v1
   - name: word-count-guardrail
     gomodule: github.com/wso2/gateway-controllers/policies/word-count-guardrail@v1
-  - name: json-xml-mediator
-    gomodule: github.com/wso2/gateway-controllers/policies/json-xml-mediator@v1
-  - name: subscription-validation
-    gomodule: github.com/wso2/gateway-controllers/policies/subscription-validation@v1
-  - name: llm-cost
-    gomodule: github.com/wso2/gateway-controllers/policies/llm-cost@v1
-  - name: llm-cost-based-ratelimit
-    gomodule: github.com/wso2/gateway-controllers/policies/llm-cost-based-ratelimit@v1
-  - name: semantic-tool-filtering
-    gomodule: github.com/wso2/gateway-controllers/policies/semantic-tool-filtering@v1
