@@ -29,7 +29,7 @@ services:
       - "9090:9090"   # REST API
       - "9094:9092"   # Admin API
       - "18000:18000" # xDS gRPC
-      - "18001:18001"
+      - "18001:18001" # xDS gRPC
       - "9011:9091"   # Metrics
     environment:
       - APIP_GW_CONTROLLER_STORAGE_TYPE=sqlite
