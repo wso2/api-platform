@@ -474,7 +474,7 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 				},
 			},
 		},
-		ModeOverride: execCtx.getModeOverride(phaseRequestHeaders),
+		ModeOverride: execCtx.getModeOverride(),
 	}
 
 	analyticsStruct, err := buildAnalyticsStruct(analyticsData, execCtx)
@@ -700,7 +700,7 @@ func TranslateRequestHeaderActionsWithBodyMerge(
 				},
 			},
 		},
-		ModeOverride: execCtx.getModeOverride(phaseRequestHeaders),
+		ModeOverride: execCtx.getModeOverride(),
 	}
 
 	analyticsStruct, err := buildAnalyticsStruct(analyticsData, execCtx)
@@ -797,7 +797,7 @@ func TranslateResponseHeaderActions(result *executor.ResponseHeaderExecutionResu
 				},
 			},
 		},
-		ModeOverride: execCtx.getModeOverride(phaseResponseHeaders),
+		ModeOverride: execCtx.getModeOverride(),
 	}
 
 	analyticsStruct, err := buildAnalyticsStruct(analyticsData, execCtx)
@@ -831,7 +831,7 @@ func TranslateRequestHeadersActions(result *executor.RequestExecutionResult, cha
 				},
 			},
 		},
-		ModeOverride: execCtx.getModeOverride(phaseRequestHeaders),
+		ModeOverride: execCtx.getModeOverride(),
 	}
 
 	// Add analytics metadata
@@ -866,7 +866,7 @@ func TranslateRequestBodyActions(result *executor.RequestExecutionResult, chain 
 				},
 			},
 		},
-		ModeOverride: execCtx.getModeOverride(phaseRequestBody),
+		ModeOverride: execCtx.getModeOverride(),
 	}
 
 	// Add analytics metadata

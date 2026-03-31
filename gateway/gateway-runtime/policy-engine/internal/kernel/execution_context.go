@@ -129,6 +129,9 @@ type PolicyExecutionContext struct {
 
 	// Reference to server components
 	server *ExternalProcessorServer
+
+	// phase tracks the current ext_proc processing phase and is read by getModeOverride.
+	phase processingPhase
 }
 
 // newPolicyExecutionContext creates a new execution context for a request
@@ -184,7 +187,7 @@ func (ec *PolicyExecutionContext) handlePolicyError(
 // Response body is always set to BUFFERED here (never FULL_DUPLEX_STREAMED).
 // The upgrade to streaming happens at response-headers phase via
 // getStreamingResponseModeOverride when a streaming upstream response is detected.
-func (ec *PolicyExecutionContext) getModeOverride(phase processingPhase) *extprocconfigv3.ProcessingMode {
+func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingMode {
 	mode := &extprocconfigv3.ProcessingMode{}
 
 	if ec.policyChain.RequiresRequestBody {
@@ -213,7 +216,7 @@ func (ec *PolicyExecutionContext) getModeOverride(phase processingPhase) *extpro
 	// At response-headers phase we know whether a body will follow. If not, skip it
 	// even if the policy chain declared RequiresResponseBody, to avoid Envoy buffering
 	// a body that will never arrive.
-	if phase == phaseResponseHeaders && ec.responseHasNoBody() {
+	if ec.phase == phaseResponseHeaders && ec.responseHasNoBody() {
 		mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_NONE
 	}
 
@@ -222,7 +225,7 @@ func (ec *PolicyExecutionContext) getModeOverride(phase processingPhase) *extpro
 	mode.ResponseTrailerMode = extprocconfigv3.ProcessingMode_SKIP
 
 	slog.Debug("[mode] getModeOverride",
-		"phase", phase,
+		"phase", ec.phase,
 		"route", ec.routeKey,
 		"requires_request_body", ec.policyChain.RequiresRequestBody,
 		"requires_response_body", ec.policyChain.RequiresResponseBody,
@@ -249,6 +252,7 @@ func (ec *PolicyExecutionContext) getModeOverride(phase processingPhase) *extpro
 func (ec *PolicyExecutionContext) processRequestHeaders(
 	ctx context.Context,
 ) (*extprocv3.ProcessingResponse, error) {
+	ec.phase = phaseRequestHeaders
 	execResult, err := ec.server.executor.ExecuteRequestHeaderPolicies(
 		ctx,
 		ec.policyChain.Policies,
@@ -355,6 +359,7 @@ func (ec *PolicyExecutionContext) processRequestBody(
 	ctx context.Context,
 	body *extprocv3.HttpBody,
 ) (*extprocv3.ProcessingResponse, error) {
+	ec.phase = phaseRequestBody
 	if ec.isStreamingRequest {
 		return ec.processStreamingRequestBody(ctx, body)
 	}
@@ -578,6 +583,7 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 	ctx context.Context,
 	headers *extprocv3.HttpHeaders,
 ) (*extprocv3.ProcessingResponse, error) {
+	ec.phase = phaseResponseHeaders
 	ec.buildResponseContexts(headers)
 
 	// Detect streaming response: upgrade when chain supports streaming AND
@@ -629,6 +635,7 @@ func (ec *PolicyExecutionContext) processResponseBody(
 	ctx context.Context,
 	body *extprocv3.HttpBody,
 ) (*extprocv3.ProcessingResponse, error) {
+	ec.phase = phaseResponseBody
 	if ec.isStreamingResponse {
 		slog.Debug("[body] routing to streaming response body handler",
 			"route", ec.routeKey,
