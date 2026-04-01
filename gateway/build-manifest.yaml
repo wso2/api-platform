@@ -43,7 +43,7 @@ policies:
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v1
     - name: llm-cost
-      version: v1.0.1
+      version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/llm-cost@v1
     - name: llm-cost-based-ratelimit
       version: v1.0.2

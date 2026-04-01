@@ -1,5 +1,5 @@
 name: llm-cost
-version: v1.0.1
+version: v1.0.2
 description: |
   Calculates the monetary cost of LLM API calls at response time and stores the
   result in SharedContext.Metadata under "x-llm-cost" (USD float, e.g. "0.0000423100").
