@@ -131,15 +131,15 @@ func TestSeedForOrg_UpdatesExistingTemplateWhenSeedDefinitionChanges(t *testing.
 	if updated.PromptTokens == nil || updated.PromptTokens.Identifier != "usage.prompt_tokens" {
 		t.Fatalf("expected prompt token extraction identifier to be synced")
 	}
-	if updated.Description != "user description" {
-		t.Fatalf("expected description to remain unchanged, got %q", updated.Description)
+	if updated.Description != "" {
+		t.Fatalf("expected description to be synced from seed defaults, got %q", updated.Description)
 	}
 	if repo.updatedCount != 1 {
 		t.Fatalf("expected one update call, got %d", repo.updatedCount)
 	}
 }
 
-func TestSeedForOrg_DoesNotUpdateWhenTemplateIsAlreadyInSync(t *testing.T) {
+func TestSeedForOrg_UpdatesWhenTemplateIsAlreadyInSync(t *testing.T) {
 	orgID := "org-1"
 	repo := newMockLLMTemplateSeederRepo()
 	repo.byOrgID[orgID] = map[string]*model.LLMProviderTemplate{
@@ -170,8 +170,8 @@ func TestSeedForOrg_DoesNotUpdateWhenTemplateIsAlreadyInSync(t *testing.T) {
 		t.Fatalf("SeedForOrg returned error: %v", err)
 	}
 
-	if repo.updatedCount != 0 {
-		t.Fatalf("expected no update call, got %d", repo.updatedCount)
+	if repo.updatedCount != 1 {
+		t.Fatalf("expected one update call, got %d", repo.updatedCount)
 	}
 }
 
@@ -204,7 +204,7 @@ func TestSeedForOrg_DoesNotCreateTwiceForDuplicateSeedIDs(t *testing.T) {
 	if repo.createdCount != 1 {
 		t.Fatalf("expected one create call for duplicate seed IDs, got %d", repo.createdCount)
 	}
-	if repo.updatedCount != 0 {
-		t.Fatalf("expected no update call, got %d", repo.updatedCount)
+	if repo.updatedCount != 1 {
+		t.Fatalf("expected one update call for duplicate seed IDs, got %d", repo.updatedCount)
 	}
 }
