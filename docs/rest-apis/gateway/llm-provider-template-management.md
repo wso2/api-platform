@@ -29,69 +29,33 @@ Add a new LLM provider template to the Gateway. A template defines token trackin
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "LlmProviderTemplate",
   "metadata": {
-    "name": "weather-api-v1.0",
-    "labels": {
-      "environment": "production",
-      "team": "backend",
-      "version": "v1"
-    }
+    "name": "openai-template"
   },
   "spec": {
     "displayName": "OpenAI",
     "promptTokens": {
       "location": "payload",
-      "identifier": "$.usage.inputTokens"
+      "identifier": "$.usage.prompt_tokens"
     },
     "completionTokens": {
       "location": "payload",
-      "identifier": "$.usage.inputTokens"
+      "identifier": "$.usage.completion_tokens"
     },
     "totalTokens": {
       "location": "payload",
-      "identifier": "$.usage.inputTokens"
+      "identifier": "$.usage.total_tokens"
     },
     "remainingTokens": {
-      "location": "payload",
-      "identifier": "$.usage.inputTokens"
+      "location": "header",
+      "identifier": "x-ratelimit-remaining-tokens"
     },
     "requestModel": {
       "location": "payload",
-      "identifier": "$.usage.inputTokens"
+      "identifier": "$.model"
     },
     "responseModel": {
       "location": "payload",
-      "identifier": "$.usage.inputTokens"
-    },
-    "resourceMappings": {
-      "resources": [
-        {
-          "resource": "/responses",
-          "promptTokens": {
-            "location": "payload",
-            "identifier": "$.usage.inputTokens"
-          },
-          "completionTokens": {
-            "location": "payload",
-            "identifier": "$.usage.inputTokens"
-          },
-          "totalTokens": {
-            "location": "payload",
-            "identifier": "$.usage.inputTokens"
-          },
-          "remainingTokens": {
-            "location": "payload",
-            "identifier": "$.usage.inputTokens"
-          },
-          "requestModel": {
-            "location": "payload",
-            "identifier": "$.usage.inputTokens"
-          },
-          "responseModel": {
-            "location": "payload",
-            "identifier": "$.usage.inputTokens"
-          }
-        }
-      ]
+      "identifier": "$.model"
     }
   }
 }
@@ -253,69 +217,33 @@ Required roles: `admin`
       "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
       "kind": "LlmProviderTemplate",
       "metadata": {
-        "name": "weather-api-v1.0",
-        "labels": {
-          "environment": "production",
-          "team": "backend",
-          "version": "v1"
-        }
+        "name": "openai-template"
       },
       "spec": {
         "displayName": "OpenAI",
         "promptTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.prompt_tokens"
         },
         "completionTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.completion_tokens"
         },
         "totalTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.total_tokens"
         },
         "remainingTokens": {
-          "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "location": "header",
+          "identifier": "x-ratelimit-remaining-tokens"
         },
         "requestModel": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.model"
         },
         "responseModel": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
-        },
-        "resourceMappings": {
-          "resources": [
-            {
-              "resource": "/responses",
-              "promptTokens": {
-                "location": "payload",
-                "identifier": "$.usage.inputTokens"
-              },
-              "completionTokens": {
-                "location": "payload",
-                "identifier": "$.usage.inputTokens"
-              },
-              "totalTokens": {
-                "location": "payload",
-                "identifier": "$.usage.inputTokens"
-              },
-              "remainingTokens": {
-                "location": "payload",
-                "identifier": "$.usage.inputTokens"
-              },
-              "requestModel": {
-                "location": "payload",
-                "identifier": "$.usage.inputTokens"
-              },
-              "responseModel": {
-                "location": "payload",
-                "identifier": "$.usage.inputTokens"
-              }
-            }
-          ]
+          "identifier": "$.model"
         }
       }
     },
@@ -362,69 +290,33 @@ Update an existing LLM provider template in the Gateway.
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "LlmProviderTemplate",
   "metadata": {
-    "name": "weather-api-v1.0",
-    "labels": {
-      "environment": "production",
-      "team": "backend",
-      "version": "v1"
-    }
+    "name": "openai-template"
   },
   "spec": {
     "displayName": "OpenAI",
     "promptTokens": {
       "location": "payload",
-      "identifier": "$.usage.inputTokens"
+      "identifier": "$.usage.prompt_tokens"
     },
     "completionTokens": {
       "location": "payload",
-      "identifier": "$.usage.inputTokens"
+      "identifier": "$.usage.completion_tokens"
     },
     "totalTokens": {
       "location": "payload",
-      "identifier": "$.usage.inputTokens"
+      "identifier": "$.usage.total_tokens"
     },
     "remainingTokens": {
-      "location": "payload",
-      "identifier": "$.usage.inputTokens"
+      "location": "header",
+      "identifier": "x-ratelimit-remaining-tokens"
     },
     "requestModel": {
       "location": "payload",
-      "identifier": "$.usage.inputTokens"
+      "identifier": "$.model"
     },
     "responseModel": {
       "location": "payload",
-      "identifier": "$.usage.inputTokens"
-    },
-    "resourceMappings": {
-      "resources": [
-        {
-          "resource": "/responses",
-          "promptTokens": {
-            "location": "payload",
-            "identifier": "$.usage.inputTokens"
-          },
-          "completionTokens": {
-            "location": "payload",
-            "identifier": "$.usage.inputTokens"
-          },
-          "totalTokens": {
-            "location": "payload",
-            "identifier": "$.usage.inputTokens"
-          },
-          "remainingTokens": {
-            "location": "payload",
-            "identifier": "$.usage.inputTokens"
-          },
-          "requestModel": {
-            "location": "payload",
-            "identifier": "$.usage.inputTokens"
-          },
-          "responseModel": {
-            "location": "payload",
-            "identifier": "$.usage.inputTokens"
-          }
-        }
-      ]
+      "identifier": "$.model"
     }
   }
 }

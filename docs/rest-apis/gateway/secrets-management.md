@@ -85,17 +85,12 @@ The value is encrypted using the primary encryption provider before persistence.
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "Secret",
   "metadata": {
-    "name": "weather-api-v1.0",
-    "labels": {
-      "environment": "production",
-      "team": "backend",
-      "version": "v1"
-    }
+    "name": "database-password"
   },
   "spec": {
-    "displayName": "WSO2 OpenAI Key",
-    "description": "WSO2 OpenAI provider API Key",
-    "value": "sk_xxx"
+    "displayName": "Database Password",
+    "description": "PostgreSQL main database password",
+    "value": "sup3rs3cr3t!"
   }
 }
 ```
@@ -270,17 +265,12 @@ to newer keys during updates. Old secrets remain readable via the provider chain
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "Secret",
   "metadata": {
-    "name": "weather-api-v1.0",
-    "labels": {
-      "environment": "production",
-      "team": "backend",
-      "version": "v1"
-    }
+    "name": "database-password"
   },
   "spec": {
-    "displayName": "WSO2 OpenAI Key",
-    "description": "WSO2 OpenAI provider API Key",
-    "value": "sk_xxx"
+    "displayName": "Database Password",
+    "description": "PostgreSQL main database password",
+    "value": "sup3rs3cr3t!"
   }
 }
 ```

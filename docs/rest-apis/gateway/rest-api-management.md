@@ -29,25 +29,29 @@ Add a new RestAPI to the Gateway.
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "RestApi",
   "metadata": {
-    "name": "petstore-api-v1.0"
+    "name": "weather-api-v1.0"
   },
   "spec": {
-    "displayName": "Petstore-API",
+    "displayName": "Weather API",
     "version": "v1.0",
-    "context": "/petstore/$version",
+    "context": "/weather/$version",
     "upstream": {
       "main": {
-        "url": "https://petstore3.swagger.io/api/v3"
+        "url": "http://weather-backend:8080/api/v2"
       }
     },
     "operations": [
       {
-        "method": "PUT",
-        "path": "/pet"
+        "method": "GET",
+        "path": "/{country_code}/{city}"
+      },
+      {
+        "method": "GET",
+        "path": "/alerts/active"
       },
       {
         "method": "POST",
-        "path": "/pet",
+        "path": "/alerts/active",
         "policies": [
           {
             "name": "log-message",
@@ -60,22 +64,6 @@ Add a new RestAPI to the Gateway.
             }
           }
         ]
-      },
-      {
-        "method": "GET",
-        "path": "/pet/findByStatus"
-      },
-      {
-        "method": "GET",
-        "path": "/pet/{petId}"
-      },
-      {
-        "method": "POST",
-        "path": "/pet/{petId}"
-      },
-      {
-        "method": "DELETE",
-        "path": "/pet/{petId}"
       }
     ]
   }
@@ -173,9 +161,9 @@ Required roles: `admin`, `developer`
   "apis": [
     {
       "id": "weather-api-v1.0",
-      "displayName": "weather-api",
+      "displayName": "Weather API",
       "version": "v1.0",
-      "context": "/weather",
+      "context": "/weather/$version",
       "status": "deployed",
       "createdAt": "2025-10-11T10:30:00Z",
       "updatedAt": "2025-10-11T10:30:00Z"
@@ -265,25 +253,29 @@ Required roles: `admin`, `developer`
       "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
       "kind": "RestApi",
       "metadata": {
-        "name": "petstore-api-v1.0"
+        "name": "weather-api-v1.0"
       },
       "spec": {
-        "displayName": "Petstore-API",
+        "displayName": "Weather API",
         "version": "v1.0",
-        "context": "/petstore/$version",
+        "context": "/weather/$version",
         "upstream": {
           "main": {
-            "url": "https://petstore3.swagger.io/api/v3"
+            "url": "http://weather-backend:8080/api/v2"
           }
         },
         "operations": [
           {
-            "method": "PUT",
-            "path": "/pet"
+            "method": "GET",
+            "path": "/{country_code}/{city}"
+          },
+          {
+            "method": "GET",
+            "path": "/alerts/active"
           },
           {
             "method": "POST",
-            "path": "/pet",
+            "path": "/alerts/active",
             "policies": [
               {
                 "name": "log-message",
@@ -296,22 +288,6 @@ Required roles: `admin`, `developer`
                 }
               }
             ]
-          },
-          {
-            "method": "GET",
-            "path": "/pet/findByStatus"
-          },
-          {
-            "method": "GET",
-            "path": "/pet/{petId}"
-          },
-          {
-            "method": "POST",
-            "path": "/pet/{petId}"
-          },
-          {
-            "method": "DELETE",
-            "path": "/pet/{petId}"
           }
         ]
       }
@@ -361,25 +337,29 @@ Update an existing RestAPI in the Gateway.
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "RestApi",
   "metadata": {
-    "name": "petstore-api-v1.0"
+    "name": "weather-api-v1.0"
   },
   "spec": {
-    "displayName": "Petstore-API",
+    "displayName": "Weather API",
     "version": "v1.0",
-    "context": "/petstore/$version",
+    "context": "/weather/$version",
     "upstream": {
       "main": {
-        "url": "https://petstore3.swagger.io/api/v3"
+        "url": "http://weather-backend:8080/api/v2"
       }
     },
     "operations": [
       {
-        "method": "PUT",
-        "path": "/pet"
+        "method": "GET",
+        "path": "/{country_code}/{city}"
+      },
+      {
+        "method": "GET",
+        "path": "/alerts/active"
       },
       {
         "method": "POST",
-        "path": "/pet",
+        "path": "/alerts/active",
         "policies": [
           {
             "name": "log-message",
@@ -392,22 +372,6 @@ Update an existing RestAPI in the Gateway.
             }
           }
         ]
-      },
-      {
-        "method": "GET",
-        "path": "/pet/findByStatus"
-      },
-      {
-        "method": "GET",
-        "path": "/pet/{petId}"
-      },
-      {
-        "method": "POST",
-        "path": "/pet/{petId}"
-      },
-      {
-        "method": "DELETE",
-        "path": "/pet/{petId}"
       }
     ]
   }
@@ -547,16 +511,7 @@ Generate a new API key for a RestAPI in the Gateway. The key is a 32-byte random
 
 ```json
 {
-  "name": "my-production-key",
-  "apiKey": "xxxxxx-wso2-api-platform-key-xxxxxx-xxxxxxx",
-  "maskedApiKey": "apip_****xyz789",
-  "expiresIn": {
-    "unit": "days",
-    "duration": 30
-  },
-  "expiresAt": "2026-12-08T10:30:00Z",
-  "externalRefId": "cloud-apim-key-98765",
-  "issuer": "api-platform-devportal"
+  "name": "my-production-key"
 }
 ```
 
@@ -595,11 +550,10 @@ Required roles: `admin`, `consumer`
     "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
     "apiId": "weather-api-v1.0",
     "status": "active",
-    "createdAt": "2025-12-08T10:30:00Z",
-    "createdBy": "api_consumer",
-    "expiresAt": "2025-12-08T10:30:00Z",
-    "source": "local",
-    "externalRefId": "cloud-apim-key-98765"
+    "createdAt": "2026-04-01T10:30:00Z",
+    "createdBy": "admin",
+    "expiresAt": null,
+    "source": "local"
   }
 }
 ```
@@ -663,11 +617,10 @@ Required roles: `admin`, `consumer`
       "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
       "apiId": "weather-api-v1.0",
       "status": "active",
-      "createdAt": "2025-12-08T10:30:00Z",
-      "createdBy": "api_consumer",
-      "expiresAt": "2025-12-08T10:30:00Z",
-      "source": "local",
-      "externalRefId": "cloud-apim-key-98765"
+      "createdAt": "2026-04-01T10:30:00Z",
+      "createdBy": "admin",
+      "expiresAt": null,
+      "source": "local"
     }
   ],
   "totalCount": 3,
@@ -706,13 +659,7 @@ Regenerate an existing API key for a RestAPI in the Gateway. The previous key is
 > Payload
 
 ```json
-{
-  "expiresIn": {
-    "unit": "days",
-    "duration": 30
-  },
-  "expiresAt": "2026-12-08T10:30:00Z"
-}
+{}
 ```
 
 ### Authentication
@@ -753,11 +700,10 @@ Required roles: `admin`, `consumer`
     "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
     "apiId": "weather-api-v1.0",
     "status": "active",
-    "createdAt": "2025-12-08T10:30:00Z",
-    "createdBy": "api_consumer",
-    "expiresAt": "2025-12-08T10:30:00Z",
-    "source": "local",
-    "externalRefId": "cloud-apim-key-98765"
+    "createdAt": "2026-04-01T10:30:00Z",
+    "createdBy": "admin",
+    "expiresAt": null,
+    "source": "local"
   }
 }
 ```
@@ -795,16 +741,7 @@ Update an API key with a custom value instead of auto-generating one.
 
 ```json
 {
-  "name": "my-production-key",
-  "apiKey": "xxxxxx-wso2-api-platform-key-xxxxxx-xxxxxxx",
-  "maskedApiKey": "apip_****xyz789",
-  "expiresIn": {
-    "unit": "days",
-    "duration": 30
-  },
-  "expiresAt": "2026-12-08T10:30:00Z",
-  "externalRefId": "cloud-apim-key-98765",
-  "issuer": "api-platform-devportal"
+  "name": "my-production-key"
 }
 ```
 
@@ -846,11 +783,10 @@ Required roles: `admin`, `consumer`
     "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
     "apiId": "weather-api-v1.0",
     "status": "active",
-    "createdAt": "2025-12-08T10:30:00Z",
-    "createdBy": "api_consumer",
-    "expiresAt": "2025-12-08T10:30:00Z",
-    "source": "local",
-    "externalRefId": "cloud-apim-key-98765"
+    "createdAt": "2026-04-01T10:30:00Z",
+    "createdBy": "admin",
+    "expiresAt": null,
+    "source": "local"
   }
 }
 ```
@@ -948,12 +884,12 @@ Create a subscription plan that defines rate limits and access tiers for API sub
 
 ```json
 {
-  "planName": "string",
-  "billingPlan": "string",
+  "planName": "Gold",
+  "billingPlan": "COMMERCIAL",
   "stopOnQuotaReach": true,
-  "throttleLimitCount": 0,
-  "throttleLimitUnit": "Min",
-  "expiryTime": "2019-08-24T14:15:22Z",
+  "throttleLimitCount": 1000,
+  "throttleLimitUnit": "Hour",
+  "expiryTime": "2026-12-31T23:59:59Z",
   "status": "ACTIVE"
 }
 ```
@@ -1283,7 +1219,7 @@ Subscribe an application to a RestAPI in the Gateway.
 ```json
 {
   "apiId": "c9f2b6ae-1234-5678-9abc-def012345678",
-  "subscriptionToken": "string",
+  "subscriptionToken": "sub-token-abc123xyz",
   "applicationId": "string",
   "subscriptionPlanId": "string",
   "status": "ACTIVE"

@@ -29,42 +29,14 @@ Add a new LLM proxy to the Gateway. A proxy defines how to interact with an LLM 
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "LlmProxy",
   "metadata": {
-    "name": "weather-api-v1.0",
-    "labels": {
-      "environment": "production",
-      "team": "backend",
-      "version": "v1"
-    }
+    "name": "docs-assistant-v1.0"
   },
   "spec": {
-    "displayName": "wso2-con-assistant",
+    "displayName": "Docs Assistant",
     "version": "v1.0",
-    "context": "/openai",
-    "vhost": "api.openai",
     "provider": {
-      "id": "wso2-openai-provider",
-      "auth": {
-        "type": "api-key",
-        "header": "string",
-        "value": "string"
-      }
-    },
-    "policies": [
-      {
-        "name": "budgetControl",
-        "version": "v1.0.0",
-        "paths": [
-          {
-            "path": "/chat/completions",
-            "methods": [
-              "GET"
-            ],
-            "params": {}
-          }
-        ]
-      }
-    ],
-    "deploymentState": "deployed"
+      "id": "openai-provider"
+    }
   }
 }
 ```
@@ -249,42 +221,14 @@ Required roles: `admin`, `developer`
       "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
       "kind": "LlmProxy",
       "metadata": {
-        "name": "weather-api-v1.0",
-        "labels": {
-          "environment": "production",
-          "team": "backend",
-          "version": "v1"
-        }
+        "name": "docs-assistant-v1.0"
       },
       "spec": {
-        "displayName": "wso2-con-assistant",
+        "displayName": "Docs Assistant",
         "version": "v1.0",
-        "context": "/openai",
-        "vhost": "api.openai",
         "provider": {
-          "id": "wso2-openai-provider",
-          "auth": {
-            "type": "api-key",
-            "header": "string",
-            "value": "string"
-          }
-        },
-        "policies": [
-          {
-            "name": "budgetControl",
-            "version": "v1.0.0",
-            "paths": [
-              {
-                "path": "/chat/completions",
-                "methods": [
-                  "GET"
-                ],
-                "params": {}
-              }
-            ]
-          }
-        ],
-        "deploymentState": "deployed"
+          "id": "openai-provider"
+        }
       }
     },
     "deploymentStatus": "deployed",
@@ -332,42 +276,14 @@ Update an existing LLM proxy in the Gateway.
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "LlmProxy",
   "metadata": {
-    "name": "weather-api-v1.0",
-    "labels": {
-      "environment": "production",
-      "team": "backend",
-      "version": "v1"
-    }
+    "name": "docs-assistant-v1.0"
   },
   "spec": {
-    "displayName": "wso2-con-assistant",
+    "displayName": "Docs Assistant",
     "version": "v1.0",
-    "context": "/openai",
-    "vhost": "api.openai",
     "provider": {
-      "id": "wso2-openai-provider",
-      "auth": {
-        "type": "api-key",
-        "header": "string",
-        "value": "string"
-      }
-    },
-    "policies": [
-      {
-        "name": "budgetControl",
-        "version": "v1.0.0",
-        "paths": [
-          {
-            "path": "/chat/completions",
-            "methods": [
-              "GET"
-            ],
-            "params": {}
-          }
-        ]
-      }
-    ],
-    "deploymentState": "deployed"
+      "id": "openai-provider"
+    }
   }
 }
 ```
@@ -472,3 +388,352 @@ Status Code **200**
 |» status|string|false|none|none|
 |» message|string|false|none|none|
 |» id|string|false|none|none|
+
+## Create a new API key for an LLM proxy
+
+<a id="opIdcreateLLMProxyAPIKey"></a>
+
+`POST /llm-proxies/{id}/api-keys`
+
+> Code samples
+
+```shell
+
+curl -X POST http://localhost:9090/llm-proxies/{id}/api-keys \
+  -u {username}:{password} \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -d @payload.json
+
+```
+
+Generate a new API key for an LLM proxy in the Gateway.
+
+> Payload
+
+```json
+{
+  "name": "my-production-key"
+}
+```
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `consumer`
+
+</aside>
+
+<h3 id="create-a-new-api-key-for-an-llm-proxy-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|id|path|string|true|Unique handle of the LLM proxy to generate the key for|
+|body|body|[APIKeyCreationRequest](schemas.md#schemaapikeycreationrequest)|true|none|
+
+> Example responses
+
+> 201 Response
+
+```json
+{
+  "status": "success",
+  "message": "API key generated successfully",
+  "remainingApiKeyQuota": 9,
+  "apiKey": {
+    "name": "my-production-key",
+    "displayName": "My Production Key",
+    "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+    "apiId": "weather-api-v1.0",
+    "status": "active",
+    "createdAt": "2026-04-01T10:30:00Z",
+    "createdBy": "admin",
+    "expiresAt": null,
+    "source": "local"
+  }
+}
+```
+
+<h3 id="create-a-new-api-key-for-an-llm-proxy-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|API key created successfully|[APIKeyCreationResponse](schemas.md#schemaapikeycreationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM proxy not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict (duplicate key or conflicting update)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+## Get the list of API keys for an LLM proxy
+
+<a id="opIdlistLLMProxyAPIKeys"></a>
+
+`GET /llm-proxies/{id}/api-keys`
+
+> Code samples
+
+```shell
+
+curl -X GET http://localhost:9090/llm-proxies/{id}/api-keys \
+  -u {username}:{password} \
+  -H 'Accept: application/json'
+
+```
+
+List all API keys for an LLM proxy in the Gateway.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `consumer`
+
+</aside>
+
+<h3 id="get-the-list-of-api-keys-for-an-llm-proxy-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|id|path|string|true|Unique handle of the LLM proxy to retrieve keys for|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "apiKeys": [
+    {
+      "name": "my-production-key",
+      "displayName": "My Production Key",
+      "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+      "apiId": "weather-api-v1.0",
+      "status": "active",
+      "createdAt": "2026-04-01T10:30:00Z",
+      "createdBy": "admin",
+      "expiresAt": null,
+      "source": "local"
+    }
+  ],
+  "totalCount": 3,
+  "status": "success"
+}
+```
+
+<h3 id="get-the-list-of-api-keys-for-an-llm-proxy-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of API keys|[APIKeyListResponse](schemas.md#schemaapikeylistresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM proxy not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+## Regenerate API key for an LLM proxy
+
+<a id="opIdregenerateLLMProxyAPIKey"></a>
+
+`POST /llm-proxies/{id}/api-keys/{apiKeyName}/regenerate`
+
+> Code samples
+
+```shell
+
+curl -X POST http://localhost:9090/llm-proxies/{id}/api-keys/{apiKeyName}/regenerate \
+  -u {username}:{password} \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -d @payload.json
+
+```
+
+Regenerate an existing API key for an LLM proxy in the Gateway.
+
+> Payload
+
+```json
+{}
+```
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `consumer`
+
+</aside>
+
+<h3 id="regenerate-api-key-for-an-llm-proxy-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|id|path|string|true|Unique handle of the LLM proxy|
+|apiKeyName|path|string|true|Name of the API key to regenerate|
+|body|body|[APIKeyRegenerationRequest](schemas.md#schemaapikeyregenerationrequest)|true|none|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "status": "success",
+  "message": "API key generated successfully",
+  "remainingApiKeyQuota": 9,
+  "apiKey": {
+    "name": "my-production-key",
+    "displayName": "My Production Key",
+    "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+    "apiId": "weather-api-v1.0",
+    "status": "active",
+    "createdAt": "2026-04-01T10:30:00Z",
+    "createdBy": "admin",
+    "expiresAt": null,
+    "source": "local"
+  }
+}
+```
+
+<h3 id="regenerate-api-key-for-an-llm-proxy-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key rotated successfully|[APIKeyCreationResponse](schemas.md#schemaapikeycreationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM proxy or API key not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+## Update an API key for an LLM proxy
+
+<a id="opIdupdateLLMProxyAPIKey"></a>
+
+`PUT /llm-proxies/{id}/api-keys/{apiKeyName}`
+
+> Code samples
+
+```shell
+
+curl -X PUT http://localhost:9090/llm-proxies/{id}/api-keys/{apiKeyName} \
+  -u {username}:{password} \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -d @payload.json
+
+```
+
+Update an API key with a custom value instead of auto-generating one.
+
+> Payload
+
+```json
+{
+  "name": "my-production-key"
+}
+```
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `consumer`
+
+</aside>
+
+<h3 id="update-an-api-key-for-an-llm-proxy-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|id|path|string|true|Unique handle of the LLM proxy|
+|apiKeyName|path|string|true|Name of the API key to update|
+|body|body|[APIKeyUpdateRequest](schemas.md#schemaapikeyupdaterequest)|true|none|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "status": "success",
+  "message": "API key generated successfully",
+  "remainingApiKeyQuota": 9,
+  "apiKey": {
+    "name": "my-production-key",
+    "displayName": "My Production Key",
+    "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+    "apiId": "weather-api-v1.0",
+    "status": "active",
+    "createdAt": "2026-04-01T10:30:00Z",
+    "createdBy": "admin",
+    "expiresAt": null,
+    "source": "local"
+  }
+}
+```
+
+<h3 id="update-an-api-key-for-an-llm-proxy-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key updated successfully|[APIKeyCreationResponse](schemas.md#schemaapikeycreationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid request (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM proxy or API key not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict (duplicate key or conflicting update)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+## Revoke an API key for an LLM proxy
+
+<a id="opIdrevokeLLMProxyAPIKey"></a>
+
+`DELETE /llm-proxies/{id}/api-keys/{apiKeyName}`
+
+> Code samples
+
+```shell
+
+curl -X DELETE http://localhost:9090/llm-proxies/{id}/api-keys/{apiKeyName} \
+  -u {username}:{password} \
+  -H 'Accept: application/json'
+
+```
+
+Revoke an API key. Once revoked, it can no longer be used to authenticate requests.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `consumer`
+
+</aside>
+
+<h3 id="revoke-an-api-key-for-an-llm-proxy-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|id|path|string|true|Unique handle of the LLM proxy|
+|apiKeyName|path|string|true|Name of the API key to revoke|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "status": "success",
+  "message": "API key revoked successfully"
+}
+```
+
+<h3 id="revoke-an-api-key-for-an-llm-proxy-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key revoked successfully|[APIKeyRevocationResponse](schemas.md#schemaapikeyrevocationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM proxy or API key not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|

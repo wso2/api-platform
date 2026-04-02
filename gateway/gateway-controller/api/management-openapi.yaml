@@ -3002,19 +3002,21 @@ components:
         apiVersion: gateway.api-platform.wso2.com/v1alpha1
         kind: RestApi
         metadata:
-          name: petstore-api-v1.0
+          name: weather-api-v1.0
         spec:
-          displayName: Petstore-API
+          displayName: Weather API
           version: v1.0
-          context: /petstore/$version
+          context: /weather/$version
           upstream:
             main:
-              url: https://petstore3.swagger.io/api/v3
+              url: http://weather-backend:8080/api/v2
           operations:
-            - method: PUT
-              path: /pet
+            - method: GET
+              path: /{country_code}/{city}
+            - method: GET
+              path: /alerts/active
             - method: POST
-              path: /pet
+              path: /alerts/active
               policies:
                 - name: log-message
                   version: v1
@@ -3022,14 +3024,6 @@ components:
                     request:
                       payload: true
                       headers: true
-            - method: GET
-              path: /pet/findByStatus
-            - method: GET
-              path: /pet/{petId}
-            - method: POST
-              path: /pet/{petId}
-            - method: DELETE
-              path: /pet/{petId}
 
     WebSubAPI:
       type: object
@@ -3055,6 +3049,20 @@ components:
           $ref: "#/components/schemas/Metadata"
         spec:
           $ref: '#/components/schemas/WebhookAPIData'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: WebSubApi
+        metadata:
+          name: github-events-v1.0
+        spec:
+          displayName: GitHub Events
+          version: v1.0
+          context: /github-events/$version
+          channels:
+            - name: issues
+              method: SUB
+            - name: pull_requests
+              method: SUB
 
     Metadata:
       type: object
@@ -3091,7 +3099,7 @@ components:
           minLength: 1
           maxLength: 100
           pattern: '^[a-zA-Z0-9\-_\. ]+$'
-          example: weather-api
+          example: Weather API
         # kind:
         #   type: string
         #   description: API type
@@ -3105,11 +3113,11 @@ components:
           example: v1.0
         context:
           type: string
-          description: Base path for all API routes (must start with /, no trailing slash)
+          description: Base path for all API routes (must start with /, no trailing slash). Use $version to embed the version in the path (e.g., /weather/$version resolves to /weather/v1.0).
           pattern: '^\/[a-zA-Z0-9_\-\/]*[^\/]$'
           minLength: 1
           maxLength: 200
-          example: /weather
+          example: /weather/$version
         upstreamDefinitions:
           type: array
           description: List of reusable upstream definitions with optional timeout configurations
@@ -3281,7 +3289,7 @@ components:
         name:
           type: string
           description: Name of the policy
-          example: apiKeyValidation
+          example: cors
         version:
           type: string
           description: >
@@ -3566,6 +3574,8 @@ components:
             Identifies the portal that created this key. If provided, only api keys generated from
             the same portal will be accepted. If not provided, there is no portal restriction.
           example: "api-platform-devportal"
+      example:
+        name: my-production-key
     APIKeyCreationResponse:
       type: object
       properties:
@@ -3584,6 +3594,20 @@ components:
       required:
         - status
         - message
+      example:
+        status: success
+        message: API key generated successfully
+        remainingApiKeyQuota: 9
+        apiKey:
+          name: my-production-key
+          displayName: My Production Key
+          apiKey: "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+          apiId: weather-api-v1.0
+          status: active
+          createdAt: "2026-04-01T10:30:00Z"
+          createdBy: admin
+          expiresAt: null
+          source: local
     APIKey:
       type: object
       description: Details of an API key
@@ -3621,17 +3645,17 @@ components:
           type: string
           format: date-time
           description: Timestamp when the API key was generated
-          example: "2025-12-08T10:30:00Z"
+          example: "2026-04-01T10:30:00Z"
         createdBy:
           type: string
           description: Identifier of the user who generated the API key
-          example: api_consumer
+          example: admin
         expiresAt:
           type: string
           format: date-time
           nullable: true
           description: Expiration timestamp (null if no expiration)
-          example: "2025-12-08T10:30:00Z"
+          example: "2027-01-01T00:00:00Z"
         source:
           type: string
           description: Source of the API key (local or external)
@@ -3651,6 +3675,16 @@ components:
         - createdBy
         - expiresAt
         - source
+      example:
+        name: my-production-key
+        displayName: My Production Key
+        apiKey: "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+        apiId: weather-api-v1.0
+        status: active
+        createdAt: "2026-04-01T10:30:00Z"
+        createdBy: admin
+        expiresAt: null
+        source: local
     APIKeyRegenerationRequest:
       type: object
       properties:
@@ -3681,6 +3715,7 @@ components:
           format: date-time
           description: Expiration timestamp
           example: "2026-12-08T10:30:00Z"
+      example: {}
     APIKeyUpdateRequest:
       allOf:
         - $ref: "#/components/schemas/APIKeyCreationRequest"
@@ -3706,23 +3741,30 @@ components:
       properties:
         planName:
           type: string
+          example: Gold
         billingPlan:
           type: string
+          example: COMMERCIAL
         stopOnQuotaReach:
           type: boolean
           default: true
+          example: true
         throttleLimitCount:
           type: integer
+          example: 1000
         throttleLimitUnit:
           type: string
           enum: [Min, Hour, Day, Month]
+          example: Hour
         expiryTime:
           type: string
           format: date-time
+          example: "2026-12-31T23:59:59Z"
         status:
           type: string
           enum: [ACTIVE, INACTIVE]
           default: ACTIVE
+          example: ACTIVE
     SubscriptionPlanUpdateRequest:
       type: object
       properties:
@@ -3795,6 +3837,7 @@ components:
         subscriptionToken:
           type: string
           description: Opaque subscription token for API invocation (required; stored as hash only)
+          example: "sub-token-abc123xyz"
         applicationId:
           type: string
           description: Application identifier (from DevPortal/STS). Optional for token-based subscriptions.
@@ -3855,13 +3898,13 @@ components:
           example: weather-api-v1.0
         displayName:
           type: string
-          example: weather-api
+          example: Weather API
         version:
           type: string
           example: v1.0
         context:
           type: string
-          example: /weather
+          example: /weather/$version
         status:
           type: string
           enum:
@@ -4003,6 +4046,21 @@ components:
           $ref: "#/components/schemas/Metadata"
         spec:
           $ref: "#/components/schemas/MCPProxyConfigData"
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: Mcp
+        metadata:
+          name: everything-mcp-v1.0
+        spec:
+          displayName: Everything
+          version: v1.0
+          context: /everything
+          specVersion: "2025-06-18"
+          upstream:
+            url: http://mcp-server-backend:3001
+          tools: []
+          resources: []
+          prompts: []
 
     MCPProxyConfigData:
       type: object
@@ -4313,6 +4371,31 @@ components:
           $ref: "#/components/schemas/Metadata"
         spec:
           $ref: '#/components/schemas/LLMProviderTemplateData'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProviderTemplate
+        metadata:
+          name: openai-template
+        spec:
+          displayName: OpenAI
+          promptTokens:
+            location: payload
+            identifier: $.usage.prompt_tokens
+          completionTokens:
+            location: payload
+            identifier: $.usage.completion_tokens
+          totalTokens:
+            location: payload
+            identifier: $.usage.total_tokens
+          remainingTokens:
+            location: header
+            identifier: x-ratelimit-remaining-tokens
+          requestModel:
+            location: payload
+            identifier: $.model
+          responseModel:
+            location: payload
+            identifier: $.model
 
     LLMProviderTemplateData:
       type: object
@@ -4694,6 +4777,23 @@ components:
           $ref: "#/components/schemas/Metadata"
         spec:
           $ref: '#/components/schemas/LLMProviderConfigData'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProvider
+        metadata:
+          name: openai-provider
+        spec:
+          displayName: OpenAI Provider
+          version: v1.0
+          template: openai
+          upstream:
+            url: https://api.openai.com/v1
+            auth:
+              type: api-key
+              header: Authorization
+              value: Bearer sk-your-api-key
+          accessControl:
+            mode: allow_all
 
     LLMProviderConfigData:
       type: object
@@ -4733,7 +4833,7 @@ components:
           pattern: '^(\*\.|[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
           minLength: 1
           maxLength: 253
-          example: "api.openai"
+          example: "api.openai.com"
         template:
           type: string
           description: Template name to use for this LLM Provider
@@ -4846,10 +4946,10 @@ components:
       properties:
         name:
           type: string
-          example: budgetControl
+          example: llm-cost-based-ratelimit
         version:
           type: string
-          example: v1.0.0
+          example: v1
         paths:
           type: array
           items:
@@ -4899,6 +4999,16 @@ components:
           $ref: "#/components/schemas/Metadata"
         spec:
           $ref: '#/components/schemas/LLMProxyConfigData'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProxy
+        metadata:
+          name: docs-assistant-v1.0
+        spec:
+          displayName: Docs Assistant
+          version: v1.0
+          provider:
+            id: openai-provider
 
     LLMProxyConfigData:
       type: object
@@ -4936,7 +5046,7 @@ components:
           pattern: '^(\*\.|[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
           minLength: 1
           maxLength: 253
-          example: "api.openai"
+          example: "api.openai.com"
         provider:
           $ref: '#/components/schemas/LLMProxyProvider'
         policies:
@@ -4978,6 +5088,15 @@ components:
 
         spec:
           $ref: "#/components/schemas/SecretConfigData"
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: Secret
+        metadata:
+          name: database-password
+        spec:
+          displayName: Database Password
+          description: PostgreSQL main database password
+          value: sup3rs3cr3t!
 
     SecretConfigData:
       type: object
@@ -4991,13 +5110,13 @@ components:
           minLength: 1
           maxLength: 253
           pattern: '^[a-zA-Z0-9\-_\. ]+$'
-          example: WSO2 OpenAI Key
+          example: Database Password
 
         description:
           type: string
           description: Description of the secret
           maxLength: 1024
-          example: WSO2 OpenAI provider API Key
+          example: PostgreSQL main database password
 
         value:
           type: string
@@ -5005,7 +5124,7 @@ components:
           minLength: 1
           maxLength: 10240
           format: password
-          example: sk_xxx
+          example: sup3rs3cr3t!
 
     CertificateUploadRequest:
       type: object
