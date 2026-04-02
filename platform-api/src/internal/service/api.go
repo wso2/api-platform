@@ -25,6 +25,7 @@ import (
 	"mime/multipart"
 	pathpkg "path"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1828,11 +1829,29 @@ func (s *APIService) refreshCustomPolicyUsages(apiUUID, orgUUID string, apiModel
 		}
 		parsedPolicyVersion, err := parseVersion(ref.version)
 		if err != nil {
-			// if version parse error happens, exact version will be evaluated
+			// ref.version is not full semver (e.g. "v1") — try matching by major version prefix
+			s.slogger.Debug("Policy version is not full semver, falling back to major version matching", "name", ref.name, "version", ref.version, "error", err)
+			refMajor := strings.TrimPrefix(ref.version, "v")
+			matched := false
 			for _, cp := range identifiedSyncedPolicies {
-				if cp.Version == ref.version {
+				cpVer, verErr := parseVersion(cp.Version)
+				if verErr != nil {
+					s.slogger.Warn("Failed to parse stored custom policy version during usage refresh", "name", cp.Name, "version", cp.Version, "error", verErr)
+					continue
+				}
+				if strconv.Itoa(cpVer.Major) == refMajor {
 					newSet[cp.UUID] = true
+					matched = true
 					break
+				}
+			}
+			// fall back to exact match if no major-version match found
+			if !matched {
+				for _, cp := range identifiedSyncedPolicies {
+					if cp.Version == ref.version {
+						newSet[cp.UUID] = true
+						break
+					}
 				}
 			}
 			continue
