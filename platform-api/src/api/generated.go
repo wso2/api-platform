@@ -2054,6 +2054,35 @@ type Organization struct {
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 }
 
+// OrganizationQuota defines model for OrganizationQuota.
+type OrganizationQuota struct {
+	// Limit Maximum resources allowed, null when no limit is configured
+	Limit *int `json:"limit" yaml:"limit"`
+
+	// Remaining Remaining resources before limit is reached, null when no limit is configured
+	Remaining *int `json:"remaining" yaml:"remaining"`
+
+	// Used Number of currently used resources
+	Used int `binding:"required" json:"used" yaml:"used"`
+}
+
+// OrganizationSubscription defines model for OrganizationSubscription.
+type OrganizationSubscription struct {
+	// Plan Effective subscription plan for the organization
+	Plan   string                         `binding:"required" json:"plan" yaml:"plan"`
+	Quotas OrganizationSubscriptionQuotas `json:"quotas" yaml:"quotas"`
+}
+
+// OrganizationSubscriptionQuotas defines model for OrganizationSubscriptionQuotas.
+type OrganizationSubscriptionQuotas struct {
+	Apis         OrganizationQuota `json:"apis" yaml:"apis"`
+	Applications OrganizationQuota `json:"applications" yaml:"applications"`
+	Gateways     OrganizationQuota `json:"gateways" yaml:"gateways"`
+	LlmProviders OrganizationQuota `json:"llmProviders" yaml:"llmProviders"`
+	LlmProxies   OrganizationQuota `json:"llmProxies" yaml:"llmProxies"`
+	McpProxies   OrganizationQuota `json:"mcpProxies" yaml:"mcpProxies"`
+}
+
 // Owners API ownership information
 type Owners struct {
 	// BusinessOwner Business owner of the API
