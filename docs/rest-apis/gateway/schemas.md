@@ -12,53 +12,61 @@
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "RestApi",
   "metadata": {
-    "name": "petstore-api-v1.0"
+    "name": "reading-list-api-v1.0"
   },
   "spec": {
-    "displayName": "Petstore-API",
+    "displayName": "Reading-List-API",
     "version": "v1.0",
-    "context": "/petstore/$version",
+    "context": "/reading-list/$version",
     "upstream": {
       "main": {
-        "url": "https://petstore3.swagger.io/api/v3"
+        "url": "https://apis.bijira.dev/samples/reading-list-api-service/v1.0"
       }
     },
+    "policies": [
+      {
+        "name": "set-headers",
+        "version": "v1",
+        "params": {
+          "request": {
+            "headers": [
+              {
+                "name": "x-wso2-apip-gateway-version",
+                "value": "v1.0.0"
+              }
+            ]
+          },
+          "response": {
+            "headers": [
+              {
+                "name": "x-environment",
+                "value": "development"
+              }
+            ]
+          }
+        }
+      }
+    ],
     "operations": [
       {
+        "method": "GET",
+        "path": "/books"
+      },
+      {
+        "method": "POST",
+        "path": "/books"
+      },
+      {
+        "method": "GET",
+        "path": "/books/{id}"
+      },
+      {
         "method": "PUT",
-        "path": "/pet"
-      },
-      {
-        "method": "POST",
-        "path": "/pet",
-        "policies": [
-          {
-            "name": "log-message",
-            "version": "v1",
-            "params": {
-              "request": {
-                "payload": true,
-                "headers": true
-              }
-            }
-          }
-        ]
-      },
-      {
-        "method": "GET",
-        "path": "/pet/findByStatus"
-      },
-      {
-        "method": "GET",
-        "path": "/pet/{petId}"
-      },
-      {
-        "method": "POST",
-        "path": "/pet/{petId}"
+        "path": "/books/{id}"
       },
       {
         "method": "DELETE",
-        "path": "/pet/{petId}"
+        "path": "/books/{id}"
       }
     ]
   }
@@ -94,44 +102,22 @@
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "WebSubApi",
   "metadata": {
-    "name": "weather-api-v1.0",
-    "labels": {
-      "environment": "production",
-      "team": "backend",
-      "version": "v1"
-    }
+    "name": "github-events-v1.0"
   },
   "spec": {
-    "displayName": "weather-api",
+    "displayName": "GitHub Events",
     "version": "v1.0",
-    "context": "/weather",
-    "vhosts": {
-      "main": "api.example.com",
-      "sandbox": "sandbox-api.example.com"
-    },
+    "context": "/github-events/$version",
     "channels": [
       {
         "name": "issues",
-        "method": "SUB",
-        "policies": [
-          {
-            "name": "apiKeyValidation",
-            "version": "v1",
-            "executionCondition": "request.metadata[authenticated] != true",
-            "params": {}
-          }
-        ]
-      }
-    ],
-    "policies": [
+        "method": "SUB"
+      },
       {
-        "name": "apiKeyValidation",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
+        "name": "pull_requests",
+        "method": "SUB"
       }
-    ],
-    "deploymentState": "deployed"
+    ]
   }
 }
 
@@ -162,7 +148,7 @@
 
 ```json
 {
-  "name": "weather-api-v1.0",
+  "name": "reading-list-api-v1.0",
   "labels": {
     "environment": "production",
     "team": "backend",
@@ -189,9 +175,9 @@
 
 ```json
 {
-  "displayName": "weather-api",
+  "displayName": "Reading List API",
   "version": "v1.0",
-  "context": "/weather",
+  "context": "/reading-list/$version",
   "upstreamDefinitions": [
     {
       "name": "my-upstream-1",
@@ -229,7 +215,7 @@
   ],
   "policies": [
     {
-      "name": "apiKeyValidation",
+      "name": "cors",
       "version": "v1",
       "executionCondition": "request.metadata[authenticated] != true",
       "params": {}
@@ -238,10 +224,10 @@
   "operations": [
     {
       "method": "GET",
-      "path": "/{country_code}/{city}",
+      "path": "/books/{id}",
       "policies": [
         {
-          "name": "apiKeyValidation",
+          "name": "cors",
           "version": "v1",
           "executionCondition": "request.metadata[authenticated] != true",
           "params": {}
@@ -260,7 +246,7 @@
 |---|---|---|---|---|
 |displayName|string|true|none|Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)|
 |version|string|true|none|Semantic version of the API|
-|context|string|true|none|Base path for all API routes (must start with /, no trailing slash)|
+|context|string|true|none|Base path for all API routes (must start with /, no trailing slash). Use $version to embed the version in the path (e.g., /reading-list/$version resolves to /reading-list/v1.0).|
 |upstreamDefinitions|[[UpstreamDefinition](#schemaupstreamdefinition)]|false|none|List of reusable upstream definitions with optional timeout configurations|
 |upstream|object|true|none|API-level upstream configuration|
 |» main|[Upstream](#schemaupstream)|true|none|Upstream backend configuration (single target or reference)|
@@ -394,10 +380,10 @@ xor
 ```json
 {
   "method": "GET",
-  "path": "/{country_code}/{city}",
+  "path": "/books/{id}",
   "policies": [
     {
-      "name": "apiKeyValidation",
+      "name": "cors",
       "version": "v1",
       "executionCondition": "request.metadata[authenticated] != true",
       "params": {}
@@ -436,7 +422,7 @@ xor
 
 ```json
 {
-  "name": "apiKeyValidation",
+  "name": "cors",
   "version": "v1",
   "executionCondition": "request.metadata[authenticated] != true",
   "params": {}
@@ -462,7 +448,7 @@ xor
 
 ```json
 {
-  "displayName": "weather-api",
+  "displayName": "reading-list-api",
   "version": "v1.0",
   "context": "/weather",
   "vhosts": {
@@ -475,7 +461,7 @@ xor
       "method": "SUB",
       "policies": [
         {
-          "name": "apiKeyValidation",
+          "name": "cors",
           "version": "v1",
           "executionCondition": "request.metadata[authenticated] != true",
           "params": {}
@@ -485,7 +471,7 @@ xor
   ],
   "policies": [
     {
-      "name": "apiKeyValidation",
+      "name": "cors",
       "version": "v1",
       "executionCondition": "request.metadata[authenticated] != true",
       "params": {}
@@ -530,7 +516,7 @@ xor
   "method": "SUB",
   "policies": [
     {
-      "name": "apiKeyValidation",
+      "name": "cors",
       "version": "v1",
       "executionCondition": "request.metadata[authenticated] != true",
       "params": {}
@@ -567,7 +553,7 @@ Channel (topic/event stream) definition for async APIs.
 {
   "status": "success",
   "message": "RestAPI created successfully",
-  "id": "weather-api-v1.0",
+  "id": "reading-list-api-v1.0",
   "createdAt": "2025-10-11T10:30:00Z"
 }
 
@@ -593,7 +579,7 @@ Channel (topic/event stream) definition for async APIs.
 {
   "status": "success",
   "message": "RestAPI updated successfully",
-  "id": "weather-api-v1.0",
+  "id": "reading-list-api-v1.0",
   "updatedAt": "2025-10-11T11:45:00Z"
 }
 
@@ -669,16 +655,7 @@ Channel (topic/event stream) definition for async APIs.
 
 ```json
 {
-  "name": "my-production-key",
-  "apiKey": "xxxxxx-wso2-api-platform-key-xxxxxx-xxxxxxx",
-  "maskedApiKey": "apip_****xyz789",
-  "expiresIn": {
-    "unit": "days",
-    "duration": 30
-  },
-  "expiresAt": "2026-12-08T10:30:00Z",
-  "externalRefId": "cloud-apim-key-98765",
-  "issuer": "api-platform-devportal"
+  "name": "my-production-key"
 }
 
 ```
@@ -724,13 +701,12 @@ Channel (topic/event stream) definition for async APIs.
     "name": "my-production-key",
     "displayName": "My Production Key",
     "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-    "apiId": "weather-api-v1.0",
+    "apiId": "reading-list-api-v1.0",
     "status": "active",
-    "createdAt": "2025-12-08T10:30:00Z",
-    "createdBy": "api_consumer",
-    "expiresAt": "2025-12-08T10:30:00Z",
-    "source": "local",
-    "externalRefId": "cloud-apim-key-98765"
+    "createdAt": "2026-04-01T10:30:00Z",
+    "createdBy": "admin",
+    "expiresAt": null,
+    "source": "local"
   }
 }
 
@@ -757,13 +733,12 @@ Channel (topic/event stream) definition for async APIs.
   "name": "my-production-key",
   "displayName": "My Production Key",
   "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-  "apiId": "weather-api-v1.0",
+  "apiId": "reading-list-api-v1.0",
   "status": "active",
-  "createdAt": "2025-12-08T10:30:00Z",
-  "createdBy": "api_consumer",
-  "expiresAt": "2025-12-08T10:30:00Z",
-  "source": "local",
-  "externalRefId": "cloud-apim-key-98765"
+  "createdAt": "2026-04-01T10:30:00Z",
+  "createdBy": "admin",
+  "expiresAt": null,
+  "source": "local"
 }
 
 ```
@@ -803,13 +778,7 @@ Details of an API key
 <a id="tocsapikeyregenerationrequest"></a>
 
 ```json
-{
-  "expiresIn": {
-    "unit": "days",
-    "duration": 30
-  },
-  "expiresAt": "2026-12-08T10:30:00Z"
-}
+{}
 
 ```
 
@@ -842,16 +811,7 @@ Details of an API key
 
 ```json
 {
-  "name": "my-production-key",
-  "apiKey": "xxxxxx-wso2-api-platform-key-xxxxxx-xxxxxxx",
-  "maskedApiKey": "apip_****xyz789",
-  "expiresIn": {
-    "unit": "days",
-    "duration": 30
-  },
-  "expiresAt": "2026-12-08T10:30:00Z",
-  "externalRefId": "cloud-apim-key-98765",
-  "issuer": "api-platform-devportal"
+  "name": "my-production-key"
 }
 
 ```
@@ -891,12 +851,12 @@ Details of an API key
 
 ```json
 {
-  "planName": "string",
-  "billingPlan": "string",
+  "planName": "Gold",
+  "billingPlan": "COMMERCIAL",
   "stopOnQuotaReach": true,
-  "throttleLimitCount": 0,
-  "throttleLimitUnit": "Min",
-  "expiryTime": "2019-08-24T14:15:22Z",
+  "throttleLimitCount": 1000,
+  "throttleLimitUnit": "Hour",
+  "expiryTime": "2026-12-31T23:59:59Z",
   "status": "ACTIVE"
 }
 
@@ -1061,7 +1021,7 @@ Details of an API key
 ```json
 {
   "apiId": "c9f2b6ae-1234-5678-9abc-def012345678",
-  "subscriptionToken": "string",
+  "subscriptionToken": "sub-token-abc123xyz",
   "applicationId": "string",
   "subscriptionPlanId": "string",
   "status": "ACTIVE"
@@ -1202,10 +1162,10 @@ Details of an API key
 
 ```json
 {
-  "id": "weather-api-v1.0",
-  "displayName": "weather-api",
+  "id": "reading-list-api-v1.0",
+  "displayName": "Weather API",
   "version": "v1.0",
-  "context": "/weather",
+  "context": "/weather/$version",
   "status": "deployed",
   "createdAt": "2025-10-11T10:30:00Z",
   "updatedAt": "2025-10-11T10:30:00Z"
@@ -1282,58 +1242,66 @@ Details of an API key
 {
   "status": "success",
   "api": {
-    "id": "weather-api-v1.0",
+    "id": "reading-list-api-v1.0",
     "configuration": {
       "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
       "kind": "RestApi",
       "metadata": {
-        "name": "petstore-api-v1.0"
+        "name": "reading-list-api-v1.0"
       },
       "spec": {
-        "displayName": "Petstore-API",
+        "displayName": "Reading-List-API",
         "version": "v1.0",
-        "context": "/petstore/$version",
+        "context": "/reading-list/$version",
         "upstream": {
           "main": {
-            "url": "https://petstore3.swagger.io/api/v3"
+            "url": "https://apis.bijira.dev/samples/reading-list-api-service/v1.0"
           }
         },
+        "policies": [
+          {
+            "name": "set-headers",
+            "version": "v1",
+            "params": {
+              "request": {
+                "headers": [
+                  {
+                    "name": "x-wso2-apip-gateway-version",
+                    "value": "v1.0.0"
+                  }
+                ]
+              },
+              "response": {
+                "headers": [
+                  {
+                    "name": "x-environment",
+                    "value": "development"
+                  }
+                ]
+              }
+            }
+          }
+        ],
         "operations": [
           {
+            "method": "GET",
+            "path": "/books"
+          },
+          {
+            "method": "POST",
+            "path": "/books"
+          },
+          {
+            "method": "GET",
+            "path": "/books/{id}"
+          },
+          {
             "method": "PUT",
-            "path": "/pet"
-          },
-          {
-            "method": "POST",
-            "path": "/pet",
-            "policies": [
-              {
-                "name": "log-message",
-                "version": "v1",
-                "params": {
-                  "request": {
-                    "payload": true,
-                    "headers": true
-                  }
-                }
-              }
-            ]
-          },
-          {
-            "method": "GET",
-            "path": "/pet/findByStatus"
-          },
-          {
-            "method": "GET",
-            "path": "/pet/{petId}"
-          },
-          {
-            "method": "POST",
-            "path": "/pet/{petId}"
+            "path": "/books/{id}"
           },
           {
             "method": "DELETE",
-            "path": "/pet/{petId}"
+            "path": "/books/{id}"
           }
         ]
       }
@@ -1386,44 +1354,22 @@ Details of an API key
       "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
       "kind": "WebSubApi",
       "metadata": {
-        "name": "weather-api-v1.0",
-        "labels": {
-          "environment": "production",
-          "team": "backend",
-          "version": "v1"
-        }
+        "name": "github-events-v1.0"
       },
       "spec": {
-        "displayName": "weather-api",
+        "displayName": "GitHub Events",
         "version": "v1.0",
-        "context": "/weather",
-        "vhosts": {
-          "main": "api.example.com",
-          "sandbox": "sandbox-api.example.com"
-        },
+        "context": "/github-events/$version",
         "channels": [
           {
             "name": "issues",
-            "method": "SUB",
-            "policies": [
-              {
-                "name": "apiKeyValidation",
-                "version": "v1",
-                "executionCondition": "request.metadata[authenticated] != true",
-                "params": {}
-              }
-            ]
-          }
-        ],
-        "policies": [
+            "method": "SUB"
+          },
           {
-            "name": "apiKeyValidation",
-            "version": "v1",
-            "executionCondition": "request.metadata[authenticated] != true",
-            "params": {}
+            "name": "pull_requests",
+            "method": "SUB"
           }
-        ],
-        "deploymentState": "deployed"
+        ]
       }
     },
     "metadata": {
@@ -1470,72 +1416,19 @@ Details of an API key
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "Mcp",
   "metadata": {
-    "name": "weather-api-v1.0",
-    "labels": {
-      "environment": "production",
-      "team": "backend",
-      "version": "v1"
-    }
+    "name": "everything-mcp-v1.0"
   },
   "spec": {
-    "displayName": "mcp-proxy-1",
+    "displayName": "Everything",
     "version": "v1.0",
-    "context": "/mcp-proxy",
+    "context": "/everything",
     "specVersion": "2025-06-18",
-    "vhost": "mcp1.example.com",
     "upstream": {
-      "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
-      "hostRewrite": "auto",
-      "auth": {
-        "type": "api-key",
-        "header": "string",
-        "value": "string"
-      }
+      "url": "http://everything:3001"
     },
-    "policies": [
-      {
-        "name": "apiKeyValidation",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
-      }
-    ],
-    "tools": [
-      {
-        "name": "string",
-        "title": "string",
-        "description": "string",
-        "inputSchema": "string",
-        "outputSchema": "string"
-      }
-    ],
-    "resources": [
-      {
-        "uri": "string",
-        "name": "string",
-        "title": "string",
-        "description": "string",
-        "mimeType": "string",
-        "size": 0
-      }
-    ],
-    "prompts": [
-      {
-        "name": "string",
-        "title": "string",
-        "description": "string",
-        "arguments": [
-          {
-            "name": "string",
-            "description": "string",
-            "required": true,
-            "title": "string"
-          }
-        ]
-      }
-    ],
-    "deploymentState": "deployed"
+    "tools": [],
+    "resources": [],
+    "prompts": []
   }
 }
 
@@ -1583,7 +1476,7 @@ Details of an API key
   },
   "policies": [
     {
-      "name": "apiKeyValidation",
+      "name": "cors",
       "version": "v1",
       "executionCondition": "request.metadata[authenticated] != true",
       "params": {}
@@ -1872,72 +1765,19 @@ continued
       "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
       "kind": "Mcp",
       "metadata": {
-        "name": "weather-api-v1.0",
-        "labels": {
-          "environment": "production",
-          "team": "backend",
-          "version": "v1"
-        }
+        "name": "everything-mcp-v1.0"
       },
       "spec": {
-        "displayName": "mcp-proxy-1",
+        "displayName": "Everything",
         "version": "v1.0",
-        "context": "/mcp-proxy",
+        "context": "/everything",
         "specVersion": "2025-06-18",
-        "vhost": "mcp1.example.com",
         "upstream": {
-          "url": "http://prod-backend:5000/api/v2",
-          "ref": "string",
-          "hostRewrite": "auto",
-          "auth": {
-            "type": "api-key",
-            "header": "string",
-            "value": "string"
-          }
+          "url": "http://everything:3001"
         },
-        "policies": [
-          {
-            "name": "apiKeyValidation",
-            "version": "v1",
-            "executionCondition": "request.metadata[authenticated] != true",
-            "params": {}
-          }
-        ],
-        "tools": [
-          {
-            "name": "string",
-            "title": "string",
-            "description": "string",
-            "inputSchema": "string",
-            "outputSchema": "string"
-          }
-        ],
-        "resources": [
-          {
-            "uri": "string",
-            "name": "string",
-            "title": "string",
-            "description": "string",
-            "mimeType": "string",
-            "size": 0
-          }
-        ],
-        "prompts": [
-          {
-            "name": "string",
-            "title": "string",
-            "description": "string",
-            "arguments": [
-              {
-                "name": "string",
-                "description": "string",
-                "required": true,
-                "title": "string"
-              }
-            ]
-          }
-        ],
-        "deploymentState": "deployed"
+        "tools": [],
+        "resources": [],
+        "prompts": []
       }
     },
     "metadata": {
@@ -2035,69 +1875,33 @@ continued
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "LlmProviderTemplate",
   "metadata": {
-    "name": "weather-api-v1.0",
-    "labels": {
-      "environment": "production",
-      "team": "backend",
-      "version": "v1"
-    }
+    "name": "openai-template"
   },
   "spec": {
     "displayName": "OpenAI",
     "promptTokens": {
       "location": "payload",
-      "identifier": "$.usage.inputTokens"
+      "identifier": "$.usage.prompt_tokens"
     },
     "completionTokens": {
       "location": "payload",
-      "identifier": "$.usage.inputTokens"
+      "identifier": "$.usage.completion_tokens"
     },
     "totalTokens": {
       "location": "payload",
-      "identifier": "$.usage.inputTokens"
+      "identifier": "$.usage.total_tokens"
     },
     "remainingTokens": {
-      "location": "payload",
-      "identifier": "$.usage.inputTokens"
+      "location": "header",
+      "identifier": "x-ratelimit-remaining-tokens"
     },
     "requestModel": {
       "location": "payload",
-      "identifier": "$.usage.inputTokens"
+      "identifier": "$.model"
     },
     "responseModel": {
       "location": "payload",
-      "identifier": "$.usage.inputTokens"
-    },
-    "resourceMappings": {
-      "resources": [
-        {
-          "resource": "/responses",
-          "promptTokens": {
-            "location": "payload",
-            "identifier": "$.usage.inputTokens"
-          },
-          "completionTokens": {
-            "location": "payload",
-            "identifier": "$.usage.inputTokens"
-          },
-          "totalTokens": {
-            "location": "payload",
-            "identifier": "$.usage.inputTokens"
-          },
-          "remainingTokens": {
-            "location": "payload",
-            "identifier": "$.usage.inputTokens"
-          },
-          "requestModel": {
-            "location": "payload",
-            "identifier": "$.usage.inputTokens"
-          },
-          "responseModel": {
-            "location": "payload",
-            "identifier": "$.usage.inputTokens"
-          }
-        }
-      ]
+      "identifier": "$.model"
     }
   }
 }
@@ -2425,69 +2229,33 @@ continued
       "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
       "kind": "LlmProviderTemplate",
       "metadata": {
-        "name": "weather-api-v1.0",
-        "labels": {
-          "environment": "production",
-          "team": "backend",
-          "version": "v1"
-        }
+        "name": "openai-template"
       },
       "spec": {
         "displayName": "OpenAI",
         "promptTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.prompt_tokens"
         },
         "completionTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.completion_tokens"
         },
         "totalTokens": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.usage.total_tokens"
         },
         "remainingTokens": {
-          "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "location": "header",
+          "identifier": "x-ratelimit-remaining-tokens"
         },
         "requestModel": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
+          "identifier": "$.model"
         },
         "responseModel": {
           "location": "payload",
-          "identifier": "$.usage.inputTokens"
-        },
-        "resourceMappings": {
-          "resources": [
-            {
-              "resource": "/responses",
-              "promptTokens": {
-                "location": "payload",
-                "identifier": "$.usage.inputTokens"
-              },
-              "completionTokens": {
-                "location": "payload",
-                "identifier": "$.usage.inputTokens"
-              },
-              "totalTokens": {
-                "location": "payload",
-                "identifier": "$.usage.inputTokens"
-              },
-              "remainingTokens": {
-                "location": "payload",
-                "identifier": "$.usage.inputTokens"
-              },
-              "requestModel": {
-                "location": "payload",
-                "identifier": "$.usage.inputTokens"
-              },
-              "responseModel": {
-                "location": "payload",
-                "identifier": "$.usage.inputTokens"
-              }
-            }
-          ]
+          "identifier": "$.model"
         }
       }
     },
@@ -2710,27 +2478,19 @@ continued
       "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
       "kind": "LlmProvider",
       "metadata": {
-        "name": "weather-api-v1.0",
-        "labels": {
-          "environment": "production",
-          "team": "backend",
-          "version": "v1"
-        }
+        "name": "openai-provider"
       },
       "spec": {
-        "displayName": "WSO2 OpenAI Provider",
+        "displayName": "OpenAI Provider",
         "version": "v1.0",
-        "context": "/openai",
-        "vhost": "api.openai",
         "template": "openai",
+        "context": "/openai/latest",
         "upstream": {
-          "url": "http://prod-backend:5000/api/v2",
-          "ref": "string",
-          "hostRewrite": "auto",
+          "url": "https://api.openai.com/v1",
           "auth": {
             "type": "api-key",
-            "header": "string",
-            "value": "string"
+            "header": "Authorization",
+            "value": "Bearer sk-your-api-key"
           }
         },
         "accessControl": {
@@ -2739,27 +2499,23 @@ continued
             {
               "path": "/chat/completions",
               "methods": [
+                "POST"
+              ]
+            },
+            {
+              "path": "/models",
+              "methods": [
+                "GET"
+              ]
+            },
+            {
+              "path": "/models/{modelId}",
+              "methods": [
                 "GET"
               ]
             }
           ]
-        },
-        "policies": [
-          {
-            "name": "budgetControl",
-            "version": "v1.0.0",
-            "paths": [
-              {
-                "path": "/chat/completions",
-                "methods": [
-                  "GET"
-                ],
-                "params": {}
-              }
-            ]
-          }
-        ],
-        "deploymentState": "deployed"
+        }
       }
     },
     "deploymentStatus": "deployed",
@@ -2810,42 +2566,16 @@ continued
       "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
       "kind": "LlmProxy",
       "metadata": {
-        "name": "weather-api-v1.0",
-        "labels": {
-          "environment": "production",
-          "team": "backend",
-          "version": "v1"
-        }
+        "name": "docs-assistant-v1.0"
       },
       "spec": {
-        "displayName": "wso2-con-assistant",
+        "displayName": "OpenAI Assistant",
         "version": "v1.0",
-        "context": "/openai",
-        "vhost": "api.openai",
+        "context": "/assistant",
         "provider": {
-          "id": "wso2-openai-provider",
-          "auth": {
-            "type": "api-key",
-            "header": "string",
-            "value": "string"
-          }
+          "id": "openai-provider"
         },
-        "policies": [
-          {
-            "name": "budgetControl",
-            "version": "v1.0.0",
-            "paths": [
-              {
-                "path": "/chat/completions",
-                "methods": [
-                  "GET"
-                ],
-                "params": {}
-              }
-            ]
-          }
-        ],
-        "deploymentState": "deployed"
+        "policies": []
       }
     },
     "deploymentStatus": "deployed",
@@ -2892,27 +2622,19 @@ continued
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "LlmProvider",
   "metadata": {
-    "name": "weather-api-v1.0",
-    "labels": {
-      "environment": "production",
-      "team": "backend",
-      "version": "v1"
-    }
+    "name": "openai-provider"
   },
   "spec": {
-    "displayName": "WSO2 OpenAI Provider",
+    "displayName": "OpenAI Provider",
     "version": "v1.0",
-    "context": "/openai",
-    "vhost": "api.openai",
     "template": "openai",
+    "context": "/openai/latest",
     "upstream": {
-      "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
-      "hostRewrite": "auto",
+      "url": "https://api.openai.com/v1",
       "auth": {
         "type": "api-key",
-        "header": "string",
-        "value": "string"
+        "header": "Authorization",
+        "value": "Bearer sk-your-api-key"
       }
     },
     "accessControl": {
@@ -2921,27 +2643,23 @@ continued
         {
           "path": "/chat/completions",
           "methods": [
+            "POST"
+          ]
+        },
+        {
+          "path": "/models",
+          "methods": [
+            "GET"
+          ]
+        },
+        {
+          "path": "/models/{modelId}",
+          "methods": [
             "GET"
           ]
         }
       ]
-    },
-    "policies": [
-      {
-        "name": "budgetControl",
-        "version": "v1.0.0",
-        "paths": [
-          {
-            "path": "/chat/completions",
-            "methods": [
-              "GET"
-            ],
-            "params": {}
-          }
-        ]
-      }
-    ],
-    "deploymentState": "deployed"
+    }
   }
 }
 
@@ -2975,7 +2693,7 @@ continued
   "displayName": "WSO2 OpenAI Provider",
   "version": "v1.0",
   "context": "/openai",
-  "vhost": "api.openai",
+  "vhost": "api.openai.com",
   "template": "openai",
   "upstream": {
     "url": "http://prod-backend:5000/api/v2",
@@ -3000,8 +2718,8 @@ continued
   },
   "policies": [
     {
-      "name": "budgetControl",
-      "version": "v1.0.0",
+      "name": "llm-cost-based-ratelimit",
+      "version": "v1",
       "paths": [
         {
           "path": "/chat/completions",
@@ -3214,8 +2932,8 @@ continued
 
 ```json
 {
-  "name": "budgetControl",
-  "version": "v1.0.0",
+  "name": "llm-cost-based-ratelimit",
+  "version": "v1",
   "paths": [
     {
       "path": "/chat/completions",
@@ -3275,42 +2993,16 @@ continued
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "LlmProxy",
   "metadata": {
-    "name": "weather-api-v1.0",
-    "labels": {
-      "environment": "production",
-      "team": "backend",
-      "version": "v1"
-    }
+    "name": "docs-assistant-v1.0"
   },
   "spec": {
-    "displayName": "wso2-con-assistant",
+    "displayName": "OpenAI Assistant",
     "version": "v1.0",
-    "context": "/openai",
-    "vhost": "api.openai",
+    "context": "/assistant",
     "provider": {
-      "id": "wso2-openai-provider",
-      "auth": {
-        "type": "api-key",
-        "header": "string",
-        "value": "string"
-      }
+      "id": "openai-provider"
     },
-    "policies": [
-      {
-        "name": "budgetControl",
-        "version": "v1.0.0",
-        "paths": [
-          {
-            "path": "/chat/completions",
-            "methods": [
-              "GET"
-            ],
-            "params": {}
-          }
-        ]
-      }
-    ],
-    "deploymentState": "deployed"
+    "policies": []
   }
 }
 
@@ -3344,7 +3036,7 @@ continued
   "displayName": "wso2-con-assistant",
   "version": "v1.0",
   "context": "/openai",
-  "vhost": "api.openai",
+  "vhost": "api.openai.com",
   "provider": {
     "id": "wso2-openai-provider",
     "auth": {
@@ -3355,8 +3047,8 @@ continued
   },
   "policies": [
     {
-      "name": "budgetControl",
-      "version": "v1.0.0",
+      "name": "llm-cost-based-ratelimit",
+      "version": "v1",
       "paths": [
         {
           "path": "/chat/completions",
@@ -3404,17 +3096,12 @@ continued
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "Secret",
   "metadata": {
-    "name": "weather-api-v1.0",
-    "labels": {
-      "environment": "production",
-      "team": "backend",
-      "version": "v1"
-    }
+    "name": "database-password"
   },
   "spec": {
-    "displayName": "WSO2 OpenAI Key",
-    "description": "WSO2 OpenAI provider API Key",
-    "value": "sk_xxx"
+    "displayName": "Database Password",
+    "description": "PostgreSQL main database password",
+    "value": "sup3rs3cr3t!"
   }
 }
 
@@ -3445,9 +3132,9 @@ continued
 
 ```json
 {
-  "displayName": "WSO2 OpenAI Key",
-  "description": "WSO2 OpenAI provider API Key",
-  "value": "sk_xxx"
+  "displayName": "Database Password",
+  "description": "PostgreSQL main database password",
+  "value": "sup3rs3cr3t!"
 }
 
 ```
@@ -3574,13 +3261,12 @@ continued
       "name": "my-production-key",
       "displayName": "My Production Key",
       "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-      "apiId": "weather-api-v1.0",
+      "apiId": "reading-list-api-v1.0",
       "status": "active",
-      "createdAt": "2025-12-08T10:30:00Z",
-      "createdBy": "api_consumer",
-      "expiresAt": "2025-12-08T10:30:00Z",
-      "source": "local",
-      "externalRefId": "cloud-apim-key-98765"
+      "createdAt": "2026-04-01T10:30:00Z",
+      "createdBy": "admin",
+      "expiresAt": null,
+      "source": "local"
     }
   ],
   "totalCount": 3,
@@ -3672,17 +3358,12 @@ continued
       "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
       "kind": "Secret",
       "metadata": {
-        "name": "weather-api-v1.0",
-        "labels": {
-          "environment": "production",
-          "team": "backend",
-          "version": "v1"
-        }
+        "name": "database-password"
       },
       "spec": {
-        "displayName": "WSO2 OpenAI Key",
-        "description": "WSO2 OpenAI provider API Key",
-        "value": "sk_xxx"
+        "displayName": "Database Password",
+        "description": "PostgreSQL main database password",
+        "value": "sup3rs3cr3t!"
       }
     },
     "metadata": {
