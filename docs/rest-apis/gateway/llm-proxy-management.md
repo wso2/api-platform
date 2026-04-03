@@ -32,11 +32,13 @@ Add a new LLM proxy to the Gateway. A proxy defines how to interact with an LLM 
     "name": "docs-assistant-v1.0"
   },
   "spec": {
-    "displayName": "Docs Assistant",
+    "displayName": "OpenAI Assistant",
     "version": "v1.0",
+    "context": "/assistant",
     "provider": {
       "id": "openai-provider"
-    }
+    },
+    "policies": []
   }
 }
 ```
@@ -224,11 +226,13 @@ Required roles: `admin`, `developer`
         "name": "docs-assistant-v1.0"
       },
       "spec": {
-        "displayName": "Docs Assistant",
+        "displayName": "OpenAI Assistant",
         "version": "v1.0",
+        "context": "/assistant",
         "provider": {
           "id": "openai-provider"
-        }
+        },
+        "policies": []
       }
     },
     "deploymentStatus": "deployed",
@@ -279,11 +283,13 @@ Update an existing LLM proxy in the Gateway.
     "name": "docs-assistant-v1.0"
   },
   "spec": {
-    "displayName": "Docs Assistant",
+    "displayName": "OpenAI Assistant",
     "version": "v1.0",
+    "context": "/assistant",
     "provider": {
       "id": "openai-provider"
-    }
+    },
+    "policies": []
   }
 }
 ```
@@ -446,7 +452,7 @@ Required roles: `admin`, `consumer`
     "name": "my-production-key",
     "displayName": "My Production Key",
     "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-    "apiId": "weather-api-v1.0",
+    "apiId": "reading-list-api-v1.0",
     "status": "active",
     "createdAt": "2026-04-01T10:30:00Z",
     "createdBy": "admin",
@@ -510,7 +516,7 @@ Required roles: `admin`, `consumer`
       "name": "my-production-key",
       "displayName": "My Production Key",
       "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-      "apiId": "weather-api-v1.0",
+      "apiId": "reading-list-api-v1.0",
       "status": "active",
       "createdAt": "2026-04-01T10:30:00Z",
       "createdBy": "admin",
@@ -587,7 +593,7 @@ Required roles: `admin`, `consumer`
     "name": "my-production-key",
     "displayName": "My Production Key",
     "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-    "apiId": "weather-api-v1.0",
+    "apiId": "reading-list-api-v1.0",
     "status": "active",
     "createdAt": "2026-04-01T10:30:00Z",
     "createdBy": "admin",
@@ -664,7 +670,7 @@ Required roles: `admin`, `consumer`
     "name": "my-production-key",
     "displayName": "My Production Key",
     "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-    "apiId": "weather-api-v1.0",
+    "apiId": "reading-list-api-v1.0",
     "status": "active",
     "createdAt": "2026-04-01T10:30:00Z",
     "createdBy": "admin",

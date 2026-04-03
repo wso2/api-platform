@@ -12,41 +12,61 @@
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "RestApi",
   "metadata": {
-    "name": "weather-api-v1.0"
+    "name": "reading-list-api-v1.0"
   },
   "spec": {
-    "displayName": "Weather API",
+    "displayName": "Reading-List-API",
     "version": "v1.0",
-    "context": "/weather/$version",
+    "context": "/reading-list/$version",
     "upstream": {
       "main": {
-        "url": "http://weather-backend:8080/api/v2"
+        "url": "https://apis.bijira.dev/samples/reading-list-api-service/v1.0"
       }
     },
+    "policies": [
+      {
+        "name": "set-headers",
+        "version": "v1",
+        "params": {
+          "request": {
+            "headers": [
+              {
+                "name": "x-wso2-apip-gateway-version",
+                "value": "v1.0.0"
+              }
+            ]
+          },
+          "response": {
+            "headers": [
+              {
+                "name": "x-environment",
+                "value": "development"
+              }
+            ]
+          }
+        }
+      }
+    ],
     "operations": [
       {
         "method": "GET",
-        "path": "/{country_code}/{city}"
-      },
-      {
-        "method": "GET",
-        "path": "/alerts/active"
+        "path": "/books"
       },
       {
         "method": "POST",
-        "path": "/alerts/active",
-        "policies": [
-          {
-            "name": "log-message",
-            "version": "v1",
-            "params": {
-              "request": {
-                "payload": true,
-                "headers": true
-              }
-            }
-          }
-        ]
+        "path": "/books"
+      },
+      {
+        "method": "GET",
+        "path": "/books/{id}"
+      },
+      {
+        "method": "PUT",
+        "path": "/books/{id}"
+      },
+      {
+        "method": "DELETE",
+        "path": "/books/{id}"
       }
     ]
   }
@@ -128,7 +148,7 @@
 
 ```json
 {
-  "name": "weather-api-v1.0",
+  "name": "reading-list-api-v1.0",
   "labels": {
     "environment": "production",
     "team": "backend",
@@ -155,9 +175,9 @@
 
 ```json
 {
-  "displayName": "Weather API",
+  "displayName": "Reading List API",
   "version": "v1.0",
-  "context": "/weather/$version",
+  "context": "/reading-list/$version",
   "upstreamDefinitions": [
     {
       "name": "my-upstream-1",
@@ -204,7 +224,7 @@
   "operations": [
     {
       "method": "GET",
-      "path": "/{country_code}/{city}",
+      "path": "/books/{id}",
       "policies": [
         {
           "name": "cors",
@@ -226,7 +246,7 @@
 |---|---|---|---|---|
 |displayName|string|true|none|Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)|
 |version|string|true|none|Semantic version of the API|
-|context|string|true|none|Base path for all API routes (must start with /, no trailing slash). Use $version to embed the version in the path (e.g., /weather/$version resolves to /weather/v1.0).|
+|context|string|true|none|Base path for all API routes (must start with /, no trailing slash). Use $version to embed the version in the path (e.g., /reading-list/$version resolves to /reading-list/v1.0).|
 |upstreamDefinitions|[[UpstreamDefinition](#schemaupstreamdefinition)]|false|none|List of reusable upstream definitions with optional timeout configurations|
 |upstream|object|true|none|API-level upstream configuration|
 |» main|[Upstream](#schemaupstream)|true|none|Upstream backend configuration (single target or reference)|
@@ -360,7 +380,7 @@ xor
 ```json
 {
   "method": "GET",
-  "path": "/{country_code}/{city}",
+  "path": "/books/{id}",
   "policies": [
     {
       "name": "cors",
@@ -428,7 +448,7 @@ xor
 
 ```json
 {
-  "displayName": "weather-api",
+  "displayName": "reading-list-api",
   "version": "v1.0",
   "context": "/weather",
   "vhosts": {
@@ -533,7 +553,7 @@ Channel (topic/event stream) definition for async APIs.
 {
   "status": "success",
   "message": "RestAPI created successfully",
-  "id": "weather-api-v1.0",
+  "id": "reading-list-api-v1.0",
   "createdAt": "2025-10-11T10:30:00Z"
 }
 
@@ -559,7 +579,7 @@ Channel (topic/event stream) definition for async APIs.
 {
   "status": "success",
   "message": "RestAPI updated successfully",
-  "id": "weather-api-v1.0",
+  "id": "reading-list-api-v1.0",
   "updatedAt": "2025-10-11T11:45:00Z"
 }
 
@@ -681,7 +701,7 @@ Channel (topic/event stream) definition for async APIs.
     "name": "my-production-key",
     "displayName": "My Production Key",
     "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-    "apiId": "weather-api-v1.0",
+    "apiId": "reading-list-api-v1.0",
     "status": "active",
     "createdAt": "2026-04-01T10:30:00Z",
     "createdBy": "admin",
@@ -713,7 +733,7 @@ Channel (topic/event stream) definition for async APIs.
   "name": "my-production-key",
   "displayName": "My Production Key",
   "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-  "apiId": "weather-api-v1.0",
+  "apiId": "reading-list-api-v1.0",
   "status": "active",
   "createdAt": "2026-04-01T10:30:00Z",
   "createdBy": "admin",
@@ -1142,7 +1162,7 @@ Details of an API key
 
 ```json
 {
-  "id": "weather-api-v1.0",
+  "id": "reading-list-api-v1.0",
   "displayName": "Weather API",
   "version": "v1.0",
   "context": "/weather/$version",
@@ -1222,46 +1242,66 @@ Details of an API key
 {
   "status": "success",
   "api": {
-    "id": "weather-api-v1.0",
+    "id": "reading-list-api-v1.0",
     "configuration": {
       "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
       "kind": "RestApi",
       "metadata": {
-        "name": "weather-api-v1.0"
+        "name": "reading-list-api-v1.0"
       },
       "spec": {
-        "displayName": "Weather API",
+        "displayName": "Reading-List-API",
         "version": "v1.0",
-        "context": "/weather/$version",
+        "context": "/reading-list/$version",
         "upstream": {
           "main": {
-            "url": "http://weather-backend:8080/api/v2"
+            "url": "https://apis.bijira.dev/samples/reading-list-api-service/v1.0"
           }
         },
+        "policies": [
+          {
+            "name": "set-headers",
+            "version": "v1",
+            "params": {
+              "request": {
+                "headers": [
+                  {
+                    "name": "x-wso2-apip-gateway-version",
+                    "value": "v1.0.0"
+                  }
+                ]
+              },
+              "response": {
+                "headers": [
+                  {
+                    "name": "x-environment",
+                    "value": "development"
+                  }
+                ]
+              }
+            }
+          }
+        ],
         "operations": [
           {
             "method": "GET",
-            "path": "/{country_code}/{city}"
-          },
-          {
-            "method": "GET",
-            "path": "/alerts/active"
+            "path": "/books"
           },
           {
             "method": "POST",
-            "path": "/alerts/active",
-            "policies": [
-              {
-                "name": "log-message",
-                "version": "v1",
-                "params": {
-                  "request": {
-                    "payload": true,
-                    "headers": true
-                  }
-                }
-              }
-            ]
+            "path": "/books"
+          },
+          {
+            "method": "GET",
+            "path": "/books/{id}"
+          },
+          {
+            "method": "PUT",
+            "path": "/books/{id}"
+          },
+          {
+            "method": "DELETE",
+            "path": "/books/{id}"
           }
         ]
       }
@@ -1384,7 +1424,7 @@ Details of an API key
     "context": "/everything",
     "specVersion": "2025-06-18",
     "upstream": {
-      "url": "http://mcp-server-backend:3001"
+      "url": "http://everything:3001"
     },
     "tools": [],
     "resources": [],
@@ -1733,7 +1773,7 @@ continued
         "context": "/everything",
         "specVersion": "2025-06-18",
         "upstream": {
-          "url": "http://mcp-server-backend:3001"
+          "url": "http://everything:3001"
         },
         "tools": [],
         "resources": [],
@@ -2444,6 +2484,7 @@ continued
         "displayName": "OpenAI Provider",
         "version": "v1.0",
         "template": "openai",
+        "context": "/openai/latest",
         "upstream": {
           "url": "https://api.openai.com/v1",
           "auth": {
@@ -2453,7 +2494,27 @@ continued
           }
         },
         "accessControl": {
-          "mode": "allow_all"
+          "mode": "deny_all",
+          "exceptions": [
+            {
+              "path": "/chat/completions",
+              "methods": [
+                "POST"
+              ]
+            },
+            {
+              "path": "/models",
+              "methods": [
+                "GET"
+              ]
+            },
+            {
+              "path": "/models/{modelId}",
+              "methods": [
+                "GET"
+              ]
+            }
+          ]
         }
       }
     },
@@ -2508,11 +2569,13 @@ continued
         "name": "docs-assistant-v1.0"
       },
       "spec": {
-        "displayName": "Docs Assistant",
+        "displayName": "OpenAI Assistant",
         "version": "v1.0",
+        "context": "/assistant",
         "provider": {
           "id": "openai-provider"
-        }
+        },
+        "policies": []
       }
     },
     "deploymentStatus": "deployed",
@@ -2565,6 +2628,7 @@ continued
     "displayName": "OpenAI Provider",
     "version": "v1.0",
     "template": "openai",
+    "context": "/openai/latest",
     "upstream": {
       "url": "https://api.openai.com/v1",
       "auth": {
@@ -2574,7 +2638,27 @@ continued
       }
     },
     "accessControl": {
-      "mode": "allow_all"
+      "mode": "deny_all",
+      "exceptions": [
+        {
+          "path": "/chat/completions",
+          "methods": [
+            "POST"
+          ]
+        },
+        {
+          "path": "/models",
+          "methods": [
+            "GET"
+          ]
+        },
+        {
+          "path": "/models/{modelId}",
+          "methods": [
+            "GET"
+          ]
+        }
+      ]
     }
   }
 }
@@ -2912,11 +2996,13 @@ continued
     "name": "docs-assistant-v1.0"
   },
   "spec": {
-    "displayName": "Docs Assistant",
+    "displayName": "OpenAI Assistant",
     "version": "v1.0",
+    "context": "/assistant",
     "provider": {
       "id": "openai-provider"
-    }
+    },
+    "policies": []
   }
 }
 
@@ -3175,7 +3261,7 @@ continued
       "name": "my-production-key",
       "displayName": "My Production Key",
       "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-      "apiId": "weather-api-v1.0",
+      "apiId": "reading-list-api-v1.0",
       "status": "active",
       "createdAt": "2026-04-01T10:30:00Z",
       "createdBy": "admin",

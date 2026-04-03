@@ -73,7 +73,7 @@ paths:
           description: Filter by API display name
           schema:
             type: string
-          example: Weather API
+          example: Reading List API
         - name: version
           in: query
           required: false
@@ -87,7 +87,7 @@ paths:
           description: Filter by API context/path
           schema:
             type: string
-          example: /weather
+          example: /reading-list
         - name: status
           in: query
           required: false
@@ -137,7 +137,7 @@ paths:
             Unique public identifier for the API.
           schema:
             type: string
-          example: weather-api-v1.0
+          example: reading-list-api-v1.0
       responses:
         "200":
           description: RestAPI details
@@ -176,7 +176,7 @@ paths:
             Unique public identifier of the API to update.
           schema:
             type: string
-          example: weather-api-v1.0
+          example: reading-list-api-v1.0
       requestBody:
         required: true
         content:
@@ -227,7 +227,7 @@ paths:
             Unique public identifier of the API to delete.
           schema:
             type: string
-          example: weather-api-v1.0
+          example: reading-list-api-v1.0
       responses:
         "200":
           description: RestAPI deleted successfully
@@ -244,7 +244,7 @@ paths:
                     example: RestAPI deleted successfully
                   id:
                     type: string
-                    example: weather-api-v1.0
+                    example: reading-list-api-v1.0
         "404":
           description: RestAPI not found
           content:
@@ -274,7 +274,7 @@ paths:
             Unique public identifier of the API to generate the key for
           schema:
             type: string
-          example: weather-api-v1.0
+          example: reading-list-api-v1.0
       requestBody:
         required: true
         content:
@@ -325,7 +325,7 @@ paths:
             Unique public identifier of the API to retrieve the keys for
           schema:
             type: string
-          example: weather-api-v1.0
+          example: reading-list-api-v1.0
       responses:
         "200":
           description: List of API keys
@@ -362,7 +362,7 @@ paths:
             Unique public identifier of the API to generate the key for
           schema:
             type: string
-          example: weather-api-v1.0
+          example: reading-list-api-v1.0
         - name: apiKeyName
           in: path
           required: true
@@ -370,7 +370,7 @@ paths:
             Name of the API key to regenerate
           schema:
             type: string
-          example: weather-api-key
+          example: reading-list-api-key
       requestBody:
         required: true
         content:
@@ -422,7 +422,7 @@ paths:
             Unique public identifier of the API
           schema:
             type: string
-          example: weather-api-v1.0
+          example: reading-list-api-v1.0
         - name: apiKeyName
           in: path
           required: true
@@ -430,7 +430,7 @@ paths:
             Name of the API key to update
           schema:
             type: string
-          example: weather-api-key
+          example: reading-list-api-key
       requestBody:
         required: true
         content:
@@ -480,7 +480,7 @@ paths:
             Unique public identifier of the API to revoke the key for
           schema:
             type: string
-          example: weather-api-v1.0
+          example: reading-list-api-v1.0
         - name: apiKeyName
           in: path
           required: true
@@ -488,7 +488,7 @@ paths:
             Name of the API key to revoke
           schema:
             type: string
-          example: weather-api-key
+          example: reading-list-api-key
       responses:
         '200':
           description: API key revoked successfully
@@ -3002,28 +3002,37 @@ components:
         apiVersion: gateway.api-platform.wso2.com/v1alpha1
         kind: RestApi
         metadata:
-          name: weather-api-v1.0
+          name: reading-list-api-v1.0
         spec:
-          displayName: Weather API
+          displayName: Reading-List-API
           version: v1.0
-          context: /weather/$version
+          context: /reading-list/$version
           upstream:
             main:
-              url: http://weather-backend:8080/api/v2
+              url: https://apis.bijira.dev/samples/reading-list-api-service/v1.0
+          policies:
+            - name: set-headers
+              version: v1
+              params:
+                request:
+                  headers:
+                    - name: x-wso2-apip-gateway-version
+                      value: v1.0.0
+                response:
+                  headers:
+                    - name: x-environment
+                      value: development
           operations:
             - method: GET
-              path: /{country_code}/{city}
-            - method: GET
-              path: /alerts/active
+              path: /books
             - method: POST
-              path: /alerts/active
-              policies:
-                - name: log-message
-                  version: v1
-                  params:
-                    request:
-                      payload: true
-                      headers: true
+              path: /books
+            - method: GET
+              path: /books/{id}
+            - method: PUT
+              path: /books/{id}
+            - method: DELETE
+              path: /books/{id}
 
     WebSubAPI:
       type: object
@@ -3072,7 +3081,7 @@ components:
         name:
           type: string
           description: Unique handle for the resource
-          example: weather-api-v1.0
+          example: reading-list-api-v1.0
         labels:
           type: object
           description: Labels are key-value pairs for organizing and selecting APIs. Keys must not contain spaces.
@@ -3099,7 +3108,7 @@ components:
           minLength: 1
           maxLength: 100
           pattern: '^[a-zA-Z0-9\-_\. ]+$'
-          example: Weather API
+          example: Reading List API
         # kind:
         #   type: string
         #   description: API type
@@ -3113,11 +3122,11 @@ components:
           example: v1.0
         context:
           type: string
-          description: Base path for all API routes (must start with /, no trailing slash). Use $version to embed the version in the path (e.g., /weather/$version resolves to /weather/v1.0).
+          description: Base path for all API routes (must start with /, no trailing slash). Use $version to embed the version in the path (e.g., /reading-list/$version resolves to /reading-list/v1.0).
           pattern: '^\/[a-zA-Z0-9_\-\/]*[^\/]$'
           minLength: 1
           maxLength: 200
-          example: /weather/$version
+          example: /reading-list/$version
         upstreamDefinitions:
           type: array
           description: List of reusable upstream definitions with optional timeout configurations
@@ -3273,7 +3282,7 @@ components:
           type: string
           description: Route path with optional {param} placeholders
           pattern: '^\/.*$'
-          example: /{country_code}/{city}
+          example: /books/{id}
         policies:
           type: array
           description: List of policies applied only to this operation (overrides or adds to API-level policies)
@@ -3325,7 +3334,7 @@ components:
           minLength: 1
           maxLength: 100
           pattern: '^[a-zA-Z0-9\-_\. ]+$'
-          example: weather-api
+          example: reading-list-api
         version:
           type: string
           description: Semantic version of the API
@@ -3452,7 +3461,7 @@ components:
         id:
           type: string
           description: Unique id for the created RestAPI
-          example: weather-api-v1.0
+          example: reading-list-api-v1.0
         createdAt:
           type: string
           format: date-time
@@ -3468,7 +3477,7 @@ components:
           example: RestAPI updated successfully
         id:
           type: string
-          example: weather-api-v1.0
+          example: reading-list-api-v1.0
         updatedAt:
           type: string
           format: date-time
@@ -3602,7 +3611,7 @@ components:
           name: my-production-key
           displayName: My Production Key
           apiKey: "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-          apiId: weather-api-v1.0
+          apiId: reading-list-api-v1.0
           status: active
           createdAt: "2026-04-01T10:30:00Z"
           createdBy: admin
@@ -3632,7 +3641,7 @@ components:
         apiId:
           type: string
           description: Unique public identifier of the API that the key is associated with
-          example: weather-api-v1.0
+          example: reading-list-api-v1.0
         status:
           type: string
           description: Status of the API key
@@ -3679,7 +3688,7 @@ components:
         name: my-production-key
         displayName: My Production Key
         apiKey: "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-        apiId: weather-api-v1.0
+        apiId: reading-list-api-v1.0
         status: active
         createdAt: "2026-04-01T10:30:00Z"
         createdBy: admin
@@ -3895,7 +3904,7 @@ components:
       properties:
         id:
           type: string
-          example: weather-api-v1.0
+          example: reading-list-api-v1.0
         displayName:
           type: string
           example: Weather API
@@ -3960,7 +3969,7 @@ components:
             id:
               type: string
               description: Unique id for the RestAPI
-              example: weather-api-v1.0
+              example: reading-list-api-v1.0
             configuration:
               $ref: "#/components/schemas/RestAPI"
             metadata:
@@ -4057,7 +4066,7 @@ components:
           context: /everything
           specVersion: "2025-06-18"
           upstream:
-            url: http://mcp-server-backend:3001
+            url: http://everything:3001
           tools: []
           resources: []
           prompts: []
@@ -4786,6 +4795,7 @@ components:
           displayName: OpenAI Provider
           version: v1.0
           template: openai
+          context: /openai/latest
           upstream:
             url: https://api.openai.com/v1
             auth:
@@ -4793,7 +4803,14 @@ components:
               header: Authorization
               value: Bearer sk-your-api-key
           accessControl:
-            mode: allow_all
+            mode: deny_all
+            exceptions:
+              - path: /chat/completions
+                methods: [POST]
+              - path: /models
+                methods: [GET]
+              - path: /models/{modelId}
+                methods: [GET]
 
     LLMProviderConfigData:
       type: object
@@ -5005,10 +5022,12 @@ components:
         metadata:
           name: docs-assistant-v1.0
         spec:
-          displayName: Docs Assistant
+          displayName: OpenAI Assistant
           version: v1.0
+          context: /assistant
           provider:
             id: openai-provider
+          policies: []
 
     LLMProxyConfigData:
       type: object

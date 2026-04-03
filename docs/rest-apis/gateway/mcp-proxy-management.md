@@ -37,7 +37,7 @@ Add a new MCPProxy to the Gateway.
     "context": "/everything",
     "specVersion": "2025-06-18",
     "upstream": {
-      "url": "http://mcp-server-backend:3001"
+      "url": "http://everything:3001"
     },
     "tools": [],
     "resources": [],
@@ -239,7 +239,7 @@ Required roles: `admin`, `developer`
         "context": "/everything",
         "specVersion": "2025-06-18",
         "upstream": {
-          "url": "http://mcp-server-backend:3001"
+          "url": "http://everything:3001"
         },
         "tools": [],
         "resources": [],
@@ -299,7 +299,7 @@ Update an existing MCPProxy in the Gateway.
     "context": "/everything",
     "specVersion": "2025-06-18",
     "upstream": {
-      "url": "http://mcp-server-backend:3001"
+      "url": "http://everything:3001"
     },
     "tools": [],
     "resources": [],

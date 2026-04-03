@@ -35,6 +35,7 @@ Add a new LLM provider to the Gateway. A provider defines how to interact with a
     "displayName": "OpenAI Provider",
     "version": "v1.0",
     "template": "openai",
+    "context": "/openai/latest",
     "upstream": {
       "url": "https://api.openai.com/v1",
       "auth": {
@@ -44,7 +45,27 @@ Add a new LLM provider to the Gateway. A provider defines how to interact with a
       }
     },
     "accessControl": {
-      "mode": "allow_all"
+      "mode": "deny_all",
+      "exceptions": [
+        {
+          "path": "/chat/completions",
+          "methods": [
+            "POST"
+          ]
+        },
+        {
+          "path": "/models",
+          "methods": [
+            "GET"
+          ]
+        },
+        {
+          "path": "/models/{modelId}",
+          "methods": [
+            "GET"
+          ]
+        }
+      ]
     }
   }
 }
@@ -236,6 +257,7 @@ Required roles: `admin`, `developer`
         "displayName": "OpenAI Provider",
         "version": "v1.0",
         "template": "openai",
+        "context": "/openai/latest",
         "upstream": {
           "url": "https://api.openai.com/v1",
           "auth": {
@@ -245,7 +267,27 @@ Required roles: `admin`, `developer`
           }
         },
         "accessControl": {
-          "mode": "allow_all"
+          "mode": "deny_all",
+          "exceptions": [
+            {
+              "path": "/chat/completions",
+              "methods": [
+                "POST"
+              ]
+            },
+            {
+              "path": "/models",
+              "methods": [
+                "GET"
+              ]
+            },
+            {
+              "path": "/models/{modelId}",
+              "methods": [
+                "GET"
+              ]
+            }
+          ]
         }
       }
     },
@@ -300,6 +342,7 @@ Update an existing LLM provider in the Gateway.
     "displayName": "OpenAI Provider",
     "version": "v1.0",
     "template": "openai",
+    "context": "/openai/latest",
     "upstream": {
       "url": "https://api.openai.com/v1",
       "auth": {
@@ -309,7 +352,27 @@ Update an existing LLM provider in the Gateway.
       }
     },
     "accessControl": {
-      "mode": "allow_all"
+      "mode": "deny_all",
+      "exceptions": [
+        {
+          "path": "/chat/completions",
+          "methods": [
+            "POST"
+          ]
+        },
+        {
+          "path": "/models",
+          "methods": [
+            "GET"
+          ]
+        },
+        {
+          "path": "/models/{modelId}",
+          "methods": [
+            "GET"
+          ]
+        }
+      ]
     }
   }
 }
@@ -473,7 +536,7 @@ Required roles: `admin`, `consumer`
     "name": "my-production-key",
     "displayName": "My Production Key",
     "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-    "apiId": "weather-api-v1.0",
+    "apiId": "reading-list-api-v1.0",
     "status": "active",
     "createdAt": "2026-04-01T10:30:00Z",
     "createdBy": "admin",
@@ -537,7 +600,7 @@ Required roles: `admin`, `consumer`
       "name": "my-production-key",
       "displayName": "My Production Key",
       "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-      "apiId": "weather-api-v1.0",
+      "apiId": "reading-list-api-v1.0",
       "status": "active",
       "createdAt": "2026-04-01T10:30:00Z",
       "createdBy": "admin",
@@ -614,7 +677,7 @@ Required roles: `admin`, `consumer`
     "name": "my-production-key",
     "displayName": "My Production Key",
     "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-    "apiId": "weather-api-v1.0",
+    "apiId": "reading-list-api-v1.0",
     "status": "active",
     "createdAt": "2026-04-01T10:30:00Z",
     "createdBy": "admin",
@@ -691,7 +754,7 @@ Required roles: `admin`, `consumer`
     "name": "my-production-key",
     "displayName": "My Production Key",
     "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-    "apiId": "weather-api-v1.0",
+    "apiId": "reading-list-api-v1.0",
     "status": "active",
     "createdAt": "2026-04-01T10:30:00Z",
     "createdBy": "admin",
