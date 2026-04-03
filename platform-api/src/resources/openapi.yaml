@@ -113,6 +113,33 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /organizations/{organizationId}/subscription:
+    get:
+      summary: Get organization subscription quotas
+      description: |
+        Returns the current organization subscription view with resource quota usage.
+        The organization ID in the path must match the JWT token's organization claim.
+      operationId: GetOrganizationSubscription
+      tags:
+        - Organizations
+      parameters:
+        - $ref: '#/components/parameters/organizationId'
+      responses:
+        '200':
+          description: Organization subscription quotas retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationSubscription'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /projects:
     post:
       summary: Create a new project
@@ -4628,6 +4655,65 @@ components:
           description: Timestamp when the organization was last updated
           readOnly: true
           example: "2023-10-12T10:30:00Z"
+
+    OrganizationSubscription:
+      type: object
+      required:
+        - plan
+        - quotas
+      properties:
+        plan:
+          type: string
+          description: Effective subscription plan for the organization
+          example: "free"
+        quotas:
+          $ref: '#/components/schemas/OrganizationSubscriptionQuotas'
+
+    OrganizationSubscriptionQuotas:
+      type: object
+      required:
+        - llmProviders
+        - llmProxies
+        - applications
+        - mcpProxies
+        - gateways
+        - apis
+      properties:
+        llmProviders:
+          $ref: '#/components/schemas/OrganizationQuota'
+        llmProxies:
+          $ref: '#/components/schemas/OrganizationQuota'
+        applications:
+          $ref: '#/components/schemas/OrganizationQuota'
+        mcpProxies:
+          $ref: '#/components/schemas/OrganizationQuota'
+        gateways:
+          $ref: '#/components/schemas/OrganizationQuota'
+        apis:
+          $ref: '#/components/schemas/OrganizationQuota'
+
+    OrganizationQuota:
+      type: object
+      required:
+        - used
+      properties:
+        used:
+          type: integer
+          minimum: 0
+          description: Number of currently used resources
+          example: 3
+        limit:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Maximum resources allowed, null when no limit is configured
+          example: 5
+        remaining:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Remaining resources before limit is reached, null when no limit is configured
+          example: 2
 
     CreateProjectRequest:
       description: |
