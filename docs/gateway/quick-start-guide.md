@@ -88,12 +88,12 @@ When stopping the gateway, you have two options:
 
 **Option 1: Stop runtime, keep data (persisted APIs and configuration)**
 ```bash
-docker compose -p gateway down
+docker compose down
 ```
-This stops the containers but preserves the `controller-data` volume. When you restart with `docker compose -p gateway up`, all your API configurations will be restored.
+This stops the containers but preserves the `controller-data` volume. When you restart with `docker compose up`, all your API configurations will be restored.
 
 **Option 2: Complete shutdown with data cleanup (fresh start)**
 ```bash
-docker compose -p gateway down -v
+docker compose down -v
 ```
 This stops containers and removes the `controller-data` volume. Next startup will be a clean slate with no persisted APIs or configuration.
