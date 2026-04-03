@@ -19,6 +19,10 @@ serviceAccount:
 # Component-level configuration
 
 gateway:
+  # Enable development mode across gateway components.
+  # Do NOT enable in production — relaxes security checks (e.g. encryption key enforcement).
+  developmentMode: false
+
   # Shared configuration mounted as:
   #   - gateway-controller: /etc/gateway-controller/config.toml
   #   - gateway-runtime (policy engine): /etc/policy-engine/config.toml
@@ -84,6 +88,37 @@ gateway:
       policies:
         # Directory containing policy definitions
         definitions_path: ./default-policies
+
+      # Control plane connection configuration
+      # Note: host and token are set via gateway.controller.controlPlane and rendered as env vars in the deployment.
+      controlplane:
+        # Skip TLS certificate verification for the control plane connection (insecure, dev/test only)
+        insecure_skip_verify: false
+
+        # Initial delay before retrying a failed control plane connection
+        reconnect_initial: 1s
+
+        # Maximum delay between reconnection attempts (exponential backoff cap)
+        reconnect_max: 5m
+
+        # How often to reconcile state with the control plane
+        polling_interval: 15m
+
+        # Push API deployment events to the control plane
+        deployment_push_enabled: false
+
+        # Number of deployments to fetch per batch during startup sync
+        sync_batch_size: 50
+
+      # Encryption provider configuration for secret management.
+      # File paths must match the mount path set in gateway.controller.encryptionKeys.mountPath.
+      encryption:
+        providers:
+          - type: aesgcm
+            keys:
+              - version: aesgcm256-v1
+                # Path to the binary key file — must match the mounted secret key filename
+                file: /app/data/aesgcm-keys/default-aesgcm256-v1.bin
 
       # Logging configuration
       logging:
@@ -370,7 +405,8 @@ gateway:
       # Existing ConfigMap containing custom CA certificates
       # ConfigMap should contain one or more keys with PEM-encoded certificates
       configMapName: ""
-    # Encryption key configuration for secret management (AES-GCM keys)
+    # Encryption key configuration for secret management (AES-GCM keys).
+    # Required when developmentMode is false — the chart will fail rendering if not enabled.
     encryptionKeys:
       # Enable mounting encryption keys from a Kubernetes secret
       enabled: false
@@ -460,6 +496,18 @@ gateway:
         envoyAdmin: 9901
         policyEngineAdmin: 9002
         policyEngineMetrics: 9003
+    # Policy-related file mounts for the gateway runtime
+    policies:
+      # LLM pricing data for the llm_cost_v1 policy.
+      # Mounted read-only at /etc/policy-engine/llm-pricing/model_prices.json.
+      # A built-in model_prices.json is bundled with this chart and used by default.
+      # Reference in config.toml: [policy_configurations.llm_cost_v1] pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"
+      llmPricing:
+        enabled: true
+        # Override with an existing ConfigMap containing a key "model_prices.json".
+        # When set, the built-in ConfigMap is not created and this one is used instead.
+        configMapName: ""
+
     deployment:
       enabled: true
       replicaCount: 1
