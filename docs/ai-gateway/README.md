@@ -91,4 +91,4 @@ An MCP Proxy routes Model Context Protocol traffic to MCP servers. MCP is a prot
 | [mcp/](mcp/) | MCP proxy setup and policies |
 | [observability/](observability/) | Logging and tracing configuration |
 | [analytics/](analytics/) | Analytics integrations (Moesif) |
-| [ai-gateway-rest-api/](ai-gateway-rest-api/) | REST API authentication and usage |
+| [rest-apis/gateway/](../rest-apis/gateway/) | REST API authentication and usage |
