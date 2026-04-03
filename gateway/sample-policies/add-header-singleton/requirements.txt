@@ -1,0 +1,2 @@
+# This sample policy uses only standard library components and the WSO2 Python SDK.
+# No extra third-party dependencies are required.

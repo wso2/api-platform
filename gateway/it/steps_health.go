@@ -26,7 +26,7 @@ import (
 	"time"
 
 	"github.com/cucumber/godog"
-	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/adminapi/generated"
+	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
 	"github.com/wso2/api-platform/gateway/it/steps"
 )
 
@@ -48,8 +48,11 @@ func RegisterHealthSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps
 	ctx.Step(`^the response should indicate healthy status$`, h.theResponseShouldIndicateHealthyStatus)
 	ctx.Step(`^I check the health of all gateway services$`, h.iCheckHealthOfAllGatewayServices)
 	ctx.Step(`^all services should report healthy status$`, h.allServicesShouldReportHealthyStatus)
+	ctx.Step(`^I wait for policy snapshot sync$`, h.iWaitForPolicySnapshotSync)
 	ctx.Step(`^I wait for the endpoint "([^"]*)" to be ready$`, h.iWaitForEndpointToBeReady)
+	ctx.Step(`^I wait for the endpoint "([^"]*)" to be ready with host "([^"]*)"$`, h.iWaitForEndpointToBeReadyWithHost)
 	ctx.Step(`^I wait for the endpoint "([^"]*)" to be ready with method "([^"]*)" and body '([^']*)'$`, h.iWaitForEndpointToBeReadyWithMethodAndBody)
+	ctx.Step(`^I wait for the endpoint "([^"]*)" to return 403$`, h.iWaitForEndpointToReturn403)
 }
 
 // theGatewayServicesAreRunning verifies that gateway services are available
@@ -61,9 +64,9 @@ func (h *HealthSteps) theGatewayServicesAreRunning() error {
 	return nil
 }
 
-// iSendGETRequestToGatewayControllerHealth sends a GET request to the gateway controller health endpoint
+// iSendGETRequestToGatewayControllerHealth sends a GET request to the gateway controller admin health endpoint
 func (h *HealthSteps) iSendGETRequestToGatewayControllerHealth() error {
-	url := fmt.Sprintf("%s/health", h.state.Config.GatewayControllerURL)
+	url := fmt.Sprintf("%s/health", h.state.Config.GatewayControllerAdminURL)
 	return h.httpSteps.SendGETRequest(url)
 }
 
@@ -107,8 +110,7 @@ func (h *HealthSteps) iCheckHealthOfAllGatewayServices() error {
 		name string
 		url  string
 	}{
-		{"gateway-controller", fmt.Sprintf("%s/health", h.state.Config.GatewayControllerURL)},
-		{"gateway-controller-admin", fmt.Sprintf("%s/health", h.state.Config.GatewayControllerAdminURL)},
+		{"gateway-controller", fmt.Sprintf("%s/health", h.state.Config.GatewayControllerAdminURL)},
 		{"router", fmt.Sprintf("http://localhost:%s/ready", EnvoyAdminPort)},
 		{"policy-engine", fmt.Sprintf("%s/health", h.state.Config.PolicyEngineURL)},
 	}
@@ -154,6 +156,11 @@ func (h *HealthSteps) allServicesShouldReportHealthyStatus() error {
 	return nil
 }
 
+// iWaitForPolicySnapshotSync waits until controller and policy-engine policy snapshot versions match.
+func (h *HealthSteps) iWaitForPolicySnapshotSync() error {
+	return h.waitForPolicySnapshotSync()
+}
+
 // iWaitForEndpointToBeReady polls an endpoint until it returns 200 or times out
 // Optimized: 30 attempts × 300ms = 9s max wait time
 func (h *HealthSteps) iWaitForEndpointToBeReady(url string) error {
@@ -176,6 +183,62 @@ func (h *HealthSteps) iWaitForEndpointToBeReady(url string) error {
 	}
 
 	return fmt.Errorf("endpoint %s did not become ready after %d attempts", url, maxAttempts)
+}
+
+// iWaitForEndpointToBeReadyWithHost polls an endpoint with a specific host override until it returns 200 or times out.
+func (h *HealthSteps) iWaitForEndpointToBeReadyWithHost(url, host string) error {
+	maxAttempts := 30
+	attemptInterval := 300 * time.Millisecond
+	trimmedHost := strings.TrimSpace(host)
+	if trimmedHost == "" {
+		return fmt.Errorf("host override must not be empty")
+	}
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			return fmt.Errorf("failed to create request: %w", err)
+		}
+		req.Host = trimmedHost
+
+		resp, err := h.state.HTTPClient.Do(req)
+		if err == nil && resp.StatusCode == http.StatusOK {
+			resp.Body.Close()
+			return h.waitForPolicySnapshotSync()
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+
+		if attempt < maxAttempts {
+			time.Sleep(attemptInterval)
+		}
+	}
+
+	return fmt.Errorf("endpoint %s with host %s did not become ready after %d attempts", url, trimmedHost, maxAttempts)
+}
+
+// iWaitForEndpointToReturn403 polls an endpoint until it returns 403 (e.g. subscription-protected route blocking unauthenticated requests)
+func (h *HealthSteps) iWaitForEndpointToReturn403(url string) error {
+	maxAttempts := 30
+	attemptInterval := 300 * time.Millisecond
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		resp, err := h.state.HTTPClient.Get(url)
+		if err == nil && resp.StatusCode == http.StatusForbidden {
+			resp.Body.Close()
+			return h.waitForPolicySnapshotSync()
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+
+		if attempt < maxAttempts {
+			time.Sleep(attemptInterval)
+		}
+	}
+
+	return fmt.Errorf("endpoint %s did not return 403 after %d attempts", url, maxAttempts)
 }
 
 // iWaitForEndpointToBeReadyWithMethodAndBody polls an endpoint with specified method and body until it returns 200 or times out

@@ -75,8 +75,6 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 
 	// Check for required methods
 	hasMode := false
-	hasOnRequest := false
-	hasOnResponse := false
 	hasNewPolicy := false
 
 	for _, file := range files {
@@ -94,7 +92,7 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 				// Check for GetPolicy factory function
 				if methodName == "GetPolicy" {
 					hasNewPolicy = true
-					slog.Debug("Found GetPolicy factory function", "phase", "validation")
+					slog.Debug("Found GetPolicy factory function", "name", methodName, "phase", "validation")
 				}
 
 				// Check for interface methods
@@ -103,12 +101,8 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 					case "Mode":
 						hasMode = true
 						slog.Debug("Found Mode method", "phase", "validation")
-					case "OnRequest":
-						hasOnRequest = true
-						slog.Debug("Found OnRequest method", "phase", "validation")
-					case "OnResponse":
-						hasOnResponse = true
-						slog.Debug("Found OnResponse method", "phase", "validation")
+						// v1alpha
+
 					}
 				}
 			}
@@ -119,8 +113,6 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 	slog.Debug("Interface validation summary",
 		"policy", policy.Name,
 		"hasMode", hasMode,
-		"hasOnRequest", hasOnRequest,
-		"hasOnResponse", hasOnResponse,
 		"hasNewPolicy", hasNewPolicy,
 		"phase", "validation")
 
@@ -131,24 +123,6 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 			PolicyVersion: policy.Version,
 			FilePath:      policy.Path,
 			Message:       "missing required Mode() method implementation",
-		})
-	}
-
-	if !hasOnRequest {
-		errors = append(errors, types.ValidationError{
-			PolicyName:    policy.Name,
-			PolicyVersion: policy.Version,
-			FilePath:      policy.Path,
-			Message:       "missing required OnRequest() method implementation",
-		})
-	}
-
-	if !hasOnResponse {
-		errors = append(errors, types.ValidationError{
-			PolicyName:    policy.Name,
-			PolicyVersion: policy.Version,
-			FilePath:      policy.Path,
-			Message:       "missing required OnResponse() method implementation",
 		})
 	}
 

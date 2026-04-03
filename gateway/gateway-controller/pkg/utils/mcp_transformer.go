@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"strings"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 )
 
@@ -97,15 +97,15 @@ func addMCPSpecificOperations(mcpConfig *api.MCPProxyConfiguration, optionsRequi
 }
 
 // Transform converts an MCP proxy configuration (input) to an API configuration (output)
-func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*api.APIConfiguration, error) {
+func (t *MCPTransformer) Transform(input any, output *api.RestAPI) (*api.RestAPI, error) {
 	mcpConfig, ok := input.(*api.MCPProxyConfiguration)
 	if !ok || mcpConfig == nil {
 		return nil, fmt.Errorf("invalid input type: expected *api.MCPProxyConfiguration")
 	}
-	output.ApiVersion = api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1
+	output.ApiVersion = api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1
 	output.Kind = api.RestApi
 
-	// Build APIConfigData and set it into the APIConfiguration_Spec union
+	// Build APIConfigData and set it directly on the RestAPI spec
 	apiData := api.APIConfigData{
 		DisplayName: mcpConfig.Spec.DisplayName,
 		Version:     mcpConfig.Spec.Version,
@@ -143,13 +143,14 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*ap
 	// Set upstream auth if present
 	upstream := mcpConfig.Spec.Upstream
 	if upstream.Auth != nil {
-		params, err := GetParamsOfPolicy(constants.MODIFY_HEADERS_POLICY_PARAMS, *upstream.Auth.Header, *upstream.Auth.Value)
+		params, err := GetParamsOfPolicy(constants.SET_HEADERS_POLICY_PARAMS, *upstream.Auth.Header, *upstream.Auth.Value)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build upstream auth params: %w", err)
 		}
 		pol := api.Policy{
-			Name:    constants.MODIFY_HEADERS_POLICY_NAME,
-			Version: constants.MODIFY_HEADERS_POLICY_VERSION, Params: &params}
+			Name:    constants.SET_HEADERS_POLICY_NAME,
+			Params:  &params,
+		}
 		policies = append(policies, pol)
 	}
 
@@ -166,11 +167,7 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*ap
 		apiData.Vhosts = &v
 	}
 
-	var specUnion api.APIConfiguration_Spec
-	if err := specUnion.FromAPIConfigData(apiData); err != nil {
-		return nil, err
-	}
-	output.Spec = specUnion
+	output.Spec = apiData
 
 	output.Metadata = api.Metadata{
 		Name: mcpConfig.Metadata.Name,

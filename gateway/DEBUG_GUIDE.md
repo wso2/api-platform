@@ -66,10 +66,10 @@ No extra steps required. Covered by the `sdk` substitutePath entry.
 
 By default `build.yaml` uses `gomodule:` entries — policies compile from the Go module cache at a path like `/go/pkg/mod/...@vX.Y.Z/` inside the container. Add a `substitutePath` entry in `.vscode/launch.json` to map your local policy checkout to that path — no `build.yaml` changes or image rebuild needed.
 
-1. **Find the exact version compiled into the image:** look up the policy in `gateway/build-lock.yaml`. The `version` field is the resolved version and the `gomodule` field gives the module path:
+1. **Find the exact version compiled into the image:** look up the policy in `gateway/build-manifest.yaml`. The `version` field is the resolved version and the `gomodule` field gives the module path:
    ```yaml
    - name: api-key-auth
-     version: v0.8.0
+     version: v1.8.0
      gomodule: github.com/wso2/gateway-controllers/policies/api-key-auth@v0
    ```
 
@@ -165,7 +165,7 @@ In `gateway/docker-compose.yaml`, make two changes to the `gateway-runtime` serv
 services:
   gateway-runtime:
     environment:
-      GATEWAY_CONTROLLER_HOST: host.docker.internal
+      - GATEWAY_CONTROLLER_HOST=host.docker.internal
 ```
 
 2. Comment out the **Policy Engine** port block:
@@ -206,8 +206,8 @@ Run the router in Docker Compose:
 
 ```bash
 cd gateway
-docker compose up gateway-runtime -d
-docker compose logs -ft gateway-runtime
+docker compose up gateway-runtime sample-backend -d
+docker compose logs -ft gateway-runtime sample-backend
 ```
 
 ### Step 7: Deploy an API and Test

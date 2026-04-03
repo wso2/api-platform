@@ -49,6 +49,9 @@ type Config struct {
 	Analytics            AnalyticsConfig        `koanf:"analytics"`
 	TracingConfig        TracingConfig          `koanf:"tracing"`
 	APIKey               APIKeyConfig           `koanf:"api_key"`
+	// Subscriptions controls application-level subscription behaviour for APIs.
+	// When nil, subscription validation system policy remains disabled.
+	Subscriptions *SubscriptionsConfig `koanf:"subscriptions"`
 }
 
 // AnalyticsConfig holds analytics configuration
@@ -60,6 +63,13 @@ type AnalyticsConfig struct {
 	// AllowPayloads controls whether request and response bodies are captured
 	// into analytics metadata and forwarded to analytics publishers.
 	AllowPayloads bool `koanf:"allow_payloads"`
+}
+
+// SubscriptionsConfig holds configuration for application-level subscriptions.
+type SubscriptionsConfig struct {
+	// EnableValidation toggles automatic injection of the subscriptionValidation
+	// system policy into API policy chains.
+	EnableValidation bool `koanf:"enable_validation"`
 }
 
 // AnalyticsPublishersConfig holds configuration for all analytics publishers
@@ -105,6 +115,8 @@ type Controller struct {
 	LLM          LLMConfig          `koanf:"llm"`
 	Auth         AuthConfig         `koanf:"auth"`
 	Metrics      MetricsConfig      `koanf:"metrics"`
+	Encryption   EncryptionConfig   `koanf:"encryption"`
+	EventHub     EventHubConfig     `koanf:"event_hub"`
 }
 
 // MetricsConfig holds Prometheus metrics server configuration
@@ -114,6 +126,22 @@ type MetricsConfig struct {
 
 	// Port is the port for the metrics HTTP server
 	Port int `koanf:"port"`
+}
+
+// EventHubConfig holds EventHub configuration for multi-replica sync
+type EventHubConfig struct {
+	PollInterval    time.Duration          `koanf:"poll_interval"`
+	CleanupInterval time.Duration          `koanf:"cleanup_interval"`
+	RetentionPeriod time.Duration          `koanf:"retention_period"`
+	Database        EventHubDatabaseConfig `koanf:"database"`
+}
+
+// EventHubDatabaseConfig holds connection pool settings for the EventHub database connection
+type EventHubDatabaseConfig struct {
+	MaxOpenConns    int           `koanf:"max_open_conns"`
+	MaxIdleConns    int           `koanf:"max_idle_conns"`
+	ConnMaxLifetime time.Duration `koanf:"conn_max_lifetime"`
+	ConnMaxIdleTime time.Duration `koanf:"conn_max_idle_time"`
 }
 
 // AuthConfig holds authentication related configuration
@@ -173,10 +201,11 @@ type TracingConfig struct {
 
 // ServerConfig holds server-related configuration
 type ServerConfig struct {
-	APIPort         int           `koanf:"api_port"`
-	XDSPort         int           `koanf:"xds_port"`
-	ShutdownTimeout time.Duration `koanf:"shutdown_timeout"`
-	GatewayID       string        `koanf:"gateway_id"`
+	APIPort                         int           `koanf:"api_port"`
+	XDSPort                         int           `koanf:"xds_port"`
+	ShutdownTimeout                 time.Duration `koanf:"shutdown_timeout"`
+	GatewayID                       string        `koanf:"gateway_id"`
+	SkipInvalidDeploymentsOnStartup bool          `koanf:"skip_invalid_deployments_on_startup"`
 }
 
 // AdminServerConfig holds controller admin HTTP server configuration.
@@ -201,7 +230,8 @@ type PolicyServerTLS struct {
 
 // PoliciesConfig holds policy-related configuration
 type PoliciesConfig struct {
-	DefinitionsPath string `koanf:"definitions_path"` // Directory containing policy definitions
+	DefinitionsPath   string `koanf:"definitions_path"`    // Directory containing policy definitions
+	BuildManifestPath string `koanf:"build_manifest_path"` // Path to build-manifest.yaml for custom policy detection
 }
 
 type LLMConfig struct {
@@ -337,7 +367,6 @@ type PolicyEngineConfig struct {
 	Port              uint32          `koanf:"port"` // Policy engine ext_proc port (TCP mode only)
 	TimeoutMs         uint32          `koanf:"timeout_ms"`
 	FailureModeAllow  bool            `koanf:"failure_mode_allow"`
-	RouteCacheAction  string          `koanf:"route_cache_action"`
 	AllowModeOverride bool            `koanf:"allow_mode_override"`
 	MessageTimeoutMs  uint32          `koanf:"message_timeout_ms"`
 	TLS               PolicyEngineTLS `koanf:"tls"` // TLS configuration (TCP mode only)
@@ -369,13 +398,14 @@ type LoggingConfig struct {
 
 // ControlPlaneConfig holds control plane connection configuration
 type ControlPlaneConfig struct {
-	Host                 string        `koanf:"host"`                   // Control plane hostname
-	Token                string        `koanf:"token"`                  // Registration token (api-key)
-	ReconnectInitial     time.Duration `koanf:"reconnect_initial"`      // Initial retry delay
-	ReconnectMax         time.Duration `koanf:"reconnect_max"`          // Maximum retry delay
-	PollingInterval      time.Duration `koanf:"polling_interval"`       // Reconciliation polling interval
-	InsecureSkipVerify   bool          `koanf:"insecure_skip_verify"`   // Skip TLS certificate verification (default: true for dev)
-	DeploymentPushEnabled bool         `koanf:"deployment_push_enabled"` // Push API deployments to control plane (default: false)
+	Host                  string        `koanf:"host"`                    // Control plane hostname
+	Token                 string        `koanf:"token"`                   // Registration token (api-key)
+	ReconnectInitial      time.Duration `koanf:"reconnect_initial"`       // Initial retry delay
+	ReconnectMax          time.Duration `koanf:"reconnect_max"`           // Maximum retry delay
+	PollingInterval       time.Duration `koanf:"polling_interval"`        // Reconciliation polling interval
+	InsecureSkipVerify    bool          `koanf:"insecure_skip_verify"`    // Skip TLS certificate verification (insecure, dev/test only)
+	DeploymentPushEnabled bool          `koanf:"deployment_push_enabled"` // Push API deployments to control plane (default: false)
+	SyncBatchSize         int           `koanf:"sync_batch_size"`         // Number of deployments to fetch per batch request during startup sync (default: 50)
 }
 
 // APIKeyConfig represents the configuration for API keys
@@ -384,6 +414,26 @@ type APIKeyConfig struct {
 	Algorithm            string `koanf:"algorithm"`                 // Hashing algorithm to use
 	MinKeyLength         int    `koanf:"min_key_length"`            // Minimum length for external API key values
 	MaxKeyLength         int    `koanf:"max_key_length"`            // Maximum length for external API key values
+	// Issuer identifies this gateway's portal; when non-empty, only API keys whose
+	// issuer field matches (or is null) will be accepted by the api-key-auth policy.
+	Issuer string `koanf:"issuer"`
+}
+
+// EncryptionConfig holds encryption provider configuration
+type EncryptionConfig struct {
+	Providers []ProviderConfig `koanf:"providers"`
+}
+
+// ProviderConfig defines configuration for a single encryption provider
+type ProviderConfig struct {
+	Type string                `koanf:"type"` // "aesgcm"
+	Keys []EncryptionKeyConfig `koanf:"keys"`
+}
+
+// EncryptionKeyConfig defines a single encryption key
+type EncryptionKeyConfig struct {
+	Version  string `koanf:"version"` // Key identifier (e.g., "key-v1")
+	FilePath string `koanf:"file"`    // Path to raw binary key file
 }
 
 // LoadConfig loads configuration from file, environment variables, and defaults
@@ -417,6 +467,23 @@ func LoadConfig(configPath string) (*Config, error) {
 			return "controller.controlplane.polling_interval"
 		case "insecure_skip_verify":
 			return "controller.controlplane.insecure_skip_verify"
+		// APIP_GW_ + CONTROLLER_CONTROLPLANE_* (underscore-to-dot would split insecure_skip_verify)
+		case "controller_controlplane_host":
+			return "controller.controlplane.host"
+		case "controller_controlplane_token":
+			return "controller.controlplane.token"
+		case "controller_controlplane_reconnect_initial":
+			return "controller.controlplane.reconnect_initial"
+		case "controller_controlplane_reconnect_max":
+			return "controller.controlplane.reconnect_max"
+		case "controller_controlplane_polling_interval":
+			return "controller.controlplane.polling_interval"
+		case "controller_controlplane_insecure_skip_verify":
+			return "controller.controlplane.insecure_skip_verify"
+		case "controller_controlplane_deployment_push_enabled":
+			return "controller.controlplane.deployment_push_enabled"
+		case "controller_controlplane_sync_batch_size":
+			return "controller.controlplane.sync_batch_size"
 		default:
 			// For other env vars, use standard mapping (underscore to dot)
 			// Step 1: Convert double underscore "__" into a temporary placeholder
@@ -456,10 +523,11 @@ func defaultConfig() *Config {
 	return &Config{
 		Controller: Controller{
 			Server: ServerConfig{
-				APIPort:         9090,
-				XDSPort:         18000,
-				ShutdownTimeout: 15 * time.Second,
-				GatewayID:       constants.PlatformGatewayId,
+				APIPort:                         9090,
+				XDSPort:                         18000,
+				ShutdownTimeout:                 15 * time.Second,
+				GatewayID:                       constants.PlatformGatewayId,
+				SkipInvalidDeploymentsOnStartup: false,
 			},
 			AdminServer: AdminServerConfig{
 				Enabled:    true,
@@ -475,7 +543,8 @@ func defaultConfig() *Config {
 				},
 			},
 			Policies: PoliciesConfig{
-				DefinitionsPath: "./default-policies",
+				DefinitionsPath:   "./default-policies",
+				BuildManifestPath: "./build-manifest.yaml",
 			},
 			LLM: LLMConfig{
 				TemplateDefinitionsPath: "./default-llm-provider-templates",
@@ -523,8 +592,33 @@ func defaultConfig() *Config {
 				ReconnectInitial:      1 * time.Second,
 				ReconnectMax:          5 * time.Minute,
 				PollingInterval:       15 * time.Minute,
-				InsecureSkipVerify:    true,
+				InsecureSkipVerify:    false,
 				DeploymentPushEnabled: false,
+				SyncBatchSize:         50,
+			},
+			EventHub: EventHubConfig{
+				PollInterval:    3 * time.Second,
+				CleanupInterval: 10 * time.Minute,
+				RetentionPeriod: 1 * time.Hour,
+				Database: EventHubDatabaseConfig{
+					MaxOpenConns:    5,
+					MaxIdleConns:    2,
+					ConnMaxLifetime: 30 * time.Minute,
+					ConnMaxIdleTime: 5 * time.Minute,
+				},
+			},
+			Encryption: EncryptionConfig{
+				Providers: []ProviderConfig{
+					{
+						Type: "aesgcm",
+						Keys: []EncryptionKeyConfig{
+							{
+								Version:  "aesgcm256-v1",
+								FilePath: "./data/aesgcm-keys/default-aesgcm256-v1.bin",
+							},
+						},
+					},
+				},
 			},
 		},
 		Router: RouterConfig{
@@ -602,7 +696,6 @@ func defaultConfig() *Config {
 				Port:              9001,            // Only used in TCP mode
 				TimeoutMs:         60000,
 				FailureModeAllow:  false,
-				RouteCacheAction:  "RETAIN",
 				AllowModeOverride: true,
 				MessageTimeoutMs:  60000,
 				TLS: PolicyEngineTLS{
@@ -673,7 +766,7 @@ func defaultConfig() *Config {
 // Validate validates the configuration
 func (c *Config) Validate() error {
 	// Validate storage type
-	validStorageTypes := []string{"sqlite", "postgres", "memory"}
+	validStorageTypes := []string{"sqlite", "postgres"}
 	isValidType := false
 	for _, t := range validStorageTypes {
 		if c.Controller.Storage.Type == t {
@@ -682,7 +775,7 @@ func (c *Config) Validate() error {
 		}
 	}
 	if !isValidType {
-		return fmt.Errorf("storage.type must be one of: sqlite, postgres, memory, got: %s", c.Controller.Storage.Type)
+		return fmt.Errorf("storage.type must be one of: sqlite, postgres, got: %s", c.Controller.Storage.Type)
 	}
 
 	// Validate SQLite configuration
@@ -857,6 +950,18 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Validate EventHub configuration
+	eh := &c.Controller.EventHub
+	if eh.PollInterval <= 0 {
+		return fmt.Errorf("event_hub.poll_interval must be positive, got: %s", eh.PollInterval)
+	}
+	if eh.CleanupInterval <= 0 {
+		return fmt.Errorf("event_hub.cleanup_interval must be positive, got: %s", eh.CleanupInterval)
+	}
+	if eh.RetentionPeriod <= 0 {
+		return fmt.Errorf("event_hub.retention_period must be positive, got: %s", eh.RetentionPeriod)
+	}
+
 	// Validate event gateway configuration if enabled
 	if c.Router.EventGateway.Enabled {
 		if err := c.validateEventGatewayConfig(); err != nil {
@@ -904,6 +1009,11 @@ func (c *Config) Validate() error {
 
 	// Validate API key configuration
 	if err := c.validateAPIKeyConfig(); err != nil {
+		return err
+	}
+
+	// Validate subscriptions configuration (subscription token encryption key when set)
+	if err := c.validateSubscriptionsConfig(); err != nil {
 		return err
 	}
 
@@ -964,6 +1074,11 @@ func (c *Config) validateControlPlaneConfig() error {
 	// Validate polling interval
 	if cp.PollingInterval <= 0 {
 		return fmt.Errorf("controlplane.polling_interval must be positive, got: %s", cp.PollingInterval)
+	}
+
+	// Validate sync batch size
+	if cp.SyncBatchSize <= 0 {
+		return fmt.Errorf("controlplane.sync_batch_size must be positive, got: %d", cp.SyncBatchSize)
 	}
 
 	return nil
@@ -1246,20 +1361,6 @@ func (c *Config) validatePolicyEngineConfig() error {
 		}
 	}
 
-	// Validate route cache action
-	validRouteCacheActions := []string{"DEFAULT", "RETAIN", "CLEAR"}
-	isValidAction := false
-	for _, action := range validRouteCacheActions {
-		if policyEngine.RouteCacheAction == action {
-			isValidAction = true
-			break
-		}
-	}
-	if !isValidAction {
-		return fmt.Errorf("router.policy_engine.route_cache_action must be one of: DEFAULT, RETAIN, CLEAR, got: %s",
-			policyEngine.RouteCacheAction)
-	}
-
 	return nil
 }
 
@@ -1398,14 +1499,9 @@ func (c *Config) validateAPIKeyConfig() error {
 	return nil
 }
 
-// IsPersistentMode returns true if storage type is not memory
-func (c *Config) IsPersistentMode() bool {
-	return c.Controller.Storage.Type != "memory"
-}
-
-// IsMemoryOnlyMode returns true if storage type is memory
-func (c *Config) IsMemoryOnlyMode() bool {
-	return c.Controller.Storage.Type == "memory"
+// validateSubscriptionsConfig validates subscriptions configuration.
+func (c *Config) validateSubscriptionsConfig() error {
+	return nil
 }
 
 // IsAccessLogsEnabled returns true if access logs are enabled

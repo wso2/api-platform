@@ -22,7 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"gopkg.in/yaml.v3"
 )
 
@@ -41,8 +41,8 @@ func (p *Parser) ParseAPIConfigYAML(data []byte, configParsed interface{}) error
 	// - If caller expects *api.MCPProxyConfiguration, perform normal YAML
 	//   unmarshalling directly into that struct.
 	switch target := configParsed.(type) {
-	case *api.APIConfiguration:
-		var config api.APIConfiguration
+	case *api.RestAPI:
+		var config api.RestAPI
 		var intermediate map[string]interface{}
 		if err := yaml.Unmarshal(data, &intermediate); err != nil {
 			return fmt.Errorf("failed to unmarshal YAML: %w", err)
@@ -52,13 +52,29 @@ func (p *Parser) ParseAPIConfigYAML(data []byte, configParsed interface{}) error
 			return fmt.Errorf("failed to marshal intermediate to JSON: %w", err)
 		}
 		if err := p.ParseJSON(jsonBytes, &config); err != nil {
-			return fmt.Errorf("failed to unmarshal JSON into APIConfiguration: %w", err)
+			return fmt.Errorf("failed to unmarshal JSON into RestAPI: %w", err)
+		}
+		*target = config
+		return nil
+	case *api.WebSubAPI:
+		var config api.WebSubAPI
+		var intermediate map[string]interface{}
+		if err := yaml.Unmarshal(data, &intermediate); err != nil {
+			return fmt.Errorf("failed to unmarshal YAML: %w", err)
+		}
+		jsonBytes, err := json.Marshal(intermediate)
+		if err != nil {
+			return fmt.Errorf("failed to marshal intermediate to JSON: %w", err)
+		}
+		if err := p.ParseJSON(jsonBytes, &config); err != nil {
+			return fmt.Errorf("failed to unmarshal JSON into WebSubAPI: %w", err)
 		}
 		*target = config
 		return nil
 	default:
+		_ = target
 		if err := yaml.Unmarshal(data, target); err != nil {
-			return fmt.Errorf("failed to unmarshal YAML into MCPProxyConfiguration: %w", err)
+			return fmt.Errorf("failed to unmarshal YAML into %T: %w", configParsed, err)
 		}
 		return nil
 	}

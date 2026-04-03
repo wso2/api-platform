@@ -45,15 +45,15 @@ Feature: Analytics Header Filter Policy
             path: /test
             policies:
               - name: analytics-header-filter
-                version: v0
+                version: v1
                 params:
-                  requestHeadersToFilter:
-                    operation: deny
+                  request:
+                    mode: deny
                     headers:
                       - "authorization"
                       - "x-api-key"
-                  responseHeadersToFilter:
-                    operation: allow
+                  response:
+                    mode: allow
                     headers:
                       - "content-type"
                       - "x-custom-header"
@@ -90,10 +90,10 @@ Feature: Analytics Header Filter Policy
             path: /data
             policies:
               - name: analytics-header-filter
-                version: v0
+                version: v1
                 params:
-                  requestHeadersToFilter:
-                    operation: allow
+                  request:
+                    mode: allow
                     headers:
                       - "content-type"
                       - "user-agent"
@@ -130,10 +130,10 @@ Feature: Analytics Header Filter Policy
             path: /headers
             policies:
               - name: analytics-header-filter
-                version: v0
+                version: v1
                 params:
-                  responseHeadersToFilter:
-                    operation: deny
+                  response:
+                    mode: deny
                     headers:
                       - "server"
                       - "x-powered-by"
@@ -148,7 +148,7 @@ Feature: Analytics Header Filter Policy
     Then the response should be successful
     And the response should be valid JSON
 
-  Scenario: Invalid policy configuration - missing operation field
+  Scenario: Invalid policy configuration - missing mode field
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
@@ -168,9 +168,9 @@ Feature: Analytics Header Filter Policy
             path: /test
             policies:
               - name: analytics-header-filter
-                version: v0
+                version: v1
                 params:
-                  requestHeadersToFilter:
+                  request:
                     headers:
                       - "authorization"
       """
@@ -199,10 +199,10 @@ Feature: Analytics Header Filter Policy
             path: /test
             policies:
               - name: analytics-header-filter
-                version: v0
+                version: v1
                 params:
-                  requestHeadersToFilter:
-                    operation: invalid
+                  request:
+                    mode: invalid
                     headers:
                       - "authorization"
       """
@@ -211,7 +211,7 @@ Feature: Analytics Header Filter Policy
     And the JSON response field "status" should be "error"
     And the response body should contain "Configuration validation failed"
 
-  Scenario: Invalid policy configuration - missing headers field
+  Scenario: Headers field omitted defaults to empty array
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
@@ -231,15 +231,23 @@ Feature: Analytics Header Filter Policy
             path: /test
             policies:
               - name: analytics-header-filter
-                version: v0
+                version: v1
                 params:
-                  responseHeadersToFilter:
-                    operation: allow
+                  response:
+                    mode: allow
       """
-    Then the response status code should be 400
+    Then the response should be successful
     And the response should be valid JSON
-    And the JSON response field "status" should be "error"
-    And the response body should contain "Configuration validation failed"
+    And the JSON response field "status" should be "success"
+    And I wait for the endpoint "http://localhost:8080/analytics-no-headers/v1.0/test" to be ready
+
+    When I send a GET request to "http://localhost:8080/analytics-no-headers/v1.0/test"
+    Then the response should be successful
+    And the response should be valid JSON
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "analytics-header-filter-no-headers-api"
+    Then the response should be successful
 
   Scenario: Case-insensitive header matching with allow operation
     Given I authenticate using basic auth as "admin"
@@ -261,10 +269,10 @@ Feature: Analytics Header Filter Policy
             path: /case-test
             policies:
               - name: analytics-header-filter
-                version: v0
+                version: v1
                 params:
-                  requestHeadersToFilter:
-                    operation: allow
+                  request:
+                    mode: allow
                     headers:
                       - "Content-Type"
                       - "USER-AGENT"
@@ -303,13 +311,13 @@ Feature: Analytics Header Filter Policy
             path: /empty-test
             policies:
               - name: analytics-header-filter
-                version: v0
+                version: v1
                 params:
-                  requestHeadersToFilter:
-                    operation: deny
+                  request:
+                    mode: deny
                     headers: []
-                  responseHeadersToFilter:
-                    operation: allow
+                  response:
+                    mode: allow
                     headers: []
       """
     Then the response should be successful

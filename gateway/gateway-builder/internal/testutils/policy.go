@@ -34,7 +34,7 @@ import (
 func CreatePolicyDir(t *testing.T, baseDir, name, version string) string {
 	t.Helper()
 	policyPath := filepath.Join(baseDir, "policies", name, version)
-	err := os.MkdirAll(policyPath, 0755)
+	err := os.MkdirAll(policyPath, 0750)
 	require.NoError(t, err, "failed to create policy directory %s", policyPath)
 	return policyPath
 }
@@ -126,26 +126,17 @@ func CreatePolicySourceFile(t *testing.T, policyDir, packageName string) {
 	content := fmt.Sprintf(`package %s
 
 import (
-	"context"
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
 type TestPolicy struct{}
 
-func (p *TestPolicy) OnRequest(ctx context.Context, reqCtx *policy.RequestContext, params policy.PolicyParameters) policy.RequestAction {
-	return &policy.UpstreamRequestModifications{}
+func (p *TestPolicy) Mode() policy.ProcessingMode {
+	return policy.ProcessingMode{}
 }
 
-func (p *TestPolicy) OnResponse(ctx context.Context, respCtx *policy.ResponseContext, params policy.PolicyParameters) policy.ResponseAction {
-	return &policy.DownstreamResponseModifications{}
-}
-
-func (p *TestPolicy) Mode() policy.PolicyMode {
-	return policy.PolicyMode{}
-}
-
-func Factory(metadata policy.PolicyMetadata, initParams map[string]interface{}) (policy.Policy, map[string]interface{}, error) {
-	return &TestPolicy{}, initParams, nil
+func GetPolicy(metadata policy.PolicyMetadata, params map[string]interface{}) (policy.Policy, error) {
+	return &TestPolicy{}, nil
 }
 `, safeName)
 	CreateSourceFile(t, policyDir, safeName+".go", content)
@@ -161,7 +152,7 @@ func Factory(metadata policy.PolicyMetadata, initParams map[string]interface{}) 
 func CreateValidPolicyDir(t *testing.T, baseDir, name, version string) string {
 	t.Helper()
 	policyDir := filepath.Join(baseDir, name)
-	err := os.MkdirAll(policyDir, 0755)
+	err := os.MkdirAll(policyDir, 0750)
 	require.NoError(t, err, "failed to create policy directory %s", policyDir)
 
 	// Create policy.yaml
@@ -182,8 +173,6 @@ type Policy struct{}
 
 func GetPolicy() *Policy { return &Policy{} }
 func (p *Policy) Mode() int { return 0 }
-func (p *Policy) OnRequest() {}
-func (p *Policy) OnResponse() {}
 `, pkgName)
 	WriteFile(t, filepath.Join(policyDir, "policy.go"), goContent)
 

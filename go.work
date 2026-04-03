@@ -1,4 +1,4 @@
-go 1.25.7
+go 1.26.1
 
 use (
 	./cli/it
@@ -8,10 +8,11 @@ use (
 	./gateway/gateway-controller
 	./gateway/gateway-runtime/policy-engine
 	./gateway/it
-	./gateway/sample-policies/count-letters
-	./gateway/sample-policies/uppercase-body
+	./gateway/sample-policies/transform-payload-case
 	./gateway/system-policies/analytics
 	./platform-api/src
 	./samples/sample-service
-	./sdk
+	./sdk/core
+	./sdk/ai
+	./tests/mock-servers/mock-platform-api
 )

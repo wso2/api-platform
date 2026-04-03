@@ -28,7 +28,7 @@ Feature: API Management Handler Operations
   # ==================== LIST APIs ====================
   
   Scenario: List all APIs when no APIs exist
-    When I send a GET request to the "gateway-controller" service at "/apis"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis"
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
@@ -52,7 +52,7 @@ Feature: API Management Handler Operations
             path: /data
       """
     Then the response should be successful
-    When I send a GET request to the "gateway-controller" service at "/apis"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis"
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
@@ -61,7 +61,7 @@ Feature: API Management Handler Operations
     Then the response should be successful
 
   Scenario: List APIs with pagination parameters
-    When I send a GET request to the "gateway-controller" service at "/apis?limit=10&offset=0"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis?limit=10&offset=0"
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
@@ -69,13 +69,13 @@ Feature: API Management Handler Operations
   # ==================== GET API BY ID ====================
   
   Scenario: Get API by non-existent ID returns 404
-    When I send a GET request to the "gateway-controller" service at "/apis/non-existent-api-id-12345"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis/non-existent-api-id-12345"
     Then the response status should be 404
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
 
   Scenario: Get API by invalid ID format returns 404
-    When I send a GET request to the "gateway-controller" service at "/apis/invalid@id#format"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis/invalid@id#format"
     Then the response status should be 404
     And the response should be valid JSON
 
@@ -100,7 +100,7 @@ Feature: API Management Handler Operations
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
-    When I send a GET request to the "gateway-controller" service at "/apis/get-by-id-test-api"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis/get-by-id-test-api"
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
@@ -111,7 +111,7 @@ Feature: API Management Handler Operations
   # ==================== DELETE API ====================
   
   Scenario: Delete non-existent API returns 404
-    When I send a DELETE request to the "gateway-controller" service at "/apis/non-existent-api-to-delete"
+    When I send a DELETE request to the "gateway-controller" service at "/rest-apis/non-existent-api-to-delete"
     Then the response status should be 404
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
@@ -140,7 +140,7 @@ Feature: API Management Handler Operations
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
     # Verify it's deleted
-    When I send a GET request to the "gateway-controller" service at "/apis/delete-test-api"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis/delete-test-api"
     Then the response status should be 404
 
   # ==================== UPDATE API ====================
@@ -317,6 +317,12 @@ Feature: API Management Handler Operations
     # Verify it's accessible at /api/v2.0
     When I send a GET request to "http://localhost:8080/api/v2.0/data"
     Then the response should be successful
+    # Verify the list endpoint returns the resolved context (not the $version placeholder)
+    When I send a GET request to the "gateway-controller" service at "/rest-apis"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the response body should contain "/api/v2.0"
+    And the response body should not contain "/api/$version"
     # Cleanup
     When I delete the API "versioned-context-api"
     Then the response should be successful
@@ -340,7 +346,7 @@ Feature: API Management Handler Operations
             path: /test
       """
     Then the response should be successful
-    When I send a GET request to the "gateway-controller" service at "/apis"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis"
     Then the response should be successful
     And the response should be valid JSON
     # Cleanup
@@ -542,7 +548,7 @@ Feature: API Management Handler Operations
       """
     Then the response should be successful
     And the response should be valid JSON
-    When I send a GET request to the "gateway-controller" service at "/apis/labeled-api"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis/labeled-api"
     Then the response should be successful
     And the response body should contain "environment"
     And the response body should contain "production"
@@ -645,7 +651,7 @@ Feature: API Management Handler Operations
   # ==================== CREATE API - ADDITIONAL EDGE CASES ====================
 
   Scenario: Create API with invalid JSON body returns error
-    When I send a POST request to the "gateway-controller" service at "/apis" with body:
+    When I send a POST request to the "gateway-controller" service at "/rest-apis" with body:
       """
       { invalid json content here
       """
@@ -729,7 +735,7 @@ Feature: API Management Handler Operations
             path: /test
       """
     Then the response should be successful
-    When I send a GET request to the "gateway-controller" service at "/apis?displayName=UniqueFilterName123"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis?displayName=UniqueFilterName123"
     Then the response should be successful
     And the response should be valid JSON
     And the response body should contain "UniqueFilterName123"
@@ -756,7 +762,7 @@ Feature: API Management Handler Operations
             path: /test
       """
     Then the response should be successful
-    When I send a GET request to the "gateway-controller" service at "/apis?version=v99.88.77"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis?version=v99.88.77"
     Then the response should be successful
     And the response should be valid JSON
     And the response body should contain "v99.88.77"
@@ -783,7 +789,7 @@ Feature: API Management Handler Operations
             path: /test
       """
     Then the response should be successful
-    When I send a GET request to the "gateway-controller" service at "/apis?context=/unique-filter-context-xyz"
+    When I send a GET request to the "gateway-controller" service at "/rest-apis?context=/unique-filter-context-xyz"
     Then the response should be successful
     And the response should be valid JSON
     And the response body should contain "unique-filter-context-xyz"
@@ -812,7 +818,7 @@ Feature: API Management Handler Operations
             path: /test
       """
     Then the response should be successful
-    When I send a PUT request to the "gateway-controller" service at "/apis/update-invalid-json-api" with body:
+    When I send a PUT request to the "gateway-controller" service at "/rest-apis/update-invalid-json-api" with body:
       """
       { this is not valid json
       """
@@ -871,7 +877,7 @@ Feature: API Management Handler Operations
   # ==================== DELETE API - ADDITIONAL EDGE CASES ====================
 
   Scenario: Delete API with invalid ID format returns 404
-    When I send a DELETE request to the "gateway-controller" service at "/apis/invalid@id#format!!"
+    When I send a DELETE request to the "gateway-controller" service at "/rest-apis/invalid@id#format!!"
     Then the response status should be 404
     And the response should be valid JSON
 

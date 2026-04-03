@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 )
 
@@ -62,7 +62,7 @@ func TestMCPValidator_Validate_PointerAndValue(t *testing.T) {
 	url := "http://backend:8080"
 	specVersion := constants.SPEC_VERSION_2025_JUNE
 	config := api.MCPProxyConfiguration{
-		ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
 		Kind:       "Mcp",
 		Metadata: api.Metadata{
 			Name: "test-mcp",
@@ -101,7 +101,7 @@ func TestMCPValidator_ValidateAPIVersion(t *testing.T) {
 	}{
 		{
 			name:       "Valid API version",
-			apiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+			apiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
 			wantError:  false,
 		},
 		{
@@ -171,7 +171,7 @@ func TestMCPValidator_ValidateKind(t *testing.T) {
 			url := "http://backend:8080"
 			specVersion := constants.SPEC_VERSION_2025_JUNE
 			config := &api.MCPProxyConfiguration{
-				ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+				ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
 				Kind:       tt.kind,
 				Metadata:   api.Metadata{Name: "test"},
 				Spec: api.MCPProxyConfigData{
@@ -245,7 +245,7 @@ func TestMCPValidator_ValidateDisplayName(t *testing.T) {
 			url := "http://backend:8080"
 			specVersion := constants.SPEC_VERSION_2025_JUNE
 			config := &api.MCPProxyConfiguration{
-				ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+				ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
 				Kind:       "Mcp",
 				Metadata:   api.Metadata{Name: "test"},
 				Spec: api.MCPProxyConfigData{
@@ -302,7 +302,7 @@ func TestMCPValidator_ValidateVersion(t *testing.T) {
 			url := "http://backend:8080"
 			specVersion := constants.SPEC_VERSION_2025_JUNE
 			config := &api.MCPProxyConfiguration{
-				ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+				ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
 				Kind:       "Mcp",
 				Metadata:   api.Metadata{Name: "test"},
 				Spec: api.MCPProxyConfigData{
@@ -352,7 +352,7 @@ func TestMCPValidator_ValidateSpecVersion(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			url := "http://backend:8080"
 			config := &api.MCPProxyConfiguration{
-				ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+				ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
 				Kind:       "Mcp",
 				Metadata:   api.Metadata{Name: "test"},
 				Spec: api.MCPProxyConfigData{
@@ -407,7 +407,7 @@ func TestMCPValidator_ValidateContextAndVhost(t *testing.T) {
 			url := "http://backend:8080"
 			specVersion := constants.SPEC_VERSION_2025_JUNE
 			config := &api.MCPProxyConfiguration{
-				ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+				ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
 				Kind:       "Mcp",
 				Metadata:   api.Metadata{Name: "test"},
 				Spec: api.MCPProxyConfigData{
@@ -508,7 +508,7 @@ func TestMCPValidator_ValidateUpstream(t *testing.T) {
 			}
 
 			config := &api.MCPProxyConfiguration{
-				ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+				ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
 				Kind:       "Mcp",
 				Metadata:   api.Metadata{Name: "test"},
 				Spec:       spec,
@@ -623,7 +623,7 @@ func TestMCPValidator_ValidateUpstreamAuth(t *testing.T) {
 				}
 			}
 			config := &api.MCPProxyConfiguration{
-				ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+				ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
 				Kind:       "Mcp",
 				Metadata:   api.Metadata{Name: "test"},
 				Spec: api.MCPProxyConfigData{

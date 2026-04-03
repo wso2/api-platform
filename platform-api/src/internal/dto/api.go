@@ -122,15 +122,23 @@ type DeploymentMetadata struct {
 	Labels map[string]string `yaml:"labels,omitempty"`
 }
 
+// Vhosts represents per-API virtual host overrides in the deployment YAML
+type Vhosts struct {
+	Main    *string `yaml:"main,omitempty"`
+	Sandbox *string `yaml:"sandbox,omitempty"`
+}
+
 // APIYAMLData represents a basic spec section of the API deployment YAML
 type APIYAMLData struct {
-	DisplayName string               `yaml:"displayName"`
-	Version     string               `yaml:"version"`
-	Context     string               `yaml:"context"`
-	Upstream    *UpstreamYAML        `yaml:"upstream,omitempty"`
-	Policies    []Policy             `yaml:"policies,omitempty"`
-	Operations  []api.OperationRequest `yaml:"operations,omitempty"`
-	Channels    []api.ChannelRequest   `yaml:"channels,omitempty"`
+	DisplayName       string               `yaml:"displayName"`
+	Version           string               `yaml:"version"`
+	Context           string               `yaml:"context"`
+	SubscriptionPlans []string             `yaml:"subscriptionPlans,omitempty"`
+    Vhosts            *Vhosts              `yaml:"vhosts,omitempty"`
+	Upstream          *UpstreamYAML        `yaml:"upstream,omitempty"`
+	Policies          []Policy             `yaml:"policies,omitempty"`
+	Operations        []api.OperationRequest `yaml:"operations,omitempty"`
+	Channels          []api.ChannelRequest   `yaml:"channels,omitempty"`
 }
 
 // UpstreamYAML represents the upstream configuration for API deployment YAML

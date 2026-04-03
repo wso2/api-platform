@@ -83,7 +83,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -215,7 +215,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -320,7 +320,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: request-rewrite
-            version: v0
+            version: v1
             paths:
               - path: /chat/completions
                 methods: [POST, GET]
@@ -329,7 +329,7 @@ Feature: Token-Based Rate Limiting
                     type: ReplaceFullPath
                     replaceFullPath: "/gzip"
           - name: token-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -430,7 +430,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -547,7 +547,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -585,7 +585,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -722,7 +722,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -854,7 +854,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -958,7 +958,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -1068,7 +1068,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -1158,7 +1158,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -1222,7 +1222,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -1302,7 +1302,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -1341,7 +1341,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -1446,7 +1446,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -1556,7 +1556,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /chat/completions
                 methods: [POST]
@@ -1665,7 +1665,7 @@ Feature: Token-Based Rate Limiting
               methods: [POST, GET]
         policies:
           - name: token-based-ratelimit
-            version: v0
+            version: v1
             paths:
               - path: /chat/completions
                 methods: [POST]

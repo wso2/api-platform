@@ -24,6 +24,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-builder/internal/buildfile"
@@ -33,14 +34,15 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-builder/internal/policyengine"
 	"github.com/wso2/api-platform/gateway/gateway-builder/internal/validation"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/errors"
+	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/fsutil"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
 )
 
 const (
-	DefaultBuildFile            = "build.yaml"
-	DefaultSystemBuildLockFile  = "system-build-lock.yaml"
-	DefaultOutputDir            = "output"
-	DefaultPolicyEngineSrc      = "/api-platform/gateway/gateway-runtime/policy-engine"
+	DefaultBuildFile           = "build.yaml"
+	DefaultSystemBuildLockFile = "system-build-lock.yaml"
+	DefaultOutputDir           = "output"
+	DefaultPolicyEngineSrc     = "/api-platform/gateway/gateway-runtime/policy-engine"
 )
 
 // Version information (set via ldflags during build)
@@ -207,8 +209,8 @@ func main() {
 	}
 
 	slog.Info("Build metadata for policy engine",
-		"version", policyEngineVersion,
-		"git_commit", policyEngineGitCommit,
+		"version", sanitizeLogValue(policyEngineVersion),
+		"git_commit", sanitizeLogValue(policyEngineGitCommit),
 		"build_date", buildTimestamp.Format(time.RFC3339),
 		"phase", "compilation")
 
@@ -269,11 +271,24 @@ func main() {
 	// Print success summary
 	printDockerfileGenerationSummary(generateResult, buildInfo, outBuildInfoPath)
 
-	if err := buildfile.WriteBuildLockWithVersions(*buildFilePath, policies); err != nil {
-		slog.Warn("Failed to write build lock file with versions", "error", err)
-	} else {
-		slog.Info("Build lock file generated with versions", "path", filepath.Join(filepath.Dir(*buildFilePath), "build-lock.yaml"))
+	if err := buildfile.WriteBuildManifestWithVersions(*buildFilePath, policies); err != nil {
+		errors.FatalError(errors.NewGenerationError("failed to write build manifest file with versions", err))
 	}
+	buildManifestPath := filepath.Join(filepath.Dir(*buildFilePath), "build-manifest.yaml")
+	slog.Info("Build manifest file generated with versions", "path", buildManifestPath)
+	gcBuildManifestDst := filepath.Join(*outputDir, "gateway-controller", "build-manifest.yaml")
+	if err := fsutil.CopyFile(buildManifestPath, gcBuildManifestDst); err != nil {
+		errors.FatalError(errors.NewGenerationError("failed to copy build-manifest.yaml into gateway-controller build context", err))
+	}
+	slog.Info("Copied build-manifest.yaml into gateway-controller build context successfully", "dst", gcBuildManifestDst)
+}
+
+func sanitizeLogValue(value string) string {
+	return strings.NewReplacer(
+		"\n", "\\n",
+		"\r", "\\r",
+		"\t", "\\t",
+	).Replace(value)
 }
 
 // initLogger sets up the slog logger based on format and level

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -14,6 +14,7 @@ import (
 
 type LLMProviderTransformer struct {
 	store                 *storage.ConfigStore
+	db                    storage.Storage
 	routerConfig          *config.RouterConfig
 	policyVersionResolver PolicyVersionResolver
 }
@@ -24,15 +25,52 @@ type pathMethodKey struct {
 	method string
 }
 
-func NewLLMProviderTransformer(store *storage.ConfigStore, routerConfig *config.RouterConfig, policyVersionResolver PolicyVersionResolver) *LLMProviderTransformer {
+func NewLLMProviderTransformer(store *storage.ConfigStore, db storage.Storage, routerConfig *config.RouterConfig, policyVersionResolver PolicyVersionResolver) *LLMProviderTransformer {
+	if db == nil {
+		panic("LLMProviderTransformer requires non-nil storage")
+	}
+
 	return &LLMProviderTransformer{
 		store:                 store,
+		db:                    db,
 		routerConfig:          routerConfig,
 		policyVersionResolver: policyVersionResolver,
 	}
 }
 
-func (t *LLMProviderTransformer) Transform(input any, output *api.APIConfiguration) (*api.APIConfiguration, error) {
+// HydrateLLMConfig populates cfg.Configuration with a derived RestAPI for LlmProvider and
+// LlmProxy kinds. These are stored with only SourceConfiguration set (Configuration is nil
+// by design) and must be hydrated before policy derivation or xDS snapshot generation.
+// For other kinds (RestApi, WebSubApi, Mcp) the function is a no-op.
+func HydrateLLMConfig(cfg *models.StoredConfig, store *storage.ConfigStore, db storage.Storage, routerConfig *config.RouterConfig, policyDefinitions map[string]models.PolicyDefinition) error {
+	if cfg == nil {
+		return nil
+	}
+	if _, ok := cfg.Configuration.(api.RestAPI); ok {
+		return nil
+	}
+
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, NewLoadedPolicyVersionResolver(policyDefinitions))
+
+	var restAPI api.RestAPI
+	switch source := cfg.SourceConfiguration.(type) {
+	case api.LLMProviderConfiguration:
+		if _, err := transformer.Transform(&source, &restAPI); err != nil {
+			return err
+		}
+	case api.LLMProxyConfiguration:
+		if _, err := transformer.Transform(&source, &restAPI); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unsupported LLM source configuration type: %T", cfg.SourceConfiguration)
+	}
+
+	cfg.Configuration = restAPI
+	return nil
+}
+
+func (t *LLMProviderTransformer) Transform(input any, output *api.RestAPI) (*api.RestAPI, error) {
 	switch v := input.(type) {
 	case *api.LLMProviderConfiguration:
 		return t.transformProvider(v, output)
@@ -50,11 +88,26 @@ func (t *LLMProviderTransformer) resolvePolicyVersion(name string) (string, erro
 	return t.policyVersionResolver.Resolve(name)
 }
 
+func (t *LLMProviderTransformer) getTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
+	return t.db.GetLLMProviderTemplateByHandle(handle)
+}
+
+func (t *LLMProviderTransformer) getProviderByHandle(handle string) (*models.StoredConfig, error) {
+	cfg, err := t.db.GetConfigByKindAndHandle(string(api.LlmProvider), handle)
+	if err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
 func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration,
-	output *api.APIConfiguration) (*api.APIConfiguration, error) {
+	output *api.RestAPI) (*api.RestAPI, error) {
 
 	// Step 1: Retrieve and validate provider reference
-	provider := t.store.GetByKindAndHandle(string(api.LlmProvider), proxy.Spec.Provider.Id)
+	provider, err := t.getProviderByHandle(proxy.Spec.Provider.Id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up provider '%s': %w", proxy.Spec.Provider.Id, err)
+	}
 	if provider == nil {
 		return nil, fmt.Errorf("failed to retrieve provider by id '%s'", proxy.Spec.Provider.Id)
 	}
@@ -65,19 +118,14 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 		return nil, fmt.Errorf("provider source configuration is not LLMProviderConfiguration")
 	}
 
-	tmpl, err := t.store.GetTemplateByHandle(providerConfig.Spec.Template)
+	tmpl, err := t.getTemplateByHandle(providerConfig.Spec.Template)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve template '%s' from provider: %w", providerConfig.Spec.Template, err)
 	}
 
-	templateParams, err := buildTemplateParams(tmpl)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build template params: %w", err)
-	}
-
 	// Step 2: Configure API metadata and basic spec
 	output.Kind = api.RestApi
-	output.ApiVersion = api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1
+	output.ApiVersion = api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1
 	output.Metadata = proxy.Metadata
 
 	spec := api.APIConfigData{}
@@ -93,18 +141,18 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	// 1. Traffic stays on localhost and never leaves the machine
 	// 2. TLS adds unnecessary overhead for internal routing
 	// 3. Self-signed listener certificates can cause TLS verification failures
+	providerContext, err := provider.GetContext()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get provider context: %w", err)
+	}
 	upstream := fmt.Sprintf("%s://%s:%d%s",
-		constants.SchemeHTTP, constants.LocalhostIP, t.routerConfig.ListenerPort, provider.GetContext())
+		constants.SchemeHTTP, constants.LocalhostIP, t.routerConfig.ListenerPort, providerContext)
 	spec.Upstream.Main = api.Upstream{
 		Url: &upstream,
 	}
 	// If provider has vhost configured add a host adding policy
-	apiData, err := provider.Configuration.Spec.AsAPIConfigData()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get API config from provider: %w", err)
-	}
-	if apiData.Vhosts != nil && apiData.Vhosts.Main != "" {
-		providerVhost := apiData.Vhosts.Main
+	if providerConfig.Spec.Vhost != nil && *providerConfig.Spec.Vhost != "" {
+		providerVhost := *providerConfig.Spec.Vhost
 		// Add host header adding policy at API level
 		hParams, err := GetHostAdditionPolicyParams(providerVhost)
 		if err != nil {
@@ -198,6 +246,9 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 				}
 
 				for _, policyMethod := range policyMethods {
+					attachedPolicyPaths := make(map[string]bool)
+					methodOperations := getOperationsForMethod(operationRegistry, policyMethod)
+
 					// Create operation if it doesn't exist (dynamic operation creation)
 					key := pathMethodKey{path: pathEntry.Path, method: policyMethod}
 					if _, exists := operationRegistry[key]; !exists {
@@ -206,29 +257,37 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 							Method: api.OperationMethod(policyMethod),
 						}
 						operationRegistry[key] = op
+						methodOperations = append(methodOperations, op)
 					}
 
-					// Attach policy to matching operations using pathsMatch helper
-					pol := api.Policy{
-						Name:    llmPol.Name,
-						Version: llmPol.Version,
-						Params:  mergeParams(pathEntry.Params, templateParams),
-					}
-
-					for opKey, op := range operationRegistry {
-						// Only consider operations with matching method
-						if opKey.method != policyMethod {
-							continue
-						}
-
+					for _, op := range methodOperations {
 						// Use pathsMatch to determine if policy applies to this operation
 						if pathsMatch(op.Path, pathEntry.Path) {
-							if op.Policies == nil {
-								op.Policies = &[]api.Policy{pol}
-							} else {
-								existing := *op.Policies
-								existing = append(existing, pol)
-								op.Policies = &existing
+							for _, targetPath := range expandPolicyTargetPaths(op.Path, &tmpl.Configuration.Spec) {
+								if attachedPolicyPaths[targetPath] {
+									continue
+								}
+								targetKey := pathMethodKey{path: targetPath, method: policyMethod}
+								targetOp, exists := operationRegistry[targetKey]
+								if !exists {
+									targetOp = &api.Operation{
+										Path:   targetPath,
+										Method: api.OperationMethod(policyMethod),
+									}
+									operationRegistry[targetKey] = targetOp
+								}
+
+								templateParams, err := buildTemplateParams(tmpl, targetPath)
+								if err != nil {
+									return nil, fmt.Errorf("failed to build template params: %w", err)
+								}
+								pol := api.Policy{
+									Name:    llmPol.Name,
+									Version: llmPol.Version,
+									Params:  mergeParams(pathEntry.Params, templateParams),
+								}
+								appendOperationPolicy(targetOp, pol)
+								attachedPolicyPaths[targetPath] = true
 							}
 						}
 					}
@@ -255,32 +314,21 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	}
 	spec.Operations = ops
 
-	// Finalize output
-	var specUnion api.APIConfiguration_Spec
-	if err := specUnion.FromAPIConfigData(spec); err != nil {
-		return nil, err
-	}
-	output.Spec = specUnion
+	output.Spec = spec
 	return output, nil
 }
 
 func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConfiguration,
-	output *api.APIConfiguration) (*api.APIConfiguration, error) {
+	output *api.RestAPI) (*api.RestAPI, error) {
 	// @TODO: Step 1) Configure token based rate-limiting policy based on template configs
 	// Retrieve and validate template
-	tmpl, err := t.store.GetTemplateByHandle(provider.Spec.Template)
+	tmpl, err := t.getTemplateByHandle(provider.Spec.Template)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve template '%s': %w", provider.Spec.Template, err)
 	}
 
-	// Build template params for injection into policies
-	templateParams, err := buildTemplateParams(tmpl)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build template params: %w", err)
-	}
-
 	output.Kind = api.RestApi
-	output.ApiVersion = api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1
+	output.ApiVersion = api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1
 	output.Metadata = provider.Metadata
 
 	spec := api.APIConfigData{}
@@ -425,6 +473,9 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 					}
 
 					for _, policyMethod := range policyMethods {
+						attachedPolicyPaths := make(map[string]bool)
+						methodOperations := getOperationsForMethod(operationRegistry, policyMethod)
+
 						// CRITICAL: Skip if this path+method is denied by exception
 						if isDeniedByException(pathEntry.Path, policyMethod, deniedPathMethods) {
 							continue // Exception deny policy takes precedence
@@ -439,32 +490,45 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 								Method: api.OperationMethod(policyMethod),
 							}
 							operationRegistry[key] = op
+							methodOperations = append(methodOperations, op)
 						}
 
-						// Find matching operations and attach policy
-						pol := api.Policy{
-							Name:    llmPol.Name,
-							Version: llmPol.Version,
-							Params:  mergeParams(pathEntry.Params, templateParams),
-						}
-
-						for opKey, op := range operationRegistry {
-							if opKey.method != policyMethod {
-								continue
-							}
-
+						for _, op := range methodOperations {
 							// Skip if this operation has deny policy (from exceptions)
 							if denyPolicyVersion != "" && hasDenyPolicy(op, denyPolicyVersion) {
 								continue
 							}
 
 							if pathsMatch(op.Path, pathEntry.Path) {
-								if op.Policies == nil {
-									op.Policies = &[]api.Policy{pol}
-								} else {
-									existing := *op.Policies
-									existing = append(existing, pol)
-									op.Policies = &existing
+								for _, targetPath := range expandPolicyTargetPaths(op.Path, &tmpl.Configuration.Spec) {
+									if attachedPolicyPaths[targetPath] {
+										continue
+									}
+									targetKey := pathMethodKey{path: targetPath, method: policyMethod}
+									targetOp, exists := operationRegistry[targetKey]
+									if !exists {
+										targetOp = &api.Operation{
+											Path:   targetPath,
+											Method: api.OperationMethod(policyMethod),
+										}
+										operationRegistry[targetKey] = targetOp
+									}
+
+									if denyAppliesToTarget(targetPath, policyMethod, denyPolicyVersion, operationRegistry) {
+										continue
+									}
+
+									templateParams, err := buildTemplateParams(tmpl, targetPath)
+									if err != nil {
+										return nil, fmt.Errorf("failed to build template params: %w", err)
+									}
+									pol := api.Policy{
+										Name:    llmPol.Name,
+										Version: llmPol.Version,
+										Params:  mergeParams(pathEntry.Params, templateParams),
+									}
+									appendOperationPolicy(targetOp, pol)
+									attachedPolicyPaths[targetPath] = true
 								}
 							}
 						}
@@ -525,6 +589,9 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 					}
 
 					for _, policyMethod := range policyMethods {
+						attachedPolicyPaths := make(map[string]bool)
+						methodOperations := getOperationsForMethod(operationRegistry, policyMethod)
+
 						// Check if this policy path+method is allowed by access control
 						if isAllowedByAccessControl(pathEntry.Path, policyMethod, normalizedExceptions) {
 							// Check if explicit operation exists for this policy path+method
@@ -536,28 +603,37 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 									Method: api.OperationMethod(policyMethod),
 								}
 								operationRegistry[key] = op
+								methodOperations = append(methodOperations, op)
 							}
 						}
 
-						// Find and attach policy to matching operations
-						pol := api.Policy{
-							Name:    llmPol.Name,
-							Version: llmPol.Version,
-							Params:  mergeParams(pathEntry.Params, templateParams),
-						}
-
-						for opKey, op := range operationRegistry {
-							if opKey.method != policyMethod {
-								continue
-							}
-
+						for _, op := range methodOperations {
 							if pathsMatch(op.Path, pathEntry.Path) {
-								if op.Policies == nil {
-									op.Policies = &[]api.Policy{pol}
-								} else {
-									existing := *op.Policies
-									existing = append(existing, pol)
-									op.Policies = &existing
+								for _, targetPath := range expandPolicyTargetPaths(op.Path, &tmpl.Configuration.Spec) {
+									if attachedPolicyPaths[targetPath] {
+										continue
+									}
+									targetKey := pathMethodKey{path: targetPath, method: policyMethod}
+									targetOp, exists := operationRegistry[targetKey]
+									if !exists {
+										targetOp = &api.Operation{
+											Path:   targetPath,
+											Method: api.OperationMethod(policyMethod),
+										}
+										operationRegistry[targetKey] = targetOp
+									}
+
+									templateParams, err := buildTemplateParams(tmpl, targetPath)
+									if err != nil {
+										return nil, fmt.Errorf("failed to build template params: %w", err)
+									}
+									pol := api.Policy{
+										Name:    llmPol.Name,
+										Version: llmPol.Version,
+										Params:  mergeParams(pathEntry.Params, templateParams),
+									}
+									appendOperationPolicy(targetOp, pol)
+									attachedPolicyPaths[targetPath] = true
 								}
 							}
 						}
@@ -589,12 +665,7 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 	}
 	spec.Operations = ops
 
-	// finalize output
-	var specUnion api.APIConfiguration_Spec
-	if err := specUnion.FromAPIConfigData(spec); err != nil {
-		return nil, err
-	}
-	output.Spec = specUnion
+	output.Spec = spec
 	return output, nil
 }
 
@@ -608,18 +679,19 @@ func GetUpstreamAuthApikeyPolicyParams(header, value string) (map[string]interfa
 	return m, nil
 }
 
-// GetHostAdditionPolicyParams renders the policy params with given header and value
+// GetHostAdditionPolicyParams renders the policy params with given host value (host-rewrite)
 func GetHostAdditionPolicyParams(value string) (map[string]interface{}, error) {
 	rendered := fmt.Sprintf(constants.PROXY_HOST__HEADER_POLICY_PARAMS, value)
 	var m map[string]interface{}
+	// For host-rewrite, params are simple mapping, so unmarshal into map
 	if err := yaml.Unmarshal([]byte(rendered), &m); err != nil {
 		return nil, err
 	}
 	return m, nil
 }
 
-// buildTemplateParams extracts all template parameters from the LLM provider template
-func buildTemplateParams(template *models.StoredLLMProviderTemplate) (map[string]interface{}, error) {
+// buildTemplateParams extracts template parameters from the LLM provider template for the given resource path
+func buildTemplateParams(template *models.StoredLLMProviderTemplate, resourcePath string) (map[string]interface{}, error) {
 	if template == nil {
 		return nil, fmt.Errorf("template is nil")
 	}
@@ -627,56 +699,94 @@ func buildTemplateParams(template *models.StoredLLMProviderTemplate) (map[string
 	templateParams := make(map[string]interface{})
 
 	spec := template.Configuration.Spec
+	applyExtractionFieldsFromBaseSpec(templateParams, &spec)
 
-	// Extract requestModel if available
-	if spec.RequestModel != nil {
-		requestModel := make(map[string]interface{})
-		requestModel["location"] = spec.RequestModel.Location
-		requestModel["identifier"] = spec.RequestModel.Identifier
-		templateParams["requestModel"] = requestModel
-	}
-
-	// Extract responseModel if available
-	if spec.ResponseModel != nil {
-		responseModel := make(map[string]interface{})
-		responseModel["location"] = spec.ResponseModel.Location
-		responseModel["identifier"] = spec.ResponseModel.Identifier
-		templateParams["responseModel"] = responseModel
-	}
-
-	// Extract promptTokens if available
-	if spec.PromptTokens != nil {
-		promptTokens := make(map[string]interface{})
-		promptTokens["location"] = spec.PromptTokens.Location
-		promptTokens["identifier"] = spec.PromptTokens.Identifier
-		templateParams["promptTokens"] = promptTokens
-	}
-
-	// Extract completionTokens if available
-	if spec.CompletionTokens != nil {
-		completionTokens := make(map[string]interface{})
-		completionTokens["location"] = spec.CompletionTokens.Location
-		completionTokens["identifier"] = spec.CompletionTokens.Identifier
-		templateParams["completionTokens"] = completionTokens
-	}
-
-	// Extract totalTokens if available
-	if spec.TotalTokens != nil {
-		totalTokens := make(map[string]interface{})
-		totalTokens["location"] = spec.TotalTokens.Location
-		totalTokens["identifier"] = spec.TotalTokens.Identifier
-		templateParams["totalTokens"] = totalTokens
-	}
-
-	// Extract remainingTokens if available
-	if spec.RemainingTokens != nil {
-		remainingTokens := make(map[string]interface{})
-		remainingTokens["location"] = spec.RemainingTokens.Location
-		remainingTokens["identifier"] = spec.RemainingTokens.Identifier
-		templateParams["remainingTokens"] = remainingTokens
+	selectedMapping := selectTemplateResourceMapping(spec.ResourceMappings, resourcePath)
+	if selectedMapping != nil {
+		applyExtractionFieldsFromMapping(templateParams, selectedMapping)
 	}
 
 	return templateParams, nil
+}
+
+func applyExtractionFieldsFromBaseSpec(templateParams map[string]interface{}, spec *api.LLMProviderTemplateData) {
+	if spec == nil {
+		return
+	}
+	setExtractionParam(templateParams, "requestModel", spec.RequestModel)
+	setExtractionParam(templateParams, "responseModel", spec.ResponseModel)
+	setExtractionParam(templateParams, "promptTokens", spec.PromptTokens)
+	setExtractionParam(templateParams, "completionTokens", spec.CompletionTokens)
+	setExtractionParam(templateParams, "totalTokens", spec.TotalTokens)
+	setExtractionParam(templateParams, "remainingTokens", spec.RemainingTokens)
+}
+
+func applyExtractionFieldsFromMapping(templateParams map[string]interface{}, mapping *api.LLMProviderTemplateResourceMapping) {
+	if mapping == nil {
+		return
+	}
+	setExtractionParam(templateParams, "requestModel", mapping.RequestModel)
+	setExtractionParam(templateParams, "responseModel", mapping.ResponseModel)
+	setExtractionParam(templateParams, "promptTokens", mapping.PromptTokens)
+	setExtractionParam(templateParams, "completionTokens", mapping.CompletionTokens)
+	setExtractionParam(templateParams, "totalTokens", mapping.TotalTokens)
+	setExtractionParam(templateParams, "remainingTokens", mapping.RemainingTokens)
+}
+
+func setExtractionParam(templateParams map[string]interface{}, key string, identifier *api.ExtractionIdentifier) {
+	if identifier == nil {
+		return
+	}
+	templateParams[key] = map[string]interface{}{
+		"location":   identifier.Location,
+		"identifier": identifier.Identifier,
+	}
+}
+
+func selectTemplateResourceMapping(mappings *api.LLMProviderTemplateResourceMappings,
+	resourcePath string) *api.LLMProviderTemplateResourceMapping {
+	if mappings == nil {
+		return nil
+	}
+
+	var selected *api.LLMProviderTemplateResourceMapping
+	if mappings.Resources == nil {
+		return selected
+	}
+
+	for i := range *mappings.Resources {
+		candidate := &(*mappings.Resources)[i]
+		candidateResource := candidate.Resource
+		if !pathsMatch(resourcePath, candidateResource) {
+			continue
+		}
+
+		if selected == nil {
+			selected = candidate
+			continue
+		}
+
+		selectedResource := selected.Resource
+		if shouldPreferTemplateResourceMapping(candidateResource, selectedResource) {
+			selected = candidate
+		}
+	}
+
+	return selected
+}
+
+func shouldPreferTemplateResourceMapping(candidatePath, selectedPath string) bool {
+	candidateHasWildcard := strings.Contains(candidatePath, "*")
+	selectedHasWildcard := strings.Contains(selectedPath, "*")
+
+	if !candidateHasWildcard && selectedHasWildcard {
+		return true
+	}
+	if candidateHasWildcard && !selectedHasWildcard {
+		return false
+	}
+
+	return len(candidatePath) > len(selectedPath)
 }
 
 // mergeParams merges base parameters with additional parameters (deep copy to avoid mutation)
@@ -689,6 +799,64 @@ func mergeParams(base map[string]interface{}, extra map[string]interface{}) *map
 		merged[k] = v
 	}
 	return &merged
+}
+
+func appendOperationPolicy(op *api.Operation, pol api.Policy) {
+	if op.Policies == nil {
+		op.Policies = &[]api.Policy{pol}
+		return
+	}
+	existing := *op.Policies
+	existing = append(existing, pol)
+	op.Policies = &existing
+}
+
+func getOperationsForMethod(operationRegistry map[pathMethodKey]*api.Operation, method string) []*api.Operation {
+	ops := make([]*api.Operation, 0)
+	for key, op := range operationRegistry {
+		if key.method == method {
+			ops = append(ops, op)
+		}
+	}
+	return ops
+}
+
+func expandPolicyTargetPaths(opPath string, templateSpec *api.LLMProviderTemplateData) []string {
+	if !strings.Contains(opPath, constants.WILD_CARD) {
+		return []string{opPath}
+	}
+	if templateSpec == nil || templateSpec.ResourceMappings == nil || templateSpec.ResourceMappings.Resources == nil {
+		return []string{opPath}
+	}
+
+	seen := make(map[string]bool)
+	expanded := make([]string, 0)
+	seen[opPath] = true
+	for i := range *templateSpec.ResourceMappings.Resources {
+		resource := (*templateSpec.ResourceMappings.Resources)[i].Resource
+		candidatePath := resource
+		if !pathsMatch(candidatePath, opPath) {
+			continue
+		}
+
+		selected := selectTemplateResourceMapping(templateSpec.ResourceMappings, candidatePath)
+		if selected == nil {
+			continue
+		}
+
+		selectedPath := selected.Resource
+		if !pathsMatch(selectedPath, opPath) || seen[selectedPath] {
+			continue
+		}
+		seen[selectedPath] = true
+		expanded = append(expanded, selectedPath)
+	}
+
+	if len(expanded) == 0 {
+		return []string{opPath}
+	}
+	expanded = append(expanded, opPath)
+	return expanded
 }
 
 // isDeniedByException checks if a policy path+method is denied by access control exceptions in AllowAll mode
@@ -732,6 +900,29 @@ func hasDenyPolicy(op *api.Operation, denyPolicyVersion string) bool {
 			return true
 		}
 	}
+	return false
+}
+
+// denyAppliesToTarget checks if a deny policy applies to a target path for a specific method.
+// It considers both exact deny paths and wildcard deny paths present in the operation registry.
+func denyAppliesToTarget(targetPath, policyMethod, denyPolicyVersion string,
+	operationRegistry map[pathMethodKey]*api.Operation) bool {
+	if denyPolicyVersion == "" {
+		return false
+	}
+
+	for key, op := range operationRegistry {
+		if key.method != policyMethod {
+			continue
+		}
+		if !hasDenyPolicy(op, denyPolicyVersion) {
+			continue
+		}
+		if pathsMatch(targetPath, key.path) {
+			return true
+		}
+	}
+
 	return false
 }
 

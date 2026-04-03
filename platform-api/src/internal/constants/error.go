@@ -40,7 +40,17 @@ var (
 	ErrInvalidProjectName                    = errors.New("invalid project name")
 	ErrOrganizationMustHAveAtLeastOneProject = errors.New("organization must have at least one project")
 	ErrProjectHasAssociatedAPIs              = errors.New("project has associated APIs")
+	ErrProjectHasAssociatedMCPProxies        = errors.New("project has associated MCP proxies")
 	ErrorInvalidProjectUUID                  = errors.New("invalid project UUID")
+)
+
+var (
+	ErrApplicationExists          = errors.New("application already exists in project")
+	ErrApplicationNotFound        = errors.New("application not found")
+	ErrInvalidApplicationName     = errors.New("invalid application name")
+	ErrInvalidApplicationType     = errors.New("invalid application type")
+	ErrUnsupportedApplicationType = errors.New("unsupported application type")
+	ErrInvalidApplicationID       = errors.New("invalid application ID")
 )
 
 var (
@@ -64,6 +74,12 @@ var (
 	ErrGatewayAlreadyAssociated = errors.New("gateway already associated with API")
 	ErrGatewayHasAssociatedAPIs = errors.New("cannot delete gateway: it has associated APIs. Please remove all API associations before deleting the gateway")
 	ErrGatewayHasDeployments    = errors.New("cannot delete gateway: it has active API deployments. Please undeploy all APIs before deleting the gateway")
+)
+
+var (
+	ErrCustomPolicyNotFound        = errors.New("custom policy not found")
+	ErrCustomPolicyInUse           = errors.New("custom policy is in use by one or more APIs")
+	ErrCustomPolicyVersionMismatch = errors.New("custom policy version does not match")
 )
 
 var (
@@ -140,11 +156,44 @@ var (
 )
 
 var (
+	ErrMCPProxyExists       = errors.New("mcp proxy already exists")
+	ErrMCPProxyNotFound     = errors.New("mcp proxy not found")
+	ErrMCPProxyLimitReached = errors.New("mcp proxy limit reached for organization")
+)
+
+var (
 	// API Key errors
 	ErrAPIKeyNotFound      = errors.New("api key not found")
 	ErrAPIKeyAlreadyExists = errors.New("api key already exists")
 	ErrInvalidAPIKey       = errors.New("invalid api key")
+	ErrAPIKeyForbidden     = errors.New("forbidden: only the key creator can perform this action")
 	ErrGatewayUnavailable  = errors.New("gateway unavailable")
 	ErrAPIKeyEventDelivery = errors.New("failed to deliver api key event to gateway")
 	ErrAPIKeyHashingFailed = errors.New("failed to hash api key")
+)
+
+var (
+	ErrInvalidURL            = errors.New("invalid URL")
+	ErrURLUnreachable        = errors.New("URL is unreachable")
+	ErrMCPServerUnauthorized = errors.New("MCP server returned 401 Unauthorized")
+)
+
+var (
+	// Subscription errors (application-level subscriptions for REST APIs)
+	ErrSubscriptionNotFound           = errors.New("subscription not found")
+	ErrSubscriptionAlreadyExists      = errors.New("application is already subscribed to this API")
+	ErrSubscriptionSubscriberMismatch = errors.New("subscriber does not match this subscription")
+)
+
+var (
+	// Subscription plan errors
+	ErrSubscriptionPlanNotFound           = errors.New("subscription plan not found")
+	ErrSubscriptionPlanNotFoundOrInactive = errors.New("subscription plan not found or not active")
+	ErrSubscriptionPlanAlreadyExists      = errors.New("subscription plan with this name already exists for the organization")
+)
+
+var (
+	// Gateway Internal API errors
+	ErrMissingAPIKey   = errors.New("API key is required")
+	ErrInvalidAPIToken = errors.New("invalid API token")
 )

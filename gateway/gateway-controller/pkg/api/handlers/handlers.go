@@ -19,64 +19,72 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strconv"
 
+	"github.com/google/uuid"
 	"github.com/wso2/api-platform/common/constants"
+	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 
 	"io"
 	"net/http"
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"log/slog"
 
 	"github.com/gin-gonic/gin"
 	commonmodels "github.com/wso2/api-platform/common/models"
-	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/adminapi/generated"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
-	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
-	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
+	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
 
 // APIServer implements the generated ServerInterface
 type APIServer struct {
-	store                *storage.ConfigStore
-	db                   storage.Storage
-	snapshotManager      *xds.SnapshotManager
-	policyManager        *policyxds.PolicyManager
-	policyDefinitions    map[string]api.PolicyDefinition // key name|version
-	policyDefMu          sync.RWMutex
-	parser               *config.Parser
-	validator            config.Validator
-	logger               *slog.Logger
-	deploymentService    *utils.APIDeploymentService
-	mcpDeploymentService *utils.MCPDeploymentService
-	llmDeploymentService *utils.LLMDeploymentService
-	apiKeyService        *utils.APIKeyService
-	apiKeyXDSManager     *apikeyxds.APIKeyStateManager
-	controlPlaneClient   controlplane.ControlPlaneClient
-	routerConfig         *config.RouterConfig
-	httpClient           *http.Client
-	systemConfig         *config.Config
+	*RestAPIHandler // embedded — promotes CreateRestAPI, ListRestAPIs, GetRestAPIById, UpdateRestAPI, DeleteRestAPI
+
+	store                       *storage.ConfigStore
+	db                          storage.Storage
+	snapshotManager             *xds.SnapshotManager
+	policyManager               *policyxds.PolicyManager
+	policyDefinitions           map[string]models.PolicyDefinition // key name|version
+	policyDefMu                 sync.RWMutex
+	parser                      *config.Parser
+	validator                   config.Validator
+	logger                      *slog.Logger
+	deploymentService           *utils.APIDeploymentService
+	mcpDeploymentService        *utils.MCPDeploymentService
+	llmDeploymentService        *utils.LLMDeploymentService
+	secretService               *secrets.SecretService
+	policyResolver              *resolver.PolicyResolver
+	apiKeyService               *utils.APIKeyService
+	apiKeyXDSManager            *apikeyxds.APIKeyStateManager
+	controlPlaneClient          controlplane.ControlPlaneClient
+	routerConfig                *config.RouterConfig
+	httpClient                  *http.Client
+	systemConfig                *config.Config
+	eventHub                    eventhub.EventHub
+	gatewayID                   string
+	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater
+	subscriptionResourceService *utils.SubscriptionResourceService
 }
 
 // NewAPIServer creates a new API server with dependencies
@@ -88,36 +96,77 @@ func NewAPIServer(
 	lazyResourceManager *lazyresourcexds.LazyResourceStateManager,
 	logger *slog.Logger,
 	controlPlaneClient controlplane.ControlPlaneClient,
-	policyDefinitions map[string]api.PolicyDefinition,
+	policyDefinitions map[string]models.PolicyDefinition,
 	templateDefinitions map[string]*api.LLMProviderTemplate,
 	validator config.Validator,
 	apiKeyXDSManager *apikeyxds.APIKeyStateManager,
 	systemConfig *config.Config,
+	eventHub eventhub.EventHub,
+	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater,
+	secretService *secrets.SecretService,
+	policyResolver *resolver.PolicyResolver,
 ) *APIServer {
-	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.Router)
+	if db == nil {
+		panic("APIServer requires non-nil storage")
+	}
+	if eventHub == nil {
+		panic("APIServer requires non-nil EventHub")
+	}
+	if systemConfig == nil {
+		panic("APIServer requires non-nil system config")
+	}
+	gatewayID := strings.TrimSpace(systemConfig.Controller.Server.GatewayID)
+	if gatewayID == "" {
+		panic("APIServer requires non-empty gateway ID")
+	}
+
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.Router, policyResolver, eventHub, gatewayID)
+	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, &systemConfig.APIKey, eventHub, gatewayID)
+	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subscriptionSnapshotUpdater, eventHub, gatewayID)
+
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
+	parser := config.NewParser()
+	httpClient := &http.Client{Timeout: 10 * time.Second}
+	routerConfig := &systemConfig.Router
+	mcpDeploymentService := utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager, policyValidator, eventHub, gatewayID)
+
 	server := &APIServer{
 		store:                store,
 		db:                   db,
 		snapshotManager:      snapshotManager,
 		policyManager:        policyManager,
 		policyDefinitions:    policyDefinitions,
-		parser:               config.NewParser(),
+		parser:               parser,
 		validator:            validator,
 		logger:               logger,
 		deploymentService:    deploymentService,
-		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager),
+		mcpDeploymentService: mcpDeploymentService,
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, lazyResourceManager, templateDefinitions,
-			deploymentService, &systemConfig.Router, policyVersionResolver, policyValidator),
-		apiKeyService: utils.NewAPIKeyService(store, db, apiKeyXDSManager,
-			&systemConfig.APIKey),
-		apiKeyXDSManager:   apiKeyXDSManager,
-		controlPlaneClient: controlPlaneClient,
-		routerConfig:       &systemConfig.Router,
-		httpClient:         &http.Client{Timeout: 10 * time.Second},
-		systemConfig:       systemConfig,
+			deploymentService, routerConfig, policyVersionResolver, policyValidator),
+		secretService:               secretService,
+		policyResolver:              policyResolver,
+		apiKeyService:               apiKeyService,
+		apiKeyXDSManager:            apiKeyXDSManager,
+		controlPlaneClient:          controlPlaneClient,
+		routerConfig:                routerConfig,
+		httpClient:                  httpClient,
+		systemConfig:                systemConfig,
+		eventHub:                    eventHub,
+		gatewayID:                   gatewayID,
+		subscriptionSnapshotUpdater: subscriptionSnapshotUpdater,
+		subscriptionResourceService: subscriptionResourceService,
 	}
+	// Create RestAPI service and handler
+	restAPIService := restapi.NewRestAPIService(
+		store, db, snapshotManager, policyManager,
+		policyDefinitions, &server.policyDefMu,
+		deploymentService, apiKeyXDSManager,
+		controlPlaneClient, routerConfig, systemConfig,
+		httpClient, parser, validator, logger,
+		eventHub, policyResolver,
+	)
+	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
 
 	// Register status update callback
 	snapshotManager.SetStatusCallback(server.handleStatusUpdate)
@@ -125,8 +174,18 @@ func NewAPIServer(
 	return server
 }
 
+func (s *APIServer) getSubscriptionResourceService() *utils.SubscriptionResourceService {
+	if s.subscriptionResourceService != nil {
+		return s.subscriptionResourceService
+	}
+
+	s.subscriptionResourceService = utils.NewSubscriptionResourceService(s.db, s.subscriptionSnapshotUpdater, s.eventHub, s.gatewayID)
+
+	return s.subscriptionResourceService
+}
+
 // handleStatusUpdate is called by SnapshotManager after xDS deployment
-func (s *APIServer) handleStatusUpdate(configID string, success bool, version int64, correlationID string) {
+func (s *APIServer) handleStatusUpdate(configID string, success bool, correlationID string) {
 	// Create a logger with correlation ID if provided
 	log := s.logger
 	if correlationID != "" {
@@ -139,47 +198,17 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 		return
 	}
 
-	now := time.Now()
 	if success {
-		cfg.Status = models.StatusDeployed
-		cfg.DeployedAt = &now
-		cfg.DeployedVersion = version
 		log.Info("Configuration deployed successfully",
 			slog.String("id", configID),
-			slog.String("displayName", cfg.GetDisplayName()),
-			slog.Int64("version", version))
+			slog.String("kind", cfg.Kind),
+			slog.String("handle", cfg.Handle))
 	} else {
-		cfg.Status = models.StatusFailed
-		cfg.DeployedAt = nil
-		cfg.DeployedVersion = 0
 		log.Error("Configuration deployment failed",
 			slog.String("id", configID),
-			slog.String("displayName", cfg.GetDisplayName()),
-			slog.String("kind", cfg.Kind))
+			slog.String("kind", cfg.Kind),
+			slog.String("handle", cfg.Handle))
 	}
-
-	cfg.UpdatedAt = now
-
-	// Update database (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.UpdateConfig(cfg); err != nil {
-			log.Error("Failed to update config status in database", slog.Any("error", err), slog.String("id", configID))
-		}
-	}
-
-	// Update in-memory store
-	if err := s.store.Update(cfg); err != nil {
-		log.Error("Failed to update config status in memory", slog.Any("error", err), slog.String("id", configID))
-	}
-}
-
-// HealthCheck implements ServerInterface.HealthCheck
-// (GET /health)
-func (s *APIServer) HealthCheck(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"status":    "healthy",
-		"timestamp": time.Now().Format(time.RFC3339),
-	})
 }
 
 // GetXDSSyncStatus implements the GET /xds_sync_status endpoint.
@@ -200,150 +229,6 @@ func (s *APIServer) GetXDSSyncStatusResponse() adminapi.XDSSyncStatusResponse {
 	}
 }
 
-// CreateAPI implements ServerInterface.CreateAPI
-// (POST /apis)
-func (s *APIServer) CreateAPI(c *gin.Context) {
-	startTime := time.Now()
-	operation := "create"
-
-	// Get correlation-aware logger from context
-	log := middleware.GetLogger(c, s.logger)
-
-	// Read request body
-	body, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		log.Error("Failed to read request body", slog.Any("error", err))
-		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
-		metrics.ValidationErrorsTotal.WithLabelValues(operation, "read_body_failed").Inc()
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to read request body",
-		})
-		return
-	}
-
-	// Get correlation ID from context
-	correlationID := middleware.GetCorrelationID(c)
-
-	// Deploy API configuration using the utility service
-	result, err := s.deploymentService.DeployAPIConfiguration(utils.APIDeploymentParams{
-		Data:          body,
-		ContentType:   c.GetHeader("Content-Type"),
-		APIID:         "", // Empty to generate new UUID
-		CorrelationID: correlationID,
-		Logger:        log,
-	})
-
-	if err != nil {
-		log.Error("Failed to deploy API configuration", slog.Any("error", err))
-		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
-		if storage.IsConflictError(err) {
-			c.JSON(http.StatusConflict, api.ErrorResponse{
-				Status:  "error",
-				Message: err.Error(),
-			})
-		} else if validationErr := new(utils.ValidationErrorListError); errors.As(err, &validationErr) {
-			errors := make([]api.ValidationError, len(validationErr.Errors))
-			for i, e := range validationErr.Errors {
-				errors[i] = api.ValidationError{
-					Field:   stringPtr(e.Field),
-					Message: stringPtr(e.Message),
-				}
-			}
-
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{
-				Status:  "error",
-				Message: "Configuration validation failed",
-				Errors:  &errors,
-			})
-		} else {
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{
-				Status:  "error",
-				Message: err.Error(),
-			})
-		}
-		return
-	}
-
-	// Record successful operation metrics
-	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "rest_api").Inc()
-	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
-	metrics.APIsTotal.WithLabelValues("rest_api", "active").Inc()
-
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
-		go s.waitForDeploymentAndPush(result.StoredConfig.ID, correlationID, log)
-	}
-
-	// Return success response (id is the handle)
-	c.JSON(http.StatusCreated, api.APICreateResponse{
-		Status:    stringPtr("success"),
-		Message:   stringPtr("API configuration created successfully"),
-		Id:        stringPtr(result.StoredConfig.GetHandle()),
-		CreatedAt: timePtr(result.StoredConfig.CreatedAt),
-	})
-
-	// Build and add policy config derived from API configuration if policies are present
-	if s.policyManager != nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(result.StoredConfig)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to add derived policy configuration", slog.Any("error", err))
-			} else {
-				log.Info("Derived policy configuration added",
-					slog.String("policy_id", storedPolicy.ID),
-					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		} else if result.IsUpdate {
-			// API was updated and no longer has policies, remove the existing policy configuration
-			policyID := result.StoredConfig.ID + "-policies"
-			if err := s.policyManager.RemovePolicy(policyID); err != nil {
-				// Only treat "policy not found" as non-error (API may never have had policies)
-				// Other errors (storage failures, snapshot update failures) should be logged as errors
-				if storage.IsPolicyNotFoundError(err) {
-					log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
-				} else {
-					log.Error("Failed to remove policy configuration",
-						slog.Any("error", err),
-						slog.String("policy_id", policyID))
-				}
-			} else {
-				log.Info("Derived policy configuration removed (API no longer has policies)",
-					slog.String("policy_id", policyID))
-			}
-		}
-	}
-}
-
-// ListAPIs implements ServerInterface.ListAPIs
-// (GET /apis)
-func (s *APIServer) ListAPIs(c *gin.Context, params api.ListAPIsParams) {
-	if (params.DisplayName != nil && *params.DisplayName != "") || (params.Version != nil && *params.Version != "") || (params.Context != nil && *params.Context != "") || (params.Status != nil && *params.Status != "") {
-		s.SearchDeployments(c, string(api.RestApi))
-		return
-	}
-	configs := s.store.GetAllByKind(string(api.RestApi))
-
-	items := make([]api.APIListItem, 0, len(configs))
-	for _, cfg := range configs {
-		status := string(cfg.Status)
-		items = append(items, api.APIListItem{
-			Id:          stringPtr(cfg.GetHandle()),
-			DisplayName: stringPtr(cfg.GetDisplayName()),
-			Version:     stringPtr(cfg.GetVersion()),
-			Context:     stringPtr(cfg.GetContext()),
-			Status:      (*api.APIListItemStatus)(&status),
-			CreatedAt:   timePtr(cfg.CreatedAt),
-			UpdatedAt:   timePtr(cfg.UpdatedAt),
-		})
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"status": "success",
-		"count":  len(items),
-		"apis":   items,
-	})
-}
-
 func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 	filterKeys := []string{"displayName", "version", "context", "status"}
 	filters := make(map[string]string)
@@ -362,39 +247,59 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 	}
 
 	configs := s.store.GetAllByKind(kind)
+	if kind == string(api.Mcp) && s.mcpDeploymentService != nil {
+		var err error
+		configs, err = s.mcpDeploymentService.ListMCPProxies()
+		if err != nil {
+			s.logger.Error("Failed to list MCP proxies", slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to list MCP proxies",
+			})
+			return
+		}
+	}
 
 	// Filter based on kind to return appropriate response format
 	if kind == string(api.Mcp) {
 		// Return MCP proxy format
 		mcpItems := make([]api.MCPProxyListItem, 0)
 		for _, cfg := range configs {
-			if v, ok := filters["displayName"]; ok && cfg.GetDisplayName() != v {
+			if v, ok := filters["displayName"]; ok && cfg.DisplayName != v {
 				continue
 			}
-			if v, ok := filters["version"]; ok && cfg.GetVersion() != v {
+			if v, ok := filters["version"]; ok && cfg.Version != v {
 				continue
 			}
-			if v, ok := filters["context"]; ok && cfg.GetContext() != v {
+			cfgContext, err := cfg.GetContext()
+			if err != nil {
+				s.logger.Warn("Failed to get context for MCP config",
+					slog.String("id", cfg.UUID),
+					slog.String("displayName", cfg.DisplayName),
+					slog.Any("error", err))
 				continue
 			}
-			if v, ok := filters["status"]; ok && string(cfg.Status) != v {
+			if v, ok := filters["context"]; ok && cfgContext != v {
+				continue
+			}
+			if v, ok := filters["status"]; ok && string(cfg.DesiredState) != v {
 				continue
 			}
 
-			status := api.MCPProxyListItemStatus(cfg.Status)
+			status := api.MCPProxyListItemStatus(cfg.DesiredState)
 			// Convert SourceConfiguration to MCPProxyConfiguration to get spec fields
 			var mcp api.MCPProxyConfiguration
 			j, _ := json.Marshal(cfg.SourceConfiguration)
-			err := json.Unmarshal(j, &mcp)
+			err = json.Unmarshal(j, &mcp)
 			if err != nil {
 				s.logger.Error("Failed to unmarshal stored MCP configuration",
-					slog.String("id", cfg.ID),
-					slog.String("displayName", cfg.GetDisplayName()))
+					slog.String("id", cfg.UUID),
+					slog.String("displayName", cfg.DisplayName))
 				continue
 			}
 
 			li := api.MCPProxyListItem{
-				Id:          stringPtr(cfg.GetHandle()),
+				Id:          stringPtr(cfg.Handle),
 				DisplayName: stringPtr(mcp.Spec.DisplayName),
 				Version:     stringPtr(mcp.Spec.Version),
 				Status:      &status,
@@ -412,30 +317,80 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 			"count":      len(mcpItems),
 			"mcpProxies": mcpItems,
 		})
-	} else {
-		// Return API format
-		apiItems := make([]api.APIListItem, 0)
+	} else if kind == string(api.WebSubApi) {
+		// Return WebSub API format
+		websubItems := make([]api.WebSubAPIListItem, 0)
 		for _, cfg := range configs {
-			if v, ok := filters["displayName"]; ok && cfg.GetDisplayName() != v {
+			if v, ok := filters["displayName"]; ok && cfg.DisplayName != v {
 				continue
 			}
-			if v, ok := filters["version"]; ok && cfg.GetVersion() != v {
+			if v, ok := filters["version"]; ok && cfg.Version != v {
 				continue
 			}
-			if v, ok := filters["context"]; ok && cfg.GetContext() != v {
+			cfgContext, err := cfg.GetContext()
+			if err != nil {
+				s.logger.Warn("Failed to get context for config",
+					slog.String("id", cfg.UUID),
+					slog.String("displayName", cfg.DisplayName),
+					slog.Any("error", err))
 				continue
 			}
-			if v, ok := filters["status"]; ok && string(cfg.Status) != v {
+			if v, ok := filters["context"]; ok && cfgContext != v {
+				continue
+			}
+			if v, ok := filters["status"]; ok && string(cfg.DesiredState) != v {
 				continue
 			}
 
-			status := string(cfg.Status)
-			apiItems = append(apiItems, api.APIListItem{
-				Id:          stringPtr(cfg.GetHandle()),
-				DisplayName: stringPtr(cfg.GetDisplayName()),
-				Version:     stringPtr(cfg.GetVersion()),
-				Context:     stringPtr(cfg.GetContext()),
-				Status:      (*api.APIListItemStatus)(&status),
+			status := string(cfg.DesiredState)
+			websubItems = append(websubItems, api.WebSubAPIListItem{
+				Id:          stringPtr(cfg.Handle),
+				DisplayName: stringPtr(cfg.DisplayName),
+				Version:     stringPtr(cfg.Version),
+				Context:     stringPtr(cfgContext),
+				Status:      (*api.WebSubAPIListItemStatus)(&status),
+				CreatedAt:   timePtr(cfg.CreatedAt),
+				UpdatedAt:   timePtr(cfg.UpdatedAt),
+			})
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":     "success",
+			"count":      len(websubItems),
+			"websubApis": websubItems,
+		})
+	} else {
+		// Return REST API format
+		apiItems := make([]api.RestAPIListItem, 0)
+		for _, cfg := range configs {
+			if v, ok := filters["displayName"]; ok && cfg.DisplayName != v {
+				continue
+			}
+			if v, ok := filters["version"]; ok && cfg.Version != v {
+				continue
+			}
+			cfgContext, err := cfg.GetContext()
+			if err != nil {
+				s.logger.Warn("Failed to get context for config",
+					slog.String("id", cfg.UUID),
+					slog.String("displayName", cfg.DisplayName),
+					slog.Any("error", err))
+				continue
+			}
+			if v, ok := filters["context"]; ok && cfgContext != v {
+				continue
+			}
+			if v, ok := filters["status"]; ok && string(cfg.DesiredState) != v {
+				continue
+			}
+
+			status := string(cfg.DesiredState)
+			apiItems = append(apiItems, api.RestAPIListItem{
+				Id:          stringPtr(cfg.Handle),
+				DisplayName: stringPtr(cfg.DisplayName),
+				Version:     stringPtr(cfg.Version),
+				Context:     stringPtr(cfgContext),
+				Status:      (*api.RestAPIListItemStatus)(&status),
 				CreatedAt:   timePtr(cfg.CreatedAt),
 				UpdatedAt:   timePtr(cfg.UpdatedAt),
 			})
@@ -455,23 +410,23 @@ func (s *APIServer) GetAPIByNameVersion(c *gin.Context, name string, version str
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
 
-	cfg, err := s.store.GetByNameVersion(name, version)
-	if err != nil {
+	cfg, err := s.store.GetByKindNameAndVersion(models.KindRestApi, name, version)
+	if err != nil || cfg == nil {
 		log.Warn("API configuration not found",
 			slog.String("name", name),
 			slog.String("version", version))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("API configuration with name '%s' and version '%s' not found", name, version),
+			Message: fmt.Sprintf("RestAPI with name '%s' and version '%s' not found", name, version),
 		})
 		return
 	}
 
 	apiDetail := gin.H{
-		"id":            cfg.GetHandle(),
+		"id":            cfg.Handle,
 		"configuration": cfg.Configuration,
 		"metadata": gin.H{
-			"status":    string(cfg.Status),
+			"status":    string(cfg.DesiredState),
 			"createdAt": cfg.CreatedAt.Format(time.RFC3339),
 			"updatedAt": cfg.UpdatedAt.Format(time.RFC3339),
 		},
@@ -487,550 +442,56 @@ func (s *APIServer) GetAPIByNameVersion(c *gin.Context, name string, version str
 	})
 }
 
-// GetAPIById implements ServerInterface.GetAPIById
-// (GET /apis/{id})
-func (s *APIServer) GetAPIById(c *gin.Context, id string) {
-	// Get correlation-aware logger from context
-	log := middleware.GetLogger(c, s.logger)
-	handle := id
-
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
-
-	cfg, err := s.db.GetConfigByHandle(handle)
-	if err != nil {
-		log.Warn("API configuration not found",
-			slog.String("handle", handle))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("API configuration with handle '%s' not found", handle),
-		})
-		return
-	}
-
-	if cfg.Kind != string(api.RestApi) && cfg.Kind != string(api.WebSubApi) {
-		log.Warn("Configuration kind mismatch",
-			slog.String("expected", "RestApi or async/websub"),
-			slog.String("actual", cfg.Kind),
-			slog.String("handle", handle))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("Configuration with handle '%s' is not an API", handle),
-		})
-		return
-	}
-
-	apiDetail := gin.H{
-		"id":            cfg.GetHandle(),
-		"configuration": cfg.Configuration,
-		"metadata": gin.H{
-			"status":    string(cfg.Status),
-			"createdAt": cfg.CreatedAt.Format(time.RFC3339),
-			"updatedAt": cfg.UpdatedAt.Format(time.RFC3339),
-		},
-	}
-
-	if cfg.DeployedAt != nil {
-		apiDetail["metadata"].(gin.H)["deployedAt"] = cfg.DeployedAt.Format(time.RFC3339)
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"status": "success",
-		"api":    apiDetail,
+// CreateWebSubAPI implements ServerInterface.CreateWebSubAPI
+// (POST /websub-apis)
+func (s *APIServer) CreateWebSubAPI(c *gin.Context) {
+	c.JSON(http.StatusNotImplemented, api.ErrorResponse{
+		Status:  "error",
+		Message: "WebSub API management is not implemented",
 	})
 }
 
-// UpdateAPI implements ServerInterface.UpdateAPI
-// (PUT /apis/{handle})
-func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
-	startTime := time.Now()
-	operation := "update"
-
-	// Get correlation-aware logger from context
-	log := middleware.GetLogger(c, s.logger)
-	handle := id
-
-	// Read request body
-	body, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		log.Error("Failed to read request body", slog.Any("error", err))
-		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
-		metrics.ValidationErrorsTotal.WithLabelValues(operation, "read_body_failed").Inc()
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to read request body",
-		})
-		return
-	}
-
-	// Parse configuration
-	contentType := c.GetHeader("Content-Type")
-	var apiConfig api.APIConfiguration
-	err = s.parser.Parse(body, contentType, &apiConfig)
-	if err != nil {
-		log.Error("Failed to parse configuration", slog.Any("error", err))
-		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
-		metrics.ValidationErrorsTotal.WithLabelValues(operation, "parse_failed").Inc()
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("Failed to parse configuration: %v", err),
-		})
-		return
-	}
-
-	// Validate that the handle in the YAML matches the path parameter
-	if apiConfig.Metadata.Name != "" {
-		if apiConfig.Metadata.Name != handle {
-			log.Warn("Handle mismatch between path and YAML metadata",
-				slog.String("path_handle", handle),
-				slog.String("yaml_handle", apiConfig.Metadata.Name))
-			metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
-			metrics.ValidationErrorsTotal.WithLabelValues(operation, "handle_mismatch").Inc()
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{
-				Status:  "error",
-				Message: fmt.Sprintf("Handle mismatch: path has '%s' but YAML metadata.name has '%s'", handle, apiConfig.Metadata.Name),
-			})
-			return
-		}
-	}
-
-	// Validate configuration
-	validationErrors := s.validator.Validate(&apiConfig)
-	if len(validationErrors) > 0 {
-		log.Warn("Configuration validation failed",
-			slog.String("handle", handle),
-			slog.Int("num_errors", len(validationErrors)))
-
-		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
-		metrics.ValidationErrorsTotal.WithLabelValues(operation, "validation_failed").Add(float64(len(validationErrors)))
-
-		errors := make([]api.ValidationError, len(validationErrors))
-		for i, e := range validationErrors {
-			errors[i] = api.ValidationError{
-				Field:   stringPtr(e.Field),
-				Message: stringPtr(e.Message),
-			}
-		}
-
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: "Configuration validation failed",
-			Errors:  &errors,
-		})
-		return
-	}
-
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
-
-	// Check if config exists
-	existing, err := s.db.GetConfigByHandle(handle)
-	if err != nil {
-		log.Warn("API configuration not found",
-			slog.String("handle", handle))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("API configuration with handle '%s' not found", handle),
-		})
-		return
-	}
-
-	// Update stored configuration
-	now := time.Now()
-	existing.Configuration = apiConfig
-	existing.Status = models.StatusPending
-	existing.UpdatedAt = now
-	existing.DeployedAt = nil
-	existing.DeployedVersion = 0
-
-	if apiConfig.Kind == api.WebSubApi {
-		topicsToRegister, topicsToUnregister := s.deploymentService.GetTopicsForUpdate(*existing)
-		// TODO: Pre configure the dynamic forward proxy rules for event gw
-		// This was communication bridge will be created on the gw startup
-		// Can perform internal communication with websub hub without relying on the dynamic rules
-		// Execute topic operations with wait group and errors tracking
-		var wg2 sync.WaitGroup
-		var regErrs int32
-		var deregErrs int32
-
-		if len(topicsToRegister) > 0 {
-			wg2.Add(1)
-			go func(list []string) {
-				defer wg2.Done()
-				log.Info("Starting topic registration", slog.Int("total_topics", len(list)), slog.String("api_id", existing.ID))
-				//fmt.Println("Topics Registering Started")
-				var childWg sync.WaitGroup
-				for _, topic := range list {
-					childWg.Add(1)
-					go func(topic string) {
-						defer childWg.Done()
-						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
-						defer cancel()
-						if err := s.deploymentService.RegisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, log); err != nil {
-							log.Error("Failed to register topic with WebSubHub",
-								slog.Any("error", err),
-								slog.String("topic", topic),
-								slog.String("api_id", existing.ID))
-							atomic.AddInt32(&regErrs, 1)
-						} else {
-							log.Info("Successfully registered topic with WebSubHub",
-								slog.String("topic", topic),
-								slog.String("api_id", existing.ID))
-						}
-					}(topic)
-				}
-				childWg.Wait()
-			}(topicsToRegister)
-		}
-
-		if len(topicsToUnregister) > 0 {
-			wg2.Add(1)
-			go func(list []string) {
-				defer wg2.Done()
-				log.Info("Starting topic deregistration", slog.Int("total_topics", len(list)), slog.String("api_id", existing.ID))
-				var childWg sync.WaitGroup
-				for _, topic := range list {
-					childWg.Add(1)
-					go func(topic string) {
-						defer childWg.Done()
-						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
-						defer cancel()
-						if err := s.deploymentService.UnregisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, log); err != nil {
-							log.Error("Failed to deregister topic from WebSubHub",
-								slog.Any("error", err),
-								slog.String("topic", topic),
-								slog.String("api_id", existing.ID))
-							atomic.AddInt32(&deregErrs, 1)
-						} else {
-							log.Info("Successfully deregistered topic from WebSubHub",
-								slog.String("topic", topic),
-								slog.String("api_id", existing.ID))
-						}
-					}(topic)
-				}
-				childWg.Wait()
-			}(topicsToUnregister)
-		}
-		wg2.Wait()
-
-		log.Info("Topic lifecycle operations completed",
-			slog.String("api_id", existing.ID),
-			slog.Int("registered", len(topicsToRegister)),
-			slog.Int("deregistered", len(topicsToUnregister)),
-			slog.Int("register_errors", int(regErrs)),
-			slog.Int("deregister_errors", int(deregErrs)))
-
-		// Check if topic operations failed and return error
-		if regErrs > 0 || deregErrs > 0 {
-			log.Error("Failed to register & deregister topics",
-				slog.Int("topics_to_register", len(topicsToRegister)),
-				slog.Int("topics_to_unregister", len(topicsToUnregister)),
-				slog.Int("register_errors", int(regErrs)),
-				slog.Int("deregister_errors", int(deregErrs)))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-				Status:  "error",
-				Message: "Topic lifecycle operations failed",
-			})
-			return
-		}
-	}
-
-	// Atomic dual-write: database + in-memory
-	// Update database first (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.UpdateConfig(existing); err != nil {
-			log.Error("Failed to update config in database", slog.Any("error", err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-				Status:  "error",
-				Message: "Failed to persist configuration update",
-			})
-			return
-		}
-	}
-
-	if err := s.store.Update(existing); err != nil {
-		// Log conflict errors at info level, other errors at error level
-		if storage.IsConflictError(err) {
-			log.Info("API configuration handle already exists",
-				slog.String("id", existing.ID),
-				slog.String("handle", handle))
-			c.JSON(http.StatusConflict, api.ErrorResponse{
-				Status:  "error",
-				Message: err.Error(),
-			})
-		} else {
-			log.Error("Failed to update config in memory store", slog.Any("error", err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-				Status:  "error",
-				Message: "Failed to update configuration in memory store",
-			})
-		}
-		return
-	}
-
-	// Get correlation ID from context
-	correlationID := middleware.GetCorrelationID(c)
-
-	// Update xDS snapshot asynchronously
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
-		defer cancel()
-
-		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
-			log.Error("Failed to update xDS snapshot", slog.Any("error", err))
-		}
-	}()
-
-	log.Info("API configuration updated",
-		slog.String("id", existing.ID),
-		slog.String("handle", handle))
-
-	// Record successful operation metrics
-	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "rest_api").Inc()
-	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
-
-	// Return success response (id is the handle)
-	c.JSON(http.StatusOK, api.APIUpdateResponse{
-		Status:    stringPtr("success"),
-		Message:   stringPtr("API configuration updated successfully"),
-		Id:        stringPtr(existing.GetHandle()),
-		UpdatedAt: timePtr(existing.UpdatedAt),
+// ListWebSubAPIs implements ServerInterface.ListWebSubAPIs
+// (GET /websub-apis)
+func (s *APIServer) ListWebSubAPIs(c *gin.Context, params api.ListWebSubAPIsParams) {
+	c.JSON(http.StatusNotImplemented, api.ErrorResponse{
+		Status:  "error",
+		Message: "WebSub API management is not implemented",
 	})
-
-	// Rebuild and update derived policy configuration
-	if s.policyManager != nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(existing)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to update derived policy configuration", slog.Any("error", err))
-			} else {
-				log.Info("Derived policy configuration updated",
-					slog.String("policy_id", storedPolicy.ID),
-					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		} else {
-			// API no longer has policies, remove the existing policy configuration
-			policyID := existing.ID + "-policies"
-			if err := s.policyManager.RemovePolicy(policyID); err != nil {
-				// Log at debug level since policy may not exist if API never had policies
-				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
-			} else {
-				log.Info("Derived policy configuration removed (API no longer has policies)",
-					slog.String("policy_id", policyID))
-			}
-		}
-	}
 }
 
-// DeleteAPI implements ServerInterface.DeleteAPI
-// (DELETE /apis/{handle})
-func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
-	startTime := time.Now()
-	operation := "delete"
-
-	// Get correlation-aware logger from context
-	log := middleware.GetLogger(c, s.logger)
-
-	handle := id
-
-	if s.db == nil {
-		log.Error("Database storage not available")
-		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
-
-	// Check if config exists
-	cfg, err := s.db.GetConfigByHandle(handle)
-	if err != nil {
-		log.Warn("API configuration not found",
-			slog.String("handle", handle))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("API configuration with handle '%s' not found", handle),
-		})
-		return
-	}
-
-	// Delete from database first (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.DeleteConfig(cfg.ID); err != nil {
-			log.Error("Failed to delete config from database", slog.Any("error", err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-				Status:  "error",
-				Message: "Failed to delete configuration",
-			})
-			return
-		}
-
-		// Delete associated API keys from database
-		err := s.db.RemoveAPIKeysAPI(cfg.ID)
-		if err != nil {
-			log.Warn("Failed to remove API keys from database",
-				slog.String("handle", handle),
-				slog.Any("error", err))
-		}
-	}
-
-	// Remove API keys from ConfigStore
-	if err := s.store.RemoveAPIKeysByAPI(cfg.ID); err != nil {
-		log.Warn("Failed to remove API keys from ConfigStore",
-			slog.String("handle", handle),
-			slog.Any("error", err))
-	}
-
-	// Remove API keys from policy engine via xDS
-	if s.apiKeyXDSManager != nil {
-		// Extract API name and version from the config
-		apiConfig, err := cfg.Configuration.Spec.AsAPIConfigData()
-		if err == nil {
-			apiId := cfg.ID
-			apiName := apiConfig.DisplayName
-			apiVersion := apiConfig.Version
-			correlationID := middleware.GetCorrelationID(c)
-
-			if err := s.apiKeyXDSManager.RemoveAPIKeysByAPI(apiId, apiName, apiVersion, correlationID); err != nil {
-				log.Warn("Failed to remove API keys from policy engine",
-					slog.String("api_id", apiId),
-					slog.String("handle", handle),
-					slog.String("api_name", apiName),
-					slog.String("api_version", apiVersion),
-					slog.String("correlation_id", correlationID),
-					slog.Any("error", err))
-			} else {
-				log.Info("Successfully removed API keys from policy engine",
-					slog.String("api_id", apiId),
-					slog.String("handle", handle),
-					slog.String("api_name", apiName),
-					slog.String("api_version", apiVersion),
-					slog.String("correlation_id", correlationID))
-			}
-		} else {
-			log.Warn("Failed to extract API config data for API key removal",
-				slog.String("handle", handle),
-				slog.Any("error", err))
-		}
-	}
-
-	if cfg.Configuration.Kind == api.WebSubApi {
-		topicsToUnregister := s.deploymentService.GetTopicsForDelete(*cfg)
-
-		var deregErrs int32
-		var wg sync.WaitGroup
-
-		if len(topicsToUnregister) > 0 {
-			wg.Add(1)
-			go func(list []string) {
-				defer wg.Done()
-				log.Info("Starting topic deregistration", slog.Int("total_topics", len(list)), slog.String("api_id", cfg.ID))
-				var childWg sync.WaitGroup
-				for _, topic := range list {
-					childWg.Add(1)
-					go func(topic string) {
-						defer childWg.Done()
-						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
-						defer cancel()
-						if err := s.deploymentService.UnregisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, log); err != nil {
-							log.Error("Failed to deregister topic from WebSubHub",
-								slog.Any("error", err),
-								slog.String("topic", topic),
-								slog.String("api_id", cfg.ID))
-							atomic.AddInt32(&deregErrs, 1)
-						} else {
-							log.Info("Successfully deregistered topic from WebSubHub",
-								slog.String("topic", topic),
-								slog.String("api_id", cfg.ID))
-						}
-					}(topic)
-				}
-				childWg.Wait()
-			}(topicsToUnregister)
-		}
-
-		wg.Wait()
-
-		log.Info("Topic lifecycle operations completed",
-			slog.String("api_id", cfg.ID),
-			slog.Int("deregistered", len(topicsToUnregister)),
-			slog.Int("deregister_errors", int(deregErrs)))
-
-		// Check if topic operations failed and return error
-		if deregErrs > 0 {
-			log.Error("Failed to register & deregister topics", slog.Any("error", err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-				Status:  "error",
-				Message: "Topic lifecycle operations failed",
-			})
-			return
-		}
-	}
-
-	// Delete from in-memory store
-	if err := s.store.Delete(cfg.ID); err != nil {
-		log.Error("Failed to delete config from memory store", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to delete configuration",
-		})
-		return
-	}
-
-	// Get correlation ID from context
-	correlationID := middleware.GetCorrelationID(c)
-
-	// Update xDS snapshot asynchronously
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
-			log.Error("Failed to update xDS snapshot", slog.Any("error", err))
-		}
-	}()
-
-	log.Info("API configuration deleted",
-		slog.String("id", cfg.ID),
-		slog.String("handle", handle))
-
-	// Record successful operation metrics
-	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "rest_api").Inc()
-	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
-	metrics.APIsTotal.WithLabelValues("rest_api", "active").Dec()
-
-	c.JSON(http.StatusOK, gin.H{
-		"status":  "success",
-		"message": "API configuration deleted successfully",
-		"id":      handle,
+// GetWebSubAPIById implements ServerInterface.GetWebSubAPIById
+// (GET /websub-apis/{id})
+func (s *APIServer) GetWebSubAPIById(c *gin.Context, id string) {
+	c.JSON(http.StatusNotImplemented, api.ErrorResponse{
+		Status:  "error",
+		Message: "WebSub API management is not implemented",
 	})
+}
 
-	// Remove derived policy configuration
-	if s.policyManager != nil {
-		policyID := cfg.ID + "-policies"
-		if err := s.policyManager.RemovePolicy(policyID); err != nil {
-			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
-		} else {
-			log.Info("Derived policy configuration removed", slog.String("policy_id", policyID))
-		}
-	}
+// UpdateWebSubAPI implements ServerInterface.UpdateWebSubAPI
+// (PUT /websub-apis/{id})
+func (s *APIServer) UpdateWebSubAPI(c *gin.Context, id string) {
+	c.JSON(http.StatusNotImplemented, api.ErrorResponse{
+		Status:  "error",
+		Message: "WebSub API management is not implemented",
+	})
+}
+
+// DeleteWebSubAPI implements ServerInterface.DeleteWebSubAPI
+// (DELETE /websub-apis/{id})
+func (s *APIServer) DeleteWebSubAPI(c *gin.Context, id string) {
+	c.JSON(http.StatusNotImplemented, api.ErrorResponse{
+		Status:  "error",
+		Message: "WebSub API management is not implemented",
+	})
 }
 
 // CreateLLMProviderTemplate implements ServerInterface.CreateLLMProviderTemplate
 // (POST /llm-provider-templates)
 func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
 
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
@@ -1044,9 +505,10 @@ func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 	}
 
 	storedTemplate, err := s.llmDeploymentService.CreateLLMProviderTemplate(utils.LLMTemplateParams{
-		Spec:        body,
-		ContentType: c.GetHeader("Content-Type"),
-		Logger:      log,
+		Spec:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Logger:        log,
 	})
 
 	if err != nil {
@@ -1059,7 +521,7 @@ func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 	}
 
 	log.Info("LLM provider template created successfully",
-		slog.String("uuid", storedTemplate.ID),
+		slog.String("uuid", storedTemplate.UUID),
 		slog.String("handle", storedTemplate.GetHandle()))
 
 	c.JSON(http.StatusCreated, api.LLMProviderTemplateCreateResponse{
@@ -1127,6 +589,7 @@ func (s *APIServer) GetLLMProviderTemplateById(c *gin.Context, id string) {
 // (PUT /llm-provider-templates/{id})
 func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
 
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
@@ -1140,9 +603,10 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 	}
 
 	updated, err := s.llmDeploymentService.UpdateLLMProviderTemplate(id, utils.LLMTemplateParams{
-		Spec:        body,
-		ContentType: c.GetHeader("Content-Type"),
-		Logger:      log,
+		Spec:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Logger:        log,
 	})
 	if err != nil {
 		log.Error("Failed to parse template configuration", slog.Any("error", err))
@@ -1154,7 +618,7 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 	}
 
 	log.Info("LLM provider template updated successfully",
-		slog.String("uuid", updated.ID),
+		slog.String("uuid", updated.UUID),
 		slog.String("handle", updated.GetHandle()))
 
 	c.JSON(http.StatusOK, api.LLMProviderTemplateUpdateResponse{
@@ -1169,8 +633,9 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 // (DELETE /llm-provider-templates/{id})
 func (s *APIServer) DeleteLLMProviderTemplate(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
 
-	deleted, err := s.llmDeploymentService.DeleteLLMProviderTemplate(id)
+	deleted, err := s.llmDeploymentService.DeleteLLMProviderTemplate(id, correlationID, log)
 	if err != nil {
 		log.Warn("LLM provider template not found for deletion", slog.String("handle", id))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
@@ -1181,7 +646,7 @@ func (s *APIServer) DeleteLLMProviderTemplate(c *gin.Context, id string) {
 	}
 
 	log.Info("LLM provider template deleted successfully",
-		slog.String("uuid", deleted.ID),
+		slog.String("uuid", deleted.UUID),
 		slog.String("handle", deleted.GetHandle()))
 
 	c.JSON(http.StatusOK, gin.H{
@@ -1199,14 +664,14 @@ func (s *APIServer) ListLLMProviders(c *gin.Context, params api.ListLLMProviders
 
 	items := make([]api.LLMProviderListItem, len(configs))
 	for i, cfg := range configs {
-		status := api.LLMProviderListItemStatus(cfg.Status)
+		status := api.LLMProviderListItemStatus(cfg.DesiredState)
 
 		// Convert SourceConfiguration to LLMProviderConfiguration
 		var prov api.LLMProviderConfiguration
 		j, _ := json.Marshal(cfg.SourceConfiguration)
 		if err := json.Unmarshal(j, &prov); err != nil {
 			log.Error("Failed to unmarshal stored LLM provider configuration",
-				slog.String("uuid", cfg.ID), slog.Any("error", err))
+				slog.String("uuid", cfg.UUID), slog.Any("error", err))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
 				Message: "Failed to get stored LLM provider configuration"})
 			return
@@ -1246,10 +711,13 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Delegate to service which parses/validates/transforms and persists
-	stored, err := s.llmDeploymentService.CreateLLMProvider(utils.LLMDeploymentParams{
-		Data:        body,
-		ContentType: c.GetHeader("Content-Type"),
-		Logger:      log,
+	// Important: The result stored configuration contains resolved secrets. Do not expose them in responses.
+	result, err := s.llmDeploymentService.CreateLLMProvider(utils.LLMDeploymentParams{
+		Data:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Origin:        models.OriginGatewayAPI,
+		Logger:        log,
 	})
 	if err != nil {
 		log.Error("Failed to create LLM provider", slog.Any("error", err))
@@ -1264,32 +732,23 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 		return
 	}
 
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
-		go s.waitForDeploymentAndPush(stored.ID, correlationID, log)
+	stored := result.StoredConfig
+
+	if !result.IsStale {
+		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
+			go s.waitForDeploymentAndPush(stored.UUID, correlationID, log)
+		}
 	}
 
 	log.Info("LLM provider created successfully",
-		slog.String("uuid", stored.ID),
-		slog.String("handle", stored.GetHandle()))
+		slog.String("uuid", stored.UUID),
+		slog.String("handle", stored.Handle))
 
 	c.JSON(http.StatusCreated, api.LLMProviderCreateResponse{
 		Status:  stringPtr("success"),
 		Message: stringPtr("LLM provider created successfully"),
-		Id:      stringPtr(stored.GetHandle()), CreatedAt: timePtr(stored.CreatedAt)})
+		Id:      stringPtr(stored.Handle), CreatedAt: timePtr(stored.CreatedAt)})
 
-	// Build and add policy config derived from API configuration if policies are present
-	if s.policyManager != nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(stored)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to add derived policy configuration", slog.Any("error", err))
-			} else {
-				log.Info("Derived policy configuration added",
-					slog.String("policy_id", storedPolicy.ID),
-					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		}
-	}
 }
 
 // GetLLMProviderById implements ServerInterface.GetLLMProviderById
@@ -1297,10 +756,21 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 func (s *APIServer) GetLLMProviderById(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
-	cfg := s.store.GetByKindAndHandle(string(api.LlmProvider), id)
-	if cfg == nil {
+	// Service lookup is DB-first so reads still work before this replica has
+	// replayed the corresponding EventHub event into its in-memory store.
+	cfg, err := s.llmDeploymentService.GetLLMProviderByHandle(id)
+	if err != nil {
+		if !storage.IsNotFoundError(err) && !strings.Contains(strings.ToLower(err.Error()), "not found") {
+			log.Error("Failed to look up LLM provider", slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to look up LLM provider",
+			})
+			return
+		}
 		log.Warn("LLM provider configuration not found",
-			slog.String("handle", id))
+			slog.String("handle", id),
+			slog.Any("error", err))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("LLM provider configuration with handle '%s' not found", id),
@@ -1312,7 +782,7 @@ func (s *APIServer) GetLLMProviderById(c *gin.Context, id string) {
 	providerDetail := gin.H{
 		"configuration": cfg.SourceConfiguration,
 		"metadata": gin.H{
-			"status":    string(cfg.Status),
+			"status":    string(cfg.DesiredState),
 			"createdAt": cfg.CreatedAt.Format(time.RFC3339),
 			"updatedAt": cfg.UpdatedAt.Format(time.RFC3339),
 		},
@@ -1348,9 +818,11 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Delegate to service update wrapper
-	updated, err := s.llmDeploymentService.UpdateLLMProvider(id, utils.LLMDeploymentParams{
+	// Important: The result stored configuration contains resolved secrets. Do not expose them in responses.
+	result, err := s.llmDeploymentService.UpdateLLMProvider(id, utils.LLMDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
+		Origin:        models.OriginGatewayAPI,
 		CorrelationID: correlationID,
 		Logger:        log,
 	})
@@ -1367,36 +839,15 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 		return
 	}
 
+	updated := result.StoredConfig
+
 	c.JSON(http.StatusOK, api.LLMProviderUpdateResponse{
-		Id:        stringPtr(updated.GetHandle()),
+		Id:        stringPtr(updated.Handle),
 		Message:   stringPtr("LLM provider updated successfully"),
 		Status:    stringPtr("success"),
 		UpdatedAt: timePtr(updated.UpdatedAt),
 	})
 
-	// Rebuild and update derived policy configuration
-	if s.policyManager != nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(updated)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to update derived policy configuration", slog.Any("error", err))
-			} else {
-				log.Info("Derived policy configuration updated",
-					slog.String("policy_id", storedPolicy.ID),
-					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		} else {
-			// LLM provider no longer has policies, remove the existing policy configuration
-			policyID := updated.ID + "-policies"
-			if err := s.policyManager.RemovePolicy(policyID); err != nil {
-				// Log at debug level since policy may not exist if LLM provider never had policies
-				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
-			} else {
-				log.Info("Derived policy configuration removed (LLM provider no longer has policies)",
-					slog.String("policy_id", policyID))
-			}
-		}
-	}
 }
 
 // DeleteLLMProvider implements ServerInterface.DeleteLLMProvider
@@ -1426,18 +877,9 @@ func (s *APIServer) DeleteLLMProvider(c *gin.Context, id string) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
 		"message": "LLM provider deleted successfully",
-		"id":      cfg.GetHandle(),
+		"id":      cfg.Handle,
 	})
 
-	// Remove derived policy configuration
-	if s.policyManager != nil {
-		policyID := cfg.ID + "-policies"
-		if err := s.policyManager.RemovePolicy(policyID); err != nil {
-			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
-		} else {
-			log.Info("Derived policy configuration removed", slog.String("policy_id", policyID))
-		}
-	}
 }
 
 // ListLLMProxies implements ServerInterface.ListLLMProxies
@@ -1448,13 +890,13 @@ func (s *APIServer) ListLLMProxies(c *gin.Context, params api.ListLLMProxiesPara
 
 	items := make([]api.LLMProxyListItem, len(configs))
 	for i, cfg := range configs {
-		status := api.LLMProxyListItemStatus(cfg.Status)
+		status := api.LLMProxyListItemStatus(cfg.DesiredState)
 
 		// Convert SourceConfiguration to LLMProxyConfiguration
 		var proxy api.LLMProxyConfiguration
 		j, _ := json.Marshal(cfg.SourceConfiguration)
 		if err := json.Unmarshal(j, &proxy); err != nil {
-			log.Error("Failed to unmarshal stored LLM proxy configuration", slog.String("uuid", cfg.ID),
+			log.Error("Failed to unmarshal stored LLM proxy configuration", slog.String("uuid", cfg.UUID),
 				slog.Any("error", err))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status: "error", Message: "Failed to get stored LLM proxy configuration"})
@@ -1495,10 +937,13 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Delegate to service which parses/validates/transforms and persists
-	stored, err := s.llmDeploymentService.CreateLLMProxy(utils.LLMDeploymentParams{
-		Data:        body,
-		ContentType: c.GetHeader("Content-Type"),
-		Logger:      log,
+	// Important: The result stored configuration contains resolved secrets. Do not expose them in responses.
+	result, err := s.llmDeploymentService.CreateLLMProxy(utils.LLMDeploymentParams{
+		Data:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Logger:        log,
+		Origin:        models.OriginGatewayAPI,
 	})
 	if err != nil {
 		log.Error("Failed to create LLM proxy", slog.Any("error", err))
@@ -1513,32 +958,23 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 		return
 	}
 
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
-		go s.waitForDeploymentAndPush(stored.ID, correlationID, log)
+	stored := result.StoredConfig
+
+	if !result.IsStale {
+		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
+			go s.waitForDeploymentAndPush(stored.UUID, correlationID, log)
+		}
 	}
 
 	log.Info("LLM proxy created successfully",
-		slog.String("uuid", stored.ID),
-		slog.String("handle", stored.GetHandle()))
+		slog.String("uuid", stored.UUID),
+		slog.String("handle", stored.Handle))
 
 	c.JSON(http.StatusCreated, api.LLMProxyCreateResponse{
 		Status:  stringPtr("success"),
 		Message: stringPtr("LLM proxy created successfully"),
-		Id:      stringPtr(stored.GetHandle()), CreatedAt: timePtr(stored.CreatedAt)})
+		Id:      stringPtr(stored.Handle), CreatedAt: timePtr(stored.CreatedAt)})
 
-	// Build and add policy config derived from API configuration if policies are present
-	if s.policyManager != nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(stored)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to add derived policy configuration", slog.Any("error", err))
-			} else {
-				log.Info("Derived policy configuration added",
-					slog.String("policy_id", storedPolicy.ID),
-					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		}
-	}
 }
 
 // GetLLMProxyById implements ServerInterface.GetLLMProxyById
@@ -1546,10 +982,19 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 func (s *APIServer) GetLLMProxyById(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
-	cfg := s.store.GetByKindAndHandle(string(api.LlmProxy), id)
-	if cfg == nil {
+	cfg, err := s.llmDeploymentService.GetLLMProxyByHandle(id)
+	if err != nil {
+		if !storage.IsNotFoundError(err) && !strings.Contains(strings.ToLower(err.Error()), "not found") {
+			log.Error("Failed to look up LLM proxy", slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to look up LLM proxy",
+			})
+			return
+		}
 		log.Warn("LLM proxy configuration not found",
-			slog.String("handle", id))
+			slog.String("handle", id),
+			slog.Any("error", err))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("LLM proxy configuration with handle '%s' not found", id),
@@ -1561,7 +1006,7 @@ func (s *APIServer) GetLLMProxyById(c *gin.Context, id string) {
 	proxyDetail := gin.H{
 		"configuration": cfg.SourceConfiguration,
 		"metadata": gin.H{
-			"status":    string(cfg.Status),
+			"status":    string(cfg.DesiredState),
 			"createdAt": cfg.CreatedAt.Format(time.RFC3339),
 			"updatedAt": cfg.UpdatedAt.Format(time.RFC3339),
 		},
@@ -1597,9 +1042,10 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Delegate to service update wrapper
-	updated, err := s.llmDeploymentService.UpdateLLMProxy(id, utils.LLMDeploymentParams{
+	result, err := s.llmDeploymentService.UpdateLLMProxy(id, utils.LLMDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
+		Origin:        models.OriginGatewayAPI,
 		CorrelationID: correlationID,
 		Logger:        log,
 	})
@@ -1616,36 +1062,15 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 		return
 	}
 
+	updated := result.StoredConfig
+
 	c.JSON(http.StatusOK, api.LLMProxyUpdateResponse{
-		Id:        stringPtr(updated.GetHandle()),
+		Id:        stringPtr(updated.Handle),
 		Message:   stringPtr("LLM proxy updated successfully"),
 		Status:    stringPtr("success"),
 		UpdatedAt: timePtr(updated.UpdatedAt),
 	})
 
-	// Rebuild and update derived policy configuration
-	if s.policyManager != nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(updated)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to update derived policy configuration", slog.Any("error", err))
-			} else {
-				log.Info("Derived policy configuration updated",
-					slog.String("policy_id", storedPolicy.ID),
-					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		} else {
-			// LLM proxy no longer has policies, remove the existing policy configuration
-			policyID := updated.ID + "-policies"
-			if err := s.policyManager.RemovePolicy(policyID); err != nil {
-				// Log at debug level since policy may not exist if LLM provider never had policies
-				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
-			} else {
-				log.Info("Derived policy configuration removed (LLM provider no longer has policies)",
-					slog.String("policy_id", policyID))
-			}
-		}
-	}
 }
 
 // DeleteLLMProxy implements ServerInterface.DeleteLLMProxy
@@ -1675,65 +1100,9 @@ func (s *APIServer) DeleteLLMProxy(c *gin.Context, id string) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
 		"message": "LLM proxy deleted successfully",
-		"id":      cfg.GetHandle(),
+		"id":      cfg.Handle,
 	})
 
-	// Remove derived policy configuration
-	if s.policyManager != nil {
-		policyID := cfg.ID + "-policies"
-		if err := s.policyManager.RemovePolicy(policyID); err != nil {
-			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
-		} else {
-			log.Info("Derived policy configuration removed", slog.String("policy_id", policyID))
-		}
-	}
-}
-
-// ListPolicies implements ServerInterface.ListPolicies
-// (GET /policies)
-func (s *APIServer) ListPolicies(c *gin.Context) {
-	// Collect and sort policies loaded from files at startup (excluding system policies)
-	s.policyDefMu.RLock()
-	list := make([]api.PolicyDefinition, 0, len(s.policyDefinitions))
-	for _, d := range s.policyDefinitions {
-		list = append(list, d)
-	}
-	s.policyDefMu.RUnlock()
-
-	sort.Slice(list, func(i, j int) bool {
-		if list[i].Name == list[j].Name {
-			return list[i].Version < list[j].Version
-		}
-		return list[i].Name < list[j].Name
-	})
-
-	count := len(list)
-	resp := struct {
-		Status   string                 `json:"status"`
-		Count    int                    `json:"count"`
-		Policies []api.PolicyDefinition `json:"policies"`
-	}{Status: "success", Count: count, Policies: list}
-	c.JSON(http.StatusOK, resp)
-}
-
-// buildStoredPolicyFromAPI constructs a StoredPolicyConfig from an API config.
-// This is a thread-safe wrapper around policybuilder.DerivePolicyFromAPIConfig that handles
-// locking for the policyDefinitions map.
-//
-// Policy execution order: System Policies -> API Level Policies -> Operation Level Policies
-// Each level does not override the previous one; policies are executed in the given order.
-func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.StoredPolicyConfig {
-	// Copy policy definitions under lock to ensure thread safety
-	// (safe if map is ever mutated from another goroutine)
-	s.policyDefMu.RLock()
-	defsCopy := make(map[string]api.PolicyDefinition, len(s.policyDefinitions))
-	for k, v := range s.policyDefinitions {
-		defsCopy[k] = v
-	}
-	s.policyDefMu.RUnlock()
-
-	// Use the centralized, bug-fixed implementation from pkg/policy
-	return policybuilder.DerivePolicyFromAPIConfig(cfg, s.routerConfig, s.systemConfig, defsCopy)
 }
 
 // convertAPIPolicy converts generated api.Policy to policyenginev1.PolicyInstance.
@@ -1781,10 +1150,11 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Deploy MCP configuration using the utility service
-	cfg, err := s.mcpDeploymentService.CreateMCPProxy(utils.MCPDeploymentParams{
+	result, err := s.mcpDeploymentService.CreateMCPProxy(utils.MCPDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
 		ID:            "", // Empty to generate new UUID
+		Origin:        models.OriginGatewayAPI,
 		CorrelationID: correlationID,
 		Logger:        log,
 	})
@@ -1805,31 +1175,24 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 		return
 	}
 
+	cfg := result.StoredConfig
+
 	// Return success response (id is the handle)
 	c.JSON(http.StatusCreated, api.MCPProxyCreateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("MCP proxy configuration created successfully"),
-		Id:        stringPtr(cfg.GetHandle()),
+		Id:        stringPtr(cfg.Handle),
 		CreatedAt: timePtr(cfg.CreatedAt),
 	})
 
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
-		go s.waitForDeploymentAndPush(cfg.ID, correlationID, log)
+	if result.IsStale {
+		return
 	}
 
-	// Build and add policy config derived from API configuration if policies are present
-	if s.policyManager != nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(cfg)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to add derived policy configuration", slog.Any("error", err))
-			} else {
-				log.Info("Derived policy configuration added",
-					slog.String("policy_id", storedPolicy.ID),
-					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		}
+	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
+		go s.waitForDeploymentAndPush(cfg.UUID, correlationID, log)
 	}
+
 }
 
 // ListMCPProxies implements ServerInterface.ListMCPProxies
@@ -1839,19 +1202,27 @@ func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesPara
 		s.SearchDeployments(c, string(api.Mcp))
 		return
 	}
-	configs := s.store.GetAllByKind(string(api.Mcp))
+	configs, err := s.mcpDeploymentService.ListMCPProxies()
+	if err != nil {
+		s.logger.Error("Failed to list MCP proxies", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to list MCP proxies",
+		})
+		return
+	}
 
 	items := make([]api.MCPProxyListItem, len(configs))
 	for i, cfg := range configs {
-		status := api.MCPProxyListItemStatus(cfg.Status)
+		status := api.MCPProxyListItemStatus(cfg.DesiredState)
 		// Convert SourceConfiguration to MCPProxyConfiguration
 		var mcp api.MCPProxyConfiguration
 		j, _ := json.Marshal(cfg.SourceConfiguration)
 		err := json.Unmarshal(j, &mcp)
 		if err != nil {
 			s.logger.Error("Failed to unmarshal stored MCP configuration",
-				slog.String("id", cfg.ID),
-				slog.String("displayName", cfg.GetDisplayName()))
+				slog.String("id", cfg.UUID),
+				slog.String("displayName", cfg.DisplayName))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "Failed to get stored MCP configuration",
@@ -1859,7 +1230,7 @@ func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesPara
 			return
 		}
 		li := api.MCPProxyListItem{
-			Id:          stringPtr(cfg.GetHandle()),
+			Id:          stringPtr(cfg.Handle),
 			DisplayName: stringPtr(mcp.Spec.DisplayName),
 			Version:     stringPtr(mcp.Spec.Version),
 			Status:      &status,
@@ -1931,10 +1302,10 @@ func (s *APIServer) GetMCPProxyById(c *gin.Context, id string) {
 	}
 
 	mcpDetail := gin.H{
-		"id":            cfg.GetHandle(),
+		"id":            cfg.Handle,
 		"configuration": cfg.SourceConfiguration,
 		"metadata": gin.H{
-			"status":    string(cfg.Status),
+			"status":    string(cfg.DesiredState),
 			"createdAt": cfg.CreatedAt.Format(time.RFC3339),
 			"updatedAt": cfg.UpdatedAt.Format(time.RFC3339),
 		},
@@ -1976,6 +1347,7 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 	updated, err := s.mcpDeploymentService.UpdateMCPProxy(handle, utils.MCPDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
+		Origin:        models.OriginGatewayAPI,
 		CorrelationID: correlationID,
 		Logger:        log,
 	}, log)
@@ -1991,38 +1363,14 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 	}
 
 	log.Info("MCP proxy configuration updated",
-		slog.String("id", updated.ID),
+		slog.String("id", updated.UUID),
 		slog.String("handle", handle))
-
-	// Rebuild and update derived policy configuration
-	if s.policyManager != nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(updated)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to update derived policy configuration", slog.Any("error", err))
-			} else {
-				log.Info("Derived policy configuration updated",
-					slog.String("policy_id", storedPolicy.ID),
-					slog.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		} else {
-			// MCP proxy no longer has policies, remove the existing policy configuration
-			policyID := updated.ID + "-policies"
-			if err := s.policyManager.RemovePolicy(policyID); err != nil {
-				// Log at debug level since policy may not exist if MCP proxy never had policies
-				log.Debug("No policy configuration to remove", slog.String("policy_id", policyID))
-			} else {
-				log.Info("Derived policy configuration removed (MCP proxy no longer has policies)",
-					slog.String("policy_id", policyID))
-			}
-		}
-	}
 
 	// Return success response (id is the handle)
 	c.JSON(http.StatusOK, api.MCPProxyUpdateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("MCP proxy configuration updated successfully"),
-		Id:        stringPtr(updated.GetHandle()),
+		Id:        stringPtr(updated.Handle),
 		UpdatedAt: timePtr(updated.UpdatedAt),
 	})
 }
@@ -2055,28 +1403,8 @@ func (s *APIServer) DeleteMCPProxy(c *gin.Context, id string) {
 		return
 	}
 
-	// Update xDS snapshot asynchronously
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
-			log.Error("Failed to update xDS snapshot", slog.Any("error", err))
-		}
-	}()
-
-	// Remove derived policy configuration
-	if s.policyManager != nil {
-		policyID := cfg.ID + "-policies"
-		if err := s.policyManager.RemovePolicy(policyID); err != nil {
-			log.Warn("Failed to remove derived policy configuration", slog.Any("error", err), slog.String("policy_id", policyID))
-		} else {
-			log.Info("Derived policy configuration removed", slog.String("policy_id", policyID))
-		}
-	}
-
 	log.Info("MCP proxy configuration deleted",
-		slog.String("id", cfg.ID),
+		slog.String("id", cfg.UUID),
 		slog.String("handle", handle))
 
 	c.JSON(http.StatusOK, gin.H{
@@ -2112,16 +1440,16 @@ func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID stri
 			if err != nil {
 				log.Warn("Config not found while waiting for deployment completion",
 					slog.String("config_id", configID))
-				return
+				continue
 			}
 
-			if cfg.Status == models.StatusDeployed {
+			if cfg.DeployedAt != nil {
 				log.Info("API deployed successfully, pushing to control plane",
 					slog.String("config_id", configID),
-					slog.String("displayName", cfg.GetDisplayName()))
+					slog.String("displayName", cfg.DisplayName))
 
 				apiID := configID
-				deploymentID := ""
+				deploymentID := cfg.DeploymentID
 
 				if err := s.controlPlaneClient.PushAPIDeployment(apiID, cfg, deploymentID); err != nil {
 					log.Error("Failed to push deployment to control plane",
@@ -2132,14 +1460,7 @@ func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID stri
 						slog.String("api_id", apiID))
 				}
 				return
-
-			} else if cfg.Status == models.StatusFailed {
-				log.Warn("API deployment failed, skipping control plane push",
-					slog.String("config_id", configID),
-					slog.String("displayName", cfg.GetDisplayName()))
-				return
 			}
-			// Continue waiting if status is still pending
 		}
 	}
 }
@@ -2178,25 +1499,21 @@ func (s *APIServer) BuildConfigDumpResponse(log *slog.Logger) (*adminapi.ConfigD
 
 	for _, cfg := range allConfigs {
 		// Use handle (metadata.name) as the id in the dump
-		configHandle := cfg.GetHandle()
+		configHandle := cfg.Handle
 		if configHandle == "" {
-			log.Warn("Config missing handle, skipping in dump", slog.String("id", cfg.ID))
+			log.Warn("Config missing handle, skipping in dump", slog.String("id", cfg.UUID))
 			continue
 		}
 
-		// Convert status to the correct type
+		// Convert desired state to the admin API status type
 		var status adminapi.ConfigDumpAPIMetadataStatus
-		switch cfg.Status {
-		case models.StatusDeployed:
+		switch cfg.DesiredState {
+		case models.StateDeployed:
 			status = adminapi.Deployed
-		case models.StatusFailed:
-			status = adminapi.Failed
-		case models.StatusPending:
-			status = adminapi.Pending
-		case models.StatusUndeployed:
+		case models.StateUndeployed:
 			status = adminapi.Undeployed
 		default:
-			status = adminapi.Pending
+			status = adminapi.Deployed
 		}
 
 		configuration, err := toGenericMap(cfg.Configuration)
@@ -2243,32 +1560,27 @@ func (s *APIServer) BuildConfigDumpResponse(log *slog.Logger) (*adminapi.ConfigD
 	})
 
 	// Get all certificates
-	var certificates []adminapi.CertificateResponse
+	certificates := make([]adminapi.CertificateResponse, 0)
 	totalBytes := 0
 
-	if s.db == nil {
-		// Memory-only mode: return empty certificate list
-		log.Debug("Storage is memory-only, returning empty certificate list")
-	} else {
-		certs, err := s.db.ListCertificates()
-		if err != nil {
-			return nil, fmt.Errorf("failed to retrieve certificates: %w", err)
-		}
+	certs, err := s.db.ListCertificates()
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve certificates: %w", err)
+	}
 
-		for _, cert := range certs {
-			totalBytes += len(cert.Certificate)
+	for _, cert := range certs {
+		totalBytes += len(cert.Certificate)
 
-			certStatus := "success"
-			certificates = append(certificates, adminapi.CertificateResponse{
-				Id:       &cert.ID,
-				Name:     &cert.Name,
-				Subject:  &cert.Subject,
-				Issuer:   &cert.Issuer,
-				NotAfter: &cert.NotAfter,
-				Count:    &cert.CertCount,
-				Status:   &certStatus,
-			})
-		}
+		certStatus := "success"
+		certificates = append(certificates, adminapi.CertificateResponse{
+			Id:       &cert.UUID,
+			Name:     &cert.Name,
+			Subject:  &cert.Subject,
+			Issuer:   &cert.Issuer,
+			NotAfter: &cert.NotAfter,
+			Count:    &cert.CertCount,
+			Status:   &certStatus,
+		})
 	}
 
 	// Calculate statistics
@@ -2349,6 +1661,7 @@ func (s *APIServer) CreateAPIKey(c *gin.Context, id string) {
 
 	// Prepare parameters
 	params := utils.APIKeyCreationParams{
+		Kind:          models.KindRestApi,
 		Handle:        handle,
 		Request:       request,
 		User:          user,
@@ -2477,17 +1790,18 @@ func (s *APIServer) UpdateAPIKey(c *gin.Context, id string, apiKeyName string) {
 		return
 	}
 
-	// If API key is not provided, return an error
-	if request.ApiKey == nil {
+	// If plain-text API key is not provided, return an error
+	if request.ApiKey == nil || strings.TrimSpace(*request.ApiKey) == "" {
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
-			Message: "API key value is required",
+			Message: "apiKey is required",
 		})
 		return
 	}
 
 	// Prepare parameters
 	params := utils.APIKeyUpdateParams{
+		Kind:          models.KindRestApi,
 		Handle:        handle,
 		APIKeyName:    apiKeyName,
 		Request:       request,
@@ -2654,6 +1968,1396 @@ func (s *APIServer) ListAPIKeys(c *gin.Context, id string) {
 	// Return the response using the generated schema
 	c.JSON(http.StatusOK, result.Response)
 }
+
+// CreateLLMProviderAPIKey implements ServerInterface.CreateLLMProviderAPIKey
+// (POST /llm-providers/{id}/api-keys)
+func (s *APIServer) CreateLLMProviderAPIKey(c *gin.Context, id string) {
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	user, ok := s.extractAuthenticatedUser(c, "CreateLLMProviderAPIKey", correlationID)
+	if !ok {
+		return
+	}
+
+	var request api.APIKeyCreationRequest
+	if err := s.bindRequestBody(c, &request); err != nil {
+		log.Error("Failed to parse request body for LLM provider API key creation",
+			slog.Any("error", err),
+			slog.String("handle", handle),
+			slog.String("correlation_id", correlationID))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		return
+	}
+
+	params := utils.APIKeyCreationParams{
+		Kind:          models.KindLlmProvider,
+		Handle:        handle,
+		Request:       request,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.CreateAPIKey(params)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
+			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusCreated, result.Response)
+}
+
+// RevokeLLMProviderAPIKey implements ServerInterface.RevokeLLMProviderAPIKey
+// (DELETE /llm-providers/{id}/api-keys/{apiKeyName})
+func (s *APIServer) RevokeLLMProviderAPIKey(c *gin.Context, id string, apiKeyName string) {
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	user, ok := s.extractAuthenticatedUser(c, "RevokeLLMProviderAPIKey", correlationID)
+	if !ok {
+		return
+	}
+
+	params := utils.APIKeyRevocationParams{
+		Kind:          models.KindLlmProvider,
+		Handle:        handle,
+		APIKeyName:    apiKeyName,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.RevokeAPIKey(params)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, result.Response)
+}
+
+// UpdateLLMProviderAPIKey implements ServerInterface.UpdateLLMProviderAPIKey
+// (PUT /llm-providers/{id}/api-keys/{apiKeyName})
+func (s *APIServer) UpdateLLMProviderAPIKey(c *gin.Context, id string, apiKeyName string) {
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	user, ok := s.extractAuthenticatedUser(c, "UpdateLLMProviderAPIKey", correlationID)
+	if !ok {
+		return
+	}
+
+	var request api.APIKeyCreationRequest
+	if err := s.bindRequestBody(c, &request); err != nil {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		return
+	}
+
+	if request.ApiKey == nil || strings.TrimSpace(*request.ApiKey) == "" {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "apiKey is required"})
+		return
+	}
+
+	params := utils.APIKeyUpdateParams{
+		Kind:          models.KindLlmProvider,
+		Handle:        handle,
+		APIKeyName:    apiKeyName,
+		Request:       request,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.UpdateAPIKey(params)
+	if err != nil {
+		if storage.IsOperationNotAllowedError(err) {
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
+			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, result.Response)
+}
+
+// RegenerateLLMProviderAPIKey implements ServerInterface.RegenerateLLMProviderAPIKey
+// (POST /llm-providers/{id}/api-keys/{apiKeyName}/regenerate)
+func (s *APIServer) RegenerateLLMProviderAPIKey(c *gin.Context, id string, apiKeyName string) {
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	user, ok := s.extractAuthenticatedUser(c, "RegenerateLLMProviderAPIKey", correlationID)
+	if !ok {
+		return
+	}
+
+	var request api.APIKeyRegenerationRequest
+	if err := s.bindRequestBody(c, &request); err != nil {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		return
+	}
+
+	params := utils.APIKeyRegenerationParams{
+		Kind:          models.KindLlmProvider,
+		Handle:        handle,
+		APIKeyName:    apiKeyName,
+		Request:       request,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.RegenerateAPIKey(params)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, result.Response)
+}
+
+// ListLLMProviderAPIKeys implements ServerInterface.ListLLMProviderAPIKeys
+// (GET /llm-providers/{id}/api-keys)
+func (s *APIServer) ListLLMProviderAPIKeys(c *gin.Context, id string) {
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	user, ok := s.extractAuthenticatedUser(c, "ListLLMProviderAPIKeys", correlationID)
+	if !ok {
+		return
+	}
+
+	params := utils.ListAPIKeyParams{
+		Kind:          models.KindLlmProvider,
+		Handle:        handle,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.ListAPIKeys(params)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, result.Response)
+}
+
+// CreateLLMProxyAPIKey implements ServerInterface.CreateLLMProxyAPIKey
+// (POST /llm-proxies/{id}/api-keys)
+func (s *APIServer) CreateLLMProxyAPIKey(c *gin.Context, id string) {
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	user, ok := s.extractAuthenticatedUser(c, "CreateLLMProxyAPIKey", correlationID)
+	if !ok {
+		return
+	}
+
+	var request api.APIKeyCreationRequest
+	if err := s.bindRequestBody(c, &request); err != nil {
+		log.Error("Failed to parse request body for LLM proxy API key creation",
+			slog.Any("error", err),
+			slog.String("handle", handle),
+			slog.String("correlation_id", correlationID))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		return
+	}
+
+	params := utils.APIKeyCreationParams{
+		Kind:          models.KindLlmProxy,
+		Handle:        handle,
+		Request:       request,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.CreateAPIKey(params)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
+			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusCreated, result.Response)
+}
+
+// RevokeLLMProxyAPIKey implements ServerInterface.RevokeLLMProxyAPIKey
+// (DELETE /llm-proxies/{id}/api-keys/{apiKeyName})
+func (s *APIServer) RevokeLLMProxyAPIKey(c *gin.Context, id string, apiKeyName string) {
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	user, ok := s.extractAuthenticatedUser(c, "RevokeLLMProxyAPIKey", correlationID)
+	if !ok {
+		return
+	}
+
+	params := utils.APIKeyRevocationParams{
+		Kind:          models.KindLlmProxy,
+		Handle:        handle,
+		APIKeyName:    apiKeyName,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.RevokeAPIKey(params)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, result.Response)
+}
+
+// UpdateLLMProxyAPIKey implements ServerInterface.UpdateLLMProxyAPIKey
+// (PUT /llm-proxies/{id}/api-keys/{apiKeyName})
+func (s *APIServer) UpdateLLMProxyAPIKey(c *gin.Context, id string, apiKeyName string) {
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	user, ok := s.extractAuthenticatedUser(c, "UpdateLLMProxyAPIKey", correlationID)
+	if !ok {
+		return
+	}
+
+	var request api.APIKeyCreationRequest
+	if err := s.bindRequestBody(c, &request); err != nil {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		return
+	}
+
+	if request.ApiKey == nil || strings.TrimSpace(*request.ApiKey) == "" {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "apiKey is required"})
+		return
+	}
+
+	params := utils.APIKeyUpdateParams{
+		Kind:          models.KindLlmProxy,
+		Handle:        handle,
+		APIKeyName:    apiKeyName,
+		Request:       request,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.UpdateAPIKey(params)
+	if err != nil {
+		if storage.IsOperationNotAllowedError(err) {
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
+			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, result.Response)
+}
+
+// RegenerateLLMProxyAPIKey implements ServerInterface.RegenerateLLMProxyAPIKey
+// (POST /llm-proxies/{id}/api-keys/{apiKeyName}/regenerate)
+func (s *APIServer) RegenerateLLMProxyAPIKey(c *gin.Context, id string, apiKeyName string) {
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	user, ok := s.extractAuthenticatedUser(c, "RegenerateLLMProxyAPIKey", correlationID)
+	if !ok {
+		return
+	}
+
+	var request api.APIKeyRegenerationRequest
+	if err := s.bindRequestBody(c, &request); err != nil {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		return
+	}
+
+	params := utils.APIKeyRegenerationParams{
+		Kind:          models.KindLlmProxy,
+		Handle:        handle,
+		APIKeyName:    apiKeyName,
+		Request:       request,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.RegenerateAPIKey(params)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, result.Response)
+}
+
+// ListLLMProxyAPIKeys implements ServerInterface.ListLLMProxyAPIKeys
+// (GET /llm-proxies/{id}/api-keys)
+func (s *APIServer) ListLLMProxyAPIKeys(c *gin.Context, id string) {
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	user, ok := s.extractAuthenticatedUser(c, "ListLLMProxyAPIKeys", correlationID)
+	if !ok {
+		return
+	}
+
+	params := utils.ListAPIKeyParams{
+		Kind:          models.KindLlmProxy,
+		Handle:        handle,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.ListAPIKeys(params)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, result.Response)
+}
+
+// resolveAPIIDByHandle resolves an API identifier (deployment ID or handle) to the internal deployment ID.
+// It first attempts a direct ID lookup; if that fails, it falls back to handle-based resolution.
+// Returns (apiID, nil) on success; on failure writes the HTTP response and returns ("", err).
+func (s *APIServer) resolveAPIIDByHandle(c *gin.Context, handle string, log *slog.Logger) (string, error) {
+	// First, try treating the input as a deployment ID.
+	cfgByID, err := s.db.GetConfig(handle)
+	if err != nil {
+		if !storage.IsNotFoundError(err) {
+			log.Error("Failed to look up API configuration by ID",
+				slog.String("id", handle),
+				slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to resolve API identifier",
+			})
+			return "", fmt.Errorf("database error")
+		}
+	} else if cfgByID != nil {
+		if cfgByID.Kind != string(api.RestApi) {
+			log.Warn("Configuration is not a REST API",
+				slog.String("id", handle),
+				slog.String("kind", cfgByID.Kind))
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("Configuration with identifier '%s' is not a REST API", handle),
+			})
+			return "", fmt.Errorf("invalid api kind")
+		}
+		return cfgByID.UUID, nil
+	}
+
+	// Fallback: resolve by handle (metadata.name)
+	cfg, err := s.db.GetConfigByKindAndHandle(models.KindRestApi, handle)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			log.Warn("API configuration not found", slog.String("handle_or_id", handle))
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("RestAPI with identifier '%s' not found", handle),
+			})
+			return "", fmt.Errorf("api not found")
+		}
+		log.Error("Failed to look up API configuration by handle",
+			slog.String("handle", handle),
+			slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to resolve API identifier",
+		})
+		return "", fmt.Errorf("database error")
+	}
+	if cfg == nil {
+		log.Warn("API configuration not found", slog.String("handle_or_id", handle))
+		c.JSON(http.StatusNotFound, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("RestAPI with identifier '%s' not found", handle),
+		})
+		return "", fmt.Errorf("api not found")
+	}
+	return cfg.UUID, nil
+}
+
+// CreateSubscription implements ServerInterface.CreateSubscription (POST /subscriptions)
+func (s *APIServer) CreateSubscription(c *gin.Context) {
+	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
+	if correlationID != "" {
+		log = log.With(slog.String("correlation_id", correlationID))
+	}
+
+	var req api.SubscriptionCreateRequest
+	if err := s.bindRequestBody(c, &req); err != nil {
+		log.Warn("Invalid subscription create body", slog.Any("error", err))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "Invalid request body"})
+		return
+	}
+	if strings.TrimSpace(req.ApiId) == "" {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "apiId is required"})
+		return
+	}
+	if strings.TrimSpace(req.SubscriptionToken) == "" {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "subscriptionToken is required"})
+		return
+	}
+
+	// Resolve apiId (deployment ID or handle) to the internal deployment ID used for persistence.
+	apiID, err := s.resolveAPIIDByHandle(c, req.ApiId, log)
+	if err != nil {
+		// resolveAPIIDByHandle already wrote the appropriate response.
+		return
+	}
+
+	// Validate subscription plan when provided: must exist, be ACTIVE, and be enabled for this API.
+	if req.SubscriptionPlanId != nil && *req.SubscriptionPlanId != "" {
+		plan, err := s.db.GetSubscriptionPlanByID(*req.SubscriptionPlanId, "")
+		if err != nil || plan == nil {
+			log.Warn("Subscription plan not found for subscription creation",
+				slog.String("subscription_plan_id", *req.SubscriptionPlanId),
+				slog.String("api_id", apiID))
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: "Subscription plan not found or not enabled",
+			})
+			return
+		}
+		if plan.Status != models.SubscriptionPlanStatusActive {
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: "Subscription plan is not active",
+			})
+			return
+		}
+		cfg, err := s.db.GetConfig(apiID)
+		if err != nil || cfg == nil {
+			log.Error("Failed to load API configuration for subscription plan validation",
+				slog.String("api_id", apiID), slog.Any("error", err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to validate subscription plan",
+			})
+			return
+		}
+		if cfg.Kind == string(api.RestApi) {
+			if restAPI, ok := cfg.Configuration.(api.RestAPI); ok {
+				if restAPI.Spec.SubscriptionPlans != nil && len(*restAPI.Spec.SubscriptionPlans) > 0 {
+					enabled := false
+					for _, name := range *restAPI.Spec.SubscriptionPlans {
+						if strings.EqualFold(name, plan.PlanName) {
+							enabled = true
+							break
+						}
+					}
+					if !enabled {
+						c.JSON(http.StatusBadRequest, api.ErrorResponse{
+							Status:  "error",
+							Message: fmt.Sprintf("Subscription plan %q is not enabled for this API", plan.PlanName),
+						})
+						return
+					}
+				}
+			}
+		}
+	}
+
+	status := models.SubscriptionStatusActive
+	if req.Status != nil {
+		st := models.SubscriptionStatus(*req.Status)
+		switch st {
+		case models.SubscriptionStatusActive,
+			models.SubscriptionStatusInactive,
+			models.SubscriptionStatusRevoked:
+			status = st
+		default:
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("invalid status: %s", *req.Status),
+			})
+			return
+		}
+	}
+	var appID *string
+	if req.ApplicationId != nil && *req.ApplicationId != "" {
+		appID = req.ApplicationId
+	}
+	sub := &models.Subscription{
+		ID:                 uuid.New().String(),
+		APIID:              apiID,
+		ApplicationID:      appID,
+		SubscriptionPlanID: req.SubscriptionPlanId,
+		Status:             status,
+		SubscriptionToken:  strings.TrimSpace(req.SubscriptionToken),
+	}
+	if err := s.getSubscriptionResourceService().SaveSubscription(sub, correlationID, log); err != nil {
+		if storage.IsConflictError(err) {
+			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: "Application already subscribed to this API"})
+			return
+		}
+		log.Error("Failed to save subscription", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to create subscription"})
+		return
+	}
+	resp := subscriptionToResponseWithToken(sub)
+	c.JSON(http.StatusCreated, resp)
+}
+
+// ListSubscriptions implements ServerInterface.ListSubscriptions (GET /subscriptions)
+func (s *APIServer) ListSubscriptions(c *gin.Context, params api.ListSubscriptionsParams) {
+	log := middleware.GetLogger(c, s.logger)
+
+	var apiID, appID, status *string
+	if params.ApiId != nil && *params.ApiId != "" {
+		// Normalize apiId to the internal deployment ID (accepts handle or deployment ID).
+		resolvedID, err := s.resolveAPIIDByHandle(c, *params.ApiId, log)
+		if err != nil {
+			// resolveAPIIDByHandle already wrote the response.
+			return
+		}
+		apiIDCopy := resolvedID
+		apiID = &apiIDCopy
+	}
+	if params.ApplicationId != nil && *params.ApplicationId != "" {
+		appID = params.ApplicationId
+	}
+	if params.Status != nil && *params.Status != "" {
+		st := string(*params.Status)
+		status = &st
+	}
+	// apiId is an optional filter. When omitted, all subscriptions for this gateway are returned
+	// (optionally filtered by applicationId and/or status).
+	apiIDValue := ""
+	if apiID != nil {
+		apiIDValue = *apiID
+	}
+	list, err := s.db.ListSubscriptionsByAPI(apiIDValue, "", appID, status)
+	if err != nil {
+		log.Error("Failed to list subscriptions", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to list subscriptions"})
+		return
+	}
+	out := make([]api.SubscriptionResponse, 0, len(list))
+	for _, sub := range list {
+		out = append(out, subscriptionToResponse(sub))
+	}
+	c.JSON(http.StatusOK, api.SubscriptionListResponse{
+		Subscriptions: &out,
+		Count:         ptr(int(len(list))),
+	})
+}
+
+// GetSubscription implements ServerInterface.GetSubscription (GET /subscriptions/{subscriptionId})
+func (s *APIServer) GetSubscription(c *gin.Context, subscriptionId string) {
+	log := middleware.GetLogger(c, s.logger)
+
+	sub, err := s.db.GetSubscriptionByID(subscriptionId, "")
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
+			return
+		}
+		log.Error("Failed to get subscription", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to get subscription"})
+		return
+	}
+	if sub == nil {
+		c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
+		return
+	}
+	c.JSON(http.StatusOK, subscriptionToResponse(sub))
+}
+
+// UpdateSubscription implements ServerInterface.UpdateSubscription (PUT /subscriptions/{subscriptionId})
+func (s *APIServer) UpdateSubscription(c *gin.Context, subscriptionId string) {
+	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
+	if correlationID != "" {
+		log = log.With(slog.String("correlation_id", correlationID))
+	}
+
+	sub, err := s.db.GetSubscriptionByID(subscriptionId, "")
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
+			return
+		}
+		log.Error("Failed to get subscription for update", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to get subscription"})
+		return
+	}
+	if sub == nil {
+		c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
+		return
+	}
+	var req api.SubscriptionUpdateRequest
+	if err := s.bindRequestBody(c, &req); err != nil {
+		log.Warn("Invalid subscription update body", slog.Any("error", err))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "Invalid request body"})
+		return
+	}
+	if req.Status != nil {
+		st := models.SubscriptionStatus(*req.Status)
+		switch st {
+		case models.SubscriptionStatusActive,
+			models.SubscriptionStatusInactive,
+			models.SubscriptionStatusRevoked:
+			sub.Status = st
+		default:
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("invalid status: %s", *req.Status),
+			})
+			return
+		}
+	}
+	if err := s.getSubscriptionResourceService().UpdateSubscription(sub, correlationID, log); err != nil {
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
+			return
+		}
+		log.Error("Failed to update subscription", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to update subscription"})
+		return
+	}
+	c.JSON(http.StatusOK, subscriptionToResponse(sub))
+}
+
+// DeleteSubscription implements ServerInterface.DeleteSubscription (DELETE /subscriptions/{subscriptionId})
+func (s *APIServer) DeleteSubscription(c *gin.Context, subscriptionId string) {
+	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
+	if correlationID != "" {
+		log = log.With(slog.String("correlation_id", correlationID))
+	}
+
+	sub, err := s.db.GetSubscriptionByID(subscriptionId, "")
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
+			return
+		}
+		log.Error("Failed to get subscription for deletion", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to get subscription"})
+		return
+	}
+	if sub == nil {
+		c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
+		return
+	}
+	if err := s.getSubscriptionResourceService().DeleteSubscription(subscriptionId, correlationID, log); err != nil {
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription not found"})
+			return
+		}
+		log.Error("Failed to delete subscription", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to delete subscription"})
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// ========================================
+// Subscription Plan Handlers
+// ========================================
+
+// validateThrottleLimits ensures throttleLimitCount and throttleLimitUnit are provided together,
+// count is positive, and unit is one of Day, Hour, Min, Month.
+func validateThrottleLimits(count *int, unit *string) error {
+	countProvided := count != nil
+	unitProvided := unit != nil && *unit != ""
+	if countProvided != unitProvided {
+		return fmt.Errorf("throttleLimitCount and throttleLimitUnit must be provided together")
+	}
+	if !countProvided {
+		return nil
+	}
+	if *count <= 0 {
+		return fmt.Errorf("throttleLimitCount must be positive")
+	}
+	switch *unit {
+	case "Day", "Hour", "Min", "Month":
+		return nil
+	default:
+		return fmt.Errorf("throttleLimitUnit must be one of: Day, Hour, Min, Month")
+	}
+}
+
+// CreateSubscriptionPlan implements ServerInterface.CreateSubscriptionPlan (POST /subscription-plans)
+func (s *APIServer) CreateSubscriptionPlan(c *gin.Context) {
+	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
+	if correlationID != "" {
+		log = log.With(slog.String("correlation_id", correlationID))
+	}
+
+	var req api.SubscriptionPlanCreateRequest
+	if err := s.bindRequestBody(c, &req); err != nil {
+		log.Warn("Invalid subscription plan create body", slog.Any("error", err))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "Invalid request body"})
+		return
+	}
+	planName := strings.TrimSpace(req.PlanName)
+	if planName == "" {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "planName is required"})
+		return
+	}
+
+	var unitStr *string
+	if req.ThrottleLimitUnit != nil {
+		s := string(*req.ThrottleLimitUnit)
+		unitStr = &s
+	}
+	if err := validateThrottleLimits(req.ThrottleLimitCount, unitStr); err != nil {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+		return
+	}
+
+	status := models.SubscriptionPlanStatusActive
+	if req.Status != nil {
+		st := models.SubscriptionPlanStatus(*req.Status)
+		switch st {
+		case models.SubscriptionPlanStatusActive, models.SubscriptionPlanStatusInactive:
+			status = st
+		default:
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("invalid status: %s", *req.Status)})
+			return
+		}
+	}
+
+	plan := &models.SubscriptionPlan{
+		ID:               uuid.New().String(),
+		PlanName:         planName,
+		StopOnQuotaReach: true,
+		Status:           status,
+	}
+	if req.BillingPlan != nil {
+		plan.BillingPlan = req.BillingPlan
+	}
+	if req.StopOnQuotaReach != nil {
+		plan.StopOnQuotaReach = *req.StopOnQuotaReach
+	}
+	if req.ThrottleLimitCount != nil && req.ThrottleLimitUnit != nil {
+		s := string(*req.ThrottleLimitUnit)
+		plan.ThrottleLimitCount = req.ThrottleLimitCount
+		plan.ThrottleLimitUnit = &s
+	}
+	if req.ExpiryTime != nil {
+		plan.ExpiryTime = req.ExpiryTime
+	}
+
+	if err := s.getSubscriptionResourceService().SaveSubscriptionPlan(plan, correlationID, log); err != nil {
+		if storage.IsConflictError(err) {
+			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: "Subscription plan already exists"})
+			return
+		}
+		log.Error("Failed to save subscription plan", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to create subscription plan"})
+		return
+	}
+	c.JSON(http.StatusCreated, subscriptionPlanToResponse(plan))
+}
+
+// ListSubscriptionPlans implements ServerInterface.ListSubscriptionPlans (GET /subscription-plans)
+func (s *APIServer) ListSubscriptionPlans(c *gin.Context) {
+	log := middleware.GetLogger(c, s.logger)
+
+	list, err := s.db.ListSubscriptionPlans("")
+	if err != nil {
+		log.Error("Failed to list subscription plans", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to list subscription plans"})
+		return
+	}
+	items := make([]api.SubscriptionPlanResponse, 0, len(list))
+	for _, p := range list {
+		items = append(items, subscriptionPlanToResponse(p))
+	}
+	count := len(items)
+	c.JSON(http.StatusOK, api.SubscriptionPlanListResponse{SubscriptionPlans: &items, Count: &count})
+}
+
+// GetSubscriptionPlan implements ServerInterface.GetSubscriptionPlan (GET /subscription-plans/{planId})
+func (s *APIServer) GetSubscriptionPlan(c *gin.Context, planId string) {
+	log := middleware.GetLogger(c, s.logger)
+
+	plan, err := s.db.GetSubscriptionPlanByID(planId, "")
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
+			return
+		}
+		log.Error("Failed to get subscription plan", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to get subscription plan"})
+		return
+	}
+	if plan == nil {
+		c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
+		return
+	}
+	c.JSON(http.StatusOK, subscriptionPlanToResponse(plan))
+}
+
+// UpdateSubscriptionPlan implements ServerInterface.UpdateSubscriptionPlan (PUT /subscription-plans/{planId})
+func (s *APIServer) UpdateSubscriptionPlan(c *gin.Context, planId string) {
+	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
+	if correlationID != "" {
+		log = log.With(slog.String("correlation_id", correlationID))
+	}
+
+	existing, err := s.db.GetSubscriptionPlanByID(planId, "")
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
+			return
+		}
+		log.Error("Failed to get subscription plan for update", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to get subscription plan"})
+		return
+	}
+	if existing == nil {
+		c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
+		return
+	}
+
+	var req api.SubscriptionPlanUpdateRequest
+	if err := s.bindRequestBody(c, &req); err != nil {
+		log.Warn("Invalid subscription plan update body", slog.Any("error", err))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "Invalid request body"})
+		return
+	}
+
+	var unitStr *string
+	if req.ThrottleLimitUnit != nil {
+		s := string(*req.ThrottleLimitUnit)
+		unitStr = &s
+	}
+	if err := validateThrottleLimits(req.ThrottleLimitCount, unitStr); err != nil {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+		return
+	}
+
+	if req.PlanName != nil {
+		trimmed := strings.TrimSpace(*req.PlanName)
+		if trimmed == "" {
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "planName cannot be empty"})
+			return
+		}
+		existing.PlanName = trimmed
+	}
+	if req.BillingPlan != nil {
+		existing.BillingPlan = req.BillingPlan
+	}
+	if req.StopOnQuotaReach != nil {
+		existing.StopOnQuotaReach = *req.StopOnQuotaReach
+	}
+	if req.ThrottleLimitCount != nil && req.ThrottleLimitUnit != nil {
+		s := string(*req.ThrottleLimitUnit)
+		existing.ThrottleLimitCount = req.ThrottleLimitCount
+		existing.ThrottleLimitUnit = &s
+	}
+	if req.ExpiryTime != nil {
+		existing.ExpiryTime = req.ExpiryTime
+	}
+	if req.Status != nil {
+		st := models.SubscriptionPlanStatus(*req.Status)
+		switch st {
+		case models.SubscriptionPlanStatusActive, models.SubscriptionPlanStatusInactive:
+			existing.Status = st
+		default:
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("invalid status: %s", *req.Status)})
+			return
+		}
+	}
+
+	if err := s.getSubscriptionResourceService().UpdateSubscriptionPlan(existing, correlationID, log); err != nil {
+		log.Error("Failed to update subscription plan", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to update subscription plan"})
+		return
+	}
+	c.JSON(http.StatusOK, subscriptionPlanToResponse(existing))
+}
+
+// DeleteSubscriptionPlan implements ServerInterface.DeleteSubscriptionPlan (DELETE /subscription-plans/{planId})
+func (s *APIServer) DeleteSubscriptionPlan(c *gin.Context, planId string) {
+	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
+	if correlationID != "" {
+		log = log.With(slog.String("correlation_id", correlationID))
+	}
+
+	if err := s.getSubscriptionResourceService().DeleteSubscriptionPlan(planId, correlationID, log); err != nil {
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: "Subscription plan not found"})
+			return
+		}
+		log.Error("Failed to delete subscription plan", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to delete subscription plan"})
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// CreateSecret handles POST /secrets
+func (s *APIServer) CreateSecret(c *gin.Context) {
+	log := middleware.GetLogger(c, s.logger)
+
+	// Read request body
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		log.Error("Failed to read request body", slog.Any("error", err))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to read request body",
+		})
+		return
+	}
+
+	// Get correlation ID from context
+	correlationID := middleware.GetCorrelationID(c)
+
+	// Avoid secretService nil panic
+	if s.secretService == nil {
+		log.Error("Secret service is not initialized properly")
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
+			Message: "Secret service is not initialized properly"})
+		return
+	}
+
+	// Delegate to service which parses/validates/encrypt and persists
+	secret, err := s.secretService.CreateSecret(secrets.SecretParams{
+		Data:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Logger:        log,
+	})
+	if err != nil {
+		log.Error("Failed to encrypt Secret", slog.Any("error", err))
+		if storage.IsConflictError(err) {
+			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	log.Info("Secret created successfully",
+		slog.String("secret_handle", secret.Handle),
+		slog.String("correlation_id", correlationID))
+
+	// Return created secret
+	c.JSON(http.StatusCreated, gin.H{
+		"id":        secret.Handle,
+		"createdAt": secret.CreatedAt,
+		"updatedAt": secret.UpdatedAt,
+	})
+}
+
+// ListSecrets implements ServerInterface.ListSecrets
+// (GET /secrets)
+func (s *APIServer) ListSecrets(c *gin.Context) {
+	log := s.logger
+	correlationID := middleware.GetCorrelationID(c)
+
+	log.Debug("Retrieving secretsList", slog.String("correlation_id", correlationID))
+
+	// Avoid secretService nil panic
+	if s.secretService == nil {
+		log.Error("Secret service is not initialized properly")
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
+			Message: "Secret service is not initialized properly"})
+		return
+	}
+
+	secretsMeta, err := s.secretService.GetSecrets(correlationID)
+	if err != nil {
+		log.Error("Failed to retrieve secretsList",
+			slog.String("correlation_id", correlationID),
+			slog.Any("error", err),
+		)
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to retrieve secretsList",
+		})
+		return
+	}
+
+	// Convert []SecretMeta to API response type
+	secretsList := make([]struct {
+		CreatedAt   time.Time `json:"createdAt" yaml:"createdAt"`
+		DisplayName string    `json:"displayName" yaml:"displayName"`
+		Id          string    `json:"id" yaml:"id"`
+		UpdatedAt   time.Time `json:"updatedAt" yaml:"updatedAt"`
+	}, 0, len(secretsMeta))
+	for _, meta := range secretsMeta {
+		secretsList = append(secretsList, struct {
+			CreatedAt   time.Time `json:"createdAt" yaml:"createdAt"`
+			DisplayName string    `json:"displayName" yaml:"displayName"`
+			Id          string    `json:"id" yaml:"id"`
+			UpdatedAt   time.Time `json:"updatedAt" yaml:"updatedAt"`
+		}{
+			CreatedAt:   meta.CreatedAt,
+			DisplayName: meta.DisplayName,
+			Id:          meta.Handle,
+			UpdatedAt:   meta.UpdatedAt,
+		})
+	}
+
+	c.JSON(http.StatusOK, api.SecretListResponse{
+		Status:     stringPtr("success"),
+		TotalCount: intPtr(len(secretsList)),
+		Secrets:    &secretsList,
+	})
+}
+
+// GetSecret handles GET /secrets/{id}
+func (s *APIServer) GetSecret(c *gin.Context, id string) {
+	log := s.logger
+	correlationID := middleware.GetCorrelationID(c)
+
+	log.Debug("Retrieving secret",
+		slog.String("secret_handle", id),
+		slog.String("correlation_id", correlationID))
+
+	// Validate secret ID format
+	if id == "" {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Missing required field: id",
+		})
+		return
+	}
+	if len(id) > 255 {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Secret ID too long (max 255 characters)",
+		})
+		return
+	}
+
+	// Avoid secretService nil panic
+	if s.secretService == nil {
+		log.Error("Secret service is not initialized properly")
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
+			Message: "Secret service is not initialized properly"})
+		return
+	}
+
+	// Retrieve secret
+	secret, err := s.secretService.Get(id, correlationID)
+	if err != nil {
+		// Check for not found error
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+			return
+		}
+
+		// Generic error for decryption failures (security-first)
+		log.Error("Failed to retrieve secret",
+			slog.String("secret_handle", id),
+			slog.String("correlation_id", correlationID),
+			slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to decrypt secret",
+		})
+		return
+	}
+
+	log.Debug("Secret retrieved successfully",
+		slog.String("secret_handle", secret.Handle),
+		slog.String("correlation_id", correlationID))
+
+	// Reconstruct the SecretConfiguration from stored fields
+	configuration := api.SecretConfiguration{
+		ApiVersion: api.SecretConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.Secret,
+		Metadata: api.Metadata{
+			Name: secret.Handle,
+		},
+		Spec: api.SecretConfigData{
+			DisplayName: secret.DisplayName,
+			Description: secret.Description,
+			Value:       secret.Value,
+		},
+	}
+
+	// Return full secret detail
+	c.JSON(http.StatusOK, gin.H{
+		"status": "success",
+		"secret": gin.H{
+			"id":            secret.Handle,
+			"configuration": configuration,
+			"metadata": gin.H{
+				"createdAt": secret.CreatedAt.Format(time.RFC3339),
+				"updatedAt": secret.UpdatedAt.Format(time.RFC3339),
+			},
+		},
+	})
+}
+
+// UpdateSecret handles PUT /secrets/{id}
+func (s *APIServer) UpdateSecret(c *gin.Context, id string) {
+	log := middleware.GetLogger(c, s.logger)
+
+	// Read request body
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		log.Error("Failed to read request body", slog.Any("error", err))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to read request body",
+		})
+		return
+	}
+
+	// Get correlation ID from context
+	correlationID := middleware.GetCorrelationID(c)
+
+	// Validate secret ID format
+	if id == "" {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Missing required field: id",
+		})
+		return
+	}
+	if len(id) > 255 {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Secret ID too long (max 255 characters)",
+		})
+		return
+	}
+
+	// Avoid secretService nil panic
+	if s.secretService == nil {
+		log.Error("Secret service is not initialized properly")
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
+			Message: "Secret service is not initialized properly"})
+		return
+	}
+
+	// Delegate to service which parses/validates/encrypt and persists
+	secret, err := s.secretService.UpdateSecret(id, secrets.SecretParams{
+		Data:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Logger:        log,
+	})
+	if err != nil {
+		log.Error("Failed to encrypt Secret", slog.Any("error", err))
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else if storage.IsConflictError(err) {
+			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+		} else {
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+		}
+		return
+	}
+
+	log.Info("Secret updated successfully",
+		slog.String("secret_handle", secret.Handle),
+		slog.String("correlation_id", correlationID))
+
+	// Return created secret
+	c.JSON(http.StatusOK, gin.H{
+		"id":        secret.Handle,
+		"createdAt": secret.CreatedAt,
+		"updatedAt": secret.UpdatedAt,
+	})
+}
+
+// DeleteSecret handles DELETE /secrets/{id}
+func (s *APIServer) DeleteSecret(c *gin.Context, id string) {
+	log := s.logger
+	correlationID := middleware.GetCorrelationID(c)
+
+	log.Debug("Deleting secret",
+		slog.String("secret_id", id),
+		slog.String("correlation_id", correlationID))
+
+	// Validate secret ID format
+	if id == "" {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Missing required field: id",
+		})
+		return
+	}
+	if len(id) > 255 {
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Secret ID too long (max 255 characters)",
+		})
+		return
+	}
+
+	// Avoid secretService nil panic
+	if s.secretService == nil {
+		log.Error("Secret service is not initialized properly")
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
+			Message: "Secret service is not initialized properly"})
+		return
+	}
+
+	// Delete secret
+	if err := s.secretService.Delete(id, correlationID); err != nil {
+		// Check for not found error
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+			return
+		}
+
+		// Generic error for storage failures
+		log.Error("Failed to delete secret",
+			slog.String("secret_id", id),
+			slog.String("correlation_id", correlationID),
+			slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to delete secret",
+		})
+		return
+	}
+
+	log.Info("Secret deleted successfully",
+		slog.String("secret_id", id),
+		slog.String("correlation_id", correlationID))
+
+	// Return 200 OK on successful deletion
+	c.Status(http.StatusOK)
+}
+
+func subscriptionPlanToResponse(plan *models.SubscriptionPlan) api.SubscriptionPlanResponse {
+	resp := api.SubscriptionPlanResponse{
+		Id:               ptr(plan.ID),
+		PlanName:         ptr(plan.PlanName),
+		GatewayId:        ptr(plan.GatewayID),
+		StopOnQuotaReach: ptr(plan.StopOnQuotaReach),
+		CreatedAt:        &plan.CreatedAt,
+		UpdatedAt:        &plan.UpdatedAt,
+	}
+	if plan.BillingPlan != nil && *plan.BillingPlan != "" {
+		resp.BillingPlan = plan.BillingPlan
+	}
+	if plan.ThrottleLimitCount != nil {
+		resp.ThrottleLimitCount = plan.ThrottleLimitCount
+	}
+	if plan.ThrottleLimitUnit != nil && *plan.ThrottleLimitUnit != "" {
+		resp.ThrottleLimitUnit = plan.ThrottleLimitUnit
+	}
+	if plan.ExpiryTime != nil {
+		resp.ExpiryTime = plan.ExpiryTime
+	}
+	if plan.Status != "" {
+		st := api.SubscriptionPlanResponseStatus(plan.Status)
+		resp.Status = &st
+	}
+	return resp
+}
+
+// subscriptionToResponse builds a response without the subscription token.
+// DB reads only have subscription_token_hash; token is never stored. Token is returned only at creation via subscriptionToResponseWithToken.
+func subscriptionToResponse(sub *models.Subscription) api.SubscriptionResponse {
+	resp := api.SubscriptionResponse{
+		Id:                ptr(sub.ID),
+		ApiId:             ptr(sub.APIID),
+		GatewayId:         ptr(sub.GatewayID),
+		CreatedAt:         &sub.CreatedAt,
+		UpdatedAt:         &sub.UpdatedAt,
+		SubscriptionToken: nil, // Explicitly omit; gateway does not store token, use Platform-API to retrieve
+	}
+	if sub.ApplicationID != nil {
+		resp.ApplicationId = sub.ApplicationID
+	}
+	if sub.SubscriptionPlanID != nil {
+		resp.SubscriptionPlanId = sub.SubscriptionPlanID
+	}
+	if sub.Status != "" {
+		st := api.SubscriptionResponseStatus(sub.Status)
+		resp.Status = &st
+	}
+	return resp
+}
+
+// subscriptionToResponseWithToken adds the token to the response (create flow only).
+// Call only when sub has the raw token from creation, never from DB reads.
+func subscriptionToResponseWithToken(sub *models.Subscription) api.SubscriptionResponse {
+	resp := subscriptionToResponse(sub)
+	if sub.SubscriptionToken != "" {
+		resp.SubscriptionToken = ptr(sub.SubscriptionToken)
+	}
+	return resp
+}
+
+func ptr[T any](v T) *T { return &v }
 
 // extractAuthenticatedUser extracts and validates the authenticated user from Gin context
 // Returns the AuthenticatedUser object and handles error responses automatically

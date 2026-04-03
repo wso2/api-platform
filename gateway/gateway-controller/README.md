@@ -286,7 +286,7 @@ Response:
 #### Create API Configuration
 
 ```bash
-POST /apis
+POST /rest-apis
 Content-Type: application/yaml
 
 version: api-platform.wso2.com/v1
@@ -315,24 +315,24 @@ Response:
 #### List All APIs
 
 ```bash
-GET /apis
+GET /rest-apis
 ```
 
 #### Get API by Name and Version
 
 ```bash
-GET /apis/{name}/{version}
+GET /rest-apis/{name}/{version}
 ```
 
 Example:
 ```bash
-GET /apis/Weather%20API/v1.0
+GET /rest-apis/Weather%20API/v1.0
 ```
 
 #### Update API
 
 ```bash
-PUT /apis/{name}/{version}
+PUT /rest-apis/{name}/{version}
 Content-Type: application/yaml
 
 <updated configuration>
@@ -340,7 +340,7 @@ Content-Type: application/yaml
 
 Example:
 ```bash
-PUT /apis/Weather%20API/v1.0
+PUT /rest-apis/Weather%20API/v1.0
 Content-Type: application/yaml
 
 version: api-platform.wso2.com/v1
@@ -359,12 +359,12 @@ data:
 #### Delete API
 
 ```bash
-DELETE /apis/{name}/{version}
+DELETE /rest-apis/{name}/{version}
 ```
 
 Example:
 ```bash
-DELETE /apis/Weather%20API/v1.0
+DELETE /rest-apis/Weather%20API/v1.0
 ```
 
 ## Data Storage
@@ -538,7 +538,8 @@ gateway-controller/
 │   └── logger/
 │       └── logger.go         # Zap logger setup
 ├── api/
-│   └── openapi.yaml          # OpenAPI 3.0 specification
+│   ├── management-openapi.yaml  # OpenAPI 3.0 spec — management API (deploy/manage APIs)
+│   └── admin-openapi.yaml       # OpenAPI 3.0 spec — admin API (health/debug/xDS status)
 ├── config/
 │   ├── config.yaml           # Default configuration
 │   └── config-memory-only.yaml  # Memory-only example

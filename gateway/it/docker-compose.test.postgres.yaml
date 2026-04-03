@@ -23,6 +23,34 @@
 # NOTE: gateway-controller and gateway-runtime are duplicated in docker-compose.test.yaml — keep in sync.
 
 services:
+  # Mock platform-api for subscription-validation IT (mimics platform-api WebSocket events)
+  mock-platform-api:
+    container_name: it-mock-platform-api
+    image: ghcr.io/wso2/api-platform/mock-platform-api:test
+    build:
+      context: ../../tests/mock-servers/mock-platform-api
+      dockerfile: Dockerfile
+    ports:
+      - "9243:9243"   # HTTPS/WebSocket (gateway connects)
+      - "9244:9244"   # HTTP inject endpoint (IT triggers subscription.created)
+    environment:
+      - DB_TYPE=postgres
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=gateway_test
+      - DB_USER=gateway
+      - DB_PASSWORD=gateway
+      - DB_SSLMODE=disable
+      - TLS_CERT=/app/certs/default-listener.crt
+      - TLS_KEY=/app/certs/default-listener.key
+    volumes:
+      - ../gateway-controller/listener-certs:/app/certs:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - it-gateway-runtime-network
+
   postgres:
     container_name: it-postgres
     image: postgres:16-alpine
@@ -62,8 +90,13 @@ services:
       - APIP_GW_CONTROLLER_STORAGE_POSTGRES_SSLMODE=disable
       - APIP_GW_CONTROLLER_LOGGING_LEVEL=debug
       - GOCOVERDIR=/coverage
+      # Control plane (mock-platform-api) for subscription event propagation
+      - APIP_GW_CONTROLLER_CONTROLPLANE_HOST=it-mock-platform-api:9243
+      - APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=test-gateway-token
+      - APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY=true
     volumes:
       - controller-data-tests:/app/data
+      - ./it-aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro
       - ./test-config.toml:/etc/gateway-controller/config.toml:ro
       - ../gateway-controller/certificates:/app/certificates
       - ../gateway-controller/listener-certs:/app/listener-certs:ro
@@ -71,8 +104,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      mock-platform-api:
+        condition: service_started
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9090/health || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9092/health || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 10

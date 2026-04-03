@@ -26,10 +26,10 @@ spec:
   context: /weather/$version
   upstream:
     main:
-      url: http://sample-backend:5000/api/v2
+      url: "http://sample-backend:5000/api/v2"
   policies:
     - name: modify-headers
-      version: v0
+      version: v1
       params:
         requestHeaders:
           - action: SET
@@ -47,7 +47,7 @@ spec:
       path: /{country_code}/{city}
       policies:
         - name: modify-headers
-          version: v0
+          version: v1
           params:
             requestHeaders:
               - action: SET
@@ -57,19 +57,13 @@ spec:
               - action: SET
                 name: operation-level-res-header
                 value: world
-        - name: basic-ratelimit
-          version: v0
-          params:
-            limits:
-              - limit: 5
-                duration: "1m"
     - method: GET
       path: /alerts/active
     - method: POST
       path: /alerts/active
       policies:
         - name: respond
-          version: v0
+          version: v1
           params:
             statusCode: 201
             body: '{"message": "Active weather alert created successfully."}'

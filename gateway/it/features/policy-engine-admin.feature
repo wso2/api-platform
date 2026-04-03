@@ -80,13 +80,13 @@ Feature: Policy Engine Admin API
           - method: GET
             path: /info
             policies:
-              - name: modify-headers
-                version: v0
+              - name: set-headers
+                version: v1
                 params:
-                  requestHeaders:
-                    - action: SET
-                      name: X-Test-Header
-                      value: test-value
+                  request:
+                    headers:
+                      - name: X-Test-Header
+                        value: test-value
       """
     And I wait for the endpoint "http://localhost:8080/admin-test/v1/health" to be ready
     When I send a GET request to the policy-engine config dump endpoint
@@ -144,18 +144,18 @@ Feature: Policy Engine Admin API
           - method: GET
             path: /test
             policies:
-              - name: modify-headers
-                version: v0
+              - name: set-headers
+                version: v1
                 params:
-                  requestHeaders:
-                    - action: SET
-                      name: X-Custom-Header
-                      value: custom-value
+                  request:
+                    headers:
+                      - name: X-Custom-Header
+                        value: custom-value
       """
     And I wait for the endpoint "http://localhost:8080/admin-policy-params/v1/health" to be ready
     When I send a GET request to the policy-engine config dump endpoint
     Then the response status code should be 200
-    And the config dump should contain policy "modify-headers" for route "/admin-policy-params/v1/test"
+    And the config dump should contain policy "set-headers" for route "/admin-policy-params/v1/test"
     And I delete the API "admin-policy-params-api-v1"
 
   # ============================================================

@@ -23,9 +23,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 )
 
 // newTestAPIServer creates a minimal APIServer instance for testing.
@@ -35,20 +36,20 @@ func newTestAPIServer() *APIServer {
 		Main:    config.VHostEntry{Default: "localhost"},
 		Sandbox: config.VHostEntry{Default: "sandbox-*"},
 	}
-	defs := map[string]api.PolicyDefinition{
-		"auth|v1.0.0": {Name: "auth", Version: "v1.0.0"},
-		"auth|v2.0.0": {Name: "auth", Version: "v2.0.0"},
-		"auth|v5.0.0": {Name: "auth", Version: "v5.0.0"},
-		"rateLimit|v1.0.0": {Name: "rateLimit", Version: "v1.0.0"},
-		"rateLimit|v2.0.0": {Name: "rateLimit", Version: "v2.0.0"},
-		"rateLimit|v3.0.0": {Name: "rateLimit", Version: "v3.0.0"},
-		"rateLimit|v5.0.0": {Name: "rateLimit", Version: "v5.0.0"},
-		"logging|v1.0.0": {Name: "logging", Version: "v1.0.0"},
-		"logging|v2.0.0": {Name: "logging", Version: "v2.0.0"},
-		"logging|v5.0.0": {Name: "logging", Version: "v5.0.0"},
-		"cors|v1.0.0": {Name: "cors", Version: "v1.0.0"},
+	defs := map[string]models.PolicyDefinition{
+		"auth|v1.0.0":       {Name: "auth", Version: "v1.0.0"},
+		"auth|v2.0.0":       {Name: "auth", Version: "v2.0.0"},
+		"auth|v5.0.0":       {Name: "auth", Version: "v5.0.0"},
+		"rateLimit|v1.0.0":  {Name: "rateLimit", Version: "v1.0.0"},
+		"rateLimit|v2.0.0":  {Name: "rateLimit", Version: "v2.0.0"},
+		"rateLimit|v3.0.0":  {Name: "rateLimit", Version: "v3.0.0"},
+		"rateLimit|v5.0.0":  {Name: "rateLimit", Version: "v5.0.0"},
+		"logging|v1.0.0":    {Name: "logging", Version: "v1.0.0"},
+		"logging|v2.0.0":    {Name: "logging", Version: "v2.0.0"},
+		"logging|v5.0.0":    {Name: "logging", Version: "v5.0.0"},
+		"cors|v1.0.0":       {Name: "cors", Version: "v1.0.0"},
 		"validation|v1.0.0": {Name: "validation", Version: "v1.0.0"},
-		"caching|v1.0.0": {Name: "caching", Version: "v1.0.0"},
+		"caching|v1.0.0":    {Name: "caching", Version: "v1.0.0"},
 	}
 	return &APIServer{
 		routerConfig:      &config.RouterConfig{GatewayHost: "localhost", VHosts: *vhosts},
@@ -161,8 +162,7 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 			description:   "API policies execute first, operation policies append (execution order matters, not declaration)",
 		},
 	}
-	specUnion := api.APIConfiguration_Spec{}
-	specUnion.FromAPIConfigData(api.APIConfigData{
+	baseSpec := api.APIConfigData{
 		DisplayName: "test-api",
 		Version:     "v1.0",
 		Context:     "/test",
@@ -180,35 +180,38 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 				Path:   "/resource",
 			},
 		},
-	})
+	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Build a minimal StoredAPIConfig
-			cfg := &models.StoredConfig{
-				Configuration: api.APIConfiguration{
-					ApiVersion: api.APIConfigurationApiVersion(api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1),
-					Kind:       api.APIConfigurationKind(api.RestApi),
-					Spec:       specUnion,
-				},
-			}
-
-			apiData, err := cfg.Configuration.Spec.AsAPIConfigData()
-			require.NoError(t, err)
+			// Build a minimal StoredAPIConfig - copy the base spec for each test
+			specData := baseSpec
+			opsCopy := make([]api.Operation, len(baseSpec.Operations))
+			copy(opsCopy, baseSpec.Operations)
+			specData.Operations = opsCopy
 
 			// Set policies
 			if tt.apiPolicies != nil {
-				apiData.Policies = &tt.apiPolicies
-				cfg.Configuration.Spec.FromAPIConfigData(apiData)
+				specData.Policies = &tt.apiPolicies
 			}
 			if tt.operationPolicies != nil {
-				apiData.Operations[0].Policies = &tt.operationPolicies
-				cfg.Configuration.Spec.FromAPIConfigData(apiData)
+				specData.Operations[0].Policies = &tt.operationPolicies
+			}
+
+			apiCfg := api.RestAPI{
+				ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1),
+				Kind:       api.RestApi,
+				Spec:       specData,
+			}
+			cfg := &models.StoredConfig{
+				Configuration:       apiCfg,
+				SourceConfiguration: apiCfg,
+				Origin:              models.OriginGatewayAPI,
 			}
 
 			// Call the function
 			server := newTestAPIServer()
-			result := server.buildStoredPolicyFromAPI(cfg) // Verify result is not nil when policies exist
+			result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions) // Verify result is not nil when policies exist
 			if len(tt.expectedOrder) > 0 {
 				require.NotNil(t, result, tt.description)
 				require.Len(t, result.Configuration.Routes, 1, "Should have one route")
@@ -274,59 +277,59 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 		{Name: "auth", Version: "v5"},
 	}
 
-	specUnion := api.APIConfiguration_Spec{}
-	specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "test-api",
-		Version:     "v1.0",
-		Context:     "/test",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+	apiCfg := api.RestAPI{
+		ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1),
+		Kind:       api.RestApi,
+		Spec: api.APIConfigData{
+			DisplayName: "test-api",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://backend.example.com"; return &s }(),
+				},
 			},
+			Operations: []api.Operation{
+				{
+					Method:   "GET",
+					Path:     "/resource1",
+					Policies: &op1Policies,
+				},
+				{
+					Method:   "POST",
+					Path:     "/resource2",
+					Policies: &op2Policies,
+				},
+				{
+					Method:   "PUT",
+					Path:     "/resource3",
+					Policies: &op3Policies,
+				},
+				{
+					Method: "DELETE",
+					Path:   "/resource4",
+					// No policies
+				},
+				{
+					Method:   "PATCH",
+					Path:     "/resource5",
+					Policies: &op5Policies,
+				},
+			},
+			Policies: &apiPolicies,
 		},
-		Operations: []api.Operation{
-			{
-				Method:   "GET",
-				Path:     "/resource1",
-				Policies: &op1Policies,
-			},
-			{
-				Method:   "POST",
-				Path:     "/resource2",
-				Policies: &op2Policies,
-			},
-			{
-				Method:   "PUT",
-				Path:     "/resource3",
-				Policies: &op3Policies,
-			},
-			{
-				Method: "DELETE",
-				Path:   "/resource4",
-				// No policies
-			},
-			{
-				Method:   "PATCH",
-				Path:     "/resource5",
-				Policies: &op5Policies,
-			},
-		},
-		Policies: &apiPolicies,
-	})
-
+	}
 	cfg := &models.StoredConfig{
-		Configuration: api.APIConfiguration{
-			ApiVersion: api.APIConfigurationApiVersion(api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1),
-			Kind:       api.APIConfigurationKind(api.RestApi),
-			Spec:       specUnion,
-		},
+		Configuration:       apiCfg,
+		SourceConfiguration: apiCfg,
+		Origin:              models.OriginGatewayAPI,
 	}
 
 	server := newTestAPIServer()
-	result := server.buildStoredPolicyFromAPI(cfg)
+	result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions)
 	require.NotNil(t, result)
 	require.Len(t, result.Configuration.Routes, 5, "Should have 5 routes")
 
@@ -420,42 +423,42 @@ func TestPolicyOrderingConsistency(t *testing.T) {
 		{Name: "validation", Version: "v1"},
 	}
 
-	specUnion := api.APIConfiguration_Spec{}
-	specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "test-api",
-		Version:     "v1.0",
-		Context:     "/test",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+	apiCfg := api.RestAPI{
+		ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1),
+		Kind:       api.RestApi,
+		Spec: api.APIConfigData{
+			DisplayName: "test-api",
+			Version:     "v1.0",
+			Context:     "/test",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://backend.example.com"; return &s }(),
+				},
 			},
-		},
-		Operations: []api.Operation{
-			{
-				Method:   "GET",
-				Path:     "/resource",
-				Policies: &operationPolicies,
+			Operations: []api.Operation{
+				{
+					Method:   "GET",
+					Path:     "/resource",
+					Policies: &operationPolicies,
+				},
 			},
+			Policies: &apiPolicies,
 		},
-		Policies: &apiPolicies,
-	})
-
+	}
 	cfg := &models.StoredConfig{
-		Configuration: api.APIConfiguration{
-			ApiVersion: api.APIConfigurationApiVersion(api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1),
-			Kind:       api.APIConfigurationKind(api.RestApi),
-			Spec:       specUnion,
-		},
+		Configuration:       apiCfg,
+		SourceConfiguration: apiCfg,
+		Origin:              models.OriginGatewayAPI,
 	}
 
 	// Run 100 times to catch any non-deterministic behavior
 	var firstOrder []string
 	server := newTestAPIServer()
 	for i := 0; i < 100; i++ {
-		result := server.buildStoredPolicyFromAPI(cfg)
+		result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions)
 		require.NotNil(t, result)
 		require.Len(t, result.Configuration.Routes, 1)
 

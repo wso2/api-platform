@@ -19,20 +19,54 @@
 package utils
 
 import (
+	"bytes"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/common/eventhub"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
 
+func newUnhydratedTestMCPStoredConfig(id, handle, displayName, version, contextPath string) *models.StoredConfig {
+	upstreamURL := "http://localhost:8080"
+
+	return &models.StoredConfig{
+		UUID:        id,
+		Kind:        string(api.Mcp),
+		Handle:      handle,
+		DisplayName: displayName,
+		Version:     version,
+		SourceConfiguration: api.MCPProxyConfiguration{
+			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.Mcp,
+			Metadata:   api.Metadata{Name: handle},
+			Spec: api.MCPProxyConfigData{
+				DisplayName: displayName,
+				Version:     version,
+				Context:     stringPtr(contextPath),
+				Upstream: api.MCPProxyConfigData_Upstream{
+					Url: &upstreamURL,
+				},
+			},
+		},
+		DesiredState: models.StateDeployed,
+		Origin:       models.OriginGatewayAPI,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+}
+
 func TestNewMCPDeploymentService(t *testing.T) {
 	store := storage.NewConfigStore()
-	service := NewMCPDeploymentService(store, nil, nil)
+	service := newTestMCPDeploymentService(store, nil, nil, nil, nil)
 
 	assert.NotNil(t, service)
 	assert.NotNil(t, service.store)
@@ -59,74 +93,177 @@ func TestMCPDeploymentParams(t *testing.T) {
 }
 
 func TestMCPDeploymentService_ListMCPProxies(t *testing.T) {
-	store := storage.NewConfigStore()
-	service := NewMCPDeploymentService(store, nil, nil)
-
 	t.Run("Empty store returns empty list", func(t *testing.T) {
-		proxies := service.ListMCPProxies()
+		store := storage.NewConfigStore()
+		db := newTestMockDB()
+		service := newTestMCPDeploymentService(store, db, nil, nil, nil)
+
+		proxies, err := service.ListMCPProxies()
+		require.NoError(t, err)
 		assert.Empty(t, proxies)
 	})
 
 	t.Run("Returns only MCP kind configs", func(t *testing.T) {
+		store := storage.NewConfigStore()
+		db := newTestMockDB()
+		service := newTestMCPDeploymentService(store, db, nil, nil, nil)
+
 		// Add an MCP config
 		apiData := api.APIConfigData{
 			DisplayName: "MCP Proxy",
 			Version:     "1.0.0",
 			Context:     "/mcp",
 		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
 
 		mcpConfig := &models.StoredConfig{
-			ID:   "mcp-1",
-			Kind: string(api.Mcp),
-			Configuration: api.APIConfiguration{
-				Kind: api.RestApi,
-				Spec: spec,
+			UUID:        "0000-mcp-1-0000-000000000000",
+			Kind:        string(api.Mcp),
+			Handle:      "mcp-proxy",
+			DisplayName: "MCP Proxy",
+			Version:     "1.0.0",
+			Configuration: api.RestAPI{
+				Kind:     api.RestApi,
+				Metadata: api.Metadata{Name: "mcp-proxy"},
+				Spec:     apiData,
 			},
-			Status:    models.StatusPending,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
+			CreatedAt:    time.Now(),
+			UpdatedAt:    time.Now(),
 		}
-		store.Add(mcpConfig)
+		require.NoError(t, db.SaveConfig(mcpConfig))
 
 		// Add a REST API config (should not be returned)
 		restConfig := &models.StoredConfig{
-			ID:   "rest-1",
-			Kind: string(api.RestApi),
-			Configuration: api.APIConfiguration{
-				Kind: api.RestApi,
-				Spec: spec,
+			UUID:        "0000-rest-1-0000-000000000000",
+			Kind:        string(api.RestApi),
+			Handle:      "rest-api",
+			DisplayName: "MCP Proxy",
+			Version:     "2.0.0",
+			Configuration: api.RestAPI{
+				Kind:     api.RestApi,
+				Metadata: api.Metadata{Name: "rest-api"},
+				Spec:     apiData,
 			},
-			Status:    models.StatusPending,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
+			CreatedAt:    time.Now(),
+			UpdatedAt:    time.Now(),
 		}
-		store.Add(restConfig)
+		require.NoError(t, db.SaveConfig(restConfig))
 
-		proxies := service.ListMCPProxies()
+		proxies, err := service.ListMCPProxies()
+		require.NoError(t, err)
 		assert.Len(t, proxies, 1)
-		assert.Equal(t, "mcp-1", proxies[0].ID)
+		assert.Equal(t, "0000-mcp-1-0000-000000000000", proxies[0].UUID)
+	})
+
+	t.Run("Hydrates database-backed MCP configs before returning", func(t *testing.T) {
+		store := storage.NewConfigStore()
+		db := newTestMockDB()
+		service := newTestMCPDeploymentService(store, db, nil, nil, nil)
+
+		cfg := newUnhydratedTestMCPStoredConfig("0000-db-mcp-1-0000-000000000000", "db-mcp", "DB MCP", "1.0.0", "/db-mcp")
+		require.NoError(t, db.SaveConfig(cfg))
+
+		proxies, err := service.ListMCPProxies()
+		require.NoError(t, err)
+		require.Len(t, proxies, 1)
+
+		sourceCfg, ok := proxies[0].SourceConfiguration.(api.MCPProxyConfiguration)
+		require.True(t, ok, "expected canonical MCP source configuration")
+		assert.Equal(t, "db-mcp", sourceCfg.Metadata.Name)
 	})
 }
 
-func TestMCPDeploymentService_GetMCPProxyByHandle_NoDatabase(t *testing.T) {
-	store := storage.NewConfigStore()
-	service := NewMCPDeploymentService(store, nil, nil)
-
-	_, err := service.GetMCPProxyByHandle("test-handle")
-	assert.Error(t, err)
-	assert.Equal(t, storage.ErrDatabaseUnavailable, err)
+func TestIsMCPNotFoundError_UsesStorageSentinelOnly(t *testing.T) {
+	assert.True(t, isMCPNotFoundError(storage.ErrNotFound))
+	assert.True(t, isMCPNotFoundError(fmt.Errorf("wrapped: %w", storage.ErrNotFound)))
+	assert.False(t, isMCPNotFoundError(errors.New("not found")))
 }
 
+func TestMCPDeploymentService_getMCPProxyByID_LogsHydrationFailures(t *testing.T) {
+	originalLogger := slog.Default()
+	var logBuf bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() {
+		slog.SetDefault(originalLogger)
+	})
+
+	t.Run("database-backed lookup", func(t *testing.T) {
+		logBuf.Reset()
+
+		store := storage.NewConfigStore()
+		db := newTestMockDB()
+		service := newTestMCPDeploymentService(store, db, nil, nil, nil)
+		cfg := &models.StoredConfig{
+			UUID:                "0000-bad-db-mcp-0000-000000000000",
+			Kind:                string(api.Mcp),
+			Handle:              "bad-db-mcp",
+			SourceConfiguration: "invalid",
+			DesiredState:        models.StateDeployed,
+			Origin:              models.OriginGatewayAPI,
+			CreatedAt:           time.Now(),
+			UpdatedAt:           time.Now(),
+		}
+		require.NoError(t, db.SaveConfig(cfg))
+
+		found, err := service.getMCPProxyByID(cfg.UUID)
+		require.NoError(t, err)
+		assert.Equal(t, cfg.UUID, found.UUID)
+		assert.Contains(t, logBuf.String(), "failed to hydrate StoredConfig")
+		assert.Contains(t, logBuf.String(), cfg.UUID)
+		assert.Contains(t, logBuf.String(), "unexpected MCP source configuration type")
+	})
+
+}
+
+func TestMCPDeploymentService_GetMCPProxyByHandle(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := newTestMockDB()
+	service := newTestMCPDeploymentService(store, db, nil, nil, nil)
+	upstreamURL := "http://localhost:8080"
+
+	cfg := &models.StoredConfig{
+		UUID:        "0000-test-handle-0000-000000000000",
+		Kind:        string(api.Mcp),
+		Handle:      "test-mcp",
+		DisplayName: "Test MCP",
+		Version:     "1.0.0",
+		SourceConfiguration: api.MCPProxyConfiguration{
+			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.Mcp,
+			Metadata:   api.Metadata{Name: "test-mcp"},
+			Spec: api.MCPProxyConfigData{
+				DisplayName: "Test MCP",
+				Version:     "1.0.0",
+				Context:     stringPtr("/mcp"),
+				Upstream: api.MCPProxyConfigData_Upstream{
+					Url: &upstreamURL,
+				},
+			},
+		},
+		DesiredState: models.StateDeployed,
+		Origin:       models.OriginGatewayAPI,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	require.NoError(t, HydrateStoredMCPConfig(cfg))
+	require.NoError(t, db.SaveConfig(cfg))
+
+	found, err := service.GetMCPProxyByHandle("test-mcp")
+	require.NoError(t, err)
+	assert.Equal(t, cfg.UUID, found.UUID)
+}
 func TestMCPDeploymentService_CreateMCPProxy_ParseError(t *testing.T) {
 	store := storage.NewConfigStore()
-	service := NewMCPDeploymentService(store, nil, nil)
+	service := newTestMCPDeploymentService(store, nil, nil, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	params := MCPDeploymentParams{
 		Data:          []byte("invalid yaml: ["),
 		ContentType:   "application/yaml",
+		Origin:        models.OriginGatewayAPI,
 		CorrelationID: "test-corr",
 		Logger:        logger,
 	}
@@ -138,7 +275,7 @@ func TestMCPDeploymentService_CreateMCPProxy_ParseError(t *testing.T) {
 
 func TestMCPDeploymentService_CreateMCPProxy_ValidationError(t *testing.T) {
 	store := storage.NewConfigStore()
-	service := NewMCPDeploymentService(store, nil, nil)
+	service := newTestMCPDeploymentService(store, nil, nil, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// Invalid MCP config that will fail validation
@@ -154,6 +291,7 @@ spec:
 	params := MCPDeploymentParams{
 		Data:          []byte(yamlData),
 		ContentType:   "application/yaml",
+		Origin:        models.OriginGatewayAPI,
 		CorrelationID: "test-corr",
 		Logger:        logger,
 	}
@@ -164,7 +302,7 @@ spec:
 
 func TestMCPDeploymentService_CreateMCPProxy_ConflictError(t *testing.T) {
 	store := storage.NewConfigStore()
-	service := NewMCPDeploymentService(store, nil, nil)
+	service := newTestMCPDeploymentService(store, nil, nil, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// First, add an existing config with the same name/version
@@ -173,22 +311,24 @@ func TestMCPDeploymentService_CreateMCPProxy_ConflictError(t *testing.T) {
 		Version:     "1.0.0",
 		Context:     "/test",
 	}
-	var spec api.APIConfiguration_Spec
-	spec.FromAPIConfigData(apiData)
 
 	existingConfig := &models.StoredConfig{
-		ID:   "existing-mcp",
-		Kind: string(api.Mcp),
-		Configuration: api.APIConfiguration{
+		UUID:        "0000-existing-mcp-0000-000000000000",
+		Kind:        string(api.Mcp),
+		Handle:      "test-mcp",
+		DisplayName: "Test MCP",
+		Version:     "1.0.0",
+		Configuration: api.RestAPI{
 			Kind:     api.RestApi,
 			Metadata: api.Metadata{Name: "test-mcp"},
-			Spec:     spec,
+			Spec:     apiData,
 		},
-		Status:    models.StatusPending,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		DesiredState: models.StateDeployed,
+		Origin:       models.OriginGatewayAPI,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
 	}
-	store.Add(existingConfig)
+	require.NoError(t, service.db.SaveConfig(existingConfig))
 
 	// Try to create another with the same name/version
 	upstreamURL := "http://localhost:8080"
@@ -207,6 +347,7 @@ spec:
 	params := MCPDeploymentParams{
 		Data:          []byte(yamlData),
 		ContentType:   "application/yaml",
+		Origin:        models.OriginGatewayAPI,
 		CorrelationID: "test-corr",
 		Logger:        logger,
 	}
@@ -218,152 +359,179 @@ spec:
 
 func TestMCPDeploymentService_DeleteMCPProxy_NoDatabase(t *testing.T) {
 	store := storage.NewConfigStore()
-	service := NewMCPDeploymentService(store, nil, nil)
+	service := newTestMCPDeploymentService(store, nil, nil, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	_, err := service.DeleteMCPProxy("test-handle", "corr-id", logger)
+	_, err := service.DeleteMCPProxy("0000-test-handle-0000-000000000000", "corr-id", logger)
 	assert.Error(t, err)
-	assert.Equal(t, storage.ErrDatabaseUnavailable, err)
+	assert.Contains(t, err.Error(), "not found")
 }
 
 func TestMCPDeploymentService_UpdateMCPProxy_NoDatabase(t *testing.T) {
 	store := storage.NewConfigStore()
-	service := NewMCPDeploymentService(store, nil, nil)
+	service := newTestMCPDeploymentService(store, nil, nil, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	params := MCPDeploymentParams{
 		Data:          []byte("test data"),
 		ContentType:   "application/yaml",
+		Origin:        models.OriginGatewayAPI,
 		CorrelationID: "corr-id",
 		Logger:        logger,
 	}
 
-	_, err := service.UpdateMCPProxy("test-handle", params, logger)
+	_, err := service.UpdateMCPProxy("0000-test-handle-0000-000000000000", params, logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
-
 func TestMCPDeploymentService_SaveOrUpdateConfig(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	t.Run("Save new config without DB", func(t *testing.T) {
 		store := storage.NewConfigStore()
-		service := NewMCPDeploymentService(store, nil, nil)
+		service := newTestMCPDeploymentService(store, newTestMockDB(), nil, nil, nil)
 
 		apiData := api.APIConfigData{
 			DisplayName: "Test MCP",
 			Version:     "1.0.0",
 			Context:     "/test",
 		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
 
 		storedCfg := &models.StoredConfig{
-			ID:   "new-mcp-id",
-			Kind: string(api.Mcp),
-			Configuration: api.APIConfiguration{
-				Kind: api.RestApi,
-				Spec: spec,
+			UUID:        "0000-new-mcp-id-0000-000000000000",
+			Kind:        string(api.Mcp),
+			Handle:      "test-mcp",
+			DisplayName: "Test MCP",
+			Version:     "1.0.0",
+			Configuration: api.RestAPI{
+				Kind:     api.RestApi,
+				Metadata: api.Metadata{Name: "test-mcp"},
+				Spec:     apiData,
 			},
-			Status:    models.StatusPending,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
+			CreatedAt:    time.Now(),
+			UpdatedAt:    time.Now(),
 		}
 
-		isUpdate, err := service.saveOrUpdateConfig(storedCfg, logger)
+		affected, err := service.saveOrUpdateConfig(storedCfg, logger)
 		assert.NoError(t, err)
-		assert.False(t, isUpdate)
+		assert.True(t, affected)
 
-		// Verify config was added
-		retrieved, err := store.Get(storedCfg.ID)
+		// Verify config was added to the DB
+		retrieved, err := service.db.GetConfig(storedCfg.UUID)
 		assert.NoError(t, err)
-		assert.Equal(t, storedCfg.ID, retrieved.ID)
+		assert.Equal(t, storedCfg.UUID, retrieved.UUID)
 	})
 }
 
-func TestMCPDeploymentService_UpdateExistingConfig(t *testing.T) {
+func TestMCPDeploymentService_SaveOrUpdateConfig_UpdatesExisting(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	t.Run("Updates existing config", func(t *testing.T) {
+	t.Run("Updates existing config via upsert", func(t *testing.T) {
 		store := storage.NewConfigStore()
-		service := NewMCPDeploymentService(store, nil, nil)
+		db := newTestSQLiteStorage(t, logger)
+		service := newTestMCPDeploymentService(store, db, nil, nil, nil)
 
+		now := time.Now()
 		apiData := api.APIConfigData{
 			DisplayName: "Original MCP",
 			Version:     "1.0.0",
 			Context:     "/original",
 		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
 
 		// Add original config
 		original := &models.StoredConfig{
-			ID:   "config-to-update",
-			Kind: string(api.Mcp),
-			Configuration: api.APIConfiguration{
-				Kind: api.RestApi,
-				Spec: spec,
+			UUID:        "0000-config-to-update-0000-000000000000",
+			Kind:        string(api.Mcp),
+			Handle:      "original-mcp",
+			DisplayName: "Original MCP",
+			Version:     "1.0.0",
+			Configuration: api.RestAPI{
+				Kind:     api.RestApi,
+				Metadata: api.Metadata{Name: "original-mcp"},
+				Spec:     apiData,
 			},
-			Status:    models.StatusPending,
-			CreatedAt: time.Now(),
-			UpdatedAt: time.Now(),
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
+			CreatedAt:    now,
+			UpdatedAt:    now,
+			DeployedAt:   &now,
 		}
-		store.Add(original)
+		require.NoError(t, db.SaveConfig(original))
+		require.NoError(t, store.Add(original))
 
-		// Create updated config
+		// Create updated config with newer timestamp
+		later := now.Add(time.Second)
 		newApiData := api.APIConfigData{
 			DisplayName: "Original MCP",
 			Version:     "1.0.0",
 			Context:     "/updated",
 		}
-		var newSpec api.APIConfiguration_Spec
-		newSpec.FromAPIConfigData(newApiData)
 
 		newConfig := &models.StoredConfig{
-			ID:   "config-to-update",
-			Kind: string(api.Mcp),
-			Configuration: api.APIConfiguration{
-				Kind: api.RestApi,
-				Spec: newSpec,
+			UUID:        "0000-config-to-update-0000-000000000000",
+			Kind:        string(api.Mcp),
+			Handle:      "original-mcp",
+			DisplayName: "Original MCP",
+			Version:     "1.0.0",
+			Configuration: api.RestAPI{
+				Kind:     api.RestApi,
+				Metadata: api.Metadata{Name: "original-mcp"},
+				Spec:     newApiData,
 			},
-			Status: models.StatusPending,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
+			DeployedAt:   &later,
 		}
 
-		isUpdate, err := service.updateExistingConfig(newConfig, logger)
+		affected, err := service.saveOrUpdateConfig(newConfig, logger)
 		assert.NoError(t, err)
-		assert.True(t, isUpdate)
+		assert.True(t, affected)
 	})
 
-	t.Run("Error when config not found", func(t *testing.T) {
+	t.Run("Creates new config when not found", func(t *testing.T) {
 		store := storage.NewConfigStore()
-		service := NewMCPDeploymentService(store, nil, nil)
+		db := newTestSQLiteStorage(t, logger)
+		service := newTestMCPDeploymentService(store, db, nil, nil, nil)
 
+		now := time.Now()
 		apiData := api.APIConfigData{
-			DisplayName: "Non-existent MCP",
+			DisplayName: "New MCP",
 			Version:     "1.0.0",
-			Context:     "/non-existent",
+			Context:     "/new",
 		}
-		var spec api.APIConfiguration_Spec
-		spec.FromAPIConfigData(apiData)
 
 		newConfig := &models.StoredConfig{
-			ID:   "non-existent-config",
-			Kind: string(api.Mcp),
-			Configuration: api.APIConfiguration{
-				Kind: api.RestApi,
-				Spec: spec,
+			UUID:        "0000-new-config-0000-000000000000",
+			Kind:        string(api.Mcp),
+			Handle:      "new-mcp",
+			DisplayName: "New MCP",
+			Version:     "1.0.0",
+			Configuration: api.RestAPI{
+				Kind:     api.RestApi,
+				Metadata: api.Metadata{Name: "new-mcp"},
+				Spec:     apiData,
 			},
-			Status: models.StatusPending,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
+			DeployedAt:   &now,
 		}
 
-		_, err := service.updateExistingConfig(newConfig, logger)
-		assert.Error(t, err)
+		affected, err := service.saveOrUpdateConfig(newConfig, logger)
+		assert.NoError(t, err)
+		assert.True(t, affected)
+
+		// Verify config was created in the DB
+		retrieved, err := service.db.GetConfig(newConfig.UUID)
+		assert.NoError(t, err)
+		assert.Equal(t, newConfig.UUID, retrieved.UUID)
 	})
 }
 
 func TestMCPDeploymentService_ParseValidateAndTransform(t *testing.T) {
 	store := storage.NewConfigStore()
-	service := NewMCPDeploymentService(store, nil, nil)
+	service := newTestMCPDeploymentService(store, nil, nil, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	t.Run("Valid MCP config", func(t *testing.T) {
@@ -419,3 +587,111 @@ func TestLatestSupportedMCPSpecVersion(t *testing.T) {
 // Note: TestMCPDeploymentService_DeployMCPConfiguration_Update is skipped
 // for the same reason as above - it calls DeployMCPConfiguration which
 // requires a non-nil snapshot manager.
+
+func TestMCPDeploymentService_CreateMCPProxy_WithDBAndEventHubPublishesCreate(t *testing.T) {
+	store := storage.NewConfigStore()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db := newTestSQLiteStorage(t, logger)
+	mockHub := &mockLLMEventHub{}
+	service := newTestMCPDeploymentServiceWithHub(store, db, nil, nil, nil, mockHub, "test-gateway")
+
+	yamlData := `
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Mcp
+metadata:
+  name: test-mcp
+spec:
+  displayName: Test MCP Proxy
+  version: "1.0.0"
+  context: "/test"
+  upstream:
+    url: "http://localhost:8080"
+`
+	result, err := service.CreateMCPProxy(MCPDeploymentParams{
+		Data:          []byte(yamlData),
+		ContentType:   "application/yaml",
+		Origin:        models.OriginGatewayAPI,
+		CorrelationID: "corr-create-mcp",
+		Logger:        logger,
+	})
+	require.NoError(t, err)
+	created := result.StoredConfig
+
+	storedInDB, err := db.GetConfig(created.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, string(api.Mcp), storedInDB.Kind)
+
+	_, err = store.Get(created.UUID)
+	require.ErrorIs(t, err, storage.ErrNotFound)
+
+	require.Len(t, mockHub.publishedEvents, 1)
+	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
+	assert.Equal(t, "CREATE", mockHub.publishedEvents[0].event.Action)
+	assert.Equal(t, eventhub.EventTypeMCPProxy, mockHub.publishedEvents[0].event.EventType)
+	assert.Equal(t, created.UUID, mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-create-mcp", mockHub.publishedEvents[0].event.EventID)
+	assert.Equal(t, eventhub.EmptyEventData, mockHub.publishedEvents[0].event.EventData)
+}
+
+func TestMCPDeploymentService_UndeployMCPProxy_WithDBAndEventHubPublishesUpdate(t *testing.T) {
+	store := storage.NewConfigStore()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db := newTestSQLiteStorage(t, logger)
+	mockHub := &mockLLMEventHub{}
+	service := newTestMCPDeploymentServiceWithHub(store, db, nil, nil, nil, mockHub, "test-gateway")
+	upstreamURL := "http://localhost:8080"
+
+	cfg := &models.StoredConfig{
+		UUID:         "0000-mcp-undeploy-id-0000-000000000000",
+		Kind:         string(api.Mcp),
+		Handle:       "test-mcp",
+		DisplayName:  "Test MCP",
+		Version:      "1.0.0",
+		DeploymentID: "rev-1",
+		Origin:       models.OriginControlPlane,
+		SourceConfiguration: api.MCPProxyConfiguration{
+			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.Mcp,
+			Metadata:   api.Metadata{Name: "test-mcp"},
+			Spec: api.MCPProxyConfigData{
+				DisplayName: "Test MCP",
+				Version:     "1.0.0",
+				Context:     stringPtr("/mcp"),
+				Upstream: api.MCPProxyConfigData_Upstream{
+					Url: &upstreamURL,
+				},
+			},
+		},
+		DesiredState: models.StateDeployed,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	require.NoError(t, HydrateStoredMCPConfig(cfg))
+	require.NoError(t, db.SaveConfig(cfg))
+	require.NoError(t, store.Add(cfg))
+
+	performedAt := time.Unix(1700000000, 0).UTC()
+	updated, err := service.UndeployMCPProxy(cfg.UUID, "rev-1", &performedAt, "corr-mcp-undeploy", logger)
+	require.NoError(t, err)
+	assert.Equal(t, models.StateUndeployed, updated.DesiredState)
+	assert.Equal(t, "rev-1", updated.DeploymentID)
+	require.NotNil(t, updated.DeployedAt)
+	assert.True(t, updated.DeployedAt.Equal(performedAt))
+
+	storedInDB, err := db.GetConfig(cfg.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, models.StateUndeployed, storedInDB.DesiredState)
+	assert.Equal(t, "rev-1", storedInDB.DeploymentID)
+	require.NotNil(t, storedInDB.DeployedAt)
+	assert.True(t, storedInDB.DeployedAt.Equal(performedAt))
+
+	storedInMemory, err := store.Get(cfg.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, models.StateDeployed, storedInMemory.DesiredState)
+
+	require.Len(t, mockHub.publishedEvents, 1)
+	assert.Equal(t, "UPDATE", mockHub.publishedEvents[0].event.Action)
+	assert.Equal(t, eventhub.EventTypeMCPProxy, mockHub.publishedEvents[0].event.EventType)
+	assert.Equal(t, cfg.UUID, mockHub.publishedEvents[0].event.EntityID)
+	assert.Equal(t, "corr-mcp-undeploy", mockHub.publishedEvents[0].event.EventID)
+}

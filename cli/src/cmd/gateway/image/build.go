@@ -240,15 +240,15 @@ func runUnifiedBuild() error {
 	}
 	fmt.Println("  ✓ All images built successfully")
 
-	// Copy build-lock.yaml back to user's directory
-	lockSrc := filepath.Join(tempDir, "build-lock.yaml")
-	lockDst := filepath.Join(filepath.Dir(resolvedBuildFilePath), "build-lock.yaml")
+	// Copy build-manifest.yaml back to user's directory
+	lockSrc := filepath.Join(tempDir, "build-manifest.yaml")
+	lockDst := filepath.Join(filepath.Dir(resolvedBuildFilePath), "build-manifest.yaml")
 	if lockData, err := os.ReadFile(lockSrc); err != nil {
-		fmt.Fprintf(os.Stderr, "  Warning: could not read build lock file: %v\n", err)
+		fmt.Fprintf(os.Stderr, "  Warning: could not read build manifest file: %v\n", err)
 	} else if err := os.WriteFile(lockDst, lockData, 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "  Warning: could not write build lock file: %v\n", err)
+		fmt.Fprintf(os.Stderr, "  Warning: could not write build manifest file: %v\n", err)
 	} else {
-		fmt.Printf("  ✓ Build lock file written: build-lock.yaml\n")
+		fmt.Printf("  ✓ Build manifest file written: build-manifest.yaml\n")
 	}
 
 	// Display Summary

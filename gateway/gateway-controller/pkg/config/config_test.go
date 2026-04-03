@@ -38,7 +38,10 @@ func validConfig() *Config {
 				GatewayID: constants.PlatformGatewayId,
 			},
 			Storage: StorageConfig{
-				Type: "memory",
+				Type: "sqlite",
+				SQLite: SQLiteConfig{
+					Path: "/tmp/test-controller.db",
+				},
 			},
 			Logging: LoggingConfig{
 				Level:  "info",
@@ -49,9 +52,15 @@ func validConfig() *Config {
 				ReconnectInitial: 1 * time.Second,
 				ReconnectMax:     30 * time.Second,
 				PollingInterval:  5 * time.Second,
+				SyncBatchSize:    50,
 			},
 			Metrics: MetricsConfig{
 				Enabled: false,
+			},
+			EventHub: EventHubConfig{
+				PollInterval:    3 * time.Second,
+				CleanupInterval: 10 * time.Minute,
+				RetentionPeriod: 1 * time.Hour,
 			},
 		},
 		APIKey: APIKeyConfig{
@@ -79,7 +88,6 @@ func validConfig() *Config {
 				},
 			},
 			PolicyEngine: PolicyEngineConfig{
-				RouteCacheAction: "DEFAULT",
 				TimeoutMs:        1000,
 				MessageTimeoutMs: 500,
 			},
@@ -101,7 +109,6 @@ func TestConfig_Validate_StorageType(t *testing.T) {
 		wantErr     bool
 		errContains string
 	}{
-		{name: "Valid memory", storageType: "memory", wantErr: false},
 		{name: "Valid sqlite", storageType: "sqlite", wantErr: true, errContains: "storage.sqlite.path is required"},
 		{name: "Valid postgres", storageType: "postgres", wantErr: true, errContains: "storage.postgres.host is required"},
 		{name: "Invalid type", storageType: "invalid", wantErr: true, errContains: "storage.type must be one of"},
@@ -111,6 +118,7 @@ func TestConfig_Validate_StorageType(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := validConfig()
 			cfg.Controller.Storage.Type = tt.storageType
+			cfg.Controller.Storage.SQLite = SQLiteConfig{} // clear sqlite config to test type-only validation
 			err := cfg.Validate()
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -637,6 +645,7 @@ func TestConfig_ValidateControlPlaneConfig(t *testing.T) {
 		reconnectInitial time.Duration
 		reconnectMax     time.Duration
 		pollingInterval  time.Duration
+		syncBatchSize    int
 		wantErr          bool
 		errContains      string
 	}{
@@ -646,6 +655,7 @@ func TestConfig_ValidateControlPlaneConfig(t *testing.T) {
 			reconnectInitial: 1 * time.Second,
 			reconnectMax:     30 * time.Second,
 			pollingInterval:  5 * time.Second,
+			syncBatchSize:    50,
 			wantErr:          false,
 		},
 		{
@@ -654,6 +664,7 @@ func TestConfig_ValidateControlPlaneConfig(t *testing.T) {
 			reconnectInitial: 1 * time.Second,
 			reconnectMax:     30 * time.Second,
 			pollingInterval:  5 * time.Second,
+			syncBatchSize:    50,
 			wantErr:          false,
 		},
 		{
@@ -669,6 +680,7 @@ func TestConfig_ValidateControlPlaneConfig(t *testing.T) {
 			reconnectInitial: 0,
 			reconnectMax:     30 * time.Second,
 			pollingInterval:  5 * time.Second,
+			syncBatchSize:    50,
 			wantErr:          true,
 			errContains:      "controlplane.reconnect_initial must be positive",
 		},
@@ -678,6 +690,7 @@ func TestConfig_ValidateControlPlaneConfig(t *testing.T) {
 			reconnectInitial: 1 * time.Second,
 			reconnectMax:     0,
 			pollingInterval:  5 * time.Second,
+			syncBatchSize:    50,
 			wantErr:          true,
 			errContains:      "controlplane.reconnect_max must be positive",
 		},
@@ -687,6 +700,7 @@ func TestConfig_ValidateControlPlaneConfig(t *testing.T) {
 			reconnectInitial: 60 * time.Second,
 			reconnectMax:     30 * time.Second,
 			pollingInterval:  5 * time.Second,
+			syncBatchSize:    50,
 			wantErr:          true,
 			errContains:      "reconnect_initial",
 		},
@@ -696,8 +710,19 @@ func TestConfig_ValidateControlPlaneConfig(t *testing.T) {
 			reconnectInitial: 1 * time.Second,
 			reconnectMax:     30 * time.Second,
 			pollingInterval:  0,
+			syncBatchSize:    50,
 			wantErr:          true,
 			errContains:      "controlplane.polling_interval must be positive",
+		},
+		{
+			name:             "Non-positive sync batch size",
+			host:             "localhost",
+			reconnectInitial: 1 * time.Second,
+			reconnectMax:     30 * time.Second,
+			pollingInterval:  5 * time.Second,
+			syncBatchSize:    -1,
+			wantErr:          true,
+			errContains:      "controlplane.sync_batch_size must be positive",
 		},
 	}
 
@@ -709,6 +734,7 @@ func TestConfig_ValidateControlPlaneConfig(t *testing.T) {
 			cfg.Controller.ControlPlane.ReconnectInitial = tt.reconnectInitial
 			cfg.Controller.ControlPlane.ReconnectMax = tt.reconnectMax
 			cfg.Controller.ControlPlane.PollingInterval = tt.pollingInterval
+			cfg.Controller.ControlPlane.SyncBatchSize = tt.syncBatchSize
 			err := cfg.Validate()
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -838,20 +864,16 @@ func TestConfig_ValidatePolicyEngineConfig(t *testing.T) {
 		port             uint32
 		timeoutMs        uint32
 		messageTimeoutMs uint32
-		routeCacheAction string
 		wantErr          bool
 		errContains      string
 	}{
-		{name: "Valid UDS mode (default)", mode: "uds", timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "DEFAULT", wantErr: false},
-		{name: "Valid TCP mode", mode: "tcp", host: "localhost", port: 50051, timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "DEFAULT", wantErr: false},
-		{name: "TCP missing host", mode: "tcp", host: "", port: 50051, timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "DEFAULT", wantErr: true, errContains: "host is required"},
-		{name: "TCP zero port", mode: "tcp", host: "localhost", port: 0, timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "DEFAULT", wantErr: true, errContains: "port is required"},
-		{name: "TCP port too high", mode: "tcp", host: "localhost", port: 70000, timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "DEFAULT", wantErr: true, errContains: "port must be between"},
-		{name: "Zero timeout", mode: "uds", timeoutMs: 0, messageTimeoutMs: 500, routeCacheAction: "DEFAULT", wantErr: true, errContains: "timeout_ms must be positive"},
-		{name: "Zero message timeout", mode: "uds", timeoutMs: 1000, messageTimeoutMs: 0, routeCacheAction: "DEFAULT", wantErr: true, errContains: "message_timeout_ms must be positive"},
-		{name: "Invalid route cache action", mode: "uds", timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "INVALID", wantErr: true, errContains: "route_cache_action must be one of"},
-		{name: "Valid RETAIN action", mode: "uds", timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "RETAIN", wantErr: false},
-		{name: "Valid CLEAR action", mode: "uds", timeoutMs: 1000, messageTimeoutMs: 500, routeCacheAction: "CLEAR", wantErr: false},
+		{name: "Valid UDS mode (default)", mode: "uds", timeoutMs: 1000, messageTimeoutMs: 500, wantErr: false},
+		{name: "Valid TCP mode", mode: "tcp", host: "localhost", port: 50051, timeoutMs: 1000, messageTimeoutMs: 500, wantErr: false},
+		{name: "TCP missing host", mode: "tcp", host: "", port: 50051, timeoutMs: 1000, messageTimeoutMs: 500, wantErr: true, errContains: "host is required"},
+		{name: "TCP zero port", mode: "tcp", host: "localhost", port: 0, timeoutMs: 1000, messageTimeoutMs: 500, wantErr: true, errContains: "port is required"},
+		{name: "TCP port too high", mode: "tcp", host: "localhost", port: 70000, timeoutMs: 1000, messageTimeoutMs: 500, wantErr: true, errContains: "port must be between"},
+		{name: "Zero timeout", mode: "uds", timeoutMs: 0, messageTimeoutMs: 500, wantErr: true, errContains: "timeout_ms must be positive"},
+		{name: "Zero message timeout", mode: "uds", timeoutMs: 1000, messageTimeoutMs: 0, wantErr: true, errContains: "message_timeout_ms must be positive"},
 	}
 
 	for _, tt := range tests {
@@ -862,7 +884,6 @@ func TestConfig_ValidatePolicyEngineConfig(t *testing.T) {
 			cfg.Router.PolicyEngine.Port = tt.port
 			cfg.Router.PolicyEngine.TimeoutMs = tt.timeoutMs
 			cfg.Router.PolicyEngine.MessageTimeoutMs = tt.messageTimeoutMs
-			cfg.Router.PolicyEngine.RouteCacheAction = tt.routeCacheAction
 			err := cfg.Validate()
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -898,7 +919,6 @@ func TestConfig_ValidatePolicyEngineTLS(t *testing.T) {
 			cfg.Router.PolicyEngine.Port = 50051
 			cfg.Router.PolicyEngine.TimeoutMs = 1000
 			cfg.Router.PolicyEngine.MessageTimeoutMs = 500
-			cfg.Router.PolicyEngine.RouteCacheAction = "DEFAULT"
 			cfg.Router.PolicyEngine.TLS.Enabled = tt.tlsEnabled
 			cfg.Router.PolicyEngine.TLS.CertPath = tt.certPath
 			cfg.Router.PolicyEngine.TLS.KeyPath = tt.keyPath
@@ -976,7 +996,6 @@ func TestConfig_ValidatePolicyEngineMode(t *testing.T) {
 			cfg.Router.PolicyEngine.Port = tt.port
 			cfg.Router.PolicyEngine.TimeoutMs = 1000
 			cfg.Router.PolicyEngine.MessageTimeoutMs = 500
-			cfg.Router.PolicyEngine.RouteCacheAction = "DEFAULT"
 			cfg.Router.PolicyEngine.TLS.Enabled = tt.tlsEnabled
 			err := cfg.Validate()
 			if tt.wantErr {
@@ -1233,27 +1252,6 @@ func TestConfig_ValidateHTTPListenerConfig(t *testing.T) {
 }
 
 func TestConfig_HelperMethods(t *testing.T) {
-	t.Run("IsPersistentMode", func(t *testing.T) {
-		cfg := validConfig()
-		cfg.Controller.Storage.Type = "sqlite"
-		assert.True(t, cfg.IsPersistentMode())
-
-		cfg.Controller.Storage.Type = "postgres"
-		assert.True(t, cfg.IsPersistentMode())
-
-		cfg.Controller.Storage.Type = "memory"
-		assert.False(t, cfg.IsPersistentMode())
-	})
-
-	t.Run("IsMemoryOnlyMode", func(t *testing.T) {
-		cfg := validConfig()
-		cfg.Controller.Storage.Type = "memory"
-		assert.True(t, cfg.IsMemoryOnlyMode())
-
-		cfg.Controller.Storage.Type = "sqlite"
-		assert.False(t, cfg.IsMemoryOnlyMode())
-	})
-
 	t.Run("IsAccessLogsEnabled", func(t *testing.T) {
 		cfg := validConfig()
 		cfg.Router.AccessLogs.Enabled = true
@@ -1366,6 +1364,7 @@ func TestDefaultConfig(t *testing.T) {
 	assert.NotNil(t, cfg)
 	assert.Equal(t, "sqlite", cfg.Controller.Storage.Type)
 	assert.Equal(t, "info", cfg.Controller.Logging.Level)
+	assert.False(t, cfg.Controller.Server.SkipInvalidDeploymentsOnStartup)
 	assert.Equal(t, uint32(5000), cfg.Router.Upstream.Timeouts.ConnectTimeoutMs, "default router.upstream.timeouts.connect_timeout_ms should be 5s (5000 ms)")
 }
 

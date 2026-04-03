@@ -20,7 +20,7 @@
 
 services:
   gateway-controller:
-    image: ghcr.io/wso2/api-platform/gateway-controller:0.10.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/gateway-controller:1.1.0-SNAPSHOT
     mem_limit: 60m
     mem_reservation: 60m
     cpus: 0.025
@@ -29,13 +29,14 @@ services:
       - "9090:9090"   # REST API
       - "9094:9092"   # Admin API
       - "18000:18000" # xDS gRPC
-      - "18001:18001"
+      - "18001:18001" # xDS gRPC
       - "9011:9091"   # Metrics
     environment:
       - APIP_GW_CONTROLLER_STORAGE_TYPE=sqlite
       - APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH=./data/gateway.db
       - APIP_GW_CONTROLLER_LOGGING_LEVEL=info
       - APIP_GW_CONTROLLER_METRICS_PORT=9091
+      - APIP_GW_DEVELOPMENT_MODE=true
       - APIP_GW_GATEWAY_REGISTRATION_TOKEN=${GATEWAY_REGISTRATION_TOKEN:-}
       - APIP_GW_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:-host.docker.internal:9243}
     volumes:
@@ -49,7 +50,7 @@ services:
       - gateway-network
 
   gateway-runtime:
-    image: ghcr.io/wso2/api-platform/gateway-runtime:0.10.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/gateway-runtime:1.1.0-SNAPSHOT
     mem_limit: 180m
     mem_reservation: 180m
     cpus: 0.175
@@ -77,7 +78,7 @@ services:
   sample-backend:
     image: ghcr.io/wso2/api-platform/sample-service:latest
     ports:
-      - "5000:5000"
+      - "15000:5000"
     command: ["-addr", ":5000", "-pretty"]
     # command: ["-addr", ":5000", "-pretty", "-https", "-cert", "/app/certs/server.pem", "-key", "/app/certs/server.key"]
     networks:

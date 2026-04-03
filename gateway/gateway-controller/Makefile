@@ -28,7 +28,12 @@ LDFLAGS := -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.Bu
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-controller
 
-.PHONY: help generate build test generate-listener-certs push build-coverage-image build-debug
+# Doc generation
+REPO_ROOT := $(shell git rev-parse --show-toplevel)
+APIDOCS_TOOLS_DIR := $(REPO_ROOT)/tools/apidocs
+DOCS_OUT_DIR := $(REPO_ROOT)/docs/rest-apis/gateway
+
+.PHONY: help generate build test generate-listener-certs push build-coverage-image build-debug clean build-and-push-multiarch generate-postman-collection
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -38,9 +43,9 @@ help: ## Show this help message
 
 generate: ## Generate API server code from OpenAPI spec
 	@echo "Generating API server code from OpenAPI spec..."
-	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen.yaml api/openapi.yaml
+	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen.yaml api/management-openapi.yaml
 	@echo "Generating admin API models from OpenAPI admin spec..."
-	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen-admin.yaml api/openapi-admin.yaml
+	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen-admin.yaml api/admin-openapi.yaml
 test: ## Run unit and integration tests
 	@echo "Running tests..."
 	@go test -v ./... -cover -coverprofile=unit-test-coverage.txt
@@ -49,6 +54,7 @@ build: generate test ## Build Docker image using buildx
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
@@ -68,6 +74,7 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 	@echo "Building and pushing multi-arch Docker image: $(IMAGE_NAME):$(VERSION)"
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
@@ -81,6 +88,7 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 build-coverage-image: test ## Build coverage-instrumented gateway-controller image
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
@@ -93,6 +101,7 @@ build-coverage-image: test ## Build coverage-instrumented gateway-controller ima
 build-debug: ## Build debug image for remote debugging with dlv (VS Code attach on port 2345)
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
@@ -120,5 +129,21 @@ generate-listener-certs: ## Generate listener certificates
 
 generate-postman-collection: ## Generate Postman collection from OpenAPI spec
 	@echo "Generating Postman collection from OpenAPI spec..."
-	@npx openapi-to-postmanv2 -s api/openapi.yaml -o api/postman_collection.json -p
+	@npx openapi-to-postmanv2 -s api/management-openapi.yaml -o api/postman_collection.json -p
 	@echo "Postman collection generated at api/postman_collection.json"
+
+generate-apidocs: ## Generate REST API docs from OpenAPI specs
+	@command -v widdershins >/dev/null 2>&1 || { echo "widdershins not found, installing..."; npm install -g widdershins; }
+	@echo "Generating REST API docs..."
+	@widdershins api/management-openapi.yaml -o /tmp/gw-openapi.md \
+		--omitHeader --summary \
+		--language_tabs 'shell:Shell:curl' \
+		--user_templates $(APIDOCS_TOOLS_DIR)/widdershins_templates/
+	@bash $(APIDOCS_TOOLS_DIR)/split-openapi.sh /tmp/gw-openapi.md $(DOCS_OUT_DIR)
+	@rm -f /tmp/gw-openapi.md
+	@echo "REST API docs generated at $(DOCS_OUT_DIR)"
+
+clean: ## Remove SQLite database files from data/
+	@echo "Cleaning database files from data/..."
+	@rm -f data/*.db data/*.db-shm data/*.db-wal
+	@echo "Done."

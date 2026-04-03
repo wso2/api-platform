@@ -54,11 +54,11 @@ func TestAPIKeyHashedValidation(t *testing.T) {
 	}
 
 	// Test validation with correct plain text key
-	valid, err := store.ValidateAPIKey("api-123", "/test", "GET", plainAPIKey)
+	resolvedKey, err := store.ResolveValidatedAPIKey("api-123", "/test", "GET", plainAPIKey, "")
 	if err != nil {
 		t.Fatalf("Validation failed with error: %v", err)
 	}
-	if !valid {
+	if resolvedKey == nil {
 		t.Error("Validation should succeed with correct plain text API key")
 	}
 }
@@ -92,22 +92,22 @@ func TestAPIKeyHashedValidationFailures(t *testing.T) {
 
 	// Test validation with wrong plain text key
 	wrongKey := "apip_wrong399ef29761f92f4f6d2dbd6dcd78399b3bcb8c53417cb23726e5780ac999"
-	valid, err := store.ValidateAPIKey("api-456", "/test", "GET", wrongKey)
+	resolvedKey, err := store.ResolveValidatedAPIKey("api-456", "/test", "GET", wrongKey, "")
 	if err != nil {
 		if err != ErrNotFound {
 			t.Fatalf("Expected ErrNotFound, got: %v", err)
 		}
 	}
-	if valid {
+	if resolvedKey != nil {
 		t.Error("Validation should fail with incorrect plain text API key")
 	}
 
 	// Test validation with non-existent API
-	valid, err = store.ValidateAPIKey("non-existent-api", "/test", "GET", plainAPIKey)
+	resolvedKey, err = store.ResolveValidatedAPIKey("non-existent-api", "/test", "GET", plainAPIKey, "")
 	if err == nil {
 		t.Error("Expected error for non-existent API")
 	}
-	if valid {
+	if resolvedKey != nil {
 		t.Error("Validation should fail for non-existent API")
 	}
 }
@@ -140,11 +140,11 @@ func TestAPIKeyHashedRevocation(t *testing.T) {
 	}
 
 	// Verify key works before revocation
-	valid, err := store.ValidateAPIKey("api-789", "/test", "GET", plainAPIKey)
+	resolvedKey, err := store.ResolveValidatedAPIKey("api-789", "/test", "GET", plainAPIKey, "")
 	if err != nil {
 		t.Fatalf("Validation failed before revocation: %v", err)
 	}
-	if !valid {
+	if resolvedKey == nil {
 		t.Error("API key should be valid before revocation")
 	}
 
@@ -155,11 +155,11 @@ func TestAPIKeyHashedRevocation(t *testing.T) {
 	}
 
 	// Verify key no longer works after revocation
-	valid, err = store.ValidateAPIKey("api-789", "/test", "GET", plainAPIKey)
+	resolvedKey, err = store.ResolveValidatedAPIKey("api-789", "/test", "GET", plainAPIKey, "")
 	if err != nil && err != ErrNotFound {
 		t.Fatalf("Unexpected error during validation after revocation: %v", err)
 	}
-	if valid {
+	if resolvedKey != nil {
 		t.Error("API key should be invalid after revocation")
 	}
 }

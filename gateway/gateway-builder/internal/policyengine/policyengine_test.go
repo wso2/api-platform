@@ -37,10 +37,9 @@ func TestSanitizeIdentifier_SimpleString(t *testing.T) {
 }
 
 func TestSanitizeIdentifier_VersionPrefix(t *testing.T) {
-	// 'v' is stripped, then '1' at position 0 is skipped (digit at start)
-	// '.' becomes '_', '0' is kept (not at position 0), etc.
+	// 'v' prefix becomes '_', so 'v1.0.0' → '_1.0.0' → '_1_0_0'
 	result := sanitizeIdentifier("v1.0.0")
-	assert.Equal(t, "_0_0", result)
+	assert.Equal(t, "_1_0_0", result)
 }
 
 func TestSanitizeIdentifier_WithDashes(t *testing.T) {
@@ -54,7 +53,7 @@ func TestSanitizeIdentifier_WithSpaces(t *testing.T) {
 }
 
 func TestSanitizeIdentifier_WithDots(t *testing.T) {
-	// '1' at position 0 is skipped, '.' becomes '_', then numbers are kept
+	// no 'v' prefix; '1' at position 0 is a digit so it's skipped, '.' becomes '_'
 	result := sanitizeIdentifier("1.2.3")
 	assert.Equal(t, "_2_3", result)
 }
@@ -89,9 +88,9 @@ func TestSanitizeIdentifier_UpperCase(t *testing.T) {
 }
 
 func TestSanitizeIdentifier_OnlyVersionPrefix(t *testing.T) {
-	// 'v' is stripped, leaves '010' - first '0' skipped, result is '10'
+	// 'v' becomes '_', leaves '_010' — all chars kept (digits after position 0)
 	result := sanitizeIdentifier("v010")
-	assert.Equal(t, "10", result)
+	assert.Equal(t, "_010", result)
 }
 
 func TestGenerateImportAlias(t *testing.T) {
@@ -105,19 +104,19 @@ func TestGenerateImportAlias(t *testing.T) {
 			name:       "simple policy and version",
 			policyName: "ratelimit",
 			version:    "v1.0.0",
-			expected:   "ratelimit__0_0", // 'v' stripped, '1' at pos0 skipped
+			expected:   "ratelimit__1_0_0", // 'v' → '_', major version included
 		},
 		{
 			name:       "policy with dashes",
 			policyName: "jwt-auth",
 			version:    "v0.1.0",
-			expected:   "jwt_auth__1_0", // '-' becomes '_', 'v' stripped, '0' at pos0 skipped
+			expected:   "jwt_auth__0_1_0", // '-' → '_', 'v' → '_'
 		},
 		{
 			name:       "policy with underscores",
 			policyName: "my_policy",
 			version:    "v2.0.0",
-			expected:   "my_policy__0_0",
+			expected:   "my_policy__2_0_0", // major version 2 included
 		},
 	}
 
@@ -195,7 +194,7 @@ func TestGeneratePluginRegistry_SinglePolicy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, result, "package main")
 	assert.Contains(t, result, "github.com/policy-engine/policies/ratelimit")
-	assert.Contains(t, result, "ratelimit__0_0") // actual alias format
+	assert.Contains(t, result, "ratelimit__1_0_0") // actual alias format
 }
 
 func TestGeneratePluginRegistry_MultiplePolicies(t *testing.T) {
@@ -218,8 +217,8 @@ func TestGeneratePluginRegistry_MultiplePolicies(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, result, "github.com/policy-engine/policies/ratelimit")
 	assert.Contains(t, result, "github.com/policy-engine/policies/jwt-auth")
-	assert.Contains(t, result, "ratelimit__0_0")
-	assert.Contains(t, result, "jwt_auth__1_0")
+	assert.Contains(t, result, "ratelimit__1_0_0")
+	assert.Contains(t, result, "jwt_auth__0_1_0")
 }
 
 func TestGenerateBuildInfo_EmptyPolicies(t *testing.T) {

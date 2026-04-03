@@ -23,7 +23,7 @@ import (
 	"sync"
 
 	"github.com/wso2/api-platform/common/version"
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
 // PolicyEntry holds a policy definition and its factory function together
@@ -78,10 +78,10 @@ func mergeParams(initParams, params map[string]interface{}) map[string]interface
 	return merged
 }
 
-// CreateInstance creates a new policy instance for a specific route
-// This method is called during BuildPolicyChain for each route-policy combination
+// GetInstance returns a policy instance for a specific route-policy combination.
+// The factory may return a new instance or a cached one — this is up to the policy implementation.
 // Returns the policy instance and the merged parameters (initParams + params)
-func (r *PolicyRegistry) CreateInstance(
+func (r *PolicyRegistry) GetInstance(
 	name, version string,
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},

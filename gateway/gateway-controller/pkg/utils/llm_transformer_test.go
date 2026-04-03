@@ -19,11 +19,14 @@
 package utils
 
 import (
+	"io"
+	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -32,12 +35,13 @@ import (
 
 func TestNewLLMProviderTransformer_Basic(t *testing.T) {
 	store := storage.NewConfigStore()
+	db := newTestMockDB()
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 		HTTPSEnabled: false,
 	}
 
-	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
 	assert.NotNil(t, transformer)
 	assert.Equal(t, store, transformer.store)
 	assert.Equal(t, routerConfig, transformer.routerConfig)
@@ -45,23 +49,155 @@ func TestNewLLMProviderTransformer_Basic(t *testing.T) {
 
 func TestLLMProviderTransformer_Transform_InvalidInput(t *testing.T) {
 	store := storage.NewConfigStore()
+	db := newTestMockDB()
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 	}
-	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
 
 	t.Run("Invalid input type returns error", func(t *testing.T) {
-		output := &api.APIConfiguration{}
+		output := &api.RestAPI{}
 		_, err := transformer.Transform("invalid-type", output)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid input type")
 	})
 
 	t.Run("Nil input returns error", func(t *testing.T) {
-		output := &api.APIConfiguration{}
+		output := &api.RestAPI{}
 		_, err := transformer.Transform(nil, output)
 		assert.Error(t, err)
 	})
+}
+
+func TestLLMProviderTransformer_TransformProvider_ReadsTemplateFromDB(t *testing.T) {
+	store := storage.NewConfigStore()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db := newTestSQLiteStorage(t, logger)
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-db-template-id-0000-000000000000",
+		Configuration: api.LLMProviderTemplate{
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.LlmProviderTemplate,
+			Metadata:   api.Metadata{Name: "openai"},
+			Spec: api.LLMProviderTemplateData{
+				DisplayName: "openai",
+			},
+		},
+	}
+	require.NoError(t, db.SaveLLMProviderTemplate(template))
+
+	routerConfig := &config.RouterConfig{
+		ListenerPort: 8080,
+	}
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
+
+	provider := &api.LLMProviderConfiguration{
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.LlmProvider,
+		Metadata:   api.Metadata{Name: "db-backed-provider"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName: "db-backed-provider",
+			Version:     "v1.0",
+			Template:    "openai",
+			Upstream: api.LLMProviderConfigData_Upstream{
+				Url: stringPtr("https://api.openai.com"),
+			},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+		},
+	}
+
+	result, err := transformer.Transform(provider, &api.RestAPI{})
+	require.NoError(t, err)
+	assert.Equal(t, "db-backed-provider", result.Spec.DisplayName)
+}
+
+func TestLLMProviderTransformer_TransformProxy_ReadsProviderAndTemplateFromDB(t *testing.T) {
+	store := storage.NewConfigStore()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db := newTestSQLiteStorage(t, logger)
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-db-template-id-0000-000000000001",
+		Configuration: api.LLMProviderTemplate{
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.LlmProviderTemplate,
+			Metadata:   api.Metadata{Name: "openai"},
+			Spec: api.LLMProviderTemplateData{
+				DisplayName: "openai",
+			},
+		},
+	}
+	require.NoError(t, db.SaveLLMProviderTemplate(template))
+
+	now := time.Now()
+	providerSourceConfig := api.LLMProviderConfiguration{
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.LlmProvider,
+		Metadata:   api.Metadata{Name: "db-provider"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName: "db-provider",
+			Version:     "v1.0",
+			Context:     stringPtr("/db-provider"),
+			Template:    "openai",
+			Upstream: api.LLMProviderConfigData_Upstream{
+				Url: stringPtr("https://api.openai.com"),
+			},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+		},
+	}
+	providerRuntimeConfig := api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Metadata:   api.Metadata{Name: "db-provider"},
+		Spec: api.APIConfigData{
+			DisplayName: "db-provider",
+			Version:     "v1.0",
+			Context:     "/db-provider",
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{Url: stringPtr("https://api.openai.com")},
+			},
+		},
+	}
+	provider := &models.StoredConfig{
+		UUID:                "0000-db-provider-id-0000-000000000000",
+		Kind:                string(api.LlmProvider),
+		Handle:              "db-provider",
+		DisplayName:         "db-provider",
+		Version:             "v1.0",
+		Configuration:       providerRuntimeConfig,
+		SourceConfiguration: providerSourceConfig,
+		DesiredState:        models.StateDeployed,
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	}
+	require.NoError(t, db.SaveConfig(provider))
+
+	routerConfig := &config.RouterConfig{
+		ListenerPort: 8080,
+	}
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
+
+	proxy := &api.LLMProxyConfiguration{
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.LlmProxy,
+		Metadata:   api.Metadata{Name: "db-proxy"},
+		Spec: api.LLMProxyConfigData{
+			DisplayName: "db-proxy",
+			Version:     "v1.0",
+			Provider: api.LLMProxyProvider{
+				Id: "db-provider",
+			},
+		},
+	}
+
+	result, err := transformer.Transform(proxy, &api.RestAPI{})
+	require.NoError(t, err)
+	require.NotNil(t, result.Spec.Upstream.Main.Url)
+	assert.Equal(t, "http://127.0.0.1:8080/db-provider", *result.Spec.Upstream.Main.Url)
 }
 
 func TestGetUpstreamAuthApikeyPolicyParams_Extended(t *testing.T) {
@@ -69,7 +205,7 @@ func TestGetUpstreamAuthApikeyPolicyParams_Extended(t *testing.T) {
 		params, err := GetUpstreamAuthApikeyPolicyParams("Authorization", "Bearer token123")
 		assert.NoError(t, err)
 		assert.NotNil(t, params)
-		assert.Contains(t, params, "requestHeaders")
+		assert.Contains(t, params, "request")
 	})
 
 	t.Run("Empty header name", func(t *testing.T) {
@@ -84,7 +220,8 @@ func TestGetHostAdditionPolicyParams(t *testing.T) {
 		params, err := GetHostAdditionPolicyParams("api.example.com")
 		assert.NoError(t, err)
 		assert.NotNil(t, params)
-		assert.Contains(t, params, "requestHeaders")
+		assert.Contains(t, params, "host")
+		assert.Equal(t, "api.example.com", params["host"])
 	})
 
 	t.Run("Empty host value", func(t *testing.T) {
@@ -96,7 +233,7 @@ func TestGetHostAdditionPolicyParams(t *testing.T) {
 
 func TestBuildTemplateParams(t *testing.T) {
 	t.Run("Nil template returns error", func(t *testing.T) {
-		params, err := buildTemplateParams(nil)
+		params, err := buildTemplateParams(nil, "/*")
 		assert.Error(t, err)
 		assert.Nil(t, params)
 	})
@@ -107,7 +244,7 @@ func TestBuildTemplateParams(t *testing.T) {
 				Spec: api.LLMProviderTemplateData{},
 			},
 		}
-		params, err := buildTemplateParams(template)
+		params, err := buildTemplateParams(template, "/*")
 		assert.NoError(t, err)
 		assert.NotNil(t, params)
 		assert.Empty(t, params)
@@ -124,7 +261,7 @@ func TestBuildTemplateParams(t *testing.T) {
 				},
 			},
 		}
-		params, err := buildTemplateParams(template)
+		params, err := buildTemplateParams(template, "/*")
 		assert.NoError(t, err)
 		assert.Contains(t, params, "requestModel")
 
@@ -144,7 +281,7 @@ func TestBuildTemplateParams(t *testing.T) {
 				},
 			},
 		}
-		params, err := buildTemplateParams(template)
+		params, err := buildTemplateParams(template, "/*")
 		assert.NoError(t, err)
 		assert.Contains(t, params, "responseModel")
 	})
@@ -160,7 +297,7 @@ func TestBuildTemplateParams(t *testing.T) {
 				},
 			},
 		}
-		params, err := buildTemplateParams(template)
+		params, err := buildTemplateParams(template, "/*")
 		assert.NoError(t, err)
 		assert.Contains(t, params, "promptTokens")
 	})
@@ -176,7 +313,7 @@ func TestBuildTemplateParams(t *testing.T) {
 				},
 			},
 		}
-		params, err := buildTemplateParams(template)
+		params, err := buildTemplateParams(template, "/*")
 		assert.NoError(t, err)
 		assert.Contains(t, params, "completionTokens")
 	})
@@ -192,7 +329,7 @@ func TestBuildTemplateParams(t *testing.T) {
 				},
 			},
 		}
-		params, err := buildTemplateParams(template)
+		params, err := buildTemplateParams(template, "/*")
 		assert.NoError(t, err)
 		assert.Contains(t, params, "totalTokens")
 	})
@@ -208,7 +345,7 @@ func TestBuildTemplateParams(t *testing.T) {
 				},
 			},
 		}
-		params, err := buildTemplateParams(template)
+		params, err := buildTemplateParams(template, "/*")
 		assert.NoError(t, err)
 		assert.Contains(t, params, "remainingTokens")
 	})
@@ -226,9 +363,37 @@ func TestBuildTemplateParams(t *testing.T) {
 				},
 			},
 		}
-		params, err := buildTemplateParams(template)
+		params, err := buildTemplateParams(template, "/*")
 		assert.NoError(t, err)
 		assert.Len(t, params, 6)
+	})
+
+	t.Run("Resource mapping override is selected", func(t *testing.T) {
+		defaultModel := "$.model"
+		responsesModel := "$.response.model"
+		template := &models.StoredLLMProviderTemplate{
+			Configuration: api.LLMProviderTemplate{
+				Spec: api.LLMProviderTemplateData{
+					RequestModel: &api.ExtractionIdentifier{Location: "payload", Identifier: defaultModel},
+					ResourceMappings: &api.LLMProviderTemplateResourceMappings{
+						Resources: &[]api.LLMProviderTemplateResourceMapping{
+							{
+								Resource:     "/responses",
+								RequestModel: &api.ExtractionIdentifier{Location: "payload", Identifier: responsesModel},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		responsesParams, err := buildTemplateParams(template, "/responses")
+		assert.NoError(t, err)
+		assert.Equal(t, responsesModel, responsesParams["requestModel"].(map[string]interface{})["identifier"])
+
+		defaultParams, err := buildTemplateParams(template, "/chat/completions")
+		assert.NoError(t, err)
+		assert.Equal(t, defaultModel, defaultParams["requestModel"].(map[string]interface{})["identifier"])
 	})
 }
 
@@ -242,17 +407,17 @@ func TestMergeParams(t *testing.T) {
 	})
 
 	t.Run("Merge with base only", func(t *testing.T) {
-		base := map[string]interface{}{"key1": "value1"}
+		base := map[string]interface{}{"0000-key1-0000-000000000000": "value1"}
 		extra := map[string]interface{}{}
 		result := mergeParams(base, extra)
-		assert.Equal(t, "value1", (*result)["key1"])
+		assert.Equal(t, "value1", (*result)["0000-key1-0000-000000000000"])
 	})
 
 	t.Run("Merge with extra only", func(t *testing.T) {
 		base := map[string]interface{}{}
-		extra := map[string]interface{}{"key2": "value2"}
+		extra := map[string]interface{}{"0000-key2-0000-000000000000": "value2"}
 		result := mergeParams(base, extra)
-		assert.Equal(t, "value2", (*result)["key2"])
+		assert.Equal(t, "value2", (*result)["0000-key2-0000-000000000000"])
 	})
 
 	t.Run("Merge with overlapping keys", func(t *testing.T) {
@@ -264,11 +429,37 @@ func TestMergeParams(t *testing.T) {
 	})
 
 	t.Run("Merge with different keys", func(t *testing.T) {
-		base := map[string]interface{}{"key1": "value1"}
-		extra := map[string]interface{}{"key2": "value2"}
+		base := map[string]interface{}{"0000-key1-0000-000000000000": "value1"}
+		extra := map[string]interface{}{"0000-key2-0000-000000000000": "value2"}
 		result := mergeParams(base, extra)
-		assert.Equal(t, "value1", (*result)["key1"])
-		assert.Equal(t, "value2", (*result)["key2"])
+		assert.Equal(t, "value1", (*result)["0000-key1-0000-000000000000"])
+		assert.Equal(t, "value2", (*result)["0000-key2-0000-000000000000"])
+	})
+}
+
+func TestExpandPolicyTargetPaths(t *testing.T) {
+	t.Run("Wildcard operation expands to mapped resources", func(t *testing.T) {
+		templateSpec := &api.LLMProviderTemplateData{
+			ResourceMappings: &api.LLMProviderTemplateResourceMappings{
+				Resources: &[]api.LLMProviderTemplateResourceMapping{
+					{Resource: "/responses"},
+					{Resource: "/chat/*"},
+				},
+			},
+		}
+
+		targets := expandPolicyTargetPaths("/*", templateSpec)
+		assert.ElementsMatch(t, []string{"/responses", "/chat/*", "/*"}, targets)
+	})
+
+	t.Run("Wildcard operation falls back when mappings are missing", func(t *testing.T) {
+		targets := expandPolicyTargetPaths("/*", &api.LLMProviderTemplateData{})
+		assert.Equal(t, []string{"/*"}, targets)
+	})
+
+	t.Run("Explicit operation path is not expanded", func(t *testing.T) {
+		targets := expandPolicyTargetPaths("/responses", &api.LLMProviderTemplateData{})
+		assert.Equal(t, []string{"/responses"}, targets)
 	})
 }
 
@@ -345,6 +536,56 @@ func TestHasDenyPolicy(t *testing.T) {
 		op := &api.Operation{Path: "/test", Method: "GET", Policies: &policies}
 		result := hasDenyPolicy(op, testRespondVersion)
 		assert.True(t, result)
+	})
+}
+
+func TestDenyAppliesToTarget(t *testing.T) {
+	t.Run("Exact deny policy matches target path", func(t *testing.T) {
+		denyPolicies := []api.Policy{
+			{Name: constants.ACCESS_CONTROL_DENY_POLICY_NAME, Version: testRespondVersion},
+		}
+		registry := map[pathMethodKey]*api.Operation{
+			{path: "/chat/completions", method: "GET"}: {
+				Path:     "/chat/completions",
+				Method:   "GET",
+				Policies: &denyPolicies,
+			},
+		}
+
+		result := denyAppliesToTarget("/chat/completions", "GET", testRespondVersion, registry)
+		assert.True(t, result)
+	})
+
+	t.Run("Wildcard deny policy matches concrete target path", func(t *testing.T) {
+		denyPolicies := []api.Policy{
+			{Name: constants.ACCESS_CONTROL_DENY_POLICY_NAME, Version: testRespondVersion},
+		}
+		registry := map[pathMethodKey]*api.Operation{
+			{path: "/chat/*", method: "GET"}: {
+				Path:     "/chat/*",
+				Method:   "GET",
+				Policies: &denyPolicies,
+			},
+		}
+
+		result := denyAppliesToTarget("/chat/completions", "GET", testRespondVersion, registry)
+		assert.True(t, result)
+	})
+
+	t.Run("Different method does not match wildcard deny policy", func(t *testing.T) {
+		denyPolicies := []api.Policy{
+			{Name: constants.ACCESS_CONTROL_DENY_POLICY_NAME, Version: testRespondVersion},
+		}
+		registry := map[pathMethodKey]*api.Operation{
+			{path: "/chat/*", method: "GET"}: {
+				Path:     "/chat/*",
+				Method:   "GET",
+				Policies: &denyPolicies,
+			},
+		}
+
+		result := denyAppliesToTarget("/chat/completions", "POST", testRespondVersion, registry)
+		assert.False(t, result)
 	})
 }
 
@@ -540,10 +781,11 @@ func TestShouldSwap(t *testing.T) {
 
 func TestTransformProvider_MissingTemplate(t *testing.T) {
 	store := storage.NewConfigStore()
+	db := newTestMockDB()
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 	}
-	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
 
 	provider := &api.LLMProviderConfiguration{
 		Metadata: api.Metadata{Name: "test-provider"},
@@ -557,7 +799,7 @@ func TestTransformProvider_MissingTemplate(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	_, err := transformer.Transform(provider, output)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to retrieve template")
@@ -565,19 +807,21 @@ func TestTransformProvider_MissingTemplate(t *testing.T) {
 
 func TestTransformProvider_AllowAllMode(t *testing.T) {
 	store := storage.NewConfigStore()
+	db := newTestMockDB()
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 	}
-	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
 
 	// Add a template to the store
 	template := &models.StoredLLMProviderTemplate{
-		ID: "template-1",
+		UUID: "0000-template-1-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			Metadata: api.Metadata{Name: "openai"},
 			Spec:     api.LLMProviderTemplateData{},
 		},
 	}
+	db.SaveLLMProviderTemplate(template)
 	err := store.AddTemplate(template)
 	require.NoError(t, err)
 
@@ -597,7 +841,7 @@ func TestTransformProvider_AllowAllMode(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
@@ -606,19 +850,21 @@ func TestTransformProvider_AllowAllMode(t *testing.T) {
 
 func TestTransformProvider_DenyAllMode(t *testing.T) {
 	store := storage.NewConfigStore()
+	db := newTestMockDB()
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 	}
-	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
 
 	// Add a template to the store
 	template := &models.StoredLLMProviderTemplate{
-		ID: "template-1",
+		UUID: "0000-template-1-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			Metadata: api.Metadata{Name: "openai"},
 			Spec:     api.LLMProviderTemplateData{},
 		},
 	}
+	db.SaveLLMProviderTemplate(template)
 	err := store.AddTemplate(template)
 	require.NoError(t, err)
 
@@ -641,28 +887,142 @@ func TestTransformProvider_DenyAllMode(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Equal(t, api.RestApi, result.Kind)
 }
 
+func TestTransformProvider_ExpandsWildcardPolicyPathWithTemplateMappings(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := newTestMockDB()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
+
+	defaultModel := "$.model"
+	responsesModel := "$.response.model"
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-template-1-0000-000000000000",
+		Configuration: api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "openai"},
+			Spec: api.LLMProviderTemplateData{
+				RequestModel: &api.ExtractionIdentifier{Location: "payload", Identifier: defaultModel},
+				ResourceMappings: &api.LLMProviderTemplateResourceMappings{
+					Resources: &[]api.LLMProviderTemplateResourceMapping{
+						{
+							Resource:     "/responses",
+							RequestModel: &api.ExtractionIdentifier{Location: "payload", Identifier: responsesModel},
+						},
+					},
+				},
+			},
+		},
+	}
+	db.SaveLLMProviderTemplate(template)
+	err := store.AddTemplate(template)
+	require.NoError(t, err)
+
+	upstreamURL := "https://api.openai.com"
+	provider := &api.LLMProviderConfiguration{
+		Metadata: api.Metadata{Name: "openai-provider"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName: "OpenAI Provider",
+			Version:     "1.0.0",
+			Template:    "openai",
+			Upstream: api.LLMProviderConfigData_Upstream{
+				Url: &upstreamURL,
+			},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			Policies: &[]api.LLMPolicy{
+				{
+					Name:    "request-transformer",
+					Version: "v1.0.0",
+					Paths: []api.LLMPolicyPath{
+						{
+							Path:    "/*",
+							Methods: []api.LLMPolicyPathMethods{"POST"},
+							Params:  map[string]interface{}{"userParam": "value"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	output := &api.RestAPI{}
+	result, err := transformer.Transform(provider, output)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	var responsesOp *api.Operation
+	var wildcardPostOp *api.Operation
+	for i := range result.Spec.Operations {
+		op := &result.Spec.Operations[i]
+		if op.Method == "POST" && op.Path == "/responses" {
+			responsesOp = op
+		}
+		if op.Method == "POST" && op.Path == "/*" {
+			wildcardPostOp = op
+		}
+	}
+
+	require.NotNil(t, responsesOp)
+	require.NotNil(t, responsesOp.Policies)
+
+	var responsesPolicy *api.Policy
+	for i := range *responsesOp.Policies {
+		pol := &(*responsesOp.Policies)[i]
+		if pol.Name == "request-transformer" {
+			responsesPolicy = pol
+			break
+		}
+	}
+	require.NotNil(t, responsesPolicy)
+	require.NotNil(t, responsesPolicy.Params)
+
+	reqModel, ok := (*responsesPolicy.Params)["requestModel"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, responsesModel, reqModel["identifier"])
+	assert.Equal(t, "value", (*responsesPolicy.Params)["userParam"])
+
+	require.NotNil(t, wildcardPostOp)
+	require.NotNil(t, wildcardPostOp.Policies)
+
+	var wildcardPolicy *api.Policy
+	for i := range *wildcardPostOp.Policies {
+		pol := &(*wildcardPostOp.Policies)[i]
+		if pol.Name == "request-transformer" {
+			wildcardPolicy = pol
+			break
+		}
+	}
+	require.NotNil(t, wildcardPolicy)
+	require.NotNil(t, wildcardPolicy.Params)
+
+	wildcardReqModel, ok := (*wildcardPolicy.Params)["requestModel"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, defaultModel, wildcardReqModel["identifier"])
+	assert.Equal(t, "value", (*wildcardPolicy.Params)["userParam"])
+}
+
 func TestTransformProvider_WithUpstreamAuth(t *testing.T) {
 	store := storage.NewConfigStore()
+	db := newTestMockDB()
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 	}
-	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
 
 	// Add a template to the store
 	template := &models.StoredLLMProviderTemplate{
-		ID: "template-1",
+		UUID: "0000-template-1-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			Metadata: api.Metadata{Name: "openai"},
 			Spec:     api.LLMProviderTemplateData{},
 		},
 	}
+	db.SaveLLMProviderTemplate(template)
 	err := store.AddTemplate(template)
 	require.NoError(t, err)
 
@@ -693,16 +1053,14 @@ func TestTransformProvider_WithUpstreamAuth(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
 
 	// Check that policies were added
-	apiData, err := result.Spec.AsAPIConfigData()
-	assert.NoError(t, err)
-	require.NotEmpty(t, apiData.Operations)
-	for _, op := range apiData.Operations {
+	require.NotEmpty(t, result.Spec.Operations)
+	for _, op := range result.Spec.Operations {
 		require.NotNil(t, op.Policies)
 		found := false
 		for _, p := range *op.Policies {
@@ -717,17 +1075,19 @@ func TestTransformProvider_WithUpstreamAuth(t *testing.T) {
 
 func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 	store := storage.NewConfigStore()
+	db := newTestMockDB()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
 
 	// Add a template to the store (required for proxy transform to resolve provider template params)
 	template := &models.StoredLLMProviderTemplate{
-		ID: "template-1",
+		UUID: "0000-template-1-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			Metadata: api.Metadata{Name: "openai"},
 			Spec:     api.LLMProviderTemplateData{},
 		},
 	}
+	db.SaveLLMProviderTemplate(template)
 	err := store.AddTemplate(template)
 	require.NoError(t, err)
 
@@ -746,18 +1106,23 @@ func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 		},
 	}
 
-	providerOut := &api.APIConfiguration{}
+	providerOut := &api.RestAPI{}
 	providerAPI, err := transformer.Transform(provider, providerOut)
 	require.NoError(t, err)
 	require.NotNil(t, providerAPI)
 
 	storedProvider := &models.StoredConfig{
-		ID:                  "prov-cfg-1",
+		UUID:                "0000-prov-cfg-1-0000-000000000000",
 		Kind:                string(api.LlmProvider),
+		Handle:              "openai-provider",
+		DisplayName:         "OpenAI Provider",
+		Version:             "v1.0",
 		Configuration:       *providerAPI,
 		SourceConfiguration: *provider,
-		Status:              models.StatusDeployed,
+		DesiredState:        models.StateDeployed,
+		Origin:              models.OriginGatewayAPI,
 	}
+	db.SaveConfig(storedProvider)
 	err = store.Add(storedProvider)
 	require.NoError(t, err)
 
@@ -780,17 +1145,15 @@ func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(proxy, output)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
-	apiData, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
-	require.NotEmpty(t, apiData.Operations)
+	require.NotEmpty(t, result.Spec.Operations)
 
 	// Ensure upstream-auth policy is present on all operations
-	for _, op := range apiData.Operations {
+	for _, op := range result.Spec.Operations {
 		require.NotNil(t, op.Policies)
 		found := false
 		for _, p := range *op.Policies {
@@ -805,19 +1168,21 @@ func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 
 func TestTransformProvider_UnsupportedMode(t *testing.T) {
 	store := storage.NewConfigStore()
+	db := newTestMockDB()
 	routerConfig := &config.RouterConfig{
 		ListenerPort: 8080,
 	}
-	transformer := NewLLMProviderTransformer(store, routerConfig, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
 
 	// Add a template to the store
 	template := &models.StoredLLMProviderTemplate{
-		ID: "template-1",
+		UUID: "0000-template-1-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			Metadata: api.Metadata{Name: "openai"},
 			Spec:     api.LLMProviderTemplateData{},
 		},
 	}
+	db.SaveLLMProviderTemplate(template)
 	err := store.AddTemplate(template)
 	require.NoError(t, err)
 
@@ -837,7 +1202,7 @@ func TestTransformProvider_UnsupportedMode(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	_, err = transformer.Transform(provider, output)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported access control mode")

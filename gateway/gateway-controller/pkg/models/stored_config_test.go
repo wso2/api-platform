@@ -23,37 +23,29 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	"github.com/stretchr/testify/require"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
 
-func TestConfigStatus_Constants(t *testing.T) {
-	assert.Equal(t, ConfigStatus("pending"), StatusPending)
-	assert.Equal(t, ConfigStatus("deployed"), StatusDeployed)
-	assert.Equal(t, ConfigStatus("failed"), StatusFailed)
+func TestDesiredState_Constants(t *testing.T) {
+	assert.Equal(t, DesiredState("deployed"), StateDeployed)
+	assert.Equal(t, DesiredState("undeployed"), StateUndeployed)
 }
 
-func TestStoredConfig_GetHandle(t *testing.T) {
+func TestStoredConfig_Handle(t *testing.T) {
 	config := &StoredConfig{
-		Configuration: api.APIConfiguration{
-			Metadata: api.Metadata{
-				Name: "test-handle",
-			},
-		},
+		Handle: "0000-test-handle-0000-000000000000",
 	}
 
-	assert.Equal(t, "test-handle", config.GetHandle())
+	assert.Equal(t, "0000-test-handle-0000-000000000000", config.Handle)
 }
 
-func TestStoredConfig_GetHandle_Empty(t *testing.T) {
+func TestStoredConfig_Handle_Empty(t *testing.T) {
 	config := &StoredConfig{
-		Configuration: api.APIConfiguration{
-			Metadata: api.Metadata{
-				Name: "",
-			},
-		},
+		Handle: "",
 	}
 
-	assert.Equal(t, "", config.GetHandle())
+	assert.Equal(t, "", config.Handle)
 }
 
 func TestStoredConfig_Fields(t *testing.T) {
@@ -61,29 +53,27 @@ func TestStoredConfig_Fields(t *testing.T) {
 	deployedAt := now.Add(time.Hour)
 
 	config := &StoredConfig{
-		ID:              "test-id-123",
-		Kind:            "API",
-		Status:          StatusDeployed,
-		CreatedAt:       now,
-		UpdatedAt:       now,
-		DeployedAt:      &deployedAt,
-		DeployedVersion: 5,
+		UUID:       "0000-test-id-123-0000-000000000000",
+		Kind:       "API",
+		DesiredState: StateDeployed,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+		DeployedAt: &deployedAt,
 	}
 
-	assert.Equal(t, "test-id-123", config.ID)
+	assert.Equal(t, "0000-test-id-123-0000-000000000000", config.UUID)
 	assert.Equal(t, "API", config.Kind)
-	assert.Equal(t, StatusDeployed, config.Status)
+	assert.Equal(t, StateDeployed, config.DesiredState)
 	assert.Equal(t, now, config.CreatedAt)
 	assert.Equal(t, now, config.UpdatedAt)
 	assert.NotNil(t, config.DeployedAt)
 	assert.Equal(t, deployedAt, *config.DeployedAt)
-	assert.Equal(t, int64(5), config.DeployedVersion)
 }
 
 func TestStoredConfig_NilDeployedAt(t *testing.T) {
 	config := &StoredConfig{
-		ID:         "test-id",
-		Status:     StatusPending,
+		UUID:       "0000-test-id-0000-000000000000",
+		DesiredState: StateDeployed,
 		DeployedAt: nil,
 	}
 
@@ -99,7 +89,7 @@ func TestStoredConfig_SourceConfiguration(t *testing.T) {
 	}
 
 	config := &StoredConfig{
-		ID:                  "test-id",
+		UUID:                "0000-test-id-0000-000000000000",
 		SourceConfiguration: sourceConfig,
 	}
 
@@ -109,4 +99,73 @@ func TestStoredConfig_SourceConfiguration(t *testing.T) {
 	sc, ok := config.SourceConfiguration.(map[string]interface{})
 	assert.True(t, ok)
 	assert.Equal(t, "API", sc["kind"])
+}
+
+func TestGetContext_RestAPI_NoVersionPlaceholder(t *testing.T) {
+	config := &StoredConfig{
+		Version: "v1.0",
+		SourceConfiguration: api.RestAPI{
+			Spec: api.APIConfigData{
+				Context: "/weather",
+			},
+		},
+	}
+
+	ctx, err := config.GetContext()
+	require.NoError(t, err)
+	assert.Equal(t, "/weather", ctx)
+}
+
+func TestGetContext_RestAPI_WithVersionPlaceholder(t *testing.T) {
+	config := &StoredConfig{
+		Version: "v1.0",
+		SourceConfiguration: api.RestAPI{
+			Spec: api.APIConfigData{
+				Context: "/weather/$version",
+			},
+		},
+	}
+
+	ctx, err := config.GetContext()
+	require.NoError(t, err)
+	assert.Equal(t, "/weather/v1.0", ctx)
+}
+
+func TestGetContext_RestAPI_WithVersionPlaceholderMultiple(t *testing.T) {
+	config := &StoredConfig{
+		Version: "v2.0",
+		SourceConfiguration: api.RestAPI{
+			Spec: api.APIConfigData{
+				Context: "/$version/api/$version",
+			},
+		},
+	}
+
+	ctx, err := config.GetContext()
+	require.NoError(t, err)
+	assert.Equal(t, "/v2.0/api/v2.0", ctx)
+}
+
+func TestGetContext_WebSubAPI_WithVersionPlaceholder(t *testing.T) {
+	config := &StoredConfig{
+		Version: "v1.0",
+		SourceConfiguration: api.WebSubAPI{
+			Spec: api.WebhookAPIData{
+				Context: "/events/$version",
+			},
+		},
+	}
+
+	ctx, err := config.GetContext()
+	require.NoError(t, err)
+	assert.Equal(t, "/events/v1.0", ctx)
+}
+
+func TestGetContext_UnsupportedType(t *testing.T) {
+	config := &StoredConfig{
+		SourceConfiguration: map[string]interface{}{"kind": "unknown"},
+	}
+
+	_, err := config.GetContext()
+	assert.Error(t, err)
 }

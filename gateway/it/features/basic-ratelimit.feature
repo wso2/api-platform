@@ -45,7 +45,7 @@ Feature: Basic Rate Limiting
             path: /limited
             policies:
               - name: basic-ratelimit
-                version: v0
+                version: v1
                 params:
                   limits:
                     - requests: 5
@@ -83,7 +83,7 @@ Feature: Basic Rate Limiting
             path: /check
             policies:
               - name: basic-ratelimit
-                version: v0
+                version: v1
                 params:
                   limits:
                     - requests: 100
@@ -120,7 +120,7 @@ Feature: Basic Rate Limiting
             path: /resource
             policies:
               - name: basic-ratelimit
-                version: v0
+                version: v1
                 params:
                   limits:
                     - requests: 10
@@ -163,7 +163,7 @@ Feature: Basic Rate Limiting
             path: /route1
             policies:
               - name: basic-ratelimit
-                version: v0
+                version: v1
                 params:
                   limits:
                     - requests: 3
@@ -172,7 +172,7 @@ Feature: Basic Rate Limiting
             path: /route2
             policies:
               - name: basic-ratelimit
-                version: v0
+                version: v1
                 params:
                   limits:
                     - requests: 3
@@ -220,7 +220,7 @@ Feature: Basic Rate Limiting
             path: /resource
             policies:
               - name: basic-ratelimit
-                version: v0
+                version: v1
                 params:
                   limits:
                     - requests: 3
@@ -255,7 +255,7 @@ Feature: Basic Rate Limiting
             url: http://sample-backend:9080/api/v1
         policies:
           - name: basic-ratelimit
-            version: v0
+            version: v1
             params:
               limits:
                 - requests: 5
@@ -265,7 +265,7 @@ Feature: Basic Rate Limiting
             path: /health
             policies:
               - name: basic-ratelimit
-                version: v0
+                version: v1
                 params:
                   limits:
                     - requests: 100
@@ -276,7 +276,7 @@ Feature: Basic Rate Limiting
             path: /resource-b
             policies:
               - name: basic-ratelimit
-                version: v0
+                version: v1
                 params:
                   limits:
                     - requests: 3
@@ -332,7 +332,7 @@ Feature: Basic Rate Limiting
             url: http://sample-backend:9080/api/v1
         policies:
           - name: basic-ratelimit
-            version: v0
+            version: v1
             params:
               limits:
                 - requests: 20
@@ -381,7 +381,7 @@ Feature: Basic Rate Limiting
             path: /limited
             policies:
               - name: basic-ratelimit
-                version: v0
+                version: v1
                 params:
                   limits:
                     - requests: 3
@@ -419,7 +419,7 @@ Feature: Basic Rate Limiting
             url: http://sample-backend:9080/api/v1
         policies:
           - name: basic-ratelimit
-            version: v0
+            version: v1
             params:
               limits:
                 - requests: 10
@@ -429,7 +429,7 @@ Feature: Basic Rate Limiting
             path: /health
             policies:
               - name: basic-ratelimit
-                version: v0
+                version: v1
                 params:
                   limits:
                     - requests: 100
@@ -438,7 +438,7 @@ Feature: Basic Rate Limiting
             path: /resource-b
             policies:
               - name: basic-ratelimit
-                version: v0
+                version: v1
                 params:
                   limits:
                     - requests: 100
@@ -471,7 +471,7 @@ Feature: Basic Rate Limiting
             url: http://sample-backend:9080/api/v1
         policies:
           - name: basic-ratelimit
-            version: v0
+            version: v1
             params:
               limits:
                 - requests: 5
@@ -481,7 +481,7 @@ Feature: Basic Rate Limiting
             path: /health
             policies:
               - name: basic-ratelimit
-                version: v0
+                version: v1
                 params:
                   limits:
                     - requests: 100
@@ -492,7 +492,7 @@ Feature: Basic Rate Limiting
             path: /resource-b
             policies:
               - name: basic-ratelimit
-                version: v0
+                version: v1
                 params:
                   limits:
                     - requests: 3
@@ -530,7 +530,7 @@ Feature: Basic Rate Limiting
             url: http://sample-backend:9080/api/v1
         policies:
           - name: basic-ratelimit
-            version: v0
+            version: v1
             params:
               limits:
                 - requests: 50
@@ -564,7 +564,7 @@ Feature: Basic Rate Limiting
             url: http://sample-backend:9080/api/v1
         policies:
           - name: basic-ratelimit
-            version: v0
+            version: v1
             params:
               limits:
                 - requests: 50
@@ -576,7 +576,7 @@ Feature: Basic Rate Limiting
             path: /resource
             policies:
               - name: basic-ratelimit
-                version: v0
+                version: v1
                 params:
                   limits:
                     - requests: 2
@@ -607,7 +607,7 @@ Feature: Basic Rate Limiting
             url: http://sample-backend:9080/api/v1
         policies:
           - name: basic-ratelimit
-            version: v0
+            version: v1
             params:
               limits:
                 - requests: 50
@@ -641,7 +641,7 @@ Feature: Basic Rate Limiting
             url: http://sample-backend:9080/api/v1
         policies:
           - name: basic-ratelimit
-            version: v0
+            version: v1
             params:
               limits:
                 - requests: 15
@@ -651,7 +651,7 @@ Feature: Basic Rate Limiting
             path: /health
             policies:
               - name: basic-ratelimit
-                version: v0
+                version: v1
                 params:
                   limits:
                     - requests: 100
@@ -660,7 +660,7 @@ Feature: Basic Rate Limiting
             path: /books
             policies:
               - name: basic-ratelimit
-                version: v0
+                version: v1
                 params:
                   limits:
                     - requests: 3
@@ -710,7 +710,7 @@ Feature: Basic Rate Limiting
             url: http://sample-backend:9080/api/v1
         policies:
           - name: basic-ratelimit
-            version: v0
+            version: v1
             params:
               limits:
                 - requests: 15
@@ -720,7 +720,7 @@ Feature: Basic Rate Limiting
             path: /books
             policies:
               - name: basic-ratelimit
-                version: v0
+                version: v1
                 params:
                   limits:
                     - requests: 50

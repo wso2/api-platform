@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/adminapi/generated"
+	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 )
 
@@ -42,8 +42,9 @@ func NewServer(cfg *config.AdminServerConfig, apiServer apiServer, logger *slog.
 	})
 
 	s.httpSrv = &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.Port),
-		Handler: handler,
+		Addr:              fmt.Sprintf(":%d", cfg.Port),
+		Handler:           handler,
+		ReadHeaderTimeout: 30 * time.Second,
 	}
 
 	return s

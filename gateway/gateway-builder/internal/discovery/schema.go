@@ -21,7 +21,7 @@ package discovery
 import (
 	"log/slog"
 
-	policyv1alpha "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	policyv1alpha "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
 const systemParamRequiredKey = "__wso2_internal_required"

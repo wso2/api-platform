@@ -1,0 +1,5210 @@
+openapi: 3.0.3
+info:
+  title: Gateway Controller Management API
+  description: |
+    REST API for managing API configurations in the WSO2 API Platform Gateway.
+  version: 1.0.0
+  contact:
+    name: WSO2 API Platform Team
+servers:
+  - url: http://localhost:9090
+    description: Local development
+  - url: http://gateway-controller:9090
+    description: Docker/Kubernetes deployment
+
+security:
+  - basicAuth: []
+
+paths:
+  /rest-apis:
+    post:
+      summary: Create a new RestAPI
+      description: Add a new RestAPI to the Gateway.
+      operationId: createRestAPI
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Rest API Management
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/RestAPI"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RestAPI"
+      responses:
+        "201":
+          description: RestAPI created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestAPICreateResponse"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - API with same name and version already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    get:
+      summary: List all RestAPIs
+      description: List RestAPIs registered in the Gateway, optionally filtered by name, version, context, or status.
+      operationId: listRestAPIs
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Rest API Management
+      parameters:
+        - name: displayName
+          in: query
+          required: false
+          description: Filter by API display name
+          schema:
+            type: string
+          example: Weather API
+        - name: version
+          in: query
+          required: false
+          description: Filter by API version
+          schema:
+            type: string
+          example: v1.0
+        - name: context
+          in: query
+          required: false
+          description: Filter by API context/path
+          schema:
+            type: string
+          example: /weather
+        - name: status
+          in: query
+          required: false
+          description: Filter by deployment status
+          schema:
+            type: string
+            enum: [ deployed, undeployed ]
+          example: undeployed
+      responses:
+        "200":
+          description: List of RestAPIs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  count:
+                    type: integer
+                    example: 5
+                  apis:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RestAPIListItem"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /rest-apis/{id}:
+    get:
+      summary: Get RestAPI by id
+      description: Get a RestAPI by its ID.
+      operationId: getRestAPIById
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Rest API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier for the API.
+          schema:
+            type: string
+          example: weather-api-v1.0
+      responses:
+        "200":
+          description: RestAPI details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestAPIDetailResponse"
+            application/yaml:
+              schema:
+                $ref: "#/components/schemas/RestAPIDetailResponse"
+        "404":
+          description: RestAPI not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    put:
+      summary: Update an existing RestAPI
+      description: Update an existing RestAPI in the Gateway.
+      operationId: updateRestAPI
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Rest API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the API to update.
+          schema:
+            type: string
+          example: weather-api-v1.0
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/RestAPI"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RestAPI"
+      responses:
+        "200":
+          description: RestAPI updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestAPIUpdateResponse"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: RestAPI not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      summary: Delete a RestAPI
+      description: Delete a RestAPI from the Gateway.
+      operationId: deleteRestAPI
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Rest API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the API to delete.
+          schema:
+            type: string
+          example: weather-api-v1.0
+      responses:
+        "200":
+          description: RestAPI deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: RestAPI deleted successfully
+                  id:
+                    type: string
+                    example: weather-api-v1.0
+        "404":
+          description: RestAPI not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /rest-apis/{id}/api-keys:
+    post:
+      summary: Create a new API key for an API
+      description: Generate a new API key for a RestAPI in the Gateway. The key is a 32-byte random value encoded in hexadecimal, prefixed with `apip_`. Use the API Key policy on the API to validate incoming requests with this key.
+      operationId: createAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - Rest API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the API to generate the key for
+          schema:
+            type: string
+          example: weather-api-v1.0
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreationRequest"
+      responses:
+        '201':
+          description: API key created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: RestAPI not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    get:
+      summary: Get the list of API keys for an API
+      description: List all API keys for a RestAPI in the Gateway.
+      operationId: listAPIKeys
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - Rest API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the API to retrieve the keys for
+          schema:
+            type: string
+          example: weather-api-v1.0
+      responses:
+        "200":
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyListResponse"
+        "404":
+          description: RestAPI not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /rest-apis/{id}/api-keys/{apiKeyName}/regenerate:
+    post:
+      summary: Regenerate API key for an API
+      description: Regenerate an existing API key for a RestAPI in the Gateway. The previous key is revoked and replaced with a new 32-byte random value encoded in hexadecimal, prefixed with `apip_`.
+      operationId: regenerateAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - Rest API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the API to generate the key for
+          schema:
+            type: string
+          example: weather-api-v1.0
+        - name: apiKeyName
+          in: path
+          required: true
+          description: |
+            Name of the API key to regenerate
+          schema:
+            type: string
+          example: weather-api-key
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+      responses:
+        '200':
+          description: API key rotated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: RestAPI not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /rest-apis/{id}/api-keys/{apiKeyName}:
+    put:
+      summary: Update an API key with a new regenerated value
+      description: Update an API key with a custom value instead of auto-generating one.
+      operationId: updateAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - Rest API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the API
+          schema:
+            type: string
+          example: weather-api-v1.0
+        - name: apiKeyName
+          in: path
+          required: true
+          description: |
+            Name of the API key to update
+          schema:
+            type: string
+          example: weather-api-key
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+      responses:
+        '200':
+          description: API key updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        "400":
+          description: Invalid request (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: API or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      summary: Revoke an API key
+      description: Revoke an API key. Once revoked, it can no longer be used to authenticate requests.
+      operationId: revokeAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - Rest API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the API to revoke the key for
+          schema:
+            type: string
+          example: weather-api-v1.0
+        - name: apiKeyName
+          in: path
+          required: true
+          description: |
+            Name of the API key to revoke
+          schema:
+            type: string
+          example: weather-api-key
+      responses:
+        '200':
+          description: API key revoked successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyRevocationResponse"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: RestAPI not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /subscription-plans:
+    post:
+      summary: Create a subscription plan
+      description: Create a subscription plan that defines rate limits and access tiers for API subscriptions.
+      operationId: createSubscriptionPlan
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Rest API Management
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscriptionPlanCreateRequest"
+      responses:
+        '201':
+          description: Subscription plan created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionPlanResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      summary: List subscription plans
+      description: List all subscription plans available in the Gateway.
+      operationId: listSubscriptionPlans
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Rest API Management
+      responses:
+        '200':
+          description: List of subscription plans
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionPlanListResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /subscription-plans/{planId}:
+    get:
+      summary: Get a subscription plan by ID
+      description: Get the details of a subscription plan by its ID.
+      operationId: getSubscriptionPlan
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Rest API Management
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Subscription plan details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionPlanResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      summary: Update a subscription plan
+      description: Update an existing subscription plan in the Gateway.
+      operationId: updateSubscriptionPlan
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Rest API Management
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscriptionPlanUpdateRequest"
+      responses:
+        '200':
+          description: Subscription plan updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionPlanResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      summary: Delete a subscription plan
+      description: Delete a subscription plan from the Gateway.
+      operationId: deleteSubscriptionPlan
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Rest API Management
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Subscription plan deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /subscriptions:
+    post:
+      summary: Create a subscription
+      description: Subscribe an application to a RestAPI in the Gateway.
+      operationId: createSubscription
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Rest API Management
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscriptionCreateRequest"
+      responses:
+        '201':
+          description: Subscription created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - subscription already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      summary: List subscriptions
+      description: List subscriptions in the Gateway, optionally filtered by API, application, or status.
+      operationId: listSubscriptions
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Rest API Management
+      parameters:
+        - name: apiId
+          in: query
+          required: false
+          description: Filter by API ID (deployment ID or handle)
+          schema:
+            type: string
+        - name: applicationId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ACTIVE, INACTIVE, REVOKED]
+      responses:
+        '200':
+          description: List of subscriptions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionListResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /subscriptions/{subscriptionId}:
+    get:
+      summary: Get a subscription by ID
+      description: Get the details of a subscription by its ID.
+      operationId: getSubscription
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Rest API Management
+      parameters:
+        - name: subscriptionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Subscription details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionResponse"
+        "404":
+          description: Subscription not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      summary: Update a subscription
+      description: Update an existing subscription in the Gateway.
+      operationId: updateSubscription
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Rest API Management
+      parameters:
+        - name: subscriptionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscriptionUpdateRequest"
+      responses:
+        '200':
+          description: Subscription updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionResponse"
+        "404":
+          description: Subscription not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      summary: Delete a subscription
+      description: Delete a subscription from the Gateway.
+      operationId: deleteSubscription
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Rest API Management
+      parameters:
+        - name: subscriptionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Subscription deleted
+        "404":
+          description: Subscription not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /websub-apis:
+    post:
+      summary: Create a new WebSubAPI
+      description: Add a new WebSubAPI to the Gateway.
+      operationId: createWebSubAPI
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebSub API Management
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/WebSubAPI"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebSubAPI"
+      responses:
+        "201":
+          description: WebSubAPI created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebSubAPICreateResponse"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - WebSub API with same name and version already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    get:
+      summary: List all WebSubAPIs
+      description: List WebSubAPIs registered in the Gateway, optionally filtered by name, version, context, or status.
+      operationId: listWebSubAPIs
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: displayName
+          in: query
+          required: false
+          description: Filter by WebSub API display name
+          schema:
+            type: string
+          example: Weather WebSub API
+        - name: version
+          in: query
+          required: false
+          description: Filter by WebSub API version
+          schema:
+            type: string
+          example: v1.0
+        - name: context
+          in: query
+          required: false
+          description: Filter by WebSub API context/path
+          schema:
+            type: string
+          example: /weather-events
+        - name: status
+          in: query
+          required: false
+          description: Filter by deployment status
+          schema:
+            type: string
+            enum: [ deployed, undeployed ]
+          example: undeployed
+      responses:
+        "200":
+          description: List of WebSubAPIs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  count:
+                    type: integer
+                    example: 5
+                  apis:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WebSubAPIListItem"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /websub-apis/{id}:
+    get:
+      summary: Get WebSubAPI by id
+      description: Get a WebSubAPI by its ID.
+      operationId: getWebSubAPIById
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier for the WebSub API.
+          schema:
+            type: string
+          example: weather-websub-api
+      responses:
+        "200":
+          description: WebSubAPI details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebSubAPIDetailResponse"
+            application/yaml:
+              schema:
+                $ref: "#/components/schemas/WebSubAPIDetailResponse"
+        "404":
+          description: WebSubAPI not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    put:
+      summary: Update an existing WebSubAPI
+      description: Update an existing WebSubAPI in the Gateway.
+      operationId: updateWebSubAPI
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the WebSub API to update.
+          schema:
+            type: string
+          example: weather-websub-api
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/WebSubAPI"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebSubAPI"
+      responses:
+        "200":
+          description: WebSubAPI updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebSubAPIUpdateResponse"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: WebSubAPI not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      summary: Delete a WebSubAPI
+      description: Delete a WebSubAPI from the Gateway.
+      operationId: deleteWebSubAPI
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the WebSub API to delete.
+          schema:
+            type: string
+          example: weather-websub-api
+      responses:
+        "200":
+          description: WebSubAPI deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: WebSubAPI deleted successfully
+                  id:
+                    type: string
+                    example: weather-websub-api
+        "404":
+          description: WebSubAPI not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /certificates:
+    get:
+      summary: List all custom certificates
+      description: |
+        Retrieve all custom TLS certificates currently loaded in the certificate store.
+        These certificates are used for verifying HTTPS upstream connections.
+      operationId: listCertificates
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Certificate Management
+      responses:
+        "200":
+          description: List of certificates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CertificateListResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    post:
+      summary: Upload a new certificate
+      description: Upload a new TLS certificate (PEM format) to the Gateway. The certificate is loaded dynamically without restarting the Gateway.
+      operationId: uploadCertificate
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Certificate Management
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CertificateUploadRequest"
+            example:
+              name: my-custom-ca
+              certificate: |
+                -----BEGIN CERTIFICATE-----
+                MIIDXTCCAkWgAwIBAgIJAKL0UG+mRKtjMA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV
+                ...
+                -----END CERTIFICATE-----
+      responses:
+        "201":
+          description: Certificate uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CertificateResponse"
+        "400":
+          description: Invalid certificate format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /certificates/{id}:
+    delete:
+      summary: Delete a certificate
+      description: Delete a certificate from the Gateway. The change is applied dynamically without restarting the Gateway.
+      operationId: deleteCertificate
+      x-basicauth-roles: [admin]
+      tags:
+        - Certificate Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID of the certificate to delete
+          schema:
+            type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        "200":
+          description: Certificate deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Certificate deleted and SDS updated successfully
+                  id:
+                    type: string
+                    example: 550e8400-e29b-41d4-a716-446655440000
+        "404":
+          description: Certificate not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /certificates/reload:
+    post:
+      summary: Manually reload certificates
+      description: Manually trigger a reload of all certificates from the filesystem into the Gateway.
+      operationId: reloadCertificates
+      x-basicauth-roles: [admin]
+      tags:
+        - Certificate Management
+      responses:
+        "200":
+          description: Certificates reloaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Certificates reloaded and SDS updated successfully
+                  totalBytes:
+                    type: integer
+                    description: Total bytes of all loaded certificates
+                    example: 221599
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /mcp-proxies:
+    post:
+      summary: Create a new MCPProxy
+      description: Add a new MCPProxy to the Gateway.
+      operationId: createMCPProxy
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - MCP Proxy Management
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/MCPProxyConfiguration"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MCPProxyConfiguration"
+      responses:
+        "201":
+          description: MCPProxy created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MCPProxyCreateResponse"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - MCP Proxy with same name and version already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    get:
+      summary: List all MCPProxies
+      description: List MCPProxies registered in the Gateway, optionally filtered by name, version, context, or status.
+      operationId: listMCPProxies
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - MCP Proxy Management
+      parameters:
+        - name: displayName
+          in: query
+          required: false
+          description: Filter by MCP proxy display name
+          schema:
+            type: string
+          example: My MCP Proxy
+        - name: version
+          in: query
+          required: false
+          description: Filter by MCP proxy version
+          schema:
+            type: string
+          example: v1.0
+        - name: context
+          in: query
+          required: false
+          description: Filter by MCP proxy context/path
+          schema:
+            type: string
+          example: /everything
+        - name: status
+          in: query
+          required: false
+          description: Filter by deployment status
+          schema:
+            type: string
+            enum: [ deployed, undeployed ]
+          example: deployed
+      responses:
+        "200":
+          description: List of MCPProxies
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  count:
+                    type: integer
+                    example: 5
+                  mcpProxies:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MCPProxyListItem"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /mcp-proxies/{id}:
+    get:
+      summary: Get MCPProxy by id
+      description: Get an MCPProxy by its ID.
+      operationId: getMCPProxyById
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - MCP Proxy Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the MCP Proxy.
+          schema:
+            type: string
+          example: everything-mcp-v1.0
+      responses:
+        "200":
+          description: MCPProxy details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MCPDetailResponse"
+            application/yaml:
+              schema:
+                $ref: "#/components/schemas/MCPDetailResponse"
+        "404":
+          description: MCPProxy not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    put:
+      summary: Update an existing MCPProxy
+      description: Update an existing MCPProxy in the Gateway.
+      operationId: updateMCPProxy
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - MCP Proxy Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the MCP Proxy to update.
+          schema:
+            type: string
+          example: everything-mcp-v1.0
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/MCPProxyConfiguration"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MCPProxyConfiguration"
+      responses:
+        "200":
+          description: MCPProxy updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MCPProxyUpdateResponse"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: MCPProxy not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      summary: Delete a MCPProxy
+      description: Delete an MCPProxy from the Gateway.
+      operationId: deleteMCPProxy
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - MCP Proxy Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the MCP Proxy to delete.
+          schema:
+            type: string
+          example: everything-mcp-v1.0
+      responses:
+        "200":
+          description: MCPProxy deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: MCPProxy deleted successfully
+                  id:
+                    type: string
+                    example: everything-mcp-v1.0
+        "404":
+          description: MCPProxy not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /llm-provider-templates:
+    post:
+      summary: Create a new LLM provider template
+      description: Add a new LLM provider template to the Gateway. A template defines token tracking and model extraction metadata for an LLM provider.
+      operationId: createLLMProviderTemplate
+      x-basicauth-roles: [admin]
+      tags:
+        - LLM Provider Template Management
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/LLMProviderTemplate'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LLMProviderTemplate'
+      responses:
+        '201':
+          description: LLM provider template created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderTemplateCreateResponse'
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - Template with same name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: List all LLM provider templates
+      description: List LLM provider templates registered in the Gateway, optionally filtered by name.
+      operationId: listLLMProviderTemplates
+      x-basicauth-roles: [admin]
+      tags:
+        - LLM Provider Template Management
+      parameters:
+        - name: displayName
+          in: query
+          required: false
+          description: Filter by template display name
+          schema:
+            type: string
+          example: OpenAI
+      responses:
+        '200':
+          description: List of LLM provider templates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  count:
+                    type: integer
+                    example: 3
+                  templates:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LLMProviderTemplateListItem'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /llm-provider-templates/{id}:
+    get:
+      summary: Get LLM provider template by id
+      description: Get an LLM provider template by its ID.
+      operationId: getLLMProviderTemplateById
+      x-basicauth-roles: [admin]
+      tags:
+        - LLM Provider Template Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier for the LLM provider template
+          schema:
+            type: string
+          example: openai
+      responses:
+        '200':
+          description: LLM provider template details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderTemplateDetailResponse'
+            application/yaml:
+              schema:
+                $ref: '#/components/schemas/LLMProviderTemplateDetailResponse'
+        '404':
+          description: LLM provider template not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Update an existing LLM provider template
+      description: Update an existing LLM provider template in the Gateway.
+      operationId: updateLLMProviderTemplate
+      x-basicauth-roles: [admin]
+      tags:
+        - LLM Provider Template Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the template to update
+          schema:
+            type: string
+          example: openai
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/LLMProviderTemplate'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LLMProviderTemplate'
+      responses:
+        '200':
+          description: LLM provider template updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderTemplateUpdateResponse'
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: LLM provider template not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: Delete an LLM provider template
+      description: Delete an LLM provider template from the Gateway.
+      operationId: deleteLLMProviderTemplate
+      x-basicauth-roles: [admin]
+      tags:
+        - LLM Provider Template Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the template to delete
+          schema:
+            type: string
+          example: openai
+      responses:
+        '200':
+          description: LLM provider template deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: LLM provider template deleted successfully
+                  id:
+                    type: string
+                    example: openai
+        '404':
+          description: LLM provider template not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /llm-providers:
+    post:
+      summary: Create a new LLM provider
+      description: Add a new LLM provider to the Gateway. A provider defines how to interact with an LLM service, including upstream endpoints, authentication, access control, and policies.
+      operationId: createLLMProvider
+      x-basicauth-roles: [admin]
+      tags:
+        - LLM Provider Management
+      requestBody:
+        required: true
+        description: LLM provider in YAML or JSON format
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/LLMProviderConfiguration'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LLMProviderConfiguration'
+      responses:
+        '201':
+          description: LLM provider created and deployed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderCreateResponse'
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - Provider with same name and version already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: List all LLM providers
+      description: List LLM providers registered in the Gateway, optionally filtered by name, version, context, status, or vhost.
+      operationId: listLLMProviders
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - LLM Provider Management
+      parameters:
+        - name: displayName
+          in: query
+          required: false
+          description: Filter by LLM provider display name
+          schema:
+            type: string
+          example: OpenAI Provider
+        - name: version
+          in: query
+          required: false
+          description: Filter by LLM provider version
+          schema:
+            type: string
+          example: v1.0
+        - name: context
+          in: query
+          required: false
+          description: Filter by LLM provider context/path
+          schema:
+            type: string
+          example: /openai
+        - name: status
+          in: query
+          required: false
+          description: Filter by deployment status
+          schema:
+            type: string
+            enum: [ deployed, undeployed ]
+          example: undeployed
+        - name: vhost
+          in: query
+          required: false
+          description: Filter by LLM provider vhost
+          schema:
+            type: string
+          example: api.openai.com
+      responses:
+        '200':
+          description: List of LLM providers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  count:
+                    type: integer
+                    example: 2
+                  providers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LLMProviderListItem'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /llm-providers/{id}:
+    get:
+      summary: Get LLM provider by identifier
+      description: Get an LLM provider by its ID.
+      operationId: getLLMProviderById
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - LLM Provider Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the LLM provider
+          schema:
+            type: string
+          example: wso2-openai-provider
+      responses:
+        '200':
+          description: LLM provider details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderDetailResponse'
+            application/yaml:
+              schema:
+                $ref: '#/components/schemas/LLMProviderDetailResponse'
+        '404':
+          description: LLM provider not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Update an existing LLM provider
+      description: Update an existing LLM provider in the Gateway.
+      operationId: updateLLMProvider
+      x-basicauth-roles: [admin]
+      tags:
+        - LLM Provider Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the LLM provider
+          schema:
+            type: string
+          example: wso2-openai-provider
+      requestBody:
+        required: true
+        description: Updated LLM provider
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/LLMProviderConfiguration'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LLMProviderConfiguration'
+      responses:
+        '200':
+          description: LLM provider updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderUpdateResponse'
+        '400':
+          description: Invalid configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: LLM provider not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: Delete an LLM provider
+      description: Delete an LLM provider from the Gateway.
+      operationId: deleteLLMProvider
+      x-basicauth-roles: [admin]
+      tags:
+        - LLM Provider Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the LLM provider
+          schema:
+            type: string
+          example: wso2-openai-provider
+      responses:
+        '200':
+          description: LLM provider deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: LLM provider deleted successfully
+                  id:
+                    type: string
+                    example: wso2-openai-provider
+        '404':
+          description: LLM provider not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /llm-providers/{id}/api-keys:
+    post:
+      summary: Create a new API key for an LLM provider
+      description: Generate a new API key for an LLM provider in the Gateway.
+      operationId: createLLMProviderAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - LLM Provider Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of the LLM provider to generate the key for
+          schema:
+            type: string
+          example: wso2-openai-provider
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreationRequest"
+      responses:
+        '201':
+          description: API key created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict (duplicate key or conflicting update)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: LLM provider not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: Get the list of API keys for an LLM provider
+      description: List all API keys for an LLM provider in the Gateway.
+      operationId: listLLMProviderAPIKeys
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - LLM Provider Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of the LLM provider to retrieve keys for
+          schema:
+            type: string
+          example: wso2-openai-provider
+      responses:
+        '200':
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyListResponse"
+        '404':
+          description: LLM provider not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /llm-providers/{id}/api-keys/{apiKeyName}/regenerate:
+    post:
+      summary: Regenerate API key for an LLM provider
+      description: Regenerate an existing API key for an LLM provider in the Gateway.
+      operationId: regenerateLLMProviderAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - LLM Provider Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of the LLM provider
+          schema:
+            type: string
+          example: wso2-openai-provider
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to regenerate
+          schema:
+            type: string
+          example: provider-api-key
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+      responses:
+        '200':
+          description: API key rotated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: LLM provider or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /llm-providers/{id}/api-keys/{apiKeyName}:
+    put:
+      summary: Update an API key for an LLM provider
+      description: Update an API key with a custom value instead of auto-generating one.
+      operationId: updateLLMProviderAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - LLM Provider Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of the LLM provider
+          schema:
+            type: string
+          example: wso2-openai-provider
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to update
+          schema:
+            type: string
+          example: provider-api-key
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+      responses:
+        '200':
+          description: API key updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid request (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict (duplicate key or conflicting update)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: LLM provider or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Revoke an API key for an LLM provider
+      description: Revoke an API key. Once revoked, it can no longer be used to authenticate requests.
+      operationId: revokeLLMProviderAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - LLM Provider Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of the LLM provider
+          schema:
+            type: string
+          example: wso2-openai-provider
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to revoke
+          schema:
+            type: string
+          example: provider-api-key
+      responses:
+        '200':
+          description: API key revoked successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyRevocationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: LLM provider or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /llm-proxies:
+    post:
+      summary: Create a new LLM proxy
+      description: Add a new LLM proxy to the Gateway. A proxy defines how to interact with an LLM service deployed in the Gateway, including authentication and policies.
+      operationId: createLLMProxy
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - LLM Proxy Management
+      requestBody:
+        required: true
+        description: LLM proxy in YAML or JSON format
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/LLMProxyConfiguration'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LLMProxyConfiguration'
+      responses:
+        '201':
+          description: LLM proxy created and deployed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProxyCreateResponse'
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - Proxy with same name and version already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: List all LLM proxies
+      description: List LLM proxies registered in the Gateway, optionally filtered by name, version, context, status, or vhost.
+      operationId: listLLMProxies
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - LLM Proxy Management
+      parameters:
+        - name: displayName
+          in: query
+          required: false
+          description: Filter by LLM proxy displayName
+          schema:
+            type: string
+          example: OpenAI Provider
+        - name: version
+          in: query
+          required: false
+          description: Filter by LLM proxy version
+          schema:
+            type: string
+          example: v1.0
+        - name: context
+          in: query
+          required: false
+          description: Filter by LLM proxy context/path
+          schema:
+            type: string
+          example: /openai
+        - name: status
+          in: query
+          required: false
+          description: Filter by deployment status
+          schema:
+            type: string
+            enum: [ deployed, undeployed ]
+          example: deployed
+        - name: vhost
+          in: query
+          required: false
+          description: Filter by LLM proxy vhost
+          schema:
+            type: string
+          example: api.openai.com
+      responses:
+        '200':
+          description: List of LLM proxies
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  count:
+                    type: integer
+                    example: 2
+                  proxies:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LLMProxyListItem'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /llm-proxies/{id}:
+    get:
+      summary: Get LLM proxy by unique identifier
+      description: Get an LLM proxy by its ID.
+      operationId: getLLMProxyById
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - LLM Proxy Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the LLM proxy
+          schema:
+            type: string
+          example: wso2-docs-assistant
+      responses:
+        '200':
+          description: LLM proxy details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProxyDetailResponse'
+            application/yaml:
+              schema:
+                $ref: '#/components/schemas/LLMProxyDetailResponse'
+        '404':
+          description: LLM proxy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Update an existing LLM proxy
+      description: Update an existing LLM proxy in the Gateway.
+      operationId: updateLLMProxy
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - LLM Proxy Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the LLM proxy
+          schema:
+            type: string
+          example: wso2-docs-assistant
+      requestBody:
+        required: true
+        description: Updated LLM proxy
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/LLMProxyConfiguration'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LLMProxyConfiguration'
+      responses:
+        '200':
+          description: LLM proxy updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProxyUpdateResponse'
+        '400':
+          description: Invalid configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: LLM proxy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: Delete an LLM proxy
+      description: Delete an LLM proxy from the Gateway.
+      operationId: deleteLLMProxy
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - LLM Proxy Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the LLM proxy
+          schema:
+            type: string
+          example: wso2-docs-assistant
+      responses:
+        '200':
+          description: LLM proxy deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: LLM proxy deleted successfully
+                  id:
+                    type: string
+                    example: wso2-docs-assistant
+        '404':
+          description: LLM proxy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /llm-proxies/{id}/api-keys:
+    post:
+      summary: Create a new API key for an LLM proxy
+      description: Generate a new API key for an LLM proxy in the Gateway.
+      operationId: createLLMProxyAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - LLM Proxy Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of the LLM proxy to generate the key for
+          schema:
+            type: string
+          example: wso2-docs-assistant
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreationRequest"
+      responses:
+        '201':
+          description: API key created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict (duplicate key or conflicting update)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: LLM proxy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: Get the list of API keys for an LLM proxy
+      description: List all API keys for an LLM proxy in the Gateway.
+      operationId: listLLMProxyAPIKeys
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - LLM Proxy Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of the LLM proxy to retrieve keys for
+          schema:
+            type: string
+          example: wso2-docs-assistant
+      responses:
+        '200':
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyListResponse"
+        '404':
+          description: LLM proxy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /llm-proxies/{id}/api-keys/{apiKeyName}/regenerate:
+    post:
+      summary: Regenerate API key for an LLM proxy
+      description: Regenerate an existing API key for an LLM proxy in the Gateway.
+      operationId: regenerateLLMProxyAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - LLM Proxy Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of the LLM proxy
+          schema:
+            type: string
+          example: wso2-docs-assistant
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to regenerate
+          schema:
+            type: string
+          example: proxy-api-key
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+      responses:
+        '200':
+          description: API key rotated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: LLM proxy or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /llm-proxies/{id}/api-keys/{apiKeyName}:
+    put:
+      summary: Update an API key for an LLM proxy
+      description: Update an API key with a custom value instead of auto-generating one.
+      operationId: updateLLMProxyAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - LLM Proxy Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of the LLM proxy
+          schema:
+            type: string
+          example: wso2-docs-assistant
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to update
+          schema:
+            type: string
+          example: proxy-api-key
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+      responses:
+        '200':
+          description: API key updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid request (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict (duplicate key or conflicting update)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: LLM proxy or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Revoke an API key for an LLM proxy
+      description: Revoke an API key. Once revoked, it can no longer be used to authenticate requests.
+      operationId: revokeLLMProxyAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - LLM Proxy Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique handle of the LLM proxy
+          schema:
+            type: string
+          example: wso2-docs-assistant
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to revoke
+          schema:
+            type: string
+          example: proxy-api-key
+      responses:
+        '200':
+          description: API key revoked successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyRevocationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: LLM proxy or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /secrets:
+    get:
+      tags:
+        - Secrets Management
+      summary: List all secrets
+      description: |
+        Retrieve a list of all stored secrets. Returns secret identifiers without
+        the actual secret values for security purposes.
+      operationId: listSecrets
+      x-basicauth-roles: [admin]
+      responses:
+        '200':
+          description: List of secrets retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretListResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      tags:
+        - Secrets Management
+      summary: Create a new secret
+      description: |
+        Stores a new secret encrypted at rest. The secret ID must be unique.
+        The value is encrypted using the primary encryption provider before persistence.
+      operationId: createSecret
+      x-basicauth-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/SecretConfiguration'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretConfiguration'
+      responses:
+        '201':
+          description: Secret created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretResponse'
+              examples:
+                created:
+                  summary: Successful creation
+                  value:
+                    id: "database-password"
+                    createdAt: "2026-01-05T10:30:00Z"
+                    updatedAt: "2026-01-05T10:30:00Z"
+        '400':
+          description: Bad request - missing or invalid fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - secret with this ID already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error - encryption failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /secrets/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Unique secret identifier
+        schema:
+          type: string
+        examples:
+          simple:
+            summary: Simple ID
+            value: "database-password"
+          complex:
+            summary: Namespaced ID
+            value: "prod.db.main.password"
+
+    get:
+      tags:
+        - Secrets Management
+      summary: Retrieve a secret
+      description: |
+        Retrieves and decrypts a secret. The secret value is decrypted using the
+        encryption provider chain before being returned. If all providers fail to
+        decrypt the secret, a 500 error is returned with a generic message.
+      operationId: getSecret
+      x-basicauth-roles: [admin]
+      responses:
+        '200':
+          description: Secret retrieved and decrypted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretDetailResponse'
+              examples:
+                success:
+                  summary: Successful retrieval
+                  value:
+                    status: "success"
+                    secret:
+                      id: "database-password"
+                      configuration:
+                        apiVersion: "gateway.api-platform.wso2.com/v1alpha1"
+                        kind: "Secret"
+                        metadata:
+                          name: "database-password"
+                        spec:
+                          displayName: "Database Password"
+                          description: "PostgreSQL main database password"
+                          type: "default"
+                          value: "sup3rs3cr3t!"
+                      metadata:
+                        createdAt: "2026-01-05T10:30:00Z"
+                        updatedAt: "2026-01-05T10:30:00Z"
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Secret configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error - decryption failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags:
+        - Secrets Management
+      summary: Update a secret
+      description: |
+        Updates an existing secret with a new value. The new value is encrypted
+        using the current primary encryption provider, enabling automatic migration
+        to newer keys during updates. Old secrets remain readable via the provider chain.
+      operationId: updateSecret
+      x-basicauth-roles: [admin]
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/SecretConfiguration'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretConfiguration'
+      responses:
+        '200':
+          description: Secret updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretResponse'
+              examples:
+                updated:
+                  summary: Successful update
+                  value:
+                    id: "database-password"
+                    createdAt: "2026-01-05T10:30:00Z"
+                    updatedAt: "2026-01-05T11:45:00Z"
+        '400':
+          description: Bad request - missing or invalid value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Secret configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error - encryption failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - Secrets Management
+      summary: Delete a secret
+      description: |
+        Permanently deletes a secret from the database. This is a hard delete with
+        no recovery mechanism. The operation is idempotent - deleting a non-existent
+        secret returns 404.
+      operationId: deleteSecret
+      x-basicauth-roles: [admin]
+      responses:
+        '200':
+          description: Secret deleted successfully (no content)
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Secret configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                not-found:
+                  summary: Secret does not exist
+                  value:
+                    status: "not_found"
+                    message: "secret configuration not found"
+        '500':
+          description: Internal server error - database failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+  schemas:
+    RestAPI:
+      type: object
+      required:
+        - apiVersion
+        - metadata
+        - kind
+        - spec
+      properties:
+        apiVersion:
+          type: string
+          description: API specification version
+          example: gateway.api-platform.wso2.com/v1alpha1
+          enum:
+            - gateway.api-platform.wso2.com/v1alpha1
+        kind:
+          type: string
+          description: API type
+          example: RestApi
+          enum:
+            - RestApi
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        spec:
+          $ref: '#/components/schemas/APIConfigData'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: RestApi
+        metadata:
+          name: petstore-api-v1.0
+        spec:
+          displayName: Petstore-API
+          version: v1.0
+          context: /petstore/$version
+          upstream:
+            main:
+              url: https://petstore3.swagger.io/api/v3
+          operations:
+            - method: PUT
+              path: /pet
+            - method: POST
+              path: /pet
+              policies:
+                - name: log-message
+                  version: v1
+                  params:
+                    request:
+                      payload: true
+                      headers: true
+            - method: GET
+              path: /pet/findByStatus
+            - method: GET
+              path: /pet/{petId}
+            - method: POST
+              path: /pet/{petId}
+            - method: DELETE
+              path: /pet/{petId}
+
+    WebSubAPI:
+      type: object
+      required:
+        - apiVersion
+        - metadata
+        - kind
+        - spec
+      properties:
+        apiVersion:
+          type: string
+          description: API specification version
+          example: gateway.api-platform.wso2.com/v1alpha1
+          enum:
+            - gateway.api-platform.wso2.com/v1alpha1
+        kind:
+          type: string
+          description: API type
+          example: WebSubApi
+          enum:
+            - WebSubApi
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        spec:
+          $ref: '#/components/schemas/WebhookAPIData'
+
+    Metadata:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Unique handle for the resource
+          example: weather-api-v1.0
+        labels:
+          type: object
+          description: Labels are key-value pairs for organizing and selecting APIs. Keys must not contain spaces.
+          additionalProperties:
+            type: string
+          example:
+            environment: production
+            team: backend
+            version: v1
+
+    APIConfigData:
+      type: object
+      required:
+        - displayName
+        - version
+        - context
+        - upstream
+        - operations
+        # - kind
+      properties:
+        displayName:
+          type: string
+          description: Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: weather-api
+        # kind:
+        #   type: string
+        #   description: API type
+        #   example: RestApi
+        #   enum:
+        #     - RestApi
+        version:
+          type: string
+          description: Semantic version of the API
+          pattern: '^v\d+\.\d+$'
+          example: v1.0
+        context:
+          type: string
+          description: Base path for all API routes (must start with /, no trailing slash)
+          pattern: '^\/[a-zA-Z0-9_\-\/]*[^\/]$'
+          minLength: 1
+          maxLength: 200
+          example: /weather
+        upstreamDefinitions:
+          type: array
+          description: List of reusable upstream definitions with optional timeout configurations
+          items:
+            $ref: "#/components/schemas/UpstreamDefinition"
+        upstream:
+          type: object
+          required:
+            - main
+          description: API-level upstream configuration
+          properties:
+            main:
+              $ref: "#/components/schemas/Upstream"
+            sandbox:
+              $ref: "#/components/schemas/Upstream"
+        vhosts:
+          type: object
+          required:
+            - main
+          description: Custom virtual hosts/domains for the API
+          properties:
+            main:
+              type: string
+              description: Custom virtual host/domain for production traffic
+              pattern: '^[a-zA-Z0-9\.\-]+$'
+              example: api.example.com
+            sandbox:
+              type: string
+              description: Custom virtual host/domain for sandbox traffic
+              pattern: '^[a-zA-Z0-9\.\-]+$'
+              example: sandbox-api.example.com
+        subscriptionPlans:
+          type: array
+          description: List of subscription plan names available for this API
+          items:
+            type: string
+          example: ["Gold", "Silver"]
+        policies:
+          type: array
+          description: List of API-level policies applied to all operations unless overridden
+          items:
+            $ref: "#/components/schemas/Policy"
+        operations:
+          type: array
+          description: List of HTTP operations/routes
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/Operation"
+        deploymentState:
+          type: string
+          description: Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.
+          enum: [deployed, undeployed]
+          default: deployed
+          example: deployed
+
+    UpstreamDefinition:
+      type: object
+      required:
+        - name
+        - upstreams
+      description: Reusable upstream configuration with optional timeout and load balancing settings
+      properties:
+        name:
+          type: string
+          description: Unique identifier for this upstream definition
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-zA-Z0-9\-_]+$'
+          example: my-upstream-1
+        basePath:
+          type: string
+          description: Base path prefix for all endpoints in this upstream (e.g., /api/v2). All requests to this upstream will have this path prepended.
+          example: /api/v2
+        timeout:
+          $ref: "#/components/schemas/UpstreamTimeout"
+        upstreams:
+          type: array
+          description: List of backend targets with optional weights for load balancing
+          minItems: 1
+          items:
+            type: object
+            required:
+              - url
+            properties:
+              url:
+                type: string
+                format: uri
+                description: Backend URL (host and port only, path comes from basePath)
+                example: http://prod-backend-1:5000
+              weight:
+                type: integer
+                description: Weight for load balancing (optional, default 100)
+                minimum: 0
+                maximum: 100
+                example: 80
+
+    UpstreamTimeout:
+      type: object
+      description: Timeout configuration for upstream requests
+      properties:
+        connect:
+          type: string
+          description: Connection timeout duration (e.g., "5s", "500ms")
+          pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
+          example: 5s
+
+    Upstream:
+      type: object
+      oneOf:
+        - required: [ "url" ]
+        - required: [ "ref" ]
+      description: Upstream backend configuration (single target or reference)
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Direct backend URL to route traffic to
+          example: http://prod-backend:5000/api/v2
+        ref:
+          type: string
+          description: Reference to a predefined upstreamDefinition
+        hostRewrite:
+          type: string
+          enum:
+            - auto
+            - manual
+          default: auto
+          description: >
+            Controls how the Host header is handled when routing to the upstream.
+            `auto` delegates host rewriting to Envoy, which rewrites the Host header
+            using the upstream cluster host. `manual` disables automatic rewriting
+            and expects explicit configuration.
+
+    Operation:
+      type: object
+      required:
+        - method
+        - path
+      properties:
+        method:
+          type: string
+          description: HTTP method
+          enum:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - PATCH
+            - HEAD
+            - OPTIONS
+          example: GET
+        path:
+          type: string
+          description: Route path with optional {param} placeholders
+          pattern: '^\/.*$'
+          example: /{country_code}/{city}
+        policies:
+          type: array
+          description: List of policies applied only to this operation (overrides or adds to API-level policies)
+          items:
+            $ref: "#/components/schemas/Policy"
+
+    Policy:
+      type: object
+      required:
+        - name
+        - version
+      properties:
+        name:
+          type: string
+          description: Name of the policy
+          example: apiKeyValidation
+        version:
+          type: string
+          description: >
+            Version of the policy. Only major-only version is allowed (e.g., v0, v1).
+            Full semantic version (e.g., v1.0.0) is not accepted and will be rejected.
+            The Gateway Controller resolves the major version to the single matching
+            full version installed in the gateway image.
+          pattern: '^v\d+$'
+          example: v1
+        executionCondition:
+          type: string
+          description: Expression controlling conditional execution of the policy
+          example: "request.metadata[authenticated] != true"
+        params:
+          type: object
+          description: Arbitrary parameters for the policy (free-form key/value structure)
+          additionalProperties: true
+
+    # -----------------------
+    # Webhook (Async) API schema
+    # -----------------------
+    WebhookAPIData:
+      type: object
+      required:
+        - displayName
+        - version
+        - context
+        - channels
+      properties:
+        displayName:
+          type: string
+          description: Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: weather-api
+        version:
+          type: string
+          description: Semantic version of the API
+          pattern: '^v\d+\.\d+$'
+          example: v1.0
+        context:
+          type: string
+          description: Base path for all API routes (must start with /, no trailing slash)
+          pattern: '^\/[a-zA-Z0-9_\-\/]*[^\/]$'
+          minLength: 1
+          maxLength: 200
+          example: /weather
+        vhosts:
+          type: object
+          required:
+            - main
+          description: Custom virtual hosts/domains for the API
+          properties:
+            main:
+              type: string
+              description: Custom virtual host/domain for production traffic
+              pattern: '^[a-zA-Z0-9\.\-]+$'
+              example: api.example.com
+            sandbox:
+              type: string
+              description: Custom virtual host/domain for sandbox traffic
+              pattern: '^[a-zA-Z0-9\.\-]+$'
+              example: sandbox-api.example.com
+        channels:
+          type: array
+          description: List of channels - Async operations(SUB) for WebSub APIs
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Channel'
+        policies:
+          type: array
+          description: List of API-level policies applied to all operations unless overridden
+          items:
+            $ref: '#/components/schemas/Policy'
+        deploymentState:
+          type: string
+          description: Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.
+          enum: [deployed, undeployed]
+          default: deployed
+          example: deployed
+
+    # Simplified AsyncAPI Channel object represented as an OpenAPI schema.
+    Channel:
+      type: object
+      description: Channel (topic/event stream) definition for async APIs.
+      required:
+        - name
+        - method
+      properties:
+        name:
+          type: string
+          description: Channel name or topic identifier relative to API context.
+          example: issues
+        method:
+          type: string
+          description: Operation method type.
+          enum:
+            - SUB
+        policies:
+          type: array
+          description: List of policies applied only to this channel (overrides or adds to API-level policies)
+          items:
+            $ref: "#/components/schemas/Policy"
+        # subscribe:
+        #   type: object
+        #   description: Consumer (receive) operation definition.
+        #   properties:
+        #     summary:
+        #       type: string
+        #       example: Receive issue events.
+        #     policies:
+        #       type: array
+        #       description: List of policies applied only to this operation (overrides or adds to API-level policies)
+        #       items:
+        #         $ref: "#/components/schemas/Policy"
+        #     message:
+        #       $ref: '#/components/schemas/ChannelMessage'
+        # publish:
+        #   type: object
+        #   description: Producer (send) operation definition.
+        #   properties:
+        #     summary:
+        #       type: string
+        #       example: Publish issue events.
+        #     policies:
+        #       type: array
+        #       description: List of policies applied only to this operation (overrides or adds to API-level policies)
+        #       items:
+        #         $ref: "#/components/schemas/Policy"
+        #     message:
+        #       $ref: '#/components/schemas/ChannelMessage'
+        # parameters:
+        #   type: object
+        #   description: Path/channel parameters (keyed by parameter name).
+        #   additionalProperties:
+        #     type: object
+        #     properties:
+        #       description:
+        #         type: string
+        #       schema:
+        #         type: object
+        #         description: JSON Schema fragment for the parameter value.
+        #         additionalProperties: true
+        # bindings:
+        #   type: object
+        #   description: Protocol-specific channel bindings (arbitrary key/value structure).
+        #   additionalProperties: true
+
+    # Message schema used within Channel publish/subscribe operations.
+    RestAPICreateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: RestAPI created successfully
+        id:
+          type: string
+          description: Unique id for the created RestAPI
+          example: weather-api-v1.0
+        createdAt:
+          type: string
+          format: date-time
+          example: 2025-10-11T10:30:00Z
+    RestAPIUpdateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: RestAPI updated successfully
+        id:
+          type: string
+          example: weather-api-v1.0
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2025-10-11T11:45:00Z
+
+    WebSubAPICreateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: WebSubAPI created successfully
+        id:
+          type: string
+          description: Unique id for the created WebSubAPI
+          example: weather-websub-api
+        createdAt:
+          type: string
+          format: date-time
+          example: 2025-10-11T10:30:00Z
+    WebSubAPIUpdateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: WebSubAPI updated successfully
+        id:
+          type: string
+          example: weather-websub-api
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2025-10-11T11:45:00Z
+
+    APIKeyCreationRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Identifier of the API key. If not provided, a default identifier will be generated
+          pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+          minLength: 3
+          maxLength: 63
+          example: my-production-key
+        apiKey:
+          type: string
+          minLength: 36
+          description: |
+            Optional plain-text API key value for external key injection.
+            If provided, this key will be used instead of generating a new one.
+            The key will be hashed before storage. The key can be in any format
+            (minimum 36 characters). Use this for injecting externally generated
+            API keys.
+          example: "xxxxxx-wso2-api-platform-key-xxxxxx-xxxxxxx"
+        maskedApiKey:
+          type: string
+          description: |
+            Masked version of the API key for display purposes.
+            Provided by the platform API when injecting pre-hashed keys.
+          example: "apip_****xyz789"
+        expiresIn:
+          type: object
+          description: Expiration duration for the API key
+          properties:
+            unit:
+              type: string
+              description: Time unit for expiration
+              enum:
+                - seconds
+                - minutes
+                - hours
+                - days
+                - weeks
+                - months
+              example: days
+            duration:
+              type: integer
+              description: Duration value for expiration
+              example: 30
+          required:
+            - unit
+            - duration
+        expiresAt:
+          type: string
+          format: date-time
+          description: Expiration timestamp. If both expiresIn and expiresAt are provided, expiresAt takes precedence.
+          example: "2026-12-08T10:30:00Z"
+        externalRefId:
+          type: string
+          description: |
+            External reference ID for the API key.
+            This field is optional and used for tracing purposes only.
+            The gateway generates its own internal ID for tracking.
+          example: "cloud-apim-key-98765"
+        issuer:
+          type: string
+          description: |
+            Identifies the portal that created this key. If provided, only api keys generated from
+            the same portal will be accepted. If not provided, there is no portal restriction.
+          example: "api-platform-devportal"
+    APIKeyCreationResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: API key generated successfully
+        remainingApiKeyQuota:
+          type: integer
+          description: Remaining API key quota for the user
+          example: 9
+        apiKey:
+          $ref: '#/components/schemas/APIKey'
+      required:
+        - status
+        - message
+    APIKey:
+      type: object
+      description: Details of an API key
+      properties:
+        name:
+          type: string
+          description: URL-safe identifier for the API key (auto-generated from displayName, immutable, used as path parameter)
+          pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+          minLength: 3
+          maxLength: 63
+          example: my-production-key
+        displayName:
+          type: string
+          description: Human-readable name for the API key (user-provided, mutable)
+          minLength: 1
+          maxLength: 100
+          example: My Production Key
+        apiKey:
+          type: string
+          description: Generated API key with apip_ prefix
+          example: "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+        apiId:
+          type: string
+          description: Unique public identifier of the API that the key is associated with
+          example: weather-api-v1.0
+        status:
+          type: string
+          description: Status of the API key
+          enum:
+            - active
+            - revoked
+            - expired
+          example: active
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the API key was generated
+          example: "2025-12-08T10:30:00Z"
+        createdBy:
+          type: string
+          description: Identifier of the user who generated the API key
+          example: api_consumer
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Expiration timestamp (null if no expiration)
+          example: "2025-12-08T10:30:00Z"
+        source:
+          type: string
+          description: Source of the API key (local or external)
+          enum:
+            - local
+            - external
+          example: local
+        externalRefId:
+          type: string
+          description: External reference ID for the API key
+          example: "cloud-apim-key-98765"
+      required:
+        - name
+        - apiId
+        - status
+        - createdAt
+        - createdBy
+        - expiresAt
+        - source
+    APIKeyRegenerationRequest:
+      type: object
+      properties:
+        expiresIn:
+          type: object
+          description: Expiration duration for the API key
+          properties:
+            unit:
+              type: string
+              description: Time unit for expiration
+              enum:
+                - seconds
+                - minutes
+                - hours
+                - days
+                - weeks
+                - months
+              example: days
+            duration:
+              type: integer
+              description: Duration value for expiration
+              example: 30
+          required:
+            - unit
+            - duration
+        expiresAt:
+          type: string
+          format: date-time
+          description: Expiration timestamp
+          example: "2026-12-08T10:30:00Z"
+    APIKeyUpdateRequest:
+      allOf:
+        - $ref: "#/components/schemas/APIKeyCreationRequest"
+      required:
+        - apiKey
+    APIKeyRevocationResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: API key revoked successfully
+      required:
+        - status
+        - message
+
+    SubscriptionPlanCreateRequest:
+      type: object
+      required:
+        - planName
+      properties:
+        planName:
+          type: string
+        billingPlan:
+          type: string
+        stopOnQuotaReach:
+          type: boolean
+          default: true
+        throttleLimitCount:
+          type: integer
+        throttleLimitUnit:
+          type: string
+          enum: [Min, Hour, Day, Month]
+        expiryTime:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+          default: ACTIVE
+    SubscriptionPlanUpdateRequest:
+      type: object
+      properties:
+        planName:
+          type: string
+        billingPlan:
+          type: string
+        stopOnQuotaReach:
+          type: boolean
+        throttleLimitCount:
+          type: integer
+        throttleLimitUnit:
+          type: string
+          enum: [Min, Hour, Day, Month]
+        expiryTime:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+    SubscriptionPlanResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        planName:
+          type: string
+        billingPlan:
+          type: string
+        stopOnQuotaReach:
+          type: boolean
+        throttleLimitCount:
+          type: integer
+        throttleLimitUnit:
+          type: string
+        expiryTime:
+          type: string
+          format: date-time
+        gatewayId:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SubscriptionPlanListResponse:
+      type: object
+      properties:
+        subscriptionPlans:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubscriptionPlanResponse"
+        count:
+          type: integer
+
+    SubscriptionCreateRequest:
+      type: object
+      required:
+        - apiId
+        - subscriptionToken
+      properties:
+        apiId:
+          type: string
+          description: API identifier (deployment ID or handle)
+          example: "c9f2b6ae-1234-5678-9abc-def012345678"
+        subscriptionToken:
+          type: string
+          description: Opaque subscription token for API invocation (required; stored as hash only)
+        applicationId:
+          type: string
+          description: Application identifier (from DevPortal/STS). Optional for token-based subscriptions.
+        subscriptionPlanId:
+          type: string
+          description: Subscription plan UUID for rate limit and billing configuration.
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE, REVOKED]
+          default: ACTIVE
+    SubscriptionUpdateRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE, REVOKED]
+    SubscriptionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        apiId:
+          type: string
+        applicationId:
+          type: string
+        subscriptionToken:
+          type: string
+          description: Opaque subscription token (returned only on create; use Platform-API to retrieve for existing subscriptions)
+        subscriptionPlanId:
+          type: string
+          description: Subscription plan UUID
+        gatewayId:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE, REVOKED]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SubscriptionListResponse:
+      type: object
+      properties:
+        subscriptions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubscriptionResponse"
+        count:
+          type: integer
+
+    RestAPIListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          example: weather-api-v1.0
+        displayName:
+          type: string
+          example: weather-api
+        version:
+          type: string
+          example: v1.0
+        context:
+          type: string
+          example: /weather
+        status:
+          type: string
+          enum:
+            - deployed
+            - undeployed
+          example: deployed
+        createdAt:
+          type: string
+          format: date-time
+          example: 2025-10-11T10:30:00Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2025-10-11T10:30:00Z
+    WebSubAPIListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          example: weather-websub-api
+        displayName:
+          type: string
+          example: weather-websub
+        version:
+          type: string
+          example: v1.0
+        context:
+          type: string
+          example: /weather-events
+        status:
+          type: string
+          enum:
+            - deployed
+            - undeployed
+          example: deployed
+        createdAt:
+          type: string
+          format: date-time
+          example: 2025-10-11T10:30:00Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2025-10-11T10:30:00Z
+    RestAPIDetailResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        api:
+          type: object
+          properties:
+            id:
+              type: string
+              description: Unique id for the RestAPI
+              example: weather-api-v1.0
+            configuration:
+              $ref: "#/components/schemas/RestAPI"
+            metadata:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - deployed
+                    - undeployed
+                  example: deployed
+                createdAt:
+                  type: string
+                  format: date-time
+                  example: 2025-10-11T10:30:00Z
+                updatedAt:
+                  type: string
+                  format: date-time
+                  example: 2025-10-11T10:30:00Z
+                deployedAt:
+                  type: string
+                  format: date-time
+                  example: 2025-10-11T10:30:05Z
+
+    WebSubAPIDetailResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        api:
+          type: object
+          properties:
+            id:
+              type: string
+              description: Unique id for the WebSubAPI
+              example: weather-websub-api
+            configuration:
+              $ref: "#/components/schemas/WebSubAPI"
+            metadata:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - deployed
+                    - undeployed
+                  example: deployed
+                createdAt:
+                  type: string
+                  format: date-time
+                  example: 2025-10-11T10:30:00Z
+                updatedAt:
+                  type: string
+                  format: date-time
+                  example: 2025-10-11T10:30:00Z
+                deployedAt:
+                  type: string
+                  format: date-time
+                  example: 2025-10-11T10:30:05Z
+
+    MCPProxyConfiguration:
+      type: object
+      required:
+        - apiVersion
+        - kind
+        - metadata
+        - spec
+      properties:
+        apiVersion:
+          type: string
+          description: MCP Proxy specification version
+          example: gateway.api-platform.wso2.com/v1alpha1
+          enum:
+            - gateway.api-platform.wso2.com/v1alpha1
+        kind:
+          type: string
+          description: MCP Proxy type
+          example: Mcp
+          enum:
+            - Mcp
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        spec:
+          $ref: "#/components/schemas/MCPProxyConfigData"
+
+    MCPProxyConfigData:
+      type: object
+      required:
+        - displayName
+        - version
+        - upstream
+      properties:
+        displayName:
+          type: string
+          description: Human-readable MCP Proxy display name
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: mcp-proxy-1
+        version:
+          type: string
+          description: MCP Proxy version
+          example: v1.0
+        context:
+          type: string
+          description: MCP Proxy context path
+          example: /mcp-proxy
+        specVersion:
+          type: string
+          description: MCP specification version
+          example: 2025-06-18
+        vhost:
+          type: string
+          description: >
+            Virtual host name used for routing. Supports standard domain names,
+            subdomains, or wildcard domains. Must follow RFC-compliant hostname
+            rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).
+          pattern: '^(\*\.|[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+          minLength: 1
+          maxLength: 253
+          example: "mcp1.example.com"
+        upstream:
+          description: The backend MCP server url and auth configurations
+          allOf:
+            - $ref: "#/components/schemas/Upstream"
+            - $ref: "#/components/schemas/UpstreamAuth"
+        policies:
+          type: array
+          description: List of MCP Proxy level policies applied
+          items:
+            $ref: "#/components/schemas/Policy"
+        tools:
+          type: array
+          items:
+            $ref: "#/components/schemas/MCPTool"
+        resources:
+          type: array
+          items:
+            $ref: "#/components/schemas/MCPResource"
+        prompts:
+          type: array
+          items:
+            $ref: "#/components/schemas/MCPPrompt"
+        deploymentState:
+          type: string
+          description: Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the MCP Proxy is removed from router traffic but configuration and policies are preserved for potential redeployment.
+          enum: [deployed, undeployed]
+          default: deployed
+          example: deployed
+
+    MCPTool:
+      type: object
+      required:
+        - name
+        - description
+        - inputSchema
+      properties:
+        name:
+          type: string
+          description: Unique identifier for the tool
+        title:
+          type: string
+          description: Optional human-readable name of the tool for display purposes.
+        description:
+          type: string
+          description: Human-readable description of functionality
+        inputSchema:
+          type: string
+          description: JSON Schema defining expected parameters
+        outputSchema:
+          type: string
+          description: Optional JSON Schema defining expected output structure
+
+    MCPResource:
+      type: object
+      required:
+        - uri
+        - name
+      properties:
+        uri:
+          type: string
+          description: Unique identifier for the resource
+        name:
+          type: string
+          description: The name of the resource
+        title:
+          type: string
+          description: Optional human-readable name of the resource for display purposes
+        description:
+          type: string
+          description: Optional description
+        mimeType:
+          type: string
+          description: Optional MIME type
+        size:
+          type: integer
+          description: Optional size in bytes
+
+    MCPPrompt:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Unique identifier for the prompt
+        title:
+          type: string
+          description: Optional human-readable name of the prompt for display purposes
+        description:
+          type: string
+          description: Optional human-readable description
+        arguments:
+          type: array
+          description: Optional list of arguments for customization
+          items:
+            type: object
+            required:
+              - name
+            properties:
+              name:
+                type: string
+                description: Name of the argument
+              description:
+                type: string
+                description: Description of the argument
+              required:
+                type: boolean
+                description: Whether the argument is required
+              title:
+                type: string
+                description: Optional human-readable title of the argument
+    
+    MCPProxyCreateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: MCP proxy created successfully
+        id:
+          type: string
+          description: Unique handle (metadata.name) for the created MCPProxy
+          example: some-mcp-v1.0
+        createdAt:
+          type: string
+          format: date-time
+          example: 2025-12-12T10:30:00Z
+
+    MCPProxyUpdateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: MCP proxy updated successfully
+        id:
+          type: string
+          description: Unique handle (metadata.name) for the created MCPProxy
+          example: some-mcp-v1.0
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2025-12-12T11:45:00Z
+
+    MCPProxyListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          example: mcp-proxy-1-v1.0
+        displayName:
+          type: string
+          example: mcp-proxy-1
+        version:
+          type: string
+          example: v1.0
+        context:
+          type: string
+          example: /mcp-proxy
+        specVersion:
+          type: string
+          example: 2025-06-18
+        status:
+          type: string
+          enum:
+            - deployed
+            - undeployed
+          example: deployed
+        createdAt:
+          type: string
+          format: date-time
+          example: 2025-11-24T10:30:00Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2025-11-24T10:30:00Z
+
+    MCPDetailResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        mcp:
+          type: object
+          properties:
+            id:
+              type: string
+              description: Unique id for the MCPProxy
+              example: mcp-proxy-1-v1.0
+            configuration:
+              $ref: "#/components/schemas/MCPProxyConfiguration"
+            metadata:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - deployed
+                    - undeployed
+                  example: deployed
+                createdAt:
+                  type: string
+                  format: date-time
+                  example: 2025-11-24T10:30:00Z
+                updatedAt:
+                  type: string
+                  format: date-time
+                  example: 2025-11-24T10:30:00Z
+                deployedAt:
+                  type: string
+                  format: date-time
+                  example: 2025-11-24T10:30:05Z
+
+    ErrorResponse:
+      type: object
+      required:
+        - status
+        - message
+      properties:
+        status:
+          type: string
+          example: error
+        message:
+          type: string
+          description: High-level error description
+          example: Configuration validation failed
+        errors:
+          type: array
+          description: Detailed validation errors
+          items:
+            $ref: "#/components/schemas/ValidationError"
+
+    ValidationError:
+      type: object
+      properties:
+        field:
+          type: string
+          description: Field that failed validation
+          example: spec.context
+        message:
+          type: string
+          description: Human-readable error message
+          example: Context must start with / and cannot end with /
+
+    LLMProviderTemplate:
+      type: object
+      required:
+        - apiVersion
+        - kind
+        - metadata
+        - spec
+      properties:
+        apiVersion:
+          type: string
+          description: Template specification version
+          example: gateway.api-platform.wso2.com/v1alpha1
+          enum:
+            - gateway.api-platform.wso2.com/v1alpha1
+        kind:
+          type: string
+          description: Template kind
+          example: LlmProviderTemplate
+          enum:
+            - LlmProviderTemplate
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        spec:
+          $ref: '#/components/schemas/LLMProviderTemplateData'
+
+    LLMProviderTemplateData:
+      type: object
+      required:
+        - displayName
+      properties:
+        displayName:
+          type: string
+          description: Human-readable LLM Template name
+          minLength: 1
+          maxLength: 253
+          example: OpenAI
+        promptTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        completionTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        totalTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        remainingTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        requestModel:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        responseModel:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        resourceMappings:
+          $ref: '#/components/schemas/LLMProviderTemplateResourceMappings'
+
+    LLMProviderTemplateResourceMappings:
+      type: object
+      properties:
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/LLMProviderTemplateResourceMapping'
+
+    LLMProviderTemplateResourceMapping:
+      type: object
+      required:
+        - resource
+      properties:
+        resource:
+          type: string
+          minLength: 1
+          description: Resource path pattern for this mapping
+          example: /responses
+        promptTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        completionTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        totalTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        remainingTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        requestModel:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        responseModel:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+
+    ExtractionIdentifier:
+      type: object
+      required:
+        - location
+        - identifier
+      properties:
+        location:
+          type: string
+          description: Where to find the token information
+          enum:
+            - payload
+            - header
+            - queryParam
+            - pathParam
+          example: payload
+        identifier:
+          type: string
+          description: JSONPath expression or header name to identify the token value
+          example: $.usage.inputTokens
+
+    LLMProviderTemplateCreateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: LLM provider template created successfully
+        id:
+          type: string
+          example: openai
+        createdAt:
+          type: string
+          format: date-time
+          example: 2025-10-11T10:30:00Z
+
+    LLMProviderTemplateUpdateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: LLM provider template updated successfully
+        id:
+          type: string
+          example: openai
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2025-10-11T11:45:00Z
+
+    LLMProviderTemplateListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          example: openai
+        displayName:
+          type: string
+          example: OpenAI
+        createdAt:
+          type: string
+          format: date-time
+          example: 2025-10-11T10:30:00Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2025-10-11T10:30:00Z
+
+    LLMProviderTemplateDetailResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        template:
+          type: object
+          properties:
+            id:
+              type: string
+              example: openai
+            configuration:
+              $ref: '#/components/schemas/LLMProviderTemplate'
+            metadata:
+              type: object
+              properties:
+                createdAt:
+                  type: string
+                  format: date-time
+                  example: 2025-10-11T10:30:00Z
+                updatedAt:
+                  type: string
+                  format: date-time
+                  example: 2025-10-11T10:30:00Z
+
+    LLMProviderCreateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: LLM provider created successfully
+        id:
+          type: string
+          example: openai
+        createdAt:
+          type: string
+          format: date-time
+          example: 2025-11-25T10:30:00Z
+
+    LLMProxyCreateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: LLM proxy created successfully
+        id:
+          type: string
+          example: wso2-con-assistant
+        createdAt:
+          type: string
+          format: date-time
+          example: 2025-11-25T10:30:00Z
+
+    LLMProviderUpdateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: LLM provider updated successfully
+        id:
+          type: string
+          example: wso2-openai-provider
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2025-11-25T11:45:00Z
+
+    LLMProxyUpdateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: LLM proxy updated successfully
+        id:
+          type: string
+          example: wso2-con-assistant
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2025-11-25T11:45:00Z
+
+    LLMProviderListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          example: openai-provider
+        displayName:
+          type: string
+          example: WSO2 OpenAI Provider
+        version:
+          type: string
+          example: v1.0
+        template:
+          type: string
+          example: openai
+        status:
+          type: string
+          enum:
+            - deployed
+            - undeployed
+          example: deployed
+        createdAt:
+          type: string
+          format: date-time
+          example: 2025-11-25T10:30:00Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2025-11-25T10:30:00Z
+
+    LLMProxyListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          example: wso2-con-assistant
+        displayName:
+          type: string
+          example: WSO2 Con Assistant
+        version:
+          type: string
+          example: v1.0
+        provider:
+          type: string
+          description: Unique id of a deployed llm provider
+          example: wso2-openai-provider
+        status:
+          type: string
+          enum:
+            - deployed
+            - undeployed
+          example: deployed
+        createdAt:
+          type: string
+          format: date-time
+          example: 2025-11-25T10:30:00Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2025-11-25T10:30:00Z
+
+    LLMProviderDetailResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        provider:
+          type: object
+          properties:
+            id:
+              type: string
+              example: wso2-openai
+            configuration:
+              $ref: '#/components/schemas/LLMProviderConfiguration'
+            deploymentStatus:
+              type: string
+              enum:
+                - deployed
+                - undeployed
+              example: deployed
+            metadata:
+              type: object
+              properties:
+                createdAt:
+                  type: string
+                  format: date-time
+                  example: 2025-11-25T10:30:00Z
+                updatedAt:
+                  type: string
+                  format: date-time
+                  example: 2025-11-25T10:30:00Z
+                deployedAt:
+                  type: string
+                  format: date-time
+                  example: 2025-11-25T10:35:00Z
+
+    LLMProxyDetailResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        proxy:
+          type: object
+          properties:
+            id:
+              type: string
+              example: wso2-docs-assistant
+            configuration:
+              $ref: '#/components/schemas/LLMProxyConfiguration'
+            deploymentStatus:
+              type: string
+              enum:
+                - deployed
+                - undeployed
+              example: deployed
+            metadata:
+              type: object
+              properties:
+                createdAt:
+                  type: string
+                  format: date-time
+                  example: 2025-11-25T10:30:00Z
+                updatedAt:
+                  type: string
+                  format: date-time
+                  example: 2025-11-25T10:30:00Z
+                deployedAt:
+                  type: string
+                  format: date-time
+                  example: 2025-11-25T10:35:00Z
+
+    LLMProviderConfiguration:
+      type: object
+      required:
+        - apiVersion
+        - kind
+        - metadata
+        - spec
+      properties:
+        apiVersion:
+          type: string
+          description: Provider specification version
+          example: gateway.api-platform.wso2.com/v1alpha1
+          enum:
+            - gateway.api-platform.wso2.com/v1alpha1
+        kind:
+          type: string
+          description: Provider kind
+          example: LlmProvider
+          enum:
+            - LlmProvider
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        spec:
+          $ref: '#/components/schemas/LLMProviderConfigData'
+
+    LLMProviderConfigData:
+      type: object
+      required:
+        - displayName
+        - version
+        - template
+        - upstream
+        - accessControl
+      properties:
+        displayName:
+          type: string
+          description: Human-readable LLM Provider name
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: WSO2 OpenAI Provider
+        version:
+          type: string
+          description: Semantic version of the LLM Provider
+          pattern: '^v\d+\.\d+$'
+          example: v1.0
+        context:
+          type: string
+          description: Base path for all API routes (must start with /, no trailing slash)
+          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
+          default: /
+          minLength: 1
+          maxLength: 200
+          example: /openai
+        vhost:
+          type: string
+          description: >
+            Virtual host name used for routing. Supports standard domain names,
+            subdomains, or wildcard domains. Must follow RFC-compliant hostname
+            rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).
+          pattern: '^(\*\.|[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+          minLength: 1
+          maxLength: 253
+          example: "api.openai"
+        template:
+          type: string
+          description: Template name to use for this LLM Provider
+          example: openai
+        upstream:
+          allOf:
+            - $ref: "#/components/schemas/Upstream"
+            - $ref: "#/components/schemas/UpstreamAuth"
+        accessControl:
+          $ref: '#/components/schemas/LLMAccessControl'
+        policies:
+          type: array
+          description: List of policies applied only to this operation (overrides or adds to API-level policies)
+          items:
+            $ref: "#/components/schemas/LLMPolicy"
+        deploymentState:
+          type: string
+          description: Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the LLM Provider is removed from router traffic but configuration and policies are preserved for potential redeployment.
+          enum: [deployed, undeployed]
+          default: deployed
+          example: deployed
+
+    UpstreamAuth:
+      type: object
+      properties:
+        auth:
+          type: object
+          required:
+            - type
+          properties:
+            type:
+              type: string
+              enum: [ api-key ]
+            header:
+              type: string
+            value:
+              type: string
+
+    LLMUpstreamAuth:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [ api-key ]
+        header:
+          type: string
+        value:
+          type: string
+
+    LLMProxyProvider:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          description: Unique id of a deployed llm provider
+          example: wso2-openai-provider
+        auth:
+          $ref: '#/components/schemas/LLMUpstreamAuth'
+
+    LLMAccessControl:
+      type: object
+      required:
+        - mode
+      properties:
+        mode:
+          type: string
+          description: Access control mode
+          example: deny_all
+          enum:
+            - allow_all
+            - deny_all
+        exceptions:
+          type: array
+          description: Path exceptions to the access control mode
+          items:
+            $ref: '#/components/schemas/RouteException'
+
+    RouteException:
+      type: object
+      required:
+        - path
+        - methods
+      properties:
+        path:
+          type: string
+          description: Path pattern
+          example: /chat/completions
+        methods:
+          type: array
+          description: HTTP methods
+          items:
+            type: string
+            enum:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - PATCH
+
+    LLMPolicy:
+      type: object
+      required:
+        - name
+        - version
+        - paths
+      properties:
+        name:
+          type: string
+          example: budgetControl
+        version:
+          type: string
+          example: v1.0.0
+        paths:
+          type: array
+          items:
+            $ref: '#/components/schemas/LLMPolicyPath'
+
+    LLMPolicyPath:
+      type: object
+      required:
+        - path
+        - methods
+        - params
+      properties:
+        path:
+          type: string
+          example: /chat/completions
+        methods:
+          type: array
+          items:
+            type: string
+            enum: [ GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD, "*" ]
+        params:
+          type: object
+          description: JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.
+          additionalProperties: true
+
+    LLMProxyConfiguration:
+      type: object
+      required:
+        - apiVersion
+        - kind
+        - metadata
+        - spec
+      properties:
+        apiVersion:
+          type: string
+          description: Proxy specification version
+          example: gateway.api-platform.wso2.com/v1alpha1
+          enum:
+            - gateway.api-platform.wso2.com/v1alpha1
+        kind:
+          type: string
+          description: Proxy kind
+          example: LlmProxy
+          enum:
+            - LlmProxy
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        spec:
+          $ref: '#/components/schemas/LLMProxyConfigData'
+
+    LLMProxyConfigData:
+      type: object
+      required:
+        - displayName
+        - version
+        - provider
+      properties:
+        displayName:
+          type: string
+          description: Human-readable LLM proxy name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+          minLength: 1
+          maxLength: 253
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: wso2-con-assistant
+        version:
+          type: string
+          description: Semantic version of the LLM proxy
+          pattern: '^v\d+\.\d+$'
+          example: v1.0
+        context:
+          type: string
+          description: Base path for all API routes (must start with /, no trailing slash)
+          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
+          default: /
+          minLength: 1
+          maxLength: 200
+          example: /openai
+        vhost:
+          type: string
+          description: >
+            Virtual host name used for routing. Supports standard domain names,
+            subdomains, or wildcard domains. Must follow RFC-compliant hostname
+            rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).
+          pattern: '^(\*\.|[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+          minLength: 1
+          maxLength: 253
+          example: "api.openai"
+        provider:
+          $ref: '#/components/schemas/LLMProxyProvider'
+        policies:
+          type: array
+          description: List of policies applied only to this operation (overrides or adds to API-level policies)
+          items:
+            $ref: "#/components/schemas/LLMPolicy"
+        deploymentState:
+          type: string
+          description: Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the LLM Proxy is removed from router traffic but configuration and policies are preserved for potential redeployment.
+          enum: [deployed, undeployed]
+          default: deployed
+          example: deployed
+
+    SecretConfiguration:
+      type: object
+      required:
+        - apiVersion
+        - kind
+        - metadata
+        - spec
+      properties:
+        apiVersion:
+          type: string
+          description: Secret specification version
+          example: gateway.api-platform.wso2.com/v1alpha1
+          enum:
+            - gateway.api-platform.wso2.com/v1alpha1
+
+        kind:
+          type: string
+          description: Secret resource kind
+          example: Secret
+          enum:
+            - Secret
+
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+        spec:
+          $ref: "#/components/schemas/SecretConfigData"
+
+    SecretConfigData:
+      type: object
+      required:
+        - displayName
+        - value
+      properties:
+        displayName:
+          type: string
+          description: Human-readable secret name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+          minLength: 1
+          maxLength: 253
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: WSO2 OpenAI Key
+
+        description:
+          type: string
+          description: Description of the secret
+          maxLength: 1024
+          example: WSO2 OpenAI provider API Key
+
+        value:
+          type: string
+          description: Secret value (stored encrypted)
+          minLength: 1
+          maxLength: 10240
+          format: password
+          example: sk_xxx
+
+    CertificateUploadRequest:
+      type: object
+      required:
+        - certificate
+        - name
+      properties:
+        name:
+          type: string
+          description: Unique name for the certificate. Must be unique across all certificates.
+          pattern: "^[a-zA-Z0-9._-]+$"
+          minLength: 1
+          maxLength: 100
+          example: my-custom-ca
+        certificate:
+          type: string
+          description: PEM-encoded X.509 certificate(s). Can contain multiple certificates.
+          example: |
+            -----BEGIN CERTIFICATE-----
+            MIIDXTCCAkWgAwIBAgIJAKL0UG+mRKtjMA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV
+            ...
+            -----END CERTIFICATE-----
+
+    CertificateResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier (UUID) for the certificate
+          example: 550e8400-e29b-41d4-a716-446655440000
+        name:
+          type: string
+          description: Name of the certificate
+          example: my-custom-ca
+        subject:
+          type: string
+          description: Certificate subject DN (for first cert if bundle)
+          example: CN=My CA,O=My Organization,C=US
+        issuer:
+          type: string
+          description: Certificate issuer DN (for first cert if bundle)
+          example: CN=My CA,O=My Organization,C=US
+        notAfter:
+          type: string
+          description: Certificate expiration date (for first cert if bundle)
+          format: date-time
+          example: "2026-11-26 06:07:26"
+        count:
+          type: integer
+          description: Number of certificates in the file
+          example: 1
+        message:
+          type: string
+          description: Success or informational message
+          example: Certificate uploaded and SDS updated successfully
+        status:
+          type: string
+          enum: [ success, error ]
+          example: success
+
+    CertificateListResponse:
+      type: object
+      properties:
+        certificates:
+          type: array
+          items:
+            $ref: "#/components/schemas/CertificateResponse"
+        totalCount:
+          type: integer
+          description: Total number of certificate files
+          example: 3
+        totalBytes:
+          type: integer
+          description: Total bytes of all certificate files
+          example: 221599
+        status:
+          type: string
+          example: success
+
+    APIKeyListResponse:
+      type: object
+      properties:
+        apiKeys:
+          type: array
+          items:
+            $ref: "#/components/schemas/APIKey"
+        totalCount:
+          type: integer
+          description: Total number of API keys
+          example: 3
+        status:
+          type: string
+          example: success
+
+    SecretResponse:
+      type: object
+      required:
+        - id
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          description: Unique secret identifier
+          example: "database-password"
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the secret was created (UTC)
+          example: "2026-01-05T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the secret was last updated (UTC)
+          example: "2026-01-05T11:45:00Z"
+      example:
+        id: "prod-db-password"
+        createdAt: "2026-01-05T10:00:00Z"
+        updatedAt: "2026-01-05T10:00:00Z"
+
+    SecretListResponse:
+      type: object
+      properties:
+        secrets:
+          type: array
+          description: List of secrets (without values for security)
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                description: Unique secret identifier (handle)
+                example: "openai-api-key"
+              displayName:
+                type: string
+                description: Human-readable display name
+                example: "OpenAI API Key"
+              createdAt:
+                type: string
+                format: date-time
+                description: Timestamp when the secret was created (UTC)
+                example: "2026-01-05T10:00:00Z"
+              updatedAt:
+                type: string
+                format: date-time
+                description: Timestamp when the secret was last updated (UTC)
+                example: "2026-01-05T10:30:00Z"
+            required:
+              - id
+              - displayName
+              - createdAt
+              - updatedAt
+        totalCount:
+          type: integer
+          description: Total number of secrets
+          example: 5
+        status:
+          type: string
+          example: success
+
+    SecretDetailResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        secret:
+          type: object
+          properties:
+            id:
+              type: string
+              description: Unique secret identifier
+              example: "database-password"
+            configuration:
+              $ref: '#/components/schemas/SecretConfiguration'
+            metadata:
+              type: object
+              properties:
+                createdAt:
+                  type: string
+                  format: date-time
+                  example: "2026-01-05T10:30:00Z"
+                updatedAt:
+                  type: string
+                  format: date-time
+                  example: "2026-01-05T11:45:00Z"
+
+tags:
+  - name: Rest API Management
+    description: CRUD operations for Rest APIs
+  - name: MCP Proxy Management
+    description: CRUD operations for MCPProxies
+  - name: Certificate Management
+    description: Manage custom TLS certificates for HTTPS upstream verification
+  - name: LLM Provider Template Management
+    description: CRUD operations for LLM Provider Template configurations
+  - name: LLM Provider Management
+    description: CRUD operations for LLM Provider configurations
+  - name: LLM Proxy Management
+    description: CRUD operations for LLM Proxy configurations
+  - name: Secrets Management
+    description: CRUD operations for Secrets

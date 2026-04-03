@@ -27,7 +27,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
 // =============================================================================
@@ -49,11 +49,22 @@ func TestMain(m *testing.M) {
 // alwaysTrueCELEvaluator implements CELEvaluator with no real CEL overhead.
 type alwaysTrueCELEvaluator struct{}
 
-func (e *alwaysTrueCELEvaluator) EvaluateRequestCondition(string, *policy.RequestContext) (bool, error) {
+func (e *alwaysTrueCELEvaluator) EvaluateRequestHeaderCondition(string, *policy.RequestHeaderContext) (bool, error) {
 	return true, nil
 }
-
-func (e *alwaysTrueCELEvaluator) EvaluateResponseCondition(string, *policy.ResponseContext) (bool, error) {
+func (e *alwaysTrueCELEvaluator) EvaluateRequestBodyCondition(string, *policy.RequestContext) (bool, error) {
+	return true, nil
+}
+func (e *alwaysTrueCELEvaluator) EvaluateResponseHeaderCondition(string, *policy.ResponseHeaderContext) (bool, error) {
+	return true, nil
+}
+func (e *alwaysTrueCELEvaluator) EvaluateResponseBodyCondition(string, *policy.ResponseContext) (bool, error) {
+	return true, nil
+}
+func (e *alwaysTrueCELEvaluator) EvaluateStreamingRequestCondition(string, *policy.RequestStreamContext) (bool, error) {
+	return true, nil
+}
+func (e *alwaysTrueCELEvaluator) EvaluateStreamingResponseCondition(string, *policy.ResponseStreamContext) (bool, error) {
 	return true, nil
 }
 
@@ -62,13 +73,27 @@ type sometimesFalseCELEvaluator struct {
 	counter int
 }
 
-func (e *sometimesFalseCELEvaluator) EvaluateRequestCondition(string, *policy.RequestContext) (bool, error) {
+func (e *sometimesFalseCELEvaluator) EvaluateRequestHeaderCondition(string, *policy.RequestHeaderContext) (bool, error) {
 	e.counter++
-	// Every third policy is skipped
 	return e.counter%3 != 0, nil
 }
-
-func (e *sometimesFalseCELEvaluator) EvaluateResponseCondition(string, *policy.ResponseContext) (bool, error) {
+func (e *sometimesFalseCELEvaluator) EvaluateRequestBodyCondition(string, *policy.RequestContext) (bool, error) {
+	e.counter++
+	return e.counter%3 != 0, nil
+}
+func (e *sometimesFalseCELEvaluator) EvaluateResponseHeaderCondition(string, *policy.ResponseHeaderContext) (bool, error) {
+	e.counter++
+	return e.counter%3 != 0, nil
+}
+func (e *sometimesFalseCELEvaluator) EvaluateResponseBodyCondition(string, *policy.ResponseContext) (bool, error) {
+	e.counter++
+	return e.counter%3 != 0, nil
+}
+func (e *sometimesFalseCELEvaluator) EvaluateStreamingRequestCondition(string, *policy.RequestStreamContext) (bool, error) {
+	e.counter++
+	return e.counter%3 != 0, nil
+}
+func (e *sometimesFalseCELEvaluator) EvaluateStreamingResponseCondition(string, *policy.ResponseStreamContext) (bool, error) {
 	e.counter++
 	return e.counter%3 != 0, nil
 }
@@ -89,11 +114,11 @@ func (p *passthroughPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-func (p *passthroughPolicy) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
+func (p *passthroughPolicy) OnRequestBody(_ context.Context, _ *policy.RequestContext, _ map[string]interface{}) policy.RequestAction {
 	return nil
 }
 
-func (p *passthroughPolicy) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
+func (p *passthroughPolicy) OnResponseBody(_ context.Context, _ *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
 	return nil
 }
 
@@ -109,16 +134,15 @@ func (p *headerModifyPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-func (p *headerModifyPolicy) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
+func (p *headerModifyPolicy) OnRequestBody(_ context.Context, _ *policy.RequestContext, _ map[string]interface{}) policy.RequestAction {
 	return policy.UpstreamRequestModifications{
-		SetHeaders:    map[string]string{"x-bench-header": "bench-value"},
-		AppendHeaders: map[string][]string{"x-multi": {"v1", "v2"}},
+		HeadersToSet: map[string]string{"x-bench-header": "bench-value"},
 	}
 }
 
-func (p *headerModifyPolicy) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
-	return policy.UpstreamResponseModifications{
-		SetHeaders: map[string]string{"x-bench-resp": "bench-resp-value"},
+func (p *headerModifyPolicy) OnResponseBody(_ context.Context, _ *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
+	return policy.DownstreamResponseModifications{
+		HeadersToSet: map[string]string{"x-bench-resp": "bench-resp-value"},
 	}
 }
 
@@ -134,7 +158,7 @@ func (p *shortCircuitPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-func (p *shortCircuitPolicy) OnRequest(*policy.RequestContext, map[string]interface{}) policy.RequestAction {
+func (p *shortCircuitPolicy) OnRequestBody(_ context.Context, _ *policy.RequestContext, _ map[string]interface{}) policy.RequestAction {
 	return policy.ImmediateResponse{
 		StatusCode: 401,
 		Headers:    map[string]string{"content-type": "application/json"},
@@ -142,7 +166,7 @@ func (p *shortCircuitPolicy) OnRequest(*policy.RequestContext, map[string]interf
 	}
 }
 
-func (p *shortCircuitPolicy) OnResponse(*policy.ResponseContext, map[string]interface{}) policy.ResponseAction {
+func (p *shortCircuitPolicy) OnResponseBody(_ context.Context, _ *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
 	return nil
 }
 

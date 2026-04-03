@@ -28,24 +28,35 @@ spec:
   # vhost: "mcp1.api-platform.com"
   upstream:
     url: http://everything:3001
+    # auth:
+    #   type: api-key
+    #   header: x-api-key
+    #   value: 12345
   # policies:
   #   - name: mcp-auth
-  #     version: v0.1.0
+  #     version: v1
   #     params:
   #       issuers:
   #         - PrimaryIdp
-  tools:
-    - name: add
-      title: Add two numbers
-      description: This tool adds two numbers provided in the input.
-      inputSchema: # JSON string or ref
-      outputSchema: # JSON string or ref
-    - name: echo
-      title: Echo input
-      description: This tool will echo back the input
-      inputSchema: # JSON string
-      outputSchema: # JSON string
-  resources:
-    - name: test://static/resource/{even_number}
-  prompts:
-    - name: simple_prompt
+  #   - name: mcp-authz
+  #     version: v1
+  #     params:
+  #       tools:
+  #         - name: "viewPizzaMenu"
+  #           requiredScopes:
+  #             - "mcp:tools:invoke"
+  #         - name: "echo"
+  #           requiredScopes:
+  #             - "mcp:tools:invoke"
+  #       prompts:
+  #         - name: "complex_prompt"
+  #           requiredClaims:
+  #             sub: "harry@gmail.com"
+  #   - name: mcp-acl-list
+  #     version: v1
+  #     params:
+  #       tools:
+  #         mode: deny
+  #         exceptions:
+  #           - viewPizzaMenu
+  #           - echo

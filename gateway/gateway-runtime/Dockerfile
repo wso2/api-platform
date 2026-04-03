@@ -20,7 +20,7 @@
 # Combines Envoy Router and Policy Engine into a single container
 
 # Stage 1: Builder Base
-FROM --platform=$BUILDPLATFORM golang:1.25.7-bookworm AS builder-base
+FROM --platform=$BUILDPLATFORM golang:1.26.1-bookworm AS builder-base
 ARG BUILDARCH
 ARG VERSION=unknown
 ARG GIT_COMMIT=unknown
@@ -41,11 +41,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 WORKDIR /workspace
 
-# Download SDK dependencies first (cached by go.mod/go.sum changes)
-COPY --from=sdk go.mod go.sum /api-platform/sdk/
-WORKDIR /api-platform/sdk
-RUN --mount=type=cache,target=/go/pkg/mod \
-    go mod download
+# Copy SDK core for go.mod replace directive
+COPY --from=sdk-core go.mod /api-platform/sdk/core/
 
 # Download gateway-builder dependencies (cached by go.mod/go.sum changes)
 COPY --from=gateway-builder go.mod go.sum /api-platform/gateway/gateway-builder/
@@ -55,6 +52,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 # Copy full source for build
 COPY --from=sdk . /api-platform/sdk
+COPY --from=sdk-core . /api-platform/sdk/core
 COPY --from=gateway-builder . /api-platform/gateway/gateway-builder
 
 # Build gateway-builder binary (cache mounts persist across rebuilds)
@@ -83,11 +81,8 @@ ENV BUILD_DATE=${BUILD_DATE}
 ENV TARGETARCH=${TARGETARCH}
 ENV ENABLE_DEBUG=${ENABLE_DEBUG}
 
-# Download SDK dependencies (cached by go.mod/go.sum changes)
-COPY --from=sdk go.mod go.sum /api-platform/sdk/
-WORKDIR /api-platform/sdk
-RUN --mount=type=cache,target=/go/pkg/mod \
-    go mod download
+# Copy SDK core for go.mod replace directive
+COPY --from=sdk-core go.mod /api-platform/sdk/core/
 
 # Download common dependencies (cached by go.mod/go.sum changes)
 COPY --from=common go.mod go.sum /api-platform/common/
@@ -104,11 +99,11 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Copy all source and policy files
 COPY policy-engine/ /api-platform/gateway/gateway-runtime/policy-engine/
 COPY python-executor/ /api-platform/gateway/gateway-runtime/python-executor/
-COPY --from=sdk . /api-platform/sdk
+COPY --from=sdk-core . /api-platform/sdk/core
 COPY --from=common . /api-platform/common
 COPY --from=system-policies . /api-platform/gateway/system-policies/
-COPY --from=dev-policies . /api-platform/policies/dev-policies/
-COPY --from=target build.yaml /api-platform/policies/build.yaml
+COPY --from=dev-policies . /api-platform/gateway/dev-policies/
+COPY --from=target build.yaml /api-platform/gateway/build.yaml
 
 RUN mkdir -p /api-platform/output
 
@@ -121,7 +116,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     [ "$ENABLE_COVERAGE" = "true" ] && export COVERAGE=true || true; \
     [ "$ENABLE_DEBUG" = "true" ] && export DEBUG=true || true; \
     /usr/local/bin/gateway-builder \
-        -build-file /api-platform/policies/build.yaml \
+        -build-file /api-platform/gateway/build.yaml \
         -system-build-lock /api-platform/gateway/system-policies/system-build-lock.yaml \
         -policy-engine-src /api-platform/gateway/gateway-runtime/policy-engine \
         -out-dir /api-platform/output
@@ -147,12 +142,12 @@ RUN pip3 install --no-cache-dir \
     -r /tmp/requirements.txt
 
 # Stage 3b: dlv installer (builds dlv for the debug stage)
-FROM golang:1.25.7-bookworm AS debug-dlv-builder
+FROM golang:1.26.1-bookworm AS debug-dlv-builder
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go install github.com/go-delve/delve/cmd/dlv@v1.26.0
 
-# Stage 3b: Debug Runtime (policy-engine wrapped in dlv, port 2346)
+# Stage 3c: Debug Runtime (policy-engine wrapped in dlv, port 2346)
 FROM envoyproxy/envoy:v1.35.3 AS debug
 
 USER root
@@ -173,11 +168,12 @@ RUN mkdir -p /app /var/run/api-platform /coverage
 
 COPY --from=debug-dlv-builder /go/bin/dlv /usr/local/bin/dlv
 COPY --from=policy-compiler /api-platform/output/gateway-runtime/policy-engine /app/policy-engine
-COPY --from=policy-compiler /api-platform/policies/build-lock.yaml /app/build-lock.yaml
+COPY --from=policy-compiler /api-platform/gateway/build-manifest.yaml /app/build-manifest.yaml
 COPY router/config/envoy-bootstrap.yaml /etc/envoy/envoy.yaml
 COPY router/config/config-override.yaml /etc/envoy/config-override.yaml
 COPY docker-entrypoint-debug.sh /usr/local/bin/docker-entrypoint.sh
 COPY health-check.sh /usr/local/bin/health-check.sh
+COPY --from=target configs/llm-pricing/ /home/wso2/conf/llm-pricing/
 
 RUN chmod +x /app/policy-engine /usr/local/bin/dlv /usr/local/bin/docker-entrypoint.sh /usr/local/bin/health-check.sh
 
@@ -214,7 +210,7 @@ RUN mkdir -p /app /var/run/api-platform /coverage
 
 # Copy Policy Engine binary
 COPY --from=policy-compiler /api-platform/output/gateway-runtime/policy-engine /app/policy-engine
-COPY --from=policy-compiler /api-platform/policies/build-lock.yaml /app/build-lock.yaml
+COPY --from=policy-compiler /api-platform/gateway/build-manifest.yaml /app/build-manifest.yaml
 
 # Copy Python executor + policies + SDK from builder output
 COPY --from=policy-compiler /api-platform/output/python-executor/ /app/python-executor/
@@ -229,13 +225,15 @@ COPY router/config/envoy-bootstrap.yaml /etc/envoy/envoy.yaml
 COPY router/config/config-override.yaml /etc/envoy/config-override.yaml
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY health-check.sh /usr/local/bin/health-check.sh
+COPY --from=target configs/llm-pricing/ /home/wso2/conf/llm-pricing/
 
 RUN chmod +x /app/policy-engine /usr/local/bin/docker-entrypoint.sh /usr/local/bin/health-check.sh
 
 RUN groupadd -r -g 10001 wso2 && \
     useradd -r -u 10001 -g wso2 -s /sbin/nologin -c "WSO2 Application User" wso2 && \
-    chown -R wso2:wso2 /app /var/run/api-platform /coverage && \
-    chmod -R 755 /app /var/run/api-platform /coverage
+    mkdir -p /home/wso2/conf/llm-pricing && \
+    chown -R wso2:wso2 /app /var/run/api-platform /coverage /home/wso2 && \
+    chmod -R 755 /app /var/run/api-platform /coverage /home/wso2
 
 # Set GOCOVERDIR for coverage data collection (only effective when binary is built with -cover)
 ENV GOCOVERDIR=/coverage

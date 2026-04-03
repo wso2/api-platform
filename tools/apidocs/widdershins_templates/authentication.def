@@ -1,0 +1,8 @@
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+{{? data.operation['x-basicauth-roles'] && data.operation['x-basicauth-roles'].length}}
+
+Required roles: {{= data.operation['x-basicauth-roles'].map(function(r){return '`'+r+'`';}).join(', ') }}
+{{?}}
+</aside>
+

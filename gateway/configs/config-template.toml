@@ -31,6 +31,20 @@ cert_file = "./certs/server.crt"
 # Path to TLS private key file (required if TLS is enabled)
 key_file = "./certs/server.key"
 
+[controller.controlplane]
+# Control plane websocket endpoint
+host = ""
+# Control plane authentication token
+token = ""
+# Initial reconnect delay
+reconnect_initial = "1s"
+# Maximum reconnect delay
+reconnect_max = "5m"
+# Polling interval for periodic sync
+polling_interval = "15m"
+# Skip TLS certificate verification for control plane connections
+insecure_skip_verify = false
+
 [controller.storage]
 # Storage type: "sqlite", "postgres", or "memory"
 type = "sqlite"
@@ -75,6 +89,7 @@ issuer = ""
 [api_key]
 api_keys_per_user_per_api = 10
 algorithm = "sha256"
+issuer = "api-platform-devportal"
 
 [controller.logging]
 level = "info"
@@ -83,6 +98,21 @@ format = "json"
 [controller.metrics]
 enabled = true
 port = 9091
+
+[controller.event_hub]
+# Interval at which events are polled from the database
+poll_interval = "3s"
+# Interval at which old events are cleaned up
+cleanup_interval = "10m"
+# How long events are retained before being deleted
+retention_period = "1h"
+
+[controller.event_hub.database]
+# Connection pool settings for the EventHub database connection
+max_open_conns = 5
+max_idle_conns = 2
+conn_max_lifetime = "30m"
+conn_max_idle_time = "5m"
 
 # =============================================================================
 # ROUTER CONFIGURATION
@@ -158,7 +188,6 @@ host = "policy-engine"
 port = 9001
 timeout_ms = 60000
 failure_mode_allow = false
-route_cache_action = "RETAIN"
 allow_mode_override = true
 message_timeout_ms = 60000
 
@@ -235,6 +264,13 @@ private_key_path = ""
 als_plain_text = true
 max_message_size = 1000000000
 max_header_limit = 8192
+
+# =============================================================================
+# POLICY CONFIGURATIONS
+# =============================================================================
+
+[policy_configurations.llm_cost_v1]
+pricing_file = "/home/wso2/conf/llm-pricing/model_prices.json"
 
 # =============================================================================
 # TRACING CONFIGURATION

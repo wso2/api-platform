@@ -1,8 +1,8 @@
 name: api-key-auth
-version: v0.8.1
+version: v1.0.1
 description: |
-  Validates API keys in incoming requests and authorizes access when a valid key
-  is present. Reads the key from a configured header or query parameter.
+  Secures APIs by validating API keys in incoming requests. API keys can be
+  provided through a configured HTTP header or query parameter.
 
 parameters:
   type: object
@@ -36,4 +36,14 @@ parameters:
 
 systemParameters:
   type: object
-  properties: {}
+  properties:
+    issuer:
+      type: string
+      description: |
+        Identifier of the portal that associated with this gateway.
+        Resolved from config.toml [api_key] issuer at startup.
+        When resolved to a non-empty string, the policy rejects any API key
+        whose issuer field is non-null and does not match this value.
+        When empty or absent, the issuer check is skipped entirely.
+      default: ""
+      "wso2/defaultValue": "${config.api_key.issuer}"

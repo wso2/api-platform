@@ -36,9 +36,10 @@ help: ## Show this help message
 
 build: ## Build Gateway Runtime Docker image using buildx
 	@echo "Building Gateway Runtime Docker image ($(IMAGE_NAME):$(VERSION))..."
-	@mkdir -p target && cp ../build.yaml target/
+	@mkdir -p target/configs && cp ../build.yaml target/ && cp -r ../configs/llm-pricing target/configs/
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context system-policies=../system-policies \
@@ -52,16 +53,17 @@ build: ## Build Gateway Runtime Docker image using buildx
 		--load \
 		.
 	@rm -rf target
-	@docker run --rm --entrypoint cat $(IMAGE_NAME):$(VERSION) /app/build-lock.yaml > ../build-lock.yaml
-	@echo "  ✓ Extracted build-lock.yaml"
+	@docker run --rm --entrypoint cat $(IMAGE_NAME):$(VERSION) /app/build-manifest.yaml > ../build-manifest.yaml
+	@echo "  ✓ Extracted build-manifest.yaml"
 	@echo "Docker image built successfully: $(IMAGE_NAME):$(VERSION)"
 
 
 build-debug: ## Build debug Gateway Runtime image for remote debugging with dlv (VS Code attach on port 2346)
 	@echo "Building Gateway Runtime debug image ($(IMAGE_NAME)-debug:$(VERSION))..."
-	@mkdir -p target && cp ../build.yaml target/
+	@mkdir -p target/configs && cp ../build.yaml target/ && cp -r ../configs/llm-pricing target/configs/
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context system-policies=../system-policies \
@@ -76,15 +78,16 @@ build-debug: ## Build debug Gateway Runtime image for remote debugging with dlv 
 		--load \
 		.
 	@rm -rf target
-	@docker run --rm --entrypoint cat $(IMAGE_NAME)-debug:$(VERSION) /app/build-lock.yaml > ../build-lock.yaml
-	@echo "  ✓ Extracted build-lock.yaml"
+	@docker run --rm --entrypoint cat $(IMAGE_NAME)-debug:$(VERSION) /app/build-manifest.yaml > ../build-manifest.yaml
+	@echo "  ✓ Extracted build-manifest.yaml"
 	@echo "Debug image built successfully: $(IMAGE_NAME)-debug:$(VERSION)"
 
 build-coverage-image: test ## Build Gateway Runtime Docker image with coverage instrumentation
 	@echo "Building Gateway Runtime coverage image ($(IMAGE_NAME)-coverage:$(VERSION))..."
-	@mkdir -p target && cp ../build.yaml target/
+	@mkdir -p target/configs && cp ../build.yaml target/ && cp -r ../configs/llm-pricing target/configs/
 	DOCKER_BUILDKIT=1 docker build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context system-policies=../system-policies \
@@ -106,9 +109,10 @@ push: ## Push Docker image to registry
 
 build-and-push-multiarch: ## Build and push Gateway Runtime Docker image for multiple architectures (amd64, arm64)
 	@echo "Building and pushing multi-arch Gateway Runtime Docker image ($(VERSION))..."
-	@mkdir -p target && cp ../build.yaml target/
+	@mkdir -p target/configs && cp ../build.yaml target/ && cp -r ../configs/llm-pricing target/configs/
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context system-policies=../system-policies \
@@ -124,17 +128,15 @@ build-and-push-multiarch: ## Build and push Gateway Runtime Docker image for mul
 		.
 	@rm -rf target
 	@docker pull --platform linux/amd64 $(IMAGE_NAME):$(VERSION)
-	@docker run --rm --entrypoint cat $(IMAGE_NAME):$(VERSION) /app/build-lock.yaml > ../build-lock.yaml
-	@echo "  ✓ Extracted build-lock.yaml"
+	@docker run --rm --entrypoint cat $(IMAGE_NAME):$(VERSION) /app/build-manifest.yaml > ../build-manifest.yaml
+	@echo "  ✓ Extracted build-manifest.yaml"
 	@echo "Multi-arch Docker image built and pushed: $(IMAGE_NAME):$(VERSION)"
 
 test: ## Run policy-engine tests
 	cd policy-engine && go test -v $$(go list ./... | grep -v /testutils) -cover -coverprofile=unit-test-coverage.txt
 
-clean: ## Clean Docker images
-	@echo "Cleaning Docker images..."
-	@docker rmi $(IMAGE_NAME):$(VERSION) 2>/dev/null || true
-	@docker rmi $(IMAGE_NAME):latest 2>/dev/null || true
-	@docker rmi $(IMAGE_NAME)-coverage:$(VERSION) 2>/dev/null || true
+clean: ## Clean generated policy-engine files, and restore go.mod/go.sum
 	@rm -rf target
+	@rm -f policy-engine/cmd/policy-engine/build_info.go policy-engine/cmd/policy-engine/plugin_registry.go
+	@git checkout -- policy-engine/go.mod policy-engine/go.sum
 	@echo "Clean completed"

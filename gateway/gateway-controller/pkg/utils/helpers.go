@@ -5,27 +5,20 @@ import (
 	"fmt"
 	"strings"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
 
 // ExtractNameVersion returns the name and version from an API configuration
 // Supports both HTTP REST APIs and async/websub kinds.
-func ExtractNameVersion(cfg api.APIConfiguration) (string, string, error) {
-	if cfg.Kind == api.RestApi {
-		d, err := cfg.Spec.AsAPIConfigData()
-		if err != nil {
-			return "", "", fmt.Errorf("failed to parse RestApi api config data: %w", err)
-		}
-		return d.DisplayName, d.Version, nil
+func ExtractNameVersion(cfg any) (string, string, error) {
+	switch c := cfg.(type) {
+	case api.RestAPI:
+		return c.Spec.DisplayName, c.Spec.Version, nil
+	case api.WebSubAPI:
+		return c.Spec.DisplayName, c.Spec.Version, nil
+	default:
+		return "", "", fmt.Errorf("unsupported api config type: %T", cfg)
 	}
-	if cfg.Kind == api.WebSubApi {
-		d, err := cfg.Spec.AsWebhookAPIData()
-		if err != nil {
-			return "", "", fmt.Errorf("failed to parse async/websub api config data: %w", err)
-		}
-		return d.DisplayName, d.Version, nil
-	}
-	return "", "", fmt.Errorf("unsupported api kind: %s", cfg.Kind)
 }
 
 // GetValueFromSourceConfig extracts a value from sourceConfig using a key path.

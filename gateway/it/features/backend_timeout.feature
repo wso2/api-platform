@@ -43,8 +43,7 @@ Feature: Backend timeout
             timeout:
               connect: 6000ms
             upstreams:
-              - urls:
-                  - http://192.0.2.1:80
+              - url: http://192.0.2.1:80
         upstream:
           main:
             ref: my-timeout-upstream
@@ -79,8 +78,7 @@ Feature: Backend timeout
         upstreamDefinitions:
           - name: my-timeout-upstream-global
             upstreams:
-              - urls:
-                  - http://192.0.2.1:80
+              - url: http://192.0.2.1:80
         upstream:
           main:
             ref: my-timeout-upstream-global

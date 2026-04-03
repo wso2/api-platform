@@ -30,6 +30,16 @@ import (
 
 // RegisterLLMSteps registers all LLM provider template and provider step definitions
 func RegisterLLMSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *steps.HTTPSteps) {
+	createLLMProvider := func(body *godog.DocString) error {
+		httpSteps.SetHeader("Content-Type", "application/yaml")
+		err := httpSteps.SendPOSTToService("gateway-controller", "/llm-providers", body)
+		if err != nil {
+			return err
+		}
+		time.Sleep(policyPropagationDelay)
+		return nil
+	}
+
 	// ========================================
 	// LLM Provider Template Steps
 	// ========================================
@@ -218,16 +228,8 @@ func RegisterLLMSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 	})
 
 	// LLM Provider CRUD steps
-	ctx.Step(`^I create this LLM provider:$`, func(body *godog.DocString) error {
-		httpSteps.SetHeader("Content-Type", "application/yaml")
-		err := httpSteps.SendPOSTToService("gateway-controller", "/llm-providers", body)
-		if err != nil {
-			return err
-		}
-		time.Sleep(policyPropagationDelay)
-		return nil
-	})
-
+	ctx.Step(`^I create this LLM provider:$`, createLLMProvider)
+	
 	ctx.Step(`^I update the LLM provider "([^"]*)" with:$`, func(providerID string, body *godog.DocString) error {
 		httpSteps.SetHeader("Content-Type", "application/yaml")
 		err := httpSteps.SendPUTToService("gateway-controller", "/llm-providers/"+providerID, body)

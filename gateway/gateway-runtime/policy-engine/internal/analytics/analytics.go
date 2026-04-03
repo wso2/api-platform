@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"strconv"
 	"time"
 
@@ -152,6 +153,7 @@ func (c *Analytics) GetFaultType() FaultCategory {
 
 func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.Event {
 	keyValuePairsFromMetadata := make(map[string]string)
+	typedValuePairsFromMetadata := make(map[string]interface{})
 	slog.Debug("Log entry: ", "logEntry", logEntry)
 	if logEntry.CommonProperties != nil && logEntry.CommonProperties.Metadata != nil && logEntry.CommonProperties.Metadata.FilterMetadata != nil {
 		slog.Debug("Proceeding to filtering metadata")
@@ -165,13 +167,25 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 							if analyticsStruct := value.GetStructValue(); analyticsStruct != nil {
 								for analyticsKey, analyticsValue := range analyticsStruct.Fields {
 									if analyticsValue != nil {
-										keyValuePairsFromMetadata[analyticsKey] = analyticsValue.GetStringValue()
+										metadataValue := analyticsValue.AsInterface()
+										typedValuePairsFromMetadata[analyticsKey] = metadataValue
+										if stringValue, ok := metadataValue.(string); ok {
+											keyValuePairsFromMetadata[analyticsKey] = stringValue
+										} else {
+											keyValuePairsFromMetadata[analyticsKey] = fmt.Sprintf("%v", metadataValue)
+										}
 									}
 								}
 							}
 						} else {
 							// Handle regular string values
-							keyValuePairsFromMetadata[key] = value.GetStringValue()
+							metadataValue := value.AsInterface()
+							typedValuePairsFromMetadata[key] = metadataValue
+							if stringValue, ok := metadataValue.(string); ok {
+								keyValuePairsFromMetadata[key] = stringValue
+							} else {
+								keyValuePairsFromMetadata[key] = fmt.Sprintf("%v", metadataValue)
+							}
 						}
 					}
 				}
@@ -229,10 +243,10 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	}
 
 	properties := logEntry.GetCommonProperties()
-	if properties != nil && properties.TimeToLastRxByte != nil && 
-		properties.TimeToFirstUpstreamTxByte != nil && properties.TimeToFirstUpstreamRxByte != nil && 
+	if properties != nil && properties.TimeToLastRxByte != nil &&
+		properties.TimeToFirstUpstreamTxByte != nil && properties.TimeToFirstUpstreamRxByte != nil &&
 		properties.TimeToLastUpstreamRxByte != nil && properties.TimeToLastDownstreamTxByte != nil {
-		
+
 		lastRx :=
 			(properties.TimeToLastRxByte.Seconds * 1000) +
 				(int64(properties.TimeToLastRxByte.Nanos) / 1_000_000)
@@ -254,15 +268,14 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 				(int64(properties.TimeToLastDownstreamTxByte.Nanos) / 1_000_000)
 
 		latencies := dto.Latencies{
-			BackendLatency:            lastUpRx - firstUpTx,
+			BackendLatency:           lastUpRx - firstUpTx,
 			RequestMediationLatency:  firstUpTx - lastRx,
-			ResponseLatency:           lastDownTx - firstUpRx,
+			ResponseLatency:          lastDownTx - firstUpRx,
 			ResponseMediationLatency: lastDownTx - lastUpRx,
 		}
 
 		event.Latencies = &latencies
 	}
-
 
 	// prepare metaInfo
 	metaInfo := dto.MetaInfo{}
@@ -301,6 +314,34 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		slog.Debug("Analytics: User ID set from metadata", "userID", userID)
 	}
 
+	// Forward guardrail metadata when available in analytics_data.
+	if guardrailHitRaw, exists := typedValuePairsFromMetadata[constants.GuardrailHitMetadataKey]; exists {
+		switch guardrailHit := guardrailHitRaw.(type) {
+		case bool:
+			event.Properties[constants.GuardrailHitMetadataKey] = guardrailHit
+		case string:
+			if parsed, err := strconv.ParseBool(guardrailHit); err == nil {
+				event.Properties[constants.GuardrailHitMetadataKey] = parsed
+			}
+		}
+	}
+	if guardrailName, exists := keyValuePairsFromMetadata[constants.GuardrailNameMetadataKey]; exists && guardrailName != "" {
+		event.Properties[constants.GuardrailNameMetadataKey] = guardrailName
+	}
+
+	var parsedLLMCost interface{}
+
+	// Set LLM cost from metadata when available.
+	if rawCost, exists := keyValuePairsFromMetadata[constants.LLMCostMetadataKey]; exists && rawCost != "" {
+
+		slog.Debug("Proceeding to process LLM cost metadata")
+		if llmCost, err := strconv.ParseFloat(rawCost, 64); err == nil {
+			parsedLLMCost = llmCost
+		} else {
+			parsedLLMCost = rawCost
+		}
+	}
+
 	// Process AI related metadata only if all the required metadata are present
 	if keyValuePairsFromMetadata[AIProviderNameMetadataKey] != "" ||
 		keyValuePairsFromMetadata[AIProviderAPIVersionMetadataKey] != "" ||
@@ -310,6 +351,9 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		aiMetadata.VendorName = keyValuePairsFromMetadata[AIProviderNameMetadataKey]
 		aiMetadata.VendorVersion = keyValuePairsFromMetadata[APIVersionKey]
 		aiMetadata.Model = keyValuePairsFromMetadata[ModelIDMetadataKey]
+		if parsedLLMCost != nil {
+			aiMetadata.LLMCost = parsedLLMCost
+		}
 		event.Properties["aiMetadata"] = aiMetadata
 
 		aiTokenUsage := dto.AITokenUsage{}
@@ -403,22 +447,35 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 			// Parse the JSON string into a map
 			var propsMap map[string]interface{}
 			if err := json.Unmarshal([]byte(mcpRequestProps), &propsMap); err == nil {
-				mcpAnalytics["mcp_analytics"] = propsMap
+				maps.Copy(mcpAnalytics, propsMap)
 			} else {
 				slog.Debug("Failed to unmarshal MCP request properties", "error", err)
 				// Fallback to raw string if parsing fails
-				mcpAnalytics["mcp_analytics"] = mcpRequestProps
+				mcpAnalytics["mcp_request_properties"] = mcpRequestProps
 			}
 		}
-		if mcpServerInfo, ok := keyValuePairsFromMetadata["mcp_server_info"]; ok && mcpServerInfo != "" {
+		if mcpResponseProps, ok := keyValuePairsFromMetadata["mcp_response_properties"]; ok && mcpResponseProps != "" {
 			// Parse the JSON string into a map
-			var serverInfoMap map[string]interface{}
-			if err := json.Unmarshal([]byte(mcpServerInfo), &serverInfoMap); err == nil {
-				mcpAnalytics["mcp_server_info"] = serverInfoMap
+			var responsePropsMap map[string]interface{}
+			if err := json.Unmarshal([]byte(mcpResponseProps), &responsePropsMap); err == nil {
+				maps.Copy(mcpAnalytics, responsePropsMap)
 			} else {
-				slog.Debug("Failed to unmarshal MCP server info", "error", err)
+				slog.Debug("Failed to unmarshal MCP response properties", "error", err)
 				// Fallback to raw string if parsing fails
-				mcpAnalytics["mcp_server_info"] = mcpServerInfo
+				mcpAnalytics["mcp_response_properties"] = mcpResponseProps
+			}
+		}
+		// Additionally, if there's an error code in the response properties from policies, add it to the response props
+		if mcpErrorCode, ok := keyValuePairsFromMetadata["mcpErrorCode"]; ok && mcpErrorCode != "" {
+			if _, exists := mcpAnalytics["errorCode"]; !exists {
+				if code, err := strconv.Atoi(mcpErrorCode); err == nil {
+					mcpAnalytics["errorCode"] = code
+				} else {
+					slog.Debug("Invalid MCP error code format; storing raw value", "mcpErrorCode", mcpErrorCode, "error", err)
+					mcpAnalytics["errorCode"] = mcpErrorCode
+				}
+			} else {
+				slog.Debug("MCP error code already exists in mcpAnalytics, skipping adding it again", "mcpErrorCode", mcpErrorCode)
 			}
 		}
 		event.Properties["mcpAnalytics"] = mcpAnalytics

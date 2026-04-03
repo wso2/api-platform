@@ -27,8 +27,8 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
-	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
+	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
 
 // ConfigLoader loads policy chain configurations
@@ -84,7 +84,7 @@ func (cl *ConfigLoader) LoadFromFile(path string) error {
 
 	ctx := context.Background()
 	for routeKey, chain := range chains {
-		cl.kernel.Routes[routeKey] = chain
+		cl.kernel.PolicyChains[routeKey] = chain
 		slog.InfoContext(ctx, "Loaded policy chain for route",
 			"route", routeKey,
 			"policies", len(chain.Policies))
@@ -125,9 +125,19 @@ func (cl *ConfigLoader) buildPolicyChain(routeKey string, config *policyenginev1
 	requiresRequestBody := false
 	requiresResponseBody := false
 	hasExecutionConditions := false
+	requiresRequestHeader := false
+	requiresResponseHeader := false
+	supportsRequestStreaming := true
+	supportsResponseStreaming := true
+	hasRequestBodyPolicy := false
+	hasResponseBodyPolicy := false
+
+	slog.Debug("[chain-build] building policy chain (file mode)",
+		"route", routeKey,
+		"policy_count", len(config.Policies),
+	)
 
 	for _, policyConfig := range config.Policies {
-		// Create metadata with route and API information
 		metadata := policy.PolicyMetadata{
 			RouteName:  routeKey,
 			APIId:      apiMetadata.APIId,
@@ -135,15 +145,12 @@ func (cl *ConfigLoader) buildPolicyChain(routeKey string, config *policyenginev1
 			APIVersion: apiMetadata.Version,
 		}
 
-		// Create instance using factory with metadata and params
-		// CreateInstance returns the policy and merged params (initParams + runtime params)
-		impl, mergedParams, err := cl.registry.CreateInstance(policyConfig.Name, policyConfig.Version, metadata, policyConfig.Parameters)
+		impl, mergedParams, err := cl.registry.GetInstance(policyConfig.Name, policyConfig.Version, metadata, policyConfig.Parameters)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create policy instance %s:%s for route %s: %w",
 				policyConfig.Name, policyConfig.Version, routeKey, err)
 		}
 
-		// Build PolicySpec with merged params so OnRequest/OnResponse receive merged values
 		spec := policy.PolicySpec{
 			Name:               policyConfig.Name,
 			Version:            policyConfig.Version,
@@ -154,35 +161,54 @@ func (cl *ConfigLoader) buildPolicyChain(routeKey string, config *policyenginev1
 			},
 		}
 
-		// Check if policy has CEL execution condition
 		if policyConfig.ExecutionCondition != nil && *policyConfig.ExecutionCondition != "" {
 			hasExecutionConditions = true
 		}
 
-		// Add to policy list
 		policyList = append(policyList, impl)
 		policySpecs = append(policySpecs, spec)
 
-		// Get policy mode and update body requirements
 		mode := impl.Mode()
-
-		// Update request body requirement (if any policy needs buffering)
 		if mode.RequestBodyMode == policy.BodyModeBuffer || mode.RequestBodyMode == policy.BodyModeStream {
 			requiresRequestBody = true
+			hasRequestBodyPolicy = true
+			if _, streaming := impl.(policy.StreamingRequestPolicy); !streaming {
+				supportsRequestStreaming = false
+			}
 		}
-
-		// Update response body requirement (if any policy needs buffering)
 		if mode.ResponseBodyMode == policy.BodyModeBuffer || mode.ResponseBodyMode == policy.BodyModeStream {
 			requiresResponseBody = true
+			hasResponseBodyPolicy = true
+			if _, streaming := impl.(policy.StreamingResponsePolicy); !streaming {
+				supportsResponseStreaming = false
+			}
+		}
+
+		if _, ok := impl.(policy.RequestHeaderPolicy); ok {
+			requiresRequestHeader = true
+		}
+		if _, ok := impl.(policy.ResponseHeaderPolicy); ok {
+			requiresResponseHeader = true
 		}
 	}
 
+	if !hasRequestBodyPolicy {
+		supportsRequestStreaming = false
+	}
+	if !hasResponseBodyPolicy {
+		supportsResponseStreaming = false
+	}
+
 	chain := &registry.PolicyChain{
-		Policies:             policyList,
-		PolicySpecs:          policySpecs,
-		RequiresRequestBody:  requiresRequestBody,
-		RequiresResponseBody: requiresResponseBody,
-		HasExecutionConditions:     hasExecutionConditions,
+		Policies:                 policyList,
+		PolicySpecs:              policySpecs,
+		RequiresRequestBody:      requiresRequestBody,
+		RequiresResponseBody:     requiresResponseBody,
+		HasExecutionConditions:   hasExecutionConditions,
+		RequiresRequestHeader:    requiresRequestHeader,
+		RequiresResponseHeader:   requiresResponseHeader,
+		SupportsRequestStreaming:  supportsRequestStreaming,
+		SupportsResponseStreaming: supportsResponseStreaming,
 	}
 
 	return chain, nil

@@ -51,9 +51,11 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     timeout: 5000
       """
     Then the response should be successful
@@ -102,9 +104,11 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     timeout: 5000
       """
     Then the response should be successful
@@ -144,9 +148,11 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     timeout: 5000
       """
     Then the response should be successful
@@ -197,9 +203,11 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     onlyDNS: true
                     timeout: 3000
       """
@@ -251,9 +259,10 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
+                    enabled: true
                     jsonPath: "$.url"
                     timeout: 5000
       """
@@ -309,9 +318,10 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
+                    enabled: true
                     jsonPath: "$.data.link"
                     timeout: 5000
       """
@@ -372,9 +382,10 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
+                    enabled: true
                     jsonPath: "$.nonexistent.field"
                     timeout: 5000
       """
@@ -424,9 +435,11 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     timeout: 1000
       """
     Then the response should be successful
@@ -470,9 +483,11 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     showAssessment: true
                     timeout: 5000
       """
@@ -520,9 +535,11 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     timeout: 5000
       """
     Then the response should be successful
@@ -561,9 +578,11 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     timeout: 5000
       """
     Then the response should be successful
@@ -607,11 +626,14 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     timeout: 5000
                   response:
+                    jsonPath: ""
                     timeout: 5000
       """
     Then the response should be successful
@@ -662,9 +684,11 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     timeout: 5000
       """
     Then the response should be successful
@@ -704,9 +728,11 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     timeout: 5000
       """
     Then the response should be successful
@@ -759,9 +785,11 @@ Feature: URL Guardrail
             path: /validate
             policies:
               - name: url-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
+                    enabled: true
+                    jsonPath: ""
                     showAssessment: true
                     timeout: 5000
       """

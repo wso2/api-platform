@@ -1,0 +1,36 @@
+post:
+  summary: Chat with unknown LLM
+  operationId: unknownLLMChat
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            model:
+              type: string
+            messages:
+              type: array
+              items:
+                type: object
+
+  responses:
+    "200":
+      description: Successful response
+      content:
+        application/json:
+          # Unknown model not in pricing DB — cost should be 0.0000000000
+          example:
+            id: resp-001
+            model: my-unknown-model-xyz
+            choices:
+              - index: 0
+                message:
+                  role: assistant
+                  content: "Hello!"
+                finish_reason: stop
+            usage:
+              prompt_tokens: 10
+              completion_tokens: 5
+              total_tokens: 15

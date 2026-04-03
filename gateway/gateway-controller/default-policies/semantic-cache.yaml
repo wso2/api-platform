@@ -1,5 +1,5 @@
 name: semantic-cache
-version: v0.8.0
+version: v1.0.1
 description: |
   Caches LLM responses using semantic similarity over request embeddings to
   reduce repeated upstream calls. Returns cached responses on similarity hits
@@ -18,10 +18,11 @@ parameters:
       maximum: 1.0
     jsonPath:
       type: string
+      x-wso2-policy-advanced-param: false
       description: |
         Specifies the JSONPath used to extract text for embedding generation.
         When omitted, the entire request body is used.
-      default: ""
+      default: "$.messages[-1].content"
   required:
   - similarityThreshold
 

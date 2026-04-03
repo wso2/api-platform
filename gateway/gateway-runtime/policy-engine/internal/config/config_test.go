@@ -19,6 +19,7 @@
 package config
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -957,6 +958,19 @@ func TestValidate_AnalyticsConfig(t *testing.T) {
 			},
 			expectErr: true,
 			errMsg:    "max_header_limit must be positive",
+		},
+		{
+			name: "analytics enabled - max header limit exceeds uint32",
+			setup: func(cfg *Config) {
+				cfg.Analytics.Enabled = true
+				cfg.Analytics.AccessLogsServiceCfg = AccessLogsServiceConfig{
+					ShutdownTimeout:       600 * time.Second,
+					ExtProcMaxMessageSize: 1000000,
+					ExtProcMaxHeaderLimit: math.MaxInt,
+				}
+			},
+			expectErr: true,
+			errMsg:    "max_header_limit must be <=",
 		},
 	}
 

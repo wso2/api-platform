@@ -9,21 +9,41 @@
             "type": "go",
             "request": "launch",
             "mode": "auto",
-            "program": "${workspaceFolder}/platform-api/src/cmd/main.go",
+            "program": "${workspaceFolder}/platform-api/src/cmd",
             "cwd": "${workspaceFolder}/platform-api/src",
+            "env": {
+                // Database configuration
+                "DATABASE_DRIVER": "sqlite3",
+                "DATABASE_DB_PATH": "${workspaceFolder}/platform-api/src/data/api_platform.db",
+                "DATABASE_EXECUTE_SCHEMA_DDL": "true",
+                "DB_SCHEMA_PATH": "./internal/database/schema.sqlite.sql",
+                // JWT - skip signature validation in development
+                "JWT_SKIP_VALIDATION": "true",
+            },
         },
         {
             "name": "Gateway Controller",
             "type": "go",
             "request": "launch",
             "mode": "auto",
-            "program": "${workspaceFolder}/gateway/gateway-controller/cmd/controller/main.go",
+            "program": "${workspaceFolder}/gateway/gateway-controller/cmd/controller",
             "args": [
                 "-config",
                 "${workspaceFolder}/gateway/configs/config.toml",
             ],
             "env": {
+                // Database configuration for the controller
+                "APIP_GW_CONTROLLER_STORAGE_TYPE": "sqlite", // sqlite, postgres
+                //// SQLite (default)
                 "APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH": "${workspaceFolder}/gateway/gateway-controller/data/gateway.db",
+                //// PostgreSQL
+                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_HOST": "localhost",
+                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PORT": "5432",
+                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_DATABASE": "gateway",
+                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_USER": "gateway",
+                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD": "gateway",
+                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_SSLMODE": "disable",
+                // Controlplane connectivity details
                 "APIP_GW_CONTROLPLANE_HOST": "",
                 "APIP_GW_GATEWAY_REGISTRATION_TOKEN": "",
                 "APIP_GW_CONTROLLER_LLM_TEMPLATE__DEFINITIONS__PATH": "${workspaceFolder}/gateway/gateway-controller/default-llm-provider-templates",
@@ -36,6 +56,7 @@
                 "APIP_GW_ANALYTICS_GRPC__EVENT__SERVER_MODE": "tcp",
                 "APIP_GW_ROUTER_DOWNSTREAM__TLS_CERT__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.crt",
                 "APIP_GW_ROUTER_DOWNSTREAM__TLS_KEY__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.key",
+                "APIP_GW_DEVELOPMENT_MODE": "true",
             },
         },
         {

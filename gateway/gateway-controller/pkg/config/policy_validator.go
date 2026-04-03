@@ -23,50 +23,76 @@ import (
 	"regexp"
 	"strings"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	versionutil "github.com/wso2/api-platform/common/version"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/xeipuuv/gojsonschema"
 )
 
 // PolicyValidator validates policies referenced in API configurations
 type PolicyValidator struct {
-	policyDefinitions map[string]api.PolicyDefinition
+	policyDefinitions map[string]models.PolicyDefinition
+	latestVersions    map[string]string // policyName -> latest full semver, pre-computed at construction
 }
 
 // NewPolicyValidator creates a new policy validator
-func NewPolicyValidator(policyDefinitions map[string]api.PolicyDefinition) *PolicyValidator {
+func NewPolicyValidator(policyDefinitions map[string]models.PolicyDefinition) *PolicyValidator {
 	return &PolicyValidator{
 		policyDefinitions: policyDefinitions,
+		latestVersions:    BuildLatestVersionIndex(policyDefinitions),
 	}
 }
 
-// ValidatePolicies validates all policies in an API configuration
-func (pv *PolicyValidator) ValidatePolicies(apiConfig *api.APIConfiguration) []ValidationError {
-	var errors []ValidationError
-	// TODO: Extend to other kinds if they support policies
-	if apiConfig.Kind == api.RestApi {
-		apiData, err := apiConfig.Spec.AsAPIConfigData()
-		if err != nil {
-			errors = append(errors, ValidationError{
-				Field:   "spec",
-				Message: fmt.Sprintf("Failed to parse API data for policy validation: %v", err),
-			})
-			return errors
+// BuildLatestVersionIndex scans policy definitions once and builds a map of
+// policyName -> latest full semver. Used for O(1) empty-version resolution.
+func BuildLatestVersionIndex(definitions map[string]models.PolicyDefinition) map[string]string {
+	index := make(map[string]string)
+	for _, def := range definitions {
+		if !fullSemverPattern.MatchString(def.Version) {
+			continue
 		}
-		// Validate API-level policies
-		if apiData.Policies != nil {
-			for i, policy := range *apiData.Policies {
-				errs := pv.validatePolicy(policy, fmt.Sprintf("spec.policies[%d]", i))
-				errors = append(errors, errs...)
-			}
+		existing, ok := index[def.Name]
+		if !ok || versionutil.CompareSemver(def.Version, existing) > 0 {
+			index[def.Name] = def.Version
 		}
+	}
+	return index
+}
 
-		// Validate operation-level policies
-		for opIdx, operation := range apiData.Operations {
-			if operation.Policies != nil {
-				for pIdx, policy := range *operation.Policies {
-					errs := pv.validatePolicy(policy, fmt.Sprintf("spec.operations[%d].policies[%d]", opIdx, pIdx))
-					errors = append(errors, errs...)
-				}
+// ValidateMCPProxyPolicies validates all policies in an MCP proxy configuration
+func (pv *PolicyValidator) ValidateMCPProxyPolicies(mcpConfig *api.MCPProxyConfiguration) []ValidationError {
+	var errors []ValidationError
+
+	if mcpConfig.Spec.Policies == nil {
+		return errors
+	}
+
+	for i, policy := range *mcpConfig.Spec.Policies {
+		errs := pv.validatePolicy(policy, fmt.Sprintf("spec.policies[%d]", i))
+		errors = append(errors, errs...)
+	}
+
+	return errors
+}
+
+// ValidateRestAPIPolicies validates all policies in a REST API configuration
+func (pv *PolicyValidator) ValidateRestAPIPolicies(apiConfig *api.RestAPI) []ValidationError {
+	var errors []ValidationError
+
+	// Validate API-level policies
+	if apiConfig.Spec.Policies != nil {
+		for i, policy := range *apiConfig.Spec.Policies {
+			errs := pv.validatePolicy(policy, fmt.Sprintf("spec.policies[%d]", i))
+			errors = append(errors, errs...)
+		}
+	}
+
+	// Validate operation-level policies
+	for opIdx, operation := range apiConfig.Spec.Operations {
+		if operation.Policies != nil {
+			for pIdx, policy := range *operation.Policies {
+				errs := pv.validatePolicy(policy, fmt.Sprintf("spec.operations[%d].policies[%d]", opIdx, pIdx))
+				errors = append(errors, errs...)
 			}
 		}
 	}
@@ -119,7 +145,7 @@ func (pv *PolicyValidator) validatePolicy(policy api.Policy, fieldPath string) [
 }
 
 var (
-	fullSemverPattern  = regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
+	fullSemverPattern   = regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
 	majorVersionPattern = regexp.MustCompile(`^v\d+$`)
 )
 
@@ -128,17 +154,39 @@ var (
 // version (vX.Y.Z) from the loaded definitions. Full semantic version
 // (e.g., v1.0.0) is rejected.
 func (pv *PolicyValidator) resolvePolicyVersion(name, version string) (string, error) {
-	return ResolvePolicyVersion(pv.policyDefinitions, name, version)
+	return ResolvePolicyVersion(pv.policyDefinitions, pv.latestVersions, name, version)
 }
 
 // ResolvePolicyVersion resolves a policy version using the given definitions map.
 // Only major-only versions (e.g., v1) are accepted; they are resolved to the
 // unique full version (vX.Y.Z) for that policy name. Full semantic version
 // (e.g., v1.0.0) is rejected. Used by both the validator and the derivation path.
-func ResolvePolicyVersion(definitions map[string]api.PolicyDefinition, name, version string) (string, error) {
+// latestVersions is an optional pre-computed index (policyName -> latest full semver)
+// for O(1) empty-version resolution; pass nil to fall back to scanning definitions.
+func ResolvePolicyVersion(definitions map[string]models.PolicyDefinition, latestVersions map[string]string, name, version string) (string, error) {
 	trimmed := strings.TrimSpace(version)
 	if trimmed == "" {
-		return "", fmt.Errorf("policy '%s' version is required", name)
+		// No version specified: resolve to the latest available full version for this policy.
+		if latestVersions != nil {
+			if latest, ok := latestVersions[name]; ok {
+				return latest, nil
+			}
+			return "", fmt.Errorf("policy '%s' not found in loaded policy definitions", name)
+		}
+		// Fallback: scan definitions (no pre-computed index available).
+		var latestFull string
+		for _, def := range definitions {
+			if def.Name != name || !fullSemverPattern.MatchString(def.Version) {
+				continue
+			}
+			if latestFull == "" || versionutil.CompareSemver(def.Version, latestFull) > 0 {
+				latestFull = def.Version
+			}
+		}
+		if latestFull == "" {
+			return "", fmt.Errorf("policy '%s' not found in loaded policy definitions", name)
+		}
+		return latestFull, nil
 	}
 
 	// Full semantic version (e.g., v1.0.0) – reject; only major-only is allowed

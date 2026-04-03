@@ -1,0 +1,61 @@
+post:
+  summary: Create chat completion with web search url_citation annotation
+  operationId: createChatCompletionWebSearch
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - model
+            - messages
+          properties:
+            model:
+              type: string
+            messages:
+              type: array
+              items:
+                type: object
+
+  responses:
+    "200":
+      description: Successful response with web search url_citation annotation
+      content:
+        application/json:
+          # gpt-4.1-2025-04-14: input=2e-6, output=8e-6, web_search_cost_per_request=0.01
+          # prompt=50, completion=25, 1 web search call (url_citation annotation detected)
+          # cost = 50*2e-6 + 25*8e-6 + 0.01 = 1e-4 + 2e-4 + 0.01 = 0.0103000000
+          example:
+            id: chatcmpl-WebSearchTest
+            object: chat.completion
+            created: 1741569952
+            model: gpt-4.1-2025-04-14
+            choices:
+              - index: 0
+                message:
+                  role: assistant
+                  content: "According to recent sources, the answer is 42."
+                  refusal: null
+                  annotations:
+                    - type: url_citation
+                      url_citation:
+                        url: "https://example.com/answer"
+                        title: "The Answer"
+                        start_index: 30
+                        end_index: 32
+                logprobs: null
+                finish_reason: stop
+            usage:
+              prompt_tokens: 50
+              completion_tokens: 25
+              total_tokens: 75
+              prompt_tokens_details:
+                cached_tokens: 0
+                audio_tokens: 0
+              completion_tokens_details:
+                reasoning_tokens: 0
+                audio_tokens: 0
+                accepted_prediction_tokens: 0
+                rejected_prediction_tokens: 0
+            service_tier: default

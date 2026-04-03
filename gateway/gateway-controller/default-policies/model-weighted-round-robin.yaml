@@ -1,16 +1,14 @@
 name: model-weighted-round-robin
-version: v0.1.0
+version: v1.0.2
 description: |
-  Implements weighted round-robin load balancing for AI models. Distributes requests
-  based on predefined weight values assigned to each model, enabling probabilistic
-  control over request distribution and giving higher priority to models with greater
-  processing power or availability.
+  Distribute requests across models using weighted round-robin so higher-weight models receive proportionally more traffic.
 
 parameters:
   type: object
   properties:
     models:
       type: array
+      x-wso2-policy-advanced-param: false
       description: List of models with weights for weighted round-robin distribution
       items:
         type: object
@@ -25,6 +23,7 @@ parameters:
               The weight assigned to this model for distribution.
               Higher weights mean more requests will be routed to this model.
               Weight is relative to total weight of all models.
+            default: 1
             minimum: 1
         required:
           - model
@@ -32,11 +31,12 @@ parameters:
       minItems: 1
     suspendDuration:
       type: integer
+      x-wso2-policy-advanced-param: true
       description: |
         Suspend duration in seconds for failed models.
-        If not configured, knowledge about failed invocations is not persisted.
+        Set to 0 to disable failed-model suspension tracking.
       minimum: 0
-      default: 0
+      default: 30
   required:
     - models
 

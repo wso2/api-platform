@@ -19,6 +19,7 @@
 package gateway
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -69,6 +70,10 @@ func BuildGatewayImages(config DockerBuildConfig) error {
 		}
 	}
 
+	if err := ensureBuildLockInControllerContext(config.TempDir); err != nil {
+		return err
+	}
+
 	fmt.Println("  ✓ Gateway-builder completed")
 
 	// Step 2: Build the two images
@@ -91,6 +96,26 @@ func BuildGatewayImages(config DockerBuildConfig) error {
 				return err
 			}
 		}
+	}
+
+	return nil
+}
+
+func ensureBuildLockInControllerContext(tempDir string) error {
+	buildManifestSrc := filepath.Join(tempDir, "build-manifest.yaml")
+	if _, err := os.Stat(buildManifestSrc); err != nil {
+		return fmt.Errorf("build-manifest.yaml not found in gateway-builder output: %w", err)
+	}
+
+	buildManifestDst := filepath.Join(tempDir, "output", "gateway-controller", "build-manifest.yaml")
+	if _, err := os.Stat(buildManifestDst); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("failed to access gateway-controller build-manifest.yaml: %w", err)
+	}
+
+	if err := utils.CopyFile(buildManifestSrc, buildManifestDst); err != nil {
+		return fmt.Errorf("failed to copy build-manifest.yaml into gateway-controller build context: %w", err)
 	}
 
 	return nil

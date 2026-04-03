@@ -26,7 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/gateway/gateway-builder/internal/testutils"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
 // ==== ValidatePolicies tests ====
@@ -435,7 +435,7 @@ type TestPolicy struct{}
 
 	errors := ValidateGoInterface(policy)
 
-	assert.Len(t, errors, 4) // Missing Mode, OnRequest, OnResponse, GetPolicy
+	assert.Len(t, errors, 2) // Missing Mode, GetPolicy
 }
 
 func TestValidateGoInterface_MissingGetPolicy(t *testing.T) {
@@ -443,14 +443,12 @@ func TestValidateGoInterface_MissingGetPolicy(t *testing.T) {
 	policyDir := filepath.Join(tmpDir, "test-policy")
 	testutils.CreateDir(t, policyDir)
 
-	// Has methods but no GetPolicy factory
+	// Has Mode but no GetPolicy factory
 	goCode := `package test
 
 type TestPolicy struct{}
 
 func (p *TestPolicy) Mode() int { return 0 }
-func (p *TestPolicy) OnRequest() {}
-func (p *TestPolicy) OnResponse() {}
 `
 	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), goCode)
 
@@ -465,6 +463,35 @@ func (p *TestPolicy) OnResponse() {}
 
 	assert.Len(t, errors, 1)
 	assert.Contains(t, errors[0].Message, "missing required GetPolicy() factory function")
+}
+
+
+func TestValidateGoInterface_StreamingPolicy(t *testing.T) {
+	tmpDir := t.TempDir()
+	policyDir := filepath.Join(tmpDir, "test-policy")
+	testutils.CreateDir(t, policyDir)
+
+	// Streaming policy with optional phase methods — valid as long as Mode() + GetPolicy() present
+	goCode := `package test
+
+type TestPolicy struct{}
+
+func (p *TestPolicy) Mode() int { return 0 }
+func (p *TestPolicy) OnResponseBodyChunk() {}
+func GetPolicy() *TestPolicy { return &TestPolicy{} }
+`
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.go"), goCode)
+
+	policy := &types.DiscoveredPolicy{
+		Name:        "test-policy",
+		Version:     "v1.0.0",
+		Path:        policyDir,
+		SourceFiles: []string{filepath.Join(policyDir, "policy.go")},
+	}
+
+	errors := ValidateGoInterface(policy)
+
+	assert.Empty(t, errors)
 }
 
 // ==== ValidateGoMod tests ====

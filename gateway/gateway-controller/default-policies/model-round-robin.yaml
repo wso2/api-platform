@@ -1,5 +1,5 @@
 name: model-round-robin
-version: v0.8.0
+version: v1.0.2
 description: |
   Distributes requests across configured AI models in round-robin order to
   balance traffic and reduce overloading on any single model.
@@ -26,10 +26,10 @@ parameters:
       type: integer
       x-wso2-policy-advanced-param: true
       description: |
-        Specifies the suspension time in seconds for failed models. If omitted,
-        failed-model state is not persisted.
+        Specifies the suspension time in seconds for failed models.
+        Set to 0 to disable failed-model suspension tracking.
       minimum: 0
-      default: 0
+      default: 30
   required:
     - models
 

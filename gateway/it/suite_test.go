@@ -91,6 +91,7 @@ func getFeaturePaths() []string {
 		"features/metrics.feature",
 		"features/api_deploy.feature",
 		"features/mcp_deploy.feature",
+		"features/mcp_policies.feature",
 		"features/ratelimit.feature",
 		"features/jwt-auth.feature",
 		"features/cors.feature",
@@ -111,24 +112,34 @@ func getFeaturePaths() []string {
 		"features/azure-content-safety.feature",
 		"features/aws-bedrock-guardrail.feature",
 		"features/semantic-cache.feature",
+		"features/semantic-tool-filtering.feature",
 		"features/semantic-prompt-guard.feature",
-		"features/modify-headers.feature",
 		"features/request-rewrite.feature",
+		"features/host-rewrite.feature",
 		"features/respond.feature",
 		"features/llm-provider.feature",
 		"features/certificates.feature",
 		"features/config-dump.feature",
 		"features/api-management.feature",
 		"features/api-error-responses.feature",
-		"features/list-policies.feature",
 		"features/api-keys.feature",
 		"features/api-with-policies.feature",
 		"features/llm-proxies.feature",
+		"features/startup-db-bootstrap.feature",
 		"features/search-deployments.feature",
 		"features/policy-engine-admin.feature",
 		"features/cel-conditions.feature",
 		"features/analytics-basic.feature",
 		"features/token-based-ratelimit.feature",
+		"features/sandbox-routing.feature",
+		"features/subscription-validation.feature",
+		"features/llm-cost-based-ratelimit.feature",
+		"features/log-message.feature",
+		"features/route-path-matching.feature",
+		"features/secrets.feature",
+		// These tests require different gateway configurations and are not included in the default suite run.
+		// "features/vhost-routing-single.feature", // cd it && make test-vhosts-single
+		// "features/vhost-routing-multi.feature", // cd it && make test-vhosts-multi
 	}
 
 	raw := strings.TrimSpace(os.Getenv("IT_FEATURE_PATHS"))
@@ -209,6 +220,7 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 			"mock-azure-content-safety":  testState.Config.MockAzureContentSafetyURL,
 			"mock-aws-bedrock-guardrail": testState.Config.MockAWSBedrockGuardrailURL,
 			"mock-embedding-provider":    testState.Config.MockEmbeddingProviderURL,
+			"mock-platform-api":          testState.Config.MockPlatformAPIURL,
 		})
 		assertSteps = steps.NewAssertSteps(httpSteps)
 
@@ -303,15 +315,18 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	// Register step definitions
 	if testState != nil {
 		RegisterHealthSteps(ctx, testState, httpSteps)
+		RegisterComposeSteps(ctx, composeManager)
 		RegisterMetricsSteps(ctx, testState, httpSteps)
 		RegisterAuthSteps(ctx, testState, httpSteps)
 		RegisterAPISteps(ctx, testState, httpSteps)
 		RegisterBackendTimeoutSteps(ctx, testState)
-		RegisterMCPSteps(ctx, testState, httpSteps)
+		RegisterMCPSteps(ctx, testState, httpSteps, jwtSteps)
 		RegisterLLMSteps(ctx, testState, httpSteps)
 		RegisterJWTSteps(ctx, testState, httpSteps, jwtSteps)
 		RegisterPolicyEngineSteps(ctx, testState, httpSteps)
 		RegisterAnalyticsSteps(ctx, testState, httpSteps)
+		RegisterSubscriptionSteps(ctx, testState, httpSteps)
+		RegisterSecretSteps(ctx, testState, httpSteps)
 	}
 
 	// Register common HTTP and assertion steps

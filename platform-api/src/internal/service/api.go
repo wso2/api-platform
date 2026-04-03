@@ -25,6 +25,7 @@ import (
 	"mime/multipart"
 	pathpkg "path"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -46,8 +47,11 @@ type APIService struct {
 	projectRepo          repository.ProjectRepository
 	orgRepo              repository.OrganizationRepository
 	gatewayRepo          repository.GatewayRepository
+	deploymentRepo       repository.DeploymentRepository
 	devPortalRepo        repository.DevPortalRepository
 	publicationRepo      repository.APIPublicationRepository
+	subscriptionPlanRepo repository.SubscriptionPlanRepository
+	customPolicyRepo     repository.CustomPolicyRepository
 	gatewayEventsService *GatewayEventsService
 	devPortalService     *DevPortalService
 	apiUtil              *utils.APIUtil
@@ -57,7 +61,10 @@ type APIService struct {
 // NewAPIService creates a new API service
 func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.ProjectRepository,
 	orgRepo repository.OrganizationRepository, gatewayRepo repository.GatewayRepository,
+	deploymentRepo repository.DeploymentRepository,
 	devPortalRepo repository.DevPortalRepository, publicationRepo repository.APIPublicationRepository,
+	subscriptionPlanRepo repository.SubscriptionPlanRepository,
+	customPolicyRepo repository.CustomPolicyRepository,
 	gatewayEventsService *GatewayEventsService, devPortalService *DevPortalService, apiUtil *utils.APIUtil,
 	slogger *slog.Logger) *APIService {
 	return &APIService{
@@ -65,8 +72,11 @@ func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.Proj
 		projectRepo:          projectRepo,
 		orgRepo:              orgRepo,
 		gatewayRepo:          gatewayRepo,
+		deploymentRepo:       deploymentRepo,
 		devPortalRepo:        devPortalRepo,
 		publicationRepo:      publicationRepo,
+		subscriptionPlanRepo: subscriptionPlanRepo,
+		customPolicyRepo:     customPolicyRepo,
 		gatewayEventsService: gatewayEventsService,
 		devPortalService:     devPortalService,
 		apiUtil:              apiUtil,
@@ -147,6 +157,8 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID string) (*
 		// Log error but don't fail API creation if default DevPortal association fails
 		s.slogger.Error("Failed to create default DevPortal association for API", "apiUUID", apiUUID, "error", err)
 	}
+
+	s.refreshCustomPolicyUsages(apiUUID, orgUUID, apiModel)
 
 	return s.apiUtil.ModelToRESTAPI(apiModel)
 }
@@ -276,6 +288,8 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.UpdateRESTAPIRequest, or
 		return nil, err
 	}
 
+	s.refreshCustomPolicyUsages(apiUUID, orgUUID, updatedAPIModel)
+
 	return s.apiUtil.ModelToRESTAPI(updatedAPIModel)
 }
 
@@ -297,10 +311,18 @@ func (s *APIService) DeleteAPI(apiUUID, orgUUID string) error {
 		return constants.ErrAPINotFound
 	}
 
-	// Get all gateway associations BEFORE deletion (associations will be cascade deleted)
-	gatewayAssociations, err := s.apiRepo.GetAPIAssociations(apiUUID, constants.AssociationTypeGateway, orgUUID)
-	if err != nil {
-		return fmt.Errorf("failed to get gateway associations for api deletion: %w", err)
+	// Get all gateways in the organization to broadcast deletion event.
+	// We broadcast to all gateways (not just those with active deployments) because
+	// deployment_status rows may have been cascade-deleted when deployments were removed,
+	// leaving stale artifacts on gateways that would otherwise never receive the delete event.
+	var gateways []*model.Gateway
+	if s.gatewayRepo != nil {
+		gws, err := s.gatewayRepo.GetByOrganizationID(orgUUID)
+		if err != nil {
+			s.slogger.Warn("Failed to get gateways for API deletion", "apiUUID", apiUUID, "error", err)
+		} else {
+			gateways = gws
+		}
 	}
 
 	// Delete API from repository (this also deletes associations)
@@ -308,30 +330,17 @@ func (s *APIService) DeleteAPI(apiUUID, orgUUID string) error {
 		return fmt.Errorf("failed to delete api: %w", err)
 	}
 
-	// Send deletion events to all associated gateways
-	if s.gatewayEventsService != nil && gatewayAssociations != nil {
-		for _, assoc := range gatewayAssociations {
-			// Get gateway details to retrieve vhost
-			gateway, err := s.gatewayRepo.GetByUUID(assoc.ResourceID)
-			if err != nil {
-				s.slogger.Warn("Failed to get gateway for deletion event", "gatewayID", assoc.ResourceID, "error", err)
-				continue
-			}
-			if gateway == nil {
-				s.slogger.Warn("Gateway not found for deletion event", "gatewayID", assoc.ResourceID)
-				continue
-			}
-
-			// Create and send API deletion event
+	// Send deletion events to all gateways in the organization
+	if s.gatewayEventsService != nil && len(gateways) > 0 {
+		for _, gateway := range gateways {
 			deletionEvent := &model.APIDeletionEvent{
 				ApiId: apiUUID,
-				Vhost: gateway.Vhost,
 			}
 
-			if err := s.gatewayEventsService.BroadcastAPIDeletionEvent(assoc.ResourceID, deletionEvent); err != nil {
-				s.slogger.Warn("Failed to broadcast API deletion event", "gatewayID", assoc.ResourceID, "apiUUID", apiUUID, "error", err)
+			if err := s.gatewayEventsService.BroadcastAPIDeletionEvent(gateway.ID, deletionEvent); err != nil {
+				s.slogger.Warn("Failed to broadcast API deletion event", "gatewayID", gateway.ID, "apiUUID", apiUUID, "error", err)
 			} else {
-				s.slogger.Info("API deletion event sent", "gatewayID", assoc.ResourceID, "apiUUID", apiUUID, "vhost", gateway.Vhost)
+				s.slogger.Info("API deletion event sent", "gatewayID", gateway.ID, "apiUUID", apiUUID)
 			}
 		}
 	}
@@ -616,6 +625,35 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 		}
 	}
 
+	// Validate subscription plans if provided
+	if err := s.validateSubscriptionPlans(req.SubscriptionPlans, orgUUID); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateSubscriptionPlans ensures each plan name exists in the organization and is ACTIVE.
+// It normalizes planNames in place by trimming each element. Repository errors are returned
+// directly; ErrSubscriptionPlanNotFoundOrInactive is only returned when plan is nil or inactive.
+func (s *APIService) validateSubscriptionPlans(planNames *[]string, orgUUID string) error {
+	if planNames == nil || len(*planNames) == 0 {
+		return nil
+	}
+	for i := range *planNames {
+		(*planNames)[i] = strings.TrimSpace((*planNames)[i])
+		name := (*planNames)[i]
+		if name == "" {
+			continue
+		}
+		plan, err := s.subscriptionPlanRepo.GetByNameAndOrg(name, orgUUID)
+		if err != nil {
+			return err
+		}
+		if plan == nil || plan.Status != model.SubscriptionPlanStatusActive {
+			return fmt.Errorf("%w: plan %q", constants.ErrSubscriptionPlanNotFoundOrInactive, name)
+		}
+	}
 	return nil
 }
 
@@ -656,6 +694,9 @@ func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *api.Updat
 	if req.Policies != nil {
 		existingAPI.Policies = req.Policies
 	}
+	if req.SubscriptionPlans != nil {
+		existingAPI.SubscriptionPlans = req.SubscriptionPlans
+	}
 	if !s.isEmptyUpstream(req.Upstream) {
 		existingAPI.Upstream = req.Upstream
 	}
@@ -695,6 +736,11 @@ func (s *APIService) validateUpdateAPIRequest(existingAPIModel *model.API, req *
 		}
 	}
 
+	// Validate subscription plans if provided
+	if err := s.validateSubscriptionPlans(req.SubscriptionPlans, orgUUID); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -715,14 +761,6 @@ func (s *APIService) isValidVersion(version string) bool {
 	pattern := `^[^~!@#;:%^*()+={}|\\<>"'',&/$\[\]\s+\/]+$`
 	matched, _ := regexp.MatchString(pattern, version)
 	return matched && len(version) > 0 && len(version) <= 30
-}
-
-// isValidVHost validates vhost format
-func (s *APIService) isValidVHost(vhost string) bool {
-	// Basic hostname validation pattern as per RFC 1123
-	pattern := `^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-ZaZ0-9\-]*[A-ZaZ0-9])$`
-	matched, _ := regexp.MatchString(pattern, vhost)
-	return matched
 }
 
 // generateDefaultOperations creates default CRUD operations for an API
@@ -1064,7 +1102,7 @@ func (s *APIService) convertToAPIDevPortalResponse(dpd *model.APIDevPortalWithDe
 
 	// Add publication details if published
 	if dpd.IsPublished && dpd.PublishedAt != nil {
-		status := api.Published
+		status := api.RESTAPIPublicationDetailsStatusPublished
 		if dpd.PublicationStatus != nil && *dpd.PublicationStatus != "" {
 			status = api.RESTAPIPublicationDetailsStatus(*dpd.PublicationStatus)
 		}
@@ -1334,20 +1372,21 @@ func (s *APIService) createRequestToRESTAPI(req *api.CreateRESTAPIRequest, handl
 	}
 
 	return &api.RESTAPI{
-		Channels:        req.Channels,
-		Context:         req.Context,
-		CreatedBy:       req.CreatedBy,
-		Description:     req.Description,
-		Id:              utils.StringPtrIfNotEmpty(handle),
-		Kind:            req.Kind,
-		LifeCycleStatus: lifecycle,
-		Name:            req.Name,
-		Operations:      req.Operations,
-		Policies:        req.Policies,
-		ProjectId:       req.ProjectId,
-		Transport:       req.Transport,
-		Upstream:        req.Upstream,
-		Version:         req.Version,
+		Channels:          req.Channels,
+		Context:           req.Context,
+		CreatedBy:         req.CreatedBy,
+		Description:       req.Description,
+		Id:                utils.StringPtrIfNotEmpty(handle),
+		Kind:              req.Kind,
+		LifeCycleStatus:   lifecycle,
+		Name:              req.Name,
+		Operations:        req.Operations,
+		Policies:          req.Policies,
+		ProjectId:         req.ProjectId,
+		SubscriptionPlans: req.SubscriptionPlans,
+		Transport:         req.Transport,
+		Upstream:          req.Upstream,
+		Version:           req.Version,
 	}
 }
 
@@ -1392,6 +1431,9 @@ func (s *APIService) restAPIToCreateRequest(rest *api.RESTAPI) *api.CreateRESTAP
 	if rest.Policies != nil && len(*rest.Policies) > 0 {
 		req.Policies = rest.Policies
 	}
+	if rest.SubscriptionPlans != nil && len(*rest.SubscriptionPlans) > 0 {
+		req.SubscriptionPlans = rest.SubscriptionPlans
+	}
 
 	return req
 }
@@ -1430,6 +1472,11 @@ func (s *APIService) createRequestFromAPIYAMLData(yamlData *dto.APIYAMLData) *ap
 			}
 		}
 		req.Policies = &policies
+	}
+
+	// SubscriptionPlans
+	if len(yamlData.SubscriptionPlans) > 0 {
+		req.SubscriptionPlans = &yamlData.SubscriptionPlans
 	}
 
 	// Operations
@@ -1493,22 +1540,23 @@ func (s *APIService) upstreamFromYAML(upstream *dto.UpstreamYAML) api.Upstream {
 }
 
 func (s *APIService) restAPIToProjectValidationAPI(restAPI *api.RESTAPI) *struct {
-	Channels        *[]api.Channel                                          `json:"channels,omitempty" yaml:"channels,omitempty"`
-	Context         string                                                  `binding:"required" json:"context" yaml:"context"`
-	CreatedAt       *time.Time                                              `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	CreatedBy       *string                                                 `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-	Description     string                                                  `json:"description" yaml:"description"`
-	Id              *string                                                 `json:"id,omitempty" yaml:"id,omitempty"`
-	Kind            *string                                                 `json:"kind,omitempty" yaml:"kind,omitempty"`
-	LifeCycleStatus *api.RESTAPIProjectValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-	Name            string                                                  `binding:"required" json:"name" yaml:"name"`
-	Operations      []api.Operation                                         `json:"operations" yaml:"operations"`
-	Policies        *[]api.Policy                                           `json:"policies,omitempty" yaml:"policies,omitempty"`
-	ProjectId       openapi_types.UUID                                      `binding:"required" json:"projectId" yaml:"projectId"`
-	Transport       *[]string                                               `json:"transport,omitempty" yaml:"transport,omitempty"`
-	UpdatedAt       *time.Time                                              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-	Upstream        api.Upstream                                            `json:"upstream" yaml:"upstream"`
-	Version         string                                                  `binding:"required" json:"version" yaml:"version"`
+	Channels          *[]api.Channel                                          `json:"channels,omitempty" yaml:"channels,omitempty"`
+	Context           string                                                  `binding:"required" json:"context" yaml:"context"`
+	CreatedAt         *time.Time                                              `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedBy         *string                                                 `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description       string                                                  `json:"description" yaml:"description"`
+	Id                *string                                                 `json:"id,omitempty" yaml:"id,omitempty"`
+	Kind              *string                                                 `json:"kind,omitempty" yaml:"kind,omitempty"`
+	LifeCycleStatus   *api.RESTAPIProjectValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
+	Name              string                                                  `binding:"required" json:"name" yaml:"name"`
+	Operations        []api.Operation                                         `json:"operations" yaml:"operations"`
+	Policies          *[]api.Policy                                           `json:"policies,omitempty" yaml:"policies,omitempty"`
+	ProjectId         openapi_types.UUID                                      `binding:"required" json:"projectId" yaml:"projectId"`
+	SubscriptionPlans *[]string                                               `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	Transport         *[]string                                               `json:"transport,omitempty" yaml:"transport,omitempty"`
+	UpdatedAt         *time.Time                                              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	Upstream          api.Upstream                                            `json:"upstream" yaml:"upstream"`
+	Version           string                                                  `binding:"required" json:"version" yaml:"version"`
 } {
 	if restAPI == nil {
 		return nil
@@ -1531,59 +1579,62 @@ func (s *APIService) restAPIToProjectValidationAPI(restAPI *api.RESTAPI) *struct
 	}
 
 	return &struct {
-		Channels        *[]api.Channel                                          `json:"channels,omitempty" yaml:"channels,omitempty"`
-		Context         string                                                  `binding:"required" json:"context" yaml:"context"`
-		CreatedAt       *time.Time                                              `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-		CreatedBy       *string                                                 `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-		Description     string                                                  `json:"description" yaml:"description"`
-		Id              *string                                                 `json:"id,omitempty" yaml:"id,omitempty"`
-		Kind            *string                                                 `json:"kind,omitempty" yaml:"kind,omitempty"`
-		LifeCycleStatus *api.RESTAPIProjectValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-		Name            string                                                  `binding:"required" json:"name" yaml:"name"`
-		Operations      []api.Operation                                         `json:"operations" yaml:"operations"`
-		Policies        *[]api.Policy                                           `json:"policies,omitempty" yaml:"policies,omitempty"`
-		ProjectId       openapi_types.UUID                                      `binding:"required" json:"projectId" yaml:"projectId"`
-		Transport       *[]string                                               `json:"transport,omitempty" yaml:"transport,omitempty"`
-		UpdatedAt       *time.Time                                              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-		Upstream        api.Upstream                                            `json:"upstream" yaml:"upstream"`
-		Version         string                                                  `binding:"required" json:"version" yaml:"version"`
+		Channels          *[]api.Channel                                          `json:"channels,omitempty" yaml:"channels,omitempty"`
+		Context           string                                                  `binding:"required" json:"context" yaml:"context"`
+		CreatedAt         *time.Time                                              `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+		CreatedBy         *string                                                 `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+		Description       string                                                  `json:"description" yaml:"description"`
+		Id                *string                                                 `json:"id,omitempty" yaml:"id,omitempty"`
+		Kind              *string                                                 `json:"kind,omitempty" yaml:"kind,omitempty"`
+		LifeCycleStatus   *api.RESTAPIProjectValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
+		Name              string                                                  `binding:"required" json:"name" yaml:"name"`
+		Operations        []api.Operation                                         `json:"operations" yaml:"operations"`
+		Policies          *[]api.Policy                                           `json:"policies,omitempty" yaml:"policies,omitempty"`
+		ProjectId         openapi_types.UUID                                      `binding:"required" json:"projectId" yaml:"projectId"`
+		SubscriptionPlans *[]string                                               `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+		Transport         *[]string                                               `json:"transport,omitempty" yaml:"transport,omitempty"`
+		UpdatedAt         *time.Time                                              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+		Upstream          api.Upstream                                            `json:"upstream" yaml:"upstream"`
+		Version           string                                                  `binding:"required" json:"version" yaml:"version"`
 	}{
-		Channels:        restAPI.Channels,
-		Context:         restAPI.Context,
-		CreatedAt:       restAPI.CreatedAt,
-		CreatedBy:       restAPI.CreatedBy,
-		Description:     desc,
-		Id:              restAPI.Id,
-		Kind:            restAPI.Kind,
-		LifeCycleStatus: status,
-		Name:            restAPI.Name,
-		Operations:      operations,
-		Policies:        restAPI.Policies,
-		ProjectId:       openapi_types.UUID{},
-		Transport:       restAPI.Transport,
-		UpdatedAt:       restAPI.UpdatedAt,
-		Upstream:        restAPI.Upstream,
-		Version:         restAPI.Version,
+		Channels:          restAPI.Channels,
+		Context:           restAPI.Context,
+		CreatedAt:         restAPI.CreatedAt,
+		CreatedBy:         restAPI.CreatedBy,
+		Description:       desc,
+		Id:                restAPI.Id,
+		Kind:              restAPI.Kind,
+		LifeCycleStatus:   status,
+		Name:              restAPI.Name,
+		Operations:        operations,
+		Policies:          restAPI.Policies,
+		ProjectId:         openapi_types.UUID{},
+		SubscriptionPlans: restAPI.SubscriptionPlans,
+		Transport:         restAPI.Transport,
+		UpdatedAt:         restAPI.UpdatedAt,
+		Upstream:          restAPI.Upstream,
+		Version:           restAPI.Version,
 	}
 }
 
 func (s *APIService) restAPIToOpenAPIValidationAPI(restAPI *api.RESTAPI) *struct {
-	Channels        *[]api.Channel                                   `json:"channels,omitempty" yaml:"channels,omitempty"`
-	Context         string                                           `binding:"required" json:"context" yaml:"context"`
-	CreatedAt       *time.Time                                       `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	CreatedBy       *string                                          `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-	Description     *string                                          `json:"description,omitempty" yaml:"description,omitempty"`
-	Id              *string                                          `json:"id,omitempty" yaml:"id,omitempty"`
-	Kind            *string                                          `json:"kind,omitempty" yaml:"kind,omitempty"`
-	LifeCycleStatus *api.OpenAPIValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-	Name            string                                           `binding:"required" json:"name" yaml:"name"`
-	Operations      []api.Operation                                  `json:"operations" yaml:"operations"`
-	Policies        *[]api.Policy                                    `json:"policies,omitempty" yaml:"policies,omitempty"`
-	ProjectId       openapi_types.UUID                               `binding:"required" json:"projectId" yaml:"projectId"`
-	Transport       *[]string                                        `json:"transport,omitempty" yaml:"transport,omitempty"`
-	UpdatedAt       *time.Time                                       `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-	Upstream        api.Upstream                                     `json:"upstream" yaml:"upstream"`
-	Version         string                                           `binding:"required" json:"version" yaml:"version"`
+	Channels          *[]api.Channel                                   `json:"channels,omitempty" yaml:"channels,omitempty"`
+	Context           string                                           `binding:"required" json:"context" yaml:"context"`
+	CreatedAt         *time.Time                                       `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	CreatedBy         *string                                          `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description       *string                                          `json:"description,omitempty" yaml:"description,omitempty"`
+	Id                *string                                          `json:"id,omitempty" yaml:"id,omitempty"`
+	Kind              *string                                          `json:"kind,omitempty" yaml:"kind,omitempty"`
+	LifeCycleStatus   *api.OpenAPIValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
+	Name              string                                           `binding:"required" json:"name" yaml:"name"`
+	Operations        []api.Operation                                  `json:"operations" yaml:"operations"`
+	Policies          *[]api.Policy                                    `json:"policies,omitempty" yaml:"policies,omitempty"`
+	ProjectId         openapi_types.UUID                               `binding:"required" json:"projectId" yaml:"projectId"`
+	SubscriptionPlans *[]string                                        `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	Transport         *[]string                                        `json:"transport,omitempty" yaml:"transport,omitempty"`
+	UpdatedAt         *time.Time                                       `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	Upstream          api.Upstream                                     `json:"upstream" yaml:"upstream"`
+	Version           string                                           `binding:"required" json:"version" yaml:"version"`
 } {
 	if restAPI == nil {
 		return nil
@@ -1601,39 +1652,41 @@ func (s *APIService) restAPIToOpenAPIValidationAPI(restAPI *api.RESTAPI) *struct
 	}
 
 	return &struct {
-		Channels        *[]api.Channel                                   `json:"channels,omitempty" yaml:"channels,omitempty"`
-		Context         string                                           `binding:"required" json:"context" yaml:"context"`
-		CreatedAt       *time.Time                                       `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-		CreatedBy       *string                                          `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
-		Description     *string                                          `json:"description,omitempty" yaml:"description,omitempty"`
-		Id              *string                                          `json:"id,omitempty" yaml:"id,omitempty"`
-		Kind            *string                                          `json:"kind,omitempty" yaml:"kind,omitempty"`
-		LifeCycleStatus *api.OpenAPIValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
-		Name            string                                           `binding:"required" json:"name" yaml:"name"`
-		Operations      []api.Operation                                  `json:"operations" yaml:"operations"`
-		Policies        *[]api.Policy                                    `json:"policies,omitempty" yaml:"policies,omitempty"`
-		ProjectId       openapi_types.UUID                               `binding:"required" json:"projectId" yaml:"projectId"`
-		Transport       *[]string                                        `json:"transport,omitempty" yaml:"transport,omitempty"`
-		UpdatedAt       *time.Time                                       `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-		Upstream        api.Upstream                                     `json:"upstream" yaml:"upstream"`
-		Version         string                                           `binding:"required" json:"version" yaml:"version"`
+		Channels          *[]api.Channel                                   `json:"channels,omitempty" yaml:"channels,omitempty"`
+		Context           string                                           `binding:"required" json:"context" yaml:"context"`
+		CreatedAt         *time.Time                                       `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+		CreatedBy         *string                                          `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+		Description       *string                                          `json:"description,omitempty" yaml:"description,omitempty"`
+		Id                *string                                          `json:"id,omitempty" yaml:"id,omitempty"`
+		Kind              *string                                          `json:"kind,omitempty" yaml:"kind,omitempty"`
+		LifeCycleStatus   *api.OpenAPIValidationResponseApiLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
+		Name              string                                           `binding:"required" json:"name" yaml:"name"`
+		Operations        []api.Operation                                  `json:"operations" yaml:"operations"`
+		Policies          *[]api.Policy                                    `json:"policies,omitempty" yaml:"policies,omitempty"`
+		ProjectId         openapi_types.UUID                               `binding:"required" json:"projectId" yaml:"projectId"`
+		SubscriptionPlans *[]string                                        `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+		Transport         *[]string                                        `json:"transport,omitempty" yaml:"transport,omitempty"`
+		UpdatedAt         *time.Time                                       `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+		Upstream          api.Upstream                                     `json:"upstream" yaml:"upstream"`
+		Version           string                                           `binding:"required" json:"version" yaml:"version"`
 	}{
-		Channels:        restAPI.Channels,
-		Context:         restAPI.Context,
-		CreatedAt:       restAPI.CreatedAt,
-		CreatedBy:       restAPI.CreatedBy,
-		Description:     restAPI.Description,
-		Id:              restAPI.Id,
-		Kind:            restAPI.Kind,
-		LifeCycleStatus: status,
-		Name:            restAPI.Name,
-		Operations:      operations,
-		Policies:        restAPI.Policies,
-		ProjectId:       openapi_types.UUID{},
-		Transport:       restAPI.Transport,
-		UpdatedAt:       restAPI.UpdatedAt,
-		Upstream:        restAPI.Upstream,
-		Version:         restAPI.Version,
+		Channels:          restAPI.Channels,
+		Context:           restAPI.Context,
+		CreatedAt:         restAPI.CreatedAt,
+		CreatedBy:         restAPI.CreatedBy,
+		Description:       restAPI.Description,
+		Id:                restAPI.Id,
+		Kind:              restAPI.Kind,
+		LifeCycleStatus:   status,
+		Name:              restAPI.Name,
+		Operations:        operations,
+		Policies:          restAPI.Policies,
+		ProjectId:         openapi_types.UUID{},
+		SubscriptionPlans: restAPI.SubscriptionPlans,
+		Transport:         restAPI.Transport,
+		UpdatedAt:         restAPI.UpdatedAt,
+		Upstream:          restAPI.Upstream,
+		Version:           restAPI.Version,
 	}
 }
 
@@ -1724,4 +1777,125 @@ func restAPIGatewayFunctionalityTypePtr(value string) *api.RESTAPIGatewayRespons
 	}
 	converted := api.RESTAPIGatewayResponseFunctionalityType(value)
 	return &converted
+}
+
+// refreshCustomPolicyUsages evaluates gateway_custom_policy_usages for an API.
+// 1. Collects all policy (name, version) references across all three levels (API-level, operation-level, channel-level).
+// 2. Resolves which ones are custom policies for the org via gateway_custom_policies.
+// 3. Diffs against the current usage rows — inserting new ones and deleting removed ones.
+func (s *APIService) refreshCustomPolicyUsages(apiUUID, orgUUID string, apiModel *model.API) {
+	if s.customPolicyRepo == nil {
+		return
+	}
+
+	// Step 1: collect all unique (name, version) pairs across all policy levels
+	type policyRef struct{ name, version string }
+	seen := make(map[policyRef]bool)
+	var refs []policyRef
+
+	collect := func(policies []model.Policy) {
+		for _, p := range policies {
+			ref := policyRef{p.Name, p.Version}
+			if !seen[ref] {
+				seen[ref] = true
+				refs = append(refs, ref)
+			}
+		}
+	}
+
+	// API-level policies
+	collect(apiModel.Configuration.Policies)
+	// Operation-level policies
+	for _, op := range apiModel.Configuration.Operations {
+		if op.Request != nil {
+			collect(op.Request.Policies)
+		}
+	}
+	// Channel-level policies
+	for _, ch := range apiModel.Channels {
+		if ch.Request != nil {
+			collect(ch.Request.Policies)
+		}
+	}
+
+	// Step 2: resolve which refs are synced custom policies for this org.
+	// Policies are stored with a full semver (e.g. "v1.1.0") but APIs store
+	// only the major version (e.g. "v1"). Match by major version, similar to the
+	// same logic used in SyncCustomPolicy.
+	newSet := make(map[string]bool)
+	for _, ref := range refs {
+		identifiedSyncedPolicies, err := s.customPolicyRepo.GetCustomPoliciesByName(orgUUID, strings.ToLower(ref.name))
+		if err != nil {
+			s.slogger.Warn("Failed to lookup custom policy during usage refresh", "name", ref.name, "version", ref.version, "orgUUID", orgUUID, "error", err)
+			continue
+		}
+		parsedPolicyVersion, err := parseVersion(ref.version)
+		if err != nil {
+			// ref.version is not full semver (e.g. "v1") — try matching by major version prefix
+			s.slogger.Debug("Policy version is not full semver, falling back to major version matching", "name", ref.name, "version", ref.version, "error", err)
+			refMajor := strings.TrimPrefix(ref.version, "v")
+			matched := false
+			for _, cp := range identifiedSyncedPolicies {
+				cpVer, verErr := parseVersion(cp.Version)
+				if verErr != nil {
+					s.slogger.Warn("Failed to parse stored custom policy version during usage refresh", "name", cp.Name, "version", cp.Version, "error", verErr)
+					continue
+				}
+				if strconv.Itoa(cpVer.Major) == refMajor {
+					newSet[cp.UUID] = true
+					matched = true
+					break
+				}
+			}
+			// fall back to exact match if no major-version match found
+			if !matched {
+				for _, cp := range identifiedSyncedPolicies {
+					if cp.Version == ref.version {
+						newSet[cp.UUID] = true
+						break
+					}
+				}
+			}
+			continue
+		}
+		// evaluates parsed policy version
+		for _, syncedPolicy := range identifiedSyncedPolicies {
+			cpVer, err := parseVersion(syncedPolicy.Version)
+			if err != nil {
+				s.slogger.Warn("Failed to parse stored custom policy version during usage refresh", "name", syncedPolicy.Name, "version", syncedPolicy.Version, "error", err)
+				continue
+			}
+			if cpVer.Major == parsedPolicyVersion.Major {
+				newSet[syncedPolicy.UUID] = true
+				break
+			}
+		}
+	}
+
+	// Step 3: fetch current usages from the join table
+	currentUUIDs, err := s.customPolicyRepo.GetCustomPolicyUsagesByAPIUUID(apiUUID)
+	if err != nil {
+		s.slogger.Warn("Failed to fetch custom policy usages", "apiUUID", apiUUID, "error", err)
+		return
+	}
+	currentSet := make(map[string]bool, len(currentUUIDs))
+	for _, u := range currentUUIDs {
+		currentSet[u] = true
+	}
+
+	// Step 4: insert new, delete removed, skip unchanged
+	for uuid := range newSet {
+		if !currentSet[uuid] {
+			if err := s.customPolicyRepo.InsertCustomPolicyUsage(uuid, apiUUID); err != nil {
+				s.slogger.Warn("Failed to insert custom policy usage", "policyUUID", uuid, "apiUUID", apiUUID, "error", err)
+			}
+		}
+	}
+	for uuid := range currentSet {
+		if !newSet[uuid] {
+			if err := s.customPolicyRepo.DeleteCustomPolicyUsage(uuid, apiUUID); err != nil {
+				s.slogger.Warn("Failed to delete custom policy usage", "policyUUID", uuid, "apiUUID", apiUUID, "error", err)
+			}
+		}
+	}
 }

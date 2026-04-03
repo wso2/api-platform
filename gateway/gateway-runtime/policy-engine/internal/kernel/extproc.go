@@ -187,6 +187,9 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		if err != nil {
 			metrics.RequestErrorsTotal.WithLabelValues("request_headers", "processing_failed", rm.RouteName).Inc()
 		}
+		if slog.Default().Enabled(ctx, slog.LevelDebug) {
+			slog.DebugContext(ctx, "ext_proc response", "phase", "request_headers", "resp", prototext.Format(resp))
+		}
 		return resp, err
 
 	case *extprocv3.ProcessingRequest_RequestBody:
@@ -231,6 +234,9 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		if err != nil {
 			metrics.RequestErrorsTotal.WithLabelValues("request_body", "processing_failed", routeName).Inc()
 		}
+		if slog.Default().Enabled(ctx, slog.LevelDebug) {
+			slog.DebugContext(ctx, "ext_proc response", "phase", "request_body", "resp", prototext.Format(resp))
+		}
 		return resp, err
 
 	case *extprocv3.ProcessingRequest_ResponseHeaders:
@@ -269,6 +275,9 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		}
 		if err != nil {
 			metrics.RequestErrorsTotal.WithLabelValues("response_headers", "processing_failed", routeName).Inc()
+		}
+		if slog.Default().Enabled(ctx, slog.LevelDebug) {
+			slog.DebugContext(ctx, "ext_proc response", "phase", "response_headers", "resp", prototext.Format(resp))
 		}
 		return resp, err
 
@@ -314,6 +323,9 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		if err != nil {
 			metrics.RequestErrorsTotal.WithLabelValues("response_body", "processing_failed", routeName).Inc()
 		}
+		if slog.Default().Enabled(ctx, slog.LevelDebug) {
+			slog.DebugContext(ctx, "ext_proc response", "phase", "response_body", "resp", prototext.Format(resp))
+		}
 		return resp, err
 
 	default:
@@ -329,14 +341,53 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 	}
 }
 
-// initializeExecutionContext sets up the execution context for a request by retrieving the policy chain
-// T061: Extract metadata key from request and get policy chain
-// T064: Generate request ID
+// initializeExecutionContext sets up the execution context for a request by retrieving the policy chain.
+// It first tries the new RouteConfigs path (metadata pre-loaded via xDS), then falls back to the
+// legacy extractRouteMetadata path (metadata parsed from Envoy route metadata at request time).
 func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context, req *extprocv3.ProcessingRequest, execCtx **PolicyExecutionContext) *RouteMetadata {
-	// Extract route metadata from request
+	// Extract route key from Envoy attributes (just xds.route_name, lightweight)
+	routeKey := s.extractRouteKey(req)
+
+	slog.DebugContext(ctx, "initializeExecutionContext: looking up route",
+		"route_key", routeKey)
+
+	// Try new path: RouteConfigs + PolicyChains
+	if rc := s.kernel.GetRouteConfig(routeKey); rc != nil {
+		// Metadata is pre-populated from xDS — no request-time parsing needed
+		routeMetadata := rc.Metadata
+		routeMetadata.RouteName = routeKey
+
+		// Resolve policy chain key (route-key resolver: policyChainKey = routeKey)
+		policyChainKey := routeKey // For route-key resolver, this is always the same
+
+		chain := s.kernel.GetPolicyChain(policyChainKey)
+		if chain == nil {
+			slog.InfoContext(ctx, "No policy chain found for route (new path), skipping all processing",
+				"route", routeKey,
+				"api_name", routeMetadata.APIName)
+			*execCtx = nil
+			return &routeMetadata
+		}
+
+		*execCtx = newPolicyExecutionContext(s, routeKey, chain)
+		(*execCtx).defaultUpstreamCluster = routeMetadata.DefaultUpstreamCluster
+		(*execCtx).upstreamBasePath = routeMetadata.UpstreamBasePath
+		(*execCtx).apiContext = routeMetadata.Context
+		(*execCtx).upstreamDefinitionPaths = routeMetadata.UpstreamDefinitionPaths
+		(*execCtx).buildRequestContexts(req.GetRequestHeaders(), routeMetadata)
+		return &routeMetadata
+	}
+
+	// Fallback: legacy path using extractRouteMetadata (prototext.Unmarshal from Envoy route metadata)
+	slog.DebugContext(ctx, "initializeExecutionContext: RouteConfig not found, falling back to legacy path",
+		"route_key", routeKey)
 	routeMetadata := s.extractRouteMetadata(req)
 
-	// Get policy chain for this route using route name
+	slog.DebugContext(ctx, "initializeExecutionContext: legacy path looking up policy chain",
+		"route_key", routeKey,
+		"legacy_route_name", routeMetadata.RouteName,
+		"keys_match", routeKey == routeMetadata.RouteName,
+		"registered_chains", s.kernel.DumpRouteKeys())
 	chain := s.kernel.GetPolicyChainForKey(routeMetadata.RouteName)
 	if chain == nil {
 		slog.InfoContext(ctx, "No policy chain found for route, skipping all processing",
@@ -349,18 +400,36 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 		return &routeMetadata
 	}
 
-	// Create execution context for this request-response lifecycle
 	*execCtx = newPolicyExecutionContext(s, routeMetadata.RouteName, chain)
-
-	// Build request context from Envoy headers with route metadata
-	// Request ID will be extracted from x-request-id header or generated if not present
-	(*execCtx).buildRequestContext(req.GetRequestHeaders(), routeMetadata)
+	(*execCtx).defaultUpstreamCluster = routeMetadata.DefaultUpstreamCluster
+	(*execCtx).upstreamBasePath = routeMetadata.UpstreamBasePath
+	(*execCtx).apiContext = routeMetadata.Context
+	(*execCtx).upstreamDefinitionPaths = routeMetadata.UpstreamDefinitionPaths
+	(*execCtx).buildRequestContexts(req.GetRequestHeaders(), routeMetadata)
 	return &routeMetadata
+}
+
+// extractRouteKey extracts just the route key (xds.route_name) from the request attributes.
+// This is a lightweight extraction that avoids parsing route metadata.
+func (s *ExternalProcessorServer) extractRouteKey(req *extprocv3.ProcessingRequest) string {
+	if req.Attributes == nil {
+		return "default"
+	}
+	extProcAttrs, ok := req.Attributes[constants.ExtProcFilter]
+	if !ok || extProcAttrs.Fields == nil {
+		return "default"
+	}
+	if routeNameValue, ok := extProcAttrs.Fields["xds.route_name"]; ok {
+		if stringValue := routeNameValue.GetStringValue(); stringValue != "" {
+			return stringValue
+		}
+	}
+	return "default"
 }
 
 // skipAllProcessing returns a response that skips all processing phases
 func (s *ExternalProcessorServer) skipAllProcessing(routeMetadata RouteMetadata) *extprocv3.ProcessingResponse {
-	// Build analytics metadata using route metadataeven when skipping policy processing
+	// Build analytics metadata using route metadata even when skipping policy processing
 	analyticsData := extractMetadataFromRouteMetadata(routeMetadata)
 
 	// Build the analytics struct
@@ -391,17 +460,20 @@ func (s *ExternalProcessorServer) skipAllProcessing(routeMetadata RouteMetadata)
 
 // RouteMetadata contains metadata about the route
 type RouteMetadata struct {
-	RouteName      string
-	APIId          string
-	APIName        string
-	APIVersion     string
-	Context        string
-	OperationPath  string
-	Vhost          string
-	APIKind        string
-	TemplateHandle string
-	ProviderName   string
-	ProjectID      string
+	RouteName               string
+	APIId                   string
+	APIName                 string
+	APIVersion              string
+	Context                 string
+	OperationPath           string
+	Vhost                   string
+	APIKind                 string
+	TemplateHandle          string
+	ProviderName            string
+	ProjectID               string
+	DefaultUpstreamCluster  string            // Default cluster for dynamic cluster routing
+	UpstreamBasePath        string            // Base path for the upstream (e.g., /anything)
+	UpstreamDefinitionPaths map[string]string // Maps upstream definition names to their URL paths
 }
 
 // extractRouteMetadata extracts the route metadata from Envoy metadata.
@@ -443,6 +515,9 @@ func (s *ExternalProcessorServer) extractRouteMetadata(req *extprocv3.Processing
 				metadata.TemplateHandle = cachedMeta.TemplateHandle
 				metadata.ProviderName = cachedMeta.ProviderName
 				metadata.ProjectID = cachedMeta.ProjectID
+				metadata.DefaultUpstreamCluster = cachedMeta.DefaultUpstreamCluster
+				metadata.UpstreamBasePath = cachedMeta.UpstreamBasePath
+				metadata.UpstreamDefinitionPaths = cachedMeta.UpstreamDefinitionPaths
 			} else {
 				// Cache miss - parse the protobuf text format string
 				var envoyMetadata core.Metadata
@@ -480,6 +555,21 @@ func (s *ExternalProcessorServer) extractRouteMetadata(req *extprocv3.Processing
 						}
 						if projectIDValue, ok := routeStruct.Fields["project_id"]; ok {
 							metadata.ProjectID = projectIDValue.GetStringValue()
+						}
+						if defaultClusterValue, ok := routeStruct.Fields["default_upstream_cluster"]; ok {
+							metadata.DefaultUpstreamCluster = defaultClusterValue.GetStringValue()
+						}
+						if upstreamBasePathValue, ok := routeStruct.Fields["upstream_base_path"]; ok {
+							metadata.UpstreamBasePath = upstreamBasePathValue.GetStringValue()
+						}
+						// Parse upstream_definition_paths map for dynamic path rewriting
+						if upstreamDefPathsValue, ok := routeStruct.Fields["upstream_definition_paths"]; ok {
+							if upstreamDefPathsStruct := upstreamDefPathsValue.GetStructValue(); upstreamDefPathsStruct != nil {
+								metadata.UpstreamDefinitionPaths = make(map[string]string)
+								for name, pathValue := range upstreamDefPathsStruct.Fields {
+									metadata.UpstreamDefinitionPaths[name] = pathValue.GetStringValue()
+								}
+							}
 						}
 					}
 					// Cache the parsed metadata for future requests

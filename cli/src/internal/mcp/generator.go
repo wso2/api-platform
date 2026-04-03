@@ -29,7 +29,7 @@ import (
 	"strings"
 	"time"
 
-	gwmodels "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	gwmodels "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"gopkg.in/yaml.v3"
 )
 
@@ -421,7 +421,7 @@ func generateMCPConfigFile(url string, toolsResult ToolsResult,
 	}
 
 	mcp := gwmodels.MCPProxyConfiguration{
-		ApiVersion: gwmodels.GatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: gwmodels.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
 		Kind:       gwmodels.Mcp,
 		Metadata: gwmodels.Metadata{
 			Name: "Generated-MCP-v1.0",

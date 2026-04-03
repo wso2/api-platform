@@ -20,112 +20,134 @@ package models
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
 
-// ConfigStatus represents the lifecycle state of an API configuration
-type ConfigStatus string
+// ArtifactKind identifies the type of configuration stored in the database.
+// These constants are decoupled from the OpenAPI-generated kind enums so that
+// renaming a field in the spec does not silently break DB queries.
+type ArtifactKind = string
 
 const (
-	StatusPending    ConfigStatus = "pending"    // Submitted but not yet deployed
-	StatusDeployed   ConfigStatus = "deployed"   // Active in Router
-	StatusFailed     ConfigStatus = "failed"     // Deployment failed
-	StatusUndeployed ConfigStatus = "undeployed" // Removed from Router but config preserved
+	KindRestApi     ArtifactKind = "RestApi"
+	KindWebSubApi   ArtifactKind = "WebSubApi"
+	KindMcp         ArtifactKind = "Mcp"
+	KindLlmProxy    ArtifactKind = "LlmProxy"
+	KindLlmProvider ArtifactKind = "LlmProvider"
 )
+
+// DesiredState represents the intended deployment state of an API configuration.
+// It reflects what the user wants (deployed or undeployed), not the runtime status.
+type DesiredState string
+
+const (
+	StateDeployed   DesiredState = "deployed"   // User wants this configuration active in Router
+	StateUndeployed DesiredState = "undeployed" // User wants this configuration removed from Router
+)
+
+// ParseDesiredState normalises and validates a string into a DesiredState.
+// Returns the matching state and true, or ("", false) for unrecognised values.
+func ParseDesiredState(s string) (DesiredState, bool) {
+	switch strings.ToLower(s) {
+	case string(StateDeployed):
+		return StateDeployed, true
+	case string(StateUndeployed):
+		return StateUndeployed, true
+	default:
+		return "", false
+	}
+}
+
+// Origin identifies how an artifact was created.
+type Origin string
+
+const (
+	OriginControlPlane Origin = "control_plane" // Deployed via platform-API WebSocket events
+	OriginGatewayAPI   Origin = "gateway_api"   // Created directly via gateway REST API
+)
+
+// IsValidOrigin returns true if the origin value is a recognized enum value.
+func IsValidOrigin(o Origin) bool {
+	return o == OriginControlPlane || o == OriginGatewayAPI
+}
 
 // StoredConfig represents the configuration stored in the database and in-memory
 type StoredConfig struct {
-	ID                  string               `json:"id"`
-	Kind                string               `json:"kind"`
-	Configuration       api.APIConfiguration `json:"configuration"`
-	SourceConfiguration any                  `json:"source_configuration,omitempty"`
-	Status              ConfigStatus         `json:"status"`
-	CreatedAt           time.Time            `json:"createdAt"`
-	UpdatedAt           time.Time            `json:"updatedAt"`
-	DeployedAt          *time.Time           `json:"deployedAt,omitempty"`
-	DeployedVersion     int64                `json:"deployed_version"`
+	UUID                string       `json:"uuid"`
+	Kind                string       `json:"kind"`
+	Handle              string       `json:"handle"`
+	DisplayName         string       `json:"displayName"`
+	Version             string       `json:"version"`
+	Configuration       any          `json:"configuration"`
+	SourceConfiguration any          `json:"source_configuration,omitempty"`
+	DesiredState        DesiredState `json:"desiredState"`
+	DeploymentID        string       `json:"deploymentId,omitempty"`
+	Origin              Origin       `json:"origin"`
+	CreatedAt           time.Time    `json:"createdAt"`
+	UpdatedAt           time.Time    `json:"updatedAt"`
+	DeployedAt          *time.Time   `json:"deployedAt,omitempty"`
 }
 
-// GetCompositeKey returns the composite key "displayName:version" for indexing
+// GetCompositeKey returns the composite key "kind:displayName:version" for indexing
 func (c *StoredConfig) GetCompositeKey() string {
-	if c.Configuration.Kind == api.WebSubApi {
-		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
-		if err != nil {
-			return ""
-		}
-		return fmt.Sprintf("%s:%s", asyncData.DisplayName, asyncData.Version)
-	}
-	configData, err := c.Configuration.Spec.AsAPIConfigData()
-	if err != nil {
-		return ""
-	}
-	return fmt.Sprintf("%s:%s", configData.DisplayName, configData.Version)
+	return fmt.Sprintf("%s:%s:%s", c.Kind, c.DisplayName, c.Version)
 }
 
-// GetDisplayName returns the API display name
-func (c *StoredConfig) GetDisplayName() string {
-	if c.Configuration.Kind == api.WebSubApi {
-		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
-		if err != nil {
-			return ""
+// GetContext returns the context path from SourceConfiguration with $version resolved.
+func (c *StoredConfig) GetContext() (string, error) {
+	switch sc := c.SourceConfiguration.(type) {
+	case api.RestAPI:
+		return strings.ReplaceAll(sc.Spec.Context, "$version", c.Version), nil
+	case api.WebSubAPI:
+		return strings.ReplaceAll(sc.Spec.Context, "$version", c.Version), nil
+	case api.LLMProviderConfiguration:
+		if sc.Spec.Context != nil {
+			return strings.ReplaceAll(*sc.Spec.Context, "$version", c.Version), nil
 		}
-		return asyncData.DisplayName
-	}
-	configData, err := c.Configuration.Spec.AsAPIConfigData()
-	if err != nil {
-		return ""
-	}
-	return configData.DisplayName
-}
-
-// GetHandle returns the API handle from metadata.name
-func (c *StoredConfig) GetHandle() string {
-	return c.Configuration.Metadata.Name
-}
-
-// GetVersion returns the API version
-func (c *StoredConfig) GetVersion() string {
-	if c.Configuration.Kind == api.WebSubApi {
-		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
-		if err != nil {
-			return ""
+		return "", nil
+	case api.LLMProxyConfiguration:
+		if sc.Spec.Context != nil {
+			return strings.ReplaceAll(*sc.Spec.Context, "$version", c.Version), nil
 		}
-		return asyncData.Version
-	}
-	configData, err := c.Configuration.Spec.AsAPIConfigData()
-	if err != nil {
-		return ""
-	}
-	return configData.Version
-}
-
-// GetContext returns the API context path
-func (c *StoredConfig) GetContext() string {
-	if c.Configuration.Kind == api.WebSubApi {
-		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
-		if err != nil {
-			return ""
+		return "", nil
+	case api.MCPProxyConfiguration:
+		if sc.Spec.Context != nil {
+			return strings.ReplaceAll(*sc.Spec.Context, "$version", c.Version), nil
 		}
-		return asyncData.Context
+		return "", nil
 	}
-	configData, err := c.Configuration.Spec.AsAPIConfigData()
-	if err != nil {
-		return ""
-	}
-	return configData.Context
+	return "", fmt.Errorf("unsupported source configuration type: %T", c.SourceConfiguration)
 }
 
 func (c *StoredConfig) GetPolicies() *[]api.Policy {
-	if c.Configuration.Kind == api.RestApi {
-		httpData, err := c.Configuration.Spec.AsAPIConfigData()
-		if err != nil {
-			return nil
-		}
-		return httpData.Policies
-	} else {
-		// TODO: enable when policies are supported for WebSubHub
+	if sc, ok := c.Configuration.(api.RestAPI); ok {
+		return sc.Spec.Policies
+	}
+	// TODO: enable when policies are supported for WebSubHub
+	return nil
+}
+
+// GetMetadata returns the metadata from the Configuration, regardless of type.
+func (c *StoredConfig) GetMetadata() *api.Metadata {
+	switch cfg := c.Configuration.(type) {
+	case api.RestAPI:
+		return &cfg.Metadata
+	case api.WebSubAPI:
+		return &cfg.Metadata
+	}
+	return nil
+}
+
+// GetLabels returns the labels from the Configuration metadata, regardless of type.
+func (c *StoredConfig) GetLabels() *map[string]string {
+	switch cfg := c.Configuration.(type) {
+	case api.RestAPI:
+		return cfg.Metadata.Labels
+	case api.WebSubAPI:
+		return cfg.Metadata.Labels
 	}
 	return nil
 }

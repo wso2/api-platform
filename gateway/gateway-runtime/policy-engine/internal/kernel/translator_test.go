@@ -28,9 +28,10 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
 // =============================================================================
@@ -231,9 +232,9 @@ func TestSetContentLengthHeader_ExistingHeaders(t *testing.T) {
 
 func TestFinalizeAnalyticsHeaders_NoAction(t *testing.T) {
 	original := map[string][]string{
-		"content-type":   {"application/json"},
-		"authorization":  {"Bearer token"},
-		"x-custom":       {"value"},
+		"content-type":  {"application/json"},
+		"authorization": {"Bearer token"},
+		"x-custom":      {"value"},
 	}
 
 	dropAction := policy.DropHeaderAction{
@@ -249,9 +250,9 @@ func TestFinalizeAnalyticsHeaders_NoAction(t *testing.T) {
 
 func TestFinalizeAnalyticsHeaders_AllowMode(t *testing.T) {
 	original := map[string][]string{
-		"content-type":   {"application/json"},
-		"authorization":  {"Bearer token"},
-		"x-custom":       {"value"},
+		"content-type":  {"application/json"},
+		"authorization": {"Bearer token"},
+		"x-custom":      {"value"},
 	}
 
 	dropAction := policy.DropHeaderAction{
@@ -270,9 +271,9 @@ func TestFinalizeAnalyticsHeaders_AllowMode(t *testing.T) {
 
 func TestFinalizeAnalyticsHeaders_DenyMode(t *testing.T) {
 	original := map[string][]string{
-		"content-type":   {"application/json"},
-		"authorization":  {"Bearer token"},
-		"x-custom":       {"value"},
+		"content-type":  {"application/json"},
+		"authorization": {"Bearer token"},
+		"x-custom":      {"value"},
 	}
 
 	dropAction := policy.DropHeaderAction{
@@ -361,7 +362,7 @@ func TestBuildDynamicMetadata_WithPath(t *testing.T) {
 	})
 	path := "/new/path"
 
-	result := buildDynamicMetadata(analyticsStruct, &path, nil)
+	result := buildDynamicMetadata(analyticsStruct, &RequestMutations{Path: &path}, nil)
 
 	require.NotNil(t, result)
 	// Should include path in metadata
@@ -382,23 +383,24 @@ func TestTranslateRequestActionsCore_EmptyResult(t *testing.T) {
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
-	execCtx.requestContext = &policy.RequestContext{
-		Path: "/api/test",
-		SharedContext: &policy.SharedContext{},
+	execCtx.sharedCtx = &policy.SharedContext{}
+	execCtx.requestBodyCtx = &policy.RequestContext{
+		Path:          "/api/test",
+		SharedContext: execCtx.sharedCtx,
 	}
 
 	result := &executor.RequestExecutionResult{
 		Results: []executor.RequestPolicyResult{},
 	}
 
-	headerMutation, bodyMutation, analyticsData, _, pathMutation, immResp, err := translateRequestActionsCore(result, execCtx)
+	rsl, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
-	assert.Nil(t, immResp)
-	assert.NotNil(t, headerMutation)
-	assert.Nil(t, bodyMutation)
-	assert.NotNil(t, analyticsData)
-	assert.Nil(t, pathMutation)
+	assert.Nil(t, rsl.ImmediateResp)
+	assert.NotNil(t, rsl.HeaderMutation)
+	assert.Nil(t, rsl.BodyMutation)
+	assert.NotNil(t, rsl.AnalyticsData)
+	assert.Nil(t, rsl.Mutations.Path)
 }
 
 func TestTranslateRequestActionsCore_WithSetHeaders(t *testing.T) {
@@ -408,9 +410,10 @@ func TestTranslateRequestActionsCore_WithSetHeaders(t *testing.T) {
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
-	execCtx.requestContext = &policy.RequestContext{
-		Path: "/api/test",
-		SharedContext: &policy.SharedContext{},
+	execCtx.sharedCtx = &policy.SharedContext{}
+	execCtx.requestBodyCtx = &policy.RequestContext{
+		Path:          "/api/test",
+		SharedContext: execCtx.sharedCtx,
 	}
 
 	result := &executor.RequestExecutionResult{
@@ -418,7 +421,7 @@ func TestTranslateRequestActionsCore_WithSetHeaders(t *testing.T) {
 			{
 				Skipped: false,
 				Action: policy.UpstreamRequestModifications{
-					SetHeaders: map[string]string{
+					HeadersToSet: map[string]string{
 						"x-custom": "value",
 					},
 				},
@@ -426,12 +429,12 @@ func TestTranslateRequestActionsCore_WithSetHeaders(t *testing.T) {
 		},
 	}
 
-	headerMutation, _, _, _, _, immResp, err := translateRequestActionsCore(result, execCtx)
+	rsl, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
-	assert.Nil(t, immResp)
-	require.NotNil(t, headerMutation)
-	assert.Len(t, headerMutation.SetHeaders, 1)
+	assert.Nil(t, rsl.ImmediateResp)
+	require.NotNil(t, rsl.HeaderMutation)
+	assert.Len(t, rsl.HeaderMutation.SetHeaders, 1)
 }
 
 func TestTranslateRequestActionsCore_WithBodyModification(t *testing.T) {
@@ -441,9 +444,10 @@ func TestTranslateRequestActionsCore_WithBodyModification(t *testing.T) {
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
-	execCtx.requestContext = &policy.RequestContext{
-		Path: "/api/test",
-		SharedContext: &policy.SharedContext{},
+	execCtx.sharedCtx = &policy.SharedContext{}
+	execCtx.requestBodyCtx = &policy.RequestContext{
+		Path:          "/api/test",
+		SharedContext: execCtx.sharedCtx,
 	}
 
 	result := &executor.RequestExecutionResult{
@@ -457,16 +461,16 @@ func TestTranslateRequestActionsCore_WithBodyModification(t *testing.T) {
 		},
 	}
 
-	headerMutation, bodyMutation, _, _, _, immResp, err := translateRequestActionsCore(result, execCtx)
+	rsl, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
-	assert.Nil(t, immResp)
-	require.NotNil(t, bodyMutation)
-	assert.Equal(t, []byte("modified body"), bodyMutation.GetBody())
+	assert.Nil(t, rsl.ImmediateResp)
+	require.NotNil(t, rsl.BodyMutation)
+	assert.Equal(t, []byte("modified body"), rsl.BodyMutation.GetBody())
 	// Content-Length should be set
-	require.NotNil(t, headerMutation)
+	require.NotNil(t, rsl.HeaderMutation)
 	var foundContentLength bool
-	for _, h := range headerMutation.SetHeaders {
+	for _, h := range rsl.HeaderMutation.SetHeaders {
 		if h.Header.Key == "content-length" {
 			foundContentLength = true
 			assert.Equal(t, []byte("13"), h.Header.RawValue)
@@ -482,9 +486,10 @@ func TestTranslateRequestActionsCore_ShortCircuit(t *testing.T) {
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
-	execCtx.requestContext = &policy.RequestContext{
-		Path: "/api/test",
-		SharedContext: &policy.SharedContext{},
+	execCtx.sharedCtx = &policy.SharedContext{}
+	execCtx.requestBodyCtx = &policy.RequestContext{
+		Path:          "/api/test",
+		SharedContext: execCtx.sharedCtx,
 	}
 
 	result := &executor.RequestExecutionResult{
@@ -498,14 +503,70 @@ func TestTranslateRequestActionsCore_ShortCircuit(t *testing.T) {
 		},
 	}
 
-	_, _, _, _, _, immResp, err := translateRequestActionsCore(result, execCtx)
+	rsl, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
-	require.NotNil(t, immResp)
+	require.NotNil(t, rsl.ImmediateResp)
 
-	immediate := immResp.GetImmediateResponse()
+	immediate := rsl.ImmediateResp.GetImmediateResponse()
 	require.NotNil(t, immediate)
 	assert.Equal(t, uint32(403), uint32(immediate.Status.Code))
+}
+
+func TestTranslateRequestActionsCore_ShortCircuit_PreservesPriorRequestAnalyticsMetadata(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+
+	chain := &registry.PolicyChain{}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.requestBodyCtx = &policy.RequestContext{
+		Path: "/api/test",
+		SharedContext: &policy.SharedContext{
+			APIId: "api-1",
+		},
+	}
+
+	result := &executor.RequestExecutionResult{
+		ShortCircuited: true,
+		Results: []executor.RequestPolicyResult{
+			{
+				Skipped: false,
+				Action: policy.UpstreamRequestModifications{
+					AnalyticsMetadata: map[string]any{
+						"x-wso2-application-id":   "app-1",
+						"x-wso2-application-name": "app-one",
+						"source":                  "request-policy",
+					},
+				},
+			},
+		},
+		FinalAction: policy.ImmediateResponse{
+			StatusCode: 403,
+			Headers: map[string]string{
+				"content-type": "application/json",
+			},
+			Body: []byte(`{"error":"forbidden"}`),
+			AnalyticsMetadata: map[string]any{
+				"source": "immediate-response",
+			},
+		},
+	}
+
+	rsl, err := translateRequestActionsCore(result, execCtx)
+
+	assert.NoError(t, err)
+	require.NotNil(t, rsl.ImmediateResp)
+
+	extProcNamespace := rsl.ImmediateResp.DynamicMetadata.GetFields()[constants.ExtProcFilterName].GetStructValue()
+	require.NotNil(t, extProcNamespace)
+
+	analyticsData := extProcNamespace.GetFields()["analytics_data"].GetStructValue()
+	require.NotNil(t, analyticsData)
+
+	assert.Equal(t, "app-1", analyticsData.GetFields()["x-wso2-application-id"].GetStringValue())
+	assert.Equal(t, "app-one", analyticsData.GetFields()["x-wso2-application-name"].GetStringValue())
+	assert.Equal(t, "immediate-response", analyticsData.GetFields()["source"].GetStringValue())
 }
 
 func TestTranslateRequestActionsCore_SkippedPolicy(t *testing.T) {
@@ -515,9 +576,10 @@ func TestTranslateRequestActionsCore_SkippedPolicy(t *testing.T) {
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
-	execCtx.requestContext = &policy.RequestContext{
-		Path: "/api/test",
-		SharedContext: &policy.SharedContext{},
+	execCtx.sharedCtx = &policy.SharedContext{}
+	execCtx.requestBodyCtx = &policy.RequestContext{
+		Path:          "/api/test",
+		SharedContext: execCtx.sharedCtx,
 	}
 
 	result := &executor.RequestExecutionResult{
@@ -525,7 +587,7 @@ func TestTranslateRequestActionsCore_SkippedPolicy(t *testing.T) {
 			{
 				Skipped: true, // This policy was skipped
 				Action: policy.UpstreamRequestModifications{
-					SetHeaders: map[string]string{
+					HeadersToSet: map[string]string{
 						"should-not-appear": "value",
 					},
 				},
@@ -533,11 +595,11 @@ func TestTranslateRequestActionsCore_SkippedPolicy(t *testing.T) {
 		},
 	}
 
-	headerMutation, _, _, _, _, _, err := translateRequestActionsCore(result, execCtx)
+	rsl, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
 	// Skipped policy actions should not be applied
-	assert.Empty(t, headerMutation.SetHeaders)
+	assert.Empty(t, rsl.HeaderMutation.SetHeaders)
 }
 
 func TestTranslateRequestActionsCore_WithQueryParams(t *testing.T) {
@@ -547,9 +609,10 @@ func TestTranslateRequestActionsCore_WithQueryParams(t *testing.T) {
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
-	execCtx.requestContext = &policy.RequestContext{
-		Path: "/api/test",
-		SharedContext: &policy.SharedContext{},
+	execCtx.sharedCtx = &policy.SharedContext{}
+	execCtx.requestBodyCtx = &policy.RequestContext{
+		Path:          "/api/test",
+		SharedContext: execCtx.sharedCtx,
 	}
 
 	result := &executor.RequestExecutionResult{
@@ -557,7 +620,7 @@ func TestTranslateRequestActionsCore_WithQueryParams(t *testing.T) {
 			{
 				Skipped: false,
 				Action: policy.UpstreamRequestModifications{
-					AddQueryParameters: map[string][]string{
+					QueryParametersToAdd: map[string][]string{
 						"added": {"param"},
 					},
 				},
@@ -565,11 +628,11 @@ func TestTranslateRequestActionsCore_WithQueryParams(t *testing.T) {
 		},
 	}
 
-	_, _, _, _, pathMutation, _, err := translateRequestActionsCore(result, execCtx)
+	rsl, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
-	require.NotNil(t, pathMutation)
-	assert.Contains(t, *pathMutation, "added=param")
+	require.NotNil(t, rsl.Mutations.Path)
+	assert.Contains(t, *rsl.Mutations.Path, "added=param")
 }
 
 func TestTranslateRequestActionsCore_WithPathOverride(t *testing.T) {
@@ -579,9 +642,10 @@ func TestTranslateRequestActionsCore_WithPathOverride(t *testing.T) {
 
 	chain := &registry.PolicyChain{}
 	execCtx := newPolicyExecutionContext(server, "test-route", chain)
-	execCtx.requestContext = &policy.RequestContext{
-		Path: "/api/test",
-		SharedContext: &policy.SharedContext{},
+	execCtx.sharedCtx = &policy.SharedContext{}
+	execCtx.requestBodyCtx = &policy.RequestContext{
+		Path:          "/api/test",
+		SharedContext: execCtx.sharedCtx,
 	}
 
 	newPath := "/new/path"
@@ -596,9 +660,92 @@ func TestTranslateRequestActionsCore_WithPathOverride(t *testing.T) {
 		},
 	}
 
-	_, _, _, _, pathMutation, _, err := translateRequestActionsCore(result, execCtx)
+	rsl, err := translateRequestActionsCore(result, execCtx)
 
 	assert.NoError(t, err)
-	require.NotNil(t, pathMutation)
-	assert.Equal(t, "/new/path", *pathMutation)
+	require.NotNil(t, rsl.Mutations.Path)
+	assert.Equal(t, "/new/path", *rsl.Mutations.Path)
+}
+
+// =============================================================================
+// translateResponseActionsCore Tests
+// =============================================================================
+
+func TestTranslateResponseActionsCore_ShortCircuit(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+
+	chain := &registry.PolicyChain{}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.sharedCtx = &policy.SharedContext{}
+	execCtx.requestBodyCtx = &policy.RequestContext{
+		Path:          "/api/test",
+		SharedContext: execCtx.sharedCtx,
+	}
+	execCtx.responseBodyCtx = &policy.ResponseContext{
+		SharedContext: execCtx.sharedCtx,
+		ResponseHeaders: policy.NewHeaders(map[string][]string{
+			"content-type": {"application/json"},
+		}),
+		ResponseStatus: 200,
+	}
+
+	result := &executor.ResponseExecutionResult{
+		ShortCircuited: true,
+		FinalAction: policy.ImmediateResponse{
+			StatusCode: 503,
+			Headers:    map[string]string{"x-error": "upstream-fault"},
+			Body:       []byte(`{"error":"service unavailable"}`),
+		},
+	}
+
+	_, _, _, _, immResp, err := translateResponseActionsCore(result, execCtx)
+
+	assert.NoError(t, err)
+	require.NotNil(t, immResp, "short-circuit response must be returned")
+
+	immediate := immResp.GetImmediateResponse()
+	require.NotNil(t, immediate)
+	assert.Equal(t, uint32(503), uint32(immediate.Status.Code))
+	assert.Equal(t, []byte(`{"error":"service unavailable"}`), immediate.Body)
+}
+
+func TestTranslateResponseActionsCore_NoShortCircuit(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+
+	chain := &registry.PolicyChain{}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.sharedCtx = &policy.SharedContext{}
+	execCtx.requestBodyCtx = &policy.RequestContext{
+		Path:          "/api/test",
+		SharedContext: execCtx.sharedCtx,
+	}
+	execCtx.responseBodyCtx = &policy.ResponseContext{
+		SharedContext: execCtx.sharedCtx,
+		ResponseHeaders: policy.NewHeaders(map[string][]string{
+			"content-type": {"application/json"},
+		}),
+		ResponseStatus: 200,
+	}
+
+	result := &executor.ResponseExecutionResult{
+		Results: []executor.ResponsePolicyResult{
+			{
+				Skipped: false,
+				Action: policy.DownstreamResponseModifications{
+					HeadersToSet: map[string]string{"x-response": "modified"},
+				},
+			},
+		},
+	}
+
+	headerMutation, _, _, _, immResp, err := translateResponseActionsCore(result, execCtx)
+
+	assert.NoError(t, err)
+	assert.Nil(t, immResp, "no immediate response expected for normal flow")
+	require.NotNil(t, headerMutation)
+	assert.Len(t, headerMutation.SetHeaders, 1)
 }

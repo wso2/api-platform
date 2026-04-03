@@ -301,7 +301,7 @@ data:
             format: json
 
         policy_configurations: 
-          jwtauth_v0:
+          jwtauth_v1:
             KeyManagers:
             - name: WSO2KeyManager1
               issuer: https://api.asgardeo.io/t/tharsanan1995/oauth2/token

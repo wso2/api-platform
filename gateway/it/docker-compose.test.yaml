@@ -23,6 +23,26 @@
 # NOTE: gateway-controller and gateway-runtime are duplicated in docker-compose.test.postgres.yaml — keep in sync.
 
 services:
+  # Mock platform-api for subscription-validation IT (mimics platform-api WebSocket events)
+  mock-platform-api:
+    container_name: it-mock-platform-api
+    image: ghcr.io/wso2/api-platform/mock-platform-api:test
+    build:
+      context: ../../tests/mock-servers/mock-platform-api
+      dockerfile: Dockerfile
+    ports:
+      - "9243:9243"   # HTTPS/WebSocket (gateway connects)
+      - "9244:9244"   # HTTP inject endpoint (IT triggers subscription.created)
+    environment:
+      - GATEWAY_DB_PATH=/app/data/gateway.db
+      - TLS_CERT=/app/certs/default-listener.crt
+      - TLS_KEY=/app/certs/default-listener.key
+    volumes:
+      - controller-data-tests:/app/data
+      - ../gateway-controller/listener-certs:/app/certs:ro
+    networks:
+      - it-gateway-runtime-network
+
   gateway-controller:
     container_name: it-gateway-controller
     image: ghcr.io/wso2/api-platform/gateway-controller-coverage:test
@@ -41,14 +61,21 @@ services:
       - APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH=./data/gateway.db
       - APIP_GW_CONTROLLER_LOGGING_LEVEL=debug
       - GOCOVERDIR=/coverage
+      # Control plane (mock-platform-api) for subscription event propagation
+      - APIP_GW_CONTROLLER_CONTROLPLANE_HOST=it-mock-platform-api:9243
+      - APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=test-gateway-token
+      - APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY=true
     volumes:
       - controller-data-tests:/app/data
+      - ./it-aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro
       - ./test-config.toml:/etc/gateway-controller/config.toml:ro
       - ../gateway-controller/certificates:/app/certificates
       - ../gateway-controller/listener-certs:/app/listener-certs:ro
       - ./coverage/gateway-controller:/coverage
+    depends_on:
+      - mock-platform-api
     # healthcheck:
-    #   test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/health"]
+    #   test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9092/health"]
     #   interval: 5s
     #   timeout: 3s
     #   retries: 10

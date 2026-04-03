@@ -33,91 +33,282 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
-// SnapshotManager manages xDS snapshots for policy configurations
+const (
+	// PolicyChainTypeURL is the custom type URL for policy chain configurations
+	PolicyChainTypeURL = "api-platform.wso2.org/v1.PolicyChainConfig"
+
+	// RouteConfigTypeURL is the custom type URL for route config (metadata + resolver)
+	RouteConfigTypeURL = "api-platform.wso2.org/v1.RouteConfig"
+)
+
+// SnapshotManager manages xDS snapshots for policy and route configurations.
+// It holds two LinearCaches: one for PolicyChainConfig and one for RouteConfig.
 type SnapshotManager struct {
-	cache      *cache.LinearCache // Use LinearCache directly for custom type URLs
-	store      *storage.PolicyStore
-	logger     *slog.Logger
-	nodeID     string
-	mu         sync.RWMutex
-	translator *Translator
+	policyCache  *cache.LinearCache
+	routeCache   *cache.LinearCache
+	runtimeStore *storage.RuntimeConfigStore
+	logger       *slog.Logger
+	nodeID       string
+	mu           sync.RWMutex
+	translator   *Translator
 }
 
-// NewSnapshotManager creates a new policy snapshot manager with LinearCache for custom type URLs
-func NewSnapshotManager(store *storage.PolicyStore, logger *slog.Logger) *SnapshotManager {
-	// Create a LinearCache for custom PolicyChainConfig type URL
-	// LinearCache is designed for single custom resource types in ADS
-	linearCache := cache.NewLinearCache(
+// NewSnapshotManager creates a new policy snapshot manager with LinearCaches for custom type URLs.
+func NewSnapshotManager(logger *slog.Logger) *SnapshotManager {
+	policyCache := cache.NewLinearCache(
 		PolicyChainTypeURL,
+		cache.WithLogger(slogAdapter{logger}),
+	)
+	routeCache := cache.NewLinearCache(
+		RouteConfigTypeURL,
 		cache.WithLogger(slogAdapter{logger}),
 	)
 
 	return &SnapshotManager{
-		cache:      linearCache,
-		store:      store,
-		logger:     logger,
-		nodeID:     "policy-node",
-		translator: NewTranslator(logger),
+		policyCache: policyCache,
+		routeCache:  routeCache,
+		logger:      logger,
+		nodeID:      "policy-node",
+		translator:  NewTranslator(logger),
 	}
 }
 
-// GetCache returns the underlying cache as the generic Cache interface
-func (sm *SnapshotManager) GetCache() cache.Cache {
-	return sm.cache
+// SetRuntimeStore sets the RuntimeConfigStore for the new API path.
+func (sm *SnapshotManager) SetRuntimeStore(store *storage.RuntimeConfigStore) {
+	sm.runtimeStore = store
 }
 
-// UpdateSnapshot generates a new xDS snapshot from all policy configurations
+// GetRouteCache returns the route config cache.
+func (sm *SnapshotManager) GetRouteCache() cache.Cache {
+	return sm.routeCache
+}
+
+// GetPolicyCache returns the policy chain cache (backward compatible).
+func (sm *SnapshotManager) GetPolicyCache() cache.Cache {
+	return sm.policyCache
+}
+
+// UpdateSnapshot generates new xDS snapshots from all RuntimeDeployConfigs.
 func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	// Get all policy configurations from store
-	policies := sm.store.GetAll()
+	if sm.runtimeStore == nil {
+		sm.logger.Warn("RuntimeConfigStore not set, skipping snapshot update")
+		return nil
+	}
+
+	rdcs := sm.runtimeStore.GetAll()
 
 	sm.logger.Info("Updating policy snapshot",
-		slog.Int("policy_count", len(policies)),
+		slog.Int("rdc_count", len(rdcs)),
 		slog.String("node_id", sm.nodeID))
 
-	// Translate policies to xDS resources
-	resourcesMap, err := sm.translator.TranslatePolicies(policies)
+	// Translate RuntimeDeployConfigs to xDS resources (both types)
+	resourcesMap, err := sm.translator.TranslateRuntimeConfigs(rdcs)
 	if err != nil {
-		sm.logger.Error("Failed to translate policies", slog.Any("error", err))
-		return fmt.Errorf("failed to translate policies: %w", err)
+		sm.logger.Error("Failed to translate runtime configs", slog.Any("error", err))
+		return fmt.Errorf("failed to translate runtime configs: %w", err)
 	}
 
-	// Get the policy resources from the map
-	policyResources, ok := resourcesMap[PolicyChainTypeURL]
-	if !ok {
-		sm.logger.Warn("No policy resources found after translation")
-		policyResources = []types.Resource{} // Empty resources
+	// Update policy chain cache
+	policyResources, _ := resourcesMap[PolicyChainTypeURL]
+	policyById := make(map[string]types.Resource)
+	for key, res := range policyResources {
+		policyById[key] = res
 	}
+	sm.policyCache.SetResources(policyById)
 
-	// Increment resource version
-	version := sm.store.IncrementResourceVersion()
-	versionStr := fmt.Sprintf("%d", version)
-
-	// For LinearCache, we need to update resources directly
-	// Convert []types.Resource to map[string]types.Resource (keyed by policy ID)
-	resourcesById := make(map[string]types.Resource)
-	for i, res := range policyResources {
-		// Use index-based key since policy resources don't have inherent names
-		resourcesById[fmt.Sprintf("policy-%d", i)] = res
+	// Update route config cache
+	routeResources, _ := resourcesMap[RouteConfigTypeURL]
+	routeById := make(map[string]types.Resource)
+	for key, res := range routeResources {
+		routeById[key] = res
 	}
+	sm.routeCache.SetResources(routeById)
 
-	// Update the linear cache with new resources
-	// SetResources replaces all resources in the cache
-	sm.cache.SetResources(resourcesById)
-
+	version := sm.runtimeStore.IncrementResourceVersion()
 	sm.logger.Info("Policy snapshot updated successfully",
-		slog.String("version", versionStr),
-		slog.Int("policy_count", len(policies)))
+		slog.Int64("version", version),
+		slog.Int("policy_resources", len(policyById)),
+		slog.Int("route_resources", len(routeById)))
 
 	return nil
 }
 
-// Translator converts policy configurations to xDS resources
+// Translator converts RuntimeDeployConfig to xDS resources.
 type Translator struct {
 	logger *slog.Logger
+}
+
+// NewTranslator creates a new policy translator.
+func NewTranslator(logger *slog.Logger) *Translator {
+	return &Translator{
+		logger: logger,
+	}
+}
+
+// TranslateRuntimeConfigs translates RuntimeDeployConfigs to xDS resources.
+// Returns two maps: PolicyChainTypeURL → keyed resources, RouteConfigTypeURL → keyed resources.
+func (t *Translator) TranslateRuntimeConfigs(rdcs []*models.RuntimeDeployConfig) (map[string]map[string]types.Resource, error) {
+	policyResources := make(map[string]types.Resource)
+	routeResources := make(map[string]types.Resource)
+
+	for _, rdc := range rdcs {
+		// Build policy chain resources (one per chain)
+		for routeKey, chain := range rdc.PolicyChains {
+			if len(chain.Policies) == 0 {
+				continue
+			}
+			resource, err := t.createPolicyChainResource(routeKey, chain, rdc.Metadata)
+			if err != nil {
+				t.logger.Error("Failed to create policy chain resource",
+					slog.String("route_key", routeKey),
+					slog.Any("error", err))
+				continue
+			}
+			policyResources[routeKey] = resource
+		}
+
+		// Build route config resources (one per route)
+		for routeKey, route := range rdc.Routes {
+			// Find upstream base path from the route's cluster
+			upstreamBasePath := "/"
+			if uc, ok := rdc.UpstreamClusters[route.Upstream.ClusterKey]; ok {
+				upstreamBasePath = uc.BasePath
+			}
+
+			// Build upstream definition paths
+			upstreamDefPaths := make(map[string]string)
+			for clusterKey, uc := range rdc.UpstreamClusters {
+				upstreamDefPaths[clusterKey] = uc.BasePath
+			}
+
+			resource, err := t.createRouteConfigResource(routeKey, rdc, upstreamBasePath, upstreamDefPaths)
+			if err != nil {
+				t.logger.Error("Failed to create route config resource",
+					slog.String("route_key", routeKey),
+					slog.Any("error", err))
+				continue
+			}
+			routeResources[routeKey] = resource
+		}
+	}
+
+	result := map[string]map[string]types.Resource{
+		PolicyChainTypeURL: policyResources,
+		RouteConfigTypeURL: routeResources,
+	}
+
+	t.logger.Info("Translated runtime configs to xDS resources",
+		slog.Int("total_rdcs", len(rdcs)),
+		slog.Int("policy_resources", len(policyResources)),
+		slog.Int("route_resources", len(routeResources)))
+
+	return result, nil
+}
+
+// createPolicyChainResource creates a PolicyChainConfig xDS resource.
+func (t *Translator) createPolicyChainResource(routeKey string, chain *models.PolicyChain, metadata models.Metadata) (types.Resource, error) {
+	// Build the policy chain data
+	policies := make([]map[string]interface{}, 0, len(chain.Policies))
+	for _, p := range chain.Policies {
+		pol := map[string]interface{}{
+			"name":       p.Name,
+			"version":    p.Version,
+			"enabled":    true,
+			"parameters": p.Params,
+		}
+		if p.ExecutionCondition != nil {
+			pol["executionCondition"] = *p.ExecutionCondition
+		}
+		policies = append(policies, pol)
+	}
+
+	data := map[string]interface{}{
+		"configuration": map[string]interface{}{
+			"routes": []map[string]interface{}{
+				{
+					"route_key": routeKey,
+					"policies":  policies,
+				},
+			},
+			"metadata": map[string]interface{}{
+				"api_name": metadata.DisplayName,
+				"version":  metadata.Version,
+				"context":  "",
+			},
+		},
+	}
+
+	return toAnyResource(data, PolicyChainTypeURL)
+}
+
+// createRouteConfigResource creates a RouteConfig xDS resource.
+func (t *Translator) createRouteConfigResource(
+	routeKey string,
+	rdc *models.RuntimeDeployConfig,
+	upstreamBasePath string,
+	upstreamDefPaths map[string]string,
+) (types.Resource, error) {
+	route := rdc.Routes[routeKey]
+
+	metadataMap := map[string]interface{}{
+		"uuid":         rdc.Metadata.UUID,
+		"kind":         rdc.Metadata.Kind,
+		"handle":       rdc.Metadata.Handle,
+		"version":      rdc.Metadata.Version,
+		"display_name": rdc.Metadata.DisplayName,
+		"project_id":   rdc.Metadata.ProjectID,
+		"api_context":  rdc.Context,
+		"vhost":        route.Vhost,
+		"path":         route.OperationPath,
+	}
+	if rdc.Metadata.LLM != nil {
+		metadataMap["template_handle"] = rdc.Metadata.LLM.TemplateHandle
+		metadataMap["provider_name"] = rdc.Metadata.LLM.ProviderName
+	}
+
+	data := map[string]interface{}{
+		"route_key":                 routeKey,
+		"metadata":                  metadataMap,
+		"resolver_name":             rdc.PolicyChainResolver,
+		"upstream_base_path":        upstreamBasePath,
+		"upstream_definition_paths": upstreamDefPaths,
+	}
+
+	// Add default upstream cluster info
+	if route.Upstream.UseClusterHeader && route.Upstream.DefaultCluster != "" {
+		data["default_upstream_cluster"] = route.Upstream.DefaultCluster
+	}
+
+	return toAnyResource(data, RouteConfigTypeURL)
+}
+
+// toAnyResource converts a map to an anypb.Any resource with the given type URL.
+func toAnyResource(data map[string]interface{}, typeURL string) (types.Resource, error) {
+	dataJSON, err := json.Marshal(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal to JSON: %w", err)
+	}
+
+	var dataMap map[string]interface{}
+	if err := json.Unmarshal(dataJSON, &dataMap); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
+	}
+
+	dataStruct, err := structpb.NewStruct(dataMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create struct: %w", err)
+	}
+
+	anyMsg, err := anypb.New(dataStruct)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Any message: %w", err)
+	}
+
+	anyMsg.TypeUrl = typeURL
+	return anyMsg, nil
 }
 
 // slogAdapter adapts slog.Logger to the go-control-plane Logger interface
@@ -139,85 +330,4 @@ func (a slogAdapter) Warnf(format string, args ...interface{}) {
 
 func (a slogAdapter) Errorf(format string, args ...interface{}) {
 	a.logger.Error(fmt.Sprintf(format, args...))
-}
-
-const (
-	// PolicyChainTypeURL is the custom type URL for policy chain configurations
-	PolicyChainTypeURL = "api-platform.wso2.org/v1.PolicyChainConfig"
-)
-
-// NewTranslator creates a new policy translator
-func NewTranslator(logger *slog.Logger) *Translator {
-	return &Translator{
-		logger: logger,
-	}
-}
-
-// TranslatePolicies translates policy configurations to xDS resources
-// Uses ADS with custom type URL for policy distribution
-func (t *Translator) TranslatePolicies(policies []*models.StoredPolicyConfig) (map[string][]types.Resource, error) {
-	resources := make(map[string][]types.Resource)
-
-	// For policy data, we use custom PolicyChainConfig type
-	var policyResources []types.Resource
-
-	for _, policy := range policies {
-		// Convert policy to a custom resource
-		policyResource, err := t.createPolicyResource(policy)
-		if err != nil {
-			t.logger.Error("Failed to create policy resource",
-				slog.String("id", policy.ID),
-				slog.Any("error", err))
-			continue
-		}
-
-		policyResources = append(policyResources, policyResource)
-
-		t.logger.Debug("Processing policy for xDS",
-			slog.String("id", policy.ID),
-			slog.String("api_name", policy.APIName()),
-			slog.String("version", policy.APIVersion()),
-			slog.Int("route_count", len(policy.Configuration.Routes)))
-	}
-
-	// Store policy resources with custom type URL
-	resources[PolicyChainTypeURL] = policyResources
-
-	t.logger.Info("Translated policies to xDS resources",
-		slog.Int("total_policies", len(policies)),
-		slog.Int("policy_resources", len(policyResources)))
-
-	return resources, nil
-}
-
-// createPolicyResource creates a custom PolicyChainConfig resource from a policy configuration
-func (t *Translator) createPolicyResource(policy *models.StoredPolicyConfig) (types.Resource, error) {
-	// Use JSON marshaling to properly handle all field types including pointers
-	policyJSON, err := json.Marshal(policy)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal policy to JSON: %w", err)
-	}
-
-	// Convert JSON to map[string]interface{}
-	var policyMap map[string]interface{}
-	if err := json.Unmarshal(policyJSON, &policyMap); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal policy JSON: %w", err)
-	}
-
-	// Create struct from map
-	policyStruct, err := structpb.NewStruct(policyMap)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create policy struct: %w", err)
-	}
-
-	// Wrap in google.protobuf.Any with custom type URL
-	anyMsg, err := anypb.New(policyStruct)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Any message: %w", err)
-	}
-
-	// Override the type URL to our custom type
-	anyMsg.TypeUrl = PolicyChainTypeURL
-
-	return anyMsg, nil
 }

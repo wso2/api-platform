@@ -21,11 +21,9 @@ package utils
 import (
 	"errors"
 	"fmt"
-	"strconv"
-	"strings"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	versionutil "github.com/wso2/api-platform/common/version"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
 // PolicyDefinitionMissingUserMessage is returned to clients when a required policy definition is missing.
@@ -69,11 +67,11 @@ func NewStaticPolicyVersionResolver(versions map[string]string) *StaticPolicyVer
 // The highest semantic version per policy name is selected, then converted to
 // a major-only version (e.g., v0) for compatibility with policy version
 // validation rules.
-func NewLoadedPolicyVersionResolver(policyDefinitions map[string]api.PolicyDefinition) *StaticPolicyVersionResolver {
+func NewLoadedPolicyVersionResolver(policyDefinitions map[string]models.PolicyDefinition) *StaticPolicyVersionResolver {
 	versions := make(map[string]string)
 	for _, def := range policyDefinitions {
 		existing, ok := versions[def.Name]
-		if !ok || compareSemver(def.Version, existing) > 0 {
+		if !ok || versionutil.CompareSemver(def.Version, existing) > 0 {
 			versions[def.Name] = def.Version
 		}
 	}
@@ -93,58 +91,4 @@ func (r *StaticPolicyVersionResolver) Resolve(name string) (string, error) {
 		return "", &PolicyDefinitionMissingError{PolicyName: name}
 	}
 	return version, nil
-}
-
-func compareSemver(a, b string) int {
-	aMajor, aMinor, aPatch, okA := parseSemver(a)
-	bMajor, bMinor, bPatch, okB := parseSemver(b)
-	if !okA || !okB {
-		switch {
-		case a > b:
-			return 1
-		case a < b:
-			return -1
-		default:
-			return 0
-		}
-	}
-	if aMajor != bMajor {
-		return compareInts(aMajor, bMajor)
-	}
-	if aMinor != bMinor {
-		return compareInts(aMinor, bMinor)
-	}
-	return compareInts(aPatch, bPatch)
-}
-
-func parseSemver(v string) (int, int, int, bool) {
-	raw := strings.TrimPrefix(v, "v")
-	parts := strings.Split(raw, ".")
-	if len(parts) != 3 {
-		return 0, 0, 0, false
-	}
-	major, err := strconv.Atoi(parts[0])
-	if err != nil {
-		return 0, 0, 0, false
-	}
-	minor, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return 0, 0, 0, false
-	}
-	patch, err := strconv.Atoi(parts[2])
-	if err != nil {
-		return 0, 0, 0, false
-	}
-	return major, minor, patch, true
-}
-
-func compareInts(a, b int) int {
-	switch {
-	case a > b:
-		return 1
-	case a < b:
-		return -1
-	default:
-		return 0
-	}
 }

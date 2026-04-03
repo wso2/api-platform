@@ -52,6 +52,9 @@ type Server struct {
 	Deployments Deployments `envconfig:"DEPLOYMENTS"`
 	// TLS configurations
 	TLS TLS `envconfig:"TLS"`
+
+	// API key configurations
+	APIKey APIKey `envconfig:"API_KEY"`
 }
 
 // TLS holds TLS certificate configuration
@@ -63,7 +66,7 @@ type TLS struct {
 type JWT struct {
 	SecretKey      string   `envconfig:"SECRET_KEY" default:"your-secret-key-change-in-production"`
 	Issuer         string   `envconfig:"ISSUER" default:"thunder"`
-	SkipPaths      []string `envconfig:"SKIP_PATHS" default:"/health,/metrics,/api/internal/v1/ws/gateways/connect,/api/internal/v1/apis,/api/internal/v1/llm-providers,/api/internal/v1/llm-proxies"`
+	SkipPaths      []string `envconfig:"SKIP_PATHS" default:"/health,/metrics,/api/internal/v1/ws/gateways/connect,/api/internal/v1/apis,/api/internal/v1/llm-providers,/api/internal/v1/llm-proxies,/api/internal/v1/subscription-plans,/api/internal/v1/mcp-proxies,/api/internal/v1/gateways,/api/internal/v1/deployments,/api/internal/v1/artifacts"`
 	SkipValidation bool     `envconfig:"SKIP_VALIDATION" default:"true"` // Skip signature validation for development
 }
 
@@ -97,6 +100,11 @@ type Database struct {
 	// Set to false when the DB user lacks DDL privileges (e.g. deployed Postgres with restricted role).
 	// Env: DATABASE_EXECUTE_SCHEMA_DDL (default: true)
 	ExecuteSchemaDDL bool `envconfig:"EXECUTE_SCHEMA_DDL" default:"true"`
+
+	// SubscriptionTokenEncryptionKey is the 32-byte key for AES-256-GCM encryption of subscription tokens.
+	// Provide as 64 hex chars or 44 base64 chars. Required for storing tokens in encrypted form (retrievable on GET).
+	// Env: DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY. If empty, falls back to JWT_SECRET_KEY.
+	SubscriptionTokenEncryptionKey string `envconfig:"SUBSCRIPTION_TOKEN_ENCRYPTION_KEY" default:""`
 }
 
 // DefaultDevPortal holds default DevPortal configuration for new organizations
@@ -122,6 +130,25 @@ type DefaultDevPortal struct {
 // Deployments holds deployment-specific configuration
 type Deployments struct {
 	MaxPerAPIGateway int `envconfig:"MAX_PER_API_GATEWAY" default:"20"`
+
+	// TransitionalStatusEnabled controls whether deploy/undeploy sets DEPLOYING/UNDEPLOYING
+	// before waiting for a gateway ack. When false (default), status is set immediately to
+	// DEPLOYED/UNDEPLOYED without waiting for acknowledgement.
+	TransitionalStatusEnabled bool `envconfig:"TRANSITIONAL_STATUS_ENABLED" default:"false"`
+
+	// Timeout job settings for transitional deployment statuses (DEPLOYING/UNDEPLOYING).
+	// Only relevant when TransitionalStatusEnabled is true.
+	TimeoutEnabled  bool `envconfig:"TIMEOUT_ENABLED" default:"true"`
+	TimeoutInterval int  `envconfig:"TIMEOUT_INTERVAL" default:"20"` // seconds between checks
+	TimeoutDuration int  `envconfig:"TIMEOUT_DURATION" default:"60"` // seconds before a status is considered stale
+}
+
+// APIKey holds API key-specific configuration
+type APIKey struct {
+	// HashingAlgorithms is the list of algorithms used to hash API keys before storage and broadcast.
+	// Multiple algorithms can be specified as a comma-separated value (e.g. "sha256,sha512").
+	// Currently only "sha256" is supported. Defaults to "sha256".
+	HashingAlgorithms []string `envconfig:"HASHING_ALGORITHMS" default:"sha256"`
 }
 
 // package-level variable and mutex for thread safety
@@ -146,6 +173,9 @@ func GetConfig() *Server {
 		if err == nil {
 			// Validate default devportal configuration
 			err = validateDefaultDevPortalConfig(&settingInstance.DefaultDevPortal)
+		}
+		if err == nil {
+			err = validateDeploymentsConfig(&settingInstance.Deployments)
 		}
 	})
 	if err != nil {
@@ -196,5 +226,20 @@ func validateDefaultDevPortalConfig(cfg *DefaultDevPortal) error {
 		return fmt.Errorf("default DevPortal header key name is not configured")
 	}
 
+	return nil
+}
+
+// validateDeploymentsConfig validates deployment timeout configuration.
+// When timeout is enabled, interval and duration must be positive.
+func validateDeploymentsConfig(cfg *Deployments) error {
+	if !cfg.TimeoutEnabled {
+		return nil
+	}
+	if cfg.TimeoutInterval <= 0 {
+		return fmt.Errorf("DEPLOYMENTS_TIMEOUT_INTERVAL must be a positive integer (got %d)", cfg.TimeoutInterval)
+	}
+	if cfg.TimeoutDuration <= 0 {
+		return fmt.Errorf("DEPLOYMENTS_TIMEOUT_DURATION must be a positive integer (got %d)", cfg.TimeoutDuration)
+	}
 	return nil
 }

@@ -1,0 +1,26 @@
+name: add-header-singleton-python
+version: v1.0.0
+description: |
+  A sample policy that adds a configured header to the incoming request.
+  
+  Unlike traditional Python sample policies that allocate a new object
+  per-route, this policy is implemented as a SINGLETON. The exact same
+  memory reference is shared globally across every route, proving that
+  the 'params' object passed in the hot-path can drive route-specific
+  logic safely.
+
+parameters:
+  type: object
+  properties:
+    headerName:
+      type: string
+      default: "X-Singleton-Header"
+      description: "Name of the header to add to the upstream request."
+    headerValue:
+      type: string
+      default: "True"
+      description: "Value of the header to add."
+
+systemParameters:
+  type: object
+  properties: {}

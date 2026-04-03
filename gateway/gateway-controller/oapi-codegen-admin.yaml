@@ -1,5 +1,5 @@
-package: adminapi
-output: pkg/adminapi/generated/generated.go
+package: admin
+output: pkg/api/admin/generated.go
 generate:
   std-http-server: true
   models: true

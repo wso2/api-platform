@@ -1,0 +1,46 @@
+post:
+  summary: Generate content with Gemini (with context caching)
+  operationId: generateContentCached
+  parameters:
+    - name: model
+      in: path
+      required: true
+      schema:
+        type: string
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - contents
+          properties:
+            contents:
+              type: array
+              items:
+                type: object
+
+  responses:
+    "200":
+      description: Successful response with cached content tokens
+      content:
+        application/json:
+          # gemini-2.0-flash: input=1e-7, output=4e-7, cache_read=2.5e-8
+          # prompt=500 (includes cached=200), completion=100
+          # cost = (500-200)*1e-7 + 200*2.5e-8 + 100*4e-7
+          #      = 3e-5 + 5e-6 + 4e-5 = 0.0000750000
+          example:
+            candidates:
+              - content:
+                  parts:
+                    - text: "Here is your response using cached context."
+                  role: model
+                finishReason: STOP
+                index: 0
+            modelVersion: gemini-2.0-flash
+            usageMetadata:
+              promptTokenCount: 500
+              cachedContentTokenCount: 200
+              candidatesTokenCount: 100
+              totalTokenCount: 600

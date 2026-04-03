@@ -23,7 +23,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -94,7 +94,7 @@ func setupTestTransformer(t *testing.T) (*LLMProviderTransformer, *storage.Confi
 
 	// Add test templates
 	openAITemplate := &models.StoredLLMProviderTemplate{
-		ID: "openai-template-id",
+		UUID: "0000-openai-template-id-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
 			Kind:       "LlmProviderTemplate",
@@ -111,8 +111,10 @@ func setupTestTransformer(t *testing.T) (*LLMProviderTransformer, *storage.Confi
 
 	err := store.AddTemplate(openAITemplate)
 	require.NoError(t, err, "Failed to add test template")
+	db := newTestMockDB()
+	db.SaveLLMProviderTemplate(openAITemplate)
 	cfg := loadDummyConfig()
-	transformer := NewLLMProviderTransformer(store, &cfg, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, db, &cfg, newTestPolicyVersionResolver())
 	return transformer, store
 }
 
@@ -122,8 +124,9 @@ func setupTestTransformer(t *testing.T) (*LLMProviderTransformer, *storage.Confi
 
 func TestNewLLMProviderTransformer(t *testing.T) {
 	store := storage.NewConfigStore()
+	db := newTestMockDB()
 	cfg := loadDummyConfig()
-	transformer := NewLLMProviderTransformer(store, &cfg, newTestPolicyVersionResolver())
+	transformer := NewLLMProviderTransformer(store, db, &cfg, newTestPolicyVersionResolver())
 
 	assert.NotNil(t, transformer, "Transformer should not be nil")
 	assert.NotNil(t, transformer.store, "Store should not be nil")
@@ -153,7 +156,7 @@ func TestTransform_MinimalProvider(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err, "Transform should succeed")
@@ -161,11 +164,10 @@ func TestTransform_MinimalProvider(t *testing.T) {
 
 	// Verify basic fields
 	assert.Equal(t, api.RestApi, result.Kind)
-	assert.Equal(t, api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1, result.ApiVersion)
+	assert.Equal(t, api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1, result.ApiVersion)
 
 	// Extract spec
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err, "Should extract spec")
+	spec := result.Spec
 
 	assert.Equal(t, "minimal-provider", spec.DisplayName)
 	assert.Equal(t, "v1.0", spec.Version)
@@ -205,13 +207,12 @@ func TestTransform_FullProvider(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err, "Transform should succeed")
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify all fields
 	assert.Equal(t, "full-provider", spec.DisplayName)
@@ -241,7 +242,7 @@ func TestTransform_FullProvider(t *testing.T) {
 		}
 
 		require.NotNil(t, authPolicy, "Operation %s %s should include upstream auth policy", op.Method, op.Path)
-		assert.Equal(t, testModifyHeadersVersion, authPolicy.Version)
+		assert.Equal(t, testSetHeadersVersion, authPolicy.Version)
 		assert.NotNil(t, authPolicy.Params)
 	}
 }
@@ -270,7 +271,7 @@ func TestTransform_NonExistentTemplate(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	_, err := transformer.Transform(provider, output)
 
 	require.Error(t, err, "Should error on nonexistent template")
@@ -303,13 +304,12 @@ func TestTransform_DefaultContext(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	assert.Equal(t, "/", spec.Context, "Should use default base path")
 }
@@ -347,13 +347,12 @@ func TestTransform_CustomContext(t *testing.T) {
 				},
 			}
 
-			output := &api.APIConfiguration{}
+			output := &api.RestAPI{}
 			result, err := transformer.Transform(provider, output)
 
 			require.NoError(t, err)
 
-			spec, err := result.Spec.AsAPIConfigData()
-			require.NoError(t, err)
+			spec := result.Spec
 
 			assert.Equal(t, tt.context, spec.Context)
 		})
@@ -385,13 +384,12 @@ func TestTransform_NoVhost(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	assert.Nil(t, spec.Vhosts, "Vhosts should be nil when not provided")
 }
@@ -417,13 +415,12 @@ func TestTransform_WithVhost(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	require.NotNil(t, spec.Vhosts)
 	assert.Equal(t, "api.mycompany.com", spec.Vhosts.Main)
@@ -455,13 +452,12 @@ func TestTransform_NoAuth(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// No auth policy should be added
 	if spec.Policies != nil {
@@ -498,13 +494,12 @@ func TestTransform_ApiKeyAuth(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify auth policy is attached to all operations
 	require.NotEmpty(t, spec.Operations)
@@ -521,12 +516,12 @@ func TestTransform_ApiKeyAuth(t *testing.T) {
 		}
 
 		require.NotNil(t, authPolicy, "Operation %s %s should include upstream auth policy", op.Method, op.Path)
-		assert.Equal(t, testModifyHeadersVersion, authPolicy.Version)
+		assert.Equal(t, testSetHeadersVersion, authPolicy.Version)
 		require.NotNil(t, authPolicy.Params)
 
 		// Verify policy params contain header and value
 		params := *authPolicy.Params
-		assert.Contains(t, params, "requestHeaders")
+		assert.Contains(t, params, "request")
 	}
 }
 
@@ -559,7 +554,7 @@ func TestTransform_UnsupportedAuthType(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	_, err := transformer.Transform(provider, output)
 
 	require.Error(t, err, "Should error on unsupported auth type")
@@ -591,13 +586,12 @@ func TestTransform_AllowAll_NoExceptions(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Should have only catch-all operation
 	require.Len(t, spec.Operations, len(constants.WILDCARD_HTTP_METHODS))
@@ -637,13 +631,12 @@ func TestTransform_AllowAll_WithSingleException(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Should have 2 exception operations + 1 catch-all = 3 total
 	require.Len(t, spec.Operations, 2+len(constants.WILDCARD_HTTP_METHODS))
@@ -718,13 +711,12 @@ func TestTransform_AllowAll_WithSingleExceptionWithWildCardMethod(t *testing.T) 
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Should have 12
 	require.Len(t, spec.Operations, 2*len(constants.WILDCARD_HTTP_METHODS))
@@ -783,13 +775,12 @@ func TestTransform_AllowAll_WithSingleExceptionWithWildCardResource(t *testing.T
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Should have 12
 	require.Len(t, spec.Operations, 2*len(constants.WILDCARD_HTTP_METHODS))
@@ -852,13 +843,12 @@ func TestTransform_AllowAll_WithMultipleExceptions(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Should have 1 + 3 = 4 exception operations + 6 catch-all (one per HTTP method) = 10 total
 	require.Len(t, spec.Operations, 10)
@@ -913,13 +903,12 @@ func TestTransform_DenyAll_NoExceptions(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Should have NO operations
 	assert.Len(t, spec.Operations, 0, "Deny all with no exceptions should have no operations")
@@ -953,13 +942,12 @@ func TestTransform_DenyAll_WithSingleException(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Should have only 1 operation (the exception)
 	require.Len(t, spec.Operations, 1)
@@ -1000,13 +988,12 @@ func TestTransform_DenyAll_WithSingleExceptionWithWildCardMethod(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify all operations have the correct path and methods match WILDCARD_HTTP_METHODS
 	for i, op := range spec.Operations {
@@ -1066,13 +1053,12 @@ func TestTransform_DenyAll_WithSingleExceptionWithWildCardResource(t *testing.T)
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Should have len(constants.WILDCARD_HTTP_METHODS) operations (one for each method with wildcard path)
 	require.Len(t, spec.Operations, len(constants.WILDCARD_HTTP_METHODS))
@@ -1138,13 +1124,12 @@ func TestTransform_DenyAll_WithMultipleExceptions(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Should have exactly 3 operations
 	require.Len(t, spec.Operations, 3)
@@ -1183,7 +1168,7 @@ func TestTransform_InvalidAccessControlMode(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	_, err := transformer.Transform(provider, output)
 
 	require.Error(t, err, "Should error on invalid access control mode")
@@ -1239,13 +1224,12 @@ func TestTransform_WithSinglePolicy(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Find the operation
 	require.Len(t, spec.Operations, 1)
@@ -1261,7 +1245,7 @@ func TestTransform_WithSinglePolicy(t *testing.T) {
 	require.NotNil(t, policy.Params)
 
 	params := *policy.Params
-	assert.Equal(t, 10240.0, params["maxRequestBodySize"])
+	assert.Equal(t, 10240, params["maxRequestBodySize"])
 }
 
 func TestTransform_WithMultiplePoliciesSameRoute(t *testing.T) {
@@ -1325,13 +1309,12 @@ func TestTransform_WithMultiplePoliciesSameRoute(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Find the operation
 	require.Len(t, spec.Operations, 1)
@@ -1411,13 +1394,12 @@ func TestTransform_PolicyOnDifferentRoutes(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Find operations and verify policies
 	require.Len(t, spec.Operations, 2)
@@ -1441,15 +1423,17 @@ func TestTransform_PolicyOnWildcardMethod_1(t *testing.T) {
 
 	policies := []api.LLMPolicy{
 		{
-			Name:    "modify-headers",
+			Name:    "set-headers",
 			Version: "v0.1.0",
 			Paths: []api.LLMPolicyPath{
 				{
 					Path:    "/v1/chat/completions",
 					Methods: []api.LLMPolicyPathMethods{"*"}, // Wildcard method
 					Params: map[string]interface{}{
-						"requestHeaders": []map[string]string{
-							{"action": "SET", "name": "X-Custom", "value": "test"},
+						"request": map[string]any{
+							"headers": []map[string]string{
+								{"name": "X-Custom", "value": "test"},
+							},
 						},
 					},
 				},
@@ -1483,13 +1467,12 @@ func TestTransform_PolicyOnWildcardMethod_1(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Both operations should have the policy (wildcard matches all)
 	require.Len(t, spec.Operations, 2)
@@ -1499,14 +1482,14 @@ func TestTransform_PolicyOnWildcardMethod_1(t *testing.T) {
 		require.NotNil(t, op.Policies, "Operation %s %s should have policies", op.Method, op.Path)
 		require.Len(t, *op.Policies, 1, "Operation %s %s should have exactly 1 policy", op.Method, op.Path)
 
-		// The policy should be modify-headers
+		// The policy should be set-headers
 		policy := (*op.Policies)[0]
-		assert.Equal(t, "modify-headers", policy.Name, "Operation %s %s should have modify-headers policy", op.Method, op.Path)
+		assert.Equal(t, "set-headers", policy.Name, "Operation %s %s should have set-headers policy", op.Method, op.Path)
 		assert.Equal(t, "v0.1.0", policy.Version, "Operation %s %s should have correct policy version", op.Method, op.Path)
 
 		// Verify the policy params are set correctly
 		require.NotNil(t, policy.Params, "Operation %s %s policy should have params", op.Method, op.Path)
-		assert.Contains(t, *policy.Params, "requestHeaders", "Operation %s %s policy should have requestHeaders param", op.Method, op.Path)
+		assert.Contains(t, *policy.Params, "request", "Operation %s %s policy should have request param", op.Method, op.Path)
 	}
 }
 
@@ -1516,15 +1499,17 @@ func TestTransform_PolicyOnWildcardMethod_2(t *testing.T) {
 
 	policies := []api.LLMPolicy{
 		{
-			Name:    "modify-headers",
+			Name:    "set-headers",
 			Version: "v0.1.0",
 			Paths: []api.LLMPolicyPath{
 				{
 					Path:    "/v1/chat/completions",
 					Methods: []api.LLMPolicyPathMethods{"*"}, // Wildcard method
 					Params: map[string]interface{}{
-						"requestHeaders": []map[string]string{
-							{"action": "SET", "name": "X-Custom", "value": "test"},
+						"request": map[string]any{
+							"headers": []map[string]string{
+								{"name": "X-Custom", "value": "test"},
+							},
 						},
 					},
 				},
@@ -1558,13 +1543,12 @@ func TestTransform_PolicyOnWildcardMethod_2(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Wildcard methods expand to all standard HTTP methods
 	require.Len(t, spec.Operations, len(constants.WILDCARD_HTTP_METHODS))
@@ -1581,14 +1565,14 @@ func TestTransform_PolicyOnWildcardMethod_2(t *testing.T) {
 		require.NotNil(t, op.Policies, "Operation %s %s should have policies", op.Method, op.Path)
 		require.Len(t, *op.Policies, 1, "Operation %s %s should have exactly 1 policy", op.Method, op.Path)
 
-		// The policy should be modify-headers
+		// The policy should be set-headers
 		policy := (*op.Policies)[0]
-		assert.Equal(t, "modify-headers", policy.Name, "Operation %s %s should have modify-headers policy", op.Method, op.Path)
+		assert.Equal(t, "set-headers", policy.Name, "Operation %s %s should have set-headers policy", op.Method, op.Path)
 		assert.Equal(t, "v0.1.0", policy.Version, "Operation %s %s should have correct policy version", op.Method, op.Path)
 
 		// Verify the policy params are set correctly
 		require.NotNil(t, policy.Params, "Operation %s %s policy should have params", op.Method, op.Path)
-		assert.Contains(t, *policy.Params, "requestHeaders", "Operation %s %s policy should have requestHeaders param", op.Method, op.Path)
+		assert.Contains(t, *policy.Params, "request", "Operation %s %s policy should have request param", op.Method, op.Path)
 	}
 }
 
@@ -1638,13 +1622,12 @@ func TestTransform_PolicyOnNonExistentRoute(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Operation exists but policy shouldn't be attached
 	require.Len(t, spec.Operations, 1)
@@ -1697,13 +1680,12 @@ func TestTransform_AuthWithAllowAll(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Upstream auth is attached at operation level, not API level
 	assert.Nil(t, spec.Policies)
@@ -1771,16 +1753,18 @@ func TestGetUpstreamAuthApikeyPolicyParams(t *testing.T) {
 			require.NotNil(t, params)
 
 			// Verify structure
-			assert.Contains(t, params, "requestHeaders")
+			assert.Contains(t, params, "request")
 
-			requestHeaders, ok := params["requestHeaders"].([]interface{})
-			require.True(t, ok, "requestHeaders should be an array")
+			requestConfig, ok := params["request"].(map[string]interface{})
+			require.True(t, ok, "request should be a map")
+
+			requestHeaders, ok := requestConfig["headers"].([]interface{})
+			require.True(t, ok, "request.headers should be an array")
 			require.Len(t, requestHeaders, 1)
 
 			headerMap, ok := requestHeaders[0].(map[string]interface{})
 			require.True(t, ok, "Header should be a map")
 
-			assert.Equal(t, "SET", headerMap["action"])
 			assert.Equal(t, tt.header, headerMap["name"])
 			assert.Equal(t, tt.value, headerMap["value"])
 		})
@@ -1814,13 +1798,12 @@ func TestTransform_EmptyExceptionsArray(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Should behave same as no exceptions - 6 catch-all operations (one per HTTP method)
 	assert.Len(t, spec.Operations, len(constants.WILDCARD_HTTP_METHODS))
@@ -1862,13 +1845,12 @@ func TestTransform_DuplicateExceptionPaths(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Should have 2 exception operations + 6 catch-all (one per HTTP method) = 8 total
 	assert.Len(t, spec.Operations, 8)
@@ -1935,13 +1917,12 @@ func TestTransform_AllowAllWithPolicies(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Find /admin operation
 	var adminOp *api.Operation
@@ -2007,13 +1988,12 @@ func TestTransform_APILevelPolicy_AllowAll(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify no API-level policies exist
 	assert.Nil(t, spec.Policies, "No API-level policies should exist")
@@ -2030,7 +2010,7 @@ func TestTransform_APILevelPolicy_AllowAll(t *testing.T) {
 		assert.Equal(t, "GlobalRateLimit", policy.Name)
 		assert.Equal(t, "v1.0.0", policy.Version)
 		require.NotNil(t, policy.Params)
-		assert.Equal(t, 100.0, (*policy.Params)["rps"])
+		assert.Equal(t, 100, (*policy.Params)["rps"])
 	}
 }
 
@@ -2079,13 +2059,12 @@ func TestTransform_APILevelPolicy_DenyAll(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify no API-level policies exist (/* policy now attaches to operations)
 	assert.Nil(t, spec.Policies, "API-level policies should not exist")
@@ -2169,13 +2148,12 @@ func TestTransform_MultipleAPILevelPolicies_AllowAll(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify no API-level policies exist
 	assert.Nil(t, spec.Policies, "No API-level policies should exist")
@@ -2246,13 +2224,12 @@ func TestTransform_UpstreamAuth_Plus_APILevelPolicy_AllowAll(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Upstream auth is applied at operation level, not API level
 	assert.Nil(t, spec.Policies, "API-level policies should not exist")
@@ -2279,7 +2256,7 @@ func TestTransform_UpstreamAuth_Plus_APILevelPolicy_AllowAll(t *testing.T) {
 		require.NotNil(t, globalRateLimitPolicy)
 		assert.Equal(t, "v1.0.0", globalRateLimitPolicy.Version)
 		require.NotNil(t, globalRateLimitPolicy.Params)
-		assert.Equal(t, 100.0, (*globalRateLimitPolicy.Params)["rps"])
+		assert.Equal(t, 100, (*globalRateLimitPolicy.Params)["rps"])
 	}
 }
 
@@ -2337,13 +2314,12 @@ func TestTransform_UpstreamAuth_Plus_APILevelPolicy_DenyAll(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Upstream auth is applied at operation level, not API level
 	assert.Nil(t, spec.Policies, "API-level policies should not exist")
@@ -2443,13 +2419,12 @@ func TestTransform_APILevel_Plus_OperationLevel_Policies_AllowAll(t *testing.T) 
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify no API-level policies exist
 	assert.Nil(t, spec.Policies, "No API-level policies should exist")
@@ -2555,13 +2530,12 @@ func TestTransform_APILevel_Plus_OperationLevel_Policies_DenyAll(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify no API-level policies exist
 	assert.Nil(t, spec.Policies, "No API-level policies should exist")
@@ -2627,13 +2601,12 @@ func TestTransform_APILevelPolicy_WildcardMethods_AllowAll(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify no API-level policies exist
 	assert.Nil(t, spec.Policies, "No API-level policies should exist")
@@ -2692,13 +2665,12 @@ func TestTransform_NoAPILevelPolicy_OperationLevelOnly_AllowAll(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify NO API-level policies (since no /* policy)
 	if spec.Policies != nil {
@@ -2765,13 +2737,12 @@ func TestTransform_ExceptionPrecedence_ExactMatch(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Find the admin/delete DELETE operation
 	op := findOperation(spec.Operations, "/admin/delete", "DELETE")
@@ -2841,13 +2812,12 @@ func TestTransform_ExceptionPrecedence_WildcardCoverage_InternalPath(t *testing.
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Find internal/health GET operation
 	op := findOperation(spec.Operations, "/internal/health", "GET")
@@ -2934,13 +2904,12 @@ func TestTransform_ExceptionPrecedence_NestedWildcards(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Both paths should be blocked by their respective wildcard exceptions
 	usersOp := findOperation(spec.Operations, "/api/users", "GET")
@@ -3020,13 +2989,12 @@ func TestTransform_ExceptionPrecedence_PolicyAllowedWhenNotCovered(t *testing.T)
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// chat/completions is NOT covered by admin/*, so policy should attach
 	op := findOperation(spec.Operations, "/chat/completions", "POST")
@@ -3133,13 +3101,12 @@ func TestTransform_ExceptionPrecedence_MultipleOverlappingExceptions(t *testing.
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// All internal paths should be denied, policies should NOT attach
 	healthOp := findOperation(spec.Operations, "/internal/health", "GET")
@@ -3225,13 +3192,12 @@ func TestTransform_ExceptionPrecedence_WildcardMethodExpansion(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Check all HTTP methods - all should be denied
 	httpMethods := []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
@@ -3302,13 +3268,12 @@ func TestTransform_ExceptionPrecedence_PartialMethodCoverage(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// DELETE and POST should be denied (exception precedence)
 	deleteOp := findOperation(spec.Operations, "/admin/users", "DELETE")
@@ -3399,13 +3364,12 @@ func TestTransform_ExceptionPrecedence_DeepNestedPath(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Deeply nested path should still be covered by api/* exception
 	op := findOperation(spec.Operations, "/api/v1/resources/items/details", "GET")
@@ -3508,12 +3472,11 @@ func TestTransform_Auth_Plus_APILevel_Plus_OperationLevel_AllowAll(t *testing.T)
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Upstream auth is applied at operation level, not API level
 	assert.Nil(t, spec.Policies, "API-level policies should not exist")
@@ -3639,12 +3602,11 @@ func TestTransform_Auth_Plus_APILevel_Plus_OperationLevel_DenyAll(t *testing.T) 
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Upstream auth is applied at operation level, not API level
 	assert.Nil(t, spec.Policies, "API-level policies should not exist")
@@ -3767,12 +3729,11 @@ func TestTransform_MultipleAPILevelPolicies_Plus_Exceptions_Plus_OperationPolici
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify no API-level policies exist
 	assert.Nil(t, spec.Policies, "No API-level policies should exist")
@@ -3978,12 +3939,11 @@ func TestTransform_AllPolicyTypes_WildcardExceptions_WildcardOperations_AllowAll
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Upstream auth is applied at operation level, not API level
 	assert.Nil(t, spec.Policies, "API-level policies should not exist")
@@ -4209,12 +4169,11 @@ func TestTransform_AllPolicyTypes_WildcardExceptions_WildcardOperations_DenyAll(
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Upstream auth is applied at operation level, not API level
 	assert.Nil(t, spec.Policies, "API-level policies should not exist")
@@ -4340,12 +4299,11 @@ func TestTransform_PolicyMoreGeneral_AccessControlSpecific_DenyAll(t *testing.T)
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Should have only 1 operation (the specific exception)
 	require.NotNil(t, spec.Operations)
@@ -4419,12 +4377,11 @@ func TestTransform_MultipleOverlappingExceptions_MultipleWildcardPolicies_DenyAl
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Should have 2 operations: chat/completions/stream and chat/completions/streams
 	require.NotNil(t, spec.Operations)
@@ -4503,12 +4460,11 @@ func TestTransform_PolicyMoreSpecific_AccessControlWildcard_DenyAll(t *testing.T
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Should have 2 operations: chat/* (catch-all) and chat/completions (specific with policy)
 	require.NotNil(t, spec.Operations)
@@ -4588,12 +4544,11 @@ func TestTransform_MultipleOverlappingWildcards_DenyAll(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Should have 2 operations: chat/* and chat/comp*
 	require.NotNil(t, spec.Operations)
@@ -4694,12 +4649,11 @@ func TestTransform_TripleNestedWildcards_DenyAll(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Should have 3 operations
 	require.NotNil(t, spec.Operations)
@@ -4796,12 +4750,11 @@ func TestTransform_SiblingWildcards_DenyAll(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Should have 2 operations
 	require.NotNil(t, spec.Operations)
@@ -4877,12 +4830,11 @@ func TestTransform_PathMatchingEdgeCases_AllowAll_PolicyMoreGeneral(t *testing.T
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Find exception operation
 	exceptionOp := findOperation(spec.Operations, "internal/metrics", "GET")
@@ -4951,12 +4903,11 @@ func TestTransform_PathMatchingEdgeCases_AllowAll_NestedWildcardPolicies(t *test
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 
 	require.NoError(t, err)
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Should have operations for both wildcard policies + catch-all
 	require.NotNil(t, spec.Operations)
@@ -5059,12 +5010,11 @@ func TestTransform_ComplexCombined_MultipleAPILevelPolicies_NestedWildcards_Allo
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// ===== API-Level Policies =====
 	// Verify no API-level policies exist (/* policies go to operations)
@@ -5249,12 +5199,11 @@ func TestTransform_ComplexCombined_MultipleAPILevelPolicies_NestedWildcards_Deny
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify no API-level policies (GlobalSecurity and GlobalAudit apply to operations via /* matching)
 	assert.Nil(t, spec.Policies, "Should have no API-level policies")
@@ -5441,12 +5390,11 @@ func TestTransform_ComplexCombined_MaximumComplexity_AllowAll(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Upstream auth is applied at operation level, not API level
 	assert.Nil(t, spec.Policies, "API-level policies should not exist")
@@ -5751,12 +5699,11 @@ func TestTransform_ComplexCombined_MaximumComplexity_DenyAll(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Upstream auth is applied at operation level, not API level
 	assert.Nil(t, spec.Policies, "API-level policies should not exist")
@@ -5904,12 +5851,11 @@ func TestTransform_PolicyWildcard_AllowAll(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify admin/* exception operation exists with deny policy
 	adminDeleteOp := findOperation(spec.Operations, "admin/*", "DELETE")
@@ -5977,12 +5923,11 @@ func TestTransform_PolicyWildcard_DenyAll(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify chat/* operations exist for all HTTP methods (from exception)
 	for _, method := range constants.WILDCARD_HTTP_METHODS {
@@ -6059,12 +6004,11 @@ func TestTransform_PolicyWildcard_MatchingMultipleSpecificOperations_DenyAll(t *
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify all chat/* operations have the policy
 	chatCompletionsOp := findOperation(spec.Operations, "chat/completions", "POST")
@@ -6131,12 +6075,11 @@ func TestTransform_PolicyWildcard_MatchingWildcardOperations_DenyAll(t *testing.
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify chat/* operations have the policy for POST and GET
 	chatPostOp := findOperation(spec.Operations, "chat/*", "POST")
@@ -6219,12 +6162,11 @@ func TestTransform_NestedPolicyWildcards_DenyAll(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify chat/* operations have only ChatRootPolicy
 	for _, method := range constants.WILDCARD_HTTP_METHODS {
@@ -6319,12 +6261,11 @@ func TestTransform_PolicyWildcard_OverlappingAccessControlWildcards_DenyAll(t *t
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify api/* GET and POST have only APIRootPolicy
 	apiGetOp := findOperation(spec.Operations, "api/*", "GET")
@@ -6447,12 +6388,11 @@ func TestTransform_PolicyWildcard_AllowAll_WithExceptionPrecedence(t *testing.T)
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify admin/* exception operations have ONLY deny policy (exception precedence)
 	for _, method := range constants.WILDCARD_HTTP_METHODS {
@@ -6538,12 +6478,11 @@ func TestTransform_DynamicOperationCreation_PolicyOnSpecific_AccessControlWildca
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify both operations exist
 	chatWildcardOp := findOperation(spec.Operations, "chat/*", "POST")
@@ -6610,12 +6549,11 @@ func TestTransform_DynamicOperationCreation_MultiplePolicies_SameOperation_DenyA
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify api/models GET operation exists (created dynamically)
 	apiModelsOp := findOperation(spec.Operations, "api/models", "GET")
@@ -6679,12 +6617,11 @@ func TestTransform_DynamicOperationCreation_AllowAll_PolicyCreatesOperation(t *t
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify chat/completions operation was created dynamically
 	chatCompletionsOp := findOperation(spec.Operations, "chat/completions", "POST")
@@ -6755,12 +6692,11 @@ func TestTransform_DynamicOperationCreation_OperationRegistry_PreventsDuplicates
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Count chat/completions POST operations - should be exactly 1
 	completionsCount := 0
@@ -6839,12 +6775,11 @@ func TestTransform_DynamicOperationCreation_NestedSpecificPaths_DenyAll(t *testi
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify all specific operations were created dynamically
 	chatCompletionsOp := findOperation(spec.Operations, "api/chat/completions", "POST")
@@ -6926,12 +6861,11 @@ func TestTransform_DynamicOperationCreation_AllowAll_MultipleSpecificPolicies(t 
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify all specific operations were created dynamically
 	chatCompletionsOp := findOperation(spec.Operations, "chat/completions", "POST")
@@ -7005,12 +6939,11 @@ func TestTransform_OperationSorting_NonWildcardBeforeWildcard_DenyAll(t *testing
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify operation count
 	assert.Equal(t, 4, len(spec.Operations))
@@ -7058,12 +6991,11 @@ func TestTransform_OperationSorting_LongerPathsFirst_DenyAll(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify operation count
 	assert.Equal(t, 5, len(spec.Operations))
@@ -7120,12 +7052,11 @@ func TestTransform_OperationSorting_CatchAllLast_AllowAll(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Find where catch-all operations start
 	catchAllStartIndex := -1
@@ -7190,12 +7121,11 @@ func TestTransform_OperationSorting_CatchAllLast_AllowAll(t *testing.T) {
 //		},
 //	}
 //
-//	output := &api.APIConfiguration{}
+//	output := &api.RestAPI{}
 //	result, err := transformer.Transform(provider, output)
 //	require.NoError(t, err)
 //
-//	spec, err := result.Spec.AsAPIConfigData()
-//	require.NoError(t, err)
+//	spec := result.Spec
 //
 //	// Verify operation count
 //	assert.Equal(t, 4, len(spec.Operations))
@@ -7245,12 +7175,11 @@ func TestTransform_OperationSorting_ComplexMultipleWildcardLevels_DenyAll(t *tes
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify operation count
 	assert.Equal(t, 7, len(spec.Operations))
@@ -7321,12 +7250,11 @@ func TestTransform_OperationSorting_MixedMethodsSamePath_DenyAll(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Should have 6 operations (one per HTTP method)
 	assert.Equal(t, len(constants.WILDCARD_HTTP_METHODS), len(spec.Operations))
@@ -7396,12 +7324,11 @@ func TestTransform_OperationSorting_AllowAll_ComplexMixedOperations(t *testing.T
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Identify operation types
 	specificPaths := []string{}
@@ -7485,12 +7412,11 @@ func TestTransform_OperationSorting_SpecificityPreservation_DenyAll(t *testing.T
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Expected order (most specific to least specific):
 	// 1. a/b/c/d (longest, no wildcard)
@@ -7562,12 +7488,11 @@ func TestTransform_AllowAll_UserPolicyOnCatchAll_NotDenied(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify monitor/* operation was created with policy
 	monitorOp := findOperation(spec.Operations, "monitor/*", "GET")
@@ -7634,12 +7559,11 @@ func TestTransform_AllowAll_UserPolicyOnSpecificOperation_NotDenied(t *testing.T
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify chat/completions operation was created with policy (not denied)
 	chatCompletionsOp := findOperation(spec.Operations, "chat/completions", "POST")
@@ -7719,12 +7643,11 @@ func TestTransform_AllowAll_DenyPolicyPreventsUserPolicy(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify internal/health does not exist (covered by internal/* exception)
 	internalHealthOp := findOperation(spec.Operations, "internal/health", "GET")
@@ -7829,12 +7752,11 @@ func TestTransform_AllowAll_PolicyOnAllowedPath_MixedExceptions(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify chat/completions has user policy (not covered by any exception)
 	chatCompletionsOp := findOperation(spec.Operations, "chat/completions", "POST")
@@ -7963,12 +7885,11 @@ func TestTransform_AllowAll_WildcardPolicyWithExceptions(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// 1. Verify all exception routes have ONLY deny policy for relevant methods
 
@@ -8127,12 +8048,11 @@ func TestTransform_AllowAll_MultiplePolicies_PartiallyDenied(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify chat/completions DELETE has only deny policy
 	chatDeleteOp := findOperation(spec.Operations, "chat/completions", "DELETE")
@@ -8236,12 +8156,11 @@ func TestTransform_AllowAll_NestedPolicyWithPartialExceptions(t *testing.T) {
 		},
 	}
 
-	output := &api.APIConfiguration{}
+	output := &api.RestAPI{}
 	result, err := transformer.Transform(provider, output)
 	require.NoError(t, err)
 
-	spec, err := result.Spec.AsAPIConfigData()
-	require.NoError(t, err)
+	spec := result.Spec
 
 	// Verify api/v1/admin/* has only deny policy for all methods (exception takes precedence)
 	for _, method := range constants.WILDCARD_HTTP_METHODS {

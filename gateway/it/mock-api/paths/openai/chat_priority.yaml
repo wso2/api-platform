@@ -1,0 +1,55 @@
+post:
+  summary: Create chat completion with priority service tier
+  operationId: createChatCompletionPriority
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - model
+            - messages
+          properties:
+            model:
+              type: string
+            messages:
+              type: array
+              items:
+                type: object
+
+  responses:
+    "200":
+      description: Successful response with priority service tier
+      content:
+        application/json:
+          # gpt-4.1: input_priority=3.5e-6, output_priority=1.4e-5
+          # prompt=100, completion=50, service_tier=priority
+          # cost = 100*3.5e-6 + 50*1.4e-5 = 3.5e-4 + 7.0e-4 = 0.0010500000
+          example:
+            id: chatcmpl-PriorityTierTest
+            object: chat.completion
+            created: 1741569952
+            model: gpt-4.1
+            choices:
+              - index: 0
+                message:
+                  role: assistant
+                  content: "Priority tier response."
+                  refusal: null
+                  annotations: []
+                logprobs: null
+                finish_reason: stop
+            usage:
+              prompt_tokens: 100
+              completion_tokens: 50
+              total_tokens: 150
+              prompt_tokens_details:
+                cached_tokens: 0
+                audio_tokens: 0
+              completion_tokens_details:
+                reasoning_tokens: 0
+                audio_tokens: 0
+                accepted_prediction_tokens: 0
+                rejected_prediction_tokens: 0
+            service_tier: priority

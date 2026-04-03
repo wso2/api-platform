@@ -22,15 +22,69 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/wso2/api-platform/common/eventhub"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
+
+type publishedControlPlaneEvent struct {
+	gatewayID string
+	event     eventhub.Event
+}
+
+type mockControlPlaneEventHub struct {
+	publishedEvents []publishedControlPlaneEvent
+	publishErr      error
+}
+
+func (m *mockControlPlaneEventHub) Initialize() error {
+	return nil
+}
+
+func (m *mockControlPlaneEventHub) RegisterGateway(string) error {
+	return nil
+}
+
+func (m *mockControlPlaneEventHub) PublishEvent(gatewayID string, event eventhub.Event) error {
+	if m.publishErr != nil {
+		return m.publishErr
+	}
+	m.publishedEvents = append(m.publishedEvents, publishedControlPlaneEvent{
+		gatewayID: gatewayID,
+		event:     event,
+	})
+	return nil
+}
+
+func (m *mockControlPlaneEventHub) Subscribe(string) (<-chan eventhub.Event, error) {
+	return nil, nil
+}
+
+func (m *mockControlPlaneEventHub) Unsubscribe(string, <-chan eventhub.Event) error {
+	return nil
+}
+
+func (m *mockControlPlaneEventHub) UnsubscribeAll(string) error {
+	return nil
+}
+
+func (m *mockControlPlaneEventHub) CleanUpEvents() error {
+	return nil
+}
+
+func (m *mockControlPlaneEventHub) Close() error {
+	return nil
+}
 
 func TestState_String(t *testing.T) {
 	tests := []struct {
@@ -95,7 +149,6 @@ func TestAPIDeployedEvent(t *testing.T) {
 		Payload: APIDeployedEventPayload{
 			APIID:        "api-123",
 			DeploymentID: "rev-1",
-			VHost:        "api.example.com",
 		},
 		Timestamp:     "2025-01-30T12:00:00Z",
 		CorrelationID: "corr-789",
@@ -110,9 +163,6 @@ func TestAPIDeployedEvent(t *testing.T) {
 	if event.Payload.DeploymentID != "rev-1" {
 		t.Errorf("Payload.DeploymentID = %q, want %q", event.Payload.DeploymentID, "rev-1")
 	}
-	if event.Payload.VHost != "api.example.com" {
-		t.Errorf("Payload.VHost = %q, want %q", event.Payload.VHost, "api.example.com")
-	}
 	if event.CorrelationID != "corr-789" {
 		t.Errorf("CorrelationID = %q, want %q", event.CorrelationID, "corr-789")
 	}
@@ -122,7 +172,6 @@ func TestAPIDeployedEventPayload(t *testing.T) {
 	payload := APIDeployedEventPayload{
 		APIID:        "test-api",
 		DeploymentID: "rev-2",
-		VHost:        "staging.example.com",
 	}
 
 	if payload.APIID != "test-api" {
@@ -131,22 +180,24 @@ func TestAPIDeployedEventPayload(t *testing.T) {
 	if payload.DeploymentID != "rev-2" {
 		t.Errorf("DeploymentID = %q, want %q", payload.DeploymentID, "rev-2")
 	}
-	if payload.VHost != "staging.example.com" {
-		t.Errorf("VHost = %q, want %q", payload.VHost, "staging.example.com")
-	}
 }
 
 func createTestClient(t *testing.T) *Client {
 	t.Helper()
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	store := storage.NewConfigStore()
-
-	cfg := config.ControlPlaneConfig{
+	return createTestClientWithConfig(t, config.ControlPlaneConfig{
 		Host:             "control-plane.example.com",
 		Token:            "test-token",
 		ReconnectInitial: 1 * time.Second,
 		ReconnectMax:     30 * time.Second,
-	}
+	})
+}
+
+func createTestClientWithConfig(t *testing.T, cfg config.ControlPlaneConfig) *Client {
+	t.Helper()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	store := storage.NewConfigStore()
+	db := newMockStorageForDeletion()
+	mockHub := &mockControlPlaneEventHub{}
 
 	routerConfig := &config.RouterConfig{
 		VHosts: config.VHostsConfig{
@@ -155,7 +206,34 @@ func createTestClient(t *testing.T) *Client {
 		},
 	}
 
-	return NewClient(cfg, logger, store, nil, nil, nil, routerConfig, nil, nil, nil, nil, nil, nil, nil)
+	apiKeyConfig := &config.APIKeyConfig{
+		Algorithm:            "sha256",
+		MinKeyLength:         32,
+		MaxKeyLength:         128,
+		APIKeysPerUserPerAPI: 5,
+	}
+	systemConfig := &config.Config{
+		Controller: config.Controller{
+			Server: config.ServerConfig{
+				GatewayID: "test-gateway",
+			},
+		},
+		Router: *routerConfig,
+		APIKey: *apiKeyConfig,
+	}
+
+	return NewClient(cfg, logger, store, db, nil, nil, routerConfig, nil, nil, apiKeyConfig, nil, systemConfig, nil, nil, nil, nil, mockHub, nil)
+}
+
+func createTestClientWithHost(t *testing.T, host string) *Client {
+	t.Helper()
+	return createTestClientWithConfig(t, config.ControlPlaneConfig{
+		Host:               host,
+		Token:              "test-token",
+		ReconnectInitial:   1 * time.Second,
+		ReconnectMax:       30 * time.Second,
+		InsecureSkipVerify: true,
+	})
 }
 
 func TestNewClient(t *testing.T) {
@@ -172,6 +250,18 @@ func TestNewClient(t *testing.T) {
 	// Verify not connected initially
 	if client.IsConnected() {
 		t.Error("Client should not be connected initially")
+	}
+
+	if client.db == nil {
+		t.Error("Client should be initialized with a database in tests")
+	}
+
+	if client.eventHub == nil {
+		t.Error("Client should be initialized with an event hub in tests")
+	}
+
+	if client.gatewayID != "test-gateway" {
+		t.Errorf("gatewayID = %q, want %q", client.gatewayID, "test-gateway")
 	}
 }
 
@@ -233,6 +323,75 @@ func TestClient_getRestAPIBaseURL(t *testing.T) {
 	}
 }
 
+func TestClient_discoverGatewayPath_Success(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/internal/gateway/.well-known" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"gatewayPath":"internal/data/v1"}`))
+	}))
+	defer server.Close()
+
+	host := strings.TrimPrefix(server.URL, "https://")
+	client := createTestClientWithHost(t, host)
+
+	gatewayPath, err := client.discoverGatewayPath()
+	if err != nil {
+		t.Fatalf("discoverGatewayPath() error = %v", err)
+	}
+
+	if gatewayPath != "/internal/data/v1" {
+		t.Errorf("discoverGatewayPath() = %q, want %q", gatewayPath, "/internal/data/v1")
+	}
+
+	resolved := client.resolveWebSocketConnectURL()
+	expected := "wss://" + host + "/internal/data/v1/ws/gateways/connect"
+	if resolved != expected {
+		t.Errorf("resolveWebSocketConnectURL() = %q, want %q", resolved, expected)
+	}
+}
+
+func TestClient_resolveWebSocketConnectURL_FallbackOnWellKnownError(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"internal error"}`))
+	}))
+	defer server.Close()
+
+	host := strings.TrimPrefix(server.URL, "https://")
+	client := createTestClientWithHost(t, host)
+
+	resolved := client.resolveWebSocketConnectURL()
+	fallback := client.getWebSocketConnectURL()
+
+	if resolved != fallback {
+		t.Errorf("resolveWebSocketConnectURL() = %q, want fallback %q", resolved, fallback)
+	}
+}
+
+func TestNormalizeGatewayPath(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{name: "plain", input: "internal/data/v1", expected: "/internal/data/v1"},
+		{name: "leading slash", input: "/internal/data/v1", expected: "/internal/data/v1"},
+		{name: "trailing slash", input: "internal/data/v1/", expected: "/internal/data/v1"},
+		{name: "surrounded spaces", input: "  /internal/data/v1/  ", expected: "/internal/data/v1"},
+		{name: "empty", input: "", expected: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := normalizeGatewayPath(tt.input); got != tt.expected {
+				t.Errorf("normalizeGatewayPath(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestClient_isShuttingDown(t *testing.T) {
 	client := createTestClient(t)
 
@@ -249,18 +408,13 @@ func TestClient_isShuttingDown(t *testing.T) {
 }
 
 func TestClient_isShuttingDown_ContextCancelled(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	store := storage.NewConfigStore()
-
 	cfg := config.ControlPlaneConfig{
 		Host:             "control-plane.example.com",
 		Token:            "test-token",
 		ReconnectInitial: 1 * time.Second,
 		ReconnectMax:     30 * time.Second,
 	}
-
-	routerConfig := &config.RouterConfig{}
-	client := NewClient(cfg, logger, store, nil, nil, nil, routerConfig, nil, nil, nil, nil, nil, nil, nil)
+	client := createTestClientWithConfig(t, cfg)
 
 	// Cancel context
 	client.cancel()
@@ -309,9 +463,6 @@ func TestClient_PushAPIDeployment_NotConnected(t *testing.T) {
 }
 
 func TestClient_Start_NoToken(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	store := storage.NewConfigStore()
-
 	// Create client without token
 	cfg := config.ControlPlaneConfig{
 		Host:             "control-plane.example.com",
@@ -319,9 +470,7 @@ func TestClient_Start_NoToken(t *testing.T) {
 		ReconnectInitial: 1 * time.Second,
 		ReconnectMax:     30 * time.Second,
 	}
-
-	routerConfig := &config.RouterConfig{}
-	client := NewClient(cfg, logger, store, nil, nil, nil, routerConfig, nil, nil, nil, nil, nil, nil, nil)
+	client := createTestClientWithConfig(t, cfg)
 
 	// Start should return nil and not attempt connection when no token
 	err := client.Start()
@@ -409,17 +558,107 @@ func TestClient_handleMessage_UnknownType(t *testing.T) {
 	client.handleMessage(1, []byte(msg))
 }
 
-func TestClient_handleAPIUndeployedEvent(t *testing.T) {
-	client := createTestClient(t)
 
-	// Should handle undeploy event without panic
-	event := map[string]interface{}{
-		"type":          "api.undeployed",
-		"payload":       map[string]interface{}{"apiId": "api-123"},
-		"timestamp":     "2025-01-30T12:00:00Z",
-		"correlationId": "corr-789",
+func TestClient_handleMCPProxyUndeploymentEvent_PublishesReplicaSyncUpdate(t *testing.T) {
+	client := createTestClient(t)
+	db := client.db.(*mockStorageForDeletion)
+	hub := client.eventHub.(*mockControlPlaneEventHub)
+	contextPath := "/mcp"
+	upstreamURL := "https://example.com"
+
+	cfg := &models.StoredConfig{
+		UUID:         "mcp-123",
+		Kind:         string(api.Mcp),
+		Handle:       "test-mcp",
+		DisplayName:  "Test MCP",
+		Version:      "v1.0.0",
+		DeploymentID: "rev-1",
+		Origin:       models.OriginControlPlane,
+		Configuration: api.RestAPI{
+			Kind:     api.RestApi,
+			Metadata: api.Metadata{Name: "test-mcp"},
+			Spec: api.APIConfigData{
+				DisplayName: "Test MCP",
+				Version:     "v1.0.0",
+				Context:     "/mcp",
+				Upstream: struct {
+					Main    api.Upstream  `json:"main" yaml:"main"`
+					Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+				}{
+					Main: api.Upstream{Url: &upstreamURL},
+				},
+				Operations: []api.Operation{
+					{Method: api.OperationMethodGET, Path: "/"},
+				},
+			},
+		},
+		SourceConfiguration: api.MCPProxyConfiguration{
+			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.Mcp,
+			Metadata:   api.Metadata{Name: "test-mcp"},
+			Spec: api.MCPProxyConfigData{
+				DisplayName: "Test MCP",
+				Version:     "v1.0.0",
+				Context:     &contextPath,
+				Upstream: api.MCPProxyConfigData_Upstream{
+					Url: &upstreamURL,
+				},
+			},
+		},
+		DesiredState: models.StateDeployed,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
 	}
-	client.handleAPIUndeployedEvent(event)
+	dbCfg := *cfg
+	memCfg := *cfg
+	if err := db.SaveConfig(&dbCfg); err != nil {
+		t.Fatalf("failed to seed MCP config in DB: %v", err)
+	}
+	if err := client.store.Add(&memCfg); err != nil {
+		t.Fatalf("failed to seed MCP config in memory store: %v", err)
+	}
+	event := map[string]interface{}{
+		"type":          "mcpproxy.undeployed",
+		"payload":       map[string]interface{}{"proxyId": cfg.UUID, "deploymentId": "rev-1", "performedAt": "2025-01-30T12:00:00Z"},
+		"timestamp":     "2025-01-30T12:00:00Z",
+		"correlationId": "corr-mcp-undeploy",
+	}
+	client.handleMCPProxyUndeploymentEvent(event)
+
+	if len(hub.publishedEvents) != 1 {
+		t.Fatalf("expected 1 MCP replica-sync event, got %d", len(hub.publishedEvents))
+	}
+	if hub.publishedEvents[0].event.EventType != eventhub.EventTypeMCPProxy {
+		t.Fatalf("expected MCP proxy event type, got %s", hub.publishedEvents[0].event.EventType)
+	}
+	if hub.publishedEvents[0].event.Action != "UPDATE" {
+		t.Fatalf("expected UPDATE action, got %s", hub.publishedEvents[0].event.Action)
+	}
+	if hub.publishedEvents[0].event.EntityID != cfg.UUID {
+		t.Fatalf("expected entity id %s, got %s", cfg.UUID, hub.publishedEvents[0].event.EntityID)
+	}
+	if hub.publishedEvents[0].event.EventID != "corr-mcp-undeploy" {
+		t.Fatalf("expected correlation id corr-mcp-undeploy, got %s", hub.publishedEvents[0].event.EventID)
+	}
+
+	stored, err := db.GetConfig(cfg.UUID)
+	if err != nil {
+		t.Fatalf("expected stored MCP config after undeploy: %v", err)
+	}
+	if stored.DesiredState != models.StateUndeployed {
+		t.Fatalf("expected DB desired state undeployed, got %s", stored.DesiredState)
+	}
+	if stored.DeploymentID != "rev-1" {
+		t.Fatalf("expected DB deployment ID rev-1, got %s", stored.DeploymentID)
+	}
+
+	inMemory, err := client.store.Get(cfg.UUID)
+	if err != nil {
+		t.Fatalf("expected MCP config to remain in memory until event replay: %v", err)
+	}
+	if inMemory.DesiredState != models.StateDeployed {
+		t.Fatalf("expected in-memory desired state to remain deployed until replay, got %s", inMemory.DesiredState)
+	}
 }
 
 func TestClient_ConcurrentStateAccess(t *testing.T) {

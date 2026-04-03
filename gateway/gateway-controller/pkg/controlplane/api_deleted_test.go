@@ -19,37 +19,56 @@
 package controlplane
 
 import (
+	"database/sql"
 	"errors"
-	"fmt"
 	"log/slog"
 	"os"
 	"testing"
 	"time"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	"github.com/wso2/api-platform/common/eventhub"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
 
 // mockStorageForDeletion implements storage.Storage interface for deletion testing
 type mockStorageForDeletion struct {
-	configs            map[string]*models.StoredConfig
-	deleteErr          error
-	getErr             error
-	removeKeyErr       error
-	deleteCallCount    int
-	removeKeyCallCount int
+	configs                      map[string]*models.StoredConfig
+	secrets                      map[string]*models.Secret
+	subscriptions                map[string]*models.Subscription
+	apiKeysByUUID                map[string]*models.APIKey
+	replacedMappings             []*models.ApplicationAPIKeyMapping
+	replacedAppID                string
+	replacedAppUUID              string
+	replacedAppName              string
+	replacedAppType              string
+	deleteErr                    error
+	updateErr                    error
+	getErr                       error
+	removeKeyErr                 error
+	removeSubscriptionErr        error
+	replaceErr                   error
+	deleteCallCount              int
+	removeKeyCallCount           int
+	removeSubscriptionCallCount  int
+	lastSubscriptionCleanupAPIID string
+	upsertAffected               *bool // nil = default (true); non-nil = use this value
+	upsertErr                    error
+	upsertCallCount              int
 }
 
 func newMockStorageForDeletion() *mockStorageForDeletion {
 	return &mockStorageForDeletion{
-		configs: make(map[string]*models.StoredConfig),
+		configs:       make(map[string]*models.StoredConfig),
+		secrets:       make(map[string]*models.Secret),
+		subscriptions: make(map[string]*models.Subscription),
+		apiKeysByUUID: make(map[string]*models.APIKey),
 	}
 }
 
 func (m *mockStorageForDeletion) SaveConfig(config *models.StoredConfig) error {
-	m.configs[config.ID] = config
+	m.configs[config.UUID] = config
 	return nil
 }
 
@@ -65,8 +84,23 @@ func (m *mockStorageForDeletion) GetConfig(id string) (*models.StoredConfig, err
 }
 
 func (m *mockStorageForDeletion) UpdateConfig(config *models.StoredConfig) error {
-	m.configs[config.ID] = config
+	m.configs[config.UUID] = config
 	return nil
+}
+
+func (m *mockStorageForDeletion) UpsertConfig(config *models.StoredConfig) (bool, error) {
+	m.upsertCallCount++
+	if m.upsertErr != nil {
+		return false, m.upsertErr
+	}
+	affected := true
+	if m.upsertAffected != nil {
+		affected = *m.upsertAffected
+	}
+	if affected {
+		m.configs[config.UUID] = config
+	}
+	return affected, nil
 }
 
 func (m *mockStorageForDeletion) DeleteConfig(id string) error {
@@ -100,22 +134,32 @@ func (m *mockStorageForDeletion) GetAllConfigsByKind(kind string) ([]*models.Sto
 	return configs, nil
 }
 
-func (m *mockStorageForDeletion) GetConfigByNameVersion(name, version string) (*models.StoredConfig, error) {
+func (m *mockStorageForDeletion) GetAllConfigsByOrigin(origin models.Origin) ([]*models.StoredConfig, error) {
+	var configs []*models.StoredConfig
 	for _, config := range m.configs {
-		if config.GetDisplayName() == name && config.GetVersion() == version {
-			return config, nil
+		if config.Origin == origin {
+			configs = append(configs, config)
 		}
 	}
-	return nil, fmt.Errorf("config not found")
+	return configs, nil
 }
 
-func (m *mockStorageForDeletion) GetConfigByHandle(handle string) (*models.StoredConfig, error) {
+func (m *mockStorageForDeletion) GetConfigByKindAndHandle(kind string, handle string) (*models.StoredConfig, error) {
 	for _, config := range m.configs {
-		if config.GetHandle() == handle {
+		if config.Kind == kind && config.Handle == handle {
 			return config, nil
 		}
 	}
-	return nil, fmt.Errorf("config not found")
+	return nil, storage.ErrNotFound
+}
+
+func (m *mockStorageForDeletion) GetConfigByKindNameAndVersion(kind, displayName, version string) (*models.StoredConfig, error) {
+	for _, config := range m.configs {
+		if config.Kind == kind && config.DisplayName == displayName && config.Version == version {
+			return config, nil
+		}
+	}
+	return nil, storage.ErrNotFound
 }
 
 func (m *mockStorageForDeletion) Close() error {
@@ -126,8 +170,146 @@ func (m *mockStorageForDeletion) SaveAPIKey(key *models.APIKey) error {
 	return nil
 }
 
+func (m *mockStorageForDeletion) UpsertAPIKey(key *models.APIKey) error {
+	return nil
+}
+
 func (m *mockStorageForDeletion) GetAPIKey(apiID, name string) (*models.APIKey, error) {
 	return nil, storage.ErrNotFound
+}
+
+// Subscription methods
+
+func (m *mockStorageForDeletion) SaveSubscription(sub *models.Subscription) error {
+	// Deletion tests don't depend on subscription persistence
+	if m.subscriptions == nil {
+		m.subscriptions = make(map[string]*models.Subscription)
+	}
+	m.subscriptions[sub.ID] = sub
+	return nil
+}
+
+func (m *mockStorageForDeletion) GetSubscriptionByID(id, gatewayID string) (*models.Subscription, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	if sub, ok := m.subscriptions[id]; ok {
+		if gatewayID != "" && sub.GatewayID != gatewayID {
+			return nil, storage.ErrNotFound
+		}
+		return sub, nil
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *mockStorageForDeletion) ListActiveSubscriptions() ([]*models.Subscription, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	result := make([]*models.Subscription, 0)
+	for _, sub := range m.subscriptions {
+		if sub == nil || sub.Status != models.SubscriptionStatusActive {
+			continue
+		}
+		result = append(result, sub)
+	}
+	return result, nil
+}
+
+func (m *mockStorageForDeletion) ListSubscriptionsByAPI(apiID, gatewayID string, applicationID *string, status *string) ([]*models.Subscription, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	result := make([]*models.Subscription, 0)
+	for _, sub := range m.subscriptions {
+		if apiID != "" && sub.APIID != apiID {
+			continue
+		}
+		if gatewayID != "" && sub.GatewayID != gatewayID {
+			continue
+		}
+		if applicationID != nil && *applicationID != "" && (sub.ApplicationID == nil || *sub.ApplicationID != *applicationID) {
+			continue
+		}
+		if status != nil && *status != "" && string(sub.Status) != *status {
+			continue
+		}
+		result = append(result, sub)
+	}
+	return result, nil
+}
+
+func (m *mockStorageForDeletion) UpdateSubscription(sub *models.Subscription) error {
+	if m.updateErr != nil {
+		return m.updateErr
+	}
+	if m.subscriptions == nil {
+		m.subscriptions = make(map[string]*models.Subscription)
+	}
+	m.subscriptions[sub.ID] = sub
+	return nil
+}
+
+func (m *mockStorageForDeletion) DeleteSubscription(id, gatewayID string) error {
+	// Don't touch deleteCallCount used for DeleteConfig assertions.
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	if m.subscriptions == nil {
+		return storage.ErrNotFound
+	}
+	sub, ok := m.subscriptions[id]
+	if !ok {
+		return storage.ErrNotFound
+	}
+	if gatewayID != "" && sub.GatewayID != gatewayID {
+		return storage.ErrNotFound
+	}
+	delete(m.subscriptions, id)
+	return nil
+}
+
+// Subscription Plan methods
+
+func (m *mockStorageForDeletion) SaveSubscriptionPlan(plan *models.SubscriptionPlan) error {
+	return nil
+}
+
+func (m *mockStorageForDeletion) GetSubscriptionPlanByID(id, gatewayID string) (*models.SubscriptionPlan, error) {
+	return nil, storage.ErrNotFound
+}
+
+func (m *mockStorageForDeletion) ListSubscriptionPlans(gatewayID string) ([]*models.SubscriptionPlan, error) {
+	return nil, nil
+}
+
+func (m *mockStorageForDeletion) UpdateSubscriptionPlan(plan *models.SubscriptionPlan) error {
+	return nil
+}
+
+func (m *mockStorageForDeletion) DeleteSubscriptionPlan(id, gatewayID string) error {
+	return nil
+}
+
+func (m *mockStorageForDeletion) DeleteSubscriptionPlansNotIn(ids []string) error {
+	return nil
+}
+
+func (m *mockStorageForDeletion) DeleteSubscriptionsForAPINotIn(apiID string, ids []string) error {
+	m.removeSubscriptionCallCount++
+	m.lastSubscriptionCleanupAPIID = apiID
+	if m.removeSubscriptionErr != nil {
+		return m.removeSubscriptionErr
+	}
+	return nil
+}
+
+func (m *mockStorageForDeletion) ListAPIKeysForArtifactsNotIn(artifactUUIDs []string, keyUUIDs []string) ([]*models.APIKey, error) {
+	return nil, nil
+}
+
+func (m *mockStorageForDeletion) DeleteAPIKeysByUUIDs(uuids []string) error {
+	return nil
 }
 
 func (m *mockStorageForDeletion) GetAPIKeyByValue(keyValue string) (*models.APIKey, error) {
@@ -147,6 +329,13 @@ func (m *mockStorageForDeletion) DeleteAPIKey(apiID string) error {
 }
 
 func (m *mockStorageForDeletion) GetAPIKeyByID(apiKeyID string) (*models.APIKey, error) {
+	return nil, storage.ErrNotFound
+}
+
+func (m *mockStorageForDeletion) GetAPIKeyByUUID(uuid string) (*models.APIKey, error) {
+	if key, ok := m.apiKeysByUUID[uuid]; ok {
+		return key, nil
+	}
 	return nil, storage.ErrNotFound
 }
 
@@ -180,6 +369,20 @@ func (m *mockStorageForDeletion) RemoveAPIKeysAPI(apiID string) error {
 
 func (m *mockStorageForDeletion) CountActiveAPIKeysByUserAndAPI(userID, apiID string) (int, error) {
 	return 0, nil
+}
+
+func (m *mockStorageForDeletion) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) error {
+	if m.replaceErr != nil {
+		return m.replaceErr
+	}
+	if application != nil {
+		m.replacedAppID = application.ApplicationID
+		m.replacedAppUUID = application.ApplicationUUID
+		m.replacedAppName = application.ApplicationName
+		m.replacedAppType = application.ApplicationType
+	}
+	m.replacedMappings = append([]*models.ApplicationAPIKeyMapping(nil), mappings...)
+	return nil
 }
 
 // Certificate methods (not used in deletion tests but required by interface)
@@ -224,88 +427,143 @@ func (m *mockStorageForDeletion) GetAllLLMProviderTemplates() ([]*models.StoredL
 	return nil, nil
 }
 
+func (m *mockStorageForDeletion) GetLLMProviderTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
+	return nil, storage.ErrNotFound
+}
+
 func (m *mockStorageForDeletion) DeleteLLMProviderTemplate(id string) error {
 	return nil
 }
 
-// mockXDSManager implements a mock XDSManager for testing
-type mockXDSManager struct {
-	removedAPIs []string
-	removeErr   error
-}
-
-func newMockXDSManager() *mockXDSManager {
-	return &mockXDSManager{
-		removedAPIs: make([]string, 0),
+// Secret methods (not used in deletion tests but required by interface)
+func (m *mockStorageForDeletion) SaveSecret(secret *models.Secret) error {
+	if m.deleteErr != nil { // reuse existing error fields only if needed
+		return m.deleteErr
 	}
-}
-
-func (m *mockXDSManager) StoreAPIKey(apiId, apiName, apiVersion string, apiKey *models.APIKey, correlationID string) error {
+	m.secrets[secret.Handle] = secret
 	return nil
 }
 
-func (m *mockXDSManager) RevokeAPIKey(apiId, apiName, apiVersion, apiKeyName, correlationID string) error {
+func (m *mockStorageForDeletion) GetSecrets() ([]models.SecretMeta, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	secrets := make([]models.SecretMeta, 0, len(m.secrets))
+	for handle, secret := range m.secrets {
+		secrets = append(secrets, models.SecretMeta{
+			Handle:      handle,
+			DisplayName: secret.DisplayName,
+			CreatedAt:   secret.CreatedAt,
+			UpdatedAt:   secret.UpdatedAt,
+		})
+	}
+	return secrets, nil
+}
+
+func (m *mockStorageForDeletion) GetSecret(handle string) (*models.Secret, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	if s, ok := m.secrets[handle]; ok {
+		return s, nil
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *mockStorageForDeletion) UpdateSecret(secret *models.Secret) (*models.Secret, error) {
+	if m.updateErr != nil {
+		return nil, m.updateErr
+	}
+	if _, ok := m.secrets[secret.Handle]; !ok {
+		return nil, storage.ErrNotFound
+	}
+	m.secrets[secret.Handle] = secret
+	return secret, nil
+}
+
+func (m *mockStorageForDeletion) DeleteSecret(handle string) error {
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
+	if _, ok := m.secrets[handle]; !ok {
+		return storage.ErrNotFound
+	}
+	delete(m.secrets, handle)
 	return nil
 }
 
-func (m *mockXDSManager) RemoveAPIKeysByAPI(apiId, apiName, apiVersion, correlationID string) error {
-	if m.removeErr != nil {
-		return m.removeErr
+func (m *mockStorageForDeletion) SecretExists(handle string) (bool, error) {
+	if m.getErr != nil {
+		return false, m.getErr
 	}
-	m.removedAPIs = append(m.removedAPIs, apiId)
+	_, ok := m.secrets[handle]
+	return ok, nil
+}
+
+func (m *mockStorageForDeletion) GetDB() *sql.DB {
 	return nil
 }
 
 // Helper to create test API config for deletion tests
 func createTestAPIConfigForDeletion(apiID string) *models.StoredConfig {
 	// Create a complete API configuration so deletion flow can properly process it
-	specUnion := api.APIConfiguration_Spec{}
-	specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: "Test API",
-		Version:     "v1",
-		Context:     "/test",
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: func() *string { s := "http://backend.example.com"; return &s }(),
-			},
-		},
-		Operations: []api.Operation{
-			{
-				Method: "GET",
-				Path:   "/resource",
-			},
-		},
-	})
-
 	return &models.StoredConfig{
-		ID:     apiID,
-		Status: models.StatusDeployed,
-		Kind:   "API",
-		Configuration: api.APIConfiguration{
-			ApiVersion: "gateway.wso2.com/v1",
+		UUID:         apiID,
+		Handle:       apiID,
+		DisplayName:  "Test API",
+		Version:      "v1",
+		DesiredState: models.StateDeployed,
+		Origin:       models.OriginGatewayAPI,
+		Kind:         "API",
+		Configuration: api.RestAPI{
+			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 			Kind:       api.RestApi,
 			Metadata: api.Metadata{
 				Name: apiID,
 			},
-			Spec: specUnion,
+			Spec: api.APIConfigData{
+				DisplayName: "Test API",
+				Version:     "v1",
+				Context:     "/test",
+				Upstream: struct {
+					Main    api.Upstream  `json:"main" yaml:"main"`
+					Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+				}{
+					Main: api.Upstream{
+						Url: func() *string { s := "http://backend.example.com"; return &s }(),
+					},
+				},
+				Operations: []api.Operation{
+					{
+						Method: "GET",
+						Path:   "/resource",
+					},
+				},
+			},
 		},
 	}
 }
 
-// TestClient_handleAPIDeletedEvent_InvalidPayload tests invalid event handling
-func TestClient_handleAPIDeletedEvent_InvalidPayload(t *testing.T) {
+func createDeletionTestClient() (*Client, *storage.ConfigStore, *mockStorageForDeletion, *mockControlPlaneEventHub) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	store := storage.NewConfigStore()
 	db := newMockStorageForDeletion()
+	hub := &mockControlPlaneEventHub{}
 
 	client := &Client{
-		logger: logger,
-		store:  store,
-		db:     db,
+		logger:    logger,
+		store:     store,
+		db:        db,
+		eventHub:  hub,
+		gatewayID: "test-gateway",
 	}
+
+	return client, store, db, hub
+}
+
+// TestClient_handleAPIDeletedEvent_InvalidPayload tests invalid event handling
+func TestClient_handleAPIDeletedEvent_InvalidPayload(t *testing.T) {
+	client, _, _, hub := createDeletionTestClient()
 
 	tests := []struct {
 		name  string
@@ -357,21 +615,16 @@ func TestClient_handleAPIDeletedEvent_InvalidPayload(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Should handle gracefully without panic
 			client.handleAPIDeletedEvent(tt.event)
+			if len(hub.publishedEvents) != 0 {
+				t.Fatalf("expected no events to be published for invalid payload, got %d", len(hub.publishedEvents))
+			}
 		})
 	}
 }
 
 // TestClient_handleAPIDeletedEvent_OrphanedCleanup tests orphaned resource cleanup
 func TestClient_handleAPIDeletedEvent_OrphanedCleanup(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	store := storage.NewConfigStore()
-	db := newMockStorageForDeletion()
-
-	client := &Client{
-		logger: logger,
-		store:  store,
-		db:     db,
-	}
+	client, _, db, hub := createDeletionTestClient()
 
 	apiID := "non-existent-api"
 	event := map[string]interface{}{
@@ -391,38 +644,41 @@ func TestClient_handleAPIDeletedEvent_OrphanedCleanup(t *testing.T) {
 	if db.removeKeyCallCount != 1 {
 		t.Errorf("Expected RemoveAPIKeysAPI to be called for orphan cleanup, got %d", db.removeKeyCallCount)
 	}
+	if db.removeSubscriptionCallCount != 1 {
+		t.Errorf("Expected DeleteSubscriptionsForAPINotIn to be called for orphan cleanup, got %d", db.removeSubscriptionCallCount)
+	}
+	if db.lastSubscriptionCleanupAPIID != apiID {
+		t.Errorf("expected subscription cleanup for API %s, got %s", apiID, db.lastSubscriptionCleanupAPIID)
+	}
 
-	// Config should still not exist
-	_, err := store.Get(apiID)
-	if err == nil {
-		t.Error("API config should not exist in store after orphan cleanup")
+	if len(hub.publishedEvents) != 1 {
+		t.Fatalf("expected one orphan cleanup event, got %d", len(hub.publishedEvents))
+	}
+	if hub.publishedEvents[0].gatewayID != "test-gateway" {
+		t.Errorf("expected gatewayID test-gateway, got %s", hub.publishedEvents[0].gatewayID)
+	}
+	if hub.publishedEvents[0].event.EventType != eventhub.EventTypeAPI {
+		t.Errorf("expected event type API, got %s", hub.publishedEvents[0].event.EventType)
+	}
+	if hub.publishedEvents[0].event.Action != "DELETE" {
+		t.Errorf("expected action DELETE, got %s", hub.publishedEvents[0].event.Action)
+	}
+	if hub.publishedEvents[0].event.EntityID != apiID {
+		t.Errorf("expected entity ID %s, got %s", apiID, hub.publishedEvents[0].event.EntityID)
+	}
+	if hub.publishedEvents[0].event.EventID != "corr-orphan" {
+		t.Errorf("expected correlation ID corr-orphan, got %s", hub.publishedEvents[0].event.EventID)
 	}
 }
 
 // TestClient_handleAPIDeletedEvent_FullDeletion tests complete deletion workflow
 func TestClient_handleAPIDeletedEvent_FullDeletion(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	store := storage.NewConfigStore()
-	db := newMockStorageForDeletion()
-	xdsMgr := newMockXDSManager()
-
-	// Create a real PolicyManager with mock dependencies
-	policyStore := storage.NewPolicyStore()
-	policySnapshotMgr := policyxds.NewSnapshotManager(policyStore, logger)
-	policyMgr := policyxds.NewPolicyManager(policyStore, policySnapshotMgr, logger)
+	client, store, db, hub := createDeletionTestClient()
 
 	apiID := "test-api-full-delete"
 	apiConfig := createTestAPIConfigForDeletion(apiID)
 	db.SaveConfig(apiConfig)
 	store.Add(apiConfig)
-
-	client := &Client{
-		logger:           logger,
-		store:            store,
-		db:               db,
-		policyManager:    policyMgr,
-		apiKeyXDSManager: xdsMgr,
-	}
 
 	event := map[string]interface{}{
 		"type": "api.deleted",
@@ -446,43 +702,31 @@ func TestClient_handleAPIDeletedEvent_FullDeletion(t *testing.T) {
 		t.Errorf("Expected RemoveAPIKeysAPI to be called once, got %d", db.removeKeyCallCount)
 	}
 
-	// Verify API keys removed from XDS manager
-	if len(xdsMgr.removedAPIs) != 1 {
-		t.Errorf("Expected XDS manager to remove API keys for 1 API, got %d", len(xdsMgr.removedAPIs))
-	} else if xdsMgr.removedAPIs[0] != apiID {
-		t.Errorf("Expected XDS manager to remove keys for API %s, got %s", apiID, xdsMgr.removedAPIs[0])
+	if len(hub.publishedEvents) != 1 {
+		t.Fatalf("expected one delete event, got %d", len(hub.publishedEvents))
+	}
+	if hub.publishedEvents[0].event.EventType != eventhub.EventTypeAPI {
+		t.Errorf("expected event type API, got %s", hub.publishedEvents[0].event.EventType)
+	}
+	if hub.publishedEvents[0].event.Action != "DELETE" {
+		t.Errorf("expected action DELETE, got %s", hub.publishedEvents[0].event.Action)
+	}
+	if hub.publishedEvents[0].event.EntityID != apiID {
+		t.Errorf("expected entity ID %s, got %s", apiID, hub.publishedEvents[0].event.EntityID)
 	}
 
-	// Verify config removed from memory
-	_, err := store.Get(apiID)
-	if err == nil {
-		t.Error("Expected API config to be removed from memory store")
+	if _, err := db.GetConfig(apiID); !storage.IsNotFoundError(err) {
+		t.Errorf("expected API config to be removed from database, got %v", err)
 	}
-
-	// Verify policy cleanup was called (policy ID would be apiID + "-policies")
-	policyID := apiID + "-policies"
-	_, policyExists := policyStore.Get(policyID)
-	if policyExists {
-		// If policy existed, it should have been removed
-		t.Error("Expected policy to be removed from policy store")
-	}
-	// Note: If policy never existed, Get returns false which is expected
 }
 
-// TestClient_handleAPIDeletedEvent_MemoryOnly tests deletion when no database exists
-func TestClient_handleAPIDeletedEvent_MemoryOnly(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	store := storage.NewConfigStore()
+// TestClient_handleAPIDeletedEvent_DBOnlyConfig tests deletion when the API exists only in the database.
+func TestClient_handleAPIDeletedEvent_DBOnlyConfig(t *testing.T) {
+	client, _, db, hub := createDeletionTestClient()
 
-	apiID := "test-api-memory-only"
+	apiID := "test-api-db-only"
 	apiConfig := createTestAPIConfigForDeletion(apiID)
-	store.Add(apiConfig)
-
-	client := &Client{
-		logger: logger,
-		store:  store,
-		db:     nil, // No database
-	}
+	db.SaveConfig(apiConfig)
 
 	event := map[string]interface{}{
 		"type": "api.deleted",
@@ -497,18 +741,23 @@ func TestClient_handleAPIDeletedEvent_MemoryOnly(t *testing.T) {
 
 	client.handleAPIDeletedEvent(event)
 
-	// Verify config removed from memory
-	_, err := store.Get(apiID)
-	if err == nil {
-		t.Error("Expected API config to be removed from memory store")
+	if db.deleteCallCount != 1 {
+		t.Errorf("expected DeleteConfig to be called once, got %d", db.deleteCallCount)
+	}
+	if db.removeKeyCallCount != 1 {
+		t.Errorf("expected RemoveAPIKeysAPI to be called once, got %d", db.removeKeyCallCount)
+	}
+	if len(hub.publishedEvents) != 1 {
+		t.Fatalf("expected one delete event, got %d", len(hub.publishedEvents))
+	}
+	if hub.publishedEvents[0].event.EntityID != apiID {
+		t.Errorf("expected entity ID %s, got %s", apiID, hub.publishedEvents[0].event.EntityID)
 	}
 }
 
 // TestClient_handleAPIDeletedEvent_StorageErrors tests error handling
 func TestClient_handleAPIDeletedEvent_StorageErrors(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
-	store := storage.NewConfigStore()
-	db := newMockStorageForDeletion()
+	client, store, db, hub := createDeletionTestClient()
 
 	apiID := "test-api-error"
 	apiConfig := createTestAPIConfigForDeletion(apiID)
@@ -518,12 +767,6 @@ func TestClient_handleAPIDeletedEvent_StorageErrors(t *testing.T) {
 	// Simulate storage errors
 	db.deleteErr = errors.New("database connection failed")
 	db.removeKeyErr = errors.New("failed to remove keys")
-
-	client := &Client{
-		logger: logger,
-		store:  store,
-		db:     db,
-	}
 
 	event := map[string]interface{}{
 		"type": "api.deleted",
@@ -546,6 +789,13 @@ func TestClient_handleAPIDeletedEvent_StorageErrors(t *testing.T) {
 
 	if db.removeKeyCallCount != 1 {
 		t.Errorf("Expected RemoveAPIKeysAPI to be attempted, got %d", db.removeKeyCallCount)
+	}
+
+	if len(hub.publishedEvents) != 1 {
+		t.Fatalf("expected one delete event even when DB cleanup errors occur, got %d", len(hub.publishedEvents))
+	}
+	if hub.publishedEvents[0].event.Action != "DELETE" {
+		t.Errorf("expected action DELETE, got %s", hub.publishedEvents[0].event.Action)
 	}
 }
 
@@ -570,12 +820,12 @@ func TestClient_findAPIConfig(t *testing.T) {
 		if err != nil {
 			t.Errorf("Expected to find API config in database, got error: %v", err)
 		}
-		if config.ID != apiID {
-			t.Errorf("Expected API ID %s, got %s", apiID, config.ID)
+		if config.UUID != apiID {
+			t.Errorf("Expected API ID %s, got %s", apiID, config.UUID)
 		}
 	})
 
-	t.Run("Returns config from memory when not in database", func(t *testing.T) {
+	t.Run("Returns ErrNotFound when config exists only in memory store", func(t *testing.T) {
 		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 		store := storage.NewConfigStore()
 		db := newMockStorageForDeletion()
@@ -590,12 +840,9 @@ func TestClient_findAPIConfig(t *testing.T) {
 			db:     db,
 		}
 
-		config, err := client.findAPIConfig(apiID)
-		if err != nil {
-			t.Errorf("Expected to find API config in memory store, got error: %v", err)
-		}
-		if config.ID != apiID {
-			t.Errorf("Expected API ID %s, got %s", apiID, config.ID)
+		_, err := client.findAPIConfig(apiID)
+		if !storage.IsNotFoundError(err) {
+			t.Errorf("Expected ErrNotFound when API exists only in memory store, got: %v", err)
 		}
 	})
 
@@ -616,26 +863,222 @@ func TestClient_findAPIConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("Works when database is nil", func(t *testing.T) {
+	t.Run("Returns database errors without falling back", func(t *testing.T) {
 		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 		store := storage.NewConfigStore()
-
-		apiID := "test-api-no-db"
-		apiConfig := createTestAPIConfigForDeletion(apiID)
-		store.Add(apiConfig)
+		db := newMockStorageForDeletion()
+		db.getErr = errors.New("database unavailable")
 
 		client := &Client{
 			logger: logger,
 			store:  store,
-			db:     nil,
+			db:     db,
 		}
 
-		config, err := client.findAPIConfig(apiID)
-		if err != nil {
-			t.Errorf("Expected to find API config in memory when DB is nil, got error: %v", err)
-		}
-		if config.ID != apiID {
-			t.Errorf("Expected API ID %s, got %s", apiID, config.ID)
+		_, err := client.findAPIConfig("test-api-db-error")
+		if err == nil || err.Error() != "database error while fetching config: database unavailable" {
+			t.Errorf("expected database error to be returned, got: %v", err)
 		}
 	})
+}
+
+func TestClient_handleApplicationUpdatedEvent_SkipsMissingAPIKeys(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	db := newMockStorageForDeletion()
+	hub := &mockControlPlaneEventHub{}
+
+	db.apiKeysByUUID["key-uuid-found-1"] = &models.APIKey{UUID: "key-uuid-found-1"}
+	db.apiKeysByUUID["key-uuid-found-2"] = &models.APIKey{UUID: "key-uuid-found-2"}
+
+	client := &Client{
+		logger:    logger,
+		db:        db,
+		eventHub:  hub,
+		gatewayID: "test-gateway",
+	}
+
+	event := map[string]interface{}{
+		"type": "application.updated",
+		"payload": map[string]interface{}{
+			"applicationId":   "app-123",
+			"applicationUuid": "app-uuid-123",
+			"applicationName": "Shopping App",
+			"applicationType": "genai",
+			"mappings": []map[string]interface{}{
+				{"apiKeyUuid": "key-uuid-found-1"},
+				{"apiKeyUuid": "key-uuid-missing"},
+				{"apiKeyUuid": "key-uuid-found-2"},
+			},
+		},
+		"timestamp":     time.Now().Format(time.RFC3339),
+		"correlationId": "corr-app-update-skip-missing",
+	}
+
+	client.handleApplicationUpdatedEvent(event)
+
+	if db.replacedAppUUID != "app-uuid-123" {
+		t.Fatalf("expected mappings to be replaced for app-uuid-123, got %q", db.replacedAppUUID)
+	}
+	if db.replacedAppID != "app-123" {
+		t.Fatalf("expected mappings to be replaced for app id app-123, got %q", db.replacedAppID)
+	}
+	if db.replacedAppName != "Shopping App" {
+		t.Fatalf("expected mappings to be replaced for app name Shopping App, got %q", db.replacedAppName)
+	}
+	if db.replacedAppType != "genai" {
+		t.Fatalf("expected mappings to be replaced for app type genai, got %q", db.replacedAppType)
+	}
+
+	if len(db.replacedMappings) != 2 {
+		t.Fatalf("expected 2 resolved mappings, got %d", len(db.replacedMappings))
+	}
+
+	if db.replacedMappings[0].APIKeyID != "key-uuid-found-1" {
+		t.Errorf("expected first mapping key id key-uuid-found-1, got %q", db.replacedMappings[0].APIKeyID)
+	}
+	if db.replacedMappings[0].ApplicationUUID != "app-uuid-123" {
+		t.Errorf("expected first mapping application uuid app-uuid-123, got %q", db.replacedMappings[0].ApplicationUUID)
+	}
+	if db.replacedMappings[1].APIKeyID != "key-uuid-found-2" {
+		t.Errorf("expected second mapping key id key-uuid-found-2, got %q", db.replacedMappings[1].APIKeyID)
+	}
+	if len(hub.publishedEvents) != 1 {
+		t.Fatalf("expected one application event, got %d", len(hub.publishedEvents))
+	}
+	if hub.publishedEvents[0].event.EventType != eventhub.EventTypeApplication {
+		t.Errorf("expected event type APPLICATION, got %s", hub.publishedEvents[0].event.EventType)
+	}
+	if hub.publishedEvents[0].event.Action != "UPDATE" {
+		t.Errorf("expected action UPDATE, got %s", hub.publishedEvents[0].event.Action)
+	}
+	if hub.publishedEvents[0].event.EntityID != "app-uuid-123" {
+		t.Errorf("expected entity ID app-uuid-123, got %s", hub.publishedEvents[0].event.EntityID)
+	}
+	if hub.publishedEvents[0].event.EventID != "corr-app-update-skip-missing" {
+		t.Errorf("expected correlation ID corr-app-update-skip-missing, got %s", hub.publishedEvents[0].event.EventID)
+	}
+}
+
+func TestClient_handleApplicationUpdatedEvent_ContinuesOnInvalidMappingEntries(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	db := newMockStorageForDeletion()
+	hub := &mockControlPlaneEventHub{}
+
+	db.apiKeysByUUID["key-uuid-found"] = &models.APIKey{UUID: "key-uuid-found"}
+
+	client := &Client{
+		logger:    logger,
+		db:        db,
+		eventHub:  hub,
+		gatewayID: "test-gateway",
+	}
+
+	event := map[string]interface{}{
+		"type": "application.updated",
+		"payload": map[string]interface{}{
+			"applicationId":   "app-456",
+			"applicationUuid": "app-uuid-456",
+			"applicationName": "Weather App",
+			"applicationType": "genai",
+			"mappings": []map[string]interface{}{
+				{"apiKeyUuid": ""},
+				{"apiKeyUuid": "key-uuid-found"},
+			},
+		},
+		"timestamp":     time.Now().Format(time.RFC3339),
+		"correlationId": "corr-app-update-skip-invalid",
+	}
+
+	client.handleApplicationUpdatedEvent(event)
+
+	if db.replacedAppUUID != "app-uuid-456" {
+		t.Fatalf("expected mappings to be replaced for app-uuid-456, got %q", db.replacedAppUUID)
+	}
+	if db.replacedAppID != "app-456" {
+		t.Fatalf("expected mappings to be replaced for app id app-456, got %q", db.replacedAppID)
+	}
+	if db.replacedAppName != "Weather App" {
+		t.Fatalf("expected mappings to be replaced for app name Weather App, got %q", db.replacedAppName)
+	}
+	if db.replacedAppType != "genai" {
+		t.Fatalf("expected mappings to be replaced for app type genai, got %q", db.replacedAppType)
+	}
+
+	if len(db.replacedMappings) != 1 {
+		t.Fatalf("expected 1 resolved mapping, got %d", len(db.replacedMappings))
+	}
+
+	if db.replacedMappings[0].APIKeyID != "key-uuid-found" {
+		t.Errorf("expected resolved mapping key id key-uuid-found, got %q", db.replacedMappings[0].APIKeyID)
+	}
+	if db.replacedMappings[0].ApplicationUUID != "app-uuid-456" {
+		t.Errorf("expected resolved mapping application uuid app-uuid-456, got %q", db.replacedMappings[0].ApplicationUUID)
+	}
+	if len(hub.publishedEvents) != 1 {
+		t.Fatalf("expected one application event, got %d", len(hub.publishedEvents))
+	}
+	if hub.publishedEvents[0].event.EventType != eventhub.EventTypeApplication {
+		t.Errorf("expected event type APPLICATION, got %s", hub.publishedEvents[0].event.EventType)
+	}
+	if hub.publishedEvents[0].event.Action != "UPDATE" {
+		t.Errorf("expected action UPDATE, got %s", hub.publishedEvents[0].event.Action)
+	}
+	if hub.publishedEvents[0].event.EntityID != "app-uuid-456" {
+		t.Errorf("expected entity ID app-uuid-456, got %s", hub.publishedEvents[0].event.EntityID)
+	}
+	if hub.publishedEvents[0].event.EventID != "corr-app-update-skip-invalid" {
+		t.Errorf("expected correlation ID corr-app-update-skip-invalid, got %s", hub.publishedEvents[0].event.EventID)
+	}
+}
+
+func TestClient_handleSubscriptionCreatedEvent_PublishesReplicaSyncEvent(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	db := newMockStorageForDeletion()
+	hub := &mockControlPlaneEventHub{}
+
+	client := &Client{
+		logger:    logger,
+		db:        db,
+		eventHub:  hub,
+		gatewayID: "test-gateway",
+	}
+
+	event := map[string]interface{}{
+		"type": "subscription.created",
+		"payload": map[string]interface{}{
+			"subscriptionId":     "sub-123",
+			"apiId":              "api-123",
+			"subscriptionToken":  "token-123",
+			"status":             "ACTIVE",
+			"applicationId":      "app-123",
+			"subscriptionPlanId": "plan-123",
+		},
+		"timestamp":     time.Now().Format(time.RFC3339),
+		"correlationId": "corr-sub-created",
+	}
+
+	client.handleSubscriptionCreatedEvent(event)
+
+	sub, err := db.GetSubscriptionByID("sub-123", "")
+	if err != nil {
+		t.Fatalf("expected subscription to be stored, got %v", err)
+	}
+	if sub.APIID != "api-123" {
+		t.Errorf("expected api id api-123, got %s", sub.APIID)
+	}
+	if len(hub.publishedEvents) != 1 {
+		t.Fatalf("expected one subscription event, got %d", len(hub.publishedEvents))
+	}
+	if hub.publishedEvents[0].event.EventType != eventhub.EventTypeSubscription {
+		t.Errorf("expected event type SUBSCRIPTION, got %s", hub.publishedEvents[0].event.EventType)
+	}
+	if hub.publishedEvents[0].event.Action != "CREATE" {
+		t.Errorf("expected action CREATE, got %s", hub.publishedEvents[0].event.Action)
+	}
+	if hub.publishedEvents[0].event.EntityID != "sub-123" {
+		t.Errorf("expected entity ID sub-123, got %s", hub.publishedEvents[0].event.EntityID)
+	}
+	if hub.publishedEvents[0].event.EventID != "corr-sub-created" {
+		t.Errorf("expected correlation ID corr-sub-created, got %s", hub.publishedEvents[0].event.EventID)
+	}
 }

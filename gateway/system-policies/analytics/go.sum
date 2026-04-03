@@ -1,2 +1,2 @@
-github.com/wso2/api-platform/sdk v0.4.1 h1:o/h02kMHp8knm/os8ie/MPAGYLL6dZamtuh36NpSd4w=
-github.com/wso2/api-platform/sdk v0.4.1/go.mod h1:LeM3nQ86f7cyVg7uZYPgJXFsoBw/iz+nJzr94s40tYs=
+github.com/wso2/api-platform/sdk/core v0.2.9 h1:Y4L3ZS3aemgjRkNVFr+WqumjLOnc8ot+2L3SAelnLk8=
+github.com/wso2/api-platform/sdk/core v0.2.9/go.mod h1:vgNVzR16g9k5cun3VXZ7wDg8UGbPxsVU2TW8EbRCv0o=

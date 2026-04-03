@@ -20,48 +20,87 @@ package policyxds
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
-	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
 )
 
-// PolicyManager manages policy configurations and snapshot updates
+// PolicyManager manages runtime deploy configurations and snapshot updates.
 type PolicyManager struct {
-	store           *storage.PolicyStore
+	runtimeStore    *storage.RuntimeConfigStore
 	snapshotManager *SnapshotManager
+	transformers    models.ConfigTransformer
 	logger          *slog.Logger
 }
 
-// NewPolicyManager creates a new policy manager
-func NewPolicyManager(store *storage.PolicyStore, snapshotManager *SnapshotManager, logger *slog.Logger) *PolicyManager {
+// NewPolicyManager creates a new PolicyManager.
+func NewPolicyManager(snapshotManager *SnapshotManager, logger *slog.Logger) *PolicyManager {
 	return &PolicyManager{
-		store:           store,
 		snapshotManager: snapshotManager,
 		logger:          logger,
 	}
 }
 
-// AddPolicy adds or updates a policy configuration
-func (pm *PolicyManager) AddPolicy(policy *models.StoredPolicyConfig) error {
-	// Store the policy
-	if err := pm.store.Set(policy); err != nil {
-		return fmt.Errorf("failed to store policy: %w", err)
+// SetRuntimeStore sets the RuntimeConfigStore.
+func (pm *PolicyManager) SetRuntimeStore(store *storage.RuntimeConfigStore) {
+	pm.runtimeStore = store
+}
+
+// SetTransformers sets the ConfigTransformer used by UpsertAPIConfig.
+func (pm *PolicyManager) SetTransformers(t models.ConfigTransformer) {
+	pm.transformers = t
+}
+
+// UpsertAPIConfig transforms cfg into a RuntimeDeployConfig and stores it,
+// then triggers a snapshot update (both policy chain and route config caches).
+func (pm *PolicyManager) UpsertAPIConfig(cfg *models.StoredConfig) error {
+	if pm.runtimeStore == nil {
+		return fmt.Errorf("runtime config store not configured")
+	}
+	if pm.transformers == nil {
+		return fmt.Errorf("transformer registry not configured")
 	}
 
-	pm.logger.Info("Policy configuration added",
-		slog.String("id", policy.ID),
-		slog.String("api_name", policy.APIName()),
-		slog.String("version", policy.APIVersion()),
-		slog.String("context", policy.Context()))
+	rdc, err := pm.transformers.Transform(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to transform config: %w", err)
+	}
 
-	// Update xDS snapshot
+	key := storage.Key(cfg.Kind, cfg.Handle)
+	return pm.AddRuntimeConfig(key, rdc)
+}
+
+// DeleteAPIConfig removes the RuntimeDeployConfig for the given kind/handle
+// and triggers a snapshot update. A not-found error is silently ignored.
+func (pm *PolicyManager) DeleteAPIConfig(kind, handle string) error {
+	key := storage.Key(kind, handle)
+	err := pm.RemoveRuntimeConfig(key)
+	if err != nil && !storage.IsPolicyNotFoundError(err) {
+		return err
+	}
+	return nil
+}
+
+// AddRuntimeConfig adds or updates a RuntimeDeployConfig and triggers snapshot update.
+func (pm *PolicyManager) AddRuntimeConfig(key string, rdc *models.RuntimeDeployConfig) error {
+	if pm.runtimeStore == nil {
+		return fmt.Errorf("runtime config store not configured")
+	}
+
+	pm.runtimeStore.Set(key, rdc)
+
+	pm.logger.Info("Runtime deploy config added",
+		slog.String("key", key),
+		slog.String("kind", rdc.Metadata.Kind),
+		slog.String("name", rdc.Metadata.DisplayName),
+		slog.Int("routes", len(rdc.Routes)),
+		slog.Int("policy_chains", len(rdc.PolicyChains)))
+
 	if err := pm.snapshotManager.UpdateSnapshot(context.Background()); err != nil {
-		pm.logger.Error("Failed to update policy snapshot after adding policy",
-			slog.String("id", policy.ID),
+		pm.logger.Error("Failed to update snapshot after adding runtime config",
+			slog.String("key", key),
 			slog.Any("error", err))
 		return fmt.Errorf("failed to update snapshot: %w", err)
 	}
@@ -69,18 +108,21 @@ func (pm *PolicyManager) AddPolicy(policy *models.StoredPolicyConfig) error {
 	return nil
 }
 
-// RemovePolicy removes a policy configuration
-func (pm *PolicyManager) RemovePolicy(id string) error {
-	if err := pm.store.Delete(id); err != nil {
-		return fmt.Errorf("failed to delete policy: %w", err)
+// RemoveRuntimeConfig removes a RuntimeDeployConfig and triggers snapshot update.
+func (pm *PolicyManager) RemoveRuntimeConfig(key string) error {
+	if pm.runtimeStore == nil {
+		return fmt.Errorf("runtime config store not configured")
 	}
 
-	pm.logger.Info("Policy configuration removed", slog.String("id", id))
+	if err := pm.runtimeStore.Delete(key); err != nil {
+		return fmt.Errorf("failed to delete runtime config: %w", err)
+	}
 
-	// Update xDS snapshot
+	pm.logger.Info("Runtime deploy config removed", slog.String("key", key))
+
 	if err := pm.snapshotManager.UpdateSnapshot(context.Background()); err != nil {
-		pm.logger.Error("Failed to update policy snapshot after removing policy",
-			slog.String("id", id),
+		pm.logger.Error("Failed to update snapshot after removing runtime config",
+			slog.String("key", key),
 			slog.Any("error", err))
 		return fmt.Errorf("failed to update snapshot: %w", err)
 	}
@@ -88,39 +130,10 @@ func (pm *PolicyManager) RemovePolicy(id string) error {
 	return nil
 }
 
-// GetPolicy retrieves a policy by ID
-func (pm *PolicyManager) GetPolicy(id string) (*models.StoredPolicyConfig, error) {
-	policy, exists := pm.store.Get(id)
-	if !exists {
-		return nil, fmt.Errorf("policy not found: %s", id)
-	}
-	return policy, nil
-}
-
-// ListPolicies returns all policies
-func (pm *PolicyManager) ListPolicies() []*models.StoredPolicyConfig {
-	return pm.store.GetAll()
-}
-
-// GetResourceVersion returns the current policy resource version used for xDS updates.
+// GetResourceVersion returns the current resource version used for xDS updates.
 func (pm *PolicyManager) GetResourceVersion() int64 {
-	return pm.store.GetResourceVersion()
-}
-
-// ParsePolicyJSON parses a policy configuration from JSON string
-func ParsePolicyJSON(jsonStr string) (*policyenginev1.Configuration, error) {
-	var config policyenginev1.Configuration
-	if err := json.Unmarshal([]byte(jsonStr), &config); err != nil {
-		return nil, fmt.Errorf("failed to parse policy JSON: %w", err)
+	if pm.runtimeStore != nil {
+		return pm.runtimeStore.GetResourceVersion()
 	}
-	return &config, nil
-}
-
-// CreateStoredPolicy creates a StoredPolicyConfig from a PolicyConfiguration
-func CreateStoredPolicy(id string, config policyenginev1.Configuration) *models.StoredPolicyConfig {
-	return &models.StoredPolicyConfig{
-		ID:            id,
-		Configuration: config,
-		Version:       config.Metadata.ResourceVersion,
-	}
+	return 0
 }

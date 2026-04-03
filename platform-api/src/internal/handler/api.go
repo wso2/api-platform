@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
@@ -152,6 +153,12 @@ func (h *APIHandler) CreateAPI(c *gin.Context) {
 				"Invalid transport protocol"))
 			return
 		}
+		if errors.Is(err, constants.ErrSubscriptionPlanNotFoundOrInactive) {
+			h.slogger.Error("Subscription plan not found or not active", "organizationId", orgId, "error", err)
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				err.Error()))
+			return
+		}
 		h.slogger.Error("Failed to create API", "organizationId", orgId, "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to create API"))
@@ -194,7 +201,7 @@ func (h *APIHandler) GetAPI(c *gin.Context) {
 	c.JSON(http.StatusOK, apiResponse)
 }
 
-// ListAPIs handles GET /api/v1/rest-apis and lists APIs for an organization with optional project filter
+// ListAPIs handles GET /api/v1/rest-apis and lists APIs for an organization filtered by project
 func (h *APIHandler) ListAPIs(c *gin.Context) {
 	// Get organization from JWT token
 	orgId, exists := middleware.GetOrganizationFromContext(c)
@@ -204,15 +211,14 @@ func (h *APIHandler) ListAPIs(c *gin.Context) {
 		return
 	}
 
-	var params api.ListRESTAPIsParams
-	if err := c.ShouldBindQuery(&params); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+	projectId := strings.TrimSpace(c.Query("projectId"))
+	if projectId == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "projectId query parameter is required"))
 		return
 	}
-
-	var projectId string
-	if params.ProjectId != nil {
-		projectId = string(*params.ProjectId)
+	if _, err := uuid.Parse(projectId); err != nil {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "invalid projectId"))
+		return
 	}
 
 	apis, err := h.apiService.GetAPIsByOrganization(orgId, projectId)
@@ -296,6 +302,12 @@ func (h *APIHandler) UpdateAPI(c *gin.Context) {
 			h.slogger.Error("Invalid transport protocol", "apiId", apiId, "organizationId", orgId)
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 				"Invalid transport protocol"))
+			return
+		}
+		if errors.Is(err, constants.ErrSubscriptionPlanNotFoundOrInactive) {
+			h.slogger.Error("Subscription plan not found or not active", "apiId", apiId, "organizationId", orgId, "error", err)
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				err.Error()))
 			return
 		}
 		h.slogger.Error("Failed to update API", "apiId", apiId, "organizationId", orgId, "error", err)

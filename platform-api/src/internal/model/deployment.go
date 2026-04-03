@@ -37,13 +37,23 @@ type Deployment struct {
 
 	// Lifecycle state fields (from deployment_status table via JOIN)
 	// nil values indicate ARCHIVED state (no record in status table)
-	Status    *DeploymentStatus `json:"status,omitempty" db:"status"`
-	UpdatedAt *time.Time        `json:"updatedAt,omitempty" db:"status_updated_at"`
+	Status       *DeploymentStatus `json:"status,omitempty" db:"status"`
+	UpdatedAt    *time.Time        `json:"updatedAt,omitempty" db:"status_updated_at"`
+	StatusReason *string           `json:"statusReason,omitempty" db:"status_reason"`
 }
 
 // TableName returns the table name for the Deployment model
 func (Deployment) TableName() string {
 	return "deployments"
+}
+
+// DeploymentContent holds the artifact content for a single deployment,
+// used internally when constructing batch archive responses.
+type DeploymentContent struct {
+	DeploymentID string
+	ArtifactID   string
+	Kind         string
+	Content      []byte
 }
 
 // DeploymentStatus represents the status of a deployment
@@ -53,5 +63,50 @@ type DeploymentStatus string
 const (
 	DeploymentStatusDeployed   DeploymentStatus = "DEPLOYED"
 	DeploymentStatusUndeployed DeploymentStatus = "UNDEPLOYED"
+	DeploymentStatusDeploying   DeploymentStatus = "DEPLOYING"
+	DeploymentStatusUndeploying DeploymentStatus = "UNDEPLOYING"
+	DeploymentStatusFailed      DeploymentStatus = "FAILED"
 	DeploymentStatusArchived   DeploymentStatus = "ARCHIVED" // Derived state: exists in history but not in status table
 )
+
+// DeploymentInfo is a lightweight representation of a deployment
+// Contains only the essential fields needed for listing deployments
+type DeploymentInfo struct {
+	DeploymentID string           `json:"deploymentId" db:"deployment_id"`
+	ArtifactID   string           `json:"artifactId" db:"artifact_uuid"`
+	Handle       string           `json:"handle" db:"handle"` // Artifact handle (apiId)
+	Kind         string           `json:"kind" db:"kind"`     // Artifact kind: RestAPI, LLMProvider, LLMProxy, MCPProxy
+	Status       DeploymentStatus `json:"status" db:"status"`
+	PerformedAt  time.Time        `json:"performedAt" db:"performed_at"` // When the deploy/undeploy action was initiated
+}
+
+// DeploymentMetadata represents the metadata section of the API deployment YAML
+type DeploymentMetadata struct {
+	Name   string            `yaml:"name" binding:"required"`
+	Labels map[string]string `yaml:"labels,omitempty"`
+}
+
+// MCPProxyDeploymentYAML represents the structure of the YAML used for deploying an MCP proxy
+type MCPProxyDeploymentYAML struct {
+	ApiVersion string                 `yaml:"apiVersion" binding:"required"`
+	Kind       string                 `yaml:"kind" binding:"required"`
+	Metadata   DeploymentMetadata     `yaml:"metadata" binding:"required"`
+	Spec       MCPProxyDeploymentSpec `yaml:"spec" binding:"required"`
+}
+
+// MCPProxyDeploymentSpec represents the spec section of the MCP proxy deployment YAML
+type MCPProxyDeploymentSpec struct {
+	DisplayName string           `yaml:"displayName" binding:"required"`
+	Version     string           `yaml:"version" binding:"required"`
+	Context     string           `yaml:"context" binding:"required"`
+	Vhost       *string          `yaml:"vhost" binding:"required"`
+	Upstream    MCPProxyUpstream `yaml:"upstream" binding:"required"`
+	SpecVersion string           `yaml:"specVersion" binding:"required"`
+	Policies    []Policy         `yaml:"policies,omitempty"`
+}
+
+// Adding this type to support the model in the gateway side
+type MCPProxyUpstream struct {
+	URL  string        `yaml:"url" binding:"required"`
+	Auth *UpstreamAuth `json:"auth,omitempty"`
+}

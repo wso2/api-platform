@@ -64,7 +64,7 @@ Feature: API Error Responses
             url: http://sample-backend:9080
         policies:
           - name: respond
-            version: v0
+            version: v1
             params:
               statusCode: "200"
         operations:
@@ -94,7 +94,7 @@ Feature: API Error Responses
             url: http://sample-backend:9080
         policies:
           - name: policy-does-not-exist
-            version: v0
+            version: v1
         operations:
           - method: GET
             path: /test
@@ -176,7 +176,7 @@ Feature: API Error Responses
       """
     Then the response should be successful
     And I set header "Content-Type" to "application/json"
-    When I send a PUT request to the "gateway-controller" service at "/apis/update-parse-error-api" with body:
+    When I send a PUT request to the "gateway-controller" service at "/rest-apis/update-parse-error-api" with body:
       """
       { this is not valid json
       """

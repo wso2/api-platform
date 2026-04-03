@@ -51,11 +51,12 @@ Feature: Sentence Count Guardrail
             path: /validate
             policies:
               - name: sentence-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 1
                     max: 3
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/sentence-count-max/v1.0/health" to be ready
@@ -101,11 +102,12 @@ Feature: Sentence Count Guardrail
             path: /validate
             policies:
               - name: sentence-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 3
                     max: 100
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/sentence-count-min/v1.0/health" to be ready
@@ -155,7 +157,7 @@ Feature: Sentence Count Guardrail
             path: /chat
             policies:
               - name: sentence-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 1
@@ -214,7 +216,7 @@ Feature: Sentence Count Guardrail
             path: /chat
             policies:
               - name: sentence-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 1
@@ -278,7 +280,7 @@ Feature: Sentence Count Guardrail
             path: /validate
             policies:
               - name: sentence-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 1
@@ -331,11 +333,12 @@ Feature: Sentence Count Guardrail
             path: /validate
             policies:
               - name: sentence-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 2
                     max: 4
+                    jsonPath: ""
                     invert: true
       """
     Then the response should be successful
@@ -393,11 +396,12 @@ Feature: Sentence Count Guardrail
             path: /validate
             policies:
               - name: sentence-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 1
                     max: 2
+                    jsonPath: ""
                     showAssessment: true
       """
     Then the response should be successful
@@ -443,11 +447,12 @@ Feature: Sentence Count Guardrail
             path: /validate
             policies:
               - name: sentence-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 1
                     max: 100
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/sentence-count-empty/v1.0/health" to be ready
@@ -485,11 +490,12 @@ Feature: Sentence Count Guardrail
             path: /validate
             policies:
               - name: sentence-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 2
                     max: 4
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/sentence-count-boundary/v1.0/health" to be ready
@@ -553,14 +559,16 @@ Feature: Sentence Count Guardrail
             path: /validate
             policies:
               - name: sentence-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 1
                     max: 5
+                    jsonPath: ""
                   response:
                     min: 1
                     max: 100
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/sentence-count-combined/v1.0/health" to be ready
@@ -610,11 +618,12 @@ Feature: Sentence Count Guardrail
             path: /validate
             policies:
               - name: sentence-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 1
                     max: 3
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/sentence-count-punctuation/v1.0/health" to be ready
@@ -660,11 +669,12 @@ Feature: Sentence Count Guardrail
             path: /validate
             policies:
               - name: sentence-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 1
                     max: 5
+                    jsonPath: ""
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/sentence-count-plaintext/v1.0/health" to be ready
@@ -716,11 +726,12 @@ Feature: Sentence Count Guardrail
             path: /validate
             policies:
               - name: sentence-count-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     min: 1
                     max: 2
+                    jsonPath: ""
                     showAssessment: true
       """
     Then the response should be successful

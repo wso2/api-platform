@@ -18,8 +18,8 @@
 
 package utils
 
-import api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+import api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 
 type Transformer interface {
-	Transform(input any, output *api.APIConfiguration) (*api.APIConfiguration, error)
+	Transform(input any, output *api.RestAPI) (*api.RestAPI, error)
 }

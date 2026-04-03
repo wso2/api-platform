@@ -30,6 +30,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
 
@@ -103,20 +104,20 @@ func TestSchemaInitialization(t *testing.T) {
 		var version int
 		err := rawDB.QueryRow("PRAGMA user_version").Scan(&version)
 		assert.NoError(t, err)
-		assert.Equal(t, 9, version, "Schema version should be 9 (removed index_key from api_keys)")
+		assert.Equal(t, 1, version, "Schema version should be 1")
 	})
 
-	// Verify deployments table exists
+	// Verify artifacts table exists
 	t.Run("TableExists", func(t *testing.T) {
 		var tableName string
-		err := rawDB.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='deployments'").Scan(&tableName)
+		err := rawDB.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='artifacts'").Scan(&tableName)
 		assert.NoError(t, err)
-		assert.Equal(t, "deployments", tableName)
+		assert.Equal(t, "artifacts", tableName)
 	})
 
 	// Verify table schema
 	t.Run("TableSchema", func(t *testing.T) {
-		rows, err := rawDB.Query("PRAGMA table_info(deployments)")
+		rows, err := rawDB.Query("PRAGMA table_info(artifacts)")
 		require.NoError(t, err)
 		defer rows.Close()
 
@@ -135,18 +136,18 @@ func TestSchemaInitialization(t *testing.T) {
 
 		// Verify expected columns exist
 		expectedColumns := map[string]string{
-			"id":               "TEXT",
-			"display_name":     "TEXT",
-			"version":          "TEXT",
-			"context":          "TEXT",
-			"kind":             "TEXT",
-			"handle":           "TEXT",
-			"status":           "TEXT",
-			"created_at":       "TIMESTAMP",
-			"updated_at":       "TIMESTAMP",
-			"deployed_at":      "TIMESTAMP",
-			"deployed_version": "INTEGER",
-			"gateway_id":       "TEXT",
+			"uuid":          "TEXT",
+			"display_name":  "TEXT",
+			"version":       "TEXT",
+			"kind":          "TEXT",
+			"handle":        "TEXT",
+			"desired_state": "TEXT",
+			"deployment_id": "TEXT",
+			"created_at":    "TIMESTAMP",
+			"updated_at":    "TIMESTAMP",
+			"deployed_at":   "TIMESTAMP",
+			"gateway_id":    "TEXT",
+			"origin":        "TEXT",
 		}
 
 		for colName, colType := range expectedColumns {
@@ -156,88 +157,116 @@ func TestSchemaInitialization(t *testing.T) {
 		}
 	})
 
-	t.Run("DeploymentConfigsTableExists", func(t *testing.T) {
-		var tableName string
-		err := rawDB.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='deployment_configs'").Scan(&tableName)
-		assert.NoError(t, err)
-		assert.Equal(t, "deployment_configs", tableName)
+	// Verify per-resource-type tables exist
+	t.Run("ResourceTypeTablesExist", func(t *testing.T) {
+		tables := []string{"rest_apis", "websub_apis", "llm_providers", "llm_proxies", "mcp_proxies"}
+		for _, table := range tables {
+			var tableName string
+			err := rawDB.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&tableName)
+			assert.NoError(t, err, "Table %s should exist", table)
+			assert.Equal(t, table, tableName)
+		}
 	})
 
-	// Verify table schema
-	t.Run("DeploymentConfigsTableSchema", func(t *testing.T) {
-		rows, err := rawDB.Query("PRAGMA table_info(deployment_configs)")
+	// Verify rest_apis table schema
+	t.Run("RestApisTableSchema", func(t *testing.T) {
+		rows, err := rawDB.Query("PRAGMA table_info(rest_apis)")
 		require.NoError(t, err)
 		defer rows.Close()
 
 		columns := make(map[string]string)
+		pkColumns := make(map[string]int)
 		for rows.Next() {
 			var cid int
 			var name, colType string
 			var notNull, pk int
 			var dfltValue sql.NullString
-
 			err := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk)
 			require.NoError(t, err)
-
 			columns[name] = colType
+			pkColumns[name] = pk
 		}
 
-		// Verify expected columns exist
 		expectedColumns := map[string]string{
-			"id":                   "TEXT",
-			"configuration":        "TEXT",
-			"source_configuration": "TEXT",
+			"uuid":          "TEXT",
+			"gateway_id":    "TEXT",
+			"configuration": "TEXT",
 		}
-
 		for colName, colType := range expectedColumns {
 			actualType, exists := columns[colName]
-			assert.True(t, exists, "Column %s should exist", colName)
+			assert.True(t, exists, "Column %s should exist in rest_apis", colName)
 			assert.Equal(t, colType, actualType, "Column %s should have type %s", colName, colType)
 		}
+
+		assert.Equal(t, 1, pkColumns["gateway_id"], "gateway_id should be the first component of the composite primary key")
+		assert.Equal(t, 2, pkColumns["uuid"], "uuid should be the second component of the composite primary key")
 	})
 
-	// Verify indexes exist
-	t.Run("IndexesExist", func(t *testing.T) {
-		rows, err := rawDB.Query("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='deployments'")
+	t.Run("APIKeysArtifactForeignKeyRemoved", func(t *testing.T) {
+		rows, err := rawDB.Query("PRAGMA foreign_key_list(api_keys)")
 		require.NoError(t, err)
 		defer rows.Close()
 
-		indexes := make(map[string]bool)
 		for rows.Next() {
-			var name string
-			err := rows.Scan(&name)
+			var id, seq int
+			var tableName, fromColumn, toColumn, onUpdate, onDelete, match string
+			err := rows.Scan(&id, &seq, &tableName, &fromColumn, &toColumn, &onUpdate, &onDelete, &match)
 			require.NoError(t, err)
-			indexes[name] = true
+			assert.NotEqual(t, "artifacts", tableName, "api_keys should not retain an artifact foreign key")
+			assert.NotEqual(t, "artifact_uuid", fromColumn, "api_keys.artifact_uuid should not participate in a foreign key")
 		}
 
-		// Expected indexes
-		expectedIndexes := []string{
-			"idx_status",
-			"idx_context",
-			"idx_kind",
-		}
-
-		for _, idxName := range expectedIndexes {
-			assert.True(t, indexes[idxName], "Index %s should exist", idxName)
-		}
+		assert.NoError(t, rows.Err())
 	})
 
-	// Verify UNIQUE constraint on (name, version, gateway_id)
+	t.Run("SubscriptionsForeignKeys", func(t *testing.T) {
+		rows, err := rawDB.Query("PRAGMA foreign_key_list(subscriptions)")
+		require.NoError(t, err)
+		defer rows.Close()
+
+		planFKCols := map[int]map[string]string{}
+		for rows.Next() {
+			var id, seq int
+			var tableName, fromColumn, toColumn, onUpdate, onDelete, match string
+			err := rows.Scan(&id, &seq, &tableName, &fromColumn, &toColumn, &onUpdate, &onDelete, &match)
+			require.NoError(t, err)
+			assert.NotEqual(t, "rest_apis", tableName, "subscriptions should not retain a REST API foreign key")
+			assert.NotEqual(t, "api_id", fromColumn, "subscriptions.api_id should not participate in a foreign key")
+			if tableName == "subscription_plans" {
+				if planFKCols[id] == nil {
+					planFKCols[id] = map[string]string{}
+				}
+				planFKCols[id][fromColumn] = toColumn
+			}
+		}
+
+		assert.NoError(t, rows.Err())
+		hasScopedPlanFK := false
+		for _, cols := range planFKCols {
+			if cols["gateway_id"] == "gateway_id" && cols["subscription_plan_id"] == "uuid" {
+				hasScopedPlanFK = true
+				break
+			}
+		}
+		assert.True(t, hasScopedPlanFK, "subscriptions should retain the gateway-scoped subscription plan foreign key")
+	})
+
+	// Verify UNIQUE constraint on artifacts
 	t.Run("UniqueConstraint", func(t *testing.T) {
-		var sql string
-		err := rawDB.QueryRow("SELECT sql FROM sqlite_master WHERE type='table' AND name='deployments'").Scan(&sql)
+		var sqlStr string
+		err := rawDB.QueryRow("SELECT sql FROM sqlite_master WHERE type='table' AND name='artifacts'").Scan(&sqlStr)
 		require.NoError(t, err)
 
-		assert.Contains(t, sql, "UNIQUE(display_name, version, gateway_id)", "Should have UNIQUE constraint on (display_name, version, gateway_id)")
+		assert.Contains(t, sqlStr, "UNIQUE(gateway_id, kind, display_name, version)", "Should have UNIQUE constraint on (gateway_id, kind, display_name, version)")
 	})
 
 	// Verify CHECK constraint on status
 	t.Run("CheckConstraint", func(t *testing.T) {
-		var sql string
-		err := rawDB.QueryRow("SELECT sql FROM sqlite_master WHERE type='table' AND name='deployments'").Scan(&sql)
+		var sqlStr string
+		err := rawDB.QueryRow("SELECT sql FROM sqlite_master WHERE type='table' AND name='artifacts'").Scan(&sqlStr)
 		require.NoError(t, err)
 
-		assert.Contains(t, sql, "CHECK(status IN ('pending', 'deployed', 'failed', 'undeployed'))", "Should have CHECK constraint on status")
+		assert.Contains(t, sqlStr, "CHECK(desired_state IN ('deployed', 'undeployed'))", "Should have CHECK constraint on desired_state")
 	})
 
 	// Verify WAL mode is enabled
@@ -248,8 +277,8 @@ func TestSchemaInitialization(t *testing.T) {
 		assert.Equal(t, "wal", journalMode, "Journal mode should be WAL")
 	})
 
-	// Verify foreign keys setting (we don't have foreign keys in our schema,
-	// but the pragma should be readable)
+	// Verify foreign keys setting on the inspection connection.
+	// This raw connection is opened without explicit pragmas, so 0 or 1 is acceptable.
 	t.Run("ForeignKeysPragma", func(t *testing.T) {
 		var foreignKeys int
 		err := rawDB.QueryRow("PRAGMA foreign_keys").Scan(&foreignKeys)
@@ -287,10 +316,10 @@ func TestSchemaInitializationIdempotent(t *testing.T) {
 	defer db2.Close()
 
 	// Verify configuration still exists
-	retrieved, err := db2.GetConfigByNameVersion("IdempotentAPI", "v1.0")
+	retrieved, err := db2.GetConfigByKindAndHandle(models.KindRestApi, "IdempotentAPI-v1.0")
 	assert.NoError(t, err)
 	assert.NotNil(t, retrieved)
-	assert.Equal(t, cfg.ID, retrieved.ID)
+	assert.Equal(t, cfg.UUID, retrieved.UUID)
 }
 
 // TestEmptyDatabaseInitialization tests that a fresh database initializes correctly
@@ -324,9 +353,9 @@ func TestEmptyDatabaseInitialization(t *testing.T) {
 	assert.NoError(t, err, "Should be able to save configuration to fresh database")
 
 	// Verify we can retrieve it
-	retrieved, err := db.GetConfig(cfg.ID)
+	retrieved, err := db.GetConfig(cfg.UUID)
 	assert.NoError(t, err)
-	assert.Equal(t, cfg.ID, retrieved.ID)
+	assert.Equal(t, cfg.UUID, retrieved.UUID)
 }
 
 // TestDatabaseIntegrityCheck verifies that the database maintains integrity

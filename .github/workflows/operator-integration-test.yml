@@ -29,7 +29,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25.7'
+          go-version: '1.26.1'
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -229,6 +229,12 @@ jobs:
             --wait --timeout 5m
 
           kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=gateway-operator -n operator --timeout=120s
+
+      - name: Create encryption key secret
+        run: |
+          kubectl create secret generic gateway-encryption-keys \
+            --from-file=default-aesgcm256-v1.bin=gateway/it/it-aesgcm-keys/default-aesgcm256-v1.bin \
+            --namespace default
 
       - name: Create test APIGateway
         run: |
@@ -543,7 +549,7 @@ jobs:
                       format: json
 
                   policy_configurations:
-                    jwtauth_v0:
+                    jwtauth_v1:
                       keymanagers:
                       - name: WSO2KeyManager1
                         issuer: https://api.asgardeo.io/t/tharsanan1995/oauth2/token
@@ -657,6 +663,10 @@ jobs:
                     # Existing ConfigMap containing custom CA certificates
                     # ConfigMap should contain one or more keys with PEM-encoded certificates
                     configMapName: ""
+                  encryptionKeys:
+                    enabled: true
+                    secretName: gateway-encryption-keys
+                    mountPath: /app/data/aesgcm-keys
                   logging:
                     level: info
                   storage:
@@ -686,7 +696,7 @@ jobs:
                     livenessProbe:
                       httpGet:
                         path: /health
-                        port: rest
+                        port: admin
                       initialDelaySeconds: 10
                       periodSeconds: 10
                       timeoutSeconds: 5
@@ -694,7 +704,7 @@ jobs:
                     readinessProbe:
                       httpGet:
                         path: /health
-                        port: rest
+                        port: admin
                       initialDelaySeconds: 5
                       periodSeconds: 5
                       timeoutSeconds: 3
@@ -902,7 +912,7 @@ jobs:
                 url: http://httpbin.default.svc.cluster.local:80
             policies:
               - name: jwt-auth
-                version: v0
+                version: v1
                 params:
                   issuers:
                     - MockKeyManager
@@ -980,7 +990,7 @@ jobs:
                 url: http://httpbin.default.svc.cluster.local:80
             policies:
               - name: jwt-auth
-                version: v0
+                version: v1
                 params:
                   issuers:
                     - DummyKeyManager
@@ -1048,11 +1058,11 @@ jobs:
           # Give it a moment to stabilize
           sleep 20
           # Port forward the new controller to check health
-          kubectl port-forward svc/test-gateway-gateway-controller 9091:9090 &
+          kubectl port-forward svc/test-gateway-gateway-controller 9092:9092 &
           PF_PID=$!
           sleep 5
-          
-          HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9091/health)
+
+          HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9092/health)
           echo "Controller Health Status: $HEALTH_STATUS"
           
           kill $PF_PID || true
@@ -1179,6 +1189,9 @@ jobs:
           # 2. Install Scoped Operator
           echo "Creating scoped-test namespace..."
           kubectl create ns scoped-test --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic gateway-encryption-keys \
+            --from-file=default-aesgcm256-v1.bin=gateway/it/it-aesgcm-keys/default-aesgcm256-v1.bin \
+            --namespace scoped-test
           
           echo "Installing operator in scoped mode (watchNamespaces={scoped-test})..."
           helm install gateway-operator ./kubernetes/helm/operator-helm-chart \

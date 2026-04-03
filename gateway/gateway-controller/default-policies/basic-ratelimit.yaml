@@ -1,5 +1,5 @@
 name: basic-ratelimit
-version: v0.8.2
+version: v1.0.2
 description: |
   Limits request rates by restricting the number of requests allowed within one
   or more defined time windows.
@@ -30,8 +30,9 @@ parameters:
           duration:
             type: string
             description: |
-              Specifies the time window for the limit using Go duration format,
-              for example "1s", "1m", "1h", or "24h".
+              Specifies the time window for the limit. Supports integer values
+              with units: ns, us, µs, ms, s, m, h (for example "500ms", "1s",
+              "1m", "1h", "24h").
             pattern: "^[0-9]+(ns|us|µs|ms|s|m|h)$"
 
 systemParameters:
@@ -50,7 +51,7 @@ systemParameters:
           but can allow up to 2x burst at window boundaries.
       enum: ["gcra", "fixed-window"]
       default: "fixed-window"
-      "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.algorithm}"
+      "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.algorithm}"
 
     backend:
       type: string
@@ -59,7 +60,7 @@ systemParameters:
         'redis' for distributed rate limiting across multiple gateway instances.
       enum: ["memory", "redis"]
       default: "memory"
-      "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.backend}"
+      "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.backend}"
 
     redis:
       type: object
@@ -70,7 +71,7 @@ systemParameters:
           type: string
           description: Redis server hostname or IP address
           default: "localhost"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.host}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.host}"
 
         port:
           type: integer
@@ -78,17 +79,17 @@ systemParameters:
           minimum: 1
           maximum: 65535
           default: 6379
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.port}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.port}"
 
         password:
           type: string
           description: Redis authentication password (optional)
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.password}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.password}"
 
         username:
           type: string
           description: Redis ACL username (optional, Redis 6+)
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.username}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.username}"
 
         db:
           type: integer
@@ -96,13 +97,13 @@ systemParameters:
           minimum: 0
           maximum: 15
           default: 0
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.db}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.db}"
 
         keyPrefix:
           type: string
           description: Prefix for all Redis keys to avoid conflicts
           default: "ratelimit:v1:"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.key_prefix}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.key_prefix}"
 
         failureMode:
           type: string
@@ -111,25 +112,31 @@ systemParameters:
             'closed' denies requests. Recommended: 'open' for availability.
           enum: ["open", "closed"]
           default: "open"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.failure_mode}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.failure_mode}"
 
         connectionTimeout:
           type: string
-          description: Redis connection timeout (Go duration string)
+          description: Redis connection timeout as a Go duration string.
+            Supports units ns, us, µs, ms, s, m, h, including composite and
+            fractional values (for example "500ms", "1.5s", "1m30s").
           default: "5s"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.connection_timeout}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.connection_timeout}"
 
         readTimeout:
           type: string
-          description: Redis read timeout (Go duration string)
+          description: Redis read timeout as a Go duration string. Supports
+            units ns, us, µs, ms, s, m, h, including composite and fractional
+            values (for example "500ms", "1.5s", "1m30s").
           default: "3s"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.read_timeout}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.read_timeout}"
 
         writeTimeout:
           type: string
-          description: Redis write timeout (Go duration string)
+          description: Redis write timeout as a Go duration string. Supports
+            units ns, us, µs, ms, s, m, h, including composite and fractional
+            values (for example "500ms", "1.5s", "1m30s").
           default: "3s"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.write_timeout}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.write_timeout}"
 
     memory:
       type: object
@@ -144,12 +151,14 @@ systemParameters:
           minimum: 100
           maximum: 10000000
           default: 10000
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.memory.max_entries}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.memory.max_entries}"
 
         cleanupInterval:
           type: string
           description: |
-            Interval for cleaning up expired entries (Go duration string).
+            Interval for cleaning up expired entries as a Go duration string.
+            Supports units ns, us, µs, ms, s, m, h, including composite and
+            fractional values (for example "500ms", "1.5s", "1m30s").
             Use "0" to disable periodic cleanup.
           default: "5m"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.memory.cleanup_interval}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.memory.cleanup_interval}"

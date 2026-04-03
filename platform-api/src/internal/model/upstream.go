@@ -29,3 +29,9 @@ type UpstreamEndpoint struct {
 	Ref  string        `json:"ref,omitempty" db:"-"`
 	Auth *UpstreamAuth `json:"auth,omitempty" db:"-"`
 }
+
+type UpstreamAuth struct {
+	Type   string `json:"type" db:"-"`
+	Header string `json:"header,omitempty" db:"-"`
+	Value  string `json:"value,omitempty" db:"-"`
+}

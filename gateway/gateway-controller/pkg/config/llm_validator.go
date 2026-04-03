@@ -22,8 +22,10 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"strings"
+	"unicode"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
 
 // LLMValidator validates LLM-related configurations (provider templates, providers, proxies)
@@ -33,6 +35,8 @@ type LLMValidator struct {
 	versionRegex *regexp.Regexp
 	// metadataNameRegex matches URL-safe characters for Metadata.Name
 	metadataNameRegex *regexp.Regexp
+	// resourcePathRegex matches safe absolute resource paths
+	resourcePathRegex *regexp.Regexp
 }
 
 // NewLLMValidator creates a new LLM configuration validator
@@ -40,6 +44,7 @@ func NewLLMValidator() *LLMValidator {
 	return &LLMValidator{
 		versionRegex:      regexp.MustCompile(`^v?\d+(\.\d+)?(\.\d+)?$`),
 		metadataNameRegex: regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`),
+		resourcePathRegex: regexp.MustCompile(`^/(?:[A-Za-z0-9._~-]+|\*|\{[A-Za-z0-9._~-]+\})(?:/(?:[A-Za-z0-9._~-]+|\*|\{[A-Za-z0-9._~-]+\}))*$|^/$`),
 	}
 }
 
@@ -174,6 +179,77 @@ func (v *LLMValidator) validateTemplateSpec(spec *api.LLMProviderTemplateData) [
 	if spec.RemainingTokens != nil {
 		errors = append(errors, v.validateExtractionIdentifier("spec.remainingTokens",
 			spec.RemainingTokens)...)
+	}
+
+	if spec.ResourceMappings != nil {
+		errors = append(errors, v.validateTemplateResourceMappings("spec.resourceMappings", spec.ResourceMappings)...)
+	}
+
+	return errors
+}
+
+func (v *LLMValidator) validateTemplateResourceMappings(fieldPrefix string,
+	mappings *api.LLMProviderTemplateResourceMappings) []ValidationError {
+	var errors []ValidationError
+
+	if mappings == nil {
+		return errors
+	}
+
+	if mappings.Resources != nil {
+		if len(*mappings.Resources) == 0 {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("%s.resources", fieldPrefix),
+				Message: "resources must be non-empty",
+			})
+		} else {
+			for i := range *mappings.Resources {
+				errors = append(errors, v.validateTemplateResourceMapping(
+					fmt.Sprintf("%s.resources[%d]", fieldPrefix, i),
+					&(*mappings.Resources)[i],
+				)...)
+			}
+		}
+	}
+
+	return errors
+}
+
+func (v *LLMValidator) validateTemplateResourceMapping(fieldPrefix string,
+	mapping *api.LLMProviderTemplateResourceMapping) []ValidationError {
+	var errors []ValidationError
+
+	if mapping == nil {
+		return errors
+	}
+
+	resource := strings.TrimSpace(mapping.Resource)
+	hasSurroundingWhitespace := resource != mapping.Resource
+	if resource == "" || hasSurroundingWhitespace || !strings.HasPrefix(resource, "/") ||
+		strings.IndexFunc(resource, unicode.IsSpace) >= 0 || !v.resourcePathRegex.MatchString(resource) {
+		errors = append(errors, ValidationError{
+			Field:   fieldPrefix + ".resource",
+			Message: "resource must be an absolute path starting with '/' and contain no spaces",
+		})
+	}
+
+	if mapping.PromptTokens != nil {
+		errors = append(errors, v.validateExtractionIdentifier(fieldPrefix+".promptTokens", mapping.PromptTokens)...)
+	}
+	if mapping.CompletionTokens != nil {
+		errors = append(errors, v.validateExtractionIdentifier(fieldPrefix+".completionTokens", mapping.CompletionTokens)...)
+	}
+	if mapping.TotalTokens != nil {
+		errors = append(errors, v.validateExtractionIdentifier(fieldPrefix+".totalTokens", mapping.TotalTokens)...)
+	}
+	if mapping.RemainingTokens != nil {
+		errors = append(errors, v.validateExtractionIdentifier(fieldPrefix+".remainingTokens", mapping.RemainingTokens)...)
+	}
+	if mapping.RequestModel != nil {
+		errors = append(errors, v.validateExtractionIdentifier(fieldPrefix+".requestModel", mapping.RequestModel)...)
+	}
+	if mapping.ResponseModel != nil {
+		errors = append(errors, v.validateExtractionIdentifier(fieldPrefix+".responseModel", mapping.ResponseModel)...)
 	}
 
 	return errors

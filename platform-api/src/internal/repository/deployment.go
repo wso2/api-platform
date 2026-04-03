@@ -161,15 +161,17 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 	var statusQuery string
 	if r.db.Driver() == "postgres" || r.db.Driver() == "postgresql" {
 		statusQuery = `
-			INSERT INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_id, status, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?)
+			INSERT INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_id, status, status_desired, performed_at, status_reason, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)
 			ON CONFLICT (artifact_uuid, organization_uuid, gateway_uuid)
-			DO UPDATE SET deployment_id = EXCLUDED.deployment_id, status = EXCLUDED.status, updated_at = EXCLUDED.updated_at
+			DO UPDATE SET deployment_id = EXCLUDED.deployment_id, status = EXCLUDED.status,
+			             status_desired = EXCLUDED.status_desired, performed_at = EXCLUDED.performed_at,
+			             status_reason = NULL, updated_at = EXCLUDED.updated_at
 		`
 	} else {
 		statusQuery = `
-			REPLACE INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_id, status, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?)
+			REPLACE INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_id, status, status_desired, performed_at, status_reason, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)
 		`
 	}
 
@@ -180,6 +182,8 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 		deployment.GatewayID,
 		deployment.DeploymentID,
 		*deployment.Status,
+		string(*deployment.Status),
+		*deployment.UpdatedAt,
 		*deployment.UpdatedAt,
 	)
 	if err != nil {
@@ -267,7 +271,7 @@ func (r *DeploymentRepo) GetCurrentByGateway(artifactUUID, gatewayID, orgUUID st
 			AND d.organization_uuid = s.organization_uuid
 			AND d.gateway_uuid = s.gateway_uuid
 		WHERE d.artifact_uuid = ? AND d.gateway_uuid = ? AND d.organization_uuid = ?
-			AND s.status = ?
+			AND s.status_desired = 'DEPLOYED'
 		ORDER BY d.created_at DESC
 		LIMIT 1
 	`
@@ -277,7 +281,7 @@ func (r *DeploymentRepo) GetCurrentByGateway(artifactUUID, gatewayID, orgUUID st
 	var statusStr string
 	var updatedAt time.Time
 
-	err := r.db.QueryRow(r.db.Rebind(query), artifactUUID, gatewayID, orgUUID, string(model.DeploymentStatusDeployed)).Scan(
+	err := r.db.QueryRow(r.db.Rebind(query), artifactUUID, gatewayID, orgUUID).Scan(
 		&deployment.DeploymentID, &deployment.Name, &deployment.ArtifactID, &deployment.OrganizationID,
 		&deployment.GatewayID, &baseDeploymentID, &deployment.Content, &metadataJSON, &deployment.CreatedAt,
 		&statusStr, &updatedAt)
@@ -312,28 +316,51 @@ func (r *DeploymentRepo) GetCurrentByGateway(artifactUUID, gatewayID, orgUUID st
 
 // SetCurrent inserts or updates the deployment status record to set the current deployment for an artifact on a gateway
 func (r *DeploymentRepo) SetCurrent(artifactUUID, orgUUID, gatewayID, deploymentID string, status model.DeploymentStatus) (time.Time, error) {
+	return r.SetCurrentWithDetails(artifactUUID, orgUUID, gatewayID, deploymentID, status, "", nil, "")
+}
+
+// SetCurrentWithDetails inserts or updates the deployment status record with full lifecycle fields.
+// statusDesired is the user's intended final state (DEPLOYED/UNDEPLOYED).
+// performedAt, if non-nil, is used as the concurrency token; otherwise defaults to now.
+// statusReason is an optional error code (cleared on new deployments).
+func (r *DeploymentRepo) SetCurrentWithDetails(artifactUUID, orgUUID, gatewayID, deploymentID string, status model.DeploymentStatus, statusDesired string, performedAt *time.Time, statusReason string) (time.Time, error) {
 	updatedAt := time.Now()
+	var pat time.Time
+	if performedAt != nil {
+		pat = *performedAt
+	} else {
+		pat = updatedAt
+	}
+
+	// Convert empty statusDesired to the current status value
+	if statusDesired == "" {
+		statusDesired = string(status)
+	}
+
+	// Convert empty statusReason to nil for SQL
+	var reasonVal interface{}
+	if statusReason != "" {
+		reasonVal = statusReason
+	}
 
 	if r.db.Driver() == "postgres" || r.db.Driver() == "postgresql" {
-		// PostgreSQL: Use ON CONFLICT
 		query := `
-			INSERT INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_id, status, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?)
+			INSERT INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_id, status, status_desired, performed_at, status_reason, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT (artifact_uuid, organization_uuid, gateway_uuid)
-			DO UPDATE SET deployment_id = ?, status = ?, updated_at = ?
+			DO UPDATE SET deployment_id = ?, status = ?, status_desired = ?, performed_at = ?, status_reason = ?, updated_at = ?
 		`
 		_, err := r.db.Exec(r.db.Rebind(query),
-			artifactUUID, orgUUID, gatewayID, deploymentID, status, updatedAt,
-			deploymentID, status, updatedAt)
+			artifactUUID, orgUUID, gatewayID, deploymentID, status, statusDesired, pat, reasonVal, updatedAt,
+			deploymentID, status, statusDesired, pat, reasonVal, updatedAt)
 		return updatedAt, err
 	} else {
-		// SQLite: Use REPLACE
 		query := `
-			REPLACE INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_id, status, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?)
+			REPLACE INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_id, status, status_desired, performed_at, status_reason, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`
 		_, err := r.db.Exec(r.db.Rebind(query),
-			artifactUUID, orgUUID, gatewayID, deploymentID, status, updatedAt)
+			artifactUUID, orgUUID, gatewayID, deploymentID, status, statusDesired, pat, reasonVal, updatedAt)
 		return updatedAt, err
 	}
 }
@@ -364,6 +391,142 @@ func (r *DeploymentRepo) GetStatus(artifactUUID, orgUUID, gatewayID string) (str
 	return deploymentID, model.DeploymentStatus(statusStr), &updatedAt, nil
 }
 
+// GetStatusFull retrieves the full deployment status including performed_at and status_reason
+func (r *DeploymentRepo) GetStatusFull(artifactUUID, orgUUID, gatewayID string) (deploymentID string, status model.DeploymentStatus, performedAt *time.Time, statusReason string, err error) {
+	query := `
+		SELECT deployment_id, status, performed_at, COALESCE(status_reason, '')
+		FROM deployment_status
+		WHERE artifact_uuid = ? AND organization_uuid = ? AND gateway_uuid = ?
+	`
+
+	var patNull sql.NullTime
+	err = r.db.QueryRow(r.db.Rebind(query), artifactUUID, orgUUID, gatewayID).Scan(
+		&deploymentID, &status, &patNull, &statusReason)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", "", nil, "", nil
+		}
+		return "", "", nil, "", err
+	}
+
+	var performedAtPtr *time.Time
+	if patNull.Valid {
+		t := patNull.Time
+		performedAtPtr = &t
+	}
+	return deploymentID, status, performedAtPtr, statusReason, nil
+}
+
+// UpdateStatusWithPerformedAtGuard conditionally updates the deployment status only if performed_at matches.
+// Returns the number of rows affected (0 means stale ack was discarded).
+func (r *DeploymentRepo) UpdateStatusWithPerformedAtGuard(artifactUUID, orgUUID, gatewayID string, newStatus model.DeploymentStatus, statusReason string, performedAt time.Time, requireCurrentStatus []model.DeploymentStatus) (int64, error) {
+	var reasonVal interface{}
+	if statusReason != "" {
+		reasonVal = statusReason
+	}
+
+	updatedAt := time.Now()
+
+	if len(requireCurrentStatus) > 0 {
+		// Build placeholders for the IN clause
+		placeholders := ""
+		args := []interface{}{newStatus, reasonVal, updatedAt}
+		for i, s := range requireCurrentStatus {
+			if i > 0 {
+				placeholders += ", "
+			}
+			placeholders += "?"
+			args = append(args, s)
+		}
+		args = append(args, artifactUUID, orgUUID, gatewayID, performedAt)
+
+		query := fmt.Sprintf(`
+			UPDATE deployment_status
+			SET status = ?, status_reason = ?, updated_at = ?
+			WHERE status IN (%s)
+			  AND artifact_uuid = ? AND organization_uuid = ? AND gateway_uuid = ?
+			  AND performed_at = ?
+		`, placeholders)
+
+		result, err := r.db.Exec(r.db.Rebind(query), args...)
+		if err != nil {
+			return 0, err
+		}
+		return result.RowsAffected()
+	}
+
+	// No status filter — used for failure acks that can overwrite any status
+	query := `
+		UPDATE deployment_status
+		SET status = ?, status_reason = ?, updated_at = ?
+		WHERE artifact_uuid = ? AND organization_uuid = ? AND gateway_uuid = ?
+		  AND performed_at = ?
+	`
+	result, err := r.db.Exec(r.db.Rebind(query), newStatus, reasonVal, updatedAt, artifactUUID, orgUUID, gatewayID, performedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+// GetStaleTransitionalStatuses finds deployment_status rows stuck in DEPLOYING/UNDEPLOYING
+// for longer than the given timeout duration.
+func (r *DeploymentRepo) GetStaleTransitionalStatuses(timeout time.Duration) ([]StaleDeploymentStatus, error) {
+	cutoff := time.Now().Add(-timeout)
+	query := `
+		SELECT artifact_uuid, organization_uuid, gateway_uuid, deployment_id, status, status_desired, performed_at
+		FROM deployment_status
+		WHERE status IN ('DEPLOYING', 'UNDEPLOYING')
+		  AND performed_at < ?
+	`
+	rows, err := r.db.Query(r.db.Rebind(query), cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []StaleDeploymentStatus
+	for rows.Next() {
+		var s StaleDeploymentStatus
+		var statusDesired sql.NullString
+		if err := rows.Scan(&s.ArtifactUUID, &s.OrganizationUUID, &s.GatewayUUID, &s.DeploymentID, &s.Status, &statusDesired, &s.PerformedAt); err != nil {
+			return nil, err
+		}
+		s.StatusDesired = statusDesired.String
+		results = append(results, s)
+	}
+	return results, rows.Err()
+}
+
+// StaleDeploymentStatus represents a deployment status row that has been in a transitional state too long
+type StaleDeploymentStatus struct {
+	ArtifactUUID     string
+	OrganizationUUID string
+	GatewayUUID      string
+	DeploymentID     string
+	Status           model.DeploymentStatus
+	StatusDesired    string
+	PerformedAt      time.Time
+}
+
+// GetArtifactUUIDByDeploymentID resolves the artifact UUID for a given deployment ID.
+// Used to normalise ack handling where the gateway may send a string handle instead of a UUID.
+func (r *DeploymentRepo) GetArtifactUUIDByDeploymentID(deploymentID, orgUUID string) (string, error) {
+	var artifactUUID string
+	err := r.db.QueryRow(r.db.Rebind(`
+		SELECT artifact_uuid FROM deployments
+		WHERE deployment_id = ? AND organization_uuid = ?
+	`), deploymentID, orgUUID).Scan(&artifactUUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", nil
+		}
+		return "", err
+	}
+	return artifactUUID, nil
+}
+
 // DeleteStatus deletes the status entry for an artifact on a gateway
 func (r *DeploymentRepo) DeleteStatus(artifactUUID, orgUUID, gatewayID string) error {
 	query := `
@@ -383,7 +546,7 @@ func (r *DeploymentRepo) GetWithState(deploymentID, artifactUUID, orgUUID string
 		SELECT
 			d.deployment_id, d.name, d.artifact_uuid, d.organization_uuid, d.gateway_uuid,
 			d.base_deployment_id, d.metadata, d.created_at,
-			s.status, s.updated_at AS status_updated_at
+			s.status, s.updated_at AS status_updated_at, s.status_reason
 		FROM deployments d
 		LEFT JOIN deployment_status s
 			ON d.deployment_id = s.deployment_id
@@ -397,11 +560,12 @@ func (r *DeploymentRepo) GetWithState(deploymentID, artifactUUID, orgUUID string
 	var metadataJSON string
 	var statusStr sql.NullString
 	var updatedAtVal sql.NullTime
+	var statusReasonStr sql.NullString
 
 	err := r.db.QueryRow(r.db.Rebind(query), deploymentID, artifactUUID, orgUUID).Scan(
 		&deployment.DeploymentID, &deployment.Name, &deployment.ArtifactID, &deployment.OrganizationID, &deployment.GatewayID,
 		&baseDeploymentID, &metadataJSON, &deployment.CreatedAt,
-		&statusStr, &updatedAtVal)
+		&statusStr, &updatedAtVal, &statusReasonStr)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -431,6 +595,9 @@ func (r *DeploymentRepo) GetWithState(deploymentID, artifactUUID, orgUUID string
 		if updatedAtVal.Valid {
 			deployment.UpdatedAt = &updatedAtVal.Time
 		}
+		if statusReasonStr.Valid && statusReasonStr.String != "" {
+			deployment.StatusReason = &statusReasonStr.String
+		}
 	} else {
 		// ARCHIVED state - Status and UpdatedAt remain nil
 		archived := model.DeploymentStatusArchived
@@ -448,9 +615,12 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
 	// 1. Validation Logic
 	if status != nil {
 		validStatuses := map[string]bool{
-			string(model.DeploymentStatusDeployed):   true,
-			string(model.DeploymentStatusUndeployed): true,
-			string(model.DeploymentStatusArchived):   true,
+			string(model.DeploymentStatusDeployed):    true,
+			string(model.DeploymentStatusUndeployed):  true,
+			string(model.DeploymentStatusDeploying):   true,
+			string(model.DeploymentStatusUndeploying): true,
+			string(model.DeploymentStatusFailed):      true,
+			string(model.DeploymentStatusArchived):    true,
 		}
 		if !validStatuses[*status] {
 			return nil, fmt.Errorf("invalid deployment status: %s", *status)
@@ -471,6 +641,7 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
                 d.base_deployment_id, d.metadata, d.created_at,
                 s.status as current_status,
                 s.updated_at as status_updated_at,
+                s.status_reason,
                 ROW_NUMBER() OVER (
                     PARTITION BY d.gateway_uuid
                     ORDER BY
@@ -498,7 +669,7 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
         SELECT
 			deployment_id, name, artifact_uuid, organization_uuid, gateway_uuid,
             base_deployment_id, metadata, created_at,
-            current_status, status_updated_at
+            current_status, status_updated_at, status_reason
         FROM AnnotatedDeployments
         WHERE rank_idx <= ?
     `
@@ -533,12 +704,13 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
 		var metadataJSON string
 		var statusStr sql.NullString
 		var updatedAtVal sql.NullTime
+		var statusReasonStr sql.NullString
 
 		err := rows.Scan(
 			&deployment.DeploymentID, &deployment.Name, &deployment.ArtifactID,
 			&deployment.OrganizationID, &deployment.GatewayID,
 			&baseDeploymentID, &metadataJSON, &deployment.CreatedAt,
-			&statusStr, &updatedAtVal)
+			&statusStr, &updatedAtVal, &statusReasonStr)
 
 		if err != nil {
 			return nil, err
@@ -566,6 +738,9 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
 			if updatedAtVal.Valid {
 				deployment.UpdatedAt = &updatedAtVal.Time
 			}
+			if statusReasonStr.Valid && statusReasonStr.String != "" {
+				deployment.StatusReason = &statusReasonStr.String
+			}
 		} else {
 			// If the JOIN resulted in NULL, the record is ARCHIVED
 			archived := model.DeploymentStatusArchived
@@ -582,4 +757,183 @@ func (r *DeploymentRepo) GetDeploymentsWithState(artifactUUID, orgUUID string, g
 	}
 
 	return deployments, nil
+}
+
+// GetDeployedGatewayIDs returns the gateway IDs that have an active deployment status
+// (DEPLOYED or UNDEPLOYED) for the given artifact. Since the deployment_status table
+// only holds rows for those two states, a plain SELECT is sufficient.
+func (r *DeploymentRepo) GetDeployedGatewayIDs(artifactUUID, orgUUID string) ([]string, error) {
+	query := `SELECT gateway_uuid FROM deployment_status WHERE artifact_uuid = ? AND organization_uuid = ?`
+
+	rows, err := r.db.Query(r.db.Rebind(query), artifactUUID, orgUUID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var gatewayIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		gatewayIDs = append(gatewayIDs, id)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating gateway IDs: %w", err)
+	}
+
+	return gatewayIDs, nil
+}
+
+// GetAllDeploymentsByGateway retrieves all deployments for a specific gateway
+// Returns lightweight DeploymentInfo for listing deployments
+// Only returns deployments that have an active status (DEPLOYED or UNDEPLOYED)
+// Results are ordered by kind (RestApi -> LlmProvider -> LlmProxy -> Mcp) to ensure
+// dependencies are processed in correct order (LLM Proxies depend on LLM Providers)
+// If since is provided, only returns deployments updated after that timestamp
+func (r *DeploymentRepo) GetAllDeploymentsByGateway(gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error) {
+	var query string
+	var args []interface{}
+
+	if since != nil {
+		query = `
+			SELECT
+				s.deployment_id,
+				s.artifact_uuid,
+				a.handle,
+				a.kind,
+				s.status,
+				s.performed_at
+			FROM deployment_status s
+			INNER JOIN artifacts a ON s.artifact_uuid = a.uuid
+			WHERE s.gateway_uuid = ? AND s.organization_uuid = ? AND s.performed_at > ?
+			ORDER BY
+				CASE a.kind
+					WHEN 'RestApi' THEN 1
+					WHEN 'LlmProvider' THEN 2
+					WHEN 'LlmProxy' THEN 3
+					WHEN 'Mcp' THEN 4
+					ELSE 5
+				END,
+				s.performed_at DESC
+		`
+		args = []interface{}{gatewayID, orgUUID, *since}
+	} else {
+		query = `
+			SELECT
+				s.deployment_id,
+				s.artifact_uuid,
+				a.handle,
+				a.kind,
+				s.status,
+				s.performed_at
+			FROM deployment_status s
+			INNER JOIN artifacts a ON s.artifact_uuid = a.uuid
+			WHERE s.gateway_uuid = ? AND s.organization_uuid = ?
+			ORDER BY
+				CASE a.kind
+					WHEN 'RestApi' THEN 1
+					WHEN 'LlmProvider' THEN 2
+					WHEN 'LlmProxy' THEN 3
+					WHEN 'Mcp' THEN 4
+					ELSE 5
+				END,
+				s.performed_at DESC
+		`
+		args = []interface{}{gatewayID, orgUUID}
+	}
+
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var deployments []*model.DeploymentInfo
+	for rows.Next() {
+		dep := &model.DeploymentInfo{}
+		var statusStr string
+
+		err := rows.Scan(
+			&dep.DeploymentID,
+			&dep.ArtifactID,
+			&dep.Handle,
+			&dep.Kind,
+			&statusStr,
+			&dep.PerformedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		dep.Status = model.DeploymentStatus(statusStr)
+		deployments = append(deployments, dep)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during deployment info iteration: %w", err)
+	}
+
+	return deployments, nil
+}
+
+// GetDeploymentContentByIDs retrieves deployment content for a batch of deployment IDs.
+// Returns a map of deploymentID -> DeploymentContent.
+// This is the only query that joins with the artifacts table to fetch Kind,
+// keeping that concern isolated to the batch sync use case.
+func (r *DeploymentRepo) GetDeploymentContentByIDs(deploymentIDs []string, orgUUID string, gatewayUUID string) (map[string]*model.DeploymentContent, error) {
+	if len(deploymentIDs) == 0 {
+		return map[string]*model.DeploymentContent{}, nil
+	}
+
+	placeholders := make([]string, len(deploymentIDs))
+	args := make([]interface{}, len(deploymentIDs)+2)
+	for i, id := range deploymentIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	args[len(deploymentIDs)] = orgUUID
+	args[len(deploymentIDs)+1] = gatewayUUID
+
+	query := fmt.Sprintf(`
+		SELECT d.deployment_id, d.artifact_uuid, a.kind, d.content
+		FROM deployments d
+		INNER JOIN artifacts a ON d.artifact_uuid = a.uuid
+		WHERE d.deployment_id IN (%s) AND d.organization_uuid = ? AND d.gateway_uuid = ?
+	`, joinStrings(placeholders, ","))
+
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]*model.DeploymentContent)
+	for rows.Next() {
+		dc := &model.DeploymentContent{}
+		if err := rows.Scan(&dc.DeploymentID, &dc.ArtifactID, &dc.Kind, &dc.Content); err != nil {
+			return nil, err
+		}
+		result[dc.DeploymentID] = dc
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during deployment content iteration: %w", err)
+	}
+
+	return result, nil
+}
+
+// joinStrings joins strings with a separator (helper for building IN clauses)
+func joinStrings(strs []string, sep string) string {
+	if len(strs) == 0 {
+		return ""
+	}
+	result := strs[0]
+	for i := 1; i < len(strs); i++ {
+		result += sep + strs[i]
+	}
+	return result
 }

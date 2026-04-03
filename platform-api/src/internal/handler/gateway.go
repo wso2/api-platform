@@ -18,6 +18,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -44,6 +45,11 @@ func NewGatewayHandler(gatewayService *service.GatewayService, slogger *slog.Log
 		gatewayService: gatewayService,
 		slogger:        slogger,
 	}
+}
+
+// manifestSyncResponse is the response body for manifest-sync endpoints
+type manifestSyncResponse struct {
+	Policies json.RawMessage `json:"policies,omitempty"`
 }
 
 // CreateGateway handles POST /api/v1/gateways
@@ -472,6 +478,190 @@ func (h *GatewayHandler) GetGatewayArtifacts(c *gin.Context) {
 	c.JSON(http.StatusOK, artifactListResponse)
 }
 
+// GetGatewayManifest handles GET /api/v1/gateways/{gatewayId}/manifest
+// Called by APIM to retrieve the manifest pushed by the gateway controller on connect.
+func (h *GatewayHandler) GetGatewayManifest(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	gatewayId := c.Param("gatewayId")
+	if gatewayId == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Gateway ID is required"))
+		return
+	}
+
+	dataFromDb, err := h.gatewayService.GetStoredManifest(gatewayId, orgId)
+	if err != nil {
+		if strings.Contains(err.Error(), "invalid UUID") {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid gateway ID format"))
+			return
+		}
+		if strings.Contains(err.Error(), "gateway not found") {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Gateway not found"))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to retrieve gateway manifest"))
+		return
+	}
+
+	c.JSON(http.StatusOK, manifestSyncResponse{
+		Policies: dataFromDb.Policies,
+	})
+}
+
+// SyncCustomPolicy handles POST /api/v1/gateway-custom-policies/sync
+// It upserts a custom policy from the gateway's stored manifest into the gateway_custom_policies table.
+func (h *GatewayHandler) SyncCustomPolicy(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	gatewayId := c.Query("gatewayId")
+	policyName := c.Query("policyName")
+	version := c.Query("policyVersion")
+
+	if gatewayId == "" || policyName == "" || version == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"gatewayId, policyName and policyVersion are required"))
+		return
+	}
+
+	policy, err := h.gatewayService.SyncCustomPolicy(gatewayId, orgId, policyName, version)
+	if err != nil {
+		msg := err.Error()
+		if strings.Contains(msg, "gateway not found") {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", msg))
+			return
+		}
+		if strings.Contains(msg, "not found in gateway manifest") {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", msg))
+			return
+		}
+		if strings.Contains(msg, "not a custom policy") || strings.Contains(msg, "manifest is not available") {
+			c.JSON(http.StatusUnprocessableEntity, utils.NewErrorResponse(422, "Unprocessable Entity", msg))
+			return
+		}
+		if strings.Contains(msg, "already exists") || strings.Contains(msg, "patch version updates are not allowed") || strings.Contains(msg, "cannot downgrade") {
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", msg))
+			return
+		}
+		h.slogger.Error("Failed to sync custom policy", "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to sync custom policy"))
+		return
+	}
+
+	c.JSON(http.StatusOK, policy)
+}
+
+// GetCustomPolicy handles GET /api/v1/gateway-custom-policies/:customPolicyUuid/version/:version
+func (h *GatewayHandler) GetCustomPolicy(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	policyUUID := c.Param("customPolicyUuid")
+	version := c.Param("version")
+	if policyUUID == "" || version == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"customPolicyUuid and version are required"))
+		return
+	}
+
+	policy, err := h.gatewayService.GetCustomPolicyByUUID(orgId, policyUUID, version)
+	if err != nil {
+		if errors.Is(err, constants.ErrCustomPolicyNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Custom policy not found"))
+			return
+		}
+		if errors.Is(err, constants.ErrCustomPolicyVersionMismatch) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Custom policy not found with the specified version"))
+			return
+		}
+		h.slogger.Error("Failed to get custom policy", "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get custom policy"))
+		return
+	}
+
+	c.JSON(http.StatusOK, policy)
+}
+
+// DeleteCustomPolicy handles DELETE /api/v1/gateway-custom-policies/:customPolicyUuid/version/:version
+func (h *GatewayHandler) DeleteCustomPolicy(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	policyUUID := c.Param("customPolicyUuid")
+	version := c.Param("version")
+	if policyUUID == "" || version == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"customPolicyUuid and version are required"))
+		return
+	}
+
+	err := h.gatewayService.DeleteCustomPolicyByUUID(orgId, policyUUID, version)
+	if err != nil {
+		if errors.Is(err, constants.ErrCustomPolicyNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Custom policy not found"))
+			return
+		}
+		if errors.Is(err, constants.ErrCustomPolicyVersionMismatch) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Custom policy not found with the specified version"))
+			return
+		}
+		if errors.Is(err, constants.ErrCustomPolicyInUse) {
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+				"Custom policy is in use by one or more APIs and cannot be deleted"))
+			return
+		}
+		h.slogger.Error("Failed to delete custom policy", "org_id", orgId, "policy_uuid", policyUUID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to delete custom policy"))
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+// ListCustomPolicies handles GET /api/v1/gateway-custom-policies
+func (h *GatewayHandler) ListCustomPolicies(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	policies, err := h.gatewayService.ListCustomPolicies(orgId)
+	if err != nil {
+		h.slogger.Error("Failed to list custom policies", "org_id", orgId, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to list custom policies"))
+		return
+	}
+
+	c.JSON(http.StatusOK, policies)
+}
+
 // RegisterRoutes registers gateway routes with the router
 func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 	h.slogger.Debug("Registering gateway routes")
@@ -486,6 +676,15 @@ func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 		gatewayGroup.POST("/:gatewayId/tokens", h.RotateToken)
 		gatewayGroup.DELETE("/:gatewayId/tokens/:tokenId", h.RevokeToken)
 		gatewayGroup.GET("/:gatewayId/live-proxy-artifacts", h.GetGatewayArtifacts)
+		gatewayGroup.GET("/:gatewayId/manifest", h.GetGatewayManifest)
+	}
+
+	customPoliciesGroup := r.Group("/api/v1/gateway-custom-policies")
+	{
+		customPoliciesGroup.GET("", h.ListCustomPolicies)
+		customPoliciesGroup.POST("/sync", h.SyncCustomPolicy)
+		customPoliciesGroup.GET("/:customPolicyUuid/version/:version", h.GetCustomPolicy)
+		customPoliciesGroup.DELETE("/:customPolicyUuid/version/:version", h.DeleteCustomPolicy)
 	}
 
 	gatewayStatusGroup := r.Group("/api/v1/status")

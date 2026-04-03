@@ -297,7 +297,7 @@ gateway:
   controller:
     image:
       repository: ghcr.io/wso2/api-platform/gateway-controller
-      tag: "0.10.0-SNAPSHOT"
+      tag: "1.0.0"
       pullPolicy: Always
     imagePullSecrets: []
     service:
@@ -370,6 +370,15 @@ gateway:
       # Existing ConfigMap containing custom CA certificates
       # ConfigMap should contain one or more keys with PEM-encoded certificates
       configMapName: ""
+    # Encryption key configuration for secret management (AES-GCM keys)
+    encryptionKeys:
+      # Enable mounting encryption keys from a Kubernetes secret
+      enabled: false
+      # Name of the existing secret containing the key file(s) as binary data.
+      # Create with: kubectl create secret generic <name> --from-file=default-aesgcm256-v1.bin=<path>
+      secretName: ""
+      # Mount path inside the container — must match controller.encryption.providers[].keys[].file paths
+      mountPath: /app/data/aesgcm-keys
     logging:
       level: info
     storage:
@@ -405,7 +414,7 @@ gateway:
       livenessProbe:
         httpGet:
           path: /health
-          port: rest
+          port: admin
         initialDelaySeconds: 10
         periodSeconds: 10
         timeoutSeconds: 5
@@ -413,7 +422,7 @@ gateway:
       readinessProbe:
         httpGet:
           path: /health
-          port: rest
+          port: admin
         initialDelaySeconds: 5
         periodSeconds: 5
         timeoutSeconds: 3
@@ -438,7 +447,7 @@ gateway:
   gatewayRuntime:
     image:
       repository: ghcr.io/wso2/api-platform/gateway-runtime
-      tag: "0.10.0-SNAPSHOT"
+      tag: "1.0.0"
       pullPolicy: Always
     imagePullSecrets: []
     service:

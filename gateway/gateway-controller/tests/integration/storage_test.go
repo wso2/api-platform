@@ -28,7 +28,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -63,37 +63,127 @@ func setupTestDB(t *testing.T) (storage.Storage, string, func()) {
 
 // createTestConfig creates a sample API configuration for testing
 func createTestConfig(name, version string) *models.StoredConfig {
-	specUnion := api.APIConfiguration_Spec{}
-	specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: name,
-		Version:     version,
-		Context:     "/" + name,
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: func() *string { s := "http://example.com"; return &s }(),
+	apiConfig := api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Metadata:   api.Metadata{Name: name + "-" + version},
+		Spec: api.APIConfigData{
+			DisplayName: name,
+			Version:     version,
+			Context:     "/" + name,
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://example.com"; return &s }(),
+				},
+			},
+			Operations: []api.Operation{
+				{
+					Method: api.OperationMethodGET,
+					Path:   "/test",
+				},
 			},
 		},
-		Operations: []api.Operation{
-			{
-				Method: api.OperationMethod(api.GET),
-				Path:   "/test",
-			},
-		},
-	})
-	return &models.StoredConfig{
-		ID: uuid.New().String(),
-		Configuration: api.APIConfiguration{
-			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.RestApi,
-			Metadata:   api.Metadata{Name: name + "-" + version},
-			Spec:       specUnion,
-		},
-		Status:          models.StatusPending,
-		DeployedVersion: 0,
 	}
+	return &models.StoredConfig{
+		UUID:                uuid.New().String(),
+		Kind:                string(api.RestApi),
+		Handle:              name + "-" + version,
+		DisplayName:         name,
+		Version:             version,
+		Configuration:       apiConfig,
+		SourceConfiguration: apiConfig,
+		DesiredState:        models.StateDeployed,
+		Origin:              models.OriginGatewayAPI,
+	}
+}
+
+func TestSQLiteStorage_GatewayIsolationForSharedUUIDs(t *testing.T) {
+	metrics.SetEnabled(false)
+	metrics.Init()
+
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "shared.db")
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	gatewayA, err := storage.NewStorage(storage.BackendConfig{
+		Type:       "sqlite",
+		SQLitePath: dbPath,
+		GatewayID:  "gateway-a",
+	}, logger)
+	require.NoError(t, err)
+	defer gatewayA.Close()
+
+	gatewayB, err := storage.NewStorage(storage.BackendConfig{
+		Type:       "sqlite",
+		SQLitePath: dbPath,
+		GatewayID:  "gateway-b",
+	}, logger)
+	require.NoError(t, err)
+	defer gatewayB.Close()
+
+	setContext := func(cfg *models.StoredConfig, context string) {
+		restCfg := cfg.Configuration.(api.RestAPI)
+		restCfg.Spec.Context = context
+		cfg.Configuration = restCfg
+
+		sourceCfg := cfg.SourceConfiguration.(api.RestAPI)
+		sourceCfg.Spec.Context = context
+		cfg.SourceConfiguration = sourceCfg
+	}
+
+	cfgA := createTestConfig("SharedAPI", "v1.0")
+	cfgA.UUID = "shared-config-uuid"
+	setContext(cfgA, "/gateway-a")
+
+	cfgB := createTestConfig("SharedAPI", "v1.0")
+	cfgB.UUID = cfgA.UUID
+	setContext(cfgB, "/gateway-b")
+
+	require.NoError(t, gatewayA.SaveConfig(cfgA))
+	require.NoError(t, gatewayB.SaveConfig(cfgB))
+
+	retrievedA, err := gatewayA.GetConfig(cfgA.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, "/gateway-a", retrievedA.Configuration.(api.RestAPI).Spec.Context)
+
+	retrievedB, err := gatewayB.GetConfig(cfgB.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, "/gateway-b", retrievedB.Configuration.(api.RestAPI).Spec.Context)
+
+	byHandleA, err := gatewayA.GetConfigByKindAndHandle(models.KindRestApi, cfgA.Handle)
+	require.NoError(t, err)
+	assert.Equal(t, "/gateway-a", byHandleA.Configuration.(api.RestAPI).Spec.Context)
+
+	byHandleB, err := gatewayB.GetConfigByKindAndHandle(models.KindRestApi, cfgB.Handle)
+	require.NoError(t, err)
+	assert.Equal(t, "/gateway-b", byHandleB.Configuration.(api.RestAPI).Spec.Context)
+
+	allConfigsA, err := gatewayA.GetAllConfigs()
+	require.NoError(t, err)
+	require.Len(t, allConfigsA, 1)
+	assert.Equal(t, "/gateway-a", allConfigsA[0].Configuration.(api.RestAPI).Spec.Context)
+
+	allConfigsByKindA, err := gatewayA.GetAllConfigsByKind(models.KindRestApi)
+	require.NoError(t, err)
+	require.Len(t, allConfigsByKindA, 1)
+	assert.Equal(t, "/gateway-a", allConfigsByKindA[0].Configuration.(api.RestAPI).Spec.Context)
+
+	setContext(cfgA, "/gateway-a-updated")
+	cfgA.DesiredState = models.StateUndeployed
+	require.NoError(t, gatewayA.UpdateConfig(cfgA))
+
+	retrievedA, err = gatewayA.GetConfig(cfgA.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, models.StateUndeployed, retrievedA.DesiredState)
+	assert.Equal(t, "/gateway-a-updated", retrievedA.Configuration.(api.RestAPI).Spec.Context)
+
+	retrievedB, err = gatewayB.GetConfig(cfgB.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, models.StateDeployed, retrievedB.DesiredState)
+	assert.Equal(t, "/gateway-b", retrievedB.Configuration.(api.RestAPI).Spec.Context)
 }
 
 func TestSQLiteStorage_CRUD(t *testing.T) {
@@ -113,24 +203,11 @@ func TestSQLiteStorage_CRUD(t *testing.T) {
 		err := db.SaveConfig(cfg)
 		require.NoError(t, err)
 
-		retrieved, err := db.GetConfig(cfg.ID)
+		retrieved, err := db.GetConfig(cfg.UUID)
 		assert.NoError(t, err, "GetConfig should succeed")
-		assert.Equal(t, cfg.ID, retrieved.ID)
-		assert.Equal(t, cfg.GetDisplayName(), retrieved.GetDisplayName())
-		assert.Equal(t, cfg.GetVersion(), retrieved.GetVersion())
-	})
-
-	// Test GetConfigByNameVersion
-	t.Run("GetConfigByNameVersion", func(t *testing.T) {
-		cfg := createTestConfig("TestAPI3", "v1.0")
-		err := db.SaveConfig(cfg)
-		require.NoError(t, err)
-
-		retrieved, err := db.GetConfigByNameVersion("TestAPI3", "v1.0")
-		assert.NoError(t, err, "GetConfigByNameVersion should succeed")
-		assert.Equal(t, cfg.ID, retrieved.ID)
-		assert.Equal(t, "TestAPI3", retrieved.GetDisplayName())
-		assert.Equal(t, "v1.0", retrieved.GetVersion())
+		assert.Equal(t, cfg.UUID, retrieved.UUID)
+		assert.Equal(t, cfg.DisplayName, retrieved.DisplayName)
+		assert.Equal(t, cfg.Version, retrieved.Version)
 	})
 
 	// Test UpdateConfig
@@ -140,16 +217,14 @@ func TestSQLiteStorage_CRUD(t *testing.T) {
 		require.NoError(t, err)
 
 		// Update the configuration
-		cfg.Status = "deployed"
-		cfg.DeployedVersion = 1
+		cfg.DesiredState = "undeployed"
 		err = db.UpdateConfig(cfg)
 		assert.NoError(t, err, "UpdateConfig should succeed")
 
 		// Verify update
-		retrieved, err := db.GetConfig(cfg.ID)
+		retrieved, err := db.GetConfig(cfg.UUID)
 		require.NoError(t, err)
-		assert.Equal(t, models.StatusDeployed, retrieved.Status)
-		assert.Equal(t, int64(1), retrieved.DeployedVersion)
+		assert.Equal(t, models.StateUndeployed, retrieved.DesiredState)
 	})
 
 	// Test DeleteConfig
@@ -159,11 +234,11 @@ func TestSQLiteStorage_CRUD(t *testing.T) {
 		require.NoError(t, err)
 
 		// Delete the configuration
-		err = db.DeleteConfig(cfg.ID)
+		err = db.DeleteConfig(cfg.UUID)
 		assert.NoError(t, err, "DeleteConfig should succeed")
 
 		// Verify deletion
-		_, err = db.GetConfig(cfg.ID)
+		_, err = db.GetConfig(cfg.UUID)
 		assert.Error(t, err, "GetConfig should fail after deletion")
 		assert.ErrorIs(t, err, storage.ErrNotFound)
 	})
@@ -228,10 +303,10 @@ func TestSQLiteStorage_ErrorHandling(t *testing.T) {
 		assert.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
-	// Test get by name/version non-existent
-	t.Run("GetByNameVersionNonExistent", func(t *testing.T) {
-		_, err := db.GetConfigByNameVersion("NonExistent", "v1.0")
-		assert.Error(t, err, "GetConfigByNameVersion should fail for non-existent config")
+	// Test get by handle non-existent
+	t.Run("GetByHandleNonExistent", func(t *testing.T) {
+		_, err := db.GetConfigByKindAndHandle(models.KindRestApi, "NonExistent-v1.0")
+		assert.Error(t, err, "GetConfigByKindAndHandle should fail for non-existent config")
 		assert.ErrorIs(t, err, storage.ErrNotFound)
 	})
 }
@@ -307,46 +382,49 @@ func TestSQLiteStorage_DatabaseFileCreation(t *testing.T) {
 
 // createTestConfigWithLabels creates a sample API configuration with labels for testing
 func createTestConfigWithLabels(name, version string, labels map[string]string) *models.StoredConfig {
-	specUnion := api.APIConfiguration_Spec{}
-	specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName: name,
-		Version:     version,
-		Context:     "/" + name,
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: func() *string { s := "http://example.com"; return &s }(),
-			},
-		},
-		Operations: []api.Operation{
-			{
-				Method: api.OperationMethod(api.GET),
-				Path:   "/test",
-			},
-		},
-	})
-
 	// Handle labels properly: nil map should result in nil pointer
 	var labelsPtr *map[string]string
 	if labels != nil {
 		labelsPtr = &labels
 	}
 
-	return &models.StoredConfig{
-		ID: uuid.New().String(),
-		Configuration: api.APIConfiguration{
-			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.RestApi,
-			Metadata: api.Metadata{
-				Name:   name + "-" + version,
-				Labels: labelsPtr,
-			},
-			Spec: specUnion,
+	apiConfig := api.RestAPI{
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.RestApi,
+		Metadata: api.Metadata{
+			Name:   name + "-" + version,
+			Labels: labelsPtr,
 		},
-		Status:          models.StatusPending,
-		DeployedVersion: 0,
+		Spec: api.APIConfigData{
+			DisplayName: name,
+			Version:     version,
+			Context:     "/" + name,
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: api.Upstream{
+					Url: func() *string { s := "http://example.com"; return &s }(),
+				},
+			},
+			Operations: []api.Operation{
+				{
+					Method: api.OperationMethodGET,
+					Path:   "/test",
+				},
+			},
+		},
+	}
+	return &models.StoredConfig{
+		UUID:                uuid.New().String(),
+		Kind:                string(api.RestApi),
+		Handle:              name + "-" + version,
+		DisplayName:         name,
+		Version:             version,
+		Configuration:       apiConfig,
+		SourceConfiguration: apiConfig,
+		DesiredState:        models.StateDeployed,
+		Origin:              models.OriginGatewayAPI,
 	}
 }
 
@@ -366,8 +444,7 @@ func TestConfigStore_LabelsStorage(t *testing.T) {
 		assert.NoError(t, err, "Add should succeed")
 
 		// Verify labels were stored
-		handle := cfg.GetHandle()
-		retrieved, err := configStore.GetLabelsMap(handle)
+		retrieved, err := configStore.GetLabelsMap(cfg.Handle)
 		assert.NoError(t, err, "GetLabelsMap should succeed")
 		assert.Equal(t, labels, retrieved, "Retrieved labels should match stored labels")
 	})
@@ -383,14 +460,14 @@ func TestConfigStore_LabelsStorage(t *testing.T) {
 		cfg := createTestConfigWithLabels("test-api-v2.0", "v1.0", labels)
 		require.NoError(t, configStore.Add(cfg))
 
-		retrieved, err := configStore.GetLabelsMap(cfg.GetHandle())
+		retrieved, err := configStore.GetLabelsMap(cfg.Handle)
 		require.NoError(t, err)
 
 		// Modify the retrieved map
 		retrieved["new-key"] = "new-value"
 
 		// Verify original wasn't modified
-		retrieved2, err := configStore.GetLabelsMap(cfg.GetHandle())
+		retrieved2, err := configStore.GetLabelsMap(cfg.Handle)
 		require.NoError(t, err)
 		assert.NotEqual(t, retrieved, retrieved2, "Original labels should not be modified")
 		assert.Equal(t, labels, retrieved2, "Original labels should remain unchanged")
@@ -402,12 +479,14 @@ func TestConfigStore_LabelsStorage(t *testing.T) {
 		require.NoError(t, configStore.Add(cfg))
 
 		// Remove labels by updating the config with nil labels
-		cfg.Configuration.Metadata.Labels = nil
+		restCfg := cfg.Configuration.(api.RestAPI)
+		restCfg.Metadata.Labels = nil
+		cfg.Configuration = restCfg
 		err := configStore.Update(cfg)
 		assert.NoError(t, err, "Update (remove labels) should succeed")
 
 		// Verify labels were deleted
-		_, err = configStore.GetLabelsMap(cfg.GetHandle())
+		_, err = configStore.GetLabelsMap(cfg.Handle)
 		assert.Error(t, err, "GetLabelsMap should fail after deletion")
 		assert.ErrorIs(t, err, storage.ErrNotFound)
 	})
@@ -425,12 +504,14 @@ func TestConfigStore_LabelsStorage(t *testing.T) {
 		require.NoError(t, configStore.Add(cfg))
 
 		// Store nil labels via Update (should remove them)
-		cfg.Configuration.Metadata.Labels = nil
+		restCfg := cfg.Configuration.(api.RestAPI)
+		restCfg.Metadata.Labels = nil
+		cfg.Configuration = restCfg
 		err := configStore.Update(cfg)
 		assert.NoError(t, err, "Update (nil labels) should succeed")
 
 		// Verify labels were removed
-		_, err = configStore.GetLabelsMap(cfg.GetHandle())
+		_, err = configStore.GetLabelsMap(cfg.Handle)
 		assert.Error(t, err, "GetLabelsMap should fail after storing nil labels")
 		assert.ErrorIs(t, err, storage.ErrNotFound)
 	})
@@ -440,7 +521,7 @@ func TestConfigStore_LabelsStorage(t *testing.T) {
 		cfg := createTestConfigWithLabels("test-api-v5.0", "v1.0", emptyLabels)
 		require.NoError(t, configStore.Add(cfg))
 
-		retrieved, err := configStore.GetLabelsMap(cfg.GetHandle())
+		retrieved, err := configStore.GetLabelsMap(cfg.Handle)
 		assert.NoError(t, err, "GetLabelsMap should succeed")
 		assert.Equal(t, emptyLabels, retrieved, "Retrieved labels should be empty map")
 	})
@@ -460,8 +541,7 @@ func TestConfigStore_LabelsWithAddUpdateDelete(t *testing.T) {
 		require.NoError(t, err, "Add should succeed")
 
 		// Verify labels were stored
-		handle := cfg.GetHandle()
-		retrieved, err := configStore.GetLabelsMap(handle)
+		retrieved, err := configStore.GetLabelsMap(cfg.Handle)
 		assert.NoError(t, err, "GetLabelsMap should succeed")
 		assert.Equal(t, labels, retrieved, "Labels should be stored automatically on Add")
 	})
@@ -473,8 +553,7 @@ func TestConfigStore_LabelsWithAddUpdateDelete(t *testing.T) {
 		require.NoError(t, err, "Add should succeed with nil labels")
 
 		// Verify no labels were stored
-		handle := cfg.GetHandle()
-		_, err = configStore.GetLabelsMap(handle)
+		_, err = configStore.GetLabelsMap(cfg.Handle)
 		assert.Error(t, err, "GetLabelsMap should fail when labels are nil")
 		assert.ErrorIs(t, err, storage.ErrNotFound)
 	})
@@ -491,14 +570,15 @@ func TestConfigStore_LabelsWithAddUpdateDelete(t *testing.T) {
 			"key1": "updated-value1",
 			"key2": "value2",
 		}
-		cfg.Configuration.Metadata.Labels = &updatedLabels
+		restCfg := cfg.Configuration.(api.RestAPI)
+		restCfg.Metadata.Labels = &updatedLabels
+		cfg.Configuration = restCfg
 
 		err = configStore.Update(cfg)
 		require.NoError(t, err, "Update should succeed")
 
 		// Verify labels were updated
-		handle := cfg.GetHandle()
-		retrieved, err := configStore.GetLabelsMap(handle)
+		retrieved, err := configStore.GetLabelsMap(cfg.Handle)
 		assert.NoError(t, err, "GetLabelsMap should succeed")
 		assert.Equal(t, updatedLabels, retrieved, "Labels should be updated")
 	})
@@ -511,14 +591,15 @@ func TestConfigStore_LabelsWithAddUpdateDelete(t *testing.T) {
 		require.NoError(t, err)
 
 		// Update with nil labels
-		cfg.Configuration.Metadata.Labels = nil
+		restCfg := cfg.Configuration.(api.RestAPI)
+		restCfg.Metadata.Labels = nil
+		cfg.Configuration = restCfg
 
 		err = configStore.Update(cfg)
 		require.NoError(t, err, "Update should succeed")
 
 		// Verify labels were removed
-		handle := cfg.GetHandle()
-		_, err = configStore.GetLabelsMap(handle)
+		_, err = configStore.GetLabelsMap(cfg.Handle)
 		assert.Error(t, err, "GetLabelsMap should fail after setting labels to nil")
 		assert.ErrorIs(t, err, storage.ErrNotFound)
 	})
@@ -530,24 +611,31 @@ func TestConfigStore_LabelsWithAddUpdateDelete(t *testing.T) {
 		err := configStore.Add(cfg)
 		require.NoError(t, err)
 
-		oldHandle := cfg.GetHandle()
+		oldHandle := cfg.Handle
 
 		// Create a new config object with updated handle (don't modify the original)
-		updatedCfg := &models.StoredConfig{
-			ID: cfg.ID, // Same ID
-			Configuration: api.APIConfiguration{
-				ApiVersion: cfg.Configuration.ApiVersion,
-				Kind:       cfg.Configuration.Kind,
-				Metadata: api.Metadata{
-					Name:   "new-handle-v1.0", // New name
-					Labels: cfg.Configuration.Metadata.Labels,
-				},
-				Spec: cfg.Configuration.Spec,
+		origCfg := cfg.Configuration.(api.RestAPI)
+		newApiConfig := api.RestAPI{
+			ApiVersion: origCfg.ApiVersion,
+			Kind:       origCfg.Kind,
+			Metadata: api.Metadata{
+				Name:   "new-handle-v1.0", // New name
+				Labels: origCfg.Metadata.Labels,
 			},
-			Status:          cfg.Status,
-			DeployedVersion: cfg.DeployedVersion,
+			Spec: origCfg.Spec,
 		}
-		newHandle := updatedCfg.GetHandle()
+		updatedCfg := &models.StoredConfig{
+			UUID:                cfg.UUID, // Same ID
+			Kind:                cfg.Kind,
+			Handle:              "new-handle-v1.0",
+			DisplayName:         cfg.DisplayName,
+			Version:             cfg.Version,
+			Configuration:       newApiConfig,
+			SourceConfiguration: newApiConfig,
+			DesiredState:        cfg.DesiredState,
+			Origin:              models.OriginGatewayAPI,
+		}
+		newHandle := updatedCfg.Handle
 
 		err = configStore.Update(updatedCfg)
 		require.NoError(t, err, "Update should succeed")
@@ -568,18 +656,16 @@ func TestConfigStore_LabelsWithAddUpdateDelete(t *testing.T) {
 		err := configStore.Add(cfg)
 		require.NoError(t, err)
 
-		handle := cfg.GetHandle()
-
 		// Verify labels exist
-		_, err = configStore.GetLabelsMap(handle)
+		_, err = configStore.GetLabelsMap(cfg.Handle)
 		assert.NoError(t, err, "Labels should exist before deletion")
 
 		// Delete the config
-		err = configStore.Delete(cfg.ID)
+		err = configStore.Delete(cfg.UUID)
 		require.NoError(t, err, "Delete should succeed")
 
 		// Verify labels were removed
-		_, err = configStore.GetLabelsMap(handle)
+		_, err = configStore.GetLabelsMap(cfg.Handle)
 		assert.Error(t, err, "GetLabelsMap should fail after Delete")
 		assert.ErrorIs(t, err, storage.ErrNotFound)
 	})
@@ -595,51 +681,52 @@ func TestConfigStore_LabelsWithAllAPITypes(t *testing.T) {
 
 	t.Run("RestApi with labels", func(t *testing.T) {
 		cfg := createTestConfigWithLabels("RestAPILabel", "v1.0", labels)
-		cfg.Configuration.Kind = api.RestApi
+		// Configuration already has Kind=RestApi from createTestConfigWithLabels
 
 		err := configStore.Add(cfg)
 		require.NoError(t, err)
 
-		handle := cfg.GetHandle()
-		retrieved, err := configStore.GetLabelsMap(handle)
+		retrieved, err := configStore.GetLabelsMap(cfg.Handle)
 		assert.NoError(t, err)
 		assert.Equal(t, labels, retrieved)
 	})
 
 	t.Run("WebSubApi with labels", func(t *testing.T) {
-		specUnion := api.APIConfiguration_Spec{}
-		specUnion.FromWebhookAPIData(api.WebhookAPIData{
-			DisplayName: "AsyncAPILabel",
-			Version:     "v1.0",
-			Context:     "/async",
-			Channels: []api.Channel{
-				{
-					Name:   "/events",
-					Method: api.SUB,
+		asyncApiConfig := api.WebSubAPI{
+			ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.WebSubApi,
+			Metadata: api.Metadata{
+				Name:   "async-api-v1.0",
+				Labels: &labels,
+			},
+			Spec: api.WebhookAPIData{
+				DisplayName: "AsyncAPILabel",
+				Version:     "v1.0",
+				Context:     "/async",
+				Channels: []api.Channel{
+					{
+						Name:   "/events",
+						Method: api.SUB,
+					},
 				},
 			},
-		})
-
+		}
 		cfg := &models.StoredConfig{
-			ID: uuid.New().String(),
-			Configuration: api.APIConfiguration{
-				ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-				Kind:       api.WebSubApi,
-				Metadata: api.Metadata{
-					Name:   "async-api-v1.0",
-					Labels: &labels,
-				},
-				Spec: specUnion,
-			},
-			Status:          models.StatusPending,
-			DeployedVersion: 0,
+			UUID:                uuid.New().String(),
+			Kind:                string(api.WebSubApi),
+			Handle:              "async-api-v1.0",
+			DisplayName:         "AsyncAPILabel",
+			Version:             "v1.0",
+			Configuration:       asyncApiConfig,
+			SourceConfiguration: asyncApiConfig,
+			DesiredState:        models.StateDeployed,
+			Origin:              models.OriginGatewayAPI,
 		}
 
 		err := configStore.Add(cfg)
 		require.NoError(t, err)
 
-		handle := cfg.GetHandle()
-		retrieved, err := configStore.GetLabelsMap(handle)
+		retrieved, err := configStore.GetLabelsMap(cfg.Handle)
 		assert.NoError(t, err)
 		assert.Equal(t, labels, retrieved)
 	})
@@ -660,9 +747,10 @@ func TestSQLiteStorage_LabelsPersistence(t *testing.T) {
 		require.NoError(t, err)
 
 		// Retrieve and verify labels are persisted
-		retrieved, err := db.GetConfig(cfg.ID)
+		retrieved, err := db.GetConfig(cfg.UUID)
 		require.NoError(t, err)
-		assert.Equal(t, labels, *retrieved.Configuration.Metadata.Labels, "Labels should be persisted")
+		retrievedRestCfg := retrieved.Configuration.(api.RestAPI)
+		assert.Equal(t, labels, *retrievedRestCfg.Metadata.Labels, "Labels should be persisted")
 	})
 
 	t.Run("UpdateConfig updates labels", func(t *testing.T) {
@@ -677,15 +765,19 @@ func TestSQLiteStorage_LabelsPersistence(t *testing.T) {
 			"key1": "updated-value1",
 			"key2": "value2",
 		}
-		cfg.Configuration.Metadata.Labels = &updatedLabels
+		restCfg := cfg.Configuration.(api.RestAPI)
+		restCfg.Metadata.Labels = &updatedLabels
+		cfg.Configuration = restCfg
+		cfg.SourceConfiguration = cfg.Configuration
 
 		err = db.UpdateConfig(cfg)
 		require.NoError(t, err)
 
 		// Verify labels were updated
-		retrieved, err := db.GetConfig(cfg.ID)
+		retrieved, err := db.GetConfig(cfg.UUID)
 		require.NoError(t, err)
-		assert.Equal(t, updatedLabels, *retrieved.Configuration.Metadata.Labels, "Labels should be updated")
+		retrievedRestCfg := retrieved.Configuration.(api.RestAPI)
+		assert.Equal(t, updatedLabels, *retrievedRestCfg.Metadata.Labels, "Labels should be updated")
 	})
 
 	t.Run("LoadFromDatabase loads labels into memory", func(t *testing.T) {
@@ -704,8 +796,7 @@ func TestSQLiteStorage_LabelsPersistence(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify labels are loaded into memory
-		handle := cfg.GetHandle()
-		retrieved, err := configStore.GetLabelsMap(handle)
+		retrieved, err := configStore.GetLabelsMap(cfg.Handle)
 		assert.NoError(t, err, "Labels should be loaded into memory")
 		assert.Equal(t, labels, retrieved, "Loaded labels should match persisted labels")
 	})

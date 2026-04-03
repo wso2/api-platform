@@ -49,7 +49,7 @@ Feature: AWS Bedrock Guardrail Policy
             path: /validate
             policies:
               - name: aws-bedrock-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""
@@ -93,7 +93,7 @@ Feature: AWS Bedrock Guardrail Policy
             path: /validate
             policies:
               - name: aws-bedrock-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""
@@ -137,7 +137,7 @@ Feature: AWS Bedrock Guardrail Policy
             path: /validate
             policies:
               - name: aws-bedrock-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     showAssessment: true
@@ -182,7 +182,7 @@ Feature: AWS Bedrock Guardrail Policy
             path: /data
             policies:
               - name: aws-bedrock-guardrail
-                version: v0
+                version: v1
                 params:
                   response:
                     jsonPath: ""
@@ -223,7 +223,7 @@ Feature: AWS Bedrock Guardrail Policy
             path: /validate
             policies:
               - name: aws-bedrock-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: "$.message"
@@ -282,12 +282,13 @@ Feature: AWS Bedrock Guardrail Policy
             path: /anything
             policies:
               - name: aws-bedrock-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""
                     redactPII: false
                   response:
+                    enabled: true
                     jsonPath: ""
       """
     Then the response should be successful
@@ -331,9 +332,10 @@ Feature: AWS Bedrock Guardrail Policy
             path: /anything
             policies:
               - name: aws-bedrock-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
+                    jsonPath: ""
                     redactPII: true
       """
     Then the response should be successful
@@ -377,7 +379,7 @@ Feature: AWS Bedrock Guardrail Policy
             path: /validate
             policies:
               - name: aws-bedrock-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""
@@ -424,7 +426,7 @@ Feature: AWS Bedrock Guardrail Policy
             path: /validate
             policies:
               - name: aws-bedrock-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""
@@ -465,7 +467,7 @@ Feature: AWS Bedrock Guardrail Policy
             path: /validate
             policies:
               - name: aws-bedrock-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: ""
@@ -511,7 +513,7 @@ Feature: AWS Bedrock Guardrail Policy
             path: /chat
             policies:
               - name: aws-bedrock-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: "$.data.content"
@@ -573,7 +575,7 @@ Feature: AWS Bedrock Guardrail Policy
             path: /validate
             policies:
               - name: aws-bedrock-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     jsonPath: "$.nonexistent.field"
@@ -622,7 +624,7 @@ Feature: AWS Bedrock Guardrail Policy
             path: /validate
             policies:
               - name: aws-bedrock-guardrail
-                version: v0
+                version: v1
                 params:
                   request:
                     showAssessment: true

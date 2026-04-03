@@ -113,6 +113,33 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /organizations/{organizationId}/subscription:
+    get:
+      summary: Get organization subscription quotas
+      description: |
+        Returns the current organization subscription view with resource quota usage.
+        The organization ID in the path must match the JWT token's organization claim.
+      operationId: GetOrganizationSubscription
+      tags:
+        - Organizations
+      parameters:
+        - $ref: '#/components/parameters/organizationId'
+      responses:
+        '200':
+          description: Organization subscription quotas retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationSubscription'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /projects:
     post:
       summary: Create a new project
@@ -246,6 +273,263 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /applications:
+    post:
+      summary: Create a new application
+      description: |
+        Creates a new application within the organization specified in the JWT token.
+      operationId: CreateApplication
+      tags:
+        - Applications
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApplicationRequest'
+      responses:
+        '201':
+          description: Application created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Application'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get applications for current user's organization
+      description: |
+        Retrieves applications belonging to the organization specified in the JWT token.
+        Filters by project using the required `projectId` query parameter.
+      operationId: ListApplications
+      tags:
+        - Applications
+      parameters:
+        - $ref: '#/components/parameters/projectId-Q'
+        - name: limit
+          in: query
+          description: Maximum number of applications to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of applications to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Applications retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /applications/{appId}:
+    get:
+      summary: Get application by handle
+      description: |
+        Retrieves a specific application by handle. Access is validated against
+        the organization in the JWT token.
+      operationId: GetApplication
+      tags:
+        - Applications
+      parameters:
+        - $ref: '#/components/parameters/appId'
+      responses:
+        '200':
+          description: Application retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Application'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update application
+      description: |
+        Updates an existing application by handle.
+      operationId: UpdateApplication
+      tags:
+        - Applications
+      parameters:
+        - $ref: '#/components/parameters/appId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateApplicationRequest'
+      responses:
+        '200':
+          description: Application updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Application'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete application
+      description: |
+        Deletes an existing application by handle.
+      operationId: DeleteApplication
+      tags:
+        - Applications
+      parameters:
+        - $ref: '#/components/parameters/appId'
+      responses:
+        '204':
+          description: Application deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /applications/{appId}/api-keys:
+    get:
+      summary: List application API key mappings
+      description: |
+        Lists all API keys mapped to the specified application.
+      operationId: ListApplicationAPIKeys
+      tags:
+        - Applications
+        - API Keys
+      parameters:
+        - $ref: '#/components/parameters/appId'
+        - name: limit
+          in: query
+          description: Maximum number of mapped API keys to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of mapped API keys to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Mapped API keys retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MappedAPIKeyListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Add application API key mappings
+      description: |
+        Adds API key mappings to the specified application.
+      operationId: AddApplicationAPIKeys
+      tags:
+        - Applications
+        - API Keys
+      parameters:
+        - $ref: '#/components/parameters/appId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddApplicationAPIKeysRequest'
+      responses:
+        '200':
+          description: API key mappings added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MappedAPIKeyListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /applications/{appId}/api-keys/{keyId}:
+    delete:
+      summary: Remove application API key mapping
+      description: |
+        Removes a mapped API key from the specified application.
+      operationId: RemoveApplicationAPIKey
+      tags:
+        - Applications
+        - API Keys
+      parameters:
+        - $ref: '#/components/parameters/appId'
+        - $ref: '#/components/parameters/mappedKeyId'
+        - $ref: '#/components/parameters/entityID-Q'
+      responses:
+        '204':
+          description: API key mapping removed successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -403,8 +687,9 @@ paths:
     get:
       summary: Get all REST APIs for an organization
       description: |
-        Retrieves all REST APIs belonging to an organization. Optionally filter by project using 
-        the projectId query parameter. Access is validated against the organization in the JWT token.
+        Retrieves all REST APIs belonging to an organization.
+        Requires the projectId query parameter to filter APIs by project.
+        Access is validated against the organization in the JWT token.
       operationId: ListRESTAPIs
       tags:
         - REST APIs
@@ -708,7 +993,7 @@ paths:
         to revoke API keys on hybrid gateways.
       operationId: RevokeAPIKey
       tags:
-        - APIs
+        - REST APIs
         - API Keys
       parameters:
         - $ref: '#/components/parameters/apiId'
@@ -734,6 +1019,356 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /subscription-plans:
+    post:
+      summary: Create subscription plan
+      description: Creates an organization-scoped subscription plan.
+      operationId: CreateSubscriptionPlan
+      tags:
+        - SubscriptionPlans
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSubscriptionPlanRequest'
+      responses:
+        '201':
+          description: Subscription plan created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionPlan'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      summary: List subscription plans
+      description: Returns subscription plans for the organization.
+      operationId: ListSubscriptionPlans
+      tags:
+        - SubscriptionPlans
+      responses:
+        '200':
+          description: List of subscription plans
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionPlanListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /subscription-plans/{planId}:
+    get:
+      summary: Get subscription plan by ID
+      operationId: GetSubscriptionPlan
+      tags:
+        - SubscriptionPlans
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Subscription plan details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionPlan'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      summary: Update subscription plan
+      operationId: UpdateSubscriptionPlan
+      tags:
+        - SubscriptionPlans
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSubscriptionPlanRequest'
+      responses:
+        '200':
+          description: Updated subscription plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionPlan'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete subscription plan
+      operationId: DeleteSubscriptionPlan
+      tags:
+        - SubscriptionPlans
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Subscription plan deleted (no content)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /subscriptions:
+    post:
+      summary: Create subscription
+      description: |
+        Creates a subscription for the specified API.
+        `subscriberId` identifies the unique subscriber for this API, allowing multiple subscribers to create subscriptions for the same API.
+      operationId: CreateSubscription
+      tags:
+        - Subscriptions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSubscriptionRequest'
+      responses:
+        '201':
+          description: Subscription created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      summary: List subscriptions
+      description: |
+        Returns subscriptions filtered by API and/or application.
+        Optional query parameters apiId, subscriberId, applicationId and status filter the list.
+        Supports pagination via limit and offset.
+      operationId: ListSubscriptions
+      tags:
+        - Subscriptions
+      parameters:
+        - name: apiId
+          in: query
+          required: false
+          description: Filter by API ID (UUID or handle)
+          schema:
+            type: string
+        - name: subscriberId
+          in: query
+          required: false
+          description: Filter by subscriber ID
+          schema:
+            type: string
+            minLength: 1
+        - name: applicationId
+          in: query
+          required: false
+          description: Filter by application ID
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          description: Filter by status (ACTIVE, INACTIVE, REVOKED)
+          schema:
+            type: string
+            enum: [ACTIVE, INACTIVE, REVOKED]
+        - name: limit
+          in: query
+          description: Maximum number of subscriptions to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of subscriptions to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: List of subscriptions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /subscriptions/{subscriptionId}:
+    get:
+      summary: Get subscription by ID
+      description: |
+        Returns a single subscription by ID (scoped to organization).
+        Query parameter `subscriberId` is required and must match the subscription's subscriber for access control.
+      operationId: GetSubscription
+      tags:
+        - Subscriptions
+      parameters:
+        - name: subscriptionId
+          in: path
+          required: true
+          description: Subscription UUID
+          schema:
+            type: string
+            format: uuid
+        - name: subscriberId
+          in: query
+          required: true
+          description: Subscriber ID; must match the subscription's subscriberId.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        '200':
+          description: Subscription details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      summary: Update subscription
+      description: |
+        Updates a subscription (e.g. status).
+        Query parameter `subscriberId` is required and must match the subscription's subscriber for access control.
+      operationId: UpdateSubscription
+      tags:
+        - Subscriptions
+      parameters:
+        - name: subscriptionId
+          in: path
+          required: true
+          description: Subscription UUID
+          schema:
+            type: string
+            format: uuid
+        - name: subscriberId
+          in: query
+          required: true
+          description: Subscriber ID; must match the subscription's subscriberId.
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSubscriptionRequest'
+      responses:
+        '200':
+          description: Updated subscription
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete subscription
+      description: |
+        Removes the subscription for the API.
+        Query parameter `subscriberId` is required and must match the subscription's subscriber for access control.
+      operationId: DeleteSubscription
+      tags:
+        - Subscriptions
+      parameters:
+        - name: subscriptionId
+          in: path
+          required: true
+          description: Subscription UUID
+          schema:
+            type: string
+            format: uuid
+        - name: subscriberId
+          in: query
+          required: true
+          description: Subscriber ID; must match the subscription's subscriberId.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        '204':
+          description: Subscription deleted (no content)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -925,11 +1560,12 @@ paths:
       description: |
         Creates an immutable deployment artifact for an API and deploys it to a specified gateway.
         Each deployment targets a single gateway. The apiId parameter is the API handle (identifier),
-        not the UUID. The deployment becomes active immediately on the target gateway. 
+        not the UUID. The operation returns a transitional DEPLOYING status. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges. 
         Access is validated against the organization in the JWT token.
       operationId: DeployAPI
       tags:
         - REST API Deployments
+        - Deployments
       parameters:
         - $ref: '#/components/parameters/apiId'
       requestBody:
@@ -972,6 +1608,7 @@ paths:
       operationId: GetDeployments
       tags:
         - REST API Deployments
+        - Deployments
       parameters:
         - $ref: '#/components/parameters/apiId'
         - $ref: '#/components/parameters/gatewayId-Q'
@@ -1001,6 +1638,7 @@ paths:
       operationId: GetDeployment
       tags:
         - REST API Deployments
+        - Deployments
       parameters:
         - $ref: '#/components/parameters/apiId'
         - $ref: '#/components/parameters/deploymentId'
@@ -1025,6 +1663,7 @@ paths:
       operationId: DeleteDeployment
       tags:
         - REST API Deployments
+        - Deployments
       parameters:
         - $ref: '#/components/parameters/apiId'
         - $ref: '#/components/parameters/deploymentId'
@@ -1047,8 +1686,8 @@ paths:
       summary: Undeploy deployment from gateway
       description: |
         Undeploys an active deployment, stopping the API from being served on the specified gateway.
-        The deployment artifact remains in the system with UNDEPLOYED status and can be restored later.
-        Returns the updated deployment object with status changed to UNDEPLOYED.
+        The deployment artifact remains in the system and can be restored later.
+        Returns the updated deployment object with initial status UNDEPLOYING. Final status (UNDEPLOYED or FAILED) will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         
         Both deploymentId and gatewayId are required for safety. The backend validates that the 
         deployment's bound gateway matches the provided gatewayId to prevent unintended operations.
@@ -1056,6 +1695,7 @@ paths:
       operationId: UndeployDeployment
       tags:
         - REST API Deployments
+        - Deployments
       parameters:
         - $ref: '#/components/parameters/apiId'
         - name: deploymentId
@@ -1072,7 +1712,7 @@ paths:
           description: UUID of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
-          description: Deployment undeployed successfully. Returns the updated deployment with UNDEPLOYED status.
+          description: Undeploy initiated successfully. Returns the deployment with initial status UNDEPLOYING. Poll status for final result.
           content:
             application/json:
               schema:
@@ -1092,8 +1732,8 @@ paths:
     post:
       summary: Restore a previous deployment
       description: |
-        Activates a previous deployment (ARCHIVED or UNDEPLOYED) by setting it as the current DEPLOYED version
-        on the specified gateway. This operation changes the deployment state of the API on that gateway.
+        Initiates restoring a previous deployment (ARCHIVED or UNDEPLOYED) on the specified gateway.
+        Returns the deployment with initial status DEPLOYING. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         The target deployment must not already be in DEPLOYED status.
         
         Both deploymentId and gatewayId are required for safety. The backend validates that the 
@@ -1102,6 +1742,7 @@ paths:
       operationId: RestoreDeployment
       tags:
         - REST API Deployments
+        - Deployments
       parameters:
         - $ref: '#/components/parameters/apiId'
         - name: deploymentId
@@ -1118,7 +1759,7 @@ paths:
           description: UUID of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
-          description: Deployment restored successfully. Returns the deployment with status changed to DEPLOYED.
+          description: Restore initiated successfully. Returns the deployment with initial status DEPLOYING. Poll status for final result.
           content:
             application/json:
               schema:
@@ -1353,7 +1994,7 @@ paths:
                 $ref: '#/components/schemas/Error'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        404:
+        '404':
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
@@ -1417,6 +2058,195 @@ paths:
                 $ref: '#/components/schemas/GatewayArtifactListResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /gateway-custom-policies:
+    get:
+      summary: Get synced custom policies for the current organization
+      description: |
+        Returns all custom policies synced to the current organization (from the JWT `organization` claim).
+      operationId: ListGatewayCustomPolicies
+      tags:
+        - Gateway Policies
+      responses:
+        '200':
+          description: List of custom policies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CustomPolicyResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /gateway-custom-policies/sync:
+    post:
+      summary: Sync a custom policy from the gateway manifest
+      description: |
+        Syncs a custom policy from the gateway manifest into the organization's custom policy registry.
+        Version-based rules apply:
+        - **New major version**: creates a new policy record (e.g. v1.x.x and v2.x.x coexist).
+        - **New minor version** (same major): updates the existing record (e.g. v1.1.0 → v1.2.0).
+        - **Patch version change** (same major.minor): not allowed.
+        - **Downgrade**: not allowed.
+        Policy names are case-insensitive.
+        After syncing, the policy can be applied to APIs in the organization.
+      operationId: SyncCustomPolicy
+      tags:
+        - Gateway Policies
+      parameters:
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the gateway whose manifest contains the policy
+          example: "019d18ee-fed1-7e86-bef6-f64211c3c5bc"
+        - name: policyName
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Name of the custom policy (case-insensitive)
+          example: "set-wso2-headers"
+        - name: policyVersion
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Version of the custom policy in MAJOR.MINOR.PATCH format
+          example: "1.0.0"
+      responses:
+        '200':
+          description: Custom policy synced successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomPolicyResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Policy already exists, patch version update, or downgrade is not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Policy is not a custom policy or manifest is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /gateway-custom-policies/{customPolicyUuid}/version/{version}:
+    get:
+      summary: Get a specific custom policy version
+      description: Returns a custom policy by its UUID and version for the current organization.
+      operationId: GetGatewayCustomPolicy
+      tags:
+        - Gateway Policies
+      parameters:
+        - name: customPolicyUuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the custom policy record
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Version of the custom policy (e.g. "1.0.0")
+          example: "1.0.0"
+      responses:
+        '200':
+          description: Custom policy retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomPolicyResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete a specific custom policy version
+      description: |
+        Deletes a custom policy by its UUID and version. The policy must not be in use by any APIs.
+      operationId: DeleteGatewayCustomPolicy
+      tags:
+        - Gateway Policies
+      parameters:
+        - name: customPolicyUuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID of the custom policy record
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Version of the custom policy (e.g. "1.0.0")
+          example: "1.0.0"
+      responses:
+        '204':
+          description: Custom policy deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Custom policy is in use by one or more APIs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /gateways/{gatewayId}/manifest:
+    get:
+      summary: Get gateway policy manifest
+      description: |
+        Returns the policy manifest for the specified gateway. The manifest is populated by the gateway
+        controller when it connects to the platform API, and contains all installed policies. Custom
+        policies additionally include their full policy definition schema.
+      operationId: GetGatewayManifest
+      tags:
+        - Gateways
+      parameters:
+        - $ref: '#/components/parameters/GatewayID'
+      responses:
+        '200':
+          description: Gateway policy manifest
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManifestSyncResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -2231,11 +3061,12 @@ paths:
       description: |
         Creates an immutable deployment artifact for an LLM provider and deploys it to a specified gateway.
         Each deployment targets a single gateway. The providerId parameter is the LLM provider handle (identifier),
-        not the UUID. The deployment becomes active immediately on the target gateway.
+        not the UUID. The operation returns a transitional DEPLOYING status. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         Access is validated against the organization in the JWT token.
       operationId: deployLLMProvider
       tags:
         - LLM Provider Deployments
+        - Deployments
       parameters:
         - name: id
           in: path
@@ -2283,6 +3114,7 @@ paths:
       operationId: getLLMProviderDeployments
       tags:
         - LLM Provider Deployments
+        - Deployments
       parameters:
         - name: id
           in: path
@@ -2317,6 +3149,7 @@ paths:
       operationId: getLLMProviderDeployment
       tags:
         - LLM Provider Deployments
+        - Deployments
       parameters:
         - name: id
           in: path
@@ -2346,6 +3179,7 @@ paths:
       operationId: deleteLLMProviderDeployment
       tags:
         - LLM Provider Deployments
+        - Deployments
       parameters:
         - name: id
           in: path
@@ -2373,8 +3207,8 @@ paths:
       summary: Undeploy LLM provider deployment from gateway
       description: |
         Undeploys an active LLM provider deployment, stopping it from being served on the specified gateway.
-        The deployment artifact remains in the system with UNDEPLOYED status and can be restored later.
-        Returns the updated deployment object with status changed to UNDEPLOYED.
+        The deployment artifact remains in the system and can be restored later.
+        Returns the updated deployment object with initial status UNDEPLOYING. Final status (UNDEPLOYED or FAILED) will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
 
         Both deploymentId and gatewayId are required for safety. The backend validates that the
         deployment's bound gateway matches the provided gatewayId to prevent unintended operations.
@@ -2382,6 +3216,7 @@ paths:
       operationId: undeployLLMProviderDeployment
       tags:
         - LLM Provider Deployments
+        - Deployments
       parameters:
         - name: id
           in: path
@@ -2403,7 +3238,7 @@ paths:
           description: UUID of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
-          description: Deployment undeployed successfully. Returns the updated deployment with UNDEPLOYED status.
+          description: Undeploy initiated successfully. Returns the deployment with initial status UNDEPLOYING. Poll status for final result.
           content:
             application/json:
               schema:
@@ -2423,8 +3258,8 @@ paths:
     post:
       summary: Restore a previous LLM provider deployment
       description: |
-        Activates a previous deployment (ARCHIVED or UNDEPLOYED) by setting it as the current DEPLOYED version
-        on the specified gateway. This operation changes the deployment state of the LLM provider on that gateway.
+        Initiates restoring a previous deployment (ARCHIVED or UNDEPLOYED) on the specified gateway.
+        Returns the deployment with initial status DEPLOYING. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         The target deployment must not already be in DEPLOYED status.
 
         Both deploymentId and gatewayId are required for safety. The backend validates that the
@@ -2433,6 +3268,7 @@ paths:
       operationId: restoreLLMProviderDeployment
       tags:
         - LLM Provider Deployments
+        - Deployments
       parameters:
         - name: id
           in: path
@@ -2454,7 +3290,7 @@ paths:
           description: UUID of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
-          description: Deployment restored successfully. Returns the deployment with status changed to DEPLOYED.
+          description: Restore initiated successfully. Returns the deployment with initial status DEPLOYING. Poll status for final result.
           content:
             application/json:
               schema:
@@ -2480,11 +3316,12 @@ paths:
       description: |
         Creates an immutable deployment artifact for an LLM proxy and deploys it to a specified gateway.
         Each deployment targets a single gateway. The proxyId parameter is the LLM proxy handle (identifier),
-        not the UUID. The deployment becomes active immediately on the target gateway.
+        not the UUID. The operation returns a transitional DEPLOYING status. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         Access is validated against the organization in the JWT token.
       operationId: deployLLMProxy
       tags:
         - LLM Proxy Deployments
+        - Deployments
       parameters:
         - name: id
           in: path
@@ -2532,6 +3369,7 @@ paths:
       operationId: getLLMProxyDeployments
       tags:
         - LLM Proxy Deployments
+        - Deployments
       parameters:
         - name: id
           in: path
@@ -2566,6 +3404,7 @@ paths:
       operationId: getLLMProxyDeployment
       tags:
         - LLM Proxy Deployments
+        - Deployments
       parameters:
         - name: id
           in: path
@@ -2595,6 +3434,7 @@ paths:
       operationId: deleteLLMProxyDeployment
       tags:
         - LLM Proxy Deployments
+        - Deployments
       parameters:
         - name: id
           in: path
@@ -2622,8 +3462,8 @@ paths:
       summary: Undeploy LLM proxy deployment from gateway
       description: |
         Undeploys an active LLM proxy deployment, stopping it from being served on the specified gateway.
-        The deployment artifact remains in the system with UNDEPLOYED status and can be restored later.
-        Returns the updated deployment object with status changed to UNDEPLOYED.
+        The deployment artifact remains in the system and can be restored later.
+        Returns the updated deployment object with initial status UNDEPLOYING. Final status (UNDEPLOYED or FAILED) will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
 
         Both deploymentId and gatewayId are required for safety. The backend validates that the
         deployment's bound gateway matches the provided gatewayId to prevent unintended operations.
@@ -2631,6 +3471,7 @@ paths:
       operationId: undeployLLMProxyDeployment
       tags:
         - LLM Proxy Deployments
+        - Deployments
       parameters:
         - name: id
           in: path
@@ -2652,7 +3493,7 @@ paths:
           description: UUID of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
-          description: Deployment undeployed successfully. Returns the updated deployment with UNDEPLOYED status.
+          description: Undeploy initiated successfully. Returns the deployment with initial status UNDEPLOYING. Poll status for final result.
           content:
             application/json:
               schema:
@@ -2672,8 +3513,8 @@ paths:
     post:
       summary: Restore a previous LLM proxy deployment
       description: |
-        Activates a previous deployment (ARCHIVED or UNDEPLOYED) by setting it as the current DEPLOYED version
-        on the specified gateway. This operation changes the deployment state of the LLM proxy on that gateway.
+        Initiates restoring a previous deployment (ARCHIVED or UNDEPLOYED) on the specified gateway.
+        Returns the deployment with initial status DEPLOYING. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         The target deployment must not already be in DEPLOYED status.
 
         Both deploymentId and gatewayId are required for safety. The backend validates that the
@@ -2682,6 +3523,7 @@ paths:
       operationId: restoreLLMProxyDeployment
       tags:
         - LLM Proxy Deployments
+        - Deployments
       parameters:
         - name: id
           in: path
@@ -2703,7 +3545,7 @@ paths:
           description: UUID of the gateway (validated against deployment's bound gateway)
       responses:
         '200':
-          description: Deployment restored successfully. Returns the deployment with status changed to DEPLOYED.
+          description: Restore initiated successfully. Returns the deployment with initial status DEPLOYING. Poll status for final result.
           content:
             application/json:
               schema:
@@ -2819,6 +3661,82 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalServerError'
+    get:
+      summary: List API keys for an LLM provider
+      description: Returns all API keys associated with the specified LLM provider. The plain key value is never returned.
+      operationId: listLLMProviderAPIKeys
+      tags:
+        - LLM Providers
+        - API Keys
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the LLM provider
+          schema:
+            type: string
+          example: wso2-openai-provider
+      responses:
+        '200':
+          description: List of API keys retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderAPIKeyListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: LLM provider not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-providers/{id}/api-keys/{keyName}:
+    delete:
+      summary: Delete an API key for an LLM provider
+      description: |
+        Deletes the key from the database and broadcasts a revoke event to the allowed gateways.
+      operationId: deleteLLMProviderAPIKey
+      tags:
+        - LLM Providers
+        - API Keys
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the LLM provider
+          schema:
+            type: string
+          example: wso2-openai-provider
+        - name: keyName
+          in: path
+          required: true
+          description: Name of the API key to delete
+          schema:
+            type: string
+          example: my-api-key
+      responses:
+        '204':
+          description: API key deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: LLM provider or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: No gateway connections available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /llm-proxies:
     post:
@@ -2852,7 +3770,7 @@ paths:
 
     get:
       summary: List all LLM proxies
-      description: Retrieve a list of all LLM proxies. Optionally filter by project using the projectId query parameter.
+      description: Retrieve a list of all LLM proxies for a project. Requires the projectId query parameter.
       operationId: listLLMProxies
       tags:
         - LLM Proxies
@@ -3023,6 +3941,559 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/InternalServerError'
+    get:
+      summary: List API keys for an LLM proxy
+      description: Returns all API keys associated with the specified LLM proxy. The plain key value is never returned.
+      operationId: listLLMProxyAPIKeys
+      tags:
+        - LLM Proxies
+        - API Keys
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the LLM proxy
+          schema:
+            type: string
+          example: wso2-openai-proxy
+      responses:
+        '200':
+          description: List of API keys retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProxyAPIKeyListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: LLM proxy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-proxies/{id}/api-keys/{keyName}:
+    delete:
+      summary: Delete an API key for an LLM proxy
+      description: |
+        Deletes the key from the database and broadcasts a revoke event to the allowed gateways.
+      operationId: deleteLLMProxyAPIKey
+      tags:
+        - LLM Proxies
+        - API Keys
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the LLM proxy
+          schema:
+            type: string
+          example: wso2-openai-proxy
+        - name: keyName
+          in: path
+          required: true
+          description: Name of the API key to delete
+          schema:
+            type: string
+          example: my-api-key
+      responses:
+        '204':
+          description: API key deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: LLM proxy or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: No gateway connections available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /me/api-keys:
+    get:
+      summary: List API keys for the current user
+      description: |
+        Returns API keys created by the caller within the organization.
+        Optionally filter by one or more artifact types using a comma-separated `type` query parameter.
+        The plain key value is never returned.
+      operationId: listUserAPIKeys
+      tags:
+        - API Keys
+      parameters:
+        - name: type
+          in: query
+          description: |
+            Comma-separated list of artifact types to filter by.
+            If omitted, all types are returned.
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [RestApi, LlmProvider, LlmProxy]
+          style: form
+          explode: false
+          example: LlmProxy,LlmProvider
+      responses:
+        '200':
+          description: List of API keys retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserAPIKeyListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /mcp-proxies:
+    post:
+      summary: Create a new MCP proxy
+      description: |
+        Deploy a new MCP proxy configuration.
+      operationId: createMCPProxy
+      tags:
+        - MCP Proxies
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MCPProxy'
+      responses:
+        '201':
+          description: MCP proxy created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPProxy'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: List all MCP proxies
+      description: Retrieve a list of all MCP proxies for a project. Requires the projectId query parameter.
+      operationId: listMCPProxies
+      tags:
+        - MCP Proxies
+      parameters:
+        - $ref: '#/components/parameters/projectId-Q'
+        - name: limit
+          in: query
+          description: Maximum number of MCP proxies to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of MCP proxies to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: List of MCP proxies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPProxyListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /mcp-proxies/{id}:
+    get:
+      summary: Get MCP proxy by unique identifier
+      description: Retrieve the complete configuration for a specific MCP proxy.
+      operationId: getMCPProxy
+      tags:
+        - MCP Proxies
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the MCP proxy
+          schema:
+            type: string
+      responses:
+        '200':
+          description: MCP proxy details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPProxy'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update an existing MCP proxy
+      description: Update the configuration of an existing MCP proxy.
+      operationId: updateMCPProxy
+      tags:
+        - MCP Proxies
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the MCP proxy
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MCPProxy'
+      responses:
+        '200':
+          description: MCP proxy updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPProxy'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    
+    delete:
+      summary: Delete an MCP proxy
+      description: Remove an MCP proxy.
+      operationId: deleteMCPProxy
+      tags:
+        - MCP Proxies
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the MCP proxy
+          schema:
+            type: string
+      responses:
+        '204':
+          description: MCP proxy deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /mcp-proxies/{id}/deployments:
+    post:
+      summary: Create and deploy a new deployment for MCP proxy
+      description: |
+        Creates an immutable deployment artifact for an MCP proxy and deploys it to a specified gateway.
+        Each deployment targets a single gateway. The id parameter is the MCP proxy handle (identifier),
+        not the UUID. The operation returns a transitional DEPLOYING status. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges. 
+        Access is validated against the organization in the JWT token.
+      operationId: DeployMCPProxy
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the MCP proxy
+          schema:
+            type: string
+      requestBody:
+        description: Deployment request with gateway ID, base reference, and metadata
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeployRequest'
+      responses:
+        '201':
+          description: MCP proxy deployed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          description: Bad Request. Validation errors (missing name, base, gatewayId, or MCP proxy has no backend services)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Not Found. MCP proxy, gateway, or base deployment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: Get deployments for an MCP proxy
+      description: |
+        Retrieves all deployment artifacts for a specific MCP proxy. The id parameter is the MCP proxy handle (identifier),
+        not the UUID. Supports filtering by gateway UUID and deployment status. 
+        Access is validated against the organization in the JWT token.
+      operationId: GetMCPProxyDeployments
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the MCP proxy
+          schema:
+            type: string
+        - $ref: '#/components/parameters/gatewayId-Q'
+        - $ref: '#/components/parameters/deploymentStatus-Q'
+      responses:
+        '200':
+          description: Deployments retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /mcp-proxies/{id}/deployments/{deploymentId}:
+    get:
+      summary: Get deployment by ID
+      description: |
+        Retrieves metadata for a specific deployment artifact including status, gateway association,
+        and timestamps. Access is validated against the organization in the JWT token.
+      operationId: GetMCPProxyDeployment
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the MCP proxy
+          schema:
+            type: string
+        - $ref: '#/components/parameters/deploymentId'
+      responses:
+        '200':
+          description: Deployment metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete deployment
+      description: |
+        Deletes a deployment artifact. Deletion is only allowed when the deployment is in UNDEPLOYED status.
+        Access is validated against the organization in the JWT token.
+      operationId: DeleteMCPProxyDeployment
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the MCP proxy
+          schema:
+            type: string
+        - $ref: '#/components/parameters/deploymentId'
+      responses:
+        '204':
+          description: Deployment deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /mcp-proxies/{id}/deployments/undeploy:
+    post:
+      summary: Undeploy deployment from gateway
+      description: |
+        Undeploys an active deployment, stopping the MCP proxy from being served on the specified gateway.
+        The deployment artifact remains in the system and can be restored later.
+        Returns the updated deployment object with initial status UNDEPLOYING. Final status (UNDEPLOYED or FAILED) will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
+        
+        Both deploymentId and gatewayId are required for safety. The backend validates that the 
+        deployment's bound gateway matches the provided gatewayId to prevent unintended operations.
+        Access is validated against the organization in the JWT token.
+      operationId: UndeployMCPProxyDeployment
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the MCP proxy
+          schema:
+            type: string
+        - name: deploymentId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: UUID of the deployment to undeploy
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: UUID of the gateway (validated against deployment's bound gateway)
+      responses:
+        '200':
+          description: Undeploy initiated successfully. Returns the deployment with initial status UNDEPLOYING. Poll status for final result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /mcp-proxies/{id}/deployments/restore:
+    post:
+      summary: Restore a previous deployment
+      description: |
+        Initiates restoring a previous deployment (ARCHIVED or UNDEPLOYED) on the specified gateway.
+        Returns the deployment with initial status DEPLOYING. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
+        The target deployment must not already be in DEPLOYED status.
+        
+        Both deploymentId and gatewayId are required for safety. The backend validates that the 
+        deployment's bound gateway matches the provided gatewayId to prevent unintended operations.
+        Access is validated against the organization in the JWT token.
+      operationId: RestoreMCPProxyDeployment
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the MCP proxy
+          schema:
+            type: string
+        - name: deploymentId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: UUID of the deployment to undeploy
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: UUID of the gateway (validated against deployment's bound gateway)
+      responses:
+        '200':
+          description: Restore initiated successfully. Returns the deployment with initial status DEPLOYING. Poll status for final result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Conflict. Cannot restore currently deployed deployment or deployment is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /mcp-proxies/fetch-server-info:
+    post:
+      summary: Fetch server info from MCP proxy backend services
+      description: |
+        Fetches server information from the backend services of an MCP proxy. 
+        This is used to validate connectivity and retrieve metadata about the backend services.
+      operationId: fetchMCPProxyServerInfo
+      tags:
+        - MCP Proxies
+      requestBody:
+        description: Deployment request with gateway ID, base reference, and metadata
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MCPServerInfoFetchRequest'
+      responses:
+        '200':
+          description: Server info retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPServerInfoFetchResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
 components:
   securitySchemes:
@@ -3038,6 +4509,112 @@ components:
         Example: `Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...`
 
   schemas:
+    APIKeyItem:
+      type: object
+      required:
+        - name
+        - maskedApiKey
+        - status
+        - createdAt
+        - createdBy
+        - updatedAt
+        - allowedTargets
+      properties:
+        name:
+          type: string
+          description: URL-safe identifier of the API key
+        maskedApiKey:
+          type: string
+          description: Masked representation of the API key for display purposes
+        status:
+          type: string
+          description: Current status of the key
+          enum: [active, revoked, expired]
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the key was created
+        createdBy:
+          type: string
+          description: User who created the key
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the key was last updated
+        expiresAt:
+          type: string
+          format: date-time
+          description: Optional expiration timestamp
+        issuer:
+          type: string
+          description: Optional identifier of the developer portal that provisioned this key
+          example: "api-platform-devportal"
+        allowedTargets:
+          type: string
+          description: "Comma-separated list of allowed gateways; 'ALL' means unrestricted"
+
+    UserAPIKeyItem:
+      allOf:
+        - $ref: '#/components/schemas/APIKeyItem'
+        - type: object
+          required:
+            - artifactId
+            - artifactType
+          properties:
+            artifactId:
+              type: string
+              description: Handle (ID) of the artifact this key belongs to
+              example: wso2-openai-provider
+            artifactType:
+              type: string
+              enum: [RestApi, LlmProvider, LlmProxy]
+              description: Type of the artifact this key belongs to
+
+    UserAPIKeyListResponse:
+      type: object
+      required:
+        - items
+        - count
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserAPIKeyItem'
+          description: List of API keys
+        count:
+          type: integer
+          description: Total number of API keys returned
+
+    LLMProviderAPIKeyListResponse:
+      type: object
+      required:
+        - items
+        - count
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/APIKeyItem'
+          description: List of API keys
+        count:
+          type: integer
+          description: Total number of API keys returned
+
+    LLMProxyAPIKeyListResponse:
+      type: object
+      required:
+        - items
+        - count
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/APIKeyItem'
+          description: List of API keys
+        count:
+          type: integer
+          description: Total number of API keys returned
+
     Organization:
       type: object
       required:
@@ -3078,6 +4655,65 @@ components:
           description: Timestamp when the organization was last updated
           readOnly: true
           example: "2023-10-12T10:30:00Z"
+
+    OrganizationSubscription:
+      type: object
+      required:
+        - plan
+        - quotas
+      properties:
+        plan:
+          type: string
+          description: Effective subscription plan for the organization
+          example: "free"
+        quotas:
+          $ref: '#/components/schemas/OrganizationSubscriptionQuotas'
+
+    OrganizationSubscriptionQuotas:
+      type: object
+      required:
+        - llmProviders
+        - llmProxies
+        - applications
+        - mcpProxies
+        - gateways
+        - apis
+      properties:
+        llmProviders:
+          $ref: '#/components/schemas/OrganizationQuota'
+        llmProxies:
+          $ref: '#/components/schemas/OrganizationQuota'
+        applications:
+          $ref: '#/components/schemas/OrganizationQuota'
+        mcpProxies:
+          $ref: '#/components/schemas/OrganizationQuota'
+        gateways:
+          $ref: '#/components/schemas/OrganizationQuota'
+        apis:
+          $ref: '#/components/schemas/OrganizationQuota'
+
+    OrganizationQuota:
+      type: object
+      required:
+        - used
+      properties:
+        used:
+          type: integer
+          minimum: 0
+          description: Number of currently used resources
+          example: 3
+        limit:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Maximum resources allowed, null when no limit is configured
+          example: 5
+        remaining:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Remaining resources before limit is reached, null when no limit is configured
+          example: 2
 
     CreateProjectRequest:
       description: |
@@ -3155,6 +4791,224 @@ components:
           description: Timestamp when the project was last updated
           readOnly: true
           example: "2023-10-12T10:30:00Z"
+
+    ApplicationType:
+      type: string
+      description: Type of the application
+      enum:
+        - genai
+      example: genai
+
+    CreateApplicationRequest:
+      description: Request body for creating an application.
+      type: object
+      required:
+        - name
+        - projectId
+        - type
+      properties:
+        id:
+          type: string
+          description: Unique handle/identifier for the application. Can be provided during creation or auto-generated.
+          example: my-app-handle
+        name:
+          type: string
+          minLength: 1
+          description: Name of the application
+          example: "GenAI Demo App"
+        projectId:
+          type: string
+          format: uuid
+          description: UUID of the project this application belongs to.
+          example: "7d7a51fd-daa1-4095-b7ff-98a1aa05cc0f"
+        type:
+          $ref: '#/components/schemas/ApplicationType'
+        description:
+          type: string
+          description: Description of the application
+          example: "Sample GenAI application"
+        createdBy:
+          type: string
+          description: Creator identifier
+          example: "admin"
+
+    UpdateApplicationRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Name of the application
+          example: "Updated GenAI App"
+        description:
+          type: string
+          description: Description of the application
+          example: "Updated application description"
+        type:
+          $ref: '#/components/schemas/ApplicationType'
+
+    Application:
+      type: object
+      required:
+        - id
+        - name
+        - projectId
+        - type
+      properties:
+        id:
+          type: string
+          description: Application handle/identifier
+          example: "my-app-handle"
+        name:
+          type: string
+          description: Name of the application
+          example: "GenAI Demo App"
+        projectId:
+          type: string
+          format: uuid
+          description: UUID of the project this application belongs to
+          example: "7d7a51fd-daa1-4095-b7ff-98a1aa05cc0f"
+        type:
+          $ref: '#/components/schemas/ApplicationType'
+        description:
+          type: string
+          description: Description of the application
+          example: "Sample GenAI application"
+        createdBy:
+          type: string
+          description: Creator identifier
+          example: "admin"
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2025-11-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          example: "2025-11-15T11:30:00Z"
+
+    ApplicationListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of items in current response
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/Application'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    AddApplicationAPIKeysRequest:
+      type: object
+      required:
+        - apiKeys
+      properties:
+        apiKeys:
+          type: array
+          description: List of API key selectors to add to the application mappings
+          items:
+            $ref: '#/components/schemas/APIKeyMappingSelector'
+
+    APIKeyMappingSelector:
+      type: object
+      required:
+        - keyId
+        - associatedEntity
+      properties:
+        keyId:
+          type: string
+          description: API key name
+          example: client-key-1
+        associatedEntity:
+          $ref: '#/components/schemas/APIKeyMappingAssociatedEntity'
+
+    APIKeyMappingAssociatedEntity:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          description: ID of the entity that owns the API key
+          example: pizza-api
+
+    AssociatedEntity:
+      type: object
+      required:
+        - id
+        - kind
+      properties:
+        id:
+          type: string
+          description: ID of the associated entity
+          example: pizza-api
+        kind:
+          type: string
+          description: Type of the associated entity
+          example: RestApi
+
+    MappedAPIKey:
+      type: object
+      required:
+        - keyId
+        - associatedEntity
+      properties:
+        keyId:
+          type: string
+          description: Name of the API key
+          example: "client-key-1"
+        associatedEntity:
+          $ref: '#/components/schemas/AssociatedEntity'
+        status:
+          type: string
+          description: Status of the API key
+          example: "ACTIVE"
+        userId:
+          type: string
+          description: User id of the key creator
+          example: "user-123"
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the API key was created
+          example: "2025-11-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the API key was updated
+          example: "2025-11-15T11:30:00Z"
+        expiresAt:
+          type: string
+          format: date-time
+          description: Expiration timestamp of the API key
+          example: "2026-11-15T10:30:00Z"
+
+    MappedAPIKeyListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of items in current response
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/MappedAPIKey'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
 
     RESTAPI:
       title: API object
@@ -3256,7 +5110,15 @@ components:
           description: List of channels exposed by this API
           items:
             $ref: '#/components/schemas/Channel'
-  
+        subscriptionPlans:
+          type: array
+          description: |
+            List of subscription plan names enabled for this API (e.g. Gold, Silver).
+            When set, only these plans can be used when subscribing to the API.
+          items:
+            type: string
+          example: [Gold, Silver]
+
     SecurityConfig:
       title: Security Configuration
       description: Defines security mechanisms (API key, OAuth2) applicable to the API
@@ -3534,6 +5396,92 @@ components:
           additionalProperties: true
           description: Custom key-value properties for the gateway
           example: {"region": "us-west", "tier": "premium"}
+    CustomPolicyResponse:
+      type: object
+      description: A custom policy stored in the platform's custom policy registry.
+      required:
+        - uuid
+        - organizationUuid
+        - name
+        - version
+        - policyDefinition
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: Unique identifier of the custom policy record
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        organizationUuid:
+          type: string
+          format: uuid
+          description: Organization this policy belongs to
+        name:
+          type: string
+          description: Policy name
+          example: "rate-limit-custom"
+        version:
+          type: string
+          description: Policy version
+          example: "1.0.0"
+        description:
+          type: string
+          description: Human-readable description of the policy
+          example: "Custom rate limiting policy"
+        policyDefinition:
+          type: object
+          description: |
+            The full policy schema as declared in the policy's policy-definition.yaml.
+            Contains `parameters` and `systemParameters` JSON Schema documents.
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    GatewayPolicyDefinition:
+      type: object
+      description: A policy installed on a gateway controller.
+      required:
+        - name
+        - version
+        - isCustomPolicy
+      properties:
+        name:
+          type: string
+          description: Unique policy name
+          example: "set-wso2-headers"
+        version:
+          type: string
+          description: Semantic version of the policy
+          example: "v0.8.0"
+        description:
+          type: string
+          description: Human-readable description of the policy
+          example: "Sets WSO2-specific headers in the request and response."
+        isCustomPolicy:
+          type: boolean
+          description: Whether this is a user-installed custom policy.
+          example: true
+        policyDefinition:
+          type: object
+          description: |
+            The full policy schema as declared in the policy's policy-definition.yaml.
+            Contains `parameters` and `systemParameters` JSON Schema documents.
+            Only present for custom policies.
+          additionalProperties: true
+
+    ManifestSyncResponse:
+      type: object
+      properties:
+        policies:
+          type: array
+          description: |
+            All policies installed on the gateway. Each entry includes name, version, and isCustomPolicy.
+            Custom policies additionally include policyDefinition with their parameters and systemParameters schemas.
+          items:
+            $ref: '#/components/schemas/GatewayPolicyDefinition'
 
     GatewayResponse:
       type: object
@@ -3994,18 +5942,20 @@ components:
           description: Optional reference ID for tracing purposes (from external platforms)
           nullable: true
           example: "ext-ref-12345"
-        operations:
-          type: string
-          description: |
-            Specifies which API operations this key can access. Use "*" for all operations.
-          default: "*"
-          example: "*"
         expiresAt:
           type: string
           format: date-time
           description: Optional expiration time in ISO 8601 format
           nullable: true
           example: "2026-12-31T23:59:59Z"
+        expiresIn:
+          $ref: '#/components/schemas/ExpirationDuration'
+          description: Optional expiration duration
+        issuer:
+          type: string
+          description: Identifier of the developer portal that provisioned this API key. Null if not provided.
+          nullable: true
+          example: "api-platform-devportal"
 
     CreateAPIKeyResponse:
       type: object
@@ -4050,12 +6000,6 @@ components:
           description: Optional reference ID for tracing purposes (from external platforms)
           nullable: true
           example: "ext-ref-12345"
-        operations:
-          type: string
-          description: |
-            Specifies which API operations this key can access. Use "*" for all operations.
-          default: "*"
-          example: "*"
         expiresAt:
           type: string
           format: date-time
@@ -4065,6 +6009,10 @@ components:
         expiresIn:
           $ref: '#/components/schemas/ExpirationDuration'
           description: Optional expiration duration
+        issuer:
+          type: string
+          description: Identifies the portal that created this key
+          example: "api-platform-devportal"
 
     UpdateAPIKeyResponse:
       type: object
@@ -4085,6 +6033,215 @@ components:
           type: string
           description: The internal ID of the updated key
           example: "production-key-01"
+
+    CreateSubscriptionPlanRequest:
+      type: object
+      required:
+        - planName
+      properties:
+        planName:
+          type: string
+          description: Name of the subscription plan
+          example: "Gold"
+        billingPlan:
+          type: string
+          description: Billing plan type (e.g. Free, Commercial)
+          example: "Free"
+        stopOnQuotaReach:
+          type: boolean
+          description: Whether to block requests when quota is exhausted
+          default: true
+        throttleLimitCount:
+          type: integer
+          minimum: 1
+          description: Number of requests allowed in the throttle window (must be paired with throttleLimitUnit)
+          example: 10000
+        throttleLimitUnit:
+          type: string
+          description: Throttle window unit (must be paired with throttleLimitCount)
+          enum: [Min, Hour, Day, Month]
+          example: "Hour"
+        expiryTime:
+          type: string
+          format: date-time
+          description: Optional plan expiry time (RFC3339)
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+          default: ACTIVE
+      if:
+        anyOf:
+          - required: [throttleLimitCount]
+          - required: [throttleLimitUnit]
+      then:
+        required: [throttleLimitCount, throttleLimitUnit]
+
+    UpdateSubscriptionPlanRequest:
+      type: object
+      properties:
+        planName:
+          type: string
+        billingPlan:
+          type: string
+        stopOnQuotaReach:
+          type: boolean
+        throttleLimitCount:
+          type: integer
+          minimum: 1
+          description: Number of requests allowed in the throttle window (must be paired with throttleLimitUnit)
+        throttleLimitUnit:
+          type: string
+          description: Throttle window unit (must be paired with throttleLimitCount)
+          enum: [Min, Hour, Day, Month]
+        expiryTime:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+      if:
+        anyOf:
+          - required: [throttleLimitCount]
+          - required: [throttleLimitUnit]
+      then:
+        required: [throttleLimitCount, throttleLimitUnit]
+
+    SubscriptionPlan:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        planName:
+          type: string
+        billingPlan:
+          type: string
+        stopOnQuotaReach:
+          type: boolean
+        throttleLimitCount:
+          type: integer
+        throttleLimitUnit:
+          type: string
+        expiryTime:
+          type: string
+          format: date-time
+        organizationId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SubscriptionPlanListResponse:
+      type: object
+      properties:
+        subscriptionPlans:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubscriptionPlan'
+        count:
+          type: integer
+
+    CreateSubscriptionRequest:
+      type: object
+      required:
+        - apiId
+        - subscriberId
+      properties:
+        apiId:
+          type: string
+          description: API handle or UUID (REST API identifier)
+          example: "c9f2b6ae-1234-5678-9abc-def012345678"
+        subscriberId:
+          type: string
+          minLength: 1
+          description: Unique subscriber identifier for the subscription (required)
+          example: "user-123"
+        applicationId:
+          type: string
+          description: Application ID (from DevPortal/STS). Optional in token-based subscriptions.
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        subscriptionPlanId:
+          type: string
+          description: Subscription plan UUID. Links the subscription to rate limit and billing configuration.
+          example: "plan-uuid-1"
+        status:
+          type: string
+          description: Subscription status (default ACTIVE)
+          enum: [ACTIVE, INACTIVE, REVOKED]
+          default: ACTIVE
+
+    UpdateSubscriptionRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          description: New subscription status
+          enum: [ACTIVE, INACTIVE, REVOKED]
+
+    Subscription:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Subscription UUID
+        apiId:
+          type: string
+          format: uuid
+          description: REST API UUID
+        subscriberId:
+          type: string
+          minLength: 1
+          description: Unique subscriber identifier for this API (required)
+        applicationId:
+          type: string
+          description: Application ID (optional for token-based subscriptions)
+        subscriptionToken:
+          type: string
+          description: Opaque subscription token for API invocation via Subscription-Key header
+        subscriptionPlanId:
+          type: string
+          description: Subscription plan UUID
+        subscriptionPlanName:
+          type: string
+          description: Subscription plan display name (e.g. Bronze, Gold)
+        organizationId:
+          type: string
+          format: uuid
+          description: Organization UUID
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE, REVOKED]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SubscriptionListResponse:
+      type: object
+      required:
+        - subscriptions
+        - count
+        - pagination
+      properties:
+        subscriptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Subscription'
+        count:
+          type: integer
+          description: Number of subscriptions in current response
+        pagination:
+          $ref: '#/components/schemas/Pagination'
 
     Error:
       title: Error object returned
@@ -4854,7 +7011,7 @@ components:
         metadata:
           type: object
           additionalProperties: true
-          description: Optional metadata for the deployment (e.g., endpointUrl overrides)
+          description: Optional metadata for the deployment. Supported keys include `endpointUrl`, `vhostMain`, and `vhostSandbox`.
 
     DeploymentResponse:
       type: object
@@ -4882,11 +7039,17 @@ components:
           enum:
             - DEPLOYED
             - UNDEPLOYED
+            - DEPLOYING
+            - UNDEPLOYING
+            - FAILED
             - ARCHIVED
           description: |
             Current deployment lifecycle state:
             - DEPLOYED: Currently active on the gateway
             - UNDEPLOYED: Suspended but can be rolled back
+            - DEPLOYING: Deployment in progress, waiting for gateway acknowledgement
+            - UNDEPLOYING: Undeployment in progress, waiting for gateway acknowledgement
+            - FAILED: Deployment or undeployment failed (see statusReason for error code)
             - ARCHIVED: Historical deployment, can be rolled back
         baseDeploymentId:
           type: string
@@ -4901,6 +7064,10 @@ components:
           type: string
           format: date-time
           description: Timestamp when the deployment artifact was created
+        statusReason:
+          type: string
+          nullable: true
+          description: Error code explaining the failure reason. Null unless status is FAILED (e.g. DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR)
         updatedAt:
           type: string
           format: date-time
@@ -5028,6 +7195,37 @@ components:
           description: URL to the OpenAPI specification for the provider
           example: https://api.openai.com/openapi.json
 
+    LLMProviderTemplateResourceMapping:
+      type: object
+      required:
+        - resource
+      properties:
+        resource:
+          type: string
+          minLength: 1
+          description: Resource path pattern this mapping applies to (for example /responses or /chat/*)
+          example: /responses
+        promptTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        completionTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        totalTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        remainingTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        requestModel:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        responseModel:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+
+    LLMProviderTemplateResourceMappings:
+      type: object
+      properties:
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/LLMProviderTemplateResourceMapping'
+
     LLMProviderTemplate:
       type: object
       required:
@@ -5068,6 +7266,8 @@ components:
           $ref: '#/components/schemas/ExtractionIdentifier'
         responseModel:
           $ref: '#/components/schemas/ExtractionIdentifier'
+        resourceMappings:
+          $ref: '#/components/schemas/LLMProviderTemplateResourceMappings'
         createdAt:
           type: string
           format: date-time
@@ -5748,6 +7948,18 @@ components:
           format: date-time
           description: Optional expiration time in ISO 8601 format
           example: "2026-12-31T23:59:59Z"
+        issuer:
+          type: string
+          description: Identifier of the developer portal that provisioned this API key. Null if not provided.
+          nullable: true
+          example: "api-platform-devportal"
+        allowedTargets:
+          type: string
+          description: |
+            Comma-separated list of gateways this key is valid for.
+            Use 'ALL' to allow all targets (default).
+          nullable: true
+          example: "dev_gateway,test_gateway"
     CreateLLMProviderAPIKeyResponse:
       type: object
       required:
@@ -5791,6 +8003,18 @@ components:
           format: date-time
           description: Optional expiration time in ISO 8601 format
           example: "2026-12-31T23:59:59Z"
+        issuer:
+          type: string
+          description: Identifier of the developer portal that provisioned this API key. Null if not provided.
+          nullable: true
+          example: "api-platform-devportal"
+        allowedTargets:
+          type: string
+          description: |
+            Comma-separated list of gateways this key is valid for.
+            Use 'ALL' to allow all targets (default).
+          nullable: true
+          example: "dev_gateway,test_gateway"
     CreateLLMProxyAPIKeyResponse:
       type: object
       required:
@@ -5815,6 +8039,220 @@ components:
           type: string
           description: The generated API key value (shown only once, 64 hexadecimal characters)
           example: "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456"
+
+    MCPProxy:
+      type: object
+      required:
+        - id
+        - name
+        - version
+        - upstream
+      properties:
+        id:
+          type: string
+          description: Unique handle for the proxy
+          example: weather-mcp-proxy
+        name:
+          type: string
+          description: Human-readable MCP proxy name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+          minLength: 1
+          maxLength: 253
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: Weather Server
+        description:
+          type: string
+          description: Description of the MCP proxy
+          maxLength: 1023
+          example: An MCP server which provides weather information
+        createdBy:
+          type: string
+          description: Username of the creator
+          readOnly: true
+          example: jane.doe
+        version:
+          type: string
+          description: Semantic version of the MCP proxy
+          pattern: '^v\d+\.\d+$'
+          example: v1.0
+        projectId:
+          type: string
+          description: UUID of the project this proxy belongs to
+          example: 550e8400-e29b-41d4-a716-446655440000
+        context:
+          type: string
+          description: Base path for all REST API routes (must start with /, no trailing slash)
+          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
+          default: /
+          minLength: 1
+          maxLength: 200
+        vhost:
+          type: string
+          description: >
+            Virtual host name used for routing. Supports standard domain names,
+            subdomains, or wildcard domains. Must follow RFC-compliant hostname
+            rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).
+          pattern: '^(\*\.|[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+          minLength: 1
+          maxLength: 253
+          example: "mcp.gw.com"
+        upstream:
+          $ref: "#/components/schemas/Upstream"
+        mcpSpecVersion:
+          type: string
+          description: MCP specification version supported by this proxy
+          enum:
+            - "2025-06-18"
+            - "2025-11-25"
+        policies:
+          type: array
+          description: List of policies to be applied
+          items:
+            $ref: '#/components/schemas/Policy'
+        kind:
+          type: string
+          description: Kind of the API based on its communication protocol or architectural style
+          default: Mcp
+          example: Mcp
+        capabilities:
+          type: object
+          description: >
+            List of capabilities supported by this proxy. This will be stored as-is and can be used in the future if we need
+            this for governance purposes
+          $ref: '#/components/schemas/MCPProxyCapabilities'
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the resource was created
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the resource was last updated
+          readOnly: true
+
+    MCPProxyListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          example: weather-mcp-proxy
+        name:
+          type: string
+          example: Weather Server
+        description:
+          type: string
+          example: An MCP server which provides weather information
+        createdBy:
+          type: string
+          example: jane.doe
+        context:
+          type: string
+          description: Context path where the proxy is exposed
+          example: /weather-mcp-proxy
+        version:
+          type: string
+          example: v1.0
+        projectId:
+          type: string
+          description: UUID of the project this proxy belongs to
+          example: 550e8400-e29b-41d4-a716-446655440000
+        status:
+          type: string
+          enum:
+            - pending
+            - deployed
+            - failed
+          example: deployed
+        mcpSpecVersion:
+          type: string
+          example: 2025-11-25
+        createdAt:
+          type: string
+          format: date-time
+          example: 2025-11-25T10:30:00Z
+        updatedAt:
+          type: string
+          format: date-time
+          example: 2025-11-25T10:30:00Z
+
+    MCPProxyListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/MCPProxyListItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    
+    MCPServerInfoFetchRequest:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+          description: |
+            Endpoint URL of the MCP server to fetch information from.
+            Required when proxyId is not provided. When proxyId is provided,
+            the URL from the stored proxy configuration is used.
+          example: https://mcp.server.com/mcp
+        proxyId:
+          type: string
+          description: |
+            MCP proxy handle (identifier) for refresh operations. When provided,
+            the server fetches URL and auth from the stored proxy configuration.
+            Auth override is not allowed in refetch mode.
+          example: my-mcp-proxy
+        auth:
+          $ref: '#/components/schemas/UpstreamAuth'
+          description: |
+            Authentication configuration for the fetch request.
+            Only allowed when proxyId is not provided (initial creation flow).
+
+    MCPServerInfoFetchResponse:
+      type: object
+      properties:
+        serverInfo:
+          type: object
+        tools:
+          type: array
+          items:
+            type: object
+        resources:
+          type: array
+          items:
+            type: object
+        prompts:
+          type: array
+          items:
+            type: object
+
+    MCPProxyCapabilities:
+      type: object
+      properties:
+        tools:
+          type: array
+          description: List of tool capabilities supported by this proxy
+          items:
+            type: object
+        resources:
+          type: array
+          description: List of resource capabilities supported by this proxy
+          items:
+            type: object
+        prompts:
+          type: array
+          description: List of prompt capabilities supported by this proxy
+          items:
+            type: object
+
   responses:
     Unauthorized:
       description: Unauthorized. Authentication credentials are missing or invalid.
@@ -5837,6 +8275,16 @@ components:
             code: 400
             message: Bad Request
             description: Invalid request or validation error
+    Forbidden:
+      description: Forbidden. The authenticated user does not have permission to access this resource.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 403
+            title: Forbidden
+            details: You do not have permission to perform this action
     NotFound:
       description: Not Found. The specified resource does not exist.
       content:
@@ -5901,15 +8349,57 @@ components:
         type: string
         example: my-rest-api-handle
 
+    appId:
+      name: appId
+      in: path
+      description: |
+        **Application ID** consisting of the **handle** of the application.
+      required: true
+      schema:
+        type: string
+        example: my-app-handle
+
+    keyId:
+      name: keyId
+      in: path
+      description: |
+        **API Key ID** consisting of the **UUID** of the API key.
+      required: true
+      schema:
+        type: string
+        format: uuid
+        example: "d2612fbe-b297-4f3c-9d2d-cc821b4dc8d2"
+
+    mappedKeyId:
+      name: keyId
+      in: path
+      description: |
+        **API Key ID** consisting of the **name** of the API key.
+      required: true
+      schema:
+        type: string
+        example: "client-key-1"
+
+    entityID-Q:
+      name: entityID
+      in: query
+      required: true
+      description: |
+        **Entity ID** of the artifact associated with the API key mapping.
+      schema:
+        type: string
+        example: my-rest-api-handle
+
 
     projectId-Q:
       name: projectId
       in: query
-      required: false
+      required: true
       description: |
-        **Project ID** consisting of the **UUID** of the Project to filter REST APIs by.
+        **Project ID** consisting of the **UUID** of the Project to filter APIs by.
       schema:
         type: string
+        format: uuid
         example: "yr434567-de34-76uj6-w376-234324532"
 
     gatewayId-Q:
@@ -6024,6 +8514,16 @@ components:
         format: uuid
       description: The UUID of the deployment
 
+    deploymentId-Q:
+      name: deploymentId
+      in: query
+      required: false
+      description: |
+        **Deployment ID** consisting of the **UUID** of the Deployment to filter status by.
+      schema:
+        type: string
+        example: "987e6543-e21b-45d3-a789-426614174999"
+
     deploymentStatus-Q:
       name: status
       in: query
@@ -6033,8 +8533,11 @@ components:
         enum:
           - DEPLOYED
           - UNDEPLOYED
+          - DEPLOYING
+          - UNDEPLOYING
+          - FAILED
           - ARCHIVED
-      description: Filter deployments by status (DEPLOYED, UNDEPLOYED, or ARCHIVED)
+      description: Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
 
 tags:
   - name: Health
@@ -6043,6 +8546,8 @@ tags:
     description: Organization management operations
   - name: Projects
     description: Project management operations
+  - name: Applications
+    description: Application management operations
   - name: REST APIs
     description: API management operations
   - name: REST API Deployments
@@ -6067,3 +8572,9 @@ tags:
     description: LLM provider deployment operations
   - name: API Keys
     description: API key management operations for REST APIs and LLM Providers
+  - name: MCP Proxies
+    description: MCP proxy management operations
+  - name: MCP Proxy Deployments
+    description: MCP proxy deployment operations
+  - name: Deployments
+    description: Deployment operations for various artifact types

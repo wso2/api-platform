@@ -18,6 +18,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -30,9 +31,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"platform-api/src/internal/middleware"
 	"strings"
+	"syscall"
 	"time"
 
 	"platform-api/src/config"
@@ -48,19 +51,20 @@ import (
 )
 
 type Server struct {
-	router      *gin.Engine
-	orgRepo     repository.OrganizationRepository
-	projRepo    repository.ProjectRepository
-	apiRepo     repository.APIRepository
-	gatewayRepo repository.GatewayRepository
-	wsManager   *websocket.Manager // WebSocket connection manager
-	logger      *slog.Logger
+	router         *gin.Engine
+	orgRepo        repository.OrganizationRepository
+	projRepo       repository.ProjectRepository
+	apiRepo        repository.APIRepository
+	gatewayRepo    repository.GatewayRepository
+	wsManager      *websocket.Manager // WebSocket connection manager
+	timeoutService *service.DeploymentTimeoutService
+	logger         *slog.Logger
 }
 
 // StartPlatformAPIServer creates a new server instance with all dependencies initialized
 func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, error) {
 	// Initialize database using configuration
-	db, err := database.NewConnection(&cfg.Database)
+	db, err := database.NewConnection(&cfg.Database, slogger)
 	if err != nil {
 		slogger.Error("Failed to connect to database", "error", err)
 		return nil, err
@@ -68,7 +72,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 
 	// Initialize schema (skip when ExecuteSchemaDDL is false, e.g. deployed Postgres without DDL access)
 	if cfg.Database.ExecuteSchemaDDL {
-		if err := db.InitSchema(cfg.DBSchemaPath); err != nil {
+		if err := db.InitSchema(cfg.DBSchemaPath, slogger); err != nil {
 			slogger.Error("Failed to initialize database schema", "error", err)
 			return nil, err
 		}
@@ -80,14 +84,20 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	orgRepo := repository.NewOrganizationRepo(db)
 	projectRepo := repository.NewProjectRepo(db)
 	apiRepo := repository.NewAPIRepo(db)
+	appRepo := repository.NewApplicationRepo(db)
 	gatewayRepo := repository.NewGatewayRepo(db)
+	customPolicyRepo := repository.NewCustomPolicyRepo(db)
 	artifactRepo := repository.NewArtifactRepo(db)
 	devPortalRepo := repository.NewDevPortalRepository(db)
 	publicationRepo := repository.NewAPIPublicationRepository(db)
 	deploymentRepo := repository.NewDeploymentRepo(db)
+	subscriptionRepo := repository.NewSubscriptionRepo(db)
+	subscriptionPlanRepo := repository.NewSubscriptionPlanRepo(db)
 	llmTemplateRepo := repository.NewLLMProviderTemplateRepo(db)
 	llmProviderRepo := repository.NewLLMProviderRepo(db)
 	llmProxyRepo := repository.NewLLMProxyRepo(db)
+	mcpProxyRepo := repository.NewMCPProxyRepo(db)
+	apiKeyRepo := repository.NewAPIKeyRepo(db)
 
 	// Seed default LLM provider templates into the DB (per organization)
 	cfg.LLMTemplateDefinitionsPath = strings.TrimSpace(cfg.LLMTemplateDefinitionsPath)
@@ -156,19 +166,36 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	devPortalService := service.NewDevPortalService(devPortalRepo, orgRepo, publicationRepo, apiRepo, apiUtil, cfg, slogger)
 
 	// Initialize services
-	orgService := service.NewOrganizationService(orgRepo, projectRepo, devPortalService, llmTemplateSeeder, cfg, slogger)
-	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, slogger)
+	orgService := service.NewOrganizationService(
+		orgRepo,
+		projectRepo,
+		appRepo,
+		apiRepo,
+		gatewayRepo,
+		llmProviderRepo,
+		llmProxyRepo,
+		mcpProxyRepo,
+		devPortalService,
+		llmTemplateSeeder,
+		cfg,
+		slogger,
+	)
+	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, slogger)
 	gatewayEventsService := service.NewGatewayEventsService(wsManager, slogger)
-	apiService := service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, devPortalRepo, publicationRepo,
-		gatewayEventsService, devPortalService, apiUtil, slogger)
-	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, slogger)
-	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, llmProviderRepo, llmProxyRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, cfg, slogger)
-	apiKeyService := service.NewAPIKeyService(apiRepo, gatewayEventsService, slogger)
+	appService := service.NewApplicationService(appRepo, projectRepo, orgRepo, apiRepo, gatewayEventsService, slogger)
+	apiService := service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, deploymentRepo, devPortalRepo, publicationRepo,
+		subscriptionPlanRepo, customPolicyRepo, gatewayEventsService, devPortalService, apiUtil, slogger)
+	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo, customPolicyRepo, gatewayEventsService, slogger)
+	subscriptionService := service.NewSubscriptionService(apiRepo, subscriptionRepo, gatewayEventsService, slogger)
+	subscriptionPlanService := service.NewSubscriptionPlanService(subscriptionPlanRepo, gatewayRepo, gatewayEventsService, slogger)
+	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, cfg, slogger)
+	apiKeyService := service.NewAPIKeyService(apiRepo, apiKeyRepo, gatewayEventsService, cfg.APIKey.HashingAlgorithms, slogger)
 	gitService := service.NewGitService()
 	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, gatewayEventsService, apiUtil, cfg, slogger)
 	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo)
-	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder)
-	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo)
+	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder, deploymentRepo, gatewayRepo, gatewayEventsService, slogger)
+	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger)
+	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger)
 	llmProviderDeploymentService := service.NewLLMProviderDeploymentService(
 		llmProviderRepo,
 		llmTemplateRepo,
@@ -179,13 +206,24 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		cfg,
 		slogger,
 	)
-	llmProviderAPIKeyService := service.NewLLMProviderAPIKeyService(llmProviderRepo, gatewayRepo, gatewayEventsService, slogger)
-	llmProxyAPIKeyService := service.NewLLMProxyAPIKeyService(llmProxyRepo, gatewayRepo, gatewayEventsService, slogger)
+	llmProviderAPIKeyService := service.NewLLMProviderAPIKeyService(llmProviderRepo, gatewayRepo, apiKeyRepo, gatewayEventsService, slogger)
+	llmProxyAPIKeyService := service.NewLLMProxyAPIKeyService(llmProxyRepo, gatewayRepo, apiKeyRepo, gatewayEventsService, slogger)
+	apiKeyUserService := service.NewAPIKeyUserService(apiKeyRepo, slogger)
 	llmProxyDeploymentService := service.NewLLMProxyDeploymentService(
 		llmProxyRepo,
 		deploymentRepo,
 		gatewayRepo,
 		orgRepo,
+		gatewayEventsService,
+		cfg,
+		slogger,
+	)
+	mcpDeploymentService := service.NewMCPDeploymentService(
+		mcpProxyRepo,
+		deploymentRepo,
+		gatewayRepo,
+		orgRepo,
+		artifactRepo,
 		gatewayEventsService,
 		cfg,
 		slogger,
@@ -197,7 +235,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	apiHandler := handler.NewAPIHandler(apiService, slogger)
 	devPortalHandler := handler.NewDevPortalHandler(devPortalService, slogger)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, slogger)
-	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, cfg.WebSocket.RateLimitPerMin, slogger)
+	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService, subscriptionPlanService, slogger)
+	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, slogger)
+	appHandler := handler.NewApplicationHandler(appService, slogger)
+	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, deploymentService, cfg.WebSocket.RateLimitPerMin, slogger)
 	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, slogger)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, slogger)
 	gitHandler := handler.NewGitHandler(gitService, slogger)
@@ -206,7 +247,18 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	llmDeploymentHandler := handler.NewLLMProviderDeploymentHandler(llmProviderDeploymentService, slogger)
 	llmProviderAPIKeyHandler := handler.NewLLMProviderAPIKeyHandler(llmProviderAPIKeyService, slogger)
 	llmProxyAPIKeyHandler := handler.NewLLMProxyAPIKeyHandler(llmProxyAPIKeyService, slogger)
+	apiKeyUserHandler := handler.NewAPIKeyUserHandler(apiKeyUserService, slogger)
 	llmProxyDeploymentHandler := handler.NewLLMProxyDeploymentHandler(llmProxyDeploymentService, slogger)
+	mcpProxyHandler := handler.NewMCPProxyHandler(mcpProxyService, slogger)
+	mcpProxyDeploymentHandler := handler.NewMCPProxyDeploymentHandler(mcpDeploymentService, slogger)
+	// Start deployment timeout background job
+	timeoutConfig := service.DeploymentTimeoutConfig{
+		Enabled:  cfg.Deployments.TimeoutEnabled,
+		Interval: time.Duration(cfg.Deployments.TimeoutInterval) * time.Second,
+		Timeout:  time.Duration(cfg.Deployments.TimeoutDuration) * time.Second,
+	}
+	timeoutService := service.NewDeploymentTimeoutService(deploymentRepo, timeoutConfig, slogger)
+
 	slogger.Info("Initialized all services and handlers successfully")
 
 	if strings.ToLower(cfg.LogLevel) == "debug" {
@@ -238,9 +290,12 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	// Register routes
 	orgHandler.RegisterRoutes(router)
 	projectHandler.RegisterRoutes(router)
+	appHandler.RegisterRoutes(router)
 	apiHandler.RegisterRoutes(router)
 	devPortalHandler.RegisterRoutes(router)
 	gatewayHandler.RegisterRoutes(router)
+	subscriptionHandler.RegisterRoutes(router)
+	subscriptionPlanHandler.RegisterRoutes(router)
 	wsHandler.RegisterRoutes(router)
 	internalGatewayHandler.RegisterRoutes(router)
 	apiKeyHandler.RegisterRoutes(router)
@@ -250,7 +305,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	llmDeploymentHandler.RegisterRoutes(router)
 	llmProviderAPIKeyHandler.RegisterRoutes(router)
 	llmProxyAPIKeyHandler.RegisterRoutes(router)
+	apiKeyUserHandler.RegisterRoutes(router)
 	llmProxyDeploymentHandler.RegisterRoutes(router)
+	mcpProxyHandler.RegisterRoutes(router)
+	mcpProxyDeploymentHandler.RegisterRoutes(router)
 	slogger.Info("Registered API routes successfully")
 
 	slogger.Info("WebSocket manager initialized",
@@ -261,13 +319,14 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	)
 
 	return &Server{
-		router:      router,
-		orgRepo:     orgRepo,
-		projRepo:    projectRepo,
-		apiRepo:     apiRepo,
-		gatewayRepo: gatewayRepo,
-		wsManager:   wsManager,
-		logger:      slogger,
+		router:         router,
+		orgRepo:        orgRepo,
+		projRepo:       projectRepo,
+		apiRepo:        apiRepo,
+		gatewayRepo:    gatewayRepo,
+		wsManager:      wsManager,
+		timeoutService: timeoutService,
+		logger:         slogger,
 	}, nil
 }
 
@@ -384,7 +443,7 @@ func (s *Server) Start(port string, certDir string) error {
 	}
 
 	address := fmt.Sprintf(":%s", port)
-	server := &http.Server{
+	httpServer := &http.Server{
 		Addr:      address,
 		Handler:   s.router,
 		TLSConfig: tlsConfig,
@@ -394,7 +453,31 @@ func (s *Server) Start(port string, certDir string) error {
 	if certGenerated {
 		s.logger.Warn("Note: Using self-signed certificate for development. Browsers will show security warnings.")
 	}
-	return server.ListenAndServeTLS("", "")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go s.timeoutService.Start(ctx)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- httpServer.ListenAndServeTLS("", "")
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(quit)
+
+	select {
+	case err := <-errCh:
+		return err
+	case sig := <-quit:
+		s.logger.Info("Received shutdown signal", "signal", sig)
+		cancel()
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer shutdownCancel()
+		return httpServer.Shutdown(shutdownCtx)
+	}
 }
 
 // GetRouter returns the gin router for testing purposes

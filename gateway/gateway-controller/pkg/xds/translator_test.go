@@ -20,19 +20,22 @@ package xds
 
 import (
 	"fmt"
+	"math"
 	"net/url"
+	"regexp"
 	"testing"
 	"time"
 
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
+	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	resource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	commonconstants "github.com/wso2/api-platform/common/constants"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -43,11 +46,11 @@ func TestResolveUpstreamDefinition_Found(t *testing.T) {
 		{
 			Name: "test-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -65,21 +68,21 @@ func TestResolveUpstreamDefinition_NotFound(t *testing.T) {
 		{
 			Name: "existing-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
 	}
 
-	def, err := resolveUpstreamDefinition("non-existent", definitions)
+	def, err := resolveUpstreamDefinition("0000-non-existent-0000-000000000000", definitions)
 
 	assert.Error(t, err)
 	assert.Nil(t, def)
-	assert.Contains(t, err.Error(), "upstream definition 'non-existent' not found")
+	assert.Contains(t, err.Error(), "upstream definition '0000-non-existent-0000-000000000000' not found")
 }
 
 func TestResolveUpstreamDefinition_NoDefinitions(t *testing.T) {
@@ -185,11 +188,11 @@ func TestResolveUpstreamCluster_WithRef_WithTimeout(t *testing.T) {
 				Connect: &timeoutStr,
 			},
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend-1:9000/v2"},
+					Url: "http://backend-1:9000/v2",
 				},
 			},
 		},
@@ -218,11 +221,11 @@ func TestResolveUpstreamCluster_WithRef_NoTimeout(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -238,7 +241,7 @@ func TestResolveUpstreamCluster_WithRef_NoTimeout(t *testing.T) {
 
 func TestResolveUpstreamCluster_WithRef_NotFound(t *testing.T) {
 	translator := &Translator{}
-	ref := "non-existent"
+	ref := "0000-non-existent-0000-000000000000"
 	upstream := &api.Upstream{
 		Ref: &ref,
 	}
@@ -246,11 +249,11 @@ func TestResolveUpstreamCluster_WithRef_NotFound(t *testing.T) {
 		{
 			Name: "other-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -260,7 +263,7 @@ func TestResolveUpstreamCluster_WithRef_NotFound(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to resolve main upstream ref")
-	assert.Contains(t, err.Error(), "upstream definition 'non-existent' not found")
+	assert.Contains(t, err.Error(), "upstream definition '0000-non-existent-0000-000000000000' not found")
 }
 
 func TestResolveUpstreamCluster_WithRef_InvalidTimeout(t *testing.T) {
@@ -277,11 +280,11 @@ func TestResolveUpstreamCluster_WithRef_InvalidTimeout(t *testing.T) {
 				Connect: &invalidTimeout,
 			},
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Urls: []string{"http://backend:8080"},
+					Url: "http://backend:8080",
 				},
 			},
 		},
@@ -303,8 +306,8 @@ func TestResolveUpstreamCluster_WithRef_NoURLs(t *testing.T) {
 		{
 			Name: "my-upstream",
 			Upstreams: []struct {
-				Urls   []string `json:"urls" yaml:"urls"`
-				Weight *int     `json:"weight,omitempty" yaml:"weight,omitempty"`
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{},
 		},
 	}
@@ -503,6 +506,129 @@ func TestTranslator_PathToRegex(t *testing.T) {
 	}
 }
 
+func TestTranslator_CreateRoute_PathSpecifier(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	tests := []struct {
+		name          string
+		context       string
+		apiVersion    string
+		path          string
+		expectedRegex string
+	}{
+		{
+			name:          "Wildcard /* uses boundary-aware regex",
+			context:       "/weather/$version",
+			apiVersion:    "v1.0",
+			path:          "/*",
+			expectedRegex: `^/weather/v1\.0(?:/.*)?$`,
+		},
+		{
+			name:          "Wildcard /* on plain context uses boundary-aware regex",
+			context:       "/api",
+			apiVersion:    "v1",
+			path:          "/*",
+			expectedRegex: `^/api(?:/.*)?$`,
+		},
+		{
+			name:          "Root path / matches with and without trailing slash",
+			context:       "/weather/$version",
+			apiVersion:    "v1.0",
+			path:          "/",
+			expectedRegex: `^/weather/v1\.0/?$`,
+		},
+		{
+			name:          "Root path / on plain context",
+			context:       "/api",
+			apiVersion:    "v1",
+			path:          "/",
+			expectedRegex: `^/api/?$`,
+		},
+		{
+			name:          "Exact path accepts optional trailing slash",
+			context:       "/weather/$version",
+			apiVersion:    "v1.0",
+			path:          "/forecast",
+			expectedRegex: `^/weather/v1\.0/forecast/?$`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := translator.createRoute(
+				"test-id", "TestAPI", tt.apiVersion, tt.context,
+				"GET", tt.path, "test-cluster", "/",
+				"localhost", "http/rest", "", "", nil, "", nil,
+				false, "", nil,
+			)
+			require.NotNil(t, r)
+			{
+				regex, ok := r.Match.PathSpecifier.(*route.RouteMatch_SafeRegex)
+				require.True(t, ok, "expected RouteMatch_SafeRegex specifier")
+				assert.Equal(t, tt.expectedRegex, regex.SafeRegex.Regex)
+			}
+			// Method header matcher must always be present
+			require.Len(t, r.Match.Headers, 1)
+			assert.Equal(t, ":method", r.Match.Headers[0].Name)
+		})
+	}
+}
+
+func TestTranslator_WildcardRegexBoundary(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	type wildcardCase struct {
+		context    string
+		apiVersion string
+		path       string
+		shouldMatch    []string
+		shouldNotMatch []string
+	}
+
+	cases := []wildcardCase{
+		{
+			context:    "/weather/$version",
+			apiVersion: "v1.0",
+			path:       "/*",
+			shouldMatch:    []string{"/weather/v1.0", "/weather/v1.0/", "/weather/v1.0/forecast", "/weather/v1.0/a/b/c"},
+			shouldNotMatch: []string{"/weather/v1.0beta", "/weather/v1.0extra"},
+		},
+		{
+			context:    "/api",
+			apiVersion: "v1",
+			path:       "/*",
+			shouldMatch:    []string{"/api", "/api/", "/api/users", "/api/v2/items"},
+			shouldNotMatch: []string{"/api2", "/apixyz"},
+		},
+	}
+
+	for _, tc := range cases {
+		r := translator.createRoute(
+			"test-id", "TestAPI", tc.apiVersion, tc.context,
+			"GET", tc.path, "test-cluster", "/",
+			"localhost", "http/rest", "", "", nil, "", nil,
+			false, "", nil,
+		)
+		require.NotNil(t, r)
+		regexSpec, ok := r.Match.PathSpecifier.(*route.RouteMatch_SafeRegex)
+		require.True(t, ok)
+		re := regexp.MustCompile(regexSpec.SafeRegex.Regex)
+
+		for _, p := range tc.shouldMatch {
+			assert.True(t, re.MatchString(p), "regex %q should match %q", regexSpec.SafeRegex.Regex, p)
+		}
+		for _, p := range tc.shouldNotMatch {
+			assert.False(t, re.MatchString(p), "regex %q should NOT match %q", regexSpec.SafeRegex.Regex, p)
+		}
+	}
+}
+
 func TestTranslator_SanitizeClusterName(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
@@ -560,9 +686,9 @@ func TestGetValueFromSourceConfig(t *testing.T) {
 		{
 			name: "Simple key",
 			sourceConfig: map[string]interface{}{
-				"key1": "value1",
+				"0000-key1-0000-000000000000": "value1",
 			},
-			key:         "key1",
+			key:         "0000-key1-0000-000000000000",
 			expected:    "value1",
 			expectError: false,
 		},
@@ -600,7 +726,7 @@ func TestGetValueFromSourceConfig(t *testing.T) {
 		{
 			name: "Key not found",
 			sourceConfig: map[string]interface{}{
-				"key1": "value1",
+				"0000-key1-0000-000000000000": "value1",
 			},
 			key:         "nonexistent",
 			expected:    nil,
@@ -609,7 +735,7 @@ func TestGetValueFromSourceConfig(t *testing.T) {
 		{
 			name: "Invalid nested path",
 			sourceConfig: map[string]interface{}{
-				"key1": "value1",
+				"0000-key1-0000-000000000000": "value1",
 			},
 			key:         "key1.nested",
 			expected:    nil,
@@ -691,6 +817,7 @@ func TestTranslator_ExtractTemplateHandle_NilSourceConfig(t *testing.T) {
 
 	storedCfg := &models.StoredConfig{
 		SourceConfiguration: nil,
+		Origin:              models.OriginGatewayAPI,
 	}
 
 	result := translator.extractTemplateHandle(storedCfg, nil)
@@ -705,6 +832,7 @@ func TestTranslator_ExtractProviderName_NilSourceConfig(t *testing.T) {
 
 	storedCfg := &models.StoredConfig{
 		SourceConfiguration: nil,
+		Origin:              models.OriginGatewayAPI,
 	}
 
 	result := translator.extractProviderName(storedCfg, nil)
@@ -813,7 +941,6 @@ func TestTranslator_CreatePolicyEngineCluster_UDS(t *testing.T) {
 			Mode:             "uds",
 			TimeoutMs:        1000,
 			MessageTimeoutMs: 500,
-			RouteCacheAction: "DEFAULT",
 		}
 		cfg := testConfig()
 		cfg.Router = *routerCfg
@@ -842,7 +969,6 @@ func TestTranslator_CreatePolicyEngineCluster_UDS(t *testing.T) {
 			Port:             9001,
 			TimeoutMs:        1000,
 			MessageTimeoutMs: 500,
-			RouteCacheAction: "DEFAULT",
 		}
 		cfg := testConfig()
 		cfg.Router = *routerCfg
@@ -868,36 +994,23 @@ func TestTranslator_CreatePolicyEngineCluster_UDS(t *testing.T) {
 func TestTranslator_CreateExtProcFilter(t *testing.T) {
 	logger := createTestLogger()
 
-	tests := []struct {
-		name             string
-		routeCacheAction string
-		headerMode       string
-	}{
-		{name: "Default settings", routeCacheAction: "DEFAULT", headerMode: "DEFAULT"},
-		{name: "Retain cache", routeCacheAction: constants.ExtProcRouteCacheActionRetain, headerMode: "SEND"},
-		{name: "Clear cache", routeCacheAction: constants.ExtProcRouteCacheActionClear, headerMode: "SKIP"},
-	}
+	t.Run("Creates ext_proc filter with DEFAULT route cache action", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.PolicyEngine = config.PolicyEngineConfig{
+			Host:             "localhost",
+			Port:             50051,
+			TimeoutMs:        1000,
+			MessageTimeoutMs: 500,
+		}
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			routerCfg := testRouterConfig()
-			routerCfg.PolicyEngine = config.PolicyEngineConfig{
-				Host:             "localhost",
-				Port:             50051,
-				TimeoutMs:        1000,
-				MessageTimeoutMs: 500,
-				RouteCacheAction: tt.routeCacheAction,
-			}
-			cfg := testConfig()
-			cfg.Router = *routerCfg
-			translator := NewTranslator(logger, routerCfg, nil, cfg)
-
-			filter, err := translator.createExtProcFilter()
-			assert.NoError(t, err)
-			assert.NotNil(t, filter)
-			assert.Equal(t, constants.ExtProcFilterName, filter.Name)
-		})
-	}
+		filter, err := translator.createExtProcFilter()
+		assert.NoError(t, err)
+		assert.NotNil(t, filter)
+		assert.Equal(t, constants.ExtProcFilterName, filter.Name)
+	})
 }
 
 func TestTranslator_CreateRouteConfiguration(t *testing.T) {
@@ -925,6 +1038,88 @@ func TestTranslator_TranslateConfigs_EmptyConfigs(t *testing.T) {
 	assert.NotNil(t, resources)
 }
 
+func TestTranslator_GetVHostDomains(t *testing.T) {
+	logger := createTestLogger()
+
+	t.Run("fallback domains when explicit domain lists are empty", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		cfg := testConfig()
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		domains := translator.getVHostDomains("api.example.com")
+		assert.Equal(t, []string{"api.example.com", "api.example.com:*"}, domains)
+	})
+
+	t.Run("expands configured main domains when vhost equals main default", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.VHosts.Main.Default = "*.wso2.com"
+		routerCfg.VHosts.Main.Domains = []string{"*.wso2.com", "*.foo.com"}
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		domains := translator.getVHostDomains("*.wso2.com")
+		assert.Equal(t, []string{"*.wso2.com", "*.wso2.com:*", "*.foo.com", "*.foo.com:*"}, domains)
+	})
+
+	t.Run("expands configured sandbox domains when vhost equals sandbox default", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.VHosts.Sandbox.Default = "*-sandbox.wso2.com"
+		routerCfg.VHosts.Sandbox.Domains = []string{"*-sandbox.wso2.com", "*-sandbox.foo.com"}
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		domains := translator.getVHostDomains("*-sandbox.wso2.com")
+		assert.Equal(t, []string{"*-sandbox.wso2.com", "*-sandbox.wso2.com:*", "*-sandbox.foo.com", "*-sandbox.foo.com:*"}, domains)
+	})
+
+	t.Run("api-level vhost override uses fallback pair only", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.VHosts.Main.Default = "*.wso2.com"
+		routerCfg.VHosts.Main.Domains = []string{"*.wso2.com", "*.foo.com"}
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		domains := translator.getVHostDomains("custom.wso2.com")
+		assert.Equal(t, []string{"custom.wso2.com", "custom.wso2.com:*"}, domains)
+	})
+
+	t.Run("port-qualified domain is not expanded with :*", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		cfg := testConfig()
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		domains := translator.getVHostDomains("api.example.com:8443")
+		assert.Equal(t, []string{"api.example.com:8443"}, domains)
+	})
+
+	t.Run("whitespace-only domain list falls back to effective vhost", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.VHosts.Main.Default = "*.wso2.com"
+		routerCfg.VHosts.Main.Domains = []string{"   ", "  "}
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		domains := translator.getVHostDomains("*.wso2.com")
+		assert.Equal(t, []string{"*.wso2.com", "*.wso2.com:*"}, domains)
+	})
+
+	t.Run("port-qualified domain in configured list is not expanded with :*", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.VHosts.Main.Default = "api.wso2.com"
+		routerCfg.VHosts.Main.Domains = []string{"api.wso2.com", "api.wso2.com:8443"}
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		domains := translator.getVHostDomains("api.wso2.com")
+		assert.Equal(t, []string{"api.wso2.com", "api.wso2.com:*", "api.wso2.com:8443"}, domains)
+	})
+}
+
 func TestTranslator_GetCertStore_Nil(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
@@ -944,6 +1139,7 @@ func TestTranslator_ExtractTemplateHandle_InvalidKind(t *testing.T) {
 		SourceConfiguration: map[string]interface{}{
 			"kind": 123, // Invalid type
 		},
+		Origin: models.OriginGatewayAPI,
 	}
 
 	result := translator.extractTemplateHandle(storedCfg, nil)
@@ -960,6 +1156,7 @@ func TestTranslator_ExtractProviderName_InvalidKind(t *testing.T) {
 		SourceConfiguration: map[string]interface{}{
 			"kind": 123, // Invalid type
 		},
+		Origin: models.OriginGatewayAPI,
 	}
 
 	result := translator.extractProviderName(storedCfg, nil)
@@ -1110,14 +1307,37 @@ func TestTranslator_CreateGRPCAccessLog(t *testing.T) {
 	routerCfg := testRouterConfig()
 	cfg := testConfig()
 	cfg.Analytics.GRPCEventServerCfg = config.GRPCEventServerConfig{
-		Mode: "tcp",
-		Port: 18090,
+		Mode:                "tcp",
+		Port:                18090,
+		BufferFlushInterval: 1000,
+		BufferSizeBytes:     16384,
+		GRPCRequestTimeout:  5000,
 	}
 	translator := NewTranslator(logger, routerCfg, nil, cfg)
 
 	accessLog, err := translator.createGRPCAccessLog()
 	assert.NoError(t, err)
 	assert.NotNil(t, accessLog)
+}
+
+func TestTranslator_CreateGRPCAccessLog_BufferSizeOverflow(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	cfg.Analytics.GRPCEventServerCfg = config.GRPCEventServerConfig{
+		Mode:                "tcp",
+		Port:                18090,
+		BufferFlushInterval: 1000,
+		BufferSizeBytes:     math.MaxInt,
+		GRPCRequestTimeout:  5000,
+		ServerPort:          18090,
+	}
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	accessLog, err := translator.createGRPCAccessLog()
+	assert.Error(t, err)
+	assert.Nil(t, accessLog)
+	assert.Contains(t, err.Error(), "buffer_size_bytes")
 }
 
 func TestTranslator_CreateDynamicForwardProxyCluster(t *testing.T) {
@@ -1284,21 +1504,24 @@ func TestTranslator_CreateRoute_Basic(t *testing.T) {
 	translator := NewTranslator(logger, routerCfg, nil, cfg)
 
 	route := translator.createRoute(
-		"api-123",      // apiId
-		"test-api",     // apiName
-		"v1",           // apiVersion
-		"/api",         // context
-		"GET",          // method
-		"/users",       // path
-		"test-cluster", // clusterName
-		"",             // upstreamPath
-		"localhost",    // vhost
-		"API",          // apiKind
-		"",             // templateHandle
-		"",             // providerName
-		nil,            // hostRewrite
-		"proj-001",     // projectID
-		nil,            // timeoutCfg
+		"api-123",                         // apiId
+		"0000-test-api-0000-000000000000", // apiName
+		"v1",                              // apiVersion
+		"/api",                            // context
+		"GET",                             // method
+		"/users",                          // path
+		"test-cluster",                    // clusterName
+		"",                                // upstreamPath
+		"localhost",                       // vhost
+		"API",                             // apiKind
+		"",                                // templateHandle
+		"",                                // providerName
+		nil,                               // hostRewrite
+		"proj-001",                        // projectID
+		nil,                               // timeoutCfg
+		false,                             // useClusterHeader
+		"",                                // defaultCluster
+		nil,                               // upstreamDefPaths
 	)
 
 	assert.NotNil(t, route)
@@ -1320,6 +1543,7 @@ func TestTranslator_ExtractTemplateHandle_ValidLLMProvider(t *testing.T) {
 				"template": "openai-template",
 			},
 		},
+		Origin: models.OriginGatewayAPI,
 	}
 
 	result := translator.extractTemplateHandle(storedCfg, nil)
@@ -1340,6 +1564,7 @@ func TestTranslator_ExtractProviderName_ValidLLMProvider(t *testing.T) {
 				"name": "openai-provider",
 			},
 		},
+		Origin: models.OriginGatewayAPI,
 	}
 
 	result := translator.extractProviderName(storedCfg, nil)
@@ -1352,18 +1577,11 @@ func TestTranslator_TranslateConfigs_WebSubAPIError(t *testing.T) {
 
 	// Create invalid WebSub API config that will cause translation error
 	invalidConfig := &models.StoredConfig{
-		ID:   "test-websub-invalid",
-		Kind: "WebSubApi",
-		Configuration: api.APIConfiguration{
-			Metadata: api.Metadata{
-				Name: "test-websub-api",
-			},
-			Kind:       api.WebSubApi,
-			ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Spec:       api.APIConfiguration_Spec{
-				// Invalid spec that will cause AsWebhookAPIData to fail
-			},
-		},
+		UUID:   "0000-test-websub-invalid-0000-000000000000",
+		Kind:   "WebSubApi",
+		Origin: models.OriginGatewayAPI,
+		// Use a non-WebSubAPI type so the type assertion in translateAsyncAPIConfig fails
+		Configuration: "invalid-configuration",
 	}
 
 	result, err := translator.TranslateConfigs([]*models.StoredConfig{invalidConfig}, "test-correlation")
@@ -1559,28 +1777,27 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 		translator.routerConfig.EventGateway.WebSubHubURL = "http://websub.example.com:8080"
 
 		webhookConfig := &models.StoredConfig{
-			ID:   "websub-api-1",
+			UUID: "0000-websub-api-1-0000-000000000000",
 			Kind: "WebSubApi",
-			Configuration: api.APIConfiguration{
+			Configuration: api.WebSubAPI{
 				Metadata: api.Metadata{
 					Name:   "websub-test",
 					Labels: &map[string]string{"project-id": "proj-123"},
 				},
 				Kind:       api.WebSubApi,
-				ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-				Spec:       api.APIConfiguration_Spec{},
+				ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+				Spec: api.WebhookAPIData{
+					DisplayName: "WebSub Test API",
+					Version:     "v1.0",
+					Context:     "/webhook",
+					Channels: []api.Channel{
+						{Name: "/topic1", Method: "POST"},
+						{Name: "topic2", Method: "POST"},
+					},
+				},
 			},
+			Origin: models.OriginGatewayAPI,
 		}
-
-		require.NoError(t, webhookConfig.Configuration.Spec.FromWebhookAPIData(api.WebhookAPIData{
-			DisplayName: "WebSub Test API",
-			Version:     "v1.0",
-			Context:     "/webhook",
-			Channels: []api.Channel{
-				{Name: "/topic1", Method: "POST"},
-				{Name: "topic2", Method: "POST"},
-			},
-		}))
 
 		routes, clusters, err := translator.translateAsyncAPIConfig(webhookConfig, []*models.StoredConfig{})
 		require.NoError(t, err)
@@ -1603,20 +1820,21 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 		translator.routerConfig.EventGateway.WebSubHubURL = "://invalid"
 
 		webhookConfig := &models.StoredConfig{
-			ID:   "websub-api-2",
+			UUID: "0000-websub-api-2-0000-000000000000",
 			Kind: "WebSubApi",
-			Configuration: api.APIConfiguration{
-				Metadata: api.Metadata{Name: "websub-invalid"},
-				Kind:     api.WebSubApi,
-				Spec:     api.APIConfiguration_Spec{},
+			Configuration: api.WebSubAPI{
+				Metadata:   api.Metadata{Name: "websub-invalid"},
+				Kind:       api.WebSubApi,
+				ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+				Spec: api.WebhookAPIData{
+					DisplayName: "WebSub Invalid",
+					Version:     "v1.0",
+					Context:     "/webhook",
+					Channels:    []api.Channel{{Name: "/test", Method: "POST"}},
+				},
 			},
+			Origin: models.OriginGatewayAPI,
 		}
-		require.NoError(t, webhookConfig.Configuration.Spec.FromWebhookAPIData(api.WebhookAPIData{
-			DisplayName: "WebSub Invalid",
-			Version:     "v1.0",
-			Context:     "/webhook",
-			Channels:    []api.Channel{{Name: "/test", Method: "POST"}},
-		}))
 
 		_, _, err := translator.translateAsyncAPIConfig(webhookConfig, []*models.StoredConfig{})
 		assert.Error(t, err)

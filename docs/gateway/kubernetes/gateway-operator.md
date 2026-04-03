@@ -223,4 +223,4 @@ spec:
 
 - [Gateway Quick Start (Docker Compose)](../quick-start-guide.md)
 - [Policies](../policies/)
-- [Gateway REST API](../gateway-rest-api/)
+- [Gateway REST API](../../rest-apis/gateway/)

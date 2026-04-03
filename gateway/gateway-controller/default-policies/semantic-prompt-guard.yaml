@@ -1,62 +1,77 @@
 name: semantic-prompt-guard
-version: v0.8.0
+version: v1.0.1
 description: |
-  Blocks or allows prompts based on semantic similarity to configured allow/deny
-  phrase embeddings. The incoming prompt is embedded via the configured embedding provider
-  and compared using cosine similarity against pre-computed vectors.
-  Supports JSONPath extraction to validate specific fields within JSON payloads.
-  Validates prompts in the request phase before they are sent to the LLM.
+  Evaluates request prompts using embedding similarity against configured allow
+  and deny phrases. Blocks prompts that match denied phrases or fail allow
+  checks, with optional JSONPath extraction and configurable response detail.
 
 parameters:
   type: object
   properties:
     jsonPath:
       type: string
+      x-wso2-policy-advanced-param: false
       description: |
-        JSONPath expression to extract the prompt from JSON payload.
-        If empty, validates the entire payload as a string.
-        Examples: "$.message", "$.data.prompt", "$.items[0].text"
-      default: ""
+        Specifies the JSONPath used to extract prompt text from JSON payloads.
+        When empty, the entire payload is evaluated as plain text.
+      default: "$.messages[-1].content"
     allowSimilarityThreshold:
       type: number
+      x-wso2-policy-advanced-param: true
       description: |
-        Minimum similarity threshold (0.0 to 1.0) for a prompt to be considered similar to an
-        allowed phrase. Higher values mean stricter matching.
+        Specifies the minimum similarity score (0.0 to 1.0) required to match
+        an allowed phrase.
       default: 0.65
       minimum: 0.0
       maximum: 1.0
     denySimilarityThreshold:
       type: number
+      x-wso2-policy-advanced-param: true
       description: |
-        Maximum similarity threshold (0.0 to 1.0) for a prompt to be considered similar to a
-        denied phrase. If any denied phrase has similarity >= this threshold, the request is blocked.
+        Specifies the similarity score (0.0 to 1.0) at or above which a denied
+        phrase blocks the request.
       default: 0.65
       minimum: 0.0
       maximum: 1.0
     allowedPhrases:
       type: array
       description: |
-        List of phrases that are considered safe. The prompt must match one of these
-        within allowSimilarityThreshold. Embeddings will be automatically generated
-        for these phrases during policy initialization.
+        Specifies phrases treated as allowed references for semantic comparison
+        during request validation.
+      default: []
       items:
         type: string
-        description: Phrase text to allow
+        description: Specifies a phrase to allow.
     deniedPhrases:
       type: array
       description: |
-        List of phrases that should block the prompt when similar within the
-        denySimilarityThreshold. Embeddings will be automatically generated
-        for these phrases during policy initialization.
+        Specifies phrases treated as denied references for semantic comparison
+        during request validation.
+      default: []
       items:
         type: string
-        description: Phrase text to deny
+        description: Specifies a phrase to deny.
     showAssessment:
       type: boolean
+      x-wso2-policy-advanced-param: true
       description: |
-        If true, includes detailed assessment information in error responses.
-        If false, returns minimal error information.
+        Specifies whether blocked responses include detailed assessment
+        information.
       default: false
+  oneOf:
+    - required:
+      - allowedPhrases
+      not:
+        required:
+        - deniedPhrases
+    - required:
+      - deniedPhrases
+      not:
+        required:
+        - allowedPhrases
+    - required:
+      - allowedPhrases
+      - deniedPhrases
 
 systemParameters:
   type: object

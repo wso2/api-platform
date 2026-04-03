@@ -19,6 +19,8 @@
 package storage
 
 import (
+	"database/sql"
+
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
@@ -74,6 +76,16 @@ type Storage interface {
 	// Implementations should ensure this operation is atomic and thread-safe.
 	UpdateConfig(cfg *models.StoredConfig) error
 
+	// UpsertConfig performs a timestamp-guarded insert-or-update of an API configuration.
+	// It inserts the config if it does not exist, or updates it only if the incoming
+	// deployed_at timestamp is newer than the existing one. This prevents stale events
+	// (from sync or WebSocket) from overwriting newer data.
+	//
+	// Returns (true, nil) if the row was actually inserted or updated.
+	// Returns (false, nil) if the row exists with a newer deployed_at (stale event — no-op).
+	// Returns (false, error) on database errors.
+	UpsertConfig(cfg *models.StoredConfig) (bool, error)
+
 	// DeleteConfig removes an API configuration by ID.
 	//
 	// Returns an error if the configuration does not exist.
@@ -86,19 +98,18 @@ type Storage interface {
 	// This is the fastest lookup method (O(1) for most databases).
 	GetConfig(id string) (*models.StoredConfig, error)
 
-	// GetConfigByNameVersion retrieves an API configuration by name and version.
-	//
-	// Returns an error if the configuration is not found.
-	// This is the most common lookup method for API operations.
-	// Implementations should index (name, version) for fast lookups.
-	GetConfigByNameVersion(name, version string) (*models.StoredConfig, error)
-
-	// GetConfigByHandle retrieves an API configuration by handle.
+	// GetConfigByKindAndHandle retrieves an API configuration by kind and handle.
 	//
 	// Returns an error if the configuration is not found.
 	// The handle is the metadata.name from the API YAML configuration.
+	// The kind filter prevents cross-kind reads (e.g. fetching a WebSub API when a REST API is expected).
 	// This is the recommended lookup method for REST API endpoints.
-	GetConfigByHandle(handle string) (*models.StoredConfig, error)
+	GetConfigByKindAndHandle(kind string, handle string) (*models.StoredConfig, error)
+
+	// GetConfigByKindNameAndVersion retrieves an API configuration by kind, display name, and version.
+	//
+	// Returns an error if the configuration is not found.
+	GetConfigByKindNameAndVersion(kind, displayName, version string) (*models.StoredConfig, error)
 
 	// GetAllConfigs retrieves all API configurations.
 	//
@@ -111,6 +122,14 @@ type Storage interface {
 	// Returns an empty slice if no configurations of the specified kind exist.
 	// May be expensive for large datasets; consider pagination in future versions.
 	GetAllConfigsByKind(kind string) ([]*models.StoredConfig, error)
+
+	// GetAllConfigsByOrigin retrieves artifact metadata for all configs with the
+	// given origin. Only the artifacts table is queried (no resource-table JOINs),
+	// so the Configuration field will be nil. This is intended for sync diff
+	// computation where only metadata (UUID, Kind, DesiredState, DeployedAt) is needed.
+	//
+	// Returns an empty slice if no configurations of the specified origin exist.
+	GetAllConfigsByOrigin(origin models.Origin) ([]*models.StoredConfig, error)
 
 	// ========================================
 	// LLM Provider Template Methods
@@ -145,17 +164,35 @@ type Storage interface {
 	// May be expensive for large datasets; consider pagination in future versions.
 	GetAllLLMProviderTemplates() ([]*models.StoredLLMProviderTemplate, error)
 
+	// GetLLMProviderTemplateByHandle retrieves an LLM provider template by handle.
+	//
+	// Returns an error if the template is not found.
+	GetLLMProviderTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error)
+
 	// SaveAPIKey persists a new API key.
 	//
 	// Returns an error if an API key with the same key value already exists.
 	// Implementations should ensure this operation is atomic (all-or-nothing).
 	SaveAPIKey(apiKey *models.APIKey) error
 
+	// UpsertAPIKey inserts or updates an API key identified by (gateway_id, artifact_uuid, name).
+	//
+	// If a key with the same name already exists for the artifact, it is updated only when the
+	// incoming record's updated_at is strictly newer than the stored one — preventing a slow
+	// bulk-sync goroutine from overwriting a more recent event-driven write.
+	// The existing source and external_ref_id are preserved when the incoming values are absent.
+	UpsertAPIKey(apiKey *models.APIKey) error
+
 	// GetAPIKeyByID retrieves an API key by its ID.
 	//
 	// Returns an error if the API key is not found.
 	// This is used for API key validation during authentication.
 	GetAPIKeyByID(id string) (*models.APIKey, error)
+
+	// GetAPIKeyByUUID retrieves an API key by its platform UUID.
+	//
+	// Returns an error if the API key is not found.
+	GetAPIKeyByUUID(uuid string) (*models.APIKey, error)
 
 	// GetAPIKeyByKey retrieves an API key by its key value.
 	//
@@ -207,6 +244,60 @@ type Storage interface {
 	// Returns the count of active API keys and an error if the operation fails.
 	CountActiveAPIKeysByUserAndAPI(apiId, userID string) (int, error)
 
+	// ListAPIKeysForArtifactsNotIn returns the minimal key info (uuid + artifact_uuid) for
+	// keys whose artifact_uuid is in artifactUUIDs but whose own UUID is not in keyUUIDs.
+	// Used to collect identifiers before deletion so callers can publish EventHub events.
+	ListAPIKeysForArtifactsNotIn(artifactUUIDs []string, keyUUIDs []string) ([]*models.APIKey, error)
+
+	// DeleteAPIKeysByUUIDs removes API keys by their UUIDs. Used after ListAPIKeysForArtifactsNotIn
+	// has already identified the stale keys, avoiding a redundant NOT IN query.
+	DeleteAPIKeysByUUIDs(uuids []string) error
+
+	// ========================================
+	// Subscription Plan Methods
+	// ========================================
+
+	SaveSubscriptionPlan(plan *models.SubscriptionPlan) error
+	GetSubscriptionPlanByID(id, gatewayID string) (*models.SubscriptionPlan, error)
+	ListSubscriptionPlans(gatewayID string) ([]*models.SubscriptionPlan, error)
+	UpdateSubscriptionPlan(plan *models.SubscriptionPlan) error
+	DeleteSubscriptionPlan(id, gatewayID string) error
+
+	// DeleteSubscriptionPlansNotIn removes plans for this gateway whose IDs are not in the given set.
+	// Used for bulk-sync reconciliation when plans were deleted on the control plane during downtime.
+	DeleteSubscriptionPlansNotIn(ids []string) error
+
+	// ========================================
+	// Subscription Methods (application-level API subscriptions)
+	// ========================================
+
+	// SaveSubscription persists a new subscription.
+	SaveSubscription(sub *models.Subscription) error
+
+	// GetSubscriptionByID retrieves a subscription by ID and gateway.
+	GetSubscriptionByID(id, gatewayID string) (*models.Subscription, error)
+
+	// ListSubscriptionsByAPI returns subscriptions for an API with optional filters.
+	ListSubscriptionsByAPI(apiID, gatewayID string, applicationID *string, status *string) ([]*models.Subscription, error)
+
+	// ListActiveSubscriptions returns all ACTIVE subscriptions for this gateway in one query.
+	// Used for bulk snapshot generation to avoid N+1 per-API lookups.
+	ListActiveSubscriptions() ([]*models.Subscription, error)
+
+	// UpdateSubscription updates an existing subscription.
+	UpdateSubscription(sub *models.Subscription) error
+
+	// DeleteSubscription removes a subscription by ID and gateway.
+	DeleteSubscription(id, gatewayID string) error
+
+	// DeleteSubscriptionsForAPINotIn removes subscriptions for the given API whose IDs are not in the set.
+	// Used for bulk-sync reconciliation when subscriptions were deleted on the control plane during downtime.
+	DeleteSubscriptionsForAPINotIn(apiID string, ids []string) error
+	// ReplaceApplicationAPIKeyMappings atomically replaces all API key mappings for an application.
+	//
+	// Existing mappings are removed and the supplied mapping set is inserted.
+	ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) error
+
 	// SaveCertificate persists a new certificate.
 	//
 	// Returns an error if a certificate with the same name already exists.
@@ -232,6 +323,44 @@ type Storage interface {
 	//
 	// Returns an error if the certificate does not exist.
 	DeleteCertificate(id string) error
+
+	// SaveSecret persists a new encrypted secret.
+	//
+	// Returns an error if a secret with the same handle already exists.
+	// Implementations should ensure this operation is atomic.
+	SaveSecret(secret *models.Secret) error
+
+	// GetSecrets retrieves metadata for all secrets.
+	//
+	// Returns non-sensitive metadata (handle, display_name, timestamps) without
+	// ciphertext or values. Returns an empty slice if no secrets exist.
+	GetSecrets() ([]models.SecretMeta, error)
+
+	// GetSecret retrieves a secret by handle.
+	//
+	// Returns error if the secret does not exist.
+	GetSecret(handle string) (*models.Secret, error)
+
+	// UpdateSecret updates an existing secret.
+	//
+	// Returns the updated secret (including database-assigned timestamps) or error
+	// if the secret does not exist. Implementations should ensure this operation is atomic.
+	UpdateSecret(secret *models.Secret) (*models.Secret, error)
+
+	// DeleteSecret permanently removes a secret.
+	//
+	// Returns error if the secret does not exist.
+	DeleteSecret(handle string) error
+
+	// SecretExists checks if a secret with the given handle exists.
+	//
+	// Returns true if the secret exists, false otherwise.
+	SecretExists(handle string) (bool, error)
+
+	// GetDB returns the underlying *sql.DB for direct access.
+	// Used by EventHub for event synchronization.
+	// Returns nil for non-SQL backends.
+	GetDB() *sql.DB
 
 	// Close closes the storage connection and releases resources.
 	//

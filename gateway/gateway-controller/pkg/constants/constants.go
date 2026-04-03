@@ -99,8 +99,20 @@ const (
 	// Router constants
 	BASE_PATH = "/"
 	WILD_CARD = "*"
+	// VHostGatewayDefault is the sentinel value written by platform-api to indicate that the
+	// gateway-controller should resolve and persist its current configured default vhost values.
+	VHostGatewayDefault = "_gateway_default_"
 
 	WEBSUBHUB_INTERNAL_CLUSTER_NAME = "WEBSUBHUB_INTERNAL_CLUSTER"
+
+	// Target Upstream Header for dynamic cluster selection
+	// This header is set by the policy engine when UpstreamName is used
+	// Routes can be configured with cluster_header to read this header and select the target cluster
+	TargetUpstreamHeader = "x-target-upstream"
+
+	// UpstreamDefinitionClusterPrefix is the prefix used for clusters created from upstreamDefinitions
+	// Cluster names follow the format: upstream_<definition_name>
+	UpstreamDefinitionClusterPrefix = "upstream_"
 
 	WEBSUB_PATH                    = "/hub"
 	WEBSUB_HUB_INTERNAL_HTTP_PORT  = 8083
@@ -109,21 +121,15 @@ const (
 	WEBSUB_HUB_DYNAMIC_HTTPS_PORT  = 8445
 
 	// LLM Transformer constants
-	UPSTREAM_AUTH_APIKEY_POLICY_NAME    = "modify-headers"
-	UPSTREAM_AUTH_APIKEY_POLICY_VERSION = "v0"
-	UPSTREAM_AUTH_APIKEY_POLICY_PARAMS  = "requestHeaders:\n" +
-		"  - action: SET\n" +
-		"    name: '%s'\n" +
-		"    value: '%s'\n"
-	PROXY_HOST__HEADER_POLICY_NAME    = "modify-headers"
-	PROXY_HOST__HEADER_POLICY_VERSION = "v0"
-	PROXY_HOST__HEADER_POLICY_PARAMS  = "requestHeaders:\n" +
-		"  - action: SET\n" +
-		"    name: Host\n" +
-		"    value: '%s'\n"
+	UPSTREAM_AUTH_APIKEY_POLICY_NAME   = "set-headers"
+	UPSTREAM_AUTH_APIKEY_POLICY_PARAMS = "request:\n" +
+		"  headers:\n" +
+		"    - name: '%s'\n" +
+		"      value: '%s'\n"
+	PROXY_HOST__HEADER_POLICY_NAME   = "host-rewrite"
+	PROXY_HOST__HEADER_POLICY_PARAMS = "host: '%s'\n"
 
-	ACCESS_CONTROL_DENY_POLICY_NAME    = "respond"
-	ACCESS_CONTROL_DENY_POLICY_VERSION = "v0"
+	ACCESS_CONTROL_DENY_POLICY_NAME = "respond"
 	// YAML for default 404 respond policy params
 	ACCESS_CONTROL_DENY_POLICY_PARAMS = "statusCode: 404\n" +
 		"body: \"{\\\"message\\\": \\\"Resource not found.\\\"}\"\n" +
@@ -131,12 +137,11 @@ const (
 		"  - name: Content-Type\n" +
 		"    value: application/json\n"
 
-	MODIFY_HEADERS_POLICY_NAME    = "modify-headers"
-	MODIFY_HEADERS_POLICY_VERSION = "v0"
-	MODIFY_HEADERS_POLICY_PARAMS  = "requestHeaders:\n" +
-		"  - action: SET\n" +
-		"    name: '%s'\n" +
-		"    value: '%s'\n"
+	SET_HEADERS_POLICY_NAME   = "set-headers"
+	SET_HEADERS_POLICY_PARAMS = "request:\n" +
+		"  headers:\n" +
+		"    - name: '%s'\n" +
+		"      value: '%s'\n"
 
 	// API Key constants
 	APIKeyPrefix = "apip_"
@@ -156,7 +161,7 @@ const (
 
 	// System policy constants
 	ANALYTICS_SYSTEM_POLICY_NAME    = "wso2_apip_sys_analytics"
-	ANALYTICS_SYSTEM_POLICY_VERSION = "v0"
+	ANALYTICS_SYSTEM_POLICY_VERSION = "v1"
 )
 
 var WILDCARD_HTTP_METHODS = []string{

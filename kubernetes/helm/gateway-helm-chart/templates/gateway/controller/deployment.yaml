@@ -145,6 +145,11 @@ spec:
               readOnly: true
             {{- end }}
             {{- end }}
+            {{- if $controller.encryptionKeys.enabled }}
+            - name: encryption-keys
+              mountPath: {{ $controller.encryptionKeys.mountPath }}
+              readOnly: true
+            {{- end }}
             {{- range $deployment.extraVolumeMounts }}
             - {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -186,6 +191,11 @@ spec:
           configMap:
             name: {{ $controller.upstreamCerts.configMapName }}
         {{- end }}
+        {{- end }}
+        {{- if $controller.encryptionKeys.enabled }}
+        - name: encryption-keys
+          secret:
+            secretName: {{ $controller.encryptionKeys.secretName }}
         {{- end }}
         {{- range $deployment.extraVolumes }}
         - {{- toYaml . | nindent 10 }}

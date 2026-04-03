@@ -21,7 +21,6 @@ package apikey
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -40,6 +39,10 @@ type APIKey struct {
 	APIKey string `json:"apiKey" yaml:"apiKey"`
 	// APIId Unique identifier of the API that the key is associated with
 	APIId string `json:"apiId" yaml:"apiId"`
+	// ApplicationID identifies the mapped application for this API key when available.
+	ApplicationID string `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
+	// ApplicationName is the mapped application name for this API key when available.
+	ApplicationName string `json:"applicationName,omitempty" yaml:"applicationName,omitempty"`
 	// Operations List of API operations the key will have access to
 	Operations string `json:"operations" yaml:"operations"`
 	// Status of the API key
@@ -54,6 +57,10 @@ type APIKey struct {
 	ExpiresAt *time.Time `json:"expiresAt" yaml:"expiresAt"`
 	// Source tracking for external key support ("local" | "external")
 	Source string `json:"source" yaml:"source"`
+	// Issuer identifies the portal that created this key; nil means no restriction
+	Issuer *string `json:"issuer,omitempty" yaml:"issuer,omitempty"`
+	// AllowedTargets is a comma-separated list of allowed gateways; "ALL" or "" means unrestricted
+	AllowedTargets string `json:"allowedTargets" yaml:"allowedTargets"`
 }
 
 // APIKeyStatus Status of the API key
@@ -71,7 +78,6 @@ const (
 	Expired APIKeyStatus = "expired"
 	Revoked APIKeyStatus = "revoked"
 )
-
 
 // Common storage errors - implementation agnostic
 var (
@@ -166,71 +172,106 @@ func (aks *APIkeyStore) StoreAPIKey(apiId string, apiKey *APIKey) error {
 	return nil
 }
 
-// ValidateAPIKey validates the provided API key against the internal APIkey store
-// Supports both local and external keys using unified hash-based lookup
-func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, providedAPIKey string) (bool, error) {
-	aks.mu.RLock()
-	defer aks.mu.RUnlock()
+func cloneAPIKey(apiKey *APIKey) *APIKey {
+	if apiKey == nil {
+		return nil
+	}
 
-	// Normalize the provided API key
+	clonedAPIKey := *apiKey
+
+	if apiKey.ExpiresAt != nil {
+		expiresAt := *apiKey.ExpiresAt
+		clonedAPIKey.ExpiresAt = &expiresAt
+	}
+
+	if apiKey.Issuer != nil {
+		issuer := *apiKey.Issuer
+		clonedAPIKey.Issuer = &issuer
+	}
+
+	return &clonedAPIKey
+}
+
+// ResolveValidatedAPIKey validates the provided API key and returns the matched API key object.
+// It returns (nil, nil) when a key is found but does not satisfy validation constraints.
+// issuer, when non-empty, restricts validation to keys from a specific portal.
+func (aks *APIkeyStore) ResolveValidatedAPIKey(apiId, apiOperation, operationMethod, providedAPIKey string, issuer ...string) (*APIKey, error) {
+	// Normalize the provided API key.
 	providedAPIKey = strings.TrimSpace(providedAPIKey)
 	if providedAPIKey == "" {
-		return false, fmt.Errorf("API key is empty")
+		return nil, fmt.Errorf("API key is empty")
 	}
 
-	// Compute hash for lookup (hash the full API key value as-is)
+	// Compute hash for lookup (hash the full API key value as-is).
 	hash := ComputeAPIKeyHash(providedAPIKey)
 	if hash == "" {
-		return false, fmt.Errorf("failed to compute API key hash")
+		return nil, fmt.Errorf("failed to compute API key hash")
 	}
 
-	// Single unified O(1) lookup by hash
+	aks.mu.RLock()
+
+	// Single unified O(1) lookup by hash.
 	targetAPIKey, exists := aks.apiKeysByAPI[apiId][hash]
 	if !exists {
-		return false, ErrNotFound
+		aks.mu.RUnlock()
+		return nil, ErrNotFound
 	}
 
-	// Check if the API key belongs to the specified API
-	if targetAPIKey.APIId != apiId {
-		return false, nil
+	clonedAPIKey := cloneAPIKey(targetAPIKey)
+	aks.mu.RUnlock()
+
+	// Check if the API key belongs to the specified API.
+	if clonedAPIKey.APIId != apiId {
+		return nil, nil
 	}
 
-	// Check if the API key is active
-	if targetAPIKey.Status != Active {
-		return false, nil
-	}
-
-	// Check if the API key has expired
-	if targetAPIKey.Status == Expired || (targetAPIKey.ExpiresAt != nil && time.Now().After(*targetAPIKey.ExpiresAt)) {
-		targetAPIKey.Status = Expired
-		return false, nil
-	}
-
-	// Check if the API key has access to the requested operation
-	// Operations is a JSON string array of allowed operations in format "METHOD path"
-	// Example: ["GET /{country_code}/{city}", "POST /data"], ["*"] for allow all operations
-	var operations []string
-	if err := json.Unmarshal([]byte(targetAPIKey.Operations), &operations); err != nil {
-		return false, fmt.Errorf("invalid operations format: %w", err)
-	}
-
-	// Check if wildcard is present
-	for _, op := range operations {
-		if strings.TrimSpace(op) == "*" {
-			return true, nil
+	// issuer check: only enforce when issuer is provided and non-empty.
+	if len(issuer) > 0 && issuer[0] != "" {
+		if clonedAPIKey.Issuer == nil || *clonedAPIKey.Issuer != issuer[0] {
+			return nil, nil
 		}
 	}
 
-	// Check if the requested operation is in the allowed operations list
-	requestedOperation := fmt.Sprintf("%s %s", operationMethod, apiOperation)
-	for _, op := range operations {
-		if strings.TrimSpace(op) == requestedOperation {
-			return true, nil
-		}
+	// Check if the API key is active.
+	if clonedAPIKey.Status != Active {
+		return nil, nil
 	}
 
-	// Operation not found in allowed list
-	return false, nil
+	// Check if the API key has expired.
+	if clonedAPIKey.Status == Expired || (clonedAPIKey.ExpiresAt != nil && time.Now().After(*clonedAPIKey.ExpiresAt)) {
+		return nil, nil
+	}
+
+	// TODO: Currently, API key creation happens only per API, not per operation, since it was decided to remove the operations field from API keys.
+	// Therefore, this implementation should include some kind of mapping so that when a policy is attached to a resource, this method
+	// can look up that mapping and perform the validation.
+	return clonedAPIKey, nil
+}
+
+// GetAPIKeyByID retrieves an API key by API ID and key ID.
+func (aks *APIkeyStore) GetAPIKeyByID(apiId, keyID string) (*APIKey, error) {
+	if keyID == "" {
+		return nil, ErrNotFound
+	}
+
+	aks.mu.RLock()
+
+	apiKeysByHash, ok := aks.apiKeysByAPI[apiId]
+	if !ok {
+		aks.mu.RUnlock()
+		return nil, ErrNotFound
+	}
+
+	for _, apiKey := range apiKeysByHash {
+		if apiKey != nil && apiKey.ID == keyID {
+			clonedAPIKey := cloneAPIKey(apiKey)
+			aks.mu.RUnlock()
+			return clonedAPIKey, nil
+		}
+	}
+	aks.mu.RUnlock()
+
+	return nil, ErrNotFound
 }
 
 // RevokeAPIKey revokes a specific API key by plain text API key value
@@ -287,7 +328,6 @@ func (aks *APIkeyStore) ClearAll() error {
 
 	return nil
 }
-
 
 // ComputeAPIKeyHash computes a SHA-256 hash of the plain-text API key for storage and lookup
 // Returns the hash as hex-encoded string (64 characters)

@@ -1,5 +1,5 @@
 name: token-based-ratelimit
-version: v0.8.2
+version: v1.0.2
 description: |
   Enforces token-based rate limits for LLM traffic by resolving token extraction
   paths from provider templates and delegating enforcement to the
@@ -28,8 +28,8 @@ parameters:
           duration:
             type: string
             x-wso2-policy-advanced-param: false
-            description: Specifies the duration window for the limit, for
-              example "1m", "1h", or "24h".
+            description: Specifies the duration window for the limit as a Go
+              duration string, for example "1s", "1m", "1h", or "24h".
             pattern: "^[-+]?(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|µs|ms|s|m|h))+$"
     completionTokenLimits:
       type: array
@@ -50,8 +50,8 @@ parameters:
           duration:
             type: string
             x-wso2-policy-advanced-param: false
-            description: Specifies the duration window for the limit, for
-              example "1m", "1h", or "24h".
+            description: Specifies the duration window for the limit as a Go
+              duration string, for example "1s", "1m", "1h", or "24h".
             pattern: "^[-+]?(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|µs|ms|s|m|h))+$"
     totalTokenLimits:
       type: array
@@ -72,9 +72,35 @@ parameters:
           duration:
             type: string
             x-wso2-policy-advanced-param: false
-            description: Specifies the duration window for the limit, for
-              example "1m", "1h", or "24h".
+            description: Specifies the duration window for the limit as a Go
+              duration string, for example "1s", "1m", "1h", or "24h".
             pattern: "^[-+]?(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|µs|ms|s|m|h))+$"
+  oneOf:
+    - required: ["promptTokenLimits"]
+      not:
+        anyOf:
+          - required: ["completionTokenLimits"]
+          - required: ["totalTokenLimits"]
+    - required: ["completionTokenLimits"]
+      not:
+        anyOf:
+          - required: ["promptTokenLimits"]
+          - required: ["totalTokenLimits"]
+    - required: ["totalTokenLimits"]
+      not:
+        anyOf:
+          - required: ["promptTokenLimits"]
+          - required: ["completionTokenLimits"]
+    - required: ["promptTokenLimits", "completionTokenLimits"]
+      not:
+        required: ["totalTokenLimits"]
+    - required: ["promptTokenLimits", "totalTokenLimits"]
+      not:
+        required: ["completionTokenLimits"]
+    - required: ["completionTokenLimits", "totalTokenLimits"]
+      not:
+        required: ["promptTokenLimits"]
+    - required: ["promptTokenLimits", "completionTokenLimits", "totalTokenLimits"]
 
 systemParameters:
   type: object
@@ -88,7 +114,7 @@ systemParameters:
         - fixed-window: Simple fixed time window counter (default).
       enum: ["gcra", "fixed-window"]
       default: "fixed-window"
-      "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.algorithm}"
+      "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.algorithm}"
 
     backend:
       type: string
@@ -96,7 +122,7 @@ systemParameters:
         Rate limit storage backend. 'memory' or 'redis'.
       enum: ["memory", "redis"]
       default: "memory"
-      "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.backend}"
+      "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.backend}"
 
     redis:
       type: object
@@ -106,42 +132,48 @@ systemParameters:
         host:
           type: string
           default: "localhost"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.host}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.host}"
         port:
           type: integer
           default: 6379
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.port}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.port}"
         password:
           type: string
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.password}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.password}"
         username:
           type: string
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.username}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.username}"
         db:
           type: integer
           default: 0
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.db}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.db}"
         keyPrefix:
           type: string
           default: "ratelimit:v1:"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.keyprefix}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.keyprefix}"
         failureMode:
           type: string
           enum: ["open", "closed"]
           default: "open"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.failuremode}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.failuremode}"
         connectionTimeout:
           type: string
+          description: Redis connection timeout as a Go duration string, for
+            example "1s", "1m", "1h", or "24h".
           default: "5s"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.connectiontimeout}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.connectiontimeout}"
         readTimeout:
           type: string
+          description: Redis read timeout as a Go duration string, for
+            example "1s", "1m", "1h", or "24h".
           default: "3s"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.readtimeout}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.readtimeout}"
         writeTimeout:
           type: string
+          description: Redis write timeout as a Go duration string, for
+            example "1s", "1m", "1h", or "24h".
           default: "3s"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.redis.writetimeout}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.redis.writetimeout}"
 
     memory:
       type: object
@@ -151,8 +183,11 @@ systemParameters:
         maxEntries:
           type: integer
           default: 10000
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.memory.maxentries}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.memory.maxentries}"
         cleanupInterval:
           type: string
+          description: Interval for cleaning up expired in-memory entries as a
+            Go duration string, for example "1s", "1m", "1h", or "24h". Use
+            "0" to disable cleanup.
           default: "5m"
-          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v0.memory.cleanupinterval}"
+          "wso2/defaultValue": "${config.policy_configurations.ratelimit_v1.memory.cleanupinterval}"
