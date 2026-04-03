@@ -72,7 +72,7 @@ services:
       - LOG_LEVEL=info
     volumes:
       - ./configs/config.toml:/etc/policy-engine/config.toml:ro
-      - ./configs/llm-pricing/model_prices.json:/etc/policy-engine/llm-pricing/in:ro
+      - ./configs/llm-pricing/model_prices.json:/etc/policy-engine/llm-pricing/model_prices.json:ro
     networks:
       - gateway-network
 

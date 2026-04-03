@@ -311,7 +311,7 @@ gateway:
       # Logging configuration
       logging:
         # Log level: debug, info, warn, error
-        level: debug
+        level: info
 
         # Log format: json, text
         format: json
