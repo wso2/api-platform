@@ -484,8 +484,15 @@ func (t *Translator) TranslateConfigs(
 		// Sort routes by priority (highest priority first) before adding to vhost
 		routes = SortRoutesByPriority(routes)
 
-		// Append the catch-all 404 route as the last route for each vhost (lowest priority)
+		// Append the catch-all 404 route as the last route for each vhost (lowest priority).
+		extProcDisabledAny, err := anypb.New(&extproc.ExtProcPerRoute{
+			Override: &extproc.ExtProcPerRoute_Disabled{Disabled: true},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal ExtProcPerRoute for catch-all route: %w", err)
+		}
 		routes = append(routes, &route.Route{
+			Name: "no-api-found",
 			Match: &route.RouteMatch{
 				PathSpecifier: &route.RouteMatch_Prefix{
 					Prefix: "/",
@@ -494,7 +501,23 @@ func (t *Translator) TranslateConfigs(
 			Action: &route.Route_DirectResponse{
 				DirectResponse: &route.DirectResponseAction{
 					Status: 404,
+					Body: &core.DataSource{
+						Specifier: &core.DataSource_InlineString{
+							InlineString: `{"error":"Not Found","code":"404RT001"}`,
+						},
+					},
 				},
+			},
+			ResponseHeadersToAdd: []*core.HeaderValueOption{
+				{
+					Header: &core.HeaderValue{
+						Key:   "content-type",
+						Value: "application/json",
+					},
+				},
+			},
+			TypedPerFilterConfig: map[string]*anypb.Any{
+				constants.ExtProcFilterName: extProcDisabledAny,
 			},
 		})
 		virtualHost := &route.VirtualHost{
