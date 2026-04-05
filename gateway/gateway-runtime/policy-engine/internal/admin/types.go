@@ -104,6 +104,9 @@ type RouteMetadataEntry struct {
 	OperationPath           string            `json:"operation_path"`
 	Vhost                   string            `json:"vhost"`
 	APIKind                 string            `json:"api_kind"`
+	TemplateHandle          string            `json:"template_handle,omitempty"`
+	ProviderName            string            `json:"provider_name,omitempty"`
+	ProjectID               string            `json:"project_id,omitempty"`
 	DefaultUpstreamCluster  string            `json:"default_upstream_cluster"`
 	UpstreamBasePath        string            `json:"upstream_base_path"`
 	UpstreamDefinitionPaths map[string]string `json:"upstream_definition_paths"`
