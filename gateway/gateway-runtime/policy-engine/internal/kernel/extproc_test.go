@@ -372,9 +372,12 @@ func TestProcess_RequestHeaders_NoPolicyChain(t *testing.T) {
 	assert.NoError(t, err)
 	require.Len(t, stream.responses, 1)
 
-	// Should skip all processing when no chain found
+	// Should return 500 with error code when no policy chain is found
 	resp := stream.responses[0]
-	require.NotNil(t, resp.ModeOverride)
+	immResp := resp.GetImmediateResponse()
+	require.NotNil(t, immResp)
+	assert.Equal(t, uint32(500), uint32(immResp.Status.Code))
+	assert.Contains(t, string(immResp.Body), "500PE001")
 }
 
 func TestProcess_UnknownRequestType(t *testing.T) {

@@ -146,7 +146,6 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		defer span.End()
 
 		// Initialize execution context for this request
-		routeMetadata := s.extractRouteMetadata(req)
 		rm := s.initializeExecutionContext(ctx, req, execCtx)
 		if parentSpan.IsRecording() {
 			parentSpan.SetAttributes(
@@ -161,14 +160,27 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		// Track request metrics
 		metrics.RequestsTotal.WithLabelValues("request_headers", rm.RouteName, rm.APIName, rm.APIVersion).Inc()
 
-		// If no execution context (no policy chain), skip processing
+		// If no execution context (no policy chain found), return 500
 		if *execCtx == nil {
 			if span.IsRecording() {
 				span.SetAttributes(attribute.Int(constants.AttrPolicyCount, 0))
 			}
 			metrics.RouteLookupFailuresTotal.Inc()
 			metrics.RequestDurationSeconds.WithLabelValues("request_headers", rm.RouteName).Observe(time.Since(startTime).Seconds())
-			return s.skipAllProcessing(routeMetadata), nil
+			slog.ErrorContext(ctx, "Policy chain not found for route, returning 500",
+				"route", rm.RouteName,
+				"api_name", rm.APIName)
+			return &extprocv3.ProcessingResponse{
+				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+					ImmediateResponse: &extprocv3.ImmediateResponse{
+						Status: &typev3.HttpStatus{Code: typev3.StatusCode_InternalServerError},
+						Headers: buildHeaderValueOptions(map[string]string{
+							"content-type": "application/json",
+						}),
+						Body: []byte(`{"error":"Internal Server Error","code":"500PE001"}`),
+					},
+				},
+			}, nil
 		}
 		if span.IsRecording() {
 			span.SetAttributes(attribute.Int(constants.AttrPolicyCount, len((*execCtx).policyChain.Policies)))
@@ -362,7 +374,7 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 
 		chain := s.kernel.GetPolicyChain(policyChainKey)
 		if chain == nil {
-			slog.InfoContext(ctx, "No policy chain found for route (new path), skipping all processing",
+			slog.ErrorContext(ctx, "No policy chain found for route (new path)",
 				"route", routeKey,
 				"api_name", routeMetadata.APIName)
 			*execCtx = nil
@@ -390,7 +402,7 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 		"registered_chains", s.kernel.DumpRouteKeys())
 	chain := s.kernel.GetPolicyChainForKey(routeMetadata.RouteName)
 	if chain == nil {
-		slog.InfoContext(ctx, "No policy chain found for route, skipping all processing",
+		slog.ErrorContext(ctx, "No policy chain found for route (legacy path)",
 			"route", routeMetadata.RouteName,
 			"api_id", routeMetadata.APIId,
 			"api_name", routeMetadata.APIName,
