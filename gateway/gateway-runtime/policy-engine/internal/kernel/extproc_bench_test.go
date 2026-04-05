@@ -420,18 +420,6 @@ func BenchmarkProcess_HeaderModification(b *testing.B) {
 // Component Benchmarks
 // =============================================================================
 
-// BenchmarkExtractRouteMetadata benchmarks protobuf text parsing for route metadata.
-func BenchmarkExtractRouteMetadata(b *testing.B) {
-	server := &ExternalProcessorServer{}
-	req := buildRequestHeadersProcessingRequest("bench-route")
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = server.extractRouteMetadata(req)
-	}
-}
-
 // BenchmarkBuildRequestContext benchmarks RequestContext construction.
 func BenchmarkBuildRequestContext(b *testing.B) {
 	b.Run("WithRequestID", func(b *testing.B) {

@@ -173,15 +173,14 @@ func (t *Translator) GetCertStore() *certstore.CertStore {
 
 // SetTransformers sets the kind-to-transformer map used by TranslateConfigs.
 // When a transformer is available for a config's kind, the translator will
-// produce a RuntimeDeployConfig first, then convert it to Envoy resources
-// with minimal metadata (only route_name).
+// produce a RuntimeDeployConfig first, then convert it to Envoy resources.
 func (t *Translator) SetTransformers(transformers map[string]models.ConfigTransformer) {
 	t.transformers = transformers
 }
 
 // translateRuntimeConfig converts a RuntimeDeployConfig to Envoy routes and clusters.
-// Routes carry only route_name in dynamic metadata; all other metadata is delivered
-// to the policy engine via the RouteConfig xDS resource type.
+// Route metadata is delivered to the policy engine via the RouteConfig xDS resource type;
+// the route name is read directly from the route's name field via xds.route_name.
 func (t *Translator) translateRuntimeConfig(rdc *models.RuntimeDeployConfig) ([]*route.Route, []*cluster.Cluster, error) {
 	var routes []*route.Route
 	var clusters []*cluster.Cluster
@@ -216,7 +215,6 @@ func (t *Translator) translateRuntimeConfig(rdc *models.RuntimeDeployConfig) ([]
 }
 
 // createRouteFromRDC creates an Envoy route from a RuntimeDeployConfig Route.
-// Only route_name is injected as dynamic metadata.
 func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route, rdc *models.RuntimeDeployConfig) *route.Route {
 	fullPath := rdcRoute.Path
 	method := rdcRoute.Method
@@ -305,16 +303,6 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 		}},
 	}
 
-	// Minimal metadata: only route_name
-	// All other metadata (api_name, api_version, etc.) is delivered via RouteConfig xDS
-	metaMap := map[string]interface{}{
-		"route_name": routeKey,
-	}
-	if metaStruct, err := structpb.NewStruct(metaMap); err == nil {
-		r.Metadata = &core.Metadata{FilterMetadata: map[string]*structpb.Struct{
-			"wso2.route": metaStruct,
-		}}
-	}
 
 	// Set path specifier
 	if isWildcardPath || hasParams || isRootPath {
@@ -1840,50 +1828,6 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 		}},
 	}
 
-	// Attach dynamic metadata for downstream correlation (policies, logging, tracing)
-	metaMap := map[string]interface{}{
-		"route_name":         routeName,
-		"api_id":             apiId,
-		"api_name":           apiName,
-		"api_version":        apiVersion,
-		"api_context":        context,
-		"path":               path,
-		"method":             method,
-		"vhost":              vhost,
-		"api_kind":           apiKind,
-		"upstream_base_path": upstreamPath,
-	}
-	// Add template_handle if available (for LLM provider/proxy scenarios)
-	if templateHandle != "" {
-		metaMap["template_handle"] = templateHandle
-	}
-	// Add provider_name if available (for LLM provider/proxy scenarios)
-	if providerName != "" {
-		metaMap["provider_name"] = providerName
-	}
-	// Add projectID if available
-	if projectID != "" {
-		metaMap["project_id"] = projectID
-	}
-	// Add default_upstream_cluster for ext_proc to use when no policy sets UpstreamName
-	if useClusterHeader && defaultCluster != "" {
-		metaMap["default_upstream_cluster"] = defaultCluster
-	}
-	// Add upstream_definition_paths for dynamic path rewriting when UpstreamName is used
-	// This maps upstream definition names to their URL paths
-	// Convert map[string]string to map[string]interface{} for structpb.NewStruct compatibility
-	if len(upstreamDefPaths) > 0 {
-		pathsInterface := make(map[string]interface{})
-		for k, v := range upstreamDefPaths {
-			pathsInterface[k] = v
-		}
-		metaMap["upstream_definition_paths"] = pathsInterface
-	}
-	if metaStruct, err := structpb.NewStruct(metaMap); err == nil {
-		r.Metadata = &core.Metadata{FilterMetadata: map[string]*structpb.Struct{
-			"wso2.route": metaStruct,
-		}}
-	}
 
 	// Set path specifier based on whether we have parameters
 	if isWildcardPath || hasParams || isRootPath {
@@ -3000,7 +2944,7 @@ func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 		FailureModeAllow:  policyEngine.FailureModeAllow,
 		RouteCacheAction:  extproc.ExternalProcessor_DEFAULT,
 		AllowModeOverride: policyEngine.AllowModeOverride,
-		RequestAttributes: []string{constants.ExtProcRequestAttributeRouteName, constants.ExtProcRequestAttributeRouteMetadata},
+		RequestAttributes: []string{constants.ExtProcRequestAttributeRouteName},
 		ProcessingMode: &extproc.ProcessingMode{
 			RequestHeaderMode: extproc.ProcessingMode_SEND,
 		},
