@@ -24,7 +24,8 @@ import "time"
 type ConfigDumpResponse struct {
 	Timestamp      time.Time          `json:"timestamp"`
 	PolicyRegistry PolicyRegistryDump `json:"policy_registry"`
-	Routes         RoutesDump         `json:"routes"`
+	PolicyChains   PolicyChainsDump   `json:"policy_chains"`
+	RouteMetadata  RouteMetadataDump  `json:"route_metadata"`
 	LazyResources  LazyResourcesDump  `json:"lazy_resources"`
 	XDSSync        XDSSyncInfo        `json:"xds_sync"`
 }
@@ -72,19 +73,40 @@ type PolicyInfo struct {
 	Version string `json:"version"`
 }
 
-// RoutesDump contains information about all configured routes
-type RoutesDump struct {
-	TotalRoutes  int           `json:"total_routes"`
-	RouteConfigs []RouteConfig `json:"route_configs"`
+// PolicyChainsDump contains information about all configured policy chains
+type PolicyChainsDump struct {
+	TotalPolicyChains int                `json:"total_policy_chains"`
+	PolicyChains      []PolicyChainEntry `json:"policy_chains"`
 }
 
-// RouteConfig contains configuration for a single route
-type RouteConfig struct {
+// PolicyChainEntry contains the policy chain configuration for a single route
+type PolicyChainEntry struct {
 	RouteKey             string       `json:"route_key"`
 	RequiresRequestBody  bool         `json:"requires_request_body"`
 	RequiresResponseBody bool         `json:"requires_response_body"`
 	TotalPolicies        int          `json:"total_policies"`
 	Policies             []PolicySpec `json:"policies"`
+}
+
+// RouteMetadataDump contains route metadata for all configured routes
+type RouteMetadataDump struct {
+	TotalRoutes int                  `json:"total_routes"`
+	Routes      []RouteMetadataEntry `json:"routes"`
+}
+
+// RouteMetadataEntry contains metadata for a single route
+type RouteMetadataEntry struct {
+	RouteKey                string            `json:"route_key"`
+	APIId                   string            `json:"api_id"`
+	APIName                 string            `json:"api_name"`
+	APIVersion              string            `json:"api_version"`
+	Context                 string            `json:"context"`
+	OperationPath           string            `json:"operation_path"`
+	Vhost                   string            `json:"vhost"`
+	APIKind                 string            `json:"api_kind"`
+	DefaultUpstreamCluster  string            `json:"default_upstream_cluster"`
+	UpstreamBasePath        string            `json:"upstream_base_path"`
+	UpstreamDefinitionPaths map[string]string `json:"upstream_definition_paths"`
 }
 
 // PolicySpec contains specification for a policy instance
