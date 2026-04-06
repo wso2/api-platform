@@ -303,7 +303,6 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 		}},
 	}
 
-
 	// Set path specifier
 	if isWildcardPath || hasParams || isRootPath {
 		r.Match.PathSpecifier = pathSpecifier
@@ -451,8 +450,11 @@ func (t *Translator) TranslateConfigs(
 		}
 	}
 
-	// Group routes by vhost
-	vhostMap := make(map[string][]*route.Route)
+	// Group routes by vhost. Pre-seed the wildcard vhost so no-api-found is
+	// always present even when no APIs are deployed.
+	vhostMap := map[string][]*route.Route{
+		"*": {},
+	}
 
 	for _, r := range allRoutes {
 		// Extract vhost from route name: "METHOD|PATH|VHOST"
@@ -491,6 +493,7 @@ func (t *Translator) TranslateConfigs(
 					Status: 404,
 					Body: &core.DataSource{
 						Specifier: &core.DataSource_InlineString{
+							// TODO: (renuka) handle error codes in a separate issue: https://github.com/wso2/api-platform/issues/1637
 							InlineString: `{"error":"Not Found","code":"404RT001"}`,
 						},
 					},
@@ -1827,7 +1830,6 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 			},
 		}},
 	}
-
 
 	// Set path specifier based on whether we have parameters
 	if isWildcardPath || hasParams || isRootPath {

@@ -54,7 +54,6 @@ type ExternalProcessorServer struct {
 	kernel   *Kernel
 	executor *executor.ChainExecutor
 	tracer   trace.Tracer
-
 }
 
 // NewExternalProcessorServer creates a new ExternalProcessorServer
@@ -171,6 +170,7 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 						Headers: buildHeaderValueOptions(map[string]string{
 							"content-type": "application/json",
 						}),
+						// TODO: (renuka) handle error codes in a separate issue: https://github.com/wso2/api-platform/issues/1637
 						Body: []byte(`{"error":"Internal Server Error","code":"500PE001"}`),
 					},
 				},
