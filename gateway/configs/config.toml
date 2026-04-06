@@ -26,3 +26,6 @@ enabled = true
 username = "admin"
 password = "admin"
 roles = ["admin"]
+
+[policy_configurations.llm_cost_v1]
+pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"
