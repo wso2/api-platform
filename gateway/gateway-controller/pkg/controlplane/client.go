@@ -3654,6 +3654,7 @@ func (c *Client) pushGatewayManifestOnConnect(gatewayID string) {
 	policies := make([]models.PolicyDefinition, 0, len(c.policyDefinitions))
 	for _, def := range c.policyDefinitions {
 		if strings.HasPrefix(def.Name, "wso2_apip_sys_") {
+			// Skip internal system policies 
 			continue
 		}
 		policies = append(policies, def)
@@ -3679,7 +3680,6 @@ func (c *Client) pushGatewayManifestOnConnect(gatewayID string) {
 				c.logger.Warn("Context cancelled, aborting gateway manifest push retries",
 					slog.String("gateway_id", gatewayID))
 				return
-			case <-time.After(time.Duration(attempt) * 2 * time.Second):
 			}
 		}
 	}
