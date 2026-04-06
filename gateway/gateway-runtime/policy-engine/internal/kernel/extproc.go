@@ -24,10 +24,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"sync"
 	"time"
 
-	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocconfigv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
@@ -56,11 +54,6 @@ type ExternalProcessorServer struct {
 	kernel   *Kernel
 	executor *executor.ChainExecutor
 	tracer   trace.Tracer
-
-	// routeMetadataCache caches parsed route metadata by raw metadata string.
-	// This avoids expensive prototext.Unmarshal on every request (~11% CPU savings).
-	// Key: raw metadata string from Envoy, Value: parsed RouteMetadata
-	routeMetadataCache sync.Map
 }
 
 // NewExternalProcessorServer creates a new ExternalProcessorServer
@@ -146,7 +139,6 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		defer span.End()
 
 		// Initialize execution context for this request
-		routeMetadata := s.extractRouteMetadata(req)
 		rm := s.initializeExecutionContext(ctx, req, execCtx)
 		if parentSpan.IsRecording() {
 			parentSpan.SetAttributes(
@@ -161,14 +153,28 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		// Track request metrics
 		metrics.RequestsTotal.WithLabelValues("request_headers", rm.RouteName, rm.APIName, rm.APIVersion).Inc()
 
-		// If no execution context (no policy chain), skip processing
+		// If no execution context (no policy chain found), return 500
 		if *execCtx == nil {
 			if span.IsRecording() {
 				span.SetAttributes(attribute.Int(constants.AttrPolicyCount, 0))
 			}
 			metrics.RouteLookupFailuresTotal.Inc()
 			metrics.RequestDurationSeconds.WithLabelValues("request_headers", rm.RouteName).Observe(time.Since(startTime).Seconds())
-			return s.skipAllProcessing(routeMetadata), nil
+			slog.ErrorContext(ctx, "Policy chain not found for route, returning 500",
+				"route", rm.RouteName,
+				"api_name", rm.APIName)
+			return &extprocv3.ProcessingResponse{
+				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+					ImmediateResponse: &extprocv3.ImmediateResponse{
+						Status: &typev3.HttpStatus{Code: typev3.StatusCode_InternalServerError},
+						Headers: buildHeaderValueOptions(map[string]string{
+							"content-type": "application/json",
+						}),
+						// TODO: (renuka) handle error codes in a separate issue: https://github.com/wso2/api-platform/issues/1637
+						Body: []byte(`{"error":"Internal Server Error","code":"500PE001"}`),
+					},
+				},
+			}, nil
 		}
 		if span.IsRecording() {
 			span.SetAttributes(attribute.Int(constants.AttrPolicyCount, len((*execCtx).policyChain.Policies)))
@@ -342,8 +348,7 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 }
 
 // initializeExecutionContext sets up the execution context for a request by retrieving the policy chain.
-// It first tries the new RouteConfigs path (metadata pre-loaded via xDS), then falls back to the
-// legacy extractRouteMetadata path (metadata parsed from Envoy route metadata at request time).
+// Route metadata is pre-loaded via xDS RouteConfigs — no request-time parsing needed.
 func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context, req *extprocv3.ProcessingRequest, execCtx **PolicyExecutionContext) *RouteMetadata {
 	// Extract route key from Envoy attributes (just xds.route_name, lightweight)
 	routeKey := s.extractRouteKey(req)
@@ -362,7 +367,7 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 
 		chain := s.kernel.GetPolicyChain(policyChainKey)
 		if chain == nil {
-			slog.InfoContext(ctx, "No policy chain found for route (new path), skipping all processing",
+			slog.DebugContext(ctx, "No policy chain found for route (new path)",
 				"route", routeKey,
 				"api_name", routeMetadata.APIName)
 			*execCtx = nil
@@ -378,34 +383,11 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 		return &routeMetadata
 	}
 
-	// Fallback: legacy path using extractRouteMetadata (prototext.Unmarshal from Envoy route metadata)
-	slog.DebugContext(ctx, "initializeExecutionContext: RouteConfig not found, falling back to legacy path",
+	// No RouteConfig found for this route key — return empty metadata with nil exec context
+	slog.DebugContext(ctx, "initializeExecutionContext: RouteConfig not found",
 		"route_key", routeKey)
-	routeMetadata := s.extractRouteMetadata(req)
-
-	slog.DebugContext(ctx, "initializeExecutionContext: legacy path looking up policy chain",
-		"route_key", routeKey,
-		"legacy_route_name", routeMetadata.RouteName,
-		"keys_match", routeKey == routeMetadata.RouteName,
-		"registered_chains", s.kernel.DumpRouteKeys())
-	chain := s.kernel.GetPolicyChainForKey(routeMetadata.RouteName)
-	if chain == nil {
-		slog.InfoContext(ctx, "No policy chain found for route, skipping all processing",
-			"route", routeMetadata.RouteName,
-			"api_id", routeMetadata.APIId,
-			"api_name", routeMetadata.APIName,
-			"api_version", routeMetadata.APIVersion,
-			"context", routeMetadata.Context)
-		*execCtx = nil
-		return &routeMetadata
-	}
-
-	*execCtx = newPolicyExecutionContext(s, routeMetadata.RouteName, chain)
-	(*execCtx).defaultUpstreamCluster = routeMetadata.DefaultUpstreamCluster
-	(*execCtx).upstreamBasePath = routeMetadata.UpstreamBasePath
-	(*execCtx).apiContext = routeMetadata.Context
-	(*execCtx).upstreamDefinitionPaths = routeMetadata.UpstreamDefinitionPaths
-	(*execCtx).buildRequestContexts(req.GetRequestHeaders(), routeMetadata)
+	routeMetadata := RouteMetadata{RouteName: routeKey}
+	*execCtx = nil
 	return &routeMetadata
 }
 
@@ -474,127 +456,6 @@ type RouteMetadata struct {
 	DefaultUpstreamCluster  string            // Default cluster for dynamic cluster routing
 	UpstreamBasePath        string            // Base path for the upstream (e.g., /anything)
 	UpstreamDefinitionPaths map[string]string // Maps upstream definition names to their URL paths
-}
-
-// extractRouteMetadata extracts the route metadata from Envoy metadata.
-// Uses a cache keyed by the raw metadata string to avoid repeated prototext.Unmarshal
-// calls which account for ~11% CPU usage according to profiling.
-func (s *ExternalProcessorServer) extractRouteMetadata(req *extprocv3.ProcessingRequest) RouteMetadata {
-	metadata := RouteMetadata{}
-
-	if req.Attributes == nil {
-		return metadata
-	}
-
-	extProcAttrs, ok := req.Attributes[constants.ExtProcFilter]
-	if !ok || extProcAttrs.Fields == nil {
-		return metadata
-	}
-
-	// Extract route name from xds.route_name
-	if routeNameValue, ok := extProcAttrs.Fields["xds.route_name"]; ok {
-		if stringValue := routeNameValue.GetStringValue(); stringValue != "" {
-			metadata.RouteName = stringValue
-		}
-	}
-
-	// Extract API metadata from xds.route_metadata
-	if routeMetadataValue, ok := extProcAttrs.Fields["xds.route_metadata"]; ok {
-		if metadataStr := routeMetadataValue.GetStringValue(); metadataStr != "" {
-			// Check cache first - routes with the same metadata string get cache hits
-			if cached, ok := s.routeMetadataCache.Load(metadataStr); ok {
-				cachedMeta := cached.(RouteMetadata)
-				// Copy API fields from cache, keep the route name from this request
-				metadata.APIId = cachedMeta.APIId
-				metadata.APIName = cachedMeta.APIName
-				metadata.APIVersion = cachedMeta.APIVersion
-				metadata.Context = cachedMeta.Context
-				metadata.OperationPath = cachedMeta.OperationPath
-				metadata.Vhost = cachedMeta.Vhost
-				metadata.APIKind = cachedMeta.APIKind
-				metadata.TemplateHandle = cachedMeta.TemplateHandle
-				metadata.ProviderName = cachedMeta.ProviderName
-				metadata.ProjectID = cachedMeta.ProjectID
-				metadata.DefaultUpstreamCluster = cachedMeta.DefaultUpstreamCluster
-				metadata.UpstreamBasePath = cachedMeta.UpstreamBasePath
-				metadata.UpstreamDefinitionPaths = cachedMeta.UpstreamDefinitionPaths
-			} else {
-				// Cache miss - parse the protobuf text format string
-				var envoyMetadata core.Metadata
-				if err := prototext.Unmarshal([]byte(metadataStr), &envoyMetadata); err != nil {
-					slog.Warn("Failed to unmarshal route metadata", "error", err)
-				} else {
-					// Extract fields from "wso2.route" filter metadata
-					if routeStruct, ok := envoyMetadata.FilterMetadata["wso2.route"]; ok && routeStruct.Fields != nil {
-						if apiIdValue, ok := routeStruct.Fields["api_id"]; ok {
-							metadata.APIId = apiIdValue.GetStringValue()
-						}
-						if apiNameValue, ok := routeStruct.Fields["api_name"]; ok {
-							metadata.APIName = apiNameValue.GetStringValue()
-						}
-						if apiVersionValue, ok := routeStruct.Fields["api_version"]; ok {
-							metadata.APIVersion = apiVersionValue.GetStringValue()
-						}
-						if apiContextValue, ok := routeStruct.Fields["api_context"]; ok {
-							metadata.Context = apiContextValue.GetStringValue()
-						}
-						if operationPath, ok := routeStruct.Fields["path"]; ok {
-							metadata.OperationPath = operationPath.GetStringValue()
-						}
-						if vhostValue, ok := routeStruct.Fields["vhost"]; ok {
-							metadata.Vhost = vhostValue.GetStringValue()
-						}
-						if originalAPIKindValue, ok := routeStruct.Fields["api_kind"]; ok {
-							metadata.APIKind = originalAPIKindValue.GetStringValue()
-						}
-						if templateHandleValue, ok := routeStruct.Fields["template_handle"]; ok {
-							metadata.TemplateHandle = templateHandleValue.GetStringValue()
-						}
-						if providerNameValue, ok := routeStruct.Fields["provider_name"]; ok {
-							metadata.ProviderName = providerNameValue.GetStringValue()
-						}
-						if projectIDValue, ok := routeStruct.Fields["project_id"]; ok {
-							metadata.ProjectID = projectIDValue.GetStringValue()
-						}
-						if defaultClusterValue, ok := routeStruct.Fields["default_upstream_cluster"]; ok {
-							metadata.DefaultUpstreamCluster = defaultClusterValue.GetStringValue()
-						}
-						if upstreamBasePathValue, ok := routeStruct.Fields["upstream_base_path"]; ok {
-							metadata.UpstreamBasePath = upstreamBasePathValue.GetStringValue()
-						}
-						// Parse upstream_definition_paths map for dynamic path rewriting
-						if upstreamDefPathsValue, ok := routeStruct.Fields["upstream_definition_paths"]; ok {
-							if upstreamDefPathsStruct := upstreamDefPathsValue.GetStructValue(); upstreamDefPathsStruct != nil {
-								metadata.UpstreamDefinitionPaths = make(map[string]string)
-								for name, pathValue := range upstreamDefPathsStruct.Fields {
-									metadata.UpstreamDefinitionPaths[name] = pathValue.GetStringValue()
-								}
-							}
-						}
-					}
-					// Cache the parsed metadata for future requests
-					s.routeMetadataCache.Store(metadataStr, metadata)
-				}
-			}
-		}
-	}
-
-	// If no route name found, use default
-	if metadata.RouteName == "" {
-		metadata.RouteName = "default"
-	}
-
-	return metadata
-}
-
-// ClearRouteMetadataCache clears the route metadata cache.
-// Call this when routes are updated via xDS to ensure stale metadata is not used.
-func (s *ExternalProcessorServer) ClearRouteMetadataCache() {
-	s.routeMetadataCache.Range(func(key, value interface{}) bool {
-		s.routeMetadataCache.Delete(key)
-		return true
-	})
-	slog.Info("Route metadata cache cleared")
 }
 
 // generateRequestID generates a unique request identifier

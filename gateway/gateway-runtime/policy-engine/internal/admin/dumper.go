@@ -31,7 +31,8 @@ func DumpConfig(k *kernel.Kernel, reg *registry.PolicyRegistry, policyChainVersi
 	return &ConfigDumpResponse{
 		Timestamp:      time.Now(),
 		PolicyRegistry: dumpPolicyRegistry(reg),
-		Routes:         dumpRoutes(k),
+		PolicyChains:   dumpPolicyChains(k),
+		RouteMetadata:  dumpRouteMetadata(k),
 		LazyResources:  dumpLazyResources(),
 		XDSSync: XDSSyncInfo{
 			PolicyChainVersion: policyChainVersion,
@@ -57,14 +58,14 @@ func dumpPolicyRegistry(reg *registry.PolicyRegistry) PolicyRegistryDump {
 	}
 }
 
-// dumpRoutes creates a dump of all route configurations
-func dumpRoutes(k *kernel.Kernel) RoutesDump {
+// dumpPolicyChains creates a dump of all policy chain configurations
+func dumpPolicyChains(k *kernel.Kernel) PolicyChainsDump {
 	routes := k.DumpRoutes()
 	// TODO: (renuka) Redact sensitive info from parameters if any
 
-	routeConfigs := make([]RouteConfig, 0, len(routes))
+	entries := make([]PolicyChainEntry, 0, len(routes))
 	for routeKey, chain := range routes {
-		routeConfigs = append(routeConfigs, RouteConfig{
+		entries = append(entries, PolicyChainEntry{
 			RouteKey:             routeKey,
 			RequiresRequestBody:  chain.RequiresRequestBody,
 			RequiresResponseBody: chain.RequiresResponseBody,
@@ -73,9 +74,39 @@ func dumpRoutes(k *kernel.Kernel) RoutesDump {
 		})
 	}
 
-	return RoutesDump{
-		TotalRoutes:  len(routeConfigs),
-		RouteConfigs: routeConfigs,
+	return PolicyChainsDump{
+		TotalPolicyChains: len(entries),
+		PolicyChains:      entries,
+	}
+}
+
+// dumpRouteMetadata creates a dump of all route metadata
+func dumpRouteMetadata(k *kernel.Kernel) RouteMetadataDump {
+	configs := k.DumpRouteConfigs()
+
+	entries := make([]RouteMetadataEntry, 0, len(configs))
+	for routeKey, cfg := range configs {
+		entries = append(entries, RouteMetadataEntry{
+			RouteKey:                routeKey,
+			APIId:                   cfg.Metadata.APIId,
+			APIName:                 cfg.Metadata.APIName,
+			APIVersion:              cfg.Metadata.APIVersion,
+			Context:                 cfg.Metadata.Context,
+			OperationPath:           cfg.Metadata.OperationPath,
+			Vhost:                   cfg.Metadata.Vhost,
+			APIKind:                 cfg.Metadata.APIKind,
+			TemplateHandle:          cfg.Metadata.TemplateHandle,
+			ProviderName:            cfg.Metadata.ProviderName,
+			ProjectID:               cfg.Metadata.ProjectID,
+			DefaultUpstreamCluster:  cfg.Metadata.DefaultUpstreamCluster,
+			UpstreamBasePath:        cfg.Metadata.UpstreamBasePath,
+			UpstreamDefinitionPaths: cfg.Metadata.UpstreamDefinitionPaths,
+		})
+	}
+
+	return RouteMetadataDump{
+		TotalRoutes: len(entries),
+		Routes:      entries,
 	}
 }
 

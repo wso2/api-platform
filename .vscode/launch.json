@@ -105,6 +105,22 @@
             },
         },
         {
+            "name": "Integration Tests",
+            "type": "go",
+            "request": "launch",
+            "mode": "test",
+            "program": "${workspaceFolder}/gateway/it",
+            "args": [
+                "-test.run", "TestFeatures",
+                "-test.v",
+                "-test.timeout", "50m",
+            ],
+            "env": {
+                // "IT_FEATURE_PATHS": "", // comma-separated, e.g. "features/health.feature,features/jwt-auth.feature"
+            },
+            "cwd": "${workspaceFolder}/gateway/it",
+        },
+        {
             "name": "Gateway Controller (Remote)",
             "type": "go",
             "request": "attach",

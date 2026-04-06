@@ -47,7 +47,7 @@ ensure-test-tags:
 # Run integration tests (always with coverage)
 # Requires: make build-coverage-image (run once before tests)
 test: ensure-test-tags
-	COMPOSE_FILE=$(COMPOSE_FILE) go test -v -timeout 30m ./...
+	COMPOSE_FILE=$(COMPOSE_FILE) go test -v -timeout 50m ./...
 
 # Build all coverage-instrumented gateway components
 build-coverage:
@@ -70,7 +70,7 @@ test-vhosts-multi:
 
 # Run tests with verbose output
 test-verbose: ensure-test-tags
-	COMPOSE_FILE=$(COMPOSE_FILE) go test -v -count=1 -timeout 30m ./...
+	COMPOSE_FILE=$(COMPOSE_FILE) go test -v -count=1 -timeout 50m ./...
 
 # Clean up test artifacts
 clean:

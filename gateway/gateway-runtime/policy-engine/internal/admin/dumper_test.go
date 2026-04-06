@@ -45,8 +45,8 @@ func TestDumpConfig_Empty(t *testing.T) {
 	assert.False(t, result.Timestamp.IsZero())
 	assert.Empty(t, result.PolicyRegistry.Policies)
 	assert.Equal(t, 0, result.PolicyRegistry.TotalPolicies)
-	assert.Empty(t, result.Routes.RouteConfigs)
-	assert.Equal(t, 0, result.Routes.TotalRoutes)
+	assert.Empty(t, result.PolicyChains.PolicyChains)
+	assert.Equal(t, 0, result.PolicyChains.TotalPolicyChains)
 	assert.Equal(t, "pc-v1", result.XDSSync.PolicyChainVersion)
 }
 
@@ -96,10 +96,10 @@ func TestDumpConfig_WithRoutes(t *testing.T) {
 	result := DumpConfig(k, reg, "pc-v3")
 
 	require.NotNil(t, result)
-	assert.Equal(t, 1, result.Routes.TotalRoutes)
-	require.Len(t, result.Routes.RouteConfigs, 1)
+	assert.Equal(t, 1, result.PolicyChains.TotalPolicyChains)
+	require.Len(t, result.PolicyChains.PolicyChains, 1)
 
-	routeConfig := result.Routes.RouteConfigs[0]
+	routeConfig := result.PolicyChains.PolicyChains[0]
 	assert.Equal(t, "test-route", routeConfig.RouteKey)
 	assert.True(t, routeConfig.RequiresRequestBody)
 	assert.False(t, routeConfig.RequiresResponseBody)
@@ -155,19 +155,19 @@ func TestDumpPolicyRegistry_Multiple(t *testing.T) {
 }
 
 // =============================================================================
-// dumpRoutes Tests
+// dumpPolicyChains Tests
 // =============================================================================
 
-func TestDumpRoutes_Empty(t *testing.T) {
+func TestDumpPolicyChains_Empty(t *testing.T) {
 	k := kernel.NewKernel()
 
-	result := dumpRoutes(k)
+	result := dumpPolicyChains(k)
 
-	assert.Equal(t, 0, result.TotalRoutes)
-	assert.Empty(t, result.RouteConfigs)
+	assert.Equal(t, 0, result.TotalPolicyChains)
+	assert.Empty(t, result.PolicyChains)
 }
 
-func TestDumpRoutes_SingleRoute(t *testing.T) {
+func TestDumpPolicyChains_SingleRoute(t *testing.T) {
 	k := kernel.NewKernel()
 
 	condition := "request.method == 'GET'"
@@ -186,19 +186,19 @@ func TestDumpRoutes_SingleRoute(t *testing.T) {
 	}
 	k.RegisterRoute("api-route-1", chain)
 
-	result := dumpRoutes(k)
+	result := dumpPolicyChains(k)
 
-	assert.Equal(t, 1, result.TotalRoutes)
-	require.Len(t, result.RouteConfigs, 1)
+	assert.Equal(t, 1, result.TotalPolicyChains)
+	require.Len(t, result.PolicyChains, 1)
 
-	routeConfig := result.RouteConfigs[0]
-	assert.Equal(t, "api-route-1", routeConfig.RouteKey)
-	assert.True(t, routeConfig.RequiresRequestBody)
-	assert.True(t, routeConfig.RequiresResponseBody)
-	assert.Equal(t, 1, routeConfig.TotalPolicies)
-	require.Len(t, routeConfig.Policies, 1)
+	entry := result.PolicyChains[0]
+	assert.Equal(t, "api-route-1", entry.RouteKey)
+	assert.True(t, entry.RequiresRequestBody)
+	assert.True(t, entry.RequiresResponseBody)
+	assert.Equal(t, 1, entry.TotalPolicies)
+	require.Len(t, entry.Policies, 1)
 
-	policySpec := routeConfig.Policies[0]
+	policySpec := entry.Policies[0]
 	assert.Equal(t, "test-policy", policySpec.Name)
 	assert.Equal(t, "v1.0.0", policySpec.Version)
 	assert.True(t, policySpec.Enabled)
@@ -206,7 +206,7 @@ func TestDumpRoutes_SingleRoute(t *testing.T) {
 	assert.Equal(t, "request.method == 'GET'", *policySpec.ExecutionCondition)
 }
 
-func TestDumpRoutes_MultipleRoutes(t *testing.T) {
+func TestDumpPolicyChains_MultipleRoutes(t *testing.T) {
 	k := kernel.NewKernel()
 
 	chain1 := &registry.PolicyChain{
@@ -219,10 +219,65 @@ func TestDumpRoutes_MultipleRoutes(t *testing.T) {
 	k.RegisterRoute("route-1", chain1)
 	k.RegisterRoute("route-2", chain2)
 
-	result := dumpRoutes(k)
+	result := dumpPolicyChains(k)
 
-	assert.Equal(t, 2, result.TotalRoutes)
-	assert.Len(t, result.RouteConfigs, 2)
+	assert.Equal(t, 2, result.TotalPolicyChains)
+	assert.Len(t, result.PolicyChains, 2)
+}
+
+// =============================================================================
+// dumpRouteMetadata Tests
+// =============================================================================
+
+func TestDumpRouteMetadata_Empty(t *testing.T) {
+	k := kernel.NewKernel()
+
+	result := dumpRouteMetadata(k)
+
+	assert.Equal(t, 0, result.TotalRoutes)
+	assert.Empty(t, result.Routes)
+}
+
+func TestDumpRouteMetadata_WithRoutes(t *testing.T) {
+	k := kernel.NewKernel()
+
+	configs := map[string]*kernel.RouteConfig{
+		"petstore|/pets|GET": {
+			Metadata: kernel.RouteMetadata{
+				APIId:                  "uuid-1",
+				APIName:                "PetStore",
+				APIVersion:             "v1",
+				Context:                "/pets",
+				OperationPath:          "/pets",
+				Vhost:                  "default",
+				APIKind:                "http/rest",
+				DefaultUpstreamCluster: "petstore_cluster",
+				UpstreamBasePath:       "/",
+				UpstreamDefinitionPaths: map[string]string{
+					"default": "/openapi.yaml",
+				},
+			},
+		},
+	}
+	k.ApplyWholeRouteConfigs(configs)
+
+	result := dumpRouteMetadata(k)
+
+	assert.Equal(t, 1, result.TotalRoutes)
+	require.Len(t, result.Routes, 1)
+
+	entry := result.Routes[0]
+	assert.Equal(t, "petstore|/pets|GET", entry.RouteKey)
+	assert.Equal(t, "uuid-1", entry.APIId)
+	assert.Equal(t, "PetStore", entry.APIName)
+	assert.Equal(t, "v1", entry.APIVersion)
+	assert.Equal(t, "/pets", entry.Context)
+	assert.Equal(t, "/pets", entry.OperationPath)
+	assert.Equal(t, "default", entry.Vhost)
+	assert.Equal(t, "http/rest", entry.APIKind)
+	assert.Equal(t, "petstore_cluster", entry.DefaultUpstreamCluster)
+	assert.Equal(t, "/", entry.UpstreamBasePath)
+	assert.Equal(t, map[string]string{"default": "/openapi.yaml"}, entry.UpstreamDefinitionPaths)
 }
 
 // =============================================================================

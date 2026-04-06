@@ -119,164 +119,6 @@ func TestNewExternalProcessorServer_DefaultServiceName(t *testing.T) {
 }
 
 // =============================================================================
-// extractRouteMetadata Tests
-// =============================================================================
-
-func TestExtractRouteMetadata_NilAttributes(t *testing.T) {
-	kernel := NewKernel()
-	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
-
-	req := &extprocv3.ProcessingRequest{
-		Attributes: nil,
-	}
-
-	metadata := server.extractRouteMetadata(req)
-
-	// When no attributes, route name is empty (not "default" - that's set elsewhere)
-	assert.Empty(t, metadata.RouteName)
-}
-
-func TestExtractRouteMetadata_EmptyExtProcAttrs(t *testing.T) {
-	kernel := NewKernel()
-	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
-
-	req := &extprocv3.ProcessingRequest{
-		Attributes: map[string]*structpb.Struct{
-			"other": {},
-		},
-	}
-
-	metadata := server.extractRouteMetadata(req)
-
-	// When ext_proc filter not present, route name is empty
-	assert.Empty(t, metadata.RouteName)
-}
-
-func TestExtractRouteMetadata_WithRouteName(t *testing.T) {
-	kernel := NewKernel()
-	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
-
-	req := &extprocv3.ProcessingRequest{
-		Attributes: map[string]*structpb.Struct{
-			constants.ExtProcFilter: {
-				Fields: map[string]*structpb.Value{
-					"xds.route_name": structpb.NewStringValue("my-api-route"),
-				},
-			},
-		},
-	}
-
-	metadata := server.extractRouteMetadata(req)
-
-	assert.Equal(t, "my-api-route", metadata.RouteName)
-}
-
-func TestExtractRouteMetadata_WithRouteMetadata(t *testing.T) {
-	kernel := NewKernel()
-	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
-
-	// Create route metadata in prototext format
-	routeMetadataStr := `filter_metadata {
-		key: "wso2.route"
-		value {
-			fields {
-				key: "api_id"
-				value { string_value: "api-123" }
-			}
-			fields {
-				key: "api_name"
-				value { string_value: "PetStore" }
-			}
-			fields {
-				key: "api_version"
-				value { string_value: "v1.0.0" }
-			}
-			fields {
-				key: "api_context"
-				value { string_value: "/petstore" }
-			}
-			fields {
-				key: "path"
-				value { string_value: "/pets/{id}" }
-			}
-			fields {
-				key: "vhost"
-				value { string_value: "api.example.com" }
-			}
-			fields {
-				key: "api_kind"
-				value { string_value: "REST" }
-			}
-			fields {
-				key: "template_handle"
-				value { string_value: "gpt-4" }
-			}
-			fields {
-				key: "provider_name"
-				value { string_value: "openai" }
-			}
-			fields {
-				key: "project_id"
-				value { string_value: "proj-456" }
-			}
-		}
-	}`
-
-	req := &extprocv3.ProcessingRequest{
-		Attributes: map[string]*structpb.Struct{
-			constants.ExtProcFilter: {
-				Fields: map[string]*structpb.Value{
-					"xds.route_name":     structpb.NewStringValue("test-route"),
-					"xds.route_metadata": structpb.NewStringValue(routeMetadataStr),
-				},
-			},
-		},
-	}
-
-	metadata := server.extractRouteMetadata(req)
-
-	assert.Equal(t, "test-route", metadata.RouteName)
-	assert.Equal(t, "api-123", metadata.APIId)
-	assert.Equal(t, "PetStore", metadata.APIName)
-	assert.Equal(t, "v1.0.0", metadata.APIVersion)
-	assert.Equal(t, "/petstore", metadata.Context)
-	assert.Equal(t, "/pets/{id}", metadata.OperationPath)
-	assert.Equal(t, "api.example.com", metadata.Vhost)
-	assert.Equal(t, "REST", metadata.APIKind)
-	assert.Equal(t, "gpt-4", metadata.TemplateHandle)
-	assert.Equal(t, "openai", metadata.ProviderName)
-	assert.Equal(t, "proj-456", metadata.ProjectID)
-}
-
-func TestExtractRouteMetadata_MalformedRouteMetadata(t *testing.T) {
-	kernel := NewKernel()
-	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
-
-	req := &extprocv3.ProcessingRequest{
-		Attributes: map[string]*structpb.Struct{
-			constants.ExtProcFilter: {
-				Fields: map[string]*structpb.Value{
-					"xds.route_name":     structpb.NewStringValue("test-route"),
-					"xds.route_metadata": structpb.NewStringValue("not valid prototext {{{"),
-				},
-			},
-		},
-	}
-
-	metadata := server.extractRouteMetadata(req)
-
-	// Route name should still be extracted
-	assert.Equal(t, "test-route", metadata.RouteName)
-	// Other fields should be empty due to parse error
-	assert.Empty(t, metadata.APIId)
-}
-
-// =============================================================================
 // generateRequestID Tests
 // =============================================================================
 
@@ -372,9 +214,12 @@ func TestProcess_RequestHeaders_NoPolicyChain(t *testing.T) {
 	assert.NoError(t, err)
 	require.Len(t, stream.responses, 1)
 
-	// Should skip all processing when no chain found
+	// Should return 500 with error code when no policy chain is found
 	resp := stream.responses[0]
-	require.NotNil(t, resp.ModeOverride)
+	immResp := resp.GetImmediateResponse()
+	require.NotNil(t, immResp)
+	assert.Equal(t, uint32(500), uint32(immResp.Status.Code))
+	assert.Contains(t, string(immResp.Body), "500PE001")
 }
 
 func TestProcess_UnknownRequestType(t *testing.T) {
@@ -588,6 +433,9 @@ func TestInitializeExecutionContext_WithPolicyChain(t *testing.T) {
 		PolicySpecs: []policy.PolicySpec{},
 	}
 	kernel.RegisterRoute("test-route", chain)
+	kernel.ApplyWholeRouteConfigs(map[string]*RouteConfig{
+		"test-route": {Metadata: RouteMetadata{RouteName: "test-route"}},
+	})
 
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
 	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")

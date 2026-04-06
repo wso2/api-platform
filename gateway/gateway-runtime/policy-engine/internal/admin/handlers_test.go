@@ -98,9 +98,9 @@ func TestConfigDumpResponse_JSONSerialization(t *testing.T) {
 				{Name: "rate-limit", Version: "v1.0.0"},
 			},
 		},
-		Routes: RoutesDump{
-			TotalRoutes: 1,
-			RouteConfigs: []RouteConfig{
+		PolicyChains: PolicyChainsDump{
+			TotalPolicyChains: 1,
+			PolicyChains: []PolicyChainEntry{
 				{
 					RouteKey:             "api-1|/users|GET",
 					RequiresRequestBody:  false,
@@ -134,7 +134,7 @@ func TestConfigDumpResponse_JSONSerialization(t *testing.T) {
 
 	assert.Equal(t, response.PolicyRegistry.TotalPolicies, decoded.PolicyRegistry.TotalPolicies)
 	assert.Equal(t, len(response.PolicyRegistry.Policies), len(decoded.PolicyRegistry.Policies))
-	assert.Equal(t, response.Routes.TotalRoutes, decoded.Routes.TotalRoutes)
+	assert.Equal(t, response.PolicyChains.TotalPolicyChains, decoded.PolicyChains.TotalPolicyChains)
 	assert.Equal(t, "v12", decoded.XDSSync.PolicyChainVersion)
 }
 
@@ -156,10 +156,10 @@ func TestPolicyInfo_JSONSerialization(t *testing.T) {
 	assert.Equal(t, info.Version, decoded.Version)
 }
 
-// TestRouteConfig_JSONSerialization tests JSON serialization of RouteConfig
-func TestRouteConfig_JSONSerialization(t *testing.T) {
+// TestPolicyChainEntry_JSONSerialization tests JSON serialization of PolicyChainEntry
+func TestPolicyChainEntry_JSONSerialization(t *testing.T) {
 	condition := "request.headers['x-test'] == 'true'"
-	config := RouteConfig{
+	config := PolicyChainEntry{
 		RouteKey:             "api-1|/users|POST",
 		RequiresRequestBody:  true,
 		RequiresResponseBody: false,
@@ -185,7 +185,7 @@ func TestRouteConfig_JSONSerialization(t *testing.T) {
 	data, err := json.Marshal(config)
 	require.NoError(t, err)
 
-	var decoded RouteConfig
+	var decoded PolicyChainEntry
 	err = json.Unmarshal(data, &decoded)
 	require.NoError(t, err)
 
@@ -298,22 +298,22 @@ func TestPolicyRegistryDump_EmptyPolicies(t *testing.T) {
 	assert.Empty(t, decoded.Policies)
 }
 
-// TestRoutesDump_EmptyRoutes tests RoutesDump with empty routes
-func TestRoutesDump_EmptyRoutes(t *testing.T) {
-	dump := RoutesDump{
-		TotalRoutes:  0,
-		RouteConfigs: []RouteConfig{},
+// TestPolicyChainsDump_Empty tests PolicyChainsDump with empty chains
+func TestPolicyChainsDump_Empty(t *testing.T) {
+	dump := PolicyChainsDump{
+		TotalPolicyChains: 0,
+		PolicyChains:      []PolicyChainEntry{},
 	}
 
 	data, err := json.Marshal(dump)
 	require.NoError(t, err)
 
-	var decoded RoutesDump
+	var decoded PolicyChainsDump
 	err = json.Unmarshal(data, &decoded)
 	require.NoError(t, err)
 
-	assert.Equal(t, 0, decoded.TotalRoutes)
-	assert.Empty(t, decoded.RouteConfigs)
+	assert.Equal(t, 0, decoded.TotalPolicyChains)
+	assert.Empty(t, decoded.PolicyChains)
 }
 
 func TestXDSSyncStatusHandler(t *testing.T) {

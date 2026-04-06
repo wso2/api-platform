@@ -352,7 +352,7 @@ Feature: Lazy Resources xDS Synchronization
   # This tests that the provider name flows correctly through Envoy xDS
   # ========================================
 
-  Scenario: Provider name is set in Envoy route metadata via xDS
+  Scenario: Provider name is propagated to policy engine route metadata via xDS
     # Create an LLM provider
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
@@ -372,14 +372,14 @@ Feature: Lazy Resources xDS Synchronization
         """
     Then the response status code should be 201
 
-    # Wait for xDS propagation to Envoy
+    # Wait for xDS propagation to policy engine
     When I wait for 3 seconds
 
-    # Check Envoy's route configuration contains the provider_name in metadata
-    When I send a GET request to "http://localhost:9901/config_dump?resource=dynamic_route_configs"
+    # Check policy engine route metadata contains the provider_name
+    When I send a GET request to "http://localhost:9002/config_dump"
     Then the response status code should be 200
     And the response should be valid JSON
-    And the Envoy route config should contain provider_name "route-metadata-test-provider"
+    And the policy engine route metadata should contain provider_name "route-metadata-test-provider"
 
     # Cleanup
     Given I authenticate using basic auth as "admin"
