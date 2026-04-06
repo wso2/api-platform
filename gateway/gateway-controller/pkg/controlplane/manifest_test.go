@@ -229,16 +229,27 @@ func TestPushGatewayManifestOnConnect_ParamsOnlyForCustomerPolicies(t *testing.T
 		t.Fatalf("failed to unmarshal request body: %v", err)
 	}
 
+	if len(payload.Policies) != 2 {
+		t.Fatalf("expected 2 policies, got %d", len(payload.Policies))
+	}
+	seenCustomer := false
+	seenWSO2 := false
+
 	for _, p := range payload.Policies {
 		if p.ManagedBy == "customer" {
+			seenCustomer = true
 			if p.Parameters == nil || p.SystemParameters == nil {
 				t.Errorf("customer policy %q should have Parameters and SystemParameters set", p.Name)
 			}
 		} else {
+			seenWSO2 = true
 			if p.Parameters != nil || p.SystemParameters != nil {
 				t.Errorf("wso2 policy %q should NOT have Parameters or SystemParameters in the manifest", p.Name)
 			}
 		}
+	}
+	if !seenCustomer || !seenWSO2 {
+		t.Fatalf("expected both customer and wso2-managed policies, got customer=%t wso2=%t", seenCustomer, seenWSO2)
 	}
 }
 
