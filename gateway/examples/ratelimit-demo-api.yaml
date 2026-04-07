@@ -17,7 +17,7 @@
 # --------------------------------------------------------------------
 
 # This example demonstrates various rate limiting configurations
-# See the documentation at: https://github.com/wso2/gateway-controllers
+# See the documentation at: https://github.com/wso2/gateway-controllers/blob/main/docs/README.md
 
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: RestApi
