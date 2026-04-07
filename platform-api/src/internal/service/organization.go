@@ -36,6 +36,12 @@ import (
 type OrganizationService struct {
 	orgRepo           repository.OrganizationRepository
 	projectRepo       repository.ProjectRepository
+	applicationRepo   repository.ApplicationRepository
+	apiRepo           repository.APIRepository
+	gatewayRepo       repository.GatewayRepository
+	llmProviderRepo   repository.LLMProviderRepository
+	llmProxyRepo      repository.LLMProxyRepository
+	mcpProxyRepo      repository.MCPProxyRepository
 	devPortalService  *DevPortalService
 	llmTemplateSeeder *LLMTemplateSeeder
 	config            *config.Server
@@ -43,15 +49,109 @@ type OrganizationService struct {
 }
 
 func NewOrganizationService(orgRepo repository.OrganizationRepository,
-	projectRepo repository.ProjectRepository, devPortalService *DevPortalService, llmTemplateSeeder *LLMTemplateSeeder, cfg *config.Server, slogger *slog.Logger) *OrganizationService {
+	projectRepo repository.ProjectRepository,
+	applicationRepo repository.ApplicationRepository,
+	apiRepo repository.APIRepository,
+	gatewayRepo repository.GatewayRepository,
+	llmProviderRepo repository.LLMProviderRepository,
+	llmProxyRepo repository.LLMProxyRepository,
+	mcpProxyRepo repository.MCPProxyRepository,
+	devPortalService *DevPortalService,
+	llmTemplateSeeder *LLMTemplateSeeder,
+	cfg *config.Server,
+	slogger *slog.Logger,
+) *OrganizationService {
 	return &OrganizationService{
 		orgRepo:           orgRepo,
 		projectRepo:       projectRepo,
+		applicationRepo:   applicationRepo,
+		apiRepo:           apiRepo,
+		gatewayRepo:       gatewayRepo,
+		llmProviderRepo:   llmProviderRepo,
+		llmProxyRepo:      llmProxyRepo,
+		mcpProxyRepo:      mcpProxyRepo,
 		devPortalService:  devPortalService,
 		llmTemplateSeeder: llmTemplateSeeder,
 		config:            cfg,
 		slogger:           slogger,
 	}
+}
+
+func (s *OrganizationService) GetOrganizationSubscription(orgID string) (*api.OrganizationSubscription, error) {
+	if _, err := s.GetOrganizationByUUID(orgID); err != nil {
+		return nil, err
+	}
+
+	llmProvidersCount, err := s.llmProviderRepo.Count(orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	llmProxiesCount, err := s.llmProxyRepo.Count(orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	applicationsCount, err := s.applicationRepo.CountApplicationsByOrganizationID(orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	mcpProxiesCount, err := s.mcpProxyRepo.Count(orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	gateways, err := s.gatewayRepo.GetByOrganizationID(orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	apis, err := s.apiRepo.GetAPIsByOrganizationUUID(orgID, "")
+	if err != nil {
+		return nil, err
+	}
+
+	llmProvidersLimit := constants.MaxLLMProvidersPerOrganization
+	llmProvidersRemaining := max(llmProvidersLimit-llmProvidersCount, 0)
+
+	llmProxiesLimit := constants.MaxLLMProxiesPerOrganization
+	llmProxiesRemaining := max(llmProxiesLimit-llmProxiesCount, 0)
+
+	mcpProxiesLimit := constants.MaxMCPProxiesPerOrganization
+	mcpProxiesRemaining := max(mcpProxiesLimit-mcpProxiesCount, 0)
+
+	res := &api.OrganizationSubscription{
+		Plan: "free",
+		Quotas: api.OrganizationSubscriptionQuotas{
+			LlmProviders: api.OrganizationQuota{
+				Used:      llmProvidersCount,
+				Limit:     intPtr(llmProvidersLimit),
+				Remaining: intPtr(llmProvidersRemaining),
+			},
+			LlmProxies: api.OrganizationQuota{
+				Used:      llmProxiesCount,
+				Limit:     intPtr(llmProxiesLimit),
+				Remaining: intPtr(llmProxiesRemaining),
+			},
+			Applications: api.OrganizationQuota{
+				Used: applicationsCount,
+			},
+			McpProxies: api.OrganizationQuota{
+				Used:      mcpProxiesCount,
+				Limit:     intPtr(mcpProxiesLimit),
+				Remaining: intPtr(mcpProxiesRemaining),
+			},
+			Gateways: api.OrganizationQuota{
+				Used: len(gateways),
+			},
+			Apis: api.OrganizationQuota{
+				Used: len(apis),
+			},
+		},
+	}
+
+	return res, nil
 }
 
 func (s *OrganizationService) RegisterOrganization(id string, handle string, name string, region string) (*api.Organization, error) {
@@ -205,4 +305,8 @@ func (s *OrganizationService) modelToAPI(orgModel *model.Organization) (*api.Org
 		CreatedAt: utils.TimePtrIfNotZero(orgModel.CreatedAt),
 		UpdatedAt: utils.TimePtrIfNotZero(orgModel.UpdatedAt),
 	}, nil
+}
+
+func intPtr(value int) *int {
+	return &value
 }

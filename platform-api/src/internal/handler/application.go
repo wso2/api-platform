@@ -21,10 +21,11 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
+	"platform-api/src/api"
 	"platform-api/src/internal/constants"
-	"platform-api/src/internal/dto"
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
@@ -48,7 +49,7 @@ func (h *ApplicationHandler) CreateApplication(c *gin.Context) {
 		return
 	}
 
-	var req dto.CreateApplicationRequest
+	var req api.CreateApplicationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.NewValidationErrorResponse(c, err)
 		return
@@ -58,7 +59,11 @@ func (h *ApplicationHandler) CreateApplication(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application name is required"))
 		return
 	}
-	if strings.TrimSpace(req.Type) == "" {
+	if utils.OpenAPIUUIDToString(req.ProjectId) == "00000000-0000-0000-0000-000000000000" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project ID is required"))
+		return
+	}
+	if strings.TrimSpace(string(req.Type)) == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application type is required"))
 		return
 	}
@@ -102,7 +107,27 @@ func (h *ApplicationHandler) ListApplications(c *gin.Context) {
 	}
 
 	projectID := strings.TrimSpace(c.Query("projectId"))
-	apps, err := h.applicationService.GetApplicationsByOrganization(orgID, projectID)
+	if projectID == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project ID is required"))
+		return
+	}
+	limitStr := c.DefaultQuery("limit", "20")
+	offsetStr := c.DefaultQuery("offset", "0")
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	offset, err := strconv.Atoi(offsetStr)
+	if err != nil || offset < 0 {
+		offset = 0
+	}
+
+	apps, err := h.applicationService.GetApplicationsByOrganization(orgID, projectID, limit, offset)
 	if err != nil {
 		h.writeApplicationError(c, err, "Failed to list applications")
 		return
@@ -125,7 +150,7 @@ func (h *ApplicationHandler) UpdateApplication(c *gin.Context) {
 	}
 	userID := h.resolveRequesterUserID(c)
 
-	var req dto.UpdateApplicationRequest
+	var req api.UpdateApplicationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.NewValidationErrorResponse(c, err)
 		return
@@ -174,7 +199,26 @@ func (h *ApplicationHandler) ListApplicationAPIKeys(c *gin.Context) {
 		return
 	}
 
-	keys, err := h.applicationService.ListMappedAPIKeys(appID, orgID)
+	limit := 20
+	if limitStr := strings.TrimSpace(c.Query("limit")); limitStr != "" {
+		parsedLimit, err := strconv.Atoi(limitStr)
+		if err == nil && parsedLimit > 0 {
+			if parsedLimit > 100 {
+				parsedLimit = 100
+			}
+			limit = parsedLimit
+		}
+	}
+
+	offset := 0
+	if offsetStr := strings.TrimSpace(c.Query("offset")); offsetStr != "" {
+		parsedOffset, err := strconv.Atoi(offsetStr)
+		if err == nil && parsedOffset >= 0 {
+			offset = parsedOffset
+		}
+	}
+
+	keys, err := h.applicationService.ListMappedAPIKeys(appID, orgID, limit, offset)
 	if err != nil {
 		h.writeApplicationError(c, err, "Failed to list mapped API keys")
 		return
@@ -197,12 +241,12 @@ func (h *ApplicationHandler) AddApplicationAPIKeys(c *gin.Context) {
 		return
 	}
 
-	var req dto.AddApplicationAPIKeysRequest
+	var req api.AddApplicationAPIKeysRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		utils.NewValidationErrorResponse(c, err)
 		return
 	}
-	if len(req.APIKeys) == 0 {
+	if len(req.ApiKeys) == 0 {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "At least one API key mapping is required"))
 		return
 	}

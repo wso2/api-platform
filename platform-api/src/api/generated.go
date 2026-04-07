@@ -573,7 +573,7 @@ type Application struct {
 	Name string `binding:"required" json:"name" yaml:"name"`
 
 	// ProjectId UUID of the project this application belongs to
-	ProjectId *openapi_types.UUID `json:"projectId,omitempty" yaml:"projectId,omitempty"`
+	ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
 
 	// Type Type of the application
 	Type      ApplicationType `json:"type" yaml:"type"`
@@ -701,8 +701,8 @@ type CreateApplicationRequest struct {
 	// Name Name of the application
 	Name string `binding:"required" json:"name" yaml:"name"`
 
-	// ProjectId UUID of the project this application belongs to. If omitted, the application is not mapped to a project.
-	ProjectId *openapi_types.UUID `json:"projectId,omitempty" yaml:"projectId,omitempty"`
+	// ProjectId UUID of the project this application belongs to.
+	ProjectId openapi_types.UUID `binding:"required" json:"projectId" yaml:"projectId"`
 
 	// Type Type of the application
 	Type ApplicationType `json:"type" yaml:"type"`
@@ -2054,6 +2054,35 @@ type Organization struct {
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 }
 
+// OrganizationQuota defines model for OrganizationQuota.
+type OrganizationQuota struct {
+	// Limit Maximum resources allowed, null when no limit is configured
+	Limit *int `json:"limit" yaml:"limit"`
+
+	// Remaining Remaining resources before limit is reached, null when no limit is configured
+	Remaining *int `json:"remaining" yaml:"remaining"`
+
+	// Used Number of currently used resources
+	Used int `binding:"required" json:"used" yaml:"used"`
+}
+
+// OrganizationSubscription defines model for OrganizationSubscription.
+type OrganizationSubscription struct {
+	// Plan Effective subscription plan for the organization
+	Plan   string                         `binding:"required" json:"plan" yaml:"plan"`
+	Quotas OrganizationSubscriptionQuotas `json:"quotas" yaml:"quotas"`
+}
+
+// OrganizationSubscriptionQuotas defines model for OrganizationSubscriptionQuotas.
+type OrganizationSubscriptionQuotas struct {
+	Apis         OrganizationQuota `json:"apis" yaml:"apis"`
+	Applications OrganizationQuota `json:"applications" yaml:"applications"`
+	Gateways     OrganizationQuota `json:"gateways" yaml:"gateways"`
+	LlmProviders OrganizationQuota `json:"llmProviders" yaml:"llmProviders"`
+	LlmProxies   OrganizationQuota `json:"llmProxies" yaml:"llmProxies"`
+	McpProxies   OrganizationQuota `json:"mcpProxies" yaml:"mcpProxies"`
+}
+
 // Owners API ownership information
 type Owners struct {
 	// BusinessOwner Business owner of the API
@@ -2994,7 +3023,7 @@ type MappedKeyId = string
 type OrganizationId = openapi_types.UUID
 
 // ProjectIdQ defines model for projectId-Q.
-type ProjectIdQ = string
+type ProjectIdQ = openapi_types.UUID
 
 // BadRequest defines model for BadRequest.
 type BadRequest = Error
@@ -3017,7 +3046,22 @@ type Unauthorized = Error
 // ListApplicationsParams defines parameters for ListApplications.
 type ListApplicationsParams struct {
 	// ProjectId **Project ID** consisting of the **UUID** of the Project to filter APIs by.
-	ProjectId *ProjectIdQ `form:"projectId,omitempty" json:"projectId,omitempty" yaml:"projectId,omitempty"`
+	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
+
+	// Limit Maximum number of applications to return
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Number of applications to skip
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
+
+// ListApplicationAPIKeysParams defines parameters for ListApplicationAPIKeys.
+type ListApplicationAPIKeysParams struct {
+	// Limit Maximum number of mapped API keys to return
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Number of mapped API keys to skip
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
 // RemoveApplicationAPIKeyParams defines parameters for RemoveApplicationAPIKey.
@@ -3132,7 +3176,7 @@ type ListLLMProxiesByProviderParams struct {
 // ListLLMProxiesParams defines parameters for ListLLMProxies.
 type ListLLMProxiesParams struct {
 	// ProjectId **Project ID** consisting of the **UUID** of the Project to filter APIs by.
-	ProjectId *ProjectIdQ `form:"projectId,omitempty" json:"projectId,omitempty" yaml:"projectId,omitempty"`
+	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
 
 	// Limit Maximum number of LLM proxies to return
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
@@ -3174,7 +3218,7 @@ type UndeployLLMProxyDeploymentParams struct {
 // ListMCPProxiesParams defines parameters for ListMCPProxies.
 type ListMCPProxiesParams struct {
 	// ProjectId **Project ID** consisting of the **UUID** of the Project to filter APIs by.
-	ProjectId *ProjectIdQ `form:"projectId,omitempty" json:"projectId,omitempty" yaml:"projectId,omitempty"`
+	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
 
 	// Limit Maximum number of MCP proxies to return
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
@@ -3226,7 +3270,7 @@ type ListUserAPIKeysParamsType string
 // ListRESTAPIsParams defines parameters for ListRESTAPIs.
 type ListRESTAPIsParams struct {
 	// ProjectId **Project ID** consisting of the **UUID** of the Project to filter APIs by.
-	ProjectId *ProjectIdQ `form:"projectId,omitempty" json:"projectId,omitempty" yaml:"projectId,omitempty"`
+	ProjectId ProjectIdQ `form:"projectId" json:"projectId" yaml:"projectId"`
 }
 
 // ValidateRESTAPIParams defines parameters for ValidateRESTAPI.

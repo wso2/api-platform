@@ -34,7 +34,7 @@ help: ## Show this help message
 	@echo 'Available targets:'
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-25s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-build: ## Build Gateway Runtime Docker image using buildx
+build: test ## Build Gateway Runtime Docker image using buildx
 	@echo "Building Gateway Runtime Docker image ($(IMAGE_NAME):$(VERSION))..."
 	@mkdir -p target/configs && cp ../build.yaml target/ && cp -r ../configs/llm-pricing target/configs/
 	docker buildx build -f Dockerfile \

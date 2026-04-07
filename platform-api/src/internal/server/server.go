@@ -166,7 +166,20 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	devPortalService := service.NewDevPortalService(devPortalRepo, orgRepo, publicationRepo, apiRepo, apiUtil, cfg, slogger)
 
 	// Initialize services
-	orgService := service.NewOrganizationService(orgRepo, projectRepo, devPortalService, llmTemplateSeeder, cfg, slogger)
+	orgService := service.NewOrganizationService(
+		orgRepo,
+		projectRepo,
+		appRepo,
+		apiRepo,
+		gatewayRepo,
+		llmProviderRepo,
+		llmProxyRepo,
+		mcpProxyRepo,
+		devPortalService,
+		llmTemplateSeeder,
+		cfg,
+		slogger,
+	)
 	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, slogger)
 	gatewayEventsService := service.NewGatewayEventsService(wsManager, slogger)
 	appService := service.NewApplicationService(appRepo, projectRepo, orgRepo, apiRepo, gatewayEventsService, slogger)

@@ -1,5 +1,10 @@
 {{- $controller := .Values.gateway.controller -}}
 {{- $deployment := $controller.deployment -}}
+{{- if and (not .Values.gateway.developmentMode) $deployment.enabled }}
+{{- if not $controller.encryptionKeys.enabled }}
+{{- fail "gateway.controller.encryptionKeys must be enabled when gateway.developmentMode is false. Either set gateway.developmentMode=true or configure gateway.controller.encryptionKeys with a Kubernetes secret containing the AES-GCM key." }}
+{{- end }}
+{{- end }}
 {{- if $deployment.enabled }}
 apiVersion: apps/v1
 kind: Deployment
@@ -94,6 +99,8 @@ spec:
               value: {{ default (printf "%s-controller" (include "gateway-operator.fullname" .)) $deployment.env.gatewayControllerHost | quote }}
             - name: APIP_GW_CONTROLLER_METRICS_PORT
               value: {{ printf "%d" (int $controller.metrics.port) | quote }}
+            - name: APIP_GW_DEVELOPMENT_MODE
+              value: {{ .Values.gateway.developmentMode | toString | quote }}
             {{- range $deployment.extraEnv }}
             - {{- toYaml . | nindent 14 }}
             {{- end }}

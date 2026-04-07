@@ -43,12 +43,19 @@ Feature: Policy Engine Admin API
     And the response JSON at "policy_registry" should have key "total_policies"
     And the response JSON at "policy_registry" should have key "policies"
 
-  Scenario: Config dump contains routes section
+  Scenario: Config dump contains policy chains section
     When I send a GET request to the policy-engine config dump endpoint
     Then the response status code should be 200
-    And the response JSON should have key "routes"
-    And the response JSON at "routes" should have key "total_routes"
-    And the response JSON at "routes" should have key "route_configs"
+    And the response JSON should have key "policy_chains"
+    And the response JSON at "policy_chains" should have key "total_policy_chains"
+    And the response JSON at "policy_chains" should have key "policy_chains"
+
+  Scenario: Config dump contains route metadata section
+    When I send a GET request to the policy-engine config dump endpoint
+    Then the response status code should be 200
+    And the response JSON should have key "route_metadata"
+    And the response JSON at "route_metadata" should have key "total_routes"
+    And the response JSON at "route_metadata" should have key "routes"
 
   Scenario: Config dump contains lazy resources section
     When I send a GET request to the policy-engine config dump endpoint
@@ -91,7 +98,7 @@ Feature: Policy Engine Admin API
     And I wait for the endpoint "http://localhost:8080/admin-test/v1/health" to be ready
     When I send a GET request to the policy-engine config dump endpoint
     Then the response status code should be 200
-    And the response JSON at "routes.total_routes" should be greater than 0
+    And the response JSON at "policy_chains.total_policy_chains" should be greater than 0
     And the config dump should contain route with basePath "/admin-test/v1"
     And I delete the API "admin-test-api-v1"
 
