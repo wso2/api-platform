@@ -147,7 +147,7 @@ const (
 	OperationMethodOPTIONS OperationMethod = "OPTIONS"
 )
 
-// Policy defines model for Policy.
+// Policy defines a policy attachment as embedded in RestApi or APIConfigData.
 type Policy struct {
 	// ExecutionCondition Expression controlling conditional execution of the policy
 	// +optional

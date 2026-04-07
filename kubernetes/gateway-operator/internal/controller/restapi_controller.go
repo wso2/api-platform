@@ -17,24 +17,20 @@ limitations under the License.
 package controller
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"math"
 	"net/http"
-	"net/url"
 	"sync"
 	"time"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/auth"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/gatewayclient"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/selector"
 	"go.uber.org/zap"
-	"gopkg.in/yaml.v2"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -296,7 +292,7 @@ func (r *RestApiReconciler) processDeployment(
 	retryCount := 0
 	if hasExisting && existingEntry.Generation == generation {
 		retryCount = existingEntry.RetryCount
-		
+
 		// Respect backoff if set
 		if !existingEntry.NextRetryTime.IsZero() {
 			wait := time.Until(existingEntry.NextRetryTime)
@@ -370,172 +366,27 @@ func (r *RestApiReconciler) setInitialConditions(ctx context.Context, apiConfig 
 func (r *RestApiReconciler) executeDeployment(ctx context.Context, apiConfig *apiv1.RestApi, gateway *registry.GatewayInfo) error {
 	log := r.Logger.With(zap.String("controller", "RestApi"), zap.String("name", apiConfig.Name))
 
-	// Create clean payload
-	cleanPayload := struct {
-		ApiVersion string              `yaml:"apiVersion" json:"apiVersion"`
-		Kind       string              `yaml:"kind" json:"kind"`
-		Metadata   map[string]string   `yaml:"metadata" json:"metadata"`
-		Spec       apiv1.APIConfigData `yaml:"spec" json:"spec"`
-	}{
-		ApiVersion: apiConfig.APIVersion,
-		Kind:       apiConfig.Kind,
-		Metadata: map[string]string{
-			"name": apiConfig.Name,
-		},
-		Spec: apiConfig.Spec,
-	}
-
-	// 1. Marshal to JSON (handles runtime.RawExtension correctly)
-	jsonBytes, err := json.Marshal(cleanPayload)
+	apiYAML, err := gatewayclient.BuildRestAPIYAML(apiConfig.APIVersion, apiConfig.Kind, apiConfig.Name, apiConfig.Spec)
 	if err != nil {
-		return fmt.Errorf("failed to marshal API spec to JSON: %w", err)
+		return fmt.Errorf("build REST API YAML: %w", err)
 	}
 
-	// 2. Unmarshal to generic map
-	var genericMap map[string]interface{}
-	if err := json.Unmarshal(jsonBytes, &genericMap); err != nil {
-		return fmt.Errorf("failed to unmarshal JSON to map: %w", err)
-	}
-
-	// 3. Marshal to YAML
-	apiYAML, err := yaml.Marshal(genericMap)
-	if err != nil {
-		return fmt.Errorf("failed to marshal API spec to YAML: %w", err)
-	}
-
-	// Decide whether to create or update based on authoritative gateway existence
 	handle := apiConfig.Name
-	exists, err := r.apiExistsOnGateway(ctx, gateway, handle)
+	auth := func(c context.Context, req *http.Request) error {
+		if err := r.addAuthToRequest(c, req, gateway); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	ep := gateway.GetGatewayServiceEndpoint()
+	exists, err := gatewayclient.RestAPIExists(ctx, ep, handle, auth)
 	if err != nil {
-		// Propagate RetryableError/NonRetryableError as-is so caller can handle scheduling
 		return err
 	}
 
-	var endpoint string
-	var method string
-	if exists {
-		endpoint = fmt.Sprintf("%s/rest-apis/%s", gateway.GetGatewayServiceEndpoint(), url.PathEscape(handle))
-		method = http.MethodPut
-	} else {
-		endpoint = gateway.GetGatewayServiceEndpoint() + "/rest-apis"
-		method = http.MethodPost
-	}
-
-	log.Info("Deploying API to gateway",
-		zap.String("method", method),
-		zap.String("endpoint", endpoint),
-		zap.String("api", apiConfig.Name))
-
-	req, err := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(apiYAML))
-	if err != nil {
-		return &RetryableError{Err: fmt.Errorf("failed to create HTTP request: %w", err)}
-	}
-	req.Header.Set("Content-Type", "application/yaml")
-
-	// Add authentication
-	if err := r.addAuthToRequest(ctx, req, gateway); err != nil {
-		log.Warn("Failed to add authentication to request, proceeding without auth", zap.Error(err))
-	}
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return &RetryableError{Err: fmt.Errorf("failed to send request to gateway: %w", err)}
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-
-	switch {
-	case resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated:
-		log.Info("API successfully deployed to gateway", zap.Int("status", resp.StatusCode))
-		return nil
-
-	case isRetryableStatusCode(resp.StatusCode):
-		return &RetryableError{
-			Err:        fmt.Errorf("gateway returned status %d: %s", resp.StatusCode, string(body)),
-			StatusCode: resp.StatusCode,
-		}
-
-	default:
-		return &NonRetryableError{
-			Err:        fmt.Errorf("gateway returned status %d: %s", resp.StatusCode, string(body)),
-			StatusCode: resp.StatusCode,
-		}
-	}
-}
-
-// apiExistsOnGateway checks whether an API with the given handle exists on the gateway.
-// Returns (true, nil) if exists; (false, nil) if not found; otherwise returns an error (RetryableError or NonRetryableError).
-func (r *RestApiReconciler) apiExistsOnGateway(ctx context.Context, gateway *registry.GatewayInfo, handle string) (bool, error) {
-	log := r.Logger.With(zap.String("controller", "RestApi"))
-
-	endpoint := fmt.Sprintf("%s/rest-apis/%s", gateway.GetGatewayServiceEndpoint(), url.PathEscape(handle))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return false, &RetryableError{Err: fmt.Errorf("failed to create HTTP request for existence check: %w", err)}
-	}
-
-	// Add authentication
-	if err := r.addAuthToRequest(ctx, req, gateway); err != nil {
-		log.Warn("Failed to add authentication to existence check request, proceeding without auth", zap.Error(err))
-	}
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return false, &RetryableError{Err: fmt.Errorf("failed to send existence check to gateway: %w", err)}
-	}
-	defer resp.Body.Close()
-
-	switch resp.StatusCode {
-	case http.StatusOK:
-		log.Debug("API exists on gateway", zap.String("api", handle))
-		return true, nil
-	case http.StatusNotFound:
-		log.Debug("API does not exist on gateway", zap.String("api", handle))
-		return false, nil
-	case http.StatusServiceUnavailable, http.StatusTooManyRequests, http.StatusBadGateway, http.StatusGatewayTimeout:
-		// transient - retry later
-		body, _ := io.ReadAll(resp.Body)
-		return false, &RetryableError{Err: fmt.Errorf("existence check returned status %d: %s", resp.StatusCode, string(body)), StatusCode: resp.StatusCode}
-	default:
-		body, _ := io.ReadAll(resp.Body)
-		return false, &NonRetryableError{Err: fmt.Errorf("existence check returned status %d: %s", resp.StatusCode, string(body)), StatusCode: resp.StatusCode}
-	}
-}
-
-// RetryableError indicates an error that should be retried
-type RetryableError struct {
-	Err        error
-	StatusCode int
-}
-
-func (e *RetryableError) Error() string {
-	return e.Err.Error()
-}
-
-// NonRetryableError indicates an error that should not be retried
-type NonRetryableError struct {
-	Err        error
-	StatusCode int
-}
-
-func (e *NonRetryableError) Error() string {
-	return e.Err.Error()
-}
-
-// isRetryableStatusCode determines if an HTTP status code is retryable
-func isRetryableStatusCode(code int) bool {
-	switch code {
-	case http.StatusServiceUnavailable, // 503
-		http.StatusTooManyRequests, // 429
-		http.StatusBadGateway,      // 502
-		http.StatusGatewayTimeout:  // 504
-		return true
-	default:
-		return false
-	}
+	log.Info("Deploying API to gateway", zap.String("api", apiConfig.Name), zap.Bool("exists", exists))
+	return gatewayclient.DeployRestAPI(ctx, ep, handle, apiYAML, exists, auth)
 }
 
 // handleDeploymentSuccess handles successful deployment
@@ -577,12 +428,12 @@ func (r *RestApiReconciler) handleDeploymentError(
 	err error,
 ) (ctrl.Result, error) {
 	switch e := err.(type) {
-	case *RetryableError:
+	case *gatewayclient.RetryableError:
 		return r.handleRetryableError(ctx, apiConfig, trackingKey, entry, e)
-	case *NonRetryableError:
+	case *gatewayclient.NonRetryableError:
 		return r.handleNonRetryableError(ctx, apiConfig, trackingKey, entry, e)
 	default:
-		return r.handleRetryableError(ctx, apiConfig, trackingKey, entry, &RetryableError{Err: err})
+		return r.handleRetryableError(ctx, apiConfig, trackingKey, entry, &gatewayclient.RetryableError{Err: err})
 	}
 }
 
@@ -592,7 +443,7 @@ func (r *RestApiReconciler) handleRetryableError(
 	apiConfig *apiv1.RestApi,
 	trackingKey string,
 	entry *APITrackingEntry,
-	err *RetryableError,
+	err *gatewayclient.RetryableError,
 ) (ctrl.Result, error) {
 	log := r.Logger.With(zap.String("controller", "RestApi"), zap.String("name", apiConfig.Name))
 
@@ -664,7 +515,7 @@ func (r *RestApiReconciler) handleNonRetryableError(
 	apiConfig *apiv1.RestApi,
 	trackingKey string,
 	entry *APITrackingEntry,
-	err *NonRetryableError,
+	err *gatewayclient.NonRetryableError,
 ) (ctrl.Result, error) {
 	log := r.Logger.With(zap.String("controller", "RestApi"), zap.String("name", apiConfig.Name))
 	log.Error("Non-retryable deployment error",
@@ -838,59 +689,30 @@ func (r *RestApiReconciler) cleanupAPIDeployments(ctx context.Context, apiConfig
 func (r *RestApiReconciler) deleteAPIFromGateway(ctx context.Context, handle string, gateway *registry.GatewayInfo) error {
 	log := r.Logger.With(zap.String("controller", "RestApi"))
 
-	endpoint := fmt.Sprintf("%s/rest-apis/%s",
-		gateway.GetGatewayServiceEndpoint(),
-		url.PathEscape(handle))
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create HTTP request: %w", err)
-	}
-
-	// Add authentication
-	if err := r.addAuthToRequest(ctx, req, gateway); err != nil {
-		log.Warn("Failed to add authentication to delete request, proceeding without auth", zap.Error(err))
-	}
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Error("failed to send delete request to gateway", zap.Error(err), zap.String("gateway", gateway.Name))
-		return fmt.Errorf("failed to send delete request to gateway: %w", err)
-	}
-	defer resp.Body.Close()
-
-	switch resp.StatusCode {
-	case http.StatusOK, http.StatusNoContent, http.StatusAccepted, http.StatusNotFound:
-		log.Info("API deleted from gateway",
-			zap.String("api", handle),
-			zap.String("gateway", gateway.Name))
+	auth := func(c context.Context, req *http.Request) error {
+		if err := r.addAuthToRequest(c, req, gateway); err != nil {
+			return err
+		}
 		return nil
-	default:
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("gateway returned error status %d: %s", resp.StatusCode, string(body))
 	}
+
+	if err := gatewayclient.DeleteRestAPI(ctx, gateway.GetGatewayServiceEndpoint(), handle, auth); err != nil {
+		log.Error("failed to delete API from gateway", zap.Error(err), zap.String("gateway", gateway.Name))
+		return err
+	}
+	log.Info("API deleted from gateway",
+		zap.String("api", handle),
+		zap.String("gateway", gateway.Name))
+	return nil
 }
 
 // addAuthToRequest adds authentication headers to an HTTP request based on gateway auth config
 func (r *RestApiReconciler) addAuthToRequest(ctx context.Context, req *http.Request, gatewayInfo *registry.GatewayInfo) error {
 	log := r.Logger.With(zap.String("controller", "RestApi"))
 
-	// Fetch the Gateway CR to access ConfigRef
-	gateway := &apiv1.APIGateway{}
-	if err := r.Get(ctx, types.NamespacedName{
-		Namespace: gatewayInfo.Namespace,
-		Name:      gatewayInfo.Name,
-	}, gateway); err != nil {
-		return fmt.Errorf("failed to get Gateway CR: %w", err)
-	}
-
-	// Try to get auth config from the Gateway's ConfigMap
-	authConfig, err := auth.GetDeploymentConfigFromGateway(ctx, r.Client, gateway)
+	authConfig, err := auth.GetAuthSettingsForRegistryGateway(ctx, r.Client, gatewayInfo)
 	if err != nil {
-		log.Warn("Failed to retrieve auth config from Gateway ConfigMap, using default credentials",
-			zap.Error(err),
-			zap.String("gateway", gatewayInfo.Name))
+		return fmt.Errorf("retrieve auth config for gateway %q: %w", gatewayInfo.Name, err)
 	}
 
 	var username, password string

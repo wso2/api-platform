@@ -74,7 +74,8 @@ spec:
                       description: Policies List of policies applied only to this
                         operation (overrides or adds to API-level policies)
                       items:
-                        description: Policy defines model for Policy.
+                        description: Policy defines a policy attachment as embedded
+                          in RestApi or APIConfigData.
                         properties:
                           executionCondition:
                             description: ExecutionCondition Expression controlling
@@ -105,7 +106,8 @@ spec:
                 description: Policies List of API-level policies applied to all operations
                   unless overridden
                 items:
-                  description: Policy defines model for Policy.
+                  description: Policy defines a policy attachment as embedded in RestApi
+                    or APIConfigData.
                   properties:
                     executionCondition:
                       description: ExecutionCondition Expression controlling conditional
