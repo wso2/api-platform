@@ -51,12 +51,21 @@ User → Gateway-Controller (REST API)
 3. Gateway-Controller validates and persists the configuration
 4. Router receives the updated configuration and starts routing traffic
 
+## Policies
+
+Policies allow you to intercept and transform API traffic at the Gateway-Runtime (Envoy Proxy). They can be applied to request/response flows to handle concerns like authentication, rate limiting, header manipulation, and more.
+
+The complete and up-to-date policy catalogue — with configuration references and examples — is maintained in the gateway-controllers repository:
+
+https://github.com/wso2/gateway-controllers
+
+You can extend the gateway with your own policies or include specific policies from the catalogue by building a custom gateway image using the `ap` CLI. See [Customizing the Gateway by Adding and Removing Policies](../cli/customizing-gateway-policies.md).
+
 ## Documentation
 
 | Section | Description |
 |---------|-------------|
 | [kubernetes/](kubernetes/) | Kubernetes Gateway Operator deployment |
-| [policies/](policies/) | Authentication policies (JWT, API Key) |
 | [mcp/](mcp/) | MCP proxy setup and policies |
 | [observability/](observability/) | Logging, metrics, and tracing configuration |
 | [resiliency/](resiliency/) | Gateway resiliency features (timeouts, failure handling) |
