@@ -101,4 +101,4 @@ Developer portal for API discovery, subscription, and consumption.
 - AI-powered discovery
 
 
-(c) Copyright 2012 - 2025 WSO2 Inc.
+(c) Copyright 2012 - 2026 WSO2 Inc.
