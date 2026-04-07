@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: legacy-gateway-values
+  namespace: apigateway-demo
+data:
+  # The operator expects this key to be named exactly `values.yaml`.
+  # These are *overrides* deep-merged into the operator's default gateway_values.yaml.
+  values.yaml: |
+    gateway:
+      developmentMode: true
+      config:
+        controller:
+          # Make controller REST auth deterministic for demos.
+          auth:
+            type: basic
+            basic:
+              username: admin
+              password: admin
+

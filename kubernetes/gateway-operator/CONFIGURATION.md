@@ -73,6 +73,8 @@ logging:
 | `gateway.helm.valuesFilePath` | string | (required) | Path to Helm values.yaml file |
 | `gateway.helm.releaseNamePrefix` | string | `gateway` | Prefix for Helm release names |
 
+When a **per-gateway** overlay is supplied (Kubernetes `Gateway` annotation `helm-values-configmap`, or `APIGateway` `spec.configRef`), the operator loads `gateway.helm.valuesFilePath` first and **deep-merges** the ConfigMap YAML on top. Nested maps (e.g. `gateway.config`) are merged; leaves and lists from the overlay replace the base. Standalone `helm install -f` with a single file behaves the same only if that file already contains the merged result.
+
 ### Reconciliation Configuration
 
 | Field | Type | Default | Description |

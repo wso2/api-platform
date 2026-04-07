@@ -34,11 +34,21 @@ type OperatorConfig struct {
 	// Gateway configuration
 	Gateway GatewayConfig `koanf:"gateway"`
 
+	// GatewayAPI configures Kubernetes Gateway API reconciliation (Gateway + HTTPRoute).
+	GatewayAPI GatewayAPIConfig `koanf:"gateway_api"`
+
 	// Reconciliation configuration
 	Reconciliation ReconciliationConfig `koanf:"reconciliation"`
 
 	// Logging configuration
 	Logging LoggingConfig `koanf:"logging"`
+}
+
+// GatewayAPIConfig holds settings for gateway.networking.k8s.io resources.
+type GatewayAPIConfig struct {
+	// GatewayClassNames lists spec.gatewayClassName values this operator manages.
+	// Only Gateway and HTTPRoute parentRefs targeting these classes are reconciled.
+	GatewayClassNames []string `koanf:"gateway_class_names"`
 }
 
 // GatewayConfig holds configuration for gateway deployments
@@ -124,6 +134,9 @@ func getDefaults() map[string]interface{} {
 			"helm_chart_version":    "0.1.0",
 			"helm_values_file_path": "",
 		},
+		"gateway_api": map[string]interface{}{
+			"gateway_class_names": []string{"wso2-api-platform"},
+		},
 		"reconciliation": map[string]interface{}{
 			"sync_period":               "10m",
 			"max_concurrent_reconciles": 1,
@@ -198,6 +211,17 @@ func LoadConfig(configPath string) (*OperatorConfig, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
+	if v := strings.TrimSpace(os.Getenv("GATEWAY_API_GATEWAY_CLASS_NAMES")); v != "" {
+		var names []string
+		for _, p := range strings.Split(v, ",") {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				names = append(names, p)
+			}
+		}
+		cfg.GatewayAPI.GatewayClassNames = names
+	}
+
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
@@ -247,4 +271,17 @@ func (c *OperatorConfig) Validate() error {
 	}
 
 	return nil
+}
+
+// ManagedGatewayClass reports whether the operator should reconcile Gateways and HTTPRoutes for this gatewayClassName.
+func (c *OperatorConfig) ManagedGatewayClass(gClass string) bool {
+	if gClass == "" {
+		return false
+	}
+	for _, n := range c.GatewayAPI.GatewayClassNames {
+		if n == gClass {
+			return true
+		}
+	}
+	return false
 }

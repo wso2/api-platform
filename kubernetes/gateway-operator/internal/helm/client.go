@@ -359,6 +359,63 @@ func GetReleaseName(gatewayName string) string {
 	return fmt.Sprintf("%s-gateway", gatewayName)
 }
 
+// probeMergeReplaceKeys are PodSpec probe fields: deep-merging base+override would keep
+// e.g. chart default exec together with overlay httpGet, which is invalid (only one handler).
+var probeMergeReplaceKeys = map[string]struct{}{
+	"livenessProbe":  {},
+	"readinessProbe": {},
+	"startupProbe":   {},
+}
+
+// deepMergeValues merges override into base recursively. Non-map values in override replace
+// base; nested maps are merged so per-Gateway ConfigMap YAML can patch operator defaults.
+func deepMergeValues(base, override map[string]interface{}) map[string]interface{} {
+	if len(override) == 0 {
+		return base
+	}
+	if base == nil {
+		base = map[string]interface{}{}
+	}
+	out := make(map[string]interface{})
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range override {
+		if v == nil {
+			out[k] = nil
+			continue
+		}
+		bRaw, ok := out[k]
+		if !ok {
+			out[k] = v
+			continue
+		}
+		bm, bOk := bRaw.(map[string]interface{})
+		vm, vOk := v.(map[string]interface{})
+		if bOk && vOk {
+			if _, probe := probeMergeReplaceKeys[k]; probe {
+				out[k] = shallowStringMapCopy(vm)
+				continue
+			}
+			out[k] = deepMergeValues(bm, vm)
+			continue
+		}
+		out[k] = v
+	}
+	return out
+}
+
+func shallowStringMapCopy(m map[string]interface{}) map[string]interface{} {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]interface{}, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
 // parseValues parses values from YAML string or file
 func (c *Client) parseValues(opts InstallOrUpgradeOptions) (map[string]interface{}, error) {
 	values := make(map[string]interface{})
@@ -399,11 +456,9 @@ func (c *Client) parseValues(opts InstallOrUpgradeOptions) (map[string]interface
 			return nil, fmt.Errorf("failed to convert inline values: %w", err)
 		}
 
-		// Merge inline values (they take precedence)
+		// Deep-merge inline values (they take precedence per key; nested maps are merged)
 		if inlineValues, ok := converted.(map[string]interface{}); ok {
-			for k, v := range inlineValues {
-				values[k] = v
-			}
+			values = deepMergeValues(values, inlineValues)
 		}
 	}
 

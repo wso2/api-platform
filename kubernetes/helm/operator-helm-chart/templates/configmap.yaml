@@ -21,3 +21,8 @@ data:
     logging:
       level: {{ .Values.logging.level | quote }}
       format: {{ .Values.logging.format | quote }}
+    gateway_api:
+      gateway_class_names:
+{{- range .Values.gatewayApi.managedGatewayClassNames }}
+        - {{ . | quote }}
+{{- end }}

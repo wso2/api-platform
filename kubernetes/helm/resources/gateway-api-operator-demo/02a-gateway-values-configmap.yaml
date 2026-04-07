@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-gw-values
+  namespace: gateway-api-demo
+  labels:
+    app.kubernetes.io/part-of: gateway-api-operator-demo
+data:
+  values.yaml: |
+    gateway:
+      developmentMode: true
+      config:
+        controller:
+          auth:
+            basic:
+              enabled: true
+              users:
+                - username: "admin"
+                  password: "admin"
+                  password_hashed: false
+                  roles: ["admin"]
+            idp:
+              enabled: false
+              roles_claim: ""
+              role_mapping: {}
+      controller:
+        tls:
+          enabled: true
+          certificateProvider: cert-manager
+          certManager:
+            create: true
+            createIssuer: true
+            commonName: localhost
+            dnsNames:
+              - localhost
+              - "*.localhost"
+              - platform-gw-gateway-gateway-runtime.gateway-api-demo.svc.cluster.local

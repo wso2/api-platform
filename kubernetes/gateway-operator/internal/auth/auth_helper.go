@@ -28,6 +28,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // DeploymentConfig represents the authentication configuration from the gateway ConfigMap
@@ -106,6 +109,42 @@ func GetDeploymentConfigFromGateway(ctx context.Context, k8sClient client.Client
 	}
 
 	return &deploymentConfig.Gateway.Config.Controller.Auth, nil
+}
+
+// GetDeploymentAuthFromConfigMap reads auth settings from a ConfigMap values.yaml key.
+func GetDeploymentAuthFromConfigMap(ctx context.Context, k8sClient client.Client, namespace, configMapName string) (*AuthSettings, error) {
+	if configMapName == "" {
+		return nil, nil
+	}
+	configMap := &corev1.ConfigMap{}
+	if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: configMapName}, configMap); err != nil {
+		return nil, fmt.Errorf("get ConfigMap %s/%s: %w", namespace, configMapName, err)
+	}
+	valuesYAML, ok := configMap.Data["values.yaml"]
+	if !ok {
+		return nil, nil
+	}
+	var deploymentConfig DeploymentConfig
+	if err := yaml.Unmarshal([]byte(valuesYAML), &deploymentConfig); err != nil {
+		return nil, fmt.Errorf("parse auth config from ConfigMap: %w", err)
+	}
+	return &deploymentConfig.Gateway.Config.Controller.Auth, nil
+}
+
+// GetAuthSettingsForRegistryGateway resolves controller REST auth settings for a registered gateway.
+// Prefer Helm values ConfigMap when HelmValuesConfigMapName is set; otherwise load from APIGateway CR.
+func GetAuthSettingsForRegistryGateway(ctx context.Context, k8sClient client.Client, info *registry.GatewayInfo) (*AuthSettings, error) {
+	if info.HelmValuesConfigMapName != "" {
+		return GetDeploymentAuthFromConfigMap(ctx, k8sClient, info.Namespace, info.HelmValuesConfigMapName)
+	}
+	gateway := &apiv1.APIGateway{}
+	if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: info.Namespace, Name: info.Name}, gateway); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return GetDeploymentConfigFromGateway(ctx, k8sClient, gateway)
 }
 
 // GetBasicAuthCredentials extracts basic auth credentials from the auth config

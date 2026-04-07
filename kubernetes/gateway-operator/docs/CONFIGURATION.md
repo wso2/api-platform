@@ -219,6 +219,51 @@ The operator validates configuration on startup:
 
 If validation fails, the operator will log an error and exit with code 1.
 
+## Kubernetes Gateway API
+
+The operator reconciles standard **Gateway** and **HTTPRoute** resources (`gateway.networking.k8s.io`) as well as the custom `APIGateway` and `RestApi` CRDs.
+
+### Prerequisites
+
+- **Gateway API CRDs:** The operator Helm chart can install Gateway API **v1.3.0** standard-channel CRDs when **`gatewayApi.installStandardCRDs=true`**. The default is **`false`** so installs do not conflict with Gateway API already on the cluster (duplicate CRD apply often fails with server-side apply conflicts). WSO2 CRDs in **`crds/`** always install with the chart. For non-Helm installs, apply the official [Gateway API](https://github.com/kubernetes-sigs/gateway-api) manifests if needed.
+- **cert-manager:** If Helm values use **`gateway.controller.tls.certificateProvider: cert-manager`** (default in bundled gateway chart values and the [Gateway API demo](../../helm/resources/gateway-api-operator-demo/README.md)), install cert-manager so **Issuers** and **Certificates** reconcile. Without it, Helm fails with unknown kinds `Issuer` / `Certificate`.
+- Create a **GatewayClass** whose name matches the operator configuration (default managed class: `wso2-api-platform`).
+
+### `gateway_api` configuration
+
+| Setting | Description |
+| -------- | ------------- |
+| `gateway_api.gateway_class_names` | Only **Gateway** objects whose `spec.gatewayClassName` is in this list are managed. **HTTPRoute** objects are processed when their parent **Gateway** uses one of these classes. |
+
+In `config.yaml`:
+
+```yaml
+gateway_api:
+  gateway_class_names:
+    - wso2-api-platform
+```
+
+Environment variable (comma-separated list, overrides the config file list):
+
+`GATEWAY_API_GATEWAY_CLASS_NAMES` — example: `wso2-api-platform,my-class`
+
+### Annotations on `Gateway`
+
+| Annotation | Purpose |
+| ---------- | ------- |
+| `gateway.api-platform.wso2.com/helm-values-configmap` | Name of a ConfigMap in the Gateway namespace with a `values.yaml` key (Helm values), same idea as `APIGateway.spec.configRef`. |
+| `gateway.api-platform.wso2.com/api-selector` | Optional JSON for `APISelector` (same structure as on `APIGateway`) controlling which `RestApi` CRs are associated with this deployment. |
+| `gateway.api-platform.wso2.com/control-plane-host` | Optional; stored on the gateway registry entry for control plane connectivity. |
+
+### Annotations on `HTTPRoute`
+
+| Annotation | Purpose |
+| ---------- | ------- |
+| `gateway.api-platform.wso2.com/api-version` | Version field in the generated REST payload (default `v1`). |
+| `gateway.api-platform.wso2.com/context` | Overrides API base context when set. |
+| `gateway.api-platform.wso2.com/display-name` | Overrides API display name. |
+| `gateway.api-platform.wso2.com/api-handle` | REST API handle for `POST`/`PUT`/`DELETE` `/rest-apis/{handle}` (default: `{namespace}-{name}`). |
+
 ## Best Practices
 
 1. **Use ConfigMaps for non-sensitive configuration** - Easy to update without rebuilding

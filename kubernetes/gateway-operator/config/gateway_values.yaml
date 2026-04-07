@@ -23,6 +23,20 @@ gateway:
   # This config is mounted to both components as /configs/config.toml
   config:
     controller:
+      auth:
+        basic:
+          enabled: true
+          users:
+            - username: "admin"
+              password: "admin"
+              password_hashed: false
+              roles: ["admin"]
+        idp:
+          enabled: false
+          jwks_url: ""
+          issuer: ""
+          roles_claim: "scope"
+          role_mapping: {}
       server:
         api_port: 9090
         xds_port: 18000
@@ -41,14 +55,14 @@ gateway:
       policies:
         definitions_path: ./default-policies
       logging:
-        level: info
+        level: debug
         format: json
     router:
       gateway_host: "*"
       listener_port: 8080
       https_enabled: true
       https_port: 8443
-      tracing_service_name: ""
+      tracing_service_name: router
       access_logs:
         enabled: true
         format: json
@@ -73,8 +87,8 @@ gateway:
         text_format: |
           [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% "%REQ(X-FORWARDED-FOR)%" "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"
       downstream_tls:
-        cert_path: ./listener-certs/server.crt
-        key_path: ./listener-certs/server.key
+        cert_path: "./listener-certs/default-listener.crt"
+        key_path: "./listener-certs/default-listener.key"
         minimum_protocol_version: TLS1_2
         maximum_protocol_version: TLS1_3
         ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA"
@@ -82,11 +96,11 @@ gateway:
         mode: uds
         host: ""
         port: 9001
-        timeout_ms: 250
+        timeout_ms: 60000
         failure_mode_allow: false
         route_cache_action: RETAIN
         allow_mode_override: true
-        message_timeout_ms: 250
+        message_timeout_ms: 60000
         tls:
           enabled: false
           cert_path: ""
@@ -114,14 +128,11 @@ gateway:
         enabled: true
         port: 9002
         allowed_ips:
+          - "*"
           - "127.0.0.1"
-          - "::1"
       config_mode:
         mode: xds
       xds:
-        enabled: true
-        node_id: policy-engine-1
-        cluster: policy-engine-cluster
         connect_timeout: 10s
         request_timeout: 5s
         initial_reconnect_delay: 1s
@@ -134,9 +145,12 @@ gateway:
       file_config:
         path: ""
       logging:
-        level: info
+        level: debug
         format: json
-  
+
+  # Raw TOML appended to generated config.toml (see gateway chart values.yaml)
+  config_toml: ""
+
   # metadata for the generated shared ConfigMap (annotations / labels)
   configMap:
     annotations: {}
@@ -144,9 +158,9 @@ gateway:
 
   controller:
     image:
-      repository: wso2/api-platform/gateway-controller
-      tag: v1.0.0-m4
-      pullPolicy: IfNotPresent
+      repository: ghcr.io/wso2/api-platform/gateway-controller
+      tag: "1.0.0"
+      pullPolicy: Always
     imagePullSecrets: []
     service:
       type: ClusterIP
@@ -156,6 +170,8 @@ gateway:
         rest: 9090
         xds: 18000
         policy: 18001
+        admin: 9092
+        metrics: 9091
     controlPlane:
       host: host.docker.internal
       port: 8443
@@ -213,6 +229,17 @@ gateway:
       # Existing ConfigMap containing custom CA certificates
       # ConfigMap should contain one or more keys with PEM-encoded certificates
       configMapName: ""
+    encryptionKeys:
+      enabled: false
+      secretName: ""
+      mountPath: /app/data/aesgcm-keys
+    logging:
+      level: info
+    storage:
+      type: sqlite
+      sqlitePath: ./data/gateway.db
+    metrics:
+      port: 9091
     persistence:
       enabled: true
       existingClaim: ""
@@ -225,6 +252,7 @@ gateway:
       replicaCount: 1
       volumeMountPath: /app/data
       extraEnv: []
+      extraEnvFrom: []
       env:
         xdsServerAddress: ""
       extraVolumeMounts: []
@@ -265,11 +293,14 @@ gateway:
       tolerations: []
       affinity: {}
 
-  router:
+  # Unified gateway-runtime (Envoy + policy-engine). Required for operator Helm merges:
+  # without this block, chart defaults use health-check.sh for liveness (Envoy /ready),
+  # which often fails until CDS completes and causes ~1min restarts under operator deploy.
+  gatewayRuntime:
     image:
-      repository: wso2/api-platform/gateway-router
-      tag: v1.0.0-m4
-      pullPolicy: IfNotPresent
+      repository: ghcr.io/wso2/api-platform/gateway-runtime
+      tag: "1.0.0"
+      pullPolicy: Always
     imagePullSecrets: []
     service:
       type: ClusterIP
@@ -278,98 +309,45 @@ gateway:
       ports:
         http: 8080
         https: 8443
-        admin: 9901
+        envoyAdmin: 9901
+        policyEngineAdmin: 9002
+        policyEngineMetrics: 9003
     deployment:
       enabled: true
       replicaCount: 1
       env:
-        xdsServerHost: ""
-        xdsServerPort: ""
+        gatewayControllerHost: ""
+        logLevel: info
+        moesifKey: ""
       extraEnv: []
+      extraEnvFrom: []
+      extraVolumeMounts: []
+      extraVolumes: []
       labels: {}
       annotations: {}
       podAnnotations: {}
       podLabels: {}
       priorityClassName: ""
+      # null removes chart default exec probe after Helm coalesce (only one probe handler allowed).
       livenessProbe:
+        exec: null
         httpGet:
-          path: /ready
-          port: admin
+          path: /health
+          port: pe-admin
         initialDelaySeconds: 30
-        periodSeconds: 10
+        periodSeconds: 20
         timeoutSeconds: 5
         failureThreshold: 3
       readinessProbe:
-        httpGet:
-          path: /ready
-          port: admin
-        initialDelaySeconds: 10
-        periodSeconds: 5
-        timeoutSeconds: 3
-        failureThreshold: 6
-      # Resource limits and requests
-      # Uncomment and adjust based on your workload
-      resources: {}
-        # limits:
-        #   cpu: 1000m
-        #   memory: 1Gi
-        # requests:
-        #   cpu: 500m
-        #   memory: 512Mi
-      podSecurityContext: {}
-      securityContext: {}
-      nodeSelector: {}
-      tolerations: []
-      affinity: {}
-
-  policyEngine:
-    image:
-      repository: wso2/api-platform/policy-engine
-      tag: v1.0.0-m4
-      pullPolicy: IfNotPresent
-    imagePullSecrets: []
-    service:
-      type: ClusterIP
-      annotations: {}
-      labels: {}
-      ports:
-        ext: 9001
-    deployment:
-      enabled: true
-      replicaCount: 1
-      env:
-        xdsServerAddress: ""
-      extraEnv: []
-      labels: {}
-      annotations: {}
-      podAnnotations: {}
-      podLabels: {}
-      priorityClassName: ""
-      livenessProbe:
+        exec: null
         httpGet:
           path: /health
-          port: 9002
-        initialDelaySeconds: 10
-        periodSeconds: 10
-        timeoutSeconds: 5
-        failureThreshold: 3
-      readinessProbe:
-        httpGet:
-          path: /health
-          port: 9002
+          port: pe-admin
         initialDelaySeconds: 5
         periodSeconds: 5
         timeoutSeconds: 3
-        failureThreshold: 3
-      # Resource limits and requests
-      # Uncomment and adjust based on your workload
+        failureThreshold: 12
       resources: {}
-        # limits:
-        #   cpu: 500m
-        #   memory: 512Mi
-        # requests:
-        #   cpu: 250m
-        #   memory: 256Mi
       podSecurityContext: {}
       securityContext: {}
       nodeSelector: {}
