@@ -25,6 +25,7 @@ import (
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
+	"strings"
 	"testing"
 	"time"
 )
@@ -395,7 +396,7 @@ func TestSyncCustomPolicy(t *testing.T) {
 				t.Errorf("SyncCustomPolicy() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if tt.wantErr && tt.errContains != "" && !contains(err.Error(), tt.errContains) {
+			if tt.wantErr && tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
 				t.Errorf("SyncCustomPolicy() error = %q, want it to contain %q", err.Error(), tt.errContains)
 			}
 			if !tt.wantErr && policy == nil {
