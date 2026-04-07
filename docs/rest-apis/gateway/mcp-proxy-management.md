@@ -69,7 +69,7 @@ Required roles: `admin`, `developer`
 {
   "status": "success",
   "message": "MCP proxy created successfully",
-  "id": "some-mcp-v1.0",
+  "id": "everything-mcp-v1.0",
   "createdAt": "2025-12-12T10:30:00Z"
 }
 ```
@@ -136,10 +136,10 @@ Required roles: `admin`, `developer`
   "count": 5,
   "mcpProxies": [
     {
-      "id": "mcp-proxy-1-v1.0",
-      "displayName": "mcp-proxy-1",
+      "id": "everything-mcp-v1.0",
+      "displayName": "Everything",
       "version": "v1.0",
-      "context": "/mcp-proxy",
+      "context": "/everything",
       "specVersion": "2025-06-18",
       "status": "deployed",
       "createdAt": "2025-11-24T10:30:00Z",
@@ -226,7 +226,7 @@ Required roles: `admin`, `developer`
 {
   "status": "success",
   "mcp": {
-    "id": "mcp-proxy-1-v1.0",
+    "id": "everything-mcp-v1.0",
     "configuration": {
       "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
       "kind": "Mcp",
@@ -336,7 +336,7 @@ Required roles: `admin`, `developer`
 {
   "status": "success",
   "message": "MCP proxy updated successfully",
-  "id": "some-mcp-v1.0",
+  "id": "everything-mcp-v1.0",
   "updatedAt": "2025-12-12T11:45:00Z"
 }
 ```

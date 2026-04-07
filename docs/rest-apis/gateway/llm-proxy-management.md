@@ -29,14 +29,14 @@ Add a new LLM proxy to the Gateway. A proxy defines how to interact with an LLM 
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "LlmProxy",
   "metadata": {
-    "name": "docs-assistant-v1.0"
+    "name": "openai-proxy"
   },
   "spec": {
-    "displayName": "OpenAI Assistant",
+    "displayName": "OpenAI Proxy",
     "version": "v1.0",
-    "context": "/assistant",
+    "context": "/openai-proxy",
     "provider": {
-      "id": "openai-provider"
+      "id": "wso2-openai-provider"
     },
     "policies": []
   }
@@ -66,7 +66,7 @@ Required roles: `admin`, `developer`
 {
   "status": "success",
   "message": "LLM proxy created successfully",
-  "id": "wso2-con-assistant",
+  "id": "openai-proxy",
   "createdAt": "2025-11-25T10:30:00Z"
 }
 ```
@@ -134,8 +134,8 @@ Required roles: `admin`, `developer`
   "count": 2,
   "proxies": [
     {
-      "id": "wso2-con-assistant",
-      "displayName": "WSO2 Con Assistant",
+      "id": "openai-proxy",
+      "displayName": "OpenAI Proxy",
       "version": "v1.0",
       "provider": "wso2-openai-provider",
       "status": "deployed",
@@ -218,19 +218,19 @@ Required roles: `admin`, `developer`
 {
   "status": "success",
   "proxy": {
-    "id": "wso2-docs-assistant",
+    "id": "openai-proxy",
     "configuration": {
       "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
       "kind": "LlmProxy",
       "metadata": {
-        "name": "docs-assistant-v1.0"
+        "name": "openai-proxy"
       },
       "spec": {
-        "displayName": "OpenAI Assistant",
+        "displayName": "OpenAI Proxy",
         "version": "v1.0",
-        "context": "/assistant",
+        "context": "/openai-proxy",
         "provider": {
-          "id": "openai-provider"
+          "id": "wso2-openai-provider"
         },
         "policies": []
       }
@@ -280,14 +280,14 @@ Update an existing LLM proxy in the Gateway.
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "LlmProxy",
   "metadata": {
-    "name": "docs-assistant-v1.0"
+    "name": "openai-proxy"
   },
   "spec": {
-    "displayName": "OpenAI Assistant",
+    "displayName": "OpenAI Proxy",
     "version": "v1.0",
-    "context": "/assistant",
+    "context": "/openai-proxy",
     "provider": {
-      "id": "openai-provider"
+      "id": "wso2-openai-provider"
     },
     "policies": []
   }
@@ -318,7 +318,7 @@ Required roles: `admin`, `developer`
 {
   "status": "success",
   "message": "LLM proxy updated successfully",
-  "id": "wso2-con-assistant",
+  "id": "openai-proxy",
   "updatedAt": "2025-11-25T11:45:00Z"
 }
 ```
@@ -373,7 +373,7 @@ Required roles: `admin`, `developer`
 {
   "status": "success",
   "message": "LLM proxy deleted successfully",
-  "id": "wso2-docs-assistant"
+  "id": "openai-proxy"
 }
 ```
 

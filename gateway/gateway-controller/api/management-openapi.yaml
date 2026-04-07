@@ -2332,7 +2332,7 @@ paths:
           description: Unique identifier of the LLM proxy
           schema:
             type: string
-          example: wso2-docs-assistant
+          example: openai-proxy
       responses:
         '200':
           description: LLM proxy details
@@ -2370,7 +2370,7 @@ paths:
           description: Unique identifier of the LLM proxy
           schema:
             type: string
-          example: wso2-docs-assistant
+          example: openai-proxy
       requestBody:
         required: true
         description: Updated LLM proxy
@@ -2421,7 +2421,7 @@ paths:
           description: Unique identifier of the LLM proxy
           schema:
             type: string
-          example: wso2-docs-assistant
+          example: openai-proxy
       responses:
         '200':
           description: LLM proxy deleted successfully
@@ -2438,7 +2438,7 @@ paths:
                     example: LLM proxy deleted successfully
                   id:
                     type: string
-                    example: wso2-docs-assistant
+                    example: openai-proxy
         '404':
           description: LLM proxy not found
           content:
@@ -2467,7 +2467,7 @@ paths:
           description: Unique handle of the LLM proxy to generate the key for
           schema:
             type: string
-          example: wso2-docs-assistant
+          example: openai-proxy
       requestBody:
         required: true
         content:
@@ -2523,7 +2523,7 @@ paths:
           description: Unique handle of the LLM proxy to retrieve keys for
           schema:
             type: string
-          example: wso2-docs-assistant
+          example: openai-proxy
       responses:
         '200':
           description: List of API keys
@@ -2559,7 +2559,7 @@ paths:
           description: Unique handle of the LLM proxy
           schema:
             type: string
-          example: wso2-docs-assistant
+          example: openai-proxy
         - name: apiKeyName
           in: path
           required: true
@@ -2617,7 +2617,7 @@ paths:
           description: Unique handle of the LLM proxy
           schema:
             type: string
-          example: wso2-docs-assistant
+          example: openai-proxy
         - name: apiKeyName
           in: path
           required: true
@@ -2679,7 +2679,7 @@ paths:
           description: Unique handle of the LLM proxy
           schema:
             type: string
-          example: wso2-docs-assistant
+          example: openai-proxy
         - name: apiKeyName
           in: path
           required: true
@@ -3907,13 +3907,13 @@ components:
           example: reading-list-api-v1.0
         displayName:
           type: string
-          example: Weather API
+          example: Reading List API
         version:
           type: string
           example: v1.0
         context:
           type: string
-          example: /weather/$version
+          example: /reading-list/$version
         status:
           type: string
           enum:
@@ -4084,7 +4084,7 @@ components:
           minLength: 1
           maxLength: 100
           pattern: '^[a-zA-Z0-9\-_\. ]+$'
-          example: mcp-proxy-1
+          example: Everything
         version:
           type: string
           description: MCP Proxy version
@@ -4092,7 +4092,7 @@ components:
         context:
           type: string
           description: MCP Proxy context path
-          example: /mcp-proxy
+          example: /everything
         specVersion:
           type: string
           description: MCP specification version
@@ -4231,7 +4231,7 @@ components:
         id:
           type: string
           description: Unique handle (metadata.name) for the created MCPProxy
-          example: some-mcp-v1.0
+          example: everything-mcp-v1.0
         createdAt:
           type: string
           format: date-time
@@ -4249,7 +4249,7 @@ components:
         id:
           type: string
           description: Unique handle (metadata.name) for the created MCPProxy
-          example: some-mcp-v1.0
+          example: everything-mcp-v1.0
         updatedAt:
           type: string
           format: date-time
@@ -4260,16 +4260,16 @@ components:
       properties:
         id:
           type: string
-          example: mcp-proxy-1-v1.0
+          example: everything-mcp-v1.0
         displayName:
           type: string
-          example: mcp-proxy-1
+          example: Everything
         version:
           type: string
           example: v1.0
         context:
           type: string
-          example: /mcp-proxy
+          example: /everything
         specVersion:
           type: string
           example: 2025-06-18
@@ -4300,7 +4300,7 @@ components:
             id:
               type: string
               description: Unique id for the MCPProxy
-              example: mcp-proxy-1-v1.0
+              example: everything-mcp-v1.0
             configuration:
               $ref: "#/components/schemas/MCPProxyConfiguration"
             metadata:
@@ -4572,7 +4572,7 @@ components:
           example: LLM provider created successfully
         id:
           type: string
-          example: openai
+          example: wso2-openai-provider
         createdAt:
           type: string
           format: date-time
@@ -4589,7 +4589,7 @@ components:
           example: LLM proxy created successfully
         id:
           type: string
-          example: wso2-con-assistant
+          example: openai-proxy
         createdAt:
           type: string
           format: date-time
@@ -4623,7 +4623,7 @@ components:
           example: LLM proxy updated successfully
         id:
           type: string
-          example: wso2-con-assistant
+          example: openai-proxy
         updatedAt:
           type: string
           format: date-time
@@ -4634,7 +4634,7 @@ components:
       properties:
         id:
           type: string
-          example: openai-provider
+          example: wso2-openai-provider
         displayName:
           type: string
           example: WSO2 OpenAI Provider
@@ -4664,10 +4664,10 @@ components:
       properties:
         id:
           type: string
-          example: wso2-con-assistant
+          example: openai-proxy
         displayName:
           type: string
-          example: WSO2 Con Assistant
+          example: OpenAI Proxy
         version:
           type: string
           example: v1.0
@@ -4701,7 +4701,7 @@ components:
           properties:
             id:
               type: string
-              example: wso2-openai
+              example: wso2-openai-provider
             configuration:
               $ref: '#/components/schemas/LLMProviderConfiguration'
             deploymentStatus:
@@ -4737,7 +4737,7 @@ components:
           properties:
             id:
               type: string
-              example: wso2-docs-assistant
+              example: openai-proxy
             configuration:
               $ref: '#/components/schemas/LLMProxyConfiguration'
             deploymentStatus:
@@ -4790,7 +4790,7 @@ components:
         apiVersion: gateway.api-platform.wso2.com/v1alpha1
         kind: LlmProvider
         metadata:
-          name: openai-provider
+          name: wso2-openai-provider
         spec:
           displayName: OpenAI Provider
           version: v1.0
@@ -5020,13 +5020,13 @@ components:
         apiVersion: gateway.api-platform.wso2.com/v1alpha1
         kind: LlmProxy
         metadata:
-          name: docs-assistant-v1.0
+          name: openai-proxy
         spec:
-          displayName: OpenAI Assistant
+          displayName: OpenAI Proxy
           version: v1.0
-          context: /assistant
+          context: /openai-proxy
           provider:
-            id: openai-provider
+            id: wso2-openai-provider
           policies: []
 
     LLMProxyConfigData:
@@ -5042,7 +5042,7 @@ components:
           minLength: 1
           maxLength: 253
           pattern: '^[a-zA-Z0-9\-_\. ]+$'
-          example: wso2-con-assistant
+          example: OpenAI Proxy
         version:
           type: string
           description: Semantic version of the LLM proxy
