@@ -745,7 +745,10 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params LLMTemplateParams) (*models.StoredLLMProviderTemplate, error) {
 	existing, err := s.GetLLMProviderTemplateByHandle(handle)
 	if err != nil {
-		return nil, fmt.Errorf("%w: handle=%s", ErrLLMTemplateNotFound, handle)
+		if storage.IsNotFoundError(err) {
+			return nil, fmt.Errorf("%w: handle=%s", ErrLLMTemplateNotFound, handle)
+		}
+		return nil, fmt.Errorf("failed to get LLM provider template by handle '%s': %w", handle, err)
 	}
 
 	tmpl, err := s.parseAndValidateLLMTemplate(params)
@@ -781,7 +784,10 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle, correlationID string, logger *slog.Logger) (*models.StoredLLMProviderTemplate, error) {
 	tmpl, err := s.GetLLMProviderTemplateByHandle(handle)
 	if err != nil {
-		return nil, fmt.Errorf("%w: handle=%s", ErrLLMTemplateNotFound, handle)
+		if storage.IsNotFoundError(err) {
+			return nil, fmt.Errorf("%w: handle=%s", ErrLLMTemplateNotFound, handle)
+		}
+		return nil, fmt.Errorf("failed to get LLM provider template by handle '%s': %w", handle, err)
 	}
 
 	if err := s.db.DeleteLLMProviderTemplate(tmpl.UUID); err != nil {

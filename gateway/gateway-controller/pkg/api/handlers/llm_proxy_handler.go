@@ -113,6 +113,13 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
 			return
 		}
+		if storage.IsNotFoundError(err) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: "LLM proxy configuration not found",
+			})
+			return
+		}
 		if storage.IsConflictError(err) {
 			c.JSON(http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
 			return
