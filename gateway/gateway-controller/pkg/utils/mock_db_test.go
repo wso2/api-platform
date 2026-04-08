@@ -160,6 +160,9 @@ func (m *testMockDB) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 }
 func (m *testMockDB) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) { return nil, nil }
 func (m *testMockDB) GetAllAPIKeys() ([]*models.APIKey, error)               { return nil, nil }
+func (m *testMockDB) GetAPIKeysByApplicationUUID(applicationUUID string) ([]*models.APIKey, error) {
+	return nil, nil
+}
 func (m *testMockDB) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey, error) {
 	return nil, storage.ErrNotFound
 }

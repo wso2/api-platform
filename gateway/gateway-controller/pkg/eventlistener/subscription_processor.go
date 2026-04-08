@@ -129,17 +129,14 @@ func (l *EventListener) processApplicationEvent(event eventhub.Event) {
 }
 
 func (l *EventListener) loadApplicationAPIKeysFromDB(applicationUUID string) (map[string]*models.APIKey, error) {
-	apiKeys, err := l.db.GetAllAPIKeys()
+	apiKeys, err := l.db.GetAPIKeysByApplicationUUID(applicationUUID)
 	if err != nil {
 		return nil, err
 	}
 
-	currentMappedKeys := make(map[string]*models.APIKey)
+	currentMappedKeys := make(map[string]*models.APIKey, len(apiKeys))
 	for _, apiKey := range apiKeys {
 		if apiKey == nil || apiKey.UUID == "" {
-			continue
-		}
-		if apiKey.ApplicationID != applicationUUID {
 			continue
 		}
 		currentMappedKeys[apiKey.UUID] = apiKey

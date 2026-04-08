@@ -402,6 +402,19 @@ func (m *MockStorage) GetAllAPIKeys() ([]*models.APIKey, error) {
 	return result, nil
 }
 
+func (m *MockStorage) GetAPIKeysByApplicationUUID(applicationUUID string) ([]*models.APIKey, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	result := make([]*models.APIKey, 0)
+	for _, key := range m.apiKeys {
+		if key.ApplicationID == applicationUUID && key.Status == models.APIKeyStatusActive {
+			result = append(result, cloneAPIKey(key))
+		}
+	}
+	return result, nil
+}
+
 func (m *MockStorage) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey, error) {
 	if m.getErr != nil {
 		return nil, m.getErr

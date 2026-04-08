@@ -376,6 +376,10 @@ func (m *mockStorageForDeletion) GetAllAPIKeys() ([]*models.APIKey, error) {
 	return nil, nil
 }
 
+func (m *mockStorageForDeletion) GetAPIKeysByApplicationUUID(applicationUUID string) ([]*models.APIKey, error) {
+	return nil, nil
+}
+
 func (m *mockStorageForDeletion) GetAPIKeysByAPIAndName(apiID, name string) (*models.APIKey, error) {
 	return nil, storage.ErrNotFound
 }

@@ -1833,7 +1833,7 @@ func (s *sqlStore) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) {
 		LEFT JOIN application_api_keys aak
 		  ON aak.api_key_id = ak.uuid AND aak.gateway_id = ak.gateway_id
 		LEFT JOIN applications app
-		  ON app.application_uuid = aak.application_uuid
+		  ON app.application_uuid = aak.application_uuid AND app.gateway_id = aak.gateway_id
 		WHERE ak.artifact_uuid = ? AND ak.gateway_id = ?
 		ORDER BY ak.created_at DESC
 	`
@@ -1841,6 +1841,30 @@ func (s *sqlStore) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) {
 	rows, err := s.query(query, apiId, s.gatewayId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query API keys: %w", err)
+	}
+	defer rows.Close()
+
+	return s.scanAPIKeyRows(rows)
+}
+
+// GetAPIKeysByApplicationUUID retrieves all active API keys mapped to a specific application UUID.
+func (s *sqlStore) GetAPIKeysByApplicationUUID(applicationUUID string) ([]*models.APIKey, error) {
+	query := `
+		SELECT ak.uuid, ak.name, ak.api_key, ak.masked_api_key, ak.artifact_uuid, ak.status,
+		       ak.created_at, ak.created_by, ak.updated_at, ak.expires_at, ak.source, ak.external_ref_id,
+		       ak.issuer, app.application_uuid, app.application_name
+		FROM api_keys ak
+		INNER JOIN application_api_keys aak
+		  ON aak.api_key_id = ak.uuid AND aak.gateway_id = ak.gateway_id
+		INNER JOIN applications app
+		  ON app.application_uuid = aak.application_uuid AND app.gateway_id = aak.gateway_id
+		WHERE aak.application_uuid = ? AND ak.status = 'active' AND ak.gateway_id = ?
+		ORDER BY ak.created_at DESC
+	`
+
+	rows, err := s.query(query, applicationUUID, s.gatewayId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query API keys by application UUID: %w", err)
 	}
 	defer rows.Close()
 
@@ -2131,7 +2155,7 @@ func (s *sqlStore) GetAllAPIKeys() ([]*models.APIKey, error) {
 		LEFT JOIN application_api_keys aak
 		  ON aak.api_key_id = ak.uuid AND aak.gateway_id = ak.gateway_id
 		LEFT JOIN applications app
-		  ON app.application_uuid = aak.application_uuid
+		  ON app.application_uuid = aak.application_uuid AND app.gateway_id = aak.gateway_id
 		WHERE ak.status = 'active' AND ak.gateway_id = ?
 		ORDER BY ak.created_at DESC
 	`

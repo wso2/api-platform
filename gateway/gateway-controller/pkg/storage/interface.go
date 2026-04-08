@@ -212,6 +212,11 @@ type Storage interface {
 	// Used for loading active API keys into memory on startup.
 	GetAllAPIKeys() ([]*models.APIKey, error)
 
+	// GetAPIKeysByApplicationUUID retrieves all active API keys mapped to an application UUID.
+	//
+	// Returns an empty slice if no active API keys exist for the application.
+	GetAPIKeysByApplicationUUID(applicationUUID string) ([]*models.APIKey, error)
+
 	// GetAPIKeysByAPIAndName retrieves an API key by its name within a specific API.
 	//
 	// Returns an error if the API key is not found.
