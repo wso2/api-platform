@@ -90,9 +90,13 @@ func (s *APIServer) CreateAPIKey(c *gin.Context, id string) {
 				Message: err.Error(),
 			})
 		} else {
+			log.Error("Failed to create API key",
+				slog.Any("error", err),
+				slog.String("handle", handle),
+				slog.String("correlation_id", correlationID))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
-				Message: err.Error(),
+				Message: "internal server error",
 			})
 		}
 		return
@@ -145,9 +149,13 @@ func (s *APIServer) RevokeAPIKey(c *gin.Context, id string, apiKeyName string) {
 				Message: err.Error(),
 			})
 		} else {
+			log.Error("Failed to revoke API key",
+				slog.Any("error", err),
+				slog.String("handle", handle),
+				slog.String("correlation_id", correlationID))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
-				Message: err.Error(),
+				Message: "internal server error",
 			})
 		}
 		return
@@ -236,9 +244,13 @@ func (s *APIServer) UpdateAPIKey(c *gin.Context, id string, apiKeyName string) {
 				Message: err.Error(),
 			})
 		} else {
+			log.Error("Failed to update API key",
+				slog.Any("error", err),
+				slog.String("handle", handle),
+				slog.String("correlation_id", correlationID))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
-				Message: err.Error(),
+				Message: "internal server error",
 			})
 		}
 		return
@@ -306,9 +318,13 @@ func (s *APIServer) RegenerateAPIKey(c *gin.Context, id string, apiKeyName strin
 				Message: err.Error(),
 			})
 		} else {
+			log.Error("Failed to regenerate API key",
+				slog.Any("error", err),
+				slog.String("handle", handle),
+				slog.String("correlation_id", correlationID))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
-				Message: err.Error(),
+				Message: "internal server error",
 			})
 		}
 		return
@@ -359,9 +375,13 @@ func (s *APIServer) ListAPIKeys(c *gin.Context, id string) {
 				Message: err.Error(),
 			})
 		} else {
+			log.Error("Failed to list API keys",
+				slog.Any("error", err),
+				slog.String("handle", handle),
+				slog.String("correlation_id", correlationID))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
-				Message: err.Error(),
+				Message: "internal server error",
 			})
 		}
 		return

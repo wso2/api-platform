@@ -19,6 +19,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -27,6 +28,7 @@ import (
 	"github.com/gin-gonic/gin"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
@@ -55,10 +57,25 @@ func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 	})
 
 	if err != nil {
-		log.Error("Failed to parse template configuration", slog.Any("error", err))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+		if errors.Is(err, utils.ErrLLMTemplateValidation) {
+			log.Warn("Template configuration invalid", slog.Any("error", err))
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+			return
+		}
+		if storage.IsConflictError(err) {
+			c.JSON(http.StatusConflict, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+			return
+		}
+		log.Error("Failed to create LLM provider template", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("Failed to parse template configuration: %v", err),
+			Message: "Failed to create LLM provider template",
 		})
 		return
 	}
@@ -104,10 +121,18 @@ func (s *APIServer) GetLLMProviderTemplateById(c *gin.Context, id string) {
 
 	template, err := s.llmDeploymentService.GetLLMProviderTemplateByHandle(id)
 	if err != nil {
-		log.Warn("LLM provider template not found", slog.String("handle", id))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
+		if storage.IsNotFoundError(err) {
+			log.Warn("LLM provider template not found", slog.String("handle", id))
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("Template with id '%s' not found", id),
+			})
+			return
+		}
+		log.Error("Failed to get LLM provider template", slog.String("handle", id), slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("Template with id '%s' not found", id),
+			Message: "Failed to get LLM provider template",
 		})
 		return
 	}
@@ -152,10 +177,25 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 		Logger:        log,
 	})
 	if err != nil {
-		log.Error("Failed to parse template configuration", slog.Any("error", err))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+		if errors.Is(err, utils.ErrLLMTemplateNotFound) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("Template with id '%s' not found", id),
+			})
+			return
+		}
+		if errors.Is(err, utils.ErrLLMTemplateValidation) {
+			log.Warn("Template configuration invalid", slog.Any("error", err))
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+			return
+		}
+		log.Error("Failed to update LLM provider template", slog.String("id", id), slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("Failed to parse template configuration: %v", err),
+			Message: "Failed to update LLM provider template",
 		})
 		return
 	}
@@ -180,10 +220,18 @@ func (s *APIServer) DeleteLLMProviderTemplate(c *gin.Context, id string) {
 
 	deleted, err := s.llmDeploymentService.DeleteLLMProviderTemplate(id, correlationID, log)
 	if err != nil {
-		log.Warn("LLM provider template not found for deletion", slog.String("handle", id))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
+		if errors.Is(err, utils.ErrLLMTemplateNotFound) {
+			log.Warn("LLM provider template not found for deletion", slog.String("handle", id))
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("Template with id '%s' not found", id),
+			})
+			return
+		}
+		log.Error("Failed to delete LLM provider template", slog.String("id", id), slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("Template with id '%s' not found", id),
+			Message: "Failed to delete LLM provider template",
 		})
 		return
 	}
