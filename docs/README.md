@@ -43,7 +43,10 @@ Standalone design tool for REST, GraphQL, and AsyncAPI specifications.
 ## Documentation
 
 - [Gateway](gateway/README.md) — API gateway setup, configuration, and policy management
+- [Gateway Quick Start Guide](gateway/quick-start-guide.md) — Download, run, and test the API gateway
 - [AI Gateway](ai-gateway/README.md) — Managing and securing AI traffic including LLM APIs and MCP servers
+- [AI Gateway LLM Quick Start Guide](ai-gateway/llm/quick-start-guide.md) — Download and run the AI Gateway, then route traffic to LLM providers like OpenAI
+- [AI Gateway MCP Quick Start Guide](ai-gateway/mcp/quick-start-guide.md) — Download and run the AI Gateway, then route traffic to MCP servers
 - [CLI](cli/README.md) — Command-line tool for managing the API Platform Gateway Controller
 - [REST APIs](rest-apis/) — REST API references for platform components
 - [Policies and Guardrails](https://github.com/wso2/gateway-controllers/blob/main/docs/README.md) — Gateway policies and guardrails for API traffic control
