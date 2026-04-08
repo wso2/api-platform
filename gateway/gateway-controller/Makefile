@@ -56,6 +56,7 @@ build: generate test ## Build Docker image using buildx
 		--build-context sdk=../../sdk \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context build-manifest=.. \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--target production \
@@ -76,6 +77,7 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 		--build-context sdk=../../sdk \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context build-manifest=.. \
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
@@ -90,6 +92,7 @@ build-coverage-image: test ## Build coverage-instrumented gateway-controller ima
 		--build-context sdk=../../sdk \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context build-manifest=.. \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg ENABLE_COVERAGE=true \
@@ -103,6 +106,7 @@ build-debug: ## Build debug image for remote debugging with dlv (VS Code attach 
 		--build-context sdk=../../sdk \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
+		--build-context build-manifest=.. \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg ENABLE_DEBUG=true \
