@@ -87,9 +87,7 @@ An MCP Proxy routes Model Context Protocol traffic to MCP servers. MCP is a prot
 
 AI Guardrails allow you to enforce safety, content, and compliance policies on AI traffic flowing through the AI Gateway. They can be applied at the LLM Provider level (organization-wide), at the LLM Proxy level (per-application), or on MCP Proxies.
 
-The complete and up-to-date guardrail catalogue — with configuration references and examples — is maintained in the gateway-controllers repository:
-
-https://github.com/wso2/gateway-controllers/blob/main/docs/README.md
+The complete and up-to-date guardrail catalogue — with configuration references and examples — is maintained in the gateway-controllers repository: https://github.com/wso2/gateway-controllers/blob/main/docs/README.md
 
 You can extend the AI Gateway with custom guardrail policies by building a custom gateway image using the `ap` CLI. See [Customizing the Gateway by Adding and Removing Policies](../cli/customizing-gateway-policies.md).
 
@@ -97,8 +95,9 @@ You can extend the AI Gateway with custom guardrail policies by building a custo
 
 | Section | Description |
 |---------|-------------|
-| [llm/](llm/) | LLM provider configuration, guardrails, prompt management, and semantic caching |
-| [mcp/](mcp/) | MCP proxy setup and policies |
-| [observability/](observability/) | Logging and tracing configuration |
-| [analytics/](analytics/) | Analytics integrations (Moesif) |
-| [rest-apis/gateway/](../rest-apis/gateway/) | REST API authentication and usage |
+| [LLM](llm/) | LLM provider configuration, guardrails, prompt management, and semantic caching |
+| [MCP](mcp/) | MCP proxy setup and policies |
+| [Observability](observability/) | Logging and tracing configuration |
+| [Analytics](analytics/) | Analytics integrations (Moesif) |
+| [Policies and Guardrails](https://github.com/wso2/gateway-controllers/blob/main/docs/README.md) | Gateway policies and guardrails for AI traffic control |
+| [REST APIs](../rest-apis/gateway/) | REST API authentication and usage |

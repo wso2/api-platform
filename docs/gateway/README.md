@@ -55,9 +55,7 @@ User → Gateway-Controller (REST API)
 
 Policies allow you to intercept and transform API traffic at the Gateway-Runtime (Envoy Proxy). They can be applied to request/response flows to handle concerns like authentication, rate limiting, header manipulation, and more.
 
-The complete and up-to-date policy catalogue — with configuration references and examples — is maintained in the gateway-controllers repository:
-
-https://github.com/wso2/gateway-controllers/blob/main/docs/README.md
+The complete and up-to-date policy catalogue — with configuration references and examples — is maintained in the gateway-controllers repository: https://github.com/wso2/gateway-controllers/blob/main/docs/README.md
 
 You can extend the gateway with your own policies or include specific policies from the catalogue by building a custom gateway image using the `ap` CLI. See [Customizing the Gateway by Adding and Removing Policies](../cli/customizing-gateway-policies.md).
 
@@ -65,9 +63,10 @@ You can extend the gateway with your own policies or include specific policies f
 
 | Section | Description |
 |---------|-------------|
-| [kubernetes/](kubernetes/) | Kubernetes Gateway Operator deployment |
-| [mcp/](mcp/) | MCP proxy setup and policies |
-| [observability/](observability/) | Logging, metrics, and tracing configuration |
-| [resiliency/](resiliency/) | Gateway resiliency features (timeouts, failure handling) |
-| [analytics/](analytics/) | Analytics integrations (Moesif) |
-| [gateway-rest-api/](../rest-apis/gateway/) | REST API authentication and usage |
+| [Kubernetes](kubernetes/) | Kubernetes Gateway Operator deployment |
+| [MCP](mcp/) | MCP proxy setup and policies |
+| [Observability](observability/) | Logging, metrics, and tracing configuration |
+| [Resiliency](resiliency/) | Gateway resiliency features (timeouts, failure handling) |
+| [Analytics](analytics/) | Analytics integrations (Moesif) |
+| [REST APIs](../rest-apis/gateway/) | REST API authentication and usage |
+| [Policies and Guardrails](https://github.com/wso2/gateway-controllers/blob/main/docs/README.md) | Gateway policies and guardrails for API traffic control |
