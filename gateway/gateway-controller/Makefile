@@ -33,7 +33,7 @@ REPO_ROOT := $(shell git rev-parse --show-toplevel)
 APIDOCS_TOOLS_DIR := $(REPO_ROOT)/tools/apidocs
 DOCS_OUT_DIR := $(REPO_ROOT)/docs/rest-apis/gateway
 
-.PHONY: help generate build test generate-listener-certs push build-coverage-image build-debug clean build-and-push-multiarch generate-postman-collection
+.PHONY: help generate generate-server-code generate-apidocs build test generate-listener-certs push build-coverage-image build-debug clean build-and-push-multiarch generate-postman-collection
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -41,16 +41,32 @@ help: ## Show this help message
 	@echo 'Available targets:'
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-generate: ## Generate API server code from OpenAPI spec
+generate-server-code: ## Generate API server code from OpenAPI spec
 	@echo "Generating API server code from OpenAPI spec..."
 	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen.yaml api/management-openapi.yaml
 	@echo "Generating admin API models from OpenAPI admin spec..."
 	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen-admin.yaml api/admin-openapi.yaml
+
+generate: generate-server-code generate-apidocs ## Generate server code and API docs (run both steps in order)
+	@echo ""
+	@echo "=========================================================="
+	@echo " Generation complete. Two steps were run:"
+	@echo "  [1] generate-server-code  — Go server stubs from OpenAPI"
+	@echo "  [2] generate-apidocs      — REST API docs (Markdown)"
+	@echo "=========================================================="
+	@echo ""
+	@echo "  Please review the generated API docs at:"
+	@echo "    $(DOCS_OUT_DIR)"
+	@echo ""
+	@echo "  Once satisfied, stage and commit:"
+	@echo "    git add $(DOCS_OUT_DIR)"
+	@echo "    git commit -m 'update generated api docs'"
+	@echo "=========================================================="
 test: ## Run unit and integration tests
 	@echo "Running tests..."
 	@go test -v ./... -cover -coverprofile=unit-test-coverage.txt
 
-build: generate test ## Build Docker image using buildx
+build: generate-server-code test ## Build Docker image using buildx
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \

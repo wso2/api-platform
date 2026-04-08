@@ -29,7 +29,7 @@ Add a new LLM provider to the Gateway. A provider defines how to interact with a
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "LlmProvider",
   "metadata": {
-    "name": "openai-provider"
+    "name": "wso2-openai-provider"
   },
   "spec": {
     "displayName": "OpenAI Provider",
@@ -94,7 +94,7 @@ Required roles: `admin`
 {
   "status": "success",
   "message": "LLM provider created successfully",
-  "id": "openai",
+  "id": "wso2-openai-provider",
   "createdAt": "2025-11-25T10:30:00Z"
 }
 ```
@@ -162,7 +162,7 @@ Required roles: `admin`, `developer`
   "count": 2,
   "providers": [
     {
-      "id": "openai-provider",
+      "id": "wso2-openai-provider",
       "displayName": "WSO2 OpenAI Provider",
       "version": "v1.0",
       "template": "openai",
@@ -246,12 +246,12 @@ Required roles: `admin`, `developer`
 {
   "status": "success",
   "provider": {
-    "id": "wso2-openai",
+    "id": "wso2-openai-provider",
     "configuration": {
       "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
       "kind": "LlmProvider",
       "metadata": {
-        "name": "openai-provider"
+        "name": "wso2-openai-provider"
       },
       "spec": {
         "displayName": "OpenAI Provider",
@@ -336,7 +336,7 @@ Update an existing LLM provider in the Gateway.
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "LlmProvider",
   "metadata": {
-    "name": "openai-provider"
+    "name": "wso2-openai-provider"
   },
   "spec": {
     "displayName": "OpenAI Provider",
