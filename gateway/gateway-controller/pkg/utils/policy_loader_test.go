@@ -189,6 +189,19 @@ func TestPolicyLoader_NonExistentDirectory(t *testing.T) {
 	}
 }
 
+func TestPolicyLoader_GetCustomPolicyNames_FileNotExist(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	loader := NewPolicyLoader(logger)
+
+	result, err := loader.GetCustomPolicyNames("/nonexistent/path/build-manifest.yaml")
+	if err != nil {
+		t.Errorf("Expected no error when file does not exist, got: %v", err)
+	}
+	if len(result) != 0 {
+		t.Errorf("Expected empty map when file does not exist, got %d entries", len(result))
+	}
+}
+
 func TestPolicyLoader_InvalidVersionFormat(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	loader := NewPolicyLoader(logger)
