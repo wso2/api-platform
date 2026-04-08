@@ -1670,17 +1670,24 @@ func (s *sqlStore) UpsertAPIKey(apiKey *models.APIKey) error {
 // GetAPIKeyByID retrieves an API key by its UUID
 func (s *sqlStore) GetAPIKeyByID(id string) (*models.APIKey, error) {
 	query := `
-		SELECT uuid, name, api_key, masked_api_key, artifact_uuid, status,
-		       created_at, created_by, updated_at, expires_at, source, external_ref_id,
-		       issuer
-		FROM api_keys
-		WHERE uuid = ? AND gateway_id = ?
+		SELECT ak.uuid, ak.name, ak.api_key, ak.masked_api_key, ak.artifact_uuid, ak.status,
+		       ak.created_at, ak.created_by, ak.updated_at, ak.expires_at, ak.source, ak.external_ref_id,
+		       ak.issuer, app.application_uuid, app.application_name
+		FROM api_keys ak
+		LEFT JOIN application_api_keys aak
+		  ON aak.api_key_id = ak.uuid AND aak.gateway_id = ak.gateway_id
+		LEFT JOIN applications app
+		  ON app.application_uuid = aak.application_uuid AND app.gateway_id = aak.gateway_id
+		WHERE ak.uuid = ? AND ak.gateway_id = ?
+		LIMIT 1
 	`
 
 	var apiKey models.APIKey
 	var expiresAt sql.NullTime
 	var externalRefId sql.NullString
 	var issuer sql.NullString
+	var applicationID sql.NullString
+	var applicationName sql.NullString
 
 	err := s.queryRow(query, id, s.gatewayId).Scan(
 		&apiKey.UUID,
@@ -1696,6 +1703,8 @@ func (s *sqlStore) GetAPIKeyByID(id string) (*models.APIKey, error) {
 		&apiKey.Source,
 		&externalRefId,
 		&issuer,
+		&applicationID,
+		&applicationName,
 	)
 
 	if err != nil {
@@ -1705,7 +1714,6 @@ func (s *sqlStore) GetAPIKeyByID(id string) (*models.APIKey, error) {
 		return nil, fmt.Errorf("failed to query API key: %w", err)
 	}
 
-	// Handle nullable fields
 	if expiresAt.Valid {
 		apiKey.ExpiresAt = &expiresAt.Time
 	}
@@ -1714,6 +1722,12 @@ func (s *sqlStore) GetAPIKeyByID(id string) (*models.APIKey, error) {
 	}
 	if issuer.Valid {
 		apiKey.Issuer = &issuer.String
+	}
+	if applicationID.Valid {
+		apiKey.ApplicationID = applicationID.String
+	}
+	if applicationName.Valid {
+		apiKey.ApplicationName = applicationName.String
 	}
 
 	return &apiKey, nil

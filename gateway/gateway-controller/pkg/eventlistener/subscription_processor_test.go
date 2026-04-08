@@ -97,3 +97,59 @@ func TestHandleEvent_ApplicationUpdate_SyncsMemoryAndXDSFromDB(t *testing.T) {
 	assert.Empty(t, xdsManager.revokeCalls)
 	assert.Empty(t, xdsManager.removeCalls)
 }
+
+func TestHandleEvent_ApplicationUpdate_ReloadedKeyKeepsCurrentApplicationMapping(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := setupSQLiteDBForEventListenerTests(t)
+	xdsManager := &mockAPIKeyXDSManager{}
+
+	cfg := testRestStoredConfig("test-api-a", "test-api-a", "Test API A", "v1.0.0", models.StateDeployed)
+	key := testAPIKey("api-key-a", "key-a", cfg.UUID)
+
+	require.NoError(t, store.Add(cfg))
+
+	staleKey := *key
+	staleKey.ApplicationID = "app-uuid-old"
+	staleKey.ApplicationName = "Old App Name"
+	require.NoError(t, store.StoreAPIKey(&staleKey))
+
+	require.NoError(t, db.SaveConfig(cfg))
+	require.NoError(t, db.SaveAPIKey(key))
+	require.NoError(t, db.ReplaceApplicationAPIKeyMappings(
+		&models.StoredApplication{
+			ApplicationID:   "app-id-new",
+			ApplicationUUID: "app-uuid-new",
+			ApplicationName: "New App Name",
+			ApplicationType: "genai",
+		},
+		[]*models.ApplicationAPIKeyMapping{{
+			ApplicationUUID: "app-uuid-new",
+			APIKeyID:        key.UUID,
+		}},
+	))
+
+	listener := &EventListener{
+		store:            store,
+		db:               db,
+		apiKeyXDSManager: xdsManager,
+		logger:           newTestLogger(),
+	}
+
+	listener.handleEvent(eventhub.Event{
+		EventType: eventhub.EventTypeApplication,
+		Action:    "UPDATE",
+		EntityID:  "app-uuid-old",
+		EventID:   "corr-app-reassign",
+	})
+
+	storedKey, err := store.GetAPIKeyByID(cfg.UUID, key.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, "app-uuid-new", storedKey.ApplicationID)
+	assert.Equal(t, "New App Name", storedKey.ApplicationName)
+
+	if assert.Len(t, xdsManager.storeCalls, 1) {
+		assert.Equal(t, key.UUID, xdsManager.storeCalls[0].apiKeyID)
+	}
+	assert.Empty(t, xdsManager.revokeCalls)
+	assert.Empty(t, xdsManager.removeCalls)
+}
