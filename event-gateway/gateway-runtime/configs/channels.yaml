@@ -1,0 +1,35 @@
+# --------------------------------------------------------------------
+# Channel Bindings Configuration
+# --------------------------------------------------------------------
+# Each channel defines a binding between an entrypoint protocol
+# (WebSub, WebSocket) and an endpoint (Kafka topic).
+
+channels:
+  # Example WebSub binding:
+  # - name: order-events
+  #   mode: websub
+  #   context: /orders
+  #   version: v1
+  #   vhost: default
+  #   endpoint:
+  #     kafka:
+  #       topic: order-events
+  #   policies:
+  #     inbound:
+  #       - name: log
+  #         version: v1
+  #         params: {}
+  #     outbound: []
+
+  # Example WebSocket protocol-mediation binding:
+  # - name: live-prices
+  #   mode: protocol-mediation
+  #   context: /prices
+  #   version: v1
+  #   vhost: default
+  #   endpoint:
+  #     kafka:
+  #       topic: price-updates
+  #   policies:
+  #     inbound: []
+  #     outbound: []
