@@ -276,3 +276,90 @@ Feature: Consumer Request-Based Rate Limiting
     Then the response status code should be 200
     When I delete the LLM provider template "crbrl-both-template"
     Then the response status code should be 200
+
+  Scenario: Requests without an app ID share a single "default" counter
+    # When no api-key-auth is in the chain, x-wso2-application-id is never written to
+    # metadata. The fallback key "default" is used instead of a "_missing_metadata_*_"
+    # placeholder, so all unauthenticated requests count against the same "default" bucket.
+    # Limit: 2 requests/hour. After 2 requests the "default" counter is exhausted and
+    # all further requests (still with no app ID) are blocked.
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: crbrl-fallback-template
+      spec:
+        displayName: CRBRL Fallback Template
+      """
+    Then the response status code should be 201
+
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: crbrl-fallback-provider
+      spec:
+        displayName: CRBRL Fallback Provider
+        version: v1.0
+        context: /crbrl-fallback
+        template: crbrl-fallback-template
+        upstream:
+          url: http://echo-backend-multi-arch:8080/anything
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: advanced-ratelimit
+            version: v1
+            paths:
+              - path: /*
+                methods: ['*']
+                params:
+                  quotas:
+                    - name: consumer-request-limit
+                      limits:
+                        - limit: 2
+                          duration: "1h"
+                      keyExtraction:
+                        - type: routename
+                        - type: metadata
+                          key: x-wso2-application-id
+                          fallback: default
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    # Request 1 — no app ID in metadata, key = "crbrl-fallback:default" — allowed (1/2)
+    When I send a POST request to "http://localhost:8080/crbrl-fallback/chat/completions" with body:
+      """
+      {"model": "gpt-4", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # Request 2 — no app ID in metadata, same "default" counter — allowed (2/2)
+    When I send a POST request to "http://localhost:8080/crbrl-fallback/chat/completions" with body:
+      """
+      {"model": "gpt-4", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # Request 3 — "default" counter exhausted — blocked
+    When I send a POST request to "http://localhost:8080/crbrl-fallback/chat/completions" with body:
+      """
+      {"model": "gpt-4", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "crbrl-fallback-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "crbrl-fallback-template"
+    Then the response status code should be 200

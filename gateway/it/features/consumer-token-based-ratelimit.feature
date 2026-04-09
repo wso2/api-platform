@@ -308,3 +308,102 @@ Feature: Consumer Token-Based Rate Limiting
     Then the response status code should be 200
     When I delete the LLM provider template "ctbrl-both-template"
     Then the response status code should be 200
+
+  Scenario: Requests without an app ID share a single "default" token counter
+    # When no api-key-auth is in the chain, x-wso2-application-id is never written to
+    # metadata. The fallback key "default" is used so all unauthenticated requests count
+    # against the same "default" token bucket (not against the backend "routename" bucket).
+    # Limit: 20 total tokens/hour. Each request consumes 10 tokens via echo backend.
+    # After 2 requests (20 tokens) the "default" counter is exhausted and further
+    # requests are blocked.
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: ctbrl-fallback-template
+      spec:
+        displayName: CTBRL Fallback Template
+        totalTokens:
+          location: payload
+          identifier: $.json.usage.total_tokens
+      """
+    Then the response status code should be 201
+
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: ctbrl-fallback-provider
+      spec:
+        displayName: CTBRL Fallback Provider
+        version: v1.0
+        context: /ctbrl-fallback
+        template: ctbrl-fallback-template
+        upstream:
+          url: http://echo-backend-multi-arch:8080/anything
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: token-based-ratelimit
+            version: v1
+            paths:
+              - path: /*
+                methods: ['*']
+                params:
+                  totalTokenLimits:
+                    - count: 20
+                      duration: "1h"
+                  consumerBased: true
+                  algorithm: fixed-window
+                  backend: memory
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    # Request 1 — no app ID, key = "ctbrl-fallback:default" — allowed, 10 tokens consumed (10/20)
+    When I send a POST request to "http://localhost:8080/ctbrl-fallback/chat/completions" with body:
+      """
+      {
+        "model": "gpt-4",
+        "messages": [{"role": "user", "content": "Hello"}],
+        "usage": {"prompt_tokens": 4, "completion_tokens": 6, "total_tokens": 10}
+      }
+      """
+    Then the response status code should be 200
+
+    # Request 2 — no app ID, same "default" counter — allowed (20/20, limit reached)
+    When I send a POST request to "http://localhost:8080/ctbrl-fallback/chat/completions" with body:
+      """
+      {
+        "model": "gpt-4",
+        "messages": [{"role": "user", "content": "Hello"}],
+        "usage": {"prompt_tokens": 4, "completion_tokens": 6, "total_tokens": 10}
+      }
+      """
+    Then the response status code should be 200
+
+    # Request 3 — "default" token counter exhausted — blocked
+    When I send a POST request to "http://localhost:8080/ctbrl-fallback/chat/completions" with body:
+      """
+      {
+        "model": "gpt-4",
+        "messages": [{"role": "user", "content": "Hello"}],
+        "usage": {"prompt_tokens": 4, "completion_tokens": 6, "total_tokens": 10}
+      }
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "ctbrl-fallback-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "ctbrl-fallback-template"
+    Then the response status code should be 200

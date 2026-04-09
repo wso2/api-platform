@@ -270,3 +270,89 @@ Feature: Consumer Cost-Based Rate Limiting
     Then the response status code should be 200
     When I delete the LLM provider template "ccbrl-both-template"
     Then the response status code should be 200
+
+  Scenario: Requests without an app ID share a single "default" cost budget
+    # When no api-key-auth is in the chain, x-wso2-application-id is never written to
+    # metadata. The fallback key "default" is used so all unauthenticated requests count
+    # against the same "default" cost bucket (not the backend "routename" bucket).
+    # Budget: $0.000236/hour (2 requests worth at gpt-4.1-2025-04-14 pricing).
+    # After 2 requests the "default" budget is exhausted and further requests are blocked.
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: ccbrl-fallback-template
+      spec:
+        displayName: CCBRL Fallback Template
+      """
+    Then the response status code should be 201
+
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: ccbrl-fallback-provider
+      spec:
+        displayName: CCBRL Fallback Provider
+        version: v1.0
+        context: /ccbrl-fallback
+        template: ccbrl-fallback-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: llm-cost-based-ratelimit
+            version: v1
+            paths:
+              - path: /*
+                methods: ['*']
+                params:
+                  budgetLimits:
+                    - amount: 0.000236
+                      duration: "1h"
+                  consumerBased: true
+          - name: llm-cost
+            version: v1
+            paths:
+              - path: /*
+                methods: ['*']
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    # Request 1 — no app ID, key = "ccbrl-fallback:default" — allowed, budget drops to $0.000118
+    When I send a POST request to "http://localhost:8080/ccbrl-fallback/openai/v1/chat/completions" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # Request 2 — no app ID, same "default" budget — allowed, budget reaches exactly $0
+    When I send a POST request to "http://localhost:8080/ccbrl-fallback/openai/v1/chat/completions" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # Request 3 — "default" budget exhausted — blocked
+    When I send a POST request to "http://localhost:8080/ccbrl-fallback/openai/v1/chat/completions" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "ccbrl-fallback-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "ccbrl-fallback-template"
+    Then the response status code should be 200
