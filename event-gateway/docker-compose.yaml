@@ -35,6 +35,9 @@ services:
       - APIP_EGW_KAFKA_BROKERS=kafka:29092
       - APIP_EGW_SERVER_WEBSUB_PORT=8080
       - APIP_EGW_SERVER_WEBSOCKET_PORT=8081
+    extra_hosts:
+      # Allow callbacks to services running on the Docker host (useful on Linux).
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./gateway-runtime/configs/config.toml:/etc/event-gateway/config.toml:ro
       - ./gateway-runtime/configs/channels.yaml:/etc/event-gateway/channels.yaml:ro

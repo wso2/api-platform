@@ -18,9 +18,12 @@
 
 package connectors
 
-import "context"
+import (
+	"context"
+	"net/http"
+)
 
-// Message represents an event message flowing through the event gateway.
+// Message represents an event flowing through the event gateway.
 type Message struct {
 	Key      []byte
 	Value    []byte
@@ -32,15 +35,44 @@ type Message struct {
 // MessageHandler is a callback invoked when a message is received.
 type MessageHandler func(ctx context.Context, msg *Message) error
 
-// EntrypointConnector accepts external client connections (WebSub HTTP, WebSocket).
-type EntrypointConnector interface {
+// Entrypoint is a client-facing protocol adapter with a managed lifecycle.
+type Entrypoint interface {
 	Start(ctx context.Context) error
 	Stop(ctx context.Context) error
 }
 
-// EndpointConnector connects to backend event systems (e.g. Kafka).
-type EndpointConnector interface {
-	Start(ctx context.Context) error
-	Stop(ctx context.Context) error
+// MessageProcessor applies policy chains to messages flowing through the gateway.
+// Implemented by the hub; consumed by entrypoints via dependency injection.
+type MessageProcessor interface {
+	ProcessInbound(ctx context.Context, bindingName string, msg *Message) (*Message, bool, error)
+	ProcessOutbound(ctx context.Context, bindingName string, msg *Message) (*Message, bool, error)
+}
+
+// Endpoint manages connections to a backend event system (e.g. Kafka, NATS).
+type Endpoint interface {
 	Publish(ctx context.Context, topic string, msg *Message) error
+	Subscribe(groupID string, topics []string, handler MessageHandler) (Entrypoint, error)
+	Close() error
+}
+
+// ChannelInfo is the read-only view of a channel binding passed to entrypoints.
+// It contains only the information entrypoints need — no policy chain keys.
+type ChannelInfo struct {
+	Name          string
+	Mode          string
+	Context       string
+	Version       string
+	Vhost         string
+	EndpointTopic string
+	Ordering      string
+}
+
+// EntrypointConfig holds the dependencies injected into an entrypoint factory.
+// Each entrypoint handles a single channel (API) with its own endpoint connection.
+type EntrypointConfig struct {
+	Channel   ChannelInfo
+	Processor MessageProcessor
+	Endpoint  Endpoint
+	RuntimeID string
+	Mux       *http.ServeMux // shared HTTP mux for port sharing (owned by runtime)
 }

@@ -56,22 +56,24 @@ func NewConsumer(brokers []string, groupID string, topics []string, handler conn
 }
 
 // Start begins consuming events.
-func (c *Consumer) Start(ctx context.Context) {
+func (c *Consumer) Start(ctx context.Context) error {
 	ctx, c.cancel = context.WithCancel(ctx)
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
 		c.consumeLoop(ctx)
 	}()
+	return nil
 }
 
-// Stop stops the consumer.
-func (c *Consumer) Stop() {
+// Stop stops the consumer and waits for the consume loop to exit.
+func (c *Consumer) Stop(_ context.Context) error {
 	if c.cancel != nil {
 		c.cancel()
 	}
 	c.wg.Wait()
 	c.client.Close()
+	return nil
 }
 
 func (c *Consumer) consumeLoop(ctx context.Context) {

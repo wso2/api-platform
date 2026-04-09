@@ -26,7 +26,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/hub"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/subscription"
 )
 
@@ -34,17 +33,15 @@ import (
 type Handler struct {
 	topics       *TopicRegistry
 	store        subscription.SubscriptionStore
-	hub          *hub.Hub
 	verifier     *Verifier
 	defaultLease int
 }
 
 // NewHandler creates a new WebSub hub handler.
-func NewHandler(topics *TopicRegistry, store subscription.SubscriptionStore, h *hub.Hub, verificationTimeout time.Duration, defaultLease int) *Handler {
+func NewHandler(topics *TopicRegistry, store subscription.SubscriptionStore, verificationTimeout time.Duration, defaultLease int) *Handler {
 	return &Handler{
 		topics:       topics,
 		store:        store,
-		hub:          h,
 		verifier:     NewVerifier(store, verificationTimeout),
 		defaultLease: defaultLease,
 	}

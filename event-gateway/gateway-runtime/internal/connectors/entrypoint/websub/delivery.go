@@ -31,7 +31,6 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
-	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/hub"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/subscription"
 )
 
@@ -45,22 +44,22 @@ type DeliveryConfig struct {
 
 // Deliverer delivers events to subscriber callback URLs.
 type Deliverer struct {
-	store  subscription.SubscriptionStore
-	hub    *hub.Hub
-	config DeliveryConfig
-	client *http.Client
-	sem    chan struct{}
-	wg     sync.WaitGroup
+	store     subscription.SubscriptionStore
+	processor connectors.MessageProcessor
+	config    DeliveryConfig
+	client    *http.Client
+	sem       chan struct{}
+	wg        sync.WaitGroup
 }
 
 // NewDeliverer creates a new Deliverer.
-func NewDeliverer(store subscription.SubscriptionStore, h *hub.Hub, config DeliveryConfig) *Deliverer {
+func NewDeliverer(store subscription.SubscriptionStore, processor connectors.MessageProcessor, config DeliveryConfig) *Deliverer {
 	return &Deliverer{
-		store:  store,
-		hub:    h,
-		config: config,
-		client: &http.Client{Timeout: 30 * time.Second},
-		sem:    make(chan struct{}, config.Concurrency),
+		store:     store,
+		processor: processor,
+		config:    config,
+		client:    &http.Client{Timeout: 30 * time.Second},
+		sem:       make(chan struct{}, config.Concurrency),
 	}
 }
 
@@ -73,7 +72,7 @@ func (d *Deliverer) DeliverToSubscribers(ctx context.Context, bindingName string
 	}
 
 	// Apply outbound policies
-	processed, shortCircuited, err := d.hub.ProcessOutbound(ctx, bindingName, msg)
+	processed, shortCircuited, err := d.processor.ProcessOutbound(ctx, bindingName, msg)
 	if err != nil {
 		return fmt.Errorf("outbound policy execution failed: %w", err)
 	}

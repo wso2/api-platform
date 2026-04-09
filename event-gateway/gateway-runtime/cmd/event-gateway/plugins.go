@@ -19,14 +19,48 @@
 package main
 
 import (
+	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/config"
+	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
+	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors/endpoint/kafka"
+	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors/entrypoint/websocket"
+	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors/entrypoint/websub"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/pkg/engine"
 )
 
-// registerPolicies registers all compiled-in policies with the engine.
-// Add policy registrations here as they become available:
-//
-//	eng.RegisterPolicy("policy-name", "v1", factory)
+// registerConnectors registers all built-in entrypoint and endpoint factories.
+// To add a new entrypoint or endpoint type:
+//  1. Create the package under connectors/entrypoint/ or connectors/endpoint/
+//  2. Register its factory here with the type name
+//  3. Add bindings in channels.yaml — no changes to main.go or runtime needed
+func registerConnectors(registry *connectors.Registry, cfg *config.Config) {
+	registry.RegisterEndpoint("kafka", func() (connectors.Endpoint, error) {
+		return kafka.NewEndpoint(cfg.Kafka.Brokers)
+	})
+
+	registry.RegisterEntrypoint("websub", func(ecfg connectors.EntrypointConfig) (connectors.Entrypoint, error) {
+		return websub.NewEntrypoint(ecfg, websub.Options{
+			Port:                       cfg.Server.WebSubPort,
+			VerificationTimeoutSeconds: cfg.WebSub.VerificationTimeoutSeconds,
+			DefaultLeaseSeconds:        cfg.WebSub.DefaultLeaseSeconds,
+			DeliveryMaxRetries:         cfg.WebSub.DeliveryMaxRetries,
+			DeliveryInitialDelayMs:     cfg.WebSub.DeliveryInitialDelayMs,
+			DeliveryMaxDelayMs:         cfg.WebSub.DeliveryMaxDelayMs,
+			DeliveryConcurrency:        cfg.WebSub.DeliveryConcurrency,
+			RuntimeID:                  cfg.RuntimeID,
+			ConsumerGroupPrefix:        cfg.Kafka.ConsumerGroupPrefix,
+		})
+	})
+
+	registry.RegisterEntrypoint("websocket", func(ecfg connectors.EntrypointConfig) (connectors.Entrypoint, error) {
+		return websocket.NewEntrypoint(ecfg, websocket.Options{
+			Port:                cfg.Server.WebSocketPort,
+			ConsumerGroupPrefix: cfg.Kafka.ConsumerGroupPrefix,
+		})
+	})
+}
+
+// registerPolicies registers compiled-in policies with the engine.
+// Add policy registrations here as they become available.
 func registerPolicies(eng *engine.Engine) {
-	// No built-in policies yet. Add registrations as needed.
 	_ = eng
 }

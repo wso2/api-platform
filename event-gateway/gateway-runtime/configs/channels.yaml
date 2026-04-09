@@ -1,35 +1,37 @@
 # --------------------------------------------------------------------
 # Channel Bindings Configuration
 # --------------------------------------------------------------------
-# Each channel defines a binding between an entrypoint protocol
-# (WebSub, WebSocket) and an endpoint (Kafka topic).
+# Each channel defines an API with its own entrypoint+endpoint pair.
+# The entrypoint type determines the client-facing protocol (websub, websocket).
+# The endpoint type determines the broker-facing protocol (kafka).
+# Each API gets isolated connections — even if the same types are already in use.
 
 channels:
-  # Example WebSub binding:
+  # WebSub API example:
   # - name: order-events
   #   mode: websub
   #   context: /orders
   #   version: v1
-  #   vhost: default
+  #   entrypoint:
+  #     type: websub
   #   endpoint:
-  #     kafka:
-  #       topic: order-events
+  #     type: kafka
+  #     topic: order-events
   #   policies:
-  #     inbound:
-  #       - name: log
-  #         version: v1
-  #         params: {}
+  #     inbound: []
   #     outbound: []
 
-  # Example WebSocket protocol-mediation binding:
+  # Protocol Mediation API example (WS → Kafka 1:1 passthrough):
   # - name: live-prices
   #   mode: protocol-mediation
   #   context: /prices
   #   version: v1
-  #   vhost: default
+  #   entrypoint:
+  #     type: websocket
+  #     path: /stream
   #   endpoint:
-  #     kafka:
-  #       topic: price-updates
+  #     type: kafka
+  #     topic: price-updates
   #   policies:
   #     inbound: []
   #     outbound: []

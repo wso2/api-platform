@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -55,12 +54,15 @@ func DefaultServerConfig() ServerConfig {
 	}
 }
 
-// Server is the WebSocket entrypoint connector.
+// Server is the WebSocket entrypoint server.
 type Server struct {
-	mu          sync.RWMutex
-	config      ServerConfig
-	handler     connectors.MessageHandler
-	connections map[string]map[*connection]struct{} // channel -> connections
+	mu           sync.RWMutex
+	config       ServerConfig
+	handler      connectors.MessageHandler
+	channel      string                              // the channel this server handles
+	connections  map[string]map[*connection]struct{} // channel -> connections
+	onConnect    func(conn *connection)
+	onDisconnect func(conn *connection)
 }
 
 // connection represents a single WebSocket connection bound to a channel.
@@ -70,26 +72,18 @@ type connection struct {
 	send    chan []byte
 }
 
-// NewServer creates a new WebSocket server.
-func NewServer(config ServerConfig, handler connectors.MessageHandler) *Server {
+// NewServer creates a new WebSocket server for a single channel.
+func NewServer(config ServerConfig, channel string, handler connectors.MessageHandler) *Server {
 	return &Server{
 		config:      config,
 		handler:     handler,
+		channel:     channel,
 		connections: make(map[string]map[*connection]struct{}),
 	}
 }
 
 // HandleUpgrade is an HTTP handler that upgrades connections to WebSocket.
-// The channel is determined from the URL path.
 func (s *Server) HandleUpgrade(w http.ResponseWriter, r *http.Request) {
-	// Extract channel from path: /ws/orders -> "orders"
-	channel := strings.TrimPrefix(r.URL.Path, "/")
-	channel = strings.TrimPrefix(channel, "ws/")
-	if channel == "" {
-		http.Error(w, "channel not specified", http.StatusBadRequest)
-		return
-	}
-
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		slog.Error("WebSocket upgrade failed", "error", err)
@@ -98,16 +92,20 @@ func (s *Server) HandleUpgrade(w http.ResponseWriter, r *http.Request) {
 
 	conn := &connection{
 		conn:    ws,
-		channel: channel,
+		channel: s.channel,
 		send:    make(chan []byte, s.config.WriteBufferCap),
 	}
 
-	s.addConnection(channel, conn)
+	s.addConnection(s.channel, conn)
+
+	if s.onConnect != nil {
+		s.onConnect(conn)
+	}
 
 	go s.readLoop(conn)
 	go s.writeLoop(conn)
 
-	slog.Info("WebSocket connection established", "channel", channel, "remote", ws.RemoteAddr())
+	slog.Info("WebSocket connection established", "channel", s.channel, "remote", ws.RemoteAddr())
 }
 
 // Broadcast sends a message to all connections bound to the given channel.
@@ -156,6 +154,9 @@ func (s *Server) ConnectionCount(channel string) int {
 
 func (s *Server) readLoop(conn *connection) {
 	defer func() {
+		if s.onDisconnect != nil {
+			s.onDisconnect(conn)
+		}
 		s.removeConnection(conn.channel, conn)
 		conn.conn.Close()
 	}()
