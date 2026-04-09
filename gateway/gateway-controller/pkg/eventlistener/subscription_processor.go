@@ -20,8 +20,10 @@ package eventlistener
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
@@ -66,7 +68,16 @@ func (l *EventListener) processApplicationEvent(event eventhub.Event) {
 			return
 		}
 
-		affectedKeys, err := l.resolveAffectedApplicationAPIKeys(event.EntityID, currentMappedKeys)
+		removedAPIKeyIDs, err := parseRemovedApplicationAPIKeyIDs(event.EventData)
+		if err != nil {
+			l.logger.Error("Failed to parse application event data for replica sync",
+				slog.String("action", event.Action),
+				slog.String("application_uuid", event.EntityID),
+				slog.String("event_id", event.EventID),
+				slog.Any("error", err))
+		}
+
+		affectedKeys, err := l.resolveAffectedApplicationAPIKeys(event.EntityID, currentMappedKeys, removedAPIKeyIDs)
 		if err != nil {
 			l.logger.Error("Failed to resolve affected API keys for application replica sync",
 				slog.String("action", event.Action),
@@ -145,9 +156,46 @@ func (l *EventListener) loadApplicationAPIKeysFromDB(applicationUUID string) (ma
 	return currentMappedKeys, nil
 }
 
-func (l *EventListener) resolveAffectedApplicationAPIKeys(applicationUUID string, currentMappedKeys map[string]*models.APIKey) ([]*models.APIKey, error) {
+func parseRemovedApplicationAPIKeyIDs(eventData string) ([]string, error) {
+	trimmedEventData := strings.TrimSpace(eventData)
+	if trimmedEventData == "" || trimmedEventData == eventhub.EmptyEventData {
+		return nil, nil
+	}
+
+	var payload models.ApplicationEventData
+	if err := json.Unmarshal([]byte(trimmedEventData), &payload); err != nil {
+		return nil, err
+	}
+
+	removedKeyIDs := make([]string, 0, len(payload.RemovedAPIKeyIDs))
+	seen := make(map[string]struct{}, len(payload.RemovedAPIKeyIDs))
+	for _, apiKeyID := range payload.RemovedAPIKeyIDs {
+		apiKeyID = strings.TrimSpace(apiKeyID)
+		if apiKeyID == "" {
+			continue
+		}
+		if _, exists := seen[apiKeyID]; exists {
+			continue
+		}
+		seen[apiKeyID] = struct{}{}
+		removedKeyIDs = append(removedKeyIDs, apiKeyID)
+	}
+
+	return removedKeyIDs, nil
+}
+
+func (l *EventListener) resolveAffectedApplicationAPIKeys(applicationUUID string, currentMappedKeys map[string]*models.APIKey, removedAPIKeyIDs []string) ([]*models.APIKey, error) {
 	affectedKeyIDs := make(map[string]struct{}, len(currentMappedKeys))
 	for apiKeyID := range currentMappedKeys {
+		affectedKeyIDs[apiKeyID] = struct{}{}
+	}
+
+	// Removed keys disappear from the DB-side application lookup after the writer
+	// replaces mappings, so replay merges the IDs carried in EventData back in.
+	for _, apiKeyID := range removedAPIKeyIDs {
+		if apiKeyID == "" {
+			continue
+		}
 		affectedKeyIDs[apiKeyID] = struct{}{}
 	}
 

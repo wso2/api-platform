@@ -19,6 +19,7 @@
 package eventlistener
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -146,6 +147,50 @@ func TestHandleEvent_ApplicationUpdate_ReloadedKeyKeepsCurrentApplicationMapping
 	require.NoError(t, err)
 	assert.Equal(t, "app-uuid-new", storedKey.ApplicationID)
 	assert.Equal(t, "New App Name", storedKey.ApplicationName)
+
+	if assert.Len(t, xdsManager.storeCalls, 1) {
+		assert.Equal(t, key.UUID, xdsManager.storeCalls[0].apiKeyID)
+	}
+	assert.Empty(t, xdsManager.revokeCalls)
+	assert.Empty(t, xdsManager.removeCalls)
+}
+
+func TestHandleEvent_ApplicationUpdate_RemovedKeysFromEventDataAreAlsoSynced(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := setupSQLiteDBForEventListenerTests(t)
+	xdsManager := &mockAPIKeyXDSManager{}
+
+	cfg := testRestStoredConfig("test-api-a", "test-api-a", "Test API A", "v1.0.0", models.StateDeployed)
+	key := testAPIKey("api-key-a", "key-a", cfg.UUID)
+
+	require.NoError(t, store.Add(cfg))
+	require.NoError(t, db.SaveConfig(cfg))
+	require.NoError(t, db.SaveAPIKey(key))
+
+	eventData, err := json.Marshal(models.ApplicationEventData{
+		RemovedAPIKeyIDs: []string{key.UUID},
+	})
+	require.NoError(t, err)
+
+	listener := &EventListener{
+		store:            store,
+		db:               db,
+		apiKeyXDSManager: xdsManager,
+		logger:           newTestLogger(),
+	}
+
+	listener.handleEvent(eventhub.Event{
+		EventType: eventhub.EventTypeApplication,
+		Action:    "UPDATE",
+		EntityID:  "app-uuid-removed",
+		EventID:   "corr-app-removed",
+		EventData: string(eventData),
+	})
+
+	storedKey, err := store.GetAPIKeyByID(cfg.UUID, key.UUID)
+	require.NoError(t, err)
+	assert.Empty(t, storedKey.ApplicationID)
+	assert.Empty(t, storedKey.ApplicationName)
 
 	if assert.Len(t, xdsManager.storeCalls, 1) {
 		assert.Equal(t, key.UUID, xdsManager.storeCalls[0].apiKeyID)
