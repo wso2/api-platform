@@ -277,7 +277,7 @@ pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"
 # =============================================================================
 
 [immutable_gateway]
-enabled = true
+enabled = false
 artifacts_dir = "/etc/api-platform-gateway/immutable_gateway/artifacts"
 
 # =============================================================================

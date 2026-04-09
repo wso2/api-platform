@@ -57,6 +57,9 @@
                 "APIP_GW_ROUTER_DOWNSTREAM__TLS_CERT__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.crt",
                 "APIP_GW_ROUTER_DOWNSTREAM__TLS_KEY__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.key",
                 "APIP_GW_DEVELOPMENT_MODE": "true",
+                // Immutable gateway mode
+                "APIP_GW_IMMUTABLE_GATEWAY_ENABLED": "false",
+                "APIP_GW_IMMUTABLE_GATEWAY_ARTIFACTS_DIR": "${workspaceFolder}/gateway/examples",
             },
         },
         {

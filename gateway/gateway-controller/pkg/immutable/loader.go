@@ -77,9 +77,11 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 		kind string
 	}
 
-	// pass1: LlmProvider — no dependencies
-	// pass2: everything else (RestApi, WebSubApi, LlmProxy, Mcp) — may depend on pass1
-	var pass1, pass2 []artifact
+	// Dependency order:
+	//   pass1: LlmProviderTemplate — no dependencies
+	//   pass2: LlmProvider         — depends on LlmProviderTemplate
+	//   pass3: RestApi, WebSubApi, LlmProxy, Mcp — LlmProxy depends on LlmProvider
+	var pass1, pass2, pass3 []artifact
 
 	if err := filepath.WalkDir(g.cfg.ArtifactsDir, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -110,10 +112,12 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 
 		a := artifact{path: path, data: data, kind: envelope.Kind}
 		switch envelope.Kind {
-		case models.KindLlmProvider:
+		case string(api.LlmProviderTemplate):
 			pass1 = append(pass1, a)
-		case models.KindRestApi, models.KindWebSubApi, models.KindLlmProxy, models.KindMcp:
+		case models.KindLlmProvider:
 			pass2 = append(pass2, a)
+		case models.KindRestApi, models.KindWebSubApi, models.KindLlmProxy, models.KindMcp:
+			pass3 = append(pass3, a)
 		default:
 			return fmt.Errorf("artifact %s has unsupported kind %q", path, envelope.Kind)
 		}
@@ -122,10 +126,12 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 		return err
 	}
 
-	total := len(pass1) + len(pass2)
-	log.Info("Discovered artifacts", slog.Int("total", total), slog.Int("llm_providers", len(pass1)))
+	total := len(pass1) + len(pass2) + len(pass3)
+	log.Info("Discovered artifacts", slog.Int("total", total),
+		slog.Int("llm_provider_templates", len(pass1)),
+		slog.Int("llm_providers", len(pass2)))
 
-	for _, a := range append(pass1, pass2...) {
+	for _, a := range append(append(pass1, pass2...), pass3...) {
 		if err := g.applyArtifact(a.path, a.kind, a.data, log); err != nil {
 			return err
 		}
@@ -140,6 +146,14 @@ func (g *ImmutableGW) applyArtifact(path, kind string, data []byte, log *slog.Lo
 	const contentType = "application/x-yaml"
 
 	switch kind {
+	case string(api.LlmProviderTemplate):
+		if _, err := g.llmService.CreateLLMProviderTemplate(utils.LLMTemplateParams{
+			Spec:        data,
+			ContentType: contentType,
+			Logger:      log,
+		}); err != nil {
+			return fmt.Errorf("failed to apply %s %s: %w", kind, path, err)
+		}
 	case models.KindRestApi, models.KindWebSubApi:
 		if _, err := g.deploymentService.DeployAPIConfiguration(utils.APIDeploymentParams{
 			Data:        data,
