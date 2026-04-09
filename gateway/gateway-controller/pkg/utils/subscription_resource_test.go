@@ -20,7 +20,6 @@ package utils
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"log/slog"
 	"testing"
@@ -33,17 +32,15 @@ import (
 
 type recordingSubscriptionDB struct {
 	*testMockDB
-	calls                    *[]string
-	application              *models.StoredApplication
-	mappings                 []*models.ApplicationAPIKeyMapping
-	apiKeysByApplicationUUID map[string][]*models.APIKey
+	calls       *[]string
+	application *models.StoredApplication
+	mappings    []*models.ApplicationAPIKeyMapping
 }
 
 func newRecordingSubscriptionDB(calls *[]string) *recordingSubscriptionDB {
 	return &recordingSubscriptionDB{
-		testMockDB:               newTestMockDB(),
-		calls:                    calls,
-		apiKeysByApplicationUUID: make(map[string][]*models.APIKey),
+		testMockDB: newTestMockDB(),
+		calls:      calls,
 	}
 }
 
@@ -62,10 +59,6 @@ func (m *recordingSubscriptionDB) ReplaceApplicationAPIKeyMappings(application *
 	m.application = application
 	m.mappings = mappings
 	return nil
-}
-
-func (m *recordingSubscriptionDB) GetAPIKeysByApplicationUUID(applicationUUID string) ([]*models.APIKey, error) {
-	return append([]*models.APIKey(nil), m.apiKeysByApplicationUUID[applicationUUID]...), nil
 }
 
 type recordingSubscriptionUpdater struct {
@@ -162,41 +155,8 @@ func TestSubscriptionResourceServiceReplaceApplicationMappings_PublishesWithoutL
 	assert.Equal(t, "UPDATE", hub.publishedEvents[0].Action)
 	assert.Equal(t, "app-uuid-123", hub.publishedEvents[0].EntityID)
 	assert.Equal(t, "corr-app-update", hub.publishedEvents[0].EventID)
-	assert.Equal(t, eventhub.EmptyEventData, hub.publishedEvents[0].EventData)
 	assert.Zero(t, updater.calls)
 	require.NotNil(t, db.application)
 	assert.Equal(t, "app-uuid-123", db.application.ApplicationUUID)
 	require.Len(t, db.mappings, 2)
-}
-
-func TestSubscriptionResourceServiceReplaceApplicationMappings_PublishesRemovedKeyIDs(t *testing.T) {
-	calls := []string{}
-	db := newRecordingSubscriptionDB(&calls)
-	updater := &recordingSubscriptionUpdater{}
-	hub := &recordingSubscriptionEventHub{calls: &calls}
-	service := NewSubscriptionResourceService(db, updater, hub, "gateway-2")
-
-	db.apiKeysByApplicationUUID["app-uuid-123"] = []*models.APIKey{
-		{UUID: "key-1"},
-		{UUID: "key-3"},
-	}
-
-	application := &models.StoredApplication{
-		ApplicationID:   "app-123",
-		ApplicationUUID: "app-uuid-123",
-		ApplicationName: "Shopping App",
-		ApplicationType: "genai",
-	}
-	mappings := []*models.ApplicationAPIKeyMapping{
-		{ApplicationUUID: "app-uuid-123", APIKeyID: "key-1"},
-		{ApplicationUUID: "app-uuid-123", APIKeyID: "key-2"},
-	}
-
-	err := service.ReplaceApplicationAPIKeyMappings(application, mappings, "corr-app-update", newSubscriptionResourceTestLogger())
-	require.NoError(t, err)
-
-	require.Len(t, hub.publishedEvents, 1)
-	var eventData models.ApplicationEventData
-	require.NoError(t, json.Unmarshal([]byte(hub.publishedEvents[0].EventData), &eventData))
-	assert.Equal(t, []string{"key-3"}, eventData.RemovedAPIKeyIDs)
 }

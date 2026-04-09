@@ -20,9 +20,7 @@ package utils
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
-	"sort"
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
@@ -152,12 +150,7 @@ func (s *SubscriptionResourceService) DeleteSubscriptionPlan(id, correlationID s
 
 // ReplaceApplicationAPIKeyMappings persists canonical application metadata and publishes a replica-sync event.
 func (s *SubscriptionResourceService) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping, correlationID string, logger *slog.Logger) error {
-	eventData, err := s.buildApplicationEventData(application.ApplicationUUID, mappings)
-	if err != nil {
-		return err
-	}
-
-	return s.persistAndSyncWithEventData(eventhub.EventTypeApplication, "UPDATE", application.ApplicationUUID, eventData, false, correlationID, logger, func() error {
+	return s.persistAndSync(eventhub.EventTypeApplication, "UPDATE", application.ApplicationUUID, false, correlationID, logger, func() error {
 		return s.requireDB().ReplaceApplicationAPIKeyMappings(application, mappings)
 	})
 }
@@ -166,63 +159,10 @@ func (s *SubscriptionResourceService) requireDB() storage.Storage {
 	return s.db
 }
 
-func (s *SubscriptionResourceService) buildApplicationEventData(applicationUUID string, mappings []*models.ApplicationAPIKeyMapping) (string, error) {
-	// Capture the pre-write mapping state here; after ReplaceApplicationAPIKeyMappings
-	// commits, removed keys can no longer be discovered by application UUID alone.
-	currentMappedKeys, err := s.requireDB().GetAPIKeysByApplicationUUID(applicationUUID)
-	if err != nil {
-		return "", err
-	}
-
-	incomingKeyIDs := make(map[string]struct{}, len(mappings))
-	for _, mapping := range mappings {
-		if mapping == nil || mapping.APIKeyID == "" {
-			continue
-		}
-		incomingKeyIDs[mapping.APIKeyID] = struct{}{}
-	}
-
-	removedKeyIDs := make([]string, 0, len(currentMappedKeys))
-	for _, apiKey := range currentMappedKeys {
-		if apiKey == nil || apiKey.UUID == "" {
-			continue
-		}
-		if _, exists := incomingKeyIDs[apiKey.UUID]; exists {
-			continue
-		}
-		removedKeyIDs = append(removedKeyIDs, apiKey.UUID)
-	}
-
-	if len(removedKeyIDs) == 0 {
-		return eventhub.EmptyEventData, nil
-	}
-
-	sort.Strings(removedKeyIDs)
-	payload, err := json.Marshal(models.ApplicationEventData{RemovedAPIKeyIDs: removedKeyIDs})
-	if err != nil {
-		return "", err
-	}
-
-	return string(payload), nil
-}
-
 func (s *SubscriptionResourceService) persistAndSync(
 	eventType eventhub.EventType,
 	action string,
 	entityID string,
-	refreshSubscriptionSnapshot bool,
-	correlationID string,
-	logger *slog.Logger,
-	persist func() error,
-) error {
-	return s.persistAndSyncWithEventData(eventType, action, entityID, eventhub.EmptyEventData, refreshSubscriptionSnapshot, correlationID, logger, persist)
-}
-
-func (s *SubscriptionResourceService) persistAndSyncWithEventData(
-	eventType eventhub.EventType,
-	action string,
-	entityID string,
-	eventData string,
 	refreshSubscriptionSnapshot bool,
 	correlationID string,
 	logger *slog.Logger,
@@ -236,11 +176,11 @@ func (s *SubscriptionResourceService) persistAndSyncWithEventData(
 		return err
 	}
 
-	s.publishEvent(eventType, action, entityID, eventData, correlationID, logger)
+	s.publishEvent(eventType, action, entityID, correlationID, logger)
 	return nil
 }
 
-func (s *SubscriptionResourceService) publishEvent(eventType eventhub.EventType, action, entityID, eventData, correlationID string, logger *slog.Logger) {
+func (s *SubscriptionResourceService) publishEvent(eventType eventhub.EventType, action, entityID, correlationID string, logger *slog.Logger) {
 	event := eventhub.Event{
 		GatewayID:           s.gatewayID,
 		OriginatedTimestamp: time.Now(),
@@ -248,7 +188,7 @@ func (s *SubscriptionResourceService) publishEvent(eventType eventhub.EventType,
 		Action:              action,
 		EntityID:            entityID,
 		EventID:             correlationID,
-		EventData:           eventData,
+		EventData:           eventhub.EmptyEventData,
 	}
 	if err := s.eventHub.PublishEvent(s.gatewayID, event); err != nil {
 		logger.Error("Failed to publish subscription resource event",
