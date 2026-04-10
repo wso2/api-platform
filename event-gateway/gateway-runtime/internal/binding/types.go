@@ -39,9 +39,10 @@ type EntrypointSpec struct {
 
 // EndpointSpec defines the endpoint connector type and configuration.
 type EndpointSpec struct {
-	Type     string `yaml:"type"` // "kafka"
-	Topic    string `yaml:"topic"`
-	Ordering string `yaml:"ordering"` // "ordered" or "unordered"
+	Type     string                 `yaml:"type"` // "kafka"
+	Topic    string                 `yaml:"topic"`
+	Ordering string                 `yaml:"ordering"` // "ordered" or "unordered"
+	Config   map[string]interface{} `yaml:"config"`   // endpoint-specific config (e.g. brokers, tls)
 }
 
 // PolicyBindings holds inbound and outbound policy configurations.

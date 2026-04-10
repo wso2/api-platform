@@ -33,8 +33,29 @@ import (
 //  2. Register its factory here with the type name
 //  3. Add bindings in channels.yaml — no changes to main.go or runtime needed
 func registerConnectors(registry *connectors.Registry, cfg *config.Config) {
-	registry.RegisterEndpoint("kafka", func() (connectors.Endpoint, error) {
-		return kafka.NewEndpoint(cfg.Kafka.Brokers)
+	registry.RegisterEndpoint("kafka", func(endpointCfg map[string]interface{}) (connectors.Endpoint, error) {
+		brokers := cfg.Kafka.Brokers // fallback to global config
+		if endpointCfg != nil {
+			if b, ok := endpointCfg["brokers"]; ok {
+				switch v := b.(type) {
+				case []interface{}:
+					parsed := make([]string, 0, len(v))
+					for _, item := range v {
+						if s, ok := item.(string); ok {
+							parsed = append(parsed, s)
+						}
+					}
+					if len(parsed) > 0 {
+						brokers = parsed
+					}
+				case []string:
+					if len(v) > 0 {
+						brokers = v
+					}
+				}
+			}
+		}
+		return kafka.NewEndpoint(brokers)
 	})
 
 	registry.RegisterEntrypoint("websub", func(ecfg connectors.EntrypointConfig) (connectors.Entrypoint, error) {

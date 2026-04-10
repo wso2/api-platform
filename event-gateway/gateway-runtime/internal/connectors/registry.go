@@ -27,9 +27,9 @@ import (
 // Entrypoint-specific configuration is captured in the closure at registration time.
 type EntrypointFactory func(cfg EntrypointConfig) (Entrypoint, error)
 
-// EndpointFactory creates an endpoint.
-// Connection-specific configuration is captured in the closure at registration time.
-type EndpointFactory func() (Endpoint, error)
+// EndpointFactory creates an endpoint from per-channel configuration.
+// The config map comes from endpoint.config in channels.yaml.
+type EndpointFactory func(cfg map[string]interface{}) (Endpoint, error)
 
 // Registry holds factories for creating entrypoints and endpoints by type name.
 // New types are added by registering factories — no changes to the runtime or main required.
@@ -73,12 +73,12 @@ func (r *Registry) CreateEntrypoint(name string, cfg EntrypointConfig) (Entrypoi
 }
 
 // CreateEndpoint creates an endpoint using the registered factory.
-func (r *Registry) CreateEndpoint(name string) (Endpoint, error) {
+func (r *Registry) CreateEndpoint(name string, cfg map[string]interface{}) (Endpoint, error) {
 	r.mu.RLock()
 	factory, ok := r.endpoints[name]
 	r.mu.RUnlock()
 	if !ok {
 		return nil, fmt.Errorf("unknown endpoint type: %s", name)
 	}
-	return factory()
+	return factory(cfg)
 }

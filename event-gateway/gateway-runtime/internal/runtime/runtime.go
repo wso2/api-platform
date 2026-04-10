@@ -24,6 +24,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/admin"
@@ -109,6 +110,8 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 
 		vhost := defaultVhost(b.Vhost)
 
+		qualifiedTopic := qualifyTopicName(b.Context, b.Version, b.Endpoint.Topic)
+
 		r.hub.RegisterBinding(hub.ChannelBinding{
 			Name:             b.Name,
 			Mode:             b.Mode,
@@ -117,13 +120,13 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 			Vhost:            vhost,
 			InboundChainKey:  inKey,
 			OutboundChainKey: outKey,
-			EndpointTopic:    b.Endpoint.Topic,
+			EndpointTopic:    qualifiedTopic,
 			Ordering:         b.Endpoint.Ordering,
 		})
 
 		// Create a dedicated endpoint for this channel.
 		endpointType := resolveEndpointType(b)
-		endpoint, err := r.registry.CreateEndpoint(endpointType)
+		endpoint, err := r.registry.CreateEndpoint(endpointType, b.Endpoint.Config)
 		if err != nil {
 			return fmt.Errorf("failed to create endpoint %q for binding %q: %w", endpointType, b.Name, err)
 		}
@@ -147,7 +150,8 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 			Context:       b.Context,
 			Version:       b.Version,
 			Vhost:         vhost,
-			EndpointTopic: b.Endpoint.Topic,
+			PublicTopic:   b.Endpoint.Topic,
+			EndpointTopic: qualifiedTopic,
 			Ordering:      b.Endpoint.Ordering,
 		}
 
@@ -336,4 +340,11 @@ func defaultVhost(vhost string) string {
 		return "*"
 	}
 	return vhost
+}
+
+// qualifyTopicName generates a unique topic name in the format context.version.topic.
+// For example: context="/orders", version="v1", topic="order-events" → "orders.v1.order-events".
+func qualifyTopicName(ctx, version, topic string) string {
+	ctx = strings.TrimPrefix(ctx, "/")
+	return fmt.Sprintf("%s.%s.%s", ctx, version, topic)
 }

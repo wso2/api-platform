@@ -52,6 +52,7 @@ type MessageProcessor interface {
 type Endpoint interface {
 	Publish(ctx context.Context, topic string, msg *Message) error
 	Subscribe(groupID string, topics []string, handler MessageHandler) (Entrypoint, error)
+	TopicExists(ctx context.Context, topic string) (bool, error)
 	Close() error
 }
 
@@ -63,6 +64,7 @@ type ChannelInfo struct {
 	Context       string
 	Version       string
 	Vhost         string
+	PublicTopic   string
 	EndpointTopic string
 	Ordering      string
 }

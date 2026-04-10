@@ -60,10 +60,11 @@ type WebSubEntrypoint struct {
 func NewEntrypoint(cfg connectors.EntrypointConfig, opts Options) (connectors.Entrypoint, error) {
 	store := subscription.NewInMemoryStore(opts.RuntimeID)
 	topics := NewTopicRegistry()
-	topics.Register(cfg.Channel.EndpointTopic)
+	topics.Register(cfg.Channel.PublicTopic)
 
 	verificationTimeout := time.Duration(opts.VerificationTimeoutSeconds) * time.Second
-	handler := NewHandler(topics, store, verificationTimeout, opts.DefaultLeaseSeconds)
+	handler := NewHandler(topics, store, verificationTimeout, opts.DefaultLeaseSeconds,
+		cfg.Processor, cfg.Endpoint, cfg.Channel.Name, cfg.Channel.PublicTopic, cfg.Channel.EndpointTopic)
 	deliverer := NewDeliverer(store, cfg.Processor, DeliveryConfig{
 		MaxRetries:     opts.DeliveryMaxRetries,
 		InitialDelayMs: opts.DeliveryInitialDelayMs,
@@ -96,7 +97,7 @@ func (e *WebSubEntrypoint) Start(ctx context.Context) error {
 	groupID := e.opts.ConsumerGroupPrefix + "-websub-" + e.channel.Name
 	consumer, err := e.endpoint.Subscribe(groupID, []string{e.channel.EndpointTopic},
 		func(ctx context.Context, msg *connectors.Message) error {
-			return e.deliverer.DeliverToSubscribers(ctx, e.channel.Name, msg)
+			return e.deliverer.DeliverToSubscribers(ctx, e.channel.Name, e.channel.PublicTopic, msg)
 		})
 	if err != nil {
 		return fmt.Errorf("failed to create websub consumer: %w", err)
@@ -108,7 +109,8 @@ func (e *WebSubEntrypoint) Start(ctx context.Context) error {
 
 	slog.Info("WebSub entrypoint started",
 		"channel", e.channel.Name,
-		"topic", e.channel.EndpointTopic,
+		"topic", e.channel.PublicTopic,
+		"endpoint_topic", e.channel.EndpointTopic,
 	)
 	return nil
 }

@@ -57,6 +57,7 @@ type SubscriptionStore interface {
 	GetActive() []*Subscription
 	GetAll() []*Subscription
 	UpdateState(id string, state SubscriptionState) error
+	ExistsByCallback(callbackURL string) bool
 }
 
 // InMemoryStore is a thread-safe in-memory implementation of SubscriptionStore.
@@ -175,6 +176,19 @@ func (s *InMemoryStore) UpdateState(id string, state SubscriptionState) error {
 
 	sub.State = state
 	return nil
+}
+
+// ExistsByCallback returns true if any subscription exists for the given callback URL.
+func (s *InMemoryStore) ExistsByCallback(callbackURL string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, sub := range s.byID {
+		if sub.CallbackURL == callbackURL {
+			return true
+		}
+	}
+	return false
 }
 
 // CleanExpired removes expired subscriptions. Should be called periodically.

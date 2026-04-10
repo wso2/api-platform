@@ -63,10 +63,13 @@ func NewDeliverer(store subscription.SubscriptionStore, processor connectors.Mes
 	}
 }
 
-// DeliverToSubscribers delivers a message to all active subscribers for the given topic.
+// DeliverToSubscribers delivers a message to all active subscribers for the public topic
+// associated with this channel, even when events are consumed from a different broker topic.
 // It applies outbound policies before delivery and handles retries.
-func (d *Deliverer) DeliverToSubscribers(ctx context.Context, bindingName string, msg *connectors.Message) error {
-	subs := d.store.GetByTopic(msg.Topic)
+func (d *Deliverer) DeliverToSubscribers(ctx context.Context, bindingName, publicTopic string, msg *connectors.Message) error {
+	msg.Topic = publicTopic
+
+	subs := d.store.GetByTopic(publicTopic)
 	if len(subs) == 0 {
 		return nil
 	}

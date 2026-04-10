@@ -22,6 +22,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/twmb/franz-go/pkg/kadm"
+	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
 )
 
@@ -30,6 +32,8 @@ import (
 type KafkaEndpoint struct {
 	publisher *Publisher
 	brokers   []string
+	admin     *kadm.Client
+	adminKgo  *kgo.Client
 }
 
 // NewEndpoint creates a Kafka endpoint backed by the given brokers.
@@ -38,7 +42,19 @@ func NewEndpoint(brokers []string) (*KafkaEndpoint, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka publisher: %w", err)
 	}
-	return &KafkaEndpoint{publisher: pub, brokers: brokers}, nil
+
+	adminKgo, err := kgo.NewClient(kgo.SeedBrokers(brokers...))
+	if err != nil {
+		pub.Close()
+		return nil, fmt.Errorf("failed to create kafka admin client: %w", err)
+	}
+
+	return &KafkaEndpoint{
+		publisher: pub,
+		brokers:   brokers,
+		admin:     kadm.NewClient(adminKgo),
+		adminKgo:  adminKgo,
+	}, nil
 }
 
 // Publish sends a message to the given Kafka topic.
@@ -52,8 +68,19 @@ func (e *KafkaEndpoint) Subscribe(groupID string, topics []string, handler conne
 	return NewConsumer(e.brokers, groupID, topics, handler)
 }
 
-// Close shuts down the shared publisher.
+// TopicExists checks whether a topic exists in the Kafka cluster.
+func (e *KafkaEndpoint) TopicExists(ctx context.Context, topic string) (bool, error) {
+	topics, err := e.admin.ListTopics(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to list topics: %w", err)
+	}
+	_, exists := topics[topic]
+	return exists, nil
+}
+
+// Close shuts down the shared publisher and admin client.
 func (e *KafkaEndpoint) Close() error {
 	e.publisher.Close()
+	e.adminKgo.Close()
 	return nil
 }

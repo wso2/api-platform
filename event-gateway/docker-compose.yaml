@@ -48,7 +48,7 @@ services:
       - egw-network
 
   kafka:
-    image: confluentinc/cp-kafka:7.9.0
+    image: apache/kafka:latest
     hostname: kafka
     ports:
       - "9092:9092"
@@ -63,13 +63,28 @@ services:
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
     healthcheck:
-      test: ["CMD", "kafka-topics", "--bootstrap-server", "kafka:29092", "--list"]
+      test: ["CMD", "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "kafka:29092", "--list"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - egw-network
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    ports:
+      - "8085:8080"
+    environment:
+      DYNAMIC_CONFIG_ENABLED: "true"
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
     networks:
       - egw-network
 

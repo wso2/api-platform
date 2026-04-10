@@ -13,12 +13,9 @@ admin_port = 9002
 metrics_port = 9003
 
 [kafka]
+# Default Kafka brokers. Channels can override with endpoint.config.brokers.
 brokers = ["localhost:9092"]
 consumer_group_prefix = "event-gateway"
-tls = false
-# sasl_mechanism = ""
-# sasl_username = ""
-# sasl_password = ""
 
 [websub]
 verification_timeout_seconds = 10

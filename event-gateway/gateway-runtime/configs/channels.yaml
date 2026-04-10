@@ -3,10 +3,46 @@
 # --------------------------------------------------------------------
 # Each channel defines an API with its own entrypoint+endpoint pair.
 # The entrypoint type determines the client-facing protocol (websub, websocket).
-# The endpoint type determines the broker-facing protocol (kafka).
-# Each API gets isolated connections — even if the same types are already in use.
+# The endpoint type determines the broker-friendly protocol (kafka).
+# Each API gets its own isolated connections.
+#
+# Endpoint config (e.g. brokers) is defined per-channel. If omitted,
+# the global defaults from config.toml are used.
 
 channels:
+  - name: order-events
+    mode: websub
+    context: /orders
+    version: v1
+    entrypoint:
+      type: websub
+    endpoint:
+      type: kafka
+      topic: order-events
+      config:
+        brokers:
+          - kafka:29092
+    policies:
+      inbound: []
+      outbound: []
+
+  - name: live-prices
+    mode: protocol-mediation
+    context: /prices
+    version: v1
+    entrypoint:
+      type: websocket
+      path: /stream
+    endpoint:
+      type: kafka
+      topic: price-updates
+      config:
+        brokers:
+          - kafka:29092
+    policies:
+      inbound: []
+      outbound: []
+
   # WebSub API example:
   # - name: order-events
   #   mode: websub
@@ -17,11 +53,15 @@ channels:
   #   endpoint:
   #     type: kafka
   #     topic: order-events
+  #     config:
+  #       brokers:
+  #         - kafka-1:9092
+  #         - kafka-2:9092
   #   policies:
   #     inbound: []
   #     outbound: []
 
-  # Protocol Mediation API example (WS → Kafka 1:1 passthrough):
+  # Protocol Mediation API example (WS → Kafka, 1:1 passthrough):
   # - name: live-prices
   #   mode: protocol-mediation
   #   context: /prices
@@ -32,6 +72,9 @@ channels:
   #   endpoint:
   #     type: kafka
   #     topic: price-updates
+  #     config:
+  #       brokers:
+  #         - localhost:9092
   #   policies:
   #     inbound: []
   #     outbound: []
