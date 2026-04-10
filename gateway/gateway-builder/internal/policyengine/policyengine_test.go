@@ -431,6 +431,29 @@ func TestGenerateCode_EmptyPolicies(t *testing.T) {
 	assert.FileExists(t, filepath.Join(mainPkgDir, "build_info.go"))
 }
 
+func TestGenerateCode_CopiesPythonExecutorBaseFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	mainPkgDir := filepath.Join(tmpDir, "cmd", "policy-engine")
+	testutils.CreateDir(t, mainPkgDir)
+	testutils.WritePolicyEngineGoMod(t, tmpDir)
+
+	pythonExecDir := filepath.Join(tmpDir, "..", "python-executor")
+	testutils.CreateDir(t, filepath.Join(pythonExecDir, "sdk"))
+	testutils.CreateDir(t, filepath.Join(pythonExecDir, "proto"))
+	testutils.WriteFile(t, filepath.Join(pythonExecDir, "sdk", "types.py"), "# sdk types\n")
+	testutils.WriteFile(t, filepath.Join(pythonExecDir, "sdk", "actions.py"), "# sdk actions\n")
+	testutils.WriteFile(t, filepath.Join(pythonExecDir, "proto", "python_executor_pb2.py"), "# generated proto\n")
+
+	outputDir := t.TempDir()
+	err := GenerateCode(tmpDir, nil, outputDir)
+	require.NoError(t, err)
+
+	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "sdk", "types.py"))
+	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "sdk", "actions.py"))
+	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "proto", "python_executor_pb2.py"))
+}
+
 func TestGenerateCode_MissingCmdDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 

@@ -3,9 +3,9 @@
 import grpc
 import warnings
 
-from proto import python_executor_pb2 as python__executor__pb2
+from proto import python_executor_pb2 as proto_dot_python__executor__pb2
 
-GRPC_GENERATED_VERSION = '1.78.0'
+GRPC_GENERATED_VERSION = '1.76.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -18,7 +18,7 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + ' but the generated code in python_executor_pb2_grpc.py depends on'
+        + ' but the generated code in proto/python_executor_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
@@ -26,8 +26,8 @@ if _version_not_supported:
 
 
 class PythonExecutorServiceStub(object):
-    """PythonExecutorService defines the gRPC contract between Go PE and the Python process.
-    The Python process is the gRPC SERVER, Go PE is the CLIENT.
+    """PythonExecutorService defines the gRPC contract between the Go policy engine
+    and the Python executor process.
     """
 
     def __init__(self, channel):
@@ -37,60 +37,54 @@ class PythonExecutorServiceStub(object):
             channel: A grpc.Channel.
         """
         self.ExecuteStream = channel.stream_stream(
-                '/wso2.gateway.python.v1.PythonExecutorService/ExecuteStream',
-                request_serializer=python__executor__pb2.ExecutionRequest.SerializeToString,
-                response_deserializer=python__executor__pb2.ExecutionResponse.FromString,
+                '/wso2.gateway.python.v1alpha2.PythonExecutorService/ExecuteStream',
+                request_serializer=proto_dot_python__executor__pb2.StreamRequest.SerializeToString,
+                response_deserializer=proto_dot_python__executor__pb2.StreamResponse.FromString,
                 _registered_method=True)
         self.HealthCheck = channel.unary_unary(
-                '/wso2.gateway.python.v1.PythonExecutorService/HealthCheck',
-                request_serializer=python__executor__pb2.HealthCheckRequest.SerializeToString,
-                response_deserializer=python__executor__pb2.HealthCheckResponse.FromString,
+                '/wso2.gateway.python.v1alpha2.PythonExecutorService/HealthCheck',
+                request_serializer=proto_dot_python__executor__pb2.HealthCheckRequest.SerializeToString,
+                response_deserializer=proto_dot_python__executor__pb2.HealthCheckResponse.FromString,
                 _registered_method=True)
         self.InitPolicy = channel.unary_unary(
-                '/wso2.gateway.python.v1.PythonExecutorService/InitPolicy',
-                request_serializer=python__executor__pb2.InitPolicyRequest.SerializeToString,
-                response_deserializer=python__executor__pb2.InitPolicyResponse.FromString,
+                '/wso2.gateway.python.v1alpha2.PythonExecutorService/InitPolicy',
+                request_serializer=proto_dot_python__executor__pb2.InitPolicyRequest.SerializeToString,
+                response_deserializer=proto_dot_python__executor__pb2.InitPolicyResponse.FromString,
                 _registered_method=True)
         self.DestroyPolicy = channel.unary_unary(
-                '/wso2.gateway.python.v1.PythonExecutorService/DestroyPolicy',
-                request_serializer=python__executor__pb2.DestroyPolicyRequest.SerializeToString,
-                response_deserializer=python__executor__pb2.DestroyPolicyResponse.FromString,
+                '/wso2.gateway.python.v1alpha2.PythonExecutorService/DestroyPolicy',
+                request_serializer=proto_dot_python__executor__pb2.DestroyPolicyRequest.SerializeToString,
+                response_deserializer=proto_dot_python__executor__pb2.DestroyPolicyResponse.FromString,
                 _registered_method=True)
 
 
 class PythonExecutorServiceServicer(object):
-    """PythonExecutorService defines the gRPC contract between Go PE and the Python process.
-    The Python process is the gRPC SERVER, Go PE is the CLIENT.
+    """PythonExecutorService defines the gRPC contract between the Go policy engine
+    and the Python executor process.
     """
 
     def ExecuteStream(self, request_iterator, context):
-        """Bidirectional stream for executing policies.
-        Go sends ExecutionRequest, Python responds with ExecutionResponse.
-        Each request has a unique request_id that the response must echo back.
+        """Bidirectional stream for all hot-path execution requests.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def HealthCheck(self, request, context):
-        """Health check for readiness.
+        """Unary lifecycle and health RPCs.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def InitPolicy(self, request, context):
-        """InitPolicy creates a new policy instance on the Python side.
-        Called once per route during chain building.
-        """
+        """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
     def DestroyPolicy(self, request, context):
-        """DestroyPolicy destroys a policy instance on the Python side.
-        Called when a route is removed or replaced.
-        """
+        """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -100,35 +94,35 @@ def add_PythonExecutorServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'ExecuteStream': grpc.stream_stream_rpc_method_handler(
                     servicer.ExecuteStream,
-                    request_deserializer=python__executor__pb2.ExecutionRequest.FromString,
-                    response_serializer=python__executor__pb2.ExecutionResponse.SerializeToString,
+                    request_deserializer=proto_dot_python__executor__pb2.StreamRequest.FromString,
+                    response_serializer=proto_dot_python__executor__pb2.StreamResponse.SerializeToString,
             ),
             'HealthCheck': grpc.unary_unary_rpc_method_handler(
                     servicer.HealthCheck,
-                    request_deserializer=python__executor__pb2.HealthCheckRequest.FromString,
-                    response_serializer=python__executor__pb2.HealthCheckResponse.SerializeToString,
+                    request_deserializer=proto_dot_python__executor__pb2.HealthCheckRequest.FromString,
+                    response_serializer=proto_dot_python__executor__pb2.HealthCheckResponse.SerializeToString,
             ),
             'InitPolicy': grpc.unary_unary_rpc_method_handler(
                     servicer.InitPolicy,
-                    request_deserializer=python__executor__pb2.InitPolicyRequest.FromString,
-                    response_serializer=python__executor__pb2.InitPolicyResponse.SerializeToString,
+                    request_deserializer=proto_dot_python__executor__pb2.InitPolicyRequest.FromString,
+                    response_serializer=proto_dot_python__executor__pb2.InitPolicyResponse.SerializeToString,
             ),
             'DestroyPolicy': grpc.unary_unary_rpc_method_handler(
                     servicer.DestroyPolicy,
-                    request_deserializer=python__executor__pb2.DestroyPolicyRequest.FromString,
-                    response_serializer=python__executor__pb2.DestroyPolicyResponse.SerializeToString,
+                    request_deserializer=proto_dot_python__executor__pb2.DestroyPolicyRequest.FromString,
+                    response_serializer=proto_dot_python__executor__pb2.DestroyPolicyResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'wso2.gateway.python.v1.PythonExecutorService', rpc_method_handlers)
+            'wso2.gateway.python.v1alpha2.PythonExecutorService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('wso2.gateway.python.v1.PythonExecutorService', rpc_method_handlers)
+    server.add_registered_method_handlers('wso2.gateway.python.v1alpha2.PythonExecutorService', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
 class PythonExecutorService(object):
-    """PythonExecutorService defines the gRPC contract between Go PE and the Python process.
-    The Python process is the gRPC SERVER, Go PE is the CLIENT.
+    """PythonExecutorService defines the gRPC contract between the Go policy engine
+    and the Python executor process.
     """
 
     @staticmethod
@@ -145,9 +139,9 @@ class PythonExecutorService(object):
         return grpc.experimental.stream_stream(
             request_iterator,
             target,
-            '/wso2.gateway.python.v1.PythonExecutorService/ExecuteStream',
-            python__executor__pb2.ExecutionRequest.SerializeToString,
-            python__executor__pb2.ExecutionResponse.FromString,
+            '/wso2.gateway.python.v1alpha2.PythonExecutorService/ExecuteStream',
+            proto_dot_python__executor__pb2.StreamRequest.SerializeToString,
+            proto_dot_python__executor__pb2.StreamResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -172,9 +166,9 @@ class PythonExecutorService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/wso2.gateway.python.v1.PythonExecutorService/HealthCheck',
-            python__executor__pb2.HealthCheckRequest.SerializeToString,
-            python__executor__pb2.HealthCheckResponse.FromString,
+            '/wso2.gateway.python.v1alpha2.PythonExecutorService/HealthCheck',
+            proto_dot_python__executor__pb2.HealthCheckRequest.SerializeToString,
+            proto_dot_python__executor__pb2.HealthCheckResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -199,9 +193,9 @@ class PythonExecutorService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/wso2.gateway.python.v1.PythonExecutorService/InitPolicy',
-            python__executor__pb2.InitPolicyRequest.SerializeToString,
-            python__executor__pb2.InitPolicyResponse.FromString,
+            '/wso2.gateway.python.v1alpha2.PythonExecutorService/InitPolicy',
+            proto_dot_python__executor__pb2.InitPolicyRequest.SerializeToString,
+            proto_dot_python__executor__pb2.InitPolicyResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -226,9 +220,9 @@ class PythonExecutorService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/wso2.gateway.python.v1.PythonExecutorService/DestroyPolicy',
-            python__executor__pb2.DestroyPolicyRequest.SerializeToString,
-            python__executor__pb2.DestroyPolicyResponse.FromString,
+            '/wso2.gateway.python.v1alpha2.PythonExecutorService/DestroyPolicy',
+            proto_dot_python__executor__pb2.DestroyPolicyRequest.SerializeToString,
+            proto_dot_python__executor__pb2.DestroyPolicyResponse.FromString,
             options,
             channel_credentials,
             insecure,

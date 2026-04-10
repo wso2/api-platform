@@ -26,6 +26,8 @@ import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	structpb "google.golang.org/protobuf/types/known/structpb"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
+	wrapperspb "google.golang.org/protobuf/types/known/wrapperspb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -38,51 +40,265 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type ExecutionRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Unique ID per call so responses can be correlated on the single stream.
-	RequestId string `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	// Policy to execute (name:version format used for cache lookup, e.g., "my-policy:v1")
-	PolicyName    string `protobuf:"bytes,2,opt,name=policy_name,json=policyName,proto3" json:"policy_name,omitempty"`
-	PolicyVersion string `protobuf:"bytes,3,opt,name=policy_version,json=policyVersion,proto3" json:"policy_version,omitempty"`
-	// Phase: "on_request" or "on_response"
-	Phase string `protobuf:"bytes,4,opt,name=phase,proto3" json:"phase,omitempty"`
-	// Merged parameters (system + user) for this policy instance.
-	// The Go side resolves ${config} references in systemParameters and merges
-	// them with user parameters before sending. Python never sees raw ${config} strings.
-	Params *structpb.Struct `protobuf:"bytes,5,opt,name=params,proto3" json:"params,omitempty"`
-	// The request or response context data
+type HeaderProcessingMode int32
+
+const (
+	HeaderProcessingMode_HEADER_PROCESSING_MODE_UNSPECIFIED HeaderProcessingMode = 0
+	HeaderProcessingMode_HEADER_PROCESSING_MODE_SKIP        HeaderProcessingMode = 1
+	HeaderProcessingMode_HEADER_PROCESSING_MODE_PROCESS     HeaderProcessingMode = 2
+)
+
+// Enum value maps for HeaderProcessingMode.
+var (
+	HeaderProcessingMode_name = map[int32]string{
+		0: "HEADER_PROCESSING_MODE_UNSPECIFIED",
+		1: "HEADER_PROCESSING_MODE_SKIP",
+		2: "HEADER_PROCESSING_MODE_PROCESS",
+	}
+	HeaderProcessingMode_value = map[string]int32{
+		"HEADER_PROCESSING_MODE_UNSPECIFIED": 0,
+		"HEADER_PROCESSING_MODE_SKIP":        1,
+		"HEADER_PROCESSING_MODE_PROCESS":     2,
+	}
+)
+
+func (x HeaderProcessingMode) Enum() *HeaderProcessingMode {
+	p := new(HeaderProcessingMode)
+	*p = x
+	return p
+}
+
+func (x HeaderProcessingMode) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (HeaderProcessingMode) Descriptor() protoreflect.EnumDescriptor {
+	return file_python_executor_proto_enumTypes[0].Descriptor()
+}
+
+func (HeaderProcessingMode) Type() protoreflect.EnumType {
+	return &file_python_executor_proto_enumTypes[0]
+}
+
+func (x HeaderProcessingMode) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use HeaderProcessingMode.Descriptor instead.
+func (HeaderProcessingMode) EnumDescriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{0}
+}
+
+type BodyProcessingMode int32
+
+const (
+	BodyProcessingMode_BODY_PROCESSING_MODE_UNSPECIFIED BodyProcessingMode = 0
+	BodyProcessingMode_BODY_PROCESSING_MODE_SKIP        BodyProcessingMode = 1
+	BodyProcessingMode_BODY_PROCESSING_MODE_BUFFER      BodyProcessingMode = 2
+	BodyProcessingMode_BODY_PROCESSING_MODE_STREAM      BodyProcessingMode = 3
+)
+
+// Enum value maps for BodyProcessingMode.
+var (
+	BodyProcessingMode_name = map[int32]string{
+		0: "BODY_PROCESSING_MODE_UNSPECIFIED",
+		1: "BODY_PROCESSING_MODE_SKIP",
+		2: "BODY_PROCESSING_MODE_BUFFER",
+		3: "BODY_PROCESSING_MODE_STREAM",
+	}
+	BodyProcessingMode_value = map[string]int32{
+		"BODY_PROCESSING_MODE_UNSPECIFIED": 0,
+		"BODY_PROCESSING_MODE_SKIP":        1,
+		"BODY_PROCESSING_MODE_BUFFER":      2,
+		"BODY_PROCESSING_MODE_STREAM":      3,
+	}
+)
+
+func (x BodyProcessingMode) Enum() *BodyProcessingMode {
+	p := new(BodyProcessingMode)
+	*p = x
+	return p
+}
+
+func (x BodyProcessingMode) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (BodyProcessingMode) Descriptor() protoreflect.EnumDescriptor {
+	return file_python_executor_proto_enumTypes[1].Descriptor()
+}
+
+func (BodyProcessingMode) Type() protoreflect.EnumType {
+	return &file_python_executor_proto_enumTypes[1]
+}
+
+func (x BodyProcessingMode) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use BodyProcessingMode.Descriptor instead.
+func (BodyProcessingMode) EnumDescriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{1}
+}
+
+type Phase int32
+
+const (
+	Phase_PHASE_UNSPECIFIED              Phase = 0
+	Phase_PHASE_REQUEST_HEADERS          Phase = 1
+	Phase_PHASE_REQUEST_BODY             Phase = 2
+	Phase_PHASE_RESPONSE_HEADERS         Phase = 3
+	Phase_PHASE_RESPONSE_BODY            Phase = 4
+	Phase_PHASE_NEEDS_MORE_REQUEST_DATA  Phase = 5
+	Phase_PHASE_REQUEST_BODY_CHUNK       Phase = 6
+	Phase_PHASE_NEEDS_MORE_RESPONSE_DATA Phase = 7
+	Phase_PHASE_RESPONSE_BODY_CHUNK      Phase = 8
+	Phase_PHASE_CANCEL                   Phase = 9
+)
+
+// Enum value maps for Phase.
+var (
+	Phase_name = map[int32]string{
+		0: "PHASE_UNSPECIFIED",
+		1: "PHASE_REQUEST_HEADERS",
+		2: "PHASE_REQUEST_BODY",
+		3: "PHASE_RESPONSE_HEADERS",
+		4: "PHASE_RESPONSE_BODY",
+		5: "PHASE_NEEDS_MORE_REQUEST_DATA",
+		6: "PHASE_REQUEST_BODY_CHUNK",
+		7: "PHASE_NEEDS_MORE_RESPONSE_DATA",
+		8: "PHASE_RESPONSE_BODY_CHUNK",
+		9: "PHASE_CANCEL",
+	}
+	Phase_value = map[string]int32{
+		"PHASE_UNSPECIFIED":              0,
+		"PHASE_REQUEST_HEADERS":          1,
+		"PHASE_REQUEST_BODY":             2,
+		"PHASE_RESPONSE_HEADERS":         3,
+		"PHASE_RESPONSE_BODY":            4,
+		"PHASE_NEEDS_MORE_REQUEST_DATA":  5,
+		"PHASE_REQUEST_BODY_CHUNK":       6,
+		"PHASE_NEEDS_MORE_RESPONSE_DATA": 7,
+		"PHASE_RESPONSE_BODY_CHUNK":      8,
+		"PHASE_CANCEL":                   9,
+	}
+)
+
+func (x Phase) Enum() *Phase {
+	p := new(Phase)
+	*p = x
+	return p
+}
+
+func (x Phase) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Phase) Descriptor() protoreflect.EnumDescriptor {
+	return file_python_executor_proto_enumTypes[2].Descriptor()
+}
+
+func (Phase) Type() protoreflect.EnumType {
+	return &file_python_executor_proto_enumTypes[2]
+}
+
+func (x Phase) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Phase.Descriptor instead.
+func (Phase) EnumDescriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{2}
+}
+
+type DropHeaderActionType int32
+
+const (
+	DropHeaderActionType_DROP_HEADER_ACTION_TYPE_UNSPECIFIED DropHeaderActionType = 0
+	DropHeaderActionType_DROP_HEADER_ACTION_TYPE_ALLOW       DropHeaderActionType = 1
+	DropHeaderActionType_DROP_HEADER_ACTION_TYPE_DENY        DropHeaderActionType = 2
+)
+
+// Enum value maps for DropHeaderActionType.
+var (
+	DropHeaderActionType_name = map[int32]string{
+		0: "DROP_HEADER_ACTION_TYPE_UNSPECIFIED",
+		1: "DROP_HEADER_ACTION_TYPE_ALLOW",
+		2: "DROP_HEADER_ACTION_TYPE_DENY",
+	}
+	DropHeaderActionType_value = map[string]int32{
+		"DROP_HEADER_ACTION_TYPE_UNSPECIFIED": 0,
+		"DROP_HEADER_ACTION_TYPE_ALLOW":       1,
+		"DROP_HEADER_ACTION_TYPE_DENY":        2,
+	}
+)
+
+func (x DropHeaderActionType) Enum() *DropHeaderActionType {
+	p := new(DropHeaderActionType)
+	*p = x
+	return p
+}
+
+func (x DropHeaderActionType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DropHeaderActionType) Descriptor() protoreflect.EnumDescriptor {
+	return file_python_executor_proto_enumTypes[3].Descriptor()
+}
+
+func (DropHeaderActionType) Type() protoreflect.EnumType {
+	return &file_python_executor_proto_enumTypes[3]
+}
+
+func (x DropHeaderActionType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DropHeaderActionType.Descriptor instead.
+func (DropHeaderActionType) EnumDescriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{3}
+}
+
+type StreamRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	RequestId         string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	InstanceId        string                 `protobuf:"bytes,2,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
+	PolicyName        string                 `protobuf:"bytes,3,opt,name=policy_name,json=policyName,proto3" json:"policy_name,omitempty"`
+	PolicyVersion     string                 `protobuf:"bytes,4,opt,name=policy_version,json=policyVersion,proto3" json:"policy_version,omitempty"`
+	Params            *structpb.Struct       `protobuf:"bytes,5,opt,name=params,proto3" json:"params,omitempty"`
+	SharedContext     *SharedContext         `protobuf:"bytes,6,opt,name=shared_context,json=sharedContext,proto3" json:"shared_context,omitempty"`
+	ExecutionMetadata *ExecutionMetadata     `protobuf:"bytes,7,opt,name=execution_metadata,json=executionMetadata,proto3" json:"execution_metadata,omitempty"`
+	// Types that are valid to be assigned to Payload:
 	//
-	// Types that are valid to be assigned to Context:
-	//
-	//	*ExecutionRequest_RequestContext
-	//	*ExecutionRequest_ResponseContext
-	Context isExecutionRequest_Context `protobuf_oneof:"context"`
-	// Shared context (metadata, API info, auth context)
-	SharedContext *SharedContext `protobuf:"bytes,8,opt,name=shared_context,json=sharedContext,proto3" json:"shared_context,omitempty"`
-	// Policy metadata (route info, API info) for factory creation
-	PolicyMetadata *PolicyMetadata `protobuf:"bytes,9,opt,name=policy_metadata,json=policyMetadata,proto3" json:"policy_metadata,omitempty"`
-	// Instance ID assigned by Python during InitPolicy. Used to dispatch requests
-	// to the correct policy instance.
-	InstanceId    string `protobuf:"bytes,10,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
+	//	*StreamRequest_RequestHeaders
+	//	*StreamRequest_RequestBody
+	//	*StreamRequest_ResponseHeaders
+	//	*StreamRequest_ResponseBody
+	//	*StreamRequest_NeedsMoreRequestData
+	//	*StreamRequest_RequestChunk
+	//	*StreamRequest_NeedsMoreResponseData
+	//	*StreamRequest_ResponseChunk
+	//	*StreamRequest_CancelExecution
+	Payload       isStreamRequest_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ExecutionRequest) Reset() {
-	*x = ExecutionRequest{}
+func (x *StreamRequest) Reset() {
+	*x = StreamRequest{}
 	mi := &file_python_executor_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ExecutionRequest) String() string {
+func (x *StreamRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ExecutionRequest) ProtoMessage() {}
+func (*StreamRequest) ProtoMessage() {}
 
-func (x *ExecutionRequest) ProtoReflect() protoreflect.Message {
+func (x *StreamRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_python_executor_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -94,139 +310,239 @@ func (x *ExecutionRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ExecutionRequest.ProtoReflect.Descriptor instead.
-func (*ExecutionRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use StreamRequest.ProtoReflect.Descriptor instead.
+func (*StreamRequest) Descriptor() ([]byte, []int) {
 	return file_python_executor_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *ExecutionRequest) GetRequestId() string {
+func (x *StreamRequest) GetRequestId() string {
 	if x != nil {
 		return x.RequestId
 	}
 	return ""
 }
 
-func (x *ExecutionRequest) GetPolicyName() string {
-	if x != nil {
-		return x.PolicyName
-	}
-	return ""
-}
-
-func (x *ExecutionRequest) GetPolicyVersion() string {
-	if x != nil {
-		return x.PolicyVersion
-	}
-	return ""
-}
-
-func (x *ExecutionRequest) GetPhase() string {
-	if x != nil {
-		return x.Phase
-	}
-	return ""
-}
-
-func (x *ExecutionRequest) GetParams() *structpb.Struct {
-	if x != nil {
-		return x.Params
-	}
-	return nil
-}
-
-func (x *ExecutionRequest) GetContext() isExecutionRequest_Context {
-	if x != nil {
-		return x.Context
-	}
-	return nil
-}
-
-func (x *ExecutionRequest) GetRequestContext() *RequestContext {
-	if x != nil {
-		if x, ok := x.Context.(*ExecutionRequest_RequestContext); ok {
-			return x.RequestContext
-		}
-	}
-	return nil
-}
-
-func (x *ExecutionRequest) GetResponseContext() *ResponseContext {
-	if x != nil {
-		if x, ok := x.Context.(*ExecutionRequest_ResponseContext); ok {
-			return x.ResponseContext
-		}
-	}
-	return nil
-}
-
-func (x *ExecutionRequest) GetSharedContext() *SharedContext {
-	if x != nil {
-		return x.SharedContext
-	}
-	return nil
-}
-
-func (x *ExecutionRequest) GetPolicyMetadata() *PolicyMetadata {
-	if x != nil {
-		return x.PolicyMetadata
-	}
-	return nil
-}
-
-func (x *ExecutionRequest) GetInstanceId() string {
+func (x *StreamRequest) GetInstanceId() string {
 	if x != nil {
 		return x.InstanceId
 	}
 	return ""
 }
 
-type isExecutionRequest_Context interface {
-	isExecutionRequest_Context()
+func (x *StreamRequest) GetPolicyName() string {
+	if x != nil {
+		return x.PolicyName
+	}
+	return ""
 }
 
-type ExecutionRequest_RequestContext struct {
-	RequestContext *RequestContext `protobuf:"bytes,6,opt,name=request_context,json=requestContext,proto3,oneof"`
+func (x *StreamRequest) GetPolicyVersion() string {
+	if x != nil {
+		return x.PolicyVersion
+	}
+	return ""
 }
 
-type ExecutionRequest_ResponseContext struct {
-	ResponseContext *ResponseContext `protobuf:"bytes,7,opt,name=response_context,json=responseContext,proto3,oneof"`
+func (x *StreamRequest) GetParams() *structpb.Struct {
+	if x != nil {
+		return x.Params
+	}
+	return nil
 }
 
-func (*ExecutionRequest_RequestContext) isExecutionRequest_Context() {}
+func (x *StreamRequest) GetSharedContext() *SharedContext {
+	if x != nil {
+		return x.SharedContext
+	}
+	return nil
+}
 
-func (*ExecutionRequest_ResponseContext) isExecutionRequest_Context() {}
+func (x *StreamRequest) GetExecutionMetadata() *ExecutionMetadata {
+	if x != nil {
+		return x.ExecutionMetadata
+	}
+	return nil
+}
 
-type ExecutionResponse struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Must match request_id from the corresponding ExecutionRequest
-	RequestId string `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	// Types that are valid to be assigned to Result:
+func (x *StreamRequest) GetPayload() isStreamRequest_Payload {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+func (x *StreamRequest) GetRequestHeaders() *RequestHeadersPayload {
+	if x != nil {
+		if x, ok := x.Payload.(*StreamRequest_RequestHeaders); ok {
+			return x.RequestHeaders
+		}
+	}
+	return nil
+}
+
+func (x *StreamRequest) GetRequestBody() *RequestBodyPayload {
+	if x != nil {
+		if x, ok := x.Payload.(*StreamRequest_RequestBody); ok {
+			return x.RequestBody
+		}
+	}
+	return nil
+}
+
+func (x *StreamRequest) GetResponseHeaders() *ResponseHeadersPayload {
+	if x != nil {
+		if x, ok := x.Payload.(*StreamRequest_ResponseHeaders); ok {
+			return x.ResponseHeaders
+		}
+	}
+	return nil
+}
+
+func (x *StreamRequest) GetResponseBody() *ResponseBodyPayload {
+	if x != nil {
+		if x, ok := x.Payload.(*StreamRequest_ResponseBody); ok {
+			return x.ResponseBody
+		}
+	}
+	return nil
+}
+
+func (x *StreamRequest) GetNeedsMoreRequestData() *NeedsMoreRequestDataPayload {
+	if x != nil {
+		if x, ok := x.Payload.(*StreamRequest_NeedsMoreRequestData); ok {
+			return x.NeedsMoreRequestData
+		}
+	}
+	return nil
+}
+
+func (x *StreamRequest) GetRequestChunk() *RequestChunkPayload {
+	if x != nil {
+		if x, ok := x.Payload.(*StreamRequest_RequestChunk); ok {
+			return x.RequestChunk
+		}
+	}
+	return nil
+}
+
+func (x *StreamRequest) GetNeedsMoreResponseData() *NeedsMoreResponseDataPayload {
+	if x != nil {
+		if x, ok := x.Payload.(*StreamRequest_NeedsMoreResponseData); ok {
+			return x.NeedsMoreResponseData
+		}
+	}
+	return nil
+}
+
+func (x *StreamRequest) GetResponseChunk() *ResponseChunkPayload {
+	if x != nil {
+		if x, ok := x.Payload.(*StreamRequest_ResponseChunk); ok {
+			return x.ResponseChunk
+		}
+	}
+	return nil
+}
+
+func (x *StreamRequest) GetCancelExecution() *CancelExecutionPayload {
+	if x != nil {
+		if x, ok := x.Payload.(*StreamRequest_CancelExecution); ok {
+			return x.CancelExecution
+		}
+	}
+	return nil
+}
+
+type isStreamRequest_Payload interface {
+	isStreamRequest_Payload()
+}
+
+type StreamRequest_RequestHeaders struct {
+	RequestHeaders *RequestHeadersPayload `protobuf:"bytes,8,opt,name=request_headers,json=requestHeaders,proto3,oneof"`
+}
+
+type StreamRequest_RequestBody struct {
+	RequestBody *RequestBodyPayload `protobuf:"bytes,9,opt,name=request_body,json=requestBody,proto3,oneof"`
+}
+
+type StreamRequest_ResponseHeaders struct {
+	ResponseHeaders *ResponseHeadersPayload `protobuf:"bytes,10,opt,name=response_headers,json=responseHeaders,proto3,oneof"`
+}
+
+type StreamRequest_ResponseBody struct {
+	ResponseBody *ResponseBodyPayload `protobuf:"bytes,11,opt,name=response_body,json=responseBody,proto3,oneof"`
+}
+
+type StreamRequest_NeedsMoreRequestData struct {
+	NeedsMoreRequestData *NeedsMoreRequestDataPayload `protobuf:"bytes,12,opt,name=needs_more_request_data,json=needsMoreRequestData,proto3,oneof"`
+}
+
+type StreamRequest_RequestChunk struct {
+	RequestChunk *RequestChunkPayload `protobuf:"bytes,13,opt,name=request_chunk,json=requestChunk,proto3,oneof"`
+}
+
+type StreamRequest_NeedsMoreResponseData struct {
+	NeedsMoreResponseData *NeedsMoreResponseDataPayload `protobuf:"bytes,14,opt,name=needs_more_response_data,json=needsMoreResponseData,proto3,oneof"`
+}
+
+type StreamRequest_ResponseChunk struct {
+	ResponseChunk *ResponseChunkPayload `protobuf:"bytes,15,opt,name=response_chunk,json=responseChunk,proto3,oneof"`
+}
+
+type StreamRequest_CancelExecution struct {
+	CancelExecution *CancelExecutionPayload `protobuf:"bytes,16,opt,name=cancel_execution,json=cancelExecution,proto3,oneof"`
+}
+
+func (*StreamRequest_RequestHeaders) isStreamRequest_Payload() {}
+
+func (*StreamRequest_RequestBody) isStreamRequest_Payload() {}
+
+func (*StreamRequest_ResponseHeaders) isStreamRequest_Payload() {}
+
+func (*StreamRequest_ResponseBody) isStreamRequest_Payload() {}
+
+func (*StreamRequest_NeedsMoreRequestData) isStreamRequest_Payload() {}
+
+func (*StreamRequest_RequestChunk) isStreamRequest_Payload() {}
+
+func (*StreamRequest_NeedsMoreResponseData) isStreamRequest_Payload() {}
+
+func (*StreamRequest_ResponseChunk) isStreamRequest_Payload() {}
+
+func (*StreamRequest_CancelExecution) isStreamRequest_Payload() {}
+
+type StreamResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	RequestId       string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	UpdatedMetadata *structpb.Struct       `protobuf:"bytes,2,opt,name=updated_metadata,json=updatedMetadata,proto3" json:"updated_metadata,omitempty"`
+	// Types that are valid to be assigned to Payload:
 	//
-	//	*ExecutionResponse_RequestResult
-	//	*ExecutionResponse_ResponseResult
-	//	*ExecutionResponse_Error
-	Result isExecutionResponse_Result `protobuf_oneof:"result"`
-	// Updated shared metadata (Python may have mutated it).
-	// Go side merges this back into the SharedContext.
-	UpdatedMetadata *structpb.Struct `protobuf:"bytes,5,opt,name=updated_metadata,json=updatedMetadata,proto3" json:"updated_metadata,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	//	*StreamResponse_RequestHeaderAction
+	//	*StreamResponse_RequestAction
+	//	*StreamResponse_ResponseHeaderAction
+	//	*StreamResponse_ResponseAction
+	//	*StreamResponse_NeedsMoreDecision
+	//	*StreamResponse_StreamingRequestAction
+	//	*StreamResponse_StreamingResponseAction
+	//	*StreamResponse_Error
+	Payload       isStreamResponse_Payload `protobuf_oneof:"payload"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ExecutionResponse) Reset() {
-	*x = ExecutionResponse{}
+func (x *StreamResponse) Reset() {
+	*x = StreamResponse{}
 	mi := &file_python_executor_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ExecutionResponse) String() string {
+func (x *StreamResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ExecutionResponse) ProtoMessage() {}
+func (*StreamResponse) ProtoMessage() {}
 
-func (x *ExecutionResponse) ProtoReflect() protoreflect.Message {
+func (x *StreamResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_python_executor_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -238,95 +554,164 @@ func (x *ExecutionResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ExecutionResponse.ProtoReflect.Descriptor instead.
-func (*ExecutionResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use StreamResponse.ProtoReflect.Descriptor instead.
+func (*StreamResponse) Descriptor() ([]byte, []int) {
 	return file_python_executor_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *ExecutionResponse) GetRequestId() string {
+func (x *StreamResponse) GetRequestId() string {
 	if x != nil {
 		return x.RequestId
 	}
 	return ""
 }
 
-func (x *ExecutionResponse) GetResult() isExecutionResponse_Result {
-	if x != nil {
-		return x.Result
-	}
-	return nil
-}
-
-func (x *ExecutionResponse) GetRequestResult() *RequestActionResult {
-	if x != nil {
-		if x, ok := x.Result.(*ExecutionResponse_RequestResult); ok {
-			return x.RequestResult
-		}
-	}
-	return nil
-}
-
-func (x *ExecutionResponse) GetResponseResult() *ResponseActionResult {
-	if x != nil {
-		if x, ok := x.Result.(*ExecutionResponse_ResponseResult); ok {
-			return x.ResponseResult
-		}
-	}
-	return nil
-}
-
-func (x *ExecutionResponse) GetError() *ExecutionError {
-	if x != nil {
-		if x, ok := x.Result.(*ExecutionResponse_Error); ok {
-			return x.Error
-		}
-	}
-	return nil
-}
-
-func (x *ExecutionResponse) GetUpdatedMetadata() *structpb.Struct {
+func (x *StreamResponse) GetUpdatedMetadata() *structpb.Struct {
 	if x != nil {
 		return x.UpdatedMetadata
 	}
 	return nil
 }
 
-type isExecutionResponse_Result interface {
-	isExecutionResponse_Result()
+func (x *StreamResponse) GetPayload() isStreamResponse_Payload {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
 }
 
-type ExecutionResponse_RequestResult struct {
-	RequestResult *RequestActionResult `protobuf:"bytes,2,opt,name=request_result,json=requestResult,proto3,oneof"`
+func (x *StreamResponse) GetRequestHeaderAction() *RequestHeaderActionPayload {
+	if x != nil {
+		if x, ok := x.Payload.(*StreamResponse_RequestHeaderAction); ok {
+			return x.RequestHeaderAction
+		}
+	}
+	return nil
 }
 
-type ExecutionResponse_ResponseResult struct {
-	ResponseResult *ResponseActionResult `protobuf:"bytes,3,opt,name=response_result,json=responseResult,proto3,oneof"`
+func (x *StreamResponse) GetRequestAction() *RequestActionPayload {
+	if x != nil {
+		if x, ok := x.Payload.(*StreamResponse_RequestAction); ok {
+			return x.RequestAction
+		}
+	}
+	return nil
 }
 
-type ExecutionResponse_Error struct {
-	Error *ExecutionError `protobuf:"bytes,4,opt,name=error,proto3,oneof"`
+func (x *StreamResponse) GetResponseHeaderAction() *ResponseHeaderActionPayload {
+	if x != nil {
+		if x, ok := x.Payload.(*StreamResponse_ResponseHeaderAction); ok {
+			return x.ResponseHeaderAction
+		}
+	}
+	return nil
 }
 
-func (*ExecutionResponse_RequestResult) isExecutionResponse_Result() {}
+func (x *StreamResponse) GetResponseAction() *ResponseActionPayload {
+	if x != nil {
+		if x, ok := x.Payload.(*StreamResponse_ResponseAction); ok {
+			return x.ResponseAction
+		}
+	}
+	return nil
+}
 
-func (*ExecutionResponse_ResponseResult) isExecutionResponse_Result() {}
+func (x *StreamResponse) GetNeedsMoreDecision() *NeedsMoreDecisionPayload {
+	if x != nil {
+		if x, ok := x.Payload.(*StreamResponse_NeedsMoreDecision); ok {
+			return x.NeedsMoreDecision
+		}
+	}
+	return nil
+}
 
-func (*ExecutionResponse_Error) isExecutionResponse_Result() {}
+func (x *StreamResponse) GetStreamingRequestAction() *StreamingRequestActionPayload {
+	if x != nil {
+		if x, ok := x.Payload.(*StreamResponse_StreamingRequestAction); ok {
+			return x.StreamingRequestAction
+		}
+	}
+	return nil
+}
 
-// ProcessingMode declares which phases the Gateway kernel must buffer
-// before calling Python policy hooks.
+func (x *StreamResponse) GetStreamingResponseAction() *StreamingResponseActionPayload {
+	if x != nil {
+		if x, ok := x.Payload.(*StreamResponse_StreamingResponseAction); ok {
+			return x.StreamingResponseAction
+		}
+	}
+	return nil
+}
+
+func (x *StreamResponse) GetError() *ExecutionError {
+	if x != nil {
+		if x, ok := x.Payload.(*StreamResponse_Error); ok {
+			return x.Error
+		}
+	}
+	return nil
+}
+
+type isStreamResponse_Payload interface {
+	isStreamResponse_Payload()
+}
+
+type StreamResponse_RequestHeaderAction struct {
+	RequestHeaderAction *RequestHeaderActionPayload `protobuf:"bytes,3,opt,name=request_header_action,json=requestHeaderAction,proto3,oneof"`
+}
+
+type StreamResponse_RequestAction struct {
+	RequestAction *RequestActionPayload `protobuf:"bytes,4,opt,name=request_action,json=requestAction,proto3,oneof"`
+}
+
+type StreamResponse_ResponseHeaderAction struct {
+	ResponseHeaderAction *ResponseHeaderActionPayload `protobuf:"bytes,5,opt,name=response_header_action,json=responseHeaderAction,proto3,oneof"`
+}
+
+type StreamResponse_ResponseAction struct {
+	ResponseAction *ResponseActionPayload `protobuf:"bytes,6,opt,name=response_action,json=responseAction,proto3,oneof"`
+}
+
+type StreamResponse_NeedsMoreDecision struct {
+	NeedsMoreDecision *NeedsMoreDecisionPayload `protobuf:"bytes,7,opt,name=needs_more_decision,json=needsMoreDecision,proto3,oneof"`
+}
+
+type StreamResponse_StreamingRequestAction struct {
+	StreamingRequestAction *StreamingRequestActionPayload `protobuf:"bytes,8,opt,name=streaming_request_action,json=streamingRequestAction,proto3,oneof"`
+}
+
+type StreamResponse_StreamingResponseAction struct {
+	StreamingResponseAction *StreamingResponseActionPayload `protobuf:"bytes,9,opt,name=streaming_response_action,json=streamingResponseAction,proto3,oneof"`
+}
+
+type StreamResponse_Error struct {
+	Error *ExecutionError `protobuf:"bytes,10,opt,name=error,proto3,oneof"`
+}
+
+func (*StreamResponse_RequestHeaderAction) isStreamResponse_Payload() {}
+
+func (*StreamResponse_RequestAction) isStreamResponse_Payload() {}
+
+func (*StreamResponse_ResponseHeaderAction) isStreamResponse_Payload() {}
+
+func (*StreamResponse_ResponseAction) isStreamResponse_Payload() {}
+
+func (*StreamResponse_NeedsMoreDecision) isStreamResponse_Payload() {}
+
+func (*StreamResponse_StreamingRequestAction) isStreamResponse_Payload() {}
+
+func (*StreamResponse_StreamingResponseAction) isStreamResponse_Payload() {}
+
+func (*StreamResponse_Error) isStreamResponse_Payload() {}
+
 type ProcessingMode struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// "SKIP" or "PROCESS"
-	RequestHeaderMode string `protobuf:"bytes,1,opt,name=request_header_mode,json=requestHeaderMode,proto3" json:"request_header_mode,omitempty"`
-	// "SKIP" or "BUFFER"
-	RequestBodyMode string `protobuf:"bytes,2,opt,name=request_body_mode,json=requestBodyMode,proto3" json:"request_body_mode,omitempty"`
-	// "SKIP" or "PROCESS"
-	ResponseHeaderMode string `protobuf:"bytes,3,opt,name=response_header_mode,json=responseHeaderMode,proto3" json:"response_header_mode,omitempty"`
-	// "SKIP" or "BUFFER"
-	ResponseBodyMode string `protobuf:"bytes,4,opt,name=response_body_mode,json=responseBodyMode,proto3" json:"response_body_mode,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	RequestHeaderMode  HeaderProcessingMode   `protobuf:"varint,1,opt,name=request_header_mode,json=requestHeaderMode,proto3,enum=wso2.gateway.python.v1alpha2.HeaderProcessingMode" json:"request_header_mode,omitempty"`
+	RequestBodyMode    BodyProcessingMode     `protobuf:"varint,2,opt,name=request_body_mode,json=requestBodyMode,proto3,enum=wso2.gateway.python.v1alpha2.BodyProcessingMode" json:"request_body_mode,omitempty"`
+	ResponseHeaderMode HeaderProcessingMode   `protobuf:"varint,3,opt,name=response_header_mode,json=responseHeaderMode,proto3,enum=wso2.gateway.python.v1alpha2.HeaderProcessingMode" json:"response_header_mode,omitempty"`
+	ResponseBodyMode   BodyProcessingMode     `protobuf:"varint,4,opt,name=response_body_mode,json=responseBodyMode,proto3,enum=wso2.gateway.python.v1alpha2.BodyProcessingMode" json:"response_body_mode,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *ProcessingMode) Reset() {
@@ -359,32 +744,116 @@ func (*ProcessingMode) Descriptor() ([]byte, []int) {
 	return file_python_executor_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *ProcessingMode) GetRequestHeaderMode() string {
+func (x *ProcessingMode) GetRequestHeaderMode() HeaderProcessingMode {
 	if x != nil {
 		return x.RequestHeaderMode
 	}
-	return ""
+	return HeaderProcessingMode_HEADER_PROCESSING_MODE_UNSPECIFIED
 }
 
-func (x *ProcessingMode) GetRequestBodyMode() string {
+func (x *ProcessingMode) GetRequestBodyMode() BodyProcessingMode {
 	if x != nil {
 		return x.RequestBodyMode
 	}
-	return ""
+	return BodyProcessingMode_BODY_PROCESSING_MODE_UNSPECIFIED
 }
 
-func (x *ProcessingMode) GetResponseHeaderMode() string {
+func (x *ProcessingMode) GetResponseHeaderMode() HeaderProcessingMode {
 	if x != nil {
 		return x.ResponseHeaderMode
 	}
-	return ""
+	return HeaderProcessingMode_HEADER_PROCESSING_MODE_UNSPECIFIED
 }
 
-func (x *ProcessingMode) GetResponseBodyMode() string {
+func (x *ProcessingMode) GetResponseBodyMode() BodyProcessingMode {
 	if x != nil {
 		return x.ResponseBodyMode
 	}
-	return ""
+	return BodyProcessingMode_BODY_PROCESSING_MODE_UNSPECIFIED
+}
+
+type PolicyCapabilities struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	RequestHeaders    bool                   `protobuf:"varint,1,opt,name=request_headers,json=requestHeaders,proto3" json:"request_headers,omitempty"`
+	RequestBody       bool                   `protobuf:"varint,2,opt,name=request_body,json=requestBody,proto3" json:"request_body,omitempty"`
+	ResponseHeaders   bool                   `protobuf:"varint,3,opt,name=response_headers,json=responseHeaders,proto3" json:"response_headers,omitempty"`
+	ResponseBody      bool                   `protobuf:"varint,4,opt,name=response_body,json=responseBody,proto3" json:"response_body,omitempty"`
+	StreamingRequest  bool                   `protobuf:"varint,5,opt,name=streaming_request,json=streamingRequest,proto3" json:"streaming_request,omitempty"`
+	StreamingResponse bool                   `protobuf:"varint,6,opt,name=streaming_response,json=streamingResponse,proto3" json:"streaming_response,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *PolicyCapabilities) Reset() {
+	*x = PolicyCapabilities{}
+	mi := &file_python_executor_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PolicyCapabilities) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PolicyCapabilities) ProtoMessage() {}
+
+func (x *PolicyCapabilities) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PolicyCapabilities.ProtoReflect.Descriptor instead.
+func (*PolicyCapabilities) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *PolicyCapabilities) GetRequestHeaders() bool {
+	if x != nil {
+		return x.RequestHeaders
+	}
+	return false
+}
+
+func (x *PolicyCapabilities) GetRequestBody() bool {
+	if x != nil {
+		return x.RequestBody
+	}
+	return false
+}
+
+func (x *PolicyCapabilities) GetResponseHeaders() bool {
+	if x != nil {
+		return x.ResponseHeaders
+	}
+	return false
+}
+
+func (x *PolicyCapabilities) GetResponseBody() bool {
+	if x != nil {
+		return x.ResponseBody
+	}
+	return false
+}
+
+func (x *PolicyCapabilities) GetStreamingRequest() bool {
+	if x != nil {
+		return x.StreamingRequest
+	}
+	return false
+}
+
+func (x *PolicyCapabilities) GetStreamingResponse() bool {
+	if x != nil {
+		return x.StreamingResponse
+	}
+	return false
 }
 
 type InitPolicyRequest struct {
@@ -392,14 +861,14 @@ type InitPolicyRequest struct {
 	PolicyName     string                 `protobuf:"bytes,1,opt,name=policy_name,json=policyName,proto3" json:"policy_name,omitempty"`
 	PolicyVersion  string                 `protobuf:"bytes,2,opt,name=policy_version,json=policyVersion,proto3" json:"policy_version,omitempty"`
 	PolicyMetadata *PolicyMetadata        `protobuf:"bytes,3,opt,name=policy_metadata,json=policyMetadata,proto3" json:"policy_metadata,omitempty"`
-	Params         *structpb.Struct       `protobuf:"bytes,4,opt,name=params,proto3" json:"params,omitempty"` // Merged system + user params
+	Params         *structpb.Struct       `protobuf:"bytes,4,opt,name=params,proto3" json:"params,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
 
 func (x *InitPolicyRequest) Reset() {
 	*x = InitPolicyRequest{}
-	mi := &file_python_executor_proto_msgTypes[3]
+	mi := &file_python_executor_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -411,7 +880,7 @@ func (x *InitPolicyRequest) String() string {
 func (*InitPolicyRequest) ProtoMessage() {}
 
 func (x *InitPolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[3]
+	mi := &file_python_executor_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -424,7 +893,7 @@ func (x *InitPolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InitPolicyRequest.ProtoReflect.Descriptor instead.
 func (*InitPolicyRequest) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{3}
+	return file_python_executor_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *InitPolicyRequest) GetPolicyName() string {
@@ -458,16 +927,17 @@ func (x *InitPolicyRequest) GetParams() *structpb.Struct {
 type InitPolicyResponse struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Success        bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	InstanceId     string                 `protobuf:"bytes,2,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`             // Opaque ID for this instance (UUID)
-	ErrorMessage   string                 `protobuf:"bytes,3,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`       // Set if success=false
-	ProcessingMode *ProcessingMode        `protobuf:"bytes,4,opt,name=processing_mode,json=processingMode,proto3" json:"processing_mode,omitempty"` // Processing requirements for this policy instance
+	InstanceId     string                 `protobuf:"bytes,2,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
+	ErrorMessage   string                 `protobuf:"bytes,3,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	ProcessingMode *ProcessingMode        `protobuf:"bytes,4,opt,name=processing_mode,json=processingMode,proto3" json:"processing_mode,omitempty"`
+	Capabilities   *PolicyCapabilities    `protobuf:"bytes,5,opt,name=capabilities,proto3" json:"capabilities,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
 
 func (x *InitPolicyResponse) Reset() {
 	*x = InitPolicyResponse{}
-	mi := &file_python_executor_proto_msgTypes[4]
+	mi := &file_python_executor_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -479,7 +949,7 @@ func (x *InitPolicyResponse) String() string {
 func (*InitPolicyResponse) ProtoMessage() {}
 
 func (x *InitPolicyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[4]
+	mi := &file_python_executor_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -492,7 +962,7 @@ func (x *InitPolicyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InitPolicyResponse.ProtoReflect.Descriptor instead.
 func (*InitPolicyResponse) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{4}
+	return file_python_executor_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *InitPolicyResponse) GetSuccess() bool {
@@ -523,16 +993,23 @@ func (x *InitPolicyResponse) GetProcessingMode() *ProcessingMode {
 	return nil
 }
 
+func (x *InitPolicyResponse) GetCapabilities() *PolicyCapabilities {
+	if x != nil {
+		return x.Capabilities
+	}
+	return nil
+}
+
 type DestroyPolicyRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	InstanceId    string                 `protobuf:"bytes,1,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"` // Instance to destroy
+	InstanceId    string                 `protobuf:"bytes,1,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DestroyPolicyRequest) Reset() {
 	*x = DestroyPolicyRequest{}
-	mi := &file_python_executor_proto_msgTypes[5]
+	mi := &file_python_executor_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -544,7 +1021,7 @@ func (x *DestroyPolicyRequest) String() string {
 func (*DestroyPolicyRequest) ProtoMessage() {}
 
 func (x *DestroyPolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[5]
+	mi := &file_python_executor_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -557,7 +1034,7 @@ func (x *DestroyPolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DestroyPolicyRequest.ProtoReflect.Descriptor instead.
 func (*DestroyPolicyRequest) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{5}
+	return file_python_executor_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *DestroyPolicyRequest) GetInstanceId() string {
@@ -577,7 +1054,7 @@ type DestroyPolicyResponse struct {
 
 func (x *DestroyPolicyResponse) Reset() {
 	*x = DestroyPolicyResponse{}
-	mi := &file_python_executor_proto_msgTypes[6]
+	mi := &file_python_executor_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -589,7 +1066,7 @@ func (x *DestroyPolicyResponse) String() string {
 func (*DestroyPolicyResponse) ProtoMessage() {}
 
 func (x *DestroyPolicyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[6]
+	mi := &file_python_executor_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -602,7 +1079,7 @@ func (x *DestroyPolicyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DestroyPolicyResponse.ProtoReflect.Descriptor instead.
 func (*DestroyPolicyResponse) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{6}
+	return file_python_executor_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *DestroyPolicyResponse) GetSuccess() bool {
@@ -619,25 +1096,145 @@ func (x *DestroyPolicyResponse) GetErrorMessage() string {
 	return ""
 }
 
+type ExecutionMetadata struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Phase         Phase                  `protobuf:"varint,1,opt,name=phase,proto3,enum=wso2.gateway.python.v1alpha2.Phase" json:"phase,omitempty"`
+	Deadline      *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=deadline,proto3" json:"deadline,omitempty"`
+	Trace         *TraceMetadata         `protobuf:"bytes,3,opt,name=trace,proto3" json:"trace,omitempty"`
+	RouteName     string                 `protobuf:"bytes,4,opt,name=route_name,json=routeName,proto3" json:"route_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExecutionMetadata) Reset() {
+	*x = ExecutionMetadata{}
+	mi := &file_python_executor_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExecutionMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExecutionMetadata) ProtoMessage() {}
+
+func (x *ExecutionMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExecutionMetadata.ProtoReflect.Descriptor instead.
+func (*ExecutionMetadata) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *ExecutionMetadata) GetPhase() Phase {
+	if x != nil {
+		return x.Phase
+	}
+	return Phase_PHASE_UNSPECIFIED
+}
+
+func (x *ExecutionMetadata) GetDeadline() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Deadline
+	}
+	return nil
+}
+
+func (x *ExecutionMetadata) GetTrace() *TraceMetadata {
+	if x != nil {
+		return x.Trace
+	}
+	return nil
+}
+
+func (x *ExecutionMetadata) GetRouteName() string {
+	if x != nil {
+		return x.RouteName
+	}
+	return ""
+}
+
+type TraceMetadata struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TraceId       string                 `protobuf:"bytes,1,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
+	SpanId        string                 `protobuf:"bytes,2,opt,name=span_id,json=spanId,proto3" json:"span_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TraceMetadata) Reset() {
+	*x = TraceMetadata{}
+	mi := &file_python_executor_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TraceMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TraceMetadata) ProtoMessage() {}
+
+func (x *TraceMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TraceMetadata.ProtoReflect.Descriptor instead.
+func (*TraceMetadata) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *TraceMetadata) GetTraceId() string {
+	if x != nil {
+		return x.TraceId
+	}
+	return ""
+}
+
+func (x *TraceMetadata) GetSpanId() string {
+	if x != nil {
+		return x.SpanId
+	}
+	return ""
+}
+
 type SharedContext struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	RequestId     string                 `protobuf:"bytes,2,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	Metadata      *structpb.Struct       `protobuf:"bytes,3,opt,name=metadata,proto3" json:"metadata,omitempty"` // Inter-policy communication map
+	Metadata      *structpb.Struct       `protobuf:"bytes,3,opt,name=metadata,proto3" json:"metadata,omitempty"`
 	ApiId         string                 `protobuf:"bytes,4,opt,name=api_id,json=apiId,proto3" json:"api_id,omitempty"`
 	ApiName       string                 `protobuf:"bytes,5,opt,name=api_name,json=apiName,proto3" json:"api_name,omitempty"`
 	ApiVersion    string                 `protobuf:"bytes,6,opt,name=api_version,json=apiVersion,proto3" json:"api_version,omitempty"`
 	ApiKind       string                 `protobuf:"bytes,7,opt,name=api_kind,json=apiKind,proto3" json:"api_kind,omitempty"`
 	ApiContext    string                 `protobuf:"bytes,8,opt,name=api_context,json=apiContext,proto3" json:"api_context,omitempty"`
 	OperationPath string                 `protobuf:"bytes,9,opt,name=operation_path,json=operationPath,proto3" json:"operation_path,omitempty"`
-	AuthContext   map[string]string      `protobuf:"bytes,10,rep,name=auth_context,json=authContext,proto3" json:"auth_context,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	AuthContext   *AuthContext           `protobuf:"bytes,10,opt,name=auth_context,json=authContext,proto3" json:"auth_context,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SharedContext) Reset() {
 	*x = SharedContext{}
-	mi := &file_python_executor_proto_msgTypes[7]
+	mi := &file_python_executor_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -649,7 +1246,7 @@ func (x *SharedContext) String() string {
 func (*SharedContext) ProtoMessage() {}
 
 func (x *SharedContext) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[7]
+	mi := &file_python_executor_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -662,7 +1259,7 @@ func (x *SharedContext) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SharedContext.ProtoReflect.Descriptor instead.
 func (*SharedContext) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{7}
+	return file_python_executor_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *SharedContext) GetProjectId() string {
@@ -728,30 +1325,437 @@ func (x *SharedContext) GetOperationPath() string {
 	return ""
 }
 
-func (x *SharedContext) GetAuthContext() map[string]string {
+func (x *SharedContext) GetAuthContext() *AuthContext {
 	if x != nil {
 		return x.AuthContext
 	}
 	return nil
 }
 
+type Headers struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Values        map[string]*StringList `protobuf:"bytes,1,rep,name=values,proto3" json:"values,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Headers) Reset() {
+	*x = Headers{}
+	mi := &file_python_executor_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Headers) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Headers) ProtoMessage() {}
+
+func (x *Headers) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Headers.ProtoReflect.Descriptor instead.
+func (*Headers) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *Headers) GetValues() map[string]*StringList {
+	if x != nil {
+		return x.Values
+	}
+	return nil
+}
+
+type StringList struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Values        []string               `protobuf:"bytes,1,rep,name=values,proto3" json:"values,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StringList) Reset() {
+	*x = StringList{}
+	mi := &file_python_executor_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StringList) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StringList) ProtoMessage() {}
+
+func (x *StringList) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StringList.ProtoReflect.Descriptor instead.
+func (*StringList) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *StringList) GetValues() []string {
+	if x != nil {
+		return x.Values
+	}
+	return nil
+}
+
+type Body struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Content       []byte                 `protobuf:"bytes,1,opt,name=content,proto3" json:"content,omitempty"`
+	EndOfStream   bool                   `protobuf:"varint,2,opt,name=end_of_stream,json=endOfStream,proto3" json:"end_of_stream,omitempty"`
+	Present       bool                   `protobuf:"varint,3,opt,name=present,proto3" json:"present,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Body) Reset() {
+	*x = Body{}
+	mi := &file_python_executor_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Body) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Body) ProtoMessage() {}
+
+func (x *Body) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Body.ProtoReflect.Descriptor instead.
+func (*Body) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *Body) GetContent() []byte {
+	if x != nil {
+		return x.Content
+	}
+	return nil
+}
+
+func (x *Body) GetEndOfStream() bool {
+	if x != nil {
+		return x.EndOfStream
+	}
+	return false
+}
+
+func (x *Body) GetPresent() bool {
+	if x != nil {
+		return x.Present
+	}
+	return false
+}
+
+type StreamBody struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Chunk         []byte                 `protobuf:"bytes,1,opt,name=chunk,proto3" json:"chunk,omitempty"`
+	EndOfStream   bool                   `protobuf:"varint,2,opt,name=end_of_stream,json=endOfStream,proto3" json:"end_of_stream,omitempty"`
+	Index         uint64                 `protobuf:"varint,3,opt,name=index,proto3" json:"index,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StreamBody) Reset() {
+	*x = StreamBody{}
+	mi := &file_python_executor_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StreamBody) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StreamBody) ProtoMessage() {}
+
+func (x *StreamBody) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StreamBody.ProtoReflect.Descriptor instead.
+func (*StreamBody) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *StreamBody) GetChunk() []byte {
+	if x != nil {
+		return x.Chunk
+	}
+	return nil
+}
+
+func (x *StreamBody) GetEndOfStream() bool {
+	if x != nil {
+		return x.EndOfStream
+	}
+	return false
+}
+
+func (x *StreamBody) GetIndex() uint64 {
+	if x != nil {
+		return x.Index
+	}
+	return 0
+}
+
+type AuthContext struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Authenticated bool                   `protobuf:"varint,1,opt,name=authenticated,proto3" json:"authenticated,omitempty"`
+	Authorized    bool                   `protobuf:"varint,2,opt,name=authorized,proto3" json:"authorized,omitempty"`
+	AuthType      string                 `protobuf:"bytes,3,opt,name=auth_type,json=authType,proto3" json:"auth_type,omitempty"`
+	Subject       string                 `protobuf:"bytes,4,opt,name=subject,proto3" json:"subject,omitempty"`
+	Issuer        string                 `protobuf:"bytes,5,opt,name=issuer,proto3" json:"issuer,omitempty"`
+	Audience      []string               `protobuf:"bytes,6,rep,name=audience,proto3" json:"audience,omitempty"`
+	Scopes        map[string]bool        `protobuf:"bytes,7,rep,name=scopes,proto3" json:"scopes,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	CredentialId  string                 `protobuf:"bytes,8,opt,name=credential_id,json=credentialId,proto3" json:"credential_id,omitempty"`
+	Properties    map[string]string      `protobuf:"bytes,9,rep,name=properties,proto3" json:"properties,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Previous      *AuthContext           `protobuf:"bytes,10,opt,name=previous,proto3" json:"previous,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AuthContext) Reset() {
+	*x = AuthContext{}
+	mi := &file_python_executor_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuthContext) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuthContext) ProtoMessage() {}
+
+func (x *AuthContext) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuthContext.ProtoReflect.Descriptor instead.
+func (*AuthContext) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *AuthContext) GetAuthenticated() bool {
+	if x != nil {
+		return x.Authenticated
+	}
+	return false
+}
+
+func (x *AuthContext) GetAuthorized() bool {
+	if x != nil {
+		return x.Authorized
+	}
+	return false
+}
+
+func (x *AuthContext) GetAuthType() string {
+	if x != nil {
+		return x.AuthType
+	}
+	return ""
+}
+
+func (x *AuthContext) GetSubject() string {
+	if x != nil {
+		return x.Subject
+	}
+	return ""
+}
+
+func (x *AuthContext) GetIssuer() string {
+	if x != nil {
+		return x.Issuer
+	}
+	return ""
+}
+
+func (x *AuthContext) GetAudience() []string {
+	if x != nil {
+		return x.Audience
+	}
+	return nil
+}
+
+func (x *AuthContext) GetScopes() map[string]bool {
+	if x != nil {
+		return x.Scopes
+	}
+	return nil
+}
+
+func (x *AuthContext) GetCredentialId() string {
+	if x != nil {
+		return x.CredentialId
+	}
+	return ""
+}
+
+func (x *AuthContext) GetProperties() map[string]string {
+	if x != nil {
+		return x.Properties
+	}
+	return nil
+}
+
+func (x *AuthContext) GetPrevious() *AuthContext {
+	if x != nil {
+		return x.Previous
+	}
+	return nil
+}
+
+type RequestHeaderContext struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Headers       *Headers               `protobuf:"bytes,1,opt,name=headers,proto3" json:"headers,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	Method        string                 `protobuf:"bytes,3,opt,name=method,proto3" json:"method,omitempty"`
+	Authority     string                 `protobuf:"bytes,4,opt,name=authority,proto3" json:"authority,omitempty"`
+	Scheme        string                 `protobuf:"bytes,5,opt,name=scheme,proto3" json:"scheme,omitempty"`
+	Vhost         string                 `protobuf:"bytes,6,opt,name=vhost,proto3" json:"vhost,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RequestHeaderContext) Reset() {
+	*x = RequestHeaderContext{}
+	mi := &file_python_executor_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestHeaderContext) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestHeaderContext) ProtoMessage() {}
+
+func (x *RequestHeaderContext) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestHeaderContext.ProtoReflect.Descriptor instead.
+func (*RequestHeaderContext) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *RequestHeaderContext) GetHeaders() *Headers {
+	if x != nil {
+		return x.Headers
+	}
+	return nil
+}
+
+func (x *RequestHeaderContext) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *RequestHeaderContext) GetMethod() string {
+	if x != nil {
+		return x.Method
+	}
+	return ""
+}
+
+func (x *RequestHeaderContext) GetAuthority() string {
+	if x != nil {
+		return x.Authority
+	}
+	return ""
+}
+
+func (x *RequestHeaderContext) GetScheme() string {
+	if x != nil {
+		return x.Scheme
+	}
+	return ""
+}
+
+func (x *RequestHeaderContext) GetVhost() string {
+	if x != nil {
+		return x.Vhost
+	}
+	return ""
+}
+
 type RequestContext struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Headers       map[string]string      `protobuf:"bytes,1,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Body          []byte                 `protobuf:"bytes,2,opt,name=body,proto3" json:"body,omitempty"`
-	BodyPresent   bool                   `protobuf:"varint,3,opt,name=body_present,json=bodyPresent,proto3" json:"body_present,omitempty"`
-	EndOfStream   bool                   `protobuf:"varint,4,opt,name=end_of_stream,json=endOfStream,proto3" json:"end_of_stream,omitempty"`
-	Path          string                 `protobuf:"bytes,5,opt,name=path,proto3" json:"path,omitempty"`
-	Method        string                 `protobuf:"bytes,6,opt,name=method,proto3" json:"method,omitempty"`
-	Authority     string                 `protobuf:"bytes,7,opt,name=authority,proto3" json:"authority,omitempty"`
-	Scheme        string                 `protobuf:"bytes,8,opt,name=scheme,proto3" json:"scheme,omitempty"`
+	Headers       *Headers               `protobuf:"bytes,1,opt,name=headers,proto3" json:"headers,omitempty"`
+	Body          *Body                  `protobuf:"bytes,2,opt,name=body,proto3" json:"body,omitempty"`
+	Path          string                 `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
+	Method        string                 `protobuf:"bytes,4,opt,name=method,proto3" json:"method,omitempty"`
+	Authority     string                 `protobuf:"bytes,5,opt,name=authority,proto3" json:"authority,omitempty"`
+	Scheme        string                 `protobuf:"bytes,6,opt,name=scheme,proto3" json:"scheme,omitempty"`
+	Vhost         string                 `protobuf:"bytes,7,opt,name=vhost,proto3" json:"vhost,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RequestContext) Reset() {
 	*x = RequestContext{}
-	mi := &file_python_executor_proto_msgTypes[8]
+	mi := &file_python_executor_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -763,7 +1767,7 @@ func (x *RequestContext) String() string {
 func (*RequestContext) ProtoMessage() {}
 
 func (x *RequestContext) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[8]
+	mi := &file_python_executor_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -776,35 +1780,21 @@ func (x *RequestContext) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestContext.ProtoReflect.Descriptor instead.
 func (*RequestContext) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{8}
+	return file_python_executor_proto_rawDescGZIP(), []int{17}
 }
 
-func (x *RequestContext) GetHeaders() map[string]string {
+func (x *RequestContext) GetHeaders() *Headers {
 	if x != nil {
 		return x.Headers
 	}
 	return nil
 }
 
-func (x *RequestContext) GetBody() []byte {
+func (x *RequestContext) GetBody() *Body {
 	if x != nil {
 		return x.Body
 	}
 	return nil
-}
-
-func (x *RequestContext) GetBodyPresent() bool {
-	if x != nil {
-		return x.BodyPresent
-	}
-	return false
-}
-
-func (x *RequestContext) GetEndOfStream() bool {
-	if x != nil {
-		return x.EndOfStream
-	}
-	return false
 }
 
 func (x *RequestContext) GetPath() string {
@@ -835,25 +1825,113 @@ func (x *RequestContext) GetScheme() string {
 	return ""
 }
 
+func (x *RequestContext) GetVhost() string {
+	if x != nil {
+		return x.Vhost
+	}
+	return ""
+}
+
+type ResponseHeaderContext struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	RequestHeaders  *Headers               `protobuf:"bytes,1,opt,name=request_headers,json=requestHeaders,proto3" json:"request_headers,omitempty"`
+	RequestBody     *Body                  `protobuf:"bytes,2,opt,name=request_body,json=requestBody,proto3" json:"request_body,omitempty"`
+	RequestPath     string                 `protobuf:"bytes,3,opt,name=request_path,json=requestPath,proto3" json:"request_path,omitempty"`
+	RequestMethod   string                 `protobuf:"bytes,4,opt,name=request_method,json=requestMethod,proto3" json:"request_method,omitempty"`
+	ResponseHeaders *Headers               `protobuf:"bytes,5,opt,name=response_headers,json=responseHeaders,proto3" json:"response_headers,omitempty"`
+	ResponseStatus  int32                  `protobuf:"varint,6,opt,name=response_status,json=responseStatus,proto3" json:"response_status,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ResponseHeaderContext) Reset() {
+	*x = ResponseHeaderContext{}
+	mi := &file_python_executor_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResponseHeaderContext) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResponseHeaderContext) ProtoMessage() {}
+
+func (x *ResponseHeaderContext) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResponseHeaderContext.ProtoReflect.Descriptor instead.
+func (*ResponseHeaderContext) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ResponseHeaderContext) GetRequestHeaders() *Headers {
+	if x != nil {
+		return x.RequestHeaders
+	}
+	return nil
+}
+
+func (x *ResponseHeaderContext) GetRequestBody() *Body {
+	if x != nil {
+		return x.RequestBody
+	}
+	return nil
+}
+
+func (x *ResponseHeaderContext) GetRequestPath() string {
+	if x != nil {
+		return x.RequestPath
+	}
+	return ""
+}
+
+func (x *ResponseHeaderContext) GetRequestMethod() string {
+	if x != nil {
+		return x.RequestMethod
+	}
+	return ""
+}
+
+func (x *ResponseHeaderContext) GetResponseHeaders() *Headers {
+	if x != nil {
+		return x.ResponseHeaders
+	}
+	return nil
+}
+
+func (x *ResponseHeaderContext) GetResponseStatus() int32 {
+	if x != nil {
+		return x.ResponseStatus
+	}
+	return 0
+}
+
 type ResponseContext struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Original request data (immutable)
-	RequestHeaders map[string]string `protobuf:"bytes,1,rep,name=request_headers,json=requestHeaders,proto3" json:"request_headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	RequestBody    []byte            `protobuf:"bytes,2,opt,name=request_body,json=requestBody,proto3" json:"request_body,omitempty"`
-	RequestPath    string            `protobuf:"bytes,3,opt,name=request_path,json=requestPath,proto3" json:"request_path,omitempty"`
-	RequestMethod  string            `protobuf:"bytes,4,opt,name=request_method,json=requestMethod,proto3" json:"request_method,omitempty"`
-	// Response data
-	ResponseHeaders     map[string]string `protobuf:"bytes,5,rep,name=response_headers,json=responseHeaders,proto3" json:"response_headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	ResponseBody        []byte            `protobuf:"bytes,6,opt,name=response_body,json=responseBody,proto3" json:"response_body,omitempty"`
-	ResponseBodyPresent bool              `protobuf:"varint,7,opt,name=response_body_present,json=responseBodyPresent,proto3" json:"response_body_present,omitempty"`
-	ResponseStatus      int32             `protobuf:"varint,8,opt,name=response_status,json=responseStatus,proto3" json:"response_status,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	RequestHeaders  *Headers               `protobuf:"bytes,1,opt,name=request_headers,json=requestHeaders,proto3" json:"request_headers,omitempty"`
+	RequestBody     *Body                  `protobuf:"bytes,2,opt,name=request_body,json=requestBody,proto3" json:"request_body,omitempty"`
+	RequestPath     string                 `protobuf:"bytes,3,opt,name=request_path,json=requestPath,proto3" json:"request_path,omitempty"`
+	RequestMethod   string                 `protobuf:"bytes,4,opt,name=request_method,json=requestMethod,proto3" json:"request_method,omitempty"`
+	ResponseHeaders *Headers               `protobuf:"bytes,5,opt,name=response_headers,json=responseHeaders,proto3" json:"response_headers,omitempty"`
+	ResponseBody    *Body                  `protobuf:"bytes,6,opt,name=response_body,json=responseBody,proto3" json:"response_body,omitempty"`
+	ResponseStatus  int32                  `protobuf:"varint,7,opt,name=response_status,json=responseStatus,proto3" json:"response_status,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ResponseContext) Reset() {
 	*x = ResponseContext{}
-	mi := &file_python_executor_proto_msgTypes[9]
+	mi := &file_python_executor_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -865,7 +1943,7 @@ func (x *ResponseContext) String() string {
 func (*ResponseContext) ProtoMessage() {}
 
 func (x *ResponseContext) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[9]
+	mi := &file_python_executor_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -878,17 +1956,17 @@ func (x *ResponseContext) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResponseContext.ProtoReflect.Descriptor instead.
 func (*ResponseContext) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{9}
+	return file_python_executor_proto_rawDescGZIP(), []int{19}
 }
 
-func (x *ResponseContext) GetRequestHeaders() map[string]string {
+func (x *ResponseContext) GetRequestHeaders() *Headers {
 	if x != nil {
 		return x.RequestHeaders
 	}
 	return nil
 }
 
-func (x *ResponseContext) GetRequestBody() []byte {
+func (x *ResponseContext) GetRequestBody() *Body {
 	if x != nil {
 		return x.RequestBody
 	}
@@ -909,25 +1987,18 @@ func (x *ResponseContext) GetRequestMethod() string {
 	return ""
 }
 
-func (x *ResponseContext) GetResponseHeaders() map[string]string {
+func (x *ResponseContext) GetResponseHeaders() *Headers {
 	if x != nil {
 		return x.ResponseHeaders
 	}
 	return nil
 }
 
-func (x *ResponseContext) GetResponseBody() []byte {
+func (x *ResponseContext) GetResponseBody() *Body {
 	if x != nil {
 		return x.ResponseBody
 	}
 	return nil
-}
-
-func (x *ResponseContext) GetResponseBodyPresent() bool {
-	if x != nil {
-		return x.ResponseBodyPresent
-	}
-	return false
 }
 
 func (x *ResponseContext) GetResponseStatus() int32 {
@@ -937,20 +2008,608 @@ func (x *ResponseContext) GetResponseStatus() int32 {
 	return 0
 }
 
+type RequestStreamContext struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Headers       *Headers               `protobuf:"bytes,1,opt,name=headers,proto3" json:"headers,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	Method        string                 `protobuf:"bytes,3,opt,name=method,proto3" json:"method,omitempty"`
+	Authority     string                 `protobuf:"bytes,4,opt,name=authority,proto3" json:"authority,omitempty"`
+	Scheme        string                 `protobuf:"bytes,5,opt,name=scheme,proto3" json:"scheme,omitempty"`
+	Vhost         string                 `protobuf:"bytes,6,opt,name=vhost,proto3" json:"vhost,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RequestStreamContext) Reset() {
+	*x = RequestStreamContext{}
+	mi := &file_python_executor_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestStreamContext) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestStreamContext) ProtoMessage() {}
+
+func (x *RequestStreamContext) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestStreamContext.ProtoReflect.Descriptor instead.
+func (*RequestStreamContext) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *RequestStreamContext) GetHeaders() *Headers {
+	if x != nil {
+		return x.Headers
+	}
+	return nil
+}
+
+func (x *RequestStreamContext) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *RequestStreamContext) GetMethod() string {
+	if x != nil {
+		return x.Method
+	}
+	return ""
+}
+
+func (x *RequestStreamContext) GetAuthority() string {
+	if x != nil {
+		return x.Authority
+	}
+	return ""
+}
+
+func (x *RequestStreamContext) GetScheme() string {
+	if x != nil {
+		return x.Scheme
+	}
+	return ""
+}
+
+func (x *RequestStreamContext) GetVhost() string {
+	if x != nil {
+		return x.Vhost
+	}
+	return ""
+}
+
+type ResponseStreamContext struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	RequestHeaders  *Headers               `protobuf:"bytes,1,opt,name=request_headers,json=requestHeaders,proto3" json:"request_headers,omitempty"`
+	RequestBody     *Body                  `protobuf:"bytes,2,opt,name=request_body,json=requestBody,proto3" json:"request_body,omitempty"`
+	RequestPath     string                 `protobuf:"bytes,3,opt,name=request_path,json=requestPath,proto3" json:"request_path,omitempty"`
+	RequestMethod   string                 `protobuf:"bytes,4,opt,name=request_method,json=requestMethod,proto3" json:"request_method,omitempty"`
+	ResponseHeaders *Headers               `protobuf:"bytes,5,opt,name=response_headers,json=responseHeaders,proto3" json:"response_headers,omitempty"`
+	ResponseStatus  int32                  `protobuf:"varint,6,opt,name=response_status,json=responseStatus,proto3" json:"response_status,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ResponseStreamContext) Reset() {
+	*x = ResponseStreamContext{}
+	mi := &file_python_executor_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResponseStreamContext) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResponseStreamContext) ProtoMessage() {}
+
+func (x *ResponseStreamContext) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResponseStreamContext.ProtoReflect.Descriptor instead.
+func (*ResponseStreamContext) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *ResponseStreamContext) GetRequestHeaders() *Headers {
+	if x != nil {
+		return x.RequestHeaders
+	}
+	return nil
+}
+
+func (x *ResponseStreamContext) GetRequestBody() *Body {
+	if x != nil {
+		return x.RequestBody
+	}
+	return nil
+}
+
+func (x *ResponseStreamContext) GetRequestPath() string {
+	if x != nil {
+		return x.RequestPath
+	}
+	return ""
+}
+
+func (x *ResponseStreamContext) GetRequestMethod() string {
+	if x != nil {
+		return x.RequestMethod
+	}
+	return ""
+}
+
+func (x *ResponseStreamContext) GetResponseHeaders() *Headers {
+	if x != nil {
+		return x.ResponseHeaders
+	}
+	return nil
+}
+
+func (x *ResponseStreamContext) GetResponseStatus() int32 {
+	if x != nil {
+		return x.ResponseStatus
+	}
+	return 0
+}
+
+type RequestHeadersPayload struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *RequestHeaderContext  `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RequestHeadersPayload) Reset() {
+	*x = RequestHeadersPayload{}
+	mi := &file_python_executor_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestHeadersPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestHeadersPayload) ProtoMessage() {}
+
+func (x *RequestHeadersPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestHeadersPayload.ProtoReflect.Descriptor instead.
+func (*RequestHeadersPayload) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *RequestHeadersPayload) GetContext() *RequestHeaderContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+type RequestBodyPayload struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *RequestContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RequestBodyPayload) Reset() {
+	*x = RequestBodyPayload{}
+	mi := &file_python_executor_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestBodyPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestBodyPayload) ProtoMessage() {}
+
+func (x *RequestBodyPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestBodyPayload.ProtoReflect.Descriptor instead.
+func (*RequestBodyPayload) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *RequestBodyPayload) GetContext() *RequestContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+type ResponseHeadersPayload struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ResponseHeaderContext `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResponseHeadersPayload) Reset() {
+	*x = ResponseHeadersPayload{}
+	mi := &file_python_executor_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResponseHeadersPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResponseHeadersPayload) ProtoMessage() {}
+
+func (x *ResponseHeadersPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResponseHeadersPayload.ProtoReflect.Descriptor instead.
+func (*ResponseHeadersPayload) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *ResponseHeadersPayload) GetContext() *ResponseHeaderContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+type ResponseBodyPayload struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ResponseContext       `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResponseBodyPayload) Reset() {
+	*x = ResponseBodyPayload{}
+	mi := &file_python_executor_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResponseBodyPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResponseBodyPayload) ProtoMessage() {}
+
+func (x *ResponseBodyPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResponseBodyPayload.ProtoReflect.Descriptor instead.
+func (*ResponseBodyPayload) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *ResponseBodyPayload) GetContext() *ResponseContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+type NeedsMoreRequestDataPayload struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Accumulated   []byte                 `protobuf:"bytes,1,opt,name=accumulated,proto3" json:"accumulated,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NeedsMoreRequestDataPayload) Reset() {
+	*x = NeedsMoreRequestDataPayload{}
+	mi := &file_python_executor_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NeedsMoreRequestDataPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NeedsMoreRequestDataPayload) ProtoMessage() {}
+
+func (x *NeedsMoreRequestDataPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NeedsMoreRequestDataPayload.ProtoReflect.Descriptor instead.
+func (*NeedsMoreRequestDataPayload) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *NeedsMoreRequestDataPayload) GetAccumulated() []byte {
+	if x != nil {
+		return x.Accumulated
+	}
+	return nil
+}
+
+type RequestChunkPayload struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *RequestStreamContext  `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Chunk         *StreamBody            `protobuf:"bytes,2,opt,name=chunk,proto3" json:"chunk,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RequestChunkPayload) Reset() {
+	*x = RequestChunkPayload{}
+	mi := &file_python_executor_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestChunkPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestChunkPayload) ProtoMessage() {}
+
+func (x *RequestChunkPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestChunkPayload.ProtoReflect.Descriptor instead.
+func (*RequestChunkPayload) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *RequestChunkPayload) GetContext() *RequestStreamContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *RequestChunkPayload) GetChunk() *StreamBody {
+	if x != nil {
+		return x.Chunk
+	}
+	return nil
+}
+
+type NeedsMoreResponseDataPayload struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Accumulated   []byte                 `protobuf:"bytes,1,opt,name=accumulated,proto3" json:"accumulated,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NeedsMoreResponseDataPayload) Reset() {
+	*x = NeedsMoreResponseDataPayload{}
+	mi := &file_python_executor_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NeedsMoreResponseDataPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NeedsMoreResponseDataPayload) ProtoMessage() {}
+
+func (x *NeedsMoreResponseDataPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NeedsMoreResponseDataPayload.ProtoReflect.Descriptor instead.
+func (*NeedsMoreResponseDataPayload) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *NeedsMoreResponseDataPayload) GetAccumulated() []byte {
+	if x != nil {
+		return x.Accumulated
+	}
+	return nil
+}
+
+type ResponseChunkPayload struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ResponseStreamContext `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Chunk         *StreamBody            `protobuf:"bytes,2,opt,name=chunk,proto3" json:"chunk,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResponseChunkPayload) Reset() {
+	*x = ResponseChunkPayload{}
+	mi := &file_python_executor_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResponseChunkPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResponseChunkPayload) ProtoMessage() {}
+
+func (x *ResponseChunkPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResponseChunkPayload.ProtoReflect.Descriptor instead.
+func (*ResponseChunkPayload) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *ResponseChunkPayload) GetContext() *ResponseStreamContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *ResponseChunkPayload) GetChunk() *StreamBody {
+	if x != nil {
+		return x.Chunk
+	}
+	return nil
+}
+
+type CancelExecutionPayload struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TargetPhase   Phase                  `protobuf:"varint,1,opt,name=target_phase,json=targetPhase,proto3,enum=wso2.gateway.python.v1alpha2.Phase" json:"target_phase,omitempty"`
+	Reason        string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CancelExecutionPayload) Reset() {
+	*x = CancelExecutionPayload{}
+	mi := &file_python_executor_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CancelExecutionPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CancelExecutionPayload) ProtoMessage() {}
+
+func (x *CancelExecutionPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CancelExecutionPayload.ProtoReflect.Descriptor instead.
+func (*CancelExecutionPayload) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *CancelExecutionPayload) GetTargetPhase() Phase {
+	if x != nil {
+		return x.TargetPhase
+	}
+	return Phase_PHASE_UNSPECIFIED
+}
+
+func (x *CancelExecutionPayload) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
 type PolicyMetadata struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RouteName     string                 `protobuf:"bytes,1,opt,name=route_name,json=routeName,proto3" json:"route_name,omitempty"`
 	ApiId         string                 `protobuf:"bytes,2,opt,name=api_id,json=apiId,proto3" json:"api_id,omitempty"`
 	ApiName       string                 `protobuf:"bytes,3,opt,name=api_name,json=apiName,proto3" json:"api_name,omitempty"`
 	ApiVersion    string                 `protobuf:"bytes,4,opt,name=api_version,json=apiVersion,proto3" json:"api_version,omitempty"`
-	AttachedTo    string                 `protobuf:"bytes,5,opt,name=attached_to,json=attachedTo,proto3" json:"attached_to,omitempty"` // "api" or "route"
+	AttachedTo    string                 `protobuf:"bytes,5,opt,name=attached_to,json=attachedTo,proto3" json:"attached_to,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PolicyMetadata) Reset() {
 	*x = PolicyMetadata{}
-	mi := &file_python_executor_proto_msgTypes[10]
+	mi := &file_python_executor_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -962,7 +2621,7 @@ func (x *PolicyMetadata) String() string {
 func (*PolicyMetadata) ProtoMessage() {}
 
 func (x *PolicyMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[10]
+	mi := &file_python_executor_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -975,7 +2634,7 @@ func (x *PolicyMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PolicyMetadata.ProtoReflect.Descriptor instead.
 func (*PolicyMetadata) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{10}
+	return file_python_executor_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *PolicyMetadata) GetRouteName() string {
@@ -1013,32 +2672,29 @@ func (x *PolicyMetadata) GetAttachedTo() string {
 	return ""
 }
 
-type RequestActionResult struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to Action:
-	//
-	//	*RequestActionResult_ContinueRequest
-	//	*RequestActionResult_ImmediateResponse
-	Action        isRequestActionResult_Action `protobuf_oneof:"action"`
+type DropHeaderAction struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Action        DropHeaderActionType   `protobuf:"varint,1,opt,name=action,proto3,enum=wso2.gateway.python.v1alpha2.DropHeaderActionType" json:"action,omitempty"`
+	Headers       []string               `protobuf:"bytes,2,rep,name=headers,proto3" json:"headers,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *RequestActionResult) Reset() {
-	*x = RequestActionResult{}
-	mi := &file_python_executor_proto_msgTypes[11]
+func (x *DropHeaderAction) Reset() {
+	*x = DropHeaderAction{}
+	mi := &file_python_executor_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *RequestActionResult) String() string {
+func (x *DropHeaderAction) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*RequestActionResult) ProtoMessage() {}
+func (*DropHeaderAction) ProtoMessage() {}
 
-func (x *RequestActionResult) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[11]
+func (x *DropHeaderAction) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1049,77 +2705,52 @@ func (x *RequestActionResult) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use RequestActionResult.ProtoReflect.Descriptor instead.
-func (*RequestActionResult) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{11}
+// Deprecated: Use DropHeaderAction.ProtoReflect.Descriptor instead.
+func (*DropHeaderAction) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{32}
 }
 
-func (x *RequestActionResult) GetAction() isRequestActionResult_Action {
+func (x *DropHeaderAction) GetAction() DropHeaderActionType {
 	if x != nil {
 		return x.Action
 	}
-	return nil
+	return DropHeaderActionType_DROP_HEADER_ACTION_TYPE_UNSPECIFIED
 }
 
-func (x *RequestActionResult) GetContinueRequest() *UpstreamRequestModifications {
+func (x *DropHeaderAction) GetHeaders() []string {
 	if x != nil {
-		if x, ok := x.Action.(*RequestActionResult_ContinueRequest); ok {
-			return x.ContinueRequest
-		}
+		return x.Headers
 	}
 	return nil
 }
 
-func (x *RequestActionResult) GetImmediateResponse() *ImmediateResponseAction {
-	if x != nil {
-		if x, ok := x.Action.(*RequestActionResult_ImmediateResponse); ok {
-			return x.ImmediateResponse
-		}
-	}
-	return nil
+type ImmediateResponse struct {
+	state                 protoimpl.MessageState      `protogen:"open.v1"`
+	StatusCode            int32                       `protobuf:"varint,1,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
+	Headers               map[string]string           `protobuf:"bytes,2,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Body                  *wrapperspb.BytesValue      `protobuf:"bytes,3,opt,name=body,proto3" json:"body,omitempty"`
+	AnalyticsMetadata     *structpb.Struct            `protobuf:"bytes,4,opt,name=analytics_metadata,json=analyticsMetadata,proto3" json:"analytics_metadata,omitempty"`
+	DynamicMetadata       map[string]*structpb.Struct `protobuf:"bytes,5,rep,name=dynamic_metadata,json=dynamicMetadata,proto3" json:"dynamic_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	AnalyticsHeaderFilter *DropHeaderAction           `protobuf:"bytes,6,opt,name=analytics_header_filter,json=analyticsHeaderFilter,proto3" json:"analytics_header_filter,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
-type isRequestActionResult_Action interface {
-	isRequestActionResult_Action()
-}
-
-type RequestActionResult_ContinueRequest struct {
-	ContinueRequest *UpstreamRequestModifications `protobuf:"bytes,1,opt,name=continue_request,json=continueRequest,proto3,oneof"`
-}
-
-type RequestActionResult_ImmediateResponse struct {
-	ImmediateResponse *ImmediateResponseAction `protobuf:"bytes,2,opt,name=immediate_response,json=immediateResponse,proto3,oneof"`
-}
-
-func (*RequestActionResult_ContinueRequest) isRequestActionResult_Action() {}
-
-func (*RequestActionResult_ImmediateResponse) isRequestActionResult_Action() {}
-
-type ResponseActionResult struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Types that are valid to be assigned to Action:
-	//
-	//	*ResponseActionResult_ContinueResponse
-	Action        isResponseActionResult_Action `protobuf_oneof:"action"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ResponseActionResult) Reset() {
-	*x = ResponseActionResult{}
-	mi := &file_python_executor_proto_msgTypes[12]
+func (x *ImmediateResponse) Reset() {
+	*x = ImmediateResponse{}
+	mi := &file_python_executor_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ResponseActionResult) String() string {
+func (x *ImmediateResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ResponseActionResult) ProtoMessage() {}
+func (*ImmediateResponse) ProtoMessage() {}
 
-func (x *ResponseActionResult) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[12]
+func (x *ImmediateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1130,56 +2761,198 @@ func (x *ResponseActionResult) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ResponseActionResult.ProtoReflect.Descriptor instead.
-func (*ResponseActionResult) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{12}
+// Deprecated: Use ImmediateResponse.ProtoReflect.Descriptor instead.
+func (*ImmediateResponse) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{33}
 }
 
-func (x *ResponseActionResult) GetAction() isResponseActionResult_Action {
+func (x *ImmediateResponse) GetStatusCode() int32 {
 	if x != nil {
-		return x.Action
+		return x.StatusCode
+	}
+	return 0
+}
+
+func (x *ImmediateResponse) GetHeaders() map[string]string {
+	if x != nil {
+		return x.Headers
 	}
 	return nil
 }
 
-func (x *ResponseActionResult) GetContinueResponse() *UpstreamResponseModifications {
+func (x *ImmediateResponse) GetBody() *wrapperspb.BytesValue {
 	if x != nil {
-		if x, ok := x.Action.(*ResponseActionResult_ContinueResponse); ok {
-			return x.ContinueResponse
+		return x.Body
+	}
+	return nil
+}
+
+func (x *ImmediateResponse) GetAnalyticsMetadata() *structpb.Struct {
+	if x != nil {
+		return x.AnalyticsMetadata
+	}
+	return nil
+}
+
+func (x *ImmediateResponse) GetDynamicMetadata() map[string]*structpb.Struct {
+	if x != nil {
+		return x.DynamicMetadata
+	}
+	return nil
+}
+
+func (x *ImmediateResponse) GetAnalyticsHeaderFilter() *DropHeaderAction {
+	if x != nil {
+		return x.AnalyticsHeaderFilter
+	}
+	return nil
+}
+
+type UpstreamRequestHeaderModifications struct {
+	state                   protoimpl.MessageState      `protogen:"open.v1"`
+	HeadersToSet            map[string]string           `protobuf:"bytes,1,rep,name=headers_to_set,json=headersToSet,proto3" json:"headers_to_set,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	HeadersToRemove         []string                    `protobuf:"bytes,2,rep,name=headers_to_remove,json=headersToRemove,proto3" json:"headers_to_remove,omitempty"`
+	UpstreamName            *wrapperspb.StringValue     `protobuf:"bytes,3,opt,name=upstream_name,json=upstreamName,proto3" json:"upstream_name,omitempty"`
+	Path                    *wrapperspb.StringValue     `protobuf:"bytes,4,opt,name=path,proto3" json:"path,omitempty"`
+	Host                    *wrapperspb.StringValue     `protobuf:"bytes,5,opt,name=host,proto3" json:"host,omitempty"`
+	Method                  *wrapperspb.StringValue     `protobuf:"bytes,6,opt,name=method,proto3" json:"method,omitempty"`
+	QueryParametersToAdd    map[string]*StringList      `protobuf:"bytes,7,rep,name=query_parameters_to_add,json=queryParametersToAdd,proto3" json:"query_parameters_to_add,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	QueryParametersToRemove []string                    `protobuf:"bytes,8,rep,name=query_parameters_to_remove,json=queryParametersToRemove,proto3" json:"query_parameters_to_remove,omitempty"`
+	AnalyticsMetadata       *structpb.Struct            `protobuf:"bytes,9,opt,name=analytics_metadata,json=analyticsMetadata,proto3" json:"analytics_metadata,omitempty"`
+	DynamicMetadata         map[string]*structpb.Struct `protobuf:"bytes,10,rep,name=dynamic_metadata,json=dynamicMetadata,proto3" json:"dynamic_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	AnalyticsHeaderFilter   *DropHeaderAction           `protobuf:"bytes,11,opt,name=analytics_header_filter,json=analyticsHeaderFilter,proto3" json:"analytics_header_filter,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
+}
+
+func (x *UpstreamRequestHeaderModifications) Reset() {
+	*x = UpstreamRequestHeaderModifications{}
+	mi := &file_python_executor_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpstreamRequestHeaderModifications) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpstreamRequestHeaderModifications) ProtoMessage() {}
+
+func (x *UpstreamRequestHeaderModifications) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
 		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpstreamRequestHeaderModifications.ProtoReflect.Descriptor instead.
+func (*UpstreamRequestHeaderModifications) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *UpstreamRequestHeaderModifications) GetHeadersToSet() map[string]string {
+	if x != nil {
+		return x.HeadersToSet
 	}
 	return nil
 }
 
-type isResponseActionResult_Action interface {
-	isResponseActionResult_Action()
+func (x *UpstreamRequestHeaderModifications) GetHeadersToRemove() []string {
+	if x != nil {
+		return x.HeadersToRemove
+	}
+	return nil
 }
 
-type ResponseActionResult_ContinueResponse struct {
-	ContinueResponse *UpstreamResponseModifications `protobuf:"bytes,1,opt,name=continue_response,json=continueResponse,proto3,oneof"`
+func (x *UpstreamRequestHeaderModifications) GetUpstreamName() *wrapperspb.StringValue {
+	if x != nil {
+		return x.UpstreamName
+	}
+	return nil
 }
 
-func (*ResponseActionResult_ContinueResponse) isResponseActionResult_Action() {}
+func (x *UpstreamRequestHeaderModifications) GetPath() *wrapperspb.StringValue {
+	if x != nil {
+		return x.Path
+	}
+	return nil
+}
+
+func (x *UpstreamRequestHeaderModifications) GetHost() *wrapperspb.StringValue {
+	if x != nil {
+		return x.Host
+	}
+	return nil
+}
+
+func (x *UpstreamRequestHeaderModifications) GetMethod() *wrapperspb.StringValue {
+	if x != nil {
+		return x.Method
+	}
+	return nil
+}
+
+func (x *UpstreamRequestHeaderModifications) GetQueryParametersToAdd() map[string]*StringList {
+	if x != nil {
+		return x.QueryParametersToAdd
+	}
+	return nil
+}
+
+func (x *UpstreamRequestHeaderModifications) GetQueryParametersToRemove() []string {
+	if x != nil {
+		return x.QueryParametersToRemove
+	}
+	return nil
+}
+
+func (x *UpstreamRequestHeaderModifications) GetAnalyticsMetadata() *structpb.Struct {
+	if x != nil {
+		return x.AnalyticsMetadata
+	}
+	return nil
+}
+
+func (x *UpstreamRequestHeaderModifications) GetDynamicMetadata() map[string]*structpb.Struct {
+	if x != nil {
+		return x.DynamicMetadata
+	}
+	return nil
+}
+
+func (x *UpstreamRequestHeaderModifications) GetAnalyticsHeaderFilter() *DropHeaderAction {
+	if x != nil {
+		return x.AnalyticsHeaderFilter
+	}
+	return nil
+}
 
 type UpstreamRequestModifications struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	SetHeaders        map[string]string      `protobuf:"bytes,1,rep,name=set_headers,json=setHeaders,proto3" json:"set_headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	RemoveHeaders     []string               `protobuf:"bytes,2,rep,name=remove_headers,json=removeHeaders,proto3" json:"remove_headers,omitempty"`
-	AppendHeaders     map[string]*StringList `protobuf:"bytes,3,rep,name=append_headers,json=appendHeaders,proto3" json:"append_headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Body              []byte                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
-	BodyPresent       bool                   `protobuf:"varint,5,opt,name=body_present,json=bodyPresent,proto3" json:"body_present,omitempty"` // false means no body change, true means use body field (even if empty)
-	Path              string                 `protobuf:"bytes,6,opt,name=path,proto3" json:"path,omitempty"`
-	PathPresent       bool                   `protobuf:"varint,7,opt,name=path_present,json=pathPresent,proto3" json:"path_present,omitempty"`
-	Method            string                 `protobuf:"bytes,8,opt,name=method,proto3" json:"method,omitempty"`
-	MethodPresent     bool                   `protobuf:"varint,9,opt,name=method_present,json=methodPresent,proto3" json:"method_present,omitempty"`
-	AnalyticsMetadata *structpb.Struct       `protobuf:"bytes,10,opt,name=analytics_metadata,json=analyticsMetadata,proto3" json:"analytics_metadata,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state                   protoimpl.MessageState      `protogen:"open.v1"`
+	Body                    *wrapperspb.BytesValue      `protobuf:"bytes,1,opt,name=body,proto3" json:"body,omitempty"`
+	HeadersToSet            map[string]string           `protobuf:"bytes,2,rep,name=headers_to_set,json=headersToSet,proto3" json:"headers_to_set,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	HeadersToRemove         []string                    `protobuf:"bytes,3,rep,name=headers_to_remove,json=headersToRemove,proto3" json:"headers_to_remove,omitempty"`
+	UpstreamName            *wrapperspb.StringValue     `protobuf:"bytes,4,opt,name=upstream_name,json=upstreamName,proto3" json:"upstream_name,omitempty"`
+	Path                    *wrapperspb.StringValue     `protobuf:"bytes,5,opt,name=path,proto3" json:"path,omitempty"`
+	Host                    *wrapperspb.StringValue     `protobuf:"bytes,6,opt,name=host,proto3" json:"host,omitempty"`
+	Method                  *wrapperspb.StringValue     `protobuf:"bytes,7,opt,name=method,proto3" json:"method,omitempty"`
+	QueryParametersToAdd    map[string]*StringList      `protobuf:"bytes,8,rep,name=query_parameters_to_add,json=queryParametersToAdd,proto3" json:"query_parameters_to_add,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	QueryParametersToRemove []string                    `protobuf:"bytes,9,rep,name=query_parameters_to_remove,json=queryParametersToRemove,proto3" json:"query_parameters_to_remove,omitempty"`
+	AnalyticsMetadata       *structpb.Struct            `protobuf:"bytes,10,opt,name=analytics_metadata,json=analyticsMetadata,proto3" json:"analytics_metadata,omitempty"`
+	DynamicMetadata         map[string]*structpb.Struct `protobuf:"bytes,11,rep,name=dynamic_metadata,json=dynamicMetadata,proto3" json:"dynamic_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	AnalyticsHeaderFilter   *DropHeaderAction           `protobuf:"bytes,12,opt,name=analytics_header_filter,json=analyticsHeaderFilter,proto3" json:"analytics_header_filter,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *UpstreamRequestModifications) Reset() {
 	*x = UpstreamRequestModifications{}
-	mi := &file_python_executor_proto_msgTypes[13]
+	mi := &file_python_executor_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1191,7 +2964,7 @@ func (x *UpstreamRequestModifications) String() string {
 func (*UpstreamRequestModifications) ProtoMessage() {}
 
 func (x *UpstreamRequestModifications) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[13]
+	mi := &file_python_executor_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1204,70 +2977,70 @@ func (x *UpstreamRequestModifications) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpstreamRequestModifications.ProtoReflect.Descriptor instead.
 func (*UpstreamRequestModifications) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{13}
+	return file_python_executor_proto_rawDescGZIP(), []int{35}
 }
 
-func (x *UpstreamRequestModifications) GetSetHeaders() map[string]string {
-	if x != nil {
-		return x.SetHeaders
-	}
-	return nil
-}
-
-func (x *UpstreamRequestModifications) GetRemoveHeaders() []string {
-	if x != nil {
-		return x.RemoveHeaders
-	}
-	return nil
-}
-
-func (x *UpstreamRequestModifications) GetAppendHeaders() map[string]*StringList {
-	if x != nil {
-		return x.AppendHeaders
-	}
-	return nil
-}
-
-func (x *UpstreamRequestModifications) GetBody() []byte {
+func (x *UpstreamRequestModifications) GetBody() *wrapperspb.BytesValue {
 	if x != nil {
 		return x.Body
 	}
 	return nil
 }
 
-func (x *UpstreamRequestModifications) GetBodyPresent() bool {
+func (x *UpstreamRequestModifications) GetHeadersToSet() map[string]string {
 	if x != nil {
-		return x.BodyPresent
+		return x.HeadersToSet
 	}
-	return false
+	return nil
 }
 
-func (x *UpstreamRequestModifications) GetPath() string {
+func (x *UpstreamRequestModifications) GetHeadersToRemove() []string {
+	if x != nil {
+		return x.HeadersToRemove
+	}
+	return nil
+}
+
+func (x *UpstreamRequestModifications) GetUpstreamName() *wrapperspb.StringValue {
+	if x != nil {
+		return x.UpstreamName
+	}
+	return nil
+}
+
+func (x *UpstreamRequestModifications) GetPath() *wrapperspb.StringValue {
 	if x != nil {
 		return x.Path
 	}
-	return ""
+	return nil
 }
 
-func (x *UpstreamRequestModifications) GetPathPresent() bool {
+func (x *UpstreamRequestModifications) GetHost() *wrapperspb.StringValue {
 	if x != nil {
-		return x.PathPresent
+		return x.Host
 	}
-	return false
+	return nil
 }
 
-func (x *UpstreamRequestModifications) GetMethod() string {
+func (x *UpstreamRequestModifications) GetMethod() *wrapperspb.StringValue {
 	if x != nil {
 		return x.Method
 	}
-	return ""
+	return nil
 }
 
-func (x *UpstreamRequestModifications) GetMethodPresent() bool {
+func (x *UpstreamRequestModifications) GetQueryParametersToAdd() map[string]*StringList {
 	if x != nil {
-		return x.MethodPresent
+		return x.QueryParametersToAdd
 	}
-	return false
+	return nil
+}
+
+func (x *UpstreamRequestModifications) GetQueryParametersToRemove() []string {
+	if x != nil {
+		return x.QueryParametersToRemove
+	}
+	return nil
 }
 
 func (x *UpstreamRequestModifications) GetAnalyticsMetadata() *structpb.Struct {
@@ -1277,35 +3050,46 @@ func (x *UpstreamRequestModifications) GetAnalyticsMetadata() *structpb.Struct {
 	return nil
 }
 
-type UpstreamResponseModifications struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	SetHeaders        map[string]string      `protobuf:"bytes,1,rep,name=set_headers,json=setHeaders,proto3" json:"set_headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	RemoveHeaders     []string               `protobuf:"bytes,2,rep,name=remove_headers,json=removeHeaders,proto3" json:"remove_headers,omitempty"`
-	AppendHeaders     map[string]*StringList `protobuf:"bytes,3,rep,name=append_headers,json=appendHeaders,proto3" json:"append_headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Body              []byte                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
-	BodyPresent       bool                   `protobuf:"varint,5,opt,name=body_present,json=bodyPresent,proto3" json:"body_present,omitempty"`
-	StatusCode        int32                  `protobuf:"varint,6,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
-	StatusCodePresent bool                   `protobuf:"varint,7,opt,name=status_code_present,json=statusCodePresent,proto3" json:"status_code_present,omitempty"`
-	AnalyticsMetadata *structpb.Struct       `protobuf:"bytes,8,opt,name=analytics_metadata,json=analyticsMetadata,proto3" json:"analytics_metadata,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+func (x *UpstreamRequestModifications) GetDynamicMetadata() map[string]*structpb.Struct {
+	if x != nil {
+		return x.DynamicMetadata
+	}
+	return nil
 }
 
-func (x *UpstreamResponseModifications) Reset() {
-	*x = UpstreamResponseModifications{}
-	mi := &file_python_executor_proto_msgTypes[14]
+func (x *UpstreamRequestModifications) GetAnalyticsHeaderFilter() *DropHeaderAction {
+	if x != nil {
+		return x.AnalyticsHeaderFilter
+	}
+	return nil
+}
+
+type DownstreamResponseHeaderModifications struct {
+	state                 protoimpl.MessageState      `protogen:"open.v1"`
+	HeadersToSet          map[string]string           `protobuf:"bytes,1,rep,name=headers_to_set,json=headersToSet,proto3" json:"headers_to_set,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	HeadersToRemove       []string                    `protobuf:"bytes,2,rep,name=headers_to_remove,json=headersToRemove,proto3" json:"headers_to_remove,omitempty"`
+	AnalyticsMetadata     *structpb.Struct            `protobuf:"bytes,3,opt,name=analytics_metadata,json=analyticsMetadata,proto3" json:"analytics_metadata,omitempty"`
+	DynamicMetadata       map[string]*structpb.Struct `protobuf:"bytes,4,rep,name=dynamic_metadata,json=dynamicMetadata,proto3" json:"dynamic_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	AnalyticsHeaderFilter *DropHeaderAction           `protobuf:"bytes,5,opt,name=analytics_header_filter,json=analyticsHeaderFilter,proto3" json:"analytics_header_filter,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *DownstreamResponseHeaderModifications) Reset() {
+	*x = DownstreamResponseHeaderModifications{}
+	mi := &file_python_executor_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *UpstreamResponseModifications) String() string {
+func (x *DownstreamResponseHeaderModifications) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*UpstreamResponseModifications) ProtoMessage() {}
+func (*DownstreamResponseHeaderModifications) ProtoMessage() {}
 
-func (x *UpstreamResponseModifications) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[14]
+func (x *DownstreamResponseHeaderModifications) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1316,92 +3100,74 @@ func (x *UpstreamResponseModifications) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use UpstreamResponseModifications.ProtoReflect.Descriptor instead.
-func (*UpstreamResponseModifications) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{14}
+// Deprecated: Use DownstreamResponseHeaderModifications.ProtoReflect.Descriptor instead.
+func (*DownstreamResponseHeaderModifications) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{36}
 }
 
-func (x *UpstreamResponseModifications) GetSetHeaders() map[string]string {
+func (x *DownstreamResponseHeaderModifications) GetHeadersToSet() map[string]string {
 	if x != nil {
-		return x.SetHeaders
+		return x.HeadersToSet
 	}
 	return nil
 }
 
-func (x *UpstreamResponseModifications) GetRemoveHeaders() []string {
+func (x *DownstreamResponseHeaderModifications) GetHeadersToRemove() []string {
 	if x != nil {
-		return x.RemoveHeaders
+		return x.HeadersToRemove
 	}
 	return nil
 }
 
-func (x *UpstreamResponseModifications) GetAppendHeaders() map[string]*StringList {
-	if x != nil {
-		return x.AppendHeaders
-	}
-	return nil
-}
-
-func (x *UpstreamResponseModifications) GetBody() []byte {
-	if x != nil {
-		return x.Body
-	}
-	return nil
-}
-
-func (x *UpstreamResponseModifications) GetBodyPresent() bool {
-	if x != nil {
-		return x.BodyPresent
-	}
-	return false
-}
-
-func (x *UpstreamResponseModifications) GetStatusCode() int32 {
-	if x != nil {
-		return x.StatusCode
-	}
-	return 0
-}
-
-func (x *UpstreamResponseModifications) GetStatusCodePresent() bool {
-	if x != nil {
-		return x.StatusCodePresent
-	}
-	return false
-}
-
-func (x *UpstreamResponseModifications) GetAnalyticsMetadata() *structpb.Struct {
+func (x *DownstreamResponseHeaderModifications) GetAnalyticsMetadata() *structpb.Struct {
 	if x != nil {
 		return x.AnalyticsMetadata
 	}
 	return nil
 }
 
-type ImmediateResponseAction struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	StatusCode        int32                  `protobuf:"varint,1,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
-	Headers           map[string]string      `protobuf:"bytes,2,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Body              []byte                 `protobuf:"bytes,3,opt,name=body,proto3" json:"body,omitempty"`
-	AnalyticsMetadata *structpb.Struct       `protobuf:"bytes,4,opt,name=analytics_metadata,json=analyticsMetadata,proto3" json:"analytics_metadata,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+func (x *DownstreamResponseHeaderModifications) GetDynamicMetadata() map[string]*structpb.Struct {
+	if x != nil {
+		return x.DynamicMetadata
+	}
+	return nil
 }
 
-func (x *ImmediateResponseAction) Reset() {
-	*x = ImmediateResponseAction{}
-	mi := &file_python_executor_proto_msgTypes[15]
+func (x *DownstreamResponseHeaderModifications) GetAnalyticsHeaderFilter() *DropHeaderAction {
+	if x != nil {
+		return x.AnalyticsHeaderFilter
+	}
+	return nil
+}
+
+type DownstreamResponseModifications struct {
+	state                 protoimpl.MessageState      `protogen:"open.v1"`
+	Body                  *wrapperspb.BytesValue      `protobuf:"bytes,1,opt,name=body,proto3" json:"body,omitempty"`
+	StatusCode            *wrapperspb.Int32Value      `protobuf:"bytes,2,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"`
+	HeadersToSet          map[string]string           `protobuf:"bytes,3,rep,name=headers_to_set,json=headersToSet,proto3" json:"headers_to_set,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	HeadersToRemove       []string                    `protobuf:"bytes,4,rep,name=headers_to_remove,json=headersToRemove,proto3" json:"headers_to_remove,omitempty"`
+	AnalyticsMetadata     *structpb.Struct            `protobuf:"bytes,5,opt,name=analytics_metadata,json=analyticsMetadata,proto3" json:"analytics_metadata,omitempty"`
+	DynamicMetadata       map[string]*structpb.Struct `protobuf:"bytes,6,rep,name=dynamic_metadata,json=dynamicMetadata,proto3" json:"dynamic_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	AnalyticsHeaderFilter *DropHeaderAction           `protobuf:"bytes,7,opt,name=analytics_header_filter,json=analyticsHeaderFilter,proto3" json:"analytics_header_filter,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *DownstreamResponseModifications) Reset() {
+	*x = DownstreamResponseModifications{}
+	mi := &file_python_executor_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ImmediateResponseAction) String() string {
+func (x *DownstreamResponseModifications) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ImmediateResponseAction) ProtoMessage() {}
+func (*DownstreamResponseModifications) ProtoMessage() {}
 
-func (x *ImmediateResponseAction) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[15]
+func (x *DownstreamResponseModifications) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1412,37 +3178,740 @@ func (x *ImmediateResponseAction) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ImmediateResponseAction.ProtoReflect.Descriptor instead.
-func (*ImmediateResponseAction) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{15}
+// Deprecated: Use DownstreamResponseModifications.ProtoReflect.Descriptor instead.
+func (*DownstreamResponseModifications) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{37}
 }
 
-func (x *ImmediateResponseAction) GetStatusCode() int32 {
-	if x != nil {
-		return x.StatusCode
-	}
-	return 0
-}
-
-func (x *ImmediateResponseAction) GetHeaders() map[string]string {
-	if x != nil {
-		return x.Headers
-	}
-	return nil
-}
-
-func (x *ImmediateResponseAction) GetBody() []byte {
+func (x *DownstreamResponseModifications) GetBody() *wrapperspb.BytesValue {
 	if x != nil {
 		return x.Body
 	}
 	return nil
 }
 
-func (x *ImmediateResponseAction) GetAnalyticsMetadata() *structpb.Struct {
+func (x *DownstreamResponseModifications) GetStatusCode() *wrapperspb.Int32Value {
+	if x != nil {
+		return x.StatusCode
+	}
+	return nil
+}
+
+func (x *DownstreamResponseModifications) GetHeadersToSet() map[string]string {
+	if x != nil {
+		return x.HeadersToSet
+	}
+	return nil
+}
+
+func (x *DownstreamResponseModifications) GetHeadersToRemove() []string {
+	if x != nil {
+		return x.HeadersToRemove
+	}
+	return nil
+}
+
+func (x *DownstreamResponseModifications) GetAnalyticsMetadata() *structpb.Struct {
 	if x != nil {
 		return x.AnalyticsMetadata
 	}
 	return nil
+}
+
+func (x *DownstreamResponseModifications) GetDynamicMetadata() map[string]*structpb.Struct {
+	if x != nil {
+		return x.DynamicMetadata
+	}
+	return nil
+}
+
+func (x *DownstreamResponseModifications) GetAnalyticsHeaderFilter() *DropHeaderAction {
+	if x != nil {
+		return x.AnalyticsHeaderFilter
+	}
+	return nil
+}
+
+type ForwardRequestChunk struct {
+	state             protoimpl.MessageState      `protogen:"open.v1"`
+	Body              *wrapperspb.BytesValue      `protobuf:"bytes,1,opt,name=body,proto3" json:"body,omitempty"`
+	AnalyticsMetadata *structpb.Struct            `protobuf:"bytes,2,opt,name=analytics_metadata,json=analyticsMetadata,proto3" json:"analytics_metadata,omitempty"`
+	DynamicMetadata   map[string]*structpb.Struct `protobuf:"bytes,3,rep,name=dynamic_metadata,json=dynamicMetadata,proto3" json:"dynamic_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *ForwardRequestChunk) Reset() {
+	*x = ForwardRequestChunk{}
+	mi := &file_python_executor_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ForwardRequestChunk) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ForwardRequestChunk) ProtoMessage() {}
+
+func (x *ForwardRequestChunk) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ForwardRequestChunk.ProtoReflect.Descriptor instead.
+func (*ForwardRequestChunk) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *ForwardRequestChunk) GetBody() *wrapperspb.BytesValue {
+	if x != nil {
+		return x.Body
+	}
+	return nil
+}
+
+func (x *ForwardRequestChunk) GetAnalyticsMetadata() *structpb.Struct {
+	if x != nil {
+		return x.AnalyticsMetadata
+	}
+	return nil
+}
+
+func (x *ForwardRequestChunk) GetDynamicMetadata() map[string]*structpb.Struct {
+	if x != nil {
+		return x.DynamicMetadata
+	}
+	return nil
+}
+
+type ForwardResponseChunk struct {
+	state             protoimpl.MessageState      `protogen:"open.v1"`
+	Body              *wrapperspb.BytesValue      `protobuf:"bytes,1,opt,name=body,proto3" json:"body,omitempty"`
+	AnalyticsMetadata *structpb.Struct            `protobuf:"bytes,2,opt,name=analytics_metadata,json=analyticsMetadata,proto3" json:"analytics_metadata,omitempty"`
+	DynamicMetadata   map[string]*structpb.Struct `protobuf:"bytes,3,rep,name=dynamic_metadata,json=dynamicMetadata,proto3" json:"dynamic_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *ForwardResponseChunk) Reset() {
+	*x = ForwardResponseChunk{}
+	mi := &file_python_executor_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ForwardResponseChunk) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ForwardResponseChunk) ProtoMessage() {}
+
+func (x *ForwardResponseChunk) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ForwardResponseChunk.ProtoReflect.Descriptor instead.
+func (*ForwardResponseChunk) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *ForwardResponseChunk) GetBody() *wrapperspb.BytesValue {
+	if x != nil {
+		return x.Body
+	}
+	return nil
+}
+
+func (x *ForwardResponseChunk) GetAnalyticsMetadata() *structpb.Struct {
+	if x != nil {
+		return x.AnalyticsMetadata
+	}
+	return nil
+}
+
+func (x *ForwardResponseChunk) GetDynamicMetadata() map[string]*structpb.Struct {
+	if x != nil {
+		return x.DynamicMetadata
+	}
+	return nil
+}
+
+type TerminateResponseChunk struct {
+	state             protoimpl.MessageState      `protogen:"open.v1"`
+	Body              *wrapperspb.BytesValue      `protobuf:"bytes,1,opt,name=body,proto3" json:"body,omitempty"`
+	AnalyticsMetadata *structpb.Struct            `protobuf:"bytes,2,opt,name=analytics_metadata,json=analyticsMetadata,proto3" json:"analytics_metadata,omitempty"`
+	DynamicMetadata   map[string]*structpb.Struct `protobuf:"bytes,3,rep,name=dynamic_metadata,json=dynamicMetadata,proto3" json:"dynamic_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *TerminateResponseChunk) Reset() {
+	*x = TerminateResponseChunk{}
+	mi := &file_python_executor_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TerminateResponseChunk) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TerminateResponseChunk) ProtoMessage() {}
+
+func (x *TerminateResponseChunk) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TerminateResponseChunk.ProtoReflect.Descriptor instead.
+func (*TerminateResponseChunk) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *TerminateResponseChunk) GetBody() *wrapperspb.BytesValue {
+	if x != nil {
+		return x.Body
+	}
+	return nil
+}
+
+func (x *TerminateResponseChunk) GetAnalyticsMetadata() *structpb.Struct {
+	if x != nil {
+		return x.AnalyticsMetadata
+	}
+	return nil
+}
+
+func (x *TerminateResponseChunk) GetDynamicMetadata() map[string]*structpb.Struct {
+	if x != nil {
+		return x.DynamicMetadata
+	}
+	return nil
+}
+
+type RequestHeaderActionPayload struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Action:
+	//
+	//	*RequestHeaderActionPayload_UpstreamRequestHeaderModifications
+	//	*RequestHeaderActionPayload_ImmediateResponse
+	Action        isRequestHeaderActionPayload_Action `protobuf_oneof:"action"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RequestHeaderActionPayload) Reset() {
+	*x = RequestHeaderActionPayload{}
+	mi := &file_python_executor_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestHeaderActionPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestHeaderActionPayload) ProtoMessage() {}
+
+func (x *RequestHeaderActionPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestHeaderActionPayload.ProtoReflect.Descriptor instead.
+func (*RequestHeaderActionPayload) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *RequestHeaderActionPayload) GetAction() isRequestHeaderActionPayload_Action {
+	if x != nil {
+		return x.Action
+	}
+	return nil
+}
+
+func (x *RequestHeaderActionPayload) GetUpstreamRequestHeaderModifications() *UpstreamRequestHeaderModifications {
+	if x != nil {
+		if x, ok := x.Action.(*RequestHeaderActionPayload_UpstreamRequestHeaderModifications); ok {
+			return x.UpstreamRequestHeaderModifications
+		}
+	}
+	return nil
+}
+
+func (x *RequestHeaderActionPayload) GetImmediateResponse() *ImmediateResponse {
+	if x != nil {
+		if x, ok := x.Action.(*RequestHeaderActionPayload_ImmediateResponse); ok {
+			return x.ImmediateResponse
+		}
+	}
+	return nil
+}
+
+type isRequestHeaderActionPayload_Action interface {
+	isRequestHeaderActionPayload_Action()
+}
+
+type RequestHeaderActionPayload_UpstreamRequestHeaderModifications struct {
+	UpstreamRequestHeaderModifications *UpstreamRequestHeaderModifications `protobuf:"bytes,1,opt,name=upstream_request_header_modifications,json=upstreamRequestHeaderModifications,proto3,oneof"`
+}
+
+type RequestHeaderActionPayload_ImmediateResponse struct {
+	ImmediateResponse *ImmediateResponse `protobuf:"bytes,2,opt,name=immediate_response,json=immediateResponse,proto3,oneof"`
+}
+
+func (*RequestHeaderActionPayload_UpstreamRequestHeaderModifications) isRequestHeaderActionPayload_Action() {
+}
+
+func (*RequestHeaderActionPayload_ImmediateResponse) isRequestHeaderActionPayload_Action() {}
+
+type RequestActionPayload struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Action:
+	//
+	//	*RequestActionPayload_UpstreamRequestModifications
+	//	*RequestActionPayload_ImmediateResponse
+	Action        isRequestActionPayload_Action `protobuf_oneof:"action"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RequestActionPayload) Reset() {
+	*x = RequestActionPayload{}
+	mi := &file_python_executor_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestActionPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestActionPayload) ProtoMessage() {}
+
+func (x *RequestActionPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestActionPayload.ProtoReflect.Descriptor instead.
+func (*RequestActionPayload) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *RequestActionPayload) GetAction() isRequestActionPayload_Action {
+	if x != nil {
+		return x.Action
+	}
+	return nil
+}
+
+func (x *RequestActionPayload) GetUpstreamRequestModifications() *UpstreamRequestModifications {
+	if x != nil {
+		if x, ok := x.Action.(*RequestActionPayload_UpstreamRequestModifications); ok {
+			return x.UpstreamRequestModifications
+		}
+	}
+	return nil
+}
+
+func (x *RequestActionPayload) GetImmediateResponse() *ImmediateResponse {
+	if x != nil {
+		if x, ok := x.Action.(*RequestActionPayload_ImmediateResponse); ok {
+			return x.ImmediateResponse
+		}
+	}
+	return nil
+}
+
+type isRequestActionPayload_Action interface {
+	isRequestActionPayload_Action()
+}
+
+type RequestActionPayload_UpstreamRequestModifications struct {
+	UpstreamRequestModifications *UpstreamRequestModifications `protobuf:"bytes,1,opt,name=upstream_request_modifications,json=upstreamRequestModifications,proto3,oneof"`
+}
+
+type RequestActionPayload_ImmediateResponse struct {
+	ImmediateResponse *ImmediateResponse `protobuf:"bytes,2,opt,name=immediate_response,json=immediateResponse,proto3,oneof"`
+}
+
+func (*RequestActionPayload_UpstreamRequestModifications) isRequestActionPayload_Action() {}
+
+func (*RequestActionPayload_ImmediateResponse) isRequestActionPayload_Action() {}
+
+type ResponseHeaderActionPayload struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Action:
+	//
+	//	*ResponseHeaderActionPayload_DownstreamResponseHeaderModifications
+	//	*ResponseHeaderActionPayload_ImmediateResponse
+	Action        isResponseHeaderActionPayload_Action `protobuf_oneof:"action"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResponseHeaderActionPayload) Reset() {
+	*x = ResponseHeaderActionPayload{}
+	mi := &file_python_executor_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResponseHeaderActionPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResponseHeaderActionPayload) ProtoMessage() {}
+
+func (x *ResponseHeaderActionPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResponseHeaderActionPayload.ProtoReflect.Descriptor instead.
+func (*ResponseHeaderActionPayload) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *ResponseHeaderActionPayload) GetAction() isResponseHeaderActionPayload_Action {
+	if x != nil {
+		return x.Action
+	}
+	return nil
+}
+
+func (x *ResponseHeaderActionPayload) GetDownstreamResponseHeaderModifications() *DownstreamResponseHeaderModifications {
+	if x != nil {
+		if x, ok := x.Action.(*ResponseHeaderActionPayload_DownstreamResponseHeaderModifications); ok {
+			return x.DownstreamResponseHeaderModifications
+		}
+	}
+	return nil
+}
+
+func (x *ResponseHeaderActionPayload) GetImmediateResponse() *ImmediateResponse {
+	if x != nil {
+		if x, ok := x.Action.(*ResponseHeaderActionPayload_ImmediateResponse); ok {
+			return x.ImmediateResponse
+		}
+	}
+	return nil
+}
+
+type isResponseHeaderActionPayload_Action interface {
+	isResponseHeaderActionPayload_Action()
+}
+
+type ResponseHeaderActionPayload_DownstreamResponseHeaderModifications struct {
+	DownstreamResponseHeaderModifications *DownstreamResponseHeaderModifications `protobuf:"bytes,1,opt,name=downstream_response_header_modifications,json=downstreamResponseHeaderModifications,proto3,oneof"`
+}
+
+type ResponseHeaderActionPayload_ImmediateResponse struct {
+	ImmediateResponse *ImmediateResponse `protobuf:"bytes,2,opt,name=immediate_response,json=immediateResponse,proto3,oneof"`
+}
+
+func (*ResponseHeaderActionPayload_DownstreamResponseHeaderModifications) isResponseHeaderActionPayload_Action() {
+}
+
+func (*ResponseHeaderActionPayload_ImmediateResponse) isResponseHeaderActionPayload_Action() {}
+
+type ResponseActionPayload struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Action:
+	//
+	//	*ResponseActionPayload_DownstreamResponseModifications
+	//	*ResponseActionPayload_ImmediateResponse
+	Action        isResponseActionPayload_Action `protobuf_oneof:"action"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResponseActionPayload) Reset() {
+	*x = ResponseActionPayload{}
+	mi := &file_python_executor_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResponseActionPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResponseActionPayload) ProtoMessage() {}
+
+func (x *ResponseActionPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResponseActionPayload.ProtoReflect.Descriptor instead.
+func (*ResponseActionPayload) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{44}
+}
+
+func (x *ResponseActionPayload) GetAction() isResponseActionPayload_Action {
+	if x != nil {
+		return x.Action
+	}
+	return nil
+}
+
+func (x *ResponseActionPayload) GetDownstreamResponseModifications() *DownstreamResponseModifications {
+	if x != nil {
+		if x, ok := x.Action.(*ResponseActionPayload_DownstreamResponseModifications); ok {
+			return x.DownstreamResponseModifications
+		}
+	}
+	return nil
+}
+
+func (x *ResponseActionPayload) GetImmediateResponse() *ImmediateResponse {
+	if x != nil {
+		if x, ok := x.Action.(*ResponseActionPayload_ImmediateResponse); ok {
+			return x.ImmediateResponse
+		}
+	}
+	return nil
+}
+
+type isResponseActionPayload_Action interface {
+	isResponseActionPayload_Action()
+}
+
+type ResponseActionPayload_DownstreamResponseModifications struct {
+	DownstreamResponseModifications *DownstreamResponseModifications `protobuf:"bytes,1,opt,name=downstream_response_modifications,json=downstreamResponseModifications,proto3,oneof"`
+}
+
+type ResponseActionPayload_ImmediateResponse struct {
+	ImmediateResponse *ImmediateResponse `protobuf:"bytes,2,opt,name=immediate_response,json=immediateResponse,proto3,oneof"`
+}
+
+func (*ResponseActionPayload_DownstreamResponseModifications) isResponseActionPayload_Action() {}
+
+func (*ResponseActionPayload_ImmediateResponse) isResponseActionPayload_Action() {}
+
+type NeedsMoreDecisionPayload struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NeedsMore     bool                   `protobuf:"varint,1,opt,name=needs_more,json=needsMore,proto3" json:"needs_more,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NeedsMoreDecisionPayload) Reset() {
+	*x = NeedsMoreDecisionPayload{}
+	mi := &file_python_executor_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NeedsMoreDecisionPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NeedsMoreDecisionPayload) ProtoMessage() {}
+
+func (x *NeedsMoreDecisionPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NeedsMoreDecisionPayload.ProtoReflect.Descriptor instead.
+func (*NeedsMoreDecisionPayload) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{45}
+}
+
+func (x *NeedsMoreDecisionPayload) GetNeedsMore() bool {
+	if x != nil {
+		return x.NeedsMore
+	}
+	return false
+}
+
+type StreamingRequestActionPayload struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	ForwardRequestChunk *ForwardRequestChunk   `protobuf:"bytes,1,opt,name=forward_request_chunk,json=forwardRequestChunk,proto3" json:"forward_request_chunk,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *StreamingRequestActionPayload) Reset() {
+	*x = StreamingRequestActionPayload{}
+	mi := &file_python_executor_proto_msgTypes[46]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StreamingRequestActionPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StreamingRequestActionPayload) ProtoMessage() {}
+
+func (x *StreamingRequestActionPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[46]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StreamingRequestActionPayload.ProtoReflect.Descriptor instead.
+func (*StreamingRequestActionPayload) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{46}
+}
+
+func (x *StreamingRequestActionPayload) GetForwardRequestChunk() *ForwardRequestChunk {
+	if x != nil {
+		return x.ForwardRequestChunk
+	}
+	return nil
+}
+
+type StreamingResponseActionPayload struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Action:
+	//
+	//	*StreamingResponseActionPayload_ForwardResponseChunk
+	//	*StreamingResponseActionPayload_TerminateResponseChunk
+	Action        isStreamingResponseActionPayload_Action `protobuf_oneof:"action"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StreamingResponseActionPayload) Reset() {
+	*x = StreamingResponseActionPayload{}
+	mi := &file_python_executor_proto_msgTypes[47]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StreamingResponseActionPayload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StreamingResponseActionPayload) ProtoMessage() {}
+
+func (x *StreamingResponseActionPayload) ProtoReflect() protoreflect.Message {
+	mi := &file_python_executor_proto_msgTypes[47]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StreamingResponseActionPayload.ProtoReflect.Descriptor instead.
+func (*StreamingResponseActionPayload) Descriptor() ([]byte, []int) {
+	return file_python_executor_proto_rawDescGZIP(), []int{47}
+}
+
+func (x *StreamingResponseActionPayload) GetAction() isStreamingResponseActionPayload_Action {
+	if x != nil {
+		return x.Action
+	}
+	return nil
+}
+
+func (x *StreamingResponseActionPayload) GetForwardResponseChunk() *ForwardResponseChunk {
+	if x != nil {
+		if x, ok := x.Action.(*StreamingResponseActionPayload_ForwardResponseChunk); ok {
+			return x.ForwardResponseChunk
+		}
+	}
+	return nil
+}
+
+func (x *StreamingResponseActionPayload) GetTerminateResponseChunk() *TerminateResponseChunk {
+	if x != nil {
+		if x, ok := x.Action.(*StreamingResponseActionPayload_TerminateResponseChunk); ok {
+			return x.TerminateResponseChunk
+		}
+	}
+	return nil
+}
+
+type isStreamingResponseActionPayload_Action interface {
+	isStreamingResponseActionPayload_Action()
+}
+
+type StreamingResponseActionPayload_ForwardResponseChunk struct {
+	ForwardResponseChunk *ForwardResponseChunk `protobuf:"bytes,1,opt,name=forward_response_chunk,json=forwardResponseChunk,proto3,oneof"`
+}
+
+type StreamingResponseActionPayload_TerminateResponseChunk struct {
+	TerminateResponseChunk *TerminateResponseChunk `protobuf:"bytes,2,opt,name=terminate_response_chunk,json=terminateResponseChunk,proto3,oneof"`
+}
+
+func (*StreamingResponseActionPayload_ForwardResponseChunk) isStreamingResponseActionPayload_Action() {
+}
+
+func (*StreamingResponseActionPayload_TerminateResponseChunk) isStreamingResponseActionPayload_Action() {
 }
 
 type ExecutionError struct {
@@ -1450,14 +3919,14 @@ type ExecutionError struct {
 	Message       string                 `protobuf:"bytes,1,opt,name=message,proto3" json:"message,omitempty"`
 	PolicyName    string                 `protobuf:"bytes,2,opt,name=policy_name,json=policyName,proto3" json:"policy_name,omitempty"`
 	PolicyVersion string                 `protobuf:"bytes,3,opt,name=policy_version,json=policyVersion,proto3" json:"policy_version,omitempty"`
-	ErrorType     string                 `protobuf:"bytes,4,opt,name=error_type,json=errorType,proto3" json:"error_type,omitempty"` // "execution_error", "timeout"
+	ErrorType     string                 `protobuf:"bytes,4,opt,name=error_type,json=errorType,proto3" json:"error_type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ExecutionError) Reset() {
 	*x = ExecutionError{}
-	mi := &file_python_executor_proto_msgTypes[16]
+	mi := &file_python_executor_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1469,7 +3938,7 @@ func (x *ExecutionError) String() string {
 func (*ExecutionError) ProtoMessage() {}
 
 func (x *ExecutionError) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[16]
+	mi := &file_python_executor_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1482,7 +3951,7 @@ func (x *ExecutionError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecutionError.ProtoReflect.Descriptor instead.
 func (*ExecutionError) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{16}
+	return file_python_executor_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *ExecutionError) GetMessage() string {
@@ -1521,7 +3990,7 @@ type HealthCheckRequest struct {
 
 func (x *HealthCheckRequest) Reset() {
 	*x = HealthCheckRequest{}
-	mi := &file_python_executor_proto_msgTypes[17]
+	mi := &file_python_executor_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1533,7 +4002,7 @@ func (x *HealthCheckRequest) String() string {
 func (*HealthCheckRequest) ProtoMessage() {}
 
 func (x *HealthCheckRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[17]
+	mi := &file_python_executor_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1546,7 +4015,7 @@ func (x *HealthCheckRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthCheckRequest.ProtoReflect.Descriptor instead.
 func (*HealthCheckRequest) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{17}
+	return file_python_executor_proto_rawDescGZIP(), []int{49}
 }
 
 type HealthCheckResponse struct {
@@ -1559,7 +4028,7 @@ type HealthCheckResponse struct {
 
 func (x *HealthCheckResponse) Reset() {
 	*x = HealthCheckResponse{}
-	mi := &file_python_executor_proto_msgTypes[18]
+	mi := &file_python_executor_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1571,7 +4040,7 @@ func (x *HealthCheckResponse) String() string {
 func (*HealthCheckResponse) ProtoMessage() {}
 
 func (x *HealthCheckResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[18]
+	mi := &file_python_executor_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1584,7 +4053,7 @@ func (x *HealthCheckResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthCheckResponse.ProtoReflect.Descriptor instead.
 func (*HealthCheckResponse) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{18}
+	return file_python_executor_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *HealthCheckResponse) GetReady() bool {
@@ -1601,102 +4070,88 @@ func (x *HealthCheckResponse) GetLoadedPolicies() int32 {
 	return 0
 }
 
-type StringList struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Values        []string               `protobuf:"bytes,1,rep,name=values,proto3" json:"values,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *StringList) Reset() {
-	*x = StringList{}
-	mi := &file_python_executor_proto_msgTypes[19]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *StringList) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*StringList) ProtoMessage() {}
-
-func (x *StringList) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[19]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use StringList.ProtoReflect.Descriptor instead.
-func (*StringList) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{19}
-}
-
-func (x *StringList) GetValues() []string {
-	if x != nil {
-		return x.Values
-	}
-	return nil
-}
-
 var File_python_executor_proto protoreflect.FileDescriptor
 
 const file_python_executor_proto_rawDesc = "" +
 	"\n" +
-	"\x15python_executor.proto\x12\x16wso2.gateway.python.v1\x1a\x1cgoogle/protobuf/struct.proto\"\xb4\x04\n" +
-	"\x10ExecutionRequest\x12\x1d\n" +
+	"\x15python_executor.proto\x12\x1cwso2.gateway.python.v1alpha2\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1egoogle/protobuf/wrappers.proto\"\x80\n" +
+	"\n" +
+	"\rStreamRequest\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x1f\n" +
-	"\vpolicy_name\x18\x02 \x01(\tR\n" +
+	"\vinstance_id\x18\x02 \x01(\tR\n" +
+	"instanceId\x12\x1f\n" +
+	"\vpolicy_name\x18\x03 \x01(\tR\n" +
 	"policyName\x12%\n" +
-	"\x0epolicy_version\x18\x03 \x01(\tR\rpolicyVersion\x12\x14\n" +
-	"\x05phase\x18\x04 \x01(\tR\x05phase\x12/\n" +
-	"\x06params\x18\x05 \x01(\v2\x17.google.protobuf.StructR\x06params\x12Q\n" +
-	"\x0frequest_context\x18\x06 \x01(\v2&.wso2.gateway.python.v1.RequestContextH\x00R\x0erequestContext\x12T\n" +
-	"\x10response_context\x18\a \x01(\v2'.wso2.gateway.python.v1.ResponseContextH\x00R\x0fresponseContext\x12L\n" +
-	"\x0eshared_context\x18\b \x01(\v2%.wso2.gateway.python.v1.SharedContextR\rsharedContext\x12O\n" +
-	"\x0fpolicy_metadata\x18\t \x01(\v2&.wso2.gateway.python.v1.PolicyMetadataR\x0epolicyMetadata\x12\x1f\n" +
-	"\vinstance_id\x18\n" +
-	" \x01(\tR\n" +
-	"instanceIdB\t\n" +
-	"\acontext\"\xef\x02\n" +
-	"\x11ExecutionResponse\x12\x1d\n" +
+	"\x0epolicy_version\x18\x04 \x01(\tR\rpolicyVersion\x12/\n" +
+	"\x06params\x18\x05 \x01(\v2\x17.google.protobuf.StructR\x06params\x12R\n" +
+	"\x0eshared_context\x18\x06 \x01(\v2+.wso2.gateway.python.v1alpha2.SharedContextR\rsharedContext\x12^\n" +
+	"\x12execution_metadata\x18\a \x01(\v2/.wso2.gateway.python.v1alpha2.ExecutionMetadataR\x11executionMetadata\x12^\n" +
+	"\x0frequest_headers\x18\b \x01(\v23.wso2.gateway.python.v1alpha2.RequestHeadersPayloadH\x00R\x0erequestHeaders\x12U\n" +
+	"\frequest_body\x18\t \x01(\v20.wso2.gateway.python.v1alpha2.RequestBodyPayloadH\x00R\vrequestBody\x12a\n" +
+	"\x10response_headers\x18\n" +
+	" \x01(\v24.wso2.gateway.python.v1alpha2.ResponseHeadersPayloadH\x00R\x0fresponseHeaders\x12X\n" +
+	"\rresponse_body\x18\v \x01(\v21.wso2.gateway.python.v1alpha2.ResponseBodyPayloadH\x00R\fresponseBody\x12r\n" +
+	"\x17needs_more_request_data\x18\f \x01(\v29.wso2.gateway.python.v1alpha2.NeedsMoreRequestDataPayloadH\x00R\x14needsMoreRequestData\x12X\n" +
+	"\rrequest_chunk\x18\r \x01(\v21.wso2.gateway.python.v1alpha2.RequestChunkPayloadH\x00R\frequestChunk\x12u\n" +
+	"\x18needs_more_response_data\x18\x0e \x01(\v2:.wso2.gateway.python.v1alpha2.NeedsMoreResponseDataPayloadH\x00R\x15needsMoreResponseData\x12[\n" +
+	"\x0eresponse_chunk\x18\x0f \x01(\v22.wso2.gateway.python.v1alpha2.ResponseChunkPayloadH\x00R\rresponseChunk\x12a\n" +
+	"\x10cancel_execution\x18\x10 \x01(\v24.wso2.gateway.python.v1alpha2.CancelExecutionPayloadH\x00R\x0fcancelExecutionB\t\n" +
+	"\apayload\"\xc3\a\n" +
+	"\x0eStreamResponse\x12\x1d\n" +
 	"\n" +
-	"request_id\x18\x01 \x01(\tR\trequestId\x12T\n" +
-	"\x0erequest_result\x18\x02 \x01(\v2+.wso2.gateway.python.v1.RequestActionResultH\x00R\rrequestResult\x12W\n" +
-	"\x0fresponse_result\x18\x03 \x01(\v2,.wso2.gateway.python.v1.ResponseActionResultH\x00R\x0eresponseResult\x12>\n" +
-	"\x05error\x18\x04 \x01(\v2&.wso2.gateway.python.v1.ExecutionErrorH\x00R\x05error\x12B\n" +
-	"\x10updated_metadata\x18\x05 \x01(\v2\x17.google.protobuf.StructR\x0fupdatedMetadataB\b\n" +
-	"\x06result\"\xcc\x01\n" +
-	"\x0eProcessingMode\x12.\n" +
-	"\x13request_header_mode\x18\x01 \x01(\tR\x11requestHeaderMode\x12*\n" +
-	"\x11request_body_mode\x18\x02 \x01(\tR\x0frequestBodyMode\x120\n" +
-	"\x14response_header_mode\x18\x03 \x01(\tR\x12responseHeaderMode\x12,\n" +
-	"\x12response_body_mode\x18\x04 \x01(\tR\x10responseBodyMode\"\xdd\x01\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\x12B\n" +
+	"\x10updated_metadata\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x0fupdatedMetadata\x12n\n" +
+	"\x15request_header_action\x18\x03 \x01(\v28.wso2.gateway.python.v1alpha2.RequestHeaderActionPayloadH\x00R\x13requestHeaderAction\x12[\n" +
+	"\x0erequest_action\x18\x04 \x01(\v22.wso2.gateway.python.v1alpha2.RequestActionPayloadH\x00R\rrequestAction\x12q\n" +
+	"\x16response_header_action\x18\x05 \x01(\v29.wso2.gateway.python.v1alpha2.ResponseHeaderActionPayloadH\x00R\x14responseHeaderAction\x12^\n" +
+	"\x0fresponse_action\x18\x06 \x01(\v23.wso2.gateway.python.v1alpha2.ResponseActionPayloadH\x00R\x0eresponseAction\x12h\n" +
+	"\x13needs_more_decision\x18\a \x01(\v26.wso2.gateway.python.v1alpha2.NeedsMoreDecisionPayloadH\x00R\x11needsMoreDecision\x12w\n" +
+	"\x18streaming_request_action\x18\b \x01(\v2;.wso2.gateway.python.v1alpha2.StreamingRequestActionPayloadH\x00R\x16streamingRequestAction\x12z\n" +
+	"\x19streaming_response_action\x18\t \x01(\v2<.wso2.gateway.python.v1alpha2.StreamingResponseActionPayloadH\x00R\x17streamingResponseAction\x12D\n" +
+	"\x05error\x18\n" +
+	" \x01(\v2,.wso2.gateway.python.v1alpha2.ExecutionErrorH\x00R\x05errorB\t\n" +
+	"\apayload\"\x98\x03\n" +
+	"\x0eProcessingMode\x12b\n" +
+	"\x13request_header_mode\x18\x01 \x01(\x0e22.wso2.gateway.python.v1alpha2.HeaderProcessingModeR\x11requestHeaderMode\x12\\\n" +
+	"\x11request_body_mode\x18\x02 \x01(\x0e20.wso2.gateway.python.v1alpha2.BodyProcessingModeR\x0frequestBodyMode\x12d\n" +
+	"\x14response_header_mode\x18\x03 \x01(\x0e22.wso2.gateway.python.v1alpha2.HeaderProcessingModeR\x12responseHeaderMode\x12^\n" +
+	"\x12response_body_mode\x18\x04 \x01(\x0e20.wso2.gateway.python.v1alpha2.BodyProcessingModeR\x10responseBodyMode\"\x8c\x02\n" +
+	"\x12PolicyCapabilities\x12'\n" +
+	"\x0frequest_headers\x18\x01 \x01(\bR\x0erequestHeaders\x12!\n" +
+	"\frequest_body\x18\x02 \x01(\bR\vrequestBody\x12)\n" +
+	"\x10response_headers\x18\x03 \x01(\bR\x0fresponseHeaders\x12#\n" +
+	"\rresponse_body\x18\x04 \x01(\bR\fresponseBody\x12+\n" +
+	"\x11streaming_request\x18\x05 \x01(\bR\x10streamingRequest\x12-\n" +
+	"\x12streaming_response\x18\x06 \x01(\bR\x11streamingResponse\"\xe3\x01\n" +
 	"\x11InitPolicyRequest\x12\x1f\n" +
 	"\vpolicy_name\x18\x01 \x01(\tR\n" +
 	"policyName\x12%\n" +
-	"\x0epolicy_version\x18\x02 \x01(\tR\rpolicyVersion\x12O\n" +
-	"\x0fpolicy_metadata\x18\x03 \x01(\v2&.wso2.gateway.python.v1.PolicyMetadataR\x0epolicyMetadata\x12/\n" +
-	"\x06params\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x06params\"\xc5\x01\n" +
+	"\x0epolicy_version\x18\x02 \x01(\tR\rpolicyVersion\x12U\n" +
+	"\x0fpolicy_metadata\x18\x03 \x01(\v2,.wso2.gateway.python.v1alpha2.PolicyMetadataR\x0epolicyMetadata\x12/\n" +
+	"\x06params\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x06params\"\xa1\x02\n" +
 	"\x12InitPolicyResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x1f\n" +
 	"\vinstance_id\x18\x02 \x01(\tR\n" +
 	"instanceId\x12#\n" +
-	"\rerror_message\x18\x03 \x01(\tR\ferrorMessage\x12O\n" +
-	"\x0fprocessing_mode\x18\x04 \x01(\v2&.wso2.gateway.python.v1.ProcessingModeR\x0eprocessingMode\"7\n" +
+	"\rerror_message\x18\x03 \x01(\tR\ferrorMessage\x12U\n" +
+	"\x0fprocessing_mode\x18\x04 \x01(\v2,.wso2.gateway.python.v1alpha2.ProcessingModeR\x0eprocessingMode\x12T\n" +
+	"\fcapabilities\x18\x05 \x01(\v20.wso2.gateway.python.v1alpha2.PolicyCapabilitiesR\fcapabilities\"7\n" +
 	"\x14DestroyPolicyRequest\x12\x1f\n" +
 	"\vinstance_id\x18\x01 \x01(\tR\n" +
 	"instanceId\"V\n" +
 	"\x15DestroyPolicyResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12#\n" +
-	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\"\xd3\x03\n" +
+	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\"\xe8\x01\n" +
+	"\x11ExecutionMetadata\x129\n" +
+	"\x05phase\x18\x01 \x01(\x0e2#.wso2.gateway.python.v1alpha2.PhaseR\x05phase\x126\n" +
+	"\bdeadline\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\bdeadline\x12A\n" +
+	"\x05trace\x18\x03 \x01(\v2+.wso2.gateway.python.v1alpha2.TraceMetadataR\x05trace\x12\x1d\n" +
+	"\n" +
+	"route_name\x18\x04 \x01(\tR\trouteName\"C\n" +
+	"\rTraceMetadata\x12\x19\n" +
+	"\btrace_id\x18\x01 \x01(\tR\atraceId\x12\x17\n" +
+	"\aspan_id\x18\x02 \x01(\tR\x06spanId\"\x86\x03\n" +
 	"\rSharedContext\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1d\n" +
@@ -1710,39 +4165,113 @@ const file_python_executor_proto_rawDesc = "" +
 	"\bapi_kind\x18\a \x01(\tR\aapiKind\x12\x1f\n" +
 	"\vapi_context\x18\b \x01(\tR\n" +
 	"apiContext\x12%\n" +
-	"\x0eoperation_path\x18\t \x01(\tR\roperationPath\x12Y\n" +
+	"\x0eoperation_path\x18\t \x01(\tR\roperationPath\x12L\n" +
 	"\fauth_context\x18\n" +
-	" \x03(\v26.wso2.gateway.python.v1.SharedContext.AuthContextEntryR\vauthContext\x1a>\n" +
-	"\x10AuthContextEntry\x12\x10\n" +
+	" \x01(\v2).wso2.gateway.python.v1alpha2.AuthContextR\vauthContext\"\xb9\x01\n" +
+	"\aHeaders\x12I\n" +
+	"\x06values\x18\x01 \x03(\v21.wso2.gateway.python.v1alpha2.Headers.ValuesEntryR\x06values\x1ac\n" +
+	"\vValuesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12>\n" +
+	"\x05value\x18\x02 \x01(\v2(.wso2.gateway.python.v1alpha2.StringListR\x05value:\x028\x01\"$\n" +
+	"\n" +
+	"StringList\x12\x16\n" +
+	"\x06values\x18\x01 \x03(\tR\x06values\"^\n" +
+	"\x04Body\x12\x18\n" +
+	"\acontent\x18\x01 \x01(\fR\acontent\x12\"\n" +
+	"\rend_of_stream\x18\x02 \x01(\bR\vendOfStream\x12\x18\n" +
+	"\apresent\x18\x03 \x01(\bR\apresent\"\\\n" +
+	"\n" +
+	"StreamBody\x12\x14\n" +
+	"\x05chunk\x18\x01 \x01(\fR\x05chunk\x12\"\n" +
+	"\rend_of_stream\x18\x02 \x01(\bR\vendOfStream\x12\x14\n" +
+	"\x05index\x18\x03 \x01(\x04R\x05index\"\xce\x04\n" +
+	"\vAuthContext\x12$\n" +
+	"\rauthenticated\x18\x01 \x01(\bR\rauthenticated\x12\x1e\n" +
+	"\n" +
+	"authorized\x18\x02 \x01(\bR\n" +
+	"authorized\x12\x1b\n" +
+	"\tauth_type\x18\x03 \x01(\tR\bauthType\x12\x18\n" +
+	"\asubject\x18\x04 \x01(\tR\asubject\x12\x16\n" +
+	"\x06issuer\x18\x05 \x01(\tR\x06issuer\x12\x1a\n" +
+	"\baudience\x18\x06 \x03(\tR\baudience\x12M\n" +
+	"\x06scopes\x18\a \x03(\v25.wso2.gateway.python.v1alpha2.AuthContext.ScopesEntryR\x06scopes\x12#\n" +
+	"\rcredential_id\x18\b \x01(\tR\fcredentialId\x12Y\n" +
+	"\n" +
+	"properties\x18\t \x03(\v29.wso2.gateway.python.v1alpha2.AuthContext.PropertiesEntryR\n" +
+	"properties\x12E\n" +
+	"\bprevious\x18\n" +
+	" \x01(\v2).wso2.gateway.python.v1alpha2.AuthContextR\bprevious\x1a9\n" +
+	"\vScopesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd8\x02\n" +
-	"\x0eRequestContext\x12M\n" +
-	"\aheaders\x18\x01 \x03(\v23.wso2.gateway.python.v1.RequestContext.HeadersEntryR\aheaders\x12\x12\n" +
-	"\x04body\x18\x02 \x01(\fR\x04body\x12!\n" +
-	"\fbody_present\x18\x03 \x01(\bR\vbodyPresent\x12\"\n" +
-	"\rend_of_stream\x18\x04 \x01(\bR\vendOfStream\x12\x12\n" +
-	"\x04path\x18\x05 \x01(\tR\x04path\x12\x16\n" +
-	"\x06method\x18\x06 \x01(\tR\x06method\x12\x1c\n" +
-	"\tauthority\x18\a \x01(\tR\tauthority\x12\x16\n" +
-	"\x06scheme\x18\b \x01(\tR\x06scheme\x1a:\n" +
-	"\fHeadersEntry\x12\x10\n" +
+	"\x05value\x18\x02 \x01(\bR\x05value:\x028\x01\x1a=\n" +
+	"\x0fPropertiesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd6\x04\n" +
-	"\x0fResponseContext\x12d\n" +
-	"\x0frequest_headers\x18\x01 \x03(\v2;.wso2.gateway.python.v1.ResponseContext.RequestHeadersEntryR\x0erequestHeaders\x12!\n" +
-	"\frequest_body\x18\x02 \x01(\fR\vrequestBody\x12!\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xcf\x01\n" +
+	"\x14RequestHeaderContext\x12?\n" +
+	"\aheaders\x18\x01 \x01(\v2%.wso2.gateway.python.v1alpha2.HeadersR\aheaders\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12\x16\n" +
+	"\x06method\x18\x03 \x01(\tR\x06method\x12\x1c\n" +
+	"\tauthority\x18\x04 \x01(\tR\tauthority\x12\x16\n" +
+	"\x06scheme\x18\x05 \x01(\tR\x06scheme\x12\x14\n" +
+	"\x05vhost\x18\x06 \x01(\tR\x05vhost\"\x81\x02\n" +
+	"\x0eRequestContext\x12?\n" +
+	"\aheaders\x18\x01 \x01(\v2%.wso2.gateway.python.v1alpha2.HeadersR\aheaders\x126\n" +
+	"\x04body\x18\x02 \x01(\v2\".wso2.gateway.python.v1alpha2.BodyR\x04body\x12\x12\n" +
+	"\x04path\x18\x03 \x01(\tR\x04path\x12\x16\n" +
+	"\x06method\x18\x04 \x01(\tR\x06method\x12\x1c\n" +
+	"\tauthority\x18\x05 \x01(\tR\tauthority\x12\x16\n" +
+	"\x06scheme\x18\x06 \x01(\tR\x06scheme\x12\x14\n" +
+	"\x05vhost\x18\a \x01(\tR\x05vhost\"\xf3\x02\n" +
+	"\x15ResponseHeaderContext\x12N\n" +
+	"\x0frequest_headers\x18\x01 \x01(\v2%.wso2.gateway.python.v1alpha2.HeadersR\x0erequestHeaders\x12E\n" +
+	"\frequest_body\x18\x02 \x01(\v2\".wso2.gateway.python.v1alpha2.BodyR\vrequestBody\x12!\n" +
 	"\frequest_path\x18\x03 \x01(\tR\vrequestPath\x12%\n" +
-	"\x0erequest_method\x18\x04 \x01(\tR\rrequestMethod\x12g\n" +
-	"\x10response_headers\x18\x05 \x03(\v2<.wso2.gateway.python.v1.ResponseContext.ResponseHeadersEntryR\x0fresponseHeaders\x12#\n" +
-	"\rresponse_body\x18\x06 \x01(\fR\fresponseBody\x122\n" +
-	"\x15response_body_present\x18\a \x01(\bR\x13responseBodyPresent\x12'\n" +
-	"\x0fresponse_status\x18\b \x01(\x05R\x0eresponseStatus\x1aA\n" +
-	"\x13RequestHeadersEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aB\n" +
-	"\x14ResponseHeadersEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa3\x01\n" +
+	"\x0erequest_method\x18\x04 \x01(\tR\rrequestMethod\x12P\n" +
+	"\x10response_headers\x18\x05 \x01(\v2%.wso2.gateway.python.v1alpha2.HeadersR\x0fresponseHeaders\x12'\n" +
+	"\x0fresponse_status\x18\x06 \x01(\x05R\x0eresponseStatus\"\xb6\x03\n" +
+	"\x0fResponseContext\x12N\n" +
+	"\x0frequest_headers\x18\x01 \x01(\v2%.wso2.gateway.python.v1alpha2.HeadersR\x0erequestHeaders\x12E\n" +
+	"\frequest_body\x18\x02 \x01(\v2\".wso2.gateway.python.v1alpha2.BodyR\vrequestBody\x12!\n" +
+	"\frequest_path\x18\x03 \x01(\tR\vrequestPath\x12%\n" +
+	"\x0erequest_method\x18\x04 \x01(\tR\rrequestMethod\x12P\n" +
+	"\x10response_headers\x18\x05 \x01(\v2%.wso2.gateway.python.v1alpha2.HeadersR\x0fresponseHeaders\x12G\n" +
+	"\rresponse_body\x18\x06 \x01(\v2\".wso2.gateway.python.v1alpha2.BodyR\fresponseBody\x12'\n" +
+	"\x0fresponse_status\x18\a \x01(\x05R\x0eresponseStatus\"\xcf\x01\n" +
+	"\x14RequestStreamContext\x12?\n" +
+	"\aheaders\x18\x01 \x01(\v2%.wso2.gateway.python.v1alpha2.HeadersR\aheaders\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12\x16\n" +
+	"\x06method\x18\x03 \x01(\tR\x06method\x12\x1c\n" +
+	"\tauthority\x18\x04 \x01(\tR\tauthority\x12\x16\n" +
+	"\x06scheme\x18\x05 \x01(\tR\x06scheme\x12\x14\n" +
+	"\x05vhost\x18\x06 \x01(\tR\x05vhost\"\xf3\x02\n" +
+	"\x15ResponseStreamContext\x12N\n" +
+	"\x0frequest_headers\x18\x01 \x01(\v2%.wso2.gateway.python.v1alpha2.HeadersR\x0erequestHeaders\x12E\n" +
+	"\frequest_body\x18\x02 \x01(\v2\".wso2.gateway.python.v1alpha2.BodyR\vrequestBody\x12!\n" +
+	"\frequest_path\x18\x03 \x01(\tR\vrequestPath\x12%\n" +
+	"\x0erequest_method\x18\x04 \x01(\tR\rrequestMethod\x12P\n" +
+	"\x10response_headers\x18\x05 \x01(\v2%.wso2.gateway.python.v1alpha2.HeadersR\x0fresponseHeaders\x12'\n" +
+	"\x0fresponse_status\x18\x06 \x01(\x05R\x0eresponseStatus\"e\n" +
+	"\x15RequestHeadersPayload\x12L\n" +
+	"\acontext\x18\x01 \x01(\v22.wso2.gateway.python.v1alpha2.RequestHeaderContextR\acontext\"\\\n" +
+	"\x12RequestBodyPayload\x12F\n" +
+	"\acontext\x18\x01 \x01(\v2,.wso2.gateway.python.v1alpha2.RequestContextR\acontext\"g\n" +
+	"\x16ResponseHeadersPayload\x12M\n" +
+	"\acontext\x18\x01 \x01(\v23.wso2.gateway.python.v1alpha2.ResponseHeaderContextR\acontext\"^\n" +
+	"\x13ResponseBodyPayload\x12G\n" +
+	"\acontext\x18\x01 \x01(\v2-.wso2.gateway.python.v1alpha2.ResponseContextR\acontext\"?\n" +
+	"\x1bNeedsMoreRequestDataPayload\x12 \n" +
+	"\vaccumulated\x18\x01 \x01(\fR\vaccumulated\"\xa3\x01\n" +
+	"\x13RequestChunkPayload\x12L\n" +
+	"\acontext\x18\x01 \x01(\v22.wso2.gateway.python.v1alpha2.RequestStreamContextR\acontext\x12>\n" +
+	"\x05chunk\x18\x02 \x01(\v2(.wso2.gateway.python.v1alpha2.StreamBodyR\x05chunk\"@\n" +
+	"\x1cNeedsMoreResponseDataPayload\x12 \n" +
+	"\vaccumulated\x18\x01 \x01(\fR\vaccumulated\"\xa5\x01\n" +
+	"\x14ResponseChunkPayload\x12M\n" +
+	"\acontext\x18\x01 \x01(\v23.wso2.gateway.python.v1alpha2.ResponseStreamContextR\acontext\x12>\n" +
+	"\x05chunk\x18\x02 \x01(\v2(.wso2.gateway.python.v1alpha2.StreamBodyR\x05chunk\"x\n" +
+	"\x16CancelExecutionPayload\x12F\n" +
+	"\ftarget_phase\x18\x01 \x01(\x0e2#.wso2.gateway.python.v1alpha2.PhaseR\vtargetPhase\x12\x16\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\"\xa3\x01\n" +
 	"\x0ePolicyMetadata\x12\x1d\n" +
 	"\n" +
 	"route_name\x18\x01 \x01(\tR\trouteName\x12\x15\n" +
@@ -1751,59 +4280,142 @@ const file_python_executor_proto_rawDesc = "" +
 	"\vapi_version\x18\x04 \x01(\tR\n" +
 	"apiVersion\x12\x1f\n" +
 	"\vattached_to\x18\x05 \x01(\tR\n" +
-	"attachedTo\"\xe4\x01\n" +
-	"\x13RequestActionResult\x12a\n" +
-	"\x10continue_request\x18\x01 \x01(\v24.wso2.gateway.python.v1.UpstreamRequestModificationsH\x00R\x0fcontinueRequest\x12`\n" +
-	"\x12immediate_response\x18\x02 \x01(\v2/.wso2.gateway.python.v1.ImmediateResponseActionH\x00R\x11immediateResponseB\b\n" +
-	"\x06action\"\x86\x01\n" +
-	"\x14ResponseActionResult\x12d\n" +
-	"\x11continue_response\x18\x01 \x01(\v25.wso2.gateway.python.v1.UpstreamResponseModificationsH\x00R\x10continueResponseB\b\n" +
-	"\x06action\"\xb6\x05\n" +
-	"\x1cUpstreamRequestModifications\x12e\n" +
-	"\vset_headers\x18\x01 \x03(\v2D.wso2.gateway.python.v1.UpstreamRequestModifications.SetHeadersEntryR\n" +
-	"setHeaders\x12%\n" +
-	"\x0eremove_headers\x18\x02 \x03(\tR\rremoveHeaders\x12n\n" +
-	"\x0eappend_headers\x18\x03 \x03(\v2G.wso2.gateway.python.v1.UpstreamRequestModifications.AppendHeadersEntryR\rappendHeaders\x12\x12\n" +
-	"\x04body\x18\x04 \x01(\fR\x04body\x12!\n" +
-	"\fbody_present\x18\x05 \x01(\bR\vbodyPresent\x12\x12\n" +
-	"\x04path\x18\x06 \x01(\tR\x04path\x12!\n" +
-	"\fpath_present\x18\a \x01(\bR\vpathPresent\x12\x16\n" +
-	"\x06method\x18\b \x01(\tR\x06method\x12%\n" +
-	"\x0emethod_present\x18\t \x01(\bR\rmethodPresent\x12F\n" +
-	"\x12analytics_metadata\x18\n" +
-	" \x01(\v2\x17.google.protobuf.StructR\x11analyticsMetadata\x1a=\n" +
-	"\x0fSetHeadersEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1ad\n" +
-	"\x12AppendHeadersEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x128\n" +
-	"\x05value\x18\x02 \x01(\v2\".wso2.gateway.python.v1.StringListR\x05value:\x028\x01\"\x94\x05\n" +
-	"\x1dUpstreamResponseModifications\x12f\n" +
-	"\vset_headers\x18\x01 \x03(\v2E.wso2.gateway.python.v1.UpstreamResponseModifications.SetHeadersEntryR\n" +
-	"setHeaders\x12%\n" +
-	"\x0eremove_headers\x18\x02 \x03(\tR\rremoveHeaders\x12o\n" +
-	"\x0eappend_headers\x18\x03 \x03(\v2H.wso2.gateway.python.v1.UpstreamResponseModifications.AppendHeadersEntryR\rappendHeaders\x12\x12\n" +
-	"\x04body\x18\x04 \x01(\fR\x04body\x12!\n" +
-	"\fbody_present\x18\x05 \x01(\bR\vbodyPresent\x12\x1f\n" +
-	"\vstatus_code\x18\x06 \x01(\x05R\n" +
-	"statusCode\x12.\n" +
-	"\x13status_code_present\x18\a \x01(\bR\x11statusCodePresent\x12F\n" +
-	"\x12analytics_metadata\x18\b \x01(\v2\x17.google.protobuf.StructR\x11analyticsMetadata\x1a=\n" +
-	"\x0fSetHeadersEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1ad\n" +
-	"\x12AppendHeadersEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x128\n" +
-	"\x05value\x18\x02 \x01(\v2\".wso2.gateway.python.v1.StringListR\x05value:\x028\x01\"\xaa\x02\n" +
-	"\x17ImmediateResponseAction\x12\x1f\n" +
+	"attachedTo\"x\n" +
+	"\x10DropHeaderAction\x12J\n" +
+	"\x06action\x18\x01 \x01(\x0e22.wso2.gateway.python.v1alpha2.DropHeaderActionTypeR\x06action\x12\x18\n" +
+	"\aheaders\x18\x02 \x03(\tR\aheaders\"\xf7\x04\n" +
+	"\x11ImmediateResponse\x12\x1f\n" +
 	"\vstatus_code\x18\x01 \x01(\x05R\n" +
 	"statusCode\x12V\n" +
-	"\aheaders\x18\x02 \x03(\v2<.wso2.gateway.python.v1.ImmediateResponseAction.HeadersEntryR\aheaders\x12\x12\n" +
-	"\x04body\x18\x03 \x01(\fR\x04body\x12F\n" +
-	"\x12analytics_metadata\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x11analyticsMetadata\x1a:\n" +
+	"\aheaders\x18\x02 \x03(\v2<.wso2.gateway.python.v1alpha2.ImmediateResponse.HeadersEntryR\aheaders\x12/\n" +
+	"\x04body\x18\x03 \x01(\v2\x1b.google.protobuf.BytesValueR\x04body\x12F\n" +
+	"\x12analytics_metadata\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x11analyticsMetadata\x12o\n" +
+	"\x10dynamic_metadata\x18\x05 \x03(\v2D.wso2.gateway.python.v1alpha2.ImmediateResponse.DynamicMetadataEntryR\x0fdynamicMetadata\x12f\n" +
+	"\x17analytics_header_filter\x18\x06 \x01(\v2..wso2.gateway.python.v1alpha2.DropHeaderActionR\x15analyticsHeaderFilter\x1a:\n" +
 	"\fHeadersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x91\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a[\n" +
+	"\x14DynamicMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12-\n" +
+	"\x05value\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x05value:\x028\x01\"\xbc\t\n" +
+	"\"UpstreamRequestHeaderModifications\x12x\n" +
+	"\x0eheaders_to_set\x18\x01 \x03(\v2R.wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.HeadersToSetEntryR\fheadersToSet\x12*\n" +
+	"\x11headers_to_remove\x18\x02 \x03(\tR\x0fheadersToRemove\x12A\n" +
+	"\rupstream_name\x18\x03 \x01(\v2\x1c.google.protobuf.StringValueR\fupstreamName\x120\n" +
+	"\x04path\x18\x04 \x01(\v2\x1c.google.protobuf.StringValueR\x04path\x120\n" +
+	"\x04host\x18\x05 \x01(\v2\x1c.google.protobuf.StringValueR\x04host\x124\n" +
+	"\x06method\x18\x06 \x01(\v2\x1c.google.protobuf.StringValueR\x06method\x12\x91\x01\n" +
+	"\x17query_parameters_to_add\x18\a \x03(\v2Z.wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.QueryParametersToAddEntryR\x14queryParametersToAdd\x12;\n" +
+	"\x1aquery_parameters_to_remove\x18\b \x03(\tR\x17queryParametersToRemove\x12F\n" +
+	"\x12analytics_metadata\x18\t \x01(\v2\x17.google.protobuf.StructR\x11analyticsMetadata\x12\x80\x01\n" +
+	"\x10dynamic_metadata\x18\n" +
+	" \x03(\v2U.wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.DynamicMetadataEntryR\x0fdynamicMetadata\x12f\n" +
+	"\x17analytics_header_filter\x18\v \x01(\v2..wso2.gateway.python.v1alpha2.DropHeaderActionR\x15analyticsHeaderFilter\x1a?\n" +
+	"\x11HeadersToSetEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aq\n" +
+	"\x19QueryParametersToAddEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12>\n" +
+	"\x05value\x18\x02 \x01(\v2(.wso2.gateway.python.v1alpha2.StringListR\x05value:\x028\x01\x1a[\n" +
+	"\x14DynamicMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12-\n" +
+	"\x05value\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x05value:\x028\x01\"\xd4\t\n" +
+	"\x1cUpstreamRequestModifications\x12/\n" +
+	"\x04body\x18\x01 \x01(\v2\x1b.google.protobuf.BytesValueR\x04body\x12r\n" +
+	"\x0eheaders_to_set\x18\x02 \x03(\v2L.wso2.gateway.python.v1alpha2.UpstreamRequestModifications.HeadersToSetEntryR\fheadersToSet\x12*\n" +
+	"\x11headers_to_remove\x18\x03 \x03(\tR\x0fheadersToRemove\x12A\n" +
+	"\rupstream_name\x18\x04 \x01(\v2\x1c.google.protobuf.StringValueR\fupstreamName\x120\n" +
+	"\x04path\x18\x05 \x01(\v2\x1c.google.protobuf.StringValueR\x04path\x120\n" +
+	"\x04host\x18\x06 \x01(\v2\x1c.google.protobuf.StringValueR\x04host\x124\n" +
+	"\x06method\x18\a \x01(\v2\x1c.google.protobuf.StringValueR\x06method\x12\x8b\x01\n" +
+	"\x17query_parameters_to_add\x18\b \x03(\v2T.wso2.gateway.python.v1alpha2.UpstreamRequestModifications.QueryParametersToAddEntryR\x14queryParametersToAdd\x12;\n" +
+	"\x1aquery_parameters_to_remove\x18\t \x03(\tR\x17queryParametersToRemove\x12F\n" +
+	"\x12analytics_metadata\x18\n" +
+	" \x01(\v2\x17.google.protobuf.StructR\x11analyticsMetadata\x12z\n" +
+	"\x10dynamic_metadata\x18\v \x03(\v2O.wso2.gateway.python.v1alpha2.UpstreamRequestModifications.DynamicMetadataEntryR\x0fdynamicMetadata\x12f\n" +
+	"\x17analytics_header_filter\x18\f \x01(\v2..wso2.gateway.python.v1alpha2.DropHeaderActionR\x15analyticsHeaderFilter\x1a?\n" +
+	"\x11HeadersToSetEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1aq\n" +
+	"\x19QueryParametersToAddEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12>\n" +
+	"\x05value\x18\x02 \x01(\v2(.wso2.gateway.python.v1alpha2.StringListR\x05value:\x028\x01\x1a[\n" +
+	"\x14DynamicMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12-\n" +
+	"\x05value\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x05value:\x028\x01\"\xa4\x05\n" +
+	"%DownstreamResponseHeaderModifications\x12{\n" +
+	"\x0eheaders_to_set\x18\x01 \x03(\v2U.wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.HeadersToSetEntryR\fheadersToSet\x12*\n" +
+	"\x11headers_to_remove\x18\x02 \x03(\tR\x0fheadersToRemove\x12F\n" +
+	"\x12analytics_metadata\x18\x03 \x01(\v2\x17.google.protobuf.StructR\x11analyticsMetadata\x12\x83\x01\n" +
+	"\x10dynamic_metadata\x18\x04 \x03(\v2X.wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.DynamicMetadataEntryR\x0fdynamicMetadata\x12f\n" +
+	"\x17analytics_header_filter\x18\x05 \x01(\v2..wso2.gateway.python.v1alpha2.DropHeaderActionR\x15analyticsHeaderFilter\x1a?\n" +
+	"\x11HeadersToSetEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a[\n" +
+	"\x14DynamicMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12-\n" +
+	"\x05value\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x05value:\x028\x01\"\x80\x06\n" +
+	"\x1fDownstreamResponseModifications\x12/\n" +
+	"\x04body\x18\x01 \x01(\v2\x1b.google.protobuf.BytesValueR\x04body\x12<\n" +
+	"\vstatus_code\x18\x02 \x01(\v2\x1b.google.protobuf.Int32ValueR\n" +
+	"statusCode\x12u\n" +
+	"\x0eheaders_to_set\x18\x03 \x03(\v2O.wso2.gateway.python.v1alpha2.DownstreamResponseModifications.HeadersToSetEntryR\fheadersToSet\x12*\n" +
+	"\x11headers_to_remove\x18\x04 \x03(\tR\x0fheadersToRemove\x12F\n" +
+	"\x12analytics_metadata\x18\x05 \x01(\v2\x17.google.protobuf.StructR\x11analyticsMetadata\x12}\n" +
+	"\x10dynamic_metadata\x18\x06 \x03(\v2R.wso2.gateway.python.v1alpha2.DownstreamResponseModifications.DynamicMetadataEntryR\x0fdynamicMetadata\x12f\n" +
+	"\x17analytics_header_filter\x18\a \x01(\v2..wso2.gateway.python.v1alpha2.DropHeaderActionR\x15analyticsHeaderFilter\x1a?\n" +
+	"\x11HeadersToSetEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a[\n" +
+	"\x14DynamicMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12-\n" +
+	"\x05value\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x05value:\x028\x01\"\xde\x02\n" +
+	"\x13ForwardRequestChunk\x12/\n" +
+	"\x04body\x18\x01 \x01(\v2\x1b.google.protobuf.BytesValueR\x04body\x12F\n" +
+	"\x12analytics_metadata\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x11analyticsMetadata\x12q\n" +
+	"\x10dynamic_metadata\x18\x03 \x03(\v2F.wso2.gateway.python.v1alpha2.ForwardRequestChunk.DynamicMetadataEntryR\x0fdynamicMetadata\x1a[\n" +
+	"\x14DynamicMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12-\n" +
+	"\x05value\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x05value:\x028\x01\"\xe0\x02\n" +
+	"\x14ForwardResponseChunk\x12/\n" +
+	"\x04body\x18\x01 \x01(\v2\x1b.google.protobuf.BytesValueR\x04body\x12F\n" +
+	"\x12analytics_metadata\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x11analyticsMetadata\x12r\n" +
+	"\x10dynamic_metadata\x18\x03 \x03(\v2G.wso2.gateway.python.v1alpha2.ForwardResponseChunk.DynamicMetadataEntryR\x0fdynamicMetadata\x1a[\n" +
+	"\x14DynamicMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12-\n" +
+	"\x05value\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x05value:\x028\x01\"\xe4\x02\n" +
+	"\x16TerminateResponseChunk\x12/\n" +
+	"\x04body\x18\x01 \x01(\v2\x1b.google.protobuf.BytesValueR\x04body\x12F\n" +
+	"\x12analytics_metadata\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x11analyticsMetadata\x12t\n" +
+	"\x10dynamic_metadata\x18\x03 \x03(\v2I.wso2.gateway.python.v1alpha2.TerminateResponseChunk.DynamicMetadataEntryR\x0fdynamicMetadata\x1a[\n" +
+	"\x14DynamicMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12-\n" +
+	"\x05value\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x05value:\x028\x01\"\xa0\x02\n" +
+	"\x1aRequestHeaderActionPayload\x12\x95\x01\n" +
+	"%upstream_request_header_modifications\x18\x01 \x01(\v2@.wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModificationsH\x00R\"upstreamRequestHeaderModifications\x12`\n" +
+	"\x12immediate_response\x18\x02 \x01(\v2/.wso2.gateway.python.v1alpha2.ImmediateResponseH\x00R\x11immediateResponseB\b\n" +
+	"\x06action\"\x87\x02\n" +
+	"\x14RequestActionPayload\x12\x82\x01\n" +
+	"\x1eupstream_request_modifications\x18\x01 \x01(\v2:.wso2.gateway.python.v1alpha2.UpstreamRequestModificationsH\x00R\x1cupstreamRequestModifications\x12`\n" +
+	"\x12immediate_response\x18\x02 \x01(\v2/.wso2.gateway.python.v1alpha2.ImmediateResponseH\x00R\x11immediateResponseB\b\n" +
+	"\x06action\"\xaa\x02\n" +
+	"\x1bResponseHeaderActionPayload\x12\x9e\x01\n" +
+	"(downstream_response_header_modifications\x18\x01 \x01(\v2C.wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModificationsH\x00R%downstreamResponseHeaderModifications\x12`\n" +
+	"\x12immediate_response\x18\x02 \x01(\v2/.wso2.gateway.python.v1alpha2.ImmediateResponseH\x00R\x11immediateResponseB\b\n" +
+	"\x06action\"\x91\x02\n" +
+	"\x15ResponseActionPayload\x12\x8b\x01\n" +
+	"!downstream_response_modifications\x18\x01 \x01(\v2=.wso2.gateway.python.v1alpha2.DownstreamResponseModificationsH\x00R\x1fdownstreamResponseModifications\x12`\n" +
+	"\x12immediate_response\x18\x02 \x01(\v2/.wso2.gateway.python.v1alpha2.ImmediateResponseH\x00R\x11immediateResponseB\b\n" +
+	"\x06action\"9\n" +
+	"\x18NeedsMoreDecisionPayload\x12\x1d\n" +
+	"\n" +
+	"needs_more\x18\x01 \x01(\bR\tneedsMore\"\x86\x01\n" +
+	"\x1dStreamingRequestActionPayload\x12e\n" +
+	"\x15forward_request_chunk\x18\x01 \x01(\v21.wso2.gateway.python.v1alpha2.ForwardRequestChunkR\x13forwardRequestChunk\"\x88\x02\n" +
+	"\x1eStreamingResponseActionPayload\x12j\n" +
+	"\x16forward_response_chunk\x18\x01 \x01(\v22.wso2.gateway.python.v1alpha2.ForwardResponseChunkH\x00R\x14forwardResponseChunk\x12p\n" +
+	"\x18terminate_response_chunk\x18\x02 \x01(\v24.wso2.gateway.python.v1alpha2.TerminateResponseChunkH\x00R\x16terminateResponseChunkB\b\n" +
+	"\x06action\"\x91\x01\n" +
 	"\x0eExecutionError\x12\x18\n" +
 	"\amessage\x18\x01 \x01(\tR\amessage\x12\x1f\n" +
 	"\vpolicy_name\x18\x02 \x01(\tR\n" +
@@ -1814,16 +4426,37 @@ const file_python_executor_proto_rawDesc = "" +
 	"\x12HealthCheckRequest\"T\n" +
 	"\x13HealthCheckResponse\x12\x14\n" +
 	"\x05ready\x18\x01 \x01(\bR\x05ready\x12'\n" +
-	"\x0floaded_policies\x18\x02 \x01(\x05R\x0eloadedPolicies\"$\n" +
+	"\x0floaded_policies\x18\x02 \x01(\x05R\x0eloadedPolicies*\x83\x01\n" +
+	"\x14HeaderProcessingMode\x12&\n" +
+	"\"HEADER_PROCESSING_MODE_UNSPECIFIED\x10\x00\x12\x1f\n" +
+	"\x1bHEADER_PROCESSING_MODE_SKIP\x10\x01\x12\"\n" +
+	"\x1eHEADER_PROCESSING_MODE_PROCESS\x10\x02*\x9b\x01\n" +
+	"\x12BodyProcessingMode\x12$\n" +
+	" BODY_PROCESSING_MODE_UNSPECIFIED\x10\x00\x12\x1d\n" +
+	"\x19BODY_PROCESSING_MODE_SKIP\x10\x01\x12\x1f\n" +
+	"\x1bBODY_PROCESSING_MODE_BUFFER\x10\x02\x12\x1f\n" +
+	"\x1bBODY_PROCESSING_MODE_STREAM\x10\x03*\x9c\x02\n" +
+	"\x05Phase\x12\x15\n" +
+	"\x11PHASE_UNSPECIFIED\x10\x00\x12\x19\n" +
+	"\x15PHASE_REQUEST_HEADERS\x10\x01\x12\x16\n" +
+	"\x12PHASE_REQUEST_BODY\x10\x02\x12\x1a\n" +
+	"\x16PHASE_RESPONSE_HEADERS\x10\x03\x12\x17\n" +
+	"\x13PHASE_RESPONSE_BODY\x10\x04\x12!\n" +
+	"\x1dPHASE_NEEDS_MORE_REQUEST_DATA\x10\x05\x12\x1c\n" +
+	"\x18PHASE_REQUEST_BODY_CHUNK\x10\x06\x12\"\n" +
+	"\x1ePHASE_NEEDS_MORE_RESPONSE_DATA\x10\a\x12\x1d\n" +
+	"\x19PHASE_RESPONSE_BODY_CHUNK\x10\b\x12\x10\n" +
+	"\fPHASE_CANCEL\x10\t*\x84\x01\n" +
+	"\x14DropHeaderActionType\x12'\n" +
+	"#DROP_HEADER_ACTION_TYPE_UNSPECIFIED\x10\x00\x12!\n" +
+	"\x1dDROP_HEADER_ACTION_TYPE_ALLOW\x10\x01\x12 \n" +
+	"\x1cDROP_HEADER_ACTION_TYPE_DENY\x10\x022\xe6\x03\n" +
+	"\x15PythonExecutorService\x12n\n" +
+	"\rExecuteStream\x12+.wso2.gateway.python.v1alpha2.StreamRequest\x1a,.wso2.gateway.python.v1alpha2.StreamResponse(\x010\x01\x12r\n" +
+	"\vHealthCheck\x120.wso2.gateway.python.v1alpha2.HealthCheckRequest\x1a1.wso2.gateway.python.v1alpha2.HealthCheckResponse\x12o\n" +
 	"\n" +
-	"StringList\x12\x16\n" +
-	"\x06values\x18\x01 \x03(\tR\x06values2\xbc\x03\n" +
-	"\x15PythonExecutorService\x12h\n" +
-	"\rExecuteStream\x12(.wso2.gateway.python.v1.ExecutionRequest\x1a).wso2.gateway.python.v1.ExecutionResponse(\x010\x01\x12f\n" +
-	"\vHealthCheck\x12*.wso2.gateway.python.v1.HealthCheckRequest\x1a+.wso2.gateway.python.v1.HealthCheckResponse\x12c\n" +
-	"\n" +
-	"InitPolicy\x12).wso2.gateway.python.v1.InitPolicyRequest\x1a*.wso2.gateway.python.v1.InitPolicyResponse\x12l\n" +
-	"\rDestroyPolicy\x12,.wso2.gateway.python.v1.DestroyPolicyRequest\x1a-.wso2.gateway.python.v1.DestroyPolicyResponseB`Z^github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/pythonbridge/protob\x06proto3"
+	"InitPolicy\x12/.wso2.gateway.python.v1alpha2.InitPolicyRequest\x1a0.wso2.gateway.python.v1alpha2.InitPolicyResponse\x12x\n" +
+	"\rDestroyPolicy\x122.wso2.gateway.python.v1alpha2.DestroyPolicyRequest\x1a3.wso2.gateway.python.v1alpha2.DestroyPolicyResponseB`Z^github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/pythonbridge/protob\x06proto3"
 
 var (
 	file_python_executor_proto_rawDescOnce sync.Once
@@ -1837,83 +4470,229 @@ func file_python_executor_proto_rawDescGZIP() []byte {
 	return file_python_executor_proto_rawDescData
 }
 
-var file_python_executor_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
+var file_python_executor_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_python_executor_proto_msgTypes = make([]protoimpl.MessageInfo, 69)
 var file_python_executor_proto_goTypes = []any{
-	(*ExecutionRequest)(nil),              // 0: wso2.gateway.python.v1.ExecutionRequest
-	(*ExecutionResponse)(nil),             // 1: wso2.gateway.python.v1.ExecutionResponse
-	(*ProcessingMode)(nil),                // 2: wso2.gateway.python.v1.ProcessingMode
-	(*InitPolicyRequest)(nil),             // 3: wso2.gateway.python.v1.InitPolicyRequest
-	(*InitPolicyResponse)(nil),            // 4: wso2.gateway.python.v1.InitPolicyResponse
-	(*DestroyPolicyRequest)(nil),          // 5: wso2.gateway.python.v1.DestroyPolicyRequest
-	(*DestroyPolicyResponse)(nil),         // 6: wso2.gateway.python.v1.DestroyPolicyResponse
-	(*SharedContext)(nil),                 // 7: wso2.gateway.python.v1.SharedContext
-	(*RequestContext)(nil),                // 8: wso2.gateway.python.v1.RequestContext
-	(*ResponseContext)(nil),               // 9: wso2.gateway.python.v1.ResponseContext
-	(*PolicyMetadata)(nil),                // 10: wso2.gateway.python.v1.PolicyMetadata
-	(*RequestActionResult)(nil),           // 11: wso2.gateway.python.v1.RequestActionResult
-	(*ResponseActionResult)(nil),          // 12: wso2.gateway.python.v1.ResponseActionResult
-	(*UpstreamRequestModifications)(nil),  // 13: wso2.gateway.python.v1.UpstreamRequestModifications
-	(*UpstreamResponseModifications)(nil), // 14: wso2.gateway.python.v1.UpstreamResponseModifications
-	(*ImmediateResponseAction)(nil),       // 15: wso2.gateway.python.v1.ImmediateResponseAction
-	(*ExecutionError)(nil),                // 16: wso2.gateway.python.v1.ExecutionError
-	(*HealthCheckRequest)(nil),            // 17: wso2.gateway.python.v1.HealthCheckRequest
-	(*HealthCheckResponse)(nil),           // 18: wso2.gateway.python.v1.HealthCheckResponse
-	(*StringList)(nil),                    // 19: wso2.gateway.python.v1.StringList
-	nil,                                   // 20: wso2.gateway.python.v1.SharedContext.AuthContextEntry
-	nil,                                   // 21: wso2.gateway.python.v1.RequestContext.HeadersEntry
-	nil,                                   // 22: wso2.gateway.python.v1.ResponseContext.RequestHeadersEntry
-	nil,                                   // 23: wso2.gateway.python.v1.ResponseContext.ResponseHeadersEntry
-	nil,                                   // 24: wso2.gateway.python.v1.UpstreamRequestModifications.SetHeadersEntry
-	nil,                                   // 25: wso2.gateway.python.v1.UpstreamRequestModifications.AppendHeadersEntry
-	nil,                                   // 26: wso2.gateway.python.v1.UpstreamResponseModifications.SetHeadersEntry
-	nil,                                   // 27: wso2.gateway.python.v1.UpstreamResponseModifications.AppendHeadersEntry
-	nil,                                   // 28: wso2.gateway.python.v1.ImmediateResponseAction.HeadersEntry
-	(*structpb.Struct)(nil),               // 29: google.protobuf.Struct
+	(HeaderProcessingMode)(0),                     // 0: wso2.gateway.python.v1alpha2.HeaderProcessingMode
+	(BodyProcessingMode)(0),                       // 1: wso2.gateway.python.v1alpha2.BodyProcessingMode
+	(Phase)(0),                                    // 2: wso2.gateway.python.v1alpha2.Phase
+	(DropHeaderActionType)(0),                     // 3: wso2.gateway.python.v1alpha2.DropHeaderActionType
+	(*StreamRequest)(nil),                         // 4: wso2.gateway.python.v1alpha2.StreamRequest
+	(*StreamResponse)(nil),                        // 5: wso2.gateway.python.v1alpha2.StreamResponse
+	(*ProcessingMode)(nil),                        // 6: wso2.gateway.python.v1alpha2.ProcessingMode
+	(*PolicyCapabilities)(nil),                    // 7: wso2.gateway.python.v1alpha2.PolicyCapabilities
+	(*InitPolicyRequest)(nil),                     // 8: wso2.gateway.python.v1alpha2.InitPolicyRequest
+	(*InitPolicyResponse)(nil),                    // 9: wso2.gateway.python.v1alpha2.InitPolicyResponse
+	(*DestroyPolicyRequest)(nil),                  // 10: wso2.gateway.python.v1alpha2.DestroyPolicyRequest
+	(*DestroyPolicyResponse)(nil),                 // 11: wso2.gateway.python.v1alpha2.DestroyPolicyResponse
+	(*ExecutionMetadata)(nil),                     // 12: wso2.gateway.python.v1alpha2.ExecutionMetadata
+	(*TraceMetadata)(nil),                         // 13: wso2.gateway.python.v1alpha2.TraceMetadata
+	(*SharedContext)(nil),                         // 14: wso2.gateway.python.v1alpha2.SharedContext
+	(*Headers)(nil),                               // 15: wso2.gateway.python.v1alpha2.Headers
+	(*StringList)(nil),                            // 16: wso2.gateway.python.v1alpha2.StringList
+	(*Body)(nil),                                  // 17: wso2.gateway.python.v1alpha2.Body
+	(*StreamBody)(nil),                            // 18: wso2.gateway.python.v1alpha2.StreamBody
+	(*AuthContext)(nil),                           // 19: wso2.gateway.python.v1alpha2.AuthContext
+	(*RequestHeaderContext)(nil),                  // 20: wso2.gateway.python.v1alpha2.RequestHeaderContext
+	(*RequestContext)(nil),                        // 21: wso2.gateway.python.v1alpha2.RequestContext
+	(*ResponseHeaderContext)(nil),                 // 22: wso2.gateway.python.v1alpha2.ResponseHeaderContext
+	(*ResponseContext)(nil),                       // 23: wso2.gateway.python.v1alpha2.ResponseContext
+	(*RequestStreamContext)(nil),                  // 24: wso2.gateway.python.v1alpha2.RequestStreamContext
+	(*ResponseStreamContext)(nil),                 // 25: wso2.gateway.python.v1alpha2.ResponseStreamContext
+	(*RequestHeadersPayload)(nil),                 // 26: wso2.gateway.python.v1alpha2.RequestHeadersPayload
+	(*RequestBodyPayload)(nil),                    // 27: wso2.gateway.python.v1alpha2.RequestBodyPayload
+	(*ResponseHeadersPayload)(nil),                // 28: wso2.gateway.python.v1alpha2.ResponseHeadersPayload
+	(*ResponseBodyPayload)(nil),                   // 29: wso2.gateway.python.v1alpha2.ResponseBodyPayload
+	(*NeedsMoreRequestDataPayload)(nil),           // 30: wso2.gateway.python.v1alpha2.NeedsMoreRequestDataPayload
+	(*RequestChunkPayload)(nil),                   // 31: wso2.gateway.python.v1alpha2.RequestChunkPayload
+	(*NeedsMoreResponseDataPayload)(nil),          // 32: wso2.gateway.python.v1alpha2.NeedsMoreResponseDataPayload
+	(*ResponseChunkPayload)(nil),                  // 33: wso2.gateway.python.v1alpha2.ResponseChunkPayload
+	(*CancelExecutionPayload)(nil),                // 34: wso2.gateway.python.v1alpha2.CancelExecutionPayload
+	(*PolicyMetadata)(nil),                        // 35: wso2.gateway.python.v1alpha2.PolicyMetadata
+	(*DropHeaderAction)(nil),                      // 36: wso2.gateway.python.v1alpha2.DropHeaderAction
+	(*ImmediateResponse)(nil),                     // 37: wso2.gateway.python.v1alpha2.ImmediateResponse
+	(*UpstreamRequestHeaderModifications)(nil),    // 38: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications
+	(*UpstreamRequestModifications)(nil),          // 39: wso2.gateway.python.v1alpha2.UpstreamRequestModifications
+	(*DownstreamResponseHeaderModifications)(nil), // 40: wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications
+	(*DownstreamResponseModifications)(nil),       // 41: wso2.gateway.python.v1alpha2.DownstreamResponseModifications
+	(*ForwardRequestChunk)(nil),                   // 42: wso2.gateway.python.v1alpha2.ForwardRequestChunk
+	(*ForwardResponseChunk)(nil),                  // 43: wso2.gateway.python.v1alpha2.ForwardResponseChunk
+	(*TerminateResponseChunk)(nil),                // 44: wso2.gateway.python.v1alpha2.TerminateResponseChunk
+	(*RequestHeaderActionPayload)(nil),            // 45: wso2.gateway.python.v1alpha2.RequestHeaderActionPayload
+	(*RequestActionPayload)(nil),                  // 46: wso2.gateway.python.v1alpha2.RequestActionPayload
+	(*ResponseHeaderActionPayload)(nil),           // 47: wso2.gateway.python.v1alpha2.ResponseHeaderActionPayload
+	(*ResponseActionPayload)(nil),                 // 48: wso2.gateway.python.v1alpha2.ResponseActionPayload
+	(*NeedsMoreDecisionPayload)(nil),              // 49: wso2.gateway.python.v1alpha2.NeedsMoreDecisionPayload
+	(*StreamingRequestActionPayload)(nil),         // 50: wso2.gateway.python.v1alpha2.StreamingRequestActionPayload
+	(*StreamingResponseActionPayload)(nil),        // 51: wso2.gateway.python.v1alpha2.StreamingResponseActionPayload
+	(*ExecutionError)(nil),                        // 52: wso2.gateway.python.v1alpha2.ExecutionError
+	(*HealthCheckRequest)(nil),                    // 53: wso2.gateway.python.v1alpha2.HealthCheckRequest
+	(*HealthCheckResponse)(nil),                   // 54: wso2.gateway.python.v1alpha2.HealthCheckResponse
+	nil,                                           // 55: wso2.gateway.python.v1alpha2.Headers.ValuesEntry
+	nil,                                           // 56: wso2.gateway.python.v1alpha2.AuthContext.ScopesEntry
+	nil,                                           // 57: wso2.gateway.python.v1alpha2.AuthContext.PropertiesEntry
+	nil,                                           // 58: wso2.gateway.python.v1alpha2.ImmediateResponse.HeadersEntry
+	nil,                                           // 59: wso2.gateway.python.v1alpha2.ImmediateResponse.DynamicMetadataEntry
+	nil,                                           // 60: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.HeadersToSetEntry
+	nil,                                           // 61: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.QueryParametersToAddEntry
+	nil,                                           // 62: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.DynamicMetadataEntry
+	nil,                                           // 63: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.HeadersToSetEntry
+	nil,                                           // 64: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.QueryParametersToAddEntry
+	nil,                                           // 65: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.DynamicMetadataEntry
+	nil,                                           // 66: wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.HeadersToSetEntry
+	nil,                                           // 67: wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.DynamicMetadataEntry
+	nil,                                           // 68: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.HeadersToSetEntry
+	nil,                                           // 69: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.DynamicMetadataEntry
+	nil,                                           // 70: wso2.gateway.python.v1alpha2.ForwardRequestChunk.DynamicMetadataEntry
+	nil,                                           // 71: wso2.gateway.python.v1alpha2.ForwardResponseChunk.DynamicMetadataEntry
+	nil,                                           // 72: wso2.gateway.python.v1alpha2.TerminateResponseChunk.DynamicMetadataEntry
+	(*structpb.Struct)(nil),                       // 73: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil),                 // 74: google.protobuf.Timestamp
+	(*wrapperspb.BytesValue)(nil),                 // 75: google.protobuf.BytesValue
+	(*wrapperspb.StringValue)(nil),                // 76: google.protobuf.StringValue
+	(*wrapperspb.Int32Value)(nil),                 // 77: google.protobuf.Int32Value
 }
 var file_python_executor_proto_depIdxs = []int32{
-	29, // 0: wso2.gateway.python.v1.ExecutionRequest.params:type_name -> google.protobuf.Struct
-	8,  // 1: wso2.gateway.python.v1.ExecutionRequest.request_context:type_name -> wso2.gateway.python.v1.RequestContext
-	9,  // 2: wso2.gateway.python.v1.ExecutionRequest.response_context:type_name -> wso2.gateway.python.v1.ResponseContext
-	7,  // 3: wso2.gateway.python.v1.ExecutionRequest.shared_context:type_name -> wso2.gateway.python.v1.SharedContext
-	10, // 4: wso2.gateway.python.v1.ExecutionRequest.policy_metadata:type_name -> wso2.gateway.python.v1.PolicyMetadata
-	11, // 5: wso2.gateway.python.v1.ExecutionResponse.request_result:type_name -> wso2.gateway.python.v1.RequestActionResult
-	12, // 6: wso2.gateway.python.v1.ExecutionResponse.response_result:type_name -> wso2.gateway.python.v1.ResponseActionResult
-	16, // 7: wso2.gateway.python.v1.ExecutionResponse.error:type_name -> wso2.gateway.python.v1.ExecutionError
-	29, // 8: wso2.gateway.python.v1.ExecutionResponse.updated_metadata:type_name -> google.protobuf.Struct
-	10, // 9: wso2.gateway.python.v1.InitPolicyRequest.policy_metadata:type_name -> wso2.gateway.python.v1.PolicyMetadata
-	29, // 10: wso2.gateway.python.v1.InitPolicyRequest.params:type_name -> google.protobuf.Struct
-	2,  // 11: wso2.gateway.python.v1.InitPolicyResponse.processing_mode:type_name -> wso2.gateway.python.v1.ProcessingMode
-	29, // 12: wso2.gateway.python.v1.SharedContext.metadata:type_name -> google.protobuf.Struct
-	20, // 13: wso2.gateway.python.v1.SharedContext.auth_context:type_name -> wso2.gateway.python.v1.SharedContext.AuthContextEntry
-	21, // 14: wso2.gateway.python.v1.RequestContext.headers:type_name -> wso2.gateway.python.v1.RequestContext.HeadersEntry
-	22, // 15: wso2.gateway.python.v1.ResponseContext.request_headers:type_name -> wso2.gateway.python.v1.ResponseContext.RequestHeadersEntry
-	23, // 16: wso2.gateway.python.v1.ResponseContext.response_headers:type_name -> wso2.gateway.python.v1.ResponseContext.ResponseHeadersEntry
-	13, // 17: wso2.gateway.python.v1.RequestActionResult.continue_request:type_name -> wso2.gateway.python.v1.UpstreamRequestModifications
-	15, // 18: wso2.gateway.python.v1.RequestActionResult.immediate_response:type_name -> wso2.gateway.python.v1.ImmediateResponseAction
-	14, // 19: wso2.gateway.python.v1.ResponseActionResult.continue_response:type_name -> wso2.gateway.python.v1.UpstreamResponseModifications
-	24, // 20: wso2.gateway.python.v1.UpstreamRequestModifications.set_headers:type_name -> wso2.gateway.python.v1.UpstreamRequestModifications.SetHeadersEntry
-	25, // 21: wso2.gateway.python.v1.UpstreamRequestModifications.append_headers:type_name -> wso2.gateway.python.v1.UpstreamRequestModifications.AppendHeadersEntry
-	29, // 22: wso2.gateway.python.v1.UpstreamRequestModifications.analytics_metadata:type_name -> google.protobuf.Struct
-	26, // 23: wso2.gateway.python.v1.UpstreamResponseModifications.set_headers:type_name -> wso2.gateway.python.v1.UpstreamResponseModifications.SetHeadersEntry
-	27, // 24: wso2.gateway.python.v1.UpstreamResponseModifications.append_headers:type_name -> wso2.gateway.python.v1.UpstreamResponseModifications.AppendHeadersEntry
-	29, // 25: wso2.gateway.python.v1.UpstreamResponseModifications.analytics_metadata:type_name -> google.protobuf.Struct
-	28, // 26: wso2.gateway.python.v1.ImmediateResponseAction.headers:type_name -> wso2.gateway.python.v1.ImmediateResponseAction.HeadersEntry
-	29, // 27: wso2.gateway.python.v1.ImmediateResponseAction.analytics_metadata:type_name -> google.protobuf.Struct
-	19, // 28: wso2.gateway.python.v1.UpstreamRequestModifications.AppendHeadersEntry.value:type_name -> wso2.gateway.python.v1.StringList
-	19, // 29: wso2.gateway.python.v1.UpstreamResponseModifications.AppendHeadersEntry.value:type_name -> wso2.gateway.python.v1.StringList
-	0,  // 30: wso2.gateway.python.v1.PythonExecutorService.ExecuteStream:input_type -> wso2.gateway.python.v1.ExecutionRequest
-	17, // 31: wso2.gateway.python.v1.PythonExecutorService.HealthCheck:input_type -> wso2.gateway.python.v1.HealthCheckRequest
-	3,  // 32: wso2.gateway.python.v1.PythonExecutorService.InitPolicy:input_type -> wso2.gateway.python.v1.InitPolicyRequest
-	5,  // 33: wso2.gateway.python.v1.PythonExecutorService.DestroyPolicy:input_type -> wso2.gateway.python.v1.DestroyPolicyRequest
-	1,  // 34: wso2.gateway.python.v1.PythonExecutorService.ExecuteStream:output_type -> wso2.gateway.python.v1.ExecutionResponse
-	18, // 35: wso2.gateway.python.v1.PythonExecutorService.HealthCheck:output_type -> wso2.gateway.python.v1.HealthCheckResponse
-	4,  // 36: wso2.gateway.python.v1.PythonExecutorService.InitPolicy:output_type -> wso2.gateway.python.v1.InitPolicyResponse
-	6,  // 37: wso2.gateway.python.v1.PythonExecutorService.DestroyPolicy:output_type -> wso2.gateway.python.v1.DestroyPolicyResponse
-	34, // [34:38] is the sub-list for method output_type
-	30, // [30:34] is the sub-list for method input_type
-	30, // [30:30] is the sub-list for extension type_name
-	30, // [30:30] is the sub-list for extension extendee
-	0,  // [0:30] is the sub-list for field type_name
+	73,  // 0: wso2.gateway.python.v1alpha2.StreamRequest.params:type_name -> google.protobuf.Struct
+	14,  // 1: wso2.gateway.python.v1alpha2.StreamRequest.shared_context:type_name -> wso2.gateway.python.v1alpha2.SharedContext
+	12,  // 2: wso2.gateway.python.v1alpha2.StreamRequest.execution_metadata:type_name -> wso2.gateway.python.v1alpha2.ExecutionMetadata
+	26,  // 3: wso2.gateway.python.v1alpha2.StreamRequest.request_headers:type_name -> wso2.gateway.python.v1alpha2.RequestHeadersPayload
+	27,  // 4: wso2.gateway.python.v1alpha2.StreamRequest.request_body:type_name -> wso2.gateway.python.v1alpha2.RequestBodyPayload
+	28,  // 5: wso2.gateway.python.v1alpha2.StreamRequest.response_headers:type_name -> wso2.gateway.python.v1alpha2.ResponseHeadersPayload
+	29,  // 6: wso2.gateway.python.v1alpha2.StreamRequest.response_body:type_name -> wso2.gateway.python.v1alpha2.ResponseBodyPayload
+	30,  // 7: wso2.gateway.python.v1alpha2.StreamRequest.needs_more_request_data:type_name -> wso2.gateway.python.v1alpha2.NeedsMoreRequestDataPayload
+	31,  // 8: wso2.gateway.python.v1alpha2.StreamRequest.request_chunk:type_name -> wso2.gateway.python.v1alpha2.RequestChunkPayload
+	32,  // 9: wso2.gateway.python.v1alpha2.StreamRequest.needs_more_response_data:type_name -> wso2.gateway.python.v1alpha2.NeedsMoreResponseDataPayload
+	33,  // 10: wso2.gateway.python.v1alpha2.StreamRequest.response_chunk:type_name -> wso2.gateway.python.v1alpha2.ResponseChunkPayload
+	34,  // 11: wso2.gateway.python.v1alpha2.StreamRequest.cancel_execution:type_name -> wso2.gateway.python.v1alpha2.CancelExecutionPayload
+	73,  // 12: wso2.gateway.python.v1alpha2.StreamResponse.updated_metadata:type_name -> google.protobuf.Struct
+	45,  // 13: wso2.gateway.python.v1alpha2.StreamResponse.request_header_action:type_name -> wso2.gateway.python.v1alpha2.RequestHeaderActionPayload
+	46,  // 14: wso2.gateway.python.v1alpha2.StreamResponse.request_action:type_name -> wso2.gateway.python.v1alpha2.RequestActionPayload
+	47,  // 15: wso2.gateway.python.v1alpha2.StreamResponse.response_header_action:type_name -> wso2.gateway.python.v1alpha2.ResponseHeaderActionPayload
+	48,  // 16: wso2.gateway.python.v1alpha2.StreamResponse.response_action:type_name -> wso2.gateway.python.v1alpha2.ResponseActionPayload
+	49,  // 17: wso2.gateway.python.v1alpha2.StreamResponse.needs_more_decision:type_name -> wso2.gateway.python.v1alpha2.NeedsMoreDecisionPayload
+	50,  // 18: wso2.gateway.python.v1alpha2.StreamResponse.streaming_request_action:type_name -> wso2.gateway.python.v1alpha2.StreamingRequestActionPayload
+	51,  // 19: wso2.gateway.python.v1alpha2.StreamResponse.streaming_response_action:type_name -> wso2.gateway.python.v1alpha2.StreamingResponseActionPayload
+	52,  // 20: wso2.gateway.python.v1alpha2.StreamResponse.error:type_name -> wso2.gateway.python.v1alpha2.ExecutionError
+	0,   // 21: wso2.gateway.python.v1alpha2.ProcessingMode.request_header_mode:type_name -> wso2.gateway.python.v1alpha2.HeaderProcessingMode
+	1,   // 22: wso2.gateway.python.v1alpha2.ProcessingMode.request_body_mode:type_name -> wso2.gateway.python.v1alpha2.BodyProcessingMode
+	0,   // 23: wso2.gateway.python.v1alpha2.ProcessingMode.response_header_mode:type_name -> wso2.gateway.python.v1alpha2.HeaderProcessingMode
+	1,   // 24: wso2.gateway.python.v1alpha2.ProcessingMode.response_body_mode:type_name -> wso2.gateway.python.v1alpha2.BodyProcessingMode
+	35,  // 25: wso2.gateway.python.v1alpha2.InitPolicyRequest.policy_metadata:type_name -> wso2.gateway.python.v1alpha2.PolicyMetadata
+	73,  // 26: wso2.gateway.python.v1alpha2.InitPolicyRequest.params:type_name -> google.protobuf.Struct
+	6,   // 27: wso2.gateway.python.v1alpha2.InitPolicyResponse.processing_mode:type_name -> wso2.gateway.python.v1alpha2.ProcessingMode
+	7,   // 28: wso2.gateway.python.v1alpha2.InitPolicyResponse.capabilities:type_name -> wso2.gateway.python.v1alpha2.PolicyCapabilities
+	2,   // 29: wso2.gateway.python.v1alpha2.ExecutionMetadata.phase:type_name -> wso2.gateway.python.v1alpha2.Phase
+	74,  // 30: wso2.gateway.python.v1alpha2.ExecutionMetadata.deadline:type_name -> google.protobuf.Timestamp
+	13,  // 31: wso2.gateway.python.v1alpha2.ExecutionMetadata.trace:type_name -> wso2.gateway.python.v1alpha2.TraceMetadata
+	73,  // 32: wso2.gateway.python.v1alpha2.SharedContext.metadata:type_name -> google.protobuf.Struct
+	19,  // 33: wso2.gateway.python.v1alpha2.SharedContext.auth_context:type_name -> wso2.gateway.python.v1alpha2.AuthContext
+	55,  // 34: wso2.gateway.python.v1alpha2.Headers.values:type_name -> wso2.gateway.python.v1alpha2.Headers.ValuesEntry
+	56,  // 35: wso2.gateway.python.v1alpha2.AuthContext.scopes:type_name -> wso2.gateway.python.v1alpha2.AuthContext.ScopesEntry
+	57,  // 36: wso2.gateway.python.v1alpha2.AuthContext.properties:type_name -> wso2.gateway.python.v1alpha2.AuthContext.PropertiesEntry
+	19,  // 37: wso2.gateway.python.v1alpha2.AuthContext.previous:type_name -> wso2.gateway.python.v1alpha2.AuthContext
+	15,  // 38: wso2.gateway.python.v1alpha2.RequestHeaderContext.headers:type_name -> wso2.gateway.python.v1alpha2.Headers
+	15,  // 39: wso2.gateway.python.v1alpha2.RequestContext.headers:type_name -> wso2.gateway.python.v1alpha2.Headers
+	17,  // 40: wso2.gateway.python.v1alpha2.RequestContext.body:type_name -> wso2.gateway.python.v1alpha2.Body
+	15,  // 41: wso2.gateway.python.v1alpha2.ResponseHeaderContext.request_headers:type_name -> wso2.gateway.python.v1alpha2.Headers
+	17,  // 42: wso2.gateway.python.v1alpha2.ResponseHeaderContext.request_body:type_name -> wso2.gateway.python.v1alpha2.Body
+	15,  // 43: wso2.gateway.python.v1alpha2.ResponseHeaderContext.response_headers:type_name -> wso2.gateway.python.v1alpha2.Headers
+	15,  // 44: wso2.gateway.python.v1alpha2.ResponseContext.request_headers:type_name -> wso2.gateway.python.v1alpha2.Headers
+	17,  // 45: wso2.gateway.python.v1alpha2.ResponseContext.request_body:type_name -> wso2.gateway.python.v1alpha2.Body
+	15,  // 46: wso2.gateway.python.v1alpha2.ResponseContext.response_headers:type_name -> wso2.gateway.python.v1alpha2.Headers
+	17,  // 47: wso2.gateway.python.v1alpha2.ResponseContext.response_body:type_name -> wso2.gateway.python.v1alpha2.Body
+	15,  // 48: wso2.gateway.python.v1alpha2.RequestStreamContext.headers:type_name -> wso2.gateway.python.v1alpha2.Headers
+	15,  // 49: wso2.gateway.python.v1alpha2.ResponseStreamContext.request_headers:type_name -> wso2.gateway.python.v1alpha2.Headers
+	17,  // 50: wso2.gateway.python.v1alpha2.ResponseStreamContext.request_body:type_name -> wso2.gateway.python.v1alpha2.Body
+	15,  // 51: wso2.gateway.python.v1alpha2.ResponseStreamContext.response_headers:type_name -> wso2.gateway.python.v1alpha2.Headers
+	20,  // 52: wso2.gateway.python.v1alpha2.RequestHeadersPayload.context:type_name -> wso2.gateway.python.v1alpha2.RequestHeaderContext
+	21,  // 53: wso2.gateway.python.v1alpha2.RequestBodyPayload.context:type_name -> wso2.gateway.python.v1alpha2.RequestContext
+	22,  // 54: wso2.gateway.python.v1alpha2.ResponseHeadersPayload.context:type_name -> wso2.gateway.python.v1alpha2.ResponseHeaderContext
+	23,  // 55: wso2.gateway.python.v1alpha2.ResponseBodyPayload.context:type_name -> wso2.gateway.python.v1alpha2.ResponseContext
+	24,  // 56: wso2.gateway.python.v1alpha2.RequestChunkPayload.context:type_name -> wso2.gateway.python.v1alpha2.RequestStreamContext
+	18,  // 57: wso2.gateway.python.v1alpha2.RequestChunkPayload.chunk:type_name -> wso2.gateway.python.v1alpha2.StreamBody
+	25,  // 58: wso2.gateway.python.v1alpha2.ResponseChunkPayload.context:type_name -> wso2.gateway.python.v1alpha2.ResponseStreamContext
+	18,  // 59: wso2.gateway.python.v1alpha2.ResponseChunkPayload.chunk:type_name -> wso2.gateway.python.v1alpha2.StreamBody
+	2,   // 60: wso2.gateway.python.v1alpha2.CancelExecutionPayload.target_phase:type_name -> wso2.gateway.python.v1alpha2.Phase
+	3,   // 61: wso2.gateway.python.v1alpha2.DropHeaderAction.action:type_name -> wso2.gateway.python.v1alpha2.DropHeaderActionType
+	58,  // 62: wso2.gateway.python.v1alpha2.ImmediateResponse.headers:type_name -> wso2.gateway.python.v1alpha2.ImmediateResponse.HeadersEntry
+	75,  // 63: wso2.gateway.python.v1alpha2.ImmediateResponse.body:type_name -> google.protobuf.BytesValue
+	73,  // 64: wso2.gateway.python.v1alpha2.ImmediateResponse.analytics_metadata:type_name -> google.protobuf.Struct
+	59,  // 65: wso2.gateway.python.v1alpha2.ImmediateResponse.dynamic_metadata:type_name -> wso2.gateway.python.v1alpha2.ImmediateResponse.DynamicMetadataEntry
+	36,  // 66: wso2.gateway.python.v1alpha2.ImmediateResponse.analytics_header_filter:type_name -> wso2.gateway.python.v1alpha2.DropHeaderAction
+	60,  // 67: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.headers_to_set:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.HeadersToSetEntry
+	76,  // 68: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.upstream_name:type_name -> google.protobuf.StringValue
+	76,  // 69: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.path:type_name -> google.protobuf.StringValue
+	76,  // 70: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.host:type_name -> google.protobuf.StringValue
+	76,  // 71: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.method:type_name -> google.protobuf.StringValue
+	61,  // 72: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.query_parameters_to_add:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.QueryParametersToAddEntry
+	73,  // 73: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.analytics_metadata:type_name -> google.protobuf.Struct
+	62,  // 74: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.dynamic_metadata:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.DynamicMetadataEntry
+	36,  // 75: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.analytics_header_filter:type_name -> wso2.gateway.python.v1alpha2.DropHeaderAction
+	75,  // 76: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.body:type_name -> google.protobuf.BytesValue
+	63,  // 77: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.headers_to_set:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestModifications.HeadersToSetEntry
+	76,  // 78: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.upstream_name:type_name -> google.protobuf.StringValue
+	76,  // 79: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.path:type_name -> google.protobuf.StringValue
+	76,  // 80: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.host:type_name -> google.protobuf.StringValue
+	76,  // 81: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.method:type_name -> google.protobuf.StringValue
+	64,  // 82: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.query_parameters_to_add:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestModifications.QueryParametersToAddEntry
+	73,  // 83: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.analytics_metadata:type_name -> google.protobuf.Struct
+	65,  // 84: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.dynamic_metadata:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestModifications.DynamicMetadataEntry
+	36,  // 85: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.analytics_header_filter:type_name -> wso2.gateway.python.v1alpha2.DropHeaderAction
+	66,  // 86: wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.headers_to_set:type_name -> wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.HeadersToSetEntry
+	73,  // 87: wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.analytics_metadata:type_name -> google.protobuf.Struct
+	67,  // 88: wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.dynamic_metadata:type_name -> wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.DynamicMetadataEntry
+	36,  // 89: wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.analytics_header_filter:type_name -> wso2.gateway.python.v1alpha2.DropHeaderAction
+	75,  // 90: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.body:type_name -> google.protobuf.BytesValue
+	77,  // 91: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.status_code:type_name -> google.protobuf.Int32Value
+	68,  // 92: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.headers_to_set:type_name -> wso2.gateway.python.v1alpha2.DownstreamResponseModifications.HeadersToSetEntry
+	73,  // 93: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.analytics_metadata:type_name -> google.protobuf.Struct
+	69,  // 94: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.dynamic_metadata:type_name -> wso2.gateway.python.v1alpha2.DownstreamResponseModifications.DynamicMetadataEntry
+	36,  // 95: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.analytics_header_filter:type_name -> wso2.gateway.python.v1alpha2.DropHeaderAction
+	75,  // 96: wso2.gateway.python.v1alpha2.ForwardRequestChunk.body:type_name -> google.protobuf.BytesValue
+	73,  // 97: wso2.gateway.python.v1alpha2.ForwardRequestChunk.analytics_metadata:type_name -> google.protobuf.Struct
+	70,  // 98: wso2.gateway.python.v1alpha2.ForwardRequestChunk.dynamic_metadata:type_name -> wso2.gateway.python.v1alpha2.ForwardRequestChunk.DynamicMetadataEntry
+	75,  // 99: wso2.gateway.python.v1alpha2.ForwardResponseChunk.body:type_name -> google.protobuf.BytesValue
+	73,  // 100: wso2.gateway.python.v1alpha2.ForwardResponseChunk.analytics_metadata:type_name -> google.protobuf.Struct
+	71,  // 101: wso2.gateway.python.v1alpha2.ForwardResponseChunk.dynamic_metadata:type_name -> wso2.gateway.python.v1alpha2.ForwardResponseChunk.DynamicMetadataEntry
+	75,  // 102: wso2.gateway.python.v1alpha2.TerminateResponseChunk.body:type_name -> google.protobuf.BytesValue
+	73,  // 103: wso2.gateway.python.v1alpha2.TerminateResponseChunk.analytics_metadata:type_name -> google.protobuf.Struct
+	72,  // 104: wso2.gateway.python.v1alpha2.TerminateResponseChunk.dynamic_metadata:type_name -> wso2.gateway.python.v1alpha2.TerminateResponseChunk.DynamicMetadataEntry
+	38,  // 105: wso2.gateway.python.v1alpha2.RequestHeaderActionPayload.upstream_request_header_modifications:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications
+	37,  // 106: wso2.gateway.python.v1alpha2.RequestHeaderActionPayload.immediate_response:type_name -> wso2.gateway.python.v1alpha2.ImmediateResponse
+	39,  // 107: wso2.gateway.python.v1alpha2.RequestActionPayload.upstream_request_modifications:type_name -> wso2.gateway.python.v1alpha2.UpstreamRequestModifications
+	37,  // 108: wso2.gateway.python.v1alpha2.RequestActionPayload.immediate_response:type_name -> wso2.gateway.python.v1alpha2.ImmediateResponse
+	40,  // 109: wso2.gateway.python.v1alpha2.ResponseHeaderActionPayload.downstream_response_header_modifications:type_name -> wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications
+	37,  // 110: wso2.gateway.python.v1alpha2.ResponseHeaderActionPayload.immediate_response:type_name -> wso2.gateway.python.v1alpha2.ImmediateResponse
+	41,  // 111: wso2.gateway.python.v1alpha2.ResponseActionPayload.downstream_response_modifications:type_name -> wso2.gateway.python.v1alpha2.DownstreamResponseModifications
+	37,  // 112: wso2.gateway.python.v1alpha2.ResponseActionPayload.immediate_response:type_name -> wso2.gateway.python.v1alpha2.ImmediateResponse
+	42,  // 113: wso2.gateway.python.v1alpha2.StreamingRequestActionPayload.forward_request_chunk:type_name -> wso2.gateway.python.v1alpha2.ForwardRequestChunk
+	43,  // 114: wso2.gateway.python.v1alpha2.StreamingResponseActionPayload.forward_response_chunk:type_name -> wso2.gateway.python.v1alpha2.ForwardResponseChunk
+	44,  // 115: wso2.gateway.python.v1alpha2.StreamingResponseActionPayload.terminate_response_chunk:type_name -> wso2.gateway.python.v1alpha2.TerminateResponseChunk
+	16,  // 116: wso2.gateway.python.v1alpha2.Headers.ValuesEntry.value:type_name -> wso2.gateway.python.v1alpha2.StringList
+	73,  // 117: wso2.gateway.python.v1alpha2.ImmediateResponse.DynamicMetadataEntry.value:type_name -> google.protobuf.Struct
+	16,  // 118: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.QueryParametersToAddEntry.value:type_name -> wso2.gateway.python.v1alpha2.StringList
+	73,  // 119: wso2.gateway.python.v1alpha2.UpstreamRequestHeaderModifications.DynamicMetadataEntry.value:type_name -> google.protobuf.Struct
+	16,  // 120: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.QueryParametersToAddEntry.value:type_name -> wso2.gateway.python.v1alpha2.StringList
+	73,  // 121: wso2.gateway.python.v1alpha2.UpstreamRequestModifications.DynamicMetadataEntry.value:type_name -> google.protobuf.Struct
+	73,  // 122: wso2.gateway.python.v1alpha2.DownstreamResponseHeaderModifications.DynamicMetadataEntry.value:type_name -> google.protobuf.Struct
+	73,  // 123: wso2.gateway.python.v1alpha2.DownstreamResponseModifications.DynamicMetadataEntry.value:type_name -> google.protobuf.Struct
+	73,  // 124: wso2.gateway.python.v1alpha2.ForwardRequestChunk.DynamicMetadataEntry.value:type_name -> google.protobuf.Struct
+	73,  // 125: wso2.gateway.python.v1alpha2.ForwardResponseChunk.DynamicMetadataEntry.value:type_name -> google.protobuf.Struct
+	73,  // 126: wso2.gateway.python.v1alpha2.TerminateResponseChunk.DynamicMetadataEntry.value:type_name -> google.protobuf.Struct
+	4,   // 127: wso2.gateway.python.v1alpha2.PythonExecutorService.ExecuteStream:input_type -> wso2.gateway.python.v1alpha2.StreamRequest
+	53,  // 128: wso2.gateway.python.v1alpha2.PythonExecutorService.HealthCheck:input_type -> wso2.gateway.python.v1alpha2.HealthCheckRequest
+	8,   // 129: wso2.gateway.python.v1alpha2.PythonExecutorService.InitPolicy:input_type -> wso2.gateway.python.v1alpha2.InitPolicyRequest
+	10,  // 130: wso2.gateway.python.v1alpha2.PythonExecutorService.DestroyPolicy:input_type -> wso2.gateway.python.v1alpha2.DestroyPolicyRequest
+	5,   // 131: wso2.gateway.python.v1alpha2.PythonExecutorService.ExecuteStream:output_type -> wso2.gateway.python.v1alpha2.StreamResponse
+	54,  // 132: wso2.gateway.python.v1alpha2.PythonExecutorService.HealthCheck:output_type -> wso2.gateway.python.v1alpha2.HealthCheckResponse
+	9,   // 133: wso2.gateway.python.v1alpha2.PythonExecutorService.InitPolicy:output_type -> wso2.gateway.python.v1alpha2.InitPolicyResponse
+	11,  // 134: wso2.gateway.python.v1alpha2.PythonExecutorService.DestroyPolicy:output_type -> wso2.gateway.python.v1alpha2.DestroyPolicyResponse
+	131, // [131:135] is the sub-list for method output_type
+	127, // [127:131] is the sub-list for method input_type
+	127, // [127:127] is the sub-list for extension type_name
+	127, // [127:127] is the sub-list for extension extendee
+	0,   // [0:127] is the sub-list for field type_name
 }
 
 func init() { file_python_executor_proto_init() }
@@ -1922,33 +4701,59 @@ func file_python_executor_proto_init() {
 		return
 	}
 	file_python_executor_proto_msgTypes[0].OneofWrappers = []any{
-		(*ExecutionRequest_RequestContext)(nil),
-		(*ExecutionRequest_ResponseContext)(nil),
+		(*StreamRequest_RequestHeaders)(nil),
+		(*StreamRequest_RequestBody)(nil),
+		(*StreamRequest_ResponseHeaders)(nil),
+		(*StreamRequest_ResponseBody)(nil),
+		(*StreamRequest_NeedsMoreRequestData)(nil),
+		(*StreamRequest_RequestChunk)(nil),
+		(*StreamRequest_NeedsMoreResponseData)(nil),
+		(*StreamRequest_ResponseChunk)(nil),
+		(*StreamRequest_CancelExecution)(nil),
 	}
 	file_python_executor_proto_msgTypes[1].OneofWrappers = []any{
-		(*ExecutionResponse_RequestResult)(nil),
-		(*ExecutionResponse_ResponseResult)(nil),
-		(*ExecutionResponse_Error)(nil),
+		(*StreamResponse_RequestHeaderAction)(nil),
+		(*StreamResponse_RequestAction)(nil),
+		(*StreamResponse_ResponseHeaderAction)(nil),
+		(*StreamResponse_ResponseAction)(nil),
+		(*StreamResponse_NeedsMoreDecision)(nil),
+		(*StreamResponse_StreamingRequestAction)(nil),
+		(*StreamResponse_StreamingResponseAction)(nil),
+		(*StreamResponse_Error)(nil),
 	}
-	file_python_executor_proto_msgTypes[11].OneofWrappers = []any{
-		(*RequestActionResult_ContinueRequest)(nil),
-		(*RequestActionResult_ImmediateResponse)(nil),
+	file_python_executor_proto_msgTypes[41].OneofWrappers = []any{
+		(*RequestHeaderActionPayload_UpstreamRequestHeaderModifications)(nil),
+		(*RequestHeaderActionPayload_ImmediateResponse)(nil),
 	}
-	file_python_executor_proto_msgTypes[12].OneofWrappers = []any{
-		(*ResponseActionResult_ContinueResponse)(nil),
+	file_python_executor_proto_msgTypes[42].OneofWrappers = []any{
+		(*RequestActionPayload_UpstreamRequestModifications)(nil),
+		(*RequestActionPayload_ImmediateResponse)(nil),
+	}
+	file_python_executor_proto_msgTypes[43].OneofWrappers = []any{
+		(*ResponseHeaderActionPayload_DownstreamResponseHeaderModifications)(nil),
+		(*ResponseHeaderActionPayload_ImmediateResponse)(nil),
+	}
+	file_python_executor_proto_msgTypes[44].OneofWrappers = []any{
+		(*ResponseActionPayload_DownstreamResponseModifications)(nil),
+		(*ResponseActionPayload_ImmediateResponse)(nil),
+	}
+	file_python_executor_proto_msgTypes[47].OneofWrappers = []any{
+		(*StreamingResponseActionPayload_ForwardResponseChunk)(nil),
+		(*StreamingResponseActionPayload_TerminateResponseChunk)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_python_executor_proto_rawDesc), len(file_python_executor_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   29,
+			NumEnums:      4,
+			NumMessages:   69,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_python_executor_proto_goTypes,
 		DependencyIndexes: file_python_executor_proto_depIdxs,
+		EnumInfos:         file_python_executor_proto_enumTypes,
 		MessageInfos:      file_python_executor_proto_msgTypes,
 	}.Build()
 	File_python_executor_proto = out.File

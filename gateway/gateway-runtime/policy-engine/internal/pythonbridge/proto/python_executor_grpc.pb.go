@@ -35,30 +35,24 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	PythonExecutorService_ExecuteStream_FullMethodName = "/wso2.gateway.python.v1.PythonExecutorService/ExecuteStream"
-	PythonExecutorService_HealthCheck_FullMethodName   = "/wso2.gateway.python.v1.PythonExecutorService/HealthCheck"
-	PythonExecutorService_InitPolicy_FullMethodName    = "/wso2.gateway.python.v1.PythonExecutorService/InitPolicy"
-	PythonExecutorService_DestroyPolicy_FullMethodName = "/wso2.gateway.python.v1.PythonExecutorService/DestroyPolicy"
+	PythonExecutorService_ExecuteStream_FullMethodName = "/wso2.gateway.python.v1alpha2.PythonExecutorService/ExecuteStream"
+	PythonExecutorService_HealthCheck_FullMethodName   = "/wso2.gateway.python.v1alpha2.PythonExecutorService/HealthCheck"
+	PythonExecutorService_InitPolicy_FullMethodName    = "/wso2.gateway.python.v1alpha2.PythonExecutorService/InitPolicy"
+	PythonExecutorService_DestroyPolicy_FullMethodName = "/wso2.gateway.python.v1alpha2.PythonExecutorService/DestroyPolicy"
 )
 
 // PythonExecutorServiceClient is the client API for PythonExecutorService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// PythonExecutorService defines the gRPC contract between Go PE and the Python process.
-// The Python process is the gRPC SERVER, Go PE is the CLIENT.
+// PythonExecutorService defines the gRPC contract between the Go policy engine
+// and the Python executor process.
 type PythonExecutorServiceClient interface {
-	// Bidirectional stream for executing policies.
-	// Go sends ExecutionRequest, Python responds with ExecutionResponse.
-	// Each request has a unique request_id that the response must echo back.
-	ExecuteStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecutionRequest, ExecutionResponse], error)
-	// Health check for readiness.
+	// Bidirectional stream for all hot-path execution requests.
+	ExecuteStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[StreamRequest, StreamResponse], error)
+	// Unary lifecycle and health RPCs.
 	HealthCheck(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error)
-	// InitPolicy creates a new policy instance on the Python side.
-	// Called once per route during chain building.
 	InitPolicy(ctx context.Context, in *InitPolicyRequest, opts ...grpc.CallOption) (*InitPolicyResponse, error)
-	// DestroyPolicy destroys a policy instance on the Python side.
-	// Called when a route is removed or replaced.
 	DestroyPolicy(ctx context.Context, in *DestroyPolicyRequest, opts ...grpc.CallOption) (*DestroyPolicyResponse, error)
 }
 
@@ -70,18 +64,18 @@ func NewPythonExecutorServiceClient(cc grpc.ClientConnInterface) PythonExecutorS
 	return &pythonExecutorServiceClient{cc}
 }
 
-func (c *pythonExecutorServiceClient) ExecuteStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecutionRequest, ExecutionResponse], error) {
+func (c *pythonExecutorServiceClient) ExecuteStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[StreamRequest, StreamResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &PythonExecutorService_ServiceDesc.Streams[0], PythonExecutorService_ExecuteStream_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[ExecutionRequest, ExecutionResponse]{ClientStream: stream}
+	x := &grpc.GenericClientStream[StreamRequest, StreamResponse]{ClientStream: stream}
 	return x, nil
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type PythonExecutorService_ExecuteStreamClient = grpc.BidiStreamingClient[ExecutionRequest, ExecutionResponse]
+type PythonExecutorService_ExecuteStreamClient = grpc.BidiStreamingClient[StreamRequest, StreamResponse]
 
 func (c *pythonExecutorServiceClient) HealthCheck(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -117,20 +111,14 @@ func (c *pythonExecutorServiceClient) DestroyPolicy(ctx context.Context, in *Des
 // All implementations must embed UnimplementedPythonExecutorServiceServer
 // for forward compatibility.
 //
-// PythonExecutorService defines the gRPC contract between Go PE and the Python process.
-// The Python process is the gRPC SERVER, Go PE is the CLIENT.
+// PythonExecutorService defines the gRPC contract between the Go policy engine
+// and the Python executor process.
 type PythonExecutorServiceServer interface {
-	// Bidirectional stream for executing policies.
-	// Go sends ExecutionRequest, Python responds with ExecutionResponse.
-	// Each request has a unique request_id that the response must echo back.
-	ExecuteStream(grpc.BidiStreamingServer[ExecutionRequest, ExecutionResponse]) error
-	// Health check for readiness.
+	// Bidirectional stream for all hot-path execution requests.
+	ExecuteStream(grpc.BidiStreamingServer[StreamRequest, StreamResponse]) error
+	// Unary lifecycle and health RPCs.
 	HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error)
-	// InitPolicy creates a new policy instance on the Python side.
-	// Called once per route during chain building.
 	InitPolicy(context.Context, *InitPolicyRequest) (*InitPolicyResponse, error)
-	// DestroyPolicy destroys a policy instance on the Python side.
-	// Called when a route is removed or replaced.
 	DestroyPolicy(context.Context, *DestroyPolicyRequest) (*DestroyPolicyResponse, error)
 	mustEmbedUnimplementedPythonExecutorServiceServer()
 }
@@ -142,7 +130,7 @@ type PythonExecutorServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedPythonExecutorServiceServer struct{}
 
-func (UnimplementedPythonExecutorServiceServer) ExecuteStream(grpc.BidiStreamingServer[ExecutionRequest, ExecutionResponse]) error {
+func (UnimplementedPythonExecutorServiceServer) ExecuteStream(grpc.BidiStreamingServer[StreamRequest, StreamResponse]) error {
 	return status.Error(codes.Unimplemented, "method ExecuteStream not implemented")
 }
 func (UnimplementedPythonExecutorServiceServer) HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error) {
@@ -176,11 +164,11 @@ func RegisterPythonExecutorServiceServer(s grpc.ServiceRegistrar, srv PythonExec
 }
 
 func _PythonExecutorService_ExecuteStream_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(PythonExecutorServiceServer).ExecuteStream(&grpc.GenericServerStream[ExecutionRequest, ExecutionResponse]{ServerStream: stream})
+	return srv.(PythonExecutorServiceServer).ExecuteStream(&grpc.GenericServerStream[StreamRequest, StreamResponse]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type PythonExecutorService_ExecuteStreamServer = grpc.BidiStreamingServer[ExecutionRequest, ExecutionResponse]
+type PythonExecutorService_ExecuteStreamServer = grpc.BidiStreamingServer[StreamRequest, StreamResponse]
 
 func _PythonExecutorService_HealthCheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(HealthCheckRequest)
@@ -240,7 +228,7 @@ func _PythonExecutorService_DestroyPolicy_Handler(srv interface{}, ctx context.C
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var PythonExecutorService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "wso2.gateway.python.v1.PythonExecutorService",
+	ServiceName: "wso2.gateway.python.v1alpha2.PythonExecutorService",
 	HandlerType: (*PythonExecutorServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{

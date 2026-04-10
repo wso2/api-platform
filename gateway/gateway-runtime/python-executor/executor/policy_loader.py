@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Policy discovery and import — loads get_policy factory functions."""
+"""Policy discovery and import for Python policy factories."""
 
 import importlib
 import logging
@@ -20,7 +20,8 @@ import os
 import sys
 from typing import Callable, Dict, Optional
 
-from sdk.policy import Policy, PolicyMetadata
+from sdk.policy import Policy
+from sdk.types import PolicyMetadata
 
 logger = logging.getLogger(__name__)
 

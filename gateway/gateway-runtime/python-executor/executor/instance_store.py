@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from sdk.policy import Policy
+from sdk.types import PolicyMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,9 @@ logger = logging.getLogger(__name__)
 class InstanceRecord:
     """Holds a policy instance."""
     policy: Policy
+    policy_name: str
+    policy_version: str
+    metadata: PolicyMetadata
     active_count: int = 0
     pending_destroy: bool = False
 
@@ -43,10 +47,22 @@ class PolicyInstanceStore:
         self._lock = threading.Lock()
         self._instances: dict[str, InstanceRecord] = {}
 
-    def put(self, instance_id: str, instance: Policy) -> None:
+    def put(
+        self,
+        instance_id: str,
+        instance: Policy,
+        policy_name: str,
+        policy_version: str,
+        metadata: PolicyMetadata,
+    ) -> None:
         """Store an instance. Overwrites silently if the ID already exists."""
         with self._lock:
-            self._instances[instance_id] = InstanceRecord(policy=instance)
+            self._instances[instance_id] = InstanceRecord(
+                policy=instance,
+                policy_name=policy_name,
+                policy_version=policy_version,
+                metadata=metadata,
+            )
 
     def get(self, instance_id: str) -> Optional[InstanceRecord]:
         """Look up an instance record. Returns None if not found."""

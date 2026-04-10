@@ -19,16 +19,15 @@ package pythonbridge
 
 import (
 	"fmt"
-	"log/slog"
 
 	"google.golang.org/protobuf/types/known/structpb"
-
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	wrapperspb "google.golang.org/protobuf/types/known/wrapperspb"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/pythonbridge/proto"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
-// Translator converts between proto messages and Go SDK types.
+// Translator converts between protobuf messages and Go v1alpha2 policy types.
 type Translator struct{}
 
 // NewTranslator creates a new Translator.
@@ -36,152 +35,458 @@ func NewTranslator() *Translator {
 	return &Translator{}
 }
 
-// ToGoRequestAction converts a proto ExecutionResponse to a Go RequestAction.
-func (t *Translator) ToGoRequestAction(resp *proto.ExecutionResponse) policy.RequestAction {
-	// Check for error result
-	if errResult := resp.GetError(); errResult != nil {
-		slog.Error("Python policy returned error",
-			"error", errResult.Message,
-			"error_type", errResult.ErrorType,
-			"policy", errResult.PolicyName,
-		)
-		return policy.ImmediateResponse{
-			StatusCode: 500,
-			Headers:    map[string]string{"Content-Type": "text/plain"},
-			Body:       []byte(errResult.Message),
-		}
+// ToProtoSharedContext converts a Go SharedContext into the transport form.
+func (t *Translator) ToProtoSharedContext(shared *policy.SharedContext) (*proto.SharedContext, error) {
+	if shared == nil {
+		return &proto.SharedContext{}, nil
 	}
 
-	// Get request result
-	reqResult := resp.GetRequestResult()
-	if reqResult == nil {
-		return nil // Pass-through
+	metadata, err := toProtoStruct(shared.Metadata)
+	if err != nil {
+		return nil, fmt.Errorf("convert shared metadata: %w", err)
 	}
 
-	// Handle continue request
-	if continueReq := reqResult.GetContinueRequest(); continueReq != nil {
-		return t.toUpstreamRequestModifications(continueReq)
-	}
-
-	// Handle immediate response
-	if immediateResp := reqResult.GetImmediateResponse(); immediateResp != nil {
-		return t.toImmediateResponse(immediateResp)
-	}
-
-	return nil
+	return &proto.SharedContext{
+		ProjectId:     shared.ProjectID,
+		RequestId:     shared.RequestID,
+		Metadata:      metadata,
+		ApiId:         shared.APIId,
+		ApiName:       shared.APIName,
+		ApiVersion:    shared.APIVersion,
+		ApiKind:       string(shared.APIKind),
+		ApiContext:    shared.APIContext,
+		OperationPath: shared.OperationPath,
+		AuthContext:   t.toProtoAuthContext(shared.AuthContext),
+	}, nil
 }
 
-// ToGoResponseAction converts a proto ExecutionResponse to a Go ResponseAction.
-func (t *Translator) ToGoResponseAction(resp *proto.ExecutionResponse) policy.ResponseAction {
-	// Check for error result
-	if errResult := resp.GetError(); errResult != nil {
-		slog.Error("Python policy returned error in response phase",
-			"error", errResult.Message,
-			"error_type", errResult.ErrorType,
-			"policy", errResult.PolicyName,
-		)
-		statusCode := 500
-		return policy.UpstreamResponseModifications{
-			StatusCode: &statusCode,
-		}
+// ToProtoHeaders converts read-only Go headers into the multi-value transport form.
+func (t *Translator) ToProtoHeaders(headers *policy.Headers) *proto.Headers {
+	result := &proto.Headers{Values: map[string]*proto.StringList{}}
+	if headers == nil {
+		return result
 	}
-
-	// Get response result
-	respResult := resp.GetResponseResult()
-	if respResult == nil {
-		return nil // Pass-through
-	}
-
-	// Handle continue response
-	if continueResp := respResult.GetContinueResponse(); continueResp != nil {
-		return t.toUpstreamResponseModifications(continueResp)
-	}
-
-	return nil
-}
-
-// toUpstreamRequestModifications converts proto to Go type.
-func (t *Translator) toUpstreamRequestModifications(mod *proto.UpstreamRequestModifications) policy.UpstreamRequestModifications {
-	result := policy.UpstreamRequestModifications{
-		SetHeaders:        mod.SetHeaders,
-		RemoveHeaders:     mod.RemoveHeaders,
-		AppendHeaders:     t.stringListMapToSliceMap(mod.AppendHeaders),
-		AnalyticsMetadata: t.structToMap(mod.AnalyticsMetadata),
-	}
-
-	if mod.BodyPresent {
-		result.Body = mod.Body
-	}
-
-	if mod.PathPresent {
-		result.Path = &mod.Path
-	}
-
-	if mod.MethodPresent {
-		result.Method = &mod.Method
-	}
-
-	return result
-}
-
-// toImmediateResponse converts proto to Go type.
-func (t *Translator) toImmediateResponse(resp *proto.ImmediateResponseAction) policy.ImmediateResponse {
-	return policy.ImmediateResponse{
-		StatusCode:        int(resp.StatusCode),
-		Headers:           resp.Headers,
-		Body:              resp.Body,
-		AnalyticsMetadata: t.structToMap(resp.AnalyticsMetadata),
-	}
-}
-
-// toUpstreamResponseModifications converts proto to Go type.
-func (t *Translator) toUpstreamResponseModifications(mod *proto.UpstreamResponseModifications) policy.UpstreamResponseModifications {
-	result := policy.UpstreamResponseModifications{
-		SetHeaders:        mod.SetHeaders,
-		RemoveHeaders:     mod.RemoveHeaders,
-		AppendHeaders:     t.stringListMapToSliceMap(mod.AppendHeaders),
-		AnalyticsMetadata: t.structToMap(mod.AnalyticsMetadata),
-	}
-
-	if mod.BodyPresent {
-		result.Body = mod.Body
-	}
-
-	if mod.StatusCodePresent {
-		statusCode := int(mod.StatusCode)
-		result.StatusCode = &statusCode
-	}
-
-	return result
-}
-
-// stringListMapToSliceMap converts proto StringList map to [][]string map.
-func (t *Translator) stringListMapToSliceMap(m map[string]*proto.StringList) map[string][]string {
-	result := make(map[string][]string, len(m))
-	for k, v := range m {
-		if v != nil {
-			result[k] = v.Values
-		}
+	for name, values := range headers.GetAll() {
+		result.Values[name] = &proto.StringList{Values: append([]string(nil), values...)}
 	}
 	return result
 }
 
-// structToMap converts a protobuf Struct to a Go map.
-func (t *Translator) structToMap(s *structpb.Struct) map[string]interface{} {
-	if s == nil {
+// ToProtoBody converts buffered body data into the transport form.
+func (t *Translator) ToProtoBody(body *policy.Body) *proto.Body {
+	if body == nil {
 		return nil
 	}
-	return s.AsMap()
+	return &proto.Body{
+		Content:     append([]byte(nil), body.Content...),
+		EndOfStream: body.EndOfStream,
+		Present:     body.Present,
+	}
 }
 
-// toProtoStruct converts a Go map to a protobuf Struct.
-func toProtoStruct(m map[string]interface{}) (*structpb.Struct, error) {
-	if m == nil {
+// ToProtoStreamBody converts streaming chunk data into the transport form.
+func (t *Translator) ToProtoStreamBody(body *policy.StreamBody) *proto.StreamBody {
+	if body == nil {
+		return nil
+	}
+	return &proto.StreamBody{
+		Chunk:       append([]byte(nil), body.Chunk...),
+		EndOfStream: body.EndOfStream,
+		Index:       body.Index,
+	}
+}
+
+// ToGoRequestHeaderAction converts a request-header response payload into a Go action.
+func (t *Translator) ToGoRequestHeaderAction(resp *proto.StreamResponse) (policy.RequestHeaderAction, error) {
+	if err := executionErrorFromResponse(resp); err != nil {
+		return nil, err
+	}
+
+	payload := resp.GetRequestHeaderAction()
+	if payload == nil {
 		return nil, nil
 	}
-	s, err := structpb.NewStruct(m)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert map to proto struct: %w", err)
+
+	switch action := payload.Action.(type) {
+	case *proto.RequestHeaderActionPayload_UpstreamRequestHeaderModifications:
+		return t.toGoUpstreamRequestHeaderModifications(action.UpstreamRequestHeaderModifications), nil
+	case *proto.RequestHeaderActionPayload_ImmediateResponse:
+		return t.toGoImmediateResponse(action.ImmediateResponse), nil
+	case nil:
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("unexpected request-header action payload: %T", action)
 	}
-	return s, nil
+}
+
+// ToGoRequestAction converts a request-body response payload into a Go action.
+func (t *Translator) ToGoRequestAction(resp *proto.StreamResponse) (policy.RequestAction, error) {
+	if err := executionErrorFromResponse(resp); err != nil {
+		return nil, err
+	}
+
+	payload := resp.GetRequestAction()
+	if payload == nil {
+		return nil, nil
+	}
+
+	switch action := payload.Action.(type) {
+	case *proto.RequestActionPayload_UpstreamRequestModifications:
+		return t.toGoUpstreamRequestModifications(action.UpstreamRequestModifications), nil
+	case *proto.RequestActionPayload_ImmediateResponse:
+		return t.toGoImmediateResponse(action.ImmediateResponse), nil
+	case nil:
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("unexpected request action payload: %T", action)
+	}
+}
+
+// ToGoResponseHeaderAction converts a response-header response payload into a Go action.
+func (t *Translator) ToGoResponseHeaderAction(resp *proto.StreamResponse) (policy.ResponseHeaderAction, error) {
+	if err := executionErrorFromResponse(resp); err != nil {
+		return nil, err
+	}
+
+	payload := resp.GetResponseHeaderAction()
+	if payload == nil {
+		return nil, nil
+	}
+
+	switch action := payload.Action.(type) {
+	case *proto.ResponseHeaderActionPayload_DownstreamResponseHeaderModifications:
+		return t.toGoDownstreamResponseHeaderModifications(action.DownstreamResponseHeaderModifications), nil
+	case *proto.ResponseHeaderActionPayload_ImmediateResponse:
+		return t.toGoImmediateResponse(action.ImmediateResponse), nil
+	case nil:
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("unexpected response-header action payload: %T", action)
+	}
+}
+
+// ToGoResponseAction converts a response-body response payload into a Go action.
+func (t *Translator) ToGoResponseAction(resp *proto.StreamResponse) (policy.ResponseAction, error) {
+	if err := executionErrorFromResponse(resp); err != nil {
+		return nil, err
+	}
+
+	payload := resp.GetResponseAction()
+	if payload == nil {
+		return nil, nil
+	}
+
+	switch action := payload.Action.(type) {
+	case *proto.ResponseActionPayload_DownstreamResponseModifications:
+		return t.toGoDownstreamResponseModifications(action.DownstreamResponseModifications), nil
+	case *proto.ResponseActionPayload_ImmediateResponse:
+		return t.toGoImmediateResponse(action.ImmediateResponse), nil
+	case nil:
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("unexpected response action payload: %T", action)
+	}
+}
+
+// ToGoNeedsMoreDecision converts a needs-more response payload into a Go boolean.
+func (t *Translator) ToGoNeedsMoreDecision(resp *proto.StreamResponse) (bool, error) {
+	if err := executionErrorFromResponse(resp); err != nil {
+		return false, err
+	}
+
+	payload := resp.GetNeedsMoreDecision()
+	if payload == nil {
+		return false, nil
+	}
+	return payload.GetNeedsMore(), nil
+}
+
+// ToGoStreamingRequestAction converts a streaming-request response payload into a Go action.
+func (t *Translator) ToGoStreamingRequestAction(resp *proto.StreamResponse) (policy.StreamingRequestAction, error) {
+	if err := executionErrorFromResponse(resp); err != nil {
+		return nil, err
+	}
+
+	payload := resp.GetStreamingRequestAction()
+	if payload == nil || payload.ForwardRequestChunk == nil {
+		return nil, nil
+	}
+	return t.toGoForwardRequestChunk(payload.ForwardRequestChunk), nil
+}
+
+// ToGoStreamingResponseAction converts a streaming-response response payload into a Go action.
+func (t *Translator) ToGoStreamingResponseAction(resp *proto.StreamResponse) (policy.StreamingResponseAction, error) {
+	if err := executionErrorFromResponse(resp); err != nil {
+		return nil, err
+	}
+
+	payload := resp.GetStreamingResponseAction()
+	if payload == nil {
+		return nil, nil
+	}
+
+	switch action := payload.Action.(type) {
+	case *proto.StreamingResponseActionPayload_ForwardResponseChunk:
+		return t.toGoForwardResponseChunk(action.ForwardResponseChunk), nil
+	case *proto.StreamingResponseActionPayload_TerminateResponseChunk:
+		return t.toGoTerminateResponseChunk(action.TerminateResponseChunk), nil
+	case nil:
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("unexpected streaming response action payload: %T", action)
+	}
+}
+
+func (t *Translator) toProtoAuthContext(ctx *policy.AuthContext) *proto.AuthContext {
+	if ctx == nil {
+		return nil
+	}
+
+	scopes := make(map[string]bool, len(ctx.Scopes))
+	for key, value := range ctx.Scopes {
+		scopes[key] = value
+	}
+
+	properties := make(map[string]string, len(ctx.Properties))
+	for key, value := range ctx.Properties {
+		properties[key] = value
+	}
+
+	return &proto.AuthContext{
+		Authenticated: ctx.Authenticated,
+		Authorized:    ctx.Authorized,
+		AuthType:      ctx.AuthType,
+		Subject:       ctx.Subject,
+		Issuer:        ctx.Issuer,
+		Audience:      append([]string(nil), ctx.Audience...),
+		Scopes:        scopes,
+		CredentialId:  ctx.CredentialID,
+		Properties:    properties,
+		Previous:      t.toProtoAuthContext(ctx.Previous),
+	}
+}
+
+func (t *Translator) toGoImmediateResponse(resp *proto.ImmediateResponse) policy.ImmediateResponse {
+	if resp == nil {
+		return policy.ImmediateResponse{}
+	}
+	return policy.ImmediateResponse{
+		StatusCode:            int(resp.GetStatusCode()),
+		Headers:               cloneStringMap(resp.GetHeaders()),
+		Body:                  bytesValue(resp.GetBody()),
+		AnalyticsMetadata:     structToMap(resp.GetAnalyticsMetadata()),
+		DynamicMetadata:       structMapToNestedMap(resp.GetDynamicMetadata()),
+		AnalyticsHeaderFilter: t.toGoDropHeaderAction(resp.GetAnalyticsHeaderFilter()),
+	}
+}
+
+func (t *Translator) toGoUpstreamRequestHeaderModifications(mod *proto.UpstreamRequestHeaderModifications) policy.UpstreamRequestHeaderModifications {
+	if mod == nil {
+		return policy.UpstreamRequestHeaderModifications{}
+	}
+	return policy.UpstreamRequestHeaderModifications{
+		HeadersToSet:            cloneStringMap(mod.GetHeadersToSet()),
+		HeadersToRemove:         append([]string(nil), mod.GetHeadersToRemove()...),
+		UpstreamName:            stringPtrValue(mod.GetUpstreamName()),
+		Path:                    stringPtrValue(mod.GetPath()),
+		Host:                    stringPtrValue(mod.GetHost()),
+		Method:                  stringPtrValue(mod.GetMethod()),
+		QueryParametersToAdd:    stringListMapToSliceMap(mod.GetQueryParametersToAdd()),
+		QueryParametersToRemove: append([]string(nil), mod.GetQueryParametersToRemove()...),
+		AnalyticsMetadata:       structToMap(mod.GetAnalyticsMetadata()),
+		DynamicMetadata:         structMapToNestedMap(mod.GetDynamicMetadata()),
+		AnalyticsHeaderFilter:   t.toGoDropHeaderAction(mod.GetAnalyticsHeaderFilter()),
+	}
+}
+
+func (t *Translator) toGoUpstreamRequestModifications(mod *proto.UpstreamRequestModifications) policy.UpstreamRequestModifications {
+	if mod == nil {
+		return policy.UpstreamRequestModifications{}
+	}
+	return policy.UpstreamRequestModifications{
+		Body:                    bytesValue(mod.GetBody()),
+		HeadersToSet:            cloneStringMap(mod.GetHeadersToSet()),
+		HeadersToRemove:         append([]string(nil), mod.GetHeadersToRemove()...),
+		UpstreamName:            stringPtrValue(mod.GetUpstreamName()),
+		Path:                    stringPtrValue(mod.GetPath()),
+		Host:                    stringPtrValue(mod.GetHost()),
+		Method:                  stringPtrValue(mod.GetMethod()),
+		QueryParametersToAdd:    stringListMapToSliceMap(mod.GetQueryParametersToAdd()),
+		QueryParametersToRemove: append([]string(nil), mod.GetQueryParametersToRemove()...),
+		AnalyticsMetadata:       structToMap(mod.GetAnalyticsMetadata()),
+		DynamicMetadata:         structMapToNestedMap(mod.GetDynamicMetadata()),
+		AnalyticsHeaderFilter:   t.toGoDropHeaderAction(mod.GetAnalyticsHeaderFilter()),
+	}
+}
+
+func (t *Translator) toGoDownstreamResponseHeaderModifications(mod *proto.DownstreamResponseHeaderModifications) policy.DownstreamResponseHeaderModifications {
+	if mod == nil {
+		return policy.DownstreamResponseHeaderModifications{}
+	}
+	return policy.DownstreamResponseHeaderModifications{
+		HeadersToSet:          cloneStringMap(mod.GetHeadersToSet()),
+		HeadersToRemove:       append([]string(nil), mod.GetHeadersToRemove()...),
+		AnalyticsMetadata:     structToMap(mod.GetAnalyticsMetadata()),
+		DynamicMetadata:       structMapToNestedMap(mod.GetDynamicMetadata()),
+		AnalyticsHeaderFilter: t.toGoDropHeaderAction(mod.GetAnalyticsHeaderFilter()),
+	}
+}
+
+func (t *Translator) toGoDownstreamResponseModifications(mod *proto.DownstreamResponseModifications) policy.DownstreamResponseModifications {
+	if mod == nil {
+		return policy.DownstreamResponseModifications{}
+	}
+	return policy.DownstreamResponseModifications{
+		Body:                  bytesValue(mod.GetBody()),
+		StatusCode:            int32PtrValue(mod.GetStatusCode()),
+		HeadersToSet:          cloneStringMap(mod.GetHeadersToSet()),
+		HeadersToRemove:       append([]string(nil), mod.GetHeadersToRemove()...),
+		AnalyticsMetadata:     structToMap(mod.GetAnalyticsMetadata()),
+		DynamicMetadata:       structMapToNestedMap(mod.GetDynamicMetadata()),
+		AnalyticsHeaderFilter: t.toGoDropHeaderAction(mod.GetAnalyticsHeaderFilter()),
+	}
+}
+
+func (t *Translator) toGoForwardRequestChunk(chunk *proto.ForwardRequestChunk) policy.ForwardRequestChunk {
+	if chunk == nil {
+		return policy.ForwardRequestChunk{}
+	}
+	return policy.ForwardRequestChunk{
+		Body:              bytesValue(chunk.GetBody()),
+		AnalyticsMetadata: structToMap(chunk.GetAnalyticsMetadata()),
+		DynamicMetadata:   structMapToNestedMap(chunk.GetDynamicMetadata()),
+	}
+}
+
+func (t *Translator) toGoForwardResponseChunk(chunk *proto.ForwardResponseChunk) policy.ForwardResponseChunk {
+	if chunk == nil {
+		return policy.ForwardResponseChunk{}
+	}
+	return policy.ForwardResponseChunk{
+		Body:              bytesValue(chunk.GetBody()),
+		AnalyticsMetadata: structToMap(chunk.GetAnalyticsMetadata()),
+		DynamicMetadata:   structMapToNestedMap(chunk.GetDynamicMetadata()),
+	}
+}
+
+func (t *Translator) toGoTerminateResponseChunk(chunk *proto.TerminateResponseChunk) policy.TerminateResponseChunk {
+	if chunk == nil {
+		return policy.TerminateResponseChunk{}
+	}
+	return policy.TerminateResponseChunk{
+		Body:              bytesValue(chunk.GetBody()),
+		AnalyticsMetadata: structToMap(chunk.GetAnalyticsMetadata()),
+		DynamicMetadata:   structMapToNestedMap(chunk.GetDynamicMetadata()),
+	}
+}
+
+func (t *Translator) toGoDropHeaderAction(action *proto.DropHeaderAction) policy.DropHeaderAction {
+	if action == nil {
+		return policy.DropHeaderAction{}
+	}
+
+	var actionValue string
+	switch action.GetAction() {
+	case proto.DropHeaderActionType_DROP_HEADER_ACTION_TYPE_ALLOW:
+		actionValue = "allow"
+	case proto.DropHeaderActionType_DROP_HEADER_ACTION_TYPE_DENY:
+		actionValue = "deny"
+	default:
+		actionValue = ""
+	}
+
+	return policy.DropHeaderAction{
+		Action:  actionValue,
+		Headers: append([]string(nil), action.GetHeaders()...),
+	}
+}
+
+func executionErrorFromResponse(resp *proto.StreamResponse) error {
+	if resp == nil {
+		return fmt.Errorf("python executor returned nil response")
+	}
+	if errPayload := resp.GetError(); errPayload != nil {
+		return fmt.Errorf(
+			"python executor %s for %s:%s: %s",
+			errPayload.GetErrorType(),
+			errPayload.GetPolicyName(),
+			errPayload.GetPolicyVersion(),
+			errPayload.GetMessage(),
+		)
+	}
+	return nil
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	result := make(map[string]string, len(values))
+	for key, value := range values {
+		result[key] = value
+	}
+	return result
+}
+
+func stringListMapToSliceMap(values map[string]*proto.StringList) map[string][]string {
+	if len(values) == 0 {
+		return nil
+	}
+	result := make(map[string][]string, len(values))
+	for key, list := range values {
+		if list == nil {
+			result[key] = nil
+			continue
+		}
+		result[key] = append([]string(nil), list.GetValues()...)
+	}
+	return result
+}
+
+func structMapToNestedMap(values map[string]*structpb.Struct) map[string]map[string]any {
+	if len(values) == 0 {
+		return nil
+	}
+	result := make(map[string]map[string]any, len(values))
+	for key, value := range values {
+		result[key] = structToMap(value)
+	}
+	return result
+}
+
+func structToMap(value *structpb.Struct) map[string]any {
+	if value == nil {
+		return nil
+	}
+	return value.AsMap()
+}
+
+func toProtoStruct(values map[string]interface{}) (*structpb.Struct, error) {
+	if values == nil {
+		return nil, nil
+	}
+	return structpb.NewStruct(values)
+}
+
+func stringPtrValue(value *wrapperspb.StringValue) *string {
+	if value == nil {
+		return nil
+	}
+	result := value.GetValue()
+	return &result
+}
+
+func int32PtrValue(value *wrapperspb.Int32Value) *int {
+	if value == nil {
+		return nil
+	}
+	result := int(value.GetValue())
+	return &result
+}
+
+func bytesValue(value *wrapperspb.BytesValue) []byte {
+	if value == nil {
+		return nil
+	}
+	return append([]byte(nil), value.GetValue()...)
 }

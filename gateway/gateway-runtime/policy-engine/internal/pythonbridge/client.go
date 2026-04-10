@@ -34,43 +34,33 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/pythonbridge/proto"
 )
 
-// StreamManager manages a persistent bidirectional gRPC stream to the Python Executor.
-// It is a singleton created at Policy Engine startup.
-//
-// Thread safety: Multiple goroutines (one per ext_proc stream) call Execute() concurrently.
-// The StreamManager uses a pendingRequests map protected by a mutex to correlate
-// request_id → response channel.
-//
-// Flow:
-//  1. Execute() generates a unique request_id, creates a response channel, adds to pendingRequests
-//  2. Sends the ExecutionRequest on the stream (protected by a send mutex)
-//  3. A background goroutine continuously receives from the stream, looks up request_id
-//     in pendingRequests, and sends the response on the channel
-//  4. Execute() waits on the channel with a timeout, returns the result
+// StreamManager manages the persistent bidirectional stream to the Python executor.
 type StreamManager struct {
-	socketPath   string
-	conn         *grpc.ClientConn
-	client       proto.PythonExecutorServiceClient
-	stream       proto.PythonExecutorService_ExecuteStreamClient
-	streamCancel context.CancelFunc                       // cancels the long-lived stream context on Close()
-	sendMu       sync.Mutex                               // Protects stream.Send()
-	pendingMu    sync.RWMutex                             // Protects pendingRequests
-	pendingReqs  map[string]chan *proto.ExecutionResponse // request_id → response channel
-	connected    bool
-	connectMu    sync.Mutex
-	connID       atomic.Uint64 // Monotonically increasing connection ID for stale goroutine detection
+	socketPath     string
+	dialContext    func(context.Context, string) (net.Conn, error)
+	conn           *grpc.ClientConn
+	client         proto.PythonExecutorServiceClient
+	stream         proto.PythonExecutorService_ExecuteStreamClient
+	streamCancel   context.CancelFunc
+	sendMu         sync.Mutex
+	pendingMu      sync.RWMutex
+	pendingReqs    map[string]chan *proto.StreamResponse
+	suppressedReqs map[string]struct{}
+	connected      bool
+	connectMu      sync.Mutex
+	connID         atomic.Uint64
 }
 
-// NewStreamManager creates a new StreamManager for the given UDS socket path.
+// NewStreamManager creates a StreamManager for the given Unix-domain socket.
 func NewStreamManager(socketPath string) *StreamManager {
 	return &StreamManager{
-		socketPath:  socketPath,
-		pendingReqs: make(map[string]chan *proto.ExecutionResponse),
+		socketPath:     socketPath,
+		pendingReqs:    make(map[string]chan *proto.StreamResponse),
+		suppressedReqs: make(map[string]struct{}),
 	}
 }
 
-// Connect establishes connection to the Python Executor and starts the receive loop.
-// This is called lazily on first Execute() if not already connected.
+// Connect establishes the gRPC connection and starts the receive loop.
 func (sm *StreamManager) Connect(ctx context.Context) error {
 	sm.connectMu.Lock()
 	defer sm.connectMu.Unlock()
@@ -82,45 +72,41 @@ func (sm *StreamManager) Connect(ctx context.Context) error {
 	slogger := slog.With("component", "pythonbridge", "socket", sm.socketPath)
 	slogger.InfoContext(ctx, "Connecting to Python Executor")
 
-	// Cancel and clear any previous stream/connection before creating new ones,
-	// so the old context is terminated and resources are released first.
 	if sm.streamCancel != nil {
 		sm.streamCancel()
 		sm.streamCancel = nil
 	}
 	if sm.conn != nil {
-		sm.conn.Close()
+		_ = sm.conn.Close()
 		sm.conn = nil
 	}
 	sm.stream = nil
 
-	// Dial with UDS
-	dialer := func(ctx context.Context, addr string) (net.Conn, error) {
-		var d net.Dialer
-		return d.DialContext(ctx, "unix", addr)
+	dialContext := sm.dialContext
+	if dialContext == nil {
+		dialContext = func(ctx context.Context, addr string) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, "unix", addr)
+		}
 	}
 	conn, err := grpc.DialContext(
 		ctx,
 		sm.socketPath,
-		grpc.WithContextDialer(dialer),
+		grpc.WithContextDialer(dialContext),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithBlock(),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to dial Python Executor: %w", err)
+		return fmt.Errorf("dial Python Executor: %w", err)
 	}
 
 	client := proto.NewPythonExecutorServiceClient(conn)
-
-	// The stream must live for the lifetime of the connection, not for the
-	// duration of a single InitPolicy call. Use a dedicated background context
-	// that is only cancelled when Close() is explicitly called.
 	streamCtx, streamCancel := context.WithCancel(context.Background())
 	stream, err := client.ExecuteStream(streamCtx)
 	if err != nil {
 		streamCancel()
-		conn.Close()
-		return fmt.Errorf("failed to start ExecuteStream: %w", err)
+		_ = conn.Close()
+		return fmt.Errorf("start ExecuteStream: %w", err)
 	}
 
 	sm.conn = conn
@@ -129,20 +115,13 @@ func (sm *StreamManager) Connect(ctx context.Context) error {
 	sm.streamCancel = streamCancel
 	sm.connected = true
 
-	// Increment connection ID and capture for this connection's receive loop
 	connID := sm.connID.Add(1)
-
-	// Start receive loop with captured stream and connection ID for stale goroutine detection.
 	go sm.receiveLoop(stream, conn, connID)
 
 	slogger.InfoContext(ctx, "Connected to Python Executor")
 	return nil
 }
 
-// receiveLoop continuously receives responses from the stream and dispatches them
-// to waiting request channels.
-// The connID parameter identifies the specific connection this loop is handling,
-// preventing stale goroutines from closing newer connections.
 func (sm *StreamManager) receiveLoop(stream proto.PythonExecutorService_ExecuteStreamClient, conn *grpc.ClientConn, connID uint64) {
 	slogger := slog.With("component", "pythonbridge", "phase", "receiveLoop", "conn_id", connID)
 	defer slogger.Info("Receive loop exited")
@@ -155,38 +134,42 @@ func (sm *StreamManager) receiveLoop(stream proto.PythonExecutorService_ExecuteS
 			return
 		}
 
-		// Lookup the waiting channel
 		sm.pendingMu.RLock()
-		ch, ok := sm.pendingReqs[resp.RequestId]
+		ch, ok := sm.pendingReqs[resp.GetRequestId()]
+		_, suppressed := sm.suppressedReqs[resp.GetRequestId()]
 		sm.pendingMu.RUnlock()
 
 		if !ok {
-			slogger.Warn("Received response for unknown request", "request_id", resp.RequestId)
+			if suppressed {
+				sm.pendingMu.Lock()
+				delete(sm.suppressedReqs, resp.GetRequestId())
+				sm.pendingMu.Unlock()
+				slogger.Debug("Dropped late Python response after cancellation", "request_id", resp.GetRequestId())
+				continue
+			}
+
+			slogger.Warn("Received response for unknown request", "request_id", resp.GetRequestId())
 			continue
 		}
 
-		// Send response to waiter (non-blocking with buffer)
 		select {
 		case ch <- resp:
 		default:
-			slogger.Error("Response channel full, dropping response", "request_id", resp.RequestId)
+			slogger.Error("Response channel full, dropping response", "request_id", resp.GetRequestId())
 		}
 	}
 }
 
-// handleDisconnect marks the connection as disconnected and cleans up pending requests.
-// The connID parameter identifies the connection that disconnected; if it doesn't match
-// the current connection ID, this is a stale goroutine and should not close the new connection.
 func (sm *StreamManager) handleDisconnect(connID uint64, conn *grpc.ClientConn) {
 	sm.connectMu.Lock()
 	defer sm.connectMu.Unlock()
 
-	// Check if this is a stale goroutine trying to close a newer connection
 	if sm.connID.Load() != connID || sm.conn != conn {
 		slog.Info("Stale receiveLoop detected, skipping disconnect handling",
 			"component", "pythonbridge",
 			"conn_id", connID,
-			"current_conn_id", sm.connID.Load())
+			"current_conn_id", sm.connID.Load(),
+		)
 		return
 	}
 
@@ -196,30 +179,30 @@ func (sm *StreamManager) handleDisconnect(connID uint64, conn *grpc.ClientConn) 
 		sm.streamCancel = nil
 	}
 	if sm.conn != nil {
-		sm.conn.Close()
+		_ = sm.conn.Close()
 		sm.conn = nil
 	}
 	sm.stream = nil
 
-	// Signal error to all pending requests
 	sm.pendingMu.Lock()
-	pendingCopied := make(map[string]chan *proto.ExecutionResponse, len(sm.pendingReqs))
+	pendingCopied := make(map[string]chan *proto.StreamResponse, len(sm.pendingReqs))
 	for reqID, ch := range sm.pendingReqs {
 		pendingCopied[reqID] = ch
 	}
-	// Clear the original map
 	clear(sm.pendingReqs)
+	clear(sm.suppressedReqs)
 	sm.pendingMu.Unlock()
 
 	for reqID, ch := range pendingCopied {
 		select {
-		case ch <- &proto.ExecutionResponse{
+		case ch <- &proto.StreamResponse{
 			RequestId: reqID,
-			Result: &proto.ExecutionResponse_Error{
+			Payload: &proto.StreamResponse_Error{
 				Error: &proto.ExecutionError{
-					Message:    "Python Executor disconnected",
-					ErrorType:  "disconnect",
-					PolicyName: "unknown",
+					Message:       "Python Executor disconnected",
+					ErrorType:     "disconnect",
+					PolicyName:    "unknown",
+					PolicyVersion: "unknown",
 				},
 			},
 		}:
@@ -228,67 +211,112 @@ func (sm *StreamManager) handleDisconnect(connID uint64, conn *grpc.ClientConn) 
 	}
 }
 
-// Execute sends a request to the Python Executor and waits for the response.
-// It handles lazy connection, request correlation, and timeout.
-func (sm *StreamManager) Execute(ctx context.Context, req *proto.ExecutionRequest) (*proto.ExecutionResponse, error) {
-	// Ensure connected
+// Execute sends a request on the shared stream and waits for its correlated response.
+func (sm *StreamManager) Execute(ctx context.Context, req *proto.StreamRequest) (*proto.StreamResponse, error) {
 	if !sm.IsConnected() {
 		if err := sm.Connect(ctx); err != nil {
-			return nil, fmt.Errorf("failed to connect to Python Executor: %w", err)
+			return nil, fmt.Errorf("connect Python Executor: %w", err)
 		}
 	}
 
-	// Create response channel (buffered to prevent blocking receiveLoop)
-	respCh := make(chan *proto.ExecutionResponse, 1)
+	ctx, cancel := withDefaultTimeout(ctx, getTimeout())
+	defer cancel()
 
-	// Register pending request
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	respCh := make(chan *proto.StreamResponse, 1)
 	sm.pendingMu.Lock()
-	sm.pendingReqs[req.RequestId] = respCh
+	sm.pendingReqs[req.GetRequestId()] = respCh
+	delete(sm.suppressedReqs, req.GetRequestId())
 	sm.pendingMu.Unlock()
 
-	// Cleanup on exit
-	defer func() {
+	cleanupPending := func(suppressLate bool) {
 		sm.pendingMu.Lock()
-		delete(sm.pendingReqs, req.RequestId)
+		delete(sm.pendingReqs, req.GetRequestId())
+		if suppressLate {
+			sm.suppressedReqs[req.GetRequestId()] = struct{}{}
+		}
 		sm.pendingMu.Unlock()
-	}()
+	}
 
-	// Capture stream under connectMu to avoid TOCTOU race with handleDisconnect
 	sm.connectMu.Lock()
 	stream := sm.stream
 	connected := sm.connected
 	sm.connectMu.Unlock()
-
 	if !connected || stream == nil {
+		cleanupPending(false)
 		return nil, fmt.Errorf("python executor stream is not connected")
 	}
 
-	// Send request (protected by send mutex)
+	if err := ctx.Err(); err != nil {
+		cleanupPending(false)
+		return nil, err
+	}
+
 	sm.sendMu.Lock()
 	err := stream.Send(req)
 	sm.sendMu.Unlock()
-
 	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
+		cleanupPending(false)
+		return nil, fmt.Errorf("send stream request: %w", err)
 	}
-
-	// Wait for response with timeout
-	timeout := getTimeout()
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 
 	select {
 	case resp := <-respCh:
+		cleanupPending(false)
 		return resp, nil
 	case <-ctx.Done():
-		if ctx.Err() == context.DeadlineExceeded {
-			return nil, fmt.Errorf("timeout waiting for Python response after %v", timeout)
-		}
+		cleanupPending(true)
+		sm.sendCancelAsync(req, ctx.Err())
 		return nil, ctx.Err()
 	}
 }
 
-// IsConnected returns true if the stream is connected and ready.
+func (sm *StreamManager) sendCancelAsync(req *proto.StreamRequest, cause error) {
+	cancelReq := &proto.StreamRequest{
+		RequestId:     req.GetRequestId(),
+		InstanceId:    req.GetInstanceId(),
+		PolicyName:    req.GetPolicyName(),
+		PolicyVersion: req.GetPolicyVersion(),
+		ExecutionMetadata: &proto.ExecutionMetadata{
+			Phase: proto.Phase_PHASE_CANCEL,
+		},
+		Payload: &proto.StreamRequest_CancelExecution{
+			CancelExecution: &proto.CancelExecutionPayload{
+				TargetPhase: extractPhase(req),
+				Reason:      errorReason(cause),
+			},
+		},
+	}
+	if req.GetExecutionMetadata() != nil {
+		cancelReq.ExecutionMetadata.RouteName = req.GetExecutionMetadata().GetRouteName()
+	}
+
+	go func() {
+		sm.connectMu.Lock()
+		stream := sm.stream
+		connected := sm.connected
+		sm.connectMu.Unlock()
+		if !connected || stream == nil {
+			return
+		}
+
+		sm.sendMu.Lock()
+		err := stream.Send(cancelReq)
+		sm.sendMu.Unlock()
+		if err != nil {
+			slog.Debug("Failed to send cancellation to Python executor",
+				"component", "pythonbridge",
+				"request_id", req.GetRequestId(),
+				"error", err,
+			)
+		}
+	}()
+}
+
+// IsConnected reports whether the stream is connected and ready.
 func (sm *StreamManager) IsConnected() bool {
 	sm.connectMu.Lock()
 	defer sm.connectMu.Unlock()
@@ -296,12 +324,10 @@ func (sm *StreamManager) IsConnected() bool {
 	if !sm.connected || sm.conn == nil {
 		return false
 	}
-
-	state := sm.conn.GetState()
-	return state == connectivity.Ready
+	return sm.conn.GetState() == connectivity.Ready
 }
 
-// Close gracefully closes the stream and connection.
+// Close closes the shared stream and connection.
 func (sm *StreamManager) Close() error {
 	sm.connectMu.Lock()
 	defer sm.connectMu.Unlock()
@@ -309,39 +335,32 @@ func (sm *StreamManager) Close() error {
 	if !sm.connected {
 		return nil
 	}
-
 	sm.connected = false
 
-	// Cancel the stream context first so the receiveLoop unblocks cleanly.
 	if sm.streamCancel != nil {
 		sm.streamCancel()
 		sm.streamCancel = nil
 	}
-
 	if sm.stream != nil {
-		sm.stream.CloseSend()
+		_ = sm.stream.CloseSend()
 	}
-
 	if sm.conn != nil {
 		return sm.conn.Close()
 	}
-
 	return nil
 }
 
-// InitPolicy calls the InitPolicy unary RPC to create a policy instance on the Python side.
-// Returns the instance_id assigned by Python.
+// InitPolicy creates a Python policy instance via the unary RPC.
 func (sm *StreamManager) InitPolicy(ctx context.Context, req *proto.InitPolicyRequest) (*proto.InitPolicyResponse, error) {
 	if !sm.IsConnected() {
 		if err := sm.Connect(ctx); err != nil {
-			return nil, fmt.Errorf("failed to connect to Python Executor: %w", err)
+			return nil, fmt.Errorf("connect Python Executor: %w", err)
 		}
 	}
 
 	sm.connectMu.Lock()
 	client := sm.client
 	sm.connectMu.Unlock()
-
 	if client == nil {
 		return nil, fmt.Errorf("python executor client is not connected")
 	}
@@ -353,18 +372,17 @@ func (sm *StreamManager) InitPolicy(ctx context.Context, req *proto.InitPolicyRe
 	return resp, nil
 }
 
-// DestroyPolicy calls the DestroyPolicy unary RPC to destroy a policy instance on the Python side.
+// DestroyPolicy destroys a Python policy instance via the unary RPC.
 func (sm *StreamManager) DestroyPolicy(ctx context.Context, req *proto.DestroyPolicyRequest) (*proto.DestroyPolicyResponse, error) {
 	if !sm.IsConnected() {
 		if err := sm.Connect(ctx); err != nil {
-			return nil, fmt.Errorf("failed to connect to Python Executor: %w", err)
+			return nil, fmt.Errorf("connect Python Executor: %w", err)
 		}
 	}
 
 	sm.connectMu.Lock()
 	client := sm.client
 	sm.connectMu.Unlock()
-
 	if client == nil {
 		return nil, fmt.Errorf("python executor client is not connected")
 	}
@@ -376,18 +394,17 @@ func (sm *StreamManager) DestroyPolicy(ctx context.Context, req *proto.DestroyPo
 	return resp, nil
 }
 
-// HealthCheck calls the HealthCheck unary RPC to check Python executor readiness.
+// HealthCheck checks Python executor readiness via the unary RPC.
 func (sm *StreamManager) HealthCheck(ctx context.Context) (*proto.HealthCheckResponse, error) {
 	if !sm.IsConnected() {
 		if err := sm.Connect(ctx); err != nil {
-			return nil, fmt.Errorf("failed to connect to Python Executor: %w", err)
+			return nil, fmt.Errorf("connect Python Executor: %w", err)
 		}
 	}
 
 	sm.connectMu.Lock()
 	client := sm.client
 	sm.connectMu.Unlock()
-
 	if client == nil {
 		return nil, fmt.Errorf("python executor client is not connected")
 	}
@@ -399,7 +416,47 @@ func (sm *StreamManager) HealthCheck(ctx context.Context) (*proto.HealthCheckRes
 	return resp, nil
 }
 
-// pythonPolicyTimeout is the configured timeout, resolved once at package init.
+func withDefaultTimeout(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if _, ok := ctx.Deadline(); ok {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, timeout)
+}
+
+func extractPhase(req *proto.StreamRequest) proto.Phase {
+	if req.GetExecutionMetadata() != nil && req.GetExecutionMetadata().GetPhase() != proto.Phase_PHASE_UNSPECIFIED {
+		return req.GetExecutionMetadata().GetPhase()
+	}
+	switch req.GetPayload().(type) {
+	case *proto.StreamRequest_RequestHeaders:
+		return proto.Phase_PHASE_REQUEST_HEADERS
+	case *proto.StreamRequest_RequestBody:
+		return proto.Phase_PHASE_REQUEST_BODY
+	case *proto.StreamRequest_ResponseHeaders:
+		return proto.Phase_PHASE_RESPONSE_HEADERS
+	case *proto.StreamRequest_ResponseBody:
+		return proto.Phase_PHASE_RESPONSE_BODY
+	case *proto.StreamRequest_NeedsMoreRequestData:
+		return proto.Phase_PHASE_NEEDS_MORE_REQUEST_DATA
+	case *proto.StreamRequest_RequestChunk:
+		return proto.Phase_PHASE_REQUEST_BODY_CHUNK
+	case *proto.StreamRequest_NeedsMoreResponseData:
+		return proto.Phase_PHASE_NEEDS_MORE_RESPONSE_DATA
+	case *proto.StreamRequest_ResponseChunk:
+		return proto.Phase_PHASE_RESPONSE_BODY_CHUNK
+	default:
+		return proto.Phase_PHASE_UNSPECIFIED
+	}
+}
+
+func errorReason(err error) string {
+	if err == nil {
+		return "cancelled"
+	}
+	return err.Error()
+}
+
+// pythonPolicyTimeout is resolved once at package init.
 var pythonPolicyTimeout = func() time.Duration {
 	if s := os.Getenv("PYTHON_POLICY_TIMEOUT"); s != "" {
 		if d, err := time.ParseDuration(s); err == nil {
@@ -413,7 +470,6 @@ func getTimeout() time.Duration {
 	return pythonPolicyTimeout
 }
 
-// Singleton management
 var (
 	globalStreamManager *StreamManager
 	streamManagerOnce   sync.Once

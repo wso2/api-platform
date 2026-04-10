@@ -12,174 +12,129 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Python Policy SDK — mirrors the Go sdk/gateway/policy/v1alpha interface.
+"""Python policy interfaces aligned with sdk/core/policy/v1alpha2."""
 
-Every Python policy is a class that extends Policy and exports a
-get_policy(metadata, params) factory function.  The factory controls
-instancing — it may return a fresh instance, a cached singleton, or a
-shared instance keyed by config hash, exactly like Go's GetPolicy.
-"""
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Union
-from enum import Enum
+from typing import Any
 
+from sdk.actions import (
+    RequestAction,
+    RequestHeaderAction,
+    ResponseAction,
+    ResponseHeaderAction,
+    StreamingRequestAction,
+    StreamingResponseAction,
+)
+from sdk.types import (
+    ExecutionContext,
+    PolicyMetadata,
+    ProcessingMode,
+    RequestContext,
+    RequestHeaderContext,
+    RequestStreamContext,
+    ResponseContext,
+    ResponseHeaderContext,
+    ResponseStreamContext,
+    StreamBody,
+)
 
-# ---------------------- Processing Mode ----------------------
-
-class HeaderProcessingMode(Enum):
-    SKIP = "SKIP"
-    PROCESS = "PROCESS"
-
-
-class BodyProcessingMode(Enum):
-    SKIP = "SKIP"
-    BUFFER = "BUFFER"
-
-
-@dataclass
-class ProcessingMode:
-    request_header_mode: HeaderProcessingMode = HeaderProcessingMode.PROCESS
-    request_body_mode: BodyProcessingMode = BodyProcessingMode.SKIP
-    response_header_mode: HeaderProcessingMode = HeaderProcessingMode.SKIP
-    response_body_mode: BodyProcessingMode = BodyProcessingMode.SKIP
-
-
-# ---------------------- Context Objects ----------------------
-
-@dataclass
-class SharedContext:
-    project_id: str = ""
-    request_id: str = ""
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    api_id: str = ""
-    api_name: str = ""
-    api_version: str = ""
-    api_kind: str = ""
-    api_context: str = ""
-    operation_path: str = ""
-    auth_context: Dict[str, str] = field(default_factory=dict)
-
-
-@dataclass
-class Body:
-    content: Optional[bytes] = None
-    end_of_stream: bool = False
-    present: bool = False
-
-
-@dataclass
-class RequestContext:
-    shared: SharedContext
-    headers: Dict[str, str]
-    body: Optional[Body] = None
-    path: str = ""
-    method: str = ""
-    authority: str = ""
-    scheme: str = ""
-
-
-@dataclass
-class ResponseContext:
-    shared: SharedContext
-    request_headers: Dict[str, str] = field(default_factory=dict)
-    request_body: Optional[Body] = None
-    request_path: str = ""
-    request_method: str = ""
-    response_headers: Dict[str, str] = field(default_factory=dict)
-    response_body: Optional[Body] = None
-    response_status: int = 200
-
-
-# ---------------------- Action Types ----------------------
-
-@dataclass
-class UpstreamRequestModifications:
-    """Continue request to upstream with modifications."""
-    set_headers: Dict[str, str] = field(default_factory=dict)
-    remove_headers: List[str] = field(default_factory=list)
-    append_headers: Dict[str, List[str]] = field(default_factory=dict)
-    body: Optional[bytes] = None
-    path: Optional[str] = None
-    method: Optional[str] = None
-    analytics_metadata: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class ImmediateResponse:
-    """Short-circuit the chain and return response immediately."""
-    status_code: int = 500
-    headers: Dict[str, str] = field(default_factory=dict)
-    body: Optional[bytes] = None
-    analytics_metadata: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class UpstreamResponseModifications:
-    """Modify response from upstream."""
-    set_headers: Dict[str, str] = field(default_factory=dict)
-    remove_headers: List[str] = field(default_factory=list)
-    append_headers: Dict[str, List[str]] = field(default_factory=dict)
-    body: Optional[bytes] = None
-    status_code: Optional[int] = None
-    analytics_metadata: Dict[str, Any] = field(default_factory=dict)
-
-
-RequestAction = Optional[Union[UpstreamRequestModifications, ImmediateResponse]]
-ResponseAction = Optional[UpstreamResponseModifications]
-
-
-# ---------------------- Policy Metadata ----------------------
-
-@dataclass
-class PolicyMetadata:
-    route_name: str = ""
-    api_id: str = ""
-    api_name: str = ""
-    api_version: str = ""
-    attached_to: str = ""  # "api" or "route"
-
-
-# ---------------------- Policy ABC ----------------------
 
 class Policy(ABC):
-    """Base class for all Python policies.
-
-    Lifecycle:
-        1. get_policy(metadata, params) factory creates the instance
-        2. on_request / on_response called per HTTP request
-        3. close() called when the route is removed or replaced
-
-    The factory controls instancing — return a singleton, a cached instance,
-    or a fresh instance per route, exactly like Go's GetPolicy pattern.
-    """
-
-    @abstractmethod
-    def on_request(self, ctx: RequestContext, params: Dict[str, Any]) -> RequestAction:
-        """Execute during request phase."""
-        ...
-
-    @abstractmethod
-    def on_response(self, ctx: ResponseContext, params: Dict[str, Any]) -> ResponseAction:
-        """Execute during response phase."""
-        ...
+    """Base interface for all Python policies."""
 
     @abstractmethod
     def mode(self) -> ProcessingMode:
-        """Return the policy's processing mode for each phase.
-
-        The Gateway kernel uses this to decide whether Envoy ext_proc should
-        buffer request/response bodies before invoking this policy.
-        """
-        ...
+        """Return the processing requirements for each phase."""
 
     def close(self) -> None:
-        """Release resources held by this policy instance.
+        """Release resources held by this policy instance."""
 
-        Called when the route is removed or replaced (via DestroyPolicy RPC).
-        Override to close connections, stop background threads, flush caches, etc.
-        Must be idempotent — may be called multiple times.
-        Default implementation does nothing.
-        """
-        pass
+
+class RequestHeaderPolicy(Policy, ABC):
+    """Processes request headers before the request body is read."""
+
+    @abstractmethod
+    def on_request_headers(
+        self,
+        execution_ctx: ExecutionContext,
+        ctx: RequestHeaderContext,
+        params: dict[str, Any],
+    ) -> RequestHeaderAction:
+        """Handle the request-header phase."""
+
+
+class RequestPolicy(Policy, ABC):
+    """Processes the complete buffered request body."""
+
+    @abstractmethod
+    def on_request_body(
+        self,
+        execution_ctx: ExecutionContext,
+        ctx: RequestContext,
+        params: dict[str, Any],
+    ) -> RequestAction:
+        """Handle the buffered request-body phase."""
+
+
+class ResponseHeaderPolicy(Policy, ABC):
+    """Processes response headers before the response body is read."""
+
+    @abstractmethod
+    def on_response_headers(
+        self,
+        execution_ctx: ExecutionContext,
+        ctx: ResponseHeaderContext,
+        params: dict[str, Any],
+    ) -> ResponseHeaderAction:
+        """Handle the response-header phase."""
+
+
+class ResponsePolicy(Policy, ABC):
+    """Processes the complete buffered response body."""
+
+    @abstractmethod
+    def on_response_body(
+        self,
+        execution_ctx: ExecutionContext,
+        ctx: ResponseContext,
+        params: dict[str, Any],
+    ) -> ResponseAction:
+        """Handle the buffered response-body phase."""
+
+
+class StreamingRequestPolicy(RequestPolicy, ABC):
+    """Processes the request body chunk-by-chunk with buffered fallback."""
+
+    @abstractmethod
+    def needs_more_request_data(self, accumulated: bytes) -> bool:
+        """Return true when more bytes should be accumulated before dispatch."""
+
+    @abstractmethod
+    def on_request_body_chunk(
+        self,
+        execution_ctx: ExecutionContext,
+        ctx: RequestStreamContext,
+        chunk: StreamBody,
+        params: dict[str, Any],
+    ) -> StreamingRequestAction:
+        """Handle a streamed request-body chunk."""
+
+
+class StreamingResponsePolicy(ResponsePolicy, ABC):
+    """Processes the response body chunk-by-chunk with buffered fallback."""
+
+    @abstractmethod
+    def needs_more_response_data(self, accumulated: bytes) -> bool:
+        """Return true when more bytes should be accumulated before dispatch."""
+
+    @abstractmethod
+    def on_response_body_chunk(
+        self,
+        execution_ctx: ExecutionContext,
+        ctx: ResponseStreamContext,
+        chunk: StreamBody,
+        params: dict[str, Any],
+    ) -> StreamingResponseAction:
+        """Handle a streamed response-body chunk."""

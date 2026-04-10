@@ -833,7 +833,7 @@ func TestDetectRuntime_GoPolicy(t *testing.T) {
 
 func TestDetectRuntime_PythonPolicy(t *testing.T) {
 	tmpDir := t.TempDir()
-	testutils.WriteFile(t, filepath.Join(tmpDir, "policy.py"), "def on_request(): pass")
+	testutils.WriteFile(t, filepath.Join(tmpDir, "policy.py"), "class ExamplePolicy:\n    pass\n")
 	testutils.WriteFile(t, filepath.Join(tmpDir, "requirements.txt"), "")
 
 	runtime, err := DetectRuntime(tmpDir)
@@ -932,7 +932,7 @@ func TestDiscoverPoliciesFromBuildFile_PythonAutoDetect(t *testing.T) {
 	testutils.WriteFile(t, filepath.Join(policyDir, "policy-definition.yaml"), `name: my-python-policy
 version: v1.0.0
 `)
-	testutils.WriteFile(t, filepath.Join(policyDir, "policy.py"), "def on_request(): pass\n")
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy.py"), "class ExamplePolicy:\n    pass\n")
 	testutils.WriteFile(t, filepath.Join(policyDir, "requirements.txt"), "")
 
 	manifestContent := `version: v1
@@ -994,7 +994,7 @@ func TestDiscoverPoliciesFromBuildFile_MixedGoAndPython(t *testing.T) {
 	testutils.WriteFile(t, filepath.Join(pyDir, "policy-definition.yaml"), `name: py-policy
 version: v1.0.0
 `)
-	testutils.WriteFile(t, filepath.Join(pyDir, "policy.py"), "def on_request(): pass\n")
+	testutils.WriteFile(t, filepath.Join(pyDir, "policy.py"), "class ExamplePolicy:\n    pass\n")
 
 	manifestContent := `version: v1
 policies:

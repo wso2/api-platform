@@ -26,7 +26,14 @@ GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-runtime
 
-.PHONY: help build build-coverage-image build-debug push clean build-and-push-multiarch test
+.PHONY: help build build-coverage-image build-debug push clean build-and-push-multiarch test test-go test-python test-pythonbridge proto test-proto
+
+PYTHON ?= python3
+GO_BIN := $(shell go env GOPATH)/bin
+PROTO_FILE := proto/python_executor.proto
+GO_PROTO_OUT := policy-engine/internal/pythonbridge/proto
+PY_PROTO_OUT := python-executor/proto
+PROTO_GENERATED := $(GO_PROTO_OUT)/python_executor.pb.go $(GO_PROTO_OUT)/python_executor_grpc.pb.go $(PY_PROTO_OUT)/python_executor_pb2.py $(PY_PROTO_OUT)/python_executor_pb2_grpc.py
 
 help: ## Show this help message
 	@echo 'Gateway Runtime Build (Version: $(VERSION))'
@@ -132,8 +139,32 @@ build-and-push-multiarch: ## Build and push Gateway Runtime Docker image for mul
 	@echo "  ✓ Extracted build-manifest.yaml"
 	@echo "Multi-arch Docker image built and pushed: $(IMAGE_NAME):$(VERSION)"
 
-test: ## Run policy-engine tests
+test: test-go ## Run policy-engine Go tests
+
+test-go: ## Run policy-engine Go tests
 	cd policy-engine && go test -v $$(go list ./... | grep -v /testutils) -cover -coverprofile=unit-test-coverage.txt
+
+test-pythonbridge: ## Run Python bridge Go tests
+	cd policy-engine && go test -v ./internal/pythonbridge
+
+test-python: ## Run Python executor unit tests
+	cd python-executor && $(PYTHON) -m unittest discover -s tests -t . -v
+
+proto: ## Regenerate Python executor protobuf bindings
+	cd proto && PATH="$(GO_BIN):$$PATH" protoc -I . \
+		--go_out=../$(GO_PROTO_OUT) \
+		--go_opt=paths=source_relative \
+		--go-grpc_out=../$(GO_PROTO_OUT) \
+		--go-grpc_opt=paths=source_relative \
+		python_executor.proto
+	$(PYTHON) -m grpc_tools.protoc -I . \
+		--python_out=python-executor \
+		--grpc_python_out=python-executor \
+		$(PROTO_FILE)
+
+test-proto: proto ## Verify protobuf bindings regenerate and compile cleanly
+	cd policy-engine && go test ./internal/pythonbridge/... -run TestDoesNotExist
+	cd python-executor && $(PYTHON) -m py_compile proto/*.py
 
 clean: ## Clean generated policy-engine files, and restore go.mod/go.sum
 	@rm -rf target
