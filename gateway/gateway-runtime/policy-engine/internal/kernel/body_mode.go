@@ -20,6 +20,7 @@ package kernel
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
@@ -43,14 +44,15 @@ const (
 )
 
 // BuildPolicyChain creates a PolicyChain from PolicySpecs with body requirement computation.
-// Capabilities are discovered at chain-build time using type assertions — once, at startup,
-// with zero per-request overhead.
+// Phase participation is determined by Mode() — the authoritative source for all six phases.
+// Type assertions are used only for streaming capability checks and method dispatch validation.
+// Chain flags are computed once at startup, with zero per-request overhead.
 func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySpec, reg *registry.PolicyRegistry, apiMetadata policy.PolicyMetadata) (*registry.PolicyChain, error) {
 	chain := &registry.PolicyChain{
-		Policies:             make([]policy.Policy, 0),
-		PolicySpecs:          make([]policy.PolicySpec, 0),
-		RequiresRequestBody:  false,
-		RequiresResponseBody: false,
+		Policies:               make([]policy.Policy, 0),
+		PolicySpecs:            make([]policy.PolicySpec, 0),
+		RequiresRequestBody:    false,
+		RequiresResponseBody:   false,
 		HasExecutionConditions: false,
 		// Optimistically assume full streaming support; flipped to false if any
 		// body-processing policy does not implement the streaming interface.
@@ -63,7 +65,7 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySp
 	hasRequestBodyPolicy := false
 	hasResponseBodyPolicy := false
 
-	// Build policy list and compute body requirements via type assertions
+	// Build policy list and compute phase requirements via Mode()
 	for _, spec := range policySpecs {
 		metadata := policy.PolicyMetadata{
 			RouteName:  routeKey,
@@ -87,34 +89,63 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySp
 		chain.Policies = append(chain.Policies, impl)
 		chain.PolicySpecs = append(chain.PolicySpecs, spec)
 
-		// Get policy mode and update body requirements
+		// Get policy mode and update phase requirements
 		mode := impl.Mode()
 		if mode.RequestBodyMode == policy.BodyModeBuffer || mode.RequestBodyMode == policy.BodyModeStream {
 			chain.RequiresRequestBody = true
 			hasRequestBodyPolicy = true
-			// A buffered-only policy (no StreamingRequestPolicy) forces the
-			// entire chain to BUFFERED mode.
-			if _, streaming := impl.(policy.StreamingRequestPolicy); !streaming {
+			if mode.RequestBodyMode == policy.BodyModeStream {
+				if _, streaming := impl.(policy.StreamingRequestPolicy); !streaming {
+					chain.SupportsRequestStreaming = false
+					slog.Warn("[chain-build] policy declares RequestBodyMode=STREAM but does not implement StreamingRequestPolicy",
+						"policy", spec.Name, "route", routeKey)
+				}
+			} else {
 				chain.SupportsRequestStreaming = false
 			}
 		}
 		if mode.ResponseBodyMode == policy.BodyModeBuffer || mode.ResponseBodyMode == policy.BodyModeStream {
 			chain.RequiresResponseBody = true
 			hasResponseBodyPolicy = true
-			// A buffered-only policy forces the entire chain to BUFFERED mode,
-			// preserving the ability to return ImmediateResponse before the
-			// client sees any bytes.
-			if _, streaming := impl.(policy.StreamingResponsePolicy); !streaming {
+			if mode.ResponseBodyMode == policy.BodyModeStream {
+				if _, streaming := impl.(policy.StreamingResponsePolicy); !streaming {
+					chain.SupportsResponseStreaming = false
+					slog.Warn("[chain-build] policy declares ResponseBodyMode=STREAM but does not implement StreamingResponsePolicy",
+						"policy", spec.Name, "route", routeKey)
+				}
+			} else {
 				chain.SupportsResponseStreaming = false
 			}
 		}
 
-		// Discover header capabilities via type assertions.
-		if _, ok := impl.(policy.RequestHeaderPolicy); ok {
-			chain.RequiresRequestHeader = true
+		if mode.RequestHeaderMode == policy.HeaderModeProcess {
+			if _, ok := impl.(policy.RequestHeaderPolicy); ok {
+				chain.RequiresRequestHeader = true
+			} else {
+				slog.Warn("[chain-build] policy declares RequestHeaderMode=PROCESS but does not implement RequestHeaderPolicy",
+					"policy", spec.Name, "route", routeKey)
+			}
 		}
-		if _, ok := impl.(policy.ResponseHeaderPolicy); ok {
-			chain.RequiresResponseHeader = true
+		if mode.ResponseHeaderMode == policy.HeaderModeProcess {
+			if _, ok := impl.(policy.ResponseHeaderPolicy); ok {
+				chain.RequiresResponseHeader = true
+			} else {
+				slog.Warn("[chain-build] policy declares ResponseHeaderMode=PROCESS but does not implement ResponseHeaderPolicy",
+					"policy", spec.Name, "route", routeKey)
+			}
+		}
+
+		if mode.RequestBodyMode != policy.BodyModeSkip {
+			if _, ok := impl.(policy.RequestPolicy); !ok {
+				slog.Debug("[chain-build] policy declares non-SKIP RequestBodyMode but does not implement RequestPolicy (may be cross-phase body access)",
+					"policy", spec.Name, "mode", mode.RequestBodyMode, "route", routeKey)
+			}
+		}
+		if mode.ResponseBodyMode != policy.BodyModeSkip {
+			if _, ok := impl.(policy.ResponsePolicy); !ok {
+				slog.Warn("[chain-build] policy declares non-SKIP ResponseBodyMode but does not implement ResponsePolicy",
+					"policy", spec.Name, "mode", mode.ResponseBodyMode, "route", routeKey)
+			}
 		}
 	}
 
