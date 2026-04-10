@@ -722,11 +722,11 @@ func (m *MockStorage) DeleteSubscriptionsForAPINotIn(apiID string, ids []string)
 	return nil
 }
 
-func (m *MockStorage) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) error {
+func (m *MockStorage) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) ([]string, error) {
 	if m.updateErr != nil {
-		return m.updateErr
+		return nil, m.updateErr
 	}
-	return nil
+	return nil, nil
 }
 
 func (m *MockStorage) SaveCertificate(cert *models.StoredCertificate) error {

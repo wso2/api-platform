@@ -33,17 +33,16 @@ import (
 
 type recordingSubscriptionDB struct {
 	*testMockDB
-	calls                    *[]string
-	application              *models.StoredApplication
-	mappings                 []*models.ApplicationAPIKeyMapping
-	apiKeysByApplicationUUID map[string][]*models.APIKey
+	calls         *[]string
+	application   *models.StoredApplication
+	mappings      []*models.ApplicationAPIKeyMapping
+	removedKeyIDs []string
 }
 
 func newRecordingSubscriptionDB(calls *[]string) *recordingSubscriptionDB {
 	return &recordingSubscriptionDB{
-		testMockDB:               newTestMockDB(),
-		calls:                    calls,
-		apiKeysByApplicationUUID: make(map[string][]*models.APIKey),
+		testMockDB: newTestMockDB(),
+		calls:      calls,
 	}
 }
 
@@ -57,15 +56,11 @@ func (m *recordingSubscriptionDB) SaveSubscriptionPlan(plan *models.Subscription
 	return nil
 }
 
-func (m *recordingSubscriptionDB) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) error {
+func (m *recordingSubscriptionDB) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) ([]string, error) {
 	*m.calls = append(*m.calls, "replace_application_mappings")
 	m.application = application
 	m.mappings = mappings
-	return nil
-}
-
-func (m *recordingSubscriptionDB) GetAPIKeysByApplicationUUID(applicationUUID string) ([]*models.APIKey, error) {
-	return append([]*models.APIKey(nil), m.apiKeysByApplicationUUID[applicationUUID]...), nil
+	return append([]string(nil), m.removedKeyIDs...), nil
 }
 
 type recordingSubscriptionUpdater struct {
@@ -176,10 +171,7 @@ func TestSubscriptionResourceServiceReplaceApplicationMappings_PublishesRemovedK
 	hub := &recordingSubscriptionEventHub{calls: &calls}
 	service := NewSubscriptionResourceService(db, updater, hub, "gateway-2")
 
-	db.apiKeysByApplicationUUID["app-uuid-123"] = []*models.APIKey{
-		{UUID: "key-1"},
-		{UUID: "key-3"},
-	}
+	db.removedKeyIDs = []string{"key-3"}
 
 	application := &models.StoredApplication{
 		ApplicationID:   "app-123",

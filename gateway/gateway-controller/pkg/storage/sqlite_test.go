@@ -971,13 +971,14 @@ func TestSQLiteStorage_ReplaceApplicationAPIKeyMappings_Success(t *testing.T) {
 		ApplicationType: "web",
 	}
 
-	err = storage.ReplaceApplicationAPIKeyMappings(application, []*models.ApplicationAPIKeyMapping{
+	removedKeyIDs, err := storage.ReplaceApplicationAPIKeyMappings(application, []*models.ApplicationAPIKeyMapping{
 		{
 			ApplicationUUID: application.ApplicationUUID,
 			APIKeyID:        apiKey1.UUID,
 		},
 	})
 	assert.NilError(t, err)
+	assert.DeepEqual(t, removedKeyIDs, []string{})
 
 	var gatewayID string
 	var applicationName string
@@ -1009,7 +1010,7 @@ func TestSQLiteStorage_ReplaceApplicationAPIKeyMappings_Success(t *testing.T) {
 	assert.Equal(t, mappedKeyID, apiKey1.UUID)
 
 	application.ApplicationName = "App One Updated"
-	err = storage.ReplaceApplicationAPIKeyMappings(application, []*models.ApplicationAPIKeyMapping{
+	removedKeyIDs, err = storage.ReplaceApplicationAPIKeyMappings(application, []*models.ApplicationAPIKeyMapping{
 		{
 			ApplicationUUID: application.ApplicationUUID,
 			APIKeyID:        apiKey2.UUID,
@@ -1020,6 +1021,7 @@ func TestSQLiteStorage_ReplaceApplicationAPIKeyMappings_Success(t *testing.T) {
 		},
 	})
 	assert.NilError(t, err)
+	assert.DeepEqual(t, removedKeyIDs, []string{apiKey1.UUID})
 
 	err = storage.db.QueryRow(`
 		SELECT application_name
@@ -1090,7 +1092,7 @@ func TestSQLiteStorage_GetAPIKeysByApplicationUUID_ReturnsMappedActiveKeys(t *te
 		ApplicationName: "Application One",
 		ApplicationType: "web",
 	}
-	err = storage.ReplaceApplicationAPIKeyMappings(applicationOne, []*models.ApplicationAPIKeyMapping{
+	_, err = storage.ReplaceApplicationAPIKeyMappings(applicationOne, []*models.ApplicationAPIKeyMapping{
 		{
 			ApplicationUUID: applicationOne.ApplicationUUID,
 			APIKeyID:        activeMappedKey.UUID,
@@ -1108,7 +1110,7 @@ func TestSQLiteStorage_GetAPIKeysByApplicationUUID_ReturnsMappedActiveKeys(t *te
 		ApplicationName: "Application Two",
 		ApplicationType: "web",
 	}
-	err = storage.ReplaceApplicationAPIKeyMappings(applicationTwo, []*models.ApplicationAPIKeyMapping{
+	_, err = storage.ReplaceApplicationAPIKeyMappings(applicationTwo, []*models.ApplicationAPIKeyMapping{
 		{
 			ApplicationUUID: applicationTwo.ApplicationUUID,
 			APIKeyID:        otherApplicationKey.UUID,

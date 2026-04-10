@@ -400,9 +400,9 @@ func (m *mockStorageForDeletion) CountActiveAPIKeysByUserAndAPI(userID, apiID st
 	return 0, nil
 }
 
-func (m *mockStorageForDeletion) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) error {
+func (m *mockStorageForDeletion) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) ([]string, error) {
 	if m.replaceErr != nil {
-		return m.replaceErr
+		return nil, m.replaceErr
 	}
 	if application != nil {
 		m.replacedAppID = application.ApplicationID
@@ -411,7 +411,7 @@ func (m *mockStorageForDeletion) ReplaceApplicationAPIKeyMappings(application *m
 		m.replacedAppType = application.ApplicationType
 	}
 	m.replacedMappings = append([]*models.ApplicationAPIKeyMapping(nil), mappings...)
-	return nil
+	return nil, nil
 }
 
 // Certificate methods (not used in deletion tests but required by interface)

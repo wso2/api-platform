@@ -301,7 +301,8 @@ type Storage interface {
 	// ReplaceApplicationAPIKeyMappings atomically replaces all API key mappings for an application.
 	//
 	// Existing mappings are removed and the supplied mapping set is inserted.
-	ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) error
+	// Returns the API key IDs removed by the replacement, computed inside the transaction.
+	ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) ([]string, error)
 
 	// SaveCertificate persists a new certificate.
 	//

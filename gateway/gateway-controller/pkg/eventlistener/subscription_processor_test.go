@@ -55,7 +55,7 @@ func TestHandleEvent_ApplicationUpdate_SyncsMemoryAndXDSFromDB(t *testing.T) {
 	require.NoError(t, db.SaveAPIKey(keyA))
 	require.NoError(t, db.SaveAPIKey(keyB))
 
-	require.NoError(t, db.ReplaceApplicationAPIKeyMappings(
+	_, err := db.ReplaceApplicationAPIKeyMappings(
 		&models.StoredApplication{
 			ApplicationID:   "app-id-1",
 			ApplicationUUID: "app-uuid-1",
@@ -66,7 +66,8 @@ func TestHandleEvent_ApplicationUpdate_SyncsMemoryAndXDSFromDB(t *testing.T) {
 			ApplicationUUID: "app-uuid-1",
 			APIKeyID:        keyB.UUID,
 		}},
-	))
+	)
+	require.NoError(t, err)
 
 	listener := &EventListener{
 		store:            store,
@@ -116,7 +117,7 @@ func TestHandleEvent_ApplicationUpdate_ReloadedKeyKeepsCurrentApplicationMapping
 
 	require.NoError(t, db.SaveConfig(cfg))
 	require.NoError(t, db.SaveAPIKey(key))
-	require.NoError(t, db.ReplaceApplicationAPIKeyMappings(
+	_, err := db.ReplaceApplicationAPIKeyMappings(
 		&models.StoredApplication{
 			ApplicationID:   "app-id-new",
 			ApplicationUUID: "app-uuid-new",
@@ -127,7 +128,8 @@ func TestHandleEvent_ApplicationUpdate_ReloadedKeyKeepsCurrentApplicationMapping
 			ApplicationUUID: "app-uuid-new",
 			APIKeyID:        key.UUID,
 		}},
-	))
+	)
+	require.NoError(t, err)
 
 	listener := &EventListener{
 		store:            store,

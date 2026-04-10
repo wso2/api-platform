@@ -129,8 +129,8 @@ func (m *MockStorage) DeleteSubscription(id, gatewayID string) error     { retur
 func (m *MockStorage) DeleteSubscriptionsForAPINotIn(apiID string, ids []string) error {
 	return nil
 }
-func (m *MockStorage) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) error {
-	return nil
+func (m *MockStorage) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) ([]string, error) {
+	return nil, nil
 }
 func (m *MockStorage) SaveCertificate(cert *models.StoredCertificate) error        { return nil }
 func (m *MockStorage) GetCertificate(id string) (*models.StoredCertificate, error) { return nil, nil }

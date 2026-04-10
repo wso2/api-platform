@@ -152,13 +152,13 @@ func (s *SubscriptionResourceService) DeleteSubscriptionPlan(id, correlationID s
 
 // ReplaceApplicationAPIKeyMappings persists canonical application metadata and publishes a replica-sync event.
 func (s *SubscriptionResourceService) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping, correlationID string, logger *slog.Logger) error {
-	eventData, err := s.buildApplicationEventData(application.ApplicationUUID, mappings)
-	if err != nil {
+	var removedKeyIDs []string
+	return s.persistAndSyncWithEventData(eventhub.EventTypeApplication, "UPDATE", application.ApplicationUUID, func() (string, error) {
+		return s.buildApplicationEventData(removedKeyIDs)
+	}, false, correlationID, logger, func() error {
+		var err error
+		removedKeyIDs, err = s.requireDB().ReplaceApplicationAPIKeyMappings(application, mappings)
 		return err
-	}
-
-	return s.persistAndSyncWithEventData(eventhub.EventTypeApplication, "UPDATE", application.ApplicationUUID, eventData, false, correlationID, logger, func() error {
-		return s.requireDB().ReplaceApplicationAPIKeyMappings(application, mappings)
 	})
 }
 
@@ -166,39 +166,14 @@ func (s *SubscriptionResourceService) requireDB() storage.Storage {
 	return s.db
 }
 
-func (s *SubscriptionResourceService) buildApplicationEventData(applicationUUID string, mappings []*models.ApplicationAPIKeyMapping) (string, error) {
-	// Capture the pre-write mapping state here; after ReplaceApplicationAPIKeyMappings
-	// commits, removed keys can no longer be discovered by application UUID alone.
-	currentMappedKeys, err := s.requireDB().GetAPIKeysByApplicationUUID(applicationUUID)
-	if err != nil {
-		return "", err
-	}
-
-	incomingKeyIDs := make(map[string]struct{}, len(mappings))
-	for _, mapping := range mappings {
-		if mapping == nil || mapping.APIKeyID == "" {
-			continue
-		}
-		incomingKeyIDs[mapping.APIKeyID] = struct{}{}
-	}
-
-	removedKeyIDs := make([]string, 0, len(currentMappedKeys))
-	for _, apiKey := range currentMappedKeys {
-		if apiKey == nil || apiKey.UUID == "" {
-			continue
-		}
-		if _, exists := incomingKeyIDs[apiKey.UUID]; exists {
-			continue
-		}
-		removedKeyIDs = append(removedKeyIDs, apiKey.UUID)
-	}
-
+func (s *SubscriptionResourceService) buildApplicationEventData(removedKeyIDs []string) (string, error) {
 	if len(removedKeyIDs) == 0 {
 		return eventhub.EmptyEventData, nil
 	}
 
-	sort.Strings(removedKeyIDs)
-	payload, err := json.Marshal(models.ApplicationEventData{RemovedAPIKeyIDs: removedKeyIDs})
+	eventRemovedKeyIDs := append([]string(nil), removedKeyIDs...)
+	sort.Strings(eventRemovedKeyIDs)
+	payload, err := json.Marshal(models.ApplicationEventData{RemovedAPIKeyIDs: eventRemovedKeyIDs})
 	if err != nil {
 		return "", err
 	}
@@ -215,14 +190,16 @@ func (s *SubscriptionResourceService) persistAndSync(
 	logger *slog.Logger,
 	persist func() error,
 ) error {
-	return s.persistAndSyncWithEventData(eventType, action, entityID, eventhub.EmptyEventData, refreshSubscriptionSnapshot, correlationID, logger, persist)
+	return s.persistAndSyncWithEventData(eventType, action, entityID, func() (string, error) {
+		return eventhub.EmptyEventData, nil
+	}, refreshSubscriptionSnapshot, correlationID, logger, persist)
 }
 
 func (s *SubscriptionResourceService) persistAndSyncWithEventData(
 	eventType eventhub.EventType,
 	action string,
 	entityID string,
-	eventData string,
+	eventDataBuilder func() (string, error),
 	refreshSubscriptionSnapshot bool,
 	correlationID string,
 	logger *slog.Logger,
@@ -233,6 +210,11 @@ func (s *SubscriptionResourceService) persistAndSyncWithEventData(
 	}
 
 	if err := persist(); err != nil {
+		return err
+	}
+
+	eventData, err := eventDataBuilder()
+	if err != nil {
 		return err
 	}
 

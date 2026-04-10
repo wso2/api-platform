@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
@@ -2062,14 +2063,14 @@ func (s *sqlStore) RemoveAPIKeyAPIAndName(apiId, name string) error {
 }
 
 // ReplaceApplicationAPIKeyMappings atomically replaces all API key mappings for an application.
-func (s *sqlStore) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) error {
+func (s *sqlStore) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) ([]string, error) {
 	if application == nil || application.ApplicationUUID == "" || application.ApplicationID == "" || application.ApplicationName == "" || application.ApplicationType == "" {
-		return fmt.Errorf("invalid application payload")
+		return nil, fmt.Errorf("invalid application payload")
 	}
 
 	tx, err := s.begin()
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
 	defer func() {
@@ -2080,7 +2081,39 @@ func (s *sqlStore) ReplaceApplicationAPIKeyMappings(application *models.StoredAp
 	}()
 
 	seen := make(map[string]struct{})
+	incomingKeyIDs := make(map[string]struct{}, len(mappings))
+	removedKeyIDs := make([]string, 0)
 	now := time.Now()
+
+	rows, err := tx.QueryQ(`
+		SELECT api_key_id
+		FROM application_api_keys
+		WHERE application_uuid = ? AND gateway_id = ?
+	`, application.ApplicationUUID, s.gatewayId)
+	if err != nil {
+		_ = tx.Rollback()
+		return nil, fmt.Errorf("failed to query existing application mappings: %w", err)
+	}
+
+	existingKeyIDs := make(map[string]struct{})
+	for rows.Next() {
+		var apiKeyID string
+		if err = rows.Scan(&apiKeyID); err != nil {
+			rows.Close()
+			_ = tx.Rollback()
+			return nil, fmt.Errorf("failed to scan existing application mapping: %w", err)
+		}
+		if apiKeyID == "" {
+			continue
+		}
+		existingKeyIDs[apiKeyID] = struct{}{}
+	}
+	if err = rows.Err(); err != nil {
+		rows.Close()
+		_ = tx.Rollback()
+		return nil, fmt.Errorf("failed to iterate existing application mappings: %w", err)
+	}
+	rows.Close()
 
 	if _, err = tx.ExecQ(`
 		INSERT INTO applications (
@@ -2094,7 +2127,7 @@ func (s *sqlStore) ReplaceApplicationAPIKeyMappings(application *models.StoredAp
 			updated_at = excluded.updated_at
 	`, application.ApplicationUUID, s.gatewayId, application.ApplicationID, application.ApplicationName, application.ApplicationType, now, now); err != nil {
 		_ = tx.Rollback()
-		return fmt.Errorf("failed to upsert application metadata: %w", err)
+		return nil, fmt.Errorf("failed to upsert application metadata: %w", err)
 	}
 
 	if _, err = tx.ExecQ(`
@@ -2102,7 +2135,7 @@ func (s *sqlStore) ReplaceApplicationAPIKeyMappings(application *models.StoredAp
 		WHERE application_uuid = ? AND gateway_id = ?
 	`, application.ApplicationUUID, s.gatewayId); err != nil {
 		_ = tx.Rollback()
-		return fmt.Errorf("failed to clear application mappings: %w", err)
+		return nil, fmt.Errorf("failed to clear application mappings: %w", err)
 	}
 
 	for _, mapping := range mappings {
@@ -2111,11 +2144,11 @@ func (s *sqlStore) ReplaceApplicationAPIKeyMappings(application *models.StoredAp
 		}
 		if mapping.ApplicationUUID == "" || mapping.APIKeyID == "" {
 			_ = tx.Rollback()
-			return fmt.Errorf("invalid application mapping payload")
+			return nil, fmt.Errorf("invalid application mapping payload")
 		}
 		if mapping.ApplicationUUID != application.ApplicationUUID {
 			_ = tx.Rollback()
-			return fmt.Errorf("application mapping UUID mismatch")
+			return nil, fmt.Errorf("application mapping UUID mismatch")
 		}
 
 		composite := mapping.ApplicationUUID + ":" + mapping.APIKeyID
@@ -2123,6 +2156,7 @@ func (s *sqlStore) ReplaceApplicationAPIKeyMappings(application *models.StoredAp
 			continue
 		}
 		seen[composite] = struct{}{}
+		incomingKeyIDs[mapping.APIKeyID] = struct{}{}
 
 		if _, err = tx.ExecQ(`
 			INSERT INTO application_api_keys (
@@ -2131,15 +2165,23 @@ func (s *sqlStore) ReplaceApplicationAPIKeyMappings(application *models.StoredAp
 			VALUES (?, ?, ?, ?, ?)
 		`, mapping.ApplicationUUID, mapping.APIKeyID, s.gatewayId, now, now); err != nil {
 			_ = tx.Rollback()
-			return fmt.Errorf("failed to insert application mapping: %w", err)
+			return nil, fmt.Errorf("failed to insert application mapping: %w", err)
 		}
 	}
 
+	for apiKeyID := range existingKeyIDs {
+		if _, exists := incomingKeyIDs[apiKeyID]; exists {
+			continue
+		}
+		removedKeyIDs = append(removedKeyIDs, apiKeyID)
+	}
+	sort.Strings(removedKeyIDs)
+
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit application mapping transaction: %w", err)
+		return nil, fmt.Errorf("failed to commit application mapping transaction: %w", err)
 	}
 
-	return nil
+	return removedKeyIDs, nil
 }
 
 // Close closes the database connection

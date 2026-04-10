@@ -200,8 +200,8 @@ func (m *testMockDB) ListActiveSubscriptions() ([]*models.Subscription, error)  
 func (m *testMockDB) UpdateSubscription(sub *models.Subscription) error               { return nil }
 func (m *testMockDB) DeleteSubscription(id, gatewayID string) error                   { return nil }
 func (m *testMockDB) DeleteSubscriptionsForAPINotIn(apiID string, ids []string) error { return nil }
-func (m *testMockDB) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) error {
-	return nil
+func (m *testMockDB) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) ([]string, error) {
+	return nil, nil
 }
 
 func (m *testMockDB) SaveCertificate(cert *models.StoredCertificate) error { return nil }

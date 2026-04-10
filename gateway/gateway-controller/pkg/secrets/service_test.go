@@ -244,8 +244,8 @@ func (m *minimalStorage) DeleteSubscription(id, gatewayID string) error     { re
 func (m *minimalStorage) DeleteSubscriptionsForAPINotIn(apiID string, ids []string) error {
 	return nil
 }
-func (m *minimalStorage) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) error {
-	return nil
+func (m *minimalStorage) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) ([]string, error) {
+	return nil, nil
 }
 func (m *minimalStorage) SaveCertificate(cert *models.StoredCertificate) error { return nil }
 func (m *minimalStorage) GetCertificate(id string) (*models.StoredCertificate, error) {
