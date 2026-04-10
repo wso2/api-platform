@@ -356,3 +356,135 @@ Feature: Consumer Cost-Based Rate Limiting
     Then the response status code should be 200
     When I delete the LLM provider template "ccbrl-fallback-template"
     Then the response status code should be 200
+
+  Scenario: Consumer counter is not double-deducted when both backend and consumer limits are active
+    # This test guards against the llm_cost_delegate metadata key collision.
+    #
+    # Without the fix: both backend and consumer LLMCostRateLimitPolicy instances write
+    # their delegate reference to the same metadata key ("llm_cost_delegate"). The consumer
+    # overwrites the backend's entry. In the response phase (reverse order), the backend
+    # instance reads back the consumer's delegate and calls it — so the consumer's
+    # OnResponseBody runs twice. The consumer counter is drained twice as fast.
+    #
+    # With the fix: backend uses "llm_cost_delegate", consumer uses
+    # "llm_cost_delegate_consumer". Each instance reads back only its own delegate.
+    #
+    # Setup:
+    #   Backend limit:  $1/hour  (very high — never exhausted in this test)
+    #   Consumer limit: $0.000236/hour = exactly 2 requests at gpt-4.1-2025-04-14 pricing
+    #
+    # Expected (with fix):
+    #   request 1 → 200  (consumer deducted once: $0.000236 - $0.000118 = $0.000118 remaining)
+    #   request 2 → 200  (consumer deducted once: $0.000118 - $0.000118 = $0 remaining)
+    #   request 3 → 429  (consumer exhausted)
+    #
+    # Without fix:
+    #   request 1 → 200  (consumer deducted twice: $0.000236 - 2×$0.000118 = $0 remaining)
+    #   request 2 → 429  ← test fails here
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: ccbrl-nodbl-template
+      spec:
+        displayName: CCBRL No-Double Template
+      """
+    Then the response status code should be 201
+
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: ccbrl-nodbl-provider
+      spec:
+        displayName: CCBRL No-Double Provider
+        version: v1.0
+        context: /ccbrl-nodbl
+        template: ccbrl-nodbl-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: api-key-auth
+            version: v1
+            paths:
+              - path: /*
+                methods: ['*']
+                params:
+                  key: x-api-key
+                  in: header
+          - name: llm-cost-based-ratelimit
+            version: v1
+            paths:
+              - path: /*
+                methods: ['*']
+                params:
+                  budgetLimits:
+                    - amount: 1.0
+                      duration: "1h"
+          - name: llm-cost-based-ratelimit
+            version: v1
+            paths:
+              - path: /*
+                methods: ['*']
+                params:
+                  budgetLimits:
+                    - amount: 0.000236
+                      duration: "1h"
+                  consumerBased: true
+          - name: llm-cost
+            version: v1
+            paths:
+              - path: /*
+                methods: ['*']
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    When I send a POST request to the "gateway-controller" service at "/llm-providers/ccbrl-nodbl-provider/api-keys" with body:
+      """
+      {
+        "name": "ccbrl-nodbl-app-a",
+        "apiKey": "ccbrl-nodbl-app-a-key-0000000000000000000000"
+      }
+      """
+    Then the response status code should be 201
+    And I wait for 2 seconds
+
+    Given I set header "Content-Type" to "application/json"
+
+    # Request 1 — allowed; consumer budget: $0.000236 - $0.000118 = $0.000118 remaining
+    When I send a POST request to "http://localhost:8080/ccbrl-nodbl/openai/v1/chat/completions" with header "x-api-key" value "ccbrl-nodbl-app-a-key-0000000000000000000000" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # Request 2 — allowed; consumer budget: $0.000118 - $0.000118 = $0 remaining
+    # Without the fix this would be 429 because the consumer counter was double-deducted on request 1
+    When I send a POST request to "http://localhost:8080/ccbrl-nodbl/openai/v1/chat/completions" with header "x-api-key" value "ccbrl-nodbl-app-a-key-0000000000000000000000" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # Request 3 — blocked; consumer budget exhausted
+    When I send a POST request to "http://localhost:8080/ccbrl-nodbl/openai/v1/chat/completions" with header "x-api-key" value "ccbrl-nodbl-app-a-key-0000000000000000000000" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "ccbrl-nodbl-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "ccbrl-nodbl-template"
+    Then the response status code should be 200
