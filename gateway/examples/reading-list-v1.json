@@ -1,0 +1,63 @@
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "RestApi",
+  "metadata": {
+    "name": "reading-list-v1"
+  },
+  "spec": {
+    "displayName": "Reading List API",
+    "version": "v1",
+    "context": "/reading-list",
+    "upstream": {
+      "main": {
+        "url": "https://httpbin.org/anything/my-books"
+      }
+    },
+    "policies": [
+      {
+        "name": "set-headers",
+        "version": "v1",
+        "params": {
+          "request": {
+            "headers": [
+              {
+                "name": "X-Forwarded-By",
+                "value": "wso2 api platform gateway"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "operations": [
+      {
+        "method": "GET",
+        "path": "/books"
+      },
+      {
+        "method": "POST",
+        "path": "/books"
+      },
+      {
+        "method": "GET",
+        "path": "/books/{bookId}"
+      },
+      {
+        "method": "PUT",
+        "path": "/books/{bookId}"
+      },
+      {
+        "method": "DELETE",
+        "path": "/books/{bookId}"
+      },
+      {
+        "method": "GET",
+        "path": "/books/{bookId}/status"
+      },
+      {
+        "method": "PUT",
+        "path": "/books/{bookId}/status"
+      }
+    ]
+  }
+}

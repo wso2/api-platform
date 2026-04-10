@@ -72,9 +72,10 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 	log.Info("Scanning artifacts directory for immutable gateway", slog.String("dir", g.cfg.ArtifactsDir))
 
 	type artifact struct {
-		path string
-		data []byte
-		kind string
+		path        string
+		data        []byte
+		kind        string
+		contentType string
 	}
 
 	// Dependency order:
@@ -91,7 +92,7 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 			return nil
 		}
 		ext := strings.ToLower(filepath.Ext(path))
-		if ext != ".yaml" && ext != ".yml" {
+		if ext != ".yaml" && ext != ".yml" && ext != ".json" {
 			return nil
 		}
 
@@ -100,17 +101,22 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 			return fmt.Errorf("failed to read artifact %s: %w", path, err)
 		}
 
-		var envelope struct {
-			Kind string `yaml:"kind"`
+		contentType := "application/x-yaml"
+		if ext == ".json" {
+			contentType = "application/json"
 		}
-		if err := g.parser.Parse(data, "application/x-yaml", &envelope); err != nil {
+
+		var envelope struct {
+			Kind string `yaml:"kind" json:"kind"`
+		}
+		if err := g.parser.Parse(data, contentType, &envelope); err != nil {
 			return fmt.Errorf("failed to parse kind from %s: %w", path, err)
 		}
 		if envelope.Kind == "" {
 			return fmt.Errorf("artifact %s has no 'kind' field", path)
 		}
 
-		a := artifact{path: path, data: data, kind: envelope.Kind}
+		a := artifact{path: path, data: data, kind: envelope.Kind, contentType: contentType}
 		switch envelope.Kind {
 		case string(api.LlmProviderTemplate):
 			pass1 = append(pass1, a)
@@ -132,7 +138,7 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 		slog.Int("llm_providers", len(pass2)))
 
 	for _, a := range append(append(pass1, pass2...), pass3...) {
-		if err := g.applyArtifact(a.path, a.kind, a.data, log); err != nil {
+		if err := g.applyArtifact(a.path, a.kind, a.contentType, a.data, log); err != nil {
 			return err
 		}
 	}
@@ -141,9 +147,8 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 	return nil
 }
 
-func (g *ImmutableGW) applyArtifact(path, kind string, data []byte, log *slog.Logger) error {
+func (g *ImmutableGW) applyArtifact(path, kind, contentType string, data []byte, log *slog.Logger) error {
 	log.Info("Applying artifact", slog.String("path", path), slog.String("kind", kind))
-	const contentType = "application/x-yaml"
 
 	switch kind {
 	case string(api.LlmProviderTemplate):
