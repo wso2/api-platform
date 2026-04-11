@@ -36,6 +36,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/immutable"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
@@ -450,6 +451,15 @@ func main() {
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
 	validator.SetPolicyValidator(policyValidator)
 
+	// Construct shared deployment services for ImmutableGW and APIServer.
+	// Services are stateless method dispatchers over shared resources, so two
+	// instances pointing at the same store/db/snapshotManager are safe.
+	apiSvc := utils.NewAPIDeploymentService(configStore, db, snapshotManager, validator, &cfg.Router, policyResolver, eventHubInstance, gatewayID)
+	mcpSvc := utils.NewMCPDeploymentService(configStore, db, snapshotManager, policyManager, policyValidator, eventHubInstance, gatewayID)
+	llmSvc := utils.NewLLMDeploymentService(configStore, db, snapshotManager, lazyResourceXDSManager, templateDefinitions,
+		apiSvc, &cfg.Router, policyVersionResolver, policyValidator)
+	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, apiSvc, llmSvc, mcpSvc)
+
 	// Initialize and start control plane client with dependencies for API creation and API key management
 	cpClient := controlplane.NewClient(
 		cfg.Controller.ControlPlane,
@@ -541,6 +551,12 @@ func main() {
 		policyResolver,
 	)
 
+	// Load immutable gateway artifacts from the filesystem (no-op when immutable mode is disabled).
+	if err := igw.LoadArtifacts(log); err != nil {
+		log.Error("Failed to load immutable gateway artifacts", slog.Any("error", err))
+		os.Exit(1)
+	}
+
 	// Ensure initial lazy resource snapshot includes default templates loaded from files.
 	// At this point, the API server initialization has already persisted/published OOB templates.
 	if lazyResourceStore.Count() > 0 {
@@ -554,6 +570,9 @@ func main() {
 		}
 		cancel()
 	}
+
+	// Register immutable gateway middleware (passthrough when immutable mode is disabled).
+	router.Use(igw.Middleware())
 
 	// Register API routes (includes certificate management endpoints from OpenAPI spec)
 	api.RegisterHandlers(router, apiServer)

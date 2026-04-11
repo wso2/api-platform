@@ -51,7 +51,8 @@ type Config struct {
 	APIKey               APIKeyConfig           `koanf:"api_key"`
 	// Subscriptions controls application-level subscription behaviour for APIs.
 	// When nil, subscription validation system policy remains disabled.
-	Subscriptions *SubscriptionsConfig `koanf:"subscriptions"`
+	Subscriptions    *SubscriptionsConfig   `koanf:"subscriptions"`
+	ImmutableGateway ImmutableGatewayConfig `koanf:"immutable_gateway"`
 }
 
 // AnalyticsConfig holds analytics configuration
@@ -70,6 +71,14 @@ type SubscriptionsConfig struct {
 	// EnableValidation toggles automatic injection of the subscriptionValidation
 	// system policy into API policy chains.
 	EnableValidation bool `koanf:"enable_validation"`
+}
+
+// ImmutableGatewayConfig holds configuration for immutable gateway mode.
+// When enabled, the gateway loads all API artifacts from the filesystem on startup
+// and rejects all mutating management API operations (POST, PUT, DELETE) at runtime.
+type ImmutableGatewayConfig struct {
+	Enabled      bool   `koanf:"enabled"`
+	ArtifactsDir string `koanf:"artifacts_dir"`
 }
 
 // AnalyticsPublishersConfig holds configuration for all analytics publishers
@@ -759,6 +768,10 @@ func defaultConfig() *Config {
 			Algorithm:            constants.HashingAlgorithmSHA256,
 			MinKeyLength:         constants.DefaultMinAPIKeyLength,
 			MaxKeyLength:         constants.DefaultMaxAPIKeyLength,
+		},
+		ImmutableGateway: ImmutableGatewayConfig{
+			Enabled:      false,
+			ArtifactsDir: "/etc/api-platform-gateway/immutable_gateway/artifacts",
 		},
 	}
 }
