@@ -249,6 +249,19 @@ func (cs *ConfigStore) GetAll() []*models.StoredConfig {
 	return result
 }
 
+// GetAllSensitiveValues aggregates SensitiveValues from all stored configs.
+// Used by the config dump handler to redact resolved secret values from the dump output.
+func (cs *ConfigStore) GetAllSensitiveValues() []string {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	var result []string
+	for _, cfg := range cs.configs {
+		result = append(result, cfg.SensitiveValues...)
+	}
+	return result
+}
+
 // GetAllByKind returns all configurations of a specific kind
 func (cs *ConfigStore) GetAllByKind(kind string) []*models.StoredConfig {
 	cs.mu.RLock()

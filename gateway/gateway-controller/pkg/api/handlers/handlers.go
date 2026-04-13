@@ -41,7 +41,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -49,6 +48,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/eventhub"
+	"github.com/wso2/api-platform/common/redact"
 )
 
 // APIServer implements the generated ServerInterface
@@ -68,7 +68,6 @@ type APIServer struct {
 	mcpDeploymentService        *utils.MCPDeploymentService
 	llmDeploymentService        *utils.LLMDeploymentService
 	secretService               *secrets.SecretService
-	policyResolver              *resolver.PolicyResolver
 	apiKeyService               *utils.APIKeyService
 	apiKeyXDSManager            *apikeyxds.APIKeyStateManager
 	controlPlaneClient          controlplane.ControlPlaneClient
@@ -98,7 +97,6 @@ func NewAPIServer(
 	eventHub eventhub.EventHub,
 	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater,
 	secretService *secrets.SecretService,
-	policyResolver *resolver.PolicyResolver,
 ) *APIServer {
 	if db == nil {
 		panic("APIServer requires non-nil storage")
@@ -114,7 +112,7 @@ func NewAPIServer(
 		panic("APIServer requires non-empty gateway ID")
 	}
 
-	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.Router, policyResolver, eventHub, gatewayID)
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.Router, eventHub, gatewayID, secretService)
 	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, &systemConfig.APIKey, eventHub, gatewayID)
 	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subscriptionSnapshotUpdater, eventHub, gatewayID)
 
@@ -139,7 +137,6 @@ func NewAPIServer(
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, lazyResourceManager, templateDefinitions,
 			deploymentService, routerConfig, policyVersionResolver, policyValidator),
 		secretService:               secretService,
-		policyResolver:              policyResolver,
 		apiKeyService:               apiKeyService,
 		apiKeyXDSManager:            apiKeyXDSManager,
 		controlPlaneClient:          controlPlaneClient,
@@ -158,7 +155,7 @@ func NewAPIServer(
 		deploymentService, apiKeyXDSManager,
 		controlPlaneClient, routerConfig, systemConfig,
 		httpClient, parser, validator, logger,
-		eventHub, policyResolver,
+		eventHub, secretService,
 	)
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
 
@@ -502,7 +499,20 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, *response)
+	jsonBytes, err := json.Marshal(*response)
+	if err != nil {
+		log.Error("Failed to marshal configuration dump", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	sensitiveValues := s.store.GetAllSensitiveValues()
+	redacted := redact.Redact(string(jsonBytes), sensitiveValues)
+
+	c.Data(http.StatusOK, "application/json", []byte(redacted))
 	log.Info("Configuration dump retrieved successfully",
 		slog.Int("apis", len(*response.Apis)),
 		slog.Int("policies", len(*response.Policies)),

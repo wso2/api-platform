@@ -235,6 +235,16 @@ func (s *SecretService) Get(handle string, correlationID string) (*models.Secret
 	return secret, nil
 }
 
+// Resolve retrieves the plaintext value of the secret identified by handle.
+// It satisfies the templateengine/funcs.SecretResolver interface.
+func (s *SecretService) Resolve(handle string) (string, error) {
+	secret, err := s.Get(handle, "")
+	if err != nil {
+		return "", err
+	}
+	return secret.Value, nil
+}
+
 // UpdateSecret updates an existing secret with re-encryption using current primary key
 func (s *SecretService) UpdateSecret(handle string, params SecretParams) (*models.Secret, error) {
 	var secretConfig api.SecretConfiguration

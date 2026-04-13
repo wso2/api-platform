@@ -309,11 +309,6 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		return nil, err
 	}
 
-	err = s.validateSecretsWithPolicies(storedCfg)
-	if err != nil {
-		return nil, err
-	}
-
 	// Important: Do not persist the resolved configuration
 	// Save or update using timestamp-guarded upsert.
 	// affected=false means a newer version already exists (stale event — no-op).
@@ -469,11 +464,6 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 		return nil, err
 	}
 
-	err = s.validateSecretsWithPolicies(storedCfg)
-	if err != nil {
-		return nil, err
-	}
-
 	// Important: Do not persist the resolved configuration
 	// Save or update using timestamp-guarded upsert.
 	// Policy resolution happens in the EventListener after all replicas consume the
@@ -584,30 +574,6 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 	return stored, nil
 }
 
-// validateSecretsWithPolicies runs the stored configuration through policy resolution to validate referenced secrets against policy constraints.
-// Returns an error if any validation errors are found.
-func (s *LLMDeploymentService) validateSecretsWithPolicies(storedCfg *models.StoredConfig) error {
-	if s.deploymentService.policyResolver == nil {
-		return fmt.Errorf("policy resolver is not initialized")
-	}
-	_, validationErrors := s.deploymentService.policyResolver.ResolvePolicies(storedCfg)
-	if len(validationErrors) > 0 {
-		// Aggregate errors into a single error message
-		errMsgs := make([]string, 0, len(validationErrors))
-		for _, ve := range validationErrors {
-			errMsgs = append(errMsgs, ve.Message)
-		}
-		errMsg := strings.Join(errMsgs, "; ")
-
-		slog.Error("Policy resolution failed",
-			slog.String("config_handle", storedCfg.Handle),
-			slog.String("errors", errMsg),
-		)
-
-		return fmt.Errorf("policy resolution failed with %d errors: %s", len(validationErrors), errMsg)
-	}
-	return nil
-}
 
 // InitializeOOBTemplates persists OOB templates to database and memory store
 func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[string]*api.LLMProviderTemplate) error {

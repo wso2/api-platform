@@ -3,18 +3,14 @@ package main
 import (
 	"fmt"
 	"log/slog"
-	"strings"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
-
-type startupPolicyResolver interface {
-	ResolvePolicies(*models.StoredConfig) (*models.StoredConfig, []config.ValidationError)
-}
 
 func hydrateStoredConfigsFromDatabaseOnStartup(
 	configStore *storage.ConfigStore,
@@ -94,7 +90,7 @@ func hydrateConfigsByKindForStartup(
 func loadRuntimeConfigsFromExistingAPIConfigurations(
 	loadedConfigs []*models.StoredConfig,
 	runtimeStore *storage.RuntimeConfigStore,
-	policyResolver startupPolicyResolver,
+	secretResolver funcs.SecretResolver,
 	transformer models.ConfigTransformer,
 	log *slog.Logger,
 	skipInvalidDeployments bool,
@@ -109,40 +105,29 @@ func loadRuntimeConfigsFromExistingAPIConfigurations(
 			continue
 		}
 
-		transformInput := apiConfig
-		if requiresStartupPolicyResolution(apiConfig.Kind) && policyResolver != nil {
-			resolvedCfg, validationErrors := policyResolver.ResolvePolicies(apiConfig)
-			if len(validationErrors) > 0 {
-				errMsgs := make([]string, 0, len(validationErrors))
-				for _, ve := range validationErrors {
-					errMsgs = append(errMsgs, ve.Message)
-				}
+		if secretResolver != nil {
+			if err := utils.RenderAndCacheConfig(apiConfig, secretResolver, log); err != nil {
 				if log != nil {
 					if skipInvalidDeployments {
-						log.Warn("Policy resolution failed during startup load, skipping policy derivation",
+						log.Warn("Template rendering failed during startup load, skipping",
 							slog.String("api_id", apiConfig.UUID),
-							slog.String("errors", strings.Join(errMsgs, "; ")),
+							slog.Any("error", err),
 						)
 					} else {
-						log.Error("Policy resolution failed during startup load",
+						log.Error("Template rendering failed during startup load",
 							slog.String("api_id", apiConfig.UUID),
-							slog.String("errors", strings.Join(errMsgs, "; ")),
+							slog.Any("error", err),
 						)
 					}
 				}
 				if skipInvalidDeployments {
 					continue
 				}
-				return loadedCount, fmt.Errorf(
-					"failed to resolve policies for startup config %s: %s",
-					apiConfig.UUID,
-					strings.Join(errMsgs, "; "),
-				)
+				return loadedCount, fmt.Errorf("failed to render config for startup %s: %w", apiConfig.UUID, err)
 			}
-			transformInput = resolvedCfg
 		}
 
-		rdc, err := transformer.Transform(transformInput)
+		rdc, err := transformer.Transform(apiConfig)
 		if err != nil {
 			if log != nil {
 				if skipInvalidDeployments {
@@ -184,11 +169,3 @@ func supportsRuntimeBootstrapKind(kind string) bool {
 	}
 }
 
-func requiresStartupPolicyResolution(kind string) bool {
-	switch kind {
-	case models.KindRestApi, models.KindWebSubApi, models.KindMcp, models.KindLlmProvider, models.KindLlmProxy:
-		return true
-	default:
-		return false
-	}
-}

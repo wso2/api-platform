@@ -20,7 +20,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption/aesgcm"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventlistener"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/subscriptionxds"
 
@@ -358,9 +357,6 @@ func main() {
 	// Initialize policy xDS server
 	log.Info("Initializing Policy xDS server", slog.Int("port", cfg.Controller.PolicyServer.Port))
 
-	// Initialize policy resolver
-	policyResolver := resolver.NewPolicyResolver(policyDefinitions, secretsService)
-
 	// Initialize policy snapshot manager and runtime config store
 	policySnapshotManager := policyxds.NewSnapshotManager(log)
 	runtimeStore := storage.NewRuntimeConfigStore()
@@ -388,7 +384,7 @@ func main() {
 	loadedCount, err := loadRuntimeConfigsFromExistingAPIConfigurations(
 		loadedAPIs,
 		runtimeStore,
-		policyResolver,
+		secretsService,
 		transformerRegistry,
 		log,
 		cfg.Controller.Server.SkipInvalidDeploymentsOnStartup,
@@ -454,7 +450,7 @@ func main() {
 	// Construct shared deployment services for ImmutableGW and APIServer.
 	// Services are stateless method dispatchers over shared resources, so two
 	// instances pointing at the same store/db/snapshotManager are safe.
-	apiSvc := utils.NewAPIDeploymentService(configStore, db, snapshotManager, validator, &cfg.Router, policyResolver, eventHubInstance, gatewayID)
+	apiSvc := utils.NewAPIDeploymentService(configStore, db, snapshotManager, validator, &cfg.Router, eventHubInstance, gatewayID, secretsService)
 	mcpSvc := utils.NewMCPDeploymentService(configStore, db, snapshotManager, policyManager, policyValidator, eventHubInstance, gatewayID)
 	llmSvc := utils.NewLLMDeploymentService(configStore, db, snapshotManager, lazyResourceXDSManager, templateDefinitions,
 		apiSvc, &cfg.Router, policyVersionResolver, policyValidator)
@@ -475,7 +471,7 @@ func main() {
 		templateDefinitions,
 		subscriptionSnapshotManager,
 		eventHubInstance,
-		policyResolver,
+		secretsService,
 	)
 	if err := cpClient.Start(); err != nil {
 		log.Error("Failed to start control plane client", slog.Any("error", err))
@@ -523,7 +519,7 @@ func main() {
 		log,
 		cfg,
 		policyDefinitions,
-		policyResolver,
+		secretsService,
 	)
 	if err := evtListener.Start(); err != nil {
 		log.Error("Failed to start event listener", slog.Any("error", err))
@@ -548,7 +544,6 @@ func main() {
 		eventHubInstance,
 		subscriptionSnapshotManager,
 		secretsService,
-		policyResolver,
 	)
 
 	// Load immutable gateway artifacts from the filesystem (no-op when immutable mode is disabled).

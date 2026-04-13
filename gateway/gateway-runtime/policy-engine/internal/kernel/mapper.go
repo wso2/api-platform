@@ -49,6 +49,11 @@ type Kernel struct {
 	// PolicyChains maps policyChainKey → PolicyChain (executable chain).
 	// Populated from the PolicyChainTypeURL xDS cache.
 	PolicyChains map[string]*registry.PolicyChain
+
+	// sensitiveValues holds resolved secret plaintext values received via TransportMetadata.
+	// Used for value-based redaction in config dumps. Protected by sensitiveValuesMu.
+	sensitiveValues    []string
+	sensitiveValuesMu  sync.RWMutex
 }
 
 // NewKernel creates a new Kernel instance
@@ -150,4 +155,32 @@ func (k *Kernel) DumpRouteConfigs() map[string]*RouteConfig {
 		dump[key] = cfg
 	}
 	return dump
+}
+
+// SetSensitiveValues atomically replaces the stored sensitive values.
+// Called on every State-of-the-World policy chain update so the set is always current.
+func (k *Kernel) SetSensitiveValues(values []string) {
+	k.sensitiveValuesMu.Lock()
+	defer k.sensitiveValuesMu.Unlock()
+
+	// Deduplicate while preserving order.
+	seen := make(map[string]struct{}, len(values))
+	unique := make([]string, 0, len(values))
+	for _, v := range values {
+		if _, ok := seen[v]; !ok {
+			seen[v] = struct{}{}
+			unique = append(unique, v)
+		}
+	}
+	k.sensitiveValues = unique
+}
+
+// GetSensitiveValues returns a copy of the current sensitive values for use in config dump redaction.
+func (k *Kernel) GetSensitiveValues() []string {
+	k.sensitiveValuesMu.RLock()
+	defer k.sensitiveValuesMu.RUnlock()
+
+	result := make([]string, len(k.sensitiveValues))
+	copy(result, k.sensitiveValues)
+	return result
 }

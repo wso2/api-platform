@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/wso2/api-platform/common/redact"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
 )
@@ -64,16 +65,19 @@ func (h *ConfigDumpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Dump the configuration
 	dump := DumpConfig(h.kernel, h.registry, h.getPolicyChainVersion())
 
-	// Set response headers
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	// Encode and send response
-	if err := json.NewEncoder(w).Encode(dump); err != nil {
-		// If we already sent headers, we can't send an error response
-		// Just log the error (logger not available here, so silent failure)
+	jsonBytes, err := json.Marshal(dump)
+	if err != nil {
+		http.Error(w, "Failed to marshal config dump", http.StatusInternalServerError)
 		return
 	}
+
+	// Redact resolved secret values so plaintext secrets never appear in the dump.
+	sensitiveValues := h.kernel.GetSensitiveValues()
+	redacted := redact.Redact(string(jsonBytes), sensitiveValues)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(redacted))
 }
 
 func (h *ConfigDumpHandler) getPolicyChainVersion() string {

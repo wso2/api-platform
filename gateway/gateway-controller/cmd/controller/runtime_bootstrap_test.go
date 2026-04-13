@@ -1,27 +1,33 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
 
-type fakeStartupPolicyResolver struct {
-	calls []string
-	errs  map[string][]config.ValidationError
+type fakeSecretResolver struct {
+	errors map[string]error
 }
 
-func (f *fakeStartupPolicyResolver) ResolvePolicies(cfg *models.StoredConfig) (*models.StoredConfig, []config.ValidationError) {
-	f.calls = append(f.calls, storage.Key(cfg.Kind, cfg.Handle))
-	if errs, ok := f.errs[cfg.Handle]; ok {
-		return nil, errs
+func (f *fakeSecretResolver) Resolve(handle string) (string, error) {
+	if f.errors != nil {
+		if err, ok := f.errors[handle]; ok {
+			return "", err
+		}
 	}
-	return cfg, nil
+	return "resolved-" + handle, nil
+}
+
+// configWithTemplateSpec is a minimal struct that marshals to JSON with a "spec" field
+// containing template expressions, used to trigger template rendering failures in tests.
+type configWithTemplateSpec struct {
+	Spec map[string]any `json:"spec"`
 }
 
 type fakeRuntimeTransformer struct {
@@ -45,9 +51,8 @@ func newDiscardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-func TestLoadRuntimeConfigsFromExistingAPIConfigurations_LoadsLLMConfigsFromDatabase(t *testing.T) {
+func TestLoadRuntimeConfigsFromExistingAPIConfigurations_LoadsFromDatabase(t *testing.T) {
 	runtimeStore := storage.NewRuntimeConfigStore()
-	resolver := &fakeStartupPolicyResolver{}
 	transformer := &fakeRuntimeTransformer{}
 
 	configs := []*models.StoredConfig{
@@ -60,7 +65,7 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_LoadsLLMConfigsFromData
 	loadedCount, err := loadRuntimeConfigsFromExistingAPIConfigurations(
 		configs,
 		runtimeStore,
-		resolver,
+		nil,
 		transformer,
 		newDiscardLogger(),
 		false,
@@ -68,11 +73,6 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_LoadsLLMConfigsFromData
 
 	assert.NoError(t, err)
 	assert.Equal(t, 3, loadedCount)
-	assert.ElementsMatch(t, []string{
-		storage.Key(models.KindRestApi, "rest-api"),
-		storage.Key(models.KindLlmProvider, "provider-a"),
-		storage.Key(models.KindLlmProxy, "proxy-a"),
-	}, resolver.calls)
 	assert.ElementsMatch(t, []string{
 		storage.Key(models.KindRestApi, "rest-api"),
 		storage.Key(models.KindLlmProvider, "provider-a"),
@@ -89,26 +89,27 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_LoadsLLMConfigsFromData
 	assert.False(t, ok)
 }
 
-func TestLoadRuntimeConfigsFromExistingAPIConfigurations_ContinuesAfterResolutionFailureWhenSkippingInvalid(t *testing.T) {
+func TestLoadRuntimeConfigsFromExistingAPIConfigurations_ContinuesAfterRenderFailureWhenSkippingInvalid(t *testing.T) {
 	runtimeStore := storage.NewRuntimeConfigStore()
-	resolver := &fakeStartupPolicyResolver{
-		errs: map[string][]config.ValidationError{
-			"bad-rest": {
-				{Field: "spec.policies[0]", Message: "invalid policy"},
-			},
+	secretResolver := &fakeSecretResolver{
+		errors: map[string]error{
+			"bad-key": fmt.Errorf("secret not found"),
 		},
 	}
 	transformer := &fakeRuntimeTransformer{}
 
 	configs := []*models.StoredConfig{
-		{UUID: "rest-1", Kind: models.KindRestApi, Handle: "bad-rest", DisplayName: "Bad Rest API", Version: "v1"},
+		{
+			UUID: "rest-1", Kind: models.KindRestApi, Handle: "bad-rest", DisplayName: "Bad Rest API", Version: "v1",
+			Configuration: configWithTemplateSpec{Spec: map[string]any{"displayName": `{{ secret "bad-key" }}`}},
+		},
 		{UUID: "provider-1", Kind: models.KindLlmProvider, Handle: "provider-a", DisplayName: "Provider A", Version: "v1"},
 	}
 
 	loadedCount, err := loadRuntimeConfigsFromExistingAPIConfigurations(
 		configs,
 		runtimeStore,
-		resolver,
+		secretResolver,
 		transformer,
 		newDiscardLogger(),
 		true,
@@ -116,10 +117,6 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_ContinuesAfterResolutio
 
 	assert.NoError(t, err)
 	assert.Equal(t, 1, loadedCount)
-	assert.ElementsMatch(t, []string{
-		storage.Key(models.KindRestApi, "bad-rest"),
-		storage.Key(models.KindLlmProvider, "provider-a"),
-	}, resolver.calls)
 	assert.Equal(t, []string{storage.Key(models.KindLlmProvider, "provider-a")}, transformer.calls)
 
 	_, ok := runtimeStore.Get(storage.Key(models.KindRestApi, "bad-rest"))
@@ -128,34 +125,34 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_ContinuesAfterResolutio
 	assert.True(t, ok)
 }
 
-func TestLoadRuntimeConfigsFromExistingAPIConfigurations_FailsFastOnResolutionFailureByDefault(t *testing.T) {
+func TestLoadRuntimeConfigsFromExistingAPIConfigurations_FailsFastOnRenderFailureByDefault(t *testing.T) {
 	runtimeStore := storage.NewRuntimeConfigStore()
-	resolver := &fakeStartupPolicyResolver{
-		errs: map[string][]config.ValidationError{
-			"bad-rest": {
-				{Field: "spec.policies[0]", Message: "invalid policy"},
-			},
+	secretResolver := &fakeSecretResolver{
+		errors: map[string]error{
+			"bad-key": fmt.Errorf("secret not found"),
 		},
 	}
 	transformer := &fakeRuntimeTransformer{}
 
 	configs := []*models.StoredConfig{
-		{UUID: "rest-1", Kind: models.KindRestApi, Handle: "bad-rest", DisplayName: "Bad Rest API", Version: "v1"},
+		{
+			UUID: "rest-1", Kind: models.KindRestApi, Handle: "bad-rest", DisplayName: "Bad Rest API", Version: "v1",
+			Configuration: configWithTemplateSpec{Spec: map[string]any{"displayName": `{{ secret "bad-key" }}`}},
+		},
 		{UUID: "provider-1", Kind: models.KindLlmProvider, Handle: "provider-a", DisplayName: "Provider A", Version: "v1"},
 	}
 
 	loadedCount, err := loadRuntimeConfigsFromExistingAPIConfigurations(
 		configs,
 		runtimeStore,
-		resolver,
+		secretResolver,
 		transformer,
 		newDiscardLogger(),
 		false,
 	)
 
 	assert.Equal(t, 0, loadedCount)
-	assert.ErrorContains(t, err, "failed to resolve policies for startup config rest-1")
-	assert.Equal(t, []string{storage.Key(models.KindRestApi, "bad-rest")}, resolver.calls)
+	assert.ErrorContains(t, err, "failed to render config for startup rest-1")
 	assert.Empty(t, transformer.calls)
 
 	_, ok := runtimeStore.Get(storage.Key(models.KindRestApi, "bad-rest"))
