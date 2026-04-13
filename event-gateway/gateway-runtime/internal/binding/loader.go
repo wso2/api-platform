@@ -25,20 +25,61 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// rawEntry is used for initial YAML parsing to discriminate by kind.
+type rawEntry struct {
+	Kind string `yaml:"kind"`
+}
+
+// rawChannelsConfig allows mixed-kind parsing.
+type rawChannelsConfig struct {
+	Channels []yaml.Node `yaml:"channels"`
+}
+
+// ParseResult holds the parsed bindings from a channels YAML file.
+type ParseResult struct {
+	Bindings          []Binding
+	WebSubApiBindings []WebSubApiBinding
+}
+
 // ParseChannels reads and parses the channels YAML file.
-// It performs no wiring — the runtime handles chain building and connector creation.
-func ParseChannels(filePath string) ([]Binding, error) {
+// It discriminates entries by the "kind" field:
+//   - "WebSubApi" entries are parsed as WebSubApiBinding (multi-channel per API)
+//   - All other entries are parsed as Binding (legacy flat format)
+func ParseChannels(filePath string) (*ParseResult, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read channels file %s: %w", filePath, err)
 	}
 
-	var cfg ChannelsConfig
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	var raw rawChannelsConfig
+	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("failed to parse channels file %s: %w", filePath, err)
 	}
 
-	return cfg.Channels, nil
+	result := &ParseResult{}
+	for i, node := range raw.Channels {
+		var probe rawEntry
+		if err := node.Decode(&probe); err != nil {
+			return nil, fmt.Errorf("failed to probe kind of channel entry %d: %w", i, err)
+		}
+
+		switch probe.Kind {
+		case "WebSubApi":
+			var wsb WebSubApiBinding
+			if err := node.Decode(&wsb); err != nil {
+				return nil, fmt.Errorf("failed to parse WebSubApi entry %d: %w", i, err)
+			}
+			result.WebSubApiBindings = append(result.WebSubApiBindings, wsb)
+		default:
+			var b Binding
+			if err := node.Decode(&b); err != nil {
+				return nil, fmt.Errorf("failed to parse binding entry %d: %w", i, err)
+			}
+			result.Bindings = append(result.Bindings, b)
+		}
+	}
+
+	return result, nil
 }
 
 // GenerateRouteKey creates a route key in the Method|Path|Vhost format

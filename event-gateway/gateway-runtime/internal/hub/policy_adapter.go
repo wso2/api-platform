@@ -29,6 +29,30 @@ import (
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
+// SubscribeToRequestHeaderContext maps a subscribe request message to a policy request header context.
+func SubscribeToRequestHeaderContext(msg *connectors.Message, binding *ChannelBinding) *policy.RequestHeaderContext {
+	headers := make(map[string][]string)
+	for k, v := range msg.Headers {
+		headers[strings.ToLower(k)] = v
+	}
+
+	hubPath := path.Join(binding.Context, binding.Version, "hub")
+
+	return &policy.RequestHeaderContext{
+		SharedContext: &policy.SharedContext{
+			RequestID: uuid.New().String(),
+			Metadata:  make(map[string]interface{}),
+			APIKind:   policy.APIKindWebSubApi,
+		},
+		Headers:   policy.NewHeaders(headers),
+		Path:      hubPath,
+		Method:    "SUBSCRIBE",
+		Authority: binding.Vhost,
+		Scheme:    "event",
+		Vhost:     binding.Vhost,
+	}
+}
+
 // MessageToRequestHeaderContext maps an event message to a policy request header context.
 func MessageToRequestHeaderContext(msg *connectors.Message, binding *ChannelBinding) *policy.RequestHeaderContext {
 	headers := make(map[string][]string)

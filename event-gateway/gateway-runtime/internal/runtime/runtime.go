@@ -82,28 +82,27 @@ func (r *Runtime) Engine() *engine.Engine {
 }
 
 // LoadChannels parses channel bindings and creates per-channel entrypoint+endpoint pairs.
-// Each channel (API) gets its own isolated entrypoint and endpoint connection.
-// Entrypoints of the same type share an HTTP port via a shared mux.
+// Supports both legacy flat bindings and WebSubApi multi-channel bindings.
 func (r *Runtime) LoadChannels(channelsPath string) error {
-	bindings, err := binding.ParseChannels(channelsPath)
+	parseResult, err := binding.ParseChannels(channelsPath)
 	if err != nil {
 		return fmt.Errorf("failed to parse channels: %w", err)
 	}
 
-	if len(bindings) == 0 {
+	if len(parseResult.Bindings) == 0 && len(parseResult.WebSubApiBindings) == 0 {
 		slog.Info("No channel bindings configured")
 		return nil
 	}
 
 	// Create shared HTTP muxes for port sharing.
-	// WebSocket entrypoints share one port; WebSub entrypoints share another.
 	wsMux := http.NewServeMux()
 	websubMux := http.NewServeMux()
 	hasWS := false
 	hasWebSub := false
 
-	for _, b := range bindings {
-		inKey, outKey, err := r.buildPolicyChains(b)
+	// Process legacy flat bindings (protocol-mediation, legacy websub).
+	for _, b := range parseResult.Bindings {
+		subKey, inKey, outKey, err := r.buildPolicyChains(b)
 		if err != nil {
 			return fmt.Errorf("failed to build chains for binding %q: %w", b.Name, err)
 		}
@@ -113,18 +112,18 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 		qualifiedTopic := qualifyTopicName(b.Context, b.Version, b.Endpoint.Topic)
 
 		r.hub.RegisterBinding(hub.ChannelBinding{
-			Name:             b.Name,
-			Mode:             b.Mode,
-			Context:          b.Context,
-			Version:          b.Version,
-			Vhost:            vhost,
-			InboundChainKey:  inKey,
-			OutboundChainKey: outKey,
-			EndpointTopic:    qualifiedTopic,
-			Ordering:         b.Endpoint.Ordering,
+			Name:              b.Name,
+			Mode:              b.Mode,
+			Context:           b.Context,
+			Version:           b.Version,
+			Vhost:             vhost,
+			SubscribeChainKey: subKey,
+			InboundChainKey:   inKey,
+			OutboundChainKey:  outKey,
+			EndpointTopic:     qualifiedTopic,
+			Ordering:          b.Endpoint.Ordering,
 		})
 
-		// Create a dedicated endpoint for this channel.
 		endpointType := resolveEndpointType(b)
 		endpoint, err := r.registry.CreateEndpoint(endpointType, b.Endpoint.Config)
 		if err != nil {
@@ -132,7 +131,6 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 		}
 		r.endpoints = append(r.endpoints, endpoint)
 
-		// Select the shared mux based on entrypoint type.
 		entrypointType := resolveEntrypointType(b)
 		var mux *http.ServeMux
 		switch entrypointType {
@@ -173,6 +171,82 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 			"entrypoint", entrypointType,
 			"endpoint", endpointType,
 			"endpoint_topic", b.Endpoint.Topic,
+		)
+	}
+
+	// Process WebSubApi bindings (multi-channel per API).
+	for _, wsb := range parseResult.WebSubApiBindings {
+		vhost := defaultVhost(wsb.Vhost)
+
+		// Build channel-name → Kafka-topic map.
+		channels := make(map[string]string, len(wsb.Channels))
+		var allKafkaTopics []string
+		for _, ch := range wsb.Channels {
+			kafkaTopic := binding.WebSubApiTopicName(wsb.Name, wsb.Version, ch.Name)
+			channels[ch.Name] = kafkaTopic
+			allKafkaTopics = append(allKafkaTopics, kafkaTopic)
+		}
+		internalSubTopic := binding.WebSubApiSubscriptionTopic(wsb.Name, wsb.Version)
+
+		// Build policy chains for the API.
+		subKey, inKey, outKey, err := r.buildWebSubApiPolicyChains(wsb, vhost)
+		if err != nil {
+			return fmt.Errorf("failed to build chains for WebSubApi %q: %w", wsb.Name, err)
+		}
+
+		r.hub.RegisterBinding(hub.ChannelBinding{
+			Name:              wsb.Name,
+			Mode:              "websub",
+			Context:           wsb.Context,
+			Version:           wsb.Version,
+			Vhost:             vhost,
+			SubscribeChainKey: subKey,
+			InboundChainKey:   inKey,
+			OutboundChainKey:  outKey,
+			Channels:          channels,
+		})
+
+		// Create endpoint.
+		endpointType := "kafka"
+		if wsb.Endpoint.Type != "" {
+			endpointType = wsb.Endpoint.Type
+		}
+		endpoint, err := r.registry.CreateEndpoint(endpointType, wsb.Endpoint.Config)
+		if err != nil {
+			return fmt.Errorf("failed to create endpoint for WebSubApi %q: %w", wsb.Name, err)
+		}
+		r.endpoints = append(r.endpoints, endpoint)
+
+		hasWebSub = true
+
+		ch := connectors.ChannelInfo{
+			Name:             wsb.Name,
+			Mode:             "websub",
+			Context:          wsb.Context,
+			Version:          wsb.Version,
+			Vhost:            vhost,
+			Channels:         channels,
+			InternalSubTopic: internalSubTopic,
+		}
+
+		ep, err := r.registry.CreateEntrypoint("websub", connectors.EntrypointConfig{
+			Channel:   ch,
+			Processor: r.hub,
+			Endpoint:  endpoint,
+			RuntimeID: r.cfg.RuntimeID,
+			Mux:       websubMux,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create entrypoint for WebSubApi %q: %w", wsb.Name, err)
+		}
+		r.entrypoints = append(r.entrypoints, ep)
+
+		slog.Info("Registered WebSubApi binding",
+			"name", wsb.Name,
+			"context", wsb.Context,
+			"version", wsb.Version,
+			"channels", len(wsb.Channels),
+			"kafka_topics", allKafkaTopics,
 		)
 	}
 
@@ -252,22 +326,16 @@ func (r *Runtime) Run(ctx context.Context) error {
 	return nil
 }
 
-func (r *Runtime) buildPolicyChains(b binding.Binding) (inboundKey, outboundKey string, err error) {
+func (r *Runtime) buildPolicyChains(b binding.Binding) (subscribeKey, inboundKey, outboundKey string, err error) {
 	vhost := defaultVhost(b.Vhost)
 
 	switch b.Mode {
 	case "websub":
 		channelPath := path.Join(b.Context, b.Name)
+		hubPath := path.Join(b.Context, "_hub")
+		subscribeKey = binding.GenerateRouteKey("SUBSCRIBE", hubPath, vhost)
 		inboundKey = binding.GenerateRouteKey("SUB", channelPath, vhost)
 		outboundKey = binding.GenerateRouteKey("DELIVER", channelPath, vhost)
-
-		hubPath := path.Join(b.Context, "_hub")
-		if err := r.buildChain(binding.GenerateRouteKey("REGISTER", hubPath, vhost), b.Policies.Inbound); err != nil {
-			return "", "", err
-		}
-		if err := r.buildChain(binding.GenerateRouteKey("HUB_SUBSCRIBE", hubPath, vhost), b.Policies.Inbound); err != nil {
-			return "", "", err
-		}
 
 	case "protocol-mediation":
 		channelPath := path.Join(b.Context, b.Entrypoint.Path)
@@ -275,17 +343,44 @@ func (r *Runtime) buildPolicyChains(b binding.Binding) (inboundKey, outboundKey 
 		outboundKey = binding.GenerateRouteKey("DELIVER", channelPath, vhost)
 
 	default:
-		return "", "", fmt.Errorf("unknown binding mode: %s", b.Mode)
+		return "", "", "", fmt.Errorf("unknown binding mode: %s", b.Mode)
 	}
 
+	if err := r.buildChain(subscribeKey, b.Policies.Subscribe); err != nil {
+		return "", "", "", err
+	}
 	if err := r.buildChain(inboundKey, b.Policies.Inbound); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	if err := r.buildChain(outboundKey, b.Policies.Outbound); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 
-	return inboundKey, outboundKey, nil
+	return subscribeKey, inboundKey, outboundKey, nil
+}
+
+func (r *Runtime) buildWebSubApiPolicyChains(wsb binding.WebSubApiBinding, vhost string) (subscribeKey, inboundKey, outboundKey string, err error) {
+	basePath := path.Join(wsb.Context, wsb.Version)
+	hubPath := basePath + "/hub"
+
+	// Subscribe chain: hub path (subscribe/unsubscribe requests).
+	subscribeKey = binding.GenerateRouteKey("SUBSCRIBE", hubPath, vhost)
+	// Inbound chain: webhook-receiver path (data ingress).
+	inboundKey = binding.GenerateRouteKey("SUB", basePath+"/webhook-receiver", vhost)
+	// Outbound chain: delivery path (data delivery to subscribers).
+	outboundKey = binding.GenerateRouteKey("DELIVER", hubPath, vhost)
+
+	if err := r.buildChain(subscribeKey, wsb.Policies.Subscribe); err != nil {
+		return "", "", "", err
+	}
+	if err := r.buildChain(inboundKey, wsb.Policies.Inbound); err != nil {
+		return "", "", "", err
+	}
+	if err := r.buildChain(outboundKey, wsb.Policies.Outbound); err != nil {
+		return "", "", "", err
+	}
+
+	return subscribeKey, inboundKey, outboundKey, nil
 }
 
 func (r *Runtime) buildChain(routeKey string, policies []binding.PolicyRef) error {

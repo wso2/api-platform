@@ -19,7 +19,9 @@
 package binding
 
 // Binding represents a configured channel with its entrypoint, endpoint, and policy bindings.
+// Used for protocol-mediation mode (1 channel = 1 topic).
 type Binding struct {
+	Kind       string         `yaml:"kind"`
 	Name       string         `yaml:"name"`
 	Mode       string         `yaml:"mode"` // "websub" or "protocol-mediation"
 	Context    string         `yaml:"context"`
@@ -28,6 +30,25 @@ type Binding struct {
 	Entrypoint EntrypointSpec `yaml:"entrypoint"`
 	Endpoint   EndpointSpec   `yaml:"endpoint"`
 	Policies   PolicyBindings `yaml:"policies"`
+}
+
+// WebSubApiBinding represents a WebSubApi with multiple channels (topics)
+// sharing a single entrypoint and endpoint.
+type WebSubApiBinding struct {
+	Kind       string         `yaml:"kind"` // "WebSubApi"
+	Name       string         `yaml:"name"`
+	Version    string         `yaml:"version"`
+	Context    string         `yaml:"context"`
+	Vhost      string         `yaml:"vhost"`
+	Channels   []ChannelDef   `yaml:"channels"`
+	Entrypoint EntrypointSpec `yaml:"entrypoint"`
+	Endpoint   EndpointSpec   `yaml:"endpoint"`
+	Policies   PolicyBindings `yaml:"policies"`
+}
+
+// ChannelDef defines a single channel (topic) within a WebSubApi.
+type ChannelDef struct {
+	Name string `yaml:"name"`
 }
 
 // EntrypointSpec defines the entrypoint connector type and configuration.
@@ -45,10 +66,14 @@ type EndpointSpec struct {
 	Config   map[string]interface{} `yaml:"config"`   // endpoint-specific config (e.g. brokers, tls)
 }
 
-// PolicyBindings holds inbound and outbound policy configurations.
+// PolicyBindings holds subscribe, inbound, and outbound policy configurations.
+//   - Subscribe: applied when a client subscribes or unsubscribes at the hub.
+//   - Inbound:   applied when an event is published via the webhook receiver (data ingress).
+//   - Outbound:  applied when an event is delivered to a subscriber callback (data delivery).
 type PolicyBindings struct {
-	Inbound  []PolicyRef `yaml:"inbound"`
-	Outbound []PolicyRef `yaml:"outbound"`
+	Subscribe []PolicyRef `yaml:"subscribe"`
+	Inbound   []PolicyRef `yaml:"inbound"`
+	Outbound  []PolicyRef `yaml:"outbound"`
 }
 
 // PolicyRef references a policy to include in a chain.
@@ -61,4 +86,16 @@ type PolicyRef struct {
 // ChannelsConfig is the top-level structure of the channels.yaml file.
 type ChannelsConfig struct {
 	Channels []Binding `yaml:"channels"`
+}
+
+// WebSubApiTopicName derives a Kafka topic name for a WebSubApi channel.
+// Format: {api-name}.{version}.{channel-name}
+func WebSubApiTopicName(apiName, version, channelName string) string {
+	return apiName + "." + version + "." + channelName
+}
+
+// WebSubApiSubscriptionTopic derives the internal subscription sync topic for a WebSubApi.
+// Format: {api-name}.{version}.__subscriptions
+func WebSubApiSubscriptionTopic(apiName, version string) string {
+	return apiName + "." + version + ".__subscriptions"
 }

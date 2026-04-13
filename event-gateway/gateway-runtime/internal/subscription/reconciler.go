@@ -28,11 +28,15 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
+// SubscriptionCallback is called when a subscription is added/removed during reconciliation.
+type SubscriptionCallback func(sub *Subscription, isTombstone bool)
+
 // Reconciler rebuilds the in-memory subscription store from the Kafka compacted topic on startup.
 type Reconciler struct {
 	brokers   []string
 	store     SubscriptionStore
 	runtimeID string
+	callback  SubscriptionCallback
 }
 
 // NewReconciler creates a new Reconciler.
@@ -42,6 +46,12 @@ func NewReconciler(brokers []string, store SubscriptionStore, runtimeID string) 
 		store:     store,
 		runtimeID: runtimeID,
 	}
+}
+
+// SetCallback sets a callback invoked for each subscription replayed during reconciliation.
+// This is used to rebuild per-callback consumers via the ConsumerManager.
+func (r *Reconciler) SetCallback(cb SubscriptionCallback) {
+	r.callback = cb
 }
 
 // Reconcile replays all messages from the compacted subscription topic and rebuilds the store.
@@ -102,6 +112,9 @@ func (r *Reconciler) Reconcile(ctx context.Context) error {
 				parts := parseSyncKey(string(record.Key))
 				if parts != nil {
 					_ = r.store.Remove(parts[0], parts[1])
+					if r.callback != nil {
+						r.callback(&Subscription{Topic: parts[0], CallbackURL: parts[1]}, true)
+					}
 				}
 			} else {
 				var sub Subscription
@@ -110,6 +123,9 @@ func (r *Reconciler) Reconcile(ctx context.Context) error {
 					return
 				}
 				_ = r.store.Add(&sub)
+				if r.callback != nil {
+					r.callback(&sub, false)
+				}
 			}
 			replayed++
 		})

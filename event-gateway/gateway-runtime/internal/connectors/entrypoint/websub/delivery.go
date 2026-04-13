@@ -27,11 +27,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
-	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/subscription"
 )
 
 // DeliveryConfig holds configuration for the delivery engine.
@@ -42,84 +40,26 @@ type DeliveryConfig struct {
 	Concurrency    int
 }
 
-// Deliverer delivers events to subscriber callback URLs.
+// Deliverer delivers events to a single subscriber callback URL.
 type Deliverer struct {
-	store     subscription.SubscriptionStore
-	processor connectors.MessageProcessor
-	config    DeliveryConfig
-	client    *http.Client
-	sem       chan struct{}
-	wg        sync.WaitGroup
+	config DeliveryConfig
+	client *http.Client
 }
 
 // NewDeliverer creates a new Deliverer.
-func NewDeliverer(store subscription.SubscriptionStore, processor connectors.MessageProcessor, config DeliveryConfig) *Deliverer {
+func NewDeliverer(config DeliveryConfig) *Deliverer {
 	return &Deliverer{
-		store:     store,
-		processor: processor,
-		config:    config,
-		client:    &http.Client{Timeout: 30 * time.Second},
-		sem:       make(chan struct{}, config.Concurrency),
+		config: config,
+		client: &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
-// DeliverToSubscribers delivers a message to all active subscribers for the public topic
-// associated with this channel, even when events are consumed from a different broker topic.
-// It applies outbound policies before delivery and handles retries.
-func (d *Deliverer) DeliverToSubscribers(ctx context.Context, bindingName, publicTopic string, msg *connectors.Message) error {
-	msg.Topic = publicTopic
-
-	subs := d.store.GetByTopic(publicTopic)
-	if len(subs) == 0 {
-		return nil
-	}
-
-	// Apply outbound policies
-	processed, shortCircuited, err := d.processor.ProcessOutbound(ctx, bindingName, msg)
-	if err != nil {
-		return fmt.Errorf("outbound policy execution failed: %w", err)
-	}
-	if shortCircuited {
-		slog.Info("Delivery short-circuited by outbound policy", "topic", msg.Topic)
-		return nil
-	}
-
-	for _, sub := range subs {
-		if sub.State != subscription.StateActive {
-			continue
-		}
-		if sub.LeaseSeconds > 0 && !sub.ExpiresAt.IsZero() && time.Now().After(sub.ExpiresAt) {
-			continue
-		}
-
-		d.wg.Add(1)
-		d.sem <- struct{}{} // acquire semaphore
-		go func(s *subscription.Subscription) {
-			defer d.wg.Done()
-			defer func() { <-d.sem }() // release semaphore
-
-			if err := d.deliverWithRetry(ctx, s, processed); err != nil {
-				slog.Error("Delivery failed after retries, marking subscription inactive",
-					"topic", s.Topic,
-					"callback", s.CallbackURL,
-					"error", err,
-				)
-				if updateErr := d.store.UpdateState(s.ID, subscription.StateInactive); updateErr != nil {
-					slog.Error("Failed to mark subscription inactive", "error", updateErr)
-				}
-			}
-		}(sub)
-	}
-
-	return nil
+// Deliver delivers a message to a single callback URL with retry and HMAC.
+func (d *Deliverer) Deliver(ctx context.Context, callbackURL, secret string, msg *connectors.Message) error {
+	return d.deliverWithRetry(ctx, callbackURL, secret, msg)
 }
 
-// Wait waits for all in-flight deliveries to complete.
-func (d *Deliverer) Wait() {
-	d.wg.Wait()
-}
-
-func (d *Deliverer) deliverWithRetry(ctx context.Context, sub *subscription.Subscription, msg *connectors.Message) error {
+func (d *Deliverer) deliverWithRetry(ctx context.Context, callbackURL, secret string, msg *connectors.Message) error {
 	delay := time.Duration(d.config.InitialDelayMs) * time.Millisecond
 	maxDelay := time.Duration(d.config.MaxDelayMs) * time.Millisecond
 
@@ -137,11 +77,10 @@ func (d *Deliverer) deliverWithRetry(ctx context.Context, sub *subscription.Subs
 			}
 		}
 
-		if err := d.deliver(ctx, sub, msg); err != nil {
+		if err := d.doDeliver(ctx, callbackURL, secret, msg); err != nil {
 			lastErr = err
 			slog.Warn("Delivery attempt failed",
-				"topic", sub.Topic,
-				"callback", sub.CallbackURL,
+				"callback", callbackURL,
 				"attempt", attempt+1,
 				"error", err,
 			)
@@ -152,30 +91,32 @@ func (d *Deliverer) deliverWithRetry(ctx context.Context, sub *subscription.Subs
 	return lastErr
 }
 
-func (d *Deliverer) deliver(ctx context.Context, sub *subscription.Subscription, msg *connectors.Message) error {
+func (d *Deliverer) doDeliver(ctx context.Context, callbackURL, secret string, msg *connectors.Message) error {
 	body := msg.Value
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sub.CallbackURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, callbackURL, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("failed to create delivery request: %w", err)
 	}
 
-	// Set content type from message headers
+	// Set content type from message headers.
 	if ct, ok := msg.Headers["content-type"]; ok && len(ct) > 0 {
 		req.Header.Set("Content-Type", ct[0])
 	} else {
 		req.Header.Set("Content-Type", "application/octet-stream")
 	}
 
-	// Add HMAC signature if secret is set
-	if sub.Secret != "" {
-		mac := hmac.New(sha256.New, []byte(sub.Secret))
+	// Add HMAC signature if secret is set.
+	if secret != "" {
+		mac := hmac.New(sha256.New, []byte(secret))
 		mac.Write(body)
 		signature := hex.EncodeToString(mac.Sum(nil))
 		req.Header.Set("X-Hub-Signature", "sha256="+signature)
 	}
 
-	// Add Link headers per W3C spec
-	req.Header.Add("Link", fmt.Sprintf("<%s>; rel=\"self\"", sub.Topic))
+	// Add Link headers per W3C spec.
+	if topic := msg.Topic; topic != "" {
+		req.Header.Add("Link", fmt.Sprintf("<%s>; rel=\"self\"", topic))
+	}
 
 	resp, err := d.client.Do(req)
 	if err != nil {

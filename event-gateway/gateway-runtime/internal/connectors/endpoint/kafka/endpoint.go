@@ -21,6 +21,8 @@ package kafka
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"strings"
 
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -76,6 +78,37 @@ func (e *KafkaEndpoint) TopicExists(ctx context.Context, topic string) (bool, er
 	}
 	_, exists := topics[topic]
 	return exists, nil
+}
+
+// EnsureTopics creates topics if they don't already exist (idempotent).
+func (e *KafkaEndpoint) EnsureTopics(ctx context.Context, topics []string) error {
+	resp, err := e.admin.CreateTopics(ctx, 1, 1, nil, topics...)
+	if err != nil {
+		return fmt.Errorf("failed to create topics: %w", err)
+	}
+
+	for _, t := range resp.Sorted() {
+		if t.Err != nil {
+			// "TOPIC_ALREADY_EXISTS" is not a real failure for idempotent creates.
+			if isTopicAlreadyExistsErr(t.Err) {
+				slog.Debug("Topic already exists", "topic", t.Topic)
+				continue
+			}
+			return fmt.Errorf("failed to create topic %s: %w", t.Topic, t.Err)
+		}
+		slog.Info("Created topic", "topic", t.Topic)
+	}
+
+	return nil
+}
+
+// isTopicAlreadyExistsErr checks if the error indicates the topic already exists.
+func isTopicAlreadyExistsErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "TOPIC_ALREADY_EXISTS") ||
+		strings.Contains(err.Error(), "already exists")
 }
 
 // Close shuts down the shared publisher and admin client.

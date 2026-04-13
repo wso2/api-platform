@@ -25,6 +25,8 @@ import (
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors/entrypoint/websocket"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors/entrypoint/websub"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/pkg/engine"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
+	basicauth "github.com/wso2/gateway-controllers/policies/basic-auth"
 )
 
 // registerConnectors registers all built-in entrypoint and endpoint factories.
@@ -69,6 +71,7 @@ func registerConnectors(registry *connectors.Registry, cfg *config.Config) {
 			DeliveryConcurrency:        cfg.WebSub.DeliveryConcurrency,
 			RuntimeID:                  cfg.RuntimeID,
 			ConsumerGroupPrefix:        cfg.Kafka.ConsumerGroupPrefix,
+			Brokers:                    cfg.Kafka.Brokers,
 		})
 	})
 
@@ -81,7 +84,10 @@ func registerConnectors(registry *connectors.Registry, cfg *config.Config) {
 }
 
 // registerPolicies registers compiled-in policies with the engine.
-// Add policy registrations here as they become available.
+// Policies are sourced from build.yaml — add entries there to include new policies.
 func registerPolicies(eng *engine.Engine) {
-	_ = eng
+	_ = eng.RegisterPolicy(&policy.PolicyDefinition{
+		Name:    "basic-auth",
+		Version: "v1.0.1",
+	}, basicauth.GetPolicy)
 }

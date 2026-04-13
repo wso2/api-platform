@@ -103,6 +103,94 @@ func (c *Consumer) consumeLoop(ctx context.Context) {
 	}
 }
 
+// ManualCommitConsumer consumes from Kafka with manual offset commit control.
+// Offsets are only committed when the handler returns nil (delivery success).
+// On handler failure, the message will be redelivered after rebalance.
+type ManualCommitConsumer struct {
+	client  *kgo.Client
+	handler connectors.MessageHandler
+	cancel  context.CancelFunc
+	wg      sync.WaitGroup
+}
+
+// NewManualCommitConsumer creates a consumer with manual offset commit.
+func NewManualCommitConsumer(brokers []string, groupID string, topics []string, handler connectors.MessageHandler) (*ManualCommitConsumer, error) {
+	client, err := kgo.NewClient(
+		kgo.SeedBrokers(brokers...),
+		kgo.ConsumerGroup(groupID),
+		kgo.ConsumeTopics(topics...),
+		kgo.ConsumeResetOffset(kgo.NewOffset().AtEnd()),
+		kgo.DisableAutoCommit(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create manual-commit kafka consumer: %w", err)
+	}
+
+	return &ManualCommitConsumer{
+		client:  client,
+		handler: handler,
+	}, nil
+}
+
+// Start begins consuming events with manual commit.
+func (c *ManualCommitConsumer) Start(ctx context.Context) error {
+	ctx, c.cancel = context.WithCancel(ctx)
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		c.consumeLoop(ctx)
+	}()
+	return nil
+}
+
+// Stop stops the consumer and waits for the consume loop to exit.
+func (c *ManualCommitConsumer) Stop(_ context.Context) error {
+	if c.cancel != nil {
+		c.cancel()
+	}
+	c.wg.Wait()
+	c.client.Close()
+	return nil
+}
+
+func (c *ManualCommitConsumer) consumeLoop(ctx context.Context) {
+	for {
+		fetches := c.client.PollFetches(ctx)
+		if ctx.Err() != nil {
+			return
+		}
+
+		if errs := fetches.Errors(); len(errs) > 0 {
+			for _, e := range errs {
+				slog.Error("Manual-commit consumer fetch error", "topic", e.Topic, "partition", e.Partition, "error", e.Err)
+			}
+		}
+
+		fetches.EachRecord(func(record *kgo.Record) {
+			msg := recordToMessage(record)
+			if err := c.handler(ctx, msg); err != nil {
+				slog.Error("Manual-commit handler error, skipping commit",
+					"topic", record.Topic,
+					"partition", record.Partition,
+					"offset", record.Offset,
+					"error", err,
+				)
+				return // do not commit — message redelivered on rebalance
+			}
+			// Commit only on success
+			c.client.MarkCommitRecords(record)
+			if err := c.client.CommitMarkedOffsets(ctx); err != nil {
+				slog.Error("Failed to commit offset",
+					"topic", record.Topic,
+					"partition", record.Partition,
+					"offset", record.Offset,
+					"error", err,
+				)
+			}
+		})
+	}
+}
+
 func recordToMessage(record *kgo.Record) *connectors.Message {
 	headers := make(map[string][]string)
 	for _, h := range record.Headers {

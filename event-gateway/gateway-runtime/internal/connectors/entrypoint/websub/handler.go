@@ -31,83 +31,87 @@ import (
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/subscription"
 )
 
-// Handler implements the WebSub hub HTTP endpoint.
-// It supports W3C-aligned subscribe/unsubscribe, as well as a publish
-// endpoint for external parties to ingest data into the hub.
-type Handler struct {
-	topics        *TopicRegistry
-	store         subscription.SubscriptionStore
-	verifier      *Verifier
-	processor     connectors.MessageProcessor
-	endpoint      connectors.Endpoint
-	channelName   string
-	publicTopic   string
-	internalTopic string
-	defaultLease  int
+// HubHandler implements the WebSub hub endpoint for subscribe/unsubscribe.
+// Registered at {context}/{version}/hub.
+type HubHandler struct {
+	topics       *TopicRegistry
+	store        subscription.SubscriptionStore
+	verifier     *Verifier
+	processor    connectors.MessageProcessor
+	endpoint     connectors.Endpoint
+	bindingName  string
+	channels     map[string]string // channel-name → Kafka topic
+	consumerMgr  *ConsumerManager
+	syncProducer *subscription.SyncProducer
+	defaultLease int
 }
 
-// NewHandler creates a new WebSub hub handler.
-func NewHandler(
+// NewHubHandler creates a new hub handler for subscribe/unsubscribe.
+func NewHubHandler(
 	topics *TopicRegistry,
 	store subscription.SubscriptionStore,
 	verificationTimeout time.Duration,
 	defaultLease int,
 	processor connectors.MessageProcessor,
 	endpoint connectors.Endpoint,
-	channelName string,
-	publicTopic string,
-	internalTopic string,
-) *Handler {
-	return &Handler{
-		topics:        topics,
-		store:         store,
-		verifier:      NewVerifier(store, verificationTimeout),
-		processor:     processor,
-		endpoint:      endpoint,
-		channelName:   channelName,
-		publicTopic:   publicTopic,
-		internalTopic: internalTopic,
-		defaultLease:  defaultLease,
+	bindingName string,
+	channels map[string]string,
+	consumerMgr *ConsumerManager,
+	syncProducer *subscription.SyncProducer,
+) *HubHandler {
+	return &HubHandler{
+		topics:       topics,
+		store:        store,
+		verifier:     NewVerifier(store, verificationTimeout),
+		processor:    processor,
+		endpoint:     endpoint,
+		bindingName:  bindingName,
+		channels:     channels,
+		consumerMgr:  consumerMgr,
+		syncProducer: syncProducer,
+		defaultLease: defaultLease,
 	}
 }
 
-// ServeHTTP dispatches on hub.mode for form-encoded requests,
-// or treats non-form POSTs as publish (content ingestion).
-func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// ServeHTTP dispatches on hub.mode for form-encoded subscribe/unsubscribe requests.
+func (h *HubHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	ct := r.Header.Get("Content-Type")
-	// If the content type is form-encoded, dispatch on hub.mode.
-	if ct == "application/x-www-form-urlencoded" || ct == "" {
-		if err := r.ParseForm(); err != nil {
-			http.Error(w, "invalid form data", http.StatusBadRequest)
-			return
-		}
-
-		mode := r.FormValue("hub.mode")
-		switch mode {
-		case "subscribe":
-			h.handleSubscribe(w, r)
-		case "unsubscribe":
-			h.handleUnsubscribe(w, r)
-		case "publish":
-			h.handlePublishForm(w, r)
-		default:
-			http.Error(w, fmt.Sprintf("unknown hub.mode: %s", mode), http.StatusBadRequest)
-		}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form data", http.StatusBadRequest)
 		return
 	}
 
-	// Non-form POST = content distribution request (W3C §7.1 publish).
-	h.handlePublishContent(w, r)
+	mode := r.FormValue("hub.mode")
+	switch mode {
+	case "subscribe":
+		h.handleSubscribe(w, r)
+	case "unsubscribe":
+		h.handleUnsubscribe(w, r)
+	default:
+		http.Error(w, fmt.Sprintf("unknown hub.mode: %s", mode), http.StatusBadRequest)
+	}
 }
 
-func (h *Handler) handleSubscribe(w http.ResponseWriter, r *http.Request) {
+func (h *HubHandler) handleSubscribe(w http.ResponseWriter, r *http.Request) {
+	// Enforce subscribe policies before processing.
+	subMsg := httpRequestToMessage(r)
+	_, shortCircuited, err := h.processor.ProcessSubscribe(r.Context(), h.bindingName, subMsg)
+	if err != nil {
+		slog.Error("Subscribe policy execution failed", "error", err)
+		http.Error(w, "policy execution failed", http.StatusInternalServerError)
+		return
+	}
+	if shortCircuited {
+		http.Error(w, "forbidden by policy", http.StatusForbidden)
+		return
+	}
+
 	callback := r.FormValue("hub.callback")
-	topic := r.FormValue("hub.topic")
+	topic := r.FormValue("hub.topic") // topic = channel name
 	secret := r.FormValue("hub.secret")
 	leaseStr := r.FormValue("hub.lease_seconds")
 
@@ -120,26 +124,28 @@ func (h *Handler) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate channel name is registered.
 	if !h.topics.IsRegistered(topic) {
 		http.Error(w, fmt.Sprintf("topic not registered: %s", topic), http.StatusNotFound)
 		return
 	}
 
-	// Verify that the Kafka topic actually exists before accepting the subscription.
-	exists, err := h.endpoint.TopicExists(r.Context(), h.internalTopic)
+	// Resolve the Kafka topic for this channel.
+	kafkaTopic, ok := h.channels[topic]
+	if !ok {
+		http.Error(w, fmt.Sprintf("no kafka topic for channel: %s", topic), http.StatusNotFound)
+		return
+	}
+
+	// Verify that the Kafka topic actually exists.
+	exists, err := h.endpoint.TopicExists(r.Context(), kafkaTopic)
 	if err != nil {
-		slog.Error("Failed to check topic existence", "topic", h.internalTopic, "error", err)
+		slog.Error("Failed to check topic existence", "topic", kafkaTopic, "error", err)
 		http.Error(w, "failed to verify topic existence", http.StatusInternalServerError)
 		return
 	}
 	if !exists {
-		http.Error(w, fmt.Sprintf("topic does not exist in broker: %s", h.internalTopic), http.StatusNotFound)
-		return
-	}
-
-	// Reject duplicate: same callback URL cannot subscribe to the same channel twice.
-	if h.store.ExistsByCallback(callback) {
-		http.Error(w, "callback URL is already subscribed to this channel", http.StatusConflict)
+		http.Error(w, fmt.Sprintf("topic does not exist in broker: %s", kafkaTopic), http.StatusNotFound)
 		return
 	}
 
@@ -168,10 +174,9 @@ func (h *Handler) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify intent synchronously — only return 202 on success.
+	// Verify intent synchronously.
 	if err := h.verifier.VerifySubscribe(r.Context(), sub); err != nil {
 		slog.Error("Subscription verification failed", "topic", topic, "callback", callback, "error", err)
-		// Remove the pending subscription on verification failure.
 		if removeErr := h.store.Remove(topic, callback); removeErr != nil {
 			slog.Error("Failed to remove failed subscription", "error", removeErr)
 		}
@@ -179,10 +184,36 @@ func (h *Handler) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Create/update per-callback consumer.
+	if err := h.consumerMgr.AddSubscription(callback, secret, kafkaTopic); err != nil {
+		slog.Error("Failed to create consumer for subscription", "callback", callback, "error", err)
+		// Don't fail the subscription — consumer can be recreated on reconciliation.
+	}
+
+	// Publish subscription state to sync topic.
+	if h.syncProducer != nil {
+		if err := h.syncProducer.PublishSubscription(r.Context(), sub); err != nil {
+			slog.Error("Failed to sync subscription", "error", err)
+		}
+	}
+
 	w.WriteHeader(http.StatusAccepted)
 }
 
-func (h *Handler) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
+func (h *HubHandler) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
+	// Enforce subscribe policies before processing.
+	subMsg := httpRequestToMessage(r)
+	_, shortCircuited, err := h.processor.ProcessSubscribe(r.Context(), h.bindingName, subMsg)
+	if err != nil {
+		slog.Error("Unsubscribe policy execution failed", "error", err)
+		http.Error(w, "policy execution failed", http.StatusInternalServerError)
+		return
+	}
+	if shortCircuited {
+		http.Error(w, "forbidden by policy", http.StatusForbidden)
+		return
+	}
+
 	callback := r.FormValue("hub.callback")
 	topic := r.FormValue("hub.topic")
 
@@ -195,7 +226,7 @@ func (h *Handler) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify intent synchronously — only return 202 on success.
+	// Verify intent synchronously.
 	sub := &subscription.Subscription{
 		Topic:       topic,
 		CallbackURL: callback,
@@ -207,55 +238,83 @@ func (h *Handler) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verification succeeded, remove subscription.
+	// Stop/update per-callback consumer.
+	kafkaTopic := h.channels[topic]
+	if kafkaTopic != "" {
+		if err := h.consumerMgr.RemoveSubscription(callback, kafkaTopic); err != nil {
+			slog.Error("Failed to update consumer on unsubscribe", "callback", callback, "error", err)
+		}
+	}
+
+	// Remove subscription from store.
 	if err := h.store.Remove(topic, callback); err != nil {
 		slog.Error("Failed to remove subscription", "error", err)
 		http.Error(w, "subscription not found", http.StatusNotFound)
 		return
 	}
 
-	w.WriteHeader(http.StatusAccepted)
-}
-
-// handlePublishForm handles W3C hub.mode=publish form requests.
-// The publisher specifies hub.topic and optionally hub.url / hub.content.
-func (h *Handler) handlePublishForm(w http.ResponseWriter, r *http.Request) {
-	topic := r.FormValue("hub.topic")
-	if topic == "" {
-		http.Error(w, "hub.topic is required", http.StatusBadRequest)
-		return
-	}
-
-	if !h.topics.IsRegistered(topic) {
-		http.Error(w, fmt.Sprintf("topic not registered: %s", topic), http.StatusNotFound)
-		return
-	}
-
-	msg := &connectors.Message{
-		Value:   []byte(r.FormValue("hub.content")),
-		Headers: make(map[string][]string),
-		Topic:   h.publicTopic,
-	}
-
-	// If hub.url is provided, the publisher is notifying that content
-	// at that URL has been updated (W3C §7). Store as metadata.
-	if hubURL := r.FormValue("hub.url"); hubURL != "" {
-		msg.Headers["hub-url"] = []string{hubURL}
-	}
-
-	if err := h.publishToEndpoint(r.Context(), h.internalTopic, msg); err != nil {
-		slog.Error("Publish failed", "topic", topic, "error", err)
-		http.Error(w, "publish failed", http.StatusInternalServerError)
-		return
+	// Publish tombstone to sync topic.
+	if h.syncProducer != nil {
+		if err := h.syncProducer.PublishTombstone(r.Context(), topic, callback); err != nil {
+			slog.Error("Failed to sync unsubscription", "error", err)
+		}
 	}
 
 	w.WriteHeader(http.StatusAccepted)
 }
 
-// handlePublishContent handles direct content POST (non-form).
-// External parties POST raw content (JSON, XML, etc.) to the hub endpoint.
-// The content is ingested into the broker via inbound policies.
-func (h *Handler) handlePublishContent(w http.ResponseWriter, r *http.Request) {
+// WebhookReceiverHandler handles ingress (content distribution) on
+// {context}/{version}/webhook-receiver?topic=X.
+type WebhookReceiverHandler struct {
+	topics      *TopicRegistry
+	processor   connectors.MessageProcessor
+	endpoint    connectors.Endpoint
+	bindingName string
+	channels    map[string]string // channel-name → Kafka topic
+}
+
+// NewWebhookReceiverHandler creates a new webhook receiver handler.
+func NewWebhookReceiverHandler(
+	topics *TopicRegistry,
+	processor connectors.MessageProcessor,
+	endpoint connectors.Endpoint,
+	bindingName string,
+	channels map[string]string,
+) *WebhookReceiverHandler {
+	return &WebhookReceiverHandler{
+		topics:      topics,
+		processor:   processor,
+		endpoint:    endpoint,
+		bindingName: bindingName,
+		channels:    channels,
+	}
+}
+
+// ServeHTTP handles POST requests to the webhook receiver.
+// Query param "topic" identifies which channel the event is for.
+func (h *WebhookReceiverHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	channelName := r.URL.Query().Get("topic")
+	if channelName == "" {
+		http.Error(w, "query parameter 'topic' is required", http.StatusBadRequest)
+		return
+	}
+
+	if !h.topics.IsRegistered(channelName) {
+		http.Error(w, fmt.Sprintf("channel not registered: %s", channelName), http.StatusNotFound)
+		return
+	}
+
+	kafkaTopic, ok := h.channels[channelName]
+	if !ok {
+		http.Error(w, fmt.Sprintf("no kafka topic for channel: %s", channelName), http.StatusNotFound)
+		return
+	}
+
 	body, err := io.ReadAll(io.LimitReader(r.Body, 10<<20)) // 10 MB limit
 	if err != nil {
 		http.Error(w, "failed to read body", http.StatusBadRequest)
@@ -267,19 +326,14 @@ func (h *Handler) handlePublishContent(w http.ResponseWriter, r *http.Request) {
 		headers["content-type"] = []string{ct}
 	}
 
-	if h.internalTopic == "" {
-		http.Error(w, "no topic registered for this channel", http.StatusNotFound)
-		return
-	}
-
 	msg := &connectors.Message{
 		Value:   body,
 		Headers: headers,
-		Topic:   h.publicTopic,
+		Topic:   channelName,
 	}
 
-	if err := h.publishToEndpoint(r.Context(), h.internalTopic, msg); err != nil {
-		slog.Error("Content publish failed", "topic", h.internalTopic, "error", err)
+	if err := h.publishToEndpoint(r.Context(), kafkaTopic, msg); err != nil {
+		slog.Error("Webhook receiver publish failed", "channel", channelName, "topic", kafkaTopic, "error", err)
 		http.Error(w, "publish failed", http.StatusInternalServerError)
 		return
 	}
@@ -287,21 +341,33 @@ func (h *Handler) handlePublishContent(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
-// publishToEndpoint applies inbound policies and publishes the message to the endpoint.
-func (h *Handler) publishToEndpoint(ctx context.Context, topic string, msg *connectors.Message) error {
-	processed, shortCircuited, err := h.processor.ProcessInbound(ctx, h.channelName, msg)
+func (h *WebhookReceiverHandler) publishToEndpoint(ctx context.Context, kafkaTopic string, msg *connectors.Message) error {
+	processed, shortCircuited, err := h.processor.ProcessInbound(ctx, h.bindingName, msg)
 	if err != nil {
 		return fmt.Errorf("inbound policy execution failed: %w", err)
 	}
 	if shortCircuited {
-		slog.Info("Publish short-circuited by inbound policy", "topic", topic)
+		slog.Info("Publish short-circuited by inbound policy", "topic", kafkaTopic)
 		return nil
 	}
 
-	if err := h.endpoint.Publish(ctx, topic, processed); err != nil {
+	if err := h.endpoint.Publish(ctx, kafkaTopic, processed); err != nil {
 		return fmt.Errorf("failed to publish to endpoint: %w", err)
 	}
 
-	slog.Debug("Published to endpoint", "topic", topic, "channel", h.channelName)
+	slog.Debug("Published to endpoint", "topic", kafkaTopic, "binding", h.bindingName)
 	return nil
+}
+
+// httpRequestToMessage builds a Message from an HTTP request for subscribe policy enforcement.
+// Only the request headers are relevant; the form body has already been parsed.
+func httpRequestToMessage(r *http.Request) *connectors.Message {
+	headers := make(map[string][]string, len(r.Header))
+	for k, v := range r.Header {
+		headers[k] = v
+	}
+	return &connectors.Message{
+		Headers: headers,
+		Topic:   r.FormValue("hub.topic"),
+	}
 }

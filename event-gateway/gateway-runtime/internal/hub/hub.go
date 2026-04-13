@@ -30,15 +30,17 @@ import (
 
 // ChannelBinding holds the runtime state for a registered channel.
 type ChannelBinding struct {
-	Name             string
-	Mode             string // "websub" or "protocol-mediation"
-	Context          string
-	Version          string
-	Vhost            string
-	InboundChainKey  string
-	OutboundChainKey string
-	EndpointTopic    string
-	Ordering         string // "ordered" or "unordered"
+	Name              string
+	Mode              string // "websub" or "protocol-mediation"
+	Context           string
+	Version           string
+	Vhost             string
+	SubscribeChainKey string
+	InboundChainKey   string
+	OutboundChainKey  string
+	EndpointTopic     string
+	Ordering          string            // "ordered" or "unordered"
+	Channels          map[string]string // channel-name → Kafka topic (WebSubApi only)
 }
 
 // Hub is the central message router. It holds the policy engine reference and
@@ -97,6 +99,44 @@ func (h *Hub) AllBindings() []*ChannelBinding {
 // Engine returns the policy engine used by this hub.
 func (h *Hub) Engine() *engine.Engine {
 	return h.engine
+}
+
+// ProcessSubscribe applies subscribe policies to a subscription request at the hub.
+// Returns the (possibly mutated) message and whether it was short-circuited.
+func (h *Hub) ProcessSubscribe(ctx context.Context, bindingName string, msg *connectors.Message) (*connectors.Message, bool, error) {
+	binding := h.GetBinding(bindingName)
+	if binding == nil {
+		return nil, false, fmt.Errorf("binding not found: %s", bindingName)
+	}
+
+	if binding.SubscribeChainKey == "" {
+		return msg, false, nil
+	}
+
+	chain := h.engine.GetChain(binding.SubscribeChainKey)
+	if chain == nil {
+		return msg, false, nil
+	}
+
+	reqHeaderCtx := SubscribeToRequestHeaderContext(msg, binding)
+	result, err := h.engine.ExecuteRequestHeaderPolicies(ctx, binding.SubscribeChainKey, reqHeaderCtx.SharedContext, reqHeaderCtx)
+	if err != nil {
+		return nil, false, fmt.Errorf("subscribe header policy execution failed: %w", err)
+	}
+
+	if result.ShortCircuited {
+		slog.Info("Subscribe request short-circuited by policy",
+			"binding", bindingName,
+			"chain", binding.SubscribeChainKey,
+		)
+		return nil, true, nil
+	}
+
+	if err := ApplyRequestHeaderResult(result, msg); err != nil {
+		return nil, false, fmt.Errorf("failed to apply subscribe header result: %w", err)
+	}
+
+	return msg, false, nil
 }
 
 // ProcessInbound applies inbound policies to a message flowing from entrypoint to endpoint.

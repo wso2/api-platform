@@ -1,0 +1,4 @@
+version: v1
+policies:
+  - name: basic-auth
+    gomodule: github.com/wso2/gateway-controllers/policies/basic-auth@v1.0.1

@@ -44,6 +44,7 @@ type Entrypoint interface {
 // MessageProcessor applies policy chains to messages flowing through the gateway.
 // Implemented by the hub; consumed by entrypoints via dependency injection.
 type MessageProcessor interface {
+	ProcessSubscribe(ctx context.Context, bindingName string, msg *Message) (*Message, bool, error)
 	ProcessInbound(ctx context.Context, bindingName string, msg *Message) (*Message, bool, error)
 	ProcessOutbound(ctx context.Context, bindingName string, msg *Message) (*Message, bool, error)
 }
@@ -53,20 +54,23 @@ type Endpoint interface {
 	Publish(ctx context.Context, topic string, msg *Message) error
 	Subscribe(groupID string, topics []string, handler MessageHandler) (Entrypoint, error)
 	TopicExists(ctx context.Context, topic string) (bool, error)
+	EnsureTopics(ctx context.Context, topics []string) error
 	Close() error
 }
 
 // ChannelInfo is the read-only view of a channel binding passed to entrypoints.
 // It contains only the information entrypoints need — no policy chain keys.
 type ChannelInfo struct {
-	Name          string
-	Mode          string
-	Context       string
-	Version       string
-	Vhost         string
-	PublicTopic   string
-	EndpointTopic string
-	Ordering      string
+	Name             string
+	Mode             string
+	Context          string
+	Version          string
+	Vhost            string
+	PublicTopic      string
+	EndpointTopic    string
+	Ordering         string
+	Channels         map[string]string // channel-name → Kafka topic (WebSubApi only)
+	InternalSubTopic string            // internal subscription sync topic (WebSubApi only)
 }
 
 // EntrypointConfig holds the dependencies injected into an entrypoint factory.

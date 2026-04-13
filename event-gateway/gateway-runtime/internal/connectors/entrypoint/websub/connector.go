@@ -39,89 +39,137 @@ type Options struct {
 	DeliveryConcurrency        int
 	RuntimeID                  string
 	ConsumerGroupPrefix        string
+	Brokers                    []string
 }
 
-// WebSubEntrypoint is a single-channel WebSub entrypoint.
+// WebSubEntrypoint is a multi-channel WebSub entrypoint.
 // It owns the topic registry, subscription store, delivery engine,
-// and an endpoint consumer for event delivery.
+// consumer manager, and the sync producer for subscription state.
 type WebSubEntrypoint struct {
-	handler   *Handler
-	deliverer *Deliverer
-	topics    *TopicRegistry
-	store     subscription.SubscriptionStore
-	consumer  connectors.Entrypoint
-	endpoint  connectors.Endpoint
-	channel   connectors.ChannelInfo
-	opts      Options
+	hubHandler     *HubHandler
+	webhookHandler *WebhookReceiverHandler
+	deliverer      *Deliverer
+	topics         *TopicRegistry
+	store          subscription.SubscriptionStore
+	consumerMgr    *ConsumerManager
+	syncProducer   *subscription.SyncProducer
+	endpoint       connectors.Endpoint
+	channel        connectors.ChannelInfo
+	opts           Options
 }
 
-// NewEntrypoint creates a WebSub entrypoint for a single channel.
-// It registers its hub handler on the shared HTTP mux provided in cfg.
+// NewEntrypoint creates a WebSub entrypoint supporting multiple channels (topics).
+// It registers hub and webhook-receiver handlers on the shared HTTP mux provided in cfg.
 func NewEntrypoint(cfg connectors.EntrypointConfig, opts Options) (connectors.Entrypoint, error) {
 	store := subscription.NewInMemoryStore(opts.RuntimeID)
 	topics := NewTopicRegistry()
-	topics.Register(cfg.Channel.PublicTopic)
 
-	verificationTimeout := time.Duration(opts.VerificationTimeoutSeconds) * time.Second
-	handler := NewHandler(topics, store, verificationTimeout, opts.DefaultLeaseSeconds,
-		cfg.Processor, cfg.Endpoint, cfg.Channel.Name, cfg.Channel.PublicTopic, cfg.Channel.EndpointTopic)
-	deliverer := NewDeliverer(store, cfg.Processor, DeliveryConfig{
+	// Register all channel names in the topic registry.
+	if len(cfg.Channel.Channels) > 0 {
+		for channelName := range cfg.Channel.Channels {
+			topics.Register(channelName)
+		}
+	} else {
+		// Fallback for legacy single-topic mode.
+		topics.Register(cfg.Channel.PublicTopic)
+	}
+
+	deliverer := NewDeliverer(DeliveryConfig{
 		MaxRetries:     opts.DeliveryMaxRetries,
 		InitialDelayMs: opts.DeliveryInitialDelayMs,
 		MaxDelayMs:     opts.DeliveryMaxDelayMs,
 		Concurrency:    opts.DeliveryConcurrency,
 	})
 
-	// Register handler on shared mux under the channel's context path.
-	hubPath := cfg.Channel.Context + "/_hub"
-	cfg.Mux.Handle(hubPath, handler)
+	// Create consumer manager for per-callback consumers.
+	consumerMgr := NewConsumerManager(
+		opts.Brokers,
+		opts.ConsumerGroupPrefix,
+		cfg.Processor,
+		cfg.Channel.Name,
+		deliverer,
+	)
+
+	// Create sync producer for subscription state.
+	var syncProducer *subscription.SyncProducer
+	if len(opts.Brokers) > 0 {
+		var err error
+		syncProducer, err = subscription.NewSyncProducer(opts.Brokers, opts.RuntimeID)
+		if err != nil {
+			slog.Warn("Failed to create sync producer, subscription sync disabled", "error", err)
+		}
+	}
+
+	verificationTimeout := time.Duration(opts.VerificationTimeoutSeconds) * time.Second
+
+	// Create HubHandler for subscribe/unsubscribe on {context}/{version}/hub.
+	hubHandler := NewHubHandler(
+		topics, store, verificationTimeout, opts.DefaultLeaseSeconds,
+		cfg.Processor, cfg.Endpoint, cfg.Channel.Name,
+		cfg.Channel.Channels, consumerMgr, syncProducer,
+	)
+
+	// Create WebhookReceiverHandler for ingress on {context}/{version}/webhook-receiver.
+	webhookHandler := NewWebhookReceiverHandler(
+		topics, cfg.Processor, cfg.Endpoint,
+		cfg.Channel.Name, cfg.Channel.Channels,
+	)
+
+	// Register handlers on shared mux.
+	basePath := cfg.Channel.Context + "/" + cfg.Channel.Version
+	cfg.Mux.Handle(basePath+"/hub", hubHandler)
+	cfg.Mux.Handle(basePath+"/webhook-receiver", webhookHandler)
 
 	return &WebSubEntrypoint{
-		handler:   handler,
-		deliverer: deliverer,
-		topics:    topics,
-		store:     store,
-		endpoint:  cfg.Endpoint,
-		channel:   cfg.Channel,
-		opts:      opts,
+		hubHandler:     hubHandler,
+		webhookHandler: webhookHandler,
+		deliverer:      deliverer,
+		topics:         topics,
+		store:          store,
+		consumerMgr:    consumerMgr,
+		syncProducer:   syncProducer,
+		endpoint:       cfg.Endpoint,
+		channel:        cfg.Channel,
+		opts:           opts,
 	}, nil
 }
 
-// Start creates an endpoint consumer for event delivery.
+// Start ensures Kafka topics exist and sets up the consumer manager context.
 // The HTTP server is managed by the runtime.
 func (e *WebSubEntrypoint) Start(ctx context.Context) error {
-	if e.channel.EndpointTopic == "" {
-		return nil
+	// Collect all Kafka topics to ensure.
+	var topicsToEnsure []string
+	for _, kafkaTopic := range e.channel.Channels {
+		topicsToEnsure = append(topicsToEnsure, kafkaTopic)
+	}
+	if e.channel.InternalSubTopic != "" {
+		topicsToEnsure = append(topicsToEnsure, e.channel.InternalSubTopic)
 	}
 
-	groupID := e.opts.ConsumerGroupPrefix + "-websub-" + e.channel.Name
-	consumer, err := e.endpoint.Subscribe(groupID, []string{e.channel.EndpointTopic},
-		func(ctx context.Context, msg *connectors.Message) error {
-			return e.deliverer.DeliverToSubscribers(ctx, e.channel.Name, e.channel.PublicTopic, msg)
-		})
-	if err != nil {
-		return fmt.Errorf("failed to create websub consumer: %w", err)
+	if len(topicsToEnsure) > 0 {
+		if err := e.endpoint.EnsureTopics(ctx, topicsToEnsure); err != nil {
+			return fmt.Errorf("failed to ensure kafka topics: %w", err)
+		}
 	}
-	if err := consumer.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start websub consumer: %w", err)
-	}
-	e.consumer = consumer
+
+	e.consumerMgr.SetContext(ctx)
 
 	slog.Info("WebSub entrypoint started",
-		"channel", e.channel.Name,
-		"topic", e.channel.PublicTopic,
-		"endpoint_topic", e.channel.EndpointTopic,
+		"api", e.channel.Name,
+		"channels", len(e.channel.Channels),
+		"context", e.channel.Context,
+		"version", e.channel.Version,
 	)
 	return nil
 }
 
-// Stop drains in-flight deliveries and stops the consumer.
+// Stop stops all per-callback consumers and the sync producer.
 func (e *WebSubEntrypoint) Stop(ctx context.Context) error {
-	if e.consumer != nil {
-		if err := e.consumer.Stop(ctx); err != nil {
-			slog.Error("Failed to stop websub consumer", "error", err)
-		}
+	e.consumerMgr.StopAll(ctx)
+
+	if e.syncProducer != nil {
+		e.syncProducer.Close()
 	}
-	e.deliverer.Wait()
+
 	return nil
 }

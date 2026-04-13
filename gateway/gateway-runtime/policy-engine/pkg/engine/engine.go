@@ -32,6 +32,7 @@ import (
 
 	"github.com/wso2/api-platform/common/version"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 	internalcel "github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/pkg/cel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
@@ -56,6 +57,9 @@ type Engine struct {
 // entries used to resolve ${config...} references in system parameters.
 // If configPath is empty, config resolution is skipped.
 func New(config map[string]interface{}) (*Engine, error) {
+	// Ensure policy engine metrics are initialized (safe for repeated calls).
+	metrics.Init()
+
 	reg := &registry.PolicyRegistry{
 		Policies: make(map[string]*registry.PolicyEntry),
 	}

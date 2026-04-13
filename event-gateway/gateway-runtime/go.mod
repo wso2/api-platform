@@ -43,6 +43,8 @@ require (
 	github.com/stoewer/go-strcase v1.3.1 // indirect
 	github.com/twmb/franz-go/pkg/kmsg v1.9.0 // indirect
 	github.com/wso2/api-platform/common v0.0.0 // indirect
+	github.com/wso2/api-platform/sdk v0.3.0 // indirect
+	github.com/wso2/gateway-controllers/policies/basic-auth v1.0.1 // indirect
 	go.opentelemetry.io/otel v1.40.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.40.0 // indirect
 	go.opentelemetry.io/otel/trace v1.40.0 // indirect
