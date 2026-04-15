@@ -80,7 +80,7 @@ func TestRenderSpec_ResolvesSecretInSpec(t *testing.T) {
 		},
 	}
 
-	result, err := RenderSpec(config, resolver, slog.Default())
+	result, err := renderSpec(config, resolver, slog.Default())
 	require.NoError(t, err)
 
 	rendered, ok := result.Config.(testConfig)
@@ -115,7 +115,7 @@ func TestRenderSpec_ResolvesEnvInSpec(t *testing.T) {
 		},
 	}
 
-	result, err := RenderSpec(config, &mockResolver{}, slog.Default())
+	result, err := renderSpec(config, &mockResolver{}, slog.Default())
 	require.NoError(t, err)
 
 	rendered := result.Config.(testConfig)
@@ -135,7 +135,7 @@ func TestRenderSpec_DefaultFallback(t *testing.T) {
 		},
 	}
 
-	result, err := RenderSpec(config, &mockResolver{}, slog.Default())
+	result, err := renderSpec(config, &mockResolver{}, slog.Default())
 	require.NoError(t, err)
 
 	rendered := result.Config.(testConfig)
@@ -148,7 +148,7 @@ func TestRenderSpec_NoSpecField(t *testing.T) {
 	}
 	config := noSpecConfig{Kind: "Test"}
 
-	result, err := RenderSpec(config, &mockResolver{}, slog.Default())
+	result, err := renderSpec(config, &mockResolver{}, slog.Default())
 	require.NoError(t, err)
 
 	rendered := result.Config.(noSpecConfig)
@@ -171,7 +171,7 @@ func TestRenderSpec_SecretNotFound(t *testing.T) {
 		},
 	}
 
-	_, err := RenderSpec(config, resolver, slog.Default())
+	_, err := renderSpec(config, resolver, slog.Default())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "missing-key")
 }
@@ -189,7 +189,7 @@ func TestRenderSpec_RequiredFailure(t *testing.T) {
 		},
 	}
 
-	_, err := RenderSpec(config, &mockResolver{}, slog.Default())
+	_, err := renderSpec(config, &mockResolver{}, slog.Default())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "BACKEND_URL must be set")
 }
@@ -210,7 +210,7 @@ func TestRenderSpec_MetadataNotRendered(t *testing.T) {
 		},
 	}
 
-	result, err := RenderSpec(config, &mockResolver{}, slog.Default())
+	result, err := renderSpec(config, &mockResolver{}, slog.Default())
 	require.NoError(t, err)
 
 	rendered := result.Config.(testConfig)
@@ -230,7 +230,7 @@ func TestRenderSpec_NilResolverNoSecrets(t *testing.T) {
 		},
 	}
 
-	result, err := RenderSpec(config, nil, slog.Default())
+	result, err := renderSpec(config, nil, slog.Default())
 	require.NoError(t, err)
 
 	rendered := result.Config.(testConfig)

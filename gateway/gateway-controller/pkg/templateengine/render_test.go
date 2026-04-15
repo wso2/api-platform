@@ -30,19 +30,19 @@ func TestRender_SimpleSubstitution(t *testing.T) {
 	fm := template.FuncMap{
 		"greet": func() string { return "hello" },
 	}
-	result, err := Render([]byte(`value: {{ greet }}`), fm)
+	result, err := render([]byte(`value: {{ greet }}`), fm)
 	require.NoError(t, err)
 	assert.Equal(t, "value: hello", string(result))
 }
 
 func TestRender_NoTemplateExpressions(t *testing.T) {
-	result, err := Render([]byte(`plain text`), template.FuncMap{})
+	result, err := render([]byte(`plain text`), template.FuncMap{})
 	require.NoError(t, err)
 	assert.Equal(t, "plain text", string(result))
 }
 
 func TestRender_ParseError(t *testing.T) {
-	_, err := Render([]byte(`{{ invalid`), template.FuncMap{})
+	_, err := render([]byte(`{{ invalid`), template.FuncMap{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "template parse error")
 }
@@ -51,7 +51,7 @@ func TestRender_ExecutionError(t *testing.T) {
 	fm := template.FuncMap{
 		"fail": func() (string, error) { return "", assert.AnError },
 	}
-	_, err := Render([]byte(`{{ fail }}`), fm)
+	_, err := render([]byte(`{{ fail }}`), fm)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "template execution error")
 }
@@ -61,7 +61,7 @@ func TestRender_JSONWithTemplates(t *testing.T) {
 		"val": func() string { return "resolved" },
 	}
 	input := `{"key": "{{ val }}", "other": "static"}`
-	result, err := Render([]byte(input), fm)
+	result, err := render([]byte(input), fm)
 	require.NoError(t, err)
 	assert.Equal(t, `{"key": "resolved", "other": "static"}`, string(result))
 }

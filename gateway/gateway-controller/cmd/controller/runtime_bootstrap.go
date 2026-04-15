@@ -8,6 +8,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
@@ -106,7 +107,7 @@ func loadRuntimeConfigsFromExistingAPIConfigurations(
 		}
 
 		if secretResolver != nil {
-			if err := utils.RenderAndCacheConfig(apiConfig, secretResolver, log); err != nil {
+			if err := templateengine.RenderSpec(apiConfig, secretResolver, log); err != nil {
 				if log != nil {
 					if skipInvalidDeployments {
 						log.Warn("Template rendering failed during startup load, skipping",
@@ -168,4 +169,3 @@ func supportsRuntimeBootstrapKind(kind string) bool {
 		return false
 	}
 }
-

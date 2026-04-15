@@ -26,7 +26,7 @@ import (
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 )
 
 // processAPIEvent dispatches API events by action
@@ -79,7 +79,7 @@ func (l *EventListener) handleAPICreateOrUpdate(event eventhub.Event) {
 
 	// Render template expressions in the spec (e.g. {{ secret "..." }}, {{ env "..." }}).
 	// storedConfig.Configuration is set to the resolved version; SourceConfiguration stays unrendered.
-	if err := utils.RenderAndCacheConfig(storedConfig, l.secretResolver, l.logger); err != nil {
+	if err := templateengine.RenderSpec(storedConfig, l.secretResolver, l.logger); err != nil {
 		l.logger.Error("Failed to render config templates for API",
 			slog.String("api_id", entityID),
 			slog.String("event_id", event.EventID),

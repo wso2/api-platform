@@ -27,6 +27,7 @@ import (
 	"text/template"
 
 	"github.com/wso2/api-platform/common/redact"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
 )
 
@@ -38,7 +39,45 @@ type RenderResult struct {
 	Tracker *redact.SecretTracker
 }
 
-// RenderSpec renders Go template expressions in the "spec" portion of a parsed
+// RenderError wraps a template rendering failure (e.g. missing secret, malformed template).
+// It signals that the configuration is invalid as submitted — callers should treat this as a bad request.
+type RenderError struct {
+	Cause error
+}
+
+func (e *RenderError) Error() string {
+	return fmt.Sprintf("failed to render configuration: %v", e.Cause)
+}
+
+func (e *RenderError) Unwrap() error {
+	return e.Cause
+}
+
+// RenderSpec renders template expressions in the spec of a StoredConfig.
+// It renders cfg.Configuration in place, leaving cfg.SourceConfiguration untouched (as stored in DB).
+// cfg.SensitiveValues is populated with tracked resolved secret values for redaction.
+//
+// Callers must ensure cfg.Configuration holds the value to render before calling. For the deployment
+// flow, both Configuration and SourceConfiguration are equal at the call site. For LLM configs in the
+// event listener, hydration runs first and sets Configuration to a RestAPI, which is then rendered here.
+//
+// Returns *RenderError if rendering fails (e.g. missing secret, malformed template).
+func RenderSpec(cfg *models.StoredConfig, secretResolver funcs.SecretResolver, logger *slog.Logger) error {
+	if cfg.Configuration == nil {
+		return nil
+	}
+
+	renderResult, err := renderSpec(cfg.Configuration, secretResolver, logger)
+	if err != nil {
+		return &RenderError{Cause: fmt.Errorf("failed to render config %q (kind=%s): %w", cfg.Handle, cfg.Kind, err)}
+	}
+
+	cfg.Configuration = renderResult.Config
+	cfg.SensitiveValues = renderResult.Tracker.Values()
+	return nil
+}
+
+// renderSpec renders Go template expressions in the "spec" portion of a parsed
 // artifact config. Only spec fields are processed — apiVersion, kind, and
 // metadata are left untouched.
 //
@@ -46,7 +85,7 @@ type RenderResult struct {
 // It is marshalled to a generic map, string values within the "spec" key are
 // individually rendered through text/template, and the full map is unmarshalled
 // back into a new instance of the original concrete type.
-func RenderSpec(config any, secretResolver funcs.SecretResolver, logger *slog.Logger) (*RenderResult, error) {
+func renderSpec(config any, secretResolver funcs.SecretResolver, logger *slog.Logger) (*RenderResult, error) {
 	tracker := redact.NewSecretTracker()
 
 	// Marshal the entire config to a generic map so we can isolate "spec".
@@ -103,13 +142,20 @@ func RenderSpec(config any, secretResolver funcs.SecretResolver, logger *slog.Lo
 
 // renderValue recursively walks a JSON-decoded value and renders Go template
 // expressions found in string values. Non-string values are returned as-is.
+//
+// Why walk the structure instead of rendering the whole spec as bytes:
+// rendering at the leaf string level lets json.Marshal escape special characters
+// (", \, newlines) automatically when the map is re-serialized. A byte-level
+// render would require every template function to JSON-escape its output,
+// which breaks function chaining (e.g. {{ secret "X" | upper }}) because
+// intermediate functions would double-escape already-escaped input.
 func renderValue(val any, funcMap template.FuncMap) (any, error) {
 	switch v := val.(type) {
 	case string:
 		if !strings.Contains(v, "{{") {
 			return v, nil
 		}
-		rendered, err := Render([]byte(v), funcMap)
+		rendered, err := render([]byte(v), funcMap)
 		if err != nil {
 			return nil, err
 		}

@@ -36,6 +36,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
@@ -288,10 +289,10 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 		}
 	}
 
-	// Validate configuration
-	validationErrors := s.validator.Validate(&apiConfig)
-	if len(validationErrors) > 0 {
-		return nil, &ValidationError{Errors: validationErrors}
+	// Extract deploymentState from spec (defaults to "deployed" if not specified)
+	desiredState := models.StateDeployed
+	if apiConfig.Spec.DeploymentState != nil && *apiConfig.Spec.DeploymentState == api.APIConfigDataDeploymentStateUndeployed {
+		desiredState = models.StateUndeployed
 	}
 
 	// Check if config exists
@@ -300,22 +301,34 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 		return nil, ErrNotFound
 	}
 
-	// Extract deploymentState from spec (defaults to "deployed" if not specified)
-	desiredState := models.StateDeployed
-	if apiConfig.Spec.DeploymentState != nil && *apiConfig.Spec.DeploymentState == api.APIConfigDataDeploymentStateUndeployed {
-		desiredState = models.StateUndeployed
+	// Populate existing with the incoming config so RenderSpec can operate on it.
+	existing.Configuration = apiConfig
+	existing.SourceConfiguration = apiConfig
+
+	// Render template expressions before validation so the validator sees resolved values
+	// (e.g. {{ secret "BACKEND_URL" }} → actual URL). Skip for undeployment — config
+	// contents are not used in that path.
+	if desiredState != models.StateUndeployed {
+		if err := templateengine.RenderSpec(existing, s.secretResolver, log); err != nil {
+			return nil, err
+		}
 	}
 
-	if err := s.validateArtifactConflicts(models.KindRestApi, existing.UUID, apiConfig.Spec.DisplayName, apiConfig.Spec.Version, existing.Handle); err != nil {
+	// Validate configuration against resolved values
+	renderedConfig := existing.Configuration.(api.RestAPI)
+	validationErrors := s.validator.Validate(&renderedConfig)
+	if len(validationErrors) > 0 {
+		return nil, &ValidationError{Errors: validationErrors}
+	}
+
+	if err := s.validateArtifactConflicts(models.KindRestApi, existing.UUID, renderedConfig.Spec.DisplayName, renderedConfig.Spec.Version, existing.Handle); err != nil {
 		return nil, err
 	}
 
 	// Update stored configuration
 	now := time.Now()
-	existing.DisplayName = apiConfig.Spec.DisplayName
-	existing.Version = apiConfig.Spec.Version
-	existing.Configuration = apiConfig
-	existing.SourceConfiguration = apiConfig
+	existing.DisplayName = renderedConfig.Spec.DisplayName
+	existing.Version = renderedConfig.Spec.Version
 	existing.DesiredState = desiredState
 	existing.UpdatedAt = now
 
@@ -326,14 +339,6 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 		log.Info("Undeploying API configuration",
 			slog.String("id", existing.UUID),
 			slog.String("handle", params.Handle))
-	} else {
-		// Normal config update: preserve existing DeployedAt (already set during initial creation)
-
-		// Render template expressions in the spec and cache the resolved values.
-		// Blocks the update if rendering fails (e.g. missing secret, malformed template).
-		if err = utils.RenderAndCacheConfig(existing, s.secretResolver, log); err != nil {
-			return nil, err
-		}
 	}
 
 	// Dual-write: database first, then in-memory

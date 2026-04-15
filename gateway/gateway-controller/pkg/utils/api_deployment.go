@@ -35,6 +35,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
@@ -294,7 +295,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	// Render template expressions in the spec (e.g. {{ secret "..." }}, {{ env "..." }}).
 	// Rendering must succeed before persisting — catches missing secrets and malformed templates.
 	// cfg.Configuration is set to the resolved version; cfg.SourceConfiguration stays unrendered.
-	if err := RenderAndCacheConfig(storedCfg, s.secretResolver, params.Logger); err != nil {
+	if err := templateengine.RenderSpec(storedCfg, s.secretResolver, params.Logger); err != nil {
 		return nil, err
 	}
 

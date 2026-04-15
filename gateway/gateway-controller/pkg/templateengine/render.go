@@ -21,14 +21,33 @@ package templateengine
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"text/template"
 )
 
-// Render executes Go template expressions in a raw string and returns the rendered result.
-func Render(raw []byte, funcMap template.FuncMap) ([]byte, error) {
+// TemplateParseError wraps a template parse failure (e.g. unknown function, syntax error).
+// Its Error() strips Go's internal "template: <name>:<line>: " prefix so callers receive
+// just the description (e.g. `function "secret2" not defined`).
+type TemplateParseError struct {
+	Cause error
+}
+
+func (e *TemplateParseError) Error() string {
+	// Template parse errors have format: "template: <name>:<line>: <description>"
+	parts := strings.SplitN(e.Cause.Error(), ": ", 3)
+	if len(parts) == 3 {
+		return parts[2]
+	}
+	return e.Cause.Error()
+}
+
+func (e *TemplateParseError) Unwrap() error { return e.Cause }
+
+// render executes Go template expressions in a raw string and returns the rendered result.
+func render(raw []byte, funcMap template.FuncMap) ([]byte, error) {
 	tmpl, err := template.New("artifact").Funcs(funcMap).Parse(string(raw))
 	if err != nil {
-		return nil, fmt.Errorf("template parse error: %w", err)
+		return nil, &TemplateParseError{Cause: err}
 	}
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, nil); err != nil {

@@ -20,6 +20,22 @@ package funcs
 
 import "fmt"
 
+// SecretError is returned when a secret referenced in a template cannot be resolved.
+// It is a typed error so callers can detect it with errors.As and surface a
+// user-friendly message without exposing internal rendering details.
+type SecretError struct {
+	Key   string
+	Cause error
+}
+
+func (e *SecretError) Error() string {
+	return fmt.Sprintf("failed to resolve secret %q: %v", e.Key, e.Cause)
+}
+
+func (e *SecretError) Unwrap() error {
+	return e.Cause
+}
+
 func init() {
 	Register(Func{
 		Name: "secret",
@@ -30,7 +46,7 @@ func init() {
 				}
 				val, err := deps.SecretResolver.Resolve(key)
 				if err != nil {
-					return "", fmt.Errorf("failed to resolve secret %q: %w", key, err)
+					return "", &SecretError{Key: key, Cause: err}
 				}
 				deps.Tracker.Track(val)
 				return val, nil
