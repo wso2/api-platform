@@ -31,14 +31,14 @@ import (
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/subscription"
 )
 
-// HubHandler implements the WebSub hub endpoint for subscribe/unsubscribe.
+// HubHandler implements the WebSub hub handler for subscribe/unsubscribe.
 // Registered at {context}/{version}/hub.
 type HubHandler struct {
 	topics       *TopicRegistry
 	store        subscription.SubscriptionStore
 	verifier     *Verifier
 	processor    connectors.MessageProcessor
-	endpoint     connectors.Endpoint
+	brokerDriver connectors.BrokerDriver
 	bindingName  string
 	channels     map[string]string // channel-name → Kafka topic
 	consumerMgr  *ConsumerManager
@@ -53,7 +53,7 @@ func NewHubHandler(
 	verificationTimeout time.Duration,
 	defaultLease int,
 	processor connectors.MessageProcessor,
-	endpoint connectors.Endpoint,
+	brokerDriver connectors.BrokerDriver,
 	bindingName string,
 	channels map[string]string,
 	consumerMgr *ConsumerManager,
@@ -64,7 +64,7 @@ func NewHubHandler(
 		store:        store,
 		verifier:     NewVerifier(store, verificationTimeout),
 		processor:    processor,
-		endpoint:     endpoint,
+		brokerDriver: brokerDriver,
 		bindingName:  bindingName,
 		channels:     channels,
 		consumerMgr:  consumerMgr,
@@ -138,7 +138,7 @@ func (h *HubHandler) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Verify that the Kafka topic actually exists.
-	exists, err := h.endpoint.TopicExists(r.Context(), kafkaTopic)
+	exists, err := h.brokerDriver.TopicExists(r.Context(), kafkaTopic)
 	if err != nil {
 		slog.Error("Failed to check topic existence", "topic", kafkaTopic, "error", err)
 		http.Error(w, "failed to verify topic existence", http.StatusInternalServerError)
@@ -266,27 +266,27 @@ func (h *HubHandler) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
 // WebhookReceiverHandler handles ingress (content distribution) on
 // {context}/{version}/webhook-receiver?topic=X.
 type WebhookReceiverHandler struct {
-	topics      *TopicRegistry
-	processor   connectors.MessageProcessor
-	endpoint    connectors.Endpoint
-	bindingName string
-	channels    map[string]string // channel-name → Kafka topic
+	topics       *TopicRegistry
+	processor    connectors.MessageProcessor
+	brokerDriver connectors.BrokerDriver
+	bindingName  string
+	channels     map[string]string // channel-name → Kafka topic
 }
 
 // NewWebhookReceiverHandler creates a new webhook receiver handler.
 func NewWebhookReceiverHandler(
 	topics *TopicRegistry,
 	processor connectors.MessageProcessor,
-	endpoint connectors.Endpoint,
+	brokerDriver connectors.BrokerDriver,
 	bindingName string,
 	channels map[string]string,
 ) *WebhookReceiverHandler {
 	return &WebhookReceiverHandler{
-		topics:      topics,
-		processor:   processor,
-		endpoint:    endpoint,
-		bindingName: bindingName,
-		channels:    channels,
+		topics:       topics,
+		processor:    processor,
+		brokerDriver: brokerDriver,
+		bindingName:  bindingName,
+		channels:     channels,
 	}
 }
 
@@ -332,7 +332,7 @@ func (h *WebhookReceiverHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 		Topic:   channelName,
 	}
 
-	if err := h.publishToEndpoint(r.Context(), kafkaTopic, msg); err != nil {
+	if err := h.publishToBrokerDriver(r.Context(), kafkaTopic, msg); err != nil {
 		slog.Error("Webhook receiver publish failed", "channel", channelName, "topic", kafkaTopic, "error", err)
 		http.Error(w, "publish failed", http.StatusInternalServerError)
 		return
@@ -341,7 +341,7 @@ func (h *WebhookReceiverHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusAccepted)
 }
 
-func (h *WebhookReceiverHandler) publishToEndpoint(ctx context.Context, kafkaTopic string, msg *connectors.Message) error {
+func (h *WebhookReceiverHandler) publishToBrokerDriver(ctx context.Context, kafkaTopic string, msg *connectors.Message) error {
 	processed, shortCircuited, err := h.processor.ProcessInbound(ctx, h.bindingName, msg)
 	if err != nil {
 		return fmt.Errorf("inbound policy execution failed: %w", err)
@@ -351,11 +351,11 @@ func (h *WebhookReceiverHandler) publishToEndpoint(ctx context.Context, kafkaTop
 		return nil
 	}
 
-	if err := h.endpoint.Publish(ctx, kafkaTopic, processed); err != nil {
-		return fmt.Errorf("failed to publish to endpoint: %w", err)
+	if err := h.brokerDriver.Publish(ctx, kafkaTopic, processed); err != nil {
+		return fmt.Errorf("failed to publish to broker-driver: %w", err)
 	}
 
-	slog.Debug("Published to endpoint", "topic", kafkaTopic, "binding", h.bindingName)
+	slog.Debug("Published to broker-driver", "topic", kafkaTopic, "binding", h.bindingName)
 	return nil
 }
 

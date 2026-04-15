@@ -13,7 +13,7 @@ admin_port = 9002
 metrics_port = 9003
 
 [kafka]
-# Default Kafka brokers. Channels can override with endpoint.config.brokers.
+# Default Kafka brokers. Channels can override with broker-driver.config.brokers.
 brokers = ["localhost:9092"]
 consumer_group_prefix = "event-gateway"
 

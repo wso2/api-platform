@@ -5,7 +5,7 @@
 #
 # 1. WebSubApi (kind: WebSubApi) — Multi-channel per API.
 #    Each channel maps to a separate Kafka topic: {name}.{version}.{channel}.
-#    Shared entrypoint at {context}/{version}/hub (sub/unsub)
+#    Shared receiver at {context}/{version}/hub (sub/unsub)
 #    and {context}/{version}/webhook-receiver?topic=X (ingress).
 #
 # 2. Flat binding (no kind) — Legacy 1-channel-per-entry format.
@@ -15,7 +15,7 @@
 # ─────────────
 # There are three policy enforcement points:
 #
-#   subscribe: Applied to subscribe/unsubscribe requests at the hub endpoint.
+#   subscribe: Applied to subscribe/unsubscribe requests at the hub.
 #   inbound:   Applied when an event is published via the webhook receiver (data ingress).
 #   outbound:  Applied when an event is delivered to a subscriber callback (data delivery).
 
@@ -29,9 +29,9 @@ channels:
       - name: issues
       - name: pull-requests
       - name: commits
-    entrypoint:
+    receiver:
       type: websub
-    endpoint:
+    broker-driver:
       type: kafka
       config:
         brokers:
@@ -51,10 +51,10 @@ channels:
     mode: protocol-mediation
     context: /prices
     version: v1
-    entrypoint:
+    receiver:
       type: websocket
       path: /stream
-    endpoint:
+    broker-driver:
       type: kafka
       topic: price-updates
       config:
@@ -72,9 +72,9 @@ channels:
   #   context: /orders
   #   channels:
   #     - name: orders
-  #   entrypoint:
+  #   receiver:
   #     type: websub
-  #   endpoint:
+  #   broker-driver:
   #     type: kafka
   #     config:
   #       brokers:

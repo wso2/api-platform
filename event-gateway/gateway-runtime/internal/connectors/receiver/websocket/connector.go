@@ -33,29 +33,29 @@ type Options struct {
 	ConsumerGroupPrefix string
 }
 
-// WebSocketEntrypoint is a single-channel WebSocket entrypoint.
-// For protocol mediation each client connection gets a dedicated endpoint
+// WebSocketReceiver is a single-channel WebSocket receiver.
+// For protocol mediation each client connection gets a dedicated broker-driver
 // consumer, giving 1:1 passthrough between web-friendly and broker-friendly protocols.
-type WebSocketEntrypoint struct {
-	server    *Server
-	channel   connectors.ChannelInfo
-	processor connectors.MessageProcessor
-	endpoint  connectors.Endpoint
-	opts      Options
-	mu        sync.Mutex
-	consumers map[*connection]connectors.Entrypoint
-	ctx       context.Context
+type WebSocketReceiver struct {
+	server       *Server
+	channel      connectors.ChannelInfo
+	processor    connectors.MessageProcessor
+	brokerDriver connectors.BrokerDriver
+	opts         Options
+	mu           sync.Mutex
+	consumers    map[*connection]connectors.Receiver
+	ctx          context.Context
 }
 
-// NewEntrypoint creates a WebSocket entrypoint for a single channel.
+// NewReceiver creates a WebSocket receiver for a single channel.
 // It registers its handler on the shared HTTP mux provided in cfg.
-func NewEntrypoint(cfg connectors.EntrypointConfig, opts Options) (connectors.Entrypoint, error) {
-	e := &WebSocketEntrypoint{
-		channel:   cfg.Channel,
-		processor: cfg.Processor,
-		endpoint:  cfg.Endpoint,
-		opts:      opts,
-		consumers: make(map[*connection]connectors.Entrypoint),
+func NewReceiver(cfg connectors.ReceiverConfig, opts Options) (connectors.Receiver, error) {
+	e := &WebSocketReceiver{
+		channel:      cfg.Channel,
+		processor:    cfg.Processor,
+		brokerDriver: cfg.BrokerDriver,
+		opts:         opts,
+		consumers:    make(map[*connection]connectors.Receiver),
 	}
 
 	wsConfig := DefaultServerConfig()
@@ -67,7 +67,7 @@ func NewEntrypoint(cfg connectors.EntrypointConfig, opts Options) (connectors.En
 		if shortCircuited {
 			return nil
 		}
-		return cfg.Endpoint.Publish(ctx, cfg.Channel.EndpointTopic, processed)
+		return cfg.BrokerDriver.Publish(ctx, cfg.Channel.BrokerDriverTopic, processed)
 	})
 
 	// Set connection lifecycle callbacks for 1:1 passthrough.
@@ -81,10 +81,10 @@ func NewEntrypoint(cfg connectors.EntrypointConfig, opts Options) (connectors.En
 	return e, nil
 }
 
-// Start initializes the entrypoint. The HTTP server is managed by the runtime.
-func (e *WebSocketEntrypoint) Start(ctx context.Context) error {
+// Start initializes the receiver. The HTTP server is managed by the runtime.
+func (e *WebSocketReceiver) Start(ctx context.Context) error {
 	e.ctx = ctx
-	slog.Info("WebSocket entrypoint started",
+	slog.Info("WebSocket receiver started",
 		"channel", e.channel.Name,
 		"context", e.channel.Context,
 	)
@@ -92,9 +92,9 @@ func (e *WebSocketEntrypoint) Start(ctx context.Context) error {
 }
 
 // Stop closes all connections and stops per-connection consumers.
-func (e *WebSocketEntrypoint) Stop(ctx context.Context) error {
+func (e *WebSocketReceiver) Stop(ctx context.Context) error {
 	e.mu.Lock()
-	snapshot := make(map[*connection]connectors.Entrypoint, len(e.consumers))
+	snapshot := make(map[*connection]connectors.Receiver, len(e.consumers))
 	for k, v := range e.consumers {
 		snapshot[k] = v
 	}
@@ -110,10 +110,10 @@ func (e *WebSocketEntrypoint) Stop(ctx context.Context) error {
 	return nil
 }
 
-// onConnect creates a dedicated endpoint consumer for the new connection (1:1 passthrough).
-func (e *WebSocketEntrypoint) onConnect(conn *connection) {
+// onConnect creates a dedicated broker-driver consumer for the new connection (1:1 passthrough).
+func (e *WebSocketReceiver) onConnect(conn *connection) {
 	groupID := e.opts.ConsumerGroupPrefix + "-ws-" + uuid.New().String()
-	consumer, err := e.endpoint.Subscribe(groupID, []string{e.channel.EndpointTopic},
+	consumer, err := e.brokerDriver.Subscribe(groupID, []string{e.channel.BrokerDriverTopic},
 		func(ctx context.Context, msg *connectors.Message) error {
 			processed, shortCircuited, err := e.processor.ProcessOutbound(ctx, e.channel.Name, msg)
 			if err != nil {
@@ -160,7 +160,7 @@ func (e *WebSocketEntrypoint) onConnect(conn *connection) {
 }
 
 // onDisconnect stops and removes the consumer for the disconnected connection.
-func (e *WebSocketEntrypoint) onDisconnect(conn *connection) {
+func (e *WebSocketReceiver) onDisconnect(conn *connection) {
 	e.mu.Lock()
 	consumer, ok := e.consumers[conn]
 	delete(e.consumers, conn)

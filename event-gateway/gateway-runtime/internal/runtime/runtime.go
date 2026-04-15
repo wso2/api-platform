@@ -37,22 +37,22 @@ import (
 
 // Runtime orchestrates all event gateway components.
 // It owns the lifecycle of the policy engine, hub, admin server,
-// and all per-channel entrypoint+endpoint pairs.
+// and all per-channel receiver+broker-driver pairs.
 type Runtime struct {
-	cfg         *config.Config
-	rawConfig   map[string]interface{}
-	engine      *engine.Engine
-	hub         *hub.Hub
-	registry    *connectors.Registry
-	admin       *admin.Server
-	endpoints   []connectors.Endpoint
-	entrypoints []connectors.Entrypoint
-	servers     []*http.Server // shared HTTP servers for port sharing
+	cfg           *config.Config
+	rawConfig     map[string]interface{}
+	engine        *engine.Engine
+	hub           *hub.Hub
+	registry      *connectors.Registry
+	admin         *admin.Server
+	brokerDrivers []connectors.BrokerDriver
+	receivers     []connectors.Receiver
+	servers       []*http.Server // shared HTTP servers for port sharing
 }
 
 // New creates a new Runtime. After creation:
 //  1. Call Engine() to register policies
-//  2. Call LoadChannels() to parse bindings and create per-channel entrypoint+endpoint pairs
+//  2. Call LoadChannels() to parse bindings and create per-channel receiver+broker-driver pairs
 //  3. Call Run() to start all components
 func New(cfg *config.Config, rawConfig map[string]interface{}, registry *connectors.Registry) (*Runtime, error) {
 	eng, err := engine.New(rawConfig)
@@ -81,7 +81,7 @@ func (r *Runtime) Engine() *engine.Engine {
 	return r.engine
 }
 
-// LoadChannels parses channel bindings and creates per-channel entrypoint+endpoint pairs.
+// LoadChannels parses channel bindings and creates per-channel receiver+broker-driver pairs.
 // Supports both legacy flat bindings and WebSubApi multi-channel bindings.
 func (r *Runtime) LoadChannels(channelsPath string) error {
 	parseResult, err := binding.ParseChannels(channelsPath)
@@ -109,7 +109,7 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 
 		vhost := defaultVhost(b.Vhost)
 
-		qualifiedTopic := qualifyTopicName(b.Context, b.Version, b.Endpoint.Topic)
+		qualifiedTopic := qualifyTopicName(b.Context, b.Version, b.BrokerDriver.Topic)
 
 		r.hub.RegisterBinding(hub.ChannelBinding{
 			Name:              b.Name,
@@ -120,20 +120,20 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 			SubscribeChainKey: subKey,
 			InboundChainKey:   inKey,
 			OutboundChainKey:  outKey,
-			EndpointTopic:     qualifiedTopic,
-			Ordering:          b.Endpoint.Ordering,
+			BrokerDriverTopic: qualifiedTopic,
+			Ordering:          b.BrokerDriver.Ordering,
 		})
 
-		endpointType := resolveEndpointType(b)
-		endpoint, err := r.registry.CreateEndpoint(endpointType, b.Endpoint.Config)
+		brokerDriverType := resolveBrokerDriverType(b)
+		brokerDriver, err := r.registry.CreateBrokerDriver(brokerDriverType, b.BrokerDriver.Config)
 		if err != nil {
-			return fmt.Errorf("failed to create endpoint %q for binding %q: %w", endpointType, b.Name, err)
+			return fmt.Errorf("failed to create broker-driver %q for binding %q: %w", brokerDriverType, b.Name, err)
 		}
-		r.endpoints = append(r.endpoints, endpoint)
+		r.brokerDrivers = append(r.brokerDrivers, brokerDriver)
 
-		entrypointType := resolveEntrypointType(b)
+		receiverType := resolveReceiverType(b)
 		var mux *http.ServeMux
-		switch entrypointType {
+		switch receiverType {
 		case "websub":
 			mux = websubMux
 			hasWebSub = true
@@ -143,34 +143,34 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 		}
 
 		ch := connectors.ChannelInfo{
-			Name:          b.Name,
-			Mode:          b.Mode,
-			Context:       b.Context,
-			Version:       b.Version,
-			Vhost:         vhost,
-			PublicTopic:   b.Endpoint.Topic,
-			EndpointTopic: qualifiedTopic,
-			Ordering:      b.Endpoint.Ordering,
+			Name:              b.Name,
+			Mode:              b.Mode,
+			Context:           b.Context,
+			Version:           b.Version,
+			Vhost:             vhost,
+			PublicTopic:       b.BrokerDriver.Topic,
+			BrokerDriverTopic: qualifiedTopic,
+			Ordering:          b.BrokerDriver.Ordering,
 		}
 
-		ep, err := r.registry.CreateEntrypoint(entrypointType, connectors.EntrypointConfig{
-			Channel:   ch,
-			Processor: r.hub,
-			Endpoint:  endpoint,
-			RuntimeID: r.cfg.RuntimeID,
-			Mux:       mux,
+		ep, err := r.registry.CreateReceiver(receiverType, connectors.ReceiverConfig{
+			Channel:      ch,
+			Processor:    r.hub,
+			BrokerDriver: brokerDriver,
+			RuntimeID:    r.cfg.RuntimeID,
+			Mux:          mux,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to create entrypoint for binding %q: %w", b.Name, err)
+			return fmt.Errorf("failed to create receiver for binding %q: %w", b.Name, err)
 		}
-		r.entrypoints = append(r.entrypoints, ep)
+		r.receivers = append(r.receivers, ep)
 
 		slog.Info("Registered channel binding",
 			"name", b.Name,
 			"mode", b.Mode,
-			"entrypoint", entrypointType,
-			"endpoint", endpointType,
-			"endpoint_topic", b.Endpoint.Topic,
+			"receiver", receiverType,
+			"broker-driver", brokerDriverType,
+			"broker_driver_topic", b.BrokerDriver.Topic,
 		)
 	}
 
@@ -206,16 +206,16 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 			Channels:          channels,
 		})
 
-		// Create endpoint.
-		endpointType := "kafka"
-		if wsb.Endpoint.Type != "" {
-			endpointType = wsb.Endpoint.Type
+		// Create broker-driver.
+		brokerDriverType := "kafka"
+		if wsb.BrokerDriver.Type != "" {
+			brokerDriverType = wsb.BrokerDriver.Type
 		}
-		endpoint, err := r.registry.CreateEndpoint(endpointType, wsb.Endpoint.Config)
+		brokerDriver, err := r.registry.CreateBrokerDriver(brokerDriverType, wsb.BrokerDriver.Config)
 		if err != nil {
-			return fmt.Errorf("failed to create endpoint for WebSubApi %q: %w", wsb.Name, err)
+			return fmt.Errorf("failed to create broker-driver for WebSubApi %q: %w", wsb.Name, err)
 		}
-		r.endpoints = append(r.endpoints, endpoint)
+		r.brokerDrivers = append(r.brokerDrivers, brokerDriver)
 
 		hasWebSub = true
 
@@ -229,17 +229,17 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 			InternalSubTopic: internalSubTopic,
 		}
 
-		ep, err := r.registry.CreateEntrypoint("websub", connectors.EntrypointConfig{
-			Channel:   ch,
-			Processor: r.hub,
-			Endpoint:  endpoint,
-			RuntimeID: r.cfg.RuntimeID,
-			Mux:       websubMux,
+		ep, err := r.registry.CreateReceiver("websub", connectors.ReceiverConfig{
+			Channel:      ch,
+			Processor:    r.hub,
+			BrokerDriver: brokerDriver,
+			RuntimeID:    r.cfg.RuntimeID,
+			Mux:          websubMux,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to create entrypoint for WebSubApi %q: %w", wsb.Name, err)
+			return fmt.Errorf("failed to create receiver for WebSubApi %q: %w", wsb.Name, err)
 		}
-		r.entrypoints = append(r.entrypoints, ep)
+		r.receivers = append(r.receivers, ep)
 
 		slog.Info("Registered WebSubApi binding",
 			"name", wsb.Name,
@@ -282,9 +282,9 @@ func (r *Runtime) Run(ctx context.Context) error {
 		}()
 	}
 
-	for _, ep := range r.entrypoints {
+	for _, ep := range r.receivers {
 		if err := ep.Start(ctx); err != nil {
-			return fmt.Errorf("failed to start entrypoint: %w", err)
+			return fmt.Errorf("failed to start receiver: %w", err)
 		}
 	}
 
@@ -299,15 +299,15 @@ func (r *Runtime) Run(ctx context.Context) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	for i := len(r.entrypoints) - 1; i >= 0; i-- {
-		if err := r.entrypoints[i].Stop(shutdownCtx); err != nil {
-			slog.Error("Failed to stop entrypoint", "error", err)
+	for i := len(r.receivers) - 1; i >= 0; i-- {
+		if err := r.receivers[i].Stop(shutdownCtx); err != nil {
+			slog.Error("Failed to stop receiver", "error", err)
 		}
 	}
 
-	for _, endpoint := range r.endpoints {
-		if err := endpoint.Close(); err != nil {
-			slog.Error("Failed to close endpoint", "error", err)
+	for _, bd := range r.brokerDrivers {
+		if err := bd.Close(); err != nil {
+			slog.Error("Failed to close broker-driver", "error", err)
 		}
 	}
 
@@ -338,7 +338,7 @@ func (r *Runtime) buildPolicyChains(b binding.Binding) (subscribeKey, inboundKey
 		outboundKey = binding.GenerateRouteKey("DELIVER", channelPath, vhost)
 
 	case "protocol-mediation":
-		channelPath := path.Join(b.Context, b.Entrypoint.Path)
+		channelPath := path.Join(b.Context, b.Receiver.Path)
 		inboundKey = binding.GenerateRouteKey("PUBLISH", channelPath, vhost)
 		outboundKey = binding.GenerateRouteKey("DELIVER", channelPath, vhost)
 
@@ -406,11 +406,11 @@ func (r *Runtime) buildChain(routeKey string, policies []binding.PolicyRef) erro
 	return nil
 }
 
-// resolveEntrypointType determines the entrypoint factory name from the binding.
+// resolveReceiverType determines the receiver factory name from the binding.
 // If not explicitly set, it defaults based on mode.
-func resolveEntrypointType(b binding.Binding) string {
-	if b.Entrypoint.Type != "" {
-		return b.Entrypoint.Type
+func resolveReceiverType(b binding.Binding) string {
+	if b.Receiver.Type != "" {
+		return b.Receiver.Type
 	}
 	switch b.Mode {
 	case "websub":
@@ -421,11 +421,11 @@ func resolveEntrypointType(b binding.Binding) string {
 	return b.Mode
 }
 
-// resolveEndpointType determines the endpoint factory name from the binding.
+// resolveBrokerDriverType determines the broker-driver factory name from the binding.
 // Defaults to "kafka" if not explicitly set.
-func resolveEndpointType(b binding.Binding) string {
-	if b.Endpoint.Type != "" {
-		return b.Endpoint.Type
+func resolveBrokerDriverType(b binding.Binding) string {
+	if b.BrokerDriver.Type != "" {
+		return b.BrokerDriver.Type
 	}
 	return "kafka"
 }

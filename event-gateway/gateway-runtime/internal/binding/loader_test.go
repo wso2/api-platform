@@ -35,9 +35,9 @@ channels:
       - name: issues
       - name: pull-requests
       - name: commits
-    entrypoint:
+    receiver:
       type: websub
-    endpoint:
+    broker-driver:
       type: kafka
       config:
         brokers:
@@ -92,10 +92,10 @@ channels:
     mode: protocol-mediation
     context: /prices
     version: v1
-    entrypoint:
+    receiver:
       type: websocket
       path: /stream
-    endpoint:
+    broker-driver:
       type: kafka
       topic: price-updates
       config:
@@ -138,9 +138,9 @@ channels:
     channels:
       - name: orders
       - name: payments
-    entrypoint:
+    receiver:
       type: websub
-    endpoint:
+    broker-driver:
       type: kafka
       config:
         brokers:
@@ -153,10 +153,10 @@ channels:
     mode: protocol-mediation
     context: /stream
     version: v1
-    entrypoint:
+    receiver:
       type: websocket
       path: /ws
-    endpoint:
+    broker-driver:
       type: kafka
       topic: stream-data
       config:

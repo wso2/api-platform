@@ -29,17 +29,17 @@ import (
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
 )
 
-// KafkaEndpoint implements connectors.Endpoint for Apache Kafka.
+// KafkaBrokerDriver implements connectors.BrokerDriver for Apache Kafka.
 // It owns a shared publisher and creates consumers on demand.
-type KafkaEndpoint struct {
+type KafkaBrokerDriver struct {
 	publisher *Publisher
 	brokers   []string
 	admin     *kadm.Client
 	adminKgo  *kgo.Client
 }
 
-// NewEndpoint creates a Kafka endpoint backed by the given brokers.
-func NewEndpoint(brokers []string) (*KafkaEndpoint, error) {
+// NewBrokerDriver creates a Kafka broker-driver backed by the given brokers.
+func NewBrokerDriver(brokers []string) (*KafkaBrokerDriver, error) {
 	pub, err := NewPublisher(brokers)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka publisher: %w", err)
@@ -51,7 +51,7 @@ func NewEndpoint(brokers []string) (*KafkaEndpoint, error) {
 		return nil, fmt.Errorf("failed to create kafka admin client: %w", err)
 	}
 
-	return &KafkaEndpoint{
+	return &KafkaBrokerDriver{
 		publisher: pub,
 		brokers:   brokers,
 		admin:     kadm.NewClient(adminKgo),
@@ -60,18 +60,18 @@ func NewEndpoint(brokers []string) (*KafkaEndpoint, error) {
 }
 
 // Publish sends a message to the given Kafka topic.
-func (e *KafkaEndpoint) Publish(ctx context.Context, topic string, msg *connectors.Message) error {
+func (e *KafkaBrokerDriver) Publish(ctx context.Context, topic string, msg *connectors.Message) error {
 	return e.publisher.Publish(ctx, topic, msg)
 }
 
 // Subscribe creates a consumer for the given topics using a shared consumer group.
-// The returned Entrypoint must be Start()ed by the caller.
-func (e *KafkaEndpoint) Subscribe(groupID string, topics []string, handler connectors.MessageHandler) (connectors.Entrypoint, error) {
+// The returned Receiver must be Start()ed by the caller.
+func (e *KafkaBrokerDriver) Subscribe(groupID string, topics []string, handler connectors.MessageHandler) (connectors.Receiver, error) {
 	return NewConsumer(e.brokers, groupID, topics, handler)
 }
 
 // TopicExists checks whether a topic exists in the Kafka cluster.
-func (e *KafkaEndpoint) TopicExists(ctx context.Context, topic string) (bool, error) {
+func (e *KafkaBrokerDriver) TopicExists(ctx context.Context, topic string) (bool, error) {
 	topics, err := e.admin.ListTopics(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to list topics: %w", err)
@@ -81,7 +81,7 @@ func (e *KafkaEndpoint) TopicExists(ctx context.Context, topic string) (bool, er
 }
 
 // EnsureTopics creates topics if they don't already exist (idempotent).
-func (e *KafkaEndpoint) EnsureTopics(ctx context.Context, topics []string) error {
+func (e *KafkaBrokerDriver) EnsureTopics(ctx context.Context, topics []string) error {
 	resp, err := e.admin.CreateTopics(ctx, 1, 1, nil, topics...)
 	if err != nil {
 		return fmt.Errorf("failed to create topics: %w", err)
@@ -112,7 +112,7 @@ func isTopicAlreadyExistsErr(err error) bool {
 }
 
 // Close shuts down the shared publisher and admin client.
-func (e *KafkaEndpoint) Close() error {
+func (e *KafkaBrokerDriver) Close() error {
 	e.publisher.Close()
 	e.adminKgo.Close()
 	return nil
