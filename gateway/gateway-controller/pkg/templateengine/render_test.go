@@ -43,8 +43,10 @@ func TestRender_NoTemplateExpressions(t *testing.T) {
 
 func TestRender_ParseError(t *testing.T) {
 	_, err := render([]byte(`{{ invalid`), template.FuncMap{})
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "template parse error")
+	require.Error(t, err)
+	var parseErr *TemplateParseError
+	require.ErrorAs(t, err, &parseErr)
+	assert.Contains(t, parseErr.Error(), `function "invalid" not defined`)
 }
 
 func TestRender_ExecutionError(t *testing.T) {
