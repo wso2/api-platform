@@ -72,7 +72,22 @@ func (h *ConfigDumpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Redact resolved secret values so plaintext secrets never appear in the dump.
-	sensitiveValues := h.kernel.GetSensitiveValues()
+	// json.Marshal JSON-escapes special characters (e.g. `"` → `\"`), so a
+	// raw string match would miss secrets that contain those characters.
+	// Build a combined set: each raw secret plus its JSON-escaped form (the
+	// content that json.Marshal would emit inside a JSON string literal).
+	rawSecrets := h.kernel.GetSensitiveValues()
+	sensitiveValues := make([]string, 0, len(rawSecrets)*2)
+	for _, secret := range rawSecrets {
+		sensitiveValues = append(sensitiveValues, secret)
+		if escapedBytes, err2 := json.Marshal(secret); err2 == nil && len(escapedBytes) >= 2 {
+			// escapedBytes is `"<content>"` — strip the surrounding quotes.
+			escaped := string(escapedBytes[1 : len(escapedBytes)-1])
+			if escaped != secret {
+				sensitiveValues = append(sensitiveValues, escaped)
+			}
+		}
+	}
 	redacted := redact.Redact(string(jsonBytes), sensitiveValues)
 
 	w.Header().Set("Content-Type", "application/json")
