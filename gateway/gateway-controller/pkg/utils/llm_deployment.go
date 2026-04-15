@@ -32,6 +32,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
 
@@ -309,11 +310,17 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		return nil, err
 	}
 
-	// Important: Do not persist the resolved configuration
+	// Render template expressions to catch invalid function names or secret references early.
+	// The rendered Configuration is not persisted — SourceConfiguration (unrendered) is what
+	// the DB stores, and each replica's EventListener re-derives Configuration from it on consumption.
+	if desiredState != models.StateUndeployed {
+		if err := templateengine.RenderSpec(storedCfg, s.deploymentService.secretResolver, params.Logger); err != nil {
+			return nil, err
+		}
+	}
+
 	// Save or update using timestamp-guarded upsert.
 	// affected=false means a newer version already exists (stale event — no-op).
-	// Policy resolution happens in the EventListener after all replicas consume the
-	// published event, immediately before UpsertAPIConfig is called.
 	affected, err := s.deploymentService.saveOrUpdateConfig(storedCfg, params.Logger)
 	if err != nil {
 		params.Logger.Error("Failed to save or update LLM provider configuration",
@@ -464,7 +471,15 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 		return nil, err
 	}
 
-	// Important: Do not persist the resolved configuration
+	// Render template expressions to catch invalid function names or secret references early.
+	// The rendered Configuration is not persisted — SourceConfiguration (unrendered) is what
+	// the DB stores, and each replica's EventListener re-derives Configuration from it on consumption.
+	if proxyDesiredState != models.StateUndeployed {
+		if err := templateengine.RenderSpec(storedCfg, s.deploymentService.secretResolver, params.Logger); err != nil {
+			return nil, err
+		}
+	}
+
 	// Save or update using timestamp-guarded upsert.
 	// Policy resolution happens in the EventListener after all replicas consume the
 	// published event, immediately before UpsertAPIConfig is called.

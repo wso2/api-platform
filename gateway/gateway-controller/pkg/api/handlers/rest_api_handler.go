@@ -33,8 +33,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
@@ -230,6 +228,10 @@ func (h *RestAPIHandler) DeleteRestAPI(c *gin.Context, id string) {
 
 // mapCreateError maps service errors to HTTP responses for Create.
 func (h *RestAPIHandler) mapCreateError(c *gin.Context, err error) {
+	if mapRenderError(c, "create", err) {
+		return
+	}
+
 	if storage.IsConflictError(err) {
 		c.JSON(http.StatusConflict, api.ErrorResponse{
 			Status:  "error",
@@ -280,29 +282,7 @@ func (h *RestAPIHandler) mapGetError(c *gin.Context, log *slog.Logger, handle st
 
 // mapUpdateError maps service errors to HTTP responses for Update.
 func (h *RestAPIHandler) mapUpdateError(c *gin.Context, handle string, err error) {
-	var renderErr *templateengine.RenderError
-	if errors.As(err, &renderErr) {
-		metrics.ValidationErrorsTotal.WithLabelValues("update", "render_failed").Inc()
-		var secretErr *funcs.SecretError
-		if errors.As(renderErr, &secretErr) {
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{
-				Status:  "error",
-				Message: secretErr.Error(),
-			})
-			return
-		}
-		var tmplParseErr *templateengine.TemplateParseError
-		if errors.As(renderErr, &tmplParseErr) {
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{
-				Status:  "error",
-				Message: tmplParseErr.Error(),
-			})
-			return
-		}
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("Failed to render configuration: %v", renderErr.Cause),
-		})
+	if mapRenderError(c, "update", err) {
 		return
 	}
 
