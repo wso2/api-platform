@@ -98,6 +98,78 @@ func newPolicySpec(name, version string, enabled bool, condition *string) policy
 	}
 }
 
+type countingRequestHeaderPolicy struct {
+	mode  policy.ProcessingMode
+	calls int
+}
+
+func (p *countingRequestHeaderPolicy) Mode() policy.ProcessingMode {
+	return p.mode
+}
+
+func (p *countingRequestHeaderPolicy) OnRequestHeaders(_ context.Context, _ *policy.RequestHeaderContext, _ map[string]interface{}) policy.RequestHeaderAction {
+	p.calls++
+	return policy.UpstreamRequestHeaderModifications{}
+}
+
+type countingResponseHeaderPolicy struct {
+	mode  policy.ProcessingMode
+	calls int
+}
+
+func (p *countingResponseHeaderPolicy) Mode() policy.ProcessingMode {
+	return p.mode
+}
+
+func (p *countingResponseHeaderPolicy) OnResponseHeaders(_ context.Context, _ *policy.ResponseHeaderContext, _ map[string]interface{}) policy.ResponseHeaderAction {
+	p.calls++
+	return policy.DownstreamResponseHeaderModifications{}
+}
+
+type countingStreamingRequestPolicy struct {
+	mode  policy.ProcessingMode
+	calls int
+}
+
+func (p *countingStreamingRequestPolicy) Mode() policy.ProcessingMode {
+	return p.mode
+}
+
+func (p *countingStreamingRequestPolicy) OnRequestBody(_ context.Context, _ *policy.RequestContext, _ map[string]interface{}) policy.RequestAction {
+	return policy.UpstreamRequestModifications{}
+}
+
+func (p *countingStreamingRequestPolicy) NeedsMoreRequestData(_ []byte) bool {
+	return false
+}
+
+func (p *countingStreamingRequestPolicy) OnRequestBodyChunk(_ context.Context, _ *policy.RequestStreamContext, _ *policy.StreamBody, _ map[string]interface{}) policy.StreamingRequestAction {
+	p.calls++
+	return policy.ForwardRequestChunk{}
+}
+
+type countingStreamingResponsePolicy struct {
+	mode  policy.ProcessingMode
+	calls int
+}
+
+func (p *countingStreamingResponsePolicy) Mode() policy.ProcessingMode {
+	return p.mode
+}
+
+func (p *countingStreamingResponsePolicy) OnResponseBody(_ context.Context, _ *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
+	return policy.DownstreamResponseModifications{}
+}
+
+func (p *countingStreamingResponsePolicy) NeedsMoreResponseData(_ []byte) bool {
+	return false
+}
+
+func (p *countingStreamingResponsePolicy) OnResponseBodyChunk(_ context.Context, _ *policy.ResponseStreamContext, _ *policy.StreamBody, _ map[string]interface{}) policy.StreamingResponseAction {
+	p.calls++
+	return policy.ForwardResponseChunk{}
+}
+
 // =============================================================================
 // Tests for NewChainExecutor
 // =============================================================================
@@ -759,4 +831,188 @@ func TestExecuteResponsePolicies_ImmediateResponseShortCircuit(t *testing.T) {
 	immResp, ok := result.FinalAction.(policy.ImmediateResponse)
 	require.True(t, ok)
 	assert.Equal(t, 503, immResp.StatusCode)
+}
+
+func TestExecuteRequestHeaderPolicies_ModeFirstGating(t *testing.T) {
+	tests := []struct {
+		name        string
+		mode        policy.HeaderProcessingMode
+		wantCalls   int
+		wantResults int
+	}{
+		{name: "process", mode: policy.HeaderModeProcess, wantCalls: 1, wantResults: 1},
+		{name: "skip", mode: policy.HeaderModeSkip, wantCalls: 0, wantResults: 0},
+		{name: "zero value", mode: "", wantCalls: 0, wantResults: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tracer := noop.NewTracerProvider().Tracer("test")
+			executor := NewChainExecutor(nil, nil, tracer)
+
+			pol := &countingRequestHeaderPolicy{
+				mode: policy.ProcessingMode{RequestHeaderMode: tt.mode},
+			}
+			reqCtx := &policy.RequestHeaderContext{
+				SharedContext: testutils.NewTestSharedContext(),
+				Headers:       policy.NewHeaders(map[string][]string{"content-type": {"application/json"}}),
+				Path:          "/test",
+				Method:        "GET",
+			}
+
+			result, err := executor.ExecuteRequestHeaderPolicies(
+				context.Background(),
+				[]policy.Policy{pol},
+				reqCtx,
+				[]policy.PolicySpec{newPolicySpec("header", "v1.0.0", true, nil)},
+				"api",
+				"route",
+				false,
+			)
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantCalls, pol.calls)
+			assert.Len(t, result.Results, tt.wantResults)
+		})
+	}
+}
+
+func TestExecuteResponseHeaderPolicies_ModeFirstGating(t *testing.T) {
+	tests := []struct {
+		name        string
+		mode        policy.HeaderProcessingMode
+		wantCalls   int
+		wantResults int
+	}{
+		{name: "process", mode: policy.HeaderModeProcess, wantCalls: 1, wantResults: 1},
+		{name: "skip", mode: policy.HeaderModeSkip, wantCalls: 0, wantResults: 0},
+		{name: "zero value", mode: "", wantCalls: 0, wantResults: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tracer := noop.NewTracerProvider().Tracer("test")
+			executor := NewChainExecutor(nil, nil, tracer)
+
+			pol := &countingResponseHeaderPolicy{
+				mode: policy.ProcessingMode{ResponseHeaderMode: tt.mode},
+			}
+			respCtx := &policy.ResponseHeaderContext{
+				SharedContext:   testutils.NewTestSharedContext(),
+				RequestHeaders:  policy.NewHeaders(map[string][]string{"content-type": {"application/json"}}),
+				RequestPath:     "/test",
+				RequestMethod:   "GET",
+				ResponseHeaders: policy.NewHeaders(map[string][]string{"content-type": {"application/json"}}),
+				ResponseStatus:  200,
+			}
+
+			result, err := executor.ExecuteResponseHeaderPolicies(
+				context.Background(),
+				[]policy.Policy{pol},
+				respCtx,
+				[]policy.PolicySpec{newPolicySpec("header", "v1.0.0", true, nil)},
+				"api",
+				"route",
+				false,
+			)
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantCalls, pol.calls)
+			assert.Len(t, result.Results, tt.wantResults)
+		})
+	}
+}
+
+func TestExecuteStreamingRequestPolicies_ModeFirstGating(t *testing.T) {
+	tests := []struct {
+		name        string
+		mode        policy.BodyProcessingMode
+		wantCalls   int
+		wantResults int
+	}{
+		{name: "stream", mode: policy.BodyModeStream, wantCalls: 1, wantResults: 1},
+		{name: "buffer", mode: policy.BodyModeBuffer, wantCalls: 0, wantResults: 0},
+		{name: "skip", mode: policy.BodyModeSkip, wantCalls: 0, wantResults: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tracer := noop.NewTracerProvider().Tracer("test")
+			executor := NewChainExecutor(nil, nil, tracer)
+
+			pol := &countingStreamingRequestPolicy{
+				mode: policy.ProcessingMode{RequestBodyMode: tt.mode},
+			}
+			reqCtx := &policy.RequestStreamContext{
+				SharedContext: testutils.NewTestSharedContext(),
+				Headers:       policy.NewHeaders(map[string][]string{"content-type": {"application/json"}}),
+				Path:          "/test",
+				Method:        "POST",
+			}
+			chunk := &policy.StreamBody{Chunk: []byte("hello"), EndOfStream: true}
+
+			result, err := executor.ExecuteStreamingRequestPolicies(
+				context.Background(),
+				[]policy.Policy{pol},
+				reqCtx,
+				chunk,
+				[]policy.PolicySpec{newPolicySpec("stream", "v1.0.0", true, nil)},
+				"api",
+				"route",
+				false,
+			)
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantCalls, pol.calls)
+			assert.Len(t, result.Results, tt.wantResults)
+		})
+	}
+}
+
+func TestExecuteStreamingResponsePolicies_ModeFirstGating(t *testing.T) {
+	tests := []struct {
+		name        string
+		mode        policy.BodyProcessingMode
+		wantCalls   int
+		wantResults int
+	}{
+		{name: "stream", mode: policy.BodyModeStream, wantCalls: 1, wantResults: 1},
+		{name: "buffer", mode: policy.BodyModeBuffer, wantCalls: 0, wantResults: 0},
+		{name: "skip", mode: policy.BodyModeSkip, wantCalls: 0, wantResults: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tracer := noop.NewTracerProvider().Tracer("test")
+			executor := NewChainExecutor(nil, nil, tracer)
+
+			pol := &countingStreamingResponsePolicy{
+				mode: policy.ProcessingMode{ResponseBodyMode: tt.mode},
+			}
+			respCtx := &policy.ResponseStreamContext{
+				SharedContext:   testutils.NewTestSharedContext(),
+				RequestHeaders:  policy.NewHeaders(map[string][]string{"content-type": {"application/json"}}),
+				RequestPath:     "/test",
+				RequestMethod:   "POST",
+				ResponseHeaders: policy.NewHeaders(map[string][]string{"content-type": {"application/json"}}),
+				ResponseStatus:  200,
+			}
+			chunk := &policy.StreamBody{Chunk: []byte("hello"), EndOfStream: true}
+
+			result, err := executor.ExecuteStreamingResponsePolicies(
+				context.Background(),
+				[]policy.Policy{pol},
+				respCtx,
+				chunk,
+				[]policy.PolicySpec{newPolicySpec("stream", "v1.0.0", true, nil)},
+				"api",
+				"route",
+				false,
+			)
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantCalls, pol.calls)
+			assert.Len(t, result.Results, tt.wantResults)
+		})
+	}
 }
