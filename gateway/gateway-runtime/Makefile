@@ -163,6 +163,7 @@ proto: ## Regenerate Python executor protobuf bindings
 		$(PROTO_FILE)
 
 test-proto: proto ## Verify protobuf bindings regenerate and compile cleanly
+	git diff --exit-code -- $(PROTO_GENERATED)
 	cd policy-engine && go test ./internal/pythonbridge/... -run TestDoesNotExist
 	cd python-executor && $(PYTHON) -m py_compile proto/*.py
 

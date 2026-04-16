@@ -2,11 +2,16 @@ package pythonbridge
 
 import (
 	"context"
+	"errors"
+	"io"
+	"log/slog"
+	"net"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/pythonbridge/proto"
@@ -126,4 +131,61 @@ func TestMergeMetadataUpdatesSharedContext(t *testing.T) {
 
 	assert.Equal(t, "updated", shared.Metadata["existing"])
 	assert.Equal(t, true, shared.Metadata["fresh"])
+}
+
+type fakePythonExecutorClient struct {
+	destroyPolicyResp  *proto.DestroyPolicyResponse
+	destroyPolicyErr   error
+	destroyPolicyCalls int
+}
+
+func (f *fakePythonExecutorClient) ExecuteStream(context.Context, ...grpc.CallOption) (grpc.BidiStreamingClient[proto.StreamRequest, proto.StreamResponse], error) {
+	return nil, errors.New("unexpected ExecuteStream call")
+}
+
+func (f *fakePythonExecutorClient) HealthCheck(context.Context, *proto.HealthCheckRequest, ...grpc.CallOption) (*proto.HealthCheckResponse, error) {
+	return nil, errors.New("unexpected HealthCheck call")
+}
+
+func (f *fakePythonExecutorClient) InitPolicy(context.Context, *proto.InitPolicyRequest, ...grpc.CallOption) (*proto.InitPolicyResponse, error) {
+	return nil, errors.New("unexpected InitPolicy call")
+}
+
+func (f *fakePythonExecutorClient) DestroyPolicy(context.Context, *proto.DestroyPolicyRequest, ...grpc.CallOption) (*proto.DestroyPolicyResponse, error) {
+	f.destroyPolicyCalls++
+	return f.destroyPolicyResp, f.destroyPolicyErr
+}
+
+func TestBridgeCloseReturnsExecutorDestroyFailure(t *testing.T) {
+	harness := startTestPythonExecutorServer(t, nil)
+
+	sm := NewStreamManager("bufconn")
+	sm.dialContext = func(context.Context, string) (net.Conn, error) {
+		return harness.listener.Dial()
+	}
+	require.NoError(t, sm.Connect(context.Background()))
+	t.Cleanup(func() {
+		_ = sm.Close()
+	})
+
+	fakeClient := &fakePythonExecutorClient{
+		destroyPolicyResp: &proto.DestroyPolicyResponse{
+			Success:      false,
+			ErrorMessage: "executor refused destroy",
+		},
+	}
+	sm.client = fakeClient
+
+	bridge := &bridge{
+		streamManager: sm,
+		slogger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+		instanceID:    "instance-1",
+	}
+
+	err := bridge.Close()
+	require.EqualError(t, err, "destroy Python policy instance rejected by executor: executor refused destroy")
+
+	err = bridge.Close()
+	require.EqualError(t, err, "destroy Python policy instance rejected by executor: executor refused destroy")
+	assert.Equal(t, 1, fakeClient.destroyPolicyCalls)
 }

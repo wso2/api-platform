@@ -564,7 +564,9 @@ func (b *bridge) Close() error {
 			return
 		}
 		if !resp.GetSuccess() {
-			b.slogger.Warn("DestroyPolicy returned an executor error", "instance_id", b.instanceID, "error", resp.GetErrorMessage())
+			b.closeErr = fmt.Errorf("destroy Python policy instance rejected by executor: %s", resp.GetErrorMessage())
+			b.slogger.Warn("DestroyPolicy returned an executor error", "instance_id", b.instanceID, "error", b.closeErr)
+			return
 		}
 	})
 	return b.closeErr
