@@ -33,8 +33,9 @@ import (
 )
 
 // bridge is the unified Python policy adapter. Mode() is the single source of
-// truth for which phases are active; each phase method guards on mode before
-// issuing gRPC calls to the Python executor.
+// truth for which phases are active. The engine gates phase execution via Mode()
+// at chain-build and execution time. The bridge also guards internally as
+// defense-in-depth before issuing gRPC calls to the Python executor.
 type bridge struct {
 	policyName    string
 	policyVersion string
