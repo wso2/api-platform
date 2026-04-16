@@ -277,48 +277,31 @@ func (h *HealthSteps) waitForPolicySnapshotSync() error {
 
 	controllerURL := fmt.Sprintf("%s/xds_sync_status", h.state.Config.GatewayControllerAdminURL)
 	policyEngineURL := fmt.Sprintf("%s/xds_sync_status", h.state.Config.PolicyEngineURL)
+	lastControllerVersion := ""
+	lastRuntimeVersion := ""
+	var lastControllerErr error
+	var lastRuntimeErr error
 
-	// First read the current version
-	initialVersion, _ := h.getControllerPolicyVersion(controllerURL)
-	var targetVersion string
-	var lastErr error
-
-	// Poll until it observes a different version from the controller
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		currentVersion, err := h.getControllerPolicyVersion(controllerURL)
-		if err == nil && currentVersion != "" && currentVersion != initialVersion {
-			targetVersion = currentVersion
-			break
-		}
-		lastErr = err
-		if attempt < maxAttempts {
-			time.Sleep(attemptInterval)
-		}
-	}
+		controllerVersion, controllerErr := h.getControllerPolicyVersion(controllerURL)
+		runtimeVersion, runtimeErr := h.getPolicyEnginePolicyVersion(policyEngineURL)
+		lastControllerVersion = controllerVersion
+		lastRuntimeVersion = runtimeVersion
+		lastControllerErr = controllerErr
+		lastRuntimeErr = runtimeErr
 
-	if targetVersion == "" {
-		if lastErr != nil {
-			return fmt.Errorf("failed to get new controller policy version (last error: %v)", lastErr)
-		}
-		return fmt.Errorf("controller policy version did not change from %q after %d attempts", initialVersion, maxAttempts)
-	}
-
-	// Continue polling until the policy-engine reported version equals the target version
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		runtimeVersion, err := h.getPolicyEnginePolicyVersion(policyEngineURL)
-		if err == nil && runtimeVersion == targetVersion {
+		if controllerErr == nil && runtimeErr == nil &&
+			controllerVersion == runtimeVersion && controllerVersion != "" {
 			return nil
 		}
-		lastErr = err
+
 		if attempt < maxAttempts {
 			time.Sleep(attemptInterval)
 		}
 	}
 
-	if lastErr != nil {
-		return fmt.Errorf("policy engine failed to sync to target version %q (last error: %v)", targetVersion, lastErr)
-	}
-	return fmt.Errorf("policy engine did not sync to target version %q after %d attempts", targetVersion, maxAttempts)
+	return fmt.Errorf("policy snapshot versions did not sync in time between controller and policy engine: controller_version=%q runtime_version=%q controller_err=%v runtime_err=%v",
+		lastControllerVersion, lastRuntimeVersion, lastControllerErr, lastRuntimeErr)
 }
 
 func (h *HealthSteps) getControllerPolicyVersion(url string) (string, error) {

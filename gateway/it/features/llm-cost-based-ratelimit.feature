@@ -78,6 +78,7 @@ Feature: LLM Cost-Based Rate Limiting
                   - '*'
       """
     Then the response status code should be 201
+    And I wait for 2 seconds
     And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
@@ -166,6 +167,7 @@ Feature: LLM Cost-Based Rate Limiting
                   - '*'
       """
     Then the response status code should be 201
+    And I wait for 2 seconds
     And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
@@ -250,6 +252,7 @@ Feature: LLM Cost-Based Rate Limiting
                   - '*'
       """
     Then the response status code should be 201
+    And I wait for 2 seconds
     And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
@@ -334,6 +337,7 @@ Feature: LLM Cost-Based Rate Limiting
                   - '*'
       """
     Then the response status code should be 201
+    And I wait for 2 seconds
     And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
@@ -453,6 +457,7 @@ Feature: LLM Cost-Based Rate Limiting
                   - '*'
       """
     Then the response status code should be 201
+    And I wait for 2 seconds
     And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
@@ -549,6 +554,7 @@ Feature: LLM Cost-Based Rate Limiting
                   - '*'
       """
     Then the response status code should be 201
+    And I wait for 2 seconds
     And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
@@ -644,6 +650,7 @@ Feature: LLM Cost-Based Rate Limiting
                   - '*'
       """
     Then the response status code should be 201
+    And I wait for 2 seconds
     And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
@@ -736,6 +743,7 @@ Feature: LLM Cost-Based Rate Limiting
                   - '*'
       """
     Then the response status code should be 201
+    And I wait for 2 seconds
     And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
@@ -824,6 +832,7 @@ Feature: LLM Cost-Based Rate Limiting
                   - '*'
       """
     Then the response status code should be 201
+    And I wait for 2 seconds
     And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
@@ -907,6 +916,7 @@ Feature: LLM Cost-Based Rate Limiting
                   - '*'
       """
     Then the response status code should be 201
+    And I wait for 2 seconds
     And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
@@ -989,6 +999,7 @@ Feature: LLM Cost-Based Rate Limiting
                   - '*'
       """
     Then the response status code should be 201
+    And I wait for 2 seconds
     And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
@@ -1072,6 +1083,7 @@ Feature: LLM Cost-Based Rate Limiting
                   - '*'
       """
     Then the response status code should be 201
+    And I wait for 2 seconds
     And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
@@ -1155,6 +1167,7 @@ Feature: LLM Cost-Based Rate Limiting
                   - '*'
       """
     Then the response status code should be 201
+    And I wait for 2 seconds
     And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
@@ -1238,6 +1251,7 @@ Feature: LLM Cost-Based Rate Limiting
                   - '*'
       """
     Then the response status code should be 201
+    And I wait for 2 seconds
     And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
@@ -1321,6 +1335,7 @@ Feature: LLM Cost-Based Rate Limiting
                   - '*'
       """
     Then the response status code should be 201
+    And I wait for 2 seconds
     And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
@@ -1403,6 +1418,7 @@ Feature: LLM Cost-Based Rate Limiting
                   - '*'
       """
     Then the response status code should be 201
+    And I wait for 2 seconds
     And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
@@ -1485,6 +1501,7 @@ Feature: LLM Cost-Based Rate Limiting
                   - '*'
       """
     Then the response status code should be 201
+    And I wait for 2 seconds
     And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
@@ -1567,6 +1584,7 @@ Feature: LLM Cost-Based Rate Limiting
                   - '*'
       """
     Then the response status code should be 201
+    And I wait for 2 seconds
     And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
@@ -1649,6 +1667,7 @@ Feature: LLM Cost-Based Rate Limiting
                   - '*'
       """
     Then the response status code should be 201
+    And I wait for 2 seconds
     And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
@@ -1731,6 +1750,7 @@ Feature: LLM Cost-Based Rate Limiting
                   - '*'
       """
     Then the response status code should be 201
+    And I wait for 2 seconds
     And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
@@ -1812,6 +1832,7 @@ Feature: LLM Cost-Based Rate Limiting
                   - '*'
       """
     Then the response status code should be 201
+    And I wait for 2 seconds
     And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
@@ -1892,6 +1913,7 @@ Feature: LLM Cost-Based Rate Limiting
                   - '*'
       """
     Then the response status code should be 201
+    And I wait for 2 seconds
     And I wait for policy snapshot sync
 
     Given I set header "Content-Type" to "application/json"
