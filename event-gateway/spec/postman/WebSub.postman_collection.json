@@ -1,0 +1,147 @@
+{
+  "info": {
+    "_postman_id": "3c659121-8942-43f2-9338-2b586f903c93",
+    "name": "WebSub",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "50932701",
+    "_collection_link": "https://go.postman.co/collection/50932701-3c659121-8942-43f2-9338-2b586f903c93?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Subscribe",
+      "request": {
+        "auth": {
+          "type": "basic",
+          "basic": [
+            {
+              "key": "username",
+              "value": "admin",
+              "type": "string"
+            },
+            {
+              "key": "password",
+              "value": "admin",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {
+              "key": "hub.mode",
+              "value": "subscribe",
+              "type": "text",
+              "uuid": "082d37a0-d5b6-4941-a189-06cb576e70fe"
+            },
+            {
+              "key": "hub.topic",
+              "value": "issues",
+              "type": "text",
+              "uuid": "0473826b-b730-452d-84dd-d0213aeae202"
+            },
+            {
+              "key": "hub.callback",
+              "value": "http://wh-listener:8090/",
+              "type": "text",
+              "uuid": "63e6abfd-8d5f-46ee-be5d-31cf248f1335"
+            },
+            {
+              "key": "hub.secret",
+              "value": "mysecret",
+              "type": "text",
+              "uuid": "083ea498-cd21-4274-a293-5ed0dc82c65c"
+            },
+            {
+              "key": "hub.lease_seconds",
+              "value": "3600",
+              "type": "text",
+              "uuid": "80d12ba2-f0f2-4a84-9243-13be5e827f7a"
+            }
+          ]
+        },
+        "url": {
+          "raw": "http://{{host}}/repos/v1.0/hub",
+          "protocol": "http",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "repos",
+            "v1.0",
+            "hub"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Ingress",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "issue0",
+          "options": {
+            "raw": {
+              "language": "text"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://{{host}}/repos/v1.0/webhook-receiver?topic=issues",
+          "protocol": "http",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "repos",
+            "v1.0",
+            "webhook-receiver"
+          ],
+          "query": [
+            {
+              "key": "topic",
+              "value": "issues"
+            }
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "host",
+      "value": "",
+      "type": "default"
+    }
+  ]
+}
