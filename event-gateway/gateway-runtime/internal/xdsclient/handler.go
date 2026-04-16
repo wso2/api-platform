@@ -26,6 +26,8 @@ import (
 	"sync"
 
 	discoveryv3 "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/binding"
@@ -116,9 +118,17 @@ func (h *Handler) HandleResources(ctx context.Context, resources []*discoveryv3.
 			continue
 		}
 
-		s := &structpb.Struct{}
-		if err := res.Resource.UnmarshalTo(s); err != nil {
+		// The xDS server wraps cached *anypb.Any resources in another Any,
+		// so we unwrap: outer Any -> inner Any -> Struct.
+		innerAny := &anypb.Any{}
+		if err := proto.Unmarshal(res.Resource.Value, innerAny); err != nil {
 			slog.Error("Failed to unmarshal EventChannelConfig resource", "error", err)
+			continue
+		}
+
+		s := &structpb.Struct{}
+		if err := proto.Unmarshal(innerAny.Value, s); err != nil {
+			slog.Error("Failed to unmarshal EventChannelConfig struct", "error", err)
 			continue
 		}
 
