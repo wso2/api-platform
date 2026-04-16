@@ -26,16 +26,25 @@ services:
       additional_contexts:
         sdk-core: ../sdk/core
         common: ../common
+    command: ["-config", "/etc/gateway-controller/config.toml"]
     ports:
-      - "9095:9095"    # Management API
+      - "9090:9090"    # Management API
       - "18001:18001"  # Policy xDS (EventChannelConfig)
     environment:
-      - APIP_CONTROLLER_STORAGE_MODE=embedded
-      - APIP_CONTROLLER_ROUTER_EVENT_GATEWAY_ENABLED=true
-      - APIP_CONTROLLER_ROUTER_EVENT_GATEWAY_WEBSUB_HUB_URL=http://event-gateway:8080
-      - APIP_CONTROLLER_ROUTER_EVENT_GATEWAY_WEBSUB_HUB_PORT=8080
-      - APIP_CONTROLLER_ROUTER_EVENT_GATEWAY_WEBSUB_HUB_LISTENER_PORT=8080
-      - APIP_CONTROLLER_ROUTER_EVENT_GATEWAY_TIMEOUT_SECONDS=30
+      - APIP_GW_CONTROLLER_STORAGE_TYPE=sqlite
+      - APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH=./data/gateway.db
+      - APIP_GW_CONTROLLER_LOGGING_LEVEL=info
+      - APIP_GW_DEVELOPMENT_MODE=true
+      - APIP_GW_ROUTER_EVENT__GATEWAY_ENABLED=true
+      - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB_URL=http://event-gateway:8080
+      - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB_PORT=8080
+      - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB__LISTENER__PORT=8080
+      - APIP_GW_ROUTER_EVENT__GATEWAY_TIMEOUT__SECONDS=30
+    volumes:
+      - controller-data:/app/data
+      - ../gateway/configs/config.toml:/etc/gateway-controller/config.toml:ro
+      - ../gateway/gateway-controller/certificates:/app/certificates
+      - ../gateway/gateway-controller/listener-certs:/app/listener-certs:ro
     depends_on:
       kafka:
         condition: service_healthy
@@ -132,3 +141,6 @@ services:
 networks:
   egw-network:
     driver: bridge
+
+volumes:
+  controller-data:
