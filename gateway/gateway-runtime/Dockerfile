@@ -148,7 +148,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go install github.com/go-delve/delve/cmd/dlv@v1.26.0
 
 # Stage 3c: Debug Runtime (policy-engine wrapped in dlv, port 2346)
-FROM envoyproxy/envoy:v1.35.3 AS debug
+FROM envoyproxy/envoy:v1.37.1 AS debug
 
 USER root
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
