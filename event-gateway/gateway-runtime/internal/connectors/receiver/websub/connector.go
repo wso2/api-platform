@@ -92,9 +92,9 @@ func NewReceiver(cfg connectors.ReceiverConfig, opts Options) (connectors.Receiv
 
 	// Create sync producer for subscription state.
 	var syncProducer *subscription.SyncProducer
-	if len(opts.Brokers) > 0 {
+	if len(opts.Brokers) > 0 && cfg.Channel.InternalSubTopic != "" {
 		var err error
-		syncProducer, err = subscription.NewSyncProducer(opts.Brokers, opts.RuntimeID)
+		syncProducer, err = subscription.NewSyncProducer(opts.Brokers, opts.RuntimeID, cfg.Channel.InternalSubTopic)
 		if err != nil {
 			slog.Warn("Failed to create sync producer, subscription sync disabled", "error", err)
 		}
@@ -192,7 +192,7 @@ func (e *WebSubReceiver) reconcileSubscriptions(ctx context.Context) {
 		return
 	}
 
-	reconciler := subscription.NewReconciler(e.opts.Brokers, e.store, e.opts.RuntimeID)
+	reconciler := subscription.NewReconciler(e.opts.Brokers, e.store, e.opts.RuntimeID, e.channel.InternalSubTopic)
 
 	// Build a set of channel names this receiver owns.
 	ownedChannels := make(map[string]bool, len(e.channel.Channels))

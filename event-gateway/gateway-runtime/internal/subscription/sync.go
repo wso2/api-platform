@@ -31,31 +31,27 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
-const (
-	// SyncTopic is the compacted Kafka topic used for subscription state sync.
-	SyncTopic = "__event_gateway_subscriptions"
-)
-
-// SyncProducer publishes subscription state changes to the sync topic.
+// SyncProducer publishes subscription state changes to a per-API sync topic.
 type SyncProducer struct {
 	client    *kgo.Client
 	runtimeID string
 	brokers   []string
+	syncTopic string
 }
 
-// NewSyncProducer creates a new sync producer.
-func NewSyncProducer(brokers []string, runtimeID string) (*SyncProducer, error) {
+// NewSyncProducer creates a new sync producer that writes to the given syncTopic.
+func NewSyncProducer(brokers []string, runtimeID, syncTopic string) (*SyncProducer, error) {
 	client, err := kgo.NewClient(
 		kgo.SeedBrokers(brokers...),
-		kgo.DefaultProduceTopic(SyncTopic),
+		kgo.DefaultProduceTopic(syncTopic),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create sync producer: %w", err)
 	}
-	return &SyncProducer{client: client, runtimeID: runtimeID, brokers: brokers}, nil
+	return &SyncProducer{client: client, runtimeID: runtimeID, brokers: brokers, syncTopic: syncTopic}, nil
 }
 
-// EnsureSyncTopic creates the __event_gateway_subscriptions topic if it
+// EnsureSyncTopic creates the per-API subscription sync topic if it
 // does not already exist. The topic is created with cleanup.policy=compact
 // so that the latest subscription state per key is retained indefinitely.
 func (p *SyncProducer) EnsureSyncTopic(ctx context.Context) error {
@@ -69,7 +65,7 @@ func (p *SyncProducer) EnsureSyncTopic(ctx context.Context) error {
 	topicConfig := map[string]*string{
 		"cleanup.policy": kadm.StringPtr("compact"),
 	}
-	resp, err := admin.CreateTopics(ctx, 1, 1, topicConfig, SyncTopic)
+	resp, err := admin.CreateTopics(ctx, 1, 1, topicConfig, p.syncTopic)
 	if err != nil {
 		return fmt.Errorf("failed to create sync topic: %w", err)
 	}
@@ -99,7 +95,7 @@ func (p *SyncProducer) PublishSubscription(_ context.Context, sub *Subscription)
 	record := &kgo.Record{
 		Key:   []byte(key),
 		Value: value,
-		Topic: SyncTopic,
+		Topic: p.syncTopic,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -119,7 +115,7 @@ func (p *SyncProducer) PublishTombstone(_ context.Context, topic, callbackURL st
 	record := &kgo.Record{
 		Key:   []byte(key),
 		Value: nil, // tombstone
-		Topic: SyncTopic,
+		Topic: p.syncTopic,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -152,11 +148,11 @@ type SyncConsumer struct {
 	wg        sync.WaitGroup
 }
 
-// NewSyncConsumer creates a new sync consumer.
-func NewSyncConsumer(brokers []string, store SubscriptionStore, runtimeID string) (*SyncConsumer, error) {
+// NewSyncConsumer creates a new sync consumer that reads from the given syncTopic.
+func NewSyncConsumer(brokers []string, store SubscriptionStore, runtimeID, syncTopic string) (*SyncConsumer, error) {
 	client, err := kgo.NewClient(
 		kgo.SeedBrokers(brokers...),
-		kgo.ConsumeTopics(SyncTopic),
+		kgo.ConsumeTopics(syncTopic),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
 	)
 	if err != nil {
