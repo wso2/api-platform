@@ -41,7 +41,7 @@ func TestEnqueueHTTPRouteForAPIPolicy(t *testing.T) {
 		ap := &apiv1.APIPolicy{
 			ObjectMeta: metav1.ObjectMeta{Namespace: "ns1", Name: "pol"},
 			Spec: apiv1.APIPolicySpec{
-				TargetRef: apiv1.APIPolicyTargetRef{
+				TargetRef: &apiv1.APIPolicyTargetRef{
 					Group: gatewayv1.GroupName,
 					Kind:  "HTTPRoute",
 					Name:  "route-a",
@@ -59,7 +59,7 @@ func TestEnqueueHTTPRouteForAPIPolicy(t *testing.T) {
 		ap := &apiv1.APIPolicy{
 			ObjectMeta: metav1.ObjectMeta{Namespace: "ns1", Name: "pol"},
 			Spec: apiv1.APIPolicySpec{
-				TargetRef: apiv1.APIPolicyTargetRef{
+				TargetRef: &apiv1.APIPolicyTargetRef{
 					Group:     gatewayv1.GroupName,
 					Kind:      "HTTPRoute",
 					Name:      "route-a",
@@ -77,7 +77,7 @@ func TestEnqueueHTTPRouteForAPIPolicy(t *testing.T) {
 		ap := &apiv1.APIPolicy{
 			ObjectMeta: metav1.ObjectMeta{Namespace: "ns1", Name: "pol"},
 			Spec: apiv1.APIPolicySpec{
-				TargetRef: apiv1.APIPolicyTargetRef{
+				TargetRef: &apiv1.APIPolicyTargetRef{
 					Group: "wrong.group",
 					Kind:  "HTTPRoute",
 					Name:  "route-a",
@@ -86,6 +86,37 @@ func TestEnqueueHTTPRouteForAPIPolicy(t *testing.T) {
 			},
 		}
 		require.Empty(t, r.enqueueHTTPRouteForAPIPolicy(ctx, ap))
+	})
+
+	t.Run("ExtensionRef-only policy enqueues referencing HTTPRoutes", func(t *testing.T) {
+		scheme := runtime.NewScheme()
+		utilruntime.Must(gatewayv1.AddToScheme(scheme))
+		utilruntime.Must(apiv1.AddToScheme(scheme))
+		ft := gatewayv1.HTTPRouteFilterExtensionRef
+		g := gatewayv1.Group(apiv1.GroupVersion.Group)
+		k := gatewayv1.Kind("APIPolicy")
+		n := gatewayv1.ObjectName("rule-only-pol")
+		route := &gatewayv1.HTTPRoute{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "ns1", Name: "hr-z"},
+			Spec: gatewayv1.HTTPRouteSpec{
+				Rules: []gatewayv1.HTTPRouteRule{{
+					Filters: []gatewayv1.HTTPRouteFilter{
+						{Type: ft, ExtensionRef: &gatewayv1.LocalObjectReference{Group: g, Kind: k, Name: n}},
+					},
+				}},
+			},
+		}
+		ap := &apiv1.APIPolicy{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "ns1", Name: "rule-only-pol"},
+			Spec: apiv1.APIPolicySpec{
+				Policies: []apiv1.Policy{{Name: "p", Version: "v1"}},
+			},
+		}
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(route, ap).Build()
+		rec := &HTTPRouteReconciler{Client: cl}
+		reqs := rec.enqueueHTTPRouteForAPIPolicy(ctx, ap)
+		require.Len(t, reqs, 1)
+		require.Equal(t, types.NamespacedName{Namespace: "ns1", Name: "hr-z"}, reqs[0].NamespacedName)
 	})
 }
 
@@ -144,7 +175,7 @@ func TestEnqueueHTTPRoutesForSecret(t *testing.T) {
 	ap := &apiv1.APIPolicy{
 		ObjectMeta: metav1.ObjectMeta{Namespace: "demo", Name: "pol-with-secret"},
 		Spec: apiv1.APIPolicySpec{
-			TargetRef: apiv1.APIPolicyTargetRef{
+			TargetRef: &apiv1.APIPolicyTargetRef{
 				Group: gatewayv1.GroupName,
 				Kind:  "HTTPRoute",
 				Name:  "hr1",
@@ -162,4 +193,46 @@ func TestEnqueueHTTPRoutesForSecret(t *testing.T) {
 	reqs := r.enqueueHTTPRoutesForSecret(context.Background(), secret)
 	require.Len(t, reqs, 1)
 	require.Equal(t, types.NamespacedName{Namespace: "demo", Name: "hr1"}, reqs[0].NamespacedName)
+}
+
+func TestEnqueueHTTPRoutesForSecret_ExtensionRefOnlyAPIPolicy(t *testing.T) {
+	scheme := runtime.NewScheme()
+	utilruntime.Must(corev1.AddToScheme(scheme))
+	utilruntime.Must(apiv1.AddToScheme(scheme))
+	utilruntime.Must(gatewayv1.AddToScheme(scheme))
+
+	raw, err := json.Marshal(map[string]any{
+		"k": map[string]any{"valueFrom": map[string]any{"name": "my-secret", "valueKey": "x"}},
+	})
+	require.NoError(t, err)
+	ap := &apiv1.APIPolicy{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "demo", Name: "pol-ext-secret"},
+		Spec: apiv1.APIPolicySpec{
+			Policies: []apiv1.Policy{{
+				Name: "p", Version: "v1", Params: &runtime.RawExtension{Raw: raw},
+			}},
+		},
+	}
+	ft := gatewayv1.HTTPRouteFilterExtensionRef
+	g := gatewayv1.Group(apiv1.GroupVersion.Group)
+	k := gatewayv1.Kind("APIPolicy")
+	n := gatewayv1.ObjectName("pol-ext-secret")
+	route := &gatewayv1.HTTPRoute{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "demo", Name: "hr-ext"},
+		Spec: gatewayv1.HTTPRouteSpec{
+			Rules: []gatewayv1.HTTPRouteRule{{
+				Filters: []gatewayv1.HTTPRouteFilter{
+					{Type: ft, ExtensionRef: &gatewayv1.LocalObjectReference{Group: g, Kind: k, Name: n}},
+				},
+			}},
+		},
+	}
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "demo", Name: "my-secret"},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(ap, secret, route).Build()
+	r := &HTTPRouteReconciler{Client: cl}
+	reqs := r.enqueueHTTPRoutesForSecret(context.Background(), secret)
+	require.Len(t, reqs, 1)
+	require.Equal(t, types.NamespacedName{Namespace: "demo", Name: "hr-ext"}, reqs[0].NamespacedName)
 }

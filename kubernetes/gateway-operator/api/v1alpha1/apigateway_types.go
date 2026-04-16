@@ -173,7 +173,7 @@ const (
 	GatewayConditionAccepted = "Accepted"
 	// GatewayConditionProgrammed indicates the Gateway is successfully deployed/programmed
 	GatewayConditionProgrammed = "Programmed"
-	// GatewayConditionReady is the canonical Ready condition type for Gateway (legacy, kept for compatibility)
+	// GatewayConditionReady is the canonical Ready condition type for Gateway (retained for compatibility)
 	GatewayConditionReady = "Ready"
 )
 

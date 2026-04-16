@@ -6,7 +6,7 @@ metadata:
   name: platform-gw
   namespace: gateway-api-demo
   annotations:
-    # Prevent this Gateway from competing for legacy RestApi CRs in mixed demos.
+    # Prevent this Gateway from matching RestApi CRs intended for APIGateway (CRD mode) in mixed demos.
     # RestApi selection uses GatewayRegistry APISelector; default for Gateway is Cluster.
     gateway.api-platform.wso2.com/api-selector: '{"scope":"LabelSelector","matchLabels":{"gateway.api-platform.wso2.com/restapi-target":"k8s"}}'
   labels:

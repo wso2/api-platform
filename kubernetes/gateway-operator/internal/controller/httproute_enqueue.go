@@ -80,7 +80,10 @@ func secretWatchFilter(o client.Object) bool {
 
 // httpRouteRequestForAPIPolicyTarget returns a reconcile request for the HTTPRoute referenced by ap.Spec.targetRef.
 func httpRouteRequestForAPIPolicyTarget(ap *apiv1.APIPolicy) (reconcile.Request, bool) {
-	ref := ap.Spec.TargetRef
+	if ap.Spec.TargetRef == nil {
+		return reconcile.Request{}, false
+	}
+	ref := *ap.Spec.TargetRef
 	if strings.TrimSpace(ref.Kind) != "HTTPRoute" {
 		return reconcile.Request{}, false
 	}
@@ -96,6 +99,65 @@ func httpRouteRequestForAPIPolicyTarget(ap *apiv1.APIPolicy) (reconcile.Request,
 		ns = strings.TrimSpace(*ref.Namespace)
 	}
 	return reconcile.Request{NamespacedName: types.NamespacedName{Namespace: ns, Name: routeName}}, true
+}
+
+func httpRouteReferencesAPIPolicy(route *gatewayv1.HTTPRoute, policyName string) bool {
+	policyName = strings.TrimSpace(policyName)
+	if policyName == "" {
+		return false
+	}
+	for _, rule := range route.Spec.Rules {
+		for _, f := range rule.Filters {
+			if f.Type != gatewayv1.HTTPRouteFilterExtensionRef || f.ExtensionRef == nil {
+				continue
+			}
+			ref := f.ExtensionRef
+			if string(ref.Group) != apiv1.GroupVersion.Group || string(ref.Kind) != "APIPolicy" {
+				continue
+			}
+			if string(ref.Name) == policyName {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (r *HTTPRouteReconciler) enqueueHTTPRoutesReferencingAPIPolicy(ctx context.Context, ap *apiv1.APIPolicy) []reconcile.Request {
+	routes := &gatewayv1.HTTPRouteList{}
+	if err := r.List(ctx, routes, client.InNamespace(ap.Namespace)); err != nil {
+		if r.Logger != nil {
+			r.Logger.Error("watch: list HTTPRoutes for APIPolicy ExtensionRef enqueue",
+				zap.Error(err),
+				zap.String("apiPolicy", client.ObjectKeyFromObject(ap).String()))
+		}
+		return nil
+	}
+	seen := make(map[types.NamespacedName]struct{})
+	var reqs []reconcile.Request
+	for i := range routes.Items {
+		rt := &routes.Items[i]
+		if !httpRouteReferencesAPIPolicy(rt, ap.Name) {
+			continue
+		}
+		key := client.ObjectKeyFromObject(rt)
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		reqs = append(reqs, reconcile.Request{NamespacedName: key})
+	}
+	if r.Logger != nil && len(reqs) > 0 {
+		names := make([]string, 0, len(reqs))
+		for _, q := range reqs {
+			names = append(names, q.NamespacedName.String())
+		}
+		r.Logger.Info("watch: APIPolicy changed; enqueue HTTPRoutes referencing ExtensionRef",
+			zap.String("controller", "HTTPRoute"),
+			zap.String("apiPolicy", client.ObjectKeyFromObject(ap).String()),
+			zap.Strings("httpRoutes", names))
+	}
+	return reqs
 }
 
 // enqueueHTTPRouteForAPIPolicy maps an APIPolicy event to reconcile of its target HTTPRoute so policy
@@ -114,11 +176,7 @@ func (r *HTTPRouteReconciler) enqueueHTTPRouteForAPIPolicy(ctx context.Context, 
 		}
 		return []reconcile.Request{req}
 	}
-	if r.Logger != nil {
-		r.Logger.Debug("watch: APIPolicy event ignored (no HTTPRoute targetRef)",
-			zap.String("apiPolicy", client.ObjectKeyFromObject(ap).String()))
-	}
-	return nil
+	return r.enqueueHTTPRoutesReferencingAPIPolicy(ctx, ap)
 }
 
 // enqueueHTTPRoutesForSecret enqueues HTTPRoutes whose APIPolicy params reference the Secret via valueFrom
@@ -147,15 +205,19 @@ func (r *HTTPRouteReconciler) enqueueHTTPRoutesForSecret(ctx context.Context, ob
 		if !apiPolicyReferencesSecret(ap, secretNS, secretName) {
 			continue
 		}
-		req, ok := httpRouteRequestForAPIPolicyTarget(ap)
-		if !ok {
-			continue
+		var toAdd []reconcile.Request
+		if req, ok := httpRouteRequestForAPIPolicyTarget(ap); ok {
+			toAdd = append(toAdd, req)
+		} else {
+			toAdd = append(toAdd, r.enqueueHTTPRoutesReferencingAPIPolicy(ctx, ap)...)
 		}
-		if _, dup := seen[req.NamespacedName]; dup {
-			continue
+		for _, req := range toAdd {
+			if _, dup := seen[req.NamespacedName]; dup {
+				continue
+			}
+			seen[req.NamespacedName] = struct{}{}
+			reqs = append(reqs, req)
 		}
-		seen[req.NamespacedName] = struct{}{}
-		reqs = append(reqs, req)
 	}
 	if r.Logger != nil && len(reqs) > 0 {
 		ns := make([]string, 0, len(reqs))

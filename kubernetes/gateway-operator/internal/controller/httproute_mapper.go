@@ -170,23 +170,20 @@ func BuildAPIConfigFromHTTPRoute(ctx context.Context, c client.Client, route *ga
 		return nil, newInvalidHTTPRouteConfigError("no operations derived from HTTPRoute")
 	}
 
-	contextPath := route.Annotations[AnnHTTPRouteContext]
+	contextPath := strings.TrimSpace(route.Annotations[AnnHTTPRouteContext])
 	if contextPath == "" {
 		contextPath = commonPathPrefix(ops)
 		if contextPath == "" {
 			contextPath = "/"
 		}
+	} else if !strings.HasPrefix(contextPath, "/") {
+		contextPath = "/" + contextPath
 	}
 
 	apiPolicies, err := loadHTTPRouteAPIPolicies(ctx, c, route, log)
 	if err != nil {
 		return nil, err
 	}
-	opPolicyMap, err := loadHTTPRouteOperationPolicyMap(ctx, c, route, log)
-	if err != nil {
-		return nil, err
-	}
-	applyOperationPolicies(ops, opPolicyMap)
 
 	spec := &apiv1.APIConfigData{
 		Context:     contextPath,
@@ -212,7 +209,7 @@ func BuildAPIConfigFromHTTPRoute(ctx context.Context, c client.Client, route *ga
 			zap.Int("operations", len(spec.Operations)),
 			zap.Int("apiLevelPolicies", len(spec.Policies)),
 			zap.Int("operationsWithAttachedPolicies", opsWithPol),
-			zap.Int("operationPolicyAnnotationEntries", len(opPolicyMap)))
+			zap.Int("operationPolicyAnnotationEntries", 0))
 	}
 	return spec, nil
 }
@@ -230,6 +227,12 @@ func firstBackendURL(ctx context.Context, c client.Client, route *gatewayv1.HTTP
 		for _, b := range rule.BackendRefs {
 			if b.Kind != nil && string(*b.Kind) != "" && string(*b.Kind) != "Service" {
 				continue
+			}
+			if b.Group != nil && string(*b.Group) != "" {
+				return "", newTransientHTTPRouteConfigError(
+					"unsupported backendRef: core Service backends require group to be omitted or empty (got group %q)",
+					string(*b.Group),
+				)
 			}
 			svcNS := ns
 			if b.Namespace != nil && *b.Namespace != "" {

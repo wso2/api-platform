@@ -381,7 +381,17 @@ func (r *HTTPRouteReconciler) cleanupPreviousGatewayDeployment(ctx context.Conte
 	}
 	gwInfo, regOK := registry.GetGatewayRegistry().Get(lastParent.Namespace, lastParent.Name)
 	if !regOK {
-		log.Info("previous parent Gateway not registered yet; cannot clean up stale HTTPRoute deployment",
+		parentGW := &gatewayv1.Gateway{}
+		if err := r.Get(ctx, lastParent, parentGW); err != nil {
+			if apierrors.IsNotFound(err) {
+				log.Info("previous parent Gateway no longer exists; clearing stale last-deployed annotation",
+					zap.String("previousParentNamespace", lastParent.Namespace),
+					zap.String("previousParentName", lastParent.Name))
+				return r.clearLastDeployedParentGateway(ctx, route)
+			}
+			return err
+		}
+		log.Info("previous parent Gateway exists but not registered yet; retrying stale HTTPRoute cleanup",
 			zap.String("previousParentNamespace", lastParent.Namespace),
 			zap.String("previousParentName", lastParent.Name))
 		return fmt.Errorf("previous parent Gateway %s/%s not registered", lastParent.Namespace, lastParent.Name)
@@ -465,7 +475,10 @@ func httprouteAuthFunc(c client.Client, log *zap.Logger, info *registry.GatewayI
 	return func(ctx context.Context, req *http.Request) error {
 		authConfig, err := auth.GetAuthSettingsForRegistryGateway(ctx, c, info)
 		if err != nil {
-			log.Warn("auth config", zap.Error(err))
+			if log != nil {
+				log.Warn("auth config lookup failed", zap.Error(err))
+			}
+			return err
 		}
 		var username, password string
 		var ok bool

@@ -43,7 +43,7 @@ This document is a **short maintainer index** for where code and behaviour live.
 | `HTTPRoute` reconciler | `internal/controller/httproute_controller.go` |
 | Service / `APIPolicy` / Secret → HTTPRoute enqueue | `internal/controller/httproute_enqueue.go` |
 | HTTPRoute → `APIConfigData` mapping | `internal/controller/httproute_mapper.go` |
-| Policy loading (APIPolicy, ConfigMap, annotations, operation map) | `internal/controller/httproute_policies.go` |
+| Policy loading (APIPolicy) | `internal/controller/httproute_policies.go` |
 | **`params` `valueFrom` → Secret resolution** (before REST) | `internal/controller/httproute_policy_params_resolve.go` |
 | Annotation / label keys | `internal/controller/gateway_api_annotations.go` |
 | Shared Helm install/uninstall | `internal/helmgateway/deploy.go` |
@@ -73,25 +73,18 @@ If the Helm values ConfigMap annotation is **omitted**, the operator uses the de
 | `gateway.api-platform.wso2.com/context` | Overrides API **context** path. |
 | `gateway.api-platform.wso2.com/display-name` | Overrides display name (default: route `metadata.name`). |
 | `gateway.api-platform.wso2.com/api-handle` | REST handle for `/rest-apis/{handle}` (default: `{namespace}-{name}` with `/` stripped). |
-| `gateway.api-platform.wso2.com/api-policies` | Inline JSON/YAML list of `Policy` objects for `APIConfigData.policies`. **Ignored** if `api-policies-configmap` is set. If **both** are unset, API-level policies may be loaded from labeled **`APIPolicy`** CRs (see below). |
-| `gateway.api-platform.wso2.com/api-policies-configmap` | ConfigMap name (namespace = HTTPRoute namespace); data key `policies.yaml` \| `policies.yml` \| `policies.json`; **overrides** inline `api-policies` and **skips** ApiLevel `APIPolicy` list loading. |
-| `gateway.api-platform.wso2.com/operation-policies` | Map keyed by `METHOD:/path` → policy list for that derived `Operation` (see `HTTPRouteOperationPolicyKey` in code). |
-| `gateway.api-platform.wso2.com/operation-policies-configmap` | ConfigMap name (namespace = HTTPRoute namespace); data key `operation-policies.yaml` \| `operation-policies.yml` \| `operation-policies.json`; **overrides** inline `operation-policies`. Map entries append after policies from rule filters / `APIPolicy` ExtensionRefs. |
+| *(no HTTPRoute policy annotations)* | Policy attachment is via `APIPolicy` only (API-level when `spec.targetRef` is set; rule-scope via `ExtensionRef` when `targetRef` is omitted). |
 
 ### `APIPolicy` CR (`gateway.api-platform.wso2.com/v1alpha1`)
 
 Recommended way to attach policies for **HTTPRoute**-backed APIs (demo: `kubernetes/helm/resources/gateway-api-httproute-policies-demo/`).
 
-| Field / label | Meaning |
-| ------------- | ------- |
-| `spec.targetRef` | **Shared** reference to the target **`HTTPRoute`** (`group: gateway.networking.k8s.io`, `kind: HTTPRoute`, `name`, optional `namespace`). |
+| Field | Meaning |
+| ----- | ------- |
+| `spec.targetRef` | Optional. When set, **all** `spec.policies` entries are merged into **`APIConfigData.policies`** (API-level) for the named **`HTTPRoute`** (`group: gateway.networking.k8s.io`, `kind: HTTPRoute`, `name`, optional `namespace`). Multiple `APIPolicy` objects are ordered by **metadata.name**. When omitted, the CR is **not** loaded as API-level; use rule **`ExtensionRef`** only. |
 | `spec.policies` | Non-empty array of **`Policy`**-shaped entries (`name`, `version`, optional `executionCondition`, `params`) — same logical shape as `RestApi.spec.policies`. |
-| Label `gateway.api-platform.wso2.com/policy-scope: ApiLevel` | When set, **all** `spec.policies` entries are merged into **`APIConfigData.policies`** (API-level). Multiple `APIPolicy` objects are ordered by **metadata.name**. |
-| *(label omitted or other value)* | Not loaded as API-level; policies apply only when this object is referenced from **`HTTPRoute.spec.rules[].filters`** (`ExtensionRef`). |
 
-**Per-rule attachment:** `HTTPRouteFilter` with `type: ExtensionRef`, `group: gateway.api-platform.wso2.com`, `kind: APIPolicy`, `name: <metadata.name>`. The referenced CR must exist in the HTTPRoute namespace and `spec.targetRef` must match that route. **All** entries in `spec.policies` are appended to the operations derived from that rule’s matches. Rules **without** `ExtensionRef` get **no** rule-scoped policies (API-level only, if any).
-
-**Legacy:** `ExtensionRef` to **core** `ConfigMap` (`group: ""`, `kind: ConfigMap`) with `policies.yaml` \| … is still supported for rule-level lists.
+**Per-rule attachment:** `HTTPRouteFilter` with `type: ExtensionRef`, `group: gateway.api-platform.wso2.com`, `kind: APIPolicy`, `name: <metadata.name>`. The referenced CR must exist in the HTTPRoute namespace. If the `APIPolicy` has **`spec.targetRef`**, it must match that route; if **`targetRef`** is omitted, the policy is rule-attached only. **All** entries in `spec.policies` are appended to the operations derived from that rule’s matches. Rules **without** `ExtensionRef` get **no** rule-scoped policies (API-level only, if any).
 
 ### `params` and Secrets (`valueFrom`)
 
@@ -115,7 +108,7 @@ Policy `params` may use a nested object that is **only** `{ "valueFrom": { "name
 2. Load parent Gateway; confirm managed **gatewayClassName**.
 3. Finalizer: `gateway.api-platform.wso2.com/httproute-finalizer`.
 4. **Registry lookup** by parent `namespace/name` (not label-based `RestApi` matching).
-5. Build `APIConfigData` (policies from annotations, ConfigMaps, **`APIPolicy`**, rule **`ExtensionRef`s**, operation maps — see `httproute_mapper.go` / `httproute_policies.go`).
+5. Build `APIConfigData` (policies from **`APIPolicy`** CRs and rule **`ExtensionRef`s** — see `httproute_mapper.go` / `httproute_policies.go`).
 6. **`resolveAPIConfigPolicyParamsSecrets`** — replace `params` `valueFrom` blobs with string values from **Secrets** (`httproute_policy_params_resolve.go`).
 7. Serialize → YAML via `gatewayclient.BuildRestAPIYAML` (`apiVersion` `gateway.api-platform.wso2.com/v1alpha1`, `Kind` `RestApi`).
 8. Auth: `GetAuthSettingsForRegistryGateway` (Helm values ConfigMap on `GatewayInfo` if set, else `APIGateway` CR with same name if present).
@@ -127,8 +120,8 @@ Policy `params` may use a nested object that is **only** `{ "valueFrom": { "name
 | Watch | Behaviour |
 | ----- | --------- |
 | **Service** | On create/update/delete, list **`HTTPRoute`s** and enqueue those whose **backendRefs** reference that Service (namespace + name). |
-| **`APIPolicy`** | On create/update/delete, enqueue the **`HTTPRoute`** named in **`spec.targetRef`** (when group/kind indicate HTTPRoute). Ensures policy CR edits redeploy without mutating the route. |
-| **Secret** | On create/update/delete (predicate skips **`kubernetes.io/service-account-token`**), list **`APIPolicy`** cluster-wide; if any **`spec.policies[].params`** JSON references the Secret via **`valueFrom`** (see `apiPolicyReferencesSecret` / tree walk), enqueue that policy’s target HTTPRoute. Ensures credential rotation triggers redeploy. |
+| **`APIPolicy`** | On create/update/delete, enqueue the **`HTTPRoute`** named in **`spec.targetRef`** when set; otherwise enqueue HTTPRoutes in the same namespace that reference this policy via rule **`ExtensionRef`**. Ensures policy CR edits redeploy without mutating the route. |
+| **Secret** | On create/update/delete (predicate skips **`kubernetes.io/service-account-token`**), list **`APIPolicy`** cluster-wide; if any **`spec.policies[].params`** JSON references the Secret via **`valueFrom`** (see `apiPolicyReferencesSecret` / tree walk), enqueue the affected HTTPRoute(s) (via **`targetRef`** or **`ExtensionRef`**). Ensures credential rotation triggers redeploy. |
 
 `SetupWithManager` wires all three in `httproute_controller.go`.
 

@@ -17,11 +17,15 @@ spec:
         app: hello-backend
     spec:
       containers:
-        - name: echo
-          image: ealen/echo-server:0.9.2
+        - name: sample-backend
+          image: ghcr.io/wso2/api-platform/sample-service:latest
+          args:
+            - "-addr"
+            - ":9080"
+            - "-pretty"
           ports:
             - name: http
-              containerPort: 80
+              containerPort: 9080
           resources:
             requests:
               cpu: 10m
@@ -40,5 +44,5 @@ spec:
     app: hello-backend
   ports:
     - name: http
-      port: 80
-      targetPort: 80
+      port: 9080
+      targetPort: 9080

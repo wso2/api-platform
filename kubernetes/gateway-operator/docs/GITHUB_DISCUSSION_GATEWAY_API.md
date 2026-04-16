@@ -11,7 +11,7 @@ The **gateway-operator** reconciles standard **Kubernetes Gateway API** resource
 - **Gateway:** Same *infrastructure* role as **`APIGateway`** — deploy the platform gateway via Helm, discover the gateway-controller **Service**, register it in the in-memory **GatewayRegistry** (no dependency on an `APIGateway` CR for this path).
 - **HTTPRoute:** Same *API* role as **`RestApi`** — build an `api.yaml`-compatible payload (`APIConfigData`) and call gateway-controller **REST** (`POST`/`PUT` `/rest-apis`, `DELETE` `/rest-apis/{handle}`).
 - **Service / `APIPolicy` / Secret:** **HTTPRoute** resolution plus **watches** on **Service**, **`APIPolicy`**, and **Secret** enqueue routes when backends, policy CRs, or referenced Secret data change.
-- **`APIPolicy` CR:** Gateway API–only (`gateway.api-platform.wso2.com/v1alpha1`); shared **`spec.targetRef`** + **`spec.policies`** array; optional ApiLevel label; rule attachment via **`ExtensionRef`**. **`params.valueFrom`** is resolved from Secrets before gateway-controller REST. Does **not** change `RestApi` / `APIGateway` reconciliation.
+- **`APIPolicy` CR:** Gateway API–only (`gateway.api-platform.wso2.com/v1alpha1`); **`spec.policies`** array; optional **`spec.targetRef`** (**HTTPRoute**) for API-level merge; omit **`targetRef`** and attach via rule **`ExtensionRef`** for rule/resource scope. **`params.valueFrom`** is resolved from Secrets before gateway-controller REST. Does **not** change `RestApi` / `APIGateway` reconciliation.
 
 ---
 
@@ -119,12 +119,9 @@ If the Helm values ConfigMap annotation is **omitted**, the operator uses the de
 | `gateway.api-platform.wso2.com/context` | Overrides API **context** path. |
 | `gateway.api-platform.wso2.com/display-name` | Overrides display name (default: route `metadata.name`). |
 | `gateway.api-platform.wso2.com/api-handle` | REST handle for `/rest-apis/{handle}` (default: `{namespace}-{name}` with `/` stripped). |
-| `gateway.api-platform.wso2.com/api-policies` | Optional inline API-level policies (YAML/JSON). Superseded by `api-policies-configmap` when set. If unset with no ConfigMap, ApiLevel **`APIPolicy`** CRs (labeled `policy-scope: ApiLevel`) may supply API-level policies. |
-| `gateway.api-platform.wso2.com/api-policies-configmap` | ConfigMap-backed API-level policy list. |
-| `gateway.api-platform.wso2.com/operation-policies` | Optional `METHOD:/path` → policy list map. |
-| `gateway.api-platform.wso2.com/operation-policies-configmap` | ConfigMap-backed operation policy map. |
+| *(no HTTPRoute policy annotations)* | Policy attachment is via `APIPolicy` only (API-level when `spec.targetRef` is set; rule-scope via `ExtensionRef` when `targetRef` is omitted). |
 
-**`APIPolicy` CR** (recommended): `spec.targetRef` → HTTPRoute; `spec.policies` → array of `Policy`-shaped entries. **ApiLevel:** label `gateway.api-platform.wso2.com/policy-scope: ApiLevel`. **Rule-level:** reference from `spec.rules[].filters` with `ExtensionRef` (`group: gateway.api-platform.wso2.com`, `kind: APIPolicy`). **Legacy:** `ExtensionRef` to core `ConfigMap` with `policies.yaml` still supported for rule-level lists.
+**`APIPolicy` CR**: `spec.policies` → array of `Policy`-shaped entries. **API-level:** set `spec.targetRef` to the `HTTPRoute`. **Rule-level:** omit `spec.targetRef`; reference from `spec.rules[].filters` with `ExtensionRef` (`group: gateway.api-platform.wso2.com`, `kind: APIPolicy`).
 
 **Sensitive params:** Nested `{ "valueFrom": { "name", "valueKey" [, "namespace"] } }` in `params` is resolved from **`Secret.data`** before **`DeployRestAPI`** so gateway-controller sees plain strings (same as `RestApi` inline policies).
 
@@ -148,7 +145,7 @@ If the Helm values ConfigMap annotation is **omitted**, the operator uses the de
 2. Load parent Gateway; confirm managed **gatewayClassName**.
 3. Finalizer: `gateway.api-platform.wso2.com/httproute-finalizer`.
 4. **Registry lookup** by parent `namespace/name` (not label-based `RestApi` matching).
-5. Build `APIConfigData` (annotations, ConfigMaps, **`APIPolicy`**, rule ExtensionRefs, operation maps).
+5. Build `APIConfigData` (**`APIPolicy`**, rule ExtensionRefs).
 6. Resolve **`params.valueFrom`** using **Secrets** (replace with string values for gateway-controller).
 7. Serialize → YAML via `gatewayclient.BuildRestAPIYAML` (`apiVersion` `gateway.api-platform.wso2.com/v1alpha1`, `Kind` `RestApi`).
 8. **Auth:** `GetAuthSettingsForRegistryGateway` (Helm values ConfigMap on `GatewayInfo` if set, else `APIGateway` CR with same name if present).
@@ -159,8 +156,8 @@ If the Helm values ConfigMap annotation is **omitted**, the operator uses the de
 ### Watches (HTTPRoute controller)
 
 - **Services:** On create/update/delete, list `HTTPRoute`s and enqueue those whose **backendRefs** reference that Service.
-- **`APIPolicy`:** Enqueue the HTTPRoute in **`spec.targetRef`** when the policy CR changes.
-- **Secrets:** When a Secret changes (except service-account token type), enqueue HTTPRoutes whose **`APIPolicy`** `params` reference that Secret via **`valueFrom`**.
+- **`APIPolicy`:** Enqueue the HTTPRoute in **`spec.targetRef`** when set; otherwise enqueue HTTPRoutes in the same namespace that reference this policy via rule **`ExtensionRef`**.
+- **Secrets:** When a Secret changes (except service-account token type), enqueue HTTPRoutes affected by any **`APIPolicy`** whose `params` reference that Secret via **`valueFrom`** (target HTTPRoute or ExtensionRef-only policies).
 
 ---
 

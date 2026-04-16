@@ -2,11 +2,11 @@
 
 This is a **separate** manifest set from [`../gateway-api-operator-demo`](../gateway-api-operator-demo). It shows the **APIPolicy** custom resource (`gateway.api-platform.wso2.com/v1alpha1`) for Gateway API HTTPRoutes:
 
-1. **API-level policies** — `APIPolicy` objects with label `gateway.api-platform.wso2.com/policy-scope: ApiLevel`, a shared **`spec.targetRef`** to the **HTTPRoute**, and one or more entries in **`spec.policies`** (same shape as RestApi embedded policies). All entries are merged into `APIConfigData.policies` (ordered by `APIPolicy` name, then list order).
-2. **Rule / match scope** — `APIPolicy` objects **without** that label are not loaded as API-level; reference them from **`spec.rules[].filters`** with **`type: ExtensionRef`**. **All** entries in **`spec.policies`** on the referenced `APIPolicy` apply to operations derived from that rule’s matches.
+1. **API-level policies** — `APIPolicy` objects with **`spec.targetRef`** set to the **HTTPRoute** and one or more entries in **`spec.policies`** (same shape as RestApi embedded policies). All entries are merged into `APIConfigData.policies` (ordered by `APIPolicy` name, then list order).
+2. **Rule / resource scope** — `APIPolicy` objects **without** **`spec.targetRef`** are not loaded as API-level; reference them only from **`spec.rules[].filters`** with **`type: ExtensionRef`**. **All** entries in **`spec.policies`** on the referenced `APIPolicy` apply to operations derived from that rule’s matches.
 3. **Secret-backed params** — `02` + `03` add a **`Secret`**, an `APIPolicy` whose **`params`** use nested **`valueFrom`** (`name` / `valueKey`), and a second **`HTTPRoute`** so you can validate Secret watch → HTTPRoute re-reconcile (patch the Secret data and confirm the operator redeploys).
 
-There are **no** ConfigMaps or `api-policies` / `operation-policies` annotations in this demo.
+There are **no** policy ConfigMaps or inline policy annotations in this demo (policies are attached only via `APIPolicy`).
 
 When **`spec.policies[].params`** embed **`valueFrom`** (e.g. `name` / `valueKey`, optional `namespace`), the operator watches those **Secrets** and re-reconciles the target **HTTPRoute** when referenced Secret data changes. `ServiceAccount` token secrets are ignored by the watch.
 
@@ -31,7 +31,7 @@ filters:
       name: <apipolicy-metadata-name>
 ```
 
-The referenced `APIPolicy` must exist in the HTTPRoute namespace, **`spec.targetRef`** must reference **that** HTTPRoute (`group: gateway.networking.k8s.io`, `kind: HTTPRoute`, `name` matching the route), and **`spec.policies`** must be a non-empty array.
+The referenced `APIPolicy` must exist in the HTTPRoute namespace and **`spec.policies`** must be a non-empty array. For rule-attached policies, **omit** **`spec.targetRef`** on the `APIPolicy`. If **`targetRef`** is set, it must match **that** HTTPRoute (`group: gateway.networking.k8s.io`, `kind: HTTPRoute`, `name` matching the route).
 
 ## Apply
 
@@ -70,7 +70,7 @@ curl --request GET \
   --header 'Accept: application/json' -k
 ```
 
-Same HTTPRoute, path **without** rule-level `ExtensionRef` (still has **API-level** policies from the ApiLevel `APIPolicy`):
+Same HTTPRoute, path **without** rule-level `ExtensionRef` (still has **API-level** policies from the `APIPolicy` with **`spec.targetRef`**):
 
 ```bash
 curl --request GET \
@@ -92,11 +92,11 @@ curl --request GET \
 
 | File | Purpose |
 |------|---------|
-| `00-apipolicies.yaml` | ApiLevel + rule-scoped `APIPolicy` CRs (`targetRef` → HTTPRoute `hello-apipolicy-demo`). |
+| `00-apipolicies.yaml` | API-level `APIPolicy` (`targetRef` → `hello-apipolicy-demo`) + rule-scoped `APIPolicy` (no `targetRef`). |
 | `01-httproute.yaml` | HTTPRoute with **ExtensionRef** to the rule-scoped `APIPolicy`. |
-| `02-secret-and-apipolicy.yaml` | `Secret` + rule `APIPolicy` with **`params.valueFrom`** (`targetRef` → `hello-apipolicy-secrets-demo`). |
+| `02-secret-and-apipolicy.yaml` | `Secret` + rule `APIPolicy` with **`params.valueFrom`** (no `targetRef`; referenced from `03` HTTPRoute only). |
 | `03-httproute-secret-policy.yaml` | Second HTTPRoute; **ExtensionRef** to the secret-backed `APIPolicy`. |
 
-## Legacy options (operator)
+## Policy attachment (operator)
 
-The operator may still support **ConfigMap** `ExtensionRef` (`group: ""`, `kind: ConfigMap`) and annotations such as `api-policies` / `api-policies-configmap` / `operation-policies` for compatibility; this demo does not use them.
+Only **`APIPolicy`** is supported for Gateway API policy attachment.

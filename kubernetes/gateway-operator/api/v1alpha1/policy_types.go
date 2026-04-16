@@ -20,9 +20,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// APIPolicyTargetRef identifies the HTTPRoute this APIPolicy is associated with.
-// Per-rule / per-resource application is not configured on APIPolicy: it is determined only by
-// where the policy is referenced from HTTPRoute rules (e.g. rules[].filters ExtensionRef).
+// APIPolicyTargetRef identifies the HTTPRoute for API-level policies (optional).
+// When omitted on APIPolicy, policies apply only when the CR is referenced from HTTPRoute rule filters (ExtensionRef).
 type APIPolicyTargetRef struct {
 	// Group of the referent (e.g. gateway.networking.k8s.io).
 	// +kubebuilder:validation:Required
@@ -43,13 +42,13 @@ type APIPolicyTargetRef struct {
 	Namespace *string `json:"namespace,omitempty"`
 }
 
-// APIPolicySpec holds a shared targetRef and a list of policy instances (same logical shape as RestApi embedded policies).
+// APIPolicySpec holds an optional targetRef for API-level attachment and a list of policy instances (same shape as RestApi embedded policies).
 type APIPolicySpec struct {
-	// TargetRef selects the HTTPRoute this resource is associated with (required). It applies to all entries in policies.
-	// +kubebuilder:validation:Required
-	TargetRef APIPolicyTargetRef `json:"targetRef"`
-	// Policies is the list of policy instances (name, version, optional params, executionCondition) applied together
-	// for this APIPolicy object (API-level via label, or rule scope via ExtensionRef).
+	// TargetRef selects the HTTPRoute for API-level policies: when set, all spec.policies entries are merged into APIConfigData.policies for that route.
+	// When omitted, this APIPolicy applies only when referenced from HTTPRoute rule filters (ExtensionRef).
+	// +optional
+	TargetRef *APIPolicyTargetRef `json:"targetRef,omitempty"`
+	// Policies is the list of policy instances (name, version, optional params, executionCondition).
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
 	Policies []Policy `json:"policies"`
@@ -70,8 +69,8 @@ type APIPolicyStatus struct {
 //+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // APIPolicy is a namespaced policy definition for the Gateway API HTTPRoute integration only.
-// Reference it from HTTPRoute rule filters (ExtensionRef); that placement determines which rule
-// / match scope receives the policies. It does not apply to RestApi / APIGateway reconciliation.
+// Set spec.targetRef to apply policies at API level for that HTTPRoute, or omit targetRef and reference
+// this object from HTTPRoute rule filters (ExtensionRef) for rule/match scope. It does not apply to RestApi / APIGateway reconciliation.
 // (Distinct from the embedded Policy type on RestApi.)
 type APIPolicy struct {
 	metav1.TypeMeta   `json:",inline"`

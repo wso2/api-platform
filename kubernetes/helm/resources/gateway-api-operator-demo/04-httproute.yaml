@@ -29,5 +29,5 @@ spec:
         - group: ""
           kind: Service
           name: hello-backend
-          port: 80
+          port: 9080
           weight: 1

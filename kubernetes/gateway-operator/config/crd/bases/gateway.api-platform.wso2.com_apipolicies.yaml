@@ -31,8 +31,8 @@ spec:
       openAPIV3Schema:
         description: |-
           APIPolicy is a namespaced policy definition for the Gateway API HTTPRoute integration only.
-          Reference it from HTTPRoute rule filters (ExtensionRef); that placement determines which rule
-          / match scope receives the policies. It does not apply to RestApi / APIGateway reconciliation.
+          Set spec.targetRef to apply policies at API level for that HTTPRoute, or omit targetRef and reference
+          this object from HTTPRoute rule filters (ExtensionRef) for rule/match scope. It does not apply to RestApi / APIGateway reconciliation.
           (Distinct from the embedded Policy type on RestApi.)
         properties:
           apiVersion:
@@ -53,13 +53,12 @@ spec:
           metadata:
             type: object
           spec:
-            description: APIPolicySpec holds a shared targetRef and a list of policy
-              instances (same logical shape as RestApi embedded policies).
+            description: APIPolicySpec holds an optional targetRef for API-level attachment
+              and a list of policy instances (same shape as RestApi embedded policies).
             properties:
               policies:
-                description: |-
-                  Policies is the list of policy instances (name, version, optional params, executionCondition) applied together
-                  for this APIPolicy object (API-level via label, or rule scope via ExtensionRef).
+                description: Policies is the list of policy instances (name, version,
+                  optional params, executionCondition).
                 items:
                   description: Policy defines a policy attachment as embedded in RestApi
                     or APIConfigData.
@@ -76,7 +75,9 @@ spec:
                         key/value structure)
                       x-kubernetes-preserve-unknown-fields: true
                     version:
-                      description: Version Semantic version of the policy
+                      description: Version Semantic version of the policy (for example,
+                        v1)
+                      pattern: ^v\d+$
                       type: string
                   required:
                   - name
@@ -85,8 +86,9 @@ spec:
                 minItems: 1
                 type: array
               targetRef:
-                description: TargetRef selects the HTTPRoute this resource is associated
-                  with (required). It applies to all entries in policies.
+                description: |-
+                  TargetRef selects the HTTPRoute for API-level policies: when set, all spec.policies entries are merged into APIConfigData.policies for that route.
+                  When omitted, this APIPolicy applies only when referenced from HTTPRoute rule filters (ExtensionRef).
                 properties:
                   group:
                     description: Group of the referent (e.g. gateway.networking.k8s.io).
@@ -116,7 +118,6 @@ spec:
                 type: object
             required:
             - policies
-            - targetRef
             type: object
           status:
             description: APIPolicyStatus defines observed state.

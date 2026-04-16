@@ -1,6 +1,6 @@
-# Legacy CRD flow — demo (APIGateway, RestApi, Service)
+# APIGateway + RestApi demo (CRD mode)
 
-This walkthrough validates that the **WSO2-specific CRD flow** still works:
+This walkthrough validates the **APIGateway** + **`RestApi`** path (distinct from the Kubernetes Gateway API mode):
 
 1. Deploy a platform gateway via **`APIGateway`** (`gateway.api-platform.wso2.com`).
 2. Push an API definition via **`RestApi`**, routing to a Kubernetes **`Service`** backend.
@@ -14,7 +14,7 @@ To pin APIs to this **`APIGateway`**:
 - Set **`APIGateway.spec.apiSelector`** to **`scope: LabelSelector`** with **`matchLabels`** (see `02-apigateway.yaml`).
 - Set the **same labels** on **`RestApi.metadata.labels`** (see `04-restapi.yaml`).
 
-If you also run the Gateway API demo, give that **`Gateway`** a different API selection (annotation **`gateway.api-platform.wso2.com/api-selector`**) so it does not share the legacy label, or it will still compete for `RestApi` objects that match both selectors.
+If you also run the Gateway API demo, give that **`Gateway`** a different API selection (annotation **`gateway.api-platform.wso2.com/api-selector`**) so it does not use the same **`restapi-target`** label value as this **`APIGateway`**, or `RestApi` objects could match both selectors.
 
 ## Prerequisites
 
@@ -38,14 +38,14 @@ kubectl apply -f 04-restapi.yaml
 1. Check the `APIGateway` status:
 
 ```bash
-kubectl get apigateway legacy-gw -n apigateway-demo -o yaml
+kubectl get apigateway restapi-gw -n apigateway-demo -o yaml
 ```
 
-2. Confirm Helm release and workloads (release name `legacy-gw-gateway`):
+2. Confirm Helm release and workloads (release name `restapi-gw-gateway`):
 
 ```bash
 helm list -n apigateway-demo
-kubectl get deploy,svc,pods -n apigateway-demo -l 'app.kubernetes.io/instance=legacy-gw-gateway'
+kubectl get deploy,svc,pods -n apigateway-demo -l 'app.kubernetes.io/instance=restapi-gw-gateway'
 ```
 
 3. Check `RestApi` status:

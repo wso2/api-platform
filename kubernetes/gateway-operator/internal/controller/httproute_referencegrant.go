@@ -60,7 +60,7 @@ func referenceGrantAllowsHTTPRouteToService(spec *gatewayv1beta1.ReferenceGrantS
 			continue
 		}
 		fg := string(f.Group)
-		if fg != "" && fg != gatewayv1.GroupName {
+		if fg != gatewayv1.GroupName {
 			continue
 		}
 		fromOK = true

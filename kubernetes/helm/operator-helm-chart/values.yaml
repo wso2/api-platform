@@ -268,7 +268,7 @@ gateway:
             mode: uds
 
             # Omit host for unified gateway-runtime (Envoy talks to policy-engine over UDS).
-            # Do not set host to the legacy split-chart Service name (e.g. policy-engine).
+            # Do not set host to the split-chart-only Service name (e.g. policy-engine).
             port: 9001
 
             # Timeout for gRPC service connection (in milliseconds)

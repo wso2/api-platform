@@ -23,7 +23,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
-	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/gatewayclient"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -92,7 +91,7 @@ func TestBuildAPIConfigFromHTTPRoute(t *testing.T) {
 	require.Equal(t, "http://backend.default.svc.cluster.local:8080", spec.Upstream.Main.Url)
 }
 
-func TestBuildAPIConfigFromHTTPRoute_PoliciesAnnotations(t *testing.T) {
+func TestBuildAPIConfigFromHTTPRoute_ContextAnnotationTrimAndNormalize(t *testing.T) {
 	scheme := runtime.NewScheme()
 	utilruntime.Must(corev1.AddToScheme(scheme))
 	utilruntime.Must(gatewayv1.AddToScheme(scheme))
@@ -106,6 +105,87 @@ func TestBuildAPIConfigFromHTTPRoute_PoliciesAnnotations(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(svc).Build()
 
 	pathMatch := gatewayv1.PathMatchPathPrefix
+	pathVal := "/api/hello"
+	method := gatewayv1.HTTPMethodGet
+
+	t.Run("whitespace-only treated as unset => fallback commonPathPrefix", func(t *testing.T) {
+		route := &gatewayv1.HTTPRoute{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-route",
+				Namespace: "default",
+				Annotations: map[string]string{
+					AnnHTTPRouteContext: "   ",
+				},
+			},
+			Spec: gatewayv1.HTTPRouteSpec{
+				Rules: []gatewayv1.HTTPRouteRule{{
+					Matches: []gatewayv1.HTTPRouteMatch{{
+						Path:   &gatewayv1.HTTPPathMatch{Type: &pathMatch, Value: &pathVal},
+						Method: &method,
+					}},
+					BackendRefs: []gatewayv1.HTTPBackendRef{{
+						BackendRef: gatewayv1.BackendRef{
+							BackendObjectReference: gatewayv1.BackendObjectReference{
+								Name: gatewayv1.ObjectName("backend"),
+								Port: ptrPort(8080),
+							},
+						},
+					}},
+				}},
+			},
+		}
+
+		spec, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
+		require.NoError(t, err)
+		require.Equal(t, "/api/hello", spec.Context)
+	})
+
+	t.Run("missing leading slash normalized", func(t *testing.T) {
+		route := &gatewayv1.HTTPRoute{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-route",
+				Namespace: "default",
+				Annotations: map[string]string{
+					AnnHTTPRouteContext: "api",
+				},
+			},
+			Spec: gatewayv1.HTTPRouteSpec{
+				Rules: []gatewayv1.HTTPRouteRule{{
+					Matches: []gatewayv1.HTTPRouteMatch{{
+						Path:   &gatewayv1.HTTPPathMatch{Type: &pathMatch, Value: &pathVal},
+						Method: &method,
+					}},
+					BackendRefs: []gatewayv1.HTTPBackendRef{{
+						BackendRef: gatewayv1.BackendRef{
+							BackendObjectReference: gatewayv1.BackendObjectReference{
+								Name: gatewayv1.ObjectName("backend"),
+								Port: ptrPort(8080),
+							},
+						},
+					}},
+				}},
+			},
+		}
+
+		spec, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
+		require.NoError(t, err)
+		require.Equal(t, "/api", spec.Context)
+	})
+}
+
+func TestBuildAPIConfigFromHTTPRoute_APIPolicyTargetRef(t *testing.T) {
+	scheme := runtime.NewScheme()
+	utilruntime.Must(corev1.AddToScheme(scheme))
+	utilruntime.Must(gatewayv1.AddToScheme(scheme))
+	utilruntime.Must(gatewayv1beta1.AddToScheme(scheme))
+	utilruntime.Must(apiv1.AddToScheme(scheme))
+
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "backend", Namespace: "default"},
+		Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 8080}}},
+	}
+
+	pathMatch := gatewayv1.PathMatchPathPrefix
 	pathVal := "/hello"
 	method := gatewayv1.HTTPMethodGet
 
@@ -113,19 +193,6 @@ func TestBuildAPIConfigFromHTTPRoute_PoliciesAnnotations(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "pol-route",
 			Namespace: "default",
-			Annotations: map[string]string{
-				AnnHTTPRouteAPIPolicies: `- name: rate-limit
-  version: v1
-  params:
-    rpm: 100
-`,
-				AnnHTTPRouteOperationPolicies: `GET:/hello:
-  - name: jwt-auth
-    version: v1
-    params:
-      issuers: ["https://idp.example"]
-`,
-			},
 		},
 		Spec: gatewayv1.HTTPRouteSpec{
 			Rules: []gatewayv1.HTTPRouteRule{
@@ -143,6 +210,25 @@ func TestBuildAPIConfigFromHTTPRoute_PoliciesAnnotations(t *testing.T) {
 			},
 		},
 	}
+
+	apiPol := &apiv1.APIPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "api-level",
+			Namespace: "default",
+		},
+		Spec: apiv1.APIPolicySpec{
+			TargetRef: &apiv1.APIPolicyTargetRef{
+				Group: gatewayv1.GroupName,
+				Kind:  "HTTPRoute",
+				Name:  "pol-route",
+			},
+			Policies: []apiv1.Policy{
+				{Name: "rate-limit", Version: "v1"},
+			},
+		},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(svc, route, apiPol).Build()
 
 	spec, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
 	require.NoError(t, err)
@@ -150,16 +236,10 @@ func TestBuildAPIConfigFromHTTPRoute_PoliciesAnnotations(t *testing.T) {
 	require.Equal(t, "rate-limit", spec.Policies[0].Name)
 	require.Equal(t, "v1", spec.Policies[0].Version)
 	require.Len(t, spec.Operations, 1)
-	require.Len(t, spec.Operations[0].Policies, 1)
-	require.Equal(t, "jwt-auth", spec.Operations[0].Policies[0].Name)
-
-	yamlBytes, err := gatewayclient.BuildRestAPIYAML(apiv1.GroupVersion.String(), "RestApi", "handle", *spec)
-	require.NoError(t, err)
-	require.Contains(t, string(yamlBytes), "rate-limit")
-	require.Contains(t, string(yamlBytes), "jwt-auth")
+	require.Len(t, spec.Operations[0].Policies, 0)
 }
 
-func TestBuildAPIConfigFromHTTPRoute_APIPoliciesConfigMap(t *testing.T) {
+func TestBuildAPIConfigFromHTTPRoute_APIPolicyRuleExtensionRef(t *testing.T) {
 	scheme := runtime.NewScheme()
 	utilruntime.Must(corev1.AddToScheme(scheme))
 	utilruntime.Must(gatewayv1.AddToScheme(scheme))
@@ -170,86 +250,20 @@ func TestBuildAPIConfigFromHTTPRoute_APIPoliciesConfigMap(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "backend", Namespace: "default"},
 		Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 8080}}},
 	}
-	cm := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{Name: "api-pol-cm", Namespace: "default"},
-		Data: map[string]string{
-			"policies.yaml": `policies:
-  - name: from-cm
-    version: v2
-`,
-		},
-	}
-	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(svc, cm).Build()
-
-	pathMatch := gatewayv1.PathMatchPathPrefix
-	pathVal := "/p"
-	method := gatewayv1.HTTPMethodGet
-
-	route := &gatewayv1.HTTPRoute{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "cm-route",
-			Namespace: "default",
-			Annotations: map[string]string{
-				AnnHTTPRouteAPIPoliciesConfigMap: "api-pol-cm",
-				AnnHTTPRouteAPIPolicies: `- name: ignored-when-cm-set
-  version: v99`,
-			},
-		},
-		Spec: gatewayv1.HTTPRouteSpec{
-			Rules: []gatewayv1.HTTPRouteRule{
-				{
-					Matches: []gatewayv1.HTTPRouteMatch{
-						{Path: &gatewayv1.HTTPPathMatch{Type: &pathMatch, Value: &pathVal}, Method: &method},
-					},
-					BackendRefs: []gatewayv1.HTTPBackendRef{
-						{BackendRef: gatewayv1.BackendRef{BackendObjectReference: gatewayv1.BackendObjectReference{
-							Name: gatewayv1.ObjectName("backend"),
-							Port: ptrPort(8080),
-						}}},
-					},
-				},
-			},
-		},
-	}
-
-	spec, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
-	require.NoError(t, err)
-	require.Len(t, spec.Policies, 1)
-	require.Equal(t, "from-cm", spec.Policies[0].Name)
-	require.Equal(t, "v2", spec.Policies[0].Version)
-}
-
-func TestBuildAPIConfigFromHTTPRoute_RuleExtensionRefConfigMap(t *testing.T) {
-	scheme := runtime.NewScheme()
-	utilruntime.Must(corev1.AddToScheme(scheme))
-	utilruntime.Must(gatewayv1.AddToScheme(scheme))
-	utilruntime.Must(gatewayv1beta1.AddToScheme(scheme))
-	utilruntime.Must(apiv1.AddToScheme(scheme))
-
-	svc := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{Name: "backend", Namespace: "default"},
-		Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 8080}}},
-	}
-	cm := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{Name: "rule-pol-cm", Namespace: "default"},
-		Data: map[string]string{
-			"policies.yaml": `- name: ext-ref-policy
-  version: v1
-`,
-		},
-	}
-	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(svc, cm).Build()
 
 	pathMatch := gatewayv1.PathMatchPathPrefix
 	pathVal := "/r"
 	method := gatewayv1.HTTPMethodPost
 	ft := gatewayv1.HTTPRouteFilterExtensionRef
-	group := gatewayv1.Group("")
-	kind := gatewayv1.Kind("ConfigMap")
-	name := gatewayv1.ObjectName("rule-pol-cm")
+	group := gatewayv1.Group(apiv1.GroupVersion.Group)
+	kind := gatewayv1.Kind("APIPolicy")
+	name := gatewayv1.ObjectName("rule-pol")
 
 	route := &gatewayv1.HTTPRoute{
-		ObjectMeta: metav1.ObjectMeta{Name: "ext-ref-route", Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "ext-ref-route",
+			Namespace: "default",
+		},
 		Spec: gatewayv1.HTTPRouteSpec{
 			Rules: []gatewayv1.HTTPRouteRule{
 				{
@@ -270,6 +284,20 @@ func TestBuildAPIConfigFromHTTPRoute_RuleExtensionRefConfigMap(t *testing.T) {
 		},
 	}
 
+	rulePol := &apiv1.APIPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "rule-pol",
+			Namespace: "default",
+		},
+		Spec: apiv1.APIPolicySpec{
+			Policies: []apiv1.Policy{
+				{Name: "ext-ref-policy", Version: "v1"},
+			},
+		},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(svc, route, rulePol).Build()
+
 	spec, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
 	require.NoError(t, err)
 	require.Len(t, spec.Operations, 1)
@@ -277,82 +305,6 @@ func TestBuildAPIConfigFromHTTPRoute_RuleExtensionRefConfigMap(t *testing.T) {
 	require.Equal(t, "/r", spec.Operations[0].Path)
 	require.Len(t, spec.Operations[0].Policies, 1)
 	require.Equal(t, "ext-ref-policy", spec.Operations[0].Policies[0].Name)
-}
-
-func TestBuildAPIConfigFromHTTPRoute_OperationPoliciesConfigMap(t *testing.T) {
-	scheme := runtime.NewScheme()
-	utilruntime.Must(corev1.AddToScheme(scheme))
-	utilruntime.Must(gatewayv1.AddToScheme(scheme))
-	utilruntime.Must(gatewayv1beta1.AddToScheme(scheme))
-	utilruntime.Must(apiv1.AddToScheme(scheme))
-
-	svc := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{Name: "backend", Namespace: "default"},
-		Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 8080}}},
-	}
-	cm := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{Name: "op-pol-cm", Namespace: "default"},
-		Data: map[string]string{
-			"operation-policies.yaml": `GET:/hello:
-  - name: from-op-cm
-    version: v3
-`,
-		},
-	}
-	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(svc, cm).Build()
-
-	pathMatch := gatewayv1.PathMatchPathPrefix
-	pathVal := "/hello"
-	method := gatewayv1.HTTPMethodGet
-
-	route := &gatewayv1.HTTPRoute{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "op-cm-route",
-			Namespace: "default",
-			Annotations: map[string]string{
-				AnnHTTPRouteOperationPoliciesConfigMap: "op-pol-cm",
-				AnnHTTPRouteOperationPolicies: `GET:/hello:
-  - name: ignored-inline
-    version: v99`,
-			},
-		},
-		Spec: gatewayv1.HTTPRouteSpec{
-			Rules: []gatewayv1.HTTPRouteRule{
-				{
-					Matches: []gatewayv1.HTTPRouteMatch{
-						{Path: &gatewayv1.HTTPPathMatch{Type: &pathMatch, Value: &pathVal}, Method: &method},
-					},
-					BackendRefs: []gatewayv1.HTTPBackendRef{
-						{BackendRef: gatewayv1.BackendRef{BackendObjectReference: gatewayv1.BackendObjectReference{
-							Name: gatewayv1.ObjectName("backend"),
-							Port: ptrPort(8080),
-						}}},
-					},
-				},
-			},
-		},
-	}
-
-	spec, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
-	require.NoError(t, err)
-	require.Len(t, spec.Operations, 1)
-	require.Len(t, spec.Operations[0].Policies, 1)
-	require.Equal(t, "from-op-cm", spec.Operations[0].Policies[0].Name)
-	require.Equal(t, "v3", spec.Operations[0].Policies[0].Version)
-}
-
-func TestHTTPRouteOperationPolicyKeyAndNormalization(t *testing.T) {
-	require.Equal(t, "GET:/hello", HTTPRouteOperationPolicyKey(apiv1.OperationMethodGET, "/hello"))
-	require.Equal(t, "GET:/hello", HTTPRouteOperationPolicyKey(apiv1.OperationMethodGET, "hello"))
-
-	raw, err := parseOperationPoliciesMap(`{"get:/hello": [{"name":"x","version":"v1"}]}`)
-	require.NoError(t, err)
-	require.Len(t, raw["GET:/hello"], 1)
-
-	_, err = parseOperationPoliciesMap(`{"badkey": [{"name":"x","version":"v1"}]}`)
-	require.Error(t, err)
-	require.True(t, IsInvalidHTTPRouteConfigError(err))
-	require.Contains(t, err.Error(), "expected canonical METHOD:/path format")
 }
 
 func TestBuildAPIConfigFromHTTPRoute_RequiresExplicitMethod(t *testing.T) {
@@ -433,7 +385,6 @@ func TestBuildAPIConfigFromHTTPRoute_InvalidPolicy(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "backend", Namespace: "default"},
 		Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 8080}}},
 	}
-	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(svc).Build()
 
 	pathMatch := gatewayv1.PathMatchPathPrefix
 	pathVal := "/x"
@@ -443,10 +394,6 @@ func TestBuildAPIConfigFromHTTPRoute_InvalidPolicy(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "bad",
 			Namespace: "default",
-			Annotations: map[string]string{
-				AnnHTTPRouteAPIPolicies: `- name: no-version
-`,
-			},
 		},
 		Spec: gatewayv1.HTTPRouteSpec{
 			Rules: []gatewayv1.HTTPRouteRule{
@@ -464,8 +411,25 @@ func TestBuildAPIConfigFromHTTPRoute_InvalidPolicy(t *testing.T) {
 			},
 		},
 	}
+	apiPol := &apiv1.APIPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "api-level",
+			Namespace: "default",
+		},
+		Spec: apiv1.APIPolicySpec{
+			TargetRef: &apiv1.APIPolicyTargetRef{
+				Group: gatewayv1.GroupName,
+				Kind:  "HTTPRoute",
+				Name:  "bad",
+			},
+			Policies: []apiv1.Policy{
+				{Name: "no-version"},
+			},
+		},
+	}
+	cl2 := fake.NewClientBuilder().WithScheme(scheme).WithObjects(svc, route, apiPol).Build()
 
-	_, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
+	_, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl2, route, "cluster.local", nil)
 	require.Error(t, err)
 	require.True(t, IsInvalidHTTPRouteConfigError(err))
 }
@@ -555,6 +519,27 @@ func TestBuildAPIConfigFromHTTPRoute_CrossNamespaceReferenceGrant(t *testing.T) 
 		require.Error(t, err)
 		require.True(t, IsTransientHTTPRouteConfigError(err), err.Error())
 	})
+
+	t.Run("rejects ReferenceGrant with empty From.group for HTTPRoute", func(t *testing.T) {
+		grant := &gatewayv1beta1.ReferenceGrant{
+			ObjectMeta: metav1.ObjectMeta{Name: "empty-group", Namespace: "data"},
+			Spec: gatewayv1beta1.ReferenceGrantSpec{
+				From: []gatewayv1beta1.ReferenceGrantFrom{{
+					Group:     gatewayv1.Group(""),
+					Kind:      gatewayv1.Kind("HTTPRoute"),
+					Namespace: gatewayv1.Namespace("default"),
+				}},
+				To: []gatewayv1beta1.ReferenceGrantTo{{
+					Group: gatewayv1.Group(""),
+					Kind:  gatewayv1.Kind("Service"),
+				}},
+			},
+		}
+		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(svc, route, grant).Build()
+		_, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
+		require.Error(t, err)
+		require.True(t, IsTransientHTTPRouteConfigError(err), err.Error())
+	})
 }
 
 func TestResolveServicePort(t *testing.T) {
@@ -618,6 +603,22 @@ func TestParsePolicyListYAML_RejectsObjectWithoutPoliciesKey(t *testing.T) {
 	require.Contains(t, err.Error(), `must contain "policies"`)
 }
 
+func TestParsePolicyList_RejectsInvalidPolicyVersionFormat(t *testing.T) {
+	t.Parallel()
+
+	for _, ver := range []string{"1", "latest", "v", "v1.0", "V1"} {
+		_, err := parsePolicyListJSON([]byte(`{"policies":[{"name":"p","version":"` + ver + `"}]}`))
+		require.Error(t, err, "version %q", ver)
+		require.True(t, IsInvalidHTTPRouteConfigError(err), err.Error())
+		require.Contains(t, err.Error(), "invalid version format")
+	}
+
+	spec, err := parsePolicyListJSON([]byte(`{"policies":[{"name":"p","version":"v1"}]}`))
+	require.NoError(t, err)
+	require.Len(t, spec, 1)
+	require.Equal(t, "v1", spec[0].Version)
+}
+
 func TestBuildAPIConfigFromHTTPRoute_BackendRefsMustResolveToSingleService(t *testing.T) {
 	scheme := runtime.NewScheme()
 	utilruntime.Must(corev1.AddToScheme(scheme))
@@ -666,6 +667,48 @@ func TestBuildAPIConfigFromHTTPRoute_BackendRefsMustResolveToSingleService(t *te
 	require.Error(t, err)
 	require.True(t, IsInvalidHTTPRouteConfigError(err))
 	require.Contains(t, err.Error(), "single Service backend")
+}
+
+func TestBuildAPIConfigFromHTTPRoute_ServiceBackendRejectsNonCoreGroup(t *testing.T) {
+	scheme := runtime.NewScheme()
+	utilruntime.Must(corev1.AddToScheme(scheme))
+	utilruntime.Must(gatewayv1.AddToScheme(scheme))
+	utilruntime.Must(gatewayv1beta1.AddToScheme(scheme))
+	utilruntime.Must(apiv1.AddToScheme(scheme))
+
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "backend", Namespace: "default"},
+		Spec:       corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 8080}}},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(svc).Build()
+
+	pathMatch := gatewayv1.PathMatchPathPrefix
+	pathVal := "/api"
+	method := gatewayv1.HTTPMethodGet
+	nonCore := gatewayv1.Group("discovery.k8s.io")
+
+	route := &gatewayv1.HTTPRoute{
+		ObjectMeta: metav1.ObjectMeta{Name: "r", Namespace: "default"},
+		Spec: gatewayv1.HTTPRouteSpec{
+			Rules: []gatewayv1.HTTPRouteRule{{
+				Matches: []gatewayv1.HTTPRouteMatch{
+					{Path: &gatewayv1.HTTPPathMatch{Type: &pathMatch, Value: &pathVal}, Method: &method},
+				},
+				BackendRefs: []gatewayv1.HTTPBackendRef{{
+					BackendRef: gatewayv1.BackendRef{BackendObjectReference: gatewayv1.BackendObjectReference{
+						Group: &nonCore,
+						Name:  gatewayv1.ObjectName("backend"),
+						Port:  ptrPort(8080),
+					}},
+				}},
+			}},
+		},
+	}
+
+	_, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
+	require.Error(t, err)
+	require.True(t, IsTransientHTTPRouteConfigError(err), err.Error())
+	require.Contains(t, err.Error(), "unsupported backendRef")
 }
 
 func TestBuildAPIConfigFromHTTPRoute_CustomClusterDomain(t *testing.T) {

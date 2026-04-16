@@ -61,7 +61,7 @@ logging:
 |-------|------|---------|-------------|
 | `gateway.namespace` | string | `gateway-system` | Namespace where gateway resources are deployed |
 | `gateway.controlPlaneHost` | string | `http://platform-api:3001` | Control plane API endpoint |
-| `gateway.manifestPath` | string | `""` | Path to K8s manifest (legacy mode, leave empty for Helm) |
+| `gateway.manifestPath` | string | `""` | Path to K8s manifest for manifest-based deployment (leave empty when using Helm) |
 
 ### Helm Configuration
 

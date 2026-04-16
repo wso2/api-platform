@@ -263,10 +263,6 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 	cpHost := gw.Annotations[AnnK8sGatewayControlPlaneHost]
 	helmCM := cmName
 
-	if err := registerGatewayInRegistry(ctx, r.Client, gw.Name, ns, apiSel, cpHost, helmCM, true); err != nil {
-		return fmt.Errorf("register: %w", err)
-	}
-
 	ready, msg, err := evaluateGatewayDeploymentsReady(ctx, r.Client, gw.Name, ns)
 	if err != nil {
 		return err
@@ -281,6 +277,10 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 			LastTransitionTime: metav1.Now(),
 		})
 		return fmt.Errorf("pending: %s", msg)
+	}
+
+	if err := registerGatewayInRegistry(ctx, r.Client, gw.Name, ns, apiSel, cpHost, helmCM, true); err != nil {
+		return fmt.Errorf("register: %w", err)
 	}
 
 	return r.patchGatewayStatus(ctx, gw,

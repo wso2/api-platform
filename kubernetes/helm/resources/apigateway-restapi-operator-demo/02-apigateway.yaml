@@ -1,7 +1,7 @@
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: APIGateway
 metadata:
-  name: legacy-gw
+  name: restapi-gw
   namespace: apigateway-demo
 spec:
   # RestApi CRs are routed by label (see 04-restapi.yaml). Use LabelSelector so
@@ -10,4 +10,4 @@ spec:
   apiSelector:
     scope: LabelSelector
     matchLabels:
-      gateway.api-platform.wso2.com/restapi-target: legacy
+      gateway.api-platform.wso2.com/restapi-target: wso2-crd

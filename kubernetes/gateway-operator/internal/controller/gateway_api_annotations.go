@@ -43,32 +43,7 @@ const (
 	// HTTPRoute rest API handle for gateway-controller (default: derived from ns+name).
 	AnnHTTPRouteAPIHandle = "gateway.api-platform.wso2.com/api-handle"
 
-	// AnnHTTPRouteAPIPolicies is optional JSON or YAML for API-level policies ([]Policy), same logical
-	// shape as RestApi spec.policies. Ignored when AnnHTTPRouteAPIPoliciesConfigMap is set.
-	AnnHTTPRouteAPIPolicies = "gateway.api-platform.wso2.com/api-policies"
-
-	// AnnHTTPRouteAPIPoliciesConfigMap names a ConfigMap in the HTTPRoute namespace whose data
-	// includes policies.yaml, policies.yml, or policies.json (API-level policy list). Takes precedence over AnnHTTPRouteAPIPolicies.
-	AnnHTTPRouteAPIPoliciesConfigMap = "gateway.api-platform.wso2.com/api-policies-configmap"
-
-	// AnnHTTPRouteOperationPolicies is JSON or YAML map from operation key "METHOD:/path" to a policy list.
-	// Keys are normalized (method uppercased, path with leading slash) — see HTTPRouteOperationPolicyKey.
-	// Ignored when AnnHTTPRouteOperationPoliciesConfigMap is set.
-	AnnHTTPRouteOperationPolicies = "gateway.api-platform.wso2.com/operation-policies"
-
-	// AnnHTTPRouteOperationPoliciesConfigMap names a ConfigMap in the HTTPRoute namespace whose data
-	// includes operation-policies.yaml, operation-policies.yml, or operation-policies.json (map: METHOD:/path → policy list).
-	// Takes precedence over AnnHTTPRouteOperationPolicies.
-	AnnHTTPRouteOperationPoliciesConfigMap = "gateway.api-platform.wso2.com/operation-policies-configmap"
-
 	// AnnHTTPRouteLastDeployedParentGateway records the Gateway used for the last successful DeployRestAPI
 	// as "namespace/name" so deletion can target the correct registry entry even if spec.parentRefs change.
 	AnnHTTPRouteLastDeployedParentGateway = "gateway.api-platform.wso2.com/last-deployed-parent-gateway"
-
-	// LabelAPIPolicyScope classifies APIPolicy CRs for HTTPRoute. Value LabelAPIPolicyScopeApiLevel means the
-	// policy is merged into APIConfigData.policies (API-level). Policies referenced only from HTTPRoute rule
-	// filters (ExtensionRef) should not carry this label.
-	LabelAPIPolicyScope = "gateway.api-platform.wso2.com/policy-scope"
-	// LabelAPIPolicyScopeApiLevel marks an APIPolicy as API-level for the target HTTPRoute (see LabelAPIPolicyScope).
-	LabelAPIPolicyScopeApiLevel = "ApiLevel"
 )

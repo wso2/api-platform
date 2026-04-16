@@ -7,7 +7,7 @@ This walkthrough exercises the operator path that uses **Kubernetes Gateway API*
 
 It complements the **`APIGateway` + `RestApi`** CRD flow documented elsewhere.
 
-**Related:** For **HTTPRoute policies** using **`APIPolicy` CRs** (API-level label + rule `ExtensionRef`), see [`../gateway-api-httproute-policies-demo/README.md`](../gateway-api-httproute-policies-demo/README.md) (apply after this demo’s Gateway and backend are ready).
+**Related:** For **HTTPRoute policies** using **`APIPolicy` CRs** (`spec.targetRef` for API-level, or rule `ExtensionRef` when `targetRef` is omitted), see [`../gateway-api-httproute-policies-demo/README.md`](../gateway-api-httproute-policies-demo/README.md) (apply after this demo’s Gateway and backend are ready).
 
 ## Prerequisites
 
@@ -48,7 +48,7 @@ You should see `cert-manager`, `cert-manager-cainjector`, and Helm often names t
 | Step | Resource | Role |
 |------|----------|------|
 | 1 | `GatewayClass` | Defines the class name your `Gateway` references (not reconciled by this operator, but must exist). |
-| 2 | `Gateway` | Triggers operator: Helm install `{metadata.name}-gateway`, register controller Service in memory. This demo also sets `gateway.api-platform.wso2.com/api-selector` to a **k8s-only label selector** so the Gateway does not compete for legacy `RestApi` CRs in mixed runs. |
+| 2 | `Gateway` | Triggers operator: Helm install `{metadata.name}-gateway`, register controller Service in memory. This demo also sets `gateway.api-platform.wso2.com/api-selector` to a **k8s-only label selector** so the Gateway does not compete for **`RestApi`** objects bound to an **`APIGateway`** in mixed runs. |
 | 3 | `Deployment` + `Service` | Demo HTTP backend (in-cluster URL used as API upstream). |
 | 4 | `HTTPRoute` | Mapped to `APIConfigData` and **POST/PUT** to gateway-controller **`/rest-apis`**. |
 
@@ -60,14 +60,11 @@ Policies use the same logical shape as **`RestApi`** (`name`, `version` required
 
 **Recommended:** use **`APIPolicy`** CRs (`gateway.api-platform.wso2.com/v1alpha1`):
 
-- **Shared target:** each `APIPolicy` has **`spec.targetRef`** for the HTTPRoute (`gateway.networking.k8s.io`, kind `HTTPRoute`).
 - **Policies list:** **`spec.policies`** is a non-empty array of policy instances (same fields as RestApi embedded `policies`).
-- **API-level:** label `gateway.api-platform.wso2.com/policy-scope: ApiLevel` — all `spec.policies` entries are merged into `APIConfigData.policies`.
-- **Rule scope:** reference an `APIPolicy` from **`spec.rules[].filters`** with **`type: ExtensionRef`**, `group: gateway.api-platform.wso2.com`, `kind: APIPolicy`, `name: <metadata.name>` — all `spec.policies` entries apply to that rule’s operations.
+- **API-level:** set **`spec.targetRef`** to the HTTPRoute (`gateway.networking.k8s.io`, kind `HTTPRoute`) — all `spec.policies` entries are merged into `APIConfigData.policies`.
+- **Rule scope:** omit **`spec.targetRef`** on the `APIPolicy` and reference it from **`spec.rules[].filters`** with **`type: ExtensionRef`**, `group: gateway.api-platform.wso2.com`, `kind: APIPolicy`, `name: <metadata.name>` — all `spec.policies` entries apply to that rule’s operations.
 
 Full manifests: [`gateway-api-httproute-policies-demo`](../gateway-api-httproute-policies-demo/README.md).
-
-**Legacy:** inline annotations (`api-policies`, `operation-policies`) and ConfigMap-based `ExtensionRef` (`group: ""`, `kind: ConfigMap`) may still be supported; see `docs/CONFIGURATION.md` and `docs/GATEWAY_API_IMPLEMENTATION_NOTES.md` in the gateway-operator module.
 
 Malformed policy configuration can surface as **`ResolvedRefs=False`** / **`Invalid`** on the HTTPRoute. Ensure policy **names/versions** exist in your gateway deployment.
 
@@ -173,7 +170,7 @@ See [GATEWAY_API_IMPLEMENTATION_NOTES](../../../gateway-operator/docs/GATEWAY_AP
 | Helm fails with `gateway.controller.encryptionKeys must be enabled when gateway.developmentMode is false` | For demo runs, keep `gateway.developmentMode: true` in `02a-gateway-values-configmap.yaml`; for production-like setups, configure `gateway.controller.encryptionKeys` secret instead. |
 | `HTTPRoute` fails with `403 {"error":"forbidden"}` from gateway-controller | Ensure per-Gateway values override uses `gateway.config.controller.auth` for gateway chart `1.0.0`. Re-apply `02a-gateway-values-configmap.yaml` and reconcile `Gateway`. |
 | `HTTPRoute` stuck, parent not accepted | Parent `Gateway` must be same namespace or `parentRefs` namespace set; registry only after Gateway sync succeeds. |
-| Legacy `RestApi` CR deploys to the Kubernetes `Gateway` release instead of `APIGateway` | Ensure this demo `Gateway` has annotation `gateway.api-platform.wso2.com/api-selector` set (from `02-gateway.yaml`) and legacy `RestApi` label does **not** match it. Re-apply `02-gateway.yaml` and wait for reconcile. |
+| `RestApi` deploys to the Kubernetes `Gateway` release instead of `APIGateway` | Ensure this demo `Gateway` has annotation `gateway.api-platform.wso2.com/api-selector` set (from `02-gateway.yaml`) and **`RestApi`** labels use a different **`gateway.api-platform.wso2.com/restapi-target`** value than this Gateway’s selector. Re-apply `02-gateway.yaml` and wait for reconcile. |
 | REST 401 to gateway-controller | Align basic auth in gateway Helm values with what the operator sends (see auth helper / gateway ConfigMap). |
 | Wrong API paths | Set annotation `gateway.api-platform.wso2.com/context` on the HTTPRoute; paths must satisfy `APIConfigData` validation rules. |
 | `gateway-runtime` pod restarts ~1 minute after start (`SIGTERM` in logs) | Often **liveness** before Envoy/xDS is healthy, or **Helm values** merged incorrectly. Use an up-to-date operator build and gateway chart; ensure initial xDS snapshot succeeds (TLS + certs above). |
@@ -186,5 +183,5 @@ See [GATEWAY_API_IMPLEMENTATION_NOTES](../../../gateway-operator/docs/GATEWAY_AP
 - `01-gatewayclass.yaml` — class `wso2-api-platform`
 - `02a-gateway-values-configmap.yaml` — per-Gateway Helm values (`auth`, `developmentMode`, **cert-manager** listener TLS + SANs for in-cluster HTTPS)
 - `02-gateway.yaml` — listener + `allowedRoutes` + annotation to use `platform-gw-values`
-- `03-backend.yaml` — `hashicorp/http-echo` Deployment + ClusterIP Service
+- `03-backend.yaml` — `ghcr.io/wso2/api-platform/sample-service` Deployment + ClusterIP Service (port **9080**, same image as integration tests)
 - `04-httproute.yaml` — `PathPrefix /hello`, GET → backend Service; annotations set `api-version`, `context`, and `display-name` for the generated API payload
