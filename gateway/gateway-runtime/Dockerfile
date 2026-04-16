@@ -125,7 +125,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Uses the same base image as the production stage so that C extensions
 # (e.g. grpcio) are compiled against the identical Python version and glibc.
 # pip and venv are installed here only — they are NOT copied to production.
-FROM envoyproxy/envoy:v1.35.3 AS python-deps
+FROM envoyproxy/envoy:v1.37.1 AS python-deps
 
 USER root
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
