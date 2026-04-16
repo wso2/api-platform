@@ -37,17 +37,22 @@ type BindingManager interface {
 	RemoveWebSubApiBinding(name string) error
 }
 
+// KafkaConfig holds local Kafka broker settings used as defaults.
+type KafkaConfig struct {
+	Brokers []string
+}
+
 // EventChannelResource represents the decoded EventChannelConfig JSON payload.
 type EventChannelResource struct {
-	UUID         string                   `json:"uuid"`
-	Name         string                   `json:"name"`
-	Kind         string                   `json:"kind"`
-	Context      string                   `json:"context"`
-	Version      string                   `json:"version"`
-	Channels     []ChannelEntry           `json:"channels"`
-	Receiver     ReceiverEntry            `json:"receiver"`
-	BrokerDriver BrokerDriverEntry        `json:"brokerDriver"`
-	Policies     PoliciesEntry            `json:"policies"`
+	UUID         string            `json:"uuid"`
+	Name         string            `json:"name"`
+	Kind         string            `json:"kind"`
+	Context      string            `json:"context"`
+	Version      string            `json:"version"`
+	Channels     []ChannelEntry    `json:"channels"`
+	Receiver     ReceiverEntry     `json:"receiver"`
+	BrokerDriver BrokerDriverEntry `json:"brokerDriver"`
+	Policies     PoliciesEntry     `json:"policies"`
 }
 
 // ChannelEntry represents one channel in the EventChannelConfig.
@@ -82,16 +87,19 @@ type PolicyEntry struct {
 
 // Handler processes EventChannelConfig xDS responses and manages bindings.
 type Handler struct {
-	manager  BindingManager
-	mu       sync.Mutex
-	current  map[string]EventChannelResource // keyed by UUID
+	manager     BindingManager
+	kafkaConfig KafkaConfig
+	mu          sync.Mutex
+	current     map[string]EventChannelResource // keyed by UUID
 }
 
 // NewHandler creates a new event channel handler.
-func NewHandler(manager BindingManager) *Handler {
+// kafkaCfg provides the local Kafka brokers used when the xDS resource omits broker config.
+func NewHandler(manager BindingManager, kafkaCfg KafkaConfig) *Handler {
 	return &Handler{
-		manager: manager,
-		current: make(map[string]EventChannelResource),
+		manager:     manager,
+		kafkaConfig: kafkaCfg,
+		current:     make(map[string]EventChannelResource),
 	}
 }
 
@@ -146,17 +154,17 @@ func (h *Handler) HandleResources(ctx context.Context, resources []*discoveryv3.
 
 	// Compute diff: additions and updates
 	for uuid, ecr := range incoming {
-		if _, exists := h.current[uuid]; exists {
+		if old, exists := h.current[uuid]; exists {
 			// Update: remove then re-add
 			slog.Info("Updating binding via xDS", "name", ecr.Name, "uuid", uuid)
-			if err := h.manager.RemoveWebSubApiBinding(ecr.Name); err != nil {
-				slog.Error("Failed to remove binding for update", "name", ecr.Name, "error", err)
+			if err := h.manager.RemoveWebSubApiBinding(old.Name); err != nil {
+				slog.Error("Failed to remove binding for update", "name", old.Name, "error", err)
 			}
 		} else {
 			slog.Info("Adding binding via xDS", "name", ecr.Name, "uuid", uuid)
 		}
 
-		wsb := toWebSubApiBinding(ecr)
+		wsb := h.toWebSubApiBinding(ecr)
 		if err := h.manager.AddWebSubApiBinding(wsb); err != nil {
 			return fmt.Errorf("failed to add binding %q: %w", ecr.Name, err)
 		}
@@ -166,7 +174,7 @@ func (h *Handler) HandleResources(ctx context.Context, resources []*discoveryv3.
 	return nil
 }
 
-func toWebSubApiBinding(ecr EventChannelResource) binding.WebSubApiBinding {
+func (h *Handler) toWebSubApiBinding(ecr EventChannelResource) binding.WebSubApiBinding {
 	channels := make([]binding.ChannelDef, len(ecr.Channels))
 	for i, ch := range ecr.Channels {
 		channels[i] = binding.ChannelDef{Name: ch.Name}
@@ -188,22 +196,41 @@ func toWebSubApiBinding(ecr EventChannelResource) binding.WebSubApiBinding {
 	}
 
 	return binding.WebSubApiBinding{
-		Kind:    "WebSubApi",
-		Name:    ecr.Name,
-		Version: ecr.Version,
-		Context: ecr.Context,
+		Kind:     "WebSubApi",
+		Name:     ecr.Name,
+		Version:  ecr.Version,
+		Context:  ecr.Context,
 		Channels: channels,
 		Receiver: binding.ReceiverSpec{
 			Type: ecr.Receiver.Type,
 		},
-		BrokerDriver: binding.BrokerDriverSpec{
-			Type:   ecr.BrokerDriver.Type,
-			Config: ecr.BrokerDriver.Config,
-		},
+		BrokerDriver: h.resolveBrokerDriver(ecr.BrokerDriver),
 		Policies: binding.PolicyBindings{
 			Subscribe: subscribe,
 			Inbound:   inbound,
 			Outbound:  outbound,
 		},
+	}
+}
+
+// resolveBrokerDriver returns a BrokerDriverSpec, falling back to the local
+// Kafka configuration when the xDS resource doesn't carry broker details.
+func (h *Handler) resolveBrokerDriver(bd BrokerDriverEntry) binding.BrokerDriverSpec {
+	driverType := bd.Type
+	if driverType == "" {
+		driverType = "kafka"
+	}
+
+	cfg := bd.Config
+	if cfg == nil || len(cfg) == 0 {
+		// Use the event gateway's own Kafka brokers.
+		cfg = map[string]interface{}{
+			"brokers": h.kafkaConfig.Brokers,
+		}
+	}
+
+	return binding.BrokerDriverSpec{
+		Type:   driverType,
+		Config: cfg,
 	}
 }

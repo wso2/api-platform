@@ -365,7 +365,6 @@ func main() {
 	runtimeStore := storage.NewRuntimeConfigStore()
 	policySnapshotManager.SetRuntimeStore(runtimeStore)
 	policySnapshotManager.SetConfigStore(configStore)
-	policySnapshotManager.SetKafkaBrokers(cfg.Router.EventGateway.KafkaBrokers)
 
 	// Initialize subscription snapshot manager (driven by DB storage)
 	subscriptionSnapshotManager := subscriptionxds.NewSnapshotManager(db, log)

@@ -34,32 +34,32 @@ import (
 // CombinedCache combines policy, API key, lazy resource, subscription, route config, and event channel caches to provide a unified xDS cache interface
 // It implements cache.Cache interface by delegating to underlying caches
 type CombinedCache struct {
-	policyCache        cache.Cache
-	apiKeyCache        cache.Cache
-	lazyResourceCache  cache.Cache
-	subscriptionCache  cache.Cache
-	routeConfigCache   cache.Cache
-	eventChannelCache  cache.Cache
-	logger             *slog.Logger
-	mu                 sync.RWMutex
-	watchers           map[int64]*combinedWatcher
-	watcherID          int64
+	policyCache       cache.Cache
+	apiKeyCache       cache.Cache
+	lazyResourceCache cache.Cache
+	subscriptionCache cache.Cache
+	routeConfigCache  cache.Cache
+	eventChannelCache cache.Cache
+	logger            *slog.Logger
+	mu                sync.RWMutex
+	watchers          map[int64]*combinedWatcher
+	watcherID         int64
 }
 
 // combinedWatcher manages watchers for policy, API key, lazy resource, subscription, route config, and event channel caches
 type combinedWatcher struct {
-	id                    int64
-	request               *cache.Request
-	subscription          cache.Subscription
-	responseChan          chan cache.Response
-	policyCancel          func()
-	apiKeyCancel          func()
-	lazyResourceCancel    func()
-	subscriptionCancel    func()
-	routeConfigCancel     func()
-	eventChannelCancel    func()
-	combinedCache         *CombinedCache
-	done                  chan struct{} // done channel to signal goroutine cancellation
+	id                 int64
+	request            *cache.Request
+	subscription       cache.Subscription
+	responseChan       chan cache.Response
+	policyCancel       func()
+	apiKeyCancel       func()
+	lazyResourceCancel func()
+	subscriptionCancel func()
+	routeConfigCancel  func()
+	eventChannelCancel func()
+	combinedCache      *CombinedCache
+	done               chan struct{} // done channel to signal goroutine cancellation
 }
 
 // NewCombinedCache creates a new combined cache that merges policy, API key, lazy resource, subscription, route config, and event channel caches.
@@ -72,15 +72,15 @@ func NewCombinedCache(policyCache cache.Cache, apiKeyCache cache.Cache, lazyReso
 		logger = slog.Default()
 	}
 	return &CombinedCache{
-		policyCache:        policyCache,
-		apiKeyCache:        apiKeyCache,
-		lazyResourceCache:  lazyResourceCache,
-		subscriptionCache:  subscriptionCache,
-		routeConfigCache:   routeConfigCache,
-		eventChannelCache:  eventChannelCache,
-		logger:             logger,
-		watchers:           make(map[int64]*combinedWatcher),
-		watcherID:          0,
+		policyCache:       policyCache,
+		apiKeyCache:       apiKeyCache,
+		lazyResourceCache: lazyResourceCache,
+		subscriptionCache: subscriptionCache,
+		routeConfigCache:  routeConfigCache,
+		eventChannelCache: eventChannelCache,
+		logger:            logger,
+		watchers:          make(map[int64]*combinedWatcher),
+		watcherID:         0,
 	}
 }
 

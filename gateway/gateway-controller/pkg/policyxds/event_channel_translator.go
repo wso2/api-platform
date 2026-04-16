@@ -86,14 +86,6 @@ func (t *Translator) buildEventChannelResource(uuid string, webSubCfg *api.WebSu
 		subscribePolicies = buildPolicyList(spec.Channels[0].Policies)
 	}
 
-	// Build broker driver config — use Kafka brokers from controller config
-	brokerDriverConfig := map[string]interface{}{
-		"type": "kafka",
-		"config": map[string]interface{}{
-			"brokers": t.kafkaBrokers,
-		},
-	}
-
 	data := map[string]interface{}{
 		"uuid":     uuid,
 		"name":     string(webSubCfg.Metadata.Name),
@@ -104,7 +96,6 @@ func (t *Translator) buildEventChannelResource(uuid string, webSubCfg *api.WebSu
 		"receiver": map[string]interface{}{
 			"type": "websub",
 		},
-		"brokerDriver": brokerDriverConfig,
 		"policies": map[string]interface{}{
 			"subscribe": subscribePolicies,
 			"inbound":   []interface{}{},

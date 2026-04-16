@@ -51,12 +51,12 @@ type Runtime struct {
 	servers       []*http.Server // shared HTTP servers for port sharing
 
 	// Dynamic binding management (xDS mode)
-	mu                 sync.RWMutex
-	activeReceivers    map[string]connectors.Receiver
+	mu                  sync.RWMutex
+	activeReceivers     map[string]connectors.Receiver
 	activeBrokerDrivers map[string]connectors.BrokerDriver
-	websubMux          *http.ServeMux
-	websubServer       *http.Server
-	running            bool // true after Run() starts servers
+	websubMux           *http.ServeMux
+	websubServer        *http.Server
+	running             bool // true after Run() starts servers
 }
 
 // New creates a new Runtime. After creation:

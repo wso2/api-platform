@@ -1,8 +1,8 @@
 # --------------------------------------------------------------------
 # Event Gateway Runtime Configuration
 # --------------------------------------------------------------------
-# Environment variable overrides use prefix APIP_EGW_ with underscores
-# replacing dots. For example:
+# Environment variable overrides use prefix APIP_EGW_ with section/field
+# names such as:
 #   APIP_EGW_SERVER_WEBSUB_PORT=8080
 #   APIP_EGW_KAFKA_BROKERS=broker1:9092,broker2:9092
 
@@ -31,3 +31,8 @@ default_lease_seconds = 0
 
 # runtime_id is auto-generated if left empty
 # runtime_id = ""
+
+[controlplane]
+enabled = true
+xds_address = "localhost:18001"
+# node_id = ""

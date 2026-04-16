@@ -93,11 +93,6 @@ func (sm *SnapshotManager) SetConfigStore(store *storage.ConfigStore) {
 	sm.configStore = store
 }
 
-// SetKafkaBrokers sets the Kafka brokers used in EventChannelConfig resources.
-func (sm *SnapshotManager) SetKafkaBrokers(brokers []string) {
-	sm.translator.kafkaBrokers = brokers
-}
-
 // GetRouteCache returns the route config cache.
 func (sm *SnapshotManager) GetRouteCache() cache.Cache {
 	return sm.routeCache
@@ -171,8 +166,7 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 
 // Translator converts RuntimeDeployConfig to xDS resources.
 type Translator struct {
-	logger       *slog.Logger
-	kafkaBrokers []string
+	logger *slog.Logger
 }
 
 // NewTranslator creates a new policy translator.

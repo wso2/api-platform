@@ -67,7 +67,9 @@ func main() {
 		slog.Info("Control plane mode enabled, starting xDS client",
 			"xds_address", cfg.ControlPlane.XDSAddress)
 
-		handler := xdsclient.NewHandler(rt)
+		handler := xdsclient.NewHandler(rt, xdsclient.KafkaConfig{
+			Brokers: cfg.Kafka.Brokers,
+		})
 		xdsClient := xdsclient.NewClient(
 			cfg.ControlPlane.XDSAddress,
 			cfg.ControlPlane.NodeID,
