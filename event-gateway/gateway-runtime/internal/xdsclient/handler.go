@@ -51,6 +51,7 @@ type EventChannelResource struct {
 	Kind         string            `json:"kind"`
 	Context      string            `json:"context"`
 	Version      string            `json:"version"`
+	Deleted      bool              `json:"deleted,omitempty"`
 	Channels     []ChannelEntry    `json:"channels"`
 	Receiver     ReceiverEntry     `json:"receiver"`
 	BrokerDriver BrokerDriverEntry `json:"brokerDriver"`
@@ -146,6 +147,14 @@ func (h *Handler) HandleResources(ctx context.Context, resources []*discoveryv3.
 
 		if ecr.UUID == "" {
 			slog.Warn("EventChannelConfig resource missing UUID, skipping")
+			continue
+		}
+
+		// Deletion markers are pushed by the controller to work around
+		// a go-control-plane LinearCache limitation for custom type URLs.
+		// Treat them as absent so the diff logic removes the binding.
+		if ecr.Deleted {
+			slog.Info("Received deletion marker via xDS", "uuid", ecr.UUID)
 			continue
 		}
 

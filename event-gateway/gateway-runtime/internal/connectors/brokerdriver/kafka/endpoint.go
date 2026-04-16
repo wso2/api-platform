@@ -117,3 +117,19 @@ func (e *KafkaBrokerDriver) Close() error {
 	e.adminKgo.Close()
 	return nil
 }
+
+// DeleteTopics deletes the given Kafka topics.
+func (e *KafkaBrokerDriver) DeleteTopics(ctx context.Context, topics []string) error {
+	resp, err := e.admin.DeleteTopics(ctx, topics...)
+	if err != nil {
+		return fmt.Errorf("failed to delete topics: %w", err)
+	}
+	for _, t := range resp.Sorted() {
+		if t.Err != nil {
+			slog.Warn("Failed to delete topic", "topic", t.Topic, "error", t.Err)
+		} else {
+			slog.Info("Deleted topic", "topic", t.Topic)
+		}
+	}
+	return nil
+}

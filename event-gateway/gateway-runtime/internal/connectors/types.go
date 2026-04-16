@@ -55,6 +55,7 @@ type BrokerDriver interface {
 	Subscribe(groupID string, topics []string, handler MessageHandler) (Receiver, error)
 	TopicExists(ctx context.Context, topic string) (bool, error)
 	EnsureTopics(ctx context.Context, topics []string) error
+	DeleteTopics(ctx context.Context, topics []string) error
 	Close() error
 }
 

@@ -150,6 +150,27 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 	// Update event channel config cache from WebSubApi configs
 	if sm.configStore != nil {
 		eventChannelResources := sm.translator.TranslateWebSubApisToEventChannelConfigs(sm.configStore.GetAllByKind("WebSubApi"))
+
+		// The go-control-plane LinearCache does not notify SotW wildcard watches
+		// when resources are only deleted (non-full-state custom type URL).
+		// Work around this by pushing a deletion marker via UpdateResource before
+		// calling SetResources so the change is seen as an update, not just a removal.
+		currentResources := sm.eventChannelCache.GetResources()
+		for uuid := range currentResources {
+			if _, exists := eventChannelResources[uuid]; !exists {
+				marker, err := buildDeletionMarkerResource(uuid)
+				if err != nil {
+					sm.logger.Error("Failed to build deletion marker", slog.String("uuid", uuid), slog.Any("error", err))
+					continue
+				}
+				if err := sm.eventChannelCache.UpdateResource(uuid, marker); err != nil {
+					sm.logger.Error("Failed to send deletion marker", slog.String("uuid", uuid), slog.Any("error", err))
+				} else {
+					sm.logger.Info("Sent deletion marker for event channel resource", slog.String("uuid", uuid))
+				}
+			}
+		}
+
 		sm.eventChannelCache.SetResources(eventChannelResources)
 		sm.logger.Info("Event channel config cache updated",
 			slog.Int("event_channel_resources", len(eventChannelResources)))
@@ -311,6 +332,18 @@ func (t *Translator) createRouteConfigResource(
 }
 
 // toAnyResource converts a map to an anypb.Any resource with the given type URL.
+// buildDeletionMarkerResource creates a minimal EventChannelConfig resource
+// with the "deleted" flag set. This is used to work around the go-control-plane
+// LinearCache limitation where deletions of non-full-state SotW types don't
+// trigger watch notifications.
+func buildDeletionMarkerResource(uuid string) (types.Resource, error) {
+	data := map[string]interface{}{
+		"uuid":    uuid,
+		"deleted": true,
+	}
+	return toAnyResource(data, EventChannelConfigTypeURL)
+}
+
 func toAnyResource(data map[string]interface{}, typeURL string) (types.Resource, error) {
 	dataJSON, err := json.Marshal(data)
 	if err != nil {

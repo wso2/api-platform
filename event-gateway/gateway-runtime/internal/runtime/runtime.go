@@ -55,6 +55,7 @@ type Runtime struct {
 	activeReceivers     map[string]connectors.Receiver
 	activeBrokerDrivers map[string]connectors.BrokerDriver
 	bindingPaths        map[string][]string // name → registered mux paths
+	bindingTopics       map[string][]string // name → Kafka topics (data + internal sub)
 	websubMux           *DynamicMux
 	websubServer        *http.Server
 	running             bool // true after Run() starts servers
@@ -86,6 +87,7 @@ func New(cfg *config.Config, rawConfig map[string]interface{}, registry *connect
 		activeReceivers:     make(map[string]connectors.Receiver),
 		activeBrokerDrivers: make(map[string]connectors.BrokerDriver),
 		bindingPaths:        make(map[string][]string),
+		bindingTopics:       make(map[string][]string),
 		websubMux:           NewDynamicMux(),
 	}, nil
 }
@@ -521,6 +523,14 @@ func (r *Runtime) AddWebSubApiBinding(wsb binding.WebSubApiBinding) error {
 	basePath := wsb.Context + "/" + wsb.Version
 	r.bindingPaths[wsb.Name] = []string{basePath + "/hub", basePath + "/webhook-receiver"}
 
+	// Track all Kafka topics for cleanup on removal.
+	allTopics := make([]string, 0, len(channels)+1)
+	for _, kafkaTopic := range channels {
+		allTopics = append(allTopics, kafkaTopic)
+	}
+	allTopics = append(allTopics, internalSubTopic)
+	r.bindingTopics[wsb.Name] = allTopics
+
 	ch := connectors.ChannelInfo{
 		Name:             wsb.Name,
 		Mode:             "websub",
@@ -573,6 +583,18 @@ func (r *Runtime) RemoveWebSubApiBinding(name string) error {
 			slog.Error("Failed to stop receiver during removal", "name", name, "error", err)
 		}
 		delete(r.activeReceivers, name)
+	}
+
+	// Delete Kafka topics (data + internal subscription) before closing the broker driver.
+	if bd, ok := r.activeBrokerDrivers[name]; ok {
+		if topics, ok := r.bindingTopics[name]; ok && len(topics) > 0 {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := bd.DeleteTopics(ctx, topics); err != nil {
+				slog.Error("Failed to delete Kafka topics during removal", "name", name, "error", err)
+			}
+		}
+		delete(r.bindingTopics, name)
 	}
 
 	// Close and remove broker driver.
