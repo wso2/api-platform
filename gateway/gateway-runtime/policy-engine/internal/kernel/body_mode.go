@@ -137,7 +137,7 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySp
 
 		if mode.RequestBodyMode != policy.BodyModeSkip {
 			if _, ok := impl.(policy.RequestPolicy); !ok {
-				slog.Debug("[chain-build] policy declares non-SKIP RequestBodyMode but does not implement RequestPolicy (may be cross-phase body access)",
+				slog.Warn("[chain-build] policy declares non-SKIP RequestBodyMode but does not implement RequestPolicy (may be cross-phase body access)",
 					"policy", spec.Name, "mode", mode.RequestBodyMode, "route", routeKey)
 			}
 		}
