@@ -169,7 +169,7 @@ Feature: LLM Provider Template Management
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
 
-  Scenario: Update non-existent LLM provider template returns 400
+  Scenario: Update non-existent LLM provider template returns 404
     Given I authenticate using basic auth as "admin"
     When I update the LLM provider template "non-existent-update-template" with:
       """
@@ -180,7 +180,7 @@ Feature: LLM Provider Template Management
       spec:
         displayName: Should Not Work
       """
-    Then the response status code should be 400
+    Then the response status code should be 404
 
   Scenario: Delete non-existent LLM provider template returns 404
     Given I authenticate using basic auth as "admin"

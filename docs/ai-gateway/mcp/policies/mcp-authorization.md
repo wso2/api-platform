@@ -333,4 +333,4 @@ When authorization fails, the policy returns:
 ## Related Policies
 
 - [MCP Authentication Policy](./mcp-authentication.md) - Validates JWT tokens and is a prerequisite for MCP Authorization
-- [JWT Authentication Policy](../../../gateway/policies/jwt-authentication.md) - Base JWT token validation mechanism
+- [JWT Authentication Policy](https://github.com/wso2/gateway-controllers/tree/main/docs/jwt-auth) - Base JWT token validation mechanism

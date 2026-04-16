@@ -57,6 +57,9 @@
                 "APIP_GW_ROUTER_DOWNSTREAM__TLS_CERT__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.crt",
                 "APIP_GW_ROUTER_DOWNSTREAM__TLS_KEY__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.key",
                 "APIP_GW_DEVELOPMENT_MODE": "true",
+                // Immutable gateway mode
+                "APIP_GW_IMMUTABLE__GATEWAY_ENABLED": "false",
+                "APIP_GW_IMMUTABLE__GATEWAY_ARTIFACTS__DIR": "${workspaceFolder}/gateway/examples",
             },
         },
         {
@@ -103,6 +106,22 @@
                 "APIP_GW_POLICY__ENGINE_SERVER_MODE": "tcp",
                 "APIP_GW_ANALYTICS_ACCESS__LOGS__SERVICE_MODE": "tcp",
             },
+        },
+        {
+            "name": "Integration Tests",
+            "type": "go",
+            "request": "launch",
+            "mode": "test",
+            "program": "${workspaceFolder}/gateway/it",
+            "args": [
+                "-test.run", "TestFeatures",
+                "-test.v",
+                "-test.timeout", "50m",
+            ],
+            "env": {
+                // "IT_FEATURE_PATHS": "", // comma-separated, e.g. "features/health.feature,features/jwt-auth.feature"
+            },
+            "cwd": "${workspaceFolder}/gateway/it",
         },
         {
             "name": "Gateway Controller (Remote)",

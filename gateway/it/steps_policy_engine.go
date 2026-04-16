@@ -148,14 +148,14 @@ func (p *PolicyEngineSteps) theConfigDumpShouldContainRouteWithBasePath(basePath
 		return fmt.Errorf("failed to parse response as JSON: %w", err)
 	}
 
-	routes, ok := data["routes"].(map[string]interface{})
+	routes, ok := data["policy_chains"].(map[string]interface{})
 	if !ok {
-		return fmt.Errorf("routes section not found in config dump")
+		return fmt.Errorf("policy_chains section not found in config dump")
 	}
 
-	routeConfigs, ok := routes["route_configs"].([]interface{})
+	routeConfigs, ok := routes["policy_chains"].([]interface{})
 	if !ok {
-		return fmt.Errorf("route_configs not found in routes section")
+		return fmt.Errorf("policy_chains not found in policy_chains section")
 	}
 
 	for _, rc := range routeConfigs {
@@ -174,6 +174,7 @@ func (p *PolicyEngineSteps) theConfigDumpShouldContainRouteWithBasePath(basePath
 }
 
 // theConfigDumpShouldNotContainRouteWithBasePath validates that the config dump does NOT contain a route with the given base path
+// Checks both policy_chains and route_metadata sections.
 func (p *PolicyEngineSteps) theConfigDumpShouldNotContainRouteWithBasePath(basePath string) error {
 	body := p.httpSteps.LastBody()
 
@@ -182,26 +183,35 @@ func (p *PolicyEngineSteps) theConfigDumpShouldNotContainRouteWithBasePath(baseP
 		return fmt.Errorf("failed to parse response as JSON: %w", err)
 	}
 
-	routes, ok := data["routes"].(map[string]interface{})
-	if !ok {
-		// No routes section means no routes, which is what we want
-		return nil
-	}
-
-	routeConfigs, ok := routes["route_configs"].([]interface{})
-	if !ok || len(routeConfigs) == 0 {
-		// No route configs is fine
-		return nil
-	}
-
-	for _, rc := range routeConfigs {
-		routeConfig, ok := rc.(map[string]interface{})
-		if !ok {
-			continue
+	// Check policy_chains section
+	if policyChains, ok := data["policy_chains"].(map[string]interface{}); ok {
+		if entries, ok := policyChains["policy_chains"].([]interface{}); ok {
+			for _, rc := range entries {
+				entry, ok := rc.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				routeKey, _ := entry["route_key"].(string)
+				if strings.Contains(routeKey, basePath) {
+					return fmt.Errorf("route with basePath '%s' still exists in policy_chains (route_key: %s)", basePath, routeKey)
+				}
+			}
 		}
-		routeKey, _ := routeConfig["route_key"].(string)
-		if strings.Contains(routeKey, basePath) {
-			return fmt.Errorf("route with basePath '%s' still exists in config dump (route_key: %s)", basePath, routeKey)
+	}
+
+	// Check route_metadata section
+	if routeMetadata, ok := data["route_metadata"].(map[string]interface{}); ok {
+		if routes, ok := routeMetadata["routes"].([]interface{}); ok {
+			for _, r := range routes {
+				entry, ok := r.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				routeKey, _ := entry["route_key"].(string)
+				if strings.Contains(routeKey, basePath) {
+					return fmt.Errorf("route with basePath '%s' still exists in route_metadata (route_key: %s)", basePath, routeKey)
+				}
+			}
 		}
 	}
 
@@ -217,14 +227,14 @@ func (p *PolicyEngineSteps) theConfigDumpShouldContainPolicyForRoute(policyName,
 		return fmt.Errorf("failed to parse response as JSON: %w", err)
 	}
 
-	routes, ok := data["routes"].(map[string]interface{})
+	routes, ok := data["policy_chains"].(map[string]interface{})
 	if !ok {
-		return fmt.Errorf("routes section not found in config dump")
+		return fmt.Errorf("policy_chains section not found in config dump")
 	}
 
-	routeConfigs, ok := routes["route_configs"].([]interface{})
+	routeConfigs, ok := routes["policy_chains"].([]interface{})
 	if !ok {
-		return fmt.Errorf("route_configs not found in routes section")
+		return fmt.Errorf("policy_chains not found in policy_chains section")
 	}
 
 	for _, rc := range routeConfigs {

@@ -276,7 +276,7 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 			logger.Error("API configuration not found for API Key generation",
 				slog.String("operation", operationType+"_key"),
 				slog.Any("error", err))
-			return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+			return nil, fmt.Errorf("%w: API configuration handle '%s' not found", storage.ErrNotFound, params.Handle)
 		}
 		logger.Error("Failed to retrieve API configuration for API key generation",
 			slog.String("operation", operationType+"_key"),
@@ -416,7 +416,7 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 		if storage.IsNotFoundError(err) {
 			logger.Warn("API configuration not found for API key revoke",
 				slog.Any("error", err))
-			return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+			return nil, fmt.Errorf("%w: API configuration handle '%s' not found", storage.ErrNotFound, params.Handle)
 		}
 		logger.Error("Failed to retrieve API configuration for API key revoke",
 			slog.Any("error", err))
@@ -530,7 +530,7 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 		if storage.IsNotFoundError(err) {
 			logger.Warn("API configuration not found for API key update",
 				slog.Any("error", err))
-			return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+			return nil, fmt.Errorf("%w: API configuration handle '%s' not found", storage.ErrNotFound, params.Handle)
 		}
 		logger.Error("Failed to retrieve API configuration for API key update",
 			slog.Any("error", err))
@@ -581,7 +581,7 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 				slog.String("handle", params.Handle),
 				slog.String("api_key_name", params.APIKeyName),
 				slog.String("correlation_id", params.CorrelationID))
-			return nil, fmt.Errorf("API key '%s' not found for API '%s' and no api_key value provided to create one", params.APIKeyName, params.Handle)
+			return nil, fmt.Errorf("%w: API key '%s' not found for API '%s' and no api_key value provided to create one", storage.ErrNotFound, params.APIKeyName, params.Handle)
 		}
 
 		// For non-"not found" errors, return the error
@@ -685,7 +685,7 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 				slog.String("handle", params.Handle),
 				slog.String("correlation_id", params.CorrelationID),
 				slog.Any("error", err))
-			return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+			return nil, fmt.Errorf("%w: API configuration handle '%s' not found", storage.ErrNotFound, params.Handle)
 		}
 		logger.Error("Failed to retrieve API configuration for API key regeneration",
 			slog.String("handle", params.Handle),
@@ -709,7 +709,7 @@ func (s *APIKeyService) RegenerateAPIKey(params APIKeyRegenerationParams) (*APIK
 			slog.String("handle", params.Handle),
 			slog.String("api_key_name", params.APIKeyName),
 			slog.String("correlation_id", params.CorrelationID))
-		return nil, fmt.Errorf("API key '%s' not found for API '%s'", params.APIKeyName, params.Handle)
+		return nil, fmt.Errorf("%w: API key '%s' not found for API '%s'", storage.ErrNotFound, params.APIKeyName, params.Handle)
 	}
 
 	err = s.canRegenerateAPIKey(user, existingKey, logger)
@@ -831,7 +831,7 @@ func (s *APIKeyService) ListAPIKeys(params ListAPIKeyParams) (*ListAPIKeyResult,
 			logger.Warn("API configuration not found for API keys listing",
 				slog.String("handle", params.Handle),
 				slog.String("correlation_id", params.CorrelationID))
-			return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+			return nil, fmt.Errorf("%w: API configuration handle '%s' not found", storage.ErrNotFound, params.Handle)
 		}
 		logger.Error("Failed to retrieve API configuration for API key listing",
 			slog.Any("error", err),

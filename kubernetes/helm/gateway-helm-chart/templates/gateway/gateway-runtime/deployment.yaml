@@ -1,5 +1,6 @@
 {{- $unified := .Values.gateway.gatewayRuntime -}}
 {{- $deployment := $unified.deployment -}}
+{{- $policies := $unified.policies -}}
 {{- $config := .Values.gateway.config -}}
 {{- if $deployment.enabled }}
 apiVersion: apps/v1
@@ -111,6 +112,12 @@ spec:
             - name: gateway-config
               mountPath: /etc/policy-engine/config.toml
               subPath: config.toml
+            {{- if $policies.llmPricing.enabled }}
+            - name: llm-pricing
+              mountPath: /etc/policy-engine/llm-pricing/model_prices.json
+              subPath: model_prices.json
+              readOnly: true
+            {{- end }}
             {{- with $deployment.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -118,6 +125,11 @@ spec:
         - name: gateway-config
           configMap:
             name: {{ include "gateway-operator.fullname" . }}-config
+        {{- if $policies.llmPricing.enabled }}
+        - name: llm-pricing
+          configMap:
+            name: {{ default (printf "%s-llm-pricing" (include "gateway-operator.fullname" .)) $policies.llmPricing.configMapName }}
+        {{- end }}
         {{- with $deployment.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

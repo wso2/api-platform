@@ -92,19 +92,11 @@ func (t *LLMProviderTransformer) getTemplateByHandle(handle string) (*models.Sto
 	return t.db.GetLLMProviderTemplateByHandle(handle)
 }
 
-func (t *LLMProviderTransformer) getProviderByHandle(handle string) (*models.StoredConfig, error) {
-	cfg, err := t.db.GetConfigByKindAndHandle(string(api.LlmProvider), handle)
-	if err != nil {
-		return nil, err
-	}
-	return cfg, nil
-}
-
 func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration,
 	output *api.RestAPI) (*api.RestAPI, error) {
 
 	// Step 1: Retrieve and validate provider reference
-	provider, err := t.getProviderByHandle(proxy.Spec.Provider.Id)
+	provider, err := t.db.GetConfigByKindAndHandle(string(api.LlmProvider), proxy.Spec.Provider.Id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up provider '%s': %w", proxy.Spec.Provider.Id, err)
 	}

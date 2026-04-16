@@ -561,6 +561,62 @@ This creates `pkg/api/generated/generated.go` with:
 - Request/response types
 - Route registration
 
+### API Documentation Generation
+
+The REST API reference docs under `docs/rest-apis/gateway/` are generated from `api/management-openapi.yaml`:
+
+```bash
+make generate-apidocs
+```
+
+By default, request/response samples in the generated docs are auto-generated from the OpenAPI schemas. If an auto-generated sample is invalid or unclear, add an explicit `example` to the relevant component inside the `components/schemas` section of `api/management-openapi.yaml`.
+
+For example, the `RestAPI` schema includes an explicit example that shows a realistic Petstore API configuration:
+
+```yaml
+components:
+  schemas:
+    RestAPI:
+      type: object
+      required:
+        - apiVersion
+        - metadata
+        - kind
+        - spec
+      properties:
+        apiVersion:
+          type: string
+          example: gateway.api-platform.wso2.com/v1alpha1
+        kind:
+          type: string
+          example: RestApi
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        spec:
+          $ref: "#/components/schemas/APIConfigData"
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: RestApi
+        metadata:
+          name: petstore-api-v1.0
+        spec:
+          displayName: Petstore-API
+          version: v1.0
+          context: /petstore/$version
+          upstream:
+            main:
+              url: https://petstore3.swagger.io/api/v3
+          operations:
+            - method: GET
+              path: /pet/findByStatus
+            - method: GET
+              path: /pet/{petId}
+            - method: DELETE
+              path: /pet/{petId}
+```
+
+The `example` field at the schema level overrides auto-generation for that component. Add one per component where the auto-generated sample is inaccurate or incomplete. After editing the spec, re-run `make generate-apidocs` to regenerate the docs.
+
 ## Logging
 
 The Gateway-Controller uses structured logging (Zap) with configurable levels.

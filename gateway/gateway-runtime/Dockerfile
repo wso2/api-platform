@@ -186,7 +186,7 @@ EXPOSE 2346 8080 8443 9901 9002 9003
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 
 # Stage 4: Runtime (production — must remain last so default builds are unaffected)
-FROM envoyproxy/envoy:v1.35.3 AS production
+FROM envoyproxy/envoy:v1.37.1 AS production
 
 ARG VERSION=unknown
 ARG ENABLE_COVERAGE=false

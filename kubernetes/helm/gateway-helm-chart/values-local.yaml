@@ -4,8 +4,11 @@
 # This file overrides default values for local development:
 # - Uses IfNotPresent pullPolicy to use locally built images
 # - Uses latest tag for local builds
+# - Enables development mode (relaxes encryption key requirement)
 
 gateway:
+  developmentMode: true
+
   controller:
     image:
       tag: "latest"
