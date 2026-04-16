@@ -39,18 +39,23 @@ const (
 
 	// RouteConfigTypeURL is the custom type URL for route config (metadata + resolver)
 	RouteConfigTypeURL = "api-platform.wso2.org/v1.RouteConfig"
+
+	// EventChannelConfigTypeURL is the custom type URL for event gateway channel configurations
+	EventChannelConfigTypeURL = "api-platform.wso2.org/v1.EventChannelConfig"
 )
 
 // SnapshotManager manages xDS snapshots for policy and route configurations.
-// It holds two LinearCaches: one for PolicyChainConfig and one for RouteConfig.
+// It holds LinearCaches for PolicyChainConfig, RouteConfig, and EventChannelConfig.
 type SnapshotManager struct {
-	policyCache  *cache.LinearCache
-	routeCache   *cache.LinearCache
-	runtimeStore *storage.RuntimeConfigStore
-	logger       *slog.Logger
-	nodeID       string
-	mu           sync.RWMutex
-	translator   *Translator
+	policyCache       *cache.LinearCache
+	routeCache        *cache.LinearCache
+	eventChannelCache *cache.LinearCache
+	configStore       *storage.ConfigStore
+	runtimeStore      *storage.RuntimeConfigStore
+	logger            *slog.Logger
+	nodeID            string
+	mu                sync.RWMutex
+	translator        *Translator
 }
 
 // NewSnapshotManager creates a new policy snapshot manager with LinearCaches for custom type URLs.
@@ -63,13 +68,18 @@ func NewSnapshotManager(logger *slog.Logger) *SnapshotManager {
 		RouteConfigTypeURL,
 		cache.WithLogger(slogAdapter{logger}),
 	)
+	eventChannelCache := cache.NewLinearCache(
+		EventChannelConfigTypeURL,
+		cache.WithLogger(slogAdapter{logger}),
+	)
 
 	return &SnapshotManager{
-		policyCache: policyCache,
-		routeCache:  routeCache,
-		logger:      logger,
-		nodeID:      "policy-node",
-		translator:  NewTranslator(logger),
+		policyCache:       policyCache,
+		routeCache:        routeCache,
+		eventChannelCache: eventChannelCache,
+		logger:            logger,
+		nodeID:            "policy-node",
+		translator:        NewTranslator(logger),
 	}
 }
 
@@ -78,9 +88,24 @@ func (sm *SnapshotManager) SetRuntimeStore(store *storage.RuntimeConfigStore) {
 	sm.runtimeStore = store
 }
 
+// SetConfigStore sets the ConfigStore for translating WebSubApi configs to EventChannelConfig resources.
+func (sm *SnapshotManager) SetConfigStore(store *storage.ConfigStore) {
+	sm.configStore = store
+}
+
+// SetKafkaBrokers sets the Kafka brokers used in EventChannelConfig resources.
+func (sm *SnapshotManager) SetKafkaBrokers(brokers []string) {
+	sm.translator.kafkaBrokers = brokers
+}
+
 // GetRouteCache returns the route config cache.
 func (sm *SnapshotManager) GetRouteCache() cache.Cache {
 	return sm.routeCache
+}
+
+// GetEventChannelCache returns the event channel config cache.
+func (sm *SnapshotManager) GetEventChannelCache() cache.Cache {
+	return sm.eventChannelCache
 }
 
 // GetPolicyCache returns the policy chain cache (backward compatible).
@@ -127,6 +152,14 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 	}
 	sm.routeCache.SetResources(routeById)
 
+	// Update event channel config cache from WebSubApi configs
+	if sm.configStore != nil {
+		eventChannelResources := sm.translator.TranslateWebSubApisToEventChannelConfigs(sm.configStore.GetAllByKind("WebSubApi"))
+		sm.eventChannelCache.SetResources(eventChannelResources)
+		sm.logger.Info("Event channel config cache updated",
+			slog.Int("event_channel_resources", len(eventChannelResources)))
+	}
+
 	version := sm.runtimeStore.IncrementResourceVersion()
 	sm.logger.Info("Policy snapshot updated successfully",
 		slog.Int64("version", version),
@@ -138,7 +171,8 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 
 // Translator converts RuntimeDeployConfig to xDS resources.
 type Translator struct {
-	logger *slog.Logger
+	logger       *slog.Logger
+	kafkaBrokers []string
 }
 
 // NewTranslator creates a new policy translator.

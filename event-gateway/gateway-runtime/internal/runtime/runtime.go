@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/admin"
@@ -48,6 +49,14 @@ type Runtime struct {
 	brokerDrivers []connectors.BrokerDriver
 	receivers     []connectors.Receiver
 	servers       []*http.Server // shared HTTP servers for port sharing
+
+	// Dynamic binding management (xDS mode)
+	mu                 sync.RWMutex
+	activeReceivers    map[string]connectors.Receiver
+	activeBrokerDrivers map[string]connectors.BrokerDriver
+	websubMux          *http.ServeMux
+	websubServer       *http.Server
+	running            bool // true after Run() starts servers
 }
 
 // New creates a new Runtime. After creation:
@@ -67,12 +76,15 @@ func New(cfg *config.Config, rawConfig map[string]interface{}, registry *connect
 	}
 
 	return &Runtime{
-		cfg:       cfg,
-		rawConfig: rawConfig,
-		engine:    eng,
-		hub:       hub.NewHub(eng),
-		registry:  registry,
-		admin:     admin.NewServer(cfg.Server.AdminPort),
+		cfg:                 cfg,
+		rawConfig:           rawConfig,
+		engine:              eng,
+		hub:                 hub.NewHub(eng),
+		registry:            registry,
+		admin:               admin.NewServer(cfg.Server.AdminPort),
+		activeReceivers:     make(map[string]connectors.Receiver),
+		activeBrokerDrivers: make(map[string]connectors.BrokerDriver),
+		websubMux:           http.NewServeMux(),
 	}, nil
 }
 
@@ -282,11 +294,39 @@ func (r *Runtime) Run(ctx context.Context) error {
 		}()
 	}
 
+	// If in xDS mode, ensure the websub server is started for dynamic bindings.
+	r.mu.Lock()
+	if r.websubServer == nil && r.cfg.ControlPlane.Enabled {
+		r.websubServer = &http.Server{
+			Addr:    fmt.Sprintf(":%d", r.cfg.Server.WebSubPort),
+			Handler: r.websubMux,
+		}
+		go func() {
+			slog.Info("Starting WebSub HTTP server for xDS mode", "addr", r.websubServer.Addr)
+			if err := r.websubServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				slog.Error("WebSub HTTP server error", "addr", r.websubServer.Addr, "error", err)
+			}
+		}()
+	}
+	r.running = true
+	r.mu.Unlock()
+
+	// Start receivers that were added before Run() (static mode).
 	for _, ep := range r.receivers {
 		if err := ep.Start(ctx); err != nil {
 			return fmt.Errorf("failed to start receiver: %w", err)
 		}
 	}
+
+	// Start any dynamically added receivers that were queued before Run().
+	r.mu.RLock()
+	for _, ep := range r.activeReceivers {
+		if err := ep.Start(ctx); err != nil {
+			r.mu.RUnlock()
+			return fmt.Errorf("failed to start dynamic receiver: %w", err)
+		}
+	}
+	r.mu.RUnlock()
 
 	r.admin.SetReady(true)
 	slog.Info("Event gateway is ready", "runtime_id", r.cfg.RuntimeID)
@@ -299,11 +339,26 @@ func (r *Runtime) Run(ctx context.Context) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	// Stop static receivers.
 	for i := len(r.receivers) - 1; i >= 0; i-- {
 		if err := r.receivers[i].Stop(shutdownCtx); err != nil {
 			slog.Error("Failed to stop receiver", "error", err)
 		}
 	}
+
+	// Stop dynamic receivers.
+	r.mu.Lock()
+	for name, ep := range r.activeReceivers {
+		if err := ep.Stop(shutdownCtx); err != nil {
+			slog.Error("Failed to stop dynamic receiver", "name", name, "error", err)
+		}
+	}
+	for name, bd := range r.activeBrokerDrivers {
+		if err := bd.Close(); err != nil {
+			slog.Error("Failed to close dynamic broker-driver", "name", name, "error", err)
+		}
+	}
+	r.mu.Unlock()
 
 	for _, bd := range r.brokerDrivers {
 		if err := bd.Close(); err != nil {
@@ -315,6 +370,16 @@ func (r *Runtime) Run(ctx context.Context) error {
 	for _, srv := range r.servers {
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			slog.Error("Failed to shutdown HTTP server", "addr", srv.Addr, "error", err)
+		}
+	}
+
+	// Shutdown xDS-mode websub server if created.
+	r.mu.RLock()
+	wsSrv := r.websubServer
+	r.mu.RUnlock()
+	if wsSrv != nil {
+		if err := wsSrv.Shutdown(shutdownCtx); err != nil {
+			slog.Error("Failed to shutdown WebSub HTTP server", "error", err)
 		}
 	}
 
@@ -404,6 +469,124 @@ func (r *Runtime) buildChain(routeKey string, policies []binding.PolicyRef) erro
 	}
 	r.engine.RegisterChain(routeKey, chain)
 	return nil
+}
+
+// AddWebSubApiBinding dynamically adds a WebSubApi binding at runtime (xDS mode).
+func (r *Runtime) AddWebSubApiBinding(wsb binding.WebSubApiBinding) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	vhost := defaultVhost(wsb.Vhost)
+
+	// Build channel-name → Kafka-topic map.
+	channels := make(map[string]string, len(wsb.Channels))
+	for _, ch := range wsb.Channels {
+		kafkaTopic := binding.WebSubApiTopicName(wsb.Name, wsb.Version, ch.Name)
+		channels[ch.Name] = kafkaTopic
+	}
+	internalSubTopic := binding.WebSubApiSubscriptionTopic(wsb.Name, wsb.Version)
+
+	// Build policy chains for the API.
+	subKey, inKey, outKey, err := r.buildWebSubApiPolicyChains(wsb, vhost)
+	if err != nil {
+		return fmt.Errorf("failed to build chains for WebSubApi %q: %w", wsb.Name, err)
+	}
+
+	r.hub.RegisterBinding(hub.ChannelBinding{
+		Name:              wsb.Name,
+		Mode:              "websub",
+		Context:           wsb.Context,
+		Version:           wsb.Version,
+		Vhost:             vhost,
+		SubscribeChainKey: subKey,
+		InboundChainKey:   inKey,
+		OutboundChainKey:  outKey,
+		Channels:          channels,
+	})
+
+	// Create broker-driver.
+	brokerDriverType := "kafka"
+	if wsb.BrokerDriver.Type != "" {
+		brokerDriverType = wsb.BrokerDriver.Type
+	}
+	brokerDriver, err := r.registry.CreateBrokerDriver(brokerDriverType, wsb.BrokerDriver.Config)
+	if err != nil {
+		return fmt.Errorf("failed to create broker-driver for WebSubApi %q: %w", wsb.Name, err)
+	}
+	r.activeBrokerDrivers[wsb.Name] = brokerDriver
+
+	ch := connectors.ChannelInfo{
+		Name:             wsb.Name,
+		Mode:             "websub",
+		Context:          wsb.Context,
+		Version:          wsb.Version,
+		Vhost:            vhost,
+		Channels:         channels,
+		InternalSubTopic: internalSubTopic,
+	}
+
+	receiver, err := r.registry.CreateReceiver("websub", connectors.ReceiverConfig{
+		Channel:      ch,
+		Processor:    r.hub,
+		BrokerDriver: brokerDriver,
+		RuntimeID:    r.cfg.RuntimeID,
+		Mux:          r.websubMux,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create receiver for WebSubApi %q: %w", wsb.Name, err)
+	}
+	r.activeReceivers[wsb.Name] = receiver
+
+	// If runtime is already running, start the receiver immediately.
+	if r.running {
+		if err := receiver.Start(context.Background()); err != nil {
+			return fmt.Errorf("failed to start receiver for WebSubApi %q: %w", wsb.Name, err)
+		}
+	}
+
+	slog.Info("Dynamically added WebSubApi binding",
+		"name", wsb.Name,
+		"context", wsb.Context,
+		"version", wsb.Version,
+		"channels", len(wsb.Channels),
+	)
+
+	return nil
+}
+
+// RemoveWebSubApiBinding dynamically removes a WebSubApi binding at runtime (xDS mode).
+func (r *Runtime) RemoveWebSubApiBinding(name string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Stop and remove receiver.
+	if receiver, ok := r.activeReceivers[name]; ok {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := receiver.Stop(ctx); err != nil {
+			slog.Error("Failed to stop receiver during removal", "name", name, "error", err)
+		}
+		delete(r.activeReceivers, name)
+	}
+
+	// Close and remove broker driver.
+	if bd, ok := r.activeBrokerDrivers[name]; ok {
+		if err := bd.Close(); err != nil {
+			slog.Error("Failed to close broker-driver during removal", "name", name, "error", err)
+		}
+		delete(r.activeBrokerDrivers, name)
+	}
+
+	// Remove hub binding.
+	r.hub.RemoveBinding(name)
+
+	slog.Info("Dynamically removed WebSubApi binding", "name", name)
+	return nil
+}
+
+// Hub returns the hub instance (for testing/inspection).
+func (r *Runtime) Hub() *hub.Hub {
+	return r.hub
 }
 
 // resolveReceiverType determines the receiver factory name from the binding.

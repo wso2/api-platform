@@ -324,12 +324,13 @@ type LuaScriptConfig struct {
 
 // EventGatewayConfig holds event gateway specific configurations
 type EventGatewayConfig struct {
-	Enabled               bool   `koanf:"enabled"`
-	WebSubHubURL          string `koanf:"websub_hub_url"`
-	WebSubHubPort         int    `koanf:"websub_hub_port"`
-	RouterHost            string `koanf:"router_host"`
-	WebSubHubListenerPort int    `koanf:"websub_hub_listener_port"`
-	TimeoutSeconds        int    `koanf:"timeout_seconds"`
+	Enabled               bool     `koanf:"enabled"`
+	WebSubHubURL          string   `koanf:"websub_hub_url"`
+	WebSubHubPort         int      `koanf:"websub_hub_port"`
+	RouterHost            string   `koanf:"router_host"`
+	WebSubHubListenerPort int      `koanf:"websub_hub_listener_port"`
+	TimeoutSeconds        int      `koanf:"timeout_seconds"`
+	KafkaBrokers          []string `koanf:"kafka_brokers"`
 }
 
 // DownstreamTLS holds downstream (listener) TLS configuration

@@ -35,6 +35,7 @@ type Config struct {
 	Kafka        KafkaConfig        `koanf:"kafka"`
 	WebSub       WebSubConfig       `koanf:"websub"`
 	PolicyEngine PolicyEngineConfig `koanf:"policy_engine"`
+	ControlPlane ControlPlaneConfig `koanf:"controlplane"`
 	RuntimeID    string             `koanf:"runtime_id"`
 }
 
@@ -70,6 +71,13 @@ type WebSubConfig struct {
 type PolicyEngineConfig struct {
 	ConfigFile string `koanf:"config_file"`
 	ChainsFile string `koanf:"chains_file"`
+}
+
+// ControlPlaneConfig configures the xDS-based control plane connection.
+type ControlPlaneConfig struct {
+	Enabled    bool   `koanf:"enabled"`
+	XDSAddress string `koanf:"xds_address"`
+	NodeID     string `koanf:"node_id"`
 }
 
 // DefaultConfig returns configuration with sensible defaults.

@@ -66,6 +66,13 @@ func (h *Hub) RegisterBinding(b ChannelBinding) {
 	h.bindings[b.Name] = &b
 }
 
+// RemoveBinding removes a binding by name.
+func (h *Hub) RemoveBinding(name string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.bindings, name)
+}
+
 // GetBinding returns the binding for the given name, or nil.
 func (h *Hub) GetBinding(name string) *ChannelBinding {
 	h.mu.RLock()
