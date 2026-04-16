@@ -154,6 +154,17 @@ func (e *WebSubReceiver) Start(ctx context.Context) error {
 
 	e.consumerMgr.SetContext(ctx)
 
+	// Ensure the subscription sync topic exists before producing or reconciling.
+	if e.syncProducer != nil {
+		if err := e.syncProducer.EnsureSyncTopic(ctx); err != nil {
+			slog.Warn("Failed to ensure subscription sync topic", "error", err)
+		}
+	}
+
+	// Reconcile subscriptions from the Kafka sync topic so that existing
+	// subscriptions survive a binding update (remove + re-add).
+	e.reconcileSubscriptions(ctx)
+
 	slog.Info("WebSub receiver started",
 		"api", e.channel.Name,
 		"channels", len(e.channel.Channels),
@@ -172,4 +183,48 @@ func (e *WebSubReceiver) Stop(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// reconcileSubscriptions replays subscriptions from the Kafka sync topic and
+// restores any active subscriptions whose channel names belong to this receiver.
+func (e *WebSubReceiver) reconcileSubscriptions(ctx context.Context) {
+	if len(e.opts.Brokers) == 0 {
+		return
+	}
+
+	reconciler := subscription.NewReconciler(e.opts.Brokers, e.store, e.opts.RuntimeID)
+
+	// Build a set of channel names this receiver owns.
+	ownedChannels := make(map[string]bool, len(e.channel.Channels))
+	for channelName := range e.channel.Channels {
+		ownedChannels[channelName] = true
+	}
+
+	// Callback: when a subscription is replayed, start its per-callback consumer
+	// if the subscription's topic (channel name) belongs to this receiver.
+	reconciler.SetCallback(func(sub *subscription.Subscription, isTombstone bool) {
+		if isTombstone {
+			return
+		}
+		if sub.State != subscription.StateActive {
+			return
+		}
+		if !ownedChannels[sub.Topic] {
+			return // subscription belongs to a different API
+		}
+		kafkaTopic, ok := e.channel.Channels[sub.Topic]
+		if !ok {
+			return
+		}
+		if err := e.consumerMgr.AddSubscription(sub.CallbackURL, sub.Secret, kafkaTopic); err != nil {
+			slog.Error("Failed to restore consumer during reconciliation",
+				"callback", sub.CallbackURL,
+				"topic", sub.Topic,
+				"error", err)
+		}
+	})
+
+	if err := reconciler.Reconcile(ctx); err != nil {
+		slog.Warn("Subscription reconciliation failed (non-fatal)", "api", e.channel.Name, "error", err)
+	}
 }

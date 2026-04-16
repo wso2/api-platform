@@ -73,6 +73,14 @@ type ChannelInfo struct {
 	InternalSubTopic  string            // internal subscription sync topic (WebSubApi only)
 }
 
+// RouteMux is an HTTP request multiplexer that supports dynamic route registration.
+// Both *http.ServeMux and the runtime DynamicMux satisfy this interface.
+type RouteMux interface {
+	http.Handler
+	Handle(pattern string, handler http.Handler)
+	HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request))
+}
+
 // ReceiverConfig holds the dependencies injected into a receiver factory.
 // Each receiver handles a single channel (API) with its own broker-driver connection.
 type ReceiverConfig struct {
@@ -80,5 +88,5 @@ type ReceiverConfig struct {
 	Processor    MessageProcessor
 	BrokerDriver BrokerDriver
 	RuntimeID    string
-	Mux          *http.ServeMux // shared HTTP mux for port sharing (owned by runtime)
+	Mux          RouteMux // shared HTTP mux for port sharing (owned by runtime)
 }

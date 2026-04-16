@@ -54,7 +54,8 @@ type Runtime struct {
 	mu                  sync.RWMutex
 	activeReceivers     map[string]connectors.Receiver
 	activeBrokerDrivers map[string]connectors.BrokerDriver
-	websubMux           *http.ServeMux
+	bindingPaths        map[string][]string // name → registered mux paths
+	websubMux           *DynamicMux
 	websubServer        *http.Server
 	running             bool // true after Run() starts servers
 }
@@ -84,7 +85,8 @@ func New(cfg *config.Config, rawConfig map[string]interface{}, registry *connect
 		admin:               admin.NewServer(cfg.Server.AdminPort),
 		activeReceivers:     make(map[string]connectors.Receiver),
 		activeBrokerDrivers: make(map[string]connectors.BrokerDriver),
-		websubMux:           http.NewServeMux(),
+		bindingPaths:        make(map[string][]string),
+		websubMux:           NewDynamicMux(),
 	}, nil
 }
 
@@ -515,6 +517,10 @@ func (r *Runtime) AddWebSubApiBinding(wsb binding.WebSubApiBinding) error {
 	}
 	r.activeBrokerDrivers[wsb.Name] = brokerDriver
 
+	// Track the mux paths so RemoveWebSubApiBinding can deregister them.
+	basePath := wsb.Context + "/" + wsb.Version
+	r.bindingPaths[wsb.Name] = []string{basePath + "/hub", basePath + "/webhook-receiver"}
+
 	ch := connectors.ChannelInfo{
 		Name:             wsb.Name,
 		Mode:             "websub",
@@ -579,6 +585,14 @@ func (r *Runtime) RemoveWebSubApiBinding(name string) error {
 
 	// Remove hub binding.
 	r.hub.RemoveBinding(name)
+
+	// Deregister HTTP routes from the mux.
+	if paths, ok := r.bindingPaths[name]; ok {
+		for _, p := range paths {
+			r.websubMux.Remove(p)
+		}
+		delete(r.bindingPaths, name)
+	}
 
 	slog.Info("Dynamically removed WebSubApi binding", "name", name)
 	return nil
