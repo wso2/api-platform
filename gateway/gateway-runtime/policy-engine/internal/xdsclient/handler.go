@@ -38,12 +38,19 @@ import (
 	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
 
+// TransportMetadata carries out-of-band data that is not part of the policy configuration
+// itself but needed by the PE for runtime behavior (e.g., redacting sensitive values in dumps).
+type TransportMetadata struct {
+	SensitiveValues []string `json:"sensitive_values,omitempty"`
+}
+
 // StoredPolicyConfig represents stored policy configuration from gateway-controller
 // Uses SDK types for routes, adds gateway-specific metadata wrapper
 type StoredPolicyConfig struct {
-	ID            string                       `json:"id"`
-	Configuration policyenginev1.Configuration `json:"configuration"`
-	Version       int64                        `json:"version"`
+	ID                string                       `json:"id"`
+	Configuration     policyenginev1.Configuration `json:"configuration"`
+	Version           int64                        `json:"version"`
+	TransportMetadata *TransportMetadata           `json:"transport_metadata,omitempty"`
 }
 
 // ResourceHandler handles xDS resource updates
@@ -88,6 +95,7 @@ func (h *ResourceHandler) HandlePolicyChainUpdate(ctx context.Context, resources
 	// Parse all resources first (validation phase)
 	// Each resource is a StoredPolicyConfig containing multiple routes with shared API metadata
 	configsWithMetadata := make([]policyChainWithMetadata, 0)
+	var allSensitiveValues []string
 
 	for i, resource := range resources {
 		if resource.TypeUrl != PolicyChainTypeURL {
@@ -127,6 +135,11 @@ func (h *ResourceHandler) HandlePolicyChainUpdate(ctx context.Context, resources
 			"id", storedConfig.ID,
 			"api_name", storedConfig.Configuration.Metadata.APIName,
 			"routes", len(storedConfig.Configuration.Routes))
+
+		// Collect sensitive values from transport metadata for redaction.
+		if storedConfig.TransportMetadata != nil {
+			allSensitiveValues = append(allSensitiveValues, storedConfig.TransportMetadata.SensitiveValues...)
+		}
 
 		// Extract API metadata (shared by all routes in this StoredPolicyConfig)
 		apiMetadata := storedConfig.Configuration.Metadata
@@ -172,9 +185,9 @@ func (h *ResourceHandler) HandlePolicyChainUpdate(ctx context.Context, resources
 		"count", len(chains),
 		"routes", chainKeys)
 
-	// Apply changes atomically
-	// This replaces ALL routes with the new set from xDS (State of the World)
-	h.kernel.ApplyWholeRoutes(chains)
+	// Apply routes and sensitive values atomically so a concurrent config dump can never
+	// observe new policy chains with stale sensitive values (which would bypass redaction).
+	h.kernel.ApplyWholeRoutesAndSensitiveValues(chains, allSensitiveValues)
 
 	// Record metrics for policy chains loaded
 	metrics.PolicyChainsLoaded.WithLabelValues("ads").Set(float64(len(chains)))

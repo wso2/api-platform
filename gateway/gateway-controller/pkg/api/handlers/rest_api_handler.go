@@ -228,6 +228,10 @@ func (h *RestAPIHandler) DeleteRestAPI(c *gin.Context, id string) {
 
 // mapCreateError maps service errors to HTTP responses for Create.
 func (h *RestAPIHandler) mapCreateError(c *gin.Context, err error) {
+	if mapRenderError(c, "create", err) {
+		return
+	}
+
 	if storage.IsConflictError(err) {
 		c.JSON(http.StatusConflict, api.ErrorResponse{
 			Status:  "error",
@@ -278,6 +282,10 @@ func (h *RestAPIHandler) mapGetError(c *gin.Context, log *slog.Logger, handle st
 
 // mapUpdateError maps service errors to HTTP responses for Update.
 func (h *RestAPIHandler) mapUpdateError(c *gin.Context, handle string, err error) {
+	if mapRenderError(c, "update", err) {
+		return
+	}
+
 	var parseErr *restapi.ParseError
 	if errors.As(err, &parseErr) {
 		metrics.ValidationErrorsTotal.WithLabelValues("update", "parse_failed").Inc()

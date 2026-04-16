@@ -89,6 +89,7 @@ type StoredConfig struct {
 	CreatedAt           time.Time    `json:"createdAt"`
 	UpdatedAt           time.Time    `json:"updatedAt"`
 	DeployedAt          *time.Time   `json:"deployedAt,omitempty"`
+	SensitiveValues     []string     `json:"-"` // not persisted — holds resolved secret values for redaction
 }
 
 // GetCompositeKey returns the composite key "kind:displayName:version" for indexing

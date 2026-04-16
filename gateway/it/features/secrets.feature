@@ -365,18 +365,18 @@ Feature: Secret Management Operations
           template: openai
           context: /llm-auth-secret
           upstream:
-            url: http://mock-openapi:4010/openai/v1
+            url: http://echo-backend-multi-arch:8080/anything
             auth:
               type: api-key
               header: Authorization
-              value: Bearer $secret{upstream-secret}
+              value: 'Bearer {{ secret "upstream-secret" }}'
           accessControl:
             mode: allow_all
         """
     Then the response status code should be 201
     And I wait for 3 seconds
 
-    # Request should succeed (mock validates auth header presence)
+    # Verify the secret value is correctly injected into the Authorization header sent upstream
     When I set header "Content-Type" to "application/json"
     And I send a POST request to "http://localhost:8080/llm-auth-secret/chat/completions" with body:
       """
@@ -387,7 +387,7 @@ Feature: Secret Management Operations
       """
     Then the response status code should be 200
     And the response should be valid JSON
-    And the JSON response field "object" should be "chat.completion"
+    And the response should contain echoed header "Authorization" with value "Bearer ssk-test-auth-key-12345"
 
     # Cleanup
     Given I authenticate using basic auth as "admin"
@@ -395,6 +395,75 @@ Feature: Secret Management Operations
     Then the response status code should be 200
 
     When I delete the secret "upstream-secret"
+    Then the response status should be 200
+
+  Scenario: Invoke an LLM Provider where the secret value contains JSON special characters (backslash and quote)
+    # Secret value contains \ and " which must be JSON-escaped as \\ and \" when submitted
+    When I create a secret with the following configuration:
+      """
+      {
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "kind": "Secret",
+        "metadata": {
+          "name": "upstream-secret-special"
+        },
+        "spec": {
+          "displayName": "Special Chars Secret",
+          "description": "Secret whose value contains backslash and quote characters",
+          "value": "ssk-test\\auth-\"key\""
+        }
+      }
+      """
+    Then the response status should be 201
+    And the response should be valid JSON
+    And the JSON response field "id" should be "upstream-secret-special"
+
+    When I create this LLM provider:
+        """
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProvider
+        metadata:
+          name: invoke-auth-provider-special-secret
+        spec:
+          displayName: Invoke Auth Provider Special Secret
+          version: v1.0
+          template: openai
+          context: /llm-auth-special-secret
+          upstream:
+            url: http://echo-backend-multi-arch:8080/anything
+            auth:
+              type: api-key
+              header: Authorization
+              value: 'Bearer {{ secret "upstream-secret-special" }}'
+          accessControl:
+            mode: allow_all
+        """
+    Then the response status code should be 201
+    And I wait for 3 seconds
+
+    # Verify the secret value (with special chars) is correctly injected into the Authorization header sent upstream.
+    # Use the docstring variant so the expected value can contain embedded double-quote characters.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/llm-auth-special-secret/chat/completions" with body:
+      """
+      {
+        "model": "gpt-4",
+        "messages": [{"role": "user", "content": "Test special char auth"}]
+      }
+      """
+    Then the response status code should be 200
+    And the response should be valid JSON
+    And the response should contain echoed header "Authorization" with exact value:
+      """
+      Bearer ssk-test\auth-"key"
+      """
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "invoke-auth-provider-special-secret"
+    Then the response status code should be 200
+
+    When I delete the secret "upstream-secret-special"
     Then the response status should be 200
 
   Scenario: Create LLM Provider with a secret that does not exist
@@ -414,7 +483,7 @@ Feature: Secret Management Operations
           auth:
             type: api-key
             header: Authorization
-            value: Bearer $secret{non-existent-secret-abcde}
+            value: 'Bearer {{ secret "non-existent-secret-abcde" }}'
         accessControl:
           mode: allow_all
       """

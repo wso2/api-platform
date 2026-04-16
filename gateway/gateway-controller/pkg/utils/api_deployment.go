@@ -34,8 +34,9 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
 
@@ -80,7 +81,7 @@ type APIDeploymentService struct {
 	httpClient      *http.Client
 	eventHub        eventhub.EventHub
 	gatewayID       string
-	policyResolver  *resolver.PolicyResolver
+	secretResolver  funcs.SecretResolver
 }
 
 func (s *APIDeploymentService) validateArtifactConflicts(kind, currentID, displayName, version, handle string) error {
@@ -114,9 +115,9 @@ func NewAPIDeploymentService(
 	snapshotManager *xds.SnapshotManager,
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
-	policyResolver *resolver.PolicyResolver,
 	eventHub eventhub.EventHub,
 	gatewayID string,
+	secretResolver funcs.SecretResolver,
 ) *APIDeploymentService {
 	if db == nil {
 		panic("APIDeploymentService requires non-nil storage")
@@ -133,7 +134,7 @@ func NewAPIDeploymentService(
 		routerConfig:    routerConfig,
 		eventHub:        eventHub,
 		gatewayID:       trimmedGatewayID,
-		policyResolver:  policyResolver,
+		secretResolver:  secretResolver,
 	}
 }
 
@@ -291,13 +292,14 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	// (the DB layer marshals SourceConfiguration, not Configuration).
 	storedCfg.SourceConfiguration = storedCfg.Configuration
 
-	var saveErr error
-
-	// Resolve policy configuration (handles secret resolution)
-	resolvedCfg, saveErr := s.resolvePolicyConfiguration(storedCfg)
-	if saveErr != nil {
-		return nil, saveErr
+	// Render template expressions in the spec (e.g. {{ secret "..." }}, {{ env "..." }}).
+	// Rendering must succeed before persisting — catches missing secrets and malformed templates.
+	// cfg.Configuration is set to the resolved version; cfg.SourceConfiguration stays unrendered.
+	if err := templateengine.RenderSpec(storedCfg, s.secretResolver, params.Logger); err != nil {
+		return nil, err
 	}
+
+	var saveErr error
 
 	// Try to save/update the configuration using timestamp-guarded upsert.
 	// affected=true means the row was actually inserted or updated in the DB.
@@ -427,31 +429,10 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	s.publishEvent(eventhub.EventTypeAPI, action, apiID, params.CorrelationID, params.Logger)
 
 	return &APIDeploymentResult{
-		StoredConfig: resolvedCfg,
+		StoredConfig: storedCfg,
 		IsUpdate:     isUpdate,
 		IsStale:      false,
 	}, nil
-}
-
-// resolvePolicyConfiguration resolves policy templates and secret references in the configuration.
-// Returns the resolved configuration or an error if policy resolution fails.
-func (s *APIDeploymentService) resolvePolicyConfiguration(storedCfg *models.StoredConfig) (*models.StoredConfig, error) {
-	resolvedCfg, validationErrors := s.policyResolver.ResolvePolicies(storedCfg)
-	if len(validationErrors) > 0 {
-		errMsgs := make([]string, 0, len(validationErrors))
-		for _, ve := range validationErrors {
-			errMsgs = append(errMsgs, ve.Message)
-		}
-		errMsg := strings.Join(errMsgs, "; ")
-
-		slog.Error("Policy resolution failed",
-			slog.String("config_handle", storedCfg.Handle),
-			slog.String("errors", errMsg),
-		)
-
-		return nil, fmt.Errorf("policy resolution failed with %d errors: %s", len(validationErrors), errMsg)
-	}
-	return resolvedCfg, nil
 }
 
 func (s *APIDeploymentService) GetTopicsForUpdate(apiConfig models.StoredConfig) ([]string, []string) {
