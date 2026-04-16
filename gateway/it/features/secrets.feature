@@ -442,8 +442,7 @@ Feature: Secret Management Operations
     And I wait for 3 seconds
 
     # Verify the secret value (with special chars) is correctly injected into the Authorization header sent upstream.
-    # The Gherkin step pattern ([^"]*) cannot match a literal " inside a quoted argument, so we use
-    # "containing" to assert the backslash and the text around the quote are present.
+    # Use the docstring variant so the expected value can contain embedded double-quote characters.
     When I set header "Content-Type" to "application/json"
     And I send a POST request to "http://localhost:8080/llm-auth-special-secret/chat/completions" with body:
       """
@@ -454,7 +453,10 @@ Feature: Secret Management Operations
       """
     Then the response status code should be 200
     And the response should be valid JSON
-    And the response should contain echoed header "Authorization" containing "Bearer ssk-test\auth-"
+    And the response should contain echoed header "Authorization" with exact value:
+      """
+      Bearer ssk-test\auth-"key"
+      """
 
     # Cleanup
     Given I authenticate using basic auth as "admin"
