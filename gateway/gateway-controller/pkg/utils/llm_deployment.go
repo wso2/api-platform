@@ -313,10 +313,8 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	// Render template expressions to catch invalid function names or secret references early.
 	// The rendered Configuration is not persisted — SourceConfiguration (unrendered) is what
 	// the DB stores, and each replica's EventListener re-derives Configuration from it on consumption.
-	if desiredState != models.StateUndeployed {
-		if err := templateengine.RenderSpec(storedCfg, s.deploymentService.secretResolver, params.Logger); err != nil {
-			return nil, err
-		}
+	if err := templateengine.RenderSpec(storedCfg, s.deploymentService.secretResolver, params.Logger); err != nil {
+		return nil, err
 	}
 
 	// Save or update using timestamp-guarded upsert.
@@ -474,10 +472,8 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 	// Render template expressions to catch invalid function names or secret references early.
 	// The rendered Configuration is not persisted — SourceConfiguration (unrendered) is what
 	// the DB stores, and each replica's EventListener re-derives Configuration from it on consumption.
-	if proxyDesiredState != models.StateUndeployed {
-		if err := templateengine.RenderSpec(storedCfg, s.deploymentService.secretResolver, params.Logger); err != nil {
-			return nil, err
-		}
+	if err := templateengine.RenderSpec(storedCfg, s.deploymentService.secretResolver, params.Logger); err != nil {
+		return nil, err
 	}
 
 	// Save or update using timestamp-guarded upsert.

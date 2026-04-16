@@ -306,12 +306,9 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 	existing.SourceConfiguration = apiConfig
 
 	// Render template expressions before validation so the validator sees resolved values
-	// (e.g. {{ secret "BACKEND_URL" }} → actual URL). Skip for undeployment — config
-	// contents are not used in that path.
-	if desiredState != models.StateUndeployed {
-		if err := templateengine.RenderSpec(existing, s.secretResolver, log); err != nil {
-			return nil, err
-		}
+	// (e.g. {{ env "BACKEND_URL" }} → actual URL).
+	if err := templateengine.RenderSpec(existing, s.secretResolver, log); err != nil {
+		return nil, err
 	}
 
 	// Validate configuration against resolved values
