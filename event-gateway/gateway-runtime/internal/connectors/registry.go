@@ -23,62 +23,62 @@ import (
 	"sync"
 )
 
-// EntrypointFactory creates an entrypoint from per-channel config.
-// Entrypoint-specific configuration is captured in the closure at registration time.
-type EntrypointFactory func(cfg EntrypointConfig) (Entrypoint, error)
+// ReceiverFactory creates a receiver from per-channel config.
+// Receiver-specific configuration is captured in the closure at registration time.
+type ReceiverFactory func(cfg ReceiverConfig) (Receiver, error)
 
-// EndpointFactory creates an endpoint from per-channel configuration.
-// The config map comes from endpoint.config in channels.yaml.
-type EndpointFactory func(cfg map[string]interface{}) (Endpoint, error)
+// BrokerDriverFactory creates a broker-driver from per-channel configuration.
+// The config map comes from broker-driver.config in channels.yaml.
+type BrokerDriverFactory func(cfg map[string]interface{}) (BrokerDriver, error)
 
-// Registry holds factories for creating entrypoints and endpoints by type name.
+// Registry holds factories for creating receivers and broker-drivers by type name.
 // New types are added by registering factories — no changes to the runtime or main required.
 type Registry struct {
-	mu          sync.RWMutex
-	entrypoints map[string]EntrypointFactory
-	endpoints   map[string]EndpointFactory
+	mu            sync.RWMutex
+	receivers     map[string]ReceiverFactory
+	brokerDrivers map[string]BrokerDriverFactory
 }
 
 // NewRegistry creates an empty connector registry.
 func NewRegistry() *Registry {
 	return &Registry{
-		entrypoints: make(map[string]EntrypointFactory),
-		endpoints:   make(map[string]EndpointFactory),
+		receivers:     make(map[string]ReceiverFactory),
+		brokerDrivers: make(map[string]BrokerDriverFactory),
 	}
 }
 
-// RegisterEntrypoint registers an entrypoint factory by type name (e.g. "websub", "websocket").
-func (r *Registry) RegisterEntrypoint(name string, factory EntrypointFactory) {
+// RegisterReceiver registers a receiver factory by type name (e.g. "websub", "websocket").
+func (r *Registry) RegisterReceiver(name string, factory ReceiverFactory) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.entrypoints[name] = factory
+	r.receivers[name] = factory
 }
 
-// RegisterEndpoint registers an endpoint factory by type name (e.g. "kafka").
-func (r *Registry) RegisterEndpoint(name string, factory EndpointFactory) {
+// RegisterBrokerDriver registers a broker-driver factory by type name (e.g. "kafka").
+func (r *Registry) RegisterBrokerDriver(name string, factory BrokerDriverFactory) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.endpoints[name] = factory
+	r.brokerDrivers[name] = factory
 }
 
-// CreateEntrypoint creates an entrypoint using the registered factory.
-func (r *Registry) CreateEntrypoint(name string, cfg EntrypointConfig) (Entrypoint, error) {
+// CreateReceiver creates a receiver using the registered factory.
+func (r *Registry) CreateReceiver(name string, cfg ReceiverConfig) (Receiver, error) {
 	r.mu.RLock()
-	factory, ok := r.entrypoints[name]
+	factory, ok := r.receivers[name]
 	r.mu.RUnlock()
 	if !ok {
-		return nil, fmt.Errorf("unknown entrypoint type: %s", name)
+		return nil, fmt.Errorf("unknown receiver type: %s", name)
 	}
 	return factory(cfg)
 }
 
-// CreateEndpoint creates an endpoint using the registered factory.
-func (r *Registry) CreateEndpoint(name string, cfg map[string]interface{}) (Endpoint, error) {
+// CreateBrokerDriver creates a broker-driver using the registered factory.
+func (r *Registry) CreateBrokerDriver(name string, cfg map[string]interface{}) (BrokerDriver, error) {
 	r.mu.RLock()
-	factory, ok := r.endpoints[name]
+	factory, ok := r.brokerDrivers[name]
 	r.mu.RUnlock()
 	if !ok {
-		return nil, fmt.Errorf("unknown endpoint type: %s", name)
+		return nil, fmt.Errorf("unknown broker-driver type: %s", name)
 	}
 	return factory(cfg)
 }

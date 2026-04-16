@@ -27,12 +27,12 @@ import (
 	"sync"
 
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
-	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors/endpoint/kafka"
+	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors/brokerdriver/kafka"
 )
 
 // managedConsumer tracks a per-callback consumer and its topic set.
 type managedConsumer struct {
-	consumer connectors.Entrypoint
+	consumer connectors.Receiver
 	topics   map[string]bool // set of Kafka topics this consumer reads
 }
 
@@ -197,7 +197,7 @@ func (cm *ConsumerManager) StopAll(ctx context.Context) {
 	cm.consumers = make(map[string]*managedConsumer)
 }
 
-func (cm *ConsumerManager) createConsumer(groupID string, topics []string, callbackURL, secret string) (connectors.Entrypoint, error) {
+func (cm *ConsumerManager) createConsumer(groupID string, topics []string, callbackURL, secret string) (connectors.Receiver, error) {
 	handler := func(ctx context.Context, msg *connectors.Message) error {
 		// Apply outbound policies.
 		processed, shortCircuited, err := cm.processor.ProcessOutbound(ctx, cm.bindingName, msg)

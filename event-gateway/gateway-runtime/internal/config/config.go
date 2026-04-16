@@ -21,6 +21,7 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	"github.com/knadh/koanf/parsers/toml/v2"
@@ -35,6 +36,7 @@ type Config struct {
 	Kafka        KafkaConfig        `koanf:"kafka"`
 	WebSub       WebSubConfig       `koanf:"websub"`
 	PolicyEngine PolicyEngineConfig `koanf:"policy_engine"`
+	ControlPlane ControlPlaneConfig `koanf:"controlplane"`
 	RuntimeID    string             `koanf:"runtime_id"`
 }
 
@@ -72,6 +74,13 @@ type PolicyEngineConfig struct {
 	ChainsFile string `koanf:"chains_file"`
 }
 
+// ControlPlaneConfig configures the xDS-based control plane connection.
+type ControlPlaneConfig struct {
+	Enabled    bool   `koanf:"enabled"`
+	XDSAddress string `koanf:"xds_address"`
+	NodeID     string `koanf:"node_id"`
+}
+
 // DefaultConfig returns configuration with sensible defaults.
 func DefaultConfig() *Config {
 	return &Config{
@@ -97,7 +106,8 @@ func DefaultConfig() *Config {
 }
 
 // Load loads configuration from a TOML file and environment variables.
-// Environment variables use the prefix APIP_EGW_ and replace dots with underscores.
+// Environment variables use the prefix APIP_EGW_ and map top-level sections to
+// names such as APIP_EGW_SERVER_WEBSUB_PORT and APIP_EGW_CONTROLPLANE_XDS_ADDRESS.
 func Load(path string) (*Config, map[string]interface{}, error) {
 	k := koanf.New(".")
 	cfg := DefaultConfig()
@@ -108,11 +118,15 @@ func Load(path string) (*Config, map[string]interface{}, error) {
 		}
 	}
 
-	// Load environment variable overrides
-	if err := k.Load(env.Provider("APIP_EGW_", ".", func(s string) string {
-		return strings.Replace(
-			strings.ToLower(strings.TrimPrefix(s, "APIP_EGW_")),
-			"_", ".", -1)
+	// Load environment variable overrides. Single underscores separate the
+	// top-level section from the field name, while field-name underscores are
+	// preserved (for example SERVER_WEBSUB_PORT -> server.websub_port).
+	if err := k.Load(env.ProviderWithValue("APIP_EGW_", ".", func(key, value string) (string, interface{}) {
+		mapped := mapEnvKey(key)
+		if mapped == "" {
+			return "", nil
+		}
+		return mapped, mapEnvValue(mapped, value)
 	}), nil); err != nil {
 		return nil, nil, fmt.Errorf("failed to load env vars: %w", err)
 	}
@@ -132,4 +146,74 @@ func Load(path string) (*Config, map[string]interface{}, error) {
 	)
 
 	return cfg, rawConfig, nil
+}
+
+func mapEnvKey(key string) string {
+	name := strings.ToLower(strings.TrimPrefix(key, "APIP_EGW_"))
+
+	switch {
+	case name == "runtime_id":
+		return "runtime_id"
+	case strings.HasPrefix(name, "server_"):
+		return "server." + strings.TrimPrefix(name, "server_")
+	case strings.HasPrefix(name, "kafka_"):
+		return "kafka." + strings.TrimPrefix(name, "kafka_")
+	case strings.HasPrefix(name, "websub_"):
+		return "websub." + strings.TrimPrefix(name, "websub_")
+	case strings.HasPrefix(name, "policy_engine_"):
+		return "policy_engine." + strings.TrimPrefix(name, "policy_engine_")
+	case strings.HasPrefix(name, "controlplane_"):
+		return "controlplane." + strings.TrimPrefix(name, "controlplane_")
+	default:
+		// Support generic nested keys using "__" for literal underscores.
+		name = strings.ReplaceAll(name, "__", "%UNDERSCORE%")
+		name = strings.ReplaceAll(name, "_", ".")
+		name = strings.ReplaceAll(name, "%UNDERSCORE%", "_")
+		return name
+	}
+}
+
+func mapEnvValue(path, value string) interface{} {
+	value = strings.TrimSpace(value)
+
+	switch path {
+	case "kafka.brokers":
+		return splitCSV(value)
+	case "server.websub_port",
+		"server.websocket_port",
+		"server.admin_port",
+		"server.metrics_port",
+		"websub.verification_timeout_seconds",
+		"websub.delivery_max_retries",
+		"websub.delivery_initial_delay_ms",
+		"websub.delivery_max_delay_ms",
+		"websub.delivery_concurrency",
+		"websub.default_lease_seconds":
+		if n, err := strconv.Atoi(value); err == nil {
+			return n
+		}
+	case "kafka.tls", "controlplane.enabled":
+		if b, err := strconv.ParseBool(value); err == nil {
+			return b
+		}
+	}
+
+	return value
+}
+
+func splitCSV(value string) []string {
+	if value == "" {
+		return []string{}
+	}
+
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		out = append(out, part)
+	}
+	return out
 }

@@ -95,10 +95,6 @@ github.com/twmb/franz-go/pkg/kadm v1.14.0 h1:nAn1co1lXzJQocpzyIyOFOjUBf4WHWs5/fT
 github.com/twmb/franz-go/pkg/kadm v1.14.0/go.mod h1:XjOPz6ZaXXjrW2jVCfLuucP8H1w2TvD6y3PT2M+aAM4=
 github.com/twmb/franz-go/pkg/kmsg v1.9.0 h1:JojYUph2TKAau6SBtErXpXGC7E3gg4vGZMv9xFU/B6M=
 github.com/twmb/franz-go/pkg/kmsg v1.9.0/go.mod h1:CMbfazviCyY6HM0SXuG5t9vOwYDHRCSrJJyBAe5paqg=
-github.com/wso2/api-platform/sdk v0.3.0 h1:OmZv0Kltc/fOtgRdsMikhodQAWZG+lVjNPtOZxl/2OQ=
-github.com/wso2/api-platform/sdk v0.3.0/go.mod h1:byr46IKr+KyUuPT7hm/Si+KosOtLQt5tjMbHFhexQgM=
-github.com/wso2/gateway-controllers/policies/basic-auth v0.8.0 h1:y6QgtTlxQhL3O68VXl4hj7M0TKNmVDHkpj6cv+gdTGQ=
-github.com/wso2/gateway-controllers/policies/basic-auth v0.8.0/go.mod h1:3Xzh9Fc0BvMHuZfylV5/YkZy2vMXU5XvAgPaxtldS7w=
 github.com/wso2/gateway-controllers/policies/basic-auth v1.0.1 h1:0W1va0Daxg6y6ReH658VvkrtNbQewbbbALP5Xc6AUKA=
 github.com/wso2/gateway-controllers/policies/basic-auth v1.0.1/go.mod h1:Th729M7k3+vFIybXRwzeui486rzyHGxII8MDSphn+5w=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=

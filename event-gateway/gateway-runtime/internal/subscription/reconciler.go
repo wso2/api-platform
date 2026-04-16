@@ -31,20 +31,22 @@ import (
 // SubscriptionCallback is called when a subscription is added/removed during reconciliation.
 type SubscriptionCallback func(sub *Subscription, isTombstone bool)
 
-// Reconciler rebuilds the in-memory subscription store from the Kafka compacted topic on startup.
+// Reconciler rebuilds the in-memory subscription store from a per-API Kafka compacted topic on startup.
 type Reconciler struct {
 	brokers   []string
 	store     SubscriptionStore
 	runtimeID string
+	syncTopic string
 	callback  SubscriptionCallback
 }
 
-// NewReconciler creates a new Reconciler.
-func NewReconciler(brokers []string, store SubscriptionStore, runtimeID string) *Reconciler {
+// NewReconciler creates a new Reconciler that replays from the given syncTopic.
+func NewReconciler(brokers []string, store SubscriptionStore, runtimeID, syncTopic string) *Reconciler {
 	return &Reconciler{
 		brokers:   brokers,
 		store:     store,
 		runtimeID: runtimeID,
+		syncTopic: syncTopic,
 	}
 }
 
@@ -66,7 +68,7 @@ func (r *Reconciler) Reconcile(ctx context.Context) error {
 	}
 	admin := kadm.NewClient(adminClient)
 
-	endOffsets, err := admin.ListEndOffsets(ctx, SyncTopic)
+	endOffsets, err := admin.ListEndOffsets(ctx, r.syncTopic)
 	if err != nil {
 		adminClient.Close()
 		return fmt.Errorf("failed to list end offsets: %w", err)
@@ -87,7 +89,7 @@ func (r *Reconciler) Reconcile(ctx context.Context) error {
 	// Create a consumer from the beginning
 	client, err := kgo.NewClient(
 		kgo.SeedBrokers(r.brokers...),
-		kgo.ConsumeTopics(SyncTopic),
+		kgo.ConsumeTopics(r.syncTopic),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
 	)
 	if err != nil {

@@ -39,18 +39,23 @@ const (
 
 	// RouteConfigTypeURL is the custom type URL for route config (metadata + resolver)
 	RouteConfigTypeURL = "api-platform.wso2.org/v1.RouteConfig"
+
+	// EventChannelConfigTypeURL is the custom type URL for event gateway channel configurations
+	EventChannelConfigTypeURL = "api-platform.wso2.org/v1.EventChannelConfig"
 )
 
 // SnapshotManager manages xDS snapshots for policy and route configurations.
-// It holds two LinearCaches: one for PolicyChainConfig and one for RouteConfig.
+// It holds LinearCaches for PolicyChainConfig, RouteConfig, and EventChannelConfig.
 type SnapshotManager struct {
-	policyCache  *cache.LinearCache
-	routeCache   *cache.LinearCache
-	runtimeStore *storage.RuntimeConfigStore
-	logger       *slog.Logger
-	nodeID       string
-	mu           sync.RWMutex
-	translator   *Translator
+	policyCache       *cache.LinearCache
+	routeCache        *cache.LinearCache
+	eventChannelCache *cache.LinearCache
+	configStore       *storage.ConfigStore
+	runtimeStore      *storage.RuntimeConfigStore
+	logger            *slog.Logger
+	nodeID            string
+	mu                sync.RWMutex
+	translator        *Translator
 }
 
 // NewSnapshotManager creates a new policy snapshot manager with LinearCaches for custom type URLs.
@@ -63,13 +68,18 @@ func NewSnapshotManager(logger *slog.Logger) *SnapshotManager {
 		RouteConfigTypeURL,
 		cache.WithLogger(slogAdapter{logger}),
 	)
+	eventChannelCache := cache.NewLinearCache(
+		EventChannelConfigTypeURL,
+		cache.WithLogger(slogAdapter{logger}),
+	)
 
 	return &SnapshotManager{
-		policyCache: policyCache,
-		routeCache:  routeCache,
-		logger:      logger,
-		nodeID:      "policy-node",
-		translator:  NewTranslator(logger),
+		policyCache:       policyCache,
+		routeCache:        routeCache,
+		eventChannelCache: eventChannelCache,
+		logger:            logger,
+		nodeID:            "policy-node",
+		translator:        NewTranslator(logger),
 	}
 }
 
@@ -78,9 +88,19 @@ func (sm *SnapshotManager) SetRuntimeStore(store *storage.RuntimeConfigStore) {
 	sm.runtimeStore = store
 }
 
+// SetConfigStore sets the ConfigStore for translating WebSubApi configs to EventChannelConfig resources.
+func (sm *SnapshotManager) SetConfigStore(store *storage.ConfigStore) {
+	sm.configStore = store
+}
+
 // GetRouteCache returns the route config cache.
 func (sm *SnapshotManager) GetRouteCache() cache.Cache {
 	return sm.routeCache
+}
+
+// GetEventChannelCache returns the event channel config cache.
+func (sm *SnapshotManager) GetEventChannelCache() cache.Cache {
+	return sm.eventChannelCache
 }
 
 // GetPolicyCache returns the policy chain cache (backward compatible).
@@ -126,6 +146,35 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 		routeById[key] = res
 	}
 	sm.routeCache.SetResources(routeById)
+
+	// Update event channel config cache from WebSubApi configs
+	if sm.configStore != nil {
+		eventChannelResources := sm.translator.TranslateWebSubApisToEventChannelConfigs(sm.configStore.GetAllByKind("WebSubApi"))
+
+		// The go-control-plane LinearCache does not notify SotW wildcard watches
+		// when resources are only deleted (non-full-state custom type URL).
+		// Work around this by pushing a deletion marker via UpdateResource before
+		// calling SetResources so the change is seen as an update, not just a removal.
+		currentResources := sm.eventChannelCache.GetResources()
+		for uuid := range currentResources {
+			if _, exists := eventChannelResources[uuid]; !exists {
+				marker, err := buildDeletionMarkerResource(uuid)
+				if err != nil {
+					sm.logger.Error("Failed to build deletion marker", slog.String("uuid", uuid), slog.Any("error", err))
+					continue
+				}
+				if err := sm.eventChannelCache.UpdateResource(uuid, marker); err != nil {
+					sm.logger.Error("Failed to send deletion marker", slog.String("uuid", uuid), slog.Any("error", err))
+				} else {
+					sm.logger.Info("Sent deletion marker for event channel resource", slog.String("uuid", uuid))
+				}
+			}
+		}
+
+		sm.eventChannelCache.SetResources(eventChannelResources)
+		sm.logger.Info("Event channel config cache updated",
+			slog.Int("event_channel_resources", len(eventChannelResources)))
+	}
 
 	version := sm.runtimeStore.IncrementResourceVersion()
 	sm.logger.Info("Policy snapshot updated successfully",
@@ -283,6 +332,18 @@ func (t *Translator) createRouteConfigResource(
 }
 
 // toAnyResource converts a map to an anypb.Any resource with the given type URL.
+// buildDeletionMarkerResource creates a minimal EventChannelConfig resource
+// with the "deleted" flag set. This is used to work around the go-control-plane
+// LinearCache limitation where deletions of non-full-state SotW types don't
+// trigger watch notifications.
+func buildDeletionMarkerResource(uuid string) (types.Resource, error) {
+	data := map[string]interface{}{
+		"uuid":    uuid,
+		"deleted": true,
+	}
+	return toAnyResource(data, EventChannelConfigTypeURL)
+}
+
 func toAnyResource(data map[string]interface{}, typeURL string) (types.Resource, error) {
 	dataJSON, err := json.Marshal(data)
 	if err != nil {

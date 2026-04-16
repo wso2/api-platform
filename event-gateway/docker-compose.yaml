@@ -17,6 +17,40 @@
 # --------------------------------------------------------------------
 
 services:
+  gateway-controller:
+    image: ghcr.io/wso2/api-platform/gateway-controller:1.1.0-SNAPSHOT
+    build:
+      context: ../gateway/gateway-controller
+      dockerfile: Dockerfile
+      target: production
+      additional_contexts:
+        sdk-core: ../sdk/core
+        common: ../common
+    command: ["-config", "/etc/gateway-controller/config.toml"]
+    ports:
+      - "9090:9090"    # Management API
+      - "18001:18001"  # Policy xDS (EventChannelConfig)
+    environment:
+      - APIP_GW_CONTROLLER_STORAGE_TYPE=sqlite
+      - APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH=./data/gateway.db
+      - APIP_GW_CONTROLLER_LOGGING_LEVEL=info
+      - APIP_GW_DEVELOPMENT_MODE=true
+      - APIP_GW_ROUTER_EVENT__GATEWAY_ENABLED=true
+      - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB_URL=http://event-gateway:8080
+      - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB_PORT=8080
+      - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB__LISTENER__PORT=8080
+      - APIP_GW_ROUTER_EVENT__GATEWAY_TIMEOUT__SECONDS=30
+    volumes:
+      - controller-data:/app/data
+      - ../gateway/configs/config.toml:/etc/gateway-controller/config.toml:ro
+      - ../gateway/gateway-controller/certificates:/app/certificates
+      - ../gateway/gateway-controller/listener-certs:/app/listener-certs:ro
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - egw-network
+
   event-gateway:
     image: ghcr.io/wso2/api-platform/event-gateway-runtime:0.1.0-SNAPSHOT
     build:
@@ -35,6 +69,8 @@ services:
       - APIP_EGW_KAFKA_BROKERS=kafka:29092
       - APIP_EGW_SERVER_WEBSUB_PORT=8080
       - APIP_EGW_SERVER_WEBSOCKET_PORT=8081
+      - APIP_EGW_CONTROLPLANE_ENABLED=true
+      - APIP_EGW_CONTROLPLANE_XDS_ADDRESS=gateway-controller:18001
     extra_hosts:
       # Allow callbacks to services running on the Docker host (useful on Linux).
       - "host.docker.internal:host-gateway"
@@ -42,6 +78,8 @@ services:
       - ./gateway-runtime/configs/config.toml:/etc/event-gateway/config.toml:ro
       - ./gateway-runtime/configs/channels.yaml:/etc/event-gateway/channels.yaml:ro
     depends_on:
+      gateway-controller:
+        condition: service_started
       kafka:
         condition: service_healthy
     networks:
@@ -103,3 +141,6 @@ services:
 networks:
   egw-network:
     driver: bridge
+
+volumes:
+  controller-data:

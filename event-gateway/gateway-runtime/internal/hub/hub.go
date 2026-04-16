@@ -38,13 +38,13 @@ type ChannelBinding struct {
 	SubscribeChainKey string
 	InboundChainKey   string
 	OutboundChainKey  string
-	EndpointTopic     string
+	BrokerDriverTopic string
 	Ordering          string            // "ordered" or "unordered"
 	Channels          map[string]string // channel-name → Kafka topic (WebSubApi only)
 }
 
 // Hub is the central message router. It holds the policy engine reference and
-// routes messages between entrypoint and endpoint connectors.
+// routes messages between receiver and broker-driver connectors.
 type Hub struct {
 	mu       sync.RWMutex
 	engine   *engine.Engine
@@ -66,6 +66,13 @@ func (h *Hub) RegisterBinding(b ChannelBinding) {
 	h.bindings[b.Name] = &b
 }
 
+// RemoveBinding removes a binding by name.
+func (h *Hub) RemoveBinding(name string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.bindings, name)
+}
+
 // GetBinding returns the binding for the given name, or nil.
 func (h *Hub) GetBinding(name string) *ChannelBinding {
 	h.mu.RLock()
@@ -73,12 +80,12 @@ func (h *Hub) GetBinding(name string) *ChannelBinding {
 	return h.bindings[name]
 }
 
-// GetBindingByTopic returns the first binding whose endpoint topic matches.
+// GetBindingByTopic returns the first binding whose broker-driver topic matches.
 func (h *Hub) GetBindingByTopic(topic string) *ChannelBinding {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for _, b := range h.bindings {
-		if b.EndpointTopic == topic {
+		if b.BrokerDriverTopic == topic {
 			return b
 		}
 	}

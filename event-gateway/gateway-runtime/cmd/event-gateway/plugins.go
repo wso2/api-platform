@@ -21,24 +21,24 @@ package main
 import (
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/config"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
-	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors/endpoint/kafka"
-	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors/entrypoint/websocket"
-	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors/entrypoint/websub"
+	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors/brokerdriver/kafka"
+	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors/receiver/websocket"
+	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors/receiver/websub"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/pkg/engine"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 	basicauth "github.com/wso2/gateway-controllers/policies/basic-auth"
 )
 
-// registerConnectors registers all built-in entrypoint and endpoint factories.
-// To add a new entrypoint or endpoint type:
-//  1. Create the package under connectors/entrypoint/ or connectors/endpoint/
+// registerConnectors registers all built-in receiver and broker-driver factories.
+// To add a new receiver or broker-driver type:
+//  1. Create the package under connectors/receiver/ or connectors/brokerdriver/
 //  2. Register its factory here with the type name
 //  3. Add bindings in channels.yaml — no changes to main.go or runtime needed
 func registerConnectors(registry *connectors.Registry, cfg *config.Config) {
-	registry.RegisterEndpoint("kafka", func(endpointCfg map[string]interface{}) (connectors.Endpoint, error) {
+	registry.RegisterBrokerDriver("kafka", func(brokerDriverCfg map[string]interface{}) (connectors.BrokerDriver, error) {
 		brokers := cfg.Kafka.Brokers // fallback to global config
-		if endpointCfg != nil {
-			if b, ok := endpointCfg["brokers"]; ok {
+		if brokerDriverCfg != nil {
+			if b, ok := brokerDriverCfg["brokers"]; ok {
 				switch v := b.(type) {
 				case []interface{}:
 					parsed := make([]string, 0, len(v))
@@ -57,11 +57,11 @@ func registerConnectors(registry *connectors.Registry, cfg *config.Config) {
 				}
 			}
 		}
-		return kafka.NewEndpoint(brokers)
+		return kafka.NewBrokerDriver(brokers)
 	})
 
-	registry.RegisterEntrypoint("websub", func(ecfg connectors.EntrypointConfig) (connectors.Entrypoint, error) {
-		return websub.NewEntrypoint(ecfg, websub.Options{
+	registry.RegisterReceiver("websub", func(ecfg connectors.ReceiverConfig) (connectors.Receiver, error) {
+		return websub.NewReceiver(ecfg, websub.Options{
 			Port:                       cfg.Server.WebSubPort,
 			VerificationTimeoutSeconds: cfg.WebSub.VerificationTimeoutSeconds,
 			DefaultLeaseSeconds:        cfg.WebSub.DefaultLeaseSeconds,
@@ -75,8 +75,8 @@ func registerConnectors(registry *connectors.Registry, cfg *config.Config) {
 		})
 	})
 
-	registry.RegisterEntrypoint("websocket", func(ecfg connectors.EntrypointConfig) (connectors.Entrypoint, error) {
-		return websocket.NewEntrypoint(ecfg, websocket.Options{
+	registry.RegisterReceiver("websocket", func(ecfg connectors.ReceiverConfig) (connectors.Receiver, error) {
+		return websocket.NewReceiver(ecfg, websocket.Options{
 			Port:                cfg.Server.WebSocketPort,
 			ConsumerGroupPrefix: cfg.Kafka.ConsumerGroupPrefix,
 		})

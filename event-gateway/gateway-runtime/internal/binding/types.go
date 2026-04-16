@@ -18,32 +18,32 @@
 
 package binding
 
-// Binding represents a configured channel with its entrypoint, endpoint, and policy bindings.
+// Binding represents a configured channel with its receiver, broker-driver, and policy bindings.
 // Used for protocol-mediation mode (1 channel = 1 topic).
 type Binding struct {
-	Kind       string         `yaml:"kind"`
-	Name       string         `yaml:"name"`
-	Mode       string         `yaml:"mode"` // "websub" or "protocol-mediation"
-	Context    string         `yaml:"context"`
-	Version    string         `yaml:"version"`
-	Vhost      string         `yaml:"vhost"`
-	Entrypoint EntrypointSpec `yaml:"entrypoint"`
-	Endpoint   EndpointSpec   `yaml:"endpoint"`
-	Policies   PolicyBindings `yaml:"policies"`
+	Kind         string           `yaml:"kind"`
+	Name         string           `yaml:"name"`
+	Mode         string           `yaml:"mode"` // "websub" or "protocol-mediation"
+	Context      string           `yaml:"context"`
+	Version      string           `yaml:"version"`
+	Vhost        string           `yaml:"vhost"`
+	Receiver     ReceiverSpec     `yaml:"receiver"`
+	BrokerDriver BrokerDriverSpec `yaml:"broker-driver"`
+	Policies     PolicyBindings   `yaml:"policies"`
 }
 
 // WebSubApiBinding represents a WebSubApi with multiple channels (topics)
-// sharing a single entrypoint and endpoint.
+// sharing a single receiver and broker-driver.
 type WebSubApiBinding struct {
-	Kind       string         `yaml:"kind"` // "WebSubApi"
-	Name       string         `yaml:"name"`
-	Version    string         `yaml:"version"`
-	Context    string         `yaml:"context"`
-	Vhost      string         `yaml:"vhost"`
-	Channels   []ChannelDef   `yaml:"channels"`
-	Entrypoint EntrypointSpec `yaml:"entrypoint"`
-	Endpoint   EndpointSpec   `yaml:"endpoint"`
-	Policies   PolicyBindings `yaml:"policies"`
+	Kind         string           `yaml:"kind"` // "WebSubApi"
+	Name         string           `yaml:"name"`
+	Version      string           `yaml:"version"`
+	Context      string           `yaml:"context"`
+	Vhost        string           `yaml:"vhost"`
+	Channels     []ChannelDef     `yaml:"channels"`
+	Receiver     ReceiverSpec     `yaml:"receiver"`
+	BrokerDriver BrokerDriverSpec `yaml:"broker-driver"`
+	Policies     PolicyBindings   `yaml:"policies"`
 }
 
 // ChannelDef defines a single channel (topic) within a WebSubApi.
@@ -51,19 +51,19 @@ type ChannelDef struct {
 	Name string `yaml:"name"`
 }
 
-// EntrypointSpec defines the entrypoint connector type and configuration.
-type EntrypointSpec struct {
+// ReceiverSpec defines the receiver connector type and configuration.
+type ReceiverSpec struct {
 	Type         string `yaml:"type"` // "websub" or "websocket"
 	Path         string `yaml:"path"`
 	Backpressure string `yaml:"backpressure"` // "drop-oldest", "block", "close"
 }
 
-// EndpointSpec defines the endpoint connector type and configuration.
-type EndpointSpec struct {
+// BrokerDriverSpec defines the broker-driver connector type and configuration.
+type BrokerDriverSpec struct {
 	Type     string                 `yaml:"type"` // "kafka"
 	Topic    string                 `yaml:"topic"`
 	Ordering string                 `yaml:"ordering"` // "ordered" or "unordered"
-	Config   map[string]interface{} `yaml:"config"`   // endpoint-specific config (e.g. brokers, tls)
+	Config   map[string]interface{} `yaml:"config"`   // broker-driver-specific config (e.g. brokers, tls)
 }
 
 // PolicyBindings holds subscribe, inbound, and outbound policy configurations.

@@ -54,7 +54,7 @@ func DefaultServerConfig() ServerConfig {
 	}
 }
 
-// Server is the WebSocket entrypoint server.
+// Server is the WebSocket receiver server.
 type Server struct {
 	mu           sync.RWMutex
 	config       ServerConfig

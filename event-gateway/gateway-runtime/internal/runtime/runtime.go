@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/admin"
@@ -37,22 +38,32 @@ import (
 
 // Runtime orchestrates all event gateway components.
 // It owns the lifecycle of the policy engine, hub, admin server,
-// and all per-channel entrypoint+endpoint pairs.
+// and all per-channel receiver+broker-driver pairs.
 type Runtime struct {
-	cfg         *config.Config
-	rawConfig   map[string]interface{}
-	engine      *engine.Engine
-	hub         *hub.Hub
-	registry    *connectors.Registry
-	admin       *admin.Server
-	endpoints   []connectors.Endpoint
-	entrypoints []connectors.Entrypoint
-	servers     []*http.Server // shared HTTP servers for port sharing
+	cfg           *config.Config
+	rawConfig     map[string]interface{}
+	engine        *engine.Engine
+	hub           *hub.Hub
+	registry      *connectors.Registry
+	admin         *admin.Server
+	brokerDrivers []connectors.BrokerDriver
+	receivers     []connectors.Receiver
+	servers       []*http.Server // shared HTTP servers for port sharing
+
+	// Dynamic binding management (xDS mode)
+	mu                  sync.RWMutex
+	activeReceivers     map[string]connectors.Receiver
+	activeBrokerDrivers map[string]connectors.BrokerDriver
+	bindingPaths        map[string][]string // name → registered mux paths
+	bindingTopics       map[string][]string // name → Kafka topics (data + internal sub)
+	websubMux           *DynamicMux
+	websubServer        *http.Server
+	running             bool // true after Run() starts servers
 }
 
 // New creates a new Runtime. After creation:
 //  1. Call Engine() to register policies
-//  2. Call LoadChannels() to parse bindings and create per-channel entrypoint+endpoint pairs
+//  2. Call LoadChannels() to parse bindings and create per-channel receiver+broker-driver pairs
 //  3. Call Run() to start all components
 func New(cfg *config.Config, rawConfig map[string]interface{}, registry *connectors.Registry) (*Runtime, error) {
 	eng, err := engine.New(rawConfig)
@@ -67,12 +78,17 @@ func New(cfg *config.Config, rawConfig map[string]interface{}, registry *connect
 	}
 
 	return &Runtime{
-		cfg:       cfg,
-		rawConfig: rawConfig,
-		engine:    eng,
-		hub:       hub.NewHub(eng),
-		registry:  registry,
-		admin:     admin.NewServer(cfg.Server.AdminPort),
+		cfg:                 cfg,
+		rawConfig:           rawConfig,
+		engine:              eng,
+		hub:                 hub.NewHub(eng),
+		registry:            registry,
+		admin:               admin.NewServer(cfg.Server.AdminPort),
+		activeReceivers:     make(map[string]connectors.Receiver),
+		activeBrokerDrivers: make(map[string]connectors.BrokerDriver),
+		bindingPaths:        make(map[string][]string),
+		bindingTopics:       make(map[string][]string),
+		websubMux:           NewDynamicMux(),
 	}, nil
 }
 
@@ -81,7 +97,7 @@ func (r *Runtime) Engine() *engine.Engine {
 	return r.engine
 }
 
-// LoadChannels parses channel bindings and creates per-channel entrypoint+endpoint pairs.
+// LoadChannels parses channel bindings and creates per-channel receiver+broker-driver pairs.
 // Supports both legacy flat bindings and WebSubApi multi-channel bindings.
 func (r *Runtime) LoadChannels(channelsPath string) error {
 	parseResult, err := binding.ParseChannels(channelsPath)
@@ -109,7 +125,7 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 
 		vhost := defaultVhost(b.Vhost)
 
-		qualifiedTopic := qualifyTopicName(b.Context, b.Version, b.Endpoint.Topic)
+		qualifiedTopic := qualifyTopicName(b.Context, b.Version, b.BrokerDriver.Topic)
 
 		r.hub.RegisterBinding(hub.ChannelBinding{
 			Name:              b.Name,
@@ -120,20 +136,20 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 			SubscribeChainKey: subKey,
 			InboundChainKey:   inKey,
 			OutboundChainKey:  outKey,
-			EndpointTopic:     qualifiedTopic,
-			Ordering:          b.Endpoint.Ordering,
+			BrokerDriverTopic: qualifiedTopic,
+			Ordering:          b.BrokerDriver.Ordering,
 		})
 
-		endpointType := resolveEndpointType(b)
-		endpoint, err := r.registry.CreateEndpoint(endpointType, b.Endpoint.Config)
+		brokerDriverType := resolveBrokerDriverType(b)
+		brokerDriver, err := r.registry.CreateBrokerDriver(brokerDriverType, b.BrokerDriver.Config)
 		if err != nil {
-			return fmt.Errorf("failed to create endpoint %q for binding %q: %w", endpointType, b.Name, err)
+			return fmt.Errorf("failed to create broker-driver %q for binding %q: %w", brokerDriverType, b.Name, err)
 		}
-		r.endpoints = append(r.endpoints, endpoint)
+		r.brokerDrivers = append(r.brokerDrivers, brokerDriver)
 
-		entrypointType := resolveEntrypointType(b)
+		receiverType := resolveReceiverType(b)
 		var mux *http.ServeMux
-		switch entrypointType {
+		switch receiverType {
 		case "websub":
 			mux = websubMux
 			hasWebSub = true
@@ -143,34 +159,34 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 		}
 
 		ch := connectors.ChannelInfo{
-			Name:          b.Name,
-			Mode:          b.Mode,
-			Context:       b.Context,
-			Version:       b.Version,
-			Vhost:         vhost,
-			PublicTopic:   b.Endpoint.Topic,
-			EndpointTopic: qualifiedTopic,
-			Ordering:      b.Endpoint.Ordering,
+			Name:              b.Name,
+			Mode:              b.Mode,
+			Context:           b.Context,
+			Version:           b.Version,
+			Vhost:             vhost,
+			PublicTopic:       b.BrokerDriver.Topic,
+			BrokerDriverTopic: qualifiedTopic,
+			Ordering:          b.BrokerDriver.Ordering,
 		}
 
-		ep, err := r.registry.CreateEntrypoint(entrypointType, connectors.EntrypointConfig{
-			Channel:   ch,
-			Processor: r.hub,
-			Endpoint:  endpoint,
-			RuntimeID: r.cfg.RuntimeID,
-			Mux:       mux,
+		ep, err := r.registry.CreateReceiver(receiverType, connectors.ReceiverConfig{
+			Channel:      ch,
+			Processor:    r.hub,
+			BrokerDriver: brokerDriver,
+			RuntimeID:    r.cfg.RuntimeID,
+			Mux:          mux,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to create entrypoint for binding %q: %w", b.Name, err)
+			return fmt.Errorf("failed to create receiver for binding %q: %w", b.Name, err)
 		}
-		r.entrypoints = append(r.entrypoints, ep)
+		r.receivers = append(r.receivers, ep)
 
 		slog.Info("Registered channel binding",
 			"name", b.Name,
 			"mode", b.Mode,
-			"entrypoint", entrypointType,
-			"endpoint", endpointType,
-			"endpoint_topic", b.Endpoint.Topic,
+			"receiver", receiverType,
+			"broker-driver", brokerDriverType,
+			"broker_driver_topic", b.BrokerDriver.Topic,
 		)
 	}
 
@@ -206,16 +222,16 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 			Channels:          channels,
 		})
 
-		// Create endpoint.
-		endpointType := "kafka"
-		if wsb.Endpoint.Type != "" {
-			endpointType = wsb.Endpoint.Type
+		// Create broker-driver.
+		brokerDriverType := "kafka"
+		if wsb.BrokerDriver.Type != "" {
+			brokerDriverType = wsb.BrokerDriver.Type
 		}
-		endpoint, err := r.registry.CreateEndpoint(endpointType, wsb.Endpoint.Config)
+		brokerDriver, err := r.registry.CreateBrokerDriver(brokerDriverType, wsb.BrokerDriver.Config)
 		if err != nil {
-			return fmt.Errorf("failed to create endpoint for WebSubApi %q: %w", wsb.Name, err)
+			return fmt.Errorf("failed to create broker-driver for WebSubApi %q: %w", wsb.Name, err)
 		}
-		r.endpoints = append(r.endpoints, endpoint)
+		r.brokerDrivers = append(r.brokerDrivers, brokerDriver)
 
 		hasWebSub = true
 
@@ -229,17 +245,17 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 			InternalSubTopic: internalSubTopic,
 		}
 
-		ep, err := r.registry.CreateEntrypoint("websub", connectors.EntrypointConfig{
-			Channel:   ch,
-			Processor: r.hub,
-			Endpoint:  endpoint,
-			RuntimeID: r.cfg.RuntimeID,
-			Mux:       websubMux,
+		ep, err := r.registry.CreateReceiver("websub", connectors.ReceiverConfig{
+			Channel:      ch,
+			Processor:    r.hub,
+			BrokerDriver: brokerDriver,
+			RuntimeID:    r.cfg.RuntimeID,
+			Mux:          websubMux,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to create entrypoint for WebSubApi %q: %w", wsb.Name, err)
+			return fmt.Errorf("failed to create receiver for WebSubApi %q: %w", wsb.Name, err)
 		}
-		r.entrypoints = append(r.entrypoints, ep)
+		r.receivers = append(r.receivers, ep)
 
 		slog.Info("Registered WebSubApi binding",
 			"name", wsb.Name,
@@ -282,11 +298,39 @@ func (r *Runtime) Run(ctx context.Context) error {
 		}()
 	}
 
-	for _, ep := range r.entrypoints {
+	// If in xDS mode, ensure the websub server is started for dynamic bindings.
+	r.mu.Lock()
+	if r.websubServer == nil && r.cfg.ControlPlane.Enabled {
+		r.websubServer = &http.Server{
+			Addr:    fmt.Sprintf(":%d", r.cfg.Server.WebSubPort),
+			Handler: r.websubMux,
+		}
+		go func() {
+			slog.Info("Starting WebSub HTTP server for xDS mode", "addr", r.websubServer.Addr)
+			if err := r.websubServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				slog.Error("WebSub HTTP server error", "addr", r.websubServer.Addr, "error", err)
+			}
+		}()
+	}
+	r.running = true
+	r.mu.Unlock()
+
+	// Start receivers that were added before Run() (static mode).
+	for _, ep := range r.receivers {
 		if err := ep.Start(ctx); err != nil {
-			return fmt.Errorf("failed to start entrypoint: %w", err)
+			return fmt.Errorf("failed to start receiver: %w", err)
 		}
 	}
+
+	// Start any dynamically added receivers that were queued before Run().
+	r.mu.RLock()
+	for _, ep := range r.activeReceivers {
+		if err := ep.Start(ctx); err != nil {
+			r.mu.RUnlock()
+			return fmt.Errorf("failed to start dynamic receiver: %w", err)
+		}
+	}
+	r.mu.RUnlock()
 
 	r.admin.SetReady(true)
 	slog.Info("Event gateway is ready", "runtime_id", r.cfg.RuntimeID)
@@ -299,15 +343,30 @@ func (r *Runtime) Run(ctx context.Context) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	for i := len(r.entrypoints) - 1; i >= 0; i-- {
-		if err := r.entrypoints[i].Stop(shutdownCtx); err != nil {
-			slog.Error("Failed to stop entrypoint", "error", err)
+	// Stop static receivers.
+	for i := len(r.receivers) - 1; i >= 0; i-- {
+		if err := r.receivers[i].Stop(shutdownCtx); err != nil {
+			slog.Error("Failed to stop receiver", "error", err)
 		}
 	}
 
-	for _, endpoint := range r.endpoints {
-		if err := endpoint.Close(); err != nil {
-			slog.Error("Failed to close endpoint", "error", err)
+	// Stop dynamic receivers.
+	r.mu.Lock()
+	for name, ep := range r.activeReceivers {
+		if err := ep.Stop(shutdownCtx); err != nil {
+			slog.Error("Failed to stop dynamic receiver", "name", name, "error", err)
+		}
+	}
+	for name, bd := range r.activeBrokerDrivers {
+		if err := bd.Close(); err != nil {
+			slog.Error("Failed to close dynamic broker-driver", "name", name, "error", err)
+		}
+	}
+	r.mu.Unlock()
+
+	for _, bd := range r.brokerDrivers {
+		if err := bd.Close(); err != nil {
+			slog.Error("Failed to close broker-driver", "error", err)
 		}
 	}
 
@@ -315,6 +374,16 @@ func (r *Runtime) Run(ctx context.Context) error {
 	for _, srv := range r.servers {
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			slog.Error("Failed to shutdown HTTP server", "addr", srv.Addr, "error", err)
+		}
+	}
+
+	// Shutdown xDS-mode websub server if created.
+	r.mu.RLock()
+	wsSrv := r.websubServer
+	r.mu.RUnlock()
+	if wsSrv != nil {
+		if err := wsSrv.Shutdown(shutdownCtx); err != nil {
+			slog.Error("Failed to shutdown WebSub HTTP server", "error", err)
 		}
 	}
 
@@ -338,7 +407,7 @@ func (r *Runtime) buildPolicyChains(b binding.Binding) (subscribeKey, inboundKey
 		outboundKey = binding.GenerateRouteKey("DELIVER", channelPath, vhost)
 
 	case "protocol-mediation":
-		channelPath := path.Join(b.Context, b.Entrypoint.Path)
+		channelPath := path.Join(b.Context, b.Receiver.Path)
 		inboundKey = binding.GenerateRouteKey("PUBLISH", channelPath, vhost)
 		outboundKey = binding.GenerateRouteKey("DELIVER", channelPath, vhost)
 
@@ -406,11 +475,161 @@ func (r *Runtime) buildChain(routeKey string, policies []binding.PolicyRef) erro
 	return nil
 }
 
-// resolveEntrypointType determines the entrypoint factory name from the binding.
+// AddWebSubApiBinding dynamically adds a WebSubApi binding at runtime (xDS mode).
+func (r *Runtime) AddWebSubApiBinding(wsb binding.WebSubApiBinding) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	vhost := defaultVhost(wsb.Vhost)
+
+	// Build channel-name → Kafka-topic map.
+	channels := make(map[string]string, len(wsb.Channels))
+	for _, ch := range wsb.Channels {
+		kafkaTopic := binding.WebSubApiTopicName(wsb.Name, wsb.Version, ch.Name)
+		channels[ch.Name] = kafkaTopic
+	}
+	internalSubTopic := binding.WebSubApiSubscriptionTopic(wsb.Name, wsb.Version)
+
+	// Build policy chains for the API.
+	subKey, inKey, outKey, err := r.buildWebSubApiPolicyChains(wsb, vhost)
+	if err != nil {
+		return fmt.Errorf("failed to build chains for WebSubApi %q: %w", wsb.Name, err)
+	}
+
+	r.hub.RegisterBinding(hub.ChannelBinding{
+		Name:              wsb.Name,
+		Mode:              "websub",
+		Context:           wsb.Context,
+		Version:           wsb.Version,
+		Vhost:             vhost,
+		SubscribeChainKey: subKey,
+		InboundChainKey:   inKey,
+		OutboundChainKey:  outKey,
+		Channels:          channels,
+	})
+
+	// Create broker-driver.
+	brokerDriverType := "kafka"
+	if wsb.BrokerDriver.Type != "" {
+		brokerDriverType = wsb.BrokerDriver.Type
+	}
+	brokerDriver, err := r.registry.CreateBrokerDriver(brokerDriverType, wsb.BrokerDriver.Config)
+	if err != nil {
+		return fmt.Errorf("failed to create broker-driver for WebSubApi %q: %w", wsb.Name, err)
+	}
+	r.activeBrokerDrivers[wsb.Name] = brokerDriver
+
+	// Track the mux paths so RemoveWebSubApiBinding can deregister them.
+	basePath := wsb.Context + "/" + wsb.Version
+	r.bindingPaths[wsb.Name] = []string{basePath + "/hub", basePath + "/webhook-receiver"}
+
+	// Track all Kafka topics for cleanup on removal.
+	allTopics := make([]string, 0, len(channels)+1)
+	for _, kafkaTopic := range channels {
+		allTopics = append(allTopics, kafkaTopic)
+	}
+	allTopics = append(allTopics, internalSubTopic)
+	r.bindingTopics[wsb.Name] = allTopics
+
+	ch := connectors.ChannelInfo{
+		Name:             wsb.Name,
+		Mode:             "websub",
+		Context:          wsb.Context,
+		Version:          wsb.Version,
+		Vhost:            vhost,
+		Channels:         channels,
+		InternalSubTopic: internalSubTopic,
+	}
+
+	receiver, err := r.registry.CreateReceiver("websub", connectors.ReceiverConfig{
+		Channel:      ch,
+		Processor:    r.hub,
+		BrokerDriver: brokerDriver,
+		RuntimeID:    r.cfg.RuntimeID,
+		Mux:          r.websubMux,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create receiver for WebSubApi %q: %w", wsb.Name, err)
+	}
+	r.activeReceivers[wsb.Name] = receiver
+
+	// If runtime is already running, start the receiver immediately.
+	if r.running {
+		if err := receiver.Start(context.Background()); err != nil {
+			return fmt.Errorf("failed to start receiver for WebSubApi %q: %w", wsb.Name, err)
+		}
+	}
+
+	slog.Info("Dynamically added WebSubApi binding",
+		"name", wsb.Name,
+		"context", wsb.Context,
+		"version", wsb.Version,
+		"channels", len(wsb.Channels),
+	)
+
+	return nil
+}
+
+// RemoveWebSubApiBinding dynamically removes a WebSubApi binding at runtime (xDS mode).
+func (r *Runtime) RemoveWebSubApiBinding(name string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Stop and remove receiver.
+	if receiver, ok := r.activeReceivers[name]; ok {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := receiver.Stop(ctx); err != nil {
+			slog.Error("Failed to stop receiver during removal", "name", name, "error", err)
+		}
+		delete(r.activeReceivers, name)
+	}
+
+	// Delete Kafka topics (data + internal subscription) before closing the broker driver.
+	if bd, ok := r.activeBrokerDrivers[name]; ok {
+		if topics, ok := r.bindingTopics[name]; ok && len(topics) > 0 {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := bd.DeleteTopics(ctx, topics); err != nil {
+				slog.Error("Failed to delete Kafka topics during removal", "name", name, "error", err)
+			}
+		}
+		delete(r.bindingTopics, name)
+	}
+
+	// Close and remove broker driver.
+	if bd, ok := r.activeBrokerDrivers[name]; ok {
+		if err := bd.Close(); err != nil {
+			slog.Error("Failed to close broker-driver during removal", "name", name, "error", err)
+		}
+		delete(r.activeBrokerDrivers, name)
+	}
+
+	// Remove hub binding.
+	r.hub.RemoveBinding(name)
+
+	// Deregister HTTP routes from the mux.
+	if paths, ok := r.bindingPaths[name]; ok {
+		for _, p := range paths {
+			r.websubMux.Remove(p)
+		}
+		delete(r.bindingPaths, name)
+	}
+
+	slog.Info("Dynamically removed WebSubApi binding", "name", name)
+	return nil
+}
+
+// Hub returns the hub instance (for testing/inspection).
+func (r *Runtime) Hub() *hub.Hub {
+	return r.hub
+}
+
+// resolveReceiverType determines the receiver factory name from the binding.
 // If not explicitly set, it defaults based on mode.
-func resolveEntrypointType(b binding.Binding) string {
-	if b.Entrypoint.Type != "" {
-		return b.Entrypoint.Type
+func resolveReceiverType(b binding.Binding) string {
+	if b.Receiver.Type != "" {
+		return b.Receiver.Type
 	}
 	switch b.Mode {
 	case "websub":
@@ -421,11 +640,11 @@ func resolveEntrypointType(b binding.Binding) string {
 	return b.Mode
 }
 
-// resolveEndpointType determines the endpoint factory name from the binding.
+// resolveBrokerDriverType determines the broker-driver factory name from the binding.
 // Defaults to "kafka" if not explicitly set.
-func resolveEndpointType(b binding.Binding) string {
-	if b.Endpoint.Type != "" {
-		return b.Endpoint.Type
+func resolveBrokerDriverType(b binding.Binding) string {
+	if b.BrokerDriver.Type != "" {
+		return b.BrokerDriver.Type
 	}
 	return "kafka"
 }

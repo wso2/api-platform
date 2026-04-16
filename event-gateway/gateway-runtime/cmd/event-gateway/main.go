@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/config"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/runtime"
+	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/xdsclient"
 )
 
 func main() {
@@ -61,10 +62,27 @@ func main() {
 	// Register compiled-in policies with the engine.
 	registerPolicies(rt.Engine())
 
-	// Parse channel bindings, build policy chains, create connectors.
-	if err := rt.LoadChannels(*channelsPath); err != nil {
-		slog.Error("Failed to load channels", "error", err)
-		os.Exit(1)
+	// Decide startup mode: xDS control plane or static channels.yaml.
+	if cfg.ControlPlane.Enabled {
+		slog.Info("Control plane mode enabled, starting xDS client",
+			"xds_address", cfg.ControlPlane.XDSAddress)
+
+		handler := xdsclient.NewHandler(rt, xdsclient.KafkaConfig{
+			Brokers: cfg.Kafka.Brokers,
+		})
+		xdsClient := xdsclient.NewClient(
+			cfg.ControlPlane.XDSAddress,
+			cfg.ControlPlane.NodeID,
+			handler.HandleResources,
+		)
+		xdsClient.Start()
+		defer xdsClient.Stop()
+	} else {
+		// Static mode: parse channel bindings from YAML.
+		if err := rt.LoadChannels(*channelsPath); err != nil {
+			slog.Error("Failed to load channels", "error", err)
+			os.Exit(1)
+		}
 	}
 
 	// Run until SIGTERM/SIGINT.
