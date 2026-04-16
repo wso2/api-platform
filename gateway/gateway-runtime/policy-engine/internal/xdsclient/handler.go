@@ -185,13 +185,9 @@ func (h *ResourceHandler) HandlePolicyChainUpdate(ctx context.Context, resources
 		"count", len(chains),
 		"routes", chainKeys)
 
-	// Apply changes atomically
-	// This replaces ALL routes with the new set from xDS (State of the World)
-	h.kernel.ApplyWholeRoutes(chains)
-
-	// Replace the stored sensitive values with those received in this update.
-	// State-of-the-World: each update carries the full set, so we replace rather than union.
-	h.kernel.SetSensitiveValues(allSensitiveValues)
+	// Apply routes and sensitive values atomically so a concurrent config dump can never
+	// observe new policy chains with stale sensitive values (which would bypass redaction).
+	h.kernel.ApplyWholeRoutesAndSensitiveValues(chains, allSensitiveValues)
 
 	// Record metrics for policy chains loaded
 	metrics.PolicyChainsLoaded.WithLabelValues("ads").Set(float64(len(chains)))

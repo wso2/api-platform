@@ -62,8 +62,11 @@ func (h *ConfigDumpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Dump the configuration
-	dump := DumpConfig(h.kernel, h.registry, h.getPolicyChainVersion())
+	// Obtain a consistent snapshot of routes and sensitive values in one lock acquisition so
+	// the redaction list always matches the routes shown in the dump (same xDS generation).
+	routes, rawSecrets := h.kernel.DumpRoutesAndSensitiveValues()
+
+	dump := DumpConfig(routes, h.kernel, h.registry, h.getPolicyChainVersion())
 
 	jsonBytes, err := json.Marshal(dump)
 	if err != nil {
@@ -76,7 +79,6 @@ func (h *ConfigDumpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// raw string match would miss secrets that contain those characters.
 	// Build a combined set: each raw secret plus its JSON-escaped form (the
 	// content that json.Marshal would emit inside a JSON string literal).
-	rawSecrets := h.kernel.GetSensitiveValues()
 	sensitiveValues := make([]string, 0, len(rawSecrets)*2)
 	for _, secret := range rawSecrets {
 		sensitiveValues = append(sensitiveValues, secret)
