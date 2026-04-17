@@ -2,18 +2,16 @@ import unittest
 
 from executor.translator import Translator
 import proto.python_executor_pb2 as proto
-from sdk.actions import (
+from wso2_gateway_policy_sdk import (
+    BodyProcessingMode,
     DownstreamResponseModifications,
     DropHeaderAction,
     ForwardResponseChunk,
+    HeaderProcessingMode,
     ImmediateResponse,
+    ProcessingMode,
     TerminateResponseChunk,
     UpstreamRequestModifications,
-)
-from sdk.types import (
-    BodyProcessingMode,
-    HeaderProcessingMode,
-    ProcessingMode,
 )
 
 

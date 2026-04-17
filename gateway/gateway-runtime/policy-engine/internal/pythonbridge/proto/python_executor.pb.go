@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+//  Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
 //  you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        v6.30.2
-// source: python_executor.proto
+// source: proto/python_executor.proto
 
 package proto
 
@@ -73,11 +73,11 @@ func (x HeaderProcessingMode) String() string {
 }
 
 func (HeaderProcessingMode) Descriptor() protoreflect.EnumDescriptor {
-	return file_python_executor_proto_enumTypes[0].Descriptor()
+	return file_proto_python_executor_proto_enumTypes[0].Descriptor()
 }
 
 func (HeaderProcessingMode) Type() protoreflect.EnumType {
-	return &file_python_executor_proto_enumTypes[0]
+	return &file_proto_python_executor_proto_enumTypes[0]
 }
 
 func (x HeaderProcessingMode) Number() protoreflect.EnumNumber {
@@ -86,7 +86,7 @@ func (x HeaderProcessingMode) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use HeaderProcessingMode.Descriptor instead.
 func (HeaderProcessingMode) EnumDescriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{0}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{0}
 }
 
 type BodyProcessingMode int32
@@ -125,11 +125,11 @@ func (x BodyProcessingMode) String() string {
 }
 
 func (BodyProcessingMode) Descriptor() protoreflect.EnumDescriptor {
-	return file_python_executor_proto_enumTypes[1].Descriptor()
+	return file_proto_python_executor_proto_enumTypes[1].Descriptor()
 }
 
 func (BodyProcessingMode) Type() protoreflect.EnumType {
-	return &file_python_executor_proto_enumTypes[1]
+	return &file_proto_python_executor_proto_enumTypes[1]
 }
 
 func (x BodyProcessingMode) Number() protoreflect.EnumNumber {
@@ -138,7 +138,7 @@ func (x BodyProcessingMode) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use BodyProcessingMode.Descriptor instead.
 func (BodyProcessingMode) EnumDescriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{1}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{1}
 }
 
 type Phase int32
@@ -195,11 +195,11 @@ func (x Phase) String() string {
 }
 
 func (Phase) Descriptor() protoreflect.EnumDescriptor {
-	return file_python_executor_proto_enumTypes[2].Descriptor()
+	return file_proto_python_executor_proto_enumTypes[2].Descriptor()
 }
 
 func (Phase) Type() protoreflect.EnumType {
-	return &file_python_executor_proto_enumTypes[2]
+	return &file_proto_python_executor_proto_enumTypes[2]
 }
 
 func (x Phase) Number() protoreflect.EnumNumber {
@@ -208,7 +208,7 @@ func (x Phase) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Phase.Descriptor instead.
 func (Phase) EnumDescriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{2}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{2}
 }
 
 type DropHeaderActionType int32
@@ -244,11 +244,11 @@ func (x DropHeaderActionType) String() string {
 }
 
 func (DropHeaderActionType) Descriptor() protoreflect.EnumDescriptor {
-	return file_python_executor_proto_enumTypes[3].Descriptor()
+	return file_proto_python_executor_proto_enumTypes[3].Descriptor()
 }
 
 func (DropHeaderActionType) Type() protoreflect.EnumType {
-	return &file_python_executor_proto_enumTypes[3]
+	return &file_proto_python_executor_proto_enumTypes[3]
 }
 
 func (x DropHeaderActionType) Number() protoreflect.EnumNumber {
@@ -257,7 +257,7 @@ func (x DropHeaderActionType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use DropHeaderActionType.Descriptor instead.
 func (DropHeaderActionType) EnumDescriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{3}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{3}
 }
 
 type StreamRequest struct {
@@ -287,7 +287,7 @@ type StreamRequest struct {
 
 func (x *StreamRequest) Reset() {
 	*x = StreamRequest{}
-	mi := &file_python_executor_proto_msgTypes[0]
+	mi := &file_proto_python_executor_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -299,7 +299,7 @@ func (x *StreamRequest) String() string {
 func (*StreamRequest) ProtoMessage() {}
 
 func (x *StreamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[0]
+	mi := &file_proto_python_executor_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -312,7 +312,7 @@ func (x *StreamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamRequest.ProtoReflect.Descriptor instead.
 func (*StreamRequest) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{0}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *StreamRequest) GetRequestId() string {
@@ -531,7 +531,7 @@ type StreamResponse struct {
 
 func (x *StreamResponse) Reset() {
 	*x = StreamResponse{}
-	mi := &file_python_executor_proto_msgTypes[1]
+	mi := &file_proto_python_executor_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -543,7 +543,7 @@ func (x *StreamResponse) String() string {
 func (*StreamResponse) ProtoMessage() {}
 
 func (x *StreamResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[1]
+	mi := &file_proto_python_executor_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -556,7 +556,7 @@ func (x *StreamResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamResponse.ProtoReflect.Descriptor instead.
 func (*StreamResponse) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{1}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *StreamResponse) GetRequestId() string {
@@ -716,7 +716,7 @@ type ProcessingMode struct {
 
 func (x *ProcessingMode) Reset() {
 	*x = ProcessingMode{}
-	mi := &file_python_executor_proto_msgTypes[2]
+	mi := &file_proto_python_executor_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -728,7 +728,7 @@ func (x *ProcessingMode) String() string {
 func (*ProcessingMode) ProtoMessage() {}
 
 func (x *ProcessingMode) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[2]
+	mi := &file_proto_python_executor_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -741,7 +741,7 @@ func (x *ProcessingMode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessingMode.ProtoReflect.Descriptor instead.
 func (*ProcessingMode) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{2}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ProcessingMode) GetRequestHeaderMode() HeaderProcessingMode {
@@ -786,7 +786,7 @@ type PolicyCapabilities struct {
 
 func (x *PolicyCapabilities) Reset() {
 	*x = PolicyCapabilities{}
-	mi := &file_python_executor_proto_msgTypes[3]
+	mi := &file_proto_python_executor_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -798,7 +798,7 @@ func (x *PolicyCapabilities) String() string {
 func (*PolicyCapabilities) ProtoMessage() {}
 
 func (x *PolicyCapabilities) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[3]
+	mi := &file_proto_python_executor_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -811,7 +811,7 @@ func (x *PolicyCapabilities) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PolicyCapabilities.ProtoReflect.Descriptor instead.
 func (*PolicyCapabilities) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{3}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *PolicyCapabilities) GetRequestHeaders() bool {
@@ -868,7 +868,7 @@ type InitPolicyRequest struct {
 
 func (x *InitPolicyRequest) Reset() {
 	*x = InitPolicyRequest{}
-	mi := &file_python_executor_proto_msgTypes[4]
+	mi := &file_proto_python_executor_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -880,7 +880,7 @@ func (x *InitPolicyRequest) String() string {
 func (*InitPolicyRequest) ProtoMessage() {}
 
 func (x *InitPolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[4]
+	mi := &file_proto_python_executor_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -893,7 +893,7 @@ func (x *InitPolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InitPolicyRequest.ProtoReflect.Descriptor instead.
 func (*InitPolicyRequest) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{4}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *InitPolicyRequest) GetPolicyName() string {
@@ -937,7 +937,7 @@ type InitPolicyResponse struct {
 
 func (x *InitPolicyResponse) Reset() {
 	*x = InitPolicyResponse{}
-	mi := &file_python_executor_proto_msgTypes[5]
+	mi := &file_proto_python_executor_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -949,7 +949,7 @@ func (x *InitPolicyResponse) String() string {
 func (*InitPolicyResponse) ProtoMessage() {}
 
 func (x *InitPolicyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[5]
+	mi := &file_proto_python_executor_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -962,7 +962,7 @@ func (x *InitPolicyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InitPolicyResponse.ProtoReflect.Descriptor instead.
 func (*InitPolicyResponse) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{5}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *InitPolicyResponse) GetSuccess() bool {
@@ -1009,7 +1009,7 @@ type DestroyPolicyRequest struct {
 
 func (x *DestroyPolicyRequest) Reset() {
 	*x = DestroyPolicyRequest{}
-	mi := &file_python_executor_proto_msgTypes[6]
+	mi := &file_proto_python_executor_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1021,7 +1021,7 @@ func (x *DestroyPolicyRequest) String() string {
 func (*DestroyPolicyRequest) ProtoMessage() {}
 
 func (x *DestroyPolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[6]
+	mi := &file_proto_python_executor_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1034,7 +1034,7 @@ func (x *DestroyPolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DestroyPolicyRequest.ProtoReflect.Descriptor instead.
 func (*DestroyPolicyRequest) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{6}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *DestroyPolicyRequest) GetInstanceId() string {
@@ -1054,7 +1054,7 @@ type DestroyPolicyResponse struct {
 
 func (x *DestroyPolicyResponse) Reset() {
 	*x = DestroyPolicyResponse{}
-	mi := &file_python_executor_proto_msgTypes[7]
+	mi := &file_proto_python_executor_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1066,7 +1066,7 @@ func (x *DestroyPolicyResponse) String() string {
 func (*DestroyPolicyResponse) ProtoMessage() {}
 
 func (x *DestroyPolicyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[7]
+	mi := &file_proto_python_executor_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1079,7 +1079,7 @@ func (x *DestroyPolicyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DestroyPolicyResponse.ProtoReflect.Descriptor instead.
 func (*DestroyPolicyResponse) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{7}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *DestroyPolicyResponse) GetSuccess() bool {
@@ -1108,7 +1108,7 @@ type ExecutionMetadata struct {
 
 func (x *ExecutionMetadata) Reset() {
 	*x = ExecutionMetadata{}
-	mi := &file_python_executor_proto_msgTypes[8]
+	mi := &file_proto_python_executor_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1120,7 +1120,7 @@ func (x *ExecutionMetadata) String() string {
 func (*ExecutionMetadata) ProtoMessage() {}
 
 func (x *ExecutionMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[8]
+	mi := &file_proto_python_executor_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1133,7 +1133,7 @@ func (x *ExecutionMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecutionMetadata.ProtoReflect.Descriptor instead.
 func (*ExecutionMetadata) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{8}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ExecutionMetadata) GetPhase() Phase {
@@ -1174,7 +1174,7 @@ type TraceMetadata struct {
 
 func (x *TraceMetadata) Reset() {
 	*x = TraceMetadata{}
-	mi := &file_python_executor_proto_msgTypes[9]
+	mi := &file_proto_python_executor_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1186,7 +1186,7 @@ func (x *TraceMetadata) String() string {
 func (*TraceMetadata) ProtoMessage() {}
 
 func (x *TraceMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[9]
+	mi := &file_proto_python_executor_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1199,7 +1199,7 @@ func (x *TraceMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TraceMetadata.ProtoReflect.Descriptor instead.
 func (*TraceMetadata) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{9}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *TraceMetadata) GetTraceId() string {
@@ -1234,7 +1234,7 @@ type SharedContext struct {
 
 func (x *SharedContext) Reset() {
 	*x = SharedContext{}
-	mi := &file_python_executor_proto_msgTypes[10]
+	mi := &file_proto_python_executor_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1246,7 +1246,7 @@ func (x *SharedContext) String() string {
 func (*SharedContext) ProtoMessage() {}
 
 func (x *SharedContext) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[10]
+	mi := &file_proto_python_executor_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1259,7 +1259,7 @@ func (x *SharedContext) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SharedContext.ProtoReflect.Descriptor instead.
 func (*SharedContext) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{10}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *SharedContext) GetProjectId() string {
@@ -1341,7 +1341,7 @@ type Headers struct {
 
 func (x *Headers) Reset() {
 	*x = Headers{}
-	mi := &file_python_executor_proto_msgTypes[11]
+	mi := &file_proto_python_executor_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1353,7 +1353,7 @@ func (x *Headers) String() string {
 func (*Headers) ProtoMessage() {}
 
 func (x *Headers) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[11]
+	mi := &file_proto_python_executor_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1366,7 +1366,7 @@ func (x *Headers) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Headers.ProtoReflect.Descriptor instead.
 func (*Headers) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{11}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Headers) GetValues() map[string]*StringList {
@@ -1385,7 +1385,7 @@ type StringList struct {
 
 func (x *StringList) Reset() {
 	*x = StringList{}
-	mi := &file_python_executor_proto_msgTypes[12]
+	mi := &file_proto_python_executor_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1397,7 +1397,7 @@ func (x *StringList) String() string {
 func (*StringList) ProtoMessage() {}
 
 func (x *StringList) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[12]
+	mi := &file_proto_python_executor_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1410,7 +1410,7 @@ func (x *StringList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StringList.ProtoReflect.Descriptor instead.
 func (*StringList) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{12}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *StringList) GetValues() []string {
@@ -1431,7 +1431,7 @@ type Body struct {
 
 func (x *Body) Reset() {
 	*x = Body{}
-	mi := &file_python_executor_proto_msgTypes[13]
+	mi := &file_proto_python_executor_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1443,7 +1443,7 @@ func (x *Body) String() string {
 func (*Body) ProtoMessage() {}
 
 func (x *Body) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[13]
+	mi := &file_proto_python_executor_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1456,7 +1456,7 @@ func (x *Body) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Body.ProtoReflect.Descriptor instead.
 func (*Body) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{13}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *Body) GetContent() []byte {
@@ -1491,7 +1491,7 @@ type StreamBody struct {
 
 func (x *StreamBody) Reset() {
 	*x = StreamBody{}
-	mi := &file_python_executor_proto_msgTypes[14]
+	mi := &file_proto_python_executor_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1503,7 +1503,7 @@ func (x *StreamBody) String() string {
 func (*StreamBody) ProtoMessage() {}
 
 func (x *StreamBody) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[14]
+	mi := &file_proto_python_executor_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1516,7 +1516,7 @@ func (x *StreamBody) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamBody.ProtoReflect.Descriptor instead.
 func (*StreamBody) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{14}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *StreamBody) GetChunk() []byte {
@@ -1558,7 +1558,7 @@ type AuthContext struct {
 
 func (x *AuthContext) Reset() {
 	*x = AuthContext{}
-	mi := &file_python_executor_proto_msgTypes[15]
+	mi := &file_proto_python_executor_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1570,7 +1570,7 @@ func (x *AuthContext) String() string {
 func (*AuthContext) ProtoMessage() {}
 
 func (x *AuthContext) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[15]
+	mi := &file_proto_python_executor_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1583,7 +1583,7 @@ func (x *AuthContext) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthContext.ProtoReflect.Descriptor instead.
 func (*AuthContext) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{15}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *AuthContext) GetAuthenticated() bool {
@@ -1670,7 +1670,7 @@ type RequestHeaderContext struct {
 
 func (x *RequestHeaderContext) Reset() {
 	*x = RequestHeaderContext{}
-	mi := &file_python_executor_proto_msgTypes[16]
+	mi := &file_proto_python_executor_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1682,7 +1682,7 @@ func (x *RequestHeaderContext) String() string {
 func (*RequestHeaderContext) ProtoMessage() {}
 
 func (x *RequestHeaderContext) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[16]
+	mi := &file_proto_python_executor_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1695,7 +1695,7 @@ func (x *RequestHeaderContext) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestHeaderContext.ProtoReflect.Descriptor instead.
 func (*RequestHeaderContext) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{16}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *RequestHeaderContext) GetHeaders() *Headers {
@@ -1755,7 +1755,7 @@ type RequestContext struct {
 
 func (x *RequestContext) Reset() {
 	*x = RequestContext{}
-	mi := &file_python_executor_proto_msgTypes[17]
+	mi := &file_proto_python_executor_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1767,7 +1767,7 @@ func (x *RequestContext) String() string {
 func (*RequestContext) ProtoMessage() {}
 
 func (x *RequestContext) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[17]
+	mi := &file_proto_python_executor_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1780,7 +1780,7 @@ func (x *RequestContext) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestContext.ProtoReflect.Descriptor instead.
 func (*RequestContext) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{17}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *RequestContext) GetHeaders() *Headers {
@@ -1846,7 +1846,7 @@ type ResponseHeaderContext struct {
 
 func (x *ResponseHeaderContext) Reset() {
 	*x = ResponseHeaderContext{}
-	mi := &file_python_executor_proto_msgTypes[18]
+	mi := &file_proto_python_executor_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1858,7 +1858,7 @@ func (x *ResponseHeaderContext) String() string {
 func (*ResponseHeaderContext) ProtoMessage() {}
 
 func (x *ResponseHeaderContext) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[18]
+	mi := &file_proto_python_executor_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1871,7 +1871,7 @@ func (x *ResponseHeaderContext) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResponseHeaderContext.ProtoReflect.Descriptor instead.
 func (*ResponseHeaderContext) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{18}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ResponseHeaderContext) GetRequestHeaders() *Headers {
@@ -1931,7 +1931,7 @@ type ResponseContext struct {
 
 func (x *ResponseContext) Reset() {
 	*x = ResponseContext{}
-	mi := &file_python_executor_proto_msgTypes[19]
+	mi := &file_proto_python_executor_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1943,7 +1943,7 @@ func (x *ResponseContext) String() string {
 func (*ResponseContext) ProtoMessage() {}
 
 func (x *ResponseContext) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[19]
+	mi := &file_proto_python_executor_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1956,7 +1956,7 @@ func (x *ResponseContext) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResponseContext.ProtoReflect.Descriptor instead.
 func (*ResponseContext) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{19}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ResponseContext) GetRequestHeaders() *Headers {
@@ -2022,7 +2022,7 @@ type RequestStreamContext struct {
 
 func (x *RequestStreamContext) Reset() {
 	*x = RequestStreamContext{}
-	mi := &file_python_executor_proto_msgTypes[20]
+	mi := &file_proto_python_executor_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2034,7 +2034,7 @@ func (x *RequestStreamContext) String() string {
 func (*RequestStreamContext) ProtoMessage() {}
 
 func (x *RequestStreamContext) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[20]
+	mi := &file_proto_python_executor_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2047,7 +2047,7 @@ func (x *RequestStreamContext) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestStreamContext.ProtoReflect.Descriptor instead.
 func (*RequestStreamContext) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{20}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *RequestStreamContext) GetHeaders() *Headers {
@@ -2106,7 +2106,7 @@ type ResponseStreamContext struct {
 
 func (x *ResponseStreamContext) Reset() {
 	*x = ResponseStreamContext{}
-	mi := &file_python_executor_proto_msgTypes[21]
+	mi := &file_proto_python_executor_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2118,7 +2118,7 @@ func (x *ResponseStreamContext) String() string {
 func (*ResponseStreamContext) ProtoMessage() {}
 
 func (x *ResponseStreamContext) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[21]
+	mi := &file_proto_python_executor_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2131,7 +2131,7 @@ func (x *ResponseStreamContext) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResponseStreamContext.ProtoReflect.Descriptor instead.
 func (*ResponseStreamContext) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{21}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ResponseStreamContext) GetRequestHeaders() *Headers {
@@ -2185,7 +2185,7 @@ type RequestHeadersPayload struct {
 
 func (x *RequestHeadersPayload) Reset() {
 	*x = RequestHeadersPayload{}
-	mi := &file_python_executor_proto_msgTypes[22]
+	mi := &file_proto_python_executor_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2197,7 +2197,7 @@ func (x *RequestHeadersPayload) String() string {
 func (*RequestHeadersPayload) ProtoMessage() {}
 
 func (x *RequestHeadersPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[22]
+	mi := &file_proto_python_executor_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2210,7 +2210,7 @@ func (x *RequestHeadersPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestHeadersPayload.ProtoReflect.Descriptor instead.
 func (*RequestHeadersPayload) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{22}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *RequestHeadersPayload) GetContext() *RequestHeaderContext {
@@ -2229,7 +2229,7 @@ type RequestBodyPayload struct {
 
 func (x *RequestBodyPayload) Reset() {
 	*x = RequestBodyPayload{}
-	mi := &file_python_executor_proto_msgTypes[23]
+	mi := &file_proto_python_executor_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2241,7 +2241,7 @@ func (x *RequestBodyPayload) String() string {
 func (*RequestBodyPayload) ProtoMessage() {}
 
 func (x *RequestBodyPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[23]
+	mi := &file_proto_python_executor_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2254,7 +2254,7 @@ func (x *RequestBodyPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestBodyPayload.ProtoReflect.Descriptor instead.
 func (*RequestBodyPayload) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{23}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *RequestBodyPayload) GetContext() *RequestContext {
@@ -2273,7 +2273,7 @@ type ResponseHeadersPayload struct {
 
 func (x *ResponseHeadersPayload) Reset() {
 	*x = ResponseHeadersPayload{}
-	mi := &file_python_executor_proto_msgTypes[24]
+	mi := &file_proto_python_executor_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2285,7 +2285,7 @@ func (x *ResponseHeadersPayload) String() string {
 func (*ResponseHeadersPayload) ProtoMessage() {}
 
 func (x *ResponseHeadersPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[24]
+	mi := &file_proto_python_executor_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2298,7 +2298,7 @@ func (x *ResponseHeadersPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResponseHeadersPayload.ProtoReflect.Descriptor instead.
 func (*ResponseHeadersPayload) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{24}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ResponseHeadersPayload) GetContext() *ResponseHeaderContext {
@@ -2317,7 +2317,7 @@ type ResponseBodyPayload struct {
 
 func (x *ResponseBodyPayload) Reset() {
 	*x = ResponseBodyPayload{}
-	mi := &file_python_executor_proto_msgTypes[25]
+	mi := &file_proto_python_executor_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2329,7 +2329,7 @@ func (x *ResponseBodyPayload) String() string {
 func (*ResponseBodyPayload) ProtoMessage() {}
 
 func (x *ResponseBodyPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[25]
+	mi := &file_proto_python_executor_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2342,7 +2342,7 @@ func (x *ResponseBodyPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResponseBodyPayload.ProtoReflect.Descriptor instead.
 func (*ResponseBodyPayload) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{25}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *ResponseBodyPayload) GetContext() *ResponseContext {
@@ -2361,7 +2361,7 @@ type NeedsMoreRequestDataPayload struct {
 
 func (x *NeedsMoreRequestDataPayload) Reset() {
 	*x = NeedsMoreRequestDataPayload{}
-	mi := &file_python_executor_proto_msgTypes[26]
+	mi := &file_proto_python_executor_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2373,7 +2373,7 @@ func (x *NeedsMoreRequestDataPayload) String() string {
 func (*NeedsMoreRequestDataPayload) ProtoMessage() {}
 
 func (x *NeedsMoreRequestDataPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[26]
+	mi := &file_proto_python_executor_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2386,7 +2386,7 @@ func (x *NeedsMoreRequestDataPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NeedsMoreRequestDataPayload.ProtoReflect.Descriptor instead.
 func (*NeedsMoreRequestDataPayload) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{26}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *NeedsMoreRequestDataPayload) GetAccumulated() []byte {
@@ -2406,7 +2406,7 @@ type RequestChunkPayload struct {
 
 func (x *RequestChunkPayload) Reset() {
 	*x = RequestChunkPayload{}
-	mi := &file_python_executor_proto_msgTypes[27]
+	mi := &file_proto_python_executor_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2418,7 +2418,7 @@ func (x *RequestChunkPayload) String() string {
 func (*RequestChunkPayload) ProtoMessage() {}
 
 func (x *RequestChunkPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[27]
+	mi := &file_proto_python_executor_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2431,7 +2431,7 @@ func (x *RequestChunkPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestChunkPayload.ProtoReflect.Descriptor instead.
 func (*RequestChunkPayload) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{27}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *RequestChunkPayload) GetContext() *RequestStreamContext {
@@ -2457,7 +2457,7 @@ type NeedsMoreResponseDataPayload struct {
 
 func (x *NeedsMoreResponseDataPayload) Reset() {
 	*x = NeedsMoreResponseDataPayload{}
-	mi := &file_python_executor_proto_msgTypes[28]
+	mi := &file_proto_python_executor_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2469,7 +2469,7 @@ func (x *NeedsMoreResponseDataPayload) String() string {
 func (*NeedsMoreResponseDataPayload) ProtoMessage() {}
 
 func (x *NeedsMoreResponseDataPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[28]
+	mi := &file_proto_python_executor_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2482,7 +2482,7 @@ func (x *NeedsMoreResponseDataPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NeedsMoreResponseDataPayload.ProtoReflect.Descriptor instead.
 func (*NeedsMoreResponseDataPayload) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{28}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *NeedsMoreResponseDataPayload) GetAccumulated() []byte {
@@ -2502,7 +2502,7 @@ type ResponseChunkPayload struct {
 
 func (x *ResponseChunkPayload) Reset() {
 	*x = ResponseChunkPayload{}
-	mi := &file_python_executor_proto_msgTypes[29]
+	mi := &file_proto_python_executor_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2514,7 +2514,7 @@ func (x *ResponseChunkPayload) String() string {
 func (*ResponseChunkPayload) ProtoMessage() {}
 
 func (x *ResponseChunkPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[29]
+	mi := &file_proto_python_executor_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2527,7 +2527,7 @@ func (x *ResponseChunkPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResponseChunkPayload.ProtoReflect.Descriptor instead.
 func (*ResponseChunkPayload) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{29}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *ResponseChunkPayload) GetContext() *ResponseStreamContext {
@@ -2554,7 +2554,7 @@ type CancelExecutionPayload struct {
 
 func (x *CancelExecutionPayload) Reset() {
 	*x = CancelExecutionPayload{}
-	mi := &file_python_executor_proto_msgTypes[30]
+	mi := &file_proto_python_executor_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2566,7 +2566,7 @@ func (x *CancelExecutionPayload) String() string {
 func (*CancelExecutionPayload) ProtoMessage() {}
 
 func (x *CancelExecutionPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[30]
+	mi := &file_proto_python_executor_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2579,7 +2579,7 @@ func (x *CancelExecutionPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelExecutionPayload.ProtoReflect.Descriptor instead.
 func (*CancelExecutionPayload) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{30}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *CancelExecutionPayload) GetTargetPhase() Phase {
@@ -2609,7 +2609,7 @@ type PolicyMetadata struct {
 
 func (x *PolicyMetadata) Reset() {
 	*x = PolicyMetadata{}
-	mi := &file_python_executor_proto_msgTypes[31]
+	mi := &file_proto_python_executor_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2621,7 +2621,7 @@ func (x *PolicyMetadata) String() string {
 func (*PolicyMetadata) ProtoMessage() {}
 
 func (x *PolicyMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[31]
+	mi := &file_proto_python_executor_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2634,7 +2634,7 @@ func (x *PolicyMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PolicyMetadata.ProtoReflect.Descriptor instead.
 func (*PolicyMetadata) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{31}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *PolicyMetadata) GetRouteName() string {
@@ -2682,7 +2682,7 @@ type DropHeaderAction struct {
 
 func (x *DropHeaderAction) Reset() {
 	*x = DropHeaderAction{}
-	mi := &file_python_executor_proto_msgTypes[32]
+	mi := &file_proto_python_executor_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2694,7 +2694,7 @@ func (x *DropHeaderAction) String() string {
 func (*DropHeaderAction) ProtoMessage() {}
 
 func (x *DropHeaderAction) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[32]
+	mi := &file_proto_python_executor_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2707,7 +2707,7 @@ func (x *DropHeaderAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DropHeaderAction.ProtoReflect.Descriptor instead.
 func (*DropHeaderAction) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{32}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *DropHeaderAction) GetAction() DropHeaderActionType {
@@ -2738,7 +2738,7 @@ type ImmediateResponse struct {
 
 func (x *ImmediateResponse) Reset() {
 	*x = ImmediateResponse{}
-	mi := &file_python_executor_proto_msgTypes[33]
+	mi := &file_proto_python_executor_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2750,7 +2750,7 @@ func (x *ImmediateResponse) String() string {
 func (*ImmediateResponse) ProtoMessage() {}
 
 func (x *ImmediateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[33]
+	mi := &file_proto_python_executor_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2763,7 +2763,7 @@ func (x *ImmediateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImmediateResponse.ProtoReflect.Descriptor instead.
 func (*ImmediateResponse) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{33}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *ImmediateResponse) GetStatusCode() int32 {
@@ -2827,7 +2827,7 @@ type UpstreamRequestHeaderModifications struct {
 
 func (x *UpstreamRequestHeaderModifications) Reset() {
 	*x = UpstreamRequestHeaderModifications{}
-	mi := &file_python_executor_proto_msgTypes[34]
+	mi := &file_proto_python_executor_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2839,7 +2839,7 @@ func (x *UpstreamRequestHeaderModifications) String() string {
 func (*UpstreamRequestHeaderModifications) ProtoMessage() {}
 
 func (x *UpstreamRequestHeaderModifications) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[34]
+	mi := &file_proto_python_executor_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2852,7 +2852,7 @@ func (x *UpstreamRequestHeaderModifications) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use UpstreamRequestHeaderModifications.ProtoReflect.Descriptor instead.
 func (*UpstreamRequestHeaderModifications) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{34}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *UpstreamRequestHeaderModifications) GetHeadersToSet() map[string]string {
@@ -2952,7 +2952,7 @@ type UpstreamRequestModifications struct {
 
 func (x *UpstreamRequestModifications) Reset() {
 	*x = UpstreamRequestModifications{}
-	mi := &file_python_executor_proto_msgTypes[35]
+	mi := &file_proto_python_executor_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2964,7 +2964,7 @@ func (x *UpstreamRequestModifications) String() string {
 func (*UpstreamRequestModifications) ProtoMessage() {}
 
 func (x *UpstreamRequestModifications) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[35]
+	mi := &file_proto_python_executor_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2977,7 +2977,7 @@ func (x *UpstreamRequestModifications) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpstreamRequestModifications.ProtoReflect.Descriptor instead.
 func (*UpstreamRequestModifications) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{35}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *UpstreamRequestModifications) GetBody() *wrapperspb.BytesValue {
@@ -3077,7 +3077,7 @@ type DownstreamResponseHeaderModifications struct {
 
 func (x *DownstreamResponseHeaderModifications) Reset() {
 	*x = DownstreamResponseHeaderModifications{}
-	mi := &file_python_executor_proto_msgTypes[36]
+	mi := &file_proto_python_executor_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3089,7 +3089,7 @@ func (x *DownstreamResponseHeaderModifications) String() string {
 func (*DownstreamResponseHeaderModifications) ProtoMessage() {}
 
 func (x *DownstreamResponseHeaderModifications) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[36]
+	mi := &file_proto_python_executor_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3102,7 +3102,7 @@ func (x *DownstreamResponseHeaderModifications) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use DownstreamResponseHeaderModifications.ProtoReflect.Descriptor instead.
 func (*DownstreamResponseHeaderModifications) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{36}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *DownstreamResponseHeaderModifications) GetHeadersToSet() map[string]string {
@@ -3155,7 +3155,7 @@ type DownstreamResponseModifications struct {
 
 func (x *DownstreamResponseModifications) Reset() {
 	*x = DownstreamResponseModifications{}
-	mi := &file_python_executor_proto_msgTypes[37]
+	mi := &file_proto_python_executor_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3167,7 +3167,7 @@ func (x *DownstreamResponseModifications) String() string {
 func (*DownstreamResponseModifications) ProtoMessage() {}
 
 func (x *DownstreamResponseModifications) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[37]
+	mi := &file_proto_python_executor_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3180,7 +3180,7 @@ func (x *DownstreamResponseModifications) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownstreamResponseModifications.ProtoReflect.Descriptor instead.
 func (*DownstreamResponseModifications) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{37}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *DownstreamResponseModifications) GetBody() *wrapperspb.BytesValue {
@@ -3243,7 +3243,7 @@ type ForwardRequestChunk struct {
 
 func (x *ForwardRequestChunk) Reset() {
 	*x = ForwardRequestChunk{}
-	mi := &file_python_executor_proto_msgTypes[38]
+	mi := &file_proto_python_executor_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3255,7 +3255,7 @@ func (x *ForwardRequestChunk) String() string {
 func (*ForwardRequestChunk) ProtoMessage() {}
 
 func (x *ForwardRequestChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[38]
+	mi := &file_proto_python_executor_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3268,7 +3268,7 @@ func (x *ForwardRequestChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ForwardRequestChunk.ProtoReflect.Descriptor instead.
 func (*ForwardRequestChunk) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{38}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *ForwardRequestChunk) GetBody() *wrapperspb.BytesValue {
@@ -3303,7 +3303,7 @@ type ForwardResponseChunk struct {
 
 func (x *ForwardResponseChunk) Reset() {
 	*x = ForwardResponseChunk{}
-	mi := &file_python_executor_proto_msgTypes[39]
+	mi := &file_proto_python_executor_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3315,7 +3315,7 @@ func (x *ForwardResponseChunk) String() string {
 func (*ForwardResponseChunk) ProtoMessage() {}
 
 func (x *ForwardResponseChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[39]
+	mi := &file_proto_python_executor_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3328,7 +3328,7 @@ func (x *ForwardResponseChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ForwardResponseChunk.ProtoReflect.Descriptor instead.
 func (*ForwardResponseChunk) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{39}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *ForwardResponseChunk) GetBody() *wrapperspb.BytesValue {
@@ -3363,7 +3363,7 @@ type TerminateResponseChunk struct {
 
 func (x *TerminateResponseChunk) Reset() {
 	*x = TerminateResponseChunk{}
-	mi := &file_python_executor_proto_msgTypes[40]
+	mi := &file_proto_python_executor_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3375,7 +3375,7 @@ func (x *TerminateResponseChunk) String() string {
 func (*TerminateResponseChunk) ProtoMessage() {}
 
 func (x *TerminateResponseChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[40]
+	mi := &file_proto_python_executor_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3388,7 +3388,7 @@ func (x *TerminateResponseChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TerminateResponseChunk.ProtoReflect.Descriptor instead.
 func (*TerminateResponseChunk) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{40}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *TerminateResponseChunk) GetBody() *wrapperspb.BytesValue {
@@ -3425,7 +3425,7 @@ type RequestHeaderActionPayload struct {
 
 func (x *RequestHeaderActionPayload) Reset() {
 	*x = RequestHeaderActionPayload{}
-	mi := &file_python_executor_proto_msgTypes[41]
+	mi := &file_proto_python_executor_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3437,7 +3437,7 @@ func (x *RequestHeaderActionPayload) String() string {
 func (*RequestHeaderActionPayload) ProtoMessage() {}
 
 func (x *RequestHeaderActionPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[41]
+	mi := &file_proto_python_executor_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3450,7 +3450,7 @@ func (x *RequestHeaderActionPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestHeaderActionPayload.ProtoReflect.Descriptor instead.
 func (*RequestHeaderActionPayload) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{41}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *RequestHeaderActionPayload) GetAction() isRequestHeaderActionPayload_Action {
@@ -3508,7 +3508,7 @@ type RequestActionPayload struct {
 
 func (x *RequestActionPayload) Reset() {
 	*x = RequestActionPayload{}
-	mi := &file_python_executor_proto_msgTypes[42]
+	mi := &file_proto_python_executor_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3520,7 +3520,7 @@ func (x *RequestActionPayload) String() string {
 func (*RequestActionPayload) ProtoMessage() {}
 
 func (x *RequestActionPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[42]
+	mi := &file_proto_python_executor_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3533,7 +3533,7 @@ func (x *RequestActionPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestActionPayload.ProtoReflect.Descriptor instead.
 func (*RequestActionPayload) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{42}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *RequestActionPayload) GetAction() isRequestActionPayload_Action {
@@ -3590,7 +3590,7 @@ type ResponseHeaderActionPayload struct {
 
 func (x *ResponseHeaderActionPayload) Reset() {
 	*x = ResponseHeaderActionPayload{}
-	mi := &file_python_executor_proto_msgTypes[43]
+	mi := &file_proto_python_executor_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3602,7 +3602,7 @@ func (x *ResponseHeaderActionPayload) String() string {
 func (*ResponseHeaderActionPayload) ProtoMessage() {}
 
 func (x *ResponseHeaderActionPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[43]
+	mi := &file_proto_python_executor_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3615,7 +3615,7 @@ func (x *ResponseHeaderActionPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResponseHeaderActionPayload.ProtoReflect.Descriptor instead.
 func (*ResponseHeaderActionPayload) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{43}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *ResponseHeaderActionPayload) GetAction() isResponseHeaderActionPayload_Action {
@@ -3673,7 +3673,7 @@ type ResponseActionPayload struct {
 
 func (x *ResponseActionPayload) Reset() {
 	*x = ResponseActionPayload{}
-	mi := &file_python_executor_proto_msgTypes[44]
+	mi := &file_proto_python_executor_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3685,7 +3685,7 @@ func (x *ResponseActionPayload) String() string {
 func (*ResponseActionPayload) ProtoMessage() {}
 
 func (x *ResponseActionPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[44]
+	mi := &file_proto_python_executor_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3698,7 +3698,7 @@ func (x *ResponseActionPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResponseActionPayload.ProtoReflect.Descriptor instead.
 func (*ResponseActionPayload) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{44}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *ResponseActionPayload) GetAction() isResponseActionPayload_Action {
@@ -3751,7 +3751,7 @@ type NeedsMoreDecisionPayload struct {
 
 func (x *NeedsMoreDecisionPayload) Reset() {
 	*x = NeedsMoreDecisionPayload{}
-	mi := &file_python_executor_proto_msgTypes[45]
+	mi := &file_proto_python_executor_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3763,7 +3763,7 @@ func (x *NeedsMoreDecisionPayload) String() string {
 func (*NeedsMoreDecisionPayload) ProtoMessage() {}
 
 func (x *NeedsMoreDecisionPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[45]
+	mi := &file_proto_python_executor_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3776,7 +3776,7 @@ func (x *NeedsMoreDecisionPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NeedsMoreDecisionPayload.ProtoReflect.Descriptor instead.
 func (*NeedsMoreDecisionPayload) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{45}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *NeedsMoreDecisionPayload) GetNeedsMore() bool {
@@ -3795,7 +3795,7 @@ type StreamingRequestActionPayload struct {
 
 func (x *StreamingRequestActionPayload) Reset() {
 	*x = StreamingRequestActionPayload{}
-	mi := &file_python_executor_proto_msgTypes[46]
+	mi := &file_proto_python_executor_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3807,7 +3807,7 @@ func (x *StreamingRequestActionPayload) String() string {
 func (*StreamingRequestActionPayload) ProtoMessage() {}
 
 func (x *StreamingRequestActionPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[46]
+	mi := &file_proto_python_executor_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3820,7 +3820,7 @@ func (x *StreamingRequestActionPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamingRequestActionPayload.ProtoReflect.Descriptor instead.
 func (*StreamingRequestActionPayload) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{46}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *StreamingRequestActionPayload) GetForwardRequestChunk() *ForwardRequestChunk {
@@ -3843,7 +3843,7 @@ type StreamingResponseActionPayload struct {
 
 func (x *StreamingResponseActionPayload) Reset() {
 	*x = StreamingResponseActionPayload{}
-	mi := &file_python_executor_proto_msgTypes[47]
+	mi := &file_proto_python_executor_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3855,7 +3855,7 @@ func (x *StreamingResponseActionPayload) String() string {
 func (*StreamingResponseActionPayload) ProtoMessage() {}
 
 func (x *StreamingResponseActionPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[47]
+	mi := &file_proto_python_executor_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3868,7 +3868,7 @@ func (x *StreamingResponseActionPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamingResponseActionPayload.ProtoReflect.Descriptor instead.
 func (*StreamingResponseActionPayload) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{47}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *StreamingResponseActionPayload) GetAction() isStreamingResponseActionPayload_Action {
@@ -3926,7 +3926,7 @@ type ExecutionError struct {
 
 func (x *ExecutionError) Reset() {
 	*x = ExecutionError{}
-	mi := &file_python_executor_proto_msgTypes[48]
+	mi := &file_proto_python_executor_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3938,7 +3938,7 @@ func (x *ExecutionError) String() string {
 func (*ExecutionError) ProtoMessage() {}
 
 func (x *ExecutionError) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[48]
+	mi := &file_proto_python_executor_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3951,7 +3951,7 @@ func (x *ExecutionError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecutionError.ProtoReflect.Descriptor instead.
 func (*ExecutionError) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{48}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *ExecutionError) GetMessage() string {
@@ -3990,7 +3990,7 @@ type HealthCheckRequest struct {
 
 func (x *HealthCheckRequest) Reset() {
 	*x = HealthCheckRequest{}
-	mi := &file_python_executor_proto_msgTypes[49]
+	mi := &file_proto_python_executor_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4002,7 +4002,7 @@ func (x *HealthCheckRequest) String() string {
 func (*HealthCheckRequest) ProtoMessage() {}
 
 func (x *HealthCheckRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[49]
+	mi := &file_proto_python_executor_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4015,7 +4015,7 @@ func (x *HealthCheckRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthCheckRequest.ProtoReflect.Descriptor instead.
 func (*HealthCheckRequest) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{49}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{49}
 }
 
 type HealthCheckResponse struct {
@@ -4028,7 +4028,7 @@ type HealthCheckResponse struct {
 
 func (x *HealthCheckResponse) Reset() {
 	*x = HealthCheckResponse{}
-	mi := &file_python_executor_proto_msgTypes[50]
+	mi := &file_proto_python_executor_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4040,7 +4040,7 @@ func (x *HealthCheckResponse) String() string {
 func (*HealthCheckResponse) ProtoMessage() {}
 
 func (x *HealthCheckResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_python_executor_proto_msgTypes[50]
+	mi := &file_proto_python_executor_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4053,7 +4053,7 @@ func (x *HealthCheckResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthCheckResponse.ProtoReflect.Descriptor instead.
 func (*HealthCheckResponse) Descriptor() ([]byte, []int) {
-	return file_python_executor_proto_rawDescGZIP(), []int{50}
+	return file_proto_python_executor_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *HealthCheckResponse) GetReady() bool {
@@ -4070,11 +4070,11 @@ func (x *HealthCheckResponse) GetLoadedPolicies() int32 {
 	return 0
 }
 
-var File_python_executor_proto protoreflect.FileDescriptor
+var File_proto_python_executor_proto protoreflect.FileDescriptor
 
-const file_python_executor_proto_rawDesc = "" +
+const file_proto_python_executor_proto_rawDesc = "" +
 	"\n" +
-	"\x15python_executor.proto\x12\x1cwso2.gateway.python.v1alpha2\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1egoogle/protobuf/wrappers.proto\"\x80\n" +
+	"\x1bproto/python_executor.proto\x12\x1cwso2.gateway.python.v1alpha2\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1egoogle/protobuf/wrappers.proto\"\x80\n" +
 	"\n" +
 	"\rStreamRequest\x12\x1d\n" +
 	"\n" +
@@ -4459,20 +4459,20 @@ const file_python_executor_proto_rawDesc = "" +
 	"\rDestroyPolicy\x122.wso2.gateway.python.v1alpha2.DestroyPolicyRequest\x1a3.wso2.gateway.python.v1alpha2.DestroyPolicyResponseB`Z^github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/pythonbridge/protob\x06proto3"
 
 var (
-	file_python_executor_proto_rawDescOnce sync.Once
-	file_python_executor_proto_rawDescData []byte
+	file_proto_python_executor_proto_rawDescOnce sync.Once
+	file_proto_python_executor_proto_rawDescData []byte
 )
 
-func file_python_executor_proto_rawDescGZIP() []byte {
-	file_python_executor_proto_rawDescOnce.Do(func() {
-		file_python_executor_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_python_executor_proto_rawDesc), len(file_python_executor_proto_rawDesc)))
+func file_proto_python_executor_proto_rawDescGZIP() []byte {
+	file_proto_python_executor_proto_rawDescOnce.Do(func() {
+		file_proto_python_executor_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_python_executor_proto_rawDesc), len(file_proto_python_executor_proto_rawDesc)))
 	})
-	return file_python_executor_proto_rawDescData
+	return file_proto_python_executor_proto_rawDescData
 }
 
-var file_python_executor_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_python_executor_proto_msgTypes = make([]protoimpl.MessageInfo, 69)
-var file_python_executor_proto_goTypes = []any{
+var file_proto_python_executor_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_proto_python_executor_proto_msgTypes = make([]protoimpl.MessageInfo, 69)
+var file_proto_python_executor_proto_goTypes = []any{
 	(HeaderProcessingMode)(0),                     // 0: wso2.gateway.python.v1alpha2.HeaderProcessingMode
 	(BodyProcessingMode)(0),                       // 1: wso2.gateway.python.v1alpha2.BodyProcessingMode
 	(Phase)(0),                                    // 2: wso2.gateway.python.v1alpha2.Phase
@@ -4552,7 +4552,7 @@ var file_python_executor_proto_goTypes = []any{
 	(*wrapperspb.StringValue)(nil),                // 76: google.protobuf.StringValue
 	(*wrapperspb.Int32Value)(nil),                 // 77: google.protobuf.Int32Value
 }
-var file_python_executor_proto_depIdxs = []int32{
+var file_proto_python_executor_proto_depIdxs = []int32{
 	73,  // 0: wso2.gateway.python.v1alpha2.StreamRequest.params:type_name -> google.protobuf.Struct
 	14,  // 1: wso2.gateway.python.v1alpha2.StreamRequest.shared_context:type_name -> wso2.gateway.python.v1alpha2.SharedContext
 	12,  // 2: wso2.gateway.python.v1alpha2.StreamRequest.execution_metadata:type_name -> wso2.gateway.python.v1alpha2.ExecutionMetadata
@@ -4695,12 +4695,12 @@ var file_python_executor_proto_depIdxs = []int32{
 	0,   // [0:127] is the sub-list for field type_name
 }
 
-func init() { file_python_executor_proto_init() }
-func file_python_executor_proto_init() {
-	if File_python_executor_proto != nil {
+func init() { file_proto_python_executor_proto_init() }
+func file_proto_python_executor_proto_init() {
+	if File_proto_python_executor_proto != nil {
 		return
 	}
-	file_python_executor_proto_msgTypes[0].OneofWrappers = []any{
+	file_proto_python_executor_proto_msgTypes[0].OneofWrappers = []any{
 		(*StreamRequest_RequestHeaders)(nil),
 		(*StreamRequest_RequestBody)(nil),
 		(*StreamRequest_ResponseHeaders)(nil),
@@ -4711,7 +4711,7 @@ func file_python_executor_proto_init() {
 		(*StreamRequest_ResponseChunk)(nil),
 		(*StreamRequest_CancelExecution)(nil),
 	}
-	file_python_executor_proto_msgTypes[1].OneofWrappers = []any{
+	file_proto_python_executor_proto_msgTypes[1].OneofWrappers = []any{
 		(*StreamResponse_RequestHeaderAction)(nil),
 		(*StreamResponse_RequestAction)(nil),
 		(*StreamResponse_ResponseHeaderAction)(nil),
@@ -4721,23 +4721,23 @@ func file_python_executor_proto_init() {
 		(*StreamResponse_StreamingResponseAction)(nil),
 		(*StreamResponse_Error)(nil),
 	}
-	file_python_executor_proto_msgTypes[41].OneofWrappers = []any{
+	file_proto_python_executor_proto_msgTypes[41].OneofWrappers = []any{
 		(*RequestHeaderActionPayload_UpstreamRequestHeaderModifications)(nil),
 		(*RequestHeaderActionPayload_ImmediateResponse)(nil),
 	}
-	file_python_executor_proto_msgTypes[42].OneofWrappers = []any{
+	file_proto_python_executor_proto_msgTypes[42].OneofWrappers = []any{
 		(*RequestActionPayload_UpstreamRequestModifications)(nil),
 		(*RequestActionPayload_ImmediateResponse)(nil),
 	}
-	file_python_executor_proto_msgTypes[43].OneofWrappers = []any{
+	file_proto_python_executor_proto_msgTypes[43].OneofWrappers = []any{
 		(*ResponseHeaderActionPayload_DownstreamResponseHeaderModifications)(nil),
 		(*ResponseHeaderActionPayload_ImmediateResponse)(nil),
 	}
-	file_python_executor_proto_msgTypes[44].OneofWrappers = []any{
+	file_proto_python_executor_proto_msgTypes[44].OneofWrappers = []any{
 		(*ResponseActionPayload_DownstreamResponseModifications)(nil),
 		(*ResponseActionPayload_ImmediateResponse)(nil),
 	}
-	file_python_executor_proto_msgTypes[47].OneofWrappers = []any{
+	file_proto_python_executor_proto_msgTypes[47].OneofWrappers = []any{
 		(*StreamingResponseActionPayload_ForwardResponseChunk)(nil),
 		(*StreamingResponseActionPayload_TerminateResponseChunk)(nil),
 	}
@@ -4745,18 +4745,18 @@ func file_python_executor_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_python_executor_proto_rawDesc), len(file_python_executor_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_python_executor_proto_rawDesc), len(file_proto_python_executor_proto_rawDesc)),
 			NumEnums:      4,
 			NumMessages:   69,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_python_executor_proto_goTypes,
-		DependencyIndexes: file_python_executor_proto_depIdxs,
-		EnumInfos:         file_python_executor_proto_enumTypes,
-		MessageInfos:      file_python_executor_proto_msgTypes,
+		GoTypes:           file_proto_python_executor_proto_goTypes,
+		DependencyIndexes: file_proto_python_executor_proto_depIdxs,
+		EnumInfos:         file_proto_python_executor_proto_enumTypes,
+		MessageInfos:      file_proto_python_executor_proto_msgTypes,
 	}.Build()
-	File_python_executor_proto = out.File
-	file_python_executor_proto_goTypes = nil
-	file_python_executor_proto_depIdxs = nil
+	File_proto_python_executor_proto = out.File
+	file_proto_python_executor_proto_goTypes = nil
+	file_proto_python_executor_proto_depIdxs = nil
 }

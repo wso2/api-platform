@@ -1,4 +1,4 @@
-# Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+# Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 
 """Python SDK surface for WSO2 API Platform gateway policies."""
 
-from sdk.actions import (
+from .actions import (
     DownstreamResponseHeaderModifications,
     DownstreamResponseModifications,
     DropHeaderAction,
@@ -31,7 +31,7 @@ from sdk.actions import (
     UpstreamRequestHeaderModifications,
     UpstreamRequestModifications,
 )
-from sdk.policy import (
+from .policy import (
     Policy,
     RequestHeaderPolicy,
     RequestPolicy,
@@ -40,7 +40,7 @@ from sdk.policy import (
     StreamingRequestPolicy,
     StreamingResponsePolicy,
 )
-from sdk.types import (
+from .types import (
     AuthContext,
     Body,
     BodyProcessingMode,

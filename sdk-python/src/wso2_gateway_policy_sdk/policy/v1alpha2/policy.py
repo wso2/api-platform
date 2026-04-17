@@ -1,4 +1,4 @@
-# Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+# Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Python policy interfaces aligned with sdk/core/policy/v1alpha2."""
+"""Python policy interfaces for `wso2_gateway_policy_sdk.policy.v1alpha2`."""
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import Any
 
-from sdk.actions import (
+from .actions import (
     RequestAction,
     RequestHeaderAction,
     ResponseAction,
@@ -27,9 +27,8 @@ from sdk.actions import (
     StreamingRequestAction,
     StreamingResponseAction,
 )
-from sdk.types import (
+from .types import (
     ExecutionContext,
-    PolicyMetadata,
     ProcessingMode,
     RequestContext,
     RequestHeaderContext,

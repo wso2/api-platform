@@ -1,6 +1,6 @@
 import unittest
 
-from sdk.types import Headers
+from wso2_gateway_policy_sdk import Headers
 
 
 class HeadersTest(unittest.TestCase):

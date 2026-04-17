@@ -1,5 +1,5 @@
 //
-//  Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+//  Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
 //
 //  Licensed under the Apache License, Version 2.0 (the "License");
 //  you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.1
 // - protoc             v6.30.2
-// source: python_executor.proto
+// source: proto/python_executor.proto
 
 package proto
 
@@ -252,5 +252,5 @@ var PythonExecutorService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "python_executor.proto",
+	Metadata: "proto/python_executor.proto",
 }

@@ -1,4 +1,4 @@
-# Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+# Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Core Python SDK types aligned with sdk/core/policy/v1alpha2."""
+"""Python SDK types for `wso2_gateway_policy_sdk.policy.v1alpha2`."""
 
 from __future__ import annotations
 
@@ -98,7 +98,7 @@ class AuthContext:
     scopes: dict[str, bool] = field(default_factory=dict)
     credential_id: str = ""
     properties: dict[str, str] = field(default_factory=dict)
-    previous: AuthContext | None = None
+    previous: "AuthContext | None" = None
 
 
 @dataclass(slots=True)

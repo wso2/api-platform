@@ -366,6 +366,21 @@ func TestUpdateGoMod_InvalidGoMod(t *testing.T) {
 
 // ==== GenerateCode tests ====
 
+func createPythonSDKCoreDir(t *testing.T, policyEngineDir string) {
+	t.Helper()
+
+	sdkPythonDir := filepath.Join(policyEngineDir, "..", "..", "..", "sdk-python", "src", "wso2_gateway_policy_sdk")
+	testutils.CreateDir(t, filepath.Join(sdkPythonDir, "core", "policy", "v1alpha2"))
+	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "__init__.py"), "# package root\n")
+	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "py.typed"), "")
+	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "core", "__init__.py"), "# core package\n")
+	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "core", "policy", "__init__.py"), "# policy package\n")
+	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "core", "policy", "v1alpha2", "__init__.py"), "# version package\n")
+	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "core", "policy", "v1alpha2", "types.py"), "# core policy types\n")
+	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "core", "policy", "v1alpha2", "actions.py"), "# core policy actions\n")
+	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "core", "policy", "v1alpha2", "policy.py"), "# core policy interfaces\n")
+}
+
 func TestGenerateCode_Success(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -377,6 +392,7 @@ func TestGenerateCode_Success(t *testing.T) {
 	// Create python-executor sibling directory (required by generatePythonExecutorBase)
 	pythonExecDir := filepath.Join(tmpDir, "..", "python-executor")
 	testutils.CreateDir(t, pythonExecDir)
+	createPythonSDKCoreDir(t, tmpDir)
 
 	// Create policy directory
 	policyPath := testutils.CreatePolicyDir(t, tmpDir, "ratelimit", "v1.0.0")
@@ -418,6 +434,7 @@ func TestGenerateCode_EmptyPolicies(t *testing.T) {
 	// Create python-executor sibling directory
 	pythonExecDir := filepath.Join(tmpDir, "..", "python-executor")
 	testutils.CreateDir(t, pythonExecDir)
+	createPythonSDKCoreDir(t, tmpDir)
 
 	// Empty policies
 	policies := []*types.DiscoveredPolicy{}
@@ -439,18 +456,25 @@ func TestGenerateCode_CopiesPythonExecutorBaseFiles(t *testing.T) {
 	testutils.WritePolicyEngineGoMod(t, tmpDir)
 
 	pythonExecDir := filepath.Join(tmpDir, "..", "python-executor")
-	testutils.CreateDir(t, filepath.Join(pythonExecDir, "sdk"))
+	testutils.CreateDir(t, filepath.Join(pythonExecDir, "executor"))
 	testutils.CreateDir(t, filepath.Join(pythonExecDir, "proto"))
-	testutils.WriteFile(t, filepath.Join(pythonExecDir, "sdk", "types.py"), "# sdk types\n")
-	testutils.WriteFile(t, filepath.Join(pythonExecDir, "sdk", "actions.py"), "# sdk actions\n")
+	testutils.WriteFile(t, filepath.Join(pythonExecDir, "executor", "__init__.py"), "# executor package\n")
 	testutils.WriteFile(t, filepath.Join(pythonExecDir, "proto", "python_executor_pb2.py"), "# generated proto\n")
+
+	createPythonSDKCoreDir(t, tmpDir)
 
 	outputDir := t.TempDir()
 	err := GenerateCode(tmpDir, nil, outputDir)
 	require.NoError(t, err)
 
-	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "sdk", "types.py"))
-	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "sdk", "actions.py"))
+	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "executor", "__init__.py"))
+	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "wso2_gateway_policy_sdk", "__init__.py"))
+	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "wso2_gateway_policy_sdk", "py.typed"))
+	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "wso2_gateway_policy_sdk", "core", "policy", "__init__.py"))
+	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "wso2_gateway_policy_sdk", "core", "policy", "v1alpha2", "types.py"))
+	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "wso2_gateway_policy_sdk", "core", "policy", "v1alpha2", "actions.py"))
+	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "wso2_gateway_policy_sdk", "core", "policy", "v1alpha2", "__init__.py"))
+	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "wso2_gateway_policy_sdk", "core", "policy", "v1alpha2", "policy.py"))
 	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "proto", "python_executor_pb2.py"))
 }
 
@@ -463,6 +487,7 @@ func TestGenerateCode_MissingCmdDirectory(t *testing.T) {
 	// Create python-executor sibling directory
 	pythonExecDir := filepath.Join(tmpDir, "..", "python-executor")
 	testutils.CreateDir(t, pythonExecDir)
+	createPythonSDKCoreDir(t, tmpDir)
 
 	policies := []*types.DiscoveredPolicy{
 		testutils.NewLocalDiscoveredPolicy("ratelimit", "v1.0.0", "/policies/ratelimit", "github.com/example/ratelimit"),
@@ -483,6 +508,7 @@ func TestGenerateCode_MissingGoMod(t *testing.T) {
 	// Create python-executor sibling directory
 	pythonExecDir := filepath.Join(tmpDir, "..", "python-executor")
 	testutils.CreateDir(t, pythonExecDir)
+	createPythonSDKCoreDir(t, tmpDir)
 
 	// No go.mod file
 	policyPath := testutils.CreatePolicyDir(t, tmpDir, "ratelimit", "v1.0.0")
@@ -507,6 +533,7 @@ func TestGenerateCode_MultiplePolicies(t *testing.T) {
 	// Create python-executor sibling directory
 	pythonExecDir := filepath.Join(tmpDir, "..", "python-executor")
 	testutils.CreateDir(t, pythonExecDir)
+	createPythonSDKCoreDir(t, tmpDir)
 
 	// Create multiple policy directories
 	policy1Path := testutils.CreatePolicyDir(t, tmpDir, "ratelimit", "v1.0.0")

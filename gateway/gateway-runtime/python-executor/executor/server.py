@@ -1,4 +1,4 @@
-# Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+# Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,7 +36,10 @@ from executor.policy_loader import PolicyLoader
 from executor.translator import Translator
 import proto.python_executor_pb2 as proto
 import proto.python_executor_pb2_grpc as proto_grpc
-from sdk.policy import (
+from wso2_gateway_policy_sdk import (
+    BodyProcessingMode,
+    ExecutionContext,
+    HeaderProcessingMode,
     Policy,
     RequestHeaderPolicy,
     RequestPolicy,
@@ -45,7 +48,6 @@ from sdk.policy import (
     StreamingRequestPolicy,
     StreamingResponsePolicy,
 )
-from sdk.types import BodyProcessingMode, ExecutionContext, HeaderProcessingMode
 
 logger = logging.getLogger(__name__)
 

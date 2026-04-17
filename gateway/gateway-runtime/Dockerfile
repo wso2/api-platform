@@ -99,6 +99,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Copy all source and policy files
 COPY policy-engine/ /api-platform/gateway/gateway-runtime/policy-engine/
 COPY python-executor/ /api-platform/gateway/gateway-runtime/python-executor/
+COPY --from=sdk-python . /api-platform/sdk-python
 COPY --from=sdk-core . /api-platform/sdk/core
 COPY --from=common . /api-platform/common
 COPY --from=system-policies . /api-platform/gateway/system-policies/

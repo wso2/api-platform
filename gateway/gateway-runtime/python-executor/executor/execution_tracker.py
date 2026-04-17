@@ -1,4 +1,4 @@
-# Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+# Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime
 
-from sdk.types import ExecutionPhase
+from wso2_gateway_policy_sdk import ExecutionPhase
 
 
 @dataclass(slots=True)

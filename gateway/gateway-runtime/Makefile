@@ -30,9 +30,12 @@ IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-runtime
 
 PYTHON ?= python3
 GO_BIN := $(shell go env GOPATH)/bin
+PROTO_DIR := api
 PROTO_FILE := proto/python_executor.proto
 GO_PROTO_OUT := policy-engine/internal/pythonbridge/proto
 PY_PROTO_OUT := python-executor/proto
+GO_PROTO_GEN_ROOT := ../policy-engine/internal/pythonbridge
+PY_PROTO_GEN_ROOT := ../python-executor
 PROTO_GENERATED := $(GO_PROTO_OUT)/python_executor.pb.go $(GO_PROTO_OUT)/python_executor_grpc.pb.go $(PY_PROTO_OUT)/python_executor_pb2.py $(PY_PROTO_OUT)/python_executor_pb2_grpc.py
 
 help: ## Show this help message
@@ -46,6 +49,7 @@ build: test ## Build Gateway Runtime Docker image using buildx
 	@mkdir -p target/configs && cp ../build.yaml target/ && cp -r ../configs/llm-pricing target/configs/
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context sdk-python=../../sdk-python \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
@@ -70,6 +74,7 @@ build-debug: ## Build debug Gateway Runtime image for remote debugging with dlv 
 	@mkdir -p target/configs && cp ../build.yaml target/ && cp -r ../configs/llm-pricing target/configs/
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context sdk-python=../../sdk-python \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
@@ -94,6 +99,7 @@ build-coverage-image: test ## Build Gateway Runtime Docker image with coverage i
 	@mkdir -p target/configs && cp ../build.yaml target/ && cp -r ../configs/llm-pricing target/configs/
 	DOCKER_BUILDKIT=1 docker build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context sdk-python=../../sdk-python \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
@@ -119,6 +125,7 @@ build-and-push-multiarch: ## Build and push Gateway Runtime Docker image for mul
 	@mkdir -p target/configs && cp ../build.yaml target/ && cp -r ../configs/llm-pricing target/configs/
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context sdk-python=../../sdk-python \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-context gateway-builder=../gateway-builder \
@@ -151,15 +158,15 @@ test-python: ## Run Python executor unit tests
 	cd python-executor && $(PYTHON) -m unittest discover -s tests -t . -v
 
 proto: ## Regenerate Python executor protobuf bindings
-	cd proto && PATH="$(GO_BIN):$$PATH" protoc -I . \
-		--go_out=../$(GO_PROTO_OUT) \
+	cd $(PROTO_DIR) && PATH="$(GO_BIN):$$PATH" protoc -I . \
+		--go_out=$(GO_PROTO_GEN_ROOT) \
 		--go_opt=paths=source_relative \
-		--go-grpc_out=../$(GO_PROTO_OUT) \
+		--go-grpc_out=$(GO_PROTO_GEN_ROOT) \
 		--go-grpc_opt=paths=source_relative \
-		python_executor.proto
-	$(PYTHON) -m grpc_tools.protoc -I . \
-		--python_out=python-executor \
-		--grpc_python_out=python-executor \
+		$(PROTO_FILE)
+	cd $(PROTO_DIR) && $(PYTHON) -m grpc_tools.protoc -I . \
+		--python_out=$(PY_PROTO_GEN_ROOT) \
+		--grpc_python_out=$(PY_PROTO_GEN_ROOT) \
 		$(PROTO_FILE)
 
 test-proto: proto ## Verify protobuf bindings regenerate and compile cleanly

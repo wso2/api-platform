@@ -8,22 +8,24 @@ from executor.instance_store import PolicyInstanceStore
 from executor.server import PythonExecutorServicer
 from executor.translator import Translator
 import proto.python_executor_pb2 as proto
-from sdk.actions import (
+from wso2_gateway_policy_sdk import (
+    BodyProcessingMode,
     DownstreamResponseHeaderModifications,
     DownstreamResponseModifications,
+    ExecutionContext,
     ForwardRequestChunk,
+    HeaderProcessingMode,
     ImmediateResponse,
+    Policy,
+    PolicyMetadata,
+    ProcessingMode,
+    RequestHeaderPolicy,
+    RequestPolicy,
+    StreamingRequestPolicy,
+    StreamingResponsePolicy,
     TerminateResponseChunk,
     UpstreamRequestHeaderModifications,
     UpstreamRequestModifications,
-)
-from sdk.policy import Policy, RequestHeaderPolicy, RequestPolicy, StreamingRequestPolicy, StreamingResponsePolicy
-from sdk.types import (
-    BodyProcessingMode,
-    ExecutionContext,
-    HeaderProcessingMode,
-    PolicyMetadata,
-    ProcessingMode,
 )
 
 

@@ -1,4 +1,4 @@
-# Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+# Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,38 +23,36 @@ from google.protobuf.struct_pb2 import Struct, Value
 from google.protobuf.wrappers_pb2 import BytesValue, Int32Value, StringValue
 
 import proto.python_executor_pb2 as proto
-from sdk.actions import (
+from wso2_gateway_policy_sdk import (
+    AuthContext,
+    Body,
     DownstreamResponseHeaderModifications,
     DownstreamResponseModifications,
     DropHeaderAction,
+    ExecutionPhase,
     ForwardRequestChunk,
     ForwardResponseChunk,
+    Headers,
     ImmediateResponse,
+    PolicyMetadata,
+    ProcessingMode,
     RequestAction,
+    RequestContext,
     RequestHeaderAction,
+    RequestHeaderContext,
+    RequestStreamContext,
     ResponseAction,
+    ResponseContext,
     ResponseHeaderAction,
+    ResponseHeaderContext,
+    ResponseStreamContext,
+    SharedContext,
+    StreamBody,
     StreamingRequestAction,
     StreamingResponseAction,
     TerminateResponseChunk,
     UpstreamRequestHeaderModifications,
     UpstreamRequestModifications,
-)
-from sdk.types import (
-    AuthContext,
-    Body,
-    ExecutionPhase,
-    Headers,
-    PolicyMetadata,
-    ProcessingMode,
-    RequestContext,
-    RequestHeaderContext,
-    RequestStreamContext,
-    ResponseContext,
-    ResponseHeaderContext,
-    ResponseStreamContext,
-    SharedContext,
-    StreamBody,
 )
 
 
