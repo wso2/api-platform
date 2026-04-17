@@ -1235,6 +1235,12 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 		c.handleMCPProxyUndeploymentEvent(event)
 	case "mcpproxy.deleted":
 		c.handleMCPProxyDeletedEvent(event)
+	case "websub.deployed":
+		c.handleWebSubAPIDeployedEvent(event)
+	case "websub.undeployed":
+		c.handleWebSubAPIUndeployedEvent(event)
+	case "websub.deleted":
+		c.handleWebSubAPIDeletedEvent(event)
 	case "application.updated":
 		c.handleApplicationUpdatedEvent(event)
 	default:
@@ -2413,6 +2419,251 @@ func (c *Client) handleLLMProxyDeletedEvent(event map[string]interface{}) {
 		slog.String("proxy_id", proxyID),
 		slog.String("correlation_id", deletedEvent.CorrelationID),
 	)
+}
+
+func (c *Client) handleWebSubAPIDeployedEvent(event map[string]any) {
+	c.logger.Debug("WebSub API Deployment Event",
+		slog.Any("payload", event["payload"]),
+		slog.Any("timestamp", event["timestamp"]),
+		slog.Any("correlationId", event["correlationId"]),
+	)
+
+	eventBytes, err := json.Marshal(event)
+	if err != nil {
+		c.logger.Error("Failed to marshal WebSub API deployment event for parsing",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	var deployedEvent WebSubAPIDeployedEvent
+	if err := json.Unmarshal(eventBytes, &deployedEvent); err != nil {
+		c.logger.Error("Failed to parse WebSub API deployment event",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	apiID := deployedEvent.Payload.APIID
+	if apiID == "" {
+		c.logger.Error("API ID is empty in WebSub API deployment event")
+		return
+	}
+
+	c.logger.Info("Processing WebSub API deployment",
+		slog.String("api_id", apiID),
+		slog.String("deployment_id", deployedEvent.Payload.DeploymentID),
+		slog.String("correlation_id", deployedEvent.CorrelationID),
+	)
+
+	// Fetch WebSub API definition from control plane
+	zipData, err := c.apiUtilsService.FetchWebSubAPIDefinition(apiID)
+	if err != nil {
+		c.logger.Error("Failed to fetch WebSub API definition",
+			slog.String("api_id", apiID),
+			slog.Any("error", err),
+		)
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "websub", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+		return
+	}
+
+	yamlData, err := c.apiUtilsService.ExtractYAMLFromZip(zipData)
+	if err != nil {
+		c.logger.Error("Failed to extract YAML from WebSub API ZIP",
+			slog.String("api_id", apiID),
+			slog.Any("error", err),
+		)
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "websub", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+		return
+	}
+
+	performedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
+	if performedAt.IsZero() {
+		performedAt = time.Now().Truncate(time.Millisecond)
+	}
+	result, err := c.apiUtilsService.CreateAPIFromYAML(yamlData, apiID, deployedEvent.Payload.DeploymentID, &performedAt, deployedEvent.CorrelationID, c.deploymentService)
+	if err != nil {
+		c.logger.Error("Failed to create WebSub API from YAML",
+			slog.String("api_id", apiID),
+			slog.Any("error", err),
+		)
+		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "websub", "deploy", "failed",
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+		return
+	}
+
+	if result.IsStale {
+		c.logger.Debug("Skipped stale WebSub API deploy event (newer version exists in DB)",
+			slog.String("api_id", apiID),
+			slog.String("deployment_id", deployedEvent.Payload.DeploymentID),
+		)
+		return
+	}
+
+	c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "websub", "deploy", "success",
+		deployedEvent.Payload.PerformedAt, "")
+
+	c.logger.Info("Successfully processed WebSub API deployment event",
+		slog.String("api_id", apiID),
+		slog.String("correlation_id", deployedEvent.CorrelationID),
+	)
+}
+
+func (c *Client) handleWebSubAPIUndeployedEvent(event map[string]any) {
+	c.logger.Debug("WebSub API Undeployment Event",
+		slog.Any("payload", event["payload"]),
+		slog.Any("timestamp", event["timestamp"]),
+		slog.Any("correlationId", event["correlationId"]),
+	)
+
+	eventBytes, err := json.Marshal(event)
+	if err != nil {
+		c.logger.Error("Failed to marshal WebSub API undeployment event for parsing",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	var undeployedEvent WebSubAPIUndeployedEvent
+	if err := json.Unmarshal(eventBytes, &undeployedEvent); err != nil {
+		c.logger.Error("Failed to parse WebSub API undeployment event",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	apiID := undeployedEvent.Payload.APIID
+	if apiID == "" {
+		c.logger.Error("API ID is empty in WebSub API undeployment event")
+		return
+	}
+
+	apiConfig, err := c.findAPIConfig(apiID)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			c.logger.Warn("WebSub API configuration not found for undeployment",
+				slog.String("api_id", apiID),
+			)
+			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "websub", "undeploy", "success",
+				undeployedEvent.Payload.PerformedAt, "")
+			return
+		}
+		c.logger.Error("Failed to fetch WebSub API configuration for undeployment",
+			slog.String("api_id", apiID),
+			slog.String("correlation_id", undeployedEvent.CorrelationID),
+			slog.Any("error", err),
+		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "websub", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+		return
+	}
+
+	if apiConfig.DeploymentID != "" && undeployedEvent.Payload.DeploymentID != "" &&
+		apiConfig.DeploymentID != undeployedEvent.Payload.DeploymentID {
+		c.logger.Warn("Ignoring stale WebSub API undeploy event: deployment ID mismatch",
+			slog.String("api_id", apiID),
+			slog.String("event_deployment_id", undeployedEvent.Payload.DeploymentID),
+			slog.String("current_deployment_id", apiConfig.DeploymentID),
+		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "websub", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "DEPLOYMENT_ID_MISMATCH")
+		return
+	}
+
+	performedAt := undeployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
+	if performedAt.IsZero() {
+		performedAt = time.Now().Truncate(time.Millisecond)
+	}
+	apiConfig.DesiredState = models.StateUndeployed
+	apiConfig.DeploymentID = undeployedEvent.Payload.DeploymentID
+	apiConfig.DeployedAt = &performedAt
+	apiConfig.UpdatedAt = time.Now()
+
+	affected, err := c.db.UpsertConfig(apiConfig)
+	if err != nil {
+		c.logger.Error("Failed to upsert config for WebSub API undeployment",
+			slog.String("api_id", apiID),
+			slog.Any("error", err),
+		)
+		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "websub", "undeploy", "failed",
+			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+		return
+	}
+	if !affected {
+		c.logger.Debug("Skipped stale WebSub API undeploy event (newer version exists in DB)",
+			slog.String("api_id", apiID),
+			slog.String("deployment_id", undeployedEvent.Payload.DeploymentID),
+		)
+		return
+	}
+
+	evt := eventhub.Event{
+		EventType: eventhub.EventTypeAPI,
+		Action:    "UPDATE",
+		EntityID:  apiID,
+		EventID:   undeployedEvent.CorrelationID,
+	}
+	if err := c.eventHub.PublishEvent(c.gatewayID, evt); err != nil {
+		c.logger.Error("Failed to publish WebSub API undeployment event", slog.Any("error", err))
+	}
+
+	c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "websub", "undeploy", "success",
+		undeployedEvent.Payload.PerformedAt, "")
+
+	c.logger.Info("Successfully processed WebSub API undeployment event",
+		slog.String("api_id", apiID),
+		slog.String("correlation_id", undeployedEvent.CorrelationID),
+	)
+}
+
+func (c *Client) handleWebSubAPIDeletedEvent(event map[string]any) {
+	c.logger.Debug("WebSub API Deleted Event",
+		slog.Any("payload", event["payload"]),
+		slog.Any("timestamp", event["timestamp"]),
+		slog.Any("correlationId", event["correlationId"]),
+	)
+
+	eventBytes, err := json.Marshal(event)
+	if err != nil {
+		c.logger.Error("Failed to marshal WebSub API deleted event for parsing",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	var deletedEvent WebSubAPIDeletedEvent
+	if err := json.Unmarshal(eventBytes, &deletedEvent); err != nil {
+		c.logger.Error("Failed to parse WebSub API deleted event",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	apiID := deletedEvent.Payload.APIID
+	if apiID == "" {
+		c.logger.Error("API ID is empty in WebSub API deleted event")
+		return
+	}
+
+	apiConfig, err := c.findAPIConfig(apiID)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			c.logger.Warn("WebSub API configuration not found for deletion",
+				slog.String("api_id", apiID),
+			)
+			return
+		}
+		c.logger.Error("Failed to fetch WebSub API configuration for deletion",
+			slog.String("api_id", apiID),
+			slog.String("correlation_id", deletedEvent.CorrelationID),
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	c.performFullAPIDeletion(apiID, apiConfig, deletedEvent.CorrelationID)
 }
 
 func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {

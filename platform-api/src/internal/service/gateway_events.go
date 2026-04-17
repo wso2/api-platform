@@ -51,6 +51,10 @@ const (
 	EventTypeMCPProxyUndeployed = "mcpproxy.undeployed"
 	EventTypeMCPProxyDeleted    = "mcpproxy.deleted"
 
+	EventTypeWebSubAPIDeployed   = "websub.deployed"
+	EventTypeWebSubAPIUndeployed = "websub.undeployed"
+	EventTypeWebSubAPIDeleted    = "websub.deleted"
+
 	EventTypeAPIKeyCreated = "apikey.created"
 	EventTypeAPIKeyRevoked = "apikey.revoked"
 	EventTypeAPIKeyUpdated = "apikey.updated"
@@ -126,6 +130,21 @@ func (s *GatewayEventsService) BroadcastMCPProxyUndeploymentEvent(gatewayID stri
 // BroadcastMCPProxyDeletionEvent sends an MCP proxy deletion event to target gateway.
 func (s *GatewayEventsService) BroadcastMCPProxyDeletionEvent(gatewayID string, deletion *model.MCPProxyDeletionEvent) error {
 	return s.broadcastEvent(gatewayID, EventTypeMCPProxyDeleted, deletion)
+}
+
+// BroadcastWebSubAPIDeploymentEvent sends a WebSub API deployment event to target gateway.
+func (s *GatewayEventsService) BroadcastWebSubAPIDeploymentEvent(gatewayID string, deployment *model.WebSubAPIDeploymentEvent) error {
+	return s.broadcastEvent(gatewayID, EventTypeWebSubAPIDeployed, deployment)
+}
+
+// BroadcastWebSubAPIUndeploymentEvent sends a WebSub API undeployment event to target gateway.
+func (s *GatewayEventsService) BroadcastWebSubAPIUndeploymentEvent(gatewayID string, undeployment *model.WebSubAPIUndeploymentEvent) error {
+	return s.broadcastEvent(gatewayID, EventTypeWebSubAPIUndeployed, undeployment)
+}
+
+// BroadcastWebSubAPIDeletionEvent sends a WebSub API deletion event to target gateway.
+func (s *GatewayEventsService) BroadcastWebSubAPIDeletionEvent(gatewayID string, deletion *model.WebSubAPIDeletionEvent) error {
+	return s.broadcastEvent(gatewayID, EventTypeWebSubAPIDeleted, deletion)
 }
 
 // BroadcastLLMProviderDeletionEvent sends an LLM provider deletion event to target gateway.

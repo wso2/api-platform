@@ -4495,6 +4495,472 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /websub-apis:
+    post:
+      summary: Create a new WebSub API
+      operationId: createWebSubAPI
+      tags:
+        - WebSubAPIs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebSubAPI'
+      responses:
+        '201':
+          description: WebSub API created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebSubAPI'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      summary: List WebSub APIs
+      operationId: listWebSubAPIs
+      tags:
+        - WebSubAPIs
+      parameters:
+        - name: projectId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of WebSub APIs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebSubAPIListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /websub-apis/{apiId}:
+    get:
+      summary: Get WebSub API by ID
+      operationId: getWebSubAPI
+      tags:
+        - WebSubAPIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: WebSub API details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebSubAPI'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      summary: Update WebSub API
+      operationId: updateWebSubAPI
+      tags:
+        - WebSubAPIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebSubAPI'
+      responses:
+        '200':
+          description: WebSub API updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebSubAPI'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete WebSub API
+      operationId: deleteWebSubAPI
+      tags:
+        - WebSubAPIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: WebSub API deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /websub-apis/{apiId}/api-keys:
+    post:
+      summary: Create an API key for WebSub API
+      operationId: createWebSubAPIKey
+      tags:
+        - WebSubAPIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAPIKeyRequest'
+      responses:
+        '201':
+          description: API key created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateAPIKeyResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /websub-apis/{apiId}/api-keys/{keyName}:
+    delete:
+      summary: Delete an API key for WebSub API
+      operationId: deleteWebSubAPIKey
+      tags:
+        - WebSubAPIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: keyName
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: API key deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /websub-apis/{apiId}/devportals/publish:
+    post:
+      summary: Publish WebSub API to DevPortal
+      operationId: publishWebSubAPIToDevPortal
+      tags:
+        - WebSubAPIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishToDevPortalRequest'
+      responses:
+        '200':
+          description: Published successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /websub-apis/{apiId}/devportals/unpublish:
+    post:
+      summary: Unpublish WebSub API from DevPortal
+      operationId: unpublishWebSubAPIFromDevPortal
+      tags:
+        - WebSubAPIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnpublishFromDevPortalRequest'
+      responses:
+        '200':
+          description: Unpublished successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /websub-apis/{apiId}/deployments:
+    post:
+      summary: Deploy WebSub API to a gateway
+      operationId: deployWebSubAPI
+      tags:
+        - WebSubAPI Deployments
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeployRequest'
+      responses:
+        '201':
+          description: Deployment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      summary: Get WebSub API deployments
+      operationId: getWebSubAPIDeployments
+      tags:
+        - WebSubAPI Deployments
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: gatewayId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Deployments retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /websub-apis/{apiId}/deployments/{deploymentId}:
+    get:
+      summary: Get WebSub API deployment by ID
+      operationId: getWebSubAPIDeployment
+      tags:
+        - WebSubAPI Deployments
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: deploymentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Deployment details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete WebSub API deployment
+      operationId: deleteWebSubAPIDeployment
+      tags:
+        - WebSubAPI Deployments
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: deploymentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Deployment deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /websub-apis/{apiId}/deployments/undeploy:
+    post:
+      summary: Undeploy WebSub API from gateway
+      operationId: undeployWebSubAPI
+      tags:
+        - WebSubAPI Deployments
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: deploymentId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Undeployed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /websub-apis/{apiId}/deployments/restore:
+    post:
+      summary: Restore a previous WebSub API deployment
+      operationId: restoreWebSubAPIDeployment
+      tags:
+        - WebSubAPI Deployments
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: deploymentId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Deployment restored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -4690,6 +5156,8 @@ components:
         gateways:
           $ref: '#/components/schemas/OrganizationQuota'
         apis:
+          $ref: '#/components/schemas/OrganizationQuota'
+        websubApis:
           $ref: '#/components/schemas/OrganizationQuota'
 
     OrganizationQuota:
@@ -8252,6 +8720,151 @@ components:
           description: List of prompt capabilities supported by this proxy
           items:
             type: object
+
+    WebSubAPI:
+      type: object
+      required:
+        - id
+        - name
+        - version
+        - projectId
+        - upstream
+        - channels
+      properties:
+        id:
+          type: string
+          description: Unique handle for the WebSub API
+          example: my-websub-api
+        name:
+          type: string
+          description: Human-readable name for the WebSub API
+          minLength: 1
+          maxLength: 253
+          example: My WebSub API
+        description:
+          type: string
+          maxLength: 1023
+          example: A WebSub API for event publishing
+        version:
+          type: string
+          description: Semantic version of the WebSub API
+          pattern: '^v\d+\.\d+$'
+          example: v1.0
+        projectId:
+          type: string
+          description: UUID of the project this API belongs to
+          example: 550e8400-e29b-41d4-a716-446655440000
+        context:
+          type: string
+          description: Base path for the API (must start with /)
+          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
+          example: /my-websub-api
+        upstream:
+          $ref: '#/components/schemas/Upstream'
+        channels:
+          type: array
+          description: List of channels for this WebSub API
+          items:
+            $ref: '#/components/schemas/Channel'
+        transport:
+          type: array
+          description: Supported transport protocols
+          items:
+            type: string
+            enum:
+              - http
+              - https
+          example:
+            - http
+            - https
+        policies:
+          type: array
+          description: List of policies to be applied
+          items:
+            $ref: '#/components/schemas/Policy'
+        lifeCycleStatus:
+          type: string
+          description: Lifecycle status of the WebSub API
+          enum:
+            - CREATED
+            - PUBLISHED
+            - DEPRECATED
+            - RETIRED
+          example: CREATED
+        subscriptionPlans:
+          type: array
+          description: List of subscription plan IDs
+          items:
+            type: string
+        kind:
+          type: string
+          description: Kind of the WebSub API
+          readOnly: true
+          default: WebSubApi
+          example: WebSubApi
+        createdBy:
+          type: string
+          description: Username of the creator
+          readOnly: true
+          example: jane.doe
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+
+    WebSubAPIListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          example: my-websub-api
+        name:
+          type: string
+          example: My WebSub API
+        version:
+          type: string
+          example: v1.0
+        projectId:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+        context:
+          type: string
+          example: /my-websub-api
+        lifeCycleStatus:
+          type: string
+          enum:
+            - CREATED
+            - PUBLISHED
+            - DEPRECATED
+            - RETIRED
+          example: CREATED
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    WebSubAPIListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebSubAPIListItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
 
   responses:
     Unauthorized:

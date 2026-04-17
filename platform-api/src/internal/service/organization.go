@@ -42,6 +42,7 @@ type OrganizationService struct {
 	llmProviderRepo   repository.LLMProviderRepository
 	llmProxyRepo      repository.LLMProxyRepository
 	mcpProxyRepo      repository.MCPProxyRepository
+	websubAPIRepo     repository.WebSubAPIRepository
 	devPortalService  *DevPortalService
 	llmTemplateSeeder *LLMTemplateSeeder
 	config            *config.Server
@@ -56,6 +57,7 @@ func NewOrganizationService(orgRepo repository.OrganizationRepository,
 	llmProviderRepo repository.LLMProviderRepository,
 	llmProxyRepo repository.LLMProxyRepository,
 	mcpProxyRepo repository.MCPProxyRepository,
+	websubAPIRepo repository.WebSubAPIRepository,
 	devPortalService *DevPortalService,
 	llmTemplateSeeder *LLMTemplateSeeder,
 	cfg *config.Server,
@@ -70,6 +72,7 @@ func NewOrganizationService(orgRepo repository.OrganizationRepository,
 		llmProviderRepo:   llmProviderRepo,
 		llmProxyRepo:      llmProxyRepo,
 		mcpProxyRepo:      mcpProxyRepo,
+		websubAPIRepo:     websubAPIRepo,
 		devPortalService:  devPortalService,
 		llmTemplateSeeder: llmTemplateSeeder,
 		config:            cfg,
@@ -102,6 +105,8 @@ func (s *OrganizationService) GetOrganizationSubscription(orgID string) (*api.Or
 		return nil, err
 	}
 
+	websubAPICount, _ := s.websubAPIRepo.Count(orgID)
+
 	gateways, err := s.gatewayRepo.GetByOrganizationID(orgID)
 	if err != nil {
 		return nil, err
@@ -120,6 +125,9 @@ func (s *OrganizationService) GetOrganizationSubscription(orgID string) (*api.Or
 
 	mcpProxiesLimit := constants.MaxMCPProxiesPerOrganization
 	mcpProxiesRemaining := max(mcpProxiesLimit-mcpProxiesCount, 0)
+
+	websubAPIsLimit := constants.MaxWebSubAPIsPerOrganization
+	websubAPIsRemaining := max(websubAPIsLimit-websubAPICount, 0)
 
 	res := &api.OrganizationSubscription{
 		Plan: "free",
@@ -147,6 +155,11 @@ func (s *OrganizationService) GetOrganizationSubscription(orgID string) (*api.Or
 			},
 			Apis: api.OrganizationQuota{
 				Used: len(apis),
+			},
+			WebsubApis: &api.OrganizationQuota{
+				Used:      websubAPICount,
+				Limit:     intPtr(websubAPIsLimit),
+				Remaining: intPtr(websubAPIsRemaining),
 			},
 		},
 	}

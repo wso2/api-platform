@@ -162,6 +162,13 @@ var (
 )
 
 var (
+	ErrWebSubAPIExists                    = errors.New("websub api already exists")
+	ErrWebSubAPINotFound                  = errors.New("websub api not found")
+	ErrWebSubAPILimitReached              = errors.New("websub api limit reached for organization")
+	ErrProjectHasAssociatedWebSubAPIs     = errors.New("project has associated WebSub APIs")
+)
+
+var (
 	// API Key errors
 	ErrAPIKeyNotFound      = errors.New("api key not found")
 	ErrAPIKeyAlreadyExists = errors.New("api key already exists")
