@@ -1,0 +1,41 @@
+# APIPolicy CRs for Gateway API HTTPRoute integration (gateway.api-platform.wso2.com/v1alpha1).
+# Replace policy name/version with definitions your gateway-controller supports.
+#
+# spec.policies is a non-empty array (same fields as RestApi embedded policies).
+#
+# - API-level: set spec.targetRef to the HTTPRoute → all entries merged into APIConfigData.policies.
+# - Rule / resource scope: omit spec.targetRef; reference only from HTTPRoute rules[].filters (ExtensionRef).
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: APIPolicy
+metadata:
+  name: httproute-demo-api-level
+  namespace: gateway-api-demo
+  labels:
+    app.kubernetes.io/part-of: gateway-api-httproute-policies-demo
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: hello-apipolicy-demo
+  policies:
+    - name: subscription-validation
+      version: v1
+      params:
+        subscriptionKeyHeader: Subscription-Key
+
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: APIPolicy
+metadata:
+  name: httproute-demo-rule-ratelimit
+  namespace: gateway-api-demo
+  labels:
+    app.kubernetes.io/part-of: gateway-api-httproute-policies-demo
+spec:
+  policies:
+    - name: basic-ratelimit
+      version: v1
+      params:
+        limits:
+          - requests: 3
+            duration: 1m

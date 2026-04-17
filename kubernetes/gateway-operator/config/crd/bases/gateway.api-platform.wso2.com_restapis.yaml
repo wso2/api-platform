@@ -74,7 +74,8 @@ spec:
                       description: Policies List of policies applied only to this
                         operation (overrides or adds to API-level policies)
                       items:
-                        description: Policy defines model for Policy.
+                        description: Policy defines a policy attachment as embedded
+                          in RestApi or APIConfigData.
                         properties:
                           executionCondition:
                             description: ExecutionCondition Expression controlling
@@ -88,7 +89,9 @@ spec:
                               (free-form key/value structure)
                             x-kubernetes-preserve-unknown-fields: true
                           version:
-                            description: Version Semantic version of the policy
+                            description: Version Semantic version of the policy (for
+                              example, v1)
+                            pattern: ^v\d+$
                             type: string
                         required:
                         - name
@@ -105,7 +108,8 @@ spec:
                 description: Policies List of API-level policies applied to all operations
                   unless overridden
                 items:
-                  description: Policy defines model for Policy.
+                  description: Policy defines a policy attachment as embedded in RestApi
+                    or APIConfigData.
                   properties:
                     executionCondition:
                       description: ExecutionCondition Expression controlling conditional
@@ -119,7 +123,9 @@ spec:
                         key/value structure)
                       x-kubernetes-preserve-unknown-fields: true
                     version:
-                      description: Version Semantic version of the policy
+                      description: Version Semantic version of the policy (for example,
+                        v1)
+                      pattern: ^v\d+$
                       type: string
                   required:
                   - name

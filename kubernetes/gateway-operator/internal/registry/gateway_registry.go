@@ -32,6 +32,14 @@ type GatewayInfo struct {
 	ServiceName      string // Name of the gateway controller service
 	ServicePort      int32  // Port of the gateway controller API
 	ControlPlaneHost string
+
+	// HelmValuesConfigMapName is the name of a ConfigMap in Namespace with key values.yaml (Helm values).
+	// When set (e.g. gateway registered from Kubernetes Gateway API), REST client auth reads this ConfigMap
+	// instead of an APIGateway CR.
+	HelmValuesConfigMapName string
+
+	// FromGatewayAPI is true when this entry was registered from gateway.networking.k8s.io/Gateway.
+	FromGatewayAPI bool
 }
 
 // GatewayRegistry maintains an in-memory registry of deployed gateways

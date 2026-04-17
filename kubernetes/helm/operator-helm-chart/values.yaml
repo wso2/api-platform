@@ -8,6 +8,21 @@ nameOverride: ""
 # Override the full name used for resource naming
 fullnameOverride: ""
 
+# Kubernetes Gateway API (gateway.networking.k8s.io) — standard-channel CRDs v1.3.0.
+# Leave false if Gateway API CRDs already exist (cloud add-on, Traefik "crd" chart, etc.).
+# Setting true when those CRDs are owned by another Helm release fails with:
+# "exists and cannot be imported into the current release: invalid ownership metadata".
+# Duplicate CRDs can also cause server-side apply conflicts on upgrade.
+# Set true only when no gateway*.gateway.networking.k8s.io CRDs are present yet.
+gatewayApi:
+  installStandardCRDs: false
+  # Passed through to operator config.yaml as gateway_api.gateway_class_names (Gateway API / HTTPRoute flow).
+  managedGatewayClassNames:
+    - wso2-api-platform
+  # Cluster DNS suffix for HTTPRoute → Service upstream URLs (<svc>.<ns>.svc.<clusterDomain>:<port>).
+  # Override with CLUSTER_DOMAIN on the operator Pod to take precedence over this file.
+  clusterDomain: cluster.local
+
 image:
   # repository: ghcr.io/wso2/api-platform/gateway-operator
   # For local registry: host.docker.internal:5000/gateway-operator
@@ -253,7 +268,7 @@ gateway:
             mode: uds
 
             # Omit host for unified gateway-runtime (Envoy talks to policy-engine over UDS).
-            # Do not set host to the legacy split-chart Service name (e.g. policy-engine).
+            # Do not set host to the split-chart-only Service name (e.g. policy-engine).
             port: 9001
 
             # Timeout for gRPC service connection (in milliseconds)
