@@ -306,11 +306,12 @@ func (b *bridge) responseHeaderErrorAction(err error) policy.ResponseHeaderActio
 }
 
 func (b *bridge) streamingRequestErrorAction(err error) policy.StreamingRequestAction {
+	// Request streaming has no mid-stream termination action, so bridge failures intentionally fail open.
 	return policy.ForwardRequestChunk{}
 }
 
 func (b *bridge) streamingResponseErrorAction(err error) policy.StreamingResponseAction {
-	return policy.ForwardResponseChunk{}
+	return policy.TerminateResponseChunk{}
 }
 
 func (b *bridge) Close() error {

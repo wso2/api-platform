@@ -385,14 +385,15 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
 
     def _execute_request(self, request: proto.StreamRequest) -> proto.StreamResponse:
         """Execute a single request in the worker pool."""
-        record = self._store.acquire_for_execution(request.instance_id)
-        if record is None:
-            raise ValueError(
-                f"no policy instance for instance_id={request.instance_id} "
-                f"(policy={request.policy_name}:{request.policy_version})"
-            )
-
+        record: Optional[InstanceRecord] = None
         try:
+            record = self._store.acquire_for_execution(request.instance_id)
+            if record is None:
+                raise ValueError(
+                    f"no policy instance for instance_id={request.instance_id} "
+                    f"(policy={request.policy_name}:{request.policy_version})"
+                )
+
             params = self._translator.struct_to_dict(request.params)
             shared_ctx = self._translator.to_python_shared_context(request.shared_context)
             execution_ctx = self._build_execution_context(request, record)
@@ -505,7 +506,7 @@ class PythonExecutorServicer(proto_grpc.PythonExecutorServiceServicer):
             raise ValueError(f"unsupported request payload: {payload_name}")
         finally:
             self._tracker.mark_worker_done(request.request_id)
-            if self._store.release_execution(request.instance_id):
+            if record is not None and self._store.release_execution(request.instance_id):
                 try:
                     record.policy.close()
                     logger.info(

@@ -350,3 +350,37 @@ class PythonExecutorServicerTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual([], responses)
         self.assertEqual({}, tracker._executions)
+
+    async def test_execute_stream_missing_instance_cleans_tracker(self):
+        servicer, _, tracker = self._make_servicer(lambda metadata, params: HeaderFixture())
+
+        request = proto.StreamRequest(
+            request_id="req-missing-instance",
+            instance_id="missing-instance",
+            policy_name="demo-policy",
+            policy_version="v1.0.0",
+            shared_context=self._shared_context(),
+            execution_metadata=proto.ExecutionMetadata(
+                phase=proto.PHASE_REQUEST_HEADERS,
+                route_name="route-a",
+            ),
+            request_headers=proto.RequestHeadersPayload(
+                context=proto.RequestHeaderContext(
+                    path="/petstore/v1/pets/123",
+                    method="GET",
+                    authority="gateway.example.com",
+                    scheme="https",
+                    vhost="public.example.com",
+                )
+            ),
+        )
+
+        async def iterator():
+            yield request
+
+        responses = [response async for response in servicer.ExecuteStream(iterator(), None)]
+
+        self.assertEqual(1, len(responses))
+        self.assertEqual("execution_error", responses[0].error.error_type)
+        self.assertIn("no policy instance", responses[0].error.message)
+        self.assertEqual({}, tracker._executions)

@@ -275,7 +275,8 @@ func extractModuleFromWheel(whlPath string, topLevelModule string) (string, erro
 
 		// Validate against zip-slip
 		if !strings.HasPrefix(filepath.Clean(destPath), filepath.Clean(extractDir)+string(os.PathSeparator)) {
-			continue
+			os.RemoveAll(extractDir)
+			return "", fmt.Errorf("zip-slip detected: %s", f.Name)
 		}
 
 		if f.FileInfo().IsDir() {

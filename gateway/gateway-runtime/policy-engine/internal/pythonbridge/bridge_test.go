@@ -133,6 +133,22 @@ func TestMergeMetadataUpdatesSharedContext(t *testing.T) {
 	assert.Equal(t, true, shared.Metadata["fresh"])
 }
 
+func TestStreamingRequestErrorActionFailsOpen(t *testing.T) {
+	action := (&bridge{}).streamingRequestErrorAction(errors.New("boom"))
+
+	_, ok := action.(policy.ForwardRequestChunk)
+	require.True(t, ok, "expected ForwardRequestChunk, got %T", action)
+}
+
+func TestStreamingResponseErrorActionTerminatesStream(t *testing.T) {
+	action := (&bridge{}).streamingResponseErrorAction(errors.New("boom"))
+
+	term, ok := action.(policy.TerminateResponseChunk)
+	require.True(t, ok, "expected TerminateResponseChunk, got %T", action)
+	assert.True(t, term.TerminateStream())
+	assert.Nil(t, term.Body)
+}
+
 type fakePythonExecutorClient struct {
 	destroyPolicyResp  *proto.DestroyPolicyResponse
 	destroyPolicyErr   error

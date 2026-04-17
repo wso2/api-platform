@@ -19,6 +19,7 @@
 package discovery
 
 import (
+	"archive/zip"
 	"os"
 	"path/filepath"
 	"testing"
@@ -919,6 +920,34 @@ func TestParsePipPackageRef_WithCredentialedIndex(t *testing.T) {
 	assert.Equal(t, "my-policy", pkg)
 	assert.Equal(t, "1.0.0", version)
 	assert.Equal(t, "https://user:token@pypi.private.com/simple", indexURL)
+}
+
+func TestExtractModuleFromWheel_RejectsZipSlipEntries(t *testing.T) {
+	whlPath := filepath.Join(t.TempDir(), "malicious.whl")
+
+	whlFile, err := os.Create(whlPath)
+	require.NoError(t, err)
+
+	zw := zip.NewWriter(whlFile)
+
+	writeEntry := func(name, content string) {
+		w, err := zw.Create(name)
+		require.NoError(t, err)
+		_, err = w.Write([]byte(content))
+		require.NoError(t, err)
+	}
+
+	writeEntry("policy_module/__init__.py", "")
+	writeEntry("policy_module/../../escape.py", "print('owned')")
+
+	require.NoError(t, zw.Close())
+	require.NoError(t, whlFile.Close())
+
+	_, err = extractModuleFromWheel(whlPath, "policy_module")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "zip-slip detected")
+	assert.Contains(t, err.Error(), "policy_module/../../escape.py")
 }
 
 // ==== Fingerprint-based discovery tests ====

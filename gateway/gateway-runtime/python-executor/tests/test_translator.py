@@ -167,6 +167,7 @@ class TranslatorTest(unittest.TestCase):
         )
         self.assertEqual(proto.HEADER_PROCESSING_MODE_PROCESS, mode.request_header_mode)
         self.assertEqual(proto.BODY_PROCESSING_MODE_BUFFER, mode.request_body_mode)
+        self.assertEqual(proto.HEADER_PROCESSING_MODE_SKIP, mode.response_header_mode)
         self.assertEqual(proto.BODY_PROCESSING_MODE_STREAM, mode.response_body_mode)
         self.assertTrue(self.translator.to_proto_needs_more_decision(True).needs_more)
         self.assertEqual(
