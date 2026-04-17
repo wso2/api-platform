@@ -776,28 +776,6 @@ func parseSSEFirstDataEvent(sseContent []byte) ([]byte, error) {
 	return nil, fmt.Errorf("no data field found in SSE response")
 }
 
-// parseSSELastDataEvent returns the JSON bytes from the last non-[DONE] "data:" line.
-// Used for LLM streaming responses where the final event carries token usage information.
-func parseSSELastDataEvent(sseContent []byte) ([]byte, error) {
-	lines := strings.Split(string(sseContent), "\n")
-	var lastData []byte
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "data: ") {
-			continue
-		}
-		data := strings.TrimPrefix(line, "data: ")
-		if data == "[DONE]" {
-			continue
-		}
-		lastData = []byte(data)
-	}
-	if lastData == nil {
-		return nil, fmt.Errorf("no valid data event found in SSE response")
-	}
-	return lastData, nil
-}
-
 // parseSSEMergedDataEvents merges all non-[DONE] data events from SSE content into a single
 // JSON map. Keys from later events overwrite keys from earlier events at the top level, so
 // providers like Anthropic that spread data across multiple events are handled correctly:
@@ -812,24 +790,37 @@ func parseSSEMergedDataEvents(sseContent []byte) (map[string]interface{}, error)
 	lines := strings.Split(string(sseContent), "\n")
 	merged := make(map[string]interface{})
 	found := false
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "data: ") {
-			continue
+	var currentData []string
+
+	flushEvent := func() {
+		if len(currentData) == 0 {
+			return
 		}
-		data := strings.TrimPrefix(line, "data: ")
-		if data == "[DONE]" {
-			continue
+		payload := strings.Join(currentData, "\n")
+		currentData = currentData[:0]
+		if payload == "[DONE]" {
+			return
 		}
 		var obj map[string]interface{}
-		if err := json.Unmarshal([]byte(data), &obj); err != nil {
-			continue
+		if err := json.Unmarshal([]byte(payload), &obj); err != nil {
+			return
 		}
 		for k, v := range obj {
 			merged[k] = v
 		}
 		found = true
 	}
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "data: ") {
+			currentData = append(currentData, strings.TrimPrefix(line, "data: "))
+		} else if line == "" {
+			flushEvent()
+		}
+	}
+	flushEvent()
+
 	if !found {
 		return nil, fmt.Errorf("no valid data events found in SSE response")
 	}
