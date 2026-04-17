@@ -41,6 +41,24 @@ data:
     [controller.policies]
     definitions_path = {{ $gc.policies.definitions_path | quote }}
 
+    [controller.controlplane]
+    insecure_skip_verify = {{ $gc.controlplane.insecure_skip_verify }}
+    reconnect_initial = {{ $gc.controlplane.reconnect_initial | quote }}
+    reconnect_max = {{ $gc.controlplane.reconnect_max | quote }}
+    polling_interval = {{ $gc.controlplane.polling_interval | quote }}
+    deployment_push_enabled = {{ $gc.controlplane.deployment_push_enabled }}
+    sync_batch_size = {{ $gc.controlplane.sync_batch_size }}
+
+    {{- range $gc.encryption.providers }}
+    [[controller.encryption.providers]]
+    type = {{ .type | quote }}
+    {{- range .keys }}
+    [[controller.encryption.providers.keys]]
+    version = {{ .version | quote }}
+    file = {{ .file | quote }}
+    {{- end }}
+    {{- end }}
+
     [router]
     gateway_host = {{ $router.gateway_host | quote }}
     listener_port = {{ $router.listener_port }}
@@ -199,6 +217,11 @@ data:
     batch_timeout = {{ .Values.gateway.config.tracing.batch_timeout | quote }}
     max_export_batch_size = {{ .Values.gateway.config.tracing.max_export_batch_size }}
     sampling_rate = {{ .Values.gateway.config.tracing.sampling_rate }}
+    {{- end }}
+
+    {{- if .Values.gateway.gatewayRuntime.policies.llmPricing.enabled }}
+    [policy_configurations.llm_cost_v1]
+    pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"
     {{- end }}
 
     {{- if .Values.gateway.config.policy_configurations }}

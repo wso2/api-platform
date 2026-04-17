@@ -78,15 +78,20 @@ help: ## Show this help message
 	@echo '  make clean-db                  - Remove local dev SQLite database files'
 
 # Build Targets
+# Note: Controller must be built last since it depends on the build-manifest.yaml
+# generated during the gateway-runtime build.
 .PHONY: build
-build: build-controller build-gateway-builder build-gateway-runtime ## Build all gateway components
+build: build-gateway-runtime build-gateway-builder build-controller ## Build all gateway components
 
-
+# Note: Controller must be built last since it depends on the build-manifest.yaml
+# generated during the gateway-runtime build.
 .PHONY: build-debug
-build-debug: build-controller-debug build-gateway-runtime-debug ## Build all debug images (controller + runtime) for remote debugging
+build-debug: build-gateway-runtime-debug build-controller-debug ## Build all debug images (controller + runtime) for remote debugging
 
+# Note: Controller must be built last since it depends on the build-manifest.yaml
+# generated during the gateway-runtime build.
 .PHONY: build-coverage
-build-coverage: build-gateway-builder build-controller-coverage build-gateway-runtime-coverage ## Build all coverage-instrumented gateway components
+build-coverage: build-gateway-builder build-gateway-runtime-coverage build-controller-coverage ## Build all coverage-instrumented gateway components
 
 .PHONY: build-controller
 build-controller: ## Build gateway-controller Docker image
@@ -127,8 +132,10 @@ build-gateway-runtime-debug: ## Build debug gateway-runtime image for remote deb
 	$(MAKE) -C gateway-runtime build-debug VERSION=$(VERSION)
 
 # Multi-arch Build and Push Targets
+# Note: Controller must be built last since it depends on the build-manifest.yaml
+# generated during the gateway-runtime build.
 .PHONY: build-and-push-multiarch
-build-and-push-multiarch: build-and-push-multiarch-controller build-and-push-multiarch-gateway-builder build-and-push-multiarch-gateway-runtime ## Build and push all gateway components for multiple architectures
+build-and-push-multiarch: build-and-push-multiarch-gateway-runtime build-and-push-multiarch-gateway-builder build-and-push-multiarch-controller ## Build and push all gateway components for multiple architectures
 
 .PHONY: build-and-push-multiarch-controller
 build-and-push-multiarch-controller: ## Build and push gateway-controller Docker image for multiple architectures

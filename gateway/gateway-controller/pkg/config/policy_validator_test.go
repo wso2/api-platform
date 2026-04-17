@@ -22,6 +22,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
@@ -859,6 +860,106 @@ func TestBuildLatestVersionIndex_EmptyDefinitions(t *testing.T) {
 	index := BuildLatestVersionIndex(map[string]models.PolicyDefinition{})
 	if len(index) != 0 {
 		t.Errorf("expected empty index, got %v", index)
+	}
+}
+
+func TestPolicyValidator_ValidateMCPProxyPolicies_NilPolicies(t *testing.T) {
+	policyDefs := map[string]models.PolicyDefinition{}
+	validator := NewPolicyValidator(policyDefs)
+
+	mcpConfig := &api.MCPProxyConfiguration{
+		ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.Mcp,
+		Metadata:   api.Metadata{Name: "test-mcp"},
+		Spec: api.MCPProxyConfigData{
+			DisplayName: "Test MCP",
+			Version:     "v1.0",
+		},
+	}
+
+	errors := validator.ValidateMCPProxyPolicies(mcpConfig)
+	assert.Empty(t, errors, "expected no errors when spec.policies is nil")
+}
+
+func TestPolicyValidator_ValidateMCPProxyPolicies_ValidPolicy(t *testing.T) {
+	policyDefs := map[string]models.PolicyDefinition{
+		"allow-all|v1.0.0": {
+			Name:    "allow-all",
+			Version: "v1.0.0",
+		},
+	}
+	validator := NewPolicyValidator(policyDefs)
+
+	policies := []api.Policy{
+		{Name: "allow-all", Version: "v1"},
+	}
+	mcpConfig := &api.MCPProxyConfiguration{
+		ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.Mcp,
+		Metadata:   api.Metadata{Name: "test-mcp"},
+		Spec: api.MCPProxyConfigData{
+			DisplayName: "Test MCP",
+			Version:     "v1.0",
+			Policies:    &policies,
+		},
+	}
+
+	errors := validator.ValidateMCPProxyPolicies(mcpConfig)
+	assert.Empty(t, errors, "expected no errors for valid MCP policy")
+}
+
+func TestPolicyValidator_ValidateMCPProxyPolicies_PolicyNotFound(t *testing.T) {
+	policyDefs := map[string]models.PolicyDefinition{}
+	validator := NewPolicyValidator(policyDefs)
+
+	policies := []api.Policy{
+		{Name: "missing-policy", Version: "v1"},
+	}
+	mcpConfig := &api.MCPProxyConfiguration{
+		ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.Mcp,
+		Metadata:   api.Metadata{Name: "test-mcp"},
+		Spec: api.MCPProxyConfigData{
+			DisplayName: "Test MCP",
+			Version:     "v1.0",
+			Policies:    &policies,
+		},
+	}
+
+	errors := validator.ValidateMCPProxyPolicies(mcpConfig)
+	assert.NotEmpty(t, errors, "expected errors for missing policy")
+	assert.Contains(t, errors[0].Field, "spec.policies[0]")
+}
+
+func TestPolicyValidator_ValidateMCPProxyPolicies_MultiplePoliciesWithErrors(t *testing.T) {
+	policyDefs := map[string]models.PolicyDefinition{
+		"good-policy|v1.0.0": {
+			Name:    "good-policy",
+			Version: "v1.0.0",
+		},
+	}
+	validator := NewPolicyValidator(policyDefs)
+
+	policies := []api.Policy{
+		{Name: "good-policy", Version: "v1"},
+		{Name: "bad-policy", Version: "v1"},
+	}
+	mcpConfig := &api.MCPProxyConfiguration{
+		ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.Mcp,
+		Metadata:   api.Metadata{Name: "test-mcp"},
+		Spec: api.MCPProxyConfigData{
+			DisplayName: "Test MCP",
+			Version:     "v1.0",
+			Policies:    &policies,
+		},
+	}
+
+	errors := validator.ValidateMCPProxyPolicies(mcpConfig)
+	assert.NotEmpty(t, errors, "expected errors for missing policy")
+	// Only the bad policy should produce errors
+	for _, e := range errors {
+		assert.Contains(t, e.Field, "spec.policies[1]")
 	}
 }
 

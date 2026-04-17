@@ -48,7 +48,7 @@ var (
 	ServerProtocolVersionJsonPath = "$.result.protocolVersion"
 	ServerInfoNameJsonPath        = "$.result.serverInfo.name"
 	ServerInfoVersionJsonPath     = "$.result.serverInfo.version"
-	IsErrorJsonPath               = "$.result.IsError"
+	IsErrorJsonPath               = "$.result.isError"
 	JsonRpcErrorCodeJsonPath      = "$.error.code"
 )
 

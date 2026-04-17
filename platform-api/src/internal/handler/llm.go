@@ -22,6 +22,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
@@ -437,10 +438,10 @@ func (h *LLMHandler) ListLLMProxies(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
-	projectID := c.Query("projectId")
-	var projectIDPtr *string
-	if projectID != "" {
-		projectIDPtr = &projectID
+	projectID := strings.TrimSpace(c.Query("projectId"))
+	if projectID == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "projectId query parameter is required"))
+		return
 	}
 
 	limitStr := c.DefaultQuery("limit", "20")
@@ -459,7 +460,7 @@ func (h *LLMHandler) ListLLMProxies(c *gin.Context) {
 		offset = 0
 	}
 
-	resp, err := h.proxyService.List(orgID, projectIDPtr, limit, offset)
+	resp, err := h.proxyService.List(orgID, &projectID, limit, offset)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Project not found"))

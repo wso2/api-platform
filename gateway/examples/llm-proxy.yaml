@@ -25,7 +25,7 @@ spec:
   version: v1.0
   context: /assistant
   provider: 
-    id: wso2-openai-provider
+    id: my-llm-provider
   policies:
     - name: semanticPromptGuard
       version: v1

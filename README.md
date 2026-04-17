@@ -46,58 +46,16 @@ The API Platform covers the complete API lifecycle:
 ### High-Level Architecture
 ![High-Level Architecture Diagram showing system components and data/control flows](docs/images/Govern-your-APIs.webp)
 
-## Quick Start
+## Documentation
 
-Get up and running in minutes with Docker Compose.
+Refer to the documentation for setup guides, component-specific quick starts, and usage details.
 
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/wso2/api-platform
-cd api-platform
-```
-
-### 2. Start the Platform
-
-```bash
-cd distribution/all-in-one
-docker compose up
-```
-
-> **Note:** Use `docker compose up --build` to rebuild images when code changes need to be applied. Without `--build`, cached images are used.
-
-### 3. Create a Default Organization
-
-```bash
-curl -k --location 'https://localhost:9243/api/v1/organizations' \
-  --header 'Content-Type: application/json' \
-  --header 'Authorization: Bearer <shared-token>' \
-  --data '{
-    "id": "15b2ac94-6217-4f51-90d4-b2b3814b20b4",
-    "handle": "acme",
-    "name": "ACME Corporation",
-    "region": "US"
-}'
-```
-
-### 4. Accept the Self-Signed Certificate
-
-Open https://localhost:9243 in your browser and accept the self-signed certificate.
-
-### 5. Open the Management Portal
-
-Navigate to http://localhost:5173 to access the Management Portal.
-
-### 6. Open the API Developer Portal
-
-Navigate to http://localhost:3001 to access the Developer Portal.
-
-### 7. Shutdown
-
-```bash
-docker compose down    # shutdown the servers only, data doesn't get removed
-docker compose down -v # clear the data too
-```
+- [Gateway Documentation](docs/gateway/README.md)
+- [Gateway Quick Start](docs/gateway/quick-start-guide.md)
+- [AI Gateway Documentation](docs/ai-gateway/README.md)
+- [AI Gateway LLM Quick Start](docs/ai-gateway/llm/quick-start-guide.md)
+- [AI Gateway MCP Quick Start](docs/ai-gateway/mcp/quick-start-guide.md)
+- [CLI Quick Start](docs/cli/quick-start-guide.md)
 
 ## Platform Components
 
@@ -143,4 +101,4 @@ Developer portal for API discovery, subscription, and consumption.
 - AI-powered discovery
 
 
-(c) Copyright 2012 - 2025 WSO2 Inc.
+(c) Copyright 2012 - 2026 WSO2 Inc.

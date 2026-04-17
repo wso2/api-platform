@@ -113,6 +113,33 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /organizations/{organizationId}/subscription:
+    get:
+      summary: Get organization subscription quotas
+      description: |
+        Returns the current organization subscription view with resource quota usage.
+        The organization ID in the path must match the JWT token's organization claim.
+      operationId: GetOrganizationSubscription
+      tags:
+        - Organizations
+      parameters:
+        - $ref: '#/components/parameters/organizationId'
+      responses:
+        '200':
+          description: Organization subscription quotas retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationSubscription'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /projects:
     post:
       summary: Create a new project
@@ -287,12 +314,27 @@ paths:
       summary: Get applications for current user's organization
       description: |
         Retrieves applications belonging to the organization specified in the JWT token.
-        Optionally filters by project using the `projectId` query parameter.
+        Filters by project using the required `projectId` query parameter.
       operationId: ListApplications
       tags:
         - Applications
       parameters:
         - $ref: '#/components/parameters/projectId-Q'
+        - name: limit
+          in: query
+          description: Maximum number of applications to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of applications to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
       responses:
         '200':
           description: Applications retrieved successfully
@@ -399,6 +441,21 @@ paths:
         - API Keys
       parameters:
         - $ref: '#/components/parameters/appId'
+        - name: limit
+          in: query
+          description: Maximum number of mapped API keys to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of mapped API keys to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
       responses:
         '200':
           description: Mapped API keys retrieved successfully
@@ -630,8 +687,9 @@ paths:
     get:
       summary: Get all REST APIs for an organization
       description: |
-        Retrieves all REST APIs belonging to an organization. Optionally filter by project using 
-        the projectId query parameter. Access is validated against the organization in the JWT token.
+        Retrieves all REST APIs belonging to an organization.
+        Requires the projectId query parameter to filter APIs by project.
+        Access is validated against the organization in the JWT token.
       operationId: ListRESTAPIs
       tags:
         - REST APIs
@@ -3712,7 +3770,7 @@ paths:
 
     get:
       summary: List all LLM proxies
-      description: Retrieve a list of all LLM proxies. Optionally filter by project using the projectId query parameter.
+      description: Retrieve a list of all LLM proxies for a project. Requires the projectId query parameter.
       operationId: listLLMProxies
       tags:
         - LLM Proxies
@@ -4029,7 +4087,7 @@ paths:
 
     get:
       summary: List all MCP proxies
-      description: Retrieve a list of all MCP proxies. Optionally filter by project using the projectId query parameter.
+      description: Retrieve a list of all MCP proxies for a project. Requires the projectId query parameter.
       operationId: listMCPProxies
       tags:
         - MCP Proxies
@@ -4598,6 +4656,65 @@ components:
           readOnly: true
           example: "2023-10-12T10:30:00Z"
 
+    OrganizationSubscription:
+      type: object
+      required:
+        - plan
+        - quotas
+      properties:
+        plan:
+          type: string
+          description: Effective subscription plan for the organization
+          example: "free"
+        quotas:
+          $ref: '#/components/schemas/OrganizationSubscriptionQuotas'
+
+    OrganizationSubscriptionQuotas:
+      type: object
+      required:
+        - llmProviders
+        - llmProxies
+        - applications
+        - mcpProxies
+        - gateways
+        - apis
+      properties:
+        llmProviders:
+          $ref: '#/components/schemas/OrganizationQuota'
+        llmProxies:
+          $ref: '#/components/schemas/OrganizationQuota'
+        applications:
+          $ref: '#/components/schemas/OrganizationQuota'
+        mcpProxies:
+          $ref: '#/components/schemas/OrganizationQuota'
+        gateways:
+          $ref: '#/components/schemas/OrganizationQuota'
+        apis:
+          $ref: '#/components/schemas/OrganizationQuota'
+
+    OrganizationQuota:
+      type: object
+      required:
+        - used
+      properties:
+        used:
+          type: integer
+          minimum: 0
+          description: Number of currently used resources
+          example: 3
+        limit:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Maximum resources allowed, null when no limit is configured
+          example: 5
+        remaining:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Remaining resources before limit is reached, null when no limit is configured
+          example: 2
+
     CreateProjectRequest:
       description: |
         Request body for creating a project. Organization ID is automatically extracted
@@ -4687,6 +4804,7 @@ components:
       type: object
       required:
         - name
+        - projectId
         - type
       properties:
         id:
@@ -4701,7 +4819,7 @@ components:
         projectId:
           type: string
           format: uuid
-          description: UUID of the project this application belongs to. If omitted, the application is not mapped to a project.
+          description: UUID of the project this application belongs to.
           example: "7d7a51fd-daa1-4095-b7ff-98a1aa05cc0f"
         type:
           $ref: '#/components/schemas/ApplicationType'
@@ -4734,6 +4852,7 @@ components:
       required:
         - id
         - name
+        - projectId
         - type
       properties:
         id:
@@ -8275,11 +8394,12 @@ components:
     projectId-Q:
       name: projectId
       in: query
-      required: false
+      required: true
       description: |
         **Project ID** consisting of the **UUID** of the Project to filter APIs by.
       schema:
         type: string
+        format: uuid
         example: "yr434567-de34-76uj6-w376-234324532"
 
     gatewayId-Q:

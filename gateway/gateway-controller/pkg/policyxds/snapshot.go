@@ -155,12 +155,9 @@ func (t *Translator) TranslateRuntimeConfigs(rdcs []*models.RuntimeDeployConfig)
 	routeResources := make(map[string]types.Resource)
 
 	for _, rdc := range rdcs {
-		// Build policy chain resources (one per chain)
+		// Build policy chain resources (one per chain, including empty chains)
 		for routeKey, chain := range rdc.PolicyChains {
-			if len(chain.Policies) == 0 {
-				continue
-			}
-			resource, err := t.createPolicyChainResource(routeKey, chain, rdc.Metadata)
+			resource, err := t.createPolicyChainResource(routeKey, chain, rdc.Metadata, rdc.SensitiveValues)
 			if err != nil {
 				t.logger.Error("Failed to create policy chain resource",
 					slog.String("route_key", routeKey),
@@ -209,7 +206,7 @@ func (t *Translator) TranslateRuntimeConfigs(rdcs []*models.RuntimeDeployConfig)
 }
 
 // createPolicyChainResource creates a PolicyChainConfig xDS resource.
-func (t *Translator) createPolicyChainResource(routeKey string, chain *models.PolicyChain, metadata models.Metadata) (types.Resource, error) {
+func (t *Translator) createPolicyChainResource(routeKey string, chain *models.PolicyChain, metadata models.Metadata, sensitiveValues []string) (types.Resource, error) {
 	// Build the policy chain data
 	policies := make([]map[string]interface{}, 0, len(chain.Policies))
 	for _, p := range chain.Policies {
@@ -239,6 +236,16 @@ func (t *Translator) createPolicyChainResource(routeKey string, chain *models.Po
 				"context":  "",
 			},
 		},
+	}
+
+	if len(sensitiveValues) > 0 {
+		svSlice := make([]interface{}, len(sensitiveValues))
+		for i, v := range sensitiveValues {
+			svSlice[i] = v
+		}
+		data["transport_metadata"] = map[string]interface{}{
+			"sensitive_values": svSlice,
+		}
 	}
 
 	return toAnyResource(data, PolicyChainTypeURL)

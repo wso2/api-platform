@@ -1,0 +1,13 @@
+{{- if .Values.gateway.gatewayRuntime.policies.llmPricing.enabled }}
+{{- if not .Values.gateway.gatewayRuntime.policies.llmPricing.configMapName }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "gateway-operator.fullname" . }}-llm-pricing
+  labels:
+    {{- include "gateway-operator.labels" . | nindent 4 }}
+data:
+  model_prices.json: |
+    {{- .Files.Get "files/llm-pricing/model_prices.json" | nindent 4 }}
+{{- end }}
+{{- end }}

@@ -97,10 +97,10 @@ func (h *MCPProxyHandler) ListMCPProxies(c *gin.Context) {
 		return
 	}
 
-	projectID := c.Query("projectId")
-	var projectIDPtr *string
-	if projectID != "" {
-		projectIDPtr = &projectID
+	projectID := strings.TrimSpace(c.Query("projectId"))
+	if projectID == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "projectId query parameter is required"))
+		return
 	}
 
 	limitStr := c.DefaultQuery("limit", "20")
@@ -121,12 +121,7 @@ func (h *MCPProxyHandler) ListMCPProxies(c *gin.Context) {
 		offset = 0
 	}
 
-	var resp *api.MCPProxyListResponse
-	if projectIDPtr != nil {
-		resp, err = h.service.ListByProject(orgID, *projectIDPtr, limit, offset)
-	} else {
-		resp, err = h.service.List(orgID, limit, offset)
-	}
+	resp, err := h.service.ListByProject(orgID, projectID, limit, offset)
 
 	if err != nil {
 		h.handleServiceError(c, err)

@@ -27,44 +27,22 @@ Add a new WebSubAPI to the Gateway.
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "WebSubApi",
   "metadata": {
-    "name": "weather-api-v1.0",
-    "labels": {
-      "environment": "production",
-      "team": "backend",
-      "version": "v1"
-    }
+    "name": "github-events-v1.0"
   },
   "spec": {
-    "displayName": "weather-api",
+    "displayName": "GitHub Events",
     "version": "v1.0",
-    "context": "/weather",
-    "vhosts": {
-      "main": "api.example.com",
-      "sandbox": "sandbox-api.example.com"
-    },
+    "context": "/github-events/$version",
     "channels": [
       {
         "name": "issues",
-        "method": "SUB",
-        "policies": [
-          {
-            "name": "apiKeyValidation",
-            "version": "v1",
-            "executionCondition": "request.metadata[authenticated] != true",
-            "params": {}
-          }
-        ]
-      }
-    ],
-    "policies": [
+        "method": "SUB"
+      },
       {
-        "name": "apiKeyValidation",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
+        "name": "pull_requests",
+        "method": "SUB"
       }
-    ],
-    "deploymentState": "deployed"
+    ]
   }
 }
 ```
@@ -252,44 +230,22 @@ Required roles: `admin`, `developer`
       "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
       "kind": "WebSubApi",
       "metadata": {
-        "name": "weather-api-v1.0",
-        "labels": {
-          "environment": "production",
-          "team": "backend",
-          "version": "v1"
-        }
+        "name": "github-events-v1.0"
       },
       "spec": {
-        "displayName": "weather-api",
+        "displayName": "GitHub Events",
         "version": "v1.0",
-        "context": "/weather",
-        "vhosts": {
-          "main": "api.example.com",
-          "sandbox": "sandbox-api.example.com"
-        },
+        "context": "/github-events/$version",
         "channels": [
           {
             "name": "issues",
-            "method": "SUB",
-            "policies": [
-              {
-                "name": "apiKeyValidation",
-                "version": "v1",
-                "executionCondition": "request.metadata[authenticated] != true",
-                "params": {}
-              }
-            ]
-          }
-        ],
-        "policies": [
+            "method": "SUB"
+          },
           {
-            "name": "apiKeyValidation",
-            "version": "v1",
-            "executionCondition": "request.metadata[authenticated] != true",
-            "params": {}
+            "name": "pull_requests",
+            "method": "SUB"
           }
-        ],
-        "deploymentState": "deployed"
+        ]
       }
     },
     "metadata": {
@@ -337,44 +293,22 @@ Update an existing WebSubAPI in the Gateway.
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "WebSubApi",
   "metadata": {
-    "name": "weather-api-v1.0",
-    "labels": {
-      "environment": "production",
-      "team": "backend",
-      "version": "v1"
-    }
+    "name": "github-events-v1.0"
   },
   "spec": {
-    "displayName": "weather-api",
+    "displayName": "GitHub Events",
     "version": "v1.0",
-    "context": "/weather",
-    "vhosts": {
-      "main": "api.example.com",
-      "sandbox": "sandbox-api.example.com"
-    },
+    "context": "/github-events/$version",
     "channels": [
       {
         "name": "issues",
-        "method": "SUB",
-        "policies": [
-          {
-            "name": "apiKeyValidation",
-            "version": "v1",
-            "executionCondition": "request.metadata[authenticated] != true",
-            "params": {}
-          }
-        ]
-      }
-    ],
-    "policies": [
+        "method": "SUB"
+      },
       {
-        "name": "apiKeyValidation",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
+        "name": "pull_requests",
+        "method": "SUB"
       }
-    ],
-    "deploymentState": "deployed"
+    ]
   }
 }
 ```

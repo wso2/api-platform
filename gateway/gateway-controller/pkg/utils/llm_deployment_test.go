@@ -34,7 +34,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"gopkg.in/yaml.v3"
 )
@@ -213,7 +212,7 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 	t.Run("Empty store returns empty list", func(t *testing.T) {
 		store := storage.NewConfigStore()
 		routerConfig := &config.RouterConfig{ListenerPort: 8080}
-		apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil, nil)
+		apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil)
 		service := NewLLMDeploymentService(store, newTestMockDB(), nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 		providers := service.ListLLMProviders(api.ListLLMProvidersParams{})
@@ -224,7 +223,7 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 		store := storage.NewConfigStore()
 		routerConfig := &config.RouterConfig{ListenerPort: 8080}
 		db := newTestMockDB()
-		apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil, nil)
+		apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil)
 		service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 		// Add an LLM provider config
@@ -262,7 +261,7 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 		store := storage.NewConfigStore()
 		routerConfig := &config.RouterConfig{ListenerPort: 8080}
 		db := newTestMockDB()
-		apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil, nil)
+		apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil)
 		service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 		// Add first provider
@@ -330,7 +329,7 @@ func TestLLMDeploymentService_ListLLMProxies(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
 	db := newTestMockDB()
-	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil, nil)
+	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil)
 	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	t.Run("Empty store returns empty list", func(t *testing.T) {
@@ -373,7 +372,7 @@ func TestLLMDeploymentService_ListLLMProviderTemplates(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
 	db := newTestMockDB()
-	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil, nil)
+	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil)
 	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	t.Run("Empty store returns empty list", func(t *testing.T) {
@@ -428,7 +427,7 @@ func TestLLMDeploymentService_GetLLMProviderTemplateByHandle(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
 	db := newTestMockDB()
-	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil, nil)
+	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil)
 	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	t.Run("Returns error for non-existent template", func(t *testing.T) {
@@ -459,7 +458,7 @@ func TestLLMDeploymentService_GetLLMProviderTemplateByHandle(t *testing.T) {
 func TestLLMDeploymentService_CreateLLMProviderTemplate_ParseError(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil, nil)
+	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil)
 	service := NewLLMDeploymentService(store, newTestMockDB(), nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -476,7 +475,7 @@ func TestLLMDeploymentService_CreateLLMProviderTemplate_ParseError(t *testing.T)
 func TestLLMDeploymentService_CreateLLMProviderTemplate_ValidationError(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil, nil)
+	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil)
 	service := NewLLMDeploymentService(store, newTestMockDB(), nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -502,7 +501,7 @@ spec:
 func TestLLMDeploymentService_UpdateLLMProviderTemplate_NotFound(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil, nil)
+	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil)
 	service := NewLLMDeploymentService(store, newTestMockDB(), nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -521,7 +520,7 @@ func TestLLMDeploymentService_UpdateLLMProviderTemplate_HandleChange(t *testing.
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
 	db := newTestMockDB()
-	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil, nil)
+	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil)
 	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -561,7 +560,7 @@ spec:
 func TestLLMDeploymentService_DeleteLLMProviderTemplate_NotFound(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil, nil)
+	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil)
 	service := NewLLMDeploymentService(store, newTestMockDB(), nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -574,7 +573,7 @@ func TestLLMDeploymentService_DeleteLLMProviderTemplate_Success(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
 	db := newTestMockDB()
-	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil, nil)
+	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil)
 	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	// Add template
@@ -606,7 +605,7 @@ func TestLLMDeploymentService_CreateLLMProviderTemplate_WithDBAndEventHubPublish
 	db := newTestSQLiteStorage(t, logger)
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
 	mockHub := &mockLLMEventHub{}
-	apiDeploymentService := newTestAPIDeploymentServiceWithHub(store, db, nil, nil, routerConfig, nil, mockHub, "test-gateway")
+	apiDeploymentService := newTestAPIDeploymentServiceWithHub(store, db, nil, nil, routerConfig, mockHub, "test-gateway")
 	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	created, err := service.CreateLLMProviderTemplate(LLMTemplateParams{
@@ -637,7 +636,7 @@ func TestLLMDeploymentService_CreateLLMProviderTemplate_HandleConflict(t *testin
 	store := storage.NewConfigStore()
 	db := newTestMockDB()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil, nil)
+	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil)
 	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	require.NoError(t, db.SaveLLMProviderTemplate(testStoredLLMTemplate("template-existing-id", "openai", "OpenAI Template")))
@@ -660,7 +659,7 @@ func TestLLMDeploymentService_UpdateLLMProviderTemplate_WithDBAndEventHubPublish
 	db := newTestSQLiteStorage(t, logger)
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
 	mockHub := &mockLLMEventHub{}
-	apiDeploymentService := newTestAPIDeploymentServiceWithHub(store, db, nil, nil, routerConfig, nil, mockHub, "test-gateway")
+	apiDeploymentService := newTestAPIDeploymentServiceWithHub(store, db, nil, nil, routerConfig, mockHub, "test-gateway")
 	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	existing := testStoredLLMTemplate("template-update-id", "openai", "OpenAI Template")
@@ -699,7 +698,7 @@ func TestLLMDeploymentService_DeleteLLMProviderTemplate_WithDBAndEventHubPublish
 	db := newTestSQLiteStorage(t, logger)
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
 	mockHub := &mockLLMEventHub{}
-	apiDeploymentService := newTestAPIDeploymentServiceWithHub(store, db, nil, nil, routerConfig, nil, mockHub, "test-gateway")
+	apiDeploymentService := newTestAPIDeploymentServiceWithHub(store, db, nil, nil, routerConfig, mockHub, "test-gateway")
 	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	template := testStoredLLMTemplate("template-delete-id", "openai", "OpenAI Template")
@@ -728,7 +727,7 @@ func TestLLMDeploymentService_DeleteLLMProviderTemplate_WithDBAndEventHubPublish
 func TestLLMDeploymentService_DeployLLMProviderConfiguration_ParseError(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil, nil)
+	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil)
 	service := NewLLMDeploymentService(store, newTestMockDB(), nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -758,8 +757,7 @@ func TestLLMDeploymentService_DeployLLMProviderConfiguration_SaveErrorReturnsSan
 	require.NoError(t, db.SaveLLMProviderTemplate(template))
 
 	mockHub := &mockLLMEventHub{}
-	policyResolver := resolver.NewPolicyResolver(map[string]models.PolicyDefinition{}, nil)
-	apiDeploymentService := newTestAPIDeploymentServiceWithHub(store, db, nil, nil, routerConfig, policyResolver, mockHub, "test-gateway")
+	apiDeploymentService := newTestAPIDeploymentServiceWithHub(store, db, nil, nil, routerConfig, mockHub, "test-gateway")
 	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	var logOutput bytes.Buffer
@@ -797,7 +795,7 @@ func TestLLMDeploymentService_DeployLLMProviderConfiguration_ConflictValidation(
 			Version:     "1.0.0",
 		}))
 
-		apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil, nil)
+		apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil)
 		service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 		_, err := service.DeployLLMProviderConfiguration(LLMDeploymentParams{
@@ -826,7 +824,7 @@ func TestLLMDeploymentService_DeployLLMProviderConfiguration_ConflictValidation(
 			Version:     "1.0.0",
 		}))
 
-		apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil, nil)
+		apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil)
 		service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 		_, err := service.DeployLLMProviderConfiguration(LLMDeploymentParams{
@@ -846,7 +844,7 @@ func TestLLMDeploymentService_DeployLLMProviderConfiguration_ConflictValidation(
 func TestLLMDeploymentService_DeployLLMProxyConfiguration_ParseError(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil, nil)
+	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil)
 	service := NewLLMDeploymentService(store, newTestMockDB(), nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -904,7 +902,7 @@ func TestLLMDeploymentService_DeployLLMProxyConfiguration_ConflictValidation(t *
 			Version:     "1.0.0",
 		}))
 
-		apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil, nil)
+		apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil)
 		service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 		_, err := service.DeployLLMProxyConfiguration(LLMDeploymentParams{
@@ -934,7 +932,7 @@ func TestLLMDeploymentService_DeployLLMProxyConfiguration_ConflictValidation(t *
 			Version:     "1.0.0",
 		}))
 
-		apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil, nil)
+		apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil)
 		service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 		_, err := service.DeployLLMProxyConfiguration(LLMDeploymentParams{
@@ -954,7 +952,7 @@ func TestLLMDeploymentService_DeployLLMProxyConfiguration_ConflictValidation(t *
 func TestLLMDeploymentService_UpdateLLMProvider_NotFound(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil, nil)
+	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil)
 	service := NewLLMDeploymentService(store, newTestMockDB(), nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -974,7 +972,7 @@ func TestLLMDeploymentService_UpdateLLMProvider_NotFound(t *testing.T) {
 func TestLLMDeploymentService_UpdateLLMProxy_NotFound(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil, nil)
+	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil)
 	service := NewLLMDeploymentService(store, newTestMockDB(), nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -994,7 +992,7 @@ func TestLLMDeploymentService_UpdateLLMProxy_NotFound(t *testing.T) {
 func TestLLMDeploymentService_DeleteLLMProvider_NotFound(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil, nil)
+	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil)
 	service := NewLLMDeploymentService(store, newTestMockDB(), nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -1010,7 +1008,7 @@ func TestLLMDeploymentService_DeleteLLMProvider_WithDBAndEventHubPublishesDelete
 	db := newTestSQLiteStorage(t, logger)
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
 	mockHub := &mockLLMEventHub{}
-	apiDeploymentService := newTestAPIDeploymentServiceWithHub(store, db, nil, nil, routerConfig, nil, mockHub, "test-gateway")
+	apiDeploymentService := newTestAPIDeploymentServiceWithHub(store, db, nil, nil, routerConfig, mockHub, "test-gateway")
 	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	cfg := &models.StoredConfig{
@@ -1070,7 +1068,7 @@ func TestLLMDeploymentService_DeleteLLMProvider_WithDBAndEventHubPublishesDelete
 func TestLLMDeploymentService_DeleteLLMProxy_NotFound(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil, nil)
+	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil)
 	service := NewLLMDeploymentService(store, newTestMockDB(), nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -1086,7 +1084,7 @@ func TestLLMDeploymentService_DeleteLLMProxy_WithDBAndEventHubPublishesDeleteAnd
 	db := newTestSQLiteStorage(t, logger)
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
 	mockHub := &mockLLMEventHub{}
-	apiDeploymentService := newTestAPIDeploymentServiceWithHub(store, db, nil, nil, routerConfig, nil, mockHub, "test-gateway")
+	apiDeploymentService := newTestAPIDeploymentServiceWithHub(store, db, nil, nil, routerConfig, mockHub, "test-gateway")
 	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	providerCfg := &models.StoredConfig{
@@ -1280,7 +1278,7 @@ func TestMatchesFilters(t *testing.T) {
 func TestLLMDeploymentService_InitializeOOBTemplates_Empty(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil, nil)
+	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil)
 	service := NewLLMDeploymentService(store, newTestMockDB(), nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	err := service.InitializeOOBTemplates(nil)
@@ -1293,7 +1291,7 @@ func TestLLMDeploymentService_InitializeOOBTemplates_Empty(t *testing.T) {
 func TestLLMDeploymentService_InitializeOOBTemplates_ValidTemplates(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil, nil)
+	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil)
 	service := NewLLMDeploymentService(store, newTestMockDB(), nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	templates := map[string]*api.LLMProviderTemplate{
@@ -1319,7 +1317,7 @@ func TestLLMDeploymentService_InitializeOOBTemplates_ValidTemplates(t *testing.T
 func TestLLMDeploymentService_InitializeOOBTemplates_UpdateExisting(t *testing.T) {
 	store := storage.NewConfigStore()
 	routerConfig := &config.RouterConfig{ListenerPort: 8080}
-	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil, nil)
+	apiDeploymentService := newTestAPIDeploymentService(store, newTestMockDB(), nil, nil, nil)
 	service := NewLLMDeploymentService(store, newTestMockDB(), nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
 
 	// Add existing template

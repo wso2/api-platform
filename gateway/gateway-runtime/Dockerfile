@@ -124,7 +124,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go install github.com/go-delve/delve/cmd/dlv@v1.26.0
 
 # Stage 3b: Debug Runtime (policy-engine wrapped in dlv, port 2346)
-FROM envoyproxy/envoy:v1.35.3 AS debug
+FROM envoyproxy/envoy:v1.37.1 AS debug
 
 USER root
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -162,7 +162,7 @@ EXPOSE 2346 8080 8443 9901 9002 9003
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 
 # Stage 4: Runtime (production — must remain last so default builds are unaffected)
-FROM envoyproxy/envoy:v1.35.3 AS production
+FROM envoyproxy/envoy:v1.37.1 AS production
 
 ARG VERSION=unknown
 ARG ENABLE_COVERAGE=false

@@ -87,6 +87,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 		Routes:              make(map[string]*models.Route),
 		PolicyChains:        make(map[string]*models.PolicyChain),
 		UpstreamClusters:    make(map[string]*models.UpstreamCluster),
+		SensitiveValues:     cfg.SensitiveValues,
 	}
 
 	// Collect validated API-level policies

@@ -464,3 +464,134 @@ func TestLLMValidator_ValidateAccessControl_Nil(t *testing.T) {
 		}
 	})
 }
+
+// Tests for validateTemplateResourceMappings and validateTemplateResourceMapping
+
+func TestLLMValidator_ValidateTemplateResourceMappings_Nil(t *testing.T) {
+	validator := NewLLMValidator()
+	errors := validator.validateTemplateResourceMappings("spec.resourceMappings", nil)
+	if len(errors) != 0 {
+		t.Errorf("Expected no errors for nil mappings, got %d: %v", len(errors), errors)
+	}
+}
+
+func TestLLMValidator_ValidateTemplateResourceMappings_EmptyResources(t *testing.T) {
+	validator := NewLLMValidator()
+	resources := []api.LLMProviderTemplateResourceMapping{}
+	mappings := &api.LLMProviderTemplateResourceMappings{
+		Resources: &resources,
+	}
+	errors := validator.validateTemplateResourceMappings("spec.resourceMappings", mappings)
+	found := false
+	for _, e := range errors {
+		if e.Field == "spec.resourceMappings.resources" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Expected error for empty resources list, got: %v", errors)
+	}
+}
+
+func TestLLMValidator_ValidateTemplateResourceMappings_NilResources(t *testing.T) {
+	validator := NewLLMValidator()
+	mappings := &api.LLMProviderTemplateResourceMappings{
+		Resources: nil,
+	}
+	errors := validator.validateTemplateResourceMappings("spec.resourceMappings", mappings)
+	if len(errors) != 0 {
+		t.Errorf("Expected no errors for nil resources list, got %d: %v", len(errors), errors)
+	}
+}
+
+func TestLLMValidator_ValidateTemplateResourceMappings_ValidResource(t *testing.T) {
+	validator := NewLLMValidator()
+	resources := []api.LLMProviderTemplateResourceMapping{
+		{Resource: "/completions"},
+	}
+	mappings := &api.LLMProviderTemplateResourceMappings{
+		Resources: &resources,
+	}
+	errors := validator.validateTemplateResourceMappings("spec.resourceMappings", mappings)
+	if len(errors) != 0 {
+		t.Errorf("Expected no errors for valid resource, got %d: %v", len(errors), errors)
+	}
+}
+
+func TestLLMValidator_ValidateTemplateResourceMapping_Nil(t *testing.T) {
+	validator := NewLLMValidator()
+	errors := validator.validateTemplateResourceMapping("spec.resourceMappings.resources[0]", nil)
+	if len(errors) != 0 {
+		t.Errorf("Expected no errors for nil mapping, got %d: %v", len(errors), errors)
+	}
+}
+
+func TestLLMValidator_ValidateTemplateResourceMapping_InvalidResource_Empty(t *testing.T) {
+	validator := NewLLMValidator()
+	mapping := &api.LLMProviderTemplateResourceMapping{Resource: ""}
+	errors := validator.validateTemplateResourceMapping("spec.resourceMappings.resources[0]", mapping)
+	found := false
+	for _, e := range errors {
+		if e.Field == "spec.resourceMappings.resources[0].resource" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Expected error for empty resource path, got: %v", errors)
+	}
+}
+
+func TestLLMValidator_ValidateTemplateResourceMapping_InvalidResource_NoLeadingSlash(t *testing.T) {
+	validator := NewLLMValidator()
+	mapping := &api.LLMProviderTemplateResourceMapping{Resource: "completions"}
+	errors := validator.validateTemplateResourceMapping("spec.resourceMappings.resources[0]", mapping)
+	found := false
+	for _, e := range errors {
+		if e.Field == "spec.resourceMappings.resources[0].resource" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Expected error for resource without leading slash, got: %v", errors)
+	}
+}
+
+func TestLLMValidator_ValidateTemplateResourceMapping_ValidWithTokenFields(t *testing.T) {
+	validator := NewLLMValidator()
+	promptTokens := &api.ExtractionIdentifier{
+		Identifier: "$.usage.prompt_tokens",
+		Location:   api.Payload,
+	}
+	completionTokens := &api.ExtractionIdentifier{
+		Identifier: "$.usage.completion_tokens",
+		Location:   api.Payload,
+	}
+	mapping := &api.LLMProviderTemplateResourceMapping{
+		Resource:         "/completions",
+		PromptTokens:     promptTokens,
+		CompletionTokens: completionTokens,
+	}
+	errors := validator.validateTemplateResourceMapping("spec.resourceMappings.resources[0]", mapping)
+	if len(errors) != 0 {
+		t.Errorf("Expected no errors for valid mapping with token fields, got %d: %v", len(errors), errors)
+	}
+}
+
+func TestLLMValidator_ValidateTemplateResourceMapping_WithSpaceInResource(t *testing.T) {
+	validator := NewLLMValidator()
+	mapping := &api.LLMProviderTemplateResourceMapping{Resource: "/path with spaces"}
+	errors := validator.validateTemplateResourceMapping("spec.resourceMappings.resources[0]", mapping)
+	found := false
+	for _, e := range errors {
+		if e.Field == "spec.resourceMappings.resources[0].resource" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Expected error for resource with spaces, got: %v", errors)
+	}
+}

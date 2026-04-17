@@ -29,72 +29,19 @@ Add a new MCPProxy to the Gateway.
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "Mcp",
   "metadata": {
-    "name": "weather-api-v1.0",
-    "labels": {
-      "environment": "production",
-      "team": "backend",
-      "version": "v1"
-    }
+    "name": "everything-mcp-v1.0"
   },
   "spec": {
-    "displayName": "mcp-proxy-1",
+    "displayName": "Everything",
     "version": "v1.0",
-    "context": "/mcp-proxy",
+    "context": "/everything",
     "specVersion": "2025-06-18",
-    "vhost": "mcp1.example.com",
     "upstream": {
-      "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
-      "hostRewrite": "auto",
-      "auth": {
-        "type": "api-key",
-        "header": "string",
-        "value": "string"
-      }
+      "url": "http://everything:3001"
     },
-    "policies": [
-      {
-        "name": "apiKeyValidation",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
-      }
-    ],
-    "tools": [
-      {
-        "name": "string",
-        "title": "string",
-        "description": "string",
-        "inputSchema": "string",
-        "outputSchema": "string"
-      }
-    ],
-    "resources": [
-      {
-        "uri": "string",
-        "name": "string",
-        "title": "string",
-        "description": "string",
-        "mimeType": "string",
-        "size": 0
-      }
-    ],
-    "prompts": [
-      {
-        "name": "string",
-        "title": "string",
-        "description": "string",
-        "arguments": [
-          {
-            "name": "string",
-            "description": "string",
-            "required": true,
-            "title": "string"
-          }
-        ]
-      }
-    ],
-    "deploymentState": "deployed"
+    "tools": [],
+    "resources": [],
+    "prompts": []
   }
 }
 ```
@@ -122,7 +69,7 @@ Required roles: `admin`, `developer`
 {
   "status": "success",
   "message": "MCP proxy created successfully",
-  "id": "some-mcp-v1.0",
+  "id": "everything-mcp-v1.0",
   "createdAt": "2025-12-12T10:30:00Z"
 }
 ```
@@ -189,10 +136,10 @@ Required roles: `admin`, `developer`
   "count": 5,
   "mcpProxies": [
     {
-      "id": "mcp-proxy-1-v1.0",
-      "displayName": "mcp-proxy-1",
+      "id": "everything-mcp-v1.0",
+      "displayName": "Everything",
       "version": "v1.0",
-      "context": "/mcp-proxy",
+      "context": "/everything",
       "specVersion": "2025-06-18",
       "status": "deployed",
       "createdAt": "2025-11-24T10:30:00Z",
@@ -279,77 +226,24 @@ Required roles: `admin`, `developer`
 {
   "status": "success",
   "mcp": {
-    "id": "mcp-proxy-1-v1.0",
+    "id": "everything-mcp-v1.0",
     "configuration": {
       "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
       "kind": "Mcp",
       "metadata": {
-        "name": "weather-api-v1.0",
-        "labels": {
-          "environment": "production",
-          "team": "backend",
-          "version": "v1"
-        }
+        "name": "everything-mcp-v1.0"
       },
       "spec": {
-        "displayName": "mcp-proxy-1",
+        "displayName": "Everything",
         "version": "v1.0",
-        "context": "/mcp-proxy",
+        "context": "/everything",
         "specVersion": "2025-06-18",
-        "vhost": "mcp1.example.com",
         "upstream": {
-          "url": "http://prod-backend:5000/api/v2",
-          "ref": "string",
-          "hostRewrite": "auto",
-          "auth": {
-            "type": "api-key",
-            "header": "string",
-            "value": "string"
-          }
+          "url": "http://everything:3001"
         },
-        "policies": [
-          {
-            "name": "apiKeyValidation",
-            "version": "v1",
-            "executionCondition": "request.metadata[authenticated] != true",
-            "params": {}
-          }
-        ],
-        "tools": [
-          {
-            "name": "string",
-            "title": "string",
-            "description": "string",
-            "inputSchema": "string",
-            "outputSchema": "string"
-          }
-        ],
-        "resources": [
-          {
-            "uri": "string",
-            "name": "string",
-            "title": "string",
-            "description": "string",
-            "mimeType": "string",
-            "size": 0
-          }
-        ],
-        "prompts": [
-          {
-            "name": "string",
-            "title": "string",
-            "description": "string",
-            "arguments": [
-              {
-                "name": "string",
-                "description": "string",
-                "required": true,
-                "title": "string"
-              }
-            ]
-          }
-        ],
-        "deploymentState": "deployed"
+        "tools": [],
+        "resources": [],
+        "prompts": []
       }
     },
     "metadata": {
@@ -397,72 +291,19 @@ Update an existing MCPProxy in the Gateway.
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "Mcp",
   "metadata": {
-    "name": "weather-api-v1.0",
-    "labels": {
-      "environment": "production",
-      "team": "backend",
-      "version": "v1"
-    }
+    "name": "everything-mcp-v1.0"
   },
   "spec": {
-    "displayName": "mcp-proxy-1",
+    "displayName": "Everything",
     "version": "v1.0",
-    "context": "/mcp-proxy",
+    "context": "/everything",
     "specVersion": "2025-06-18",
-    "vhost": "mcp1.example.com",
     "upstream": {
-      "url": "http://prod-backend:5000/api/v2",
-      "ref": "string",
-      "hostRewrite": "auto",
-      "auth": {
-        "type": "api-key",
-        "header": "string",
-        "value": "string"
-      }
+      "url": "http://everything:3001"
     },
-    "policies": [
-      {
-        "name": "apiKeyValidation",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
-      }
-    ],
-    "tools": [
-      {
-        "name": "string",
-        "title": "string",
-        "description": "string",
-        "inputSchema": "string",
-        "outputSchema": "string"
-      }
-    ],
-    "resources": [
-      {
-        "uri": "string",
-        "name": "string",
-        "title": "string",
-        "description": "string",
-        "mimeType": "string",
-        "size": 0
-      }
-    ],
-    "prompts": [
-      {
-        "name": "string",
-        "title": "string",
-        "description": "string",
-        "arguments": [
-          {
-            "name": "string",
-            "description": "string",
-            "required": true,
-            "title": "string"
-          }
-        ]
-      }
-    ],
-    "deploymentState": "deployed"
+    "tools": [],
+    "resources": [],
+    "prompts": []
   }
 }
 ```
@@ -495,7 +336,7 @@ Required roles: `admin`, `developer`
 {
   "status": "success",
   "message": "MCP proxy updated successfully",
-  "id": "some-mcp-v1.0",
+  "id": "everything-mcp-v1.0",
   "updatedAt": "2025-12-12T11:45:00Z"
 }
 ```

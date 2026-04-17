@@ -18,6 +18,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.26.1'
+          cache: false
       - name: Install Gosec
         run: go install github.com/securego/gosec/v2/cmd/gosec@latest
       - name: Run Gosec
@@ -42,6 +43,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.26.1'
+          cache: false
       - name: Install Gosec
         run: go install github.com/securego/gosec/v2/cmd/gosec@latest
       - name: Run Gosec
@@ -66,6 +68,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.26.1'
+          cache: false
       - name: Install Gosec
         run: go install github.com/securego/gosec/v2/cmd/gosec@latest
       - name: Run Gosec
@@ -75,3 +78,28 @@ jobs:
         with:
           sarif_file: gateway/gateway-builder/results.sarif
           category: gateway-builder
+
+  platform-api:
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: on
+    defaults:
+      run:
+        working-directory: platform-api/src
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.8'
+          cache: false
+      - name: Install Gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+      - name: Run Gosec
+        run: gosec -no-fail -fmt sarif -out results.sarif ./...
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: platform-api/src/results.sarif
+          category: platform-api

@@ -71,6 +71,11 @@ Base URLs:
 - [Get LLM provider by identifier](llm-provider-management.md#get-llm-provider-by-identifier)
 - [Update an existing LLM provider](llm-provider-management.md#update-an-existing-llm-provider)
 - [Delete an LLM provider](llm-provider-management.md#delete-an-llm-provider)
+- [Create a new API key for an LLM provider](llm-provider-management.md#create-a-new-api-key-for-an-llm-provider)
+- [Get the list of API keys for an LLM provider](llm-provider-management.md#get-the-list-of-api-keys-for-an-llm-provider)
+- [Regenerate API key for an LLM provider](llm-provider-management.md#regenerate-api-key-for-an-llm-provider)
+- [Update an API key for an LLM provider](llm-provider-management.md#update-an-api-key-for-an-llm-provider)
+- [Revoke an API key for an LLM provider](llm-provider-management.md#revoke-an-api-key-for-an-llm-provider)
 
 ### [LLM Proxy Management](llm-proxy-management.md)
 
@@ -79,6 +84,11 @@ Base URLs:
 - [Get LLM proxy by unique identifier](llm-proxy-management.md#get-llm-proxy-by-unique-identifier)
 - [Update an existing LLM proxy](llm-proxy-management.md#update-an-existing-llm-proxy)
 - [Delete an LLM proxy](llm-proxy-management.md#delete-an-llm-proxy)
+- [Create a new API key for an LLM proxy](llm-proxy-management.md#create-a-new-api-key-for-an-llm-proxy)
+- [Get the list of API keys for an LLM proxy](llm-proxy-management.md#get-the-list-of-api-keys-for-an-llm-proxy)
+- [Regenerate API key for an LLM proxy](llm-proxy-management.md#regenerate-api-key-for-an-llm-proxy)
+- [Update an API key for an LLM proxy](llm-proxy-management.md#update-an-api-key-for-an-llm-proxy)
+- [Revoke an API key for an LLM proxy](llm-proxy-management.md#revoke-an-api-key-for-an-llm-proxy)
 
 ### [Secrets Management](secrets-management.md)
 

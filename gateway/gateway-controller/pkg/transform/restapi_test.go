@@ -19,6 +19,7 @@
 package transform
 
 import (
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -219,4 +220,127 @@ func TestRestAPITransformer_EmptyVersionUsesResolvedVersionInChain(t *testing.T)
 	require.Len(t, chain.Policies, 1)
 	assert.Equal(t, "v2", chain.Policies[0].Version,
 		"resolved major version should be stored in the chain, not the original empty string")
+}
+
+// TestSanitizeUpstreamDefinitionName verifies that dots and colons are replaced
+// for Envoy cluster name compatibility.
+func TestSanitizeUpstreamDefinitionName(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"my-upstream", "my-upstream"},
+		{"my.upstream", "my_upstream"},
+		{"my:upstream", "my_upstream"},
+		{"host.example.com:8080", "host_example_com_8080"},
+		{"", ""},
+		{"a.b.c:d", "a_b_c_d"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := SanitizeUpstreamDefinitionName(tt.input)
+			assert.Equal(t, tt.expected, got)
+		})
+	}
+}
+
+// TestResolveUpstreamURL verifies URL resolution from direct URL, ref, or missing config.
+func TestResolveUpstreamURL(t *testing.T) {
+	refName := "my-def"
+	defURL := "http://upstream-from-def:9090"
+
+	defs := &[]api.UpstreamDefinition{
+		{
+			Name: refName,
+			Upstreams: []struct {
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{Url: defURL},
+			},
+		},
+	}
+
+	t.Run("direct URL", func(t *testing.T) {
+		u := "http://direct:8080"
+		up := &api.Upstream{Url: &u}
+		got, err := resolveUpstreamURL("main", up, nil)
+		require.NoError(t, err)
+		assert.Equal(t, u, got)
+	})
+
+	t.Run("ref to existing definition", func(t *testing.T) {
+		up := &api.Upstream{Ref: &refName}
+		got, err := resolveUpstreamURL("main", up, defs)
+		require.NoError(t, err)
+		assert.Equal(t, defURL, got)
+	})
+
+	t.Run("ref but no definitions provided", func(t *testing.T) {
+		up := &api.Upstream{Ref: &refName}
+		_, err := resolveUpstreamURL("main", up, nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), refName)
+	})
+
+	t.Run("ref to unknown definition", func(t *testing.T) {
+		unknownRef := "unknown-def"
+		up := &api.Upstream{Ref: &unknownRef}
+		_, err := resolveUpstreamURL("main", up, defs)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found")
+	})
+
+	t.Run("neither URL nor ref", func(t *testing.T) {
+		up := &api.Upstream{}
+		_, err := resolveUpstreamURL("main", up, defs)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no URL or ref")
+	})
+
+	t.Run("whitespace-only URL treated as missing", func(t *testing.T) {
+		blank := "   "
+		up := &api.Upstream{Url: &blank}
+		_, err := resolveUpstreamURL("main", up, nil)
+		require.Error(t, err)
+	})
+
+	t.Run("def with no upstreams", func(t *testing.T) {
+		emptyDefs := &[]api.UpstreamDefinition{
+			{
+				Name: "empty-def",
+				Upstreams: []struct {
+					Url    string `json:"url" yaml:"url"`
+					Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+				}{},
+			},
+		}
+		emptyRef := "empty-def"
+		up := &api.Upstream{Ref: &emptyRef}
+		_, err := resolveUpstreamURL("main", up, emptyDefs)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "no URLs")
+	})
+}
+
+// TestResolvePort checks port resolution with explicit, default-http and default-https.
+func TestResolvePort(t *testing.T) {
+	tests := []struct {
+		rawURL   string
+		expected int
+	}{
+		{"http://host:9090/path", 9090},
+		{"http://host/path", 80},
+		{"https://host/path", 443},
+		{"https://host:8443/path", 8443},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.rawURL, func(t *testing.T) {
+			u, err := url.Parse(tt.rawURL)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, ResolvePort(u))
+		})
+	}
 }

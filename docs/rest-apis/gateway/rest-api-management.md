@@ -29,53 +29,61 @@ Add a new RestAPI to the Gateway.
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "RestApi",
   "metadata": {
-    "name": "petstore-api-v1.0"
+    "name": "reading-list-api-v1.0"
   },
   "spec": {
-    "displayName": "Petstore-API",
+    "displayName": "Reading-List-API",
     "version": "v1.0",
-    "context": "/petstore/$version",
+    "context": "/reading-list/$version",
     "upstream": {
       "main": {
-        "url": "https://petstore3.swagger.io/api/v3"
+        "url": "https://apis.bijira.dev/samples/reading-list-api-service/v1.0"
       }
     },
+    "policies": [
+      {
+        "name": "set-headers",
+        "version": "v1",
+        "params": {
+          "request": {
+            "headers": [
+              {
+                "name": "x-wso2-apip-gateway-version",
+                "value": "v1.0.0"
+              }
+            ]
+          },
+          "response": {
+            "headers": [
+              {
+                "name": "x-environment",
+                "value": "development"
+              }
+            ]
+          }
+        }
+      }
+    ],
     "operations": [
       {
+        "method": "GET",
+        "path": "/books"
+      },
+      {
+        "method": "POST",
+        "path": "/books"
+      },
+      {
+        "method": "GET",
+        "path": "/books/{id}"
+      },
+      {
         "method": "PUT",
-        "path": "/pet"
-      },
-      {
-        "method": "POST",
-        "path": "/pet",
-        "policies": [
-          {
-            "name": "log-message",
-            "version": "v1",
-            "params": {
-              "request": {
-                "payload": true,
-                "headers": true
-              }
-            }
-          }
-        ]
-      },
-      {
-        "method": "GET",
-        "path": "/pet/findByStatus"
-      },
-      {
-        "method": "GET",
-        "path": "/pet/{petId}"
-      },
-      {
-        "method": "POST",
-        "path": "/pet/{petId}"
+        "path": "/books/{id}"
       },
       {
         "method": "DELETE",
-        "path": "/pet/{petId}"
+        "path": "/books/{id}"
       }
     ]
   }
@@ -105,7 +113,7 @@ Required roles: `admin`, `developer`
 {
   "status": "success",
   "message": "RestAPI created successfully",
-  "id": "weather-api-v1.0",
+  "id": "reading-list-api-v1.0",
   "createdAt": "2025-10-11T10:30:00Z"
 }
 ```
@@ -172,10 +180,10 @@ Required roles: `admin`, `developer`
   "count": 5,
   "apis": [
     {
-      "id": "weather-api-v1.0",
-      "displayName": "weather-api",
+      "id": "reading-list-api-v1.0",
+      "displayName": "Reading List API",
       "version": "v1.0",
-      "context": "/weather",
+      "context": "/reading-list/$version",
       "status": "deployed",
       "createdAt": "2025-10-11T10:30:00Z",
       "updatedAt": "2025-10-11T10:30:00Z"
@@ -260,58 +268,66 @@ Required roles: `admin`, `developer`
 {
   "status": "success",
   "api": {
-    "id": "weather-api-v1.0",
+    "id": "reading-list-api-v1.0",
     "configuration": {
       "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
       "kind": "RestApi",
       "metadata": {
-        "name": "petstore-api-v1.0"
+        "name": "reading-list-api-v1.0"
       },
       "spec": {
-        "displayName": "Petstore-API",
+        "displayName": "Reading-List-API",
         "version": "v1.0",
-        "context": "/petstore/$version",
+        "context": "/reading-list/$version",
         "upstream": {
           "main": {
-            "url": "https://petstore3.swagger.io/api/v3"
+            "url": "https://apis.bijira.dev/samples/reading-list-api-service/v1.0"
           }
         },
+        "policies": [
+          {
+            "name": "set-headers",
+            "version": "v1",
+            "params": {
+              "request": {
+                "headers": [
+                  {
+                    "name": "x-wso2-apip-gateway-version",
+                    "value": "v1.0.0"
+                  }
+                ]
+              },
+              "response": {
+                "headers": [
+                  {
+                    "name": "x-environment",
+                    "value": "development"
+                  }
+                ]
+              }
+            }
+          }
+        ],
         "operations": [
           {
+            "method": "GET",
+            "path": "/books"
+          },
+          {
+            "method": "POST",
+            "path": "/books"
+          },
+          {
+            "method": "GET",
+            "path": "/books/{id}"
+          },
+          {
             "method": "PUT",
-            "path": "/pet"
-          },
-          {
-            "method": "POST",
-            "path": "/pet",
-            "policies": [
-              {
-                "name": "log-message",
-                "version": "v1",
-                "params": {
-                  "request": {
-                    "payload": true,
-                    "headers": true
-                  }
-                }
-              }
-            ]
-          },
-          {
-            "method": "GET",
-            "path": "/pet/findByStatus"
-          },
-          {
-            "method": "GET",
-            "path": "/pet/{petId}"
-          },
-          {
-            "method": "POST",
-            "path": "/pet/{petId}"
+            "path": "/books/{id}"
           },
           {
             "method": "DELETE",
-            "path": "/pet/{petId}"
+            "path": "/books/{id}"
           }
         ]
       }
@@ -361,53 +377,61 @@ Update an existing RestAPI in the Gateway.
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "RestApi",
   "metadata": {
-    "name": "petstore-api-v1.0"
+    "name": "reading-list-api-v1.0"
   },
   "spec": {
-    "displayName": "Petstore-API",
+    "displayName": "Reading-List-API",
     "version": "v1.0",
-    "context": "/petstore/$version",
+    "context": "/reading-list/$version",
     "upstream": {
       "main": {
-        "url": "https://petstore3.swagger.io/api/v3"
+        "url": "https://apis.bijira.dev/samples/reading-list-api-service/v1.0"
       }
     },
+    "policies": [
+      {
+        "name": "set-headers",
+        "version": "v1",
+        "params": {
+          "request": {
+            "headers": [
+              {
+                "name": "x-wso2-apip-gateway-version",
+                "value": "v1.0.0"
+              }
+            ]
+          },
+          "response": {
+            "headers": [
+              {
+                "name": "x-environment",
+                "value": "development"
+              }
+            ]
+          }
+        }
+      }
+    ],
     "operations": [
       {
+        "method": "GET",
+        "path": "/books"
+      },
+      {
+        "method": "POST",
+        "path": "/books"
+      },
+      {
+        "method": "GET",
+        "path": "/books/{id}"
+      },
+      {
         "method": "PUT",
-        "path": "/pet"
-      },
-      {
-        "method": "POST",
-        "path": "/pet",
-        "policies": [
-          {
-            "name": "log-message",
-            "version": "v1",
-            "params": {
-              "request": {
-                "payload": true,
-                "headers": true
-              }
-            }
-          }
-        ]
-      },
-      {
-        "method": "GET",
-        "path": "/pet/findByStatus"
-      },
-      {
-        "method": "GET",
-        "path": "/pet/{petId}"
-      },
-      {
-        "method": "POST",
-        "path": "/pet/{petId}"
+        "path": "/books/{id}"
       },
       {
         "method": "DELETE",
-        "path": "/pet/{petId}"
+        "path": "/books/{id}"
       }
     ]
   }
@@ -442,7 +466,7 @@ Required roles: `admin`, `developer`
 {
   "status": "success",
   "message": "RestAPI updated successfully",
-  "id": "weather-api-v1.0",
+  "id": "reading-list-api-v1.0",
   "updatedAt": "2025-10-11T11:45:00Z"
 }
 ```
@@ -501,7 +525,7 @@ Required roles: `admin`, `developer`
 {
   "status": "success",
   "message": "RestAPI deleted successfully",
-  "id": "weather-api-v1.0"
+  "id": "reading-list-api-v1.0"
 }
 ```
 
@@ -547,16 +571,7 @@ Generate a new API key for a RestAPI in the Gateway. The key is a 32-byte random
 
 ```json
 {
-  "name": "my-production-key",
-  "apiKey": "xxxxxx-wso2-api-platform-key-xxxxxx-xxxxxxx",
-  "maskedApiKey": "apip_****xyz789",
-  "expiresIn": {
-    "unit": "days",
-    "duration": 30
-  },
-  "expiresAt": "2026-12-08T10:30:00Z",
-  "externalRefId": "cloud-apim-key-98765",
-  "issuer": "api-platform-devportal"
+  "name": "my-production-key"
 }
 ```
 
@@ -593,13 +608,12 @@ Required roles: `admin`, `consumer`
     "name": "my-production-key",
     "displayName": "My Production Key",
     "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-    "apiId": "weather-api-v1.0",
+    "apiId": "reading-list-api-v1.0",
     "status": "active",
-    "createdAt": "2025-12-08T10:30:00Z",
-    "createdBy": "api_consumer",
-    "expiresAt": "2025-12-08T10:30:00Z",
-    "source": "local",
-    "externalRefId": "cloud-apim-key-98765"
+    "createdAt": "2026-04-01T10:30:00Z",
+    "createdBy": "admin",
+    "expiresAt": null,
+    "source": "local"
   }
 }
 ```
@@ -661,13 +675,12 @@ Required roles: `admin`, `consumer`
       "name": "my-production-key",
       "displayName": "My Production Key",
       "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-      "apiId": "weather-api-v1.0",
+      "apiId": "reading-list-api-v1.0",
       "status": "active",
-      "createdAt": "2025-12-08T10:30:00Z",
-      "createdBy": "api_consumer",
-      "expiresAt": "2025-12-08T10:30:00Z",
-      "source": "local",
-      "externalRefId": "cloud-apim-key-98765"
+      "createdAt": "2026-04-01T10:30:00Z",
+      "createdBy": "admin",
+      "expiresAt": null,
+      "source": "local"
     }
   ],
   "totalCount": 3,
@@ -706,13 +719,7 @@ Regenerate an existing API key for a RestAPI in the Gateway. The previous key is
 > Payload
 
 ```json
-{
-  "expiresIn": {
-    "unit": "days",
-    "duration": 30
-  },
-  "expiresAt": "2026-12-08T10:30:00Z"
-}
+{}
 ```
 
 ### Authentication
@@ -751,13 +758,12 @@ Required roles: `admin`, `consumer`
     "name": "my-production-key",
     "displayName": "My Production Key",
     "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-    "apiId": "weather-api-v1.0",
+    "apiId": "reading-list-api-v1.0",
     "status": "active",
-    "createdAt": "2025-12-08T10:30:00Z",
-    "createdBy": "api_consumer",
-    "expiresAt": "2025-12-08T10:30:00Z",
-    "source": "local",
-    "externalRefId": "cloud-apim-key-98765"
+    "createdAt": "2026-04-01T10:30:00Z",
+    "createdBy": "admin",
+    "expiresAt": null,
+    "source": "local"
   }
 }
 ```
@@ -795,16 +801,7 @@ Update an API key with a custom value instead of auto-generating one.
 
 ```json
 {
-  "name": "my-production-key",
-  "apiKey": "xxxxxx-wso2-api-platform-key-xxxxxx-xxxxxxx",
-  "maskedApiKey": "apip_****xyz789",
-  "expiresIn": {
-    "unit": "days",
-    "duration": 30
-  },
-  "expiresAt": "2026-12-08T10:30:00Z",
-  "externalRefId": "cloud-apim-key-98765",
-  "issuer": "api-platform-devportal"
+  "name": "my-production-key"
 }
 ```
 
@@ -844,13 +841,12 @@ Required roles: `admin`, `consumer`
     "name": "my-production-key",
     "displayName": "My Production Key",
     "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-    "apiId": "weather-api-v1.0",
+    "apiId": "reading-list-api-v1.0",
     "status": "active",
-    "createdAt": "2025-12-08T10:30:00Z",
-    "createdBy": "api_consumer",
-    "expiresAt": "2025-12-08T10:30:00Z",
-    "source": "local",
-    "externalRefId": "cloud-apim-key-98765"
+    "createdAt": "2026-04-01T10:30:00Z",
+    "createdBy": "admin",
+    "expiresAt": null,
+    "source": "local"
   }
 }
 ```
@@ -948,12 +944,12 @@ Create a subscription plan that defines rate limits and access tiers for API sub
 
 ```json
 {
-  "planName": "string",
-  "billingPlan": "string",
+  "planName": "Gold",
+  "billingPlan": "COMMERCIAL",
   "stopOnQuotaReach": true,
-  "throttleLimitCount": 0,
-  "throttleLimitUnit": "Min",
-  "expiryTime": "2019-08-24T14:15:22Z",
+  "throttleLimitCount": 1000,
+  "throttleLimitUnit": "Hour",
+  "expiryTime": "2026-12-31T23:59:59Z",
   "status": "ACTIVE"
 }
 ```
@@ -1283,7 +1279,7 @@ Subscribe an application to a RestAPI in the Gateway.
 ```json
 {
   "apiId": "c9f2b6ae-1234-5678-9abc-def012345678",
-  "subscriptionToken": "string",
+  "subscriptionToken": "sub-token-abc123xyz",
   "applicationId": "string",
   "subscriptionPlanId": "string",
   "status": "ACTIVE"

@@ -36,7 +36,7 @@ import (
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
 
 	"github.com/gorilla/websocket"
 	"github.com/wso2/api-platform/common/eventhub"
@@ -130,7 +130,6 @@ type Client struct {
 	gatewayPath                 string      // cached gateway path from well-known discovery
 	syncOnce                    sync.Once   // ensures deployment sync runs only on first connect
 	isFirstConnect              atomic.Bool // true on first connect, flipped to false after
-	policyResolver              *resolver.PolicyResolver
 }
 
 // NewClient creates a new control plane client
@@ -152,7 +151,7 @@ func NewClient(
 	templateDefinitions map[string]*api.LLMProviderTemplate,
 	subSnapshotManager utils.SubscriptionSnapshotUpdater,
 	eventHubInstance eventhub.EventHub,
-	policyResolver *resolver.PolicyResolver,
+	secretResolver funcs.SecretResolver,
 ) *Client {
 	if db == nil {
 		panic("control plane client requires non-nil storage")
@@ -170,7 +169,7 @@ func NewClient(
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig, policyResolver, eventHubInstance, gatewayID)
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig, eventHubInstance, gatewayID, secretResolver)
 	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, apiKeyConfig, eventHubInstance, gatewayID)
 	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subSnapshotManager, eventHubInstance, gatewayID)
 
@@ -1303,24 +1302,7 @@ func (c *Client) updatePolicyForDeployment(apiID, correlationID string, result *
 		return nil
 	}
 
-	// Resolve secrets
-	resolvedCfg, validationErrors := c.policyResolver.ResolvePolicies(result.StoredConfig)
-	if len(validationErrors) > 0 {
-		errMsgs := make([]string, 0, len(validationErrors))
-		for _, ve := range validationErrors {
-			errMsgs = append(errMsgs, ve.Message)
-		}
-		errMsg := strings.Join(errMsgs, "; ")
-
-		slog.Error("Policy resolution failed",
-			slog.String("config_handle", result.StoredConfig.Handle),
-			slog.String("errors", errMsg),
-		)
-
-		return fmt.Errorf("policy resolution failed with %d errors: %s", len(validationErrors), errMsg)
-	}
-
-	if err := c.policyManager.UpsertAPIConfig(resolvedCfg); err != nil {
+	if err := c.policyManager.UpsertAPIConfig(result.StoredConfig); err != nil {
 		c.logger.Error("Failed to upsert runtime config for deployment",
 			slog.Any("error", err),
 			slog.String("api_id", apiID),
@@ -3696,6 +3678,7 @@ func (c *Client) pushGatewayManifestOnConnect(gatewayID string) {
 	policies := make([]models.PolicyDefinition, 0, len(c.policyDefinitions))
 	for _, def := range c.policyDefinitions {
 		if strings.HasPrefix(def.Name, "wso2_apip_sys_") {
+			// Skip internal system policies 
 			continue
 		}
 		policies = append(policies, def)
@@ -3721,7 +3704,6 @@ func (c *Client) pushGatewayManifestOnConnect(gatewayID string) {
 				c.logger.Warn("Context cancelled, aborting gateway manifest push retries",
 					slog.String("gateway_id", gatewayID))
 				return
-			case <-time.After(time.Duration(attempt) * 2 * time.Second):
 			}
 		}
 	}

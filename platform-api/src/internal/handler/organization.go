@@ -164,11 +164,49 @@ func (h *OrganizationHandler) GetOrganization(c *gin.Context) {
 	c.JSON(http.StatusOK, org)
 }
 
+// GetOrganizationSubscription handles GET /api/v1/organizations/:organizationId/subscription
+func (h *OrganizationHandler) GetOrganizationSubscription(c *gin.Context) {
+	organizationIdFromContext, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	orgID := c.Param("organizationId")
+	if orgID != organizationIdFromContext {
+		c.JSON(http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden",
+			"Organization ID in token does not match the requested organization ID"))
+		return
+	}
+
+	subscription, err := h.orgService.GetOrganizationSubscription(orgID)
+	if err != nil {
+		if errors.Is(err, constants.ErrOrganizationNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Organization not found"))
+			return
+		}
+		if errors.Is(err, constants.ErrMultipleOrganizations) {
+			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+				"Data integrity error: multiple organizations found"))
+			return
+		}
+		h.slogger.Error("Failed to get organization subscription", "organizationId", orgID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get organization subscription"))
+		return
+	}
+
+	c.JSON(http.StatusOK, subscription)
+}
+
 func (h *OrganizationHandler) RegisterRoutes(r *gin.Engine) {
 	orgGroup := r.Group("/api/v1/organizations")
 	{
 		orgGroup.POST("", h.RegisterOrganization)
 		orgGroup.GET("", h.GetOrganization)
 		orgGroup.HEAD("/:organizationId", h.HeadOrganizationByUuid)
+		orgGroup.GET("/:organizationId/subscription", h.GetOrganizationSubscription)
 	}
 }
