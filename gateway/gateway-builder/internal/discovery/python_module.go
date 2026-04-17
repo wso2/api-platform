@@ -161,7 +161,7 @@ func FetchPipPackage(pipPackage string) (*PipPackageInfo, error) {
 	return &PipPackageInfo{
 		Package:        pkgName,
 		Version:        version,
-		IndexURL:       sanitizedIndexURL,
+		IndexURL:       indexURL,
 		PipSpec:        pipSpec,
 		TopLevelModule: topLevelModule,
 		Dir:            extractDir,
