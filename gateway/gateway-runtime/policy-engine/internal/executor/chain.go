@@ -51,7 +51,7 @@ type RequestHeaderPolicyResult struct {
 type RequestHeaderExecutionResult struct {
 	Results            []RequestHeaderPolicyResult
 	ShortCircuited     bool                       // true if chain stopped early due to ImmediateResponse
-	FinalAction        policy.RequestHeaderAction  // Final action to apply
+	FinalAction        policy.RequestHeaderAction // Final action to apply
 	TotalExecutionTime time.Duration
 }
 
@@ -87,6 +87,10 @@ func (c *ChainExecutor) ExecuteRequestHeaderPolicies(
 
 		headerPol, ok := pol.(policy.RequestHeaderPolicy)
 		if !ok {
+			span.End()
+			continue
+		}
+		if pol.Mode().RequestHeaderMode != policy.HeaderModeProcess {
 			span.End()
 			continue
 		}
@@ -375,7 +379,7 @@ type ResponseHeaderPolicyResult struct {
 type ResponseHeaderExecutionResult struct {
 	Results            []ResponseHeaderPolicyResult
 	ShortCircuited     bool                        // true if chain stopped early due to ImmediateResponse
-	FinalAction        policy.ResponseHeaderAction  // Final action to apply
+	FinalAction        policy.ResponseHeaderAction // Final action to apply
 	TotalExecutionTime time.Duration
 }
 
@@ -411,6 +415,10 @@ func (c *ChainExecutor) ExecuteResponseHeaderPolicies(
 
 		headerPol, ok := pol.(policy.ResponseHeaderPolicy)
 		if !ok {
+			span.End()
+			continue
+		}
+		if pol.Mode().ResponseHeaderMode != policy.HeaderModeProcess {
 			span.End()
 			continue
 		}
@@ -731,8 +739,8 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 			continue
 		}
 
-		// Skip if the policy's mode says to skip request body processing
-		if pol.Mode().RequestBodyMode == policy.BodyModeSkip {
+		// Mode()-first: only execute streaming callbacks for policies that explicitly opt into STREAM.
+		if pol.Mode().RequestBodyMode != policy.BodyModeStream {
 			span.End()
 			continue
 		}
@@ -874,8 +882,8 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 			continue
 		}
 
-		// Skip if the policy's mode says to skip response body processing
-		if pol.Mode().ResponseBodyMode == policy.BodyModeSkip {
+		// Mode()-first: only execute streaming callbacks for policies that explicitly opt into STREAM.
+		if pol.Mode().ResponseBodyMode != policy.BodyModeStream {
 			span.End()
 			continue
 		}

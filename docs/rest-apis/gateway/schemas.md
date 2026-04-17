@@ -1163,9 +1163,9 @@ Details of an API key
 ```json
 {
   "id": "reading-list-api-v1.0",
-  "displayName": "Weather API",
+  "displayName": "Reading List API",
   "version": "v1.0",
-  "context": "/weather/$version",
+  "context": "/reading-list/$version",
   "status": "deployed",
   "createdAt": "2025-10-11T10:30:00Z",
   "updatedAt": "2025-10-11T10:30:00Z"
@@ -1459,9 +1459,9 @@ Details of an API key
 
 ```json
 {
-  "displayName": "mcp-proxy-1",
+  "displayName": "Everything",
   "version": "v1.0",
-  "context": "/mcp-proxy",
+  "context": "/everything",
   "specVersion": "2025-06-18",
   "vhost": "mcp1.example.com",
   "upstream": {
@@ -1667,7 +1667,7 @@ continued
 {
   "status": "success",
   "message": "MCP proxy created successfully",
-  "id": "some-mcp-v1.0",
+  "id": "everything-mcp-v1.0",
   "createdAt": "2025-12-12T10:30:00Z"
 }
 
@@ -1693,7 +1693,7 @@ continued
 {
   "status": "success",
   "message": "MCP proxy updated successfully",
-  "id": "some-mcp-v1.0",
+  "id": "everything-mcp-v1.0",
   "updatedAt": "2025-12-12T11:45:00Z"
 }
 
@@ -1717,10 +1717,10 @@ continued
 
 ```json
 {
-  "id": "mcp-proxy-1-v1.0",
-  "displayName": "mcp-proxy-1",
+  "id": "everything-mcp-v1.0",
+  "displayName": "Everything",
   "version": "v1.0",
-  "context": "/mcp-proxy",
+  "context": "/everything",
   "specVersion": "2025-06-18",
   "status": "deployed",
   "createdAt": "2025-11-24T10:30:00Z",
@@ -1760,7 +1760,7 @@ continued
 {
   "status": "success",
   "mcp": {
-    "id": "mcp-proxy-1-v1.0",
+    "id": "everything-mcp-v1.0",
     "configuration": {
       "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
       "kind": "Mcp",
@@ -2291,7 +2291,7 @@ continued
 {
   "status": "success",
   "message": "LLM provider created successfully",
-  "id": "openai",
+  "id": "wso2-openai-provider",
   "createdAt": "2025-11-25T10:30:00Z"
 }
 
@@ -2317,7 +2317,7 @@ continued
 {
   "status": "success",
   "message": "LLM proxy created successfully",
-  "id": "wso2-con-assistant",
+  "id": "openai-proxy",
   "createdAt": "2025-11-25T10:30:00Z"
 }
 
@@ -2369,7 +2369,7 @@ continued
 {
   "status": "success",
   "message": "LLM proxy updated successfully",
-  "id": "wso2-con-assistant",
+  "id": "openai-proxy",
   "updatedAt": "2025-11-25T11:45:00Z"
 }
 
@@ -2393,7 +2393,7 @@ continued
 
 ```json
 {
-  "id": "openai-provider",
+  "id": "wso2-openai-provider",
   "displayName": "WSO2 OpenAI Provider",
   "version": "v1.0",
   "template": "openai",
@@ -2432,8 +2432,8 @@ continued
 
 ```json
 {
-  "id": "wso2-con-assistant",
-  "displayName": "WSO2 Con Assistant",
+  "id": "openai-proxy",
+  "displayName": "OpenAI Proxy",
   "version": "v1.0",
   "provider": "wso2-openai-provider",
   "status": "deployed",
@@ -2473,12 +2473,12 @@ continued
 {
   "status": "success",
   "provider": {
-    "id": "wso2-openai",
+    "id": "wso2-openai-provider",
     "configuration": {
       "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
       "kind": "LlmProvider",
       "metadata": {
-        "name": "openai-provider"
+        "name": "wso2-openai-provider"
       },
       "spec": {
         "displayName": "OpenAI Provider",
@@ -2561,19 +2561,19 @@ continued
 {
   "status": "success",
   "proxy": {
-    "id": "wso2-docs-assistant",
+    "id": "openai-proxy",
     "configuration": {
       "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
       "kind": "LlmProxy",
       "metadata": {
-        "name": "docs-assistant-v1.0"
+        "name": "openai-proxy"
       },
       "spec": {
-        "displayName": "OpenAI Assistant",
+        "displayName": "OpenAI Proxy",
         "version": "v1.0",
-        "context": "/assistant",
+        "context": "/openai-proxy",
         "provider": {
-          "id": "openai-provider"
+          "id": "wso2-openai-provider"
         },
         "policies": []
       }
@@ -2622,7 +2622,7 @@ continued
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "LlmProvider",
   "metadata": {
-    "name": "openai-provider"
+    "name": "wso2-openai-provider"
   },
   "spec": {
     "displayName": "OpenAI Provider",
@@ -2993,14 +2993,14 @@ continued
   "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
   "kind": "LlmProxy",
   "metadata": {
-    "name": "docs-assistant-v1.0"
+    "name": "openai-proxy"
   },
   "spec": {
-    "displayName": "OpenAI Assistant",
+    "displayName": "OpenAI Proxy",
     "version": "v1.0",
-    "context": "/assistant",
+    "context": "/openai-proxy",
     "provider": {
-      "id": "openai-provider"
+      "id": "wso2-openai-provider"
     },
     "policies": []
   }
@@ -3033,7 +3033,7 @@ continued
 
 ```json
 {
-  "displayName": "wso2-con-assistant",
+  "displayName": "OpenAI Proxy",
   "version": "v1.0",
   "context": "/openai",
   "vhost": "api.openai.com",

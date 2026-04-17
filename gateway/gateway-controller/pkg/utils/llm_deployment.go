@@ -20,6 +20,7 @@ package utils
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -31,12 +32,24 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
 
 const (
 	LazyResourceTypeLLMProviderTemplate     = "LlmProviderTemplate"
 	LazyResourceTypeProviderTemplateMapping = "ProviderTemplateMapping"
+)
+
+var (
+	// ErrLLMTemplateNotFound is returned when an LLM provider template is not found.
+	ErrLLMTemplateNotFound = errors.New("llm provider template not found")
+
+	// ErrLLMTemplateValidation is returned when an LLM provider template fails parsing or validation.
+	ErrLLMTemplateValidation = errors.New("template configuration invalid")
+
+	// ErrLLMProxyValidation is returned when an LLM proxy configuration fails parsing or validation.
+	ErrLLMProxyValidation = errors.New("proxy configuration invalid")
 )
 
 // LLMDeploymentParams carries input to deploy/update a provider
@@ -297,16 +310,15 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		return nil, err
 	}
 
-	err = s.validateSecretsWithPolicies(storedCfg)
-	if err != nil {
+	// Render template expressions to catch invalid function names or secret references early.
+	// The rendered Configuration is not persisted — SourceConfiguration (unrendered) is what
+	// the DB stores, and each replica's EventListener re-derives Configuration from it on consumption.
+	if err := templateengine.RenderSpec(storedCfg, s.deploymentService.secretResolver, params.Logger); err != nil {
 		return nil, err
 	}
 
-	// Important: Do not persist the resolved configuration
 	// Save or update using timestamp-guarded upsert.
 	// affected=false means a newer version already exists (stale event — no-op).
-	// Policy resolution happens in the EventListener after all replicas consume the
-	// published event, immediately before UpsertAPIConfig is called.
 	affected, err := s.deploymentService.saveOrUpdateConfig(storedCfg, params.Logger)
 	if err != nil {
 		params.Logger.Error("Failed to save or update LLM provider configuration",
@@ -364,7 +376,7 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 
 	// Parse configuration
 	if err := s.parser.Parse(params.Data, params.ContentType, &proxyConfig); err != nil {
-		return nil, fmt.Errorf("failed to parse proxy configuration: %w", err)
+		return nil, fmt.Errorf("%w: failed to parse proxy configuration: %v", ErrLLMProxyValidation, err)
 	}
 
 	// Validate
@@ -378,7 +390,7 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 			params.Logger.Warn("Validation error", slog.String("field", e.Field), slog.String("message", e.Message))
 			errs = append(errs, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
 		}
-		return nil, fmt.Errorf("proxy validation failed with %d error(s): %s", len(validationErrors), strings.Join(errs, "; "))
+		return nil, fmt.Errorf("%w: %d error(s): %s", ErrLLMProxyValidation, len(validationErrors), strings.Join(errs, "; "))
 	}
 
 	// Transform to RestAPI configuration
@@ -457,12 +469,13 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 		return nil, err
 	}
 
-	err = s.validateSecretsWithPolicies(storedCfg)
-	if err != nil {
+	// Render template expressions to catch invalid function names or secret references early.
+	// The rendered Configuration is not persisted — SourceConfiguration (unrendered) is what
+	// the DB stores, and each replica's EventListener re-derives Configuration from it on consumption.
+	if err := templateengine.RenderSpec(storedCfg, s.deploymentService.secretResolver, params.Logger); err != nil {
 		return nil, err
 	}
 
-	// Important: Do not persist the resolved configuration
 	// Save or update using timestamp-guarded upsert.
 	// Policy resolution happens in the EventListener after all replicas consume the
 	// published event, immediately before UpsertAPIConfig is called.
@@ -518,7 +531,7 @@ type LLMTemplateParams struct {
 func (s *LLMDeploymentService) parseAndValidateLLMTemplate(params LLMTemplateParams) (*api.LLMProviderTemplate, error) {
 	var tmpl api.LLMProviderTemplate
 	if err := s.parser.Parse(params.Spec, params.ContentType, &tmpl); err != nil {
-		return nil, fmt.Errorf("failed to parse template configuration: %w", err)
+		return nil, fmt.Errorf("%w: failed to parse template configuration: %v", ErrLLMTemplateValidation, err)
 	}
 	validationErrors := s.validator.Validate(&tmpl)
 	if len(validationErrors) > 0 {
@@ -532,7 +545,7 @@ func (s *LLMDeploymentService) parseAndValidateLLMTemplate(params LLMTemplatePar
 			}
 			errs = append(errs, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
 		}
-		return nil, fmt.Errorf("template validation failed with %d error(s): %s", len(validationErrors), strings.Join(errs, "; "))
+		return nil, fmt.Errorf("%w: %d error(s): %s", ErrLLMTemplateValidation, len(validationErrors), strings.Join(errs, "; "))
 	}
 	return &tmpl, nil
 }
@@ -563,7 +576,7 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 	// Persist to DB
 	if err := s.db.SaveLLMProviderTemplate(stored); err != nil {
 		if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
-			return nil, fmt.Errorf("template with handle '%s' already exists", tmpl.Metadata.Name)
+			return nil, fmt.Errorf("%w: template with handle '%s' already exists", storage.ErrConflict, tmpl.Metadata.Name)
 		}
 		return nil, fmt.Errorf("failed to save template to database: %w", err)
 	}
@@ -572,30 +585,6 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 	return stored, nil
 }
 
-// validateSecretsWithPolicies runs the stored configuration through policy resolution to validate referenced secrets against policy constraints.
-// Returns an error if any validation errors are found.
-func (s *LLMDeploymentService) validateSecretsWithPolicies(storedCfg *models.StoredConfig) error {
-	if s.deploymentService.policyResolver == nil {
-		return fmt.Errorf("policy resolver is not initialized")
-	}
-	_, validationErrors := s.deploymentService.policyResolver.ResolvePolicies(storedCfg)
-	if len(validationErrors) > 0 {
-		// Aggregate errors into a single error message
-		errMsgs := make([]string, 0, len(validationErrors))
-		for _, ve := range validationErrors {
-			errMsgs = append(errMsgs, ve.Message)
-		}
-		errMsg := strings.Join(errMsgs, "; ")
-
-		slog.Error("Policy resolution failed",
-			slog.String("config_handle", storedCfg.Handle),
-			slog.String("errors", errMsg),
-		)
-
-		return fmt.Errorf("policy resolution failed with %d errors: %s", len(validationErrors), errMsg)
-	}
-	return nil
-}
 
 // InitializeOOBTemplates persists OOB templates to database and memory store
 func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[string]*api.LLMProviderTemplate) error {
@@ -733,7 +722,10 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params LLMTemplateParams) (*models.StoredLLMProviderTemplate, error) {
 	existing, err := s.GetLLMProviderTemplateByHandle(handle)
 	if err != nil {
-		return nil, fmt.Errorf("template with handle '%s' not found", handle)
+		if storage.IsNotFoundError(err) {
+			return nil, fmt.Errorf("%w: handle=%s", ErrLLMTemplateNotFound, handle)
+		}
+		return nil, fmt.Errorf("failed to get LLM provider template by handle '%s': %w", handle, err)
 	}
 
 	tmpl, err := s.parseAndValidateLLMTemplate(params)
@@ -746,7 +738,7 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 	oldHandle := existing.GetHandle()
 	newHandle := tmpl.Metadata.Name
 	if oldHandle != newHandle {
-		return nil, fmt.Errorf("cannot change template handle from '%s' to '%s'. Use create/delete instead", oldHandle, newHandle)
+		return nil, fmt.Errorf("%w: cannot change template handle from '%s' to '%s'; use create/delete instead", ErrLLMTemplateValidation, oldHandle, newHandle)
 	}
 
 	updated := &models.StoredLLMProviderTemplate{
@@ -769,7 +761,10 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle, correlationID string, logger *slog.Logger) (*models.StoredLLMProviderTemplate, error) {
 	tmpl, err := s.GetLLMProviderTemplateByHandle(handle)
 	if err != nil {
-		return nil, fmt.Errorf("template with handle '%s' not found", handle)
+		if storage.IsNotFoundError(err) {
+			return nil, fmt.Errorf("%w: handle=%s", ErrLLMTemplateNotFound, handle)
+		}
+		return nil, fmt.Errorf("failed to get LLM provider template by handle '%s': %w", handle, err)
 	}
 
 	if err := s.db.DeleteLLMProviderTemplate(tmpl.UUID); err != nil {
@@ -1092,7 +1087,7 @@ func (s *LLMDeploymentService) UpdateLLMProxy(id string, params LLMDeploymentPar
 		return nil, fmt.Errorf("failed to look up LLM proxy: %w", err)
 	}
 	if existing == nil {
-		return nil, fmt.Errorf("LLM proxy configuration with handle '%s' not found", id)
+		return nil, fmt.Errorf("%w: LLM proxy configuration with handle '%s' not found", storage.ErrNotFound, id)
 	}
 
 	// Extract deploymentState from the incoming config
@@ -1149,7 +1144,7 @@ func (s *LLMDeploymentService) DeleteLLMProxy(handle, correlationID string, logg
 		return nil, fmt.Errorf("failed to look up LLM proxy: %w", err)
 	}
 	if cfg == nil {
-		return cfg, fmt.Errorf("LLM proxy configuration with handle '%s' not found", handle)
+		return nil, fmt.Errorf("%w: LLM proxy configuration with handle '%s' not found", storage.ErrNotFound, handle)
 	}
 	if err := s.db.RemoveAPIKeysAPI(cfg.UUID); err != nil {
 		return cfg, fmt.Errorf("failed to delete LLM proxy API keys from database: %w", err)

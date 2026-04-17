@@ -77,7 +77,7 @@ Feature: LLM Proxy Management Operations
 
   # ==================== UPDATE LLM PROXY ====================
 
-  Scenario: Update non-existent LLM proxy returns 400
+  Scenario: Update non-existent LLM proxy returns 404
     When I send a PUT request to the "gateway-controller" service at "/llm-proxies/non-existent-proxy-update" with body:
       """
       {
@@ -93,7 +93,7 @@ Feature: LLM Proxy Management Operations
         }
       }
       """
-    Then the response status should be 400
+    Then the response status should be 404
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
 

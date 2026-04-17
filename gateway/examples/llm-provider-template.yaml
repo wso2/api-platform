@@ -19,7 +19,7 @@
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProviderTemplate
 metadata:
-  name: openai
+  name: my-llm-provider-template
 spec:
   displayName: OpenAI
   promptTokens:

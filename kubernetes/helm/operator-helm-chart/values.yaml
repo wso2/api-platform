@@ -8,11 +8,26 @@ nameOverride: ""
 # Override the full name used for resource naming
 fullnameOverride: ""
 
+# Kubernetes Gateway API (gateway.networking.k8s.io) — standard-channel CRDs v1.3.0.
+# Leave false if Gateway API CRDs already exist (cloud add-on, Traefik "crd" chart, etc.).
+# Setting true when those CRDs are owned by another Helm release fails with:
+# "exists and cannot be imported into the current release: invalid ownership metadata".
+# Duplicate CRDs can also cause server-side apply conflicts on upgrade.
+# Set true only when no gateway*.gateway.networking.k8s.io CRDs are present yet.
+gatewayApi:
+  installStandardCRDs: false
+  # Passed through to operator config.yaml as gateway_api.gateway_class_names (Gateway API / HTTPRoute flow).
+  managedGatewayClassNames:
+    - wso2-api-platform
+  # Cluster DNS suffix for HTTPRoute → Service upstream URLs (<svc>.<ns>.svc.<clusterDomain>:<port>).
+  # Override with CLUSTER_DOMAIN on the operator Pod to take precedence over this file.
+  clusterDomain: cluster.local
+
 image:
   # repository: ghcr.io/wso2/api-platform/gateway-operator
   # For local registry: host.docker.internal:5000/gateway-operator
   repository: ghcr.io/wso2/api-platform/gateway-operator
-  tag: "0.4.0"
+  tag: "0.5.0"
   pullPolicy: Always  # Uses locally loaded image from nerdctl load
 
 serviceAccount:
@@ -55,7 +70,7 @@ gateway:
   controlPlaneHost: "http://platform-api:3001"
   helm:
     chartName: "oci://ghcr.io/wso2/api-platform/helm-charts/gateway"
-    chartVersion: "0.4.0"
+    chartVersion: "1.0.0"
     valuesFilePath: "/config/gateway_values.yaml"
     # Allow insecure connections to OCI registries (skips TLS verification, still uses HTTPS)
     insecureRegistry: false
@@ -84,7 +99,13 @@ gateway:
 
     # Component-level configuration
 
+    # Merged by the gateway-operator Helm client when a per-Gateway/APIGateway ConfigMap is
+    # used: operator pod loads this file first, then deep-merges overlay YAML. Keep platform fixes
+    # (probes, auth paths, images) here; the released gateway chart stays default upstream.
     gateway:
+      # For default operator-managed installs, keep development mode on to avoid
+      # requiring encryption key secret bootstrap during quick-start/demo flows.
+      developmentMode: true
       # Shared configuration for gateway-controller and policy-engine
       # This config is mounted to both components as /configs/config.yaml
       config:
@@ -97,6 +118,10 @@ gateway:
                   password: "admin"
                   password_hashed: false
                   roles: ["admin"]
+            idp:
+              enabled: false
+              roles_claim: ""
+              role_mapping: {}
           # Server configuration
           server:
             # REST API port for gateway management
@@ -242,10 +267,8 @@ gateway:
             # Connection mode: "uds" (Unix domain socket, default) or "tcp"
             mode: uds
 
-            # Policy engine host (hostname or IP address)
-            host: policy-engine
-
-            # Policy engine ext_proc port
+            # Omit host for unified gateway-runtime (Envoy talks to policy-engine over UDS).
+            # Do not set host to the split-chart-only Service name (e.g. policy-engine).
             port: 9001
 
             # Timeout for gRPC service connection (in milliseconds)
@@ -354,7 +377,7 @@ gateway:
       controller:
         image:
           repository: ghcr.io/wso2/api-platform/gateway-controller
-          tag: "0.4.0"
+          tag: "1.0.0"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -365,6 +388,8 @@ gateway:
             rest: 9090
             xds: 18000
             policy: 18001
+            admin: 9092
+            metrics: 9091
         controlPlane:
           host: host.docker.internal
           port: 8443
@@ -430,6 +455,8 @@ gateway:
         storage:
           type: sqlite
           sqlitePath: ./data/gateway.db
+        metrics:
+          port: 9091
         persistence:
           enabled: true
           existingClaim: ""
@@ -451,10 +478,13 @@ gateway:
           podAnnotations: {}
           podLabels: {}
           priorityClassName: ""
+          # Use named port admin (controller admin HTTP server), not rest. GET /health on :9090
+          # goes through Gin + basic auth and returns 401 for kube-probe; standalone chart defaults
+          # use admin :9092 where /health is probe-safe.
           livenessProbe:
             httpGet:
               path: /health
-              port: rest
+              port: admin
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5
@@ -462,7 +492,7 @@ gateway:
           readinessProbe:
             httpGet:
               path: /health
-              port: rest
+              port: admin
             initialDelaySeconds: 5
             periodSeconds: 5
             timeoutSeconds: 3
@@ -482,10 +512,10 @@ gateway:
           tolerations: []
           affinity: {}
 
-      router:
+      gatewayRuntime:
         image:
-          repository: ghcr.io/wso2/api-platform/gateway-router
-          tag: "0.4.0"
+          repository: ghcr.io/wso2/api-platform/gateway-runtime
+          tag: "1.0.0"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -495,89 +525,43 @@ gateway:
           ports:
             http: 8080
             https: 8443
-            admin: 9901
+            envoyAdmin: 9901
+            policyEngineAdmin: 9002
+            policyEngineMetrics: 9003
         deployment:
           enabled: true
           replicaCount: 1
           env:
             gatewayControllerHost: ""
+            logLevel: info
+            moesifKey: ""
           extraEnv: []
+          extraEnvFrom: []
+          extraVolumeMounts: []
+          extraVolumes: []
           labels: {}
           annotations: {}
           podAnnotations: {}
           podLabels: {}
           priorityClassName: ""
+          # Probe tuning for Envoy bootstrap:
+          # - readiness checks Envoy /ready on admin port
+          # - liveness stays loose and uses policy-engine /health
+          # - startup probe absorbs xDS/CDS bootstrap delay before readiness/liveness gates
           livenessProbe:
-            httpGet:
-              path: /ready
-              port: admin
+            exec:
+              command: ["health-check.sh"]
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
           readinessProbe:
-            httpGet:
-              path: /ready
-              port: admin
+            exec:
+              command: ["health-check.sh"]
             initialDelaySeconds: 10
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 6
-          # Resource limits and requests
-          # Uncomment and adjust based on your workload
-          resources: {}
-            # limits:
-            #   cpu: 1000m
-            #   memory: 1Gi
-            # requests:
-            #   cpu: 500m
-            #   memory: 512Mi
-          podSecurityContext: {}
-          securityContext: {}
-          nodeSelector: {}
-          tolerations: []
-          affinity: {}
-
-      policyEngine:
-        image:
-          repository: ghcr.io/wso2/api-platform/policy-engine
-          tag: "0.4.0"
-          pullPolicy: Always
-        imagePullSecrets: []
-        service:
-          type: ClusterIP
-          annotations: {}
-          labels: {}
-          ports:
-            ext: 9001
-            admin: 9002
-        deployment:
-          enabled: true
-          replicaCount: 1
-          env:
-            xdsServerAddress: ""
-          extraEnv: []
-          labels: {}
-          annotations: {}
-          podAnnotations: {}
-          podLabels: {}
-          priorityClassName: ""
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 9002
-            initialDelaySeconds: 10
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 9002
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            timeoutSeconds: 3
-            failureThreshold: 3
           # Resource limits and requests
           # Uncomment and adjust based on your workload
           resources: {}

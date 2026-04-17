@@ -26,6 +26,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
@@ -85,11 +86,10 @@ func (l *EventListener) handleLLMProviderCreateOrUpdate(event eventhub.Event) {
 		return
 	}
 
-	// Resolve policy configuration (handles secret resolution)
-	resolvedCfg, err := l.resolvePolicyConfiguration(storedConfig)
-	if err != nil {
-		l.logger.Error("Failed to resolve policy configuration for API",
-			slog.String("api_id", entityID),
+	// Render template expressions in the spec (e.g. {{ secret "..." }}, {{ env "..." }}).
+	if err := templateengine.RenderSpec(storedConfig, l.secretResolver, l.logger); err != nil {
+		l.logger.Error("Failed to render config templates for LLM provider",
+			slog.String("provider_id", entityID),
 			slog.String("event_id", event.EventID),
 			slog.Any("error", err))
 		return
@@ -123,7 +123,7 @@ func (l *EventListener) handleLLMProviderCreateOrUpdate(event eventhub.Event) {
 	}
 
 	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after LLM provider replica sync")
-	l.updatePoliciesForAPI(resolvedCfg, event.EventID)
+	l.updatePoliciesForAPI(storedConfig, event.EventID)
 
 	l.logger.Info("Successfully processed LLM provider create/update event",
 		slog.String("provider_id", entityID),
@@ -158,11 +158,10 @@ func (l *EventListener) handleLLMProxyCreateOrUpdate(event eventhub.Event) {
 		return
 	}
 
-	// Resolve policy configuration (handles secret resolution)
-	resolvedCfg, err := l.resolvePolicyConfiguration(storedConfig)
-	if err != nil {
-		l.logger.Error("Failed to resolve policy configuration for API",
-			slog.String("api_id", entityID),
+	// Render template expressions in the spec (e.g. {{ secret "..." }}, {{ env "..." }}).
+	if err := templateengine.RenderSpec(storedConfig, l.secretResolver, l.logger); err != nil {
+		l.logger.Error("Failed to render config templates for LLM proxy",
+			slog.String("proxy_id", entityID),
 			slog.String("event_id", event.EventID),
 			slog.Any("error", err))
 		return
@@ -186,7 +185,7 @@ func (l *EventListener) handleLLMProxyCreateOrUpdate(event eventhub.Event) {
 	}
 
 	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after LLM proxy replica sync")
-	l.updatePoliciesForAPI(resolvedCfg, event.EventID)
+	l.updatePoliciesForAPI(storedConfig, event.EventID)
 
 	l.logger.Info("Successfully processed LLM proxy create/update event",
 		slog.String("proxy_id", entityID),

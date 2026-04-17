@@ -279,6 +279,19 @@ type MCPProxyRepository interface {
 	Exists(handle, orgUUID string) (bool, error)
 }
 
+// WebSubAPIRepository defines the interface for WebSub API persistence
+type WebSubAPIRepository interface {
+	Create(api *model.WebSubAPI) error
+	GetByHandle(handle, orgUUID string) (*model.WebSubAPI, error)
+	GetByUUID(uuid, orgUUID string) (*model.WebSubAPI, error)
+	List(orgUUID, projectUUID string, limit, offset int) ([]*model.WebSubAPI, error)
+	Count(orgUUID string) (int, error)
+	CountByProject(orgUUID, projectUUID string) (int, error)
+	Update(api *model.WebSubAPI) error
+	Delete(handle, orgUUID string) error
+	Exists(handle, orgUUID string) (bool, error)
+}
+
 // CustomPolicyRepository defines the interface for custom policy persistence
 type CustomPolicyRepository interface {
 	InsertCustomPolicy(policy *model.CustomPolicy) error

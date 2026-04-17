@@ -30,7 +30,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
@@ -165,7 +164,6 @@ func TestHandleEvent_LLMProviderCreate_RehydratesConfigAndPolicyFromDB(t *testin
 		},
 		systemConfig:      &config.Config{},
 		policyDefinitions: policyDefs,
-		policyResolver:    resolver.NewPolicyResolver(policyDefs, nil),
 		logger:            newTestLogger(),
 	}
 
@@ -289,7 +287,6 @@ func TestHandleEvent_LLMProxyCreate_RehydratesConfigAndPolicyFromDB(t *testing.T
 		},
 		systemConfig:      &config.Config{},
 		policyDefinitions: policyDefs,
-		policyResolver:    resolver.NewPolicyResolver(policyDefs, nil),
 		logger:            newTestLogger(),
 	}
 

@@ -624,6 +624,47 @@ func (s *APIUtilsService) FetchMCPProxyDefinition(proxyID string) ([]byte, error
 	return bodyBytes, nil
 }
 
+// FetchWebSubAPIDefinition downloads the WebSub API definition as a zip file from the control plane
+func (s *APIUtilsService) FetchWebSubAPIDefinition(apiID string) ([]byte, error) {
+	apiURL := s.getBaseURL() + "/websub-apis/" + apiID
+
+	s.logger.Debug("Fetching WebSub API definition",
+		slog.String("api_id", apiID),
+		slog.String("url", apiURL),
+	)
+
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Add("api-key", s.config.Token)
+	req.Header.Add("Accept", "application/zip")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch WebSub API definition: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("WebSub API request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	s.logger.Debug("Successfully fetched WebSub API definition",
+		slog.String("api_id", apiID),
+		slog.Int("size_bytes", len(bodyBytes)),
+	)
+
+	return bodyBytes, nil
+}
+
 // CreateMCPProxyFromYAML creates an MCP proxy configuration from YAML data using the MCP deployment service
 func (s *APIUtilsService) CreateMCPProxyFromYAML(yamlData []byte, proxyID string, deploymentID string,
 	deployedAt *time.Time, correlationID string,

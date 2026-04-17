@@ -17,7 +17,7 @@
 # --------------------------------------------------------------------
 
 # This example demonstrates various rate limiting configurations
-# See the documentation at: docs/gateway/policies/ratelimit.md
+# See the documentation at: https://github.com/wso2/gateway-controllers/blob/main/docs/README.md
 
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: RestApi
@@ -33,13 +33,13 @@ spec:
 
   # API-level rate limiting: Apply to all operations
   policies:
-    - name: basic-ratelimit                                                                                                                                  
-      version: v1                                                                                                                                        
-      params:                                                                                                                                            
-        limits:                                                                                                                                              
-          - limit: 100                                                                                                                                       
-            duration: "1m"                                                                                                                                   
-          - limit: 1000                                                                                                                                      
+    - name: basic-ratelimit
+      version: v1
+      params:
+        limits:
+          - requests: 10
+            duration: "1m"
+          - requests: 50
             duration: "1h"
 
   operations:
@@ -49,16 +49,16 @@ spec:
       path: /products
       description: "Get product catalog - standard rate limit"
 
-    # Example 2: Per-operation with different cost (weighted rate limiting)
+    # Example 2: Per-operation with different cost (weighted rate limiting + inherits API-level policy)
     # Complex queries cost more tokens than simple lookups
     - method: GET
       path: /products/search
       policies:
-        - name: basic-ratelimit                                                                                                                                  
-          version: v1                                                                                                                                        
-          params:                                                                                                                                            
-            limits:                                                                                                                                              
-              - limit: 200                                                                                                                                       
-                duration: "1m"                                                                                                                                   
-              - limit: 2000                                                                                                                                      
+        - name: basic-ratelimit
+          version: v1
+          params:
+            limits:
+              - requests: 5
+                duration: "1m"
+              - requests: 100
                 duration: "1h"

@@ -405,6 +405,28 @@ const (
 	ValidateAPIProjectRequestProviderGitlab    ValidateAPIProjectRequestProvider = "gitlab"
 )
 
+// Defines values for WebSubAPILifeCycleStatus.
+const (
+	WebSubAPILifeCycleStatusCREATED    WebSubAPILifeCycleStatus = "CREATED"
+	WebSubAPILifeCycleStatusDEPRECATED WebSubAPILifeCycleStatus = "DEPRECATED"
+	WebSubAPILifeCycleStatusPUBLISHED  WebSubAPILifeCycleStatus = "PUBLISHED"
+	WebSubAPILifeCycleStatusRETIRED    WebSubAPILifeCycleStatus = "RETIRED"
+)
+
+// Defines values for WebSubAPITransport.
+const (
+	Http  WebSubAPITransport = "http"
+	Https WebSubAPITransport = "https"
+)
+
+// Defines values for WebSubAPIListItemLifeCycleStatus.
+const (
+	WebSubAPIListItemLifeCycleStatusCREATED    WebSubAPIListItemLifeCycleStatus = "CREATED"
+	WebSubAPIListItemLifeCycleStatusDEPRECATED WebSubAPIListItemLifeCycleStatus = "DEPRECATED"
+	WebSubAPIListItemLifeCycleStatusPUBLISHED  WebSubAPIListItemLifeCycleStatus = "PUBLISHED"
+	WebSubAPIListItemLifeCycleStatusRETIRED    WebSubAPIListItemLifeCycleStatus = "RETIRED"
+)
+
 // Defines values for ArtifactTypeQ.
 const (
 	ArtifactTypeQAPIPRODUCT ArtifactTypeQ = "API_PRODUCT"
@@ -2075,12 +2097,13 @@ type OrganizationSubscription struct {
 
 // OrganizationSubscriptionQuotas defines model for OrganizationSubscriptionQuotas.
 type OrganizationSubscriptionQuotas struct {
-	Apis         OrganizationQuota `json:"apis" yaml:"apis"`
-	Applications OrganizationQuota `json:"applications" yaml:"applications"`
-	Gateways     OrganizationQuota `json:"gateways" yaml:"gateways"`
-	LlmProviders OrganizationQuota `json:"llmProviders" yaml:"llmProviders"`
-	LlmProxies   OrganizationQuota `json:"llmProxies" yaml:"llmProxies"`
-	McpProxies   OrganizationQuota `json:"mcpProxies" yaml:"mcpProxies"`
+	Apis         OrganizationQuota  `json:"apis" yaml:"apis"`
+	Applications OrganizationQuota  `json:"applications" yaml:"applications"`
+	Gateways     OrganizationQuota  `json:"gateways" yaml:"gateways"`
+	LlmProviders OrganizationQuota  `json:"llmProviders" yaml:"llmProviders"`
+	LlmProxies   OrganizationQuota  `json:"llmProxies" yaml:"llmProxies"`
+	McpProxies   OrganizationQuota  `json:"mcpProxies" yaml:"mcpProxies"`
+	WebsubApis   *OrganizationQuota `json:"websubApis,omitempty" yaml:"websubApis,omitempty"`
 }
 
 // Owners API ownership information
@@ -2971,6 +2994,79 @@ type ValidateOpenAPIRequest0 = interface{}
 // ValidateOpenAPIRequest1 defines model for .
 type ValidateOpenAPIRequest1 = interface{}
 
+// WebSubAPI defines model for WebSubAPI.
+type WebSubAPI struct {
+	// Channels List of channels for this async API
+	Channels []Channel `binding:"required" json:"channels" yaml:"channels"`
+
+	// Context Base path for the API (must start with /)
+	Context   *string    `json:"context,omitempty" yaml:"context,omitempty"`
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// CreatedBy Username of the creator
+	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// Id Unique handle for the async API
+	Id string `binding:"required" json:"id" yaml:"id"`
+
+	// Kind Kind of the async API
+	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
+
+	// LifeCycleStatus Lifecycle status of the async API
+	LifeCycleStatus *WebSubAPILifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
+
+	// Name Human-readable name for the async API
+	Name string `binding:"required" json:"name" yaml:"name"`
+
+	// Policies List of policies to be applied
+	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+
+	// ProjectId UUID of the project this API belongs to
+	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
+
+	// SubscriptionPlans List of subscription plan IDs
+	SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+
+	// Transport Supported transport protocols
+	Transport *[]WebSubAPITransport `json:"transport,omitempty" yaml:"transport,omitempty"`
+	UpdatedAt *time.Time            `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// Upstream Upstream backend configuration with main and sandbox endpoints
+	Upstream Upstream `json:"upstream" yaml:"upstream"`
+
+	// Version Semantic version of the async API
+	Version string `binding:"required" json:"version" yaml:"version"`
+}
+
+// WebSubAPILifeCycleStatus Lifecycle status of the async API
+type WebSubAPILifeCycleStatus string
+
+// WebSubAPITransport defines model for WebSubAPI.Transport.
+type WebSubAPITransport string
+
+// WebSubAPIListItem defines model for WebSubAPIListItem.
+type WebSubAPIListItem struct {
+	Context         *string                           `json:"context,omitempty" yaml:"context,omitempty"`
+	CreatedAt       *time.Time                        `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	Id              *string                           `json:"id,omitempty" yaml:"id,omitempty"`
+	LifeCycleStatus *WebSubAPIListItemLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
+	Name            *string                           `json:"name,omitempty" yaml:"name,omitempty"`
+	ProjectId       *string                           `json:"projectId,omitempty" yaml:"projectId,omitempty"`
+	UpdatedAt       *time.Time                        `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	Version         *string                           `json:"version,omitempty" yaml:"version,omitempty"`
+}
+
+// WebSubAPIListItemLifeCycleStatus defines model for WebSubAPIListItem.LifeCycleStatus.
+type WebSubAPIListItemLifeCycleStatus string
+
+// WebSubAPIListResponse defines model for WebSubAPIListResponse.
+type WebSubAPIListResponse struct {
+	Count      int                 `binding:"required" json:"count" yaml:"count"`
+	List       []WebSubAPIListItem `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination          `json:"pagination" yaml:"pagination"`
+}
+
 // ArtifactTypeQ defines model for ArtifactType-Q.
 type ArtifactTypeQ string
 
@@ -3369,6 +3465,31 @@ type UpdateSubscriptionParams struct {
 	SubscriberId string `form:"subscriberId" json:"subscriberId" yaml:"subscriberId"`
 }
 
+// ListWebSubAPIsParams defines parameters for ListWebSubAPIs.
+type ListWebSubAPIsParams struct {
+	ProjectId string `form:"projectId" json:"projectId" yaml:"projectId"`
+	Limit     *int   `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+	Offset    *int   `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
+
+// GetWebSubAPIDeploymentsParams defines parameters for GetWebSubAPIDeployments.
+type GetWebSubAPIDeploymentsParams struct {
+	GatewayId *openapi_types.UUID `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
+	Status    *string             `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+// RestoreWebSubAPIDeploymentParams defines parameters for RestoreWebSubAPIDeployment.
+type RestoreWebSubAPIDeploymentParams struct {
+	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
+	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+}
+
+// UndeployWebSubAPIParams defines parameters for UndeployWebSubAPI.
+type UndeployWebSubAPIParams struct {
+	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
+	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+}
+
 // CreateApplicationJSONRequestBody defines body for CreateApplication for application/json ContentType.
 type CreateApplicationJSONRequestBody = CreateApplicationRequest
 
@@ -3494,6 +3615,24 @@ type ValidateAPIProjectJSONRequestBody = ValidateAPIProjectRequest
 
 // ValidateOpenAPIMultipartRequestBody defines body for ValidateOpenAPI for multipart/form-data ContentType.
 type ValidateOpenAPIMultipartRequestBody = ValidateOpenAPIRequest
+
+// CreateWebSubAPIJSONRequestBody defines body for CreateWebSubAPI for application/json ContentType.
+type CreateWebSubAPIJSONRequestBody = WebSubAPI
+
+// UpdateWebSubAPIJSONRequestBody defines body for UpdateWebSubAPI for application/json ContentType.
+type UpdateWebSubAPIJSONRequestBody = WebSubAPI
+
+// CreateWebSubAPIKeyJSONRequestBody defines body for CreateWebSubAPIKey for application/json ContentType.
+type CreateWebSubAPIKeyJSONRequestBody = CreateAPIKeyRequest
+
+// DeployWebSubAPIJSONRequestBody defines body for DeployWebSubAPI for application/json ContentType.
+type DeployWebSubAPIJSONRequestBody = DeployRequest
+
+// PublishWebSubAPIToDevPortalJSONRequestBody defines body for PublishWebSubAPIToDevPortal for application/json ContentType.
+type PublishWebSubAPIToDevPortalJSONRequestBody = PublishToDevPortalRequest
+
+// UnpublishWebSubAPIFromDevPortalJSONRequestBody defines body for UnpublishWebSubAPIFromDevPortal for application/json ContentType.
+type UnpublishWebSubAPIFromDevPortalJSONRequestBody = UnpublishFromDevPortalRequest
 
 // AsImportOpenAPIRequest0 returns the union data inside the ImportOpenAPIRequest as a ImportOpenAPIRequest0
 func (t ImportOpenAPIRequest) AsImportOpenAPIRequest0() (ImportOpenAPIRequest0, error) {

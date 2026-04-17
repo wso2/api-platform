@@ -181,9 +181,9 @@ Required roles: `admin`, `developer`
   "apis": [
     {
       "id": "reading-list-api-v1.0",
-      "displayName": "Weather API",
+      "displayName": "Reading List API",
       "version": "v1.0",
-      "context": "/weather/$version",
+      "context": "/reading-list/$version",
       "status": "deployed",
       "createdAt": "2025-10-11T10:30:00Z",
       "updatedAt": "2025-10-11T10:30:00Z"

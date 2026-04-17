@@ -103,6 +103,7 @@ func (t *LLMTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeDep
 	if llmMeta != nil {
 		rdc.Metadata.LLM = llmMeta
 	}
+	rdc.SensitiveValues = cfg.SensitiveValues
 
 	return rdc, nil
 }

@@ -1,0 +1,19 @@
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: hello-normal-api
+  namespace: apigateway-demo
+  labels:
+    # Must match APIGateway.spec.apiSelector.matchLabels (registry binds RestApi → gateway).
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  displayName: hello-normal-api
+  version: v1.0
+  context: /hello-normal
+  upstream:
+    main:
+      url: http://hello-backend.apigateway-demo.svc.cluster.local:9080
+  operations:
+    - method: GET
+      path: /
+
