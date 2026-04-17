@@ -257,6 +257,8 @@ func (h *WebSubAPIDeploymentHandler) handleDeploymentError(c *gin.Context, err e
 		c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Cannot delete an active deployment - undeploy it first"))
 	case errors.Is(err, constants.ErrDeploymentAlreadyDeployed):
 		c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Cannot restore currently deployed deployment"))
+	case errors.Is(err, constants.ErrInvalidDeploymentRestoreState):
+		c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Deployment cannot be restored: only ARCHIVED or UNDEPLOYED deployments are eligible"))
 	case errors.Is(err, constants.ErrGatewayIDMismatch):
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Deployment is bound to a different gateway"))
 	case errors.Is(err, constants.ErrAPINoBackendServices):

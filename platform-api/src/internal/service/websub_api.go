@@ -316,10 +316,10 @@ func (s *WebSubAPIService) Delete(orgUUID, handle string) error {
 	// Send deletion events to all gateways in the organization
 	if s.gatewayEventsService != nil && len(gateways) > 0 {
 		for _, gateway := range gateways {
-			deletionEvent := &model.APIDeletionEvent{
+			deletionEvent := &model.WebSubAPIDeletionEvent{
 				ApiId: websubAPI.UUID,
 			}
-			if err := s.gatewayEventsService.BroadcastAPIDeletionEvent(gateway.ID, deletionEvent); err != nil {
+			if err := s.gatewayEventsService.BroadcastWebSubAPIDeletionEvent(gateway.ID, deletionEvent); err != nil {
 				s.slogger.Warn("Failed to broadcast WebSub API deletion event", "error", err, "gatewayID", gateway.ID, "apiUUID", websubAPI.UUID)
 			} else {
 				s.slogger.Info("WebSub API deletion event sent", "gatewayID", gateway.ID, "apiUUID", websubAPI.UUID)

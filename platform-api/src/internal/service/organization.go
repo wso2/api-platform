@@ -105,7 +105,10 @@ func (s *OrganizationService) GetOrganizationSubscription(orgID string) (*api.Or
 		return nil, err
 	}
 
-	websubAPICount, _ := s.websubAPIRepo.Count(orgID)
+	websubAPICount, err := s.websubAPIRepo.Count(orgID)
+	if err != nil {
+		return nil, err
+	}
 
 	gateways, err := s.gatewayRepo.GetByOrganizationID(orgID)
 	if err != nil {

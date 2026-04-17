@@ -343,6 +343,11 @@ func (s *WebSubAPIDeploymentService) restoreWebSubAPIDeployment(apiUUID string, 
 		return nil, constants.ErrDeploymentNotFound
 	}
 
+	// Only allow restoring ARCHIVED (nil status) or UNDEPLOYED deployments
+	if targetDeployment.Status != nil && *targetDeployment.Status != model.DeploymentStatusUndeployed {
+		return nil, constants.ErrInvalidDeploymentRestoreState
+	}
+
 	if targetDeployment.GatewayID != *gatewayId {
 		return nil, constants.ErrGatewayIDMismatch
 	}

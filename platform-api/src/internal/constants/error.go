@@ -93,7 +93,8 @@ var (
 	ErrDeploymentBaseRequired      = errors.New("base is required")
 	ErrDeploymentGatewayIDRequired = errors.New("gatewayId is required")
 	ErrAPINoBackendServices        = errors.New("API must have at least one backend service attached before deployment")
-	ErrDeploymentAlreadyDeployed   = errors.New("cannot restore to the currently deployed deployment")
+	ErrDeploymentAlreadyDeployed        = errors.New("cannot restore to the currently deployed deployment")
+	ErrInvalidDeploymentRestoreState    = errors.New("deployment cannot be restored: only ARCHIVED or UNDEPLOYED deployments are eligible")
 	ErrGatewayIDMismatch           = errors.New("gateway ID mismatch: deployment is bound to a different gateway")
 )
 

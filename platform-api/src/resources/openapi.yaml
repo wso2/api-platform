@@ -8724,7 +8724,6 @@ components:
     WebSubAPI:
       type: object
       required:
-        - id
         - name
         - version
         - projectId
