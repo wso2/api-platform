@@ -135,12 +135,14 @@ func (s *APIServer) CreateSubscription(c *gin.Context) {
 		appID = req.ApplicationId
 	}
 	sub := &models.Subscription{
-		ID:                 uuid.New().String(),
-		APIID:              apiID,
-		ApplicationID:      appID,
-		SubscriptionPlanID: req.SubscriptionPlanId,
-		Status:             status,
-		SubscriptionToken:  strings.TrimSpace(req.SubscriptionToken),
+		ID:                    uuid.New().String(),
+		APIID:                 apiID,
+		ApplicationID:         appID,
+		SubscriptionPlanID:    req.SubscriptionPlanId,
+		BillingCustomerID:     req.BillingCustomerId,
+		BillingSubscriptionID: req.BillingSubscriptionId,
+		Status:                status,
+		SubscriptionToken:     strings.TrimSpace(req.SubscriptionToken),
 	}
 	if err := s.getSubscriptionResourceService().SaveSubscription(sub, correlationID, log); err != nil {
 		if storage.IsConflictError(err) {
@@ -325,6 +327,12 @@ func subscriptionToResponse(sub *models.Subscription) api.SubscriptionResponse {
 	}
 	if sub.SubscriptionPlanID != nil {
 		resp.SubscriptionPlanId = sub.SubscriptionPlanID
+	}
+	if sub.BillingCustomerID != nil {
+		resp.BillingCustomerId = sub.BillingCustomerID
+	}
+	if sub.BillingSubscriptionID != nil {
+		resp.BillingSubscriptionId = sub.BillingSubscriptionID
 	}
 	if sub.Status != "" {
 		st := api.SubscriptionResponseStatus(sub.Status)

@@ -1423,7 +1423,14 @@ type SubscriptionCreateRequest struct {
 	ApiId string `json:"apiId" yaml:"apiId"`
 
 	// ApplicationId Application identifier (from DevPortal/STS). Optional for token-based subscriptions.
-	ApplicationId *string                          `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
+	ApplicationId *string `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
+
+	// BillingCustomerId Billing customer identifier (optional, for subscriptions).
+	BillingCustomerId *string `json:"billingCustomerId,omitempty" yaml:"billingCustomerId,omitempty"`
+
+	// BillingSubscriptionId Billing subscription identifier (optional, for subscriptions).
+	BillingSubscriptionId *string `json:"billingSubscriptionId,omitempty" yaml:"billingSubscriptionId,omitempty"`
+	
 	Status        *SubscriptionCreateRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
 
 	// SubscriptionPlanId Subscription plan UUID for rate limit and billing configuration.
@@ -1502,12 +1509,18 @@ type SubscriptionPlanUpdateRequestThrottleLimitUnit string
 
 // SubscriptionResponse defines model for SubscriptionResponse.
 type SubscriptionResponse struct {
-	ApiId         *string                     `json:"apiId,omitempty" yaml:"apiId,omitempty"`
-	ApplicationId *string                     `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
-	CreatedAt     *time.Time                  `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	GatewayId     *string                     `json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
-	Id            *string                     `json:"id,omitempty" yaml:"id,omitempty"`
-	Status        *SubscriptionResponseStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	ApiId         *string `json:"apiId,omitempty" yaml:"apiId,omitempty"`
+	ApplicationId *string `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
+
+	// BillingCustomerId Billing customer identifier
+	BillingCustomerId *string `json:"billingCustomerId,omitempty" yaml:"billingCustomerId,omitempty"`
+
+	// BillingSubscriptionId Billing subscription identifier
+	BillingSubscriptionId *string                     `json:"billingSubscriptionId,omitempty" yaml:"billingSubscriptionId,omitempty"`
+	CreatedAt             *time.Time                  `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	GatewayId             *string                     `json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
+	Id                    *string                     `json:"id,omitempty" yaml:"id,omitempty"`
+	Status                *SubscriptionResponseStatus `json:"status,omitempty" yaml:"status,omitempty"`
 
 	// SubscriptionPlanId Subscription plan UUID
 	SubscriptionPlanId *string `json:"subscriptionPlanId,omitempty" yaml:"subscriptionPlanId,omitempty"`

@@ -330,12 +330,14 @@ type WebSubAPIDeletedEvent struct {
 
 // SubscriptionCreatedEventPayload represents the payload of a subscription created event.
 type SubscriptionCreatedEventPayload struct {
-	APIID              string `json:"apiId"`
-	SubscriptionID     string `json:"subscriptionId"`
-	ApplicationID      string `json:"applicationId,omitempty"`
-	SubscriptionToken  string `json:"subscriptionToken"`
-	SubscriptionPlanId string `json:"subscriptionPlanId,omitempty"`
-	Status             string `json:"status"`
+	APIID              	  string `json:"apiId"`
+	SubscriptionID     	  string `json:"subscriptionId"`
+	ApplicationID      	  string `json:"applicationId,omitempty"`
+	SubscriptionToken  	  string `json:"subscriptionToken"`
+	SubscriptionPlanId 	  string `json:"subscriptionPlanId,omitempty"`
+	Status             	  string `json:"status"`
+	BillingCustomerID 	  string `json:"billingCustomerId,omitempty"`
+	BillingSubscriptionID string `json:"billingSubscriptionId,omitempty"`
 }
 
 // SubscriptionCreatedEvent represents the complete subscription.created event.
