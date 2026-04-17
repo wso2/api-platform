@@ -100,6 +100,9 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 	})
 	if err != nil {
 		log.Error("Failed to create LLM provider", slog.Any("error", err))
+		if mapRenderError(c, "create", err) {
+			return
+		}
 		if utils.IsPolicyDefinitionMissingError(err) {
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
@@ -207,6 +210,9 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 	})
 	if err != nil {
 		log.Error("Failed to update LLM provider configuration", slog.Any("error", err))
+		if mapRenderError(c, "update", err) {
+			return
+		}
 		if utils.IsPolicyDefinitionMissingError(err) {
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",

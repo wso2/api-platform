@@ -26,12 +26,15 @@ import (
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
-// DumpConfig dumps the current policy engine configuration
-func DumpConfig(k *kernel.Kernel, reg *registry.PolicyRegistry, policyChainVersion string) *ConfigDumpResponse {
+// DumpConfig dumps the current policy engine configuration.
+// routes must be a snapshot obtained from kernel.DumpRoutesAndSensitiveValues so that the
+// policy chains in the dump correspond to the same xDS generation as the sensitive values
+// used for redaction in the caller.
+func DumpConfig(routes map[string]*registry.PolicyChain, k *kernel.Kernel, reg *registry.PolicyRegistry, policyChainVersion string) *ConfigDumpResponse {
 	return &ConfigDumpResponse{
 		Timestamp:      time.Now(),
 		PolicyRegistry: dumpPolicyRegistry(reg),
-		PolicyChains:   dumpPolicyChains(k),
+		PolicyChains:   dumpPolicyChains(routes),
 		RouteMetadata:  dumpRouteMetadata(k),
 		LazyResources:  dumpLazyResources(),
 		XDSSync: XDSSyncInfo{
@@ -58,11 +61,8 @@ func dumpPolicyRegistry(reg *registry.PolicyRegistry) PolicyRegistryDump {
 	}
 }
 
-// dumpPolicyChains creates a dump of all policy chain configurations
-func dumpPolicyChains(k *kernel.Kernel) PolicyChainsDump {
-	routes := k.DumpRoutes()
-	// TODO: (renuka) Redact sensitive info from parameters if any
-
+// dumpPolicyChains creates a dump of all policy chain configurations from a pre-fetched snapshot.
+func dumpPolicyChains(routes map[string]*registry.PolicyChain) PolicyChainsDump {
 	entries := make([]PolicyChainEntry, 0, len(routes))
 	for routeKey, chain := range routes {
 		entries = append(entries, PolicyChainEntry{

@@ -19,6 +19,7 @@
 package immutable
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -63,7 +64,8 @@ func NewImmutableGW(
 
 // LoadArtifacts walks the configured artifacts directory and applies all YAML resources
 // via the service layer in dependency order. It is a no-op when immutable mode is disabled.
-// Returns an error on the first artifact that fails; the caller should treat this as fatal.
+// All artifacts are attempted; any failures are collected and returned as a single joined
+// error so the caller sees the full set of problems on startup.
 func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 	if !g.cfg.Enabled {
 		return nil
@@ -137,10 +139,14 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 		slog.Int("llm_provider_templates", len(pass1)),
 		slog.Int("llm_providers", len(pass2)))
 
+	var errs []error
 	for _, a := range append(append(pass1, pass2...), pass3...) {
 		if err := g.applyArtifact(a.path, a.kind, a.contentType, a.data, log); err != nil {
-			return err
+			errs = append(errs, err)
 		}
+	}
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
 
 	log.Info("All immutable gateway artifacts loaded", slog.Int("count", total))

@@ -1,8 +1,9 @@
 // Package policyv1alpha2 provides the policy interface for the WSO2 API Gateway.
 //
-// Policies declare capabilities by implementing phase-specific sub-interfaces.
-// The kernel discovers which phases a policy participates in via type assertions
-// at chain-build time — once at startup, with zero per-request overhead.
+// Policies declare phase participation via Mode(), which is the authoritative
+// source for all six processing phases. Phase-specific sub-interfaces provide
+// the method implementations; the kernel uses type assertions only for method
+// dispatch and streaming capability validation at chain-build time.
 package policyv1alpha2
 
 import "context"

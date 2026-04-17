@@ -48,7 +48,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
@@ -894,7 +893,6 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 	parser := config.NewParser()
 	validator := config.NewAPIValidator()
 	policyDefs := make(map[string]models.PolicyDefinition)
-	policyResolver := resolver.NewPolicyResolver(policyDefs, nil)
 	routerCfg := &config.RouterConfig{
 		GatewayHost: "localhost",
 		VHosts:      *vhosts,
@@ -933,10 +931,9 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 		httpClient:        httpClient,
 		systemConfig:      systemCfg,
 		gatewayID:         gatewayID,
-		policyResolver:    policyResolver,
 	}
 
-	deploymentService := utils.NewAPIDeploymentService(store, db, nil, validator, routerCfg, policyResolver, hub, gatewayID)
+	deploymentService := utils.NewAPIDeploymentService(store, db, nil, validator, routerCfg, hub, gatewayID, nil)
 	server.deploymentService = deploymentService
 	server.mcpDeploymentService = utils.NewMCPDeploymentService(store, db, nil, nil, nil, hub, gatewayID)
 	server.llmDeploymentService = utils.NewLLMDeploymentService(
@@ -962,7 +959,7 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 		policyDefs, &server.policyDefMu,
 		deploymentService, nil, nil,
 		routerCfg, systemCfg,
-		httpClient, parser, validator, logger, hub, policyResolver,
+		httpClient, parser, validator, logger, hub, nil,
 	)
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
 
@@ -1155,14 +1152,9 @@ func attachTestEventHub(server *APIServer, hub eventhub.EventHub, gatewayID stri
 	if server.systemConfig != nil {
 		server.systemConfig.Controller.Server.GatewayID = gatewayID
 	}
-	policyResolver := server.policyResolver
-	if policyResolver == nil {
-		policyResolver = resolver.NewPolicyResolver(server.policyDefinitions, nil)
-		server.policyResolver = policyResolver
-	}
 	policyValidator := config.NewPolicyValidator(server.policyDefinitions)
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(server.policyDefinitions)
-	server.deploymentService = utils.NewAPIDeploymentService(server.store, server.db, server.snapshotManager, server.validator, server.routerConfig, policyResolver, hub, gatewayID)
+	server.deploymentService = utils.NewAPIDeploymentService(server.store, server.db, server.snapshotManager, server.validator, server.routerConfig, hub, gatewayID, nil)
 	server.apiKeyService = utils.NewAPIKeyService(server.store, server.db, server.apiKeyXDSManager, &server.systemConfig.APIKey, hub, gatewayID)
 	server.subscriptionResourceService = utils.NewSubscriptionResourceService(server.db, server.subscriptionSnapshotUpdater, hub, gatewayID)
 	server.mcpDeploymentService = utils.NewMCPDeploymentService(server.store, server.db, server.snapshotManager, server.policyManager, policyValidator, hub, gatewayID)
@@ -1184,7 +1176,7 @@ func attachTestEventHub(server *APIServer, hub eventhub.EventHub, gatewayID stri
 			server.policyDefinitions, &server.policyDefMu,
 			server.deploymentService, server.apiKeyXDSManager, nil,
 			server.routerConfig, server.systemConfig,
-			server.httpClient, server.parser, server.validator, server.logger, hub, policyResolver,
+			server.httpClient, server.parser, server.validator, server.logger, hub, nil,
 		)
 		server.RestAPIHandler = NewRestAPIHandler(restAPIService, server.logger)
 	}

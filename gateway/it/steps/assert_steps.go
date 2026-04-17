@@ -84,6 +84,7 @@ func (a *AssertSteps) Register(ctx *godog.ScenarioContext) {
 
 	// Echoed header assertions (for sample-backend /echo endpoint)
 	ctx.Step(`^the response should contain echoed header "([^"]*)" with value "([^"]*)"$`, a.echoedHeaderShouldBe)
+	ctx.Step(`^the response should contain echoed header "([^"]*)" with exact value:$`, a.echoedHeaderShouldBeDocstring)
 
 	// Debug helper
 	ctx.Step(`^I print the response body$`, a.printResponseBody)
@@ -522,6 +523,14 @@ func (a *AssertSteps) echoedHeaderShouldBe(headerName, expected string) error {
 	}
 
 	return nil
+}
+
+// echoedHeaderShouldBeDocstring is a docstring variant of echoedHeaderShouldBe that allows
+// the expected value to contain characters (e.g. double quotes) that cannot appear inside
+// a Gherkin inline string argument.  The docstring content is trimmed of surrounding whitespace
+// before comparison so the feature file indentation does not affect the assertion.
+func (a *AssertSteps) echoedHeaderShouldBeDocstring(headerName, expected string) error {
+	return a.echoedHeaderShouldBe(headerName, strings.TrimSpace(expected))
 }
 
 // echoedHeaderShouldNotExist asserts an echoed header does not exist
