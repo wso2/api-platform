@@ -19,7 +19,6 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -32,7 +31,10 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/wso2/api-platform/common/constants"
+	"github.com/wso2/api-platform/common/eventhub"
 	commonmodels "github.com/wso2/api-platform/common/models"
+	"github.com/wso2/api-platform/common/redact"
 	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
@@ -47,9 +49,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
-	"github.com/wso2/api-platform/common/constants"
-	"github.com/wso2/api-platform/common/eventhub"
-	"github.com/wso2/api-platform/common/redact"
 )
 
 // APIServer implements the generated ServerInterface
