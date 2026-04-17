@@ -93,7 +93,8 @@ var (
 	ErrDeploymentBaseRequired      = errors.New("base is required")
 	ErrDeploymentGatewayIDRequired = errors.New("gatewayId is required")
 	ErrAPINoBackendServices        = errors.New("API must have at least one backend service attached before deployment")
-	ErrDeploymentAlreadyDeployed   = errors.New("cannot restore to the currently deployed deployment")
+	ErrDeploymentAlreadyDeployed        = errors.New("cannot restore to the currently deployed deployment")
+	ErrInvalidDeploymentRestoreState    = errors.New("deployment cannot be restored: only ARCHIVED or UNDEPLOYED deployments are eligible")
 	ErrGatewayIDMismatch           = errors.New("gateway ID mismatch: deployment is bound to a different gateway")
 )
 
@@ -159,6 +160,13 @@ var (
 	ErrMCPProxyExists       = errors.New("mcp proxy already exists")
 	ErrMCPProxyNotFound     = errors.New("mcp proxy not found")
 	ErrMCPProxyLimitReached = errors.New("mcp proxy limit reached for organization")
+)
+
+var (
+	ErrWebSubAPIExists                    = errors.New("websub api already exists")
+	ErrWebSubAPINotFound                  = errors.New("websub api not found")
+	ErrWebSubAPILimitReached              = errors.New("websub api limit reached for organization")
+	ErrProjectHasAssociatedWebSubAPIs     = errors.New("project has associated WebSub APIs")
 )
 
 var (
