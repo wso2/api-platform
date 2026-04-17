@@ -25,21 +25,26 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// RestAPIPayloadMetadata carries metadata fields serialized in gateway-controller payload.
+type RestAPIPayloadMetadata struct {
+	Name        string            `yaml:"name" json:"name"`
+	Labels      map[string]string `yaml:"labels,omitempty" json:"labels,omitempty"`
+	Annotations map[string]string `yaml:"annotations,omitempty" json:"annotations,omitempty"`
+}
+
 // BuildRestAPIYAML builds the gateway-controller REST payload (application/yaml)
 // matching the shape produced for RestApi CRs (api.yaml-compatible).
-func BuildRestAPIYAML(apiVersion, kind, name string, spec apiv1.APIConfigData) ([]byte, error) {
+func BuildRestAPIYAML(apiVersion, kind string, metadata RestAPIPayloadMetadata, spec apiv1.APIConfigData) ([]byte, error) {
 	cleanPayload := struct {
-		APIVersion string              `yaml:"apiVersion" json:"apiVersion"`
-		Kind       string              `yaml:"kind" json:"kind"`
-		Metadata   map[string]string   `yaml:"metadata" json:"metadata"`
-		Spec       apiv1.APIConfigData `yaml:"spec" json:"spec"`
+		APIVersion string                 `yaml:"apiVersion" json:"apiVersion"`
+		Kind       string                 `yaml:"kind" json:"kind"`
+		Metadata   RestAPIPayloadMetadata `yaml:"metadata" json:"metadata"`
+		Spec       apiv1.APIConfigData    `yaml:"spec" json:"spec"`
 	}{
 		APIVersion: apiVersion,
 		Kind:       kind,
-		Metadata: map[string]string{
-			"name": name,
-		},
-		Spec: spec,
+		Metadata:   metadata,
+		Spec:       spec,
 	}
 
 	jsonBytes, err := json.Marshal(cleanPayload)

@@ -18,10 +18,13 @@ spec:
     kind: HTTPRoute
     name: hello-apipolicy-demo
   policies:
-    - name: subscription-validation
+    - name: set-headers
       version: v1
       params:
-        subscriptionKeyHeader: Subscription-Key
+        request:
+          headers:
+            - name: X-Client-Version
+              value: "1.2.3"
 
 ---
 apiVersion: gateway.api-platform.wso2.com/v1alpha1

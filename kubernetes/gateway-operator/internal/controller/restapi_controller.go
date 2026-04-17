@@ -366,7 +366,12 @@ func (r *RestApiReconciler) setInitialConditions(ctx context.Context, apiConfig 
 func (r *RestApiReconciler) executeDeployment(ctx context.Context, apiConfig *apiv1.RestApi, gateway *registry.GatewayInfo) error {
 	log := r.Logger.With(zap.String("controller", "RestApi"), zap.String("name", apiConfig.Name))
 
-	apiYAML, err := gatewayclient.BuildRestAPIYAML(apiConfig.APIVersion, apiConfig.Kind, apiConfig.Name, apiConfig.Spec)
+	apiYAML, err := gatewayclient.BuildRestAPIYAML(
+		apiConfig.APIVersion,
+		apiConfig.Kind,
+		payloadMetadataForRestAPI(apiConfig),
+		apiConfig.Spec,
+	)
 	if err != nil {
 		return fmt.Errorf("build REST API YAML: %w", err)
 	}
@@ -704,6 +709,23 @@ func (r *RestApiReconciler) deleteAPIFromGateway(ctx context.Context, handle str
 		zap.String("api", handle),
 		zap.String("gateway", gateway.Name))
 	return nil
+}
+
+func payloadMetadataForRestAPI(apiConfig *apiv1.RestApi) gatewayclient.RestAPIPayloadMetadata {
+	md := gatewayclient.RestAPIPayloadMetadata{Name: apiConfig.Name}
+	if len(apiConfig.Labels) > 0 {
+		md.Labels = make(map[string]string, len(apiConfig.Labels))
+		for k, v := range apiConfig.Labels {
+			md.Labels[k] = v
+		}
+	}
+	if len(apiConfig.Annotations) > 0 {
+		md.Annotations = make(map[string]string, len(apiConfig.Annotations))
+		for k, v := range apiConfig.Annotations {
+			md.Annotations[k] = v
+		}
+	}
+	return md
 }
 
 // addAuthToRequest adds authentication headers to an HTTP request based on gateway auth config

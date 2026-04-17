@@ -115,7 +115,7 @@ If the Helm values ConfigMap annotation is **omitted**, the operator uses the de
 
 | Annotation | Meaning |
 | ---------- | ------- |
-| `gateway.api-platform.wso2.com/api-version` | `APIConfigData.Version` (default `v1`). |
+| `gateway.api-platform.wso2.com/api-version` | `APIConfigData.Version` (default `v1.0`). |
 | `gateway.api-platform.wso2.com/context` | Overrides API **context** path. |
 | `gateway.api-platform.wso2.com/display-name` | Overrides display name (default: route `metadata.name`). |
 | `gateway.api-platform.wso2.com/api-handle` | REST handle for `/rest-apis/{handle}` (default: `{namespace}-{name}` with `/` stripped). |
