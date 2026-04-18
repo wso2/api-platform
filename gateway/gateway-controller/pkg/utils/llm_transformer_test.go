@@ -981,9 +981,9 @@ func TestTransformProvider_ExpandsWildcardPolicyPathWithTemplateMappings(t *test
 	require.NotNil(t, responsesPolicy)
 	require.NotNil(t, responsesPolicy.Params)
 
-	reqModel, ok := (*responsesPolicy.Params)["requestModel"].(map[string]interface{})
-	require.True(t, ok)
-	assert.Equal(t, responsesModel, reqModel["identifier"])
+	// User-defined policies should only contain user params, not template params
+	_, hasRequestModel := (*responsesPolicy.Params)["requestModel"]
+	assert.False(t, hasRequestModel, "template params should not be merged into user-defined policies")
 	assert.Equal(t, "value", (*responsesPolicy.Params)["userParam"])
 
 	require.NotNil(t, wildcardPostOp)
@@ -1000,9 +1000,9 @@ func TestTransformProvider_ExpandsWildcardPolicyPathWithTemplateMappings(t *test
 	require.NotNil(t, wildcardPolicy)
 	require.NotNil(t, wildcardPolicy.Params)
 
-	wildcardReqModel, ok := (*wildcardPolicy.Params)["requestModel"].(map[string]interface{})
-	require.True(t, ok)
-	assert.Equal(t, defaultModel, wildcardReqModel["identifier"])
+	// User-defined policies should only contain user params, not template params
+	_, hasWildcardRequestModel := (*wildcardPolicy.Params)["requestModel"]
+	assert.False(t, hasWildcardRequestModel, "template params should not be merged into user-defined policies")
 	assert.Equal(t, "value", (*wildcardPolicy.Params)["userParam"])
 }
 
