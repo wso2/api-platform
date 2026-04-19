@@ -35,6 +35,10 @@ type DefaultFaultEvent struct {
 	ApplicationID            string `json:"applicationID"`
 	ApplicationName          string `json:"applicationName"`
 	ApplicationOwner         string `json:"applicationOwner"`
+	BillingCustomerID        string `json:"billingCustomerId"`
+	BillingSubscriptionID    string `json:"billingSubscriptionId"`
+	SubscriptionStatus       string `json:"subscriptionStatus"`
+	SubscriptionPlanName     string `json:"subscriptionPlanName"`
 	RegionID                 string `json:"regionID"`
 	GatewayType              string `json:"gatewayType"`
 	OrganizationID           string `json:"organizationID"`
