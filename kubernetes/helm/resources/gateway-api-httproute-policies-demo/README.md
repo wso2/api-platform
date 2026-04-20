@@ -82,7 +82,7 @@ Secret flow (HTTPS, self-signed):
 
 ```bash
 curl --request GET \
-  --url https://localhost:8443/hello-secrets-context/hello-secrets \
+  --url https://localhost:8443/hello-secrets/hello-secrets \
   --header 'Accept: application/json' -k
 ```
 
@@ -93,7 +93,7 @@ curl --request GET \
 | File | Purpose |
 |------|---------|
 | `00-apipolicies.yaml` | API-level `APIPolicy` (`targetRef` → `hello-apipolicy-demo`) + rule-scoped `APIPolicy` (no `targetRef`). |
-| `01-httproute.yaml` | HTTPRoute with **ExtensionRef** to the rule-scoped `APIPolicy`. |
+| `01-httproute.yaml` | HTTPRoute with **ExtensionRef** to the rule-scoped `APIPolicy` and optional `project-id` annotation propagated to payload metadata. |
 | `02-secret-and-apipolicy.yaml` | `Secret` + rule `APIPolicy` with **`params.valueFrom`** (no `targetRef`; referenced from `03` HTTPRoute only). |
 | `03-httproute-secret-policy.yaml` | Second HTTPRoute; **ExtensionRef** to the secret-backed `APIPolicy`. |
 

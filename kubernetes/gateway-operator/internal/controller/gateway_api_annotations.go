@@ -40,6 +40,9 @@ const (
 	// AnnHTTPRouteDisplayName overrides displayName.
 	AnnHTTPRouteDisplayName = "gateway.api-platform.wso2.com/display-name"
 
+	// AnnProjectID identifies the owning project for analytics/routing metadata propagation.
+	AnnProjectID = "gateway.api-platform.wso2.com/project-id"
+
 	// HTTPRoute rest API handle for gateway-controller (default: derived from ns+name).
 	AnnHTTPRouteAPIHandle = "gateway.api-platform.wso2.com/api-handle"
 

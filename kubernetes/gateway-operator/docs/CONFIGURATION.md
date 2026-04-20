@@ -259,7 +259,7 @@ Environment variable (comma-separated list, overrides the config file list):
 
 | Annotation | Purpose |
 | ---------- | ------- |
-| `gateway.api-platform.wso2.com/api-version` | Version field in the generated REST payload (default `v1`). |
+| `gateway.api-platform.wso2.com/api-version` | Version field in the generated REST payload (default `v1.0`). |
 | `gateway.api-platform.wso2.com/context` | Overrides API base context when set. |
 | `gateway.api-platform.wso2.com/display-name` | Overrides API display name. |
 | `gateway.api-platform.wso2.com/api-handle` | REST API handle for `POST`/`PUT`/`DELETE` `/rest-apis/{handle}` (default: `{namespace}-{name}`). |
