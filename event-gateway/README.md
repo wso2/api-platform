@@ -50,7 +50,7 @@ This starts five services:
 | `gateway-controller` | `9090`, `18001` | Control plane — Management REST API and xDS server |
 | `event-gateway` | `8080`, `8081`, `9002`, `9003` | Event gateway runtime |
 | `kafka` | `9092`, `29092` | Apache Kafka broker |
-| `wh-listener` | `8090` | Test webhook receiver (Python) |
+| `wh-listener` | `8090` | Test webhook receiver (Go) |
 | `kafka-ui` | `7080` | Kafka web UI |
 
 ### 2. Verify Services Are Running
@@ -337,11 +337,11 @@ docker compose build event-gateway
 
 ## Webhook Listener (Test Tool)
 
-The `wh-listener` service is a Python HTTP server for testing event delivery. It runs on port `8090` and:
+The `wh-listener` service is a small Go HTTP server for testing event delivery. It runs on port `8090` and:
 
 - Responds to `GET` with WebSub verification challenges (`hub.challenge` echo).
 - Logs `POST` webhook payloads (headers + body) to stdout.
-- Supports toggling active/paused state via keyboard (Space to toggle, Q to quit) in interactive mode.
+- Starts quickly as a static binary and shuts down gracefully on `SIGTERM`/`SIGINT`.
 
 View its output:
 
@@ -377,5 +377,7 @@ event-gateway/
 │       └── xdsclient/           # xDS client for control plane integration
 ├── spec/postman/                # Postman collections for manual testing
 └── webhook-listener/
-    └── listener.py              # Test webhook callback receiver
+    ├── Dockerfile               # Multi-stage Go build for the test listener
+    ├── go.mod                   # Standalone Go module
+    └── main.go                  # Test webhook callback receiver
 ```

@@ -26,6 +26,7 @@ services:
       additional_contexts:
         sdk-core: ../sdk/core
         common: ../common
+        build-manifest: ../gateway
     command: ["-config", "/etc/gateway-controller/config.toml"]
     ports:
       - "9090:9090"    # Management API
@@ -105,21 +106,20 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
     healthcheck:
       test: ["CMD", "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "kafka:29092", "--list"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      interval: 2s
+      timeout: 3s
+      start_period: 5s
+      retries: 15
     networks:
       - egw-network
 
   wh-listener:
-    image: python:3.11-slim
-    command: python /app/listener.py --port 8090
+    image: event-gateway/webhook-listener:local
+    build:
+      context: webhook-listener
+      dockerfile: Dockerfile
     ports:
       - "8090:8090"
-    volumes:
-      - ./webhook-listener/listener.py:/app/listener.py:ro
-    stdin_open: true
-    tty: true
     networks:
       - egw-network
 
@@ -133,7 +133,7 @@ services:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
     depends_on:
       kafka:
-        condition: service_healthy
+        condition: service_started
     networks:
       - egw-network
 

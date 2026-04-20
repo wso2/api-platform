@@ -4,6 +4,7 @@ use (
 	./cli/it
 	./cli/src
 	./common
+	./event-gateway/webhook-listener
 	./event-gateway/gateway-runtime
 	./gateway/gateway-builder
 	./gateway/gateway-controller
