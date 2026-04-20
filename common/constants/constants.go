@@ -5,6 +5,9 @@ const (
 	AnnotationProjectID = "gateway.api-platform.wso2.com/project-id"
 	// DeprecatedLabelProjectID is the bare label key for project identity (deprecated; use AnnotationProjectID).
 	DeprecatedLabelProjectID = "project-id"
+	// AnnotationArtifactID is the annotation key that pins the artifact UUID on an API resource.
+	// When present and no UUID is provided externally, the gateway controller uses this value instead of generating one.
+	AnnotationArtifactID = "gateway.api-platform.wso2.com/artifact-id"
 )
 
 const (
