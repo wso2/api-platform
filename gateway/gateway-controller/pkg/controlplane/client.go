@@ -3552,6 +3552,14 @@ func (c *Client) handleSubscriptionCreatedEvent(event map[string]interface{}) {
 		sub.SubscriptionPlanID = &payload.SubscriptionPlanId
 	}
 
+	if payload.BillingCustomerID != "" {
+		sub.BillingCustomerID = &payload.BillingCustomerID
+	}
+
+	if payload.BillingSubscriptionID != "" {
+		sub.BillingSubscriptionID = &payload.BillingSubscriptionID
+	}
+
 	if err := resourceService.UpsertSubscription(sub, "CREATE", createdEvent.CorrelationID, logger); err != nil {
 		logger.Error("Failed to persist subscription from subscription.created event",
 			slog.Any("error", err))

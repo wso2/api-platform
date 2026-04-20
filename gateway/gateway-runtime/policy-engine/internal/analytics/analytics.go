@@ -314,6 +314,14 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		slog.Debug("Analytics: User ID set from metadata", "userID", userID)
 	}
 
+	// Prepare Subscription
+	subscription := &dto.Subscription{}
+	subscription.BillingCustomerID = keyValuePairsFromMetadata[BillingCustomerIDKey]
+	subscription.BillingSubscriptionID = keyValuePairsFromMetadata[BillingSubscriptionIDKey]
+	subscription.Status = keyValuePairsFromMetadata[SubscriptionStatusKey]
+	subscription.PlanName = keyValuePairsFromMetadata[SubscriptionPlanNameKey]
+	event.Subscription = subscription
+
 	// Forward guardrail metadata when available in analytics_data.
 	if guardrailHitRaw, exists := typedValuePairsFromMetadata[constants.GuardrailHitMetadataKey]; exists {
 		switch guardrailHit := guardrailHitRaw.(type) {
