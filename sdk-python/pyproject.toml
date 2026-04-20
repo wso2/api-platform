@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "wso2-gateway-policy-sdk"
+version = "0.1.0"
+description = "Python policy SDK for the WSO2 API Platform Gateway"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [
+  { name = "WSO2", email = "architecture@wso2.com" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/wso2/api-platform"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/wso2_gateway_policy_sdk"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/wso2_gateway_policy_sdk",
+  "pyproject.toml",
+  "README.md",
+]

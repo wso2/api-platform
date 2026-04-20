@@ -169,7 +169,7 @@ func main() {
 
 	// Phase 3: Code Generation
 	slog.Info("Starting Phase 3: Code Generation", "phase", "generation")
-	if err := policyengine.GenerateCode(*policyEngineSrc, policies); err != nil {
+	if err := policyengine.GenerateCode(*policyEngineSrc, policies, *outputDir); err != nil {
 		errors.FatalError(err)
 	}
 

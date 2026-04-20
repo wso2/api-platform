@@ -26,7 +26,10 @@ import (
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
-{{- range .Policies }}
+{{- if .HasPythonPolicies }}
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/pythonbridge"
+{{- end }}
+{{- range .GoPolicies }}
 	{{ .ImportAlias }} "{{ .ImportPath }}"
 {{- end }}
 )
@@ -38,7 +41,8 @@ func init() {
 	ctx := context.Background()
 	slog.InfoContext(ctx, "Registering policies from Builder compilation")
 
-	{{- range .Policies }}
+	// Register Go policies
+	{{- range .GoPolicies }}
 	// Register {{ .Name }} {{ .Version }}
 	policyDef_{{ .ImportAlias }} := &policy.PolicyDefinition{
 		Name:           "{{ .Name }}",
@@ -53,6 +57,30 @@ func init() {
 		slog.ErrorContext(ctx, "Failed to register policy {{ .Name }} version {{ .Version }}", "error", err)
 	} else {
 		slog.InfoContext(ctx, "Registered policy {{ .Name }} version {{ .Version }}")
+	}
+	{{- end }}
+
+	// Register Python policies via PythonBridge
+	{{- range .PythonPolicies }}
+	// Register {{ .Name }} {{ .Version }} (Python)
+	policyDef_{{ .ImportAlias }} := &policy.PolicyDefinition{
+		Name:           "{{ .Name }}",
+		Version:        "{{ .Version }}",
+		SystemParameters: {{ if .SystemParameters }}map[string]interface{}{
+			{{- range $key, $value := .SystemParameters }}
+			"{{ $key }}": {{ printf "%#v" $value }},
+			{{- end }}
+		}{{ else }}nil{{ end }},
+	}
+	bridgeFactory_{{ .ImportAlias }} := &pythonbridge.BridgeFactory{
+		StreamManager: pythonbridge.GetStreamManager(),
+		PolicyName:    "{{ .Name }}",
+		PolicyVersion: "{{ .Version }}",
+	}
+	if err := registry.GetRegistry().Register(policyDef_{{ .ImportAlias }}, bridgeFactory_{{ .ImportAlias }}.GetPolicy); err != nil {
+		slog.ErrorContext(ctx, "Failed to register Python policy {{ .Name }} version {{ .Version }}", "error", err)
+	} else {
+		slog.InfoContext(ctx, "Registered Python policy {{ .Name }} version {{ .Version }}")
 	}
 	{{- end }}
 }
