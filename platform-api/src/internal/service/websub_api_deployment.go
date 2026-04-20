@@ -23,13 +23,15 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
+	"time"
+
 	"platform-api/src/api"
 	"platform-api/src/config"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
-	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -554,8 +556,12 @@ func buildWebSubAPIDeploymentYAML(websubAPI *model.WebSubAPI) *model.WebSubAPIDe
 		if ch.Request != nil && ch.Request.Method != "" {
 			method = ch.Request.Method
 		}
+		channelName := strings.TrimPrefix(ch.Name, "/")
+		if ch.Request != nil && ch.Request.Name != "" {
+			channelName = ch.Request.Name
+		}
 		channels = append(channels, model.WebSubAPIDeploymentChannel{
-			Name:   ch.Name,
+			Name:   channelName,
 			Method: method,
 		})
 	}
