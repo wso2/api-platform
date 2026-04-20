@@ -13,6 +13,14 @@ metadata:
     app.kubernetes.io/part-of: gateway-api-operator-demo
 spec:
   gatewayClassName: wso2-api-platform
+  # infrastructure.labels and infrastructure.annotations are propagated by the operator
+  # to all gateway-managed resources (Deployments, Pods, Services, ConfigMaps).
+  infrastructure:
+    labels:
+      environment: dev
+      team: platform
+    annotations:
+      prometheus.io/scrape: "true"
   listeners:
     - name: http
       port: 80

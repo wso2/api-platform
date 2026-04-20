@@ -3093,12 +3093,11 @@ components:
             version: v1
         annotations:
           type: object
-          description: Annotations are arbitrary metadata. Use domain-prefixed keys. Use gateway.api-platform.wso2.com/artifact-id to provide a deterministic Artifact UUID across gateway restarts.
+          description: Annotations are arbitrary non-identifying metadata. Use domain-prefixed keys.
           additionalProperties:
             type: string
           example:
             gateway.api-platform.wso2.com/project-id: 019d953f-d386-7a64-aa92-1869a28292e0
-            gateway.api-platform.wso2.com/artifact-id: 550e8400-e29b-41d4-a716-446655440000
 
     APIConfigData:
       type: object

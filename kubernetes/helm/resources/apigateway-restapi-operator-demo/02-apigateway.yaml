@@ -11,3 +11,9 @@ spec:
     scope: LabelSelector
     matchLabels:
       gateway.api-platform.wso2.com/restapi-target: wso2-crd
+  infrastructure:
+    labels:
+      environment: dev
+      team: platform
+    annotations:
+      prometheus.io/scrape: "true"

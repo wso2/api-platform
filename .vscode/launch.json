@@ -124,6 +124,20 @@
             "cwd": "${workspaceFolder}/gateway/it",
         },
         {
+            "name": "Gateway Operator",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/kubernetes/gateway-operator/cmd",
+            "args": [
+                "-config", "${workspaceFolder}/kubernetes/gateway-operator/config/config.yaml",
+            ],
+            "env": {
+                "GATEWAY_HELM_CHART_PATH": "${workspaceFolder}/kubernetes/helm/gateway-helm-chart",
+                "GATEWAY_HELM_VALUES_FILE_PATH": "${workspaceFolder}/kubernetes/gateway-operator/config/gateway_values.yaml",
+            },
+        },
+        {
             "name": "Gateway Controller (Remote)",
             "type": "go",
             "request": "attach",
