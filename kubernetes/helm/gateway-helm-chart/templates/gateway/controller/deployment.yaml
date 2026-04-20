@@ -26,12 +26,16 @@ spec:
     metadata:
       labels:
         {{- include "gateway-operator.componentSelectorLabels" (list . "controller") | nindent 8 }}
-        {{- with $deployment.podLabels }}
-{{ toYaml . | indent 8 }}
+        {{- with .Values.commonLabels }}
+        {{- toYaml . | nindent 8 }}
         {{- end }}
+        {{- with $deployment.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- $podAnnotations := merge (deepCopy (default (dict) .Values.commonAnnotations)) (default (dict) $deployment.podAnnotations) }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/gateway/gateway-config.yaml") . | sha256sum }}
-        {{- with $deployment.podAnnotations }}
+        {{- with $podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
