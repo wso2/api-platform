@@ -36,6 +36,7 @@ type PolicyImport struct {
 	ImportPath       string
 	ImportAlias      string
 	SystemParameters map[string]interface{} // from policy-definition.yaml
+	Runtime          string                 // "go" or "python"
 }
 
 // GeneratePluginRegistry generates the plugin_registry.go file
@@ -44,26 +45,40 @@ func GeneratePluginRegistry(policies []*types.DiscoveredPolicy, srcDir string) (
 		"policyCount", len(policies),
 		"phase", "generation")
 
-	// Create import list
-	imports := make([]PolicyImport, 0, len(policies))
-	for _, policy := range policies {
-		importPath := generateImportPath(policy)
-		importAlias := generateImportAlias(policy.Name, policy.Version)
+	// Separate Go and Python policies
+	var goPolicies []PolicyImport
+	var pythonPolicies []PolicyImport
 
-		slog.Debug("Creating policy import",
-			"name", policy.Name,
-			"version", policy.Version,
-			"importPath", importPath,
-			"alias", importAlias,
-			"phase", "generation")
+	for _, p := range policies {
+		if p.Runtime == "python" {
+			pythonPolicies = append(pythonPolicies, PolicyImport{
+				Name:             p.Name,
+				Version:          p.Version,
+				ImportAlias:      generateImportAlias(p.Name, p.Version),
+				SystemParameters: p.SystemParameters,
+				Runtime:          "python",
+			})
+		} else {
+			// Go policy
+			importPath := generateImportPath(p)
+			importAlias := generateImportAlias(p.Name, p.Version)
 
-		imports = append(imports, PolicyImport{
-			Name:             policy.Name,
-			Version:          policy.Version,
-			ImportPath:       importPath,
-			ImportAlias:      importAlias,
-			SystemParameters: policy.SystemParameters,
-		})
+			slog.Debug("Creating policy import",
+				"name", p.Name,
+				"version", p.Version,
+				"importPath", importPath,
+				"alias", importAlias,
+				"phase", "generation")
+
+			goPolicies = append(goPolicies, PolicyImport{
+				Name:             p.Name,
+				Version:          p.Version,
+				ImportPath:       importPath,
+				ImportAlias:      importAlias,
+				SystemParameters: p.SystemParameters,
+				Runtime:          "go",
+			})
+		}
 	}
 
 	// Parse embedded template
@@ -73,15 +88,22 @@ func GeneratePluginRegistry(policies []*types.DiscoveredPolicy, srcDir string) (
 	}
 
 	slog.Debug("Executing plugin registry template",
-		"importCount", len(imports),
+		"goPolicyCount", len(goPolicies),
+		"pythonPolicyCount", len(pythonPolicies),
 		"phase", "generation")
 
 	// Execute template
 	var buf bytes.Buffer
 	data := struct {
-		Policies []PolicyImport
+		GoPolicies        []PolicyImport
+		PythonPolicies    []PolicyImport
+		HasGoPolicies     bool
+		HasPythonPolicies bool
 	}{
-		Policies: imports,
+		GoPolicies:        goPolicies,
+		PythonPolicies:    pythonPolicies,
+		HasGoPolicies:     len(goPolicies) > 0,
+		HasPythonPolicies: len(pythonPolicies) > 0,
 	}
 
 	if err := tmpl.Execute(&buf, data); err != nil {

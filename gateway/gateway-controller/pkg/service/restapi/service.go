@@ -35,8 +35,9 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
@@ -85,7 +86,7 @@ type RestAPIService struct {
 	validator          config.Validator
 	logger             *slog.Logger
 	eventHub           eventhub.EventHub
-	policyResolver     *resolver.PolicyResolver
+	secretResolver     funcs.SecretResolver
 }
 
 // NewRestAPIService creates a new RestAPIService.
@@ -106,7 +107,7 @@ func NewRestAPIService(
 	validator config.Validator,
 	logger *slog.Logger,
 	eventHub eventhub.EventHub,
-	policyResolver *resolver.PolicyResolver,
+	secretResolver funcs.SecretResolver,
 ) *RestAPIService {
 	if db == nil {
 		panic("RestAPIService requires non-nil storage")
@@ -141,7 +142,7 @@ func NewRestAPIService(
 		validator:          validator,
 		logger:             logger,
 		eventHub:           eventHub,
-		policyResolver:     policyResolver,
+		secretResolver:     secretResolver,
 	}
 }
 
@@ -288,10 +289,10 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 		}
 	}
 
-	// Validate configuration
-	validationErrors := s.validator.Validate(&apiConfig)
-	if len(validationErrors) > 0 {
-		return nil, &ValidationError{Errors: validationErrors}
+	// Extract deploymentState from spec (defaults to "deployed" if not specified)
+	desiredState := models.StateDeployed
+	if apiConfig.Spec.DeploymentState != nil && *apiConfig.Spec.DeploymentState == api.APIConfigDataDeploymentStateUndeployed {
+		desiredState = models.StateUndeployed
 	}
 
 	// Check if config exists
@@ -300,22 +301,31 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 		return nil, ErrNotFound
 	}
 
-	// Extract deploymentState from spec (defaults to "deployed" if not specified)
-	desiredState := models.StateDeployed
-	if apiConfig.Spec.DeploymentState != nil && *apiConfig.Spec.DeploymentState == api.APIConfigDataDeploymentStateUndeployed {
-		desiredState = models.StateUndeployed
+	// Populate existing with the incoming config so RenderSpec can operate on it.
+	existing.Configuration = apiConfig
+	existing.SourceConfiguration = apiConfig
+
+	// Render template expressions before validation so the validator sees resolved values
+	// (e.g. {{ env "BACKEND_URL" }} → actual URL).
+	if err := templateengine.RenderSpec(existing, s.secretResolver, log); err != nil {
+		return nil, err
 	}
 
-	if err := s.validateArtifactConflicts(models.KindRestApi, existing.UUID, apiConfig.Spec.DisplayName, apiConfig.Spec.Version, existing.Handle); err != nil {
+	// Validate configuration against resolved values
+	renderedConfig := existing.Configuration.(api.RestAPI)
+	validationErrors := s.validator.Validate(&renderedConfig)
+	if len(validationErrors) > 0 {
+		return nil, &ValidationError{Errors: validationErrors}
+	}
+
+	if err := s.validateArtifactConflicts(models.KindRestApi, existing.UUID, renderedConfig.Spec.DisplayName, renderedConfig.Spec.Version, existing.Handle); err != nil {
 		return nil, err
 	}
 
 	// Update stored configuration
 	now := time.Now()
-	existing.DisplayName = apiConfig.Spec.DisplayName
-	existing.Version = apiConfig.Spec.Version
-	existing.Configuration = apiConfig
-	existing.SourceConfiguration = apiConfig
+	existing.DisplayName = renderedConfig.Spec.DisplayName
+	existing.Version = renderedConfig.Spec.Version
 	existing.DesiredState = desiredState
 	existing.UpdatedAt = now
 
@@ -326,15 +336,6 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 		log.Info("Undeploying API configuration",
 			slog.String("id", existing.UUID),
 			slog.String("handle", params.Handle))
-	} else {
-		// Normal config update: preserve existing DeployedAt (already set during initial creation)
-
-		// Resolve policy configuration (handles secret resolution)
-		// Blocks the update if there are policy resolution errors to prevent storing configs with unresolved secrets
-		_, err = s.resolvePolicyConfiguration(existing)
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	// Dual-write: database first, then in-memory
@@ -505,30 +506,6 @@ func (s *RestAPIService) deregisterWebSubTopics(cfg *models.StoredConfig, log *s
 		return fmt.Errorf("topic lifecycle operations failed")
 	}
 	return nil
-}
-
-// resolvePolicyConfiguration resolves policy templates and secret references in the configuration.
-// Returns the resolved configuration or an error if policy resolution fails.
-func (s *RestAPIService) resolvePolicyConfiguration(storedCfg *models.StoredConfig) (*models.StoredConfig, error) {
-	if s.policyResolver == nil {
-		return nil, ErrMissingPolicyResolver
-	}
-	resolvedCfg, validationErrors := s.policyResolver.ResolvePolicies(storedCfg)
-	if len(validationErrors) > 0 {
-		errMsgs := make([]string, 0, len(validationErrors))
-		for _, ve := range validationErrors {
-			errMsgs = append(errMsgs, ve.Message)
-		}
-		errMsg := strings.Join(errMsgs, "; ")
-
-		slog.Error("Policy resolution failed",
-			slog.String("config_handle", storedCfg.Handle),
-			slog.String("errors", errMsg),
-		)
-
-		return nil, fmt.Errorf("policy resolution failed with %d errors: %s", len(validationErrors), errMsg)
-	}
-	return resolvedCfg, nil
 }
 
 func stringPtr(s string) *string {

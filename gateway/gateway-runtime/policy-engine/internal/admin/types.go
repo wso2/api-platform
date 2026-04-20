@@ -46,6 +46,7 @@ type XDSSyncStatusResponse struct {
 type HealthResponse struct {
 	Status    string `json:"status"`
 	Timestamp string `json:"timestamp"`
+	Reason    string `json:"reason,omitempty"`
 }
 
 // LazyResourcesDump contains information about all lazy resources

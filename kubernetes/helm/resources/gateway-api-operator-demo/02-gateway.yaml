@@ -1,0 +1,22 @@
+# Triggers the operator: Helm installs release named platform-gw-gateway, then registers the gateway-controller Service.
+# Per-Gateway Helm values (platform-gw-values) enable cert-manager–issued listener TLS so Envoy serves HTTPS (8443).
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: platform-gw
+  namespace: gateway-api-demo
+  annotations:
+    # Prevent this Gateway from matching RestApi CRs intended for APIGateway (CRD mode) in mixed demos.
+    # RestApi selection uses GatewayRegistry APISelector; default for Gateway is Cluster.
+    gateway.api-platform.wso2.com/api-selector: '{"scope":"LabelSelector","matchLabels":{"gateway.api-platform.wso2.com/restapi-target":"k8s"}}'
+  labels:
+    app.kubernetes.io/part-of: gateway-api-operator-demo
+spec:
+  gatewayClassName: wso2-api-platform
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same

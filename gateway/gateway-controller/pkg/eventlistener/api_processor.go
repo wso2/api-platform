@@ -20,14 +20,13 @@ package eventlistener
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 )
 
 // processAPIEvent dispatches API events by action
@@ -78,10 +77,10 @@ func (l *EventListener) handleAPICreateOrUpdate(event eventhub.Event) {
 		return
 	}
 
-	// Resolve policy configuration (handles secret resolution)
-	resolvedCfg, err := l.resolvePolicyConfiguration(storedConfig)
-	if err != nil {
-		l.logger.Error("Failed to resolve policy configuration for API",
+	// Render template expressions in the spec (e.g. {{ secret "..." }}, {{ env "..." }}).
+	// storedConfig.Configuration is set to the resolved version; SourceConfiguration stays unrendered.
+	if err := templateengine.RenderSpec(storedConfig, l.secretResolver, l.logger); err != nil {
+		l.logger.Error("Failed to render config templates for API",
 			slog.String("api_id", entityID),
 			slog.String("event_id", event.EventID),
 			slog.Any("error", err))
@@ -112,7 +111,7 @@ func (l *EventListener) handleAPICreateOrUpdate(event eventhub.Event) {
 	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after replica sync")
 
 	// Update policies
-	l.updatePoliciesForAPI(resolvedCfg, event.EventID)
+	l.updatePoliciesForAPI(storedConfig, event.EventID)
 
 	l.logger.Info("Successfully processed API create/update event",
 		slog.String("api_id", entityID),
@@ -213,27 +212,6 @@ func (l *EventListener) updatePoliciesForAPI(cfg *models.StoredConfig, correlati
 			slog.String("correlation_id", correlationID),
 			slog.Any("error", err))
 	}
-}
-
-// resolvePolicyConfiguration resolves policy templates and secret references in the configuration.
-// Returns the resolved configuration or an error if policy resolution fails.
-func (l *EventListener) resolvePolicyConfiguration(storedCfg *models.StoredConfig) (*models.StoredConfig, error) {
-	resolvedCfg, validationErrors := l.policyResolver.ResolvePolicies(storedCfg)
-	if len(validationErrors) > 0 {
-		errMsgs := make([]string, 0, len(validationErrors))
-		for _, ve := range validationErrors {
-			errMsgs = append(errMsgs, ve.Message)
-		}
-		errMsg := strings.Join(errMsgs, "; ")
-
-		slog.Error("Policy resolution failed",
-			slog.String("config_handle", storedCfg.Handle),
-			slog.String("errors", errMsg),
-		)
-
-		return nil, fmt.Errorf("policy resolution failed with %d errors: %s", len(validationErrors), errMsg)
-	}
-	return resolvedCfg, nil
 }
 
 // extractAPINameVersion extracts the display name and version from a StoredConfig.

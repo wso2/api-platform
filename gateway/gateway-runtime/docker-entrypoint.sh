@@ -19,18 +19,20 @@
 # --------------------------------------------------------------------
 
 # Gateway Runtime Entrypoint Script
-# Manages both Policy Engine and Envoy processes
+# Manages Policy Engine, Python Executor, and Envoy processes
 
 # NOTE: docker-entrypoint-debug.sh is a near-duplicate of this file — keep in sync.
+
 
 # Process-specific args can be passed using prefixed flags:
 #   --rtr.<flag> <value>   → forwarded to Router (Envoy)
 #   --pol.<flag> <value>   → forwarded to Policy Engine
+#   --py.<flag> <value>    → forwarded to Python Executor
 #
 # Examples:
 #   docker run gateway-runtime --rtr.component-log-level upstream:debug --pol.log-format text
 #   In Kubernetes:
-#     args: ["--rtr.concurrency", "4", "--pol.log-format", "text"]
+#     args: ["--rtr.concurrency", "4", "--pol.log-format", "text", "--py.workers", "8"]
 
 set -e
 
@@ -40,11 +42,12 @@ log() {
 }
 
 # Parse process-specific args from command line.
-# Uses dot (.) as the prefix separator (e.g. --rtr.flag, --pol.flag) because no
+# Uses dot (.) as the prefix separator (e.g. --rtr.flag, --pol.flag, --py.flag) because no
 # standard CLI flag contains a dot, making prefix detection unambiguous.
-# --rtr.X → ROUTER_ARGS, --pol.X → PE_ARGS, unrecognized → warning
+# --rtr.X → ROUTER_ARGS, --pol.X → PE_ARGS, --py.X → PY_ARGS, unrecognized → warning
 ROUTER_ARGS=()
 PE_ARGS=()
+PY_ARGS=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -65,8 +68,21 @@ while [[ $# -gt 0 ]]; do
                 shift
             fi
             ;;
+        --py.*)
+            py_arg="$1"
+            if [[ "$py_arg" == "--py.socket" || "$py_arg" == --py.socket=* ]]; then
+                log "ERROR: --py.socket override is not supported; socket path is fixed"
+                exit 1
+            fi
+            PY_ARGS+=("--${py_arg#--py.}")
+            shift
+            if [[ $# -gt 0 && "$1" != --* ]]; then
+                PY_ARGS+=("$1")
+                shift
+            fi
+            ;;
         *)
-            log "ERROR: Unrecognized arg '$1' (use --rtr. or --pol. prefix)"
+            log "ERROR: Unrecognized arg '$1' (use --rtr., --pol., or --py. prefix)"
             exit 1
             ;;
     esac
@@ -90,6 +106,11 @@ export GOMAXPROCS="${GOMAXPROCS:-2}"
 export ROUTER_CONCURRENCY="${ROUTER_CONCURRENCY:-0}"
 export APIP_GW_POLICY_ENGINE_METRICS_ENABLED="${APIP_GW_POLICY_ENGINE_METRICS_ENABLED:-true}"
 
+# Python Executor configuration
+export PYTHON_POLICY_WORKERS="${PYTHON_POLICY_WORKERS:-4}"
+export PYTHON_POLICY_MAX_CONCURRENT="${PYTHON_POLICY_MAX_CONCURRENT:-100}"
+export PYTHON_POLICY_TIMEOUT="${PYTHON_POLICY_TIMEOUT:-30}"
+
 # Derive Router (Envoy) xDS config — used by envsubst on config-override.yaml
 export XDS_SERVER_HOST="${GATEWAY_CONTROLLER_HOST}"
 export XDS_SERVER_PORT="${ROUTER_XDS_PORT}"
@@ -98,6 +119,7 @@ export XDS_SERVER_PORT="${ROUTER_XDS_PORT}"
 PE_XDS_SERVER="${GATEWAY_CONTROLLER_HOST}:${POLICY_ENGINE_XDS_PORT}"
 
 POLICY_ENGINE_SOCKET="/var/run/api-platform/policy-engine.sock"
+PYTHON_EXECUTOR_SOCKET="/var/run/api-platform/python-executor.sock"
 
 log "Starting Gateway Runtime"
 log "  Gateway Controller: ${GATEWAY_CONTROLLER_HOST}"
@@ -108,39 +130,45 @@ log "  Policy Engine Socket: ${POLICY_ENGINE_SOCKET}"
 log "  GOMAXPROCS: ${GOMAXPROCS}"
 log "  Router Concurrency: ${ROUTER_CONCURRENCY}"
 log "  Policy Engine Metrics: ${APIP_GW_POLICY_ENGINE_METRICS_ENABLED}"
+log "  Python Workers: ${PYTHON_POLICY_WORKERS}"
+log "  Python Max Concurrent: ${PYTHON_POLICY_MAX_CONCURRENT}"
+log "  Python Timeout: ${PYTHON_POLICY_TIMEOUT}s"
 [[ ${#ROUTER_ARGS[@]} -gt 0 ]] && log "  Router extra args: ${ROUTER_ARGS[*]}"
 [[ ${#PE_ARGS[@]} -gt 0 ]] && log "  Policy Engine extra args: ${PE_ARGS[*]}"
+[[ ${#PY_ARGS[@]} -gt 0 ]] && log "  Python Executor extra args: ${PY_ARGS[*]}"
 
-# Cleanup stale socket from previous runs
+# Cleanup stale sockets from previous runs
 rm -f "${POLICY_ENGINE_SOCKET}"
+rm -f "${PYTHON_EXECUTOR_SOCKET}"
 
 # Generate Envoy config override by substituting environment variables
 CONFIG_OVERRIDE=$(envsubst < /etc/envoy/config-override.yaml)
 
 # Track child PIDs
+PY_PID=""
 PE_PID=""
 ENVOY_PID=""
 
-# Shutdown handler - gracefully terminate both processes
+# Shutdown handler - gracefully terminate all processes
 shutdown() {
     log "Received shutdown signal, terminating processes..."
 
-    # Send SIGTERM to both processes
-    if [ -n "$PE_PID" ] && kill -0 "$PE_PID" 2>/dev/null; then
-        log "Stopping Policy Engine (PID $PE_PID)..."
-        kill -TERM "$PE_PID" 2>/dev/null || true
-    fi
-
-    if [ -n "$ENVOY_PID" ] && kill -0 "$ENVOY_PID" 2>/dev/null; then
-        log "Stopping Envoy (PID $ENVOY_PID)..."
-        kill -TERM "$ENVOY_PID" 2>/dev/null || true
-    fi
+    # Send SIGTERM to all processes
+    for pid_var in PY_PID PE_PID ENVOY_PID; do
+        pid="${!pid_var}"
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            log "Stopping $pid_var (PID $pid)..."
+            kill -TERM "$pid" 2>/dev/null || true
+        fi
+    done
 
     # Wait for processes to exit
+    set +e
     wait
+    set -e
 
-    # Cleanup socket
-    rm -f "${POLICY_ENGINE_SOCKET}"
+    # Cleanup sockets
+    rm -f "${POLICY_ENGINE_SOCKET}" "${PYTHON_EXECUTOR_SOCKET}"
 
     log "Shutdown complete"
     exit 0
@@ -148,6 +176,37 @@ shutdown() {
 
 # Set up signal handlers
 trap shutdown SIGTERM SIGINT SIGQUIT
+
+# Check if Python executor is needed (marker file set by builder)
+# python_policy_registry.py is only generated when Python policies exist;
+if [ -f /app/python-executor/python_policy_registry.py ]; then
+    log "Starting Python Executor..."
+    python3 /app/python-executor/main.py "${PY_ARGS[@]}" \
+        > >(while IFS= read -r line; do echo "[pye] $line"; done) \
+        2> >(while IFS= read -r line; do echo "[pye] $line" >&2; done) &
+    PY_PID=$!
+    log "Python Executor started (PID $PY_PID)"
+
+    # Wait for Python socket
+    SOCKET_WAIT_TIMEOUT=15
+    SOCKET_WAIT_COUNT=0
+    while [ ! -S "${PYTHON_EXECUTOR_SOCKET}" ]; do
+        if [ $SOCKET_WAIT_COUNT -ge $SOCKET_WAIT_TIMEOUT ]; then
+            log "ERROR: Python Executor socket not created within ${SOCKET_WAIT_TIMEOUT}s"
+            exit 1
+        fi
+        if ! kill -0 "$PY_PID" 2>/dev/null; then
+            log "ERROR: Python Executor exited before creating socket"
+            exit 1
+        fi
+        sleep 1
+        SOCKET_WAIT_COUNT=$((SOCKET_WAIT_COUNT + 1))
+    done
+    log "Python Executor socket ready: ${PYTHON_EXECUTOR_SOCKET}"
+else
+    PY_PID=""
+    log "No Python policies detected, skipping Python Executor"
+fi
 
 # Start Policy Engine with [pol] log prefix
 log "Starting Policy Engine..."
@@ -194,28 +253,40 @@ log "Starting Envoy..."
 ENVOY_PID=$!
 log "Envoy started (PID $ENVOY_PID)"
 
-log "Gateway Runtime running - Policy Engine (PID $PE_PID), Envoy (PID $ENVOY_PID)"
-
-# Monitor both processes - exit if either dies
-wait -n "$PE_PID" "$ENVOY_PID"
-EXIT_CODE=$?
-
-# Determine which process exited and clean up the other
-if ! kill -0 "$PE_PID" 2>/dev/null; then
-    log "Policy Engine exited with code $EXIT_CODE"
-    if kill -0 "$ENVOY_PID" 2>/dev/null; then
-        log "Terminating Envoy due to Policy Engine exit..."
-        kill -TERM "$ENVOY_PID" 2>/dev/null || true
-        wait "$ENVOY_PID" 2>/dev/null || true
-    fi
-else
-    log "Envoy exited with code $EXIT_CODE"
-    if kill -0 "$PE_PID" 2>/dev/null; then
-        log "Terminating Policy Engine due to Envoy exit..."
-        kill -TERM "$PE_PID" 2>/dev/null || true
-        wait "$PE_PID" 2>/dev/null || true
-    fi
+log "Gateway Runtime running"
+if [ -n "$PY_PID" ]; then
+    log "  - Python Executor (PID $PY_PID)"
 fi
+log "  - Policy Engine (PID $PE_PID)"
+log "  - Envoy (PID $ENVOY_PID)"
 
-rm -f "${POLICY_ENGINE_SOCKET}"
+# Monitor all processes - exit if any dies
+set +e
+if [ -n "$PY_PID" ]; then
+    wait -n "$PY_PID" "$PE_PID" "$ENVOY_PID"
+else
+    wait -n "$PE_PID" "$ENVOY_PID"
+fi
+EXIT_CODE=$?
+set -e
+
+# Determine which process exited and clean up the others
+for pid_var in PY_PID PE_PID ENVOY_PID; do
+    pid="${!pid_var}"
+    if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
+        log "$pid_var exited with code $EXIT_CODE"
+    fi
+done
+
+# Terminate remaining processes
+for pid_var in PY_PID PE_PID ENVOY_PID; do
+    pid="${!pid_var}"
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+        log "Terminating $pid_var..."
+        kill -TERM "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+    fi
+done
+
+rm -f "${POLICY_ENGINE_SOCKET}" "${PYTHON_EXECUTOR_SOCKET}"
 exit $EXIT_CODE

@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"strings"
 	"sync"
 	"time"
 
@@ -49,6 +48,7 @@ import (
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/auth"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/helm"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/helmgateway"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/selector"
 )
@@ -210,7 +210,7 @@ func (r *GatewayReconciler) decideAndProcess(
 	// Calculate current config hash
 	currentConfigHash := ""
 	if gatewayConfig.Spec.ConfigRef != nil {
-		values, err := r.getConfigMapValues(ctx, gatewayConfig.Spec.ConfigRef.Name, gatewayConfig.Namespace)
+		values, err := configMapValuesYAML(ctx, r.Client, gatewayConfig.Spec.ConfigRef.Name, gatewayConfig.Namespace)
 		if err != nil {
 			// If we can't read config map, it might be transient or deleted
 			// We should probably fail to deploy/reconcile
@@ -267,7 +267,7 @@ func (r *GatewayReconciler) decideAndProcess(
 			zap.Int64("generation", crGeneration))
 
 		// Ensure gateway is registered in the in-memory registry (controller may have restarted)
-		if err := r.registerGateway(ctx, gatewayConfig); err != nil {
+		if err := r.registerAPIGateway(ctx, gatewayConfig); err != nil {
 			log.Error("failed to register gateway in registry after restart; will retry", zap.Error(err))
 			// Return error so reconcile is retried and registration can be re-attempted
 			return ctrl.Result{}, err
@@ -427,14 +427,18 @@ func (r *GatewayReconciler) processGatewayDeployment(
 	}
 
 	// Register the gateway in the registry
-	if err := r.registerGateway(ctx, gatewayConfig); err != nil {
+	if err := r.registerAPIGateway(ctx, gatewayConfig); err != nil {
 		log.Error("failed to register gateway in registry", zap.Error(err))
 		return r.handleGatewayDeploymentError(ctx, gatewayConfig, trackingKey, entry,
 			fmt.Errorf("failed to register gateway: %w", err), selectedCount)
 	}
 
 	// Evaluate readiness
-	ready, readinessMsg, err := r.evaluateGatewayReadiness(ctx, gatewayConfig)
+	ns := gatewayConfig.Namespace
+	if ns == "" {
+		ns = "default"
+	}
+	ready, readinessMsg, err := evaluateGatewayDeploymentsReady(ctx, r.Client, gatewayConfig.Name, ns)
 	if err != nil {
 		log.Error("failed to evaluate gateway readiness", zap.Error(err))
 		return r.handleGatewayDeploymentError(ctx, gatewayConfig, trackingKey, entry,
@@ -442,7 +446,6 @@ func (r *GatewayReconciler) processGatewayDeployment(
 	}
 
 	if !ready {
-		// Deployments not ready yet - update status and requeue
 		entry.Status = GatewayTrackingStatusRetrying
 		r.gatewayTracker.Set(trackingKey, entry)
 
@@ -752,154 +755,67 @@ func (r *GatewayReconciler) applyGatewayManifest(ctx context.Context, owner *api
 
 // deployGatewayWithHelm deploys the gateway using Helm chart
 func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *apiv1.APIGateway, namespace, dockerUserName, dockerPassword string) error {
-	log := r.Logger.With(zap.String("release", helm.GetReleaseName(owner.Name)))
+	log := r.Logger.With(zap.String("controller", "APIGateway"), zap.String("name", owner.Name))
 
-	// Prepare Helm values based on ConfigRef
+	valuesFilePath := r.Config.Gateway.HelmValuesFilePath
 	var valuesYAML string
-	var valuesFilePath string
 
 	if owner.Spec.ConfigRef != nil {
-		// Use custom ConfigMap values
-		configMapValues, err := r.getConfigMapValues(ctx, owner.Spec.ConfigRef.Name, namespace)
+		configMapValues, err := configMapValuesYAML(ctx, r.Client, owner.Spec.ConfigRef.Name, namespace)
 		if err != nil {
 			return fmt.Errorf("failed to get ConfigMap values: %w", err)
 		}
 		valuesYAML = configMapValues
-		log.Info("Using custom Helm values from ConfigMap",
+		log.Info("Merging Helm values: operator base file + APIGateway ConfigMap overlay",
 			zap.String("configMap", owner.Spec.ConfigRef.Name),
-			zap.String("namespace", namespace))
+			zap.String("namespace", namespace),
+			zap.String("values_file", valuesFilePath))
 	} else {
-		// Use default mounted config
-		valuesFilePath = r.Config.Gateway.HelmValuesFilePath
 		log.Info("Using default Helm values file",
 			zap.String("values_file", valuesFilePath))
 	}
 
 	log.Info("Deploying gateway using Helm",
-		zap.String("chart", r.Config.Gateway.HelmChartPath),
 		zap.String("chart_name", r.Config.Gateway.HelmChartName),
 		zap.String("version", r.Config.Gateway.HelmChartVersion),
-		zap.String("namespace", namespace),
-		zap.String("release_name", helm.GetReleaseName(owner.Name)),
-	)
+		zap.String("namespace", namespace))
 
-	// Create Helm client with plainHTTP option for OCI registries
-	helmClient, err := helm.NewClientWithOptions(r.Config.Gateway.PlainHTTP)
-	if err != nil {
-		return fmt.Errorf("failed to create Helm client: %w", err)
-	}
-
-	// Generate release name
-	releaseName := helm.GetReleaseName(owner.Name)
-
-	// Install or upgrade the chart
-	err = helmClient.InstallOrUpgrade(ctx, helm.InstallOrUpgradeOptions{
-		ReleaseName:     releaseName,
-		Namespace:       namespace,
-		ChartName:       r.Config.Gateway.HelmChartName,
-		ValuesYAML:      valuesYAML,     // Custom values from ConfigMap
-		ValuesFilePath:  valuesFilePath, // Default values file
-		Version:         r.Config.Gateway.HelmChartVersion,
-		CreateNamespace: false,
-		Wait:            true,
-		Timeout:         300, // 5 minutes
-		Username:        dockerUserName,
-		Password:        dockerPassword,
-		Insecure:        r.Config.Gateway.InsecureRegistry,
-		PlainHTTP:       r.Config.Gateway.PlainHTTP,
-	})
-
-	if err != nil {
+	if err := helmgateway.InstallOrUpgrade(ctx, helmgateway.DeployInput{
+		Logger:         r.Logger,
+		Config:         r.Config,
+		GatewayName:    owner.Name,
+		Namespace:      namespace,
+		ValuesYAML:     valuesYAML,
+		ValuesFilePath: valuesFilePath,
+		DockerUsername: dockerUserName,
+		DockerPassword: dockerPassword,
+	}); err != nil {
 		return fmt.Errorf("failed to install/upgrade Helm chart: %w", err)
 	}
 
-	log.Info("Successfully deployed gateway with Helm", zap.String("release", releaseName))
+	log.Info("Successfully deployed gateway with Helm", zap.String("release", helm.GetReleaseName(owner.Name)))
 	return nil
 }
 
-// getConfigMapValues retrieves Helm values from a ConfigMap
-func (r *GatewayReconciler) getConfigMapValues(ctx context.Context, configMapName, namespace string) (string, error) {
-	configMap := &corev1.ConfigMap{}
-	if err := r.Get(ctx, client.ObjectKey{
-		Name:      configMapName,
-		Namespace: namespace,
-	}, configMap); err != nil {
-		return "", fmt.Errorf("failed to get ConfigMap %s/%s: %w", namespace, configMapName, err)
-	}
-
-	// Look for "values.yaml" key in the ConfigMap
-	valuesYAML, ok := configMap.Data["values.yaml"]
-	if !ok {
-		return "", fmt.Errorf("ConfigMap %s/%s does not contain 'values.yaml' key", namespace, configMapName)
-	}
-
-	if valuesYAML == "" {
-		return "", fmt.Errorf("'values.yaml' key in ConfigMap %s/%s is empty", namespace, configMapName)
-	}
-
-	return valuesYAML, nil
-}
-
-// registerGateway registers the gateway in the in-memory registry by discovering the actual service
-func (r *GatewayReconciler) registerGateway(ctx context.Context, gatewayConfig *apiv1.APIGateway) error {
+// registerAPIGateway registers an APIGateway in the in-memory registry.
+func (r *GatewayReconciler) registerAPIGateway(ctx context.Context, gatewayConfig *apiv1.APIGateway) error {
 	log := r.Logger.With(zap.String("controller", "APIGateway"), zap.String("name", gatewayConfig.Name))
-
 	namespace := gatewayConfig.Namespace
 	if namespace == "" {
 		namespace = "default"
 	}
-
-	// Discover the gateway controller service by looking for services with the correct labels
-	// The service is created by the Helm chart with app.kubernetes.io/component: controller
-	// and app.kubernetes.io/instance: <release-name>
-	releaseName := fmt.Sprintf("%s-gateway", gatewayConfig.Name) // This matches helm.GetReleaseName()
-
-	serviceList := &corev1.ServiceList{}
-	listOpts := []client.ListOption{
-		client.InNamespace(namespace),
-		client.MatchingLabels{
-			"app.kubernetes.io/instance":  releaseName,
-			"app.kubernetes.io/component": "controller",
-		},
+	var helmCM string
+	if gatewayConfig.Spec.ConfigRef != nil {
+		helmCM = gatewayConfig.Spec.ConfigRef.Name
 	}
-
-	if err := r.List(ctx, serviceList, listOpts...); err != nil {
-		return fmt.Errorf("failed to list gateway controller services: %w", err)
-	}
-
-	if len(serviceList.Items) == 0 {
-		return fmt.Errorf("no gateway controller service found for release %s in namespace %s", releaseName, namespace)
-	}
-
-	service := &serviceList.Items[0]
-	log.Info("Discovered gateway controller service", zap.String("serviceName", service.Name), zap.String("namespace", service.Namespace))
-
-	// Find the REST API port (port 9090)
-	var restPort int32 = 9090
-	for _, port := range service.Spec.Ports {
-		if port.Name == "rest" || port.Port == 9090 {
-			restPort = port.Port
-			break
-		}
-	}
-
-	// Create gateway info for registry
-	gatewayInfo := &registry.GatewayInfo{
-		Name:        gatewayConfig.Name,
-		Namespace:   namespace,
-		APISelector: &gatewayConfig.Spec.APISelector,
-		ServiceName: service.Name,
-		ServicePort: restPort,
-	}
-
+	cpHost := ""
 	if gatewayConfig.Spec.ControlPlane != nil {
-		gatewayInfo.ControlPlaneHost = gatewayConfig.Spec.ControlPlane.Host
+		cpHost = gatewayConfig.Spec.ControlPlane.Host
 	}
-
-	// Register in the global registry
-	registry.GetGatewayRegistry().Register(gatewayInfo)
-	log.Info("Successfully registered gateway in registry", zap.String("service", gatewayInfo.ServiceName), zap.Int32("port", gatewayInfo.ServicePort))
-
+	if err := registerGatewayInRegistry(ctx, r.Client, gatewayConfig.Name, namespace, &gatewayConfig.Spec.APISelector, cpHost, helmCM, false); err != nil {
+		return err
+	}
+	log.Info("Successfully registered gateway in registry", zap.String("name", gatewayConfig.Name))
 	return nil
 }
 
@@ -913,48 +829,6 @@ func (r *GatewayReconciler) countSelectedAPIs(ctx context.Context, gatewayConfig
 	return len(apis), nil
 }
 
-// evaluateGatewayReadiness inspects the gateway deployments and reports readiness status
-func (r *GatewayReconciler) evaluateGatewayReadiness(ctx context.Context, gatewayConfig *apiv1.APIGateway) (bool, string, error) {
-	namespace := gatewayConfig.Namespace
-	if namespace == "" {
-		namespace = "default"
-	}
-
-	// The deployments are created by the Helm chart with a release name pattern:
-	// <gatewayName>-gateway (e.g., "cluster-gateway-gateway")
-	// They have the label app.kubernetes.io/instance set to the release name
-	releaseName := fmt.Sprintf("%s-gateway", gatewayConfig.Name)
-
-	deployments := &appsv1.DeploymentList{}
-	if err := r.List(ctx, deployments, client.InNamespace(namespace), client.MatchingLabels(map[string]string{
-		"app.kubernetes.io/instance": releaseName,
-	})); err != nil {
-		return false, "", fmt.Errorf("failed to list gateway deployments: %w", err)
-	}
-
-	if len(deployments.Items) == 0 {
-		return false, "Gateway workloads have not been created yet", nil
-	}
-
-	var pending []string
-	for _, deploy := range deployments.Items {
-		desired := int32(1)
-		if deploy.Spec.Replicas != nil {
-			desired = *deploy.Spec.Replicas
-		}
-		ready := deploy.Status.ReadyReplicas
-		if ready < desired {
-			pending = append(pending, fmt.Sprintf("%s %d/%d ready", deploy.Name, ready, desired))
-		}
-	}
-
-	if len(pending) > 0 {
-		return false, "Waiting for deployments to become ready: " + strings.Join(pending, ", "), nil
-	}
-
-	return true, "Gateway resources reconciled successfully", nil
-}
-
 // deleteGatewayResources deletes all Kubernetes resources created for the gateway
 func (r *GatewayReconciler) deleteGatewayResources(ctx context.Context, owner *apiv1.APIGateway) error {
 	// Unregister from the gateway registry
@@ -964,38 +838,7 @@ func (r *GatewayReconciler) deleteGatewayResources(ctx context.Context, owner *a
 	}
 	registry.GetGatewayRegistry().Unregister(namespace, owner.Name)
 
-	return r.deleteGatewayWithHelm(ctx, owner, namespace)
-}
-
-// deleteGatewayWithHelm uninstalls the Helm release for the gateway
-func (r *GatewayReconciler) deleteGatewayWithHelm(ctx context.Context, owner *apiv1.APIGateway, namespace string) error {
-	log := r.Logger.With(zap.String("controller", "APIGateway"), zap.String("name", owner.Name))
-
-	releaseName := helm.GetReleaseName(owner.Name)
-	log.Info("Uninstalling Helm release", zap.String("release", releaseName), zap.String("namespace", namespace))
-
-	// Create Helm client with plainHTTP option for OCI registries
-	helmClient, err := helm.NewClientWithOptions(r.Config.Gateway.PlainHTTP)
-	if err != nil {
-		return fmt.Errorf("failed to create Helm client: %w", err)
-	}
-
-	// Uninstall the release without waiting for resources to be deleted
-	// This prevents deletion from hanging when pods are stuck (e.g., ImagePullBackOff)
-	// Kubernetes will continue cleaning up resources in the background
-	err = helmClient.Uninstall(ctx, helm.UninstallOptions{
-		ReleaseName: releaseName,
-		Namespace:   namespace,
-		Wait:        false,
-		Timeout:     60, // 1 minute (only applies to the Helm uninstall API call, not resource deletion)
-	})
-
-	if err != nil {
-		return fmt.Errorf("failed to uninstall Helm release: %w", err)
-	}
-
-	log.Info("Successfully initiated Helm release uninstall", zap.String("release", releaseName))
-	return nil
+	return helmgateway.Uninstall(ctx, r.Logger, r.Config, owner.Name, namespace)
 }
 
 // enqueueGatewaysForConfigMap watches for ConfigMap changes and enqueues affected Gateways

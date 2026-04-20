@@ -1,11 +1,18 @@
 package auth
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v3"
 )
+
+func TestGetAuthSettingsForRegistryGateway_NilInfo(t *testing.T) {
+	cfg, err := GetAuthSettingsForRegistryGateway(context.Background(), nil, nil)
+	assert.NoError(t, err)
+	assert.Nil(t, cfg)
+}
 
 func TestAuthConfigParsing(t *testing.T) {
 	yamlContent := `

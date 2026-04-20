@@ -100,6 +100,9 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 		Origin:        models.OriginGatewayAPI,
 	})
 	if err != nil {
+		if mapRenderError(c, "create", err) {
+			return
+		}
 		if utils.IsPolicyDefinitionMissingError(err) {
 			log.Error("Failed to create LLM proxy - policy definition missing", slog.Any("error", err))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
@@ -219,6 +222,9 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 		Logger:        log,
 	})
 	if err != nil {
+		if mapRenderError(c, "update", err) {
+			return
+		}
 		if storage.IsNotFoundError(err) {
 			c.JSON(http.StatusNotFound, api.ErrorResponse{
 				Status:  "error",

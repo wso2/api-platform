@@ -173,7 +173,7 @@ func TestNewPolicyResolver_BuildsResolveRules(t *testing.T) {
 		},
 	}
 
-	pr := NewPolicyResolver(defs, nil)
+	pr := NewPolicyResolver(defs)
 	require.NotNil(t, pr)
 
 	// set-header should have a resolve rule
@@ -200,7 +200,7 @@ func TestGetResolveRulesForImplicitVersion_ExactMatch(t *testing.T) {
 			},
 		},
 	}
-	pr := NewPolicyResolver(defs, nil)
+	pr := NewPolicyResolver(defs)
 
 	rules := pr.GetResolveRulesForImplicitVersion(api.Policy{Name: "auth", Version: "v1.0.0"})
 	require.Len(t, rules, 1)
@@ -217,7 +217,7 @@ func TestGetResolveRulesForImplicitVersion_MajorOnlyResolution(t *testing.T) {
 			},
 		},
 	}
-	pr := NewPolicyResolver(defs, nil)
+	pr := NewPolicyResolver(defs)
 
 	// v1 should match v1.0.0
 	rules := pr.GetResolveRulesForImplicitVersion(api.Policy{Name: "auth", Version: "v1"})
@@ -226,7 +226,7 @@ func TestGetResolveRulesForImplicitVersion_MajorOnlyResolution(t *testing.T) {
 
 func TestGetResolveRulesForImplicitVersion_NoMatch(t *testing.T) {
 	defs := map[string]models.PolicyDefinition{}
-	pr := NewPolicyResolver(defs, nil)
+	pr := NewPolicyResolver(defs)
 
 	rules := pr.GetResolveRulesForImplicitVersion(api.Policy{Name: "auth", Version: "v1"})
 	assert.Empty(t, rules)
@@ -242,207 +242,10 @@ func TestGetResolveRulesForImplicitVersion_ExactVersionNoImplicitMatch(t *testin
 			},
 		},
 	}
-	pr := NewPolicyResolver(defs, nil)
+	pr := NewPolicyResolver(defs)
 
 	// v1.0.0 is an exact version and should not match v2.0.0
 	rules := pr.GetResolveRulesForImplicitVersion(api.Policy{Name: "auth", Version: "v1.0.0"})
 	assert.Empty(t, rules)
 }
 
-// ---------------------------------------------------------------------------
-// ResolvePolicies – no resolution needed path
-// ---------------------------------------------------------------------------
-
-func TestResolvePolicies_NoResolutionNeeded(t *testing.T) {
-	// Policy definition with no resolve rules
-	defs := map[string]models.PolicyDefinition{
-		"simple|v1.0.0": {
-			Name:    "simple",
-			Version: "v1.0.0",
-		},
-	}
-	pr := NewPolicyResolver(defs, nil)
-
-	apiData := api.APIConfigData{
-		DisplayName: "Test",
-		Context:     "/test",
-		Version:     "v1",
-		Operations: []api.Operation{
-			{
-				Method: "GET",
-				Path:   "/hello",
-				Policies: &[]api.Policy{
-					{Name: "simple", Version: "v1"},
-				},
-			},
-		},
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{Url: func() *string { s := "http://backend:8080"; return &s }()},
-		},
-	}
-	restAPI := api.RestAPI{
-		Kind:     api.RestApi,
-		Metadata: api.Metadata{Name: "test-api"},
-		Spec:     apiData,
-	}
-	stored := &models.StoredConfig{
-		UUID:          "test-api",
-		Kind:          string(api.RestApi),
-		Configuration: restAPI,
-	}
-
-	result, errs := pr.ResolvePolicies(stored)
-	assert.Empty(t, errs)
-	// Should return the original config since no resolution is needed
-	assert.Equal(t, stored, result)
-}
-
-func TestResolvePolicies_NilConfiguration(t *testing.T) {
-	pr := NewPolicyResolver(map[string]models.PolicyDefinition{}, nil)
-
-	stored := &models.StoredConfig{
-		UUID:          "test",
-		Configuration: nil,
-	}
-
-	result, errs := pr.ResolvePolicies(stored)
-	assert.Empty(t, errs)
-	assert.Equal(t, stored, result)
-}
-
-func TestResolvePolicies_NonRestAPIType(t *testing.T) {
-	pr := NewPolicyResolver(map[string]models.PolicyDefinition{}, nil)
-
-	stored := &models.StoredConfig{
-		UUID:          "test",
-		Configuration: "unsupported-type",
-	}
-
-	result, errs := pr.ResolvePolicies(stored)
-	assert.Empty(t, errs)
-	assert.Equal(t, stored, result)
-}
-
-// ---------------------------------------------------------------------------
-// deepCopyStoredConfig
-// ---------------------------------------------------------------------------
-
-func TestDeepCopyStoredConfig_Nil(t *testing.T) {
-	pr := &PolicyResolver{}
-	result, err := pr.deepCopyStoredConfig(nil)
-	require.NoError(t, err)
-	assert.Nil(t, result)
-}
-
-func TestDeepCopyStoredConfig_RestAPI(t *testing.T) {
-	pr := &PolicyResolver{}
-
-	apiURL := "http://backend:8080"
-	restAPI := api.RestAPI{
-		Kind:     api.RestApi,
-		Metadata: api.Metadata{Name: "original"},
-		Spec: api.APIConfigData{
-			DisplayName: "Original",
-			Context:     "/original",
-			Version:     "v1",
-			Upstream: struct {
-				Main    api.Upstream  `json:"main" yaml:"main"`
-				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-			}{
-				Main: api.Upstream{Url: &apiURL},
-			},
-		},
-	}
-	stored := &models.StoredConfig{
-		UUID:          "original-uuid",
-		Configuration: restAPI,
-	}
-
-	copied, err := pr.deepCopyStoredConfig(stored)
-	require.NoError(t, err)
-	require.NotNil(t, copied)
-
-	// UUID should be the same
-	assert.Equal(t, stored.UUID, copied.UUID)
-
-	// Modifying the copy's Config should not affect the original
-	copiedRestAPI, ok := copied.Configuration.(api.RestAPI)
-	require.True(t, ok)
-	copiedRestAPI.Metadata.Name = "modified"
-	copied.Configuration = copiedRestAPI
-
-	originalAPI, ok := stored.Configuration.(api.RestAPI)
-	require.True(t, ok)
-	assert.Equal(t, "original", originalAPI.Metadata.Name, "original should be unmodified")
-}
-
-func TestDeepCopyStoredConfig_UnsupportedType(t *testing.T) {
-	pr := &PolicyResolver{}
-
-	stored := &models.StoredConfig{
-		Configuration: "unsupported-type",
-	}
-
-	_, err := pr.deepCopyStoredConfig(stored)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported configuration type")
-}
-
-// ---------------------------------------------------------------------------
-// navigateToParents
-// ---------------------------------------------------------------------------
-
-func TestNavigateToParents_SimpleProperty(t *testing.T) {
-	pr := &PolicyResolver{}
-	params := map[string]interface{}{
-		"auth": map[string]interface{}{
-			"token": "Bearer abc",
-		},
-	}
-
-	parents, err := pr.navigateToParents(params, []string{"auth"})
-	require.NoError(t, err)
-	require.Len(t, parents, 1)
-
-	authMap, ok := parents[0].(map[string]interface{})
-	require.True(t, ok)
-	assert.Equal(t, "Bearer abc", authMap["token"])
-}
-
-func TestNavigateToParents_WildcardArray(t *testing.T) {
-	pr := &PolicyResolver{}
-	params := map[string]interface{}{
-		"headers": []interface{}{
-			map[string]interface{}{"value": "header1"},
-			map[string]interface{}{"value": "header2"},
-		},
-	}
-
-	parents, err := pr.navigateToParents(params, []string{"headers", "*"})
-	require.NoError(t, err)
-	assert.Len(t, parents, 2)
-}
-
-func TestNavigateToParents_MissingKey(t *testing.T) {
-	pr := &PolicyResolver{}
-	params := map[string]interface{}{
-		"other": "value",
-	}
-
-	parents, err := pr.navigateToParents(params, []string{"missing"})
-	require.NoError(t, err)
-	assert.Empty(t, parents)
-}
-
-func TestNavigateToParents_WildcardOnNonArray(t *testing.T) {
-	pr := &PolicyResolver{}
-	params := map[string]interface{}{
-		"auth": "not-an-array",
-	}
-
-	_, err := pr.navigateToParents(params, []string{"auth", "*"})
-	require.Error(t, err)
-}

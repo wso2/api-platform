@@ -93,6 +93,9 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 
 	if err != nil {
 		log.Error("Failed to deploy MCP proxy configuration", slog.Any("error", err))
+		if mapRenderError(c, "create", err) {
+			return
+		}
 		if storage.IsConflictError(err) {
 			c.JSON(http.StatusConflict, api.ErrorResponse{
 				Status:  "error",
@@ -285,6 +288,9 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 	}, log)
 
 	if err != nil {
+		if mapRenderError(c, "update", err) {
+			return
+		}
 		log.Warn("MCP proxy configuration not found",
 			slog.String("handle", handle))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{

@@ -1,0 +1,3 @@
+# Python Executor base requirements
+grpcio>=1.59.0
+protobuf>=4.24.0

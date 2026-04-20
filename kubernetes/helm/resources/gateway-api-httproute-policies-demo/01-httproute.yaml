@@ -1,0 +1,53 @@
+# HTTPRoute: API-level policies from APIPolicy with targetRef; one rule with rule-level ExtensionRef → APIPolicy,
+# and one rule with no filters (API-level only, no resource/rule-scoped policies).
+# Install the gateway.api-platform.wso2.com APIPolicy CRD (operator Helm chart crds/) before applying.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: hello-apipolicy-demo
+  namespace: gateway-api-demo
+  labels:
+    app.kubernetes.io/part-of: gateway-api-httproute-policies-demo
+  annotations:
+    gateway.api-platform.wso2.com/api-handle: gateway-api-demo-hello-apipolicy
+    gateway.api-platform.wso2.com/api-version: "v1.0"
+    gateway.api-platform.wso2.com/context: "/hello-policies-context"
+    gateway.api-platform.wso2.com/display-name: "Hello API policies via APIPolicy CR"
+    gateway.api-platform.wso2.com/project-id: "1234567890"
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: platform-gw
+      namespace: gateway-api-demo
+  hostnames:
+    - demo.gateway-api.local
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /hello-policies
+          method: GET
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.api-platform.wso2.com
+            kind: APIPolicy
+            name: httproute-demo-rule-ratelimit
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: hello-backend
+          port: 9080
+          weight: 1
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /hello-policies-plain
+          method: GET
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: hello-backend
+          port: 9080
+          weight: 1

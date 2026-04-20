@@ -147,7 +147,7 @@ const (
 	OperationMethodOPTIONS OperationMethod = "OPTIONS"
 )
 
-// Policy defines model for Policy.
+// Policy defines a policy attachment as embedded in RestApi or APIConfigData.
 type Policy struct {
 	// ExecutionCondition Expression controlling conditional execution of the policy
 	// +optional
@@ -163,8 +163,9 @@ type Policy struct {
 	// +kubebuilder:validation:Schemaless
 	Params *runtime.RawExtension `json:"params,omitempty"`
 
-	// Version Semantic version of the policy
+	// Version Semantic version of the policy (for example, v1)
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Pattern=`^v\d+$`
 	Version string `json:"version"`
 }
 
@@ -182,7 +183,7 @@ const (
 	APIConditionAccepted = "Accepted"
 	// APIConditionProgrammed indicates the API is successfully deployed/programmed to the gateway
 	APIConditionProgrammed = "Programmed"
-	// APIConditionReady is the canonical Ready condition type for RestApi (legacy, kept for compatibility)
+	// APIConditionReady is the canonical Ready condition type for RestApi (retained for compatibility)
 	APIConditionReady = "Ready"
 )
 

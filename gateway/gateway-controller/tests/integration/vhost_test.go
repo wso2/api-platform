@@ -83,7 +83,7 @@ spec:
 		validator := config.NewAPIValidator()
 		fullCfg := &config.Config{Router: *routerCfg}
 		snapshotManager := xds.NewSnapshotManager(store, logger, routerCfg, db, fullCfg)
-		svc := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerCfg, nil, integrationTestEventHub{}, "test-gateway")
+		svc := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerCfg, integrationTestEventHub{}, "test-gateway", nil)
 		return svc, db
 	}
 

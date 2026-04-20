@@ -39,7 +39,8 @@ func TestDumpConfig_Empty(t *testing.T) {
 		Policies: make(map[string]*registry.PolicyEntry),
 	}
 
-	result := DumpConfig(k, reg, "pc-v1")
+	routes, _ := k.DumpRoutesAndSensitiveValues()
+	result := DumpConfig(routes, k, reg, "pc-v1")
 
 	require.NotNil(t, result)
 	assert.False(t, result.Timestamp.IsZero())
@@ -69,7 +70,8 @@ func TestDumpConfig_WithPolicies(t *testing.T) {
 		},
 	}
 
-	result := DumpConfig(k, reg, "pc-v2")
+	routes, _ := k.DumpRoutesAndSensitiveValues()
+	result := DumpConfig(routes, k, reg, "pc-v2")
 
 	require.NotNil(t, result)
 	assert.Equal(t, 2, result.PolicyRegistry.TotalPolicies)
@@ -93,7 +95,8 @@ func TestDumpConfig_WithRoutes(t *testing.T) {
 		Policies: make(map[string]*registry.PolicyEntry),
 	}
 
-	result := DumpConfig(k, reg, "pc-v3")
+	routes, _ := k.DumpRoutesAndSensitiveValues()
+	result := DumpConfig(routes, k, reg, "pc-v3")
 
 	require.NotNil(t, result)
 	assert.Equal(t, 1, result.PolicyChains.TotalPolicyChains)
@@ -161,7 +164,8 @@ func TestDumpPolicyRegistry_Multiple(t *testing.T) {
 func TestDumpPolicyChains_Empty(t *testing.T) {
 	k := kernel.NewKernel()
 
-	result := dumpPolicyChains(k)
+	routes, _ := k.DumpRoutesAndSensitiveValues()
+	result := dumpPolicyChains(routes)
 
 	assert.Equal(t, 0, result.TotalPolicyChains)
 	assert.Empty(t, result.PolicyChains)
@@ -186,7 +190,8 @@ func TestDumpPolicyChains_SingleRoute(t *testing.T) {
 	}
 	k.RegisterRoute("api-route-1", chain)
 
-	result := dumpPolicyChains(k)
+	routes, _ := k.DumpRoutesAndSensitiveValues()
+	result := dumpPolicyChains(routes)
 
 	assert.Equal(t, 1, result.TotalPolicyChains)
 	require.Len(t, result.PolicyChains, 1)
@@ -219,7 +224,8 @@ func TestDumpPolicyChains_MultipleRoutes(t *testing.T) {
 	k.RegisterRoute("route-1", chain1)
 	k.RegisterRoute("route-2", chain2)
 
-	result := dumpPolicyChains(k)
+	routes, _ := k.DumpRoutesAndSensitiveValues()
+	result := dumpPolicyChains(routes)
 
 	assert.Equal(t, 2, result.TotalPolicyChains)
 	assert.Len(t, result.PolicyChains, 2)

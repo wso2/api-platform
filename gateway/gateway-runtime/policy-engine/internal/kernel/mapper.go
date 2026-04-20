@@ -40,6 +40,8 @@ type RouteMapping struct {
 // Kernel represents the integration layer between Envoy and the policy execution engine.
 // It holds two separate maps: RouteConfigs (metadata + resolver) and PolicyChains (executable chains).
 type Kernel struct {
+	// mu protects RouteConfigs, PolicyChains, and sensitiveValues together so that
+	// an xDS update and a config dump always observe a consistent snapshot.
 	mu sync.RWMutex
 
 	// RouteConfigs maps routeKey → RouteConfig (metadata, resolver, upstream info).
@@ -49,6 +51,11 @@ type Kernel struct {
 	// PolicyChains maps policyChainKey → PolicyChain (executable chain).
 	// Populated from the PolicyChainTypeURL xDS cache.
 	PolicyChains map[string]*registry.PolicyChain
+
+	// sensitiveValues holds resolved secret plaintext values received via TransportMetadata.
+	// Used for value-based redaction in config dumps. Protected by mu (same lock as PolicyChains
+	// so that routes and sensitive values are always updated and read as one atomic snapshot).
+	sensitiveValues []string
 }
 
 // NewKernel creates a new Kernel instance
@@ -150,4 +157,69 @@ func (k *Kernel) DumpRouteConfigs() map[string]*RouteConfig {
 		dump[key] = cfg
 	}
 	return dump
+}
+
+// deduplicateValues returns a deduplicated copy of values preserving order.
+func deduplicateValues(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	unique := make([]string, 0, len(values))
+	for _, v := range values {
+		if _, ok := seen[v]; !ok {
+			seen[v] = struct{}{}
+			unique = append(unique, v)
+		}
+	}
+	return unique
+}
+
+// SetSensitiveValues atomically replaces the stored sensitive values under mu.
+// Prefer ApplyWholeRoutesAndSensitiveValues when updating routes and values together.
+func (k *Kernel) SetSensitiveValues(values []string) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.sensitiveValues = deduplicateValues(values)
+}
+
+// GetSensitiveValues returns a copy of the current sensitive values for use in config dump redaction.
+func (k *Kernel) GetSensitiveValues() []string {
+	k.mu.RLock()
+	defer k.mu.RUnlock()
+	result := make([]string, len(k.sensitiveValues))
+	copy(result, k.sensitiveValues)
+	return result
+}
+
+// ApplyWholeRoutesAndSensitiveValues atomically replaces all policy chain mappings and sensitive
+// values in a single lock acquisition. Use this instead of calling ApplyWholeRoutes and
+// SetSensitiveValues separately to prevent a config dump from observing new routes with stale
+// sensitive values, which would bypass secret redaction.
+func (k *Kernel) ApplyWholeRoutesAndSensitiveValues(newRoutes map[string]*registry.PolicyChain, values []string) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	keys := make([]string, 0, len(newRoutes))
+	for key := range newRoutes {
+		keys = append(keys, key)
+	}
+	slog.Debug("ApplyWholeRoutesAndSensitiveValues: replacing policy chains and sensitive values",
+		"count", len(newRoutes),
+		"routes", keys,
+		"sensitive_value_count", len(values))
+	k.PolicyChains = newRoutes
+	k.sensitiveValues = deduplicateValues(values)
+}
+
+// DumpRoutesAndSensitiveValues returns a consistent snapshot of all policy chain mappings and
+// sensitive values in a single lock acquisition. Use this in config dumps to guarantee that the
+// sensitive values used for redaction correspond to the same xDS generation as the routes.
+func (k *Kernel) DumpRoutesAndSensitiveValues() (map[string]*registry.PolicyChain, []string) {
+	k.mu.RLock()
+	defer k.mu.RUnlock()
+
+	routes := make(map[string]*registry.PolicyChain, len(k.PolicyChains))
+	for key, chain := range k.PolicyChains {
+		routes[key] = chain
+	}
+	sensitive := make([]string, len(k.sensitiveValues))
+	copy(sensitive, k.sensitiveValues)
+	return routes, sensitive
 }

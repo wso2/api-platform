@@ -61,7 +61,7 @@ logging:
 |-------|------|---------|-------------|
 | `gateway.namespace` | string | `gateway-system` | Namespace where gateway resources are deployed |
 | `gateway.controlPlaneHost` | string | `http://platform-api:3001` | Control plane API endpoint |
-| `gateway.manifestPath` | string | `""` | Path to K8s manifest (legacy mode, leave empty for Helm) |
+| `gateway.manifestPath` | string | `""` | Path to K8s manifest for manifest-based deployment (leave empty when using Helm) |
 
 ### Helm Configuration
 
@@ -72,6 +72,8 @@ logging:
 | `gateway.helm.chartVersion` | string | `0.1.0` | Chart version to install |
 | `gateway.helm.valuesFilePath` | string | (required) | Path to Helm values.yaml file |
 | `gateway.helm.releaseNamePrefix` | string | `gateway` | Prefix for Helm release names |
+
+When a **per-gateway** overlay is supplied (Kubernetes `Gateway` annotation `helm-values-configmap`, or `APIGateway` `spec.configRef`), the operator loads `gateway.helm.valuesFilePath` first and **deep-merges** the ConfigMap YAML on top. Nested maps (e.g. `gateway.config`) are merged; leaves and lists from the overlay replace the base. Standalone `helm install -f` with a single file behaves the same only if that file already contains the merged result.
 
 ### Reconciliation Configuration
 
