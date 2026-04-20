@@ -1601,7 +1601,8 @@ func extractProjectIDFromConfig(cfg *models.StoredConfig) string {
 	}
 	if labels := cfg.GetLabels(); labels != nil {
 		if pid, exists := (*labels)[commonconstants.DeprecatedLabelProjectID]; exists {
-			slog.Warn("deprecated project-id label detected; migrate to annotation",
+			// Use a debug log here since this log will be emitted for any change (delete other config)
+			slog.Debug("deprecated project-id label detected; migrate to annotation",
 				"annotation", commonconstants.AnnotationProjectID,
 				"api", cfg.Handle)
 			return pid
