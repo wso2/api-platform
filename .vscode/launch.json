@@ -44,7 +44,7 @@
                 "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD": "gateway",
                 "APIP_GW_CONTROLLER_STORAGE_POSTGRES_SSLMODE": "disable",
                 // Controlplane connectivity details
-                "APIP_GW_CONTROLPLANE_HOST": "",
+                "APIP_GW_CONTROLPLANE_HOST": "", # host.docker.internal:9243 for locally running Platform API
                 "APIP_GW_GATEWAY_REGISTRATION_TOKEN": "",
                 "APIP_GW_CONTROLLER_LLM_TEMPLATE__DEFINITIONS__PATH": "${workspaceFolder}/gateway/gateway-controller/default-llm-provider-templates",
                 "APIP_GW_CONTROLLER_ROUTER_DOWNSTREAM__TLS_CERT__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.crt",

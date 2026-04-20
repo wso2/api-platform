@@ -1,6 +1,13 @@
 package constants
 
 const (
+	// AnnotationProjectID is the domain-prefixed annotation key for project identity on API resources.
+	AnnotationProjectID = "gateway.api-platform.wso2.com/project-id"
+	// DeprecatedLabelProjectID is the bare label key for project identity (deprecated; use AnnotationProjectID).
+	DeprecatedLabelProjectID = "project-id"
+)
+
+const (
 	// AuthorizationHeader is the HTTP header for authorization
 	AuthorizationHeader = "Authorization"
 	// BearerPrefix is the prefix for Bearer tokens in the Authorization header

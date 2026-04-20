@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	commonconstants "github.com/wso2/api-platform/common/constants"
 	"platform-api/src/api"
 	"platform-api/src/internal/client/devportal_client"
 	"platform-api/src/internal/constants"
@@ -550,8 +551,8 @@ func (u *APIUtil) BuildAPIDeploymentYAML(apiModel *model.API) (*dto.APIDeploymen
 		Kind:       apiType,
 		Metadata: dto.DeploymentMetadata{
 			Name: apiModel.Handle,
-			Labels: map[string]string{
-				"project-id": apiModel.ProjectID,
+			Annotations: map[string]string{
+				commonconstants.AnnotationProjectID: apiModel.ProjectID,
 			},
 		},
 		Spec: apiYAMLData,
