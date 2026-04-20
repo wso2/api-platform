@@ -381,6 +381,45 @@ func GetReleaseName(gatewayName string) string {
 	return fmt.Sprintf("%s-gateway", gatewayName)
 }
 
+// MergeValuesYAML deep-merges two Helm values YAML strings.
+// Keys in overlay take precedence; nested maps are merged recursively.
+// Returns the merged result as a YAML string.
+func MergeValuesYAML(base, overlay string) (string, error) {
+	parseYAML := func(s string) (map[string]interface{}, error) {
+		if s == "" {
+			return map[string]interface{}{}, nil
+		}
+		var raw interface{}
+		if err := yaml.Unmarshal([]byte(s), &raw); err != nil {
+			return nil, err
+		}
+		converted, err := convertToStringMap(raw)
+		if err != nil {
+			return nil, err
+		}
+		if m, ok := converted.(map[string]interface{}); ok {
+			return m, nil
+		}
+		return map[string]interface{}{}, nil
+	}
+
+	baseMap, err := parseYAML(base)
+	if err != nil {
+		return "", fmt.Errorf("parse base values: %w", err)
+	}
+	overlayMap, err := parseYAML(overlay)
+	if err != nil {
+		return "", fmt.Errorf("parse overlay values: %w", err)
+	}
+
+	merged := deepMergeValues(baseMap, overlayMap)
+	out, err := yaml.Marshal(merged)
+	if err != nil {
+		return "", fmt.Errorf("marshal merged values: %w", err)
+	}
+	return string(out), nil
+}
+
 // probeMergeReplaceKeys are PodSpec probe fields: deep-merging base+override would keep
 // e.g. chart default exec together with overlay httpGet, which is invalid (only one handler).
 var probeMergeReplaceKeys = map[string]struct{}{
