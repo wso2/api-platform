@@ -1781,8 +1781,8 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 			Kind: "WebSubApi",
 			Configuration: api.WebSubAPI{
 				Metadata: api.Metadata{
-					Name:   "websub-test",
-					Labels: &map[string]string{"project-id": "proj-123"},
+					Name:        "websub-test",
+					Annotations: &map[string]string{"gateway.api-platform.wso2.com/project-id": "proj-123"},
 				},
 				Kind:       api.WebSubApi,
 				ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,

@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 
+	commonconstants "github.com/wso2/api-platform/common/constants"
 	versionutil "github.com/wso2/api-platform/common/version"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
@@ -58,6 +59,25 @@ func NewRestAPITransformer(
 }
 
 // Transform converts a StoredConfig with RestAPI configuration into a RuntimeDeployConfig.
+// extractProjectID reads project ID from the annotation (preferred) then falls back to the
+// deprecated bare label, logging a warning if only the label is present.
+func extractProjectID(cfg *models.StoredConfig) string {
+	if annotations := cfg.GetAnnotations(); annotations != nil {
+		if pid, exists := (*annotations)[commonconstants.AnnotationProjectID]; exists {
+			return pid
+		}
+	}
+	if labels := cfg.GetLabels(); labels != nil {
+		if pid, exists := (*labels)[commonconstants.DeprecatedLabelProjectID]; exists {
+			slog.Warn("deprecated project-id label detected; migrate to annotation",
+				"annotation", commonconstants.AnnotationProjectID,
+				"api", cfg.Handle)
+			return pid
+		}
+	}
+	return ""
+}
+
 func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeDeployConfig, error) {
 	restCfg, ok := cfg.Configuration.(api.RestAPI)
 	if !ok {
@@ -65,13 +85,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	}
 	apiData := restCfg.Spec
 
-	// Extract project ID from labels
-	projectID := ""
-	if labels := cfg.GetLabels(); labels != nil {
-		if pid, exists := (*labels)["project-id"]; exists {
-			projectID = pid
-		}
-	}
+	projectID := extractProjectID(cfg)
 
 	rdc := &models.RuntimeDeployConfig{
 		Metadata: models.Metadata{
