@@ -556,10 +556,11 @@ func buildWebSubAPIDeploymentYAML(websubAPI *model.WebSubAPI) *model.WebSubAPIDe
 		if ch.Request != nil && ch.Request.Method != "" {
 			method = ch.Request.Method
 		}
-		channelName := strings.TrimPrefix(ch.Name, "/")
+		channelName := ch.Name
 		if ch.Request != nil && ch.Request.Name != "" {
 			channelName = ch.Request.Name
 		}
+		channelName = strings.TrimPrefix(channelName, "/")
 		channels = append(channels, model.WebSubAPIDeploymentChannel{
 			Name:   channelName,
 			Method: method,
