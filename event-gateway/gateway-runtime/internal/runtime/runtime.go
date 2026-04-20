@@ -28,6 +28,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wso2/api-platform/common/version"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/admin"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/binding"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/config"
@@ -461,7 +462,7 @@ func (r *Runtime) buildChain(routeKey string, policies []binding.PolicyRef) erro
 	for i, p := range policies {
 		specs[i] = engine.PolicySpec{
 			Name:       p.Name,
-			Version:    p.Version,
+			Version:    version.MajorVersion(p.Version),
 			Enabled:    true,
 			Parameters: p.Params,
 		}

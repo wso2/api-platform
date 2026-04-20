@@ -95,8 +95,12 @@ github.com/twmb/franz-go/pkg/kadm v1.14.0 h1:nAn1co1lXzJQocpzyIyOFOjUBf4WHWs5/fT
 github.com/twmb/franz-go/pkg/kadm v1.14.0/go.mod h1:XjOPz6ZaXXjrW2jVCfLuucP8H1w2TvD6y3PT2M+aAM4=
 github.com/twmb/franz-go/pkg/kmsg v1.9.0 h1:JojYUph2TKAau6SBtErXpXGC7E3gg4vGZMv9xFU/B6M=
 github.com/twmb/franz-go/pkg/kmsg v1.9.0/go.mod h1:CMbfazviCyY6HM0SXuG5t9vOwYDHRCSrJJyBAe5paqg=
+github.com/wso2/gateway-controllers/policies/api-key-auth v1.0.1 h1:BPfTBPY+SYaHBkrAZBTrbpCZI6+T8UO8LDx39tY3oME=
+github.com/wso2/gateway-controllers/policies/api-key-auth v1.0.1/go.mod h1:hzqpt4jukqXz7KPhGmKBtf90suQTUwFCcvuxIrGHrIA=
 github.com/wso2/gateway-controllers/policies/basic-auth v1.0.1 h1:0W1va0Daxg6y6ReH658VvkrtNbQewbbbALP5Xc6AUKA=
 github.com/wso2/gateway-controllers/policies/basic-auth v1.0.1/go.mod h1:Th729M7k3+vFIybXRwzeui486rzyHGxII8MDSphn+5w=
+github.com/wso2/gateway-controllers/policies/set-headers v1.0.1 h1:Cn2v1aBcT6J9RsN/UoQhRKx2QNMDRTONgtYRNZk3Me0=
+github.com/wso2/gateway-controllers/policies/set-headers v1.0.1/go.mod h1:x0yROku+Vmi4L6ED+8CfMpfmw8oRr3DquCFXpe+r2kA=
 go.opentelemetry.io/auto/sdk v1.2.1 h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=
 go.opentelemetry.io/auto/sdk v1.2.1/go.mod h1:KRTj+aOaElaLi+wW1kO/DZRXwkF4C5xPbEe3ZiIhN7Y=
 go.opentelemetry.io/otel v1.40.0 h1:oA5YeOcpRTXq6NN7frwmwFR0Cn3RhTVZvXsP4duvCms=

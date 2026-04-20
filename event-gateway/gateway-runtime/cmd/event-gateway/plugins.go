@@ -26,7 +26,9 @@ import (
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors/receiver/websub"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/pkg/engine"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
+	apikeyauth "github.com/wso2/gateway-controllers/policies/api-key-auth"
 	basicauth "github.com/wso2/gateway-controllers/policies/basic-auth"
+	setheaders "github.com/wso2/gateway-controllers/policies/set-headers"
 )
 
 // registerConnectors registers all built-in receiver and broker-driver factories.
@@ -90,4 +92,12 @@ func registerPolicies(eng *engine.Engine) {
 		Name:    "basic-auth",
 		Version: "v1.0.1",
 	}, basicauth.GetPolicy)
+	_ = eng.RegisterPolicy(&policy.PolicyDefinition{
+		Name:    "set-headers",
+		Version: "v1.0.1",
+	}, setheaders.GetPolicy)
+	_ = eng.RegisterPolicy(&policy.PolicyDefinition{
+		Name:    "api-key-auth",
+		Version: "v1.0.1",
+	}, apikeyauth.GetPolicy)
 }

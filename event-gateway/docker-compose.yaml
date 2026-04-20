@@ -40,15 +40,13 @@ services:
       - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB_PORT=8080
       - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB__LISTENER__PORT=8080
       - APIP_GW_ROUTER_EVENT__GATEWAY_TIMEOUT__SECONDS=30
-      - GATEWAY_REGISTRATION_TOKEN=d0RJWFzd0qQZw78igYE7YWZkIWfPS4Sf4o2vEtweIEQ
+      - APIP_GW_GATEWAY_REGISTRATION_TOKEN=${GATEWAY_REGISTRATION_TOKEN:-tvZoZHwOPvOsOXAPzkbNqETF25A6kwqD97bH-fQ9q2o}
+      - APIP_GW_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:-192.168.143.2:9243}
     volumes:
       - controller-data:/app/data
       - ../gateway/configs/config.toml:/etc/gateway-controller/config.toml:ro
       - ../gateway/gateway-controller/certificates:/app/certificates
       - ../gateway/gateway-controller/listener-certs:/app/listener-certs:ro
-    depends_on:
-      kafka:
-        condition: service_healthy
     networks:
       - egw-network
 
