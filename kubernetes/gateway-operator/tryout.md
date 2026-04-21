@@ -1,4 +1,3 @@
-
 # API Platform – Local Setup Guide
 
 This document explains how to install Cert-Manager, configure Docker Hub credentials, deploy the Gateway Operator, apply Gateway/API configurations, and test APIs locally.
