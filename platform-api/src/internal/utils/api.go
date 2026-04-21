@@ -32,6 +32,8 @@ import (
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
 
+	commonconstants "github.com/wso2/api-platform/common/constants"
+
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/pb33f/libopenapi"
 	v2high "github.com/pb33f/libopenapi/datamodel/high/v2"
@@ -550,8 +552,11 @@ func (u *APIUtil) BuildAPIDeploymentYAML(apiModel *model.API) (*dto.APIDeploymen
 		Kind:       apiType,
 		Metadata: dto.DeploymentMetadata{
 			Name: apiModel.Handle,
+			Annotations: map[string]string{
+				commonconstants.AnnotationProjectID: apiModel.ProjectID,
+			},
 			Labels: map[string]string{
-				"project-id": apiModel.ProjectID,
+				commonconstants.DeprecatedLabelProjectID: apiModel.ProjectID,
 			},
 		},
 		Spec: apiYAMLData,

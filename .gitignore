@@ -110,6 +110,20 @@ bin/
 *.pprof
 *__debug_bin*
 
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+.Python
+*.egg-info/
+*.egg
+.pytest_cache/
+.coverage
+.mypy_cache/
+.ipynb_checkpoints/
+
 # CLI test logs and output
 cli/src/tests/logs/
 cli/src/tests/target/

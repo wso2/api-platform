@@ -85,7 +85,7 @@ func TestBuildAPIConfigFromHTTPRoute(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "/api", spec.Context)
 	require.Equal(t, "my-route", spec.DisplayName)
-	require.Equal(t, "v1", spec.Version)
+	require.Equal(t, "v1.0", spec.Version)
 	require.Len(t, spec.Operations, 1)
 	require.Equal(t, "/api/hello", spec.Operations[0].Path)
 	require.Equal(t, "http://backend.default.svc.cluster.local:8080", spec.Upstream.Main.Url)

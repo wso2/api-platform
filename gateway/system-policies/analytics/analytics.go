@@ -543,7 +543,10 @@ func extractLLMProviderAnalyticsInfo(template map[string]interface{}, ctx *polic
 
 // extractLLMProviderAnalyticsInfoFromBytes extracts LLM analytics from raw byte slices.
 // responseBodyBytes may be a full JSON body or accumulated SSE chunks; SSE is detected
-// automatically and the last data event is used for token extraction.
+// automatically. For SSE, all data events are merged (later events win on top-level key
+// conflicts) so that providers like Anthropic — which send the model name in the first
+// event (message_start) and final token counts in a middle event (message_delta) — are
+// handled correctly alongside providers that put everything in the last event.
 func extractLLMProviderAnalyticsInfoFromBytes(
 	template map[string]interface{},
 	requestHeaders, responseHeaders *policy.Headers,
@@ -551,9 +554,9 @@ func extractLLMProviderAnalyticsInfoFromBytes(
 ) (*LLMProviderAnalyticsInfo, error) {
 	var responseJSON map[string]interface{}
 	if len(responseBodyBytes) > 0 {
-		// SSE responses: find the last data event which carries usage fields.
-		if jsonData, err := parseSSELastDataEvent(responseBodyBytes); err == nil {
-			_ = json.Unmarshal(jsonData, &responseJSON)
+		// SSE responses: merge all data events so fields spread across events are visible.
+		if merged, err := parseSSEMergedDataEvents(responseBodyBytes); err == nil {
+			responseJSON = merged
 		} else {
 			// Plain JSON response.
 			_ = json.Unmarshal(responseBodyBytes, &responseJSON)
@@ -795,26 +798,55 @@ func parseSSEFirstDataEvent(sseContent []byte) ([]byte, error) {
 	return nil, fmt.Errorf("no data field found in SSE response")
 }
 
-// parseSSELastDataEvent returns the JSON bytes from the last non-[DONE] "data:" line.
-// Used for LLM streaming responses where the final event carries token usage information.
-func parseSSELastDataEvent(sseContent []byte) ([]byte, error) {
+// parseSSEMergedDataEvents merges all non-[DONE] data events from SSE content into a single
+// JSON map. Keys from later events overwrite keys from earlier events at the top level, so
+// providers like Anthropic that spread data across multiple events are handled correctly:
+//
+//   - message_start → contributes "message" (contains "model") and nested "usage"
+//   - message_delta → contributes top-level "usage" with final input/output token counts
+//   - message_stop  → contributes only "type"; no useful fields
+//
+// After the merge the caller can resolve e.g. "$.message.model" and "$.usage.output_tokens"
+// from a single map instead of having to scan individual events.
+func parseSSEMergedDataEvents(sseContent []byte) (map[string]interface{}, error) {
 	lines := strings.Split(string(sseContent), "\n")
-	var lastData []byte
+	merged := make(map[string]interface{})
+	found := false
+	var currentData []string
+
+	flushEvent := func() {
+		if len(currentData) == 0 {
+			return
+		}
+		payload := strings.Join(currentData, "\n")
+		currentData = currentData[:0]
+		if payload == "[DONE]" {
+			return
+		}
+		var obj map[string]interface{}
+		if err := json.Unmarshal([]byte(payload), &obj); err != nil {
+			return
+		}
+		for k, v := range obj {
+			merged[k] = v
+		}
+		found = true
+	}
+
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "data: ") {
-			continue
+		if strings.HasPrefix(line, "data: ") {
+			currentData = append(currentData, strings.TrimPrefix(line, "data: "))
+		} else if line == "" {
+			flushEvent()
 		}
-		data := strings.TrimPrefix(line, "data: ")
-		if data == "[DONE]" {
-			continue
-		}
-		lastData = []byte(data)
 	}
-	if lastData == nil {
-		return nil, fmt.Errorf("no valid data event found in SSE response")
+	flushEvent()
+
+	if !found {
+		return nil, fmt.Errorf("no valid data events found in SSE response")
 	}
-	return lastData, nil
+	return merged, nil
 }
 
 // convertToInt64 converts various numeric types to int64

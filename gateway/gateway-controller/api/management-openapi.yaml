@@ -3091,6 +3091,13 @@ components:
             environment: production
             team: backend
             version: v1
+        annotations:
+          type: object
+          description: Annotations are arbitrary non-identifying metadata. Use domain-prefixed keys.
+          additionalProperties:
+            type: string
+          example:
+            gateway.api-platform.wso2.com/project-id: 019d953f-d386-7a64-aa92-1869a28292e0
 
     APIConfigData:
       type: object

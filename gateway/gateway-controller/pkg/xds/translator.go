@@ -732,13 +732,7 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig, allConfig
 			effectiveMainVHost = apiData.Vhosts.Main
 		}
 	}
-	// Extract project ID from labels
-	apiProjectID := ""
-	if labels := cfg.GetLabels(); labels != nil {
-		if pid, exists := (*labels)["project-id"]; exists {
-			apiProjectID = pid
-		}
-	}
+	apiProjectID := extractProjectIDFromConfig(cfg)
 
 	for _, ch := range apiData.Channels {
 		chName := ch.Name
@@ -805,13 +799,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 	templateHandle := t.extractTemplateHandle(cfg, allConfigs)
 	providerName := t.extractProviderName(cfg, allConfigs)
 
-	// Extract project ID from labels
-	apiProjectID := ""
-	if labels := cfg.GetLabels(); labels != nil {
-		if pid, exists := (*labels)["project-id"]; exists {
-			apiProjectID = pid
-		}
-	}
+	apiProjectID := extractProjectIDFromConfig(cfg)
 
 	// Build a map of upstream definition name -> basePath for dynamic routing
 	// This allows the policy engine to apply the correct path transformation when UpstreamName is used
@@ -1603,6 +1591,26 @@ func getValueFromSourceConfig(sourceConfig any, key string) (any, error) {
 // extractTemplateHandle extracts the template handle from source configuration
 // For LlmProvider: extracts from spec.template
 // For LlmProxy: resolves provider reference to get spec.template
+// extractProjectIDFromConfig reads project ID from the annotation (preferred) then falls back
+// to the deprecated bare label, logging a warning if only the label is present.
+func extractProjectIDFromConfig(cfg *models.StoredConfig) string {
+	if annotations := cfg.GetAnnotations(); annotations != nil {
+		if pid, exists := (*annotations)[commonconstants.AnnotationProjectID]; exists {
+			return pid
+		}
+	}
+	if labels := cfg.GetLabels(); labels != nil {
+		if pid, exists := (*labels)[commonconstants.DeprecatedLabelProjectID]; exists {
+			// Use a debug log here since this log will be emitted for any change (delete other config)
+			slog.Debug("deprecated project-id label detected; migrate to annotation",
+				"annotation", commonconstants.AnnotationProjectID,
+				"api", cfg.Handle)
+			return pid
+		}
+	}
+	return ""
+}
+
 func (t *Translator) extractTemplateHandle(cfg *models.StoredConfig, allConfigs []*models.StoredConfig) string {
 	if cfg.SourceConfiguration == nil {
 		return ""
