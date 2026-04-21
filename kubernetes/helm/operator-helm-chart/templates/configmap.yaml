@@ -18,6 +18,7 @@ data:
     reconciliation:
       enabled: {{ .Values.reconciliation.enabled | default true }}
       interval: {{ .Values.reconciliation.interval | default 300 }}
+      max_concurrent_reconciles: {{ .Values.reconciliation.maxConcurrentReconciles | default 1 }}
     logging:
       level: {{ .Values.logging.level | quote }}
       format: {{ .Values.logging.format | quote }}
