@@ -140,6 +140,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 COPY --from=policy-compiler /api-platform/output/python-executor/requirements.txt /tmp/requirements.txt
 
+# Upgrade pip and setuptools so PEP 621 (pyproject.toml) and recent git dependencies are supported
+RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel
+
 RUN pip3 install --no-cache-dir \
     --target /app/python-libs \
     -r /tmp/requirements.txt
