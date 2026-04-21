@@ -20,6 +20,7 @@ package utils
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -239,9 +240,11 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	}
 
 	var isUpdate bool
+	var existingConfig *models.StoredConfig
 
 	if s.db != nil {
-		existingConfig, err := s.db.GetConfig(apiID)
+		var err error
+		existingConfig, err = s.db.GetConfig(apiID)
 		if err == nil && existingConfig != nil {
 			isUpdate = true
 		} else if err != nil && !storage.IsNotFoundError(err) && !storage.IsDatabaseUnavailableError(err) {
@@ -320,89 +323,11 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 
 	// WebSub topic registration/deregistration — only after successful, non-stale persistence.
 	if kind == "WebSubApi" {
-		// TODO: Pre configure the dynamic forward proxy rules for event gw
-		// This was communication bridge will be created on the gw startup
-		// Can perform internal communication with websub hub without relying on the dynamic rules
-		// Execute topic operations with wait group and errors tracking
-		var wg2 sync.WaitGroup
-		var regErrs int32
-		var deregErrs int32
-
-		if len(topicsToRegister) > 0 {
-			wg2.Add(1)
-			go func(list []string) {
-				defer wg2.Done()
-				params.Logger.Info("Starting topic registration", slog.Int("total_topics", len(list)), slog.String("api_id", apiID))
-				var childWg sync.WaitGroup
-				for _, topic := range list {
-					childWg.Add(1)
-					go func(topic string) {
-						defer childWg.Done()
-						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
-						defer cancel()
-
-						if err := s.RegisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, params.Logger); err != nil {
-							params.Logger.Error("Failed to register topic with WebSubHub",
-								slog.Any("error", err),
-								slog.String("topic", topic),
-								slog.String("api_id", apiID))
-							atomic.AddInt32(&regErrs, 1)
-							return
-						} else {
-							params.Logger.Info("Successfully registered topic with WebSubHub",
-								slog.String("topic", topic),
-								slog.String("api_id", apiID))
-						}
-					}(topic)
-				}
-				childWg.Wait()
-			}(topicsToRegister)
-		}
-
-		if len(topicsToUnregister) > 0 {
-			wg2.Add(1)
-			go func(list []string) {
-				defer wg2.Done()
-				var childWg sync.WaitGroup
-				params.Logger.Info("Starting topic deregistration", slog.Int("total_topics", len(list)), slog.String("api_id", apiID))
-				for _, topic := range list {
-					childWg.Add(1)
-					go func(topic string) {
-						defer childWg.Done()
-						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
-						defer cancel()
-
-						if err := s.UnregisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, params.Logger); err != nil {
-							params.Logger.Error("Failed to deregister topic from WebSubHub",
-								slog.Any("error", err),
-								slog.String("topic", topic),
-								slog.String("api_id", apiID))
-							atomic.AddInt32(&deregErrs, 1)
-							return
-						} else {
-							params.Logger.Info("Successfully deregistered topic from WebSubHub",
-								slog.String("topic", topic),
-								slog.String("api_id", apiID))
-						}
-					}(topic)
-				}
-				childWg.Wait()
-			}(topicsToUnregister)
-		}
-
-		wg2.Wait()
-		params.Logger.Info("Topic lifecycle operations completed",
-			slog.String("api_id", apiID),
-			slog.Int("registered", len(topicsToRegister)),
-			slog.Int("deregistered", len(topicsToUnregister)),
-			slog.Int("register_errors", int(regErrs)),
-			slog.Int("deregister_errors", int(deregErrs)))
-
-		// Check if topic operations failed and return error
-		if regErrs > 0 || deregErrs > 0 {
-			params.Logger.Warn("Topic lifecycle operations had failures (non-fatal, configuration was persisted)",
-				slog.Int("register_errors", int(regErrs)),
-				slog.Int("deregister_errors", int(deregErrs)))
+		if err := s.completeWebSubTopicOperations(apiID, topicsToRegister, topicsToUnregister, params.Logger); err != nil {
+			if rollbackErr := s.rollbackPersistedAPIConfiguration(storedCfg, existingConfig, isUpdate, params.Logger); rollbackErr != nil {
+				return nil, fmt.Errorf("%w; rollback failed: %v", err, rollbackErr)
+			}
+			return nil, err
 		}
 	}
 
@@ -432,6 +357,161 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		IsUpdate:     isUpdate,
 		IsStale:      false,
 	}, nil
+}
+
+func (s *APIDeploymentService) completeWebSubTopicOperations(
+	apiID string,
+	topicsToRegister []string,
+	topicsToUnregister []string,
+	logger *slog.Logger,
+) error {
+	if len(topicsToRegister) == 0 && len(topicsToUnregister) == 0 {
+		return nil
+	}
+	if s.routerConfig == nil {
+		return fmt.Errorf("failed to complete topic operations: router configuration is required for WebSub topic operations")
+	}
+
+	// TODO: Pre configure the dynamic forward proxy rules for event gw.
+	// This communication bridge will be created on the gw startup and can perform
+	// internal communication with the WebSub hub without relying on dynamic rules.
+	var wg sync.WaitGroup
+	var regErrs int32
+	var deregErrs int32
+	var opErrsMu sync.Mutex
+	var opErrs []error
+
+	recordError := func(err error) {
+		opErrsMu.Lock()
+		opErrs = append(opErrs, err)
+		opErrsMu.Unlock()
+	}
+
+	runTopicOps := func(
+		list []string,
+		action string,
+		successMessage string,
+		failureMessage string,
+		counter *int32,
+		op func(context.Context, string) error,
+	) {
+		if len(list) == 0 {
+			return
+		}
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			logger.Info("Starting topic operation",
+				slog.String("action", action),
+				slog.Int("total_topics", len(list)),
+				slog.String("api_id", apiID))
+
+			var childWg sync.WaitGroup
+			for _, topic := range list {
+				childWg.Add(1)
+				go func(topic string) {
+					defer childWg.Done()
+					ctx, cancel := context.WithTimeout(
+						context.Background(),
+						time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second,
+					)
+					defer cancel()
+
+					if err := op(ctx, topic); err != nil {
+						logger.Error(failureMessage,
+							slog.Any("error", err),
+							slog.String("topic", topic),
+							slog.String("api_id", apiID))
+						atomic.AddInt32(counter, 1)
+						recordError(fmt.Errorf("%s topic %q: %w", action, topic, err))
+						return
+					}
+
+					logger.Info(successMessage,
+						slog.String("topic", topic),
+						slog.String("api_id", apiID))
+				}(topic)
+			}
+			childWg.Wait()
+		}()
+	}
+
+	runTopicOps(
+		topicsToRegister,
+		"register",
+		"Successfully registered topic with WebSubHub",
+		"Failed to register topic with WebSubHub",
+		&regErrs,
+		func(ctx context.Context, topic string) error {
+			return s.RegisterTopicWithHub(
+				ctx,
+				s.httpClient,
+				topic,
+				s.routerConfig.EventGateway.RouterHost,
+				s.routerConfig.EventGateway.WebSubHubListenerPort,
+				logger,
+			)
+		},
+	)
+
+	runTopicOps(
+		topicsToUnregister,
+		"deregister",
+		"Successfully deregistered topic from WebSubHub",
+		"Failed to deregister topic from WebSubHub",
+		&deregErrs,
+		func(ctx context.Context, topic string) error {
+			return s.UnregisterTopicWithHub(
+				ctx,
+				s.httpClient,
+				topic,
+				s.routerConfig.EventGateway.RouterHost,
+				s.routerConfig.EventGateway.WebSubHubListenerPort,
+				logger,
+			)
+		},
+	)
+
+	wg.Wait()
+	logger.Info("Topic lifecycle operations completed",
+		slog.String("api_id", apiID),
+		slog.Int("registered", len(topicsToRegister)),
+		slog.Int("deregistered", len(topicsToUnregister)),
+		slog.Int("register_errors", int(regErrs)),
+		slog.Int("deregister_errors", int(deregErrs)))
+
+	if len(opErrs) > 0 {
+		return fmt.Errorf("failed to complete topic operations: %w", errors.Join(opErrs...))
+	}
+
+	return nil
+}
+
+func (s *APIDeploymentService) rollbackPersistedAPIConfiguration(
+	storedCfg *models.StoredConfig,
+	previousCfg *models.StoredConfig,
+	isUpdate bool,
+	logger *slog.Logger,
+) error {
+	if isUpdate {
+		if previousCfg == nil {
+			return fmt.Errorf("previous configuration was not found for rollback")
+		}
+		if err := s.db.UpdateConfig(previousCfg); err != nil {
+			return fmt.Errorf("failed to restore previous configuration after topic operation failure: %w", err)
+		}
+		logger.Warn("Rolled back API configuration update after topic operation failure",
+			slog.String("api_id", storedCfg.UUID))
+		return nil
+	}
+
+	if err := s.db.DeleteConfig(storedCfg.UUID); err != nil {
+		return fmt.Errorf("failed to delete newly persisted configuration after topic operation failure: %w", err)
+	}
+	logger.Warn("Rolled back API configuration create after topic operation failure",
+		slog.String("api_id", storedCfg.UUID))
+	return nil
 }
 
 func (s *APIDeploymentService) GetTopicsForUpdate(apiConfig models.StoredConfig) ([]string, []string) {
