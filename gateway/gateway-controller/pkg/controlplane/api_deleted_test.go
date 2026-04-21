@@ -58,6 +58,31 @@ type mockStorageForDeletion struct {
 	upsertCallCount              int
 }
 
+type recordingControlPlaneXDSManager struct {
+	storeCallCount  int
+	revokeCallCount int
+	removeCallCount int
+}
+
+func (m *recordingControlPlaneXDSManager) StoreAPIKey(string, string, string, *models.APIKey, string) error {
+	m.storeCallCount++
+	return nil
+}
+
+func (m *recordingControlPlaneXDSManager) RevokeAPIKey(string, string, string, string, string) error {
+	m.revokeCallCount++
+	return nil
+}
+
+func (m *recordingControlPlaneXDSManager) RemoveAPIKeysByAPI(string, string, string, string) error {
+	m.removeCallCount++
+	return nil
+}
+
+func (m *recordingControlPlaneXDSManager) RefreshSnapshot() error {
+	return nil
+}
+
 func newMockStorageForDeletion() *mockStorageForDeletion {
 	return &mockStorageForDeletion{
 		configs:       make(map[string]*models.StoredConfig),
@@ -351,6 +376,10 @@ func (m *mockStorageForDeletion) GetAllAPIKeys() ([]*models.APIKey, error) {
 	return nil, nil
 }
 
+func (m *mockStorageForDeletion) GetAPIKeysByApplicationUUID(applicationUUID string) ([]*models.APIKey, error) {
+	return nil, nil
+}
+
 func (m *mockStorageForDeletion) GetAPIKeysByAPIAndName(apiID, name string) (*models.APIKey, error) {
 	return nil, storage.ErrNotFound
 }
@@ -371,9 +400,9 @@ func (m *mockStorageForDeletion) CountActiveAPIKeysByUserAndAPI(userID, apiID st
 	return 0, nil
 }
 
-func (m *mockStorageForDeletion) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) error {
+func (m *mockStorageForDeletion) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) ([]string, error) {
 	if m.replaceErr != nil {
-		return m.replaceErr
+		return nil, m.replaceErr
 	}
 	if application != nil {
 		m.replacedAppID = application.ApplicationID
@@ -382,7 +411,7 @@ func (m *mockStorageForDeletion) ReplaceApplicationAPIKeyMappings(application *m
 		m.replacedAppType = application.ApplicationType
 	}
 	m.replacedMappings = append([]*models.ApplicationAPIKeyMapping(nil), mappings...)
-	return nil
+	return nil, nil
 }
 
 // Certificate methods (not used in deletion tests but required by interface)
@@ -1028,6 +1057,59 @@ func TestClient_handleApplicationUpdatedEvent_ContinuesOnInvalidMappingEntries(t
 	}
 	if hub.publishedEvents[0].event.EventID != "corr-app-update-skip-invalid" {
 		t.Errorf("expected correlation ID corr-app-update-skip-invalid, got %s", hub.publishedEvents[0].event.EventID)
+	}
+}
+
+func TestClient_handleApplicationUpdatedEvent_DoesNotRefreshXDSInline(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	db := newMockStorageForDeletion()
+	hub := &mockControlPlaneEventHub{}
+	xdsManager := &recordingControlPlaneXDSManager{}
+
+	db.apiKeysByUUID["key-uuid-found"] = &models.APIKey{
+		UUID:         "key-uuid-found",
+		ArtifactUUID: "api-uuid-1",
+	}
+
+	client := &Client{
+		logger:           logger,
+		db:               db,
+		eventHub:         hub,
+		apiKeyXDSManager: xdsManager,
+		gatewayID:        "test-gateway",
+	}
+
+	event := map[string]interface{}{
+		"type": "application.updated",
+		"payload": map[string]interface{}{
+			"applicationId":   "app-789",
+			"applicationUuid": "app-uuid-789",
+			"applicationName": "Inventory App",
+			"applicationType": "genai",
+			"mappings": []map[string]interface{}{
+				{"apiKeyUuid": "key-uuid-found"},
+			},
+		},
+		"timestamp":     time.Now().Format(time.RFC3339),
+		"correlationId": "corr-app-update-no-inline-xds",
+	}
+
+	client.handleApplicationUpdatedEvent(event)
+
+	if db.replacedAppUUID != "app-uuid-789" {
+		t.Fatalf("expected mappings to be replaced for app-uuid-789, got %q", db.replacedAppUUID)
+	}
+	if len(hub.publishedEvents) != 1 {
+		t.Fatalf("expected one application event, got %d", len(hub.publishedEvents))
+	}
+	if xdsManager.storeCallCount != 0 {
+		t.Fatalf("expected no inline xDS store calls, got %d", xdsManager.storeCallCount)
+	}
+	if xdsManager.revokeCallCount != 0 {
+		t.Fatalf("expected no inline xDS revoke calls, got %d", xdsManager.revokeCallCount)
+	}
+	if xdsManager.removeCallCount != 0 {
+		t.Fatalf("expected no inline xDS remove calls, got %d", xdsManager.removeCallCount)
 	}
 }
 

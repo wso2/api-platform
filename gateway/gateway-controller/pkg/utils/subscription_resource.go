@@ -20,7 +20,9 @@ package utils
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
+	"sort"
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
@@ -150,8 +152,13 @@ func (s *SubscriptionResourceService) DeleteSubscriptionPlan(id, correlationID s
 
 // ReplaceApplicationAPIKeyMappings persists canonical application metadata and publishes a replica-sync event.
 func (s *SubscriptionResourceService) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping, correlationID string, logger *slog.Logger) error {
-	return s.persistAndSync(eventhub.EventTypeApplication, "UPDATE", application.ApplicationUUID, false, correlationID, logger, func() error {
-		return s.requireDB().ReplaceApplicationAPIKeyMappings(application, mappings)
+	var removedKeyIDs []string
+	return s.persistAndSyncWithEventData(eventhub.EventTypeApplication, "UPDATE", application.ApplicationUUID, func() (string, error) {
+		return s.buildApplicationEventData(removedKeyIDs)
+	}, false, correlationID, logger, func() error {
+		var err error
+		removedKeyIDs, err = s.requireDB().ReplaceApplicationAPIKeyMappings(application, mappings)
+		return err
 	})
 }
 
@@ -159,10 +166,40 @@ func (s *SubscriptionResourceService) requireDB() storage.Storage {
 	return s.db
 }
 
+func (s *SubscriptionResourceService) buildApplicationEventData(removedKeyIDs []string) (string, error) {
+	if len(removedKeyIDs) == 0 {
+		return eventhub.EmptyEventData, nil
+	}
+
+	eventRemovedKeyIDs := append([]string(nil), removedKeyIDs...)
+	sort.Strings(eventRemovedKeyIDs)
+	payload, err := json.Marshal(models.ApplicationEventData{RemovedAPIKeyIDs: eventRemovedKeyIDs})
+	if err != nil {
+		return "", err
+	}
+
+	return string(payload), nil
+}
+
 func (s *SubscriptionResourceService) persistAndSync(
 	eventType eventhub.EventType,
 	action string,
 	entityID string,
+	refreshSubscriptionSnapshot bool,
+	correlationID string,
+	logger *slog.Logger,
+	persist func() error,
+) error {
+	return s.persistAndSyncWithEventData(eventType, action, entityID, func() (string, error) {
+		return eventhub.EmptyEventData, nil
+	}, refreshSubscriptionSnapshot, correlationID, logger, persist)
+}
+
+func (s *SubscriptionResourceService) persistAndSyncWithEventData(
+	eventType eventhub.EventType,
+	action string,
+	entityID string,
+	eventDataBuilder func() (string, error),
 	refreshSubscriptionSnapshot bool,
 	correlationID string,
 	logger *slog.Logger,
@@ -176,11 +213,16 @@ func (s *SubscriptionResourceService) persistAndSync(
 		return err
 	}
 
-	s.publishEvent(eventType, action, entityID, correlationID, logger)
+	eventData, err := eventDataBuilder()
+	if err != nil {
+		return err
+	}
+
+	s.publishEvent(eventType, action, entityID, eventData, correlationID, logger)
 	return nil
 }
 
-func (s *SubscriptionResourceService) publishEvent(eventType eventhub.EventType, action, entityID, correlationID string, logger *slog.Logger) {
+func (s *SubscriptionResourceService) publishEvent(eventType eventhub.EventType, action, entityID, eventData, correlationID string, logger *slog.Logger) {
 	event := eventhub.Event{
 		GatewayID:           s.gatewayID,
 		OriginatedTimestamp: time.Now(),
@@ -188,7 +230,7 @@ func (s *SubscriptionResourceService) publishEvent(eventType eventhub.EventType,
 		Action:              action,
 		EntityID:            entityID,
 		EventID:             correlationID,
-		EventData:           eventhub.EmptyEventData,
+		EventData:           eventData,
 	}
 	if err := s.eventHub.PublishEvent(s.gatewayID, event); err != nil {
 		logger.Error("Failed to publish subscription resource event",

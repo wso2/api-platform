@@ -971,13 +971,14 @@ func TestSQLiteStorage_ReplaceApplicationAPIKeyMappings_Success(t *testing.T) {
 		ApplicationType: "web",
 	}
 
-	err = storage.ReplaceApplicationAPIKeyMappings(application, []*models.ApplicationAPIKeyMapping{
+	removedKeyIDs, err := storage.ReplaceApplicationAPIKeyMappings(application, []*models.ApplicationAPIKeyMapping{
 		{
 			ApplicationUUID: application.ApplicationUUID,
 			APIKeyID:        apiKey1.UUID,
 		},
 	})
 	assert.NilError(t, err)
+	assert.DeepEqual(t, removedKeyIDs, []string{})
 
 	var gatewayID string
 	var applicationName string
@@ -1009,7 +1010,7 @@ func TestSQLiteStorage_ReplaceApplicationAPIKeyMappings_Success(t *testing.T) {
 	assert.Equal(t, mappedKeyID, apiKey1.UUID)
 
 	application.ApplicationName = "App One Updated"
-	err = storage.ReplaceApplicationAPIKeyMappings(application, []*models.ApplicationAPIKeyMapping{
+	removedKeyIDs, err = storage.ReplaceApplicationAPIKeyMappings(application, []*models.ApplicationAPIKeyMapping{
 		{
 			ApplicationUUID: application.ApplicationUUID,
 			APIKeyID:        apiKey2.UUID,
@@ -1020,6 +1021,7 @@ func TestSQLiteStorage_ReplaceApplicationAPIKeyMappings_Success(t *testing.T) {
 		},
 	})
 	assert.NilError(t, err)
+	assert.DeepEqual(t, removedKeyIDs, []string{apiKey1.UUID})
 
 	err = storage.db.QueryRow(`
 		SELECT application_name
@@ -1044,6 +1046,86 @@ func TestSQLiteStorage_ReplaceApplicationAPIKeyMappings_Success(t *testing.T) {
 	`, application.ApplicationUUID, "platform-gateway-id").Scan(&mappedKeyID)
 	assert.NilError(t, err)
 	assert.Equal(t, mappedKeyID, apiKey2.UUID)
+}
+
+func TestSQLiteStorage_GetAPIKeysByApplicationUUID_ReturnsMappedActiveKeys(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	configA := createTestStoredConfig()
+	configA.UUID = "app-query-api-a"
+	configA.Handle = "app-query-api-a"
+	err := storage.SaveConfig(configA)
+	assert.NilError(t, err)
+
+	configB := createTestStoredConfig()
+	configB.UUID = "app-query-api-b"
+	configB.Handle = "app-query-api-b"
+	err = storage.SaveConfig(configB)
+	assert.NilError(t, err)
+
+	activeMappedKey := createTestAPIKey()
+	activeMappedKey.UUID = "app-query-key-active"
+	activeMappedKey.Name = "app-query-key-active"
+	activeMappedKey.ArtifactUUID = configA.UUID
+	err = storage.SaveAPIKey(activeMappedKey)
+	assert.NilError(t, err)
+
+	revokedMappedKey := createTestAPIKey()
+	revokedMappedKey.UUID = "app-query-key-revoked"
+	revokedMappedKey.Name = "app-query-key-revoked"
+	revokedMappedKey.ArtifactUUID = configA.UUID
+	revokedMappedKey.Status = models.APIKeyStatusRevoked
+	err = storage.SaveAPIKey(revokedMappedKey)
+	assert.NilError(t, err)
+
+	otherApplicationKey := createTestAPIKey()
+	otherApplicationKey.UUID = "app-query-key-other-app"
+	otherApplicationKey.Name = "app-query-key-other-app"
+	otherApplicationKey.ArtifactUUID = configB.UUID
+	err = storage.SaveAPIKey(otherApplicationKey)
+	assert.NilError(t, err)
+
+	applicationOne := &models.StoredApplication{
+		ApplicationUUID: "app-query-uuid-1",
+		ApplicationID:   "app-query-id-1",
+		ApplicationName: "Application One",
+		ApplicationType: "web",
+	}
+	_, err = storage.ReplaceApplicationAPIKeyMappings(applicationOne, []*models.ApplicationAPIKeyMapping{
+		{
+			ApplicationUUID: applicationOne.ApplicationUUID,
+			APIKeyID:        activeMappedKey.UUID,
+		},
+		{
+			ApplicationUUID: applicationOne.ApplicationUUID,
+			APIKeyID:        revokedMappedKey.UUID,
+		},
+	})
+	assert.NilError(t, err)
+
+	applicationTwo := &models.StoredApplication{
+		ApplicationUUID: "app-query-uuid-2",
+		ApplicationID:   "app-query-id-2",
+		ApplicationName: "Application Two",
+		ApplicationType: "web",
+	}
+	_, err = storage.ReplaceApplicationAPIKeyMappings(applicationTwo, []*models.ApplicationAPIKeyMapping{
+		{
+			ApplicationUUID: applicationTwo.ApplicationUUID,
+			APIKeyID:        otherApplicationKey.UUID,
+		},
+	})
+	assert.NilError(t, err)
+
+	apiKeys, err := storage.GetAPIKeysByApplicationUUID(applicationOne.ApplicationUUID)
+	assert.NilError(t, err)
+	assert.Equal(t, 1, len(apiKeys))
+	if len(apiKeys) == 1 {
+		assert.Equal(t, activeMappedKey.UUID, apiKeys[0].UUID)
+		assert.Equal(t, applicationOne.ApplicationUUID, apiKeys[0].ApplicationID)
+		assert.Equal(t, applicationOne.ApplicationName, apiKeys[0].ApplicationName)
+	}
 }
 
 // Helper functions

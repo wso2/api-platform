@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
@@ -1670,17 +1671,24 @@ func (s *sqlStore) UpsertAPIKey(apiKey *models.APIKey) error {
 // GetAPIKeyByID retrieves an API key by its UUID
 func (s *sqlStore) GetAPIKeyByID(id string) (*models.APIKey, error) {
 	query := `
-		SELECT uuid, name, api_key, masked_api_key, artifact_uuid, status,
-		       created_at, created_by, updated_at, expires_at, source, external_ref_id,
-		       issuer
-		FROM api_keys
-		WHERE uuid = ? AND gateway_id = ?
+		SELECT ak.uuid, ak.name, ak.api_key, ak.masked_api_key, ak.artifact_uuid, ak.status,
+		       ak.created_at, ak.created_by, ak.updated_at, ak.expires_at, ak.source, ak.external_ref_id,
+		       ak.issuer, app.application_uuid, app.application_name
+		FROM api_keys ak
+		LEFT JOIN application_api_keys aak
+		  ON aak.api_key_id = ak.uuid AND aak.gateway_id = ak.gateway_id
+		LEFT JOIN applications app
+		  ON app.application_uuid = aak.application_uuid AND app.gateway_id = aak.gateway_id
+		WHERE ak.uuid = ? AND ak.gateway_id = ?
+		LIMIT 1
 	`
 
 	var apiKey models.APIKey
 	var expiresAt sql.NullTime
 	var externalRefId sql.NullString
 	var issuer sql.NullString
+	var applicationID sql.NullString
+	var applicationName sql.NullString
 
 	err := s.queryRow(query, id, s.gatewayId).Scan(
 		&apiKey.UUID,
@@ -1696,6 +1704,8 @@ func (s *sqlStore) GetAPIKeyByID(id string) (*models.APIKey, error) {
 		&apiKey.Source,
 		&externalRefId,
 		&issuer,
+		&applicationID,
+		&applicationName,
 	)
 
 	if err != nil {
@@ -1705,7 +1715,6 @@ func (s *sqlStore) GetAPIKeyByID(id string) (*models.APIKey, error) {
 		return nil, fmt.Errorf("failed to query API key: %w", err)
 	}
 
-	// Handle nullable fields
 	if expiresAt.Valid {
 		apiKey.ExpiresAt = &expiresAt.Time
 	}
@@ -1714,6 +1723,12 @@ func (s *sqlStore) GetAPIKeyByID(id string) (*models.APIKey, error) {
 	}
 	if issuer.Valid {
 		apiKey.Issuer = &issuer.String
+	}
+	if applicationID.Valid {
+		apiKey.ApplicationID = applicationID.String
+	}
+	if applicationName.Valid {
+		apiKey.ApplicationName = applicationName.String
 	}
 
 	return &apiKey, nil
@@ -1833,7 +1848,7 @@ func (s *sqlStore) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) {
 		LEFT JOIN application_api_keys aak
 		  ON aak.api_key_id = ak.uuid AND aak.gateway_id = ak.gateway_id
 		LEFT JOIN applications app
-		  ON app.application_uuid = aak.application_uuid
+		  ON app.application_uuid = aak.application_uuid AND app.gateway_id = aak.gateway_id
 		WHERE ak.artifact_uuid = ? AND ak.gateway_id = ?
 		ORDER BY ak.created_at DESC
 	`
@@ -1841,6 +1856,30 @@ func (s *sqlStore) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) {
 	rows, err := s.query(query, apiId, s.gatewayId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query API keys: %w", err)
+	}
+	defer rows.Close()
+
+	return s.scanAPIKeyRows(rows)
+}
+
+// GetAPIKeysByApplicationUUID retrieves all active API keys mapped to a specific application UUID.
+func (s *sqlStore) GetAPIKeysByApplicationUUID(applicationUUID string) ([]*models.APIKey, error) {
+	query := `
+		SELECT ak.uuid, ak.name, ak.api_key, ak.masked_api_key, ak.artifact_uuid, ak.status,
+		       ak.created_at, ak.created_by, ak.updated_at, ak.expires_at, ak.source, ak.external_ref_id,
+		       ak.issuer, app.application_uuid, app.application_name
+		FROM api_keys ak
+		INNER JOIN application_api_keys aak
+		  ON aak.api_key_id = ak.uuid AND aak.gateway_id = ak.gateway_id
+		INNER JOIN applications app
+		  ON app.application_uuid = aak.application_uuid AND app.gateway_id = aak.gateway_id
+		WHERE aak.application_uuid = ? AND ak.status = 'active' AND ak.gateway_id = ?
+		ORDER BY ak.created_at DESC
+	`
+
+	rows, err := s.query(query, applicationUUID, s.gatewayId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query API keys by application UUID: %w", err)
 	}
 	defer rows.Close()
 
@@ -2024,14 +2063,14 @@ func (s *sqlStore) RemoveAPIKeyAPIAndName(apiId, name string) error {
 }
 
 // ReplaceApplicationAPIKeyMappings atomically replaces all API key mappings for an application.
-func (s *sqlStore) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) error {
+func (s *sqlStore) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) ([]string, error) {
 	if application == nil || application.ApplicationUUID == "" || application.ApplicationID == "" || application.ApplicationName == "" || application.ApplicationType == "" {
-		return fmt.Errorf("invalid application payload")
+		return nil, fmt.Errorf("invalid application payload")
 	}
 
 	tx, err := s.begin()
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
 	defer func() {
@@ -2042,7 +2081,39 @@ func (s *sqlStore) ReplaceApplicationAPIKeyMappings(application *models.StoredAp
 	}()
 
 	seen := make(map[string]struct{})
+	incomingKeyIDs := make(map[string]struct{}, len(mappings))
+	removedKeyIDs := make([]string, 0)
 	now := time.Now()
+
+	rows, err := tx.QueryQ(`
+		SELECT api_key_id
+		FROM application_api_keys
+		WHERE application_uuid = ? AND gateway_id = ?
+	`, application.ApplicationUUID, s.gatewayId)
+	if err != nil {
+		_ = tx.Rollback()
+		return nil, fmt.Errorf("failed to query existing application mappings: %w", err)
+	}
+
+	existingKeyIDs := make(map[string]struct{})
+	for rows.Next() {
+		var apiKeyID string
+		if err = rows.Scan(&apiKeyID); err != nil {
+			rows.Close()
+			_ = tx.Rollback()
+			return nil, fmt.Errorf("failed to scan existing application mapping: %w", err)
+		}
+		if apiKeyID == "" {
+			continue
+		}
+		existingKeyIDs[apiKeyID] = struct{}{}
+	}
+	if err = rows.Err(); err != nil {
+		rows.Close()
+		_ = tx.Rollback()
+		return nil, fmt.Errorf("failed to iterate existing application mappings: %w", err)
+	}
+	rows.Close()
 
 	if _, err = tx.ExecQ(`
 		INSERT INTO applications (
@@ -2056,7 +2127,7 @@ func (s *sqlStore) ReplaceApplicationAPIKeyMappings(application *models.StoredAp
 			updated_at = excluded.updated_at
 	`, application.ApplicationUUID, s.gatewayId, application.ApplicationID, application.ApplicationName, application.ApplicationType, now, now); err != nil {
 		_ = tx.Rollback()
-		return fmt.Errorf("failed to upsert application metadata: %w", err)
+		return nil, fmt.Errorf("failed to upsert application metadata: %w", err)
 	}
 
 	if _, err = tx.ExecQ(`
@@ -2064,7 +2135,7 @@ func (s *sqlStore) ReplaceApplicationAPIKeyMappings(application *models.StoredAp
 		WHERE application_uuid = ? AND gateway_id = ?
 	`, application.ApplicationUUID, s.gatewayId); err != nil {
 		_ = tx.Rollback()
-		return fmt.Errorf("failed to clear application mappings: %w", err)
+		return nil, fmt.Errorf("failed to clear application mappings: %w", err)
 	}
 
 	for _, mapping := range mappings {
@@ -2073,11 +2144,11 @@ func (s *sqlStore) ReplaceApplicationAPIKeyMappings(application *models.StoredAp
 		}
 		if mapping.ApplicationUUID == "" || mapping.APIKeyID == "" {
 			_ = tx.Rollback()
-			return fmt.Errorf("invalid application mapping payload")
+			return nil, fmt.Errorf("invalid application mapping payload")
 		}
 		if mapping.ApplicationUUID != application.ApplicationUUID {
 			_ = tx.Rollback()
-			return fmt.Errorf("application mapping UUID mismatch")
+			return nil, fmt.Errorf("application mapping UUID mismatch")
 		}
 
 		composite := mapping.ApplicationUUID + ":" + mapping.APIKeyID
@@ -2085,6 +2156,7 @@ func (s *sqlStore) ReplaceApplicationAPIKeyMappings(application *models.StoredAp
 			continue
 		}
 		seen[composite] = struct{}{}
+		incomingKeyIDs[mapping.APIKeyID] = struct{}{}
 
 		if _, err = tx.ExecQ(`
 			INSERT INTO application_api_keys (
@@ -2093,15 +2165,23 @@ func (s *sqlStore) ReplaceApplicationAPIKeyMappings(application *models.StoredAp
 			VALUES (?, ?, ?, ?, ?)
 		`, mapping.ApplicationUUID, mapping.APIKeyID, s.gatewayId, now, now); err != nil {
 			_ = tx.Rollback()
-			return fmt.Errorf("failed to insert application mapping: %w", err)
+			return nil, fmt.Errorf("failed to insert application mapping: %w", err)
 		}
 	}
 
+	for apiKeyID := range existingKeyIDs {
+		if _, exists := incomingKeyIDs[apiKeyID]; exists {
+			continue
+		}
+		removedKeyIDs = append(removedKeyIDs, apiKeyID)
+	}
+	sort.Strings(removedKeyIDs)
+
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit application mapping transaction: %w", err)
+		return nil, fmt.Errorf("failed to commit application mapping transaction: %w", err)
 	}
 
-	return nil
+	return removedKeyIDs, nil
 }
 
 // Close closes the database connection
@@ -2131,7 +2211,7 @@ func (s *sqlStore) GetAllAPIKeys() ([]*models.APIKey, error) {
 		LEFT JOIN application_api_keys aak
 		  ON aak.api_key_id = ak.uuid AND aak.gateway_id = ak.gateway_id
 		LEFT JOIN applications app
-		  ON app.application_uuid = aak.application_uuid
+		  ON app.application_uuid = aak.application_uuid AND app.gateway_id = aak.gateway_id
 		WHERE ak.status = 'active' AND ak.gateway_id = ?
 		ORDER BY ak.created_at DESC
 	`
