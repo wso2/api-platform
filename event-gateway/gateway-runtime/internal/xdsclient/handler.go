@@ -241,7 +241,7 @@ func (h *Handler) resolveBrokerDriver(bd BrokerDriverEntry) binding.BrokerDriver
 	}
 
 	cfg := bd.Config
-	if cfg == nil || len(cfg) == 0 {
+	if len(cfg) == 0 {
 		// Use the event gateway's own Kafka brokers.
 		cfg = map[string]interface{}{
 			"brokers": h.kafkaConfig.Brokers,

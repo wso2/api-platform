@@ -104,8 +104,10 @@ func (c *Consumer) consumeLoop(ctx context.Context) {
 }
 
 // ManualCommitConsumer consumes from Kafka with manual offset commit control.
-// Offsets are only committed when the handler returns nil (delivery success).
-// On handler failure, the message will be redelivered after rebalance.
+// Offsets are committed once per fetch batch through the highest contiguous
+// success for each topic-partition. On handler failure, later records from the
+// same topic-partition in that batch are skipped so commits do not advance past
+// the failed offset.
 type ManualCommitConsumer struct {
 	client  *kgo.Client
 	handler connectors.MessageHandler
@@ -166,29 +168,62 @@ func (c *ManualCommitConsumer) consumeLoop(ctx context.Context) {
 			}
 		}
 
-		fetches.EachRecord(func(record *kgo.Record) {
-			msg := recordToMessage(record)
-			if err := c.handler(ctx, msg); err != nil {
-				slog.Error("Manual-commit handler error, skipping commit",
-					"topic", record.Topic,
-					"partition", record.Partition,
-					"offset", record.Offset,
-					"error", err,
-				)
-				return // do not commit — message redelivered on rebalance
-			}
-			// Commit only on success
-			c.client.MarkCommitRecords(record)
-			if err := c.client.CommitMarkedOffsets(ctx); err != nil {
-				slog.Error("Failed to commit offset",
-					"topic", record.Topic,
-					"partition", record.Partition,
-					"offset", record.Offset,
-					"error", err,
-				)
-			}
-		})
+		commitRecords := collectContiguousCommitRecords(ctx, fetches.Records(), c.handler)
+		if len(commitRecords) == 0 {
+			continue
+		}
+
+		if err := c.client.CommitRecords(ctx, commitRecords...); err != nil {
+			slog.Error("Failed to commit offsets for fetch batch",
+				"records", len(commitRecords),
+				"error", err,
+			)
+		}
 	}
+}
+
+type topicPartitionKey struct {
+	topic     string
+	partition int32
+}
+
+func collectContiguousCommitRecords(
+	ctx context.Context,
+	records []*kgo.Record,
+	handler connectors.MessageHandler,
+) []*kgo.Record {
+	failedPartitions := make(map[topicPartitionKey]struct{})
+	lastSuccessByPartition := make(map[topicPartitionKey]*kgo.Record)
+
+	for _, record := range records {
+		partitionKey := topicPartitionKey{
+			topic:     record.Topic,
+			partition: record.Partition,
+		}
+		if _, failed := failedPartitions[partitionKey]; failed {
+			continue
+		}
+
+		msg := recordToMessage(record)
+		if err := handler(ctx, msg); err != nil {
+			slog.Error("Manual-commit handler error, skipping commit",
+				"topic", record.Topic,
+				"partition", record.Partition,
+				"offset", record.Offset,
+				"error", err,
+			)
+			failedPartitions[partitionKey] = struct{}{}
+			continue
+		}
+
+		lastSuccessByPartition[partitionKey] = record
+	}
+
+	commitRecords := make([]*kgo.Record, 0, len(lastSuccessByPartition))
+	for _, record := range lastSuccessByPartition {
+		commitRecords = append(commitRecords, record)
+	}
+	return commitRecords
 }
 
 func recordToMessage(record *kgo.Record) *connectors.Message {
