@@ -1,0 +1,38 @@
+# --------------------------------------------------------------------
+# Event Gateway Runtime Configuration
+# --------------------------------------------------------------------
+# Environment variable overrides use prefix APIP_EGW_ with section/field
+# names such as:
+#   APIP_EGW_SERVER_WEBSUB_PORT=8080
+#   APIP_EGW_KAFKA_BROKERS=broker1:9092,broker2:9092
+
+[server]
+websub_port = 8080
+websocket_port = 8081
+admin_port = 9002
+metrics_port = 9003
+
+[kafka]
+# Default Kafka brokers. Channels can override with broker-driver.config.brokers.
+brokers = ["localhost:9092"]
+consumer_group_prefix = "event-gateway"
+
+[websub]
+verification_timeout_seconds = 10
+delivery_max_retries = 5
+delivery_initial_delay_ms = 1000
+delivery_max_delay_ms = 60000
+delivery_concurrency = 64
+default_lease_seconds = 0
+
+[policy_engine]
+# config_file = ""
+# chains_file = ""
+
+# runtime_id is auto-generated if left empty
+# runtime_id = ""
+
+[controlplane]
+enabled = true
+xds_address = "localhost:18001"
+# node_id = ""

@@ -411,10 +411,9 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 
 		// Check if topic operations failed and return error
 		if regErrs > 0 || deregErrs > 0 {
-			params.Logger.Error("Topic lifecycle operations failed",
+			params.Logger.Warn("Topic lifecycle operations had failures (non-fatal, configuration was persisted)",
 				slog.Int("register_errors", int(regErrs)),
 				slog.Int("deregister_errors", int(deregErrs)))
-			return nil, fmt.Errorf("failed to complete topic operations: %d registration error(s), %d deregistration error(s)", regErrs, deregErrs)
 		}
 	}
 
