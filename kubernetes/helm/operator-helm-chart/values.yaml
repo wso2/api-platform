@@ -580,6 +580,8 @@ gateway:
 reconciliation:
   enabled: true
   interval: 300
+  # Passed through to operator config.yaml as reconciliation.max_concurrent_reconciles (must be >= 1).
+  maxConcurrentReconciles: 1
 logging:
   level: "info"
   format: "json"
