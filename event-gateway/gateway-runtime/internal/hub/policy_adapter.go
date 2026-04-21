@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	bindingcfg "github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/binding"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/pkg/engine"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
@@ -36,7 +37,7 @@ func SubscribeToRequestHeaderContext(msg *connectors.Message, binding *ChannelBi
 		headers[strings.ToLower(k)] = v
 	}
 
-	hubPath := path.Join(binding.Context, binding.Version, "hub")
+	hubPath := bindingcfg.WebSubApiBasePath(binding.Context, binding.Version) + "/hub"
 
 	return &policy.RequestHeaderContext{
 		SharedContext: &policy.SharedContext{

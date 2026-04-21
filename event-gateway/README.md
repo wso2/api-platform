@@ -40,6 +40,9 @@ The Event Gateway is a lightweight, extensible runtime for managing event-driven
 From the `event-gateway/` directory:
 
 ```bash
+cp .env.example .env
+# edit .env and set GATEWAY_REGISTRATION_TOKEN
+
 docker compose up -d
 ```
 

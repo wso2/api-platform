@@ -430,7 +430,7 @@ func (r *Runtime) buildPolicyChains(b binding.Binding) (subscribeKey, inboundKey
 }
 
 func (r *Runtime) buildWebSubApiPolicyChains(wsb binding.WebSubApiBinding, vhost string) (subscribeKey, inboundKey, outboundKey string, err error) {
-	basePath := path.Join(wsb.Context, wsb.Version)
+	basePath := binding.WebSubApiBasePath(wsb.Context, wsb.Version)
 	hubPath := basePath + "/hub"
 
 	// Subscribe chain: hub path (subscribe/unsubscribe requests).
@@ -521,7 +521,7 @@ func (r *Runtime) AddWebSubApiBinding(wsb binding.WebSubApiBinding) error {
 	r.activeBrokerDrivers[wsb.Name] = brokerDriver
 
 	// Track the mux paths so RemoveWebSubApiBinding can deregister them.
-	basePath := wsb.Context + "/" + wsb.Version
+	basePath := binding.WebSubApiBasePath(wsb.Context, wsb.Version)
 	r.bindingPaths[wsb.Name] = []string{basePath + "/hub", basePath + "/webhook-receiver"}
 
 	// Track all Kafka topics for cleanup on removal.

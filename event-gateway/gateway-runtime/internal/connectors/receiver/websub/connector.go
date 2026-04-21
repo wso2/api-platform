@@ -24,6 +24,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/binding"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/subscription"
 )
@@ -116,7 +117,7 @@ func NewReceiver(cfg connectors.ReceiverConfig, opts Options) (connectors.Receiv
 	)
 
 	// Register handlers on shared mux.
-	basePath := cfg.Channel.Context + "/" + cfg.Channel.Version
+	basePath := binding.WebSubApiBasePath(cfg.Channel.Context, cfg.Channel.Version)
 	cfg.Mux.Handle(basePath+"/hub", hubHandler)
 	cfg.Mux.Handle(basePath+"/webhook-receiver", webhookHandler)
 
@@ -165,11 +166,12 @@ func (e *WebSubReceiver) Start(ctx context.Context) error {
 	// subscriptions survive a binding update (remove + re-add).
 	e.reconcileSubscriptions(ctx)
 
+	basePath := binding.WebSubApiBasePath(e.channel.Context, e.channel.Version)
 	slog.Info("WebSub receiver started",
 		"api", e.channel.Name,
 		"channels", len(e.channel.Channels),
-		"context", e.channel.Context,
-		"version", e.channel.Version,
+		"subscribe_url", basePath+"/hub",
+		"data_ingress_url", basePath+"/webhook-receiver",
 	)
 	return nil
 }

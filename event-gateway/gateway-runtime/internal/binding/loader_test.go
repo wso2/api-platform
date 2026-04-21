@@ -209,6 +209,49 @@ func TestWebSubApiSubscriptionTopic(t *testing.T) {
 	}
 }
 
+func TestWebSubApiBasePath(t *testing.T) {
+	tests := []struct {
+		name    string
+		context string
+		version string
+		want    string
+	}{
+		{
+			name:    "base context appends version",
+			context: "/repos",
+			version: "v1",
+			want:    "/repos/v1",
+		},
+		{
+			name:    "template context resolves version once",
+			context: "/repos/$version",
+			version: "v1",
+			want:    "/repos/v1",
+		},
+		{
+			name:    "resolved context does not duplicate version",
+			context: "/repos/v1",
+			version: "v1",
+			want:    "/repos/v1",
+		},
+		{
+			name:    "template with version in middle is preserved",
+			context: "/$version/repos",
+			version: "v1",
+			want:    "/v1/repos",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := WebSubApiBasePath(tt.context, tt.version)
+			if got != tt.want {
+				t.Fatalf("WebSubApiBasePath(%q, %q) = %q, want %q", tt.context, tt.version, got, tt.want)
+			}
+		})
+	}
+}
+
 func writeTempYAML(t *testing.T, content string) string {
 	t.Helper()
 	dir := t.TempDir()

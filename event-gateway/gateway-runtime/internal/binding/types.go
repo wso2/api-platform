@@ -18,6 +18,11 @@
 
 package binding
 
+import (
+	"path"
+	"strings"
+)
+
 // Binding represents a configured channel with its receiver, broker-driver, and policy bindings.
 // Used for protocol-mediation mode (1 channel = 1 topic).
 type Binding struct {
@@ -98,4 +103,43 @@ func WebSubApiTopicName(apiName, version, channelName string) string {
 // Format: {api-name}.{version}.__subscriptions
 func WebSubApiSubscriptionTopic(apiName, version string) string {
 	return apiName + "." + version + ".__subscriptions"
+}
+
+// WebSubApiBasePath derives the shared WebSub HTTP base path for an API.
+// It accepts base contexts ("/repos"), version templates ("/repos/$version"),
+// and already-resolved paths ("/repos/v1") without duplicating the version.
+func WebSubApiBasePath(context, version string) string {
+	trimmed := strings.TrimSpace(context)
+	if trimmed == "" {
+		if version == "" {
+			return ""
+		}
+		return path.Join("/", version)
+	}
+
+	if strings.Contains(trimmed, "$version") {
+		return ensureLeadingSlash(path.Clean(strings.ReplaceAll(trimmed, "$version", version)))
+	}
+
+	cleaned := ensureLeadingSlash(path.Clean(trimmed))
+	if version == "" {
+		return cleaned
+	}
+
+	versionSuffix := "/" + strings.TrimPrefix(version, "/")
+	if strings.HasSuffix(cleaned, versionSuffix) {
+		return cleaned
+	}
+
+	return path.Join(cleaned, version)
+}
+
+func ensureLeadingSlash(value string) string {
+	if value == "" || value == "." {
+		return "/"
+	}
+	if strings.HasPrefix(value, "/") {
+		return value
+	}
+	return "/" + value
 }
