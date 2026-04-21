@@ -1,0 +1,15 @@
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: APIGateway
+metadata:
+  name: restapi-gw-apim
+  namespace: apigateway-demo-apim
+spec:
+  # RestApi CRs are routed by label (see 04-restapi.yaml). Use LabelSelector so
+  # this gateway does not compete with a Kubernetes Gateway also registered
+  # with scope Cluster (findTargetGateway picks the first match).
+  apiSelector:
+    scope: LabelSelector
+    matchLabels:
+      gateway.api-platform.wso2.com/restapi-target: wso2-crd-apim
+  configRef:
+    name: custom-gateway-values

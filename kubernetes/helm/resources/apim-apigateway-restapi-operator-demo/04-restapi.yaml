@@ -1,0 +1,21 @@
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: hello-normal-api-apim
+  namespace: apigateway-demo-apim
+  labels:
+    # Must match APIGateway.spec.apiSelector.matchLabels (registry binds RestApi → gateway).
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd-apim
+  annotations:
+    gateway.api-platform.wso2.com/project-id: "1234567890"
+spec:
+  displayName: hello-normal-api-apim
+  version: v1.0
+  context: /hello-normal-apim
+  upstream:
+    main:
+      url: http://hello-backend.apigateway-demo-apim.svc.cluster.local:9080
+  operations:
+    - method: GET
+      path: /
+

@@ -1,0 +1,33 @@
+# After platform-gw is Programmed, the operator maps this route to APIConfigData and calls gateway-controller /rest-apis.
+# Default REST handle is namespace-name: gateway-api-demo-hello-api (override with gateway.api-platform.wso2.com/api-handle).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: hello-api-apim
+  namespace: gateway-api-demo-apim
+  labels:
+    app.kubernetes.io/part-of: apim-gateway-api-operator-demo
+  annotations:
+    gateway.api-platform.wso2.com/api-version: "v1.0"
+    gateway.api-platform.wso2.com/context: "/hello-context-apim"
+    gateway.api-platform.wso2.com/display-name: "Hello API-apim"
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: platform-gw-apim
+      namespace: gateway-api-demo-apim
+  hostnames:
+    - demo.gateway-api-apim.local
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /hello
+          method: GET
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: hello-backend-apim
+          port: 9080
+          weight: 1
