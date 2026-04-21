@@ -47,6 +47,42 @@ func sanitizeURL(u string) string {
 	return u
 }
 
+// sanitizePipSpec removes credentials from any URL-like part of a pip spec.
+func sanitizePipSpec(spec string) string {
+	spec = strings.TrimSpace(spec)
+	if spec == "" {
+		return spec
+	}
+	if idx := strings.Index(spec, " @ "); idx > 0 {
+		return spec[:idx+3] + sanitizeURL(strings.TrimSpace(spec[idx+3:]))
+	}
+	return sanitizeURL(spec)
+}
+
+func isDirectPipSpec(ref string) bool {
+	trimmed := strings.TrimSpace(ref)
+	if trimmed == "" {
+		return false
+	}
+
+	for _, prefix := range []string{"git+", "hg+", "svn+", "bzr+"} {
+		if strings.HasPrefix(trimmed, prefix) {
+			return true
+		}
+	}
+
+	if idx := strings.Index(trimmed, " @ "); idx > 0 {
+		target := strings.TrimSpace(trimmed[idx+3:])
+		for _, prefix := range []string{"git+", "hg+", "svn+", "bzr+", "https://", "http://", "file://"} {
+			if strings.HasPrefix(target, prefix) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 // resolvePipExecutable returns the pip executable name and any required prefix
 // arguments. It probes the PATH in order: pip3 → pip → python3 -m pip.
 func resolvePipExecutable() (exe string, prefixArgs []string) {
@@ -73,7 +109,11 @@ type PipPackageInfo struct {
 
 // FetchPipPackage downloads a Python policy wheel and extracts metadata.
 //
-// Format: "<package>==<version>[@<index-url>]"
+// Supported formats:
+//   - "<package>==<version>[@<index-url>]"
+//   - Direct pip specs such as:
+//     "git+https://github.com/org/repo.git@v0.1.0#subdirectory=policy"
+//     "policy-name @ git+https://github.com/org/repo.git@v0.1.0"
 //
 // It uses "pip download --no-deps" to fetch only the wheel file, then reads
 // the top-level module name and policy source directly from the wheel (ZIP).
@@ -82,6 +122,10 @@ type PipPackageInfo struct {
 // The returned PipPackageInfo.Dir is a temporary directory created by this
 // function. Callers are responsible for removing it when done (os.RemoveAll).
 func FetchPipPackage(pipPackage string) (*PipPackageInfo, error) {
+	if isDirectPipSpec(pipPackage) {
+		return fetchDirectPipPackage(pipPackage)
+	}
+
 	pkgName, version, indexURL, err := ParsePipPackageRef(pipPackage)
 	if err != nil {
 		return nil, err
@@ -162,6 +206,72 @@ func FetchPipPackage(pipPackage string) (*PipPackageInfo, error) {
 		Package:        pkgName,
 		Version:        version,
 		IndexURL:       indexURL,
+		PipSpec:        pipSpec,
+		TopLevelModule: topLevelModule,
+		Dir:            extractDir,
+	}, nil
+}
+
+func fetchDirectPipPackage(pipPackage string) (*PipPackageInfo, error) {
+	pipSpec := strings.TrimSpace(pipPackage)
+	sanitizedSpec := sanitizePipSpec(pipSpec)
+
+	slog.Info("Fetching direct pip package",
+		"pipSpec", sanitizedSpec,
+		"phase", "discovery")
+
+	wheelDir, err := os.MkdirTemp("", "pip-wheel-*")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp directory: %w", err)
+	}
+	defer os.RemoveAll(wheelDir)
+
+	args := []string{"wheel", "--no-deps", "--no-build-isolation", pipSpec, "-w", wheelDir}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	pipExe, prefixArgs := resolvePipExecutable()
+	if pipExe == "" {
+		return nil, fmt.Errorf("no pip executable found (tried pip3, pip, python3 -m pip): ensure pip or python3 is installed")
+	}
+
+	fullArgs := append(prefixArgs, args...)
+	cmd := exec.CommandContext(ctx, pipExe, fullArgs...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		sanitizedStderr := strings.ReplaceAll(stderr.String(), pipSpec, sanitizedSpec)
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, fmt.Errorf("pip wheel timed out for %s", sanitizedSpec)
+		}
+		return nil, fmt.Errorf("pip wheel failed for %s: %w; stderr: %s", sanitizedSpec, err, sanitizedStderr)
+	}
+
+	whlPath, err := findWheelFile(wheelDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find wheel for %s: %w", sanitizedSpec, err)
+	}
+
+	topLevelModule, err := readTopLevelFromWheel(whlPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read top_level.txt from wheel for %s: %w", sanitizedSpec, err)
+	}
+
+	extractDir, err := extractModuleFromWheel(whlPath, topLevelModule)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract policy source from wheel for %s: %w", sanitizedSpec, err)
+	}
+
+	slog.Info("Successfully fetched direct pip package",
+		"pipSpec", sanitizedSpec,
+		"topLevelModule", topLevelModule,
+		"extractDir", extractDir,
+		"phase", "discovery")
+
+	return &PipPackageInfo{
+		Package:        pipSpec,
 		PipSpec:        pipSpec,
 		TopLevelModule: topLevelModule,
 		Dir:            extractDir,
