@@ -1,0 +1,63 @@
+name: prompt-compressor
+version: v0.1.0
+displayName: Prompt Compressor
+description: |
+  Compresses prompt text just before the upstream LLM call to reduce token usage.
+  The policy targets a single string field selected by jsonPath and applies the
+  first matching rule based on an estimated token count. When selective
+  compression tags are present, only tagged regions are considered for
+  compression and the tags are removed before the request is forwarded.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    jsonPath:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        JSONPath expression that resolves to the prompt string to compress.
+        This policy currently supports string targets only.
+      default: "$.messages[0].content"
+    rules:
+      type: array
+      x-wso2-policy-advanced-param: false
+      description: |
+        Compression rules evaluated in ascending upperTokenLimit order.
+        The first matching rule is used. Use upperTokenLimit -1 as the catch-all
+        fallback rule.
+      minItems: 1
+      items:
+        type: object
+        additionalProperties: false
+        properties:
+          upperTokenLimit:
+            type: integer
+            description: |
+              Inclusive upper bound for the estimated token count. Use -1 as the
+              fallback rule for all remaining cases.
+          type:
+            type: string
+            description: |
+              Compression mode. "ratio" uses value directly as the retained-size
+              ratio. "token" converts value into a retained-size ratio based on
+              the estimated token count of the selected prompt segment.
+            enum:
+              - ratio
+              - token
+          value:
+            type: number
+            description: |
+              Rule value. For "ratio", use a retained-size ratio such as 0.8.
+              For "token", use the target retained token estimate.
+        required:
+          - upperTokenLimit
+          - type
+          - value
+  required:
+    - rules
+
+systemParameters:
+  type: object
+  additionalProperties: false
+  properties: {}
