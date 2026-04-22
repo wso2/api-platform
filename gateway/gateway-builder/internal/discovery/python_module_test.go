@@ -38,7 +38,17 @@ func TestParsePipPackageRef_MajorOnly(t *testing.T) {
 	assert.Equal(t, "prompt-compressor", ref.PackageName)
 	assert.Equal(t, "0.0", ref.Version)
 	assert.Empty(t, ref.IndexURL)
-	assert.True(t, ref.IsMajorOnly)
+	assert.True(t, ref.IsVersionRange)
+}
+
+func TestParsePipPackageRef_MinorOnly(t *testing.T) {
+	ref, err := ParsePipPackageRef("prompt-compressor~=1.2.0")
+
+	require.NoError(t, err)
+	assert.Equal(t, "prompt-compressor", ref.PackageName)
+	assert.Equal(t, "1.2.0", ref.Version)
+	assert.Empty(t, ref.IndexURL)
+	assert.True(t, ref.IsVersionRange)
 }
 
 func TestParsePipPackageRef_MajorOnlyWithIndex(t *testing.T) {
@@ -48,7 +58,7 @@ func TestParsePipPackageRef_MajorOnlyWithIndex(t *testing.T) {
 	assert.Equal(t, "prompt-compressor", ref.PackageName)
 	assert.Equal(t, "1.0", ref.Version)
 	assert.Equal(t, "https://private.pypi.org/simple/", ref.IndexURL)
-	assert.True(t, ref.IsMajorOnly)
+	assert.True(t, ref.IsVersionRange)
 }
 
 func TestParsePipPackageRef_Invalid(t *testing.T) {
@@ -98,21 +108,37 @@ func TestParseVCSPipSpec_WithCredentials(t *testing.T) {
 	assert.Equal(t, "policies/prompt-compressor", spec.Subdirectory)
 }
 
-func TestIsMajorOnlyVCSRef(t *testing.T) {
-	assert.True(t, isMajorOnlyVCSRef("v1"))
-	assert.True(t, isMajorOnlyVCSRef("policies/foo/v0"))
-	assert.False(t, isMajorOnlyVCSRef("v1.0.0"))
-	assert.False(t, isMajorOnlyVCSRef("main"))
+func TestExpandShortURL(t *testing.T) {
+	expanded, err := expandShortURL("github.com/wso2/gateway-controllers/policies/prompt-compressor@v1")
+
+	require.NoError(t, err)
+	assert.Equal(
+		t,
+		"git+https://github.com/wso2/gateway-controllers.git@policies/prompt-compressor/v1#subdirectory=policies/prompt-compressor",
+		expanded,
+	)
 }
 
-func TestExtractMajorFromRef(t *testing.T) {
-	major, err := extractMajorFromRef("policies/foo/v1")
-	require.NoError(t, err)
-	assert.Equal(t, 1, major)
+func TestExpandShortURL_ThreeSegmentsError(t *testing.T) {
+	_, err := expandShortURL("github.com/wso2/repo@v1")
 
-	major, err = extractMajorFromRef("v0")
-	require.NoError(t, err)
-	assert.Equal(t, 0, major)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "short URL must have at least 4 path segments")
+}
+
+func TestClassifyVCSRef(t *testing.T) {
+	testCases := map[string]vcsVersionType{
+		"policies/foo/v1":     vcsVersionMajorOnly,
+		"policies/foo/v1.1":   vcsVersionMinorOnly,
+		"policies/foo/v1.1.3": vcsVersionExact,
+		"main":                vcsVersionNone,
+	}
+
+	for ref, expected := range testCases {
+		t.Run(ref, func(t *testing.T) {
+			assert.Equal(t, expected, classifyVCSRef(ref))
+		})
+	}
 }
 
 func TestReadVersionFromWheel(t *testing.T) {
@@ -145,7 +171,7 @@ func TestRebuildVCSPipSpec(t *testing.T) {
 	)
 }
 
-func TestResolveVCSMajorVersion(t *testing.T) {
+func TestResolveVCSVersion_MajorOnly(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
 	}
@@ -168,12 +194,44 @@ func TestResolveVCSMajorVersion(t *testing.T) {
 	runGit("commit", "-m", "init")
 	runGit("tag", "policies/prompt-compressor/v0.1.0")
 	runGit("tag", "policies/prompt-compressor/v0.3.1")
+	runGit("tag", "policies/prompt-compressor/v0.3.5")
 	runGit("tag", "policies/prompt-compressor/v1.0.0")
 
-	resolved, err := resolveVCSMajorVersion(repoDir, "policies/prompt-compressor/v0", 0)
+	resolved, err := resolveVCSVersion(repoDir, "policies/prompt-compressor/v0", vcsVersionMajorOnly)
 
 	require.NoError(t, err)
-	assert.Equal(t, "policies/prompt-compressor/v0.3.1", resolved)
+	assert.Equal(t, "policies/prompt-compressor/v0.3.5", resolved)
+}
+
+func TestResolveVCSVersion_MinorOnly(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+
+	repoDir := filepath.Join(t.TempDir(), "repo")
+	testutils.CreateDir(t, repoDir)
+	testutils.WriteFile(t, filepath.Join(repoDir, "README.md"), "fixture")
+
+	runGit := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repoDir
+		output, err := cmd.CombinedOutput()
+		require.NoError(t, err, "command failed: %v\n%s", args, string(output))
+	}
+
+	runGit("init")
+	runGit("config", "user.email", "test@example.com")
+	runGit("config", "user.name", "test-user")
+	runGit("add", ".")
+	runGit("commit", "-m", "init")
+	runGit("tag", "policies/prompt-compressor/v1.1.0")
+	runGit("tag", "policies/prompt-compressor/v1.1.5")
+	runGit("tag", "policies/prompt-compressor/v1.2.0")
+
+	resolved, err := resolveVCSVersion(repoDir, "policies/prompt-compressor/v1.1", vcsVersionMinorOnly)
+
+	require.NoError(t, err)
+	assert.Equal(t, "policies/prompt-compressor/v1.1.5", resolved)
 }
 
 func createWheelFixture(t *testing.T, files map[string]string) string {

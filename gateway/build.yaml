@@ -80,12 +80,7 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/url-guardrail@v1
   - name: word-count-guardrail
     gomodule: github.com/wso2/gateway-controllers/policies/word-count-guardrail@v1
-  # - name: prompt-compressor
-  #   filePath: ./sample-policies/prompt-compressor
-  # - name: prompt-compressor
-  #   pipPackage: "git+https://github.com/sehan-dissanayake/api-platform.git@policies/prompt-compressor/v0#subdirectory=gateway/sample-policies/prompt-compressor"
   - name: prompt-compressor
-    pipPackage: "git+https://github.com/sehan-dissanayake/api-platform.git@policies/prompt-compressor/v1#subdirectory=gateway/sample-policies/prompt-compressor"
-  - name: prompt-compressor
-    pipPackage: "git+https://github.com/sehan-dissanayake/api-platform.git@policies/prompt-compressor/v2#subdirectory=gateway/sample-policies/prompt-compressor"
-
+    pipPackage: "git+https://github.com/sehan-dissanayake/api-platform.git@gateway/sample-policies/prompt-compressor/v2.0.0#subdirectory=gateway/sample-policies/prompt-compressor"
+  # - name: prompt-compressor
+  #   pipPackage: github.com/sehan-dissanayake/api-platform/gateway/sample-policies/prompt-compressor@v2

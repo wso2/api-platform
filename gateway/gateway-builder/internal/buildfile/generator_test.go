@@ -496,9 +496,9 @@ func TestWriteBuildManifestWithVersions_PipPackageMultipleCandidatesUseOriginalS
 	buildFileContent := `version: "1.0"
 policies:
   - name: prompt-compressor
-    pipPackage: "git+https://github.com/example/api-platform.git@policies/prompt-compressor/v1#subdirectory=gateway/sample-policies/prompt-compressor"
+    pipPackage: github.com/wso2/gateway-controllers/policies/prompt-compressor@v1
   - name: prompt-compressor
-    pipPackage: "git+https://github.com/example/api-platform.git@policies/prompt-compressor/v2#subdirectory=gateway/sample-policies/prompt-compressor"
+    pipPackage: github.com/wso2/gateway-controllers/policies/prompt-compressor@v2
 `
 	buildFilePath := filepath.Join(tmpDir, "build.yaml")
 	testutils.WriteFile(t, buildFilePath, buildFileContent)
@@ -509,16 +509,16 @@ policies:
 			Version:         "v1.0.0",
 			Runtime:         "python",
 			IsPipPackage:    true,
-			OriginalPipSpec: "git+https://github.com/example/api-platform.git@policies/prompt-compressor/v1#subdirectory=gateway/sample-policies/prompt-compressor",
-			PipSpec:         "git+https://github.com/example/api-platform.git@policies/prompt-compressor/v1.0.0#subdirectory=gateway/sample-policies/prompt-compressor",
+			OriginalPipSpec: "github.com/wso2/gateway-controllers/policies/prompt-compressor@v1",
+			PipSpec:         "git+https://github.com/wso2/gateway-controllers.git@policies/prompt-compressor/v1.0.0#subdirectory=policies/prompt-compressor",
 		},
 		{
 			Name:            "prompt-compressor",
 			Version:         "v2.0.8",
 			Runtime:         "python",
 			IsPipPackage:    true,
-			OriginalPipSpec: "git+https://github.com/example/api-platform.git@policies/prompt-compressor/v2#subdirectory=gateway/sample-policies/prompt-compressor",
-			PipSpec:         "git+https://github.com/example/api-platform.git@policies/prompt-compressor/v2.0.8#subdirectory=gateway/sample-policies/prompt-compressor",
+			OriginalPipSpec: "github.com/wso2/gateway-controllers/policies/prompt-compressor@v2",
+			PipSpec:         "git+https://github.com/wso2/gateway-controllers.git@policies/prompt-compressor/v2.0.8#subdirectory=policies/prompt-compressor",
 		},
 	}
 
@@ -532,8 +532,8 @@ policies:
 	lockContent := string(content)
 	assert.Contains(t, lockContent, "version: v1.0.0")
 	assert.Contains(t, lockContent, "version: v2.0.8")
-	assert.Contains(t, lockContent, "pipPackage: git+https://github.com/example/api-platform.git@policies/prompt-compressor/v1.0.0#subdirectory=gateway/sample-policies/prompt-compressor")
-	assert.Contains(t, lockContent, "pipPackage: git+https://github.com/example/api-platform.git@policies/prompt-compressor/v2.0.8#subdirectory=gateway/sample-policies/prompt-compressor")
+	assert.Contains(t, lockContent, "pipPackage: git+https://github.com/wso2/gateway-controllers.git@policies/prompt-compressor/v1.0.0#subdirectory=policies/prompt-compressor")
+	assert.Contains(t, lockContent, "pipPackage: git+https://github.com/wso2/gateway-controllers.git@policies/prompt-compressor/v2.0.8#subdirectory=policies/prompt-compressor")
 	assert.NotContains(t, lockContent, "@policies/prompt-compressor/v1#subdirectory")
 	assert.NotContains(t, lockContent, "@policies/prompt-compressor/v2#subdirectory")
 }

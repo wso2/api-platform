@@ -37,8 +37,11 @@ import (
 )
 
 var (
-	majorOnlyPackageVersionPattern = regexp.MustCompile(`^\d+\.0$`)
-	majorOnlyRefPattern            = regexp.MustCompile(`v(\d+)$`)
+	majorOnlyPkgVersionPattern = regexp.MustCompile(`^\d+\.0$`)
+	minorOnlyPkgVersionPattern = regexp.MustCompile(`^\d+\.\d+\.0$`)
+	majorOnlyRefPattern        = regexp.MustCompile(`v(\d+)$`)
+	minorOnlyRefPattern        = regexp.MustCompile(`v(\d+)\.(\d+)$`)
+	exactRefPattern            = regexp.MustCompile(`v\d+\.\d+\.\d+$`)
 )
 
 // sanitizeURL removes credentials from a URL string for safe logging.
@@ -136,10 +139,10 @@ type PipPackageInfo struct {
 
 // PipPackageRef holds parsed indexed pip package reference information.
 type PipPackageRef struct {
-	PackageName string
-	Version     string
-	IndexURL    string
-	IsMajorOnly bool
+	PackageName    string
+	Version        string
+	IndexURL       string
+	IsVersionRange bool
 }
 
 // VCSPipSpec holds parsed VCS pip spec components.
@@ -150,15 +153,55 @@ type VCSPipSpec struct {
 	FullSpec     string
 }
 
+type vcsVersionType int
+
+const (
+	vcsVersionExact vcsVersionType = iota
+	vcsVersionMinorOnly
+	vcsVersionMajorOnly
+	vcsVersionNone
+)
+
+func (t vcsVersionType) String() string {
+	switch t {
+	case vcsVersionExact:
+		return "exact"
+	case vcsVersionMinorOnly:
+		return "minor-only"
+	case vcsVersionMajorOnly:
+		return "major-only"
+	default:
+		return "none"
+	}
+}
+
 // FetchPipPackage downloads a Python policy package and extracts metadata.
-// Supports indexed packages (PyPI/private) and VCS references, both with exact
-// and major-only version specifiers.
+// Supports indexed packages (PyPI/private), full VCS specs, and Go-style short
+// URLs, each with exact or ranged version specifiers.
 func FetchPipPackage(pipPackage string) (*PipPackageInfo, error) {
 	if isDirectPipSpec(pipPackage) {
 		return fetchVCSPipPackage(pipPackage)
 	}
 
-	return fetchIndexedPipPackage(pipPackage)
+	if strings.Contains(pipPackage, "==") || strings.Contains(pipPackage, "~=") {
+		return fetchIndexedPipPackage(pipPackage)
+	}
+
+	if strings.Contains(pipPackage, "@") {
+		expanded, err := expandShortURL(pipPackage)
+		if err != nil {
+			return nil, fmt.Errorf("failed to expand short URL %q: %w", pipPackage, err)
+		}
+
+		slog.Info("Expanded short URL to VCS spec",
+			"input", pipPackage,
+			"expanded", sanitizePipSpec(expanded),
+			"phase", "discovery")
+
+		return fetchVCSPipPackage(expanded)
+	}
+
+	return nil, fmt.Errorf("unrecognized pipPackage format: %q", pipPackage)
 }
 
 func fetchIndexedPipPackage(pipPackage string) (*PipPackageInfo, error) {
@@ -168,7 +211,7 @@ func fetchIndexedPipPackage(pipPackage string) (*PipPackageInfo, error) {
 	}
 
 	var downloadSpec string
-	if ref.IsMajorOnly {
+	if ref.IsVersionRange {
 		downloadSpec = fmt.Sprintf("%s~=%s", ref.PackageName, ref.Version)
 	} else {
 		downloadSpec = fmt.Sprintf("%s==%s", ref.PackageName, ref.Version)
@@ -177,7 +220,7 @@ func fetchIndexedPipPackage(pipPackage string) (*PipPackageInfo, error) {
 	slog.Info("Fetching indexed pip package",
 		"package", ref.PackageName,
 		"spec", downloadSpec,
-		"majorOnly", ref.IsMajorOnly,
+		"versionRange", ref.IsVersionRange,
 		"indexURL", sanitizeURL(ref.IndexURL),
 		"phase", "discovery")
 
@@ -243,19 +286,15 @@ func fetchVCSPipPackage(pipPackage string) (*PipPackageInfo, error) {
 	}
 
 	resolvedSpec := vcs.FullSpec
-	if isMajorOnlyVCSRef(vcs.GitRef) {
-		major, err := extractMajorFromRef(vcs.GitRef)
-		if err != nil {
-			return nil, err
-		}
-
-		exactRef, err := resolveVCSMajorVersion(vcs.RepoURL, vcs.GitRef, major)
+	versionType := classifyVCSRef(vcs.GitRef)
+	if versionType == vcsVersionMajorOnly || versionType == vcsVersionMinorOnly {
+		exactRef, err := resolveVCSVersion(vcs.RepoURL, vcs.GitRef, versionType)
 		if err != nil {
 			return nil, err
 		}
 
 		resolvedSpec = rebuildVCSPipSpec(vcs, exactRef)
-		slog.Info("Resolved VCS major-only pip package",
+		slog.Info("Resolved VCS ranged pip package",
 			"original", sanitizePipSpec(vcs.FullSpec),
 			"resolved", sanitizePipSpec(resolvedSpec),
 			"phase", "discovery")
@@ -346,50 +385,97 @@ func runPipCommand(args []string, timeout time.Duration, spec string, indexURL s
 	return nil
 }
 
+func expandShortURL(spec string) (string, error) {
+	spec = strings.TrimSpace(spec)
+
+	atIdx := strings.LastIndex(spec, "@")
+	if atIdx < 0 || atIdx == len(spec)-1 {
+		return "", fmt.Errorf("short URL must contain '@version': %s", spec)
+	}
+
+	modulePath := spec[:atIdx]
+	version := spec[atIdx+1:]
+
+	segments := strings.Split(modulePath, "/")
+	if len(segments) < 4 {
+		return "", fmt.Errorf(
+			"short URL must have at least 4 path segments (host/org/repo/subdir), got %d: %s",
+			len(segments),
+			spec,
+		)
+	}
+
+	host := segments[0]
+	org := segments[1]
+	repo := segments[2]
+	subdirectory := strings.Join(segments[3:], "/")
+
+	repoURL := fmt.Sprintf("https://%s/%s/%s.git", host, org, repo)
+	gitRef := subdirectory + "/" + version
+
+	return fmt.Sprintf("git+%s@%s#subdirectory=%s", repoURL, gitRef, subdirectory), nil
+}
+
 // ParsePipPackageRef parses an indexed pip package reference.
 // Supported formats:
 //   - "<package>==<version>"
 //   - "<package>==<version>@<url>"
 //   - "<package>~=<major>.0"
 //   - "<package>~=<major>.0@<url>"
+//   - "<package>~=<major>.<minor>.0"
+//   - "<package>~=<major>.<minor>.0@<url>"
 func ParsePipPackageRef(ref string) (*PipPackageRef, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
-		return nil, fmt.Errorf("invalid pip spec: expected '<pkg>==<ver>' or '<pkg>~=<major>.0', got %q", ref)
+		return nil, fmt.Errorf(
+			"invalid pip spec: expected '<pkg>==<ver>', '<pkg>~=<major>.0', or '<pkg>~=<major>.<minor>.0', got %q",
+			ref,
+		)
 	}
 
 	if idx := strings.Index(ref, "~="); idx > 0 {
 		pkgName := strings.TrimSpace(ref[:idx])
 		versionPart := strings.TrimSpace(ref[idx+2:])
 		version, indexURL := parseIndexURL(versionPart)
-		if pkgName == "" || version == "" || !majorOnlyPackageVersionPattern.MatchString(version) {
-			return nil, fmt.Errorf("invalid pip spec: expected '<pkg>==<ver>' or '<pkg>~=<major>.0', got %q", ref)
+		isMajorOnly := majorOnlyPkgVersionPattern.MatchString(version)
+		isMinorOnly := minorOnlyPkgVersionPattern.MatchString(version)
+		if pkgName == "" || version == "" || (!isMajorOnly && !isMinorOnly) {
+			return nil, fmt.Errorf(
+				"invalid pip spec: expected '<pkg>==<ver>', '<pkg>~=<major>.0', or '<pkg>~=<major>.<minor>.0', got %q",
+				ref,
+			)
 		}
 
 		return &PipPackageRef{
-			PackageName: pkgName,
-			Version:     version,
-			IndexURL:    indexURL,
-			IsMajorOnly: true,
+			PackageName:    pkgName,
+			Version:        version,
+			IndexURL:       indexURL,
+			IsVersionRange: true,
 		}, nil
 	}
 
 	parts := strings.SplitN(ref, "==", 2)
 	if len(parts) != 2 {
-		return nil, fmt.Errorf("invalid pip spec: expected '<pkg>==<ver>' or '<pkg>~=<major>.0', got %q", ref)
+		return nil, fmt.Errorf(
+			"invalid pip spec: expected '<pkg>==<ver>', '<pkg>~=<major>.0', or '<pkg>~=<major>.<minor>.0', got %q",
+			ref,
+		)
 	}
 
 	pkgName := strings.TrimSpace(parts[0])
 	version, indexURL := parseIndexURL(strings.TrimSpace(parts[1]))
 	if pkgName == "" || version == "" {
-		return nil, fmt.Errorf("invalid pip spec: expected '<pkg>==<ver>' or '<pkg>~=<major>.0', got %q", ref)
+		return nil, fmt.Errorf(
+			"invalid pip spec: expected '<pkg>==<ver>', '<pkg>~=<major>.0', or '<pkg>~=<major>.<minor>.0', got %q",
+			ref,
+		)
 	}
 
 	return &PipPackageRef{
-		PackageName: pkgName,
-		Version:     version,
-		IndexURL:    indexURL,
-		IsMajorOnly: false,
+		PackageName:    pkgName,
+		Version:        version,
+		IndexURL:       indexURL,
+		IsVersionRange: false,
 	}, nil
 }
 
@@ -441,29 +527,26 @@ func parseVCSPipSpec(spec string) (*VCSPipSpec, error) {
 	}, nil
 }
 
-// isMajorOnlyVCSRef returns true if the git ref is a major-only version reference.
-func isMajorOnlyVCSRef(ref string) bool {
-	return majorOnlyRefPattern.MatchString(ref)
-}
-
-// extractMajorFromRef extracts the major version number from a major-only ref.
-func extractMajorFromRef(ref string) (int, error) {
-	matches := majorOnlyRefPattern.FindStringSubmatch(ref)
-	if len(matches) < 2 {
-		return 0, fmt.Errorf("not a major-only ref: %s", ref)
+func classifyVCSRef(ref string) vcsVersionType {
+	if exactRefPattern.MatchString(ref) {
+		return vcsVersionExact
 	}
-
-	return strconv.Atoi(matches[1])
+	if minorOnlyRefPattern.MatchString(ref) {
+		return vcsVersionMinorOnly
+	}
+	if majorOnlyRefPattern.MatchString(ref) {
+		return vcsVersionMajorOnly
+	}
+	return vcsVersionNone
 }
 
-// resolveVCSMajorVersion resolves a major-only VCS ref to the highest exact tag.
-func resolveVCSMajorVersion(repoURL string, majorOnlyRef string, major int) (string, error) {
+func resolveVCSVersion(repoURL string, partialRef string, versionType vcsVersionType) (string, error) {
 	sanitizedURL := sanitizeURL(repoURL)
 
-	slog.Info("Resolving VCS major-only ref",
+	slog.Info("Resolving VCS partial version ref",
 		"repo", sanitizedURL,
-		"ref", majorOnlyRef,
-		"major", major,
+		"ref", partialRef,
+		"type", versionType.String(),
 		"phase", "discovery")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -482,7 +565,7 @@ func resolveVCSMajorVersion(repoURL string, majorOnlyRef string, major int) (str
 		return "", fmt.Errorf("git ls-remote failed for %s: %w; stderr: %s", sanitizedURL, err, sanitizedStderr)
 	}
 
-	tagPrefix := majorOnlyRef + "."
+	tagPrefix := partialRef + "."
 	type candidate struct {
 		tag   string
 		minor int
@@ -511,30 +594,43 @@ func resolveVCSMajorVersion(repoURL string, majorOnlyRef string, major int) (str
 		}
 
 		suffix := strings.TrimPrefix(tagName, tagPrefix)
-		segments := strings.Split(suffix, ".")
-		if len(segments) != 2 {
-			continue
-		}
+		switch versionType {
+		case vcsVersionMajorOnly:
+			segments := strings.Split(suffix, ".")
+			if len(segments) != 2 {
+				continue
+			}
 
-		minor, err := strconv.Atoi(segments[0])
-		if err != nil {
-			continue
-		}
+			minor, err := strconv.Atoi(segments[0])
+			if err != nil {
+				continue
+			}
 
-		patch, err := strconv.Atoi(segments[1])
-		if err != nil {
-			continue
-		}
+			patch, err := strconv.Atoi(segments[1])
+			if err != nil {
+				continue
+			}
 
-		candidates = append(candidates, candidate{
-			tag:   tagName,
-			minor: minor,
-			patch: patch,
-		})
+			candidates = append(candidates, candidate{
+				tag:   tagName,
+				minor: minor,
+				patch: patch,
+			})
+		case vcsVersionMinorOnly:
+			patch, err := strconv.Atoi(suffix)
+			if err != nil {
+				continue
+			}
+
+			candidates = append(candidates, candidate{
+				tag:   tagName,
+				patch: patch,
+			})
+		}
 	}
 
 	if len(candidates) == 0 {
-		return "", fmt.Errorf("no tags found matching major version v%d for ref prefix %q in %s", major, majorOnlyRef, sanitizedURL)
+		return "", fmt.Errorf("no tags found matching %q in %s", partialRef, sanitizedURL)
 	}
 
 	sort.Slice(candidates, func(i, j int) bool {
@@ -545,9 +641,9 @@ func resolveVCSMajorVersion(repoURL string, majorOnlyRef string, major int) (str
 	})
 
 	best := candidates[0].tag
-	slog.Info("Resolved VCS major-only ref",
+	slog.Info("Resolved VCS partial version ref",
 		"repo", sanitizedURL,
-		"ref", majorOnlyRef,
+		"ref", partialRef,
 		"resolvedTag", best,
 		"candidateCount", len(candidates),
 		"phase", "discovery")

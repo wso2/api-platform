@@ -883,7 +883,7 @@ func TestParsePipPackageRef_SimplePackage(t *testing.T) {
 	assert.Equal(t, "my-gateway-policy", ref.PackageName)
 	assert.Equal(t, "1.0.0", ref.Version)
 	assert.Empty(t, ref.IndexURL)
-	assert.False(t, ref.IsMajorOnly)
+	assert.False(t, ref.IsVersionRange)
 }
 
 func TestParsePipPackageRef_WithPrivateIndex(t *testing.T) {
@@ -893,7 +893,7 @@ func TestParsePipPackageRef_WithPrivateIndex(t *testing.T) {
 	assert.Equal(t, "my-org-auth-policy", ref.PackageName)
 	assert.Equal(t, "2.3.0", ref.Version)
 	assert.Equal(t, "https://pypi.my-company.com/simple", ref.IndexURL)
-	assert.False(t, ref.IsMajorOnly)
+	assert.False(t, ref.IsVersionRange)
 }
 
 func TestParsePipPackageRef_MissingVersion(t *testing.T) {
@@ -924,7 +924,7 @@ func TestParsePipPackageRef_WithCredentialedIndex(t *testing.T) {
 	assert.Equal(t, "my-policy", ref.PackageName)
 	assert.Equal(t, "1.0.0", ref.Version)
 	assert.Equal(t, "https://user:token@pypi.private.com/simple", ref.IndexURL)
-	assert.False(t, ref.IsMajorOnly)
+	assert.False(t, ref.IsVersionRange)
 }
 
 func TestIsDirectPipSpec_RawGitURL(t *testing.T) {
