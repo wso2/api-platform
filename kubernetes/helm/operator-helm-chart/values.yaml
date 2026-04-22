@@ -15,7 +15,7 @@ fullnameOverride: ""
 # Duplicate CRDs can also cause server-side apply conflicts on upgrade.
 # Set true only when no gateway*.gateway.networking.k8s.io CRDs are present yet.
 gatewayApi:
-  installStandardCRDs: false
+  installStandardCRDs: true
   # Passed through to operator config.yaml as gateway_api.gateway_class_names (Gateway API / HTTPRoute flow).
   managedGatewayClassNames:
     - wso2-api-platform
@@ -27,7 +27,7 @@ image:
   # repository: ghcr.io/wso2/api-platform/gateway-operator
   # For local registry: host.docker.internal:5000/gateway-operator
   repository: ghcr.io/wso2/api-platform/gateway-operator
-  tag: "0.5.0"
+  tag: "0.6.0"
   pullPolicy: Always  # Uses locally loaded image from nerdctl load
 
 serviceAccount:
