@@ -22,14 +22,14 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "gateway-operator.componentSelectorLabels" (list . "gateway-runtime") | nindent 8 }}
         {{- with .Values.commonLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
         {{- with $deployment.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-      {{- $podAnnotations := merge (deepCopy (default (dict) .Values.commonAnnotations)) (default (dict) $deployment.podAnnotations) }}
+        {{- include "gateway-operator.componentSelectorLabels" (list . "gateway-runtime") | nindent 8 }}
+      {{- $podAnnotations := merge (deepCopy (default (dict) $deployment.podAnnotations)) (default (dict) .Values.commonAnnotations) }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/gateway/gateway-config.yaml") . | sha256sum }}
         {{- with $podAnnotations }}
