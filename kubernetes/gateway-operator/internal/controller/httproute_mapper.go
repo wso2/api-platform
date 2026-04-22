@@ -195,7 +195,7 @@ func BuildAPIConfigFromHTTPRoute(ctx context.Context, c client.Client, route *ga
 		Version:  version,
 		Policies: apiPolicies,
 	}
-	if err := resolveAPIConfigPolicyParamsSecrets(ctx, c, route.Namespace, spec, log); err != nil {
+	if err := resolveAPIConfigPolicyParamsValueFrom(ctx, c, route.Namespace, spec, log); err != nil {
 		return nil, err
 	}
 	opsWithPol := 0
