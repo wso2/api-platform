@@ -288,6 +288,7 @@ func discoverPipPolicy(entry types.BuildEntry) (*types.DiscoveredPolicy, error) 
 
 	// Set pip-specific fields
 	discovered.IsPipPackage = true
+	discovered.OriginalPipSpec = entry.PipPackage
 	discovered.PipSpec = pkgInfo.PipSpec
 	discovered.PipIndexURL = pkgInfo.IndexURL
 	discovered.PythonTopLevelModule = pkgInfo.TopLevelModule

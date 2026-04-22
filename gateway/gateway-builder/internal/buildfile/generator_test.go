@@ -490,6 +490,54 @@ policies:
 	assert.NotContains(t, string(content), "prompt-compressor~=0.0")
 }
 
+func TestWriteBuildManifestWithVersions_PipPackageMultipleCandidatesUseOriginalSpec(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	buildFileContent := `version: "1.0"
+policies:
+  - name: prompt-compressor
+    pipPackage: "git+https://github.com/example/api-platform.git@policies/prompt-compressor/v1#subdirectory=gateway/sample-policies/prompt-compressor"
+  - name: prompt-compressor
+    pipPackage: "git+https://github.com/example/api-platform.git@policies/prompt-compressor/v2#subdirectory=gateway/sample-policies/prompt-compressor"
+`
+	buildFilePath := filepath.Join(tmpDir, "build.yaml")
+	testutils.WriteFile(t, buildFilePath, buildFileContent)
+
+	discovered := []*types.DiscoveredPolicy{
+		{
+			Name:            "prompt-compressor",
+			Version:         "v1.0.0",
+			Runtime:         "python",
+			IsPipPackage:    true,
+			OriginalPipSpec: "git+https://github.com/example/api-platform.git@policies/prompt-compressor/v1#subdirectory=gateway/sample-policies/prompt-compressor",
+			PipSpec:         "git+https://github.com/example/api-platform.git@policies/prompt-compressor/v1.0.0#subdirectory=gateway/sample-policies/prompt-compressor",
+		},
+		{
+			Name:            "prompt-compressor",
+			Version:         "v2.0.8",
+			Runtime:         "python",
+			IsPipPackage:    true,
+			OriginalPipSpec: "git+https://github.com/example/api-platform.git@policies/prompt-compressor/v2#subdirectory=gateway/sample-policies/prompt-compressor",
+			PipSpec:         "git+https://github.com/example/api-platform.git@policies/prompt-compressor/v2.0.8#subdirectory=gateway/sample-policies/prompt-compressor",
+		},
+	}
+
+	err := WriteBuildManifestWithVersions(buildFilePath, discovered)
+	require.NoError(t, err)
+
+	lockPath := filepath.Join(tmpDir, "build-manifest.yaml")
+	content, err := os.ReadFile(lockPath)
+	require.NoError(t, err)
+
+	lockContent := string(content)
+	assert.Contains(t, lockContent, "version: v1.0.0")
+	assert.Contains(t, lockContent, "version: v2.0.8")
+	assert.Contains(t, lockContent, "pipPackage: git+https://github.com/example/api-platform.git@policies/prompt-compressor/v1.0.0#subdirectory=gateway/sample-policies/prompt-compressor")
+	assert.Contains(t, lockContent, "pipPackage: git+https://github.com/example/api-platform.git@policies/prompt-compressor/v2.0.8#subdirectory=gateway/sample-policies/prompt-compressor")
+	assert.NotContains(t, lockContent, "@policies/prompt-compressor/v1#subdirectory")
+	assert.NotContains(t, lockContent, "@policies/prompt-compressor/v2#subdirectory")
+}
+
 func TestWriteBuildManifestWithVersions_InvalidBuildFileYAML(t *testing.T) {
 	tmpDir := t.TempDir()
 

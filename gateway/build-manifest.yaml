@@ -118,5 +118,8 @@ policies:
       version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/word-count-guardrail@v1
     - name: prompt-compressor
-      version: v0.1.0
-      pipPackage: git+https://github.com/sehan-dissanayake/api-platform.git@prompt-compressor-v0.1.0#subdirectory=gateway/sample-policies/prompt-compressor
+      version: v1.0.0
+      pipPackage: git+https://github.com/sehan-dissanayake/api-platform.git@policies/prompt-compressor/v1.0.0#subdirectory=gateway/sample-policies/prompt-compressor
+    - name: prompt-compressor
+      version: v2.0.8
+      pipPackage: git+https://github.com/sehan-dissanayake/api-platform.git@policies/prompt-compressor/v2.0.8#subdirectory=gateway/sample-policies/prompt-compressor
