@@ -77,7 +77,7 @@ func TestCreateBuildInfo_MultiplePolicies(t *testing.T) {
 
 func TestBuildInfo_ToJSON_EmptyPolicies(t *testing.T) {
 	info := &BuildInfo{
-		BuildTimestamp:  "2025-01-01T00:00:00Z",
+		BuildTimestamp: "2025-01-01T00:00:00Z",
 		BuilderVersion: "v1.0.0",
 		OutputDir:      "/output",
 		Policies:       []PolicyInfo{},
@@ -92,7 +92,7 @@ func TestBuildInfo_ToJSON_EmptyPolicies(t *testing.T) {
 
 func TestBuildInfo_ToJSON_WithPolicies(t *testing.T) {
 	info := &BuildInfo{
-		BuildTimestamp:  "2025-01-01T00:00:00Z",
+		BuildTimestamp: "2025-01-01T00:00:00Z",
 		BuilderVersion: "v1.0.0",
 		OutputDir:      "/output",
 		Policies: []PolicyInfo{
@@ -119,7 +119,7 @@ func TestBuildInfo_WriteToFile_Success(t *testing.T) {
 	filePath := filepath.Join(tmpDir, "build-info.json")
 
 	info := &BuildInfo{
-		BuildTimestamp:  "2025-01-01T00:00:00Z",
+		BuildTimestamp: "2025-01-01T00:00:00Z",
 		BuilderVersion: "v1.0.0",
 		OutputDir:      "/output",
 		Policies: []PolicyInfo{
@@ -142,7 +142,7 @@ func TestBuildInfo_WriteToFile_DirectoryNotExists(t *testing.T) {
 	filePath := filepath.Join(tmpDir, "nonexistent-dir", "build-info.json")
 
 	info := &BuildInfo{
-		BuildTimestamp:  "2025-01-01T00:00:00Z",
+		BuildTimestamp: "2025-01-01T00:00:00Z",
 		BuilderVersion: "v1.0.0",
 		OutputDir:      "/output",
 		Policies:       []PolicyInfo{},
@@ -459,6 +459,37 @@ policies:
 	assert.Contains(t, string(content), "v1.0.0")
 }
 
+func TestWriteBuildManifestWithVersions_PipPackageUsesResolvedSpec(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	buildFileContent := `version: "1.0"
+policies:
+  - name: prompt-compressor
+    pipPackage: "prompt-compressor~=0.0"
+`
+	buildFilePath := filepath.Join(tmpDir, "build.yaml")
+	testutils.WriteFile(t, buildFilePath, buildFileContent)
+
+	discovered := []*types.DiscoveredPolicy{
+		{
+			Name:         "prompt-compressor",
+			Version:      "v0.1.0",
+			Runtime:      "python",
+			IsPipPackage: true,
+			PipSpec:      "prompt-compressor==0.1.0",
+		},
+	}
+
+	err := WriteBuildManifestWithVersions(buildFilePath, discovered)
+	require.NoError(t, err)
+
+	lockPath := filepath.Join(tmpDir, "build-manifest.yaml")
+	content, err := os.ReadFile(lockPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(content), `pipPackage: prompt-compressor==0.1.0`)
+	assert.NotContains(t, string(content), "prompt-compressor~=0.0")
+}
+
 func TestWriteBuildManifestWithVersions_InvalidBuildFileYAML(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -474,7 +505,7 @@ func TestWriteBuildManifestWithVersions_InvalidBuildFileYAML(t *testing.T) {
 
 func TestBuildInfo_WriteToFile_InvalidPath(t *testing.T) {
 	info := &BuildInfo{
-		BuildTimestamp:  "2025-01-01T00:00:00Z",
+		BuildTimestamp: "2025-01-01T00:00:00Z",
 		BuilderVersion: "v1.0.0",
 		OutputDir:      "/output",
 		Policies:       []PolicyInfo{},
@@ -487,7 +518,7 @@ func TestBuildInfo_WriteToFile_InvalidPath(t *testing.T) {
 
 func TestBuildInfo_ToJSON_Success(t *testing.T) {
 	info := &BuildInfo{
-		BuildTimestamp:  "2025-01-01T00:00:00Z",
+		BuildTimestamp: "2025-01-01T00:00:00Z",
 		BuilderVersion: "v2.0.0",
 		OutputDir:      "/output/dir",
 		Policies: []PolicyInfo{

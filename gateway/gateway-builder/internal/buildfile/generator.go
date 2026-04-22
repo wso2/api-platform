@@ -198,6 +198,9 @@ func WriteBuildManifestWithVersions(buildFilePath string, discovered []*types.Di
 		}
 
 		entry.Version = found.Version
+		if found.IsPipPackage && found.PipSpec != "" {
+			entry.PipPackage = found.PipSpec
+		}
 		lock.Policies = append(lock.Policies, entry)
 	}
 

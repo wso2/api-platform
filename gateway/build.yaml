@@ -83,5 +83,5 @@ policies:
   # - name: prompt-compressor
   #   filePath: ./sample-policies/prompt-compressor
   - name: prompt-compressor
-    pipPackage: "git+https://github.com/sehan-dissanayake/api-platform.git@prompt-compressor-v0.1.0#subdirectory=gateway/sample-policies/prompt-compressor"
+    pipPackage: "git+https://github.com/sehan-dissanayake/api-platform.git@prompt-compressor-v0#subdirectory=gateway/sample-policies/prompt-compressor"
 
