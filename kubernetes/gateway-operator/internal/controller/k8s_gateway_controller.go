@@ -257,6 +257,17 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 		log.Info("Using default Helm values file with infra overlay", zap.String("path", valuesFile))
 	}
 
+	if overlayYAML, overlayErr := applyListenerOverlayToValues(gw, valuesYAML); overlayErr != nil {
+		return fmt.Errorf("apply gateway listener overlay: %w", overlayErr)
+	} else if overlayYAML != valuesYAML {
+		httpPort, httpsPort, hasHTTPS := listenerPortsFromGateway(gw)
+		log.Info("Derived router ports from Gateway.spec.listeners",
+			zap.Int32("httpPort", httpPort),
+			zap.Int32("httpsPort", httpsPort),
+			zap.Bool("httpsEnabled", hasHTTPS))
+		valuesYAML = overlayYAML
+	}
+
 	dockerUser, dockerPass, err := r.getDockerHubCredentials(ctx)
 	if err != nil {
 		return err

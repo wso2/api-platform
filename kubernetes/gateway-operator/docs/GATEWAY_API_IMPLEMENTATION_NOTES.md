@@ -65,6 +65,21 @@ This document is a **short maintainer index** for where code and behaviour live.
 
 If the Helm values ConfigMap annotation is **omitted**, the operator uses the default Helm values file from config (same pattern as `APIGateway` without `configRef`).
 
+#### `spec.listeners[]` → Helm router and Service ports
+
+The operator reads `Gateway.spec.listeners[]` and automatically overrides the Helm values the deployed gateway runtime uses, both for Envoy's listener bindings and for the `gateway-runtime` Kubernetes `Service` that sits in front of it:
+
+| Listener match | Applied overrides |
+| -------------- | ----------------- |
+| First listener with `protocol: HTTP` | `gateway.config.router.listener_port: <port>` **and** `gateway.gatewayRuntime.service.ports.http: <port>` |
+| First listener with `protocol: HTTPS` | `gateway.config.router.https_enabled: true`, `gateway.config.router.https_port: <port>` **and** `gateway.gatewayRuntime.service.ports.https: <port>` |
+| No listener with `protocol: HTTPS` | `gateway.config.router.https_enabled: false` (HTTPS is turned off; existing `https_port` / `service.ports.https` are left untouched) |
+| Listeners with any other protocol (TCP, UDP, TLS) | Ignored |
+
+Keeping the router port and the Service port in sync is required: the gateway-runtime Service template uses `port` as the implicit `targetPort`, so the Service `port` has to equal the port Envoy actually binds to inside the pod. By applying both keys from a single source (`spec.listeners[].port`), the Gateway CR becomes the sole source of truth for addressing.
+
+The overlay is applied **after** the ConfigMap overlay, so Gateway listener ports always win. Non-port values in the Helm values ConfigMap (replicas, image, controller config, TLS/cert wiring, etc.) are preserved.
+
 ### `HTTPRoute`
 
 | Annotation | Meaning |

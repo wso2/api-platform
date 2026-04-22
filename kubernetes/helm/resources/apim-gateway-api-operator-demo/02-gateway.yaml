@@ -16,8 +16,14 @@ spec:
   gatewayClassName: wso2-api-platform
   listeners:
     - name: http
-      port: 80
+      port: 8080
       protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: https
+      port: 8443
+      protocol: HTTPS
       allowedRoutes:
         namespaces:
           from: Same
