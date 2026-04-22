@@ -192,7 +192,7 @@ func WriteBuildManifestWithVersions(buildFilePath string, discovered []*types.Di
 			}
 			if found == nil {
 				for _, c := range candidates {
-					if c.Runtime == "python" {
+					if c.Runtime == "python" && c.IsPipPackage {
 						found = c
 						break
 					}

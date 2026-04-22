@@ -86,6 +86,19 @@ func TestParseIndexURL(t *testing.T) {
 	assert.Equal(t, "https://user:token@pypi.private.com/simple", indexURL)
 }
 
+func TestBuildExactIndexedPipSpec_PreservesIndexURL(t *testing.T) {
+	ref := &PipPackageRef{
+		PackageName: "prompt-compressor",
+		IndexURL:    "https://private.pypi.org/simple/",
+	}
+
+	assert.Equal(
+		t,
+		"prompt-compressor==1.2.3@https://private.pypi.org/simple/",
+		buildExactIndexedPipSpec(ref, "1.2.3"),
+	)
+}
+
 func TestParseVCSPipSpec(t *testing.T) {
 	spec, err := parseVCSPipSpec(
 		"git+https://github.com/wso2/gateway-controllers.git@policies/prompt-compressor/v0#subdirectory=policies/prompt-compressor",
@@ -124,6 +137,14 @@ func TestExpandShortURL_ThreeSegmentsError(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "short URL must have at least 4 path segments")
+}
+
+func TestFetchPipPackage_RejectsUnsupportedNamedDirectReference(t *testing.T) {
+	_, err := FetchPipPackage("prompt-compressor @ https://files.example.com/prompt_compressor-1.2.3-py3-none-any.whl")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported pip direct reference")
+	assert.Contains(t, err.Error(), "only git+ VCS specs are supported")
 }
 
 func TestClassifyVCSRef(t *testing.T) {

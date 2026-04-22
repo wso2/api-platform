@@ -538,6 +538,50 @@ policies:
 	assert.NotContains(t, lockContent, "@policies/prompt-compressor/v2#subdirectory")
 }
 
+func TestWriteBuildManifestWithVersions_PipPackageFallbackSkipsNonPipCandidates(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	buildFileContent := `version: "1.0"
+policies:
+  - name: prompt-compressor
+    pipPackage: "prompt-compressor~=1.0"
+`
+	buildFilePath := filepath.Join(tmpDir, "build.yaml")
+	testutils.WriteFile(t, buildFilePath, buildFileContent)
+
+	localPolicyDir := filepath.Join(tmpDir, "policies", "prompt-compressor")
+	testutils.CreateDir(t, localPolicyDir)
+
+	discovered := []*types.DiscoveredPolicy{
+		{
+			Name:            "prompt-compressor",
+			Version:         "v9.9.9",
+			Runtime:         "python",
+			Path:            localPolicyDir,
+			PythonSourceDir: localPolicyDir,
+		},
+		{
+			Name:         "prompt-compressor",
+			Version:      "v1.2.3",
+			Runtime:      "python",
+			IsPipPackage: true,
+			PipSpec:      "prompt-compressor==1.2.3@https://private.pypi.org/simple/",
+		},
+	}
+
+	err := WriteBuildManifestWithVersions(buildFilePath, discovered)
+	require.NoError(t, err)
+
+	lockPath := filepath.Join(tmpDir, "build-manifest.yaml")
+	content, err := os.ReadFile(lockPath)
+	require.NoError(t, err)
+
+	lockContent := string(content)
+	assert.Contains(t, lockContent, "version: v1.2.3")
+	assert.Contains(t, lockContent, "pipPackage: prompt-compressor==1.2.3@https://private.pypi.org/simple/")
+	assert.NotContains(t, lockContent, "version: v9.9.9")
+}
+
 func TestWriteBuildManifestWithVersions_InvalidBuildFileYAML(t *testing.T) {
 	tmpDir := t.TempDir()
 

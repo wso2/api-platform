@@ -183,6 +183,13 @@ func FetchPipPackage(pipPackage string) (*PipPackageInfo, error) {
 		return fetchVCSPipPackage(pipPackage)
 	}
 
+	if strings.Contains(pipPackage, " @ ") {
+		return nil, fmt.Errorf(
+			"unsupported pip direct reference: %q; only git+ VCS specs are supported for direct references",
+			pipPackage,
+		)
+	}
+
 	if strings.Contains(pipPackage, "==") || strings.Contains(pipPackage, "~=") {
 		return fetchIndexedPipPackage(pipPackage)
 	}
@@ -259,12 +266,16 @@ func fetchIndexedPipPackage(pipPackage string) (*PipPackageInfo, error) {
 		return nil, fmt.Errorf("failed to extract policy source from wheel for %s: %w", downloadSpec, err)
 	}
 
-	exactPipSpec := fmt.Sprintf("%s==%s", ref.PackageName, resolvedVersion)
+	exactPipSpec := buildExactIndexedPipSpec(ref, resolvedVersion)
+	loggedExactPipSpec := exactPipSpec
+	if ref.IndexURL != "" {
+		loggedExactPipSpec = fmt.Sprintf("%s==%s@%s", ref.PackageName, resolvedVersion, sanitizeURL(ref.IndexURL))
+	}
 
 	slog.Info("Successfully fetched indexed pip package",
 		"package", ref.PackageName,
 		"resolvedVersion", resolvedVersion,
-		"exactPipSpec", exactPipSpec,
+		"exactPipSpec", loggedExactPipSpec,
 		"topLevelModule", topLevelModule,
 		"extractDir", extractDir,
 		"phase", "discovery")
@@ -277,6 +288,14 @@ func fetchIndexedPipPackage(pipPackage string) (*PipPackageInfo, error) {
 		TopLevelModule: topLevelModule,
 		Dir:            extractDir,
 	}, nil
+}
+
+func buildExactIndexedPipSpec(ref *PipPackageRef, resolvedVersion string) string {
+	exactPipSpec := fmt.Sprintf("%s==%s", ref.PackageName, resolvedVersion)
+	if ref.IndexURL != "" {
+		exactPipSpec += "@" + ref.IndexURL
+	}
+	return exactPipSpec
 }
 
 func fetchVCSPipPackage(pipPackage string) (*PipPackageInfo, error) {

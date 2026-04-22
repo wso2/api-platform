@@ -40,7 +40,7 @@ type DiscoveredPolicy struct {
 
 	// Runtime is auto-detected: "go" or "python"
 	Runtime         string
-	PythonSourceDir string // Path to Python source directory (local filePath policies)
+	PythonSourceDir string // Path to Python source directory (local filePath and extracted pip policies)
 
 	// Pip package fields (set only for pipPackage policies)
 	IsPipPackage         bool   // True if from pipPackage manifest entry
