@@ -184,11 +184,18 @@ func WriteBuildManifestWithVersions(buildFilePath string, discovered []*types.Di
 				}
 			}
 		} else if me.PipPackage != "" {
-			// pip packages: match by name directly since pip package is Python-specific
 			for _, c := range candidates {
-				if c.Runtime == "python" {
+				if c.Runtime == "python" && c.IsPipPackage && c.OriginalPipSpec == me.PipPackage {
 					found = c
 					break
+				}
+			}
+			if found == nil {
+				for _, c := range candidates {
+					if c.Runtime == "python" {
+						found = c
+						break
+					}
 				}
 			}
 		}
@@ -198,6 +205,9 @@ func WriteBuildManifestWithVersions(buildFilePath string, discovered []*types.Di
 		}
 
 		entry.Version = found.Version
+		if found.IsPipPackage && found.PipSpec != "" {
+			entry.PipPackage = found.PipSpec
+		}
 		lock.Policies = append(lock.Policies, entry)
 	}
 

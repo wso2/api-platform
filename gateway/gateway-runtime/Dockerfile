@@ -104,6 +104,7 @@ COPY --from=sdk-core . /api-platform/sdk/core
 COPY --from=common . /api-platform/common
 COPY --from=system-policies . /api-platform/gateway/system-policies/
 COPY --from=dev-policies . /api-platform/gateway/dev-policies/
+COPY --from=sample-policies . /api-platform/gateway/sample-policies/
 COPY --from=target build.yaml /api-platform/gateway/build.yaml
 
 RUN mkdir -p /api-platform/output
@@ -125,18 +126,22 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Stage 3a: Python dependency installer
 # Uses the same base image as the production stage so that C extensions
 # (e.g. grpcio) are compiled against the identical Python version and glibc.
-# pip and venv are installed here only — they are NOT copied to production.
+# pip, venv, and git are installed here only — they are NOT copied to production.
 FROM envoyproxy/envoy:v1.37.1 AS python-deps
 
 USER root
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
+    git \
     python3 \
     python3-pip \
     python3-venv
 
 COPY --from=policy-compiler /api-platform/output/python-executor/requirements.txt /tmp/requirements.txt
+
+# Upgrade pip and setuptools so PEP 621 (pyproject.toml) and recent git dependencies are supported
+RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel
 
 RUN pip3 install --no-cache-dir \
     --target /app/python-libs \
