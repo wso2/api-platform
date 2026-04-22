@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"gopkg.in/yaml.v3"
 	"helm.sh/helm/v3/pkg/storage/driver"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -41,6 +42,7 @@ import (
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/helm"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/helmgateway"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
 )
@@ -179,6 +181,39 @@ func (r *K8sGatewayReconciler) reconcileDeletion(ctx context.Context, gw *gatewa
 	return ctrl.Result{}, nil
 }
 
+// buildK8sGatewayInfraOverlay generates a Helm values YAML overlay from the standard
+// Gateway spec.infrastructure labels and annotations (gateway-api v1.1+).
+// The overlay sets commonLabels/commonAnnotations so they propagate to all gateway resources.
+func buildK8sGatewayInfraOverlay(gw *gatewayv1.Gateway) (string, error) {
+	if gw.Spec.Infrastructure == nil {
+		return "", nil
+	}
+	infra := gw.Spec.Infrastructure
+	if len(infra.Labels) == 0 && len(infra.Annotations) == 0 {
+		return "", nil
+	}
+	overlay := map[string]interface{}{}
+	if len(infra.Labels) > 0 {
+		labels := make(map[string]string, len(infra.Labels))
+		for k, v := range infra.Labels {
+			labels[string(k)] = string(v)
+		}
+		overlay["commonLabels"] = labels
+	}
+	if len(infra.Annotations) > 0 {
+		annotations := make(map[string]string, len(infra.Annotations))
+		for k, v := range infra.Annotations {
+			annotations[string(k)] = string(v)
+		}
+		overlay["commonAnnotations"] = annotations
+	}
+	out, err := yaml.Marshal(overlay)
+	if err != nil {
+		return "", fmt.Errorf("marshal K8s Gateway infra overlay: %w", err)
+	}
+	return string(out), nil
+}
+
 func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Gateway, log *zap.Logger) error {
 	ns := gw.Namespace
 	if ns == "" {
@@ -192,17 +227,34 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 
 	valuesFile := r.Config.Gateway.HelmValuesFilePath
 	var valuesYAML string
+
+	// Build values overlay from spec.infrastructure labels/annotations (lowest priority).
+	infraOverlay, err := buildK8sGatewayInfraOverlay(gw)
+	if err != nil {
+		return fmt.Errorf("build infra overlay: %w", err)
+	}
+
 	cmName := gw.Annotations[AnnK8sGatewayHelmValuesConfigMap]
 	if cmName != "" {
-		valuesYAML, err = configMapValuesYAML(ctx, r.Client, cmName, ns)
+		cmValues, err := configMapValuesYAML(ctx, r.Client, cmName, ns)
 		if err != nil {
 			return err
 		}
-		log.Info("Merging Helm values: operator base file + ConfigMap overlay",
+		// Merge order: infra overlay (base) → ConfigMap (higher priority)
+		if infraOverlay != "" {
+			valuesYAML, err = helm.MergeValuesYAML(infraOverlay, cmValues)
+			if err != nil {
+				return fmt.Errorf("merge infra overlay with ConfigMap values: %w", err)
+			}
+		} else {
+			valuesYAML = cmValues
+		}
+		log.Info("Merging Helm values: operator base file + infra overlay + ConfigMap overlay",
 			zap.String("configMap", cmName),
 			zap.String("valuesFile", valuesFile))
 	} else {
-		log.Info("Using default Helm values file", zap.String("path", valuesFile))
+		valuesYAML = infraOverlay
+		log.Info("Using default Helm values file with infra overlay", zap.String("path", valuesFile))
 	}
 
 	dockerUser, dockerPass, err := r.getDockerHubCredentials(ctx)
