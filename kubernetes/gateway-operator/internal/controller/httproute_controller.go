@@ -622,5 +622,10 @@ func (r *HTTPRouteReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			handler.EnqueueRequestsFromMapFunc(r.enqueueHTTPRoutesForSecret),
 			builder.WithPredicates(secretMutationPredicate()),
 		).
+		Watches(
+			&corev1.ConfigMap{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueHTTPRoutesForConfigMap),
+			builder.WithPredicates(configMapMutationPredicate()),
+		).
 		Complete(r)
 }

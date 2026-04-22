@@ -268,6 +268,16 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 		valuesYAML = overlayYAML
 	}
 
+	if overlayYAML, overlayErr := applyInfrastructureOverlayToValues(gw, valuesYAML); overlayErr != nil {
+		return fmt.Errorf("apply gateway infrastructure overlay: %w", overlayErr)
+	} else if overlayYAML != valuesYAML {
+		log.Info("Applied Gateway.spec.infrastructure overlay to gateway-runtime Service",
+			zap.String("serviceType", serviceTypeFromGateway(gw)),
+			zap.Int("annotationCount", len(infrastructureAnnotationsFromGateway(gw))),
+			zap.Int("labelCount", len(infrastructureLabelsFromGateway(gw))))
+		valuesYAML = overlayYAML
+	}
+
 	dockerUser, dockerPass, err := r.getDockerHubCredentials(ctx)
 	if err != nil {
 		return err

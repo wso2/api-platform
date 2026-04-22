@@ -13,13 +13,14 @@ metadata:
     app.kubernetes.io/part-of: gateway-api-operator-demo
 spec:
   gatewayClassName: wso2-api-platform
-  # infrastructure.labels and infrastructure.annotations are propagated by the operator
-  # to all gateway-managed resources (Deployments, Pods, Services, ConfigMaps).
+  # spec.infrastructure.annotations / labels are propagated to the gateway-runtime Service
+  # by the operator. The reserved "service-type" annotation drives gateway.gatewayRuntime.service.type.
   infrastructure:
     labels:
       environment: dev
       team: platform
     annotations:
+      gateway.api-platform.wso2.com/service-type: LoadBalancer
       prometheus.io/scrape: "true"
   listeners:
     - name: http
