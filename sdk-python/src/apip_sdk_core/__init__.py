@@ -1,12 +1,12 @@
-"""WSO2 Gateway Policy SDK.
+"""APIP SDK Core.
 
 Recommended imports come from this package root:
 
-    from wso2_gateway_policy_sdk import RequestPolicy, ProcessingMode
+    from apip_sdk_core import RequestPolicy, ProcessingMode
 
 If callers need to pin a specific contract version explicitly, they can use:
 
-    from wso2_gateway_policy_sdk.policy.v1alpha2 import RequestPolicy, ProcessingMode
+    from apip_sdk_core.policy.v1alpha2 import RequestPolicy, ProcessingMode
 """
 
 from . import policy

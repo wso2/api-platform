@@ -55,7 +55,6 @@ build: test ## Build Gateway Runtime Docker image using buildx
 		--build-context gateway-builder=../gateway-builder \
 		--build-context system-policies=../system-policies \
 		--build-context dev-policies=../dev-policies \
-		--build-context sample-policies=../sample-policies \
 		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
@@ -81,7 +80,6 @@ build-debug: ## Build debug Gateway Runtime image for remote debugging with dlv 
 		--build-context gateway-builder=../gateway-builder \
 		--build-context system-policies=../system-policies \
 		--build-context dev-policies=../dev-policies \
-		--build-context sample-policies=../sample-policies \
 		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
@@ -107,7 +105,6 @@ build-coverage-image: test ## Build Gateway Runtime Docker image with coverage i
 		--build-context gateway-builder=../gateway-builder \
 		--build-context system-policies=../system-policies \
 		--build-context dev-policies=../dev-policies \
-		--build-context sample-policies=../sample-policies \
 		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
@@ -134,7 +131,6 @@ build-and-push-multiarch: ## Build and push Gateway Runtime Docker image for mul
 		--build-context gateway-builder=../gateway-builder \
 		--build-context system-policies=../system-policies \
 		--build-context dev-policies=../dev-policies \
-		--build-context sample-policies=../sample-policies \
 		--build-context target=target \
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \

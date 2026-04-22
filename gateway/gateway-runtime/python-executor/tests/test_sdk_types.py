@@ -1,6 +1,6 @@
 import unittest
 
-from wso2_gateway_policy_sdk import Headers
+from apip_sdk_core import Headers
 
 
 class HeadersTest(unittest.TestCase):
