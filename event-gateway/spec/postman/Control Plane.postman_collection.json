@@ -1,0 +1,228 @@
+{
+  "info": {
+    "_postman_id": "365cde8d-e873-47c5-8cb8-e5f4c1a37f2c",
+    "name": "Control Plane",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "50932701",
+    "_collection_link": "https://go.postman.co/collection/50932701-365cde8d-e873-47c5-8cb8-e5f4c1a37f2c?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Create Repo Watcher",
+      "request": {
+        "auth": {
+          "type": "basic",
+          "basic": [
+            {
+              "key": "password",
+              "value": "admin",
+              "type": "string"
+            },
+            {
+              "key": "username",
+              "value": "admin",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1alpha1\",\r\n  \"kind\": \"WebSubApi\",\r\n  \"metadata\": {\r\n    \"name\": \"repo-watcher-v1-0\"\r\n  },\r\n  \"spec\": {\r\n    \"displayName\": \"repo-watcher\",\r\n    \"version\": \"v1.0\",\r\n    \"context\": \"/repos\",\r\n    \"channels\": [\r\n      { \"name\": \"issues\", \"method\": \"SUB\" },\r\n      { \"name\": \"pull-requests\", \"method\": \"SUB\" },\r\n      { \"name\": \"commits\", \"method\": \"SUB\" }\r\n    ],\r\n    \"policies\": [\r\n      {\r\n        \"name\": \"basic-auth\",\r\n        \"version\": \"v1\",\r\n        \"params\": {\r\n          \"username\": \"admin\",\r\n          \"password\": \"admin\"\r\n        }\r\n      }\r\n    ],\r\n    \"deploymentState\": \"deployed\"\r\n  }\r\n}\r\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://{{host}}/websub-apis",
+          "protocol": "http",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "websub-apis"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get Repo Watcher",
+      "request": {
+        "auth": {
+          "type": "basic",
+          "basic": [
+            {
+              "key": "password",
+              "value": "admin",
+              "type": "string"
+            },
+            {
+              "key": "username",
+              "value": "admin",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://{{host}}/websub-apis/repo-watcher-v1-0",
+          "protocol": "http",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "websub-apis",
+            "repo-watcher-v1-0"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Update Repo Watcher",
+      "request": {
+        "auth": {
+          "type": "basic",
+          "basic": [
+            {
+              "key": "password",
+              "value": "admin",
+              "type": "string"
+            },
+            {
+              "key": "username",
+              "value": "admin",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "PUT",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"apiVersion\": \"gateway.api-platform.wso2.com/v1alpha1\",\r\n  \"kind\": \"WebSubApi\",\r\n  \"metadata\": {\r\n    \"name\": \"repo-watcher-v1-0\"\r\n  },\r\n  \"spec\": {\r\n    \"displayName\": \"repo-watcher\",\r\n    \"version\": \"v1.0\",\r\n    \"context\": \"/repos\",\r\n    \"channels\": [\r\n      { \"name\": \"issues\", \"method\": \"SUB\" },\r\n      { \"name\": \"pull-requests\", \"method\": \"SUB\" },\r\n      { \"name\": \"commits\", \"method\": \"SUB\" },\r\n      { \"name\": \"releases\", \"method\": \"SUB\" }\r\n    ],\r\n    \"policies\": [\r\n      {\r\n        \"name\": \"basic-auth\",\r\n        \"version\": \"v1\",\r\n        \"params\": {\r\n          \"username\": \"admin\",\r\n          \"password\": \"admin\"\r\n        }\r\n      }\r\n    ],\r\n    \"deploymentState\": \"deployed\"\r\n  }\r\n}\r\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://{{host}}/websub-apis/repo-watcher-v1-0",
+          "protocol": "http",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "websub-apis",
+            "repo-watcher-v1-0"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Delete Repo Watcher",
+      "request": {
+        "auth": {
+          "type": "basic",
+          "basic": [
+            {
+              "key": "password",
+              "value": "admin",
+              "type": "string"
+            },
+            {
+              "key": "username",
+              "value": "admin",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "http://{{host}}/websub-apis/repo-watcher-v1-0",
+          "protocol": "http",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "websub-apis",
+            "repo-watcher-v1-0"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "List WebSub APIs",
+      "request": {
+        "auth": {
+          "type": "basic",
+          "basic": [
+            {
+              "key": "password",
+              "value": "admin",
+              "type": "string"
+            },
+            {
+              "key": "username",
+              "value": "admin",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://{{host}}/websub-apis",
+          "protocol": "http",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "websub-apis"
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "host",
+      "value": "",
+      "type": "default"
+    }
+  ]
+}

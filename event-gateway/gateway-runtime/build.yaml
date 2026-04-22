@@ -1,0 +1,8 @@
+version: v1
+policies:
+  - name: basic-auth
+    gomodule: github.com/wso2/gateway-controllers/policies/basic-auth@v1.0.1
+  - name: set-headers
+    gomodule: github.com/wso2/gateway-controllers/policies/set-headers@v1.0.1
+  - name: api-key-auth
+    gomodule: github.com/wso2/gateway-controllers/policies/api-key-auth@v1.0.1

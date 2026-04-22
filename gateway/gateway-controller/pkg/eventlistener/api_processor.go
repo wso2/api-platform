@@ -188,7 +188,14 @@ func (l *EventListener) handleAPIDelete(event eventhub.Event) {
 
 	// Remove runtime config for the deleted API
 	if l.policyManager != nil && existingConfig != nil {
-		if err := l.policyManager.DeleteAPIConfig(existingConfig.Kind, existingConfig.Handle); err != nil {
+		if existingConfig.Kind == models.KindWebSubApi {
+			// WebSubApi: refresh event channel cache (config already removed from ConfigStore)
+			if err := l.policyManager.UpdateEventChannelSnapshot(); err != nil {
+				l.logger.Warn("Failed to update event channel snapshot after WebSubApi deletion",
+					slog.String("api_id", entityID),
+					slog.Any("error", err))
+			}
+		} else if err := l.policyManager.DeleteAPIConfig(existingConfig.Kind, existingConfig.Handle); err != nil {
 			l.logger.Warn("Failed to remove runtime config after API deletion",
 				slog.String("api_id", entityID),
 				slog.Any("error", err))
@@ -203,6 +210,18 @@ func (l *EventListener) handleAPIDelete(event eventhub.Event) {
 // updatePoliciesForAPI upserts the RuntimeDeployConfig for an API into the policy xDS store.
 func (l *EventListener) updatePoliciesForAPI(cfg *models.StoredConfig, correlationID string) {
 	if l.policyManager == nil {
+		return
+	}
+
+	if cfg.Kind == models.KindWebSubApi {
+		// WebSubApi doesn't need RuntimeDeployConfig transformation.
+		// Just refresh the event channel config cache.
+		if err := l.policyManager.UpdateEventChannelSnapshot(); err != nil {
+			l.logger.Error("Failed to update event channel snapshot",
+				slog.String("api_id", cfg.UUID),
+				slog.String("correlation_id", correlationID),
+				slog.Any("error", err))
+		}
 		return
 	}
 

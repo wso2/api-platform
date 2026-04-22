@@ -31,7 +31,10 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/wso2/api-platform/common/constants"
+	"github.com/wso2/api-platform/common/eventhub"
 	commonmodels "github.com/wso2/api-platform/common/models"
+	"github.com/wso2/api-platform/common/redact"
 	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
@@ -46,9 +49,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
-	"github.com/wso2/api-platform/common/constants"
-	"github.com/wso2/api-platform/common/eventhub"
-	"github.com/wso2/api-platform/common/redact"
 )
 
 // APIServer implements the generated ServerInterface
@@ -481,6 +481,28 @@ func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID stri
 				return
 			}
 		}
+	}
+}
+
+// publishWebSubEvent publishes an event for WebSub API lifecycle changes.
+func (s *APIServer) publishWebSubEvent(eventType eventhub.EventType, action, entityID, correlationID string, logger *slog.Logger) {
+	event := eventhub.Event{
+		GatewayID:           s.gatewayID,
+		OriginatedTimestamp: time.Now(),
+		EventType:           eventType,
+		Action:              action,
+		EntityID:            entityID,
+		EventID:             correlationID,
+		EventData:           eventhub.EmptyEventData,
+	}
+
+	if err := s.eventHub.PublishEvent(s.gatewayID, event); err != nil {
+		logger.Warn("Failed to publish event to event hub",
+			slog.String("gateway_id", s.gatewayID),
+			slog.String("event_type", string(eventType)),
+			slog.String("action", action),
+			slog.String("entity_id", entityID),
+			slog.Any("error", err))
 	}
 }
 

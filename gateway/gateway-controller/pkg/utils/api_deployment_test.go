@@ -700,6 +700,7 @@ func TestDeployAPIConfiguration_WebSubTopicOperations(t *testing.T) {
 		t.Cleanup(closeFn)
 
 		store := storage.NewConfigStore()
+		db := newTestMockDB()
 		validator := config.NewAPIValidator()
 		routerConfig := &config.RouterConfig{
 			EventGateway: config.EventGatewayConfig{
@@ -708,7 +709,7 @@ func TestDeployAPIConfiguration_WebSubTopicOperations(t *testing.T) {
 				TimeoutSeconds:        1,
 			},
 		}
-		service := newTestAPIDeploymentService(store, nil, nil, validator, routerConfig)
+		service := newTestAPIDeploymentService(store, db, nil, validator, routerConfig)
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 		// Create a valid WebSub API
@@ -727,6 +728,7 @@ spec:
 `
 		params := APIDeploymentParams{
 			Data:          []byte(yamlData),
+			APIID:         "0000-new-websub-0000-000000000000",
 			ContentType:   "application/yaml",
 			Kind:          "WebSubApi",
 			CorrelationID: "test-corr",
@@ -736,9 +738,15 @@ spec:
 
 		// This will fail because the hub returns an error
 		result, err := service.DeployAPIConfiguration(params)
-		assert.Error(t, err)
-		assert.Nil(t, result)
-		assert.Contains(t, err.Error(), "failed to complete topic operations")
+		assert.Error(t, err, "expected error from topic registration failure")
+		assert.Nil(t, result, "result should be nil when topic operations fail")
+		if err != nil {
+			assert.Contains(t, err.Error(), "failed to complete topic operations")
+		}
+
+		_, dbErr := db.GetConfig(params.APIID)
+		assert.Error(t, dbErr)
+		assert.True(t, storage.IsNotFoundError(dbErr))
 	})
 
 	t.Run("Topic deregistration during update", func(t *testing.T) {
@@ -746,6 +754,7 @@ spec:
 		t.Cleanup(closeFn)
 
 		store := storage.NewConfigStore()
+		db := newTestMockDB()
 		validator := config.NewAPIValidator()
 		routerConfig := &config.RouterConfig{
 			EventGateway: config.EventGatewayConfig{
@@ -754,7 +763,7 @@ spec:
 				TimeoutSeconds:        1,
 			},
 		}
-		service := newTestAPIDeploymentService(store, nil, nil, validator, routerConfig)
+		service := newTestAPIDeploymentService(store, db, nil, validator, routerConfig)
 		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 		// Add existing WebSub API with topics
@@ -768,8 +777,11 @@ spec:
 		}
 
 		existingCfg := &models.StoredConfig{
-			UUID: "0000-existing-websub-0000-000000000000",
-			Kind: string(api.WebSubApi),
+			UUID:        "0000-existing-websub-0000-000000000000",
+			Kind:        string(api.WebSubApi),
+			Handle:      "existing-websub",
+			DisplayName: "Existing WebSub",
+			Version:     "1.0.0",
 			Configuration: api.WebSubAPI{
 				Kind: api.WebSubApi,
 				Spec: webhookData,
@@ -780,6 +792,7 @@ spec:
 			UpdatedAt:    time.Now(),
 		}
 		store.Add(existingCfg)
+		require.NoError(t, db.SaveConfig(existingCfg))
 		store.TopicManager.Add(existingCfg.UUID, "/existing/1.0.0/old-topic")
 
 		// Update with new topics (will try to deregister old one)
@@ -809,6 +822,15 @@ spec:
 		result, err := service.DeployAPIConfiguration(params)
 		assert.Error(t, err)
 		assert.Nil(t, result)
+		if err != nil {
+			assert.Contains(t, err.Error(), "failed to complete topic operations")
+		}
+
+		rolledBackCfg, dbErr := db.GetConfig(existingCfg.UUID)
+		require.NoError(t, dbErr)
+		assert.Equal(t, existingCfg.DisplayName, rolledBackCfg.DisplayName)
+		assert.Equal(t, existingCfg.Handle, rolledBackCfg.Handle)
+		assert.Equal(t, existingCfg.Version, rolledBackCfg.Version)
 	})
 }
 
