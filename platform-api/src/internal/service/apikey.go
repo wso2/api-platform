@@ -391,7 +391,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 	if successCount == 0 {
 		s.slogger.Error("API key created event was not broadcast to any gateway", "apiHandle", apiHandle, "keyName", keyName, "lastError", lastError)
 	} else if failureCount > 0 {
-		s.slogger.Error("Failed to broadcast API key created event to some gateways", "apiHandle", apiHandle, "keyName", keyName, "failed", failureCount, "lastError", lastError)
+		s.slogger.Warn("Failed to broadcast API key created event to some gateways", "apiHandle", apiHandle, "keyName", keyName, "failed", failureCount, "lastError", lastError)
 	}
 
 	return nil
@@ -495,13 +495,10 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 	// Log summary
 	s.slogger.Info("API key update broadcast summary", "apiHandle", apiHandle, "keyName", keyName, "total", len(gateways), "success", successCount, "failed", failureCount)
 
-	// Return error if all deliveries failed
 	if successCount == 0 {
-		s.slogger.Error("Failed to deliver API key update to any gateway", "apiHandle", apiHandle, "keyName", keyName)
-		return fmt.Errorf("failed to deliver API key update event to any gateway: %w", lastError)
+		s.slogger.Error("Failed to deliver API key update to any gateway", "apiHandle", apiHandle, "keyName", keyName, "lastError", lastError)
 	}
 
-	// Partial success is still considered success (some gateways received the event)
 	return nil
 }
 
@@ -568,7 +565,7 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, orgId, keyN
 	s.slogger.Info("API key revocation broadcast summary", "apiHandle", apiId, "keyName", keyName, "total", len(gateways), "success", successCount, "failed", failureCount)
 
 	if failureCount == len(gateways) {
-		return fmt.Errorf("failed to deliver API key revocation to all gateways: %w", lastError)
+		s.slogger.Error("Failed to deliver API key revocation to any gateway", "apiHandle", apiId, "keyName", keyName, "lastError", lastError)
 	}
 	if failureCount > 0 {
 		s.slogger.Warn("Partial delivery of API key revocation", "apiHandle", apiId, "keyName", keyName, "failureCount", failureCount, "total", len(gateways))
