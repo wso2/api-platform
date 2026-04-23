@@ -201,6 +201,8 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     application_id TEXT,
     subscription_token_hash TEXT NOT NULL,
     subscription_plan_id TEXT,
+    -- NEW COLUMNS: billing_customer_id and billing_subscription_id must be added
+    -- to existing deployments via ALTER TABLE migration.
     billing_customer_id TEXT,
     billing_subscription_id TEXT,
     status TEXT NOT NULL CHECK(status IN ('ACTIVE', 'INACTIVE', 'REVOKED')) DEFAULT 'ACTIVE',
