@@ -240,7 +240,10 @@ The event gateway is configured via [`gateway-runtime/configs/config.toml`](gate
 
 | Section | Key | Default | Description |
 |---------|-----|---------|-------------|
-| `server` | `websub_port` | `8080` | WebSub HTTP listener port |
+| `server` | `websub_port` | `8080` | WebSub listener port |
+| `server` | `websub_tls_enabled` | `false` | Serve the WebSub listener with HTTPS |
+| `server` | `websub_tls_cert_file` | `""` | PEM certificate path for the WebSub HTTPS listener |
+| `server` | `websub_tls_key_file` | `""` | PEM private key path for the WebSub HTTPS listener |
 | `server` | `websocket_port` | `8081` | WebSocket listener port |
 | `server` | `admin_port` | `9002` | Admin/health endpoint port |
 | `server` | `metrics_port` | `9003` | Metrics endpoint port |
@@ -256,9 +259,14 @@ All settings can be overridden via environment variables with the prefix `APIP_E
 
 ```bash
 APIP_EGW_SERVER_WEBSUB_PORT=8080
+APIP_EGW_SERVER_WEBSUB_TLS_ENABLED=true
+APIP_EGW_SERVER_WEBSUB_TLS_CERT_FILE=/etc/event-gateway/tls/tls.crt
+APIP_EGW_SERVER_WEBSUB_TLS_KEY_FILE=/etc/event-gateway/tls/tls.key
 APIP_EGW_KAFKA_BROKERS=broker1:9092,broker2:9092
 APIP_EGW_CONTROLPLANE_ENABLED=true
 ```
+
+When `websub_tls_enabled=true`, the event gateway serves `https://` on `websub_port`. If the gateway controller or router points at the event gateway directly, update `router.event_gateway.websub_hub_url` to use an `https://` URL.
 
 ### Channel Bindings (`channels.yaml`)
 
@@ -333,8 +341,8 @@ docker compose build event-gateway
 |----------|------|-------------|
 | `GET /health` | 9002 | Liveness probe — always returns `{"status":"UP"}` |
 | `GET /ready` | 9002 | Readiness probe — `{"status":"READY"}` or 503 |
-| `POST /{context}/{version}/hub` | 8080 | WebSub subscribe/unsubscribe |
-| `POST /{context}/{version}/webhook-receiver?topic=X` | 8080 | WebSub event ingress |
+| `POST /{context}/{version}/hub` | 8080 | WebSub subscribe/unsubscribe over HTTP or HTTPS |
+| `POST /{context}/{version}/webhook-receiver?topic=X` | 8080 | WebSub event ingress over HTTP or HTTPS |
 | `ws://localhost:8081/{path}` | 8081 | WebSocket connection (protocol mediation) |
 | Kafka UI | 7080 | Kafka topic browser at `http://localhost:7080` |
 
