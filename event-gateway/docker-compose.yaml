@@ -37,7 +37,7 @@ services:
       - APIP_GW_CONTROLLER_LOGGING_LEVEL=info
       - APIP_GW_DEVELOPMENT_MODE=true
       - APIP_GW_ROUTER_EVENT__GATEWAY_ENABLED=true
-      - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB_URL=http://event-gateway:8080
+      - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB_URL=https://event-gateway:8080
       - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB_PORT=8080
       - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB__LISTENER__PORT=8080
       - APIP_GW_ROUTER_EVENT__GATEWAY_TIMEOUT__SECONDS=30
@@ -76,6 +76,7 @@ services:
       # Allow callbacks to services running on the Docker host (useful on Linux).
       - "host.docker.internal:host-gateway"
     volumes:
+      - ../gateway/gateway-controller/listener-certs:/etc/event-gateway/tls:ro
       - ./gateway-runtime/configs/config.toml:/etc/event-gateway/config.toml:ro
       - ./gateway-runtime/configs/channels.yaml:/etc/event-gateway/channels.yaml:ro
     depends_on:

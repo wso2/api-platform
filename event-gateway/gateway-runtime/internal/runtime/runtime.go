@@ -49,7 +49,7 @@ type Runtime struct {
 	admin         *admin.Server
 	brokerDrivers []connectors.BrokerDriver
 	receivers     []connectors.Receiver
-	servers       []*http.Server // shared HTTP servers for port sharing
+	servers       []*managedServer // shared servers for port sharing
 
 	// Dynamic binding management (xDS mode)
 	mu                  sync.RWMutex
@@ -58,8 +58,16 @@ type Runtime struct {
 	bindingPaths        map[string][]string // name → registered mux paths
 	bindingTopics       map[string][]string // name → Kafka topics (data + internal sub)
 	websubMux           *DynamicMux
-	websubServer        *http.Server
+	websubServer        *managedServer
 	running             bool // true after Run() starts servers
+}
+
+type managedServer struct {
+	name     string
+	server   *http.Server
+	tls      bool
+	certFile string
+	keyFile  string
 }
 
 // New creates a new Runtime. After creation:
@@ -269,16 +277,10 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 
 	// Create shared HTTP servers.
 	if hasWS {
-		r.servers = append(r.servers, &http.Server{
-			Addr:    fmt.Sprintf(":%d", r.cfg.Server.WebSocketPort),
-			Handler: wsMux,
-		})
+		r.servers = append(r.servers, r.newManagedServer("WebSocket", r.cfg.Server.WebSocketPort, wsMux, false))
 	}
 	if hasWebSub {
-		r.servers = append(r.servers, &http.Server{
-			Addr:    fmt.Sprintf(":%d", r.cfg.Server.WebSubPort),
-			Handler: websubMux,
-		})
+		r.servers = append(r.servers, r.newManagedServer("WebSub", r.cfg.Server.WebSubPort, websubMux, true))
 	}
 
 	return nil
@@ -292,25 +294,17 @@ func (r *Runtime) Run(ctx context.Context) error {
 	for _, srv := range r.servers {
 		srv := srv
 		go func() {
-			slog.Info("Starting shared HTTP server", "addr", srv.Addr)
-			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				slog.Error("Shared HTTP server error", "addr", srv.Addr, "error", err)
-			}
+			r.runServer(srv)
 		}()
 	}
 
 	// If in xDS mode, ensure the websub server is started for dynamic bindings.
 	r.mu.Lock()
 	if r.websubServer == nil && r.cfg.ControlPlane.Enabled {
-		r.websubServer = &http.Server{
-			Addr:    fmt.Sprintf(":%d", r.cfg.Server.WebSubPort),
-			Handler: r.websubMux,
-		}
+		r.websubServer = r.newManagedServer("WebSub", r.cfg.Server.WebSubPort, r.websubMux, true)
+		websubServer := r.websubServer
 		go func() {
-			slog.Info("Starting WebSub HTTP server for xDS mode", "addr", r.websubServer.Addr)
-			if err := r.websubServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				slog.Error("WebSub HTTP server error", "addr", r.websubServer.Addr, "error", err)
-			}
+			r.runServer(websubServer)
 		}()
 	}
 	r.running = true
@@ -373,8 +367,8 @@ func (r *Runtime) Run(ctx context.Context) error {
 
 	// Shutdown shared HTTP servers.
 	for _, srv := range r.servers {
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			slog.Error("Failed to shutdown HTTP server", "addr", srv.Addr, "error", err)
+		if err := srv.server.Shutdown(shutdownCtx); err != nil {
+			slog.Error("Failed to shutdown server", "name", srv.name, "addr", srv.server.Addr, "error", err)
 		}
 	}
 
@@ -383,8 +377,8 @@ func (r *Runtime) Run(ctx context.Context) error {
 	wsSrv := r.websubServer
 	r.mu.RUnlock()
 	if wsSrv != nil {
-		if err := wsSrv.Shutdown(shutdownCtx); err != nil {
-			slog.Error("Failed to shutdown WebSub HTTP server", "error", err)
+		if err := wsSrv.server.Shutdown(shutdownCtx); err != nil {
+			slog.Error("Failed to shutdown WebSub server", "addr", wsSrv.server.Addr, "error", err)
 		}
 	}
 
@@ -394,6 +388,47 @@ func (r *Runtime) Run(ctx context.Context) error {
 
 	slog.Info("Event gateway shutdown complete")
 	return nil
+}
+
+func (r *Runtime) newManagedServer(name string, port int, handler http.Handler, allowTLS bool) *managedServer {
+	server := &managedServer{
+		name: name,
+		server: &http.Server{
+			Addr:    fmt.Sprintf(":%d", port),
+			Handler: handler,
+		},
+	}
+
+	if allowTLS && r.cfg.Server.WebSubTLSEnabled {
+		server.tls = true
+		server.certFile = r.cfg.Server.WebSubTLSCertFile
+		server.keyFile = r.cfg.Server.WebSubTLSKeyFile
+	}
+
+	return server
+}
+
+func (r *Runtime) runServer(srv *managedServer) {
+	protocol := "HTTP"
+	errMsg := "server error"
+	if srv.tls {
+		protocol = "HTTPS"
+	}
+
+	slog.Info("Starting server", "name", srv.name, "protocol", protocol, "addr", srv.server.Addr)
+
+	var err error
+	if srv.tls {
+		errMsg = "HTTPS server error"
+		err = srv.server.ListenAndServeTLS(srv.certFile, srv.keyFile)
+	} else {
+		errMsg = "HTTP server error"
+		err = srv.server.ListenAndServe()
+	}
+
+	if err != nil && err != http.ErrServerClosed {
+		slog.Error(errMsg, "name", srv.name, "addr", srv.server.Addr, "error", err)
+	}
 }
 
 func (r *Runtime) buildPolicyChains(b binding.Binding) (subscribeKey, inboundKey, outboundKey string, err error) {
