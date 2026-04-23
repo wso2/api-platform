@@ -18,22 +18,22 @@
 
 SHELL := /bin/bash
 
-MODULE_NAME := event-gateway
-BINARY_NAME := event-gateway
+MODULE_NAME := webhook-listener
+BINARY_NAME := webhook-listener
 VERSION ?= $(shell cat ../VERSION 2>/dev/null || echo "0.1.0-SNAPSHOT")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
-IMAGE_NAME := $(DOCKER_REGISTRY)/event-gateway-runtime
+IMAGE_NAME := $(DOCKER_REGISTRY)/webhook-listener
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 .DEFAULT_GOAL := help
 
 .PHONY: help
 help: ## Show this help message
-	@echo 'Event Gateway Runtime Build System (Version: $(VERSION))'
+	@echo 'Webhook Listener Build System (Version: $(VERSION))'
 	@echo ''
 	@echo 'Build Targets:'
 	@echo '  make build                      - Build Docker image'
-	@echo '  make build-local                - Build event-gateway binary locally'
+	@echo '  make build-local                - Build webhook-listener binary locally'
 	@echo '  make build-docker               - Build Docker image'
 	@echo '  make build-and-push-multiarch   - Build and push Docker image for multiple architectures'
 	@echo ''
@@ -47,19 +47,16 @@ help: ## Show this help message
 build: build-docker ## Build Docker image
 
 .PHONY: build-local
-build-local: ## Build event-gateway binary
+build-local: ## Build webhook-listener binary
 	mkdir -p bin
-	go build -o bin/$(BINARY_NAME) ./cmd/event-gateway/
+	go build -o bin/$(BINARY_NAME) .
 
 .PHONY: build-docker
 build-docker: ## Build Docker image
-	@echo "Building event-gateway-runtime Docker image ($(VERSION))..."
+	@echo "Building webhook-listener Docker image ($(VERSION))..."
 	docker buildx build \
 		--load \
 		--platform linux/$(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
-		--build-context sdk-core=../../sdk/core \
-		--build-context common=../../common \
-		--build-context policy-engine=../../gateway/gateway-runtime/policy-engine \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(IMAGE_NAME):$(VERSION) \
@@ -68,13 +65,10 @@ build-docker: ## Build Docker image
 
 .PHONY: build-and-push-multiarch
 build-and-push-multiarch: ## Build and push Docker image for multiple architectures
-	@echo "Building and pushing multi-arch event-gateway-runtime Docker image ($(VERSION))..."
+	@echo "Building and pushing multi-arch webhook-listener Docker image ($(VERSION))..."
 	docker buildx build \
 		--push \
 		--platform linux/amd64,linux/arm64 \
-		--build-context sdk-core=../../sdk/core \
-		--build-context common=../../common \
-		--build-context policy-engine=../../gateway/gateway-runtime/policy-engine \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(IMAGE_NAME):$(VERSION) \
