@@ -97,7 +97,7 @@ server:
 
 # Storage configuration
 storage:
-  type: sqlite            # "sqlite", "postgres", or "memory"
+  type: sqlite            # "sqlite", "postgres"
   sqlite:
     path: ./data/gateway.db  # SQLite database file path
   postgres:               # Used when type=postgres
