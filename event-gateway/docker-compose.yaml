@@ -18,7 +18,7 @@
 
 services:
   gateway-controller:
-    image: ghcr.io/wso2/api-platform/gateway-controller:1.1.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/event-gateway-controller:0.1.0-SNAPSHOT
     build:
       context: ../gateway/gateway-controller
       dockerfile: Dockerfile
@@ -115,7 +115,7 @@ services:
       - egw-network
 
   wh-listener:
-    image: event-gateway/webhook-listener:local
+    image: ghcr.io/wso2/api-platform/webhook-listener:0.1.0-SNAPSHOT
     build:
       context: webhook-listener
       dockerfile: Dockerfile
