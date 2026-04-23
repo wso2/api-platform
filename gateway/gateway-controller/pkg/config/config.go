@@ -493,6 +493,8 @@ func LoadConfig(configPath string) (*Config, error) {
 			return "controller.controlplane.deployment_push_enabled"
 		case "controller_controlplane_sync_batch_size":
 			return "controller.controlplane.sync_batch_size"
+		case "immutable_gateway_enabled":
+			return "immutable_gateway.enabled"
 		default:
 			// For other env vars, use standard mapping (underscore to dot)
 			// Step 1: Convert double underscore "__" into a temporary placeholder
@@ -778,6 +780,14 @@ func defaultConfig() *Config {
 
 // Validate validates the configuration
 func (c *Config) Validate() error {
+	// Immutable mode requires SQLite — it starts with a fresh in-container DB on every boot,
+	// which is incompatible with external shared databases like Postgres.
+	if c.ImmutableGateway.Enabled && !strings.EqualFold(c.Controller.Storage.Type, "sqlite") {
+		return fmt.Errorf("immutable_gateway.enabled=true requires storage.type=sqlite; got %q. "+
+			"Immutable mode starts with a fresh in-container database on every boot and is incompatible with external databases",
+			c.Controller.Storage.Type)
+	}
+
 	// Validate storage type
 	validStorageTypes := []string{"sqlite", "postgres"}
 	isValidType := false

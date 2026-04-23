@@ -118,6 +118,17 @@ func main() {
 		log.Warn("No authentication configured: both basic auth and IDP are disabled. Gateway Controller API will allow all requests without authentication")
 	}
 
+	// In immutable mode, delete any stale SQLite files before opening the DB to
+	// guarantee a fresh, reproducible state on every boot.
+	if cfg.ImmutableGateway.Enabled {
+		log.Info("Immutable gateway mode enabled — removing existing SQLite files for fresh start",
+			slog.String("path", cfg.Controller.Storage.SQLite.Path))
+		if err := immutable.ResetSQLiteFiles(cfg.Controller.Storage.SQLite.Path, log); err != nil {
+			log.Error("Failed to reset SQLite files for immutable mode", slog.Any("error", err))
+			os.Exit(1)
+		}
+	}
+
 	// Initialize storage based on type
 	var db storage.Storage
 	db, err = storage.NewStorage(toBackendConfig(cfg), log)
