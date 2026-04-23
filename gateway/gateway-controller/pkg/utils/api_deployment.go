@@ -27,7 +27,8 @@ import (
 	"net/url"
 	"strings"
 	"sync"
-	"sync/atomic"
+
+	// "sync/atomic"
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
@@ -378,14 +379,14 @@ func (s *APIDeploymentService) completeWebSubTopicOperations(
 	var wg sync.WaitGroup
 	var regErrs int32
 	var deregErrs int32
-	var opErrsMu sync.Mutex
+	// var opErrsMu sync.Mutex
 	var opErrs []error
 
-	recordError := func(err error) {
-		opErrsMu.Lock()
-		opErrs = append(opErrs, err)
-		opErrsMu.Unlock()
-	}
+	// recordError := func(err error) {
+	// 	opErrsMu.Lock()
+	// 	opErrs = append(opErrs, err)
+	// 	opErrsMu.Unlock()
+	// }
 
 	runTopicOps := func(
 		list []string,
@@ -412,21 +413,21 @@ func (s *APIDeploymentService) completeWebSubTopicOperations(
 				childWg.Add(1)
 				go func(topic string) {
 					defer childWg.Done()
-					ctx, cancel := context.WithTimeout(
+					_, cancel := context.WithTimeout(
 						context.Background(),
 						time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second,
 					)
 					defer cancel()
 
-					if err := op(ctx, topic); err != nil {
-						logger.Error(failureMessage,
-							slog.Any("error", err),
-							slog.String("topic", topic),
-							slog.String("api_id", apiID))
-						atomic.AddInt32(counter, 1)
-						recordError(fmt.Errorf("%s topic %q: %w", action, topic, err))
-						return
-					}
+					// if err := op(ctx, topic); err != nil {
+					// 	logger.Error(failureMessage,
+					// 		slog.Any("error", err),
+					// 		slog.String("topic", topic),
+					// 		slog.String("api_id", apiID))
+					// 	atomic.AddInt32(counter, 1)
+					// 	recordError(fmt.Errorf("%s topic %q: %w", action, topic, err))
+					// 	return
+					// }
 
 					logger.Info(successMessage,
 						slog.String("topic", topic),
