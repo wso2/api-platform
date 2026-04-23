@@ -195,6 +195,8 @@ func LoadConfig(configPath string) (*OperatorConfig, error) {
 
 		// Map specific environment variables to config keys
 		switch s {
+		case "helm_chart_path":
+			return "gateway.helm_chart_path"
 		case "helm_chart_name":
 			return "gateway.helm_chart_name"
 		case "helm_chart_version":
