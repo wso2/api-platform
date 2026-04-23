@@ -9,7 +9,14 @@ If callers need to pin a specific contract version explicitly, they can use:
     from apip_sdk_core.policy.v1alpha2 import RequestPolicy, ProcessingMode
 """
 
+from importlib.metadata import PackageNotFoundError, version
+
 from . import policy
 from .policy import *  # noqa: F401,F403
 
-__all__ = [*policy.__all__, "policy"]
+try:
+    __version__: str = version("apip-sdk-core")
+except PackageNotFoundError:
+    __version__ = "0.0.0+unknown"
+
+__all__ = [*policy.__all__, "policy", "__version__"]
