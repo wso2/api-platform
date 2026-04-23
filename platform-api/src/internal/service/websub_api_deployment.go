@@ -39,6 +39,7 @@ import (
 // WebSubAPIDeploymentService handles deployment operations for WebSub APIs
 type WebSubAPIDeploymentService struct {
 	artifactRepo         repository.ArtifactRepository
+	apiRepo              repository.APIRepository
 	websubAPIRepo        repository.WebSubAPIRepository
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
@@ -55,6 +56,7 @@ func NewWebSubAPIDeploymentService(
 	gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository,
 	artifactRepo repository.ArtifactRepository,
+	apiRepo repository.APIRepository,
 	gatewayEventsService *GatewayEventsService,
 	cfg *config.Server,
 	slogger *slog.Logger,
@@ -65,6 +67,7 @@ func NewWebSubAPIDeploymentService(
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,
 		artifactRepo:         artifactRepo,
+		apiRepo:              apiRepo,
 		gatewayEventsService: gatewayEventsService,
 		cfg:                  cfg,
 		slogger:              slogger,
@@ -210,6 +213,11 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.De
 	hardLimit := s.cfg.Deployments.MaxPerAPIGateway + constants.DeploymentLimitBuffer
 	if err := s.deploymentRepo.CreateWithLimitEnforcement(deployment, hardLimit); err != nil {
 		return nil, fmt.Errorf("failed to create deployment: %w", err)
+	}
+
+	// Ensure API-Gateway association exists
+	if err := s.ensureAPIGatewayAssociation(apiUUID, gatewayID, orgID); err != nil {
+		s.slogger.Warn("Failed to ensure API-gateway association", "error", err)
 	}
 
 	initialStatus := model.DeploymentStatusDeployed
@@ -523,6 +531,34 @@ func (s *WebSubAPIDeploymentService) deleteWebSubAPIDeployment(apiUUID, deployme
 		return fmt.Errorf("failed to delete deployment: %w", err)
 	}
 
+	return nil
+}
+
+// ensureAPIGatewayAssociation creates an API-gateway association if one does not already exist.
+func (s *WebSubAPIDeploymentService) ensureAPIGatewayAssociation(apiUUID, gatewayID, orgUUID string) error {
+	associations, err := s.apiRepo.GetAPIAssociations(apiUUID, constants.AssociationTypeGateway, orgUUID)
+	if err != nil {
+		s.slogger.Error("Failed to get API-gateway associations", "apiUUID", apiUUID, "gatewayID", gatewayID, "error", err)
+		return err
+	}
+	for _, assoc := range associations {
+		if assoc.ResourceID == gatewayID {
+			s.slogger.Info("API-gateway association already exists, skipping", "apiUUID", apiUUID, "gatewayID", gatewayID)
+			return nil
+		}
+	}
+	association := &model.APIAssociation{
+		ArtifactID:      apiUUID,
+		OrganizationID:  orgUUID,
+		ResourceID:      gatewayID,
+		AssociationType: constants.AssociationTypeGateway,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+	}
+	if err := s.apiRepo.CreateAPIAssociation(association); err != nil {
+		s.slogger.Error("Failed to create API-gateway association", "apiUUID", apiUUID, "gatewayID", gatewayID, "orgUUID", orgUUID, "error", err)
+		return err
+	}
 	return nil
 }
 
