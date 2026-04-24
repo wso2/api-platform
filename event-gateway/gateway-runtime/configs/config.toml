@@ -15,9 +15,9 @@ websub_http_port = 8080
 # HTTPS port for WebSub server (used when TLS is enabled)
 websub_https_port = 8443
 # Set to true to serve the WebSub hub and webhook receiver over HTTPS.
-websub_tls_enabled = true
-websub_tls_cert_file = "/etc/event-gateway/tls/default-listener.crt"
-websub_tls_key_file = "/etc/event-gateway/tls/default-listener.key"
+websub_tls_enabled = false
+# websub_tls_cert_file = "/etc/event-gateway/tls/default-listener.crt"
+# websub_tls_key_file = "/etc/event-gateway/tls/default-listener.key"
 websocket_port = 8081
 admin_port = 9002
 metrics_port = 9003
