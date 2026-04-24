@@ -462,7 +462,8 @@ policies:
 func TestWriteBuildManifestWithVersions_PipPackageUsesResolvedSpec(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	buildFileContent := `version: "1.0"
+	buildFileContent := `
+version: "1.0"
 policies:
   - name: prompt-compressor
     pipPackage: "prompt-compressor~=0.0"
