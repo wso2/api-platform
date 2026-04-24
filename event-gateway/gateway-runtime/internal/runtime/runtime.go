@@ -37,6 +37,11 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/pkg/engine"
 )
 
+var (
+	initialReceiverStartBackoff = 1 * time.Second
+	maxReceiverStartBackoff     = 30 * time.Second
+)
+
 // Runtime orchestrates all event gateway components.
 // It owns the lifecycle of the policy engine, hub, admin server,
 // and all per-channel receiver+broker-driver pairs.
@@ -59,6 +64,7 @@ type Runtime struct {
 	bindingTopics       map[string][]string // name → Kafka topics (data + internal sub)
 	websubMux           *DynamicMux
 	websubServer        *managedServer
+	runCtx              context.Context
 	running             bool // true after Run() starts servers
 }
 
@@ -309,25 +315,29 @@ func (r *Runtime) Run(ctx context.Context) error {
 			r.runServer(websubServer)
 		}()
 	}
+	r.runCtx = ctx
 	r.running = true
 	r.mu.Unlock()
 
 	// Start receivers that were added before Run() (static mode).
-	for _, ep := range r.receivers {
-		if err := ep.Start(ctx); err != nil {
+	for i, ep := range r.receivers {
+		if err := r.startReceiverWithRetry(ctx, fmt.Sprintf("startup-%d", i), ep); err != nil {
 			return fmt.Errorf("failed to start receiver: %w", err)
 		}
 	}
 
 	// Start any dynamically added receivers that were queued before Run().
 	r.mu.RLock()
-	for _, ep := range r.activeReceivers {
-		if err := ep.Start(ctx); err != nil {
-			r.mu.RUnlock()
+	pendingReceivers := make(map[string]connectors.Receiver, len(r.activeReceivers))
+	for name, ep := range r.activeReceivers {
+		pendingReceivers[name] = ep
+	}
+	r.mu.RUnlock()
+	for name, ep := range pendingReceivers {
+		if err := r.startReceiverWithRetry(ctx, name, ep); err != nil {
 			return fmt.Errorf("failed to start dynamic receiver: %w", err)
 		}
 	}
-	r.mu.RUnlock()
 
 	r.admin.SetReady(true)
 	slog.Info("Event gateway is ready", "runtime_id", r.cfg.RuntimeID)
@@ -349,6 +359,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 
 	// Stop dynamic receivers.
 	r.mu.Lock()
+	r.runCtx = nil
 	for name, ep := range r.activeReceivers {
 		if err := ep.Stop(shutdownCtx); err != nil {
 			slog.Error("Failed to stop dynamic receiver", "name", name, "error", err)
@@ -430,6 +441,33 @@ func (r *Runtime) runServer(srv *managedServer) {
 
 	if err != nil && err != http.ErrServerClosed {
 		slog.Error(errMsg, "name", srv.name, "addr", srv.server.Addr, "error", err)
+	}
+}
+
+func (r *Runtime) startReceiverWithRetry(ctx context.Context, name string, receiver connectors.Receiver) error {
+	backoff := initialReceiverStartBackoff
+	for {
+		err := receiver.Start(ctx)
+		if err == nil {
+			return nil
+		}
+		if ctx.Err() != nil {
+			return fmt.Errorf("receiver start canceled for %q: %w", name, ctx.Err())
+		}
+
+		slog.Warn("Receiver start failed, will retry",
+			"name", name,
+			"backoff", backoff,
+			"error", err,
+		)
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("receiver start canceled for %q: %w", name, ctx.Err())
+		case <-time.After(backoff):
+		}
+
+		backoff = min(backoff*2, maxReceiverStartBackoff)
 	}
 }
 
@@ -531,7 +569,6 @@ func (r *Runtime) unregisterBindingChains(b *hub.ChannelBinding) {
 // AddWebSubApiBinding dynamically adds a WebSubApi binding at runtime (xDS mode).
 func (r *Runtime) AddWebSubApiBinding(wsb binding.WebSubApiBinding) error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	vhost := defaultVhost(wsb.Vhost)
 
@@ -546,6 +583,7 @@ func (r *Runtime) AddWebSubApiBinding(wsb binding.WebSubApiBinding) error {
 	// Build policy chains for the API.
 	subKey, inKey, outKey, err := r.buildWebSubApiPolicyChains(wsb, vhost)
 	if err != nil {
+		r.mu.Unlock()
 		return fmt.Errorf("failed to build chains for WebSubApi %q: %w", wsb.Name, err)
 	}
 
@@ -569,6 +607,7 @@ func (r *Runtime) AddWebSubApiBinding(wsb binding.WebSubApiBinding) error {
 	}
 	brokerDriver, err := r.registry.CreateBrokerDriver(brokerDriverType, wsb.BrokerDriver.Config)
 	if err != nil {
+		r.mu.Unlock()
 		return fmt.Errorf("failed to create broker-driver for WebSubApi %q: %w", wsb.Name, err)
 	}
 	r.activeBrokerDrivers[wsb.Name] = brokerDriver
@@ -603,13 +642,21 @@ func (r *Runtime) AddWebSubApiBinding(wsb binding.WebSubApiBinding) error {
 		Mux:          r.websubMux,
 	})
 	if err != nil {
+		r.mu.Unlock()
 		return fmt.Errorf("failed to create receiver for WebSubApi %q: %w", wsb.Name, err)
 	}
 	r.activeReceivers[wsb.Name] = receiver
 
+	startNow := r.running
+	startCtx := r.runCtx
+	r.mu.Unlock()
+
 	// If runtime is already running, start the receiver immediately.
-	if r.running {
-		if err := receiver.Start(context.Background()); err != nil {
+	if startNow {
+		if startCtx == nil {
+			startCtx = context.Background()
+		}
+		if err := r.startReceiverWithRetry(startCtx, wsb.Name, receiver); err != nil {
 			return fmt.Errorf("failed to start receiver for WebSubApi %q: %w", wsb.Name, err)
 		}
 	}
