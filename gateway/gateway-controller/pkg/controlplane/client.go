@@ -95,6 +95,9 @@ type ConnectionState struct {
 type ControlPlaneClient interface {
 	IsConnected() bool
 	PushAPIDeployment(apiID string, apiConfig *models.StoredConfig, deploymentID string) error
+	SyncBottomUpAPIs(apimConfig *utils.APIMConfig)
+	IsOnPrem() bool
+	GetAPIMConfig() *utils.APIMConfig
 }
 
 // Client manages the WebSocket connection to the control plane
@@ -239,6 +242,16 @@ func NewClient(
 		Timeout:            30 * time.Second,
 	}, logger)
 
+	// Set OAuth2 credentials for on-prem APIM (for API import operations)
+	// Construct TokenURL from the controlplane host
+	if cfg.Host != "" {
+		client.apiUtilsService.TokenURL = fmt.Sprintf("https://%s/oauth2/token", cfg.Host)
+	}
+	client.apiUtilsService.ClientID = cfg.ApimOAuth2ClientID
+	client.apiUtilsService.ClientSecret = cfg.ApimOAuth2ClientSecret
+	client.apiUtilsService.Username = cfg.ApimOAuth2Username
+	client.apiUtilsService.Password = cfg.ApimOAuth2Password
+
 	return client
 }
 
@@ -250,6 +263,20 @@ func (c *Client) getSubscriptionResourceService() *utils.SubscriptionResourceSer
 	c.subscriptionResourceService = utils.NewSubscriptionResourceService(c.db, c.subscriptionSnapshotUpdater, c.eventHub, c.gatewayID)
 
 	return c.subscriptionResourceService
+}
+
+// GetAPIMConfig returns the APIM configuration for on-prem APIM publisher API related operations
+// Uses the control plane TLS settings as defaults
+func (c *Client) GetAPIMConfig() *utils.APIMConfig {
+	return &utils.APIMConfig{
+		InsecureSkipVerify: c.config.InsecureSkipVerify,
+		Timeout:            30 * time.Second,
+		Host:               c.config.Host,
+		GatewayName:        c.config.GatewayName,
+		ClientID:           c.config.ApimOAuth2ClientID,
+		ClientSecret:       c.config.ApimOAuth2ClientSecret,
+		TokenURL:           fmt.Sprintf("https://%s/oauth2/token", c.config.Host),
+	}
 }
 
 // Start initiates the connection to the control plane
@@ -402,6 +429,10 @@ func (c *Client) Connect() error {
 		go func(gwID string) {
 			defer c.wg.Done()
 			c.syncDeployments(gwID)
+			// Bottom-up sync: push gateway-created APIs to on-prem control plane
+			if c.IsOnPrem() {
+				c.SyncBottomUpAPIs(c.GetAPIMConfig())
+			}
 			c.syncSubscriptionPlans(gwID)
 			c.syncSubscriptionsForExistingAPIs(gwID)
 			// Sync API keys for LlmProvider, LlmProxy, and RestApi artifacts.
@@ -415,6 +446,10 @@ func (c *Client) Connect() error {
 		c.wg.Add(1)
 		go func(gwID string) {
 			defer c.wg.Done()
+			// Bottom-up sync on reconnect
+			if c.IsOnPrem() {
+				c.SyncBottomUpAPIs(c.GetAPIMConfig())
+			}
 			c.syncSubscriptionPlans(gwID)
 			c.syncSubscriptionsForExistingAPIs(gwID)
 			// Sync API keys for LlmProvider, LlmProxy, and RestApi artifacts.
@@ -494,8 +529,14 @@ func (c *Client) GetGatewayPath() string {
 }
 
 // isOnPrem returns true when the control plane is an on-prem deployment.
-func (c *Client) isOnPrem() bool {
+// IsOnPrem returns true if the gateway is connected to an on-prem control plane.
+func (c *Client) IsOnPrem() bool {
 	return c.GetGatewayPath() != ""
+}
+
+// Deprecated: use IsOnPrem() instead
+func (c *Client) isOnPrem() bool {
+	return c.IsOnPrem()
 }
 
 // discoverGatewayPath fetches the gateway websocket base path from the control plane well-known endpoint.

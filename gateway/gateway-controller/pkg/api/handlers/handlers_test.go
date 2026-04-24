@@ -775,6 +775,34 @@ func (m *MockStorage) Close() error {
 	return nil
 }
 
+// Bottom-up sync methods
+func (m *MockStorage) UpdateCPSyncStatus(uuid, status, reason string) error {
+	if config, ok := m.configs[uuid]; ok {
+		config.CPSyncStatus = status
+		config.CPSyncReason = reason
+		return nil
+	}
+	return errors.New("config not found")
+}
+
+func (m *MockStorage) UpdateDeploymentID(uuid, deploymentID string) error {
+	if config, ok := m.configs[uuid]; ok {
+		config.DeploymentID = deploymentID
+		return nil
+	}
+	return errors.New("config not found")
+}
+
+func (m *MockStorage) GetPendingBottomUpAPIs() ([]*models.StoredConfig, error) {
+	var pending []*models.StoredConfig
+	for _, config := range m.configs {
+		if config.EnableCPSync && config.CPSyncStatus != models.CPSyncStatusSuccess {
+			pending = append(pending, config)
+		}
+	}
+	return pending, nil
+}
+
 // MockControlPlaneClient implements controlplane.ControlPlaneClient for testing
 type MockControlPlaneClient struct {
 	connected bool
@@ -868,6 +896,20 @@ func (m *MockStorage) SecretExists(handle string) (bool, error) {
 	}
 	_, ok := m.secrets[handle]
 	return ok, nil
+}
+
+func (m *MockControlPlaneClient) SyncBottomUpAPIs(apimConfig *utils.APIMConfig) {
+	// Mock implementation - does nothing for testing
+}
+
+func (m *MockControlPlaneClient) IsOnPrem() bool {
+	return false
+}
+
+func (m *MockControlPlaneClient) GetAPIMConfig() *utils.APIMConfig {
+	return &utils.APIMConfig{
+		Timeout: 30 * time.Second,
+	}
 }
 
 func (m *MockControlPlaneClient) Close() error {

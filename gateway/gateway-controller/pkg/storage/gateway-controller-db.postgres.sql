@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS artifacts (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deployed_at TIMESTAMPTZ,
+    enable_cp_sync  BOOLEAN NOT NULL DEFAULT FALSE,
+    cp_sync_status  TEXT CHECK(cp_sync_status IN ('pending', 'success', 'failed')),
+    cp_sync_reason  TEXT,
     PRIMARY KEY (gateway_id, uuid),
     UNIQUE(gateway_id, kind, display_name, version),
     UNIQUE(gateway_id, kind, handle)

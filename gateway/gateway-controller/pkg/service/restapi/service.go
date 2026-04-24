@@ -158,6 +158,17 @@ type CreateParams struct {
 func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 	log := params.Logger
 
+	// Parse API config to check metadata labels
+	var apiConfig api.RestAPI
+	if err := s.parser.Parse(params.Body, params.ContentType, &apiConfig); err != nil {
+		log.Error("Failed to parse API configuration",
+			slog.Any("error", err))
+		return nil, fmt.Errorf("failed to parse API configuration: %w", err)
+	}
+
+	// Check if bottom-up sync is enabled (via metadata labels)
+	cpSyncEnabled := isBottomUpSyncEnabled(&apiConfig, log)
+
 	result, err := s.deploymentService.DeployAPIConfiguration(utils.APIDeploymentParams{
 		Data:          params.Body,
 		ContentType:   params.ContentType,
@@ -171,7 +182,28 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 		return nil, err
 	}
 
+	// Apply bottom-up sync flag if enabled
+	if cpSyncEnabled {
+		result.StoredConfig.EnableCPSync = true
+		result.StoredConfig.CPSyncStatus = models.CPSyncStatusPending
+		// Persist the CP sync state
+		if err := s.db.UpdateConfig(result.StoredConfig); err != nil {
+			log.Error("Failed to persist CP sync state",
+				slog.String("config_id", result.StoredConfig.UUID),
+				slog.Any("error", err))
+		}
+	}
+
 	if !result.IsStale {
+		// Trigger bottom-up sync immediately if connected and control plane type is on-prem
+		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.controlPlaneClient.IsOnPrem() {
+			go func() {
+				// Delay to allow DB persistence
+				time.Sleep(100 * time.Millisecond)
+				s.controlPlaneClient.SyncBottomUpAPIs(s.controlPlaneClient.GetAPIMConfig())
+			}()
+		}
+
 		// Push to control plane asynchronously if connected
 		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
 			go s.waitForDeploymentAndPush(result.StoredConfig.UUID, params.CorrelationID, log)
@@ -338,6 +370,11 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 			slog.String("handle", params.Handle))
 	}
 
+	if isBottomUpSyncEnabled(&apiConfig, log) {
+		existing.EnableCPSync = true
+		existing.CPSyncStatus = models.CPSyncStatusPending
+	}
+
 	// Dual-write: database first, then in-memory
 	if err := s.db.UpdateConfig(existing); err != nil {
 		log.Error("Failed to update config in database", slog.Any("error", err))
@@ -345,6 +382,14 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 	}
 
 	s.publishEvent(eventhub.EventTypeAPI, "UPDATE", existing.UUID, params.CorrelationID, log)
+
+	// Trigger bottom-up sync if enabled and connected
+	if existing.EnableCPSync && s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.controlPlaneClient.IsOnPrem() {
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			s.controlPlaneClient.SyncBottomUpAPIs(s.controlPlaneClient.GetAPIMConfig())
+		}()
+	}
 
 	log.Info("API configuration updated",
 		slog.String("id", existing.UUID),
@@ -543,4 +588,22 @@ func (s *RestAPIService) publishEvent(eventType eventhub.EventType, action, enti
 			slog.String("action", action),
 			slog.String("entity_id", entityID))
 	}
+}
+
+// isBottomUpSyncEnabled checks if the API has the cpSyncEnabled label in metadata
+func isBottomUpSyncEnabled(apiConfig *api.RestAPI, logger *slog.Logger) bool {
+	if apiConfig == nil {
+		return false
+	}
+
+	// Check the CpSyncEnabled field in metadata
+	if apiConfig.Metadata.CpSyncEnabled != nil && *apiConfig.Metadata.CpSyncEnabled {
+		if logger != nil {
+			logger.Debug("Bottom-up sync enabled",
+				slog.String("api_name", apiConfig.Metadata.Name))
+		}
+		return true
+	}
+
+	return false
 }

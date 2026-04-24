@@ -50,10 +50,18 @@ type PlatformAPIConfig struct {
 
 // APIUtilsService provides utilities for API operations
 type APIUtilsService struct {
-	mu     sync.RWMutex
-	config PlatformAPIConfig
-	logger *slog.Logger
-	client *http.Client
+	mu          sync.RWMutex
+	config      PlatformAPIConfig
+	logger      *slog.Logger
+	client      *http.Client
+	cachedToken string    // Cached OAuth2 access token
+	tokenExpiry time.Time // Token expiry time
+	// OAuth2 credentials for dynamic token generation
+	ClientID     string // OAuth2 client ID
+	ClientSecret string // OAuth2 client secret
+	Username     string // Resource owner username
+	Password     string // Resource owner password
+	TokenURL     string // Token endpoint URL
 }
 
 // NewAPIUtilsService creates a new API utilities service
@@ -301,20 +309,20 @@ func (s *APIUtilsService) FetchSubscriptionsForAPI(apiID string) ([]models.Subsc
 // controlPlaneAPIKey is the API key response from the control plane REST API.
 // The APIKeyHashes field holds a map of hash algorithm → hash value (e.g. {"sha256": "abc123..."}).
 type controlPlaneAPIKey struct {
-	ETag         string            `json:"etag"`
-	UUID         string            `json:"uuid"`
-	Name         string            `json:"name"`
-	MaskedAPIKey string            `json:"maskedApiKey"`
-	APIKeyHashes map[string]string `json:"apiKeyHashes"`
-	ArtifactUUID string            `json:"artifactUuid"`
-	Status       string            `json:"status"`
-	CreatedAt    time.Time         `json:"createdAt"`
-	CreatedBy    string            `json:"createdBy"`
-	UpdatedAt    time.Time         `json:"updatedAt"`
-	ExpiresAt    *time.Time        `json:"expiresAt"`
-	Source       string            `json:"source"`
-	ExternalRefId *string          `json:"externalRefId"`
-	Issuer       *string           `json:"issuer,omitempty"`
+	ETag          string            `json:"etag"`
+	UUID          string            `json:"uuid"`
+	Name          string            `json:"name"`
+	MaskedAPIKey  string            `json:"maskedApiKey"`
+	APIKeyHashes  map[string]string `json:"apiKeyHashes"`
+	ArtifactUUID  string            `json:"artifactUuid"`
+	Status        string            `json:"status"`
+	CreatedAt     time.Time         `json:"createdAt"`
+	CreatedBy     string            `json:"createdBy"`
+	UpdatedAt     time.Time         `json:"updatedAt"`
+	ExpiresAt     *time.Time        `json:"expiresAt"`
+	Source        string            `json:"source"`
+	ExternalRefId *string           `json:"externalRefId"`
+	Issuer        *string           `json:"issuer,omitempty"`
 }
 
 // FetchAPIKeysByKind fetches all API keys for the given artifact kind from the control plane.

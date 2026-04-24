@@ -3098,6 +3098,11 @@ components:
             type: string
           example:
             gateway.api-platform.wso2.com/project-id: 019d953f-d386-7a64-aa92-1869a28292e0
+        cpSyncEnabled:
+          type: boolean
+          description: Enable synchronization of this API to the control plane (APIM)
+          example: false
+          default: false
 
     APIConfigData:
       type: object

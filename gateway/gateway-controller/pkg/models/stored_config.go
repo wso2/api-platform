@@ -69,6 +69,13 @@ const (
 	OriginGatewayAPI   Origin = "gateway_api"   // Created directly via gateway REST API
 )
 
+// CPSyncStatus represents the sync state of a gateway-created artifact with the on-prem control plane (relevant to bottom up API deployments).
+const (
+	CPSyncStatusPending = "pending" // Awaiting sync to control plane
+	CPSyncStatusSuccess = "success" // Successfully synced to control plane
+	CPSyncStatusFailed  = "failed"  // Sync failed after retries
+)
+
 // IsValidOrigin returns true if the origin value is a recognized enum value.
 func IsValidOrigin(o Origin) bool {
 	return o == OriginControlPlane || o == OriginGatewayAPI
@@ -90,6 +97,9 @@ type StoredConfig struct {
 	UpdatedAt           time.Time    `json:"updatedAt"`
 	DeployedAt          *time.Time   `json:"deployedAt,omitempty"`
 	SensitiveValues     []string     `json:"-"` // not persisted — holds resolved secret values for redaction
+	EnableCPSync        bool         `json:"enableCpSync,omitempty"`
+	CPSyncStatus        string       `json:"cpSyncStatus,omitempty"`  // pending, success, failed
+	CPSyncReason        string       `json:"cpSyncReason,omitempty"`  // failure detail when CPSyncStatus=failed
 }
 
 // GetCompositeKey returns the composite key "kind:displayName:version" for indexing

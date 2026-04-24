@@ -12,12 +12,21 @@ gateway_host = "*"
 
 [router.access_logs]
 enabled = true
+format = "text"
 
 [controller.server]
 gateway_id = "platform-gateway-id"
 
 [controller.controlplane]
 insecure_skip_verify = true
+host = "localhost:9443"
+token = "019da4c4-4695-70f3-b284-3baf44799699.m3cnvitvMEFZnUAkuw7smE2R2gHIRGoJMsPKf7ePQyw"
+apim_oauth2_client_id = "your-client-id"
+apim_oauth2_client_secret = "your-client-secret"
+
+# Option 2: Resource Owner Password Credentials Flow (OAuth2)
+# apim_oauth2_username = "your-username"
+# apim_oauth2_password = "your-password"
 
 [controller.auth.basic]
 enabled = true
