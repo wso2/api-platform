@@ -169,9 +169,11 @@ func injectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		APIHandle          string `json:"apiHandle"`
-		SubscriptionToken  string `json:"subscriptionToken"`
-		SubscriptionPlanID string `json:"subscriptionPlanId"`
+		APIHandle             string `json:"apiHandle"`
+		SubscriptionToken     string `json:"subscriptionToken"`
+		SubscriptionPlanID    string `json:"subscriptionPlanId"`
+		BillingCustomerID     string `json:"billingCustomerId"`
+		BillingSubscriptionID string `json:"billingSubscriptionId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid JSON: %v", err), http.StatusBadRequest)
@@ -196,15 +198,23 @@ func injectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	payload := map[string]interface{}{
+		"apiId":              apiID,
+		"subscriptionId":     uuid.New().String(),
+		"subscriptionToken":  req.SubscriptionToken,
+		"subscriptionPlanId": req.SubscriptionPlanID,
+		"status":             "ACTIVE",
+	}
+	if req.BillingCustomerID != "" {
+		payload["billingCustomerId"] = req.BillingCustomerID
+	}
+	if req.BillingSubscriptionID != "" {
+		payload["billingSubscriptionId"] = req.BillingSubscriptionID
+	}
+
 	event := map[string]interface{}{
-		"type": "subscription.created",
-		"payload": map[string]interface{}{
-			"apiId":             apiID,
-			"subscriptionId":    uuid.New().String(),
-			"subscriptionToken": req.SubscriptionToken,
-			"subscriptionPlanId": req.SubscriptionPlanID,
-			"status":           "ACTIVE",
-		},
+		"type":          "subscription.created",
+		"payload":       payload,
 		"timestamp":     time.Now().Format(time.RFC3339),
 		"correlationId": uuid.New().String(),
 	}

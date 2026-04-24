@@ -106,7 +106,7 @@ policies:
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/set-headers@v1
     - name: subscription-validation
-      version: v1.0.1
+      version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/subscription-validation@v1
     - name: token-based-ratelimit
       version: v1.0.2

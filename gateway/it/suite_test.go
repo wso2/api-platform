@@ -133,6 +133,7 @@ func getFeaturePaths() []string {
 		"features/token-based-ratelimit.feature",
 		"features/sandbox-routing.feature",
 		"features/subscription-validation.feature",
+		"features/subscription-analytics.feature",
 		"features/llm-cost-based-ratelimit.feature",
 		"features/log-message.feature",
 		"features/route-path-matching.feature",

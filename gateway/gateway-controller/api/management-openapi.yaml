@@ -3860,6 +3860,12 @@ components:
         subscriptionPlanId:
           type: string
           description: Subscription plan UUID for rate limit and billing configuration.
+        billingCustomerId:
+          type: string
+          description: Billing customer identifier (optional, for analytics tracking).
+        billingSubscriptionId:
+          type: string
+          description: Billing subscription identifier (optional, for analytics tracking).
         status:
           type: string
           enum: [ACTIVE, INACTIVE, REVOKED]
@@ -3885,6 +3891,12 @@ components:
         subscriptionPlanId:
           type: string
           description: Subscription plan UUID
+        billingCustomerId:
+          type: string
+          description: Billing customer identifier
+        billingSubscriptionId:
+          type: string
+          description: Billing subscription identifier
         gatewayId:
           type: string
         status:
