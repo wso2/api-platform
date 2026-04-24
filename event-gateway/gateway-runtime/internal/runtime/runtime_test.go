@@ -21,11 +21,14 @@ package runtime
 import (
 	"context"
 	"errors"
+	"net/http"
+	"os"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/binding"
+	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/config"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/hub"
 	enginepkg "github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/pkg/engine"
@@ -172,6 +175,82 @@ func TestStartReceiverWithRetry_StopsWhenContextIsCanceled(t *testing.T) {
 	}
 }
 
+func TestNewManagedServerEnablesTLSWhenFilesExist(t *testing.T) {
+	certFile := writeTestTLSFile(t, "tls.crt")
+	keyFile := writeTestTLSFile(t, "tls.key")
+
+	rt := &Runtime{
+		cfg: &config.Config{
+			Server: config.ServerConfig{
+				WebSubTLSEnabled:  true,
+				WebSubTLSCertFile: certFile,
+				WebSubTLSKeyFile:  keyFile,
+			},
+		},
+	}
+
+	server := rt.newManagedServer("WebSub", 8080, http.NewServeMux(), true)
+	if !server.tls {
+		t.Fatal("expected TLS to be enabled when certificate and key files exist")
+	}
+	if server.certFile != certFile {
+		t.Fatalf("expected cert file %q, got %q", certFile, server.certFile)
+	}
+	if server.keyFile != keyFile {
+		t.Fatalf("expected key file %q, got %q", keyFile, server.keyFile)
+	}
+}
+
+func TestNewManagedServerDoesNotEnableTLSForInvalidTLSFiles(t *testing.T) {
+	existingKey := writeTestTLSFile(t, "tls.key")
+
+	tests := []struct {
+		name     string
+		certFile string
+		keyFile  string
+	}{
+		{
+			name:     "empty certificate path",
+			certFile: "",
+			keyFile:  existingKey,
+		},
+		{
+			name:     "missing certificate file",
+			certFile: t.TempDir() + "/missing.crt",
+			keyFile:  existingKey,
+		},
+		{
+			name:     "empty key path",
+			certFile: writeTestTLSFile(t, "tls.crt"),
+			keyFile:  "",
+		},
+		{
+			name:     "missing key file",
+			certFile: writeTestTLSFile(t, "second-tls.crt"),
+			keyFile:  t.TempDir() + "/missing.key",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rt := &Runtime{
+				cfg: &config.Config{
+					Server: config.ServerConfig{
+						WebSubTLSEnabled:  true,
+						WebSubTLSCertFile: tt.certFile,
+						WebSubTLSKeyFile:  tt.keyFile,
+					},
+				},
+			}
+
+			server := rt.newManagedServer("WebSub", 8080, http.NewServeMux(), true)
+			if server.tls {
+				t.Fatal("expected TLS to remain disabled when certificate or key validation fails")
+			}
+		})
+	}
+}
+
 type testNoopPolicy struct{}
 
 type flakyReceiver struct {
@@ -204,6 +283,16 @@ func (r *flakyReceiver) Attempts() int {
 
 func newTestNoopPolicy(policy.PolicyMetadata, map[string]interface{}) (policy.Policy, error) {
 	return testNoopPolicy{}, nil
+}
+
+func writeTestTLSFile(t *testing.T, name string) string {
+	t.Helper()
+
+	filePath := t.TempDir() + "/" + name
+	if err := os.WriteFile(filePath, []byte("test"), 0600); err != nil {
+		t.Fatalf("failed to write test TLS file: %v", err)
+	}
+	return filePath
 }
 
 func (testNoopPolicy) Mode() policy.ProcessingMode {

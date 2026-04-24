@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"path"
 	"strings"
 	"sync"
@@ -413,12 +414,37 @@ func (r *Runtime) newManagedServer(name string, port int, handler http.Handler, 
 	}
 
 	if allowTLS && r.cfg.Server.WebSubTLSEnabled {
+		certFile := strings.TrimSpace(r.cfg.Server.WebSubTLSCertFile)
+		keyFile := strings.TrimSpace(r.cfg.Server.WebSubTLSKeyFile)
+		if err := validateTLSFile("certificate", certFile); err != nil {
+			slog.Error("WebSub TLS is disabled because the TLS certificate file is invalid", "name", name, "error", err)
+			return server
+		}
+		if err := validateTLSFile("private key", keyFile); err != nil {
+			slog.Error("WebSub TLS is disabled because the TLS private key file is invalid", "name", name, "error", err)
+			return server
+		}
+
 		server.tls = true
-		server.certFile = r.cfg.Server.WebSubTLSCertFile
-		server.keyFile = r.cfg.Server.WebSubTLSKeyFile
+		server.certFile = certFile
+		server.keyFile = keyFile
 	}
 
 	return server
+}
+
+func validateTLSFile(label, filePath string) error {
+	if filePath == "" {
+		return fmt.Errorf("%s file path is empty", label)
+	}
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return fmt.Errorf("%s file %q is not accessible: %w", label, filePath, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("%s file %q is a directory", label, filePath)
+	}
+	return nil
 }
 
 func (r *Runtime) runServer(srv *managedServer) {
