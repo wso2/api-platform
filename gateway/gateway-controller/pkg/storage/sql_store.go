@@ -2401,11 +2401,11 @@ func (s *sqlStore) SaveSubscription(sub *models.Subscription) error {
 	sub.UpdatedAt = now
 	query := `
 		INSERT INTO subscriptions (uuid, gateway_id, api_id, application_id, subscription_token_hash,
-			subscription_plan_id, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			subscription_plan_id, billing_customer_id, billing_subscription_id, status, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := s.exec(query, sub.ID, s.gatewayId, sub.APIID, sub.ApplicationID,
-		tokenHash, sub.SubscriptionPlanID, string(sub.Status), sub.CreatedAt, sub.UpdatedAt)
+		tokenHash, sub.SubscriptionPlanID, sub.BillingCustomerID, sub.BillingSubscriptionID, string(sub.Status), sub.CreatedAt, sub.UpdatedAt)
 	if err != nil {
 		if s.isUniqueViolation(err) {
 			return fmt.Errorf("%w: subscription token already exists for this API", ErrConflict)
@@ -2420,14 +2420,15 @@ func (s *sqlStore) SaveSubscription(sub *models.Subscription) error {
 func (s *sqlStore) GetSubscriptionByID(id, gatewayID string) (*models.Subscription, error) {
 	query := `
 		SELECT uuid, api_id, application_id, subscription_token_hash, subscription_plan_id,
-			gateway_id, status, created_at, updated_at
+			billing_customer_id, billing_subscription_id, gateway_id, status, created_at, updated_at
 		FROM subscriptions
 		WHERE uuid = ? AND gateway_id = ?
 	`
 	sub := &models.Subscription{}
 	err := s.queryRow(query, id, s.gatewayId).Scan(
 		&sub.ID, &sub.APIID, &sub.ApplicationID, &sub.SubscriptionTokenHash,
-		&sub.SubscriptionPlanID, &sub.GatewayID, &sub.Status,
+		&sub.SubscriptionPlanID, &sub.BillingCustomerID, &sub.BillingSubscriptionID,
+		&sub.GatewayID, &sub.Status,
 		&sub.CreatedAt, &sub.UpdatedAt,
 	)
 	if err != nil {
@@ -2443,7 +2444,7 @@ func (s *sqlStore) GetSubscriptionByID(id, gatewayID string) (*models.Subscripti
 func (s *sqlStore) ListSubscriptionsByAPI(apiID, gatewayID string, applicationID *string, status *string) ([]*models.Subscription, error) {
 	query := `
 		SELECT uuid, api_id, application_id, subscription_token_hash, subscription_plan_id,
-			gateway_id, status, created_at, updated_at
+			billing_customer_id, billing_subscription_id, gateway_id, status, created_at, updated_at
 		FROM subscriptions
 		WHERE gateway_id = ?
 	`
@@ -2470,7 +2471,8 @@ func (s *sqlStore) ListSubscriptionsByAPI(apiID, gatewayID string, applicationID
 	for rows.Next() {
 		sub := &models.Subscription{}
 		if err := rows.Scan(&sub.ID, &sub.APIID, &sub.ApplicationID, &sub.SubscriptionTokenHash,
-			&sub.SubscriptionPlanID, &sub.GatewayID, &sub.Status, &sub.CreatedAt, &sub.UpdatedAt); err != nil {
+			&sub.SubscriptionPlanID, &sub.BillingCustomerID, &sub.BillingSubscriptionID,
+			&sub.GatewayID, &sub.Status, &sub.CreatedAt, &sub.UpdatedAt); err != nil {
 			return nil, err
 		}
 		list = append(list, sub)
@@ -2482,7 +2484,7 @@ func (s *sqlStore) ListSubscriptionsByAPI(apiID, gatewayID string, applicationID
 func (s *sqlStore) ListActiveSubscriptions() ([]*models.Subscription, error) {
 	query := `
 		SELECT uuid, api_id, application_id, subscription_token_hash, subscription_plan_id,
-			gateway_id, status, created_at, updated_at
+			billing_customer_id, billing_subscription_id, gateway_id, status, created_at, updated_at
 		FROM subscriptions
 		WHERE gateway_id = ? AND status = ?
 		ORDER BY created_at DESC
@@ -2496,7 +2498,8 @@ func (s *sqlStore) ListActiveSubscriptions() ([]*models.Subscription, error) {
 	for rows.Next() {
 		sub := &models.Subscription{}
 		if err := rows.Scan(&sub.ID, &sub.APIID, &sub.ApplicationID, &sub.SubscriptionTokenHash,
-			&sub.SubscriptionPlanID, &sub.GatewayID, &sub.Status, &sub.CreatedAt, &sub.UpdatedAt); err != nil {
+			&sub.SubscriptionPlanID, &sub.BillingCustomerID, &sub.BillingSubscriptionID,
+			&sub.GatewayID, &sub.Status, &sub.CreatedAt, &sub.UpdatedAt); err != nil {
 			return nil, err
 		}
 		list = append(list, sub)
@@ -2526,11 +2529,13 @@ func (s *sqlStore) UpdateSubscription(sub *models.Subscription) error {
 	query := `
 		UPDATE subscriptions
 		SET api_id = ?, application_id = ?, subscription_token_hash = ?,
-			subscription_plan_id = ?, status = ?, updated_at = ?
+			subscription_plan_id = ?, billing_customer_id = ?, billing_subscription_id = ?,
+			status = ?, updated_at = ?
 		WHERE uuid = ? AND gateway_id = ?
 	`
 	result, err := s.exec(query, sub.APIID, sub.ApplicationID, sub.SubscriptionTokenHash,
-		sub.SubscriptionPlanID, string(sub.Status), sub.UpdatedAt, sub.ID, s.gatewayId)
+		sub.SubscriptionPlanID, sub.BillingCustomerID, sub.BillingSubscriptionID,
+		string(sub.Status), sub.UpdatedAt, sub.ID, s.gatewayId)
 	if err != nil {
 		return fmt.Errorf("failed to update subscription: %w", err)
 	}

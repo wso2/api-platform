@@ -1,0 +1,52 @@
+name: python-streaming-logger
+version: v1.0.0
+displayName: Python Streaming Logger
+description: |
+  Exercises request and response streaming for the Python runtime.
+  This sample uses NeedsMoreRequestData and NeedsMoreResponseData, rewrites chunks,
+  emits chunk-level analytics and dynamic metadata, supports buffered fallback
+  implementations, and can terminate the downstream response stream with a final chunk.
+
+parameters:
+  type: object
+  properties:
+    accumulateBytes:
+      type: integer
+      default: 8
+      description: Number of request bytes to accumulate before dispatching a chunk.
+    responseAccumulateBytes:
+      type: integer
+      default: 8
+      description: Number of response bytes to accumulate before dispatching a chunk.
+    uppercaseRequestChunks:
+      type: boolean
+      default: true
+    requestChunkPrefix:
+      type: string
+      default: "[req-stream] "
+    responseChunkSuffix:
+      type: string
+      default: " [resp-stream]"
+    bufferedRequestPrefix:
+      type: string
+      default: "[python-stream-fallback-request] "
+    bufferedResponsePrefix:
+      type: string
+      default: "[python-stream-fallback-response] "
+    terminateResponseOnMarker:
+      type: string
+      description: Terminate the response stream when this marker appears in a chunk.
+    terminateResponseOnIndex:
+      type: integer
+      description: Terminate the response stream when this chunk index is reached.
+    terminateOnEndOfStream:
+      type: boolean
+      default: false
+    terminationSuffix:
+      type: string
+      default: " [terminated-by-python]"
+  required: []
+
+systemParameters:
+  type: object
+  properties: {}

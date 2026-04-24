@@ -120,11 +120,13 @@ func TestEnqueueHTTPRouteForAPIPolicy(t *testing.T) {
 	})
 }
 
-func TestAPIPolicyReferencesSecret(t *testing.T) {
-	t.Run("nested valueFrom same namespace", func(t *testing.T) {
+func TestAPIPolicyReferencesValueFrom_Secret(t *testing.T) {
+	t.Run("nested secretKeyRef same namespace", func(t *testing.T) {
 		raw, err := json.Marshal(map[string]any{
 			"apiKey": map[string]any{
-				"valueFrom": map[string]any{"name": "s1", "valueKey": "k"},
+				"valueFrom": map[string]any{
+					"secretKeyRef": map[string]any{"name": "s1", "key": "k"},
+				},
 			},
 		})
 		require.NoError(t, err)
@@ -137,15 +139,18 @@ func TestAPIPolicyReferencesSecret(t *testing.T) {
 				}},
 			},
 		}
-		require.True(t, apiPolicyReferencesSecret(ap, "ns1", "s1"))
-		require.False(t, apiPolicyReferencesSecret(ap, "ns1", "other"))
-		require.False(t, apiPolicyReferencesSecret(ap, "ns2", "s1"))
+		require.True(t, apiPolicyReferencesValueFrom(ap, secretKeyRefKey, "ns1", "s1"))
+		require.False(t, apiPolicyReferencesValueFrom(ap, secretKeyRefKey, "ns1", "other"))
+		require.False(t, apiPolicyReferencesValueFrom(ap, secretKeyRefKey, "ns2", "s1"))
+		require.False(t, apiPolicyReferencesValueFrom(ap, configMapKeyRefKey, "ns1", "s1"))
 	})
 
-	t.Run("valueFrom with explicit namespace", func(t *testing.T) {
+	t.Run("secretKeyRef with explicit namespace", func(t *testing.T) {
 		raw, err := json.Marshal(map[string]any{
 			"x": map[string]any{
-				"valueFrom": map[string]any{"name": "s1", "namespace": "sec-ns", "valueKey": "k"},
+				"valueFrom": map[string]any{
+					"secretKeyRef": map[string]any{"name": "s1", "namespace": "sec-ns", "key": "k"},
+				},
 			},
 		})
 		require.NoError(t, err)
@@ -158,9 +163,32 @@ func TestAPIPolicyReferencesSecret(t *testing.T) {
 				}},
 			},
 		}
-		require.True(t, apiPolicyReferencesSecret(ap, "sec-ns", "s1"))
-		require.False(t, apiPolicyReferencesSecret(ap, "ns1", "s1"))
+		require.True(t, apiPolicyReferencesValueFrom(ap, secretKeyRefKey, "sec-ns", "s1"))
+		require.False(t, apiPolicyReferencesValueFrom(ap, secretKeyRefKey, "ns1", "s1"))
 	})
+}
+
+func TestAPIPolicyReferencesValueFrom_ConfigMap(t *testing.T) {
+	raw, err := json.Marshal(map[string]any{
+		"region": map[string]any{
+			"valueFrom": map[string]any{
+				"configMapKeyRef": map[string]any{"name": "cm1", "key": "region"},
+			},
+		},
+	})
+	require.NoError(t, err)
+	ap := &apiv1.APIPolicy{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "ns1", Name: "pol"},
+		Spec: apiv1.APIPolicySpec{
+			Policies: []apiv1.Policy{{
+				Name: "p", Version: "v1",
+				Params: &runtime.RawExtension{Raw: raw},
+			}},
+		},
+	}
+	require.True(t, apiPolicyReferencesValueFrom(ap, configMapKeyRefKey, "ns1", "cm1"))
+	require.False(t, apiPolicyReferencesValueFrom(ap, configMapKeyRefKey, "ns1", "other"))
+	require.False(t, apiPolicyReferencesValueFrom(ap, secretKeyRefKey, "ns1", "cm1"))
 }
 
 func TestEnqueueHTTPRoutesForSecret(t *testing.T) {
@@ -169,7 +197,9 @@ func TestEnqueueHTTPRoutesForSecret(t *testing.T) {
 	utilruntime.Must(apiv1.AddToScheme(scheme))
 
 	raw, err := json.Marshal(map[string]any{
-		"k": map[string]any{"valueFrom": map[string]any{"name": "my-secret", "valueKey": "x"}},
+		"k": map[string]any{"valueFrom": map[string]any{
+			"secretKeyRef": map[string]any{"name": "my-secret", "key": "x"},
+		}},
 	})
 	require.NoError(t, err)
 	ap := &apiv1.APIPolicy{
@@ -202,7 +232,9 @@ func TestEnqueueHTTPRoutesForSecret_ExtensionRefOnlyAPIPolicy(t *testing.T) {
 	utilruntime.Must(gatewayv1.AddToScheme(scheme))
 
 	raw, err := json.Marshal(map[string]any{
-		"k": map[string]any{"valueFrom": map[string]any{"name": "my-secret", "valueKey": "x"}},
+		"k": map[string]any{"valueFrom": map[string]any{
+			"secretKeyRef": map[string]any{"name": "my-secret", "key": "x"},
+		}},
 	})
 	require.NoError(t, err)
 	ap := &apiv1.APIPolicy{
@@ -235,4 +267,43 @@ func TestEnqueueHTTPRoutesForSecret_ExtensionRefOnlyAPIPolicy(t *testing.T) {
 	reqs := r.enqueueHTTPRoutesForSecret(context.Background(), secret)
 	require.Len(t, reqs, 1)
 	require.Equal(t, types.NamespacedName{Namespace: "demo", Name: "hr-ext"}, reqs[0].NamespacedName)
+}
+
+func TestEnqueueHTTPRoutesForConfigMap(t *testing.T) {
+	scheme := runtime.NewScheme()
+	utilruntime.Must(corev1.AddToScheme(scheme))
+	utilruntime.Must(apiv1.AddToScheme(scheme))
+
+	raw, err := json.Marshal(map[string]any{
+		"region": map[string]any{"valueFrom": map[string]any{
+			"configMapKeyRef": map[string]any{"name": "my-cm", "key": "region"},
+		}},
+	})
+	require.NoError(t, err)
+	ap := &apiv1.APIPolicy{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "demo", Name: "pol-with-cm"},
+		Spec: apiv1.APIPolicySpec{
+			TargetRef: &apiv1.APIPolicyTargetRef{
+				Group: gatewayv1.GroupName,
+				Kind:  "HTTPRoute",
+				Name:  "hr-cm",
+			},
+			Policies: []apiv1.Policy{{
+				Name: "p", Version: "v1", Params: &runtime.RawExtension{Raw: raw},
+			}},
+		},
+	}
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "demo", Name: "my-cm"},
+		Data:       map[string]string{"region": "us-east-1"},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(ap, cm).Build()
+	r := &HTTPRouteReconciler{Client: cl}
+	reqs := r.enqueueHTTPRoutesForConfigMap(context.Background(), cm)
+	require.Len(t, reqs, 1)
+	require.Equal(t, types.NamespacedName{Namespace: "demo", Name: "hr-cm"}, reqs[0].NamespacedName)
+
+	// Secret watch on the same name must not fire for a ConfigMap reference.
+	secretLookalike := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Namespace: "demo", Name: "my-cm"}}
+	require.Empty(t, r.enqueueHTTPRoutesForSecret(context.Background(), secretLookalike))
 }

@@ -78,6 +78,15 @@ func secretWatchFilter(o client.Object) bool {
 	return true
 }
 
+func configMapMutationPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc:  func(e event.CreateEvent) bool { return true },
+		UpdateFunc:  func(e event.UpdateEvent) bool { return true },
+		DeleteFunc:  func(e event.DeleteEvent) bool { return true },
+		GenericFunc: func(e event.GenericEvent) bool { return false },
+	}
+}
+
 // httpRouteRequestForAPIPolicyTarget returns a reconcile request for the HTTPRoute referenced by ap.Spec.targetRef.
 func httpRouteRequestForAPIPolicyTarget(ap *apiv1.APIPolicy) (reconcile.Request, bool) {
 	if ap.Spec.TargetRef == nil {
@@ -179,22 +188,42 @@ func (r *HTTPRouteReconciler) enqueueHTTPRouteForAPIPolicy(ctx context.Context, 
 	return r.enqueueHTTPRoutesReferencingAPIPolicy(ctx, ap)
 }
 
-// enqueueHTTPRoutesForSecret enqueues HTTPRoutes whose APIPolicy params reference the Secret via valueFrom
-// (same namespace as the APIPolicy unless valueFrom.namespace is set).
+// enqueueHTTPRoutesForSecret enqueues HTTPRoutes whose APIPolicy params reference the
+// Secret via valueFrom.secretKeyRef (same namespace as the APIPolicy unless the ref
+// explicitly sets `namespace`).
 func (r *HTTPRouteReconciler) enqueueHTTPRoutesForSecret(ctx context.Context, obj client.Object) []reconcile.Request {
 	secret, ok := obj.(*corev1.Secret)
 	if !ok {
 		return nil
 	}
-	secretNS := secret.Namespace
-	secretName := secret.Name
+	return r.enqueueHTTPRoutesForValueFrom(ctx, secretKeyRefKey, secret.Namespace, secret.Name,
+		client.ObjectKeyFromObject(secret).String())
+}
 
+// enqueueHTTPRoutesForConfigMap enqueues HTTPRoutes whose APIPolicy params reference the
+// ConfigMap via valueFrom.configMapKeyRef.
+func (r *HTTPRouteReconciler) enqueueHTTPRoutesForConfigMap(ctx context.Context, obj client.Object) []reconcile.Request {
+	cm, ok := obj.(*corev1.ConfigMap)
+	if !ok {
+		return nil
+	}
+	return r.enqueueHTTPRoutesForValueFrom(ctx, configMapKeyRefKey, cm.Namespace, cm.Name,
+		client.ObjectKeyFromObject(cm).String())
+}
+
+// enqueueHTTPRoutesForValueFrom is the shared fan-out for Secret / ConfigMap changes.
+// It lists APIPolicy objects cluster-wide, walks each `params` JSON tree looking for a
+// valueFrom reference of the given kind pointing at (targetNS, targetName), and returns
+// reconcile requests for the HTTPRoutes those APIPolicy objects apply to (either via
+// spec.targetRef or via rule ExtensionRef).
+func (r *HTTPRouteReconciler) enqueueHTTPRoutesForValueFrom(ctx context.Context, kind, targetNS, targetName, sourceKey string) []reconcile.Request {
 	list := &apiv1.APIPolicyList{}
 	if err := r.List(ctx, list); err != nil {
 		if r.Logger != nil {
-			r.Logger.Error("watch: list APIPolicies for Secret enqueue",
+			r.Logger.Error("watch: list APIPolicies for valueFrom enqueue",
 				zap.Error(err),
-				zap.String("secret", client.ObjectKeyFromObject(secret).String()))
+				zap.String("kind", kind),
+				zap.String("source", sourceKey))
 		}
 		return nil
 	}
@@ -202,7 +231,7 @@ func (r *HTTPRouteReconciler) enqueueHTTPRoutesForSecret(ctx context.Context, ob
 	var reqs []reconcile.Request
 	for i := range list.Items {
 		ap := &list.Items[i]
-		if !apiPolicyReferencesSecret(ap, secretNS, secretName) {
+		if !apiPolicyReferencesValueFrom(ap, kind, targetNS, targetName) {
 			continue
 		}
 		var toAdd []reconcile.Request
@@ -224,15 +253,20 @@ func (r *HTTPRouteReconciler) enqueueHTTPRoutesForSecret(ctx context.Context, ob
 		for _, q := range reqs {
 			ns = append(ns, q.NamespacedName.String())
 		}
-		r.Logger.Info("watch: Secret changed; enqueue HTTPRoutes referencing valueFrom",
+		r.Logger.Info("watch: valueFrom source changed; enqueue HTTPRoutes",
 			zap.String("controller", "HTTPRoute"),
-			zap.String("secret", client.ObjectKeyFromObject(secret).String()),
+			zap.String("kind", kind),
+			zap.String("source", sourceKey),
 			zap.Strings("httpRoutes", ns))
 	}
 	return reqs
 }
 
-func apiPolicyReferencesSecret(ap *apiv1.APIPolicy, secretNS, secretName string) bool {
+// apiPolicyReferencesValueFrom returns true when any policy in ap.Spec.Policies has a
+// params.valueFrom entry of the given kind (secretKeyRef | configMapKeyRef) pointing at
+// (targetNS, targetName). defaultNS is the APIPolicy namespace used when the ref omits
+// its own `namespace` field.
+func apiPolicyReferencesValueFrom(ap *apiv1.APIPolicy, kind, targetNS, targetName string) bool {
 	defaultNS := ap.Namespace
 	for i := range ap.Spec.Policies {
 		p := &ap.Spec.Policies[i]
@@ -243,29 +277,31 @@ func apiPolicyReferencesSecret(ap *apiv1.APIPolicy, secretNS, secretName string)
 		if err := json.Unmarshal(p.Params.Raw, &root); err != nil {
 			continue
 		}
-		if jsonTreeReferencesSecret(root, secretNS, secretName, defaultNS) {
+		if jsonTreeReferencesValueFrom(root, kind, targetNS, targetName, defaultNS) {
 			return true
 		}
 	}
 	return false
 }
 
-func jsonTreeReferencesSecret(v interface{}, secretNS, secretName string, defaultNS string) bool {
+func jsonTreeReferencesValueFrom(v interface{}, kind, targetNS, targetName, defaultNS string) bool {
 	switch x := v.(type) {
 	case map[string]interface{}:
-		if vf, ok := x["valueFrom"]; ok {
-			if m, ok := vf.(map[string]interface{}); ok && valueFromMatchesSecret(m, secretNS, secretName, defaultNS) {
-				return true
+		if vf, ok := x[valueFromKey]; ok {
+			if inner, ok := vf.(map[string]interface{}); ok {
+				if ref, ok := inner[kind].(map[string]interface{}); ok && keyRefMatches(ref, targetNS, targetName, defaultNS) {
+					return true
+				}
 			}
 		}
 		for _, child := range x {
-			if jsonTreeReferencesSecret(child, secretNS, secretName, defaultNS) {
+			if jsonTreeReferencesValueFrom(child, kind, targetNS, targetName, defaultNS) {
 				return true
 			}
 		}
 	case []interface{}:
 		for _, el := range x {
-			if jsonTreeReferencesSecret(el, secretNS, secretName, defaultNS) {
+			if jsonTreeReferencesValueFrom(el, kind, targetNS, targetName, defaultNS) {
 				return true
 			}
 		}
@@ -273,16 +309,16 @@ func jsonTreeReferencesSecret(v interface{}, secretNS, secretName string, defaul
 	return false
 }
 
-func valueFromMatchesSecret(vf map[string]interface{}, secretNS, secretName, defaultNS string) bool {
-	name, _ := vf["name"].(string)
-	if strings.TrimSpace(name) != secretName {
+func keyRefMatches(ref map[string]interface{}, targetNS, targetName, defaultNS string) bool {
+	name, _ := ref[keyRefFieldName].(string)
+	if strings.TrimSpace(name) != targetName {
 		return false
 	}
 	ns := defaultNS
-	if n, ok := vf["namespace"].(string); ok && strings.TrimSpace(n) != "" {
+	if n, ok := ref[keyRefFieldNamespac].(string); ok && strings.TrimSpace(n) != "" {
 		ns = strings.TrimSpace(n)
 	}
-	return ns == secretNS
+	return ns == targetNS
 }
 
 func (r *HTTPRouteReconciler) enqueueHTTPRoutesForService(ctx context.Context, obj client.Object) []reconcile.Request {

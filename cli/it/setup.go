@@ -38,8 +38,15 @@ const (
 	// HealthCheckInterval is how often to check service health
 	HealthCheckInterval = 5 * time.Second
 
-	// GatewayControllerPort is the REST API port for gateway-controller
+	// GatewayControllerPort is the REST API (management) port for gateway-controller
 	GatewayControllerPort = "9090"
+
+	// GatewayControllerAdminPort is the admin (health / config_dump) port for gateway-controller
+	GatewayControllerAdminPort = "9092"
+
+	// GatewayAdminBasePath is the URL prefix under which the gateway-controller admin API
+	// is served. It must stay in sync with the controller admin OpenAPI spec.
+	GatewayAdminBasePath = "/api/admin/v0.9"
 
 	// MCPServerPort is the port for MCP server
 	MCPServerPort = "3001"
@@ -285,7 +292,7 @@ func (m *InfrastructureManager) stopGatewayStack() {
 
 // waitForGatewayHealth waits for the gateway controller to be healthy
 func (m *InfrastructureManager) waitForGatewayHealth() error {
-	healthURL := fmt.Sprintf("http://localhost:%s/health", GatewayControllerPort)
+	healthURL := fmt.Sprintf("http://localhost:%s%s/health", GatewayControllerAdminPort, GatewayAdminBasePath)
 	client := &http.Client{Timeout: 5 * time.Second}
 
 	deadline := time.Now().Add(m.startupTimeout)

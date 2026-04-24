@@ -38,6 +38,11 @@ type HealthProvider interface {
 	IsHealthy() bool
 }
 
+// PythonHealthChecker checks the health of the Python executor via gRPC.
+type PythonHealthChecker interface {
+	IsPythonHealthy() (ready bool, loadedPolicies int32, err error)
+}
+
 // ConfigDumpHandler handles GET /config_dump requests
 type ConfigDumpHandler struct {
 	kernel   *kernel.Kernel
@@ -139,12 +144,13 @@ func (h *XDSSyncStatusHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 
 // HealthHandler handles GET /health requests.
 type HealthHandler struct {
-	health HealthProvider
+	health       HealthProvider
+	pythonHealth PythonHealthChecker
 }
 
 // NewHealthHandler creates a new health handler.
-func NewHealthHandler(health HealthProvider) *HealthHandler {
-	return &HealthHandler{health: health}
+func NewHealthHandler(health HealthProvider, pythonHealth PythonHealthChecker) *HealthHandler {
+	return &HealthHandler{health: health, pythonHealth: pythonHealth}
 }
 
 // ServeHTTP implements http.Handler for health checks.
@@ -154,16 +160,36 @@ func (h *HealthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	status := "healthy"
-	statusCode := http.StatusOK
-	if h.health != nil && !h.health.IsHealthy() {
-		status = "unhealthy"
-		statusCode = http.StatusServiceUnavailable
+	// Check policy engine health
+	peHealthy := h.health == nil || h.health.IsHealthy()
+
+	// Check Python executor health if checker is configured
+	pyHealthy := true
+	if h.pythonHealth != nil {
+		ready, _, err := h.pythonHealth.IsPythonHealthy()
+		pyHealthy = err == nil && ready
 	}
 
+	// Build response
 	resp := HealthResponse{
-		Status:    status,
+		Status:    "healthy",
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}
+	statusCode := http.StatusOK
+
+	// If any component is unhealthy, set status to unhealthy and provide reason
+	if !peHealthy || !pyHealthy {
+		resp.Status = "unhealthy"
+		statusCode = http.StatusServiceUnavailable
+
+		// Build reason message
+		if !peHealthy && !pyHealthy {
+			resp.Reason = "policy engine and python executor are unhealthy"
+		} else if !peHealthy {
+			resp.Reason = "policy engine is unhealthy"
+		} else {
+			resp.Reason = "python executor is unhealthy"
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -48,6 +48,14 @@ var (
 	BuildDate = "unknown"
 )
 
+// API base paths for the gateway-controller HTTP surfaces.
+// These must stay in sync with the `servers.url` values in the OpenAPI specs
+// (api/management-openapi.yaml and api/admin-openapi.yaml).
+const (
+	managementAPIBasePath = "/api/management/v0.9"
+	adminAPIBasePath      = "/api/admin/v0.9"
+)
+
 func toBackendConfig(cfg *config.Config) storage.BackendConfig {
 	pg := cfg.Controller.Storage.Postgres
 	return storage.BackendConfig{
@@ -570,8 +578,22 @@ func main() {
 	// Register immutable gateway middleware (passthrough when immutable mode is disabled).
 	router.Use(igw.Middleware())
 
-	// Register API routes (includes certificate management endpoints from OpenAPI spec)
-	api.RegisterHandlers(router, apiServer)
+	// Register API routes under the versioned base path (includes certificate
+	// management endpoints from OpenAPI spec).
+	api.RegisterHandlersWithOptions(router, apiServer, api.GinServerOptions{
+		BaseURL: managementAPIBasePath,
+	})
+
+	// Also register the same routes on the legacy unprefixed paths for
+	// backwards compatibility. These are deprecated; responses include
+	// RFC 8594 `Deprecation: true` and a `Link` header pointing to the new
+	// versioned path so clients can migrate. Remove once all known clients
+	// have switched to the versioned base path.
+	api.RegisterHandlersWithOptions(router, apiServer, api.GinServerOptions{
+		Middlewares: []api.MiddlewareFunc{
+			deprecatedManagementPathMiddleware(managementAPIBasePath),
+		},
+	})
 
 	// Start controller admin server for debug endpoints if enabled.
 	var controllerAdminServer *adminserver.Server
@@ -703,7 +725,17 @@ func main() {
 }
 
 func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
-	var DefaultResourceRoles = map[string][]string{
+	// prefixed builds a resource key of the form "<METHOD> <managementAPIBasePath><path>"
+	// matching the actual routes registered via RegisterHandlersWithOptions(BaseURL=managementAPIBasePath).
+	prefixed := func(methodAndPath string) string {
+		idx := strings.Index(methodAndPath, " ")
+		if idx < 0 {
+			return methodAndPath
+		}
+		return methodAndPath[:idx+1] + managementAPIBasePath + methodAndPath[idx+1:]
+	}
+
+	relativeRoles := map[string][]string{
 		"POST /rest-apis":       {"admin", "developer"},
 		"GET /rest-apis":        {"admin", "developer"},
 		"GET /rest-apis/:id":    {"admin", "developer"},
@@ -785,6 +817,15 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		"PUT /secrets/:id":    {"admin"},
 		"DELETE /secrets/:id": {"admin"},
 	}
+
+	// Populate both the versioned and legacy (unprefixed) keys so the auth
+	// middleware matches either route form. The legacy form is deprecated and
+	// will be removed in a future release.
+	DefaultResourceRoles := make(map[string][]string, len(relativeRoles)*2)
+	for methodAndPath, roles := range relativeRoles {
+		DefaultResourceRoles[prefixed(methodAndPath)] = roles
+		DefaultResourceRoles[methodAndPath] = roles
+	}
 	basicAuth := commonmodels.BasicAuth{Enabled: false}
 	idpAuth := commonmodels.IDPConfig{Enabled: false}
 	if config.Controller.Auth.Basic.Enabled {
@@ -811,4 +852,24 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		ResourceRoles: DefaultResourceRoles,
 	}
 	return authConfig
+}
+
+// deprecatedManagementPathMiddleware returns a Gin middleware that marks
+// responses served on the legacy unprefixed management API paths as
+// deprecated, following RFC 8594. It adds:
+//   - `Deprecation: true`
+//   - `Link: <newBasePath+path>; rel="successor-version"`
+//   - `Warning: 299 - "Deprecated API: use <newBasePath> prefix"`
+//
+// The middleware is attached only to the second (legacy) registration of the
+// management API routes; requests to the versioned base path bypass it.
+func deprecatedManagementPathMiddleware(newBasePath string) api.MiddlewareFunc {
+	return func(c *gin.Context) {
+		successor := newBasePath + c.Request.URL.Path
+		c.Writer.Header().Set("Deprecation", "true")
+		c.Writer.Header().Set("Link", fmt.Sprintf("<%s>; rel=\"successor-version\"", successor))
+		c.Writer.Header().Set("Warning",
+			fmt.Sprintf("299 - \"Deprecated API: migrate to %s prefix\"", newBasePath))
+		c.Next()
+	}
 }

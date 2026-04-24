@@ -1,0 +1,6 @@
+image:
+  tag: "0.6.0-SNAPSHOT"
+  pullPolicy: IfNotPresent
+
+gatewayApi:
+  installStandardCRDs: true

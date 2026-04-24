@@ -31,15 +31,17 @@ const (
 
 // Subscription represents a subscription to an API (deployment)
 type Subscription struct {
-	ID                  string             `json:"id"`
-	APIID               string             `json:"apiId" db:"api_id"`
-	ApplicationID       *string            `json:"applicationId,omitempty" db:"application_id"`
-	SubscriptionToken    string  `json:"subscriptionToken"`                    // Transient; only set when creating from request, never from DB (gateway stores only hash)
-	SubscriptionTokenHash string `json:"-" db:"subscription_token_hash"`       // For xDS validation; not exposed in API
-	SubscriptionPlanID  *string            `json:"subscriptionPlanId,omitempty" db:"subscription_plan_id"`
-	GatewayID           string             `json:"gatewayId" db:"gateway_id"`
-	Status              SubscriptionStatus `json:"status" db:"status"`
-	CreatedAt           time.Time          `json:"createdAt" db:"created_at"`
-	UpdatedAt           time.Time          `json:"updatedAt" db:"updated_at"`
-	Etag                string             `json:"etag,omitempty"` // Transient; from CP sync response, not stored in DB
+	ID                    string             `json:"id"`
+	APIID                 string             `json:"apiId" db:"api_id"`
+	ApplicationID         *string            `json:"applicationId,omitempty" db:"application_id"`
+	SubscriptionToken     string             `json:"subscriptionToken"`                              // Transient; only set when creating from request, never from DB (gateway stores only hash)
+	SubscriptionTokenHash string             `json:"-" db:"subscription_token_hash"`                 // For xDS validation; not exposed in API
+	SubscriptionPlanID    *string            `json:"subscriptionPlanId,omitempty" db:"subscription_plan_id"`
+	BillingCustomerID     *string            `json:"billingCustomerId,omitempty" db:"billing_customer_id"`
+	BillingSubscriptionID *string            `json:"billingSubscriptionId,omitempty" db:"billing_subscription_id"`
+	GatewayID             string             `json:"gatewayId" db:"gateway_id"`
+	Status                SubscriptionStatus `json:"status" db:"status"`
+	CreatedAt             time.Time          `json:"createdAt" db:"created_at"`
+	UpdatedAt             time.Time          `json:"updatedAt" db:"updated_at"`
+	Etag                  string             `json:"etag,omitempty"` // Transient; from CP sync response, not stored in DB
 }

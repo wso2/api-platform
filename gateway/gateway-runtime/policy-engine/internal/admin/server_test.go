@@ -59,7 +59,7 @@ func TestNewServer(t *testing.T) {
 		Policies: make(map[string]*registry.PolicyEntry),
 	}
 
-	server := NewServer(cfg, k, reg, nil, nil)
+	server := NewServer(cfg, k, reg, nil, nil, nil)
 
 	require.NotNil(t, server)
 	assert.Equal(t, cfg, server.cfg)
@@ -82,7 +82,7 @@ func TestServer_StartAndStop(t *testing.T) {
 		Policies: make(map[string]*registry.PolicyEntry),
 	}
 
-	server := NewServer(cfg, k, reg, &mockXDSSyncProvider{version: "pc-v11"}, nil)
+	server := NewServer(cfg, k, reg, &mockXDSSyncProvider{version: "pc-v11"}, nil, nil)
 	ctx := context.Background()
 
 	// Start server in goroutine
@@ -137,7 +137,7 @@ func TestServer_StartWithInvalidPort(t *testing.T) {
 		Policies: make(map[string]*registry.PolicyEntry),
 	}
 
-	server := NewServer(cfg, k, reg, nil, nil)
+	server := NewServer(cfg, k, reg, nil, nil, nil)
 
 	// Start should fail because port is already in use
 	ctx := context.Background()

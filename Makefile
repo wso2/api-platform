@@ -21,6 +21,7 @@ SHELL := /bin/bash
 # Version files
 ROOT_VERSION := $(shell cat VERSION)
 GATEWAY_VERSION := $(shell cat gateway/VERSION)
+EVENT_GATEWAY_VERSION := $(shell cat event-gateway/VERSION)
 PLATFORM_API_VERSION := $(shell cat platform-api/VERSION)
 CLI_VERSION := $(shell cat cli/VERSION)
 
@@ -42,10 +43,13 @@ help: ## Show this help message
 	@echo ''
 	@echo 'Build Targets:'
 	@echo '  make build-gateway                    - Build all gateway Docker images'
+	@echo '  make build-event-gateway              - Build all event gateway Docker images'
 	@echo '  make build-and-push-gateway-multiarch - Build and push all gateway images for multiple architectures'
+	@echo '  make build-and-push-event-gateway-multiarch - Build and push all event gateway images for multiple architectures'
 	@echo '  make build-and-push-platform-api-multiarch VERSION=X - Build and push platform-api images for multiple architectures'
 	@echo '  make build-cli                        - Build CLI binaries for all platforms'
 	@echo '  make test-gateway                     - Run gateway tests'
+	@echo '  make test-event-gateway               - Run event gateway tests'
 	@echo '  make test-platform-api                - Run platform-api tests'
 	@echo '  make test-cli                         - Run CLI tests'
 	@echo ''
@@ -60,10 +64,11 @@ help: ## Show this help message
 # Version Management Targets
 .PHONY: version
 version: ## Display current versions
-	@echo "Platform Version:     $(ROOT_VERSION)"
-	@echo "Gateway Version:      $(GATEWAY_VERSION)"
-	@echo "Platform API Version: $(PLATFORM_API_VERSION)"
-	@echo "CLI Version:          $(CLI_VERSION)"
+	@echo "Platform Version:      $(ROOT_VERSION)"
+	@echo "Gateway Version:       $(GATEWAY_VERSION)"
+	@echo "Event Gateway Version: $(EVENT_GATEWAY_VERSION)"
+	@echo "Platform API Version:  $(PLATFORM_API_VERSION)"
+	@echo "CLI Version:           $(CLI_VERSION)"
 
 
 # Build Targets
@@ -73,11 +78,23 @@ build-gateway: ## Build all gateway Docker images
 	$(MAKE) -C gateway build
 	@echo "Successfully built all gateway components"
 
+.PHONY: build-event-gateway
+build-event-gateway: ## Build all event gateway Docker images
+	@echo "Building event gateway components ($(EVENT_GATEWAY_VERSION))..."
+	$(MAKE) -C event-gateway build
+	@echo "Successfully built all event gateway components"
+
 .PHONY: build-and-push-gateway-multiarch
 build-and-push-gateway-multiarch: ## Build and push all gateway Docker images for multiple architectures (amd64, arm64)
 	@echo "Building and pushing multi-arch gateway components ($(GATEWAY_VERSION))..."
 	$(MAKE) -C gateway build-and-push-multiarch
 	@echo "Successfully built and pushed all multi-arch gateway components"
+
+.PHONY: build-and-push-event-gateway-multiarch
+build-and-push-event-gateway-multiarch: ## Build and push all event gateway Docker images for multiple architectures (amd64, arm64)
+	@echo "Building and pushing multi-arch event gateway components ($(EVENT_GATEWAY_VERSION))..."
+	$(MAKE) -C event-gateway build-and-push-multiarch
+	@echo "Successfully built and pushed all multi-arch event gateway components"
 
 .PHONY: build-and-push-platform-api-multiarch
 build-and-push-platform-api-multiarch: ## Build and push platform-api Docker image for multiple architectures (amd64, arm64)
@@ -90,6 +107,11 @@ build-and-push-platform-api-multiarch: ## Build and push platform-api Docker ima
 test-gateway: ## Run gateway tests
 	@echo "Running gateway tests..."
 	$(MAKE) -C gateway test
+
+.PHONY: test-event-gateway
+test-event-gateway: ## Run event gateway tests
+	@echo "Running event gateway tests..."
+	$(MAKE) -C event-gateway test
 
 .PHONY: test-platform-api
 test-platform-api: ## Run platform-api tests

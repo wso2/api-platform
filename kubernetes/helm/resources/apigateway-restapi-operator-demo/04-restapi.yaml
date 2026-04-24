@@ -6,6 +6,8 @@ metadata:
   labels:
     # Must match APIGateway.spec.apiSelector.matchLabels (registry binds RestApi → gateway).
     gateway.api-platform.wso2.com/restapi-target: wso2-crd
+  annotations:
+    gateway.api-platform.wso2.com/project-id: "1234567890"
 spec:
   displayName: hello-normal-api
   version: v1.0

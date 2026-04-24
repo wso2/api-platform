@@ -60,34 +60,45 @@ func ValidatePolicies(policies []*types.DiscoveredPolicy) (*types.ValidationResu
 		slog.Debug("Validating policy",
 			"name", policy.Name,
 			"version", policy.Version,
+			"runtime", policy.Runtime,
 			"phase", "validation")
 
-		// Directory structure validation
-		structErrors := ValidateDirectoryStructure(policy)
-		result.Errors = append(result.Errors, structErrors...)
-		if len(structErrors) > 0 {
-			result.Valid = false
-		}
-
-		// YAML schema validation
+		// YAML schema validation (applies to both Go and Python)
 		yamlErrors := ValidateYAMLSchema(policy)
 		result.Errors = append(result.Errors, yamlErrors...)
 		if len(yamlErrors) > 0 {
 			result.Valid = false
 		}
 
-		// Go interface validation
-		goErrors := ValidateGoInterface(policy)
-		result.Errors = append(result.Errors, goErrors...)
-		if len(goErrors) > 0 {
-			result.Valid = false
-		}
+		if policy.Runtime == "python" {
+			// Python-specific validations
+			structErrors := ValidatePythonDirectoryStructure(policy)
+			result.Errors = append(result.Errors, structErrors...)
+			if len(structErrors) > 0 {
+				result.Valid = false
+			}
+		} else {
+			// Go-specific validations
+			// Directory structure validation
+			structErrors := ValidateDirectoryStructure(policy)
+			result.Errors = append(result.Errors, structErrors...)
+			if len(structErrors) > 0 {
+				result.Valid = false
+			}
 
-		// Go module validation
-		goModErrors := ValidateGoMod(policy)
-		result.Errors = append(result.Errors, goModErrors...)
-		if len(goModErrors) > 0 {
-			result.Valid = false
+			// Go interface validation
+			goErrors := ValidateGoInterface(policy)
+			result.Errors = append(result.Errors, goErrors...)
+			if len(goErrors) > 0 {
+				result.Valid = false
+			}
+
+			// Go module validation
+			goModErrors := ValidateGoMod(policy)
+			result.Errors = append(result.Errors, goModErrors...)
+			if len(goModErrors) > 0 {
+				result.Valid = false
+			}
 		}
 	}
 

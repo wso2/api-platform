@@ -21,6 +21,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -82,6 +83,26 @@ func helmInstallSignature(valuesYAML, valuesFilePath string, cfg *config.Operato
 	}
 	h.Write([]byte(cmRef))
 	h.Write([]byte{0})
+
+	// Include spec.infrastructure labels/annotations in the signature so changes trigger reconciliation.
+	if gw.Spec.Infrastructure != nil {
+		if len(gw.Spec.Infrastructure.Labels) > 0 {
+			data, err := json.Marshal(gw.Spec.Infrastructure.Labels)
+			if err != nil {
+				return "", fmt.Errorf("marshal infra labels for signature: %w", err)
+			}
+			h.Write([]byte("infra-labels\x00"))
+			h.Write(data)
+		}
+		if len(gw.Spec.Infrastructure.Annotations) > 0 {
+			data, err := json.Marshal(gw.Spec.Infrastructure.Annotations)
+			if err != nil {
+				return "", fmt.Errorf("marshal infra annotations for signature: %w", err)
+			}
+			h.Write([]byte("infra-annotations\x00"))
+			h.Write(data)
+		}
+	}
 
 	hasValues := false
 	if valuesFilePath != "" {

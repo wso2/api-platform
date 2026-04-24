@@ -152,3 +152,14 @@ func (c *StoredConfig) GetLabels() *map[string]string {
 	}
 	return nil
 }
+
+// GetAnnotations returns the annotations from the Configuration metadata, regardless of type.
+func (c *StoredConfig) GetAnnotations() *map[string]string {
+	switch cfg := c.Configuration.(type) {
+	case api.RestAPI:
+		return cfg.Metadata.Annotations
+	case api.WebSubAPI:
+		return cfg.Metadata.Annotations
+	}
+	return nil
+}

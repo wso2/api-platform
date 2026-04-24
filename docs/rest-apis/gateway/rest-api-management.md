@@ -12,7 +12,7 @@ CRUD operations for Rest APIs
 
 ```shell
 
-curl -X POST http://localhost:9090/rest-apis \
+curl -X POST http://localhost:9090/api/management/v0.9/rest-apis \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -103,7 +103,7 @@ Required roles: `admin`, `developer`
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[RestAPI](schemas.md#schemarestapi)|true|none|
+|body|body|[RestAPI](#schemarestapi)|true|none|
 
 > Example responses
 
@@ -122,10 +122,10 @@ Required roles: `admin`, `developer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|RestAPI created successfully|[RestAPICreateResponse](schemas.md#schemarestapicreateresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - API with same name and version already exists|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|RestAPI created successfully|[RestAPICreateResponse](#schemarestapicreateresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - API with same name and version already exists|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## List all RestAPIs
 
@@ -137,7 +137,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X GET http://localhost:9090/rest-apis \
+curl -X GET http://localhost:9090/api/management/v0.9/rest-apis \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -197,7 +197,7 @@ Required roles: `admin`, `developer`
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of RestAPIs|Inline|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 <h3 id="list-all-restapis-responseschema">Response Schema</h3>
 
@@ -207,7 +207,7 @@ Status Code **200**
 |---|---|---|---|---|
 |» status|string|false|none|none|
 |» count|integer|false|none|none|
-|» apis|[[RestAPIListItem](schemas.md#schemarestapilistitem)]|false|none|none|
+|» apis|[[RestAPIListItem](#schemarestapilistitem)]|false|none|none|
 |»» id|string|false|none|none|
 |»» displayName|string|false|none|none|
 |»» version|string|false|none|none|
@@ -233,7 +233,7 @@ Status Code **200**
 
 ```shell
 
-curl -X GET http://localhost:9090/rest-apis/{id} \
+curl -X GET http://localhost:9090/api/management/v0.9/rest-apis/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -346,9 +346,9 @@ Required roles: `admin`, `developer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|RestAPI details|[RestAPIDetailResponse](schemas.md#schemarestapidetailresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|RestAPI details|[RestAPIDetailResponse](#schemarestapidetailresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Update an existing RestAPI
 
@@ -360,7 +360,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X PUT http://localhost:9090/rest-apis/{id} \
+curl -X PUT http://localhost:9090/api/management/v0.9/rest-apis/{id} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -452,7 +452,7 @@ Required roles: `admin`, `developer`
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |id|path|string|true|Unique public identifier of the API to update.|
-|body|body|[RestAPI](schemas.md#schemarestapi)|true|none|
+|body|body|[RestAPI](#schemarestapi)|true|none|
 
 #### Detailed descriptions
 
@@ -475,10 +475,10 @@ Required roles: `admin`, `developer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|RestAPI updated successfully|[RestAPIUpdateResponse](schemas.md#schemarestapiupdateresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|RestAPI updated successfully|[RestAPIUpdateResponse](#schemarestapiupdateresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Delete a RestAPI
 
@@ -490,7 +490,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/rest-apis/{id} \
+curl -X DELETE http://localhost:9090/api/management/v0.9/rest-apis/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -534,8 +534,8 @@ Required roles: `admin`, `developer`
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|RestAPI deleted successfully|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 <h3 id="delete-a-restapi-responseschema">Response Schema</h3>
 
@@ -557,7 +557,7 @@ Status Code **200**
 
 ```shell
 
-curl -X POST http://localhost:9090/rest-apis/{id}/api-keys \
+curl -X POST http://localhost:9090/api/management/v0.9/rest-apis/{id}/api-keys \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -589,7 +589,7 @@ Required roles: `admin`, `consumer`
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |id|path|string|true|Unique public identifier of the API to generate the key for|
-|body|body|[APIKeyCreationRequest](schemas.md#schemaapikeycreationrequest)|true|none|
+|body|body|[APIKeyCreationRequest](#schemaapikeycreationrequest)|true|none|
 
 #### Detailed descriptions
 
@@ -622,10 +622,10 @@ Required roles: `admin`, `consumer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|API key created successfully|[APIKeyCreationResponse](schemas.md#schemaapikeycreationresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|API key created successfully|[APIKeyCreationResponse](#schemaapikeycreationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Get the list of API keys for an API
 
@@ -637,7 +637,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X GET http://localhost:9090/rest-apis/{id}/api-keys \
+curl -X GET http://localhost:9090/api/management/v0.9/rest-apis/{id}/api-keys \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -692,9 +692,9 @@ Required roles: `admin`, `consumer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of API keys|[APIKeyListResponse](schemas.md#schemaapikeylistresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of API keys|[APIKeyListResponse](#schemaapikeylistresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Regenerate API key for an API
 
@@ -706,7 +706,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X POST http://localhost:9090/rest-apis/{id}/api-keys/{apiKeyName}/regenerate \
+curl -X POST http://localhost:9090/api/management/v0.9/rest-apis/{id}/api-keys/{apiKeyName}/regenerate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -737,7 +737,7 @@ Required roles: `admin`, `consumer`
 |---|---|---|---|---|
 |id|path|string|true|Unique public identifier of the API to generate the key for|
 |apiKeyName|path|string|true|Name of the API key to regenerate|
-|body|body|[APIKeyRegenerationRequest](schemas.md#schemaapikeyregenerationrequest)|true|none|
+|body|body|[APIKeyRegenerationRequest](#schemaapikeyregenerationrequest)|true|none|
 
 #### Detailed descriptions
 
@@ -772,10 +772,10 @@ Required roles: `admin`, `consumer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key rotated successfully|[APIKeyCreationResponse](schemas.md#schemaapikeycreationresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key rotated successfully|[APIKeyCreationResponse](#schemaapikeycreationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Update an API key with a new regenerated value
 
@@ -787,7 +787,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X PUT http://localhost:9090/rest-apis/{id}/api-keys/{apiKeyName} \
+curl -X PUT http://localhost:9090/api/management/v0.9/rest-apis/{id}/api-keys/{apiKeyName} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -820,7 +820,7 @@ Required roles: `admin`, `consumer`
 |---|---|---|---|---|
 |id|path|string|true|Unique public identifier of the API|
 |apiKeyName|path|string|true|Name of the API key to update|
-|body|body|[APIKeyUpdateRequest](schemas.md#schemaapikeyupdaterequest)|true|none|
+|body|body|[APIKeyUpdateRequest](#schemaapikeyupdaterequest)|true|none|
 
 #### Detailed descriptions
 
@@ -855,10 +855,10 @@ Required roles: `admin`, `consumer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key updated successfully|[APIKeyCreationResponse](schemas.md#schemaapikeycreationresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid request (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|API or API key not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key updated successfully|[APIKeyCreationResponse](#schemaapikeycreationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid request (validation failed)|[ErrorResponse](#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|API or API key not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Revoke an API key
 
@@ -870,7 +870,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/rest-apis/{id}/api-keys/{apiKeyName} \
+curl -X DELETE http://localhost:9090/api/management/v0.9/rest-apis/{id}/api-keys/{apiKeyName} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -915,10 +915,10 @@ Required roles: `admin`, `consumer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key revoked successfully|[APIKeyRevocationResponse](schemas.md#schemaapikeyrevocationresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key revoked successfully|[APIKeyRevocationResponse](#schemaapikeyrevocationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|RestAPI not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Create a subscription plan
 
@@ -930,7 +930,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X POST http://localhost:9090/subscription-plans \
+curl -X POST http://localhost:9090/api/management/v0.9/subscription-plans \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -967,7 +967,7 @@ Required roles: `admin`, `developer`
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[SubscriptionPlanCreateRequest](schemas.md#schemasubscriptionplancreaterequest)|true|none|
+|body|body|[SubscriptionPlanCreateRequest](#schemasubscriptionplancreaterequest)|true|none|
 
 > Example responses
 
@@ -993,10 +993,10 @@ Required roles: `admin`, `developer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Subscription plan created|[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Subscription plan created|[SubscriptionPlanResponse](#schemasubscriptionplanresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request|[ErrorResponse](#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## List subscription plans
 
@@ -1008,7 +1008,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X GET http://localhost:9090/subscription-plans \
+curl -X GET http://localhost:9090/api/management/v0.9/subscription-plans \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -1054,8 +1054,8 @@ Required roles: `admin`, `developer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of subscription plans|[SubscriptionPlanListResponse](schemas.md#schemasubscriptionplanlistresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of subscription plans|[SubscriptionPlanListResponse](#schemasubscriptionplanlistresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Get a subscription plan by ID
 
@@ -1067,7 +1067,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X GET http://localhost:9090/subscription-plans/{planId} \
+curl -X GET http://localhost:9090/api/management/v0.9/subscription-plans/{planId} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -1114,9 +1114,9 @@ Required roles: `admin`, `developer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription plan details|[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription plan details|[SubscriptionPlanResponse](#schemasubscriptionplanresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Update a subscription plan
 
@@ -1128,7 +1128,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X PUT http://localhost:9090/subscription-plans/{planId} \
+curl -X PUT http://localhost:9090/api/management/v0.9/subscription-plans/{planId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -1166,7 +1166,7 @@ Required roles: `admin`, `developer`
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |planId|path|string|true|none|
-|body|body|[SubscriptionPlanUpdateRequest](schemas.md#schemasubscriptionplanupdaterequest)|false|none|
+|body|body|[SubscriptionPlanUpdateRequest](#schemasubscriptionplanupdaterequest)|false|none|
 
 > Example responses
 
@@ -1192,9 +1192,9 @@ Required roles: `admin`, `developer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription plan updated|[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription plan updated|[SubscriptionPlanResponse](#schemasubscriptionplanresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Delete a subscription plan
 
@@ -1206,7 +1206,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/subscription-plans/{planId} \
+curl -X DELETE http://localhost:9090/api/management/v0.9/subscription-plans/{planId} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -1251,8 +1251,8 @@ Required roles: `admin`, `developer`
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Subscription plan deleted|None|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Create a subscription
 
@@ -1264,7 +1264,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X POST http://localhost:9090/subscriptions \
+curl -X POST http://localhost:9090/api/management/v0.9/subscriptions \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -1282,6 +1282,8 @@ Subscribe an application to a RestAPI in the Gateway.
   "subscriptionToken": "sub-token-abc123xyz",
   "applicationId": "string",
   "subscriptionPlanId": "string",
+  "billingCustomerId": "string",
+  "billingSubscriptionId": "string",
   "status": "ACTIVE"
 }
 ```
@@ -1299,7 +1301,7 @@ Required roles: `admin`, `developer`
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[SubscriptionCreateRequest](schemas.md#schemasubscriptioncreaterequest)|true|none|
+|body|body|[SubscriptionCreateRequest](#schemasubscriptioncreaterequest)|true|none|
 
 > Example responses
 
@@ -1312,6 +1314,8 @@ Required roles: `admin`, `developer`
   "applicationId": "string",
   "subscriptionToken": "string",
   "subscriptionPlanId": "string",
+  "billingCustomerId": "string",
+  "billingSubscriptionId": "string",
   "gatewayId": "string",
   "status": "ACTIVE",
   "createdAt": "2019-08-24T14:15:22Z",
@@ -1323,10 +1327,10 @@ Required roles: `admin`, `developer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Subscription created|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - subscription already exists|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Subscription created|[SubscriptionResponse](#schemasubscriptionresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request|[ErrorResponse](#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - subscription already exists|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## List subscriptions
 
@@ -1338,7 +1342,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X GET http://localhost:9090/subscriptions \
+curl -X GET http://localhost:9090/api/management/v0.9/subscriptions \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -1384,6 +1388,8 @@ Required roles: `admin`, `developer`
       "applicationId": "string",
       "subscriptionToken": "string",
       "subscriptionPlanId": "string",
+      "billingCustomerId": "string",
+      "billingSubscriptionId": "string",
       "gatewayId": "string",
       "status": "ACTIVE",
       "createdAt": "2019-08-24T14:15:22Z",
@@ -1398,8 +1404,8 @@ Required roles: `admin`, `developer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of subscriptions|[SubscriptionListResponse](schemas.md#schemasubscriptionlistresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of subscriptions|[SubscriptionListResponse](#schemasubscriptionlistresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Get a subscription by ID
 
@@ -1411,7 +1417,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X GET http://localhost:9090/subscriptions/{subscriptionId} \
+curl -X GET http://localhost:9090/api/management/v0.9/subscriptions/{subscriptionId} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -1445,6 +1451,8 @@ Required roles: `admin`, `developer`
   "applicationId": "string",
   "subscriptionToken": "string",
   "subscriptionPlanId": "string",
+  "billingCustomerId": "string",
+  "billingSubscriptionId": "string",
   "gatewayId": "string",
   "status": "ACTIVE",
   "createdAt": "2019-08-24T14:15:22Z",
@@ -1456,9 +1464,9 @@ Required roles: `admin`, `developer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription details|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Subscription not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription details|[SubscriptionResponse](#schemasubscriptionresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Subscription not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Update a subscription
 
@@ -1470,7 +1478,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X PUT http://localhost:9090/subscriptions/{subscriptionId} \
+curl -X PUT http://localhost:9090/api/management/v0.9/subscriptions/{subscriptionId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -1502,7 +1510,7 @@ Required roles: `admin`, `developer`
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |subscriptionId|path|string|true|none|
-|body|body|[SubscriptionUpdateRequest](schemas.md#schemasubscriptionupdaterequest)|false|none|
+|body|body|[SubscriptionUpdateRequest](#schemasubscriptionupdaterequest)|false|none|
 
 > Example responses
 
@@ -1515,6 +1523,8 @@ Required roles: `admin`, `developer`
   "applicationId": "string",
   "subscriptionToken": "string",
   "subscriptionPlanId": "string",
+  "billingCustomerId": "string",
+  "billingSubscriptionId": "string",
   "gatewayId": "string",
   "status": "ACTIVE",
   "createdAt": "2019-08-24T14:15:22Z",
@@ -1526,9 +1536,9 @@ Required roles: `admin`, `developer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription updated|[SubscriptionResponse](schemas.md#schemasubscriptionresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Subscription not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Subscription updated|[SubscriptionResponse](#schemasubscriptionresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Subscription not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Delete a subscription
 
@@ -1540,7 +1550,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/subscriptions/{subscriptionId} \
+curl -X DELETE http://localhost:9090/api/management/v0.9/subscriptions/{subscriptionId} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -1585,5 +1595,5 @@ Required roles: `admin`, `developer`
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Subscription deleted|None|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Subscription not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Subscription not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|

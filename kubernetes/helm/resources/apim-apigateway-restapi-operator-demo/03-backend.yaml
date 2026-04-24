@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-backend
+  namespace: apigateway-demo-apim
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hello-backend
+  template:
+    metadata:
+      labels:
+        app: hello-backend
+    spec:
+      containers:
+        - name: sample-backend
+          image: ghcr.io/wso2/api-platform/sample-service:latest
+          args:
+            - "-addr"
+            - ":9080"
+            - "-pretty"
+          ports:
+            - name: http
+              containerPort: 9080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-backend
+  namespace: apigateway-demo-apim
+spec:
+  selector:
+    app: hello-backend
+  ports:
+    - name: http
+      port: 9080
+      targetPort: 9080
+

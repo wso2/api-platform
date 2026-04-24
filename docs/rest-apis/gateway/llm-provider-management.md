@@ -12,7 +12,7 @@ CRUD operations for LLM Provider configurations
 
 ```shell
 
-curl -X POST http://localhost:9090/llm-providers \
+curl -X POST http://localhost:9090/api/management/v0.9/llm-providers \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -84,7 +84,7 @@ Required roles: `admin`
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[LLMProviderConfiguration](schemas.md#schemallmproviderconfiguration)|true|LLM provider in YAML or JSON format|
+|body|body|[LLMProviderConfiguration](#schemallmproviderconfiguration)|true|LLM provider in YAML or JSON format|
 
 > Example responses
 
@@ -103,10 +103,10 @@ Required roles: `admin`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|LLM provider created and deployed successfully|[LLMProviderCreateResponse](schemas.md#schemallmprovidercreateresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - Provider with same name and version already exists|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|LLM provider created and deployed successfully|[LLMProviderCreateResponse](#schemallmprovidercreateresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - Provider with same name and version already exists|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## List all LLM providers
 
@@ -118,7 +118,7 @@ Required roles: `admin`
 
 ```shell
 
-curl -X GET http://localhost:9090/llm-providers \
+curl -X GET http://localhost:9090/api/management/v0.9/llm-providers \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -179,7 +179,7 @@ Required roles: `admin`, `developer`
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of LLM providers|Inline|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 <h3 id="list-all-llm-providers-responseschema">Response Schema</h3>
 
@@ -189,7 +189,7 @@ Status Code **200**
 |---|---|---|---|---|
 |» status|string|false|none|none|
 |» count|integer|false|none|none|
-|» providers|[[LLMProviderListItem](schemas.md#schemallmproviderlistitem)]|false|none|none|
+|» providers|[[LLMProviderListItem](#schemallmproviderlistitem)]|false|none|none|
 |»» id|string|false|none|none|
 |»» displayName|string|false|none|none|
 |»» version|string|false|none|none|
@@ -215,7 +215,7 @@ Status Code **200**
 
 ```shell
 
-curl -X GET http://localhost:9090/llm-providers/{id} \
+curl -X GET http://localhost:9090/api/management/v0.9/llm-providers/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -305,9 +305,9 @@ Required roles: `admin`, `developer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|LLM provider details|[LLMProviderDetailResponse](schemas.md#schemallmproviderdetailresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|LLM provider details|[LLMProviderDetailResponse](#schemallmproviderdetailresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Update an existing LLM provider
 
@@ -319,7 +319,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X PUT http://localhost:9090/llm-providers/{id} \
+curl -X PUT http://localhost:9090/api/management/v0.9/llm-providers/{id} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -392,7 +392,7 @@ Required roles: `admin`
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |id|path|string|true|Unique identifier of the LLM provider|
-|body|body|[LLMProviderConfiguration](schemas.md#schemallmproviderconfiguration)|true|Updated LLM provider|
+|body|body|[LLMProviderConfiguration](#schemallmproviderconfiguration)|true|Updated LLM provider|
 
 > Example responses
 
@@ -411,10 +411,10 @@ Required roles: `admin`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|LLM provider updated successfully|[LLMProviderUpdateResponse](schemas.md#schemallmproviderupdateresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|LLM provider updated successfully|[LLMProviderUpdateResponse](#schemallmproviderupdateresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration|[ErrorResponse](#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Delete an LLM provider
 
@@ -426,7 +426,7 @@ Required roles: `admin`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/llm-providers/{id} \
+curl -X DELETE http://localhost:9090/api/management/v0.9/llm-providers/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -466,8 +466,8 @@ Required roles: `admin`
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|LLM provider deleted successfully|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 <h3 id="delete-an-llm-provider-responseschema">Response Schema</h3>
 
@@ -489,7 +489,7 @@ Status Code **200**
 
 ```shell
 
-curl -X POST http://localhost:9090/llm-providers/{id}/api-keys \
+curl -X POST http://localhost:9090/api/management/v0.9/llm-providers/{id}/api-keys \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -521,7 +521,7 @@ Required roles: `admin`, `consumer`
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |id|path|string|true|Unique handle of the LLM provider to generate the key for|
-|body|body|[APIKeyCreationRequest](schemas.md#schemaapikeycreationrequest)|true|none|
+|body|body|[APIKeyCreationRequest](#schemaapikeycreationrequest)|true|none|
 
 > Example responses
 
@@ -550,11 +550,11 @@ Required roles: `admin`, `consumer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|API key created successfully|[APIKeyCreationResponse](schemas.md#schemaapikeycreationresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict (duplicate key or conflicting update)|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|API key created successfully|[APIKeyCreationResponse](#schemaapikeycreationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider not found|[ErrorResponse](#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict (duplicate key or conflicting update)|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Get the list of API keys for an LLM provider
 
@@ -566,7 +566,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X GET http://localhost:9090/llm-providers/{id}/api-keys \
+curl -X GET http://localhost:9090/api/management/v0.9/llm-providers/{id}/api-keys \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -617,9 +617,9 @@ Required roles: `admin`, `consumer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of API keys|[APIKeyListResponse](schemas.md#schemaapikeylistresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of API keys|[APIKeyListResponse](#schemaapikeylistresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Regenerate API key for an LLM provider
 
@@ -631,7 +631,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X POST http://localhost:9090/llm-providers/{id}/api-keys/{apiKeyName}/regenerate \
+curl -X POST http://localhost:9090/api/management/v0.9/llm-providers/{id}/api-keys/{apiKeyName}/regenerate \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -662,7 +662,7 @@ Required roles: `admin`, `consumer`
 |---|---|---|---|---|
 |id|path|string|true|Unique handle of the LLM provider|
 |apiKeyName|path|string|true|Name of the API key to regenerate|
-|body|body|[APIKeyRegenerationRequest](schemas.md#schemaapikeyregenerationrequest)|true|none|
+|body|body|[APIKeyRegenerationRequest](#schemaapikeyregenerationrequest)|true|none|
 
 > Example responses
 
@@ -691,10 +691,10 @@ Required roles: `admin`, `consumer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key rotated successfully|[APIKeyCreationResponse](schemas.md#schemaapikeycreationresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider or API key not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key rotated successfully|[APIKeyCreationResponse](#schemaapikeycreationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider or API key not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Update an API key for an LLM provider
 
@@ -706,7 +706,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X PUT http://localhost:9090/llm-providers/{id}/api-keys/{apiKeyName} \
+curl -X PUT http://localhost:9090/api/management/v0.9/llm-providers/{id}/api-keys/{apiKeyName} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -739,7 +739,7 @@ Required roles: `admin`, `consumer`
 |---|---|---|---|---|
 |id|path|string|true|Unique handle of the LLM provider|
 |apiKeyName|path|string|true|Name of the API key to update|
-|body|body|[APIKeyUpdateRequest](schemas.md#schemaapikeyupdaterequest)|true|none|
+|body|body|[APIKeyUpdateRequest](#schemaapikeyupdaterequest)|true|none|
 
 > Example responses
 
@@ -768,11 +768,11 @@ Required roles: `admin`, `consumer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key updated successfully|[APIKeyCreationResponse](schemas.md#schemaapikeycreationresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid request (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider or API key not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict (duplicate key or conflicting update)|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key updated successfully|[APIKeyCreationResponse](#schemaapikeycreationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid request (validation failed)|[ErrorResponse](#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider or API key not found|[ErrorResponse](#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict (duplicate key or conflicting update)|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Revoke an API key for an LLM provider
 
@@ -784,7 +784,7 @@ Required roles: `admin`, `consumer`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/llm-providers/{id}/api-keys/{apiKeyName} \
+curl -X DELETE http://localhost:9090/api/management/v0.9/llm-providers/{id}/api-keys/{apiKeyName} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -823,7 +823,7 @@ Required roles: `admin`, `consumer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key revoked successfully|[APIKeyRevocationResponse](schemas.md#schemaapikeyrevocationresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider or API key not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key revoked successfully|[APIKeyRevocationResponse](#schemaapikeyrevocationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider or API key not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|

@@ -30,20 +30,27 @@ import (
 const (
 	defaultDeployTimeout = 30 * time.Second
 	defaultProbeTimeout  = 10 * time.Second
+
+	// ManagementAPIBasePath is the URL prefix under which the gateway-controller
+	// management API is served. It must stay in sync with `servers.url` in the
+	// gateway-controller's api/management-openapi.yaml.
+	ManagementAPIBasePath = "/api/management/v0.9"
+
+	restAPIsResourcePath = ManagementAPIBasePath + "/rest-apis"
 )
 
 // AuthHeaderFunc sets auth headers on outbound requests (e.g. Basic auth).
 type AuthHeaderFunc func(ctx context.Context, req *http.Request) error
 
-// DeployRestAPI POSTs or PUTs YAML to the gateway-controller /rest-apis API.
+// DeployRestAPI POSTs or PUTs YAML to the gateway-controller management REST APIs endpoint.
 func DeployRestAPI(ctx context.Context, gatewayEndpoint string, handle string, apiYAML []byte, exists bool, auth AuthHeaderFunc) error {
 	var endpoint string
 	var method string
 	if exists {
-		endpoint = fmt.Sprintf("%s/rest-apis/%s", gatewayEndpoint, url.PathEscape(handle))
+		endpoint = fmt.Sprintf("%s%s/%s", gatewayEndpoint, restAPIsResourcePath, url.PathEscape(handle))
 		method = http.MethodPut
 	} else {
-		endpoint = gatewayEndpoint + "/rest-apis"
+		endpoint = gatewayEndpoint + restAPIsResourcePath
 		method = http.MethodPost
 	}
 
@@ -83,9 +90,9 @@ func DeployRestAPI(ctx context.Context, gatewayEndpoint string, handle string, a
 	}
 }
 
-// RestAPIExists performs GET /rest-apis/{handle}.
+// RestAPIExists performs GET on the REST APIs resource for {handle}.
 func RestAPIExists(ctx context.Context, gatewayEndpoint, handle string, auth AuthHeaderFunc) (bool, error) {
-	endpoint := fmt.Sprintf("%s/rest-apis/%s", gatewayEndpoint, url.PathEscape(handle))
+	endpoint := fmt.Sprintf("%s%s/%s", gatewayEndpoint, restAPIsResourcePath, url.PathEscape(handle))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return false, &RetryableError{Err: fmt.Errorf("create HTTP request: %w", err)}
@@ -123,9 +130,9 @@ func RestAPIExists(ctx context.Context, gatewayEndpoint, handle string, auth Aut
 	}
 }
 
-// DeleteRestAPI DELETEs /rest-apis/{handle}.
+// DeleteRestAPI DELETEs the REST API resource for {handle}.
 func DeleteRestAPI(ctx context.Context, gatewayEndpoint, handle string, auth AuthHeaderFunc) error {
-	endpoint := fmt.Sprintf("%s/rest-apis/%s", gatewayEndpoint, url.PathEscape(handle))
+	endpoint := fmt.Sprintf("%s%s/%s", gatewayEndpoint, restAPIsResourcePath, url.PathEscape(handle))
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, nil)
 	if err != nil {
 		return fmt.Errorf("create HTTP request: %w", err)

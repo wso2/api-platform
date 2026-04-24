@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
+	commonconstants "github.com/wso2/api-platform/common/constants"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
@@ -166,11 +167,12 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	}
 
 	var (
-		parsedConfig any
-		apiName      string
-		apiVersion   string
-		handle       string
-		kind         string
+		parsedConfig         any
+		apiName              string
+		apiVersion           string
+		handle               string
+		kind                 string
+		annotationArtifactID string
 	)
 
 	// If Kind is not provided, infer it from the payload
@@ -199,6 +201,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		handle = webSubConfig.Metadata.Name
 		kind = string(webSubConfig.Kind)
 		parsedConfig = webSubConfig
+		annotationArtifactID = annotationValue(webSubConfig.Metadata.Annotations, commonconstants.AnnotationArtifactID)
 
 		// Validate
 		validationErrors := s.validator.Validate(&webSubConfig)
@@ -216,6 +219,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		handle = restConfig.Metadata.Name
 		kind = string(restConfig.Kind)
 		parsedConfig = restConfig
+		annotationArtifactID = annotationValue(restConfig.Metadata.Annotations, commonconstants.AnnotationArtifactID)
 
 		// Validate
 		validationErrors := s.validator.Validate(&restConfig)
@@ -227,13 +231,20 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		return nil, fmt.Errorf("unsupported resource kind %q: must be \"RestApi\" or \"WebSubApi\"", resolvedKind)
 	}
 
-	// Generate API ID if not provided
+	// Resolve API ID: explicit param > artifact-id annotation > auto-generate
 	apiID := params.APIID
 	if apiID == "" {
-		var err error
-		apiID, err = GenerateUUID()
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate API ID: %w", err)
+		if annotationArtifactID != "" {
+			if err := ValidateUUIDFormat(annotationArtifactID); err != nil {
+				return nil, fmt.Errorf("invalid %s annotation: %w", commonconstants.AnnotationArtifactID, err)
+			}
+			apiID = annotationArtifactID
+		} else {
+			var err error
+			apiID, err = GenerateUUID()
+			if err != nil {
+				return nil, fmt.Errorf("failed to generate API ID: %w", err)
+			}
 		}
 	}
 
@@ -671,4 +682,12 @@ func resolveVhostSentinels(cfg *any, routerCfg *config.RouterConfig) error {
 		*cfg = c
 	}
 	return nil
+}
+
+// annotationValue safely reads a single annotation key from a pointer-to-map.
+func annotationValue(annotations *map[string]string, key string) string {
+	if annotations == nil {
+		return ""
+	}
+	return (*annotations)[key]
 }

@@ -50,13 +50,13 @@ You should see `cert-manager`, `cert-manager-cainjector`, and Helm often names t
 | 1 | `GatewayClass` | Defines the class name your `Gateway` references (not reconciled by this operator, but must exist). |
 | 2 | `Gateway` | Triggers operator: Helm install `{metadata.name}-gateway`, register controller Service in memory. This demo also sets `gateway.api-platform.wso2.com/api-selector` to a **k8s-only label selector** so the Gateway does not compete for **`RestApi`** objects bound to an **`APIGateway`** in mixed runs. |
 | 3 | `Deployment` + `Service` | Demo HTTP backend (in-cluster URL used as API upstream). |
-| 4 | `HTTPRoute` | Mapped to `APIConfigData` and **POST/PUT** to gateway-controller **`/rest-apis`**. |
+| 4 | `HTTPRoute` | Mapped to `APIConfigData` and **POST/PUT** to gateway-controller **`/api/management/v0.9/rest-apis`**. |
 
 Helm also creates **Issuer** + **Certificate** (per `02a` values) in **`gateway-api-demo`**, and mounts the resulting **Secret** on **gateway-controller** for listener cert material used when generating xDS.
 
 ## Policies (HTTPRoute)
 
-Policies use the same logical shape as **`RestApi`** (`name`, `version` required; optional `params`, `executionCondition`) and are merged into the payload before **`/rest-apis`** is called.
+Policies use the same logical shape as **`RestApi`** (`name`, `version` required; optional `params`, `executionCondition`) and are merged into the payload before **`/api/management/v0.9/rest-apis`** is called.
 
 **Recommended:** use **`APIPolicy`** CRs (`gateway.api-platform.wso2.com/v1alpha1`):
 
@@ -166,7 +166,7 @@ See [GATEWAY_API_IMPLEMENTATION_NOTES](../../../gateway-operator/docs/GATEWAY_AP
 | Helm fails with `no matches for kind "Certificate"` / `"Issuer"` | Install [cert-manager](#install-cert-manager) and wait for its pods to be Ready. |
 | Certificate stays `Issuing` | `kubectl describe certificate -n gateway-api-demo platform-gw-gateway-controller-tls`; check Issuer events; cert-manager webhook must be healthy. |
 | Controller log: failed to read certificate file / initial xDS snapshot failed | Listener secret must exist and `gateway.controller.tls.enabled` must be **true** so `/app/listener-certs` is mounted (this demo keeps cert-manager enabled). |
-| `GET /health` **401** from gateway-controller, probes failing | Probes must use **`port: admin`** (admin server **9092**), not **`rest`** (**9090**). REST port runs Gin + basic auth; standalone gateway chart defaults already use `admin`. Upgrade **operator-helm-chart** so the `…-gateway-values` ConfigMap matches (or override `gateway.controller.deployment.{livenessProbe,readinessProbe}` accordingly). |
+| `GET /api/admin/v0.9/health` **401** from gateway-controller, probes failing | Probes must use **`port: admin`** (admin server **9092**), not **`rest`** (**9090**). REST port runs Gin + basic auth; standalone gateway chart defaults already use `admin`. Upgrade **operator-helm-chart** so the `…-gateway-values` ConfigMap matches (or override `gateway.controller.deployment.{livenessProbe,readinessProbe}` accordingly). |
 | Helm fails with `gateway.controller.encryptionKeys must be enabled when gateway.developmentMode is false` | For demo runs, keep `gateway.developmentMode: true` in `02a-gateway-values-configmap.yaml`; for production-like setups, configure `gateway.controller.encryptionKeys` secret instead. |
 | `HTTPRoute` fails with `403 {"error":"forbidden"}` from gateway-controller | Ensure per-Gateway values override uses `gateway.config.controller.auth` for gateway chart `1.0.0`. Re-apply `02a-gateway-values-configmap.yaml` and reconcile `Gateway`. |
 | `HTTPRoute` stuck, parent not accepted | Parent `Gateway` must be same namespace or `parentRefs` namespace set; registry only after Gateway sync succeeds. |
@@ -184,4 +184,4 @@ See [GATEWAY_API_IMPLEMENTATION_NOTES](../../../gateway-operator/docs/GATEWAY_AP
 - `02a-gateway-values-configmap.yaml` — per-Gateway Helm values (`auth`, `developmentMode`, **cert-manager** listener TLS + SANs for in-cluster HTTPS)
 - `02-gateway.yaml` — listener + `allowedRoutes` + annotation to use `platform-gw-values`
 - `03-backend.yaml` — `ghcr.io/wso2/api-platform/sample-service` Deployment + ClusterIP Service (port **9080**, same image as integration tests)
-- `04-httproute.yaml` — `PathPrefix /hello`, GET → backend Service; annotations set `api-version`, `context`, and `display-name` for the generated API payload
+- `04-httproute.yaml` — `PathPrefix /hello`, GET → backend Service; annotations set `api-version`, `context`, `display-name`, and optional `project-id` for the generated API payload

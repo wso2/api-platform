@@ -75,6 +75,14 @@ func GenerateUUID() (string, error) {
 	return u.String(), nil
 }
 
+// ValidateUUIDFormat returns an error if s is not a valid UUID string.
+func ValidateUUIDFormat(s string) error {
+	if _, err := uuid.Parse(s); err != nil {
+		return fmt.Errorf("invalid UUID format %q: %w", s, err)
+	}
+	return nil
+}
+
 // GenerateDeterministicUUIDv7 generates a deterministic UUIDv7 from a deployment ID and timestamp.
 // The timestamp component uses performedAt (millisecond precision) and the random bits are
 // derived from a SHA-256 hash of the deploymentID. This ensures:

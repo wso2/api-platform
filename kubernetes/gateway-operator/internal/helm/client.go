@@ -82,6 +82,10 @@ type InstallOrUpgradeOptions struct {
 	// Namespace is the Kubernetes namespace to install the chart into
 	Namespace string
 
+	// ChartPath is the path to a local chart directory or archive.
+	// When set, ChartName/Version/registry auth are ignored.
+	ChartPath string
+
 	// ChartName is the name of the remote chart (e.g., "bitnami/nginx" or "oci://registry/chart")
 	ChartName string
 
@@ -182,29 +186,35 @@ func (c *Client) install(ctx context.Context, actionConfig *action.Configuration
 		client.Timeout = time.Duration(opts.Timeout) * time.Second
 	}
 
-	// Handle registry authentication if provided
-	if opts.Username != "" && opts.Password != "" {
-		registryHost, err := extractRegistryHost(opts.ChartName)
+	var chartLoadPath string
+	if opts.ChartPath != "" {
+		chartLoadPath = opts.ChartPath
+	} else {
+		// Handle registry authentication if provided
+		if opts.Username != "" && opts.Password != "" {
+			registryHost, err := extractRegistryHost(opts.ChartName)
+			if err != nil {
+				return fmt.Errorf("failed to extract registry host: %w", err)
+			}
+
+			if err := c.registryClient.Login(
+				registryHost,
+				registry.LoginOptBasicAuth(opts.Username, opts.Password),
+				registry.LoginOptInsecure(opts.Insecure),
+			); err != nil {
+				return fmt.Errorf("failed to login to registry: %w", err)
+			}
+		}
+
+		// Locate and load chart from remote repository or OCI registry
+		located, err := client.ChartPathOptions.LocateChart(opts.ChartName, c.settings)
 		if err != nil {
-			return fmt.Errorf("failed to extract registry host: %w", err)
+			return fmt.Errorf("failed to locate chart %s: %w", opts.ChartName, err)
 		}
-
-		if err := c.registryClient.Login(
-			registryHost,
-			registry.LoginOptBasicAuth(opts.Username, opts.Password),
-			registry.LoginOptInsecure(opts.Insecure),
-		); err != nil {
-			return fmt.Errorf("failed to login to registry: %w", err)
-		}
+		chartLoadPath = located
 	}
 
-	// Locate and load chart from remote repository or OCI registry
-	chartPath, err := client.ChartPathOptions.LocateChart(opts.ChartName, c.settings)
-	if err != nil {
-		return fmt.Errorf("failed to locate chart %s: %w", opts.ChartName, err)
-	}
-
-	chart, err := loader.Load(chartPath)
+	chart, err := loader.Load(chartLoadPath)
 	if err != nil {
 		return fmt.Errorf("failed to load chart: %w", err)
 	}
@@ -242,29 +252,35 @@ func (c *Client) upgrade(ctx context.Context, actionConfig *action.Configuration
 		client.Timeout = time.Duration(opts.Timeout) * time.Second
 	}
 
-	// Handle registry authentication if provided
-	if opts.Username != "" && opts.Password != "" {
-		registryHost, err := extractRegistryHost(opts.ChartName)
+	var chartLoadPath string
+	if opts.ChartPath != "" {
+		chartLoadPath = opts.ChartPath
+	} else {
+		// Handle registry authentication if provided
+		if opts.Username != "" && opts.Password != "" {
+			registryHost, err := extractRegistryHost(opts.ChartName)
+			if err != nil {
+				return fmt.Errorf("failed to extract registry host: %w", err)
+			}
+
+			if err := c.registryClient.Login(
+				registryHost,
+				registry.LoginOptBasicAuth(opts.Username, opts.Password),
+				registry.LoginOptInsecure(opts.Insecure),
+			); err != nil {
+				return fmt.Errorf("failed to login to registry: %w", err)
+			}
+		}
+
+		// Locate and load chart from remote repository or OCI registry
+		located, err := client.ChartPathOptions.LocateChart(opts.ChartName, c.settings)
 		if err != nil {
-			return fmt.Errorf("failed to extract registry host: %w", err)
+			return fmt.Errorf("failed to locate chart %s: %w", opts.ChartName, err)
 		}
-
-		if err := c.registryClient.Login(
-			registryHost,
-			registry.LoginOptBasicAuth(opts.Username, opts.Password),
-			registry.LoginOptInsecure(opts.Insecure),
-		); err != nil {
-			return fmt.Errorf("failed to login to registry: %w", err)
-		}
+		chartLoadPath = located
 	}
 
-	// Locate and load chart from remote repository or OCI registry
-	chartPath, err := client.ChartPathOptions.LocateChart(opts.ChartName, c.settings)
-	if err != nil {
-		return fmt.Errorf("failed to locate chart %s: %w", opts.ChartName, err)
-	}
-
-	chart, err := loader.Load(chartPath)
+	chart, err := loader.Load(chartLoadPath)
 	if err != nil {
 		return fmt.Errorf("failed to load chart: %w", err)
 	}
@@ -379,6 +395,45 @@ func GetReleaseName(gatewayName string) string {
 	// Helm release names must be DNS-compliant
 	// Gateway name is already validated as a Kubernetes resource name
 	return fmt.Sprintf("%s-gateway", gatewayName)
+}
+
+// MergeValuesYAML deep-merges two Helm values YAML strings.
+// Keys in overlay take precedence; nested maps are merged recursively.
+// Returns the merged result as a YAML string.
+func MergeValuesYAML(base, overlay string) (string, error) {
+	parseYAML := func(s string) (map[string]interface{}, error) {
+		if s == "" {
+			return map[string]interface{}{}, nil
+		}
+		var raw interface{}
+		if err := yaml.Unmarshal([]byte(s), &raw); err != nil {
+			return nil, err
+		}
+		converted, err := convertToStringMap(raw)
+		if err != nil {
+			return nil, err
+		}
+		if m, ok := converted.(map[string]interface{}); ok {
+			return m, nil
+		}
+		return map[string]interface{}{}, nil
+	}
+
+	baseMap, err := parseYAML(base)
+	if err != nil {
+		return "", fmt.Errorf("parse base values: %w", err)
+	}
+	overlayMap, err := parseYAML(overlay)
+	if err != nil {
+		return "", fmt.Errorf("parse overlay values: %w", err)
+	}
+
+	merged := deepMergeValues(baseMap, overlayMap)
+	out, err := yaml.Marshal(merged)
+	if err != nil {
+		return "", fmt.Errorf("marshal merged values: %w", err)
+	}
+	return string(out), nil
 }
 
 // probeMergeReplaceKeys are PodSpec probe fields: deep-merging base+override would keep

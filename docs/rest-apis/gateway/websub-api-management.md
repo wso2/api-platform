@@ -10,7 +10,7 @@
 
 ```shell
 
-curl -X POST http://localhost:9090/websub-apis \
+curl -X POST http://localhost:9090/api/management/v0.9/websub-apis \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -60,7 +60,7 @@ Required roles: `admin`, `developer`
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[WebSubAPI](schemas.md#schemawebsubapi)|true|none|
+|body|body|[WebSubAPI](#schemawebsubapi)|true|none|
 
 > Example responses
 
@@ -79,10 +79,10 @@ Required roles: `admin`, `developer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|WebSubAPI created successfully|[WebSubAPICreateResponse](schemas.md#schemawebsubapicreateresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - WebSub API with same name and version already exists|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|WebSubAPI created successfully|[WebSubAPICreateResponse](#schemawebsubapicreateresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - WebSub API with same name and version already exists|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## List all WebSubAPIs
 
@@ -94,7 +94,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X GET http://localhost:9090/websub-apis \
+curl -X GET http://localhost:9090/api/management/v0.9/websub-apis \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -154,7 +154,7 @@ Required roles: `admin`, `developer`
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of WebSubAPIs|Inline|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 <h3 id="list-all-websubapis-responseschema">Response Schema</h3>
 
@@ -164,7 +164,7 @@ Status Code **200**
 |---|---|---|---|---|
 |» status|string|false|none|none|
 |» count|integer|false|none|none|
-|» apis|[[WebSubAPIListItem](schemas.md#schemawebsubapilistitem)]|false|none|none|
+|» apis|[[WebSubAPIListItem](#schemawebsubapilistitem)]|false|none|none|
 |»» id|string|false|none|none|
 |»» displayName|string|false|none|none|
 |»» version|string|false|none|none|
@@ -190,7 +190,7 @@ Status Code **200**
 
 ```shell
 
-curl -X GET http://localhost:9090/websub-apis/{id} \
+curl -X GET http://localhost:9090/api/management/v0.9/websub-apis/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -262,9 +262,9 @@ Required roles: `admin`, `developer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|WebSubAPI details|[WebSubAPIDetailResponse](schemas.md#schemawebsubapidetailresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|WebSubAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|WebSubAPI details|[WebSubAPIDetailResponse](#schemawebsubapidetailresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|WebSubAPI not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Update an existing WebSubAPI
 
@@ -276,7 +276,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X PUT http://localhost:9090/websub-apis/{id} \
+curl -X PUT http://localhost:9090/api/management/v0.9/websub-apis/{id} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -327,7 +327,7 @@ Required roles: `admin`, `developer`
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |id|path|string|true|Unique public identifier of the WebSub API to update.|
-|body|body|[WebSubAPI](schemas.md#schemawebsubapi)|true|none|
+|body|body|[WebSubAPI](#schemawebsubapi)|true|none|
 
 #### Detailed descriptions
 
@@ -350,10 +350,10 @@ Required roles: `admin`, `developer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|WebSubAPI updated successfully|[WebSubAPIUpdateResponse](schemas.md#schemawebsubapiupdateresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|WebSubAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|WebSubAPI updated successfully|[WebSubAPIUpdateResponse](#schemawebsubapiupdateresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|WebSubAPI not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Delete a WebSubAPI
 
@@ -365,7 +365,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/websub-apis/{id} \
+curl -X DELETE http://localhost:9090/api/management/v0.9/websub-apis/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -409,8 +409,8 @@ Required roles: `admin`, `developer`
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|WebSubAPI deleted successfully|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|WebSubAPI not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|WebSubAPI not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 <h3 id="delete-a-websubapi-responseschema">Response Schema</h3>
 

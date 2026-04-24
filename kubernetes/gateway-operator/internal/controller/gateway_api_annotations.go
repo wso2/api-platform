@@ -31,6 +31,11 @@ const (
 	// so repeated reconciles (status patches, periodic sync) do not run upgrade needlessly.
 	AnnK8sGatewayHelmValuesHash = "gateway.api-platform.wso2.com/last-helm-values-hash"
 
+	// AnnK8sGatewayServiceType, when present on Gateway.spec.infrastructure.annotations,
+	// overrides gateway.gatewayRuntime.service.type in the Helm values. Accepted values:
+	// ClusterIP, NodePort, LoadBalancer, ExternalName.
+	AnnK8sGatewayServiceType = "gateway.api-platform.wso2.com/service-type"
+
 	// AnnHTTPRouteAPIVersion overrides API version in generated api.yaml (default v1).
 	AnnHTTPRouteAPIVersion = "gateway.api-platform.wso2.com/api-version"
 
@@ -39,6 +44,9 @@ const (
 
 	// AnnHTTPRouteDisplayName overrides displayName.
 	AnnHTTPRouteDisplayName = "gateway.api-platform.wso2.com/display-name"
+
+	// AnnProjectID identifies the owning project for analytics/routing metadata propagation.
+	AnnProjectID = "gateway.api-platform.wso2.com/project-id"
 
 	// HTTPRoute rest API handle for gateway-controller (default: derived from ns+name).
 	AnnHTTPRouteAPIHandle = "gateway.api-platform.wso2.com/api-handle"

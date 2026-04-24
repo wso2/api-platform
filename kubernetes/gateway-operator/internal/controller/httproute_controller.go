@@ -200,7 +200,12 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	handle := DefaultHTTPRouteAPIHandle(route)
-	apiYAML, err := gatewayclient.BuildRestAPIYAML(apiv1.GroupVersion.String(), "RestApi", handle, *spec)
+	apiYAML, err := gatewayclient.BuildRestAPIYAML(
+		apiv1.GroupVersion.String(),
+		"RestApi",
+		payloadMetadataForHTTPRoute(route, handle),
+		*spec,
+	)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -493,6 +498,20 @@ func httprouteAuthFunc(c client.Client, log *zap.Logger, info *registry.GatewayI
 	}
 }
 
+func payloadMetadataForHTTPRoute(route *gatewayv1.HTTPRoute, handle string) gatewayclient.RestAPIPayloadMetadata {
+	md := gatewayclient.RestAPIPayloadMetadata{Name: handle}
+	if route == nil {
+		return md
+	}
+	if len(route.Annotations) > 0 {
+		md.Annotations = make(map[string]string, len(route.Annotations))
+		for k, v := range route.Annotations {
+			md.Annotations[k] = v
+		}
+	}
+	return md
+}
+
 func (r *HTTPRouteReconciler) patchHTTPRouteParentCondition(ctx context.Context, route *gatewayv1.HTTPRoute, parentRef gatewayv1.ParentReference, conds ...metav1.Condition) error {
 	latest := &gatewayv1.HTTPRoute{}
 	if err := r.Get(ctx, client.ObjectKeyFromObject(route), latest); err != nil {
@@ -602,6 +621,11 @@ func (r *HTTPRouteReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueHTTPRoutesForSecret),
 			builder.WithPredicates(secretMutationPredicate()),
+		).
+		Watches(
+			&corev1.ConfigMap{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueHTTPRoutesForConfigMap),
+			builder.WithPredicates(configMapMutationPredicate()),
 		).
 		Complete(r)
 }

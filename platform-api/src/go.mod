@@ -9,11 +9,12 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/jackc/pgx/v5 v5.8.0
+	github.com/jackc/pgx/v5 v5.9.1
 	github.com/kelseyhightower/envconfig v1.4.0
-	github.com/mattn/go-sqlite3 v1.14.32
+	github.com/mattn/go-sqlite3 v1.14.41
 	github.com/oapi-codegen/runtime v1.1.2
 	github.com/pb33f/libopenapi v0.28.2
+	github.com/wso2/api-platform/common v0.0.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -60,3 +61,5 @@ require (
 	golang.org/x/text v0.33.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
+
+replace github.com/wso2/api-platform/common => ../../common

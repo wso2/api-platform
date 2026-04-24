@@ -13,6 +13,7 @@ To pin APIs to this **`APIGateway`**:
 
 - Set **`APIGateway.spec.apiSelector`** to **`scope: LabelSelector`** with **`matchLabels`** (see `02-apigateway.yaml`).
 - Set the **same labels** on **`RestApi.metadata.labels`** (see `04-restapi.yaml`).
+- Optional annotations on `RestApi.metadata.annotations` (for example `gateway.api-platform.wso2.com/project-id`) are copied verbatim into the gateway-controller `api.yaml` payload under `metadata.annotations` (same keys as on the CR).
 
 If you also run the Gateway API demo, give that **`Gateway`** a different API selection (annotation **`gateway.api-platform.wso2.com/api-selector`**) so it does not use the same **`restapi-target`** label value as this **`APIGateway`**, or `RestApi` objects could match both selectors.
 
