@@ -216,6 +216,7 @@ func (h *Handler) toWebSubApiBinding(ecr EventChannelResource) binding.WebSubApi
 
 	return binding.WebSubApiBinding{
 		Kind:     "WebSubApi",
+		APIID:    ecr.UUID,
 		Name:     ecr.Name,
 		Version:  ecr.Version,
 		Context:  ecr.Context,

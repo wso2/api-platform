@@ -846,7 +846,7 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 }
 
 // syncAPIKeysForExistingArtifacts performs a one-time bulk sync of API keys for all
-// currently known LlmProvider and LlmProxy artifacts after the WebSocket connection
+// currently known RestApi, WebSubApi, LlmProvider, and LlmProxy artifacts after the WebSocket connection
 // is established. Upserts fetched keys into the DB, reconciles deletions per artifact,
 // then reloads the in-memory store and refreshes the xDS snapshot once.
 func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
@@ -882,13 +882,14 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 		if cfg == nil {
 			continue
 		}
-		if cfg.Kind != models.KindLlmProvider && cfg.Kind != models.KindLlmProxy && cfg.Kind != models.KindRestApi {
+		if cfg.Kind != models.KindLlmProvider && cfg.Kind != models.KindLlmProxy &&
+			cfg.Kind != models.KindRestApi && cfg.Kind != models.KindWebSubApi {
 			continue
 		}
 		artifactUUIDsByKind[cfg.Kind] = append(artifactUUIDsByKind[cfg.Kind], cfg.UUID)
 	}
 
-	for _, kind := range []string{models.KindRestApi, models.KindLlmProvider, models.KindLlmProxy} {
+	for _, kind := range []string{models.KindRestApi, models.KindWebSubApi, models.KindLlmProvider, models.KindLlmProxy} {
 		select {
 		case <-c.ctx.Done():
 			c.logger.Info("Stopping API key bulk sync due to client context cancellation")
@@ -3937,7 +3938,7 @@ func (c *Client) pushGatewayManifestOnConnect(gatewayID string) {
 	policies := make([]models.PolicyDefinition, 0, len(c.policyDefinitions))
 	for _, def := range c.policyDefinitions {
 		if strings.HasPrefix(def.Name, "wso2_apip_sys_") {
-			// Skip internal system policies 
+			// Skip internal system policies
 			continue
 		}
 		policies = append(policies, def)
