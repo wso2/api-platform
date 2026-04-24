@@ -43,7 +43,9 @@ type Config struct {
 
 // ServerConfig holds HTTP/WS server settings.
 type ServerConfig struct {
-	WebSubPort        int    `koanf:"websub_port"`
+	WebSubEnabled     bool   `koanf:"websub_enabled"`
+	WebSubHTTPPort    int    `koanf:"websub_http_port"`
+	WebSubHTTPSPort   int    `koanf:"websub_https_port"`
 	WebSubTLSEnabled  bool   `koanf:"websub_tls_enabled"`
 	WebSubTLSCertFile string `koanf:"websub_tls_cert_file"`
 	WebSubTLSKeyFile  string `koanf:"websub_tls_key_file"`
@@ -95,10 +97,12 @@ type LoggingConfig struct {
 func DefaultConfig() *Config {
 	return &Config{
 		Server: ServerConfig{
-			WebSubPort:    8080,
-			WebSocketPort: 8081,
-			AdminPort:     9002,
-			MetricsPort:   9003,
+			WebSubEnabled:   true,
+			WebSubHTTPPort:  8080,
+			WebSubHTTPSPort: 8443,
+			WebSocketPort:   8081,
+			AdminPort:       9002,
+			MetricsPort:     9003,
 		},
 		Kafka: KafkaConfig{
 			Brokers:             []string{"localhost:9092"},
@@ -157,7 +161,9 @@ func Load(path string) (*Config, map[string]interface{}, error) {
 	rawConfig := k.All()
 
 	slog.Info("Configuration loaded",
-		"websub_port", cfg.Server.WebSubPort,
+		"websub_enabled", cfg.Server.WebSubEnabled,
+		"websub_http_port", cfg.Server.WebSubHTTPPort,
+		"websub_https_port", cfg.Server.WebSubHTTPSPort,
 		"websub_tls_enabled", cfg.Server.WebSubTLSEnabled,
 		"websocket_port", cfg.Server.WebSocketPort,
 		"admin_port", cfg.Server.AdminPort,
@@ -202,7 +208,8 @@ func mapEnvValue(path, value string) interface{} {
 	switch path {
 	case "kafka.brokers":
 		return splitCSV(value)
-	case "server.websub_port",
+	case "server.websub_http_port",
+		"server.websub_https_port",
 		"server.websocket_port",
 		"server.admin_port",
 		"server.metrics_port",
@@ -215,7 +222,7 @@ func mapEnvValue(path, value string) interface{} {
 		if n, err := strconv.Atoi(value); err == nil {
 			return n
 		}
-	case "kafka.tls", "controlplane.enabled", "server.websub_tls_enabled":
+	case "kafka.tls", "controlplane.enabled", "server.websub_enabled", "server.websub_tls_enabled":
 		if b, err := strconv.ParseBool(value); err == nil {
 			return b
 		}
@@ -242,7 +249,7 @@ func splitCSV(value string) []string {
 }
 
 func validate(cfg *Config) error {
-	if cfg.Server.WebSubTLSEnabled {
+	if cfg.Server.WebSubEnabled && cfg.Server.WebSubTLSEnabled {
 		if strings.TrimSpace(cfg.Server.WebSubTLSCertFile) == "" {
 			return fmt.Errorf("server.websub_tls_cert_file is required when server.websub_tls_enabled is true")
 		}
