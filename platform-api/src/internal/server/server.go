@@ -265,7 +265,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	llmProxyDeploymentHandler := handler.NewLLMProxyDeploymentHandler(llmProxyDeploymentService, slogger)
 	mcpProxyHandler := handler.NewMCPProxyHandler(mcpProxyService, slogger)
 	mcpProxyDeploymentHandler := handler.NewMCPProxyDeploymentHandler(mcpDeploymentService, slogger)
-	websubAPIHandler := handler.NewWebSubAPIHandler(websubAPIService, apiKeyService, slogger)
+	websubAPIHandler := handler.NewWebSubAPIHandler(websubAPIService, slogger)
+	websubAPIKeyHandler := handler.NewWebSubAPIKeyHandler(websubAPIService, apiKeyService, slogger)
 	websubAPIDeploymentHandler := handler.NewWebSubAPIDeploymentHandler(websubAPIDeploymentService, slogger)
 	// Start deployment timeout background job
 	timeoutConfig := service.DeploymentTimeoutConfig{
@@ -326,6 +327,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	mcpProxyHandler.RegisterRoutes(router)
 	mcpProxyDeploymentHandler.RegisterRoutes(router)
 	websubAPIHandler.RegisterRoutes(router)
+	websubAPIKeyHandler.RegisterRoutes(router)
 	websubAPIDeploymentHandler.RegisterRoutes(router)
 	slogger.Info("Registered API routes successfully")
 
