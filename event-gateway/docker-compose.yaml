@@ -71,6 +71,7 @@ services:
       - APIP_EGW_SERVER_WEBSUB_PORT=8080
       - APIP_EGW_SERVER_WEBSOCKET_PORT=8081
       - APIP_EGW_CONTROLPLANE_ENABLED=true
+      - APIP_EGW_LOGGING_LEVEL=debug
       - APIP_EGW_CONTROLPLANE_XDS_ADDRESS=gateway-controller:18001
     extra_hosts:
       # Allow callbacks to services running on the Docker host (useful on Linux).

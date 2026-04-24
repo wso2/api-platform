@@ -137,6 +137,7 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 		qualifiedTopic := qualifyTopicName(b.Context, b.Version, b.BrokerDriver.Topic)
 
 		r.hub.RegisterBinding(hub.ChannelBinding{
+			APIID:             b.APIID,
 			Name:              b.Name,
 			Mode:              b.Mode,
 			Context:           b.Context,
@@ -220,6 +221,7 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 		}
 
 		r.hub.RegisterBinding(hub.ChannelBinding{
+			APIID:             wsb.APIID,
 			Name:              wsb.Name,
 			Mode:              "websub",
 			Context:           wsb.Context,
@@ -533,6 +535,7 @@ func (r *Runtime) AddWebSubApiBinding(wsb binding.WebSubApiBinding) error {
 	}
 
 	r.hub.RegisterBinding(hub.ChannelBinding{
+		APIID:             wsb.APIID,
 		Name:              wsb.Name,
 		Mode:              "websub",
 		Context:           wsb.Context,

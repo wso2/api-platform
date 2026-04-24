@@ -112,6 +112,7 @@ func (l *EventListener) handleAPICreateOrUpdate(event eventhub.Event) {
 
 	// Update policies
 	l.updatePoliciesForAPI(storedConfig, event.EventID)
+	l.syncAPIKeysForAPI(storedConfig, event.EventID)
 
 	l.logger.Info("Successfully processed API create/update event",
 		slog.String("api_id", entityID),
@@ -230,6 +231,39 @@ func (l *EventListener) updatePoliciesForAPI(cfg *models.StoredConfig, correlati
 			slog.String("api_id", cfg.UUID),
 			slog.String("correlation_id", correlationID),
 			slog.Any("error", err))
+	}
+}
+
+func (l *EventListener) syncAPIKeysForAPI(cfg *models.StoredConfig, correlationID string) {
+	if cfg == nil || l.apiKeyXDSManager == nil || l.db == nil {
+		return
+	}
+
+	apiName, apiVersion := extractAPINameVersion(cfg)
+	if apiName == "" {
+		return
+	}
+
+	apiKeys, err := l.db.GetAPIKeysByAPI(cfg.UUID)
+	if err != nil {
+		l.logger.Warn("Failed to load API keys while syncing API create/update event",
+			slog.String("api_id", cfg.UUID),
+			slog.String("correlation_id", correlationID),
+			slog.Any("error", err))
+		return
+	}
+
+	for _, apiKey := range apiKeys {
+		if apiKey == nil {
+			continue
+		}
+		if err := l.apiKeyXDSManager.StoreAPIKey(cfg.UUID, apiName, apiVersion, apiKey, correlationID); err != nil {
+			l.logger.Warn("Failed to sync existing API key to policy engine after API create/update",
+				slog.String("api_id", cfg.UUID),
+				slog.String("api_key_id", apiKey.UUID),
+				slog.String("correlation_id", correlationID),
+				slog.Any("error", err))
+		}
 	}
 }
 

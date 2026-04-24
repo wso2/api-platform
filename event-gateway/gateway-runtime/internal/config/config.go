@@ -37,6 +37,7 @@ type Config struct {
 	WebSub       WebSubConfig       `koanf:"websub"`
 	PolicyEngine PolicyEngineConfig `koanf:"policy_engine"`
 	ControlPlane ControlPlaneConfig `koanf:"controlplane"`
+	Logging      LoggingConfig      `koanf:"logging"`
 	RuntimeID    string             `koanf:"runtime_id"`
 }
 
@@ -84,6 +85,12 @@ type ControlPlaneConfig struct {
 	NodeID     string `koanf:"node_id"`
 }
 
+// LoggingConfig controls the runtime's structured logger.
+type LoggingConfig struct {
+	Level  string `koanf:"level"`
+	Format string `koanf:"format"`
+}
+
 // DefaultConfig returns configuration with sensible defaults.
 func DefaultConfig() *Config {
 	return &Config{
@@ -104,6 +111,10 @@ func DefaultConfig() *Config {
 			DeliveryMaxDelayMs:         60000,
 			DeliveryConcurrency:        64,
 			DefaultLeaseSeconds:        0,
+		},
+		Logging: LoggingConfig{
+			Level:  "info",
+			Format: "text",
 		},
 	}
 }
@@ -151,6 +162,8 @@ func Load(path string) (*Config, map[string]interface{}, error) {
 		"websocket_port", cfg.Server.WebSocketPort,
 		"admin_port", cfg.Server.AdminPort,
 		"kafka_brokers", cfg.Kafka.Brokers,
+		"log_level", cfg.Logging.Level,
+		"log_format", cfg.Logging.Format,
 	)
 
 	return cfg, rawConfig, nil
@@ -172,6 +185,8 @@ func mapEnvKey(key string) string {
 		return "policy_engine." + strings.TrimPrefix(name, "policy_engine_")
 	case strings.HasPrefix(name, "controlplane_"):
 		return "controlplane." + strings.TrimPrefix(name, "controlplane_")
+	case strings.HasPrefix(name, "logging_"):
+		return "logging." + strings.TrimPrefix(name, "logging_")
 	default:
 		// Support generic nested keys using "__" for literal underscores.
 		name = strings.ReplaceAll(name, "__", "%UNDERSCORE%")
@@ -234,6 +249,18 @@ func validate(cfg *Config) error {
 		if strings.TrimSpace(cfg.Server.WebSubTLSKeyFile) == "" {
 			return fmt.Errorf("server.websub_tls_key_file is required when server.websub_tls_enabled is true")
 		}
+	}
+
+	switch cfg.Logging.Level {
+	case "", "debug", "info", "warn", "error":
+	default:
+		return fmt.Errorf("logging.level must be one of debug, info, warn, error")
+	}
+
+	switch cfg.Logging.Format {
+	case "", "text", "json":
+	default:
+		return fmt.Errorf("logging.format must be one of text, json")
 	}
 
 	return nil

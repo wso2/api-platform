@@ -33,6 +33,10 @@ default_lease_seconds = 0
 # config_file = ""
 # chains_file = ""
 
+[logging]
+level = "info"
+format = "text"
+
 # runtime_id is auto-generated if left empty
 # runtime_id = ""
 
