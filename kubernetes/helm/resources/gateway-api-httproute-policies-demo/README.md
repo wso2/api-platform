@@ -60,7 +60,7 @@ kubectl get httproute -n gateway-api-demo hello-apipolicy-secrets-demo -o yaml
 kubectl get apipolicy,secret -n gateway-api-demo
 ```
 
-2. Operator logs and optional gateway-controller **`GET /rest-apis/{handle}`** payload.
+2. Operator logs and optional gateway-controller **`GET /api/management/v0.9/rest-apis/{handle}`** payload.
 
 3. Curl (HTTPS, self-signed):
 

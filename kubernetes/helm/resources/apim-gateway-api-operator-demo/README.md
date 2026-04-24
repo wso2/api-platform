@@ -27,11 +27,11 @@ It complements the **`APIGateway` + `RestApi`** CRD flow documented elsewhere.
 | 3 | `ConfigMap` | Per-Gateway Helm values override (`values.yaml`) for APIM host/port/token and development mode. |
 | 4 | `Gateway` | Triggers operator Helm install `{metadata.name}-gateway` and references ConfigMap via `gateway.api-platform.wso2.com/helm-values-configmap`. |
 | 5 | `Deployment` + `Service` | Demo backend (`hello-backend-apim`) used as upstream. |
-| 6 | `HTTPRoute` | Mapped to `APIConfigData` and synced to gateway-controller `/rest-apis`. |
+| 6 | `HTTPRoute` | Mapped to `APIConfigData` and synced to gateway-controller `/api/management/v0.9/rest-apis`. |
 
 ## Policies (HTTPRoute)
 
-Policies use the same logical shape as **`RestApi`** (`name`, `version` required; optional `params`, `executionCondition`) and are merged into the payload before **`/rest-apis`** is called.
+Policies use the same logical shape as **`RestApi`** (`name`, `version` required; optional `params`, `executionCondition`) and are merged into the payload before **`/api/management/v0.9/rest-apis`** is called.
 
 **Recommended:** use **`APIPolicy`** CRs (`gateway.api-platform.wso2.com/v1alpha1`):
 

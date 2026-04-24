@@ -259,20 +259,27 @@ See `config/` directory for examples:
 
 ## API Reference
 
-The Gateway-Controller exposes a REST API for managing API configurations.
+The Gateway-Controller exposes two REST API surfaces:
 
-### Base URL
+- **Management API** — for managing APIs, subscriptions, certificates, secrets, LLM proxies, etc.
+- **Admin API** — for operational endpoints such as health and config dump.
+
+### Base URLs
 
 ```
-http://localhost:9090
+Management API: http://localhost:9090/api/management/v0.9
+Admin API:      http://localhost:9092/api/admin/v0.9
 ```
+
+The paths shown in the examples below are relative to these base URLs.
 
 ### Endpoints
 
-#### Health Check
+#### Health Check (Admin API)
 
 ```bash
 GET /health
+# i.e. GET http://localhost:9092/api/admin/v0.9/health
 ```
 
 Response:
@@ -286,7 +293,7 @@ Response:
 #### Create API Configuration
 
 ```bash
-POST /rest-apis
+POST /api/management/v0.9/rest-apis
 Content-Type: application/yaml
 
 version: api-platform.wso2.com/v1
@@ -315,24 +322,24 @@ Response:
 #### List All APIs
 
 ```bash
-GET /rest-apis
+GET /api/management/v0.9/rest-apis
 ```
 
 #### Get API by Name and Version
 
 ```bash
-GET /rest-apis/{name}/{version}
+GET /api/management/v0.9/rest-apis/{name}/{version}
 ```
 
 Example:
 ```bash
-GET /rest-apis/Weather%20API/v1.0
+GET /api/management/v0.9/rest-apis/Weather%20API/v1.0
 ```
 
 #### Update API
 
 ```bash
-PUT /rest-apis/{name}/{version}
+PUT /api/management/v0.9/rest-apis/{name}/{version}
 Content-Type: application/yaml
 
 <updated configuration>
@@ -340,7 +347,7 @@ Content-Type: application/yaml
 
 Example:
 ```bash
-PUT /rest-apis/Weather%20API/v1.0
+PUT /api/management/v0.9/rest-apis/Weather%20API/v1.0
 Content-Type: application/yaml
 
 version: api-platform.wso2.com/v1
@@ -359,12 +366,12 @@ data:
 #### Delete API
 
 ```bash
-DELETE /rest-apis/{name}/{version}
+DELETE /api/management/v0.9/rest-apis/{name}/{version}
 ```
 
 Example:
 ```bash
-DELETE /rest-apis/Weather%20API/v1.0
+DELETE /api/management/v0.9/rest-apis/Weather%20API/v1.0
 ```
 
 ## Data Storage

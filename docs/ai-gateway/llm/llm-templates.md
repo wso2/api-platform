@@ -282,7 +282,7 @@ spec:
 To create an LLM provider using any of the out-of-the-box templates:
 
 ```bash
-curl -X POST http://localhost:9090/llm-providers \
+curl -X POST http://localhost:9090/api/management/v0.9/llm-providers \
   -H "Content-Type: application/yaml" \
   -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
@@ -332,7 +332,7 @@ The gateway automatically uses the template's metadata extraction patterns to:
 To list all available LLM provider templates:
 
 ```bash
-curl -X GET http://localhost:9090/llm-provider-templates \
+curl -X GET http://localhost:9090/api/management/v0.9/llm-provider-templates \
   -H "Authorization: Basic YWRtaW46YWRtaW4="
 ```
 
@@ -341,7 +341,7 @@ curl -X GET http://localhost:9090/llm-provider-templates \
 To retrieve details of a specific template:
 
 ```bash
-curl -X GET http://localhost:9090/llm-provider-templates/openai \
+curl -X GET http://localhost:9090/api/management/v0.9/llm-provider-templates/openai \
   -H "Authorization: Basic YWRtaW46YWRtaW4="
 ```
 
@@ -350,7 +350,7 @@ curl -X GET http://localhost:9090/llm-provider-templates/openai \
 Platform administrators can create custom templates for LLM providers not covered by the out-of-the-box templates:
 
 ```bash
-curl -X POST http://localhost:9090/llm-provider-templates \
+curl -X POST http://localhost:9090/api/management/v0.9/llm-provider-templates \
   -H "Content-Type: application/yaml" \
   -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
@@ -371,7 +371,7 @@ EOF
 To update an existing custom template:
 
 ```bash
-curl -X PUT http://localhost:9090/llm-provider-templates/custom-provider \
+curl -X PUT http://localhost:9090/api/management/v0.9/llm-provider-templates/custom-provider \
   -H "Content-Type: application/yaml" \
   -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
@@ -393,7 +393,7 @@ EOF
 To delete a custom template:
 
 ```bash
-curl -X DELETE http://localhost:9090/llm-provider-templates/custom-provider \
+curl -X DELETE http://localhost:9090/api/management/v0.9/llm-provider-templates/custom-provider \
   -H "Authorization: Basic YWRtaW46YWRtaW4="
 ```
 

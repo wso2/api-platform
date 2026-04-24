@@ -106,7 +106,7 @@ Two Postman collections are provided in [`spec/postman/`](spec/postman/):
 Use the **"Create Repo Watcher"** request. This registers a WebSub API with three channels (`issues`, `pull-requests`, `commits`) via the gateway controller, which pushes the configuration to the event gateway over xDS.
 
 ```
-POST http://localhost:9090/websub-apis
+POST http://localhost:9090/api/management/v0.9/websub-apis
 Authorization: Basic admin:admin
 Content-Type: application/json
 
@@ -181,10 +181,10 @@ You should see the event body and headers printed by the listener.
 
 | Request | Method | URL |
 |---------|--------|-----|
-| List WebSub APIs | `GET` | `http://localhost:9090/websub-apis` |
-| Get WebSub API | `GET` | `http://localhost:9090/websub-apis/repo-watcher-v1-0` |
-| Update WebSub API | `PUT` | `http://localhost:9090/websub-apis/repo-watcher-v1-0` |
-| Delete WebSub API | `DELETE` | `http://localhost:9090/websub-apis/repo-watcher-v1-0` |
+| List WebSub APIs | `GET` | `http://localhost:9090/api/management/v0.9/websub-apis` |
+| Get WebSub API | `GET` | `http://localhost:9090/api/management/v0.9/websub-apis/repo-watcher-v1-0` |
+| Update WebSub API | `PUT` | `http://localhost:9090/api/management/v0.9/websub-apis/repo-watcher-v1-0` |
+| Delete WebSub API | `DELETE` | `http://localhost:9090/api/management/v0.9/websub-apis/repo-watcher-v1-0` |
 
 All control plane requests require Basic Auth (`admin`/`admin`).
 
@@ -194,7 +194,7 @@ You can run the full flow without Postman:
 
 ```bash
 # 1. Create a WebSub API
-curl -X POST http://localhost:9090/websub-apis \
+curl -X POST http://localhost:9090/api/management/v0.9/websub-apis \
   -u admin:admin \
   -H "Content-Type: application/json" \
   -d '{

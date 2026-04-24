@@ -60,7 +60,7 @@ type MCPListItem struct {
 	UpdatedAt   string `json:"updatedAt"`
 }
 
-// MCPListResponse represents the response from GET /mcp-proxies
+// MCPListResponse represents the response from GET ${managementBase}/mcp-proxies
 type MCPListResponse struct {
 	Status     string        `json:"status"`
 	Count      int           `json:"count"`
@@ -74,7 +74,7 @@ func runListCommand() error {
 		return err
 	}
 
-	// Call the /mcp-proxies endpoint
+	// Call the management MCP proxies endpoint
 	resp, err := client.Get(utils.GatewayMCPProxiesPath)
 	if err != nil {
 		return fmt.Errorf("failed to call %s endpoint: %w", utils.GatewayMCPProxiesPath, err)

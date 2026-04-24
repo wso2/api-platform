@@ -153,6 +153,9 @@
     "environment": "production",
     "team": "backend",
     "version": "v1"
+  },
+  "annotations": {
+    "gateway.api-platform.wso2.com/project-id": "019d953f-d386-7a64-aa92-1869a28292e0"
   }
 }
 
@@ -164,6 +167,8 @@
 |---|---|---|---|---|
 |name|string|true|none|Unique handle for the resource|
 |labels|object|false|none|Labels are key-value pairs for organizing and selecting APIs. Keys must not contain spaces.|
+|» **additionalProperties**|string|false|none|none|
+|annotations|object|false|none|Annotations are arbitrary non-identifying metadata. Use domain-prefixed keys.|
 |» **additionalProperties**|string|false|none|none|
 
 <h2 id="tocS_APIConfigData">APIConfigData</h2>
@@ -1024,6 +1029,8 @@ Details of an API key
   "subscriptionToken": "sub-token-abc123xyz",
   "applicationId": "string",
   "subscriptionPlanId": "string",
+  "billingCustomerId": "string",
+  "billingSubscriptionId": "string",
   "status": "ACTIVE"
 }
 
@@ -1037,6 +1044,8 @@ Details of an API key
 |subscriptionToken|string|true|none|Opaque subscription token for API invocation (required; stored as hash only)|
 |applicationId|string|false|none|Application identifier (from DevPortal/STS). Optional for token-based subscriptions.|
 |subscriptionPlanId|string|false|none|Subscription plan UUID for rate limit and billing configuration.|
+|billingCustomerId|string|false|none|Billing customer identifier (optional, for analytics tracking).|
+|billingSubscriptionId|string|false|none|Billing subscription identifier (optional, for analytics tracking).|
 |status|string|false|none|none|
 
 #### Enumerated Values
@@ -1089,6 +1098,8 @@ Details of an API key
   "applicationId": "string",
   "subscriptionToken": "string",
   "subscriptionPlanId": "string",
+  "billingCustomerId": "string",
+  "billingSubscriptionId": "string",
   "gatewayId": "string",
   "status": "ACTIVE",
   "createdAt": "2019-08-24T14:15:22Z",
@@ -1106,6 +1117,8 @@ Details of an API key
 |applicationId|string|false|none|none|
 |subscriptionToken|string|false|none|Opaque subscription token (returned only on create; use Platform-API to retrieve for existing subscriptions)|
 |subscriptionPlanId|string|false|none|Subscription plan UUID|
+|billingCustomerId|string|false|none|Billing customer identifier|
+|billingSubscriptionId|string|false|none|Billing subscription identifier|
 |gatewayId|string|false|none|none|
 |status|string|false|none|none|
 |createdAt|string(date-time)|false|none|none|
@@ -1135,6 +1148,8 @@ Details of an API key
       "applicationId": "string",
       "subscriptionToken": "string",
       "subscriptionPlanId": "string",
+      "billingCustomerId": "string",
+      "billingSubscriptionId": "string",
       "gatewayId": "string",
       "status": "ACTIVE",
       "createdAt": "2019-08-24T14:15:22Z",
