@@ -513,6 +513,21 @@ func (r *Runtime) buildChain(routeKey string, policies []binding.PolicyRef) erro
 	return nil
 }
 
+func (r *Runtime) unregisterBindingChains(b *hub.ChannelBinding) {
+	if b == nil {
+		return
+	}
+	if b.SubscribeChainKey != "" {
+		r.engine.UnregisterChain(b.SubscribeChainKey)
+	}
+	if b.InboundChainKey != "" {
+		r.engine.UnregisterChain(b.InboundChainKey)
+	}
+	if b.OutboundChainKey != "" {
+		r.engine.UnregisterChain(b.OutboundChainKey)
+	}
+}
+
 // AddWebSubApiBinding dynamically adds a WebSubApi binding at runtime (xDS mode).
 func (r *Runtime) AddWebSubApiBinding(wsb binding.WebSubApiBinding) error {
 	r.mu.Lock()
@@ -643,6 +658,11 @@ func (r *Runtime) RemoveWebSubApiBinding(name string) error {
 		}
 		delete(r.activeBrokerDrivers, name)
 	}
+
+	// Dynamic xDS updates replace the complete policy state for a binding.
+	// Remove the old route keys before the binding disappears so empty-policy
+	// redeploys do not keep executing stale chains.
+	r.unregisterBindingChains(r.hub.GetBinding(name))
 
 	// Remove hub binding.
 	r.hub.RemoveBinding(name)
