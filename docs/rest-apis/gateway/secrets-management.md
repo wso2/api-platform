@@ -12,7 +12,7 @@ CRUD operations for Secrets
 
 ```shell
 
-curl -X GET http://localhost:9090/secrets \
+curl -X GET http://localhost:9090/api/management/v0.9/secrets \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -53,9 +53,9 @@ Required roles: `admin`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of secrets retrieved successfully|[SecretListResponse](schemas.md#schemasecretlistresponse)|
-|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized - authentication required|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of secrets retrieved successfully|[SecretListResponse](#schemasecretlistresponse)|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized - authentication required|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Create a new secret
 
@@ -67,7 +67,7 @@ Required roles: `admin`
 
 ```shell
 
-curl -X POST http://localhost:9090/secrets \
+curl -X POST http://localhost:9090/api/management/v0.9/secrets \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -108,7 +108,7 @@ Required roles: `admin`
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[SecretConfiguration](schemas.md#schemasecretconfiguration)|true|none|
+|body|body|[SecretConfiguration](#schemasecretconfiguration)|true|none|
 
 > Example responses
 
@@ -141,11 +141,11 @@ Required roles: `admin`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Secret created successfully|[SecretResponse](schemas.md#schemasecretresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request - missing or invalid fields|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized - authentication required|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - secret with this ID already exists|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error - encryption failed|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Secret created successfully|[SecretResponse](#schemasecretresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request - missing or invalid fields|[ErrorResponse](#schemaerrorresponse)|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized - authentication required|[ErrorResponse](#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - secret with this ID already exists|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error - encryption failed|[ErrorResponse](#schemaerrorresponse)|
 
 ## Retrieve a secret
 
@@ -157,7 +157,7 @@ Required roles: `admin`
 
 ```shell
 
-curl -X GET http://localhost:9090/secrets/{id} \
+curl -X GET http://localhost:9090/api/management/v0.9/secrets/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -231,10 +231,10 @@ Required roles: `admin`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Secret retrieved and decrypted successfully|[SecretDetailResponse](schemas.md#schemasecretdetailresponse)|
-|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized - authentication required|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Secret configuration not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error - decryption failed|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Secret retrieved and decrypted successfully|[SecretDetailResponse](#schemasecretdetailresponse)|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized - authentication required|[ErrorResponse](#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Secret configuration not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error - decryption failed|[ErrorResponse](#schemaerrorresponse)|
 
 ## Update a secret
 
@@ -246,7 +246,7 @@ Required roles: `admin`
 
 ```shell
 
-curl -X PUT http://localhost:9090/secrets/{id} \
+curl -X PUT http://localhost:9090/api/management/v0.9/secrets/{id} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -288,7 +288,7 @@ Required roles: `admin`
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[SecretConfiguration](schemas.md#schemasecretconfiguration)|true|none|
+|body|body|[SecretConfiguration](#schemasecretconfiguration)|true|none|
 |id|path|string|true|Unique secret identifier|
 
 > Example responses
@@ -322,11 +322,11 @@ Required roles: `admin`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Secret updated successfully|[SecretResponse](schemas.md#schemasecretresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request - missing or invalid value|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized - authentication required|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Secret configuration not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error - encryption failed|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Secret updated successfully|[SecretResponse](#schemasecretresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request - missing or invalid value|[ErrorResponse](#schemaerrorresponse)|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized - authentication required|[ErrorResponse](#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Secret configuration not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error - encryption failed|[ErrorResponse](#schemaerrorresponse)|
 
 ## Delete a secret
 
@@ -338,7 +338,7 @@ Required roles: `admin`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/secrets/{id} \
+curl -X DELETE http://localhost:9090/api/management/v0.9/secrets/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -394,6 +394,6 @@ Required roles: `admin`
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Secret deleted successfully (no content)|None|
-|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized - authentication required|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Secret configuration not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error - database failure|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized - authentication required|[ErrorResponse](#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Secret configuration not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error - database failure|[ErrorResponse](#schemaerrorresponse)|

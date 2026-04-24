@@ -37,12 +37,15 @@
           }
         },
         "url": {
-          "raw": "http://{{host}}/websub-apis",
+          "raw": "http://{{host}}/api/management/v0.9/websub-apis",
           "protocol": "http",
           "host": [
             "{{host}}"
           ],
           "path": [
+            "api",
+            "management",
+            "v0.9",
             "websub-apis"
           ]
         }
@@ -70,12 +73,15 @@
         "method": "GET",
         "header": [],
         "url": {
-          "raw": "http://{{host}}/websub-apis/repo-watcher-v1-0",
+          "raw": "http://{{host}}/api/management/v0.9/websub-apis/repo-watcher-v1-0",
           "protocol": "http",
           "host": [
             "{{host}}"
           ],
           "path": [
+            "api",
+            "management",
+            "v0.9",
             "websub-apis",
             "repo-watcher-v1-0"
           ]
@@ -113,12 +119,15 @@
           }
         },
         "url": {
-          "raw": "http://{{host}}/websub-apis/repo-watcher-v1-0",
+          "raw": "http://{{host}}/api/management/v0.9/websub-apis/repo-watcher-v1-0",
           "protocol": "http",
           "host": [
             "{{host}}"
           ],
           "path": [
+            "api",
+            "management",
+            "v0.9",
             "websub-apis",
             "repo-watcher-v1-0"
           ]
@@ -147,12 +156,15 @@
         "method": "DELETE",
         "header": [],
         "url": {
-          "raw": "http://{{host}}/websub-apis/repo-watcher-v1-0",
+          "raw": "http://{{host}}/api/management/v0.9/websub-apis/repo-watcher-v1-0",
           "protocol": "http",
           "host": [
             "{{host}}"
           ],
           "path": [
+            "api",
+            "management",
+            "v0.9",
             "websub-apis",
             "repo-watcher-v1-0"
           ]
@@ -181,12 +193,15 @@
         "method": "GET",
         "header": [],
         "url": {
-          "raw": "http://{{host}}/websub-apis",
+          "raw": "http://{{host}}/api/management/v0.9/websub-apis",
           "protocol": "http",
           "host": [
             "{{host}}"
           ],
           "path": [
+            "api",
+            "management",
+            "v0.9",
             "websub-apis"
           ]
         }

@@ -177,7 +177,7 @@ func (cm *ComposeManager) WaitForHealthy(ctx context.Context) error {
 		name     string
 		endpoint string
 	}{
-		{"gateway-controller", fmt.Sprintf("http://localhost:%s/health", GatewayControllerAdminPort)},
+		{"gateway-controller", fmt.Sprintf("http://localhost:%s%s/health", GatewayControllerAdminPort, GatewayAdminAPIBasePath)},
 		{"router", fmt.Sprintf("http://localhost:%s/ready", EnvoyAdminPort)},
 	}
 
@@ -334,7 +334,7 @@ func (cm *ComposeManager) RestartService(service string) error {
 func serviceHealthEndpoint(service string) (string, bool) {
 	switch service {
 	case "gateway-controller":
-		return fmt.Sprintf("http://localhost:%s/health", GatewayControllerAdminPort), true
+		return fmt.Sprintf("http://localhost:%s%s/health", GatewayControllerAdminPort, GatewayAdminAPIBasePath), true
 	case "router", "gateway-runtime":
 		return fmt.Sprintf("http://localhost:%s/ready", EnvoyAdminPort), true
 	case "policy-engine":

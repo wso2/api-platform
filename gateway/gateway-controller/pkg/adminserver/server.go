@@ -13,6 +13,10 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 )
 
+// AdminAPIBasePath is the URL prefix under which the gateway-controller admin API
+// is served. It must stay in sync with `servers.url` in api/admin-openapi.yaml.
+const AdminAPIBasePath = "/api/admin/v0.9"
+
 type apiServer interface {
 	BuildConfigDumpResponse(log *slog.Logger) (*adminapi.ConfigDumpResponse, error)
 	GetXDSSyncStatusResponse() adminapi.XDSSyncStatusResponse
@@ -34,16 +38,35 @@ func NewServer(cfg *config.AdminServerConfig, apiServer apiServer, logger *slog.
 		logger:    logger,
 	}
 
-	// Use generated handler with IP whitelist middleware for protected endpoints
-	handler := adminapi.HandlerWithOptions(s, adminapi.StdHTTPServerOptions{
+	// Share a single mux so both registrations populate the same router.
+	mux := http.NewServeMux()
+
+	// Versioned admin API routes — the current, non-deprecated form.
+	// BaseURL must match the `servers.url` prefix in api/admin-openapi.yaml.
+	adminapi.HandlerWithOptions(s, adminapi.StdHTTPServerOptions{
+		BaseURL:    AdminAPIBasePath,
+		BaseRouter: mux,
 		Middlewares: []adminapi.MiddlewareFunc{
 			createSelectiveIPWhitelistMiddleware(cfg.AllowedIPs),
 		},
 	})
 
+	// Legacy unprefixed admin routes for backwards compatibility. These are
+	// deprecated; responses carry RFC 8594 headers pointing at the versioned
+	// paths. Remove once all clients (docker-compose healthchecks, older
+	// kubelet probes, etc.) have been migrated.
+	adminapi.HandlerWithOptions(s, adminapi.StdHTTPServerOptions{
+		BaseURL:    "",
+		BaseRouter: mux,
+		Middlewares: []adminapi.MiddlewareFunc{
+			createSelectiveIPWhitelistMiddleware(cfg.AllowedIPs),
+			deprecatedAdminPathMiddleware(AdminAPIBasePath),
+		},
+	})
+
 	s.httpSrv = &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),
-		Handler:           handler,
+		Handler:           mux,
 		ReadHeaderTimeout: 30 * time.Second,
 	}
 
@@ -103,11 +126,15 @@ func (s *Server) GetHealth(w http.ResponseWriter, r *http.Request) {
 
 // createSelectiveIPWhitelistMiddleware creates a middleware that applies IP whitelist
 // to all endpoints except /health (which must be accessible for Docker/k8s health probes).
+// Both the versioned (AdminAPIBasePath+"/health") and the deprecated legacy
+// ("/health") variants are exempt while legacy support is retained.
 func createSelectiveIPWhitelistMiddleware(allowedIPs []string) adminapi.MiddlewareFunc {
+	healthPath := AdminAPIBasePath + "/health"
+	const legacyHealthPath = "/health"
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Skip IP whitelist for health endpoint
-			if r.URL.Path == "/health" {
+			// Skip IP whitelist for health endpoints (versioned and legacy).
+			if r.URL.Path == healthPath || r.URL.Path == legacyHealthPath {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -118,6 +145,23 @@ func createSelectiveIPWhitelistMiddleware(allowedIPs []string) adminapi.Middlewa
 				http.Error(w, "Forbidden", http.StatusForbidden)
 				return
 			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// deprecatedAdminPathMiddleware marks responses served on the legacy unprefixed
+// admin API paths as deprecated per RFC 8594 (`Deprecation` header) and points
+// clients at the versioned successor via a `Link` header. It should be attached
+// only to the legacy registration; versioned requests bypass it.
+func deprecatedAdminPathMiddleware(newBasePath string) adminapi.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			successor := newBasePath + r.URL.Path
+			w.Header().Set("Deprecation", "true")
+			w.Header().Set("Link", fmt.Sprintf("<%s>; rel=\"successor-version\"", successor))
+			w.Header().Set("Warning",
+				fmt.Sprintf("299 - \"Deprecated API: migrate to %s prefix\"", newBasePath))
 			next.ServeHTTP(w, r)
 		})
 	}

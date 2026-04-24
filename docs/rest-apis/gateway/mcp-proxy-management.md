@@ -12,7 +12,7 @@ CRUD operations for MCPProxies
 
 ```shell
 
-curl -X POST http://localhost:9090/mcp-proxies \
+curl -X POST http://localhost:9090/api/management/v0.9/mcp-proxies \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -59,7 +59,7 @@ Required roles: `admin`, `developer`
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[MCPProxyConfiguration](schemas.md#schemamcpproxyconfiguration)|true|none|
+|body|body|[MCPProxyConfiguration](#schemamcpproxyconfiguration)|true|none|
 
 > Example responses
 
@@ -78,10 +78,10 @@ Required roles: `admin`, `developer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|MCPProxy created successfully|[MCPProxyCreateResponse](schemas.md#schemamcpproxycreateresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - MCP Proxy with same name and version already exists|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|MCPProxy created successfully|[MCPProxyCreateResponse](#schemamcpproxycreateresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - MCP Proxy with same name and version already exists|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## List all MCPProxies
 
@@ -93,7 +93,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X GET http://localhost:9090/mcp-proxies \
+curl -X GET http://localhost:9090/api/management/v0.9/mcp-proxies \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -154,7 +154,7 @@ Required roles: `admin`, `developer`
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of MCPProxies|Inline|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 <h3 id="list-all-mcpproxies-responseschema">Response Schema</h3>
 
@@ -164,7 +164,7 @@ Status Code **200**
 |---|---|---|---|---|
 |» status|string|false|none|none|
 |» count|integer|false|none|none|
-|» mcpProxies|[[MCPProxyListItem](schemas.md#schemamcpproxylistitem)]|false|none|none|
+|» mcpProxies|[[MCPProxyListItem](#schemamcpproxylistitem)]|false|none|none|
 |»» id|string|false|none|none|
 |»» displayName|string|false|none|none|
 |»» version|string|false|none|none|
@@ -191,7 +191,7 @@ Status Code **200**
 
 ```shell
 
-curl -X GET http://localhost:9090/mcp-proxies/{id} \
+curl -X GET http://localhost:9090/api/management/v0.9/mcp-proxies/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -260,9 +260,9 @@ Required roles: `admin`, `developer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|MCPProxy details|[MCPDetailResponse](schemas.md#schemamcpdetailresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|MCPProxy not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|MCPProxy details|[MCPDetailResponse](#schemamcpdetailresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|MCPProxy not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Update an existing MCPProxy
 
@@ -274,7 +274,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X PUT http://localhost:9090/mcp-proxies/{id} \
+curl -X PUT http://localhost:9090/api/management/v0.9/mcp-proxies/{id} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -322,7 +322,7 @@ Required roles: `admin`, `developer`
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |id|path|string|true|Unique public identifier of the MCP Proxy to update.|
-|body|body|[MCPProxyConfiguration](schemas.md#schemamcpproxyconfiguration)|true|none|
+|body|body|[MCPProxyConfiguration](#schemamcpproxyconfiguration)|true|none|
 
 #### Detailed descriptions
 
@@ -345,10 +345,10 @@ Required roles: `admin`, `developer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|MCPProxy updated successfully|[MCPProxyUpdateResponse](schemas.md#schemamcpproxyupdateresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|MCPProxy not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|MCPProxy updated successfully|[MCPProxyUpdateResponse](#schemamcpproxyupdateresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|MCPProxy not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Delete a MCPProxy
 
@@ -360,7 +360,7 @@ Required roles: `admin`, `developer`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/mcp-proxies/{id} \
+curl -X DELETE http://localhost:9090/api/management/v0.9/mcp-proxies/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -404,8 +404,8 @@ Required roles: `admin`, `developer`
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|MCPProxy deleted successfully|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|MCPProxy not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|MCPProxy not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 <h3 id="delete-a-mcpproxy-responseschema">Response Schema</h3>
 

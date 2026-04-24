@@ -37,7 +37,7 @@ func TestAdminServer_ConfigDumpHandler(t *testing.T) {
 	}
 	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "/config_dump", nil)
+	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/config_dump", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
 	rr := httptest.NewRecorder()
 
@@ -63,7 +63,7 @@ func TestAdminServer_XDSSyncStatusHandler(t *testing.T) {
 	}
 	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "/xds_sync_status", nil)
+	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/xds_sync_status", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
 	rr := httptest.NewRecorder()
 
@@ -80,7 +80,7 @@ func TestAdminServer_IPAllowlist(t *testing.T) {
 	stub := &stubAPIServer{}
 	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"127.0.0.1"}}, stub, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "/xds_sync_status", nil)
+	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/xds_sync_status", nil)
 	req.RemoteAddr = "192.168.1.10:12345"
 	rr := httptest.NewRecorder()
 
@@ -92,7 +92,7 @@ func TestAdminServer_MethodNotAllowed(t *testing.T) {
 	stub := &stubAPIServer{}
 	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, slog.Default())
 
-	req := httptest.NewRequest(http.MethodPost, "/config_dump", nil)
+	req := httptest.NewRequest(http.MethodPost, AdminAPIBasePath+"/config_dump", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
 	rr := httptest.NewRecorder()
 
@@ -104,7 +104,7 @@ func TestAdminServer_HealthHandler(t *testing.T) {
 	stub := &stubAPIServer{}
 	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/health", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
 	rr := httptest.NewRecorder()
 
@@ -121,7 +121,7 @@ func TestAdminServer_HealthHandler_MethodNotAllowed(t *testing.T) {
 	stub := &stubAPIServer{}
 	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, slog.Default())
 
-	req := httptest.NewRequest(http.MethodPost, "/health", nil)
+	req := httptest.NewRequest(http.MethodPost, AdminAPIBasePath+"/health", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
 	rr := httptest.NewRecorder()
 
@@ -134,7 +134,7 @@ func TestAdminServer_HealthHandler_NoIPWhitelist(t *testing.T) {
 	// Restrict IPs to only 127.0.0.1 — health should still be accessible from other IPs
 	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"127.0.0.1"}}, stub, slog.Default())
 
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/health", nil)
 	req.RemoteAddr = "192.168.1.10:12345"
 	rr := httptest.NewRecorder()
 
@@ -147,4 +147,79 @@ func TestIsIPAllowed(t *testing.T) {
 	assert.True(t, isIPAllowed("127.0.0.1", []string{"0.0.0.0/0"}))
 	assert.True(t, isIPAllowed("127.0.0.1", []string{"127.0.0.1"}))
 	assert.False(t, isIPAllowed("127.0.0.1", []string{"10.0.0.1"}))
+}
+
+// Legacy (deprecated) route tests — exercised to ensure backwards
+// compatibility while the unprefixed paths remain supported.
+
+func TestAdminServer_LegacyHealthHandler_NoIPWhitelist(t *testing.T) {
+	stub := &stubAPIServer{}
+	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"127.0.0.1"}}, stub, slog.Default())
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req.RemoteAddr = "192.168.1.10:12345"
+	rr := httptest.NewRecorder()
+
+	s.httpSrv.Handler.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, "true", rr.Header().Get("Deprecation"))
+	assert.Contains(t, rr.Header().Get("Link"), AdminAPIBasePath+"/health")
+}
+
+func TestAdminServer_LegacyConfigDump(t *testing.T) {
+	status := "ok"
+	stub := &stubAPIServer{
+		configDump: adminapi.ConfigDumpResponse{Status: &status},
+	}
+	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, slog.Default())
+
+	req := httptest.NewRequest(http.MethodGet, "/config_dump", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	rr := httptest.NewRecorder()
+
+	s.httpSrv.Handler.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, "true", rr.Header().Get("Deprecation"))
+	assert.Contains(t, rr.Header().Get("Link"), AdminAPIBasePath+"/config_dump")
+
+	var body adminapi.ConfigDumpResponse
+	assert.NoError(t, json.NewDecoder(rr.Body).Decode(&body))
+	assert.NotNil(t, body.Status)
+	assert.Equal(t, "ok", *body.Status)
+}
+
+func TestAdminServer_LegacyXDSSyncStatus(t *testing.T) {
+	component := "gateway-controller"
+	version := "12"
+	now := time.Now()
+	stub := &stubAPIServer{
+		xdsResponse: adminapi.XDSSyncStatusResponse{
+			Component:          &component,
+			PolicyChainVersion: &version,
+			Timestamp:          &now,
+		},
+	}
+	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, slog.Default())
+
+	req := httptest.NewRequest(http.MethodGet, "/xds_sync_status", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	rr := httptest.NewRecorder()
+
+	s.httpSrv.Handler.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, "true", rr.Header().Get("Deprecation"))
+}
+
+func TestAdminServer_VersionedPathsHaveNoDeprecationHeader(t *testing.T) {
+	stub := &stubAPIServer{}
+	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"*"}}, stub, slog.Default())
+
+	req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/health", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	rr := httptest.NewRecorder()
+
+	s.httpSrv.Handler.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Empty(t, rr.Header().Get("Deprecation"))
+	assert.Empty(t, rr.Header().Get("Link"))
 }

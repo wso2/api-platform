@@ -68,7 +68,7 @@ func init() {
 	utils.AddStringFlag(getCmd, utils.FlagFormat, &getMCPFormat, "yaml", "Output format (json or yaml)")
 }
 
-// MCPGetResponse represents the response from GET /mcp-proxies/{id}
+// MCPGetResponse represents the response from GET ${managementBase}/mcp-proxies/{id}
 type MCPGetResponse struct {
 	Status string `json:"status"`
 	MCP    struct {
