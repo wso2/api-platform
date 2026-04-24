@@ -12,9 +12,10 @@ use (
 	./gateway/it
 	./gateway/sample-policies/transform-payload-case
 	./gateway/system-policies/analytics
+	./kubernetes/gateway-operator
 	./platform-api/src
 	./samples/sample-service
-	./sdk/core
 	./sdk/ai
+	./sdk/core
 	./tests/mock-servers/mock-platform-api
 )

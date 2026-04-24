@@ -9,9 +9,9 @@
 The **gateway-operator** reconciles standard **Kubernetes Gateway API** resources (`gateway.networking.k8s.io` **Gateway** and **HTTPRoute**) alongside the existing **`APIGateway`** and **`RestApi`** CRDs.
 
 - **Gateway:** Same *infrastructure* role as **`APIGateway`** — deploy the platform gateway via Helm, discover the gateway-controller **Service**, register it in the in-memory **GatewayRegistry** (no dependency on an `APIGateway` CR for this path).
-- **HTTPRoute:** Same *API* role as **`RestApi`** — build an `api.yaml`-compatible payload (`APIConfigData`) and call gateway-controller **REST** (`POST`/`PUT` `/rest-apis`, `DELETE` `/rest-apis/{handle}`).
-- **Service / `APIPolicy` / Secret:** **HTTPRoute** resolution plus **watches** on **Service**, **`APIPolicy`**, and **Secret** enqueue routes when backends, policy CRs, or referenced Secret data change.
-- **`APIPolicy` CR:** Gateway API–only (`gateway.api-platform.wso2.com/v1alpha1`); **`spec.policies`** array; optional **`spec.targetRef`** (**HTTPRoute**) for API-level merge; omit **`targetRef`** and attach via rule **`ExtensionRef`** for rule/resource scope. **`params.valueFrom`** is resolved from Secrets before gateway-controller REST. Does **not** change `RestApi` / `APIGateway` reconciliation.
+- **HTTPRoute:** Same *API* role as **`RestApi`** — build an `api.yaml`-compatible payload (`APIConfigData`) and call gateway-controller **REST** (`POST`/`PUT` `/api/management/v0.9/rest-apis`, `DELETE` `/api/management/v0.9/rest-apis/{handle}`).
+- **Service / `APIPolicy` / Secret / ConfigMap:** **HTTPRoute** resolution plus **watches** on **Service**, **`APIPolicy`**, **Secret**, and **ConfigMap** enqueue routes when backends, policy CRs, or referenced Secret/ConfigMap data change.
+- **`APIPolicy` CR:** Gateway API–only (`gateway.api-platform.wso2.com/v1alpha1`); **`spec.policies`** array; optional **`spec.targetRef`** (**HTTPRoute**) for API-level merge; omit **`targetRef`** and attach via rule **`ExtensionRef`** for rule/resource scope. **`params.valueFrom`** (native k8s shape — `secretKeyRef` / `configMapKeyRef`) is resolved from Secrets or ConfigMaps before gateway-controller REST. Does **not** change `RestApi` / `APIGateway` reconciliation.
 
 ---
 
@@ -44,7 +44,7 @@ Teams adopting **Gateway API** as the cluster-native way to declare gateways and
 | Deploy platform gateway from Gateway API | Create a **`Gateway`** whose `gatewayClassName` is on the operator allowlist; optional per-Gateway Helm values via ConfigMap annotation. |
 | Publish an API from a route | Create **`HTTPRoute`** with `parentRefs` → your **`Gateway`**; **`backendRefs`** → **`Service`**; operator builds and deploys **`RestApi`–equivalent** YAML to gateway-controller. |
 | Refresh route when backends change | Operator watches **`Service`**; relevant **`HTTPRoute`s** re-queue when backend Services change. |
-| Refresh route when policies or secrets change | Operator watches **`APIPolicy`** (target HTTPRoute) and **`Secret`** (when referenced from `APIPolicy` `params` via **`valueFrom`**). |
+| Refresh route when policies, secrets, or configmaps change | Operator watches **`APIPolicy`** (target HTTPRoute), **`Secret`**, and **`ConfigMap`** (when referenced from `APIPolicy` `params` via **`valueFrom.secretKeyRef`** / **`valueFrom.configMapKeyRef`**). |
 | Remove API with the route | Delete **`HTTPRoute`**; finalizer removes the REST API handle from gateway-controller. |
 
 ---
@@ -118,12 +118,24 @@ If the Helm values ConfigMap annotation is **omitted**, the operator uses the de
 | `gateway.api-platform.wso2.com/api-version` | `APIConfigData.Version` (default `v1.0`). |
 | `gateway.api-platform.wso2.com/context` | Overrides API **context** path. |
 | `gateway.api-platform.wso2.com/display-name` | Overrides display name (default: route `metadata.name`). |
-| `gateway.api-platform.wso2.com/api-handle` | REST handle for `/rest-apis/{handle}` (default: `{namespace}-{name}` with `/` stripped). |
+| `gateway.api-platform.wso2.com/api-handle` | REST handle for `/api/management/v0.9/rest-apis/{handle}` (default: `{namespace}-{name}` with `/` stripped). |
 | *(no HTTPRoute policy annotations)* | Policy attachment is via `APIPolicy` only (API-level when `spec.targetRef` is set; rule-scope via `ExtensionRef` when `targetRef` is omitted). |
 
 **`APIPolicy` CR**: `spec.policies` → array of `Policy`-shaped entries. **API-level:** set `spec.targetRef` to the `HTTPRoute`. **Rule-level:** omit `spec.targetRef`; reference from `spec.rules[].filters` with `ExtensionRef` (`group: gateway.api-platform.wso2.com`, `kind: APIPolicy`).
 
-**Sensitive params:** Nested `{ "valueFrom": { "name", "valueKey" [, "namespace"] } }` in `params` is resolved from **`Secret.data`** before **`DeployRestAPI`** so gateway-controller sees plain strings (same as `RestApi` inline policies).
+**External params:** Same shape as PodSpec `env[].valueFrom` — exactly one of `secretKeyRef` / `configMapKeyRef` with `{name, key, namespace?}`:
+
+```yaml
+params:
+  subscriptionKeyHeader:
+    valueFrom:
+      secretKeyRef: { name: demo-creds, key: subscriptionKey }
+  region:
+    valueFrom:
+      configMapKeyRef: { name: demo-config, key: region }
+```
+
+Both are resolved to plain strings before **`DeployRestAPI`** so gateway-controller sees the same JSON as inline `RestApi` policies. Missing Secret/ConfigMap/key → **transient** reconcile error.
 
 ---
 
@@ -146,7 +158,7 @@ If the Helm values ConfigMap annotation is **omitted**, the operator uses the de
 3. Finalizer: `gateway.api-platform.wso2.com/httproute-finalizer`.
 4. **Registry lookup** by parent `namespace/name` (not label-based `RestApi` matching).
 5. Build `APIConfigData` (**`APIPolicy`**, rule ExtensionRefs).
-6. Resolve **`params.valueFrom`** using **Secrets** (replace with string values for gateway-controller).
+6. Resolve **`params.valueFrom`** (`secretKeyRef` → Secret.data, `configMapKeyRef` → ConfigMap.data / binaryData); replace with string values before gateway-controller REST.
 7. Serialize → YAML via `gatewayclient.BuildRestAPIYAML` (`apiVersion` `gateway.api-platform.wso2.com/v1alpha1`, `Kind` `RestApi`).
 8. **Auth:** `GetAuthSettingsForRegistryGateway` (Helm values ConfigMap on `GatewayInfo` if set, else `APIGateway` CR with same name if present).
 9. `RestAPIExists` + `DeployRestAPI`; update **`status.parents`** with `ControllerName` **`gateway.api-platform.wso2.com/gateway-operator`**.
@@ -157,7 +169,8 @@ If the Helm values ConfigMap annotation is **omitted**, the operator uses the de
 
 - **Services:** On create/update/delete, list `HTTPRoute`s and enqueue those whose **backendRefs** reference that Service.
 - **`APIPolicy`:** Enqueue the HTTPRoute in **`spec.targetRef`** when set; otherwise enqueue HTTPRoutes in the same namespace that reference this policy via rule **`ExtensionRef`**.
-- **Secrets:** When a Secret changes (except service-account token type), enqueue HTTPRoutes affected by any **`APIPolicy`** whose `params` reference that Secret via **`valueFrom`** (target HTTPRoute or ExtensionRef-only policies).
+- **Secrets:** When a Secret changes (except service-account token type), enqueue HTTPRoutes affected by any **`APIPolicy`** whose `params` reference that Secret via **`valueFrom.secretKeyRef`** (target HTTPRoute or ExtensionRef-only policies).
+- **ConfigMaps:** Symmetric to Secrets — enqueue HTTPRoutes whose APIPolicy `params` reference the ConfigMap via **`valueFrom.configMapKeyRef`** so edits to non-sensitive policy inputs trigger redeploy.
 
 ---
 
@@ -189,10 +202,10 @@ ClusterRole rules include `gateway.networking.k8s.io` **gateways** and **httprou
 | Gateway API scheme registration | `cmd/main.go` (`gatewayv1.AddToScheme`) |
 | Kubernetes `Gateway` reconciler | `internal/controller/k8s_gateway_controller.go` |
 | `HTTPRoute` reconciler | `internal/controller/httproute_controller.go` |
-| Service / APIPolicy / Secret → HTTPRoute enqueue | `internal/controller/httproute_enqueue.go` |
+| Service / APIPolicy / Secret / ConfigMap → HTTPRoute enqueue | `internal/controller/httproute_enqueue.go` |
 | HTTPRoute → `APIConfigData` mapping | `internal/controller/httproute_mapper.go` |
 | Policy loading | `internal/controller/httproute_policies.go` |
-| `valueFrom` Secret resolution | `internal/controller/httproute_policy_params_resolve.go` |
+| `valueFrom` Secret / ConfigMap resolution | `internal/controller/httproute_policy_params_resolve.go` |
 | **`APIPolicy` CRD** | `api/v1alpha1/policy_types.go` |
 | Annotation keys | `internal/controller/gateway_api_annotations.go` |
 | Shared Helm install/uninstall | `internal/helmgateway/deploy.go` |

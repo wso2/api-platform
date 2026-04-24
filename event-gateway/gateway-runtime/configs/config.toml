@@ -8,6 +8,10 @@
 
 [server]
 websub_port = 8080
+# Set to true to serve the WebSub hub and webhook receiver over HTTPS.
+websub_tls_enabled = true
+websub_tls_cert_file = "/etc/event-gateway/tls/default-listener.crt"
+websub_tls_key_file = "/etc/event-gateway/tls/default-listener.key"
 websocket_port = 8081
 admin_port = 9002
 metrics_port = 9003
@@ -28,6 +32,10 @@ default_lease_seconds = 0
 [policy_engine]
 # config_file = ""
 # chains_file = ""
+
+[logging]
+level = "info"
+format = "text"
 
 # runtime_id is auto-generated if left empty
 # runtime_id = ""

@@ -41,9 +41,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fi \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy go mod files for dependencies (needed for go.mod replace directive)
+COPY --from=common go.mod go.sum /common/
+
 COPY src/go.mod src/go.sum ./
 RUN go mod download
 
+COPY --from=common . /common
 COPY src/ ./
 
 # Build the binary with CGO enabled (required for mattn/go-sqlite3)

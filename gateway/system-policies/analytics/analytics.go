@@ -26,6 +26,12 @@ const (
 	ApplicationIDMetadataKey         = "x-wso2-application-id"
 	ApplicationNameMetadataKey       = "x-wso2-application-name"
 
+	// Subscription metadata keys for subscription and monetization information.
+	BillingCustomerIDMetadataKey     = "x-wso2-billing-customer-id"
+	BillingSubscriptionIDMetadataKey = "x-wso2-billing-subscription-id"
+	SubscriptionStatusMetadataKey    = "x-wso2-subscription-status"
+	SubscriptionPlanNameMetadataKey  = "x-wso2-subscription-plan-name"
+
 	// Lazy resource type for LLM provider templates
 	lazyResourceTypeLLMProviderTemplate = "LlmProviderTemplate"
 	// Lazy resource type for provider-to-template mapping
@@ -167,6 +173,22 @@ func (a *AnalyticsPolicy) OnResponseHeaders(_ context.Context, respCtx *policy.R
 				"authType", authCtx.AuthType,
 			)
 			break
+		}
+	}
+
+	// Subscription and monetization fields are written to SharedContext.Metadata by subscription-validation policy
+	if md := respCtx.SharedContext.Metadata; md != nil {
+		if v, ok := md[BillingCustomerIDMetadataKey].(string); ok && v != "" {
+			analyticsMetadata[BillingCustomerIDMetadataKey] = v
+		}
+		if v, ok := md[BillingSubscriptionIDMetadataKey].(string); ok && v != "" {
+			analyticsMetadata[BillingSubscriptionIDMetadataKey] = v
+		}
+		if v, ok := md[SubscriptionStatusMetadataKey].(string); ok && v != "" {
+			analyticsMetadata[SubscriptionStatusMetadataKey] = v
+		}
+		if v, ok := md[SubscriptionPlanNameMetadataKey].(string); ok && v != "" {
+			analyticsMetadata[SubscriptionPlanNameMetadataKey] = v
 		}
 	}
 

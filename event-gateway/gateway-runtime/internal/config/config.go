@@ -37,15 +37,19 @@ type Config struct {
 	WebSub       WebSubConfig       `koanf:"websub"`
 	PolicyEngine PolicyEngineConfig `koanf:"policy_engine"`
 	ControlPlane ControlPlaneConfig `koanf:"controlplane"`
+	Logging      LoggingConfig      `koanf:"logging"`
 	RuntimeID    string             `koanf:"runtime_id"`
 }
 
 // ServerConfig holds HTTP/WS server settings.
 type ServerConfig struct {
-	WebSubPort    int `koanf:"websub_port"`
-	WebSocketPort int `koanf:"websocket_port"`
-	AdminPort     int `koanf:"admin_port"`
-	MetricsPort   int `koanf:"metrics_port"`
+	WebSubPort        int    `koanf:"websub_port"`
+	WebSubTLSEnabled  bool   `koanf:"websub_tls_enabled"`
+	WebSubTLSCertFile string `koanf:"websub_tls_cert_file"`
+	WebSubTLSKeyFile  string `koanf:"websub_tls_key_file"`
+	WebSocketPort     int    `koanf:"websocket_port"`
+	AdminPort         int    `koanf:"admin_port"`
+	MetricsPort       int    `koanf:"metrics_port"`
 }
 
 // KafkaConfig holds Kafka connection settings.
@@ -81,6 +85,12 @@ type ControlPlaneConfig struct {
 	NodeID     string `koanf:"node_id"`
 }
 
+// LoggingConfig controls the runtime's structured logger.
+type LoggingConfig struct {
+	Level  string `koanf:"level"`
+	Format string `koanf:"format"`
+}
+
 // DefaultConfig returns configuration with sensible defaults.
 func DefaultConfig() *Config {
 	return &Config{
@@ -101,6 +111,10 @@ func DefaultConfig() *Config {
 			DeliveryMaxDelayMs:         60000,
 			DeliveryConcurrency:        64,
 			DefaultLeaseSeconds:        0,
+		},
+		Logging: LoggingConfig{
+			Level:  "info",
+			Format: "text",
 		},
 	}
 }
@@ -135,14 +149,21 @@ func Load(path string) (*Config, map[string]interface{}, error) {
 		return nil, nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
+	if err := validate(cfg); err != nil {
+		return nil, nil, err
+	}
+
 	// Extract the raw map for policy_configurations (used for ${config} resolution)
 	rawConfig := k.All()
 
 	slog.Info("Configuration loaded",
 		"websub_port", cfg.Server.WebSubPort,
+		"websub_tls_enabled", cfg.Server.WebSubTLSEnabled,
 		"websocket_port", cfg.Server.WebSocketPort,
 		"admin_port", cfg.Server.AdminPort,
 		"kafka_brokers", cfg.Kafka.Brokers,
+		"log_level", cfg.Logging.Level,
+		"log_format", cfg.Logging.Format,
 	)
 
 	return cfg, rawConfig, nil
@@ -164,6 +185,8 @@ func mapEnvKey(key string) string {
 		return "policy_engine." + strings.TrimPrefix(name, "policy_engine_")
 	case strings.HasPrefix(name, "controlplane_"):
 		return "controlplane." + strings.TrimPrefix(name, "controlplane_")
+	case strings.HasPrefix(name, "logging_"):
+		return "logging." + strings.TrimPrefix(name, "logging_")
 	default:
 		// Support generic nested keys using "__" for literal underscores.
 		name = strings.ReplaceAll(name, "__", "%UNDERSCORE%")
@@ -192,7 +215,7 @@ func mapEnvValue(path, value string) interface{} {
 		if n, err := strconv.Atoi(value); err == nil {
 			return n
 		}
-	case "kafka.tls", "controlplane.enabled":
+	case "kafka.tls", "controlplane.enabled", "server.websub_tls_enabled":
 		if b, err := strconv.ParseBool(value); err == nil {
 			return b
 		}
@@ -216,4 +239,29 @@ func splitCSV(value string) []string {
 		out = append(out, part)
 	}
 	return out
+}
+
+func validate(cfg *Config) error {
+	if cfg.Server.WebSubTLSEnabled {
+		if strings.TrimSpace(cfg.Server.WebSubTLSCertFile) == "" {
+			return fmt.Errorf("server.websub_tls_cert_file is required when server.websub_tls_enabled is true")
+		}
+		if strings.TrimSpace(cfg.Server.WebSubTLSKeyFile) == "" {
+			return fmt.Errorf("server.websub_tls_key_file is required when server.websub_tls_enabled is true")
+		}
+	}
+
+	switch cfg.Logging.Level {
+	case "", "debug", "info", "warn", "error":
+	default:
+		return fmt.Errorf("logging.level must be one of debug, info, warn, error")
+	}
+
+	switch cfg.Logging.Format {
+	case "", "text", "json":
+	default:
+		return fmt.Errorf("logging.format must be one of text, json")
+	}
+
+	return nil
 }

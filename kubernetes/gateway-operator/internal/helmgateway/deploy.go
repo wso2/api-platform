@@ -50,6 +50,7 @@ func InstallOrUpgrade(ctx context.Context, in DeployInput) error {
 	return helmClient.InstallOrUpgrade(ctx, helm.InstallOrUpgradeOptions{
 		ReleaseName:     releaseName,
 		Namespace:       in.Namespace,
+		ChartPath:       in.Config.Gateway.HelmChartPath,
 		ChartName:       in.Config.Gateway.HelmChartName,
 		ValuesYAML:      in.ValuesYAML,
 		ValuesFilePath:  in.ValuesFilePath,

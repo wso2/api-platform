@@ -209,7 +209,7 @@ cd gateway
 docker compose up -d
 
 # 2. Deploy test API configuration
-curl -X POST http://localhost:9090/apis \
+curl -X POST http://localhost:9090/api/management/v0.9/rest-apis \
   -H "Content-Type: application/json" \
   -d @examples/test-api.yaml
 
@@ -409,7 +409,7 @@ See `impls/kubernetes-deployment.md` for Kubernetes manifests and deployment gui
 **Issue: Router not receiving configuration from Controller**
 ```bash
 # Check xDS gRPC server is running
-curl http://localhost:9090/health
+curl http://localhost:9092/api/admin/v0.9/health
 
 # Check Router admin interface
 curl http://localhost:9901/config_dump
@@ -425,7 +425,7 @@ export LOG_LEVEL=debug
 export LOG_LEVEL=debug
 
 # Check error response from API
-curl -X POST http://localhost:9090/apis \
+curl -X POST http://localhost:9090/api/management/v0.9/rest-apis \
   -H "Content-Type: application/json" \
   -d @api-config.yaml -v
 ```
@@ -439,7 +439,7 @@ curl http://localhost:9901/config_dump | jq '.configs[2].dynamic_active_clusters
 docker compose logs router | grep "404"
 
 # Verify API configuration matches request
-curl http://localhost:9090/apis/<name>/<version>
+curl http://localhost:9090/api/management/v0.9/rest-apis/<name>/<version>
 ```
 
 ### Debug Mode
@@ -461,7 +461,7 @@ docker compose logs gateway-controller | grep "config_diff"
 
 ```bash
 # Gateway-Controller health
-curl http://localhost:9090/health
+curl http://localhost:9092/api/admin/v0.9/health
 
 # Router admin interface
 curl http://localhost:9901/ready

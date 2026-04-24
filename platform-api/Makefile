@@ -43,6 +43,7 @@ test: ## Run tests
 build: ## Build Docker image
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
 	docker buildx build -f Dockerfile \
+		--build-context common=../common \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg PORT=$(PORT) \
 		-t $(IMAGE_NAME):$(VERSION) \
@@ -66,6 +67,7 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 	@echo "Building and pushing multi-arch Docker image: $(IMAGE_NAME):$(VERSION)"
 	docker buildx build -f Dockerfile \
 		--platform linux/amd64,linux/arm64 \
+		--build-context common=../common \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg PORT=$(PORT) \

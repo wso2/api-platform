@@ -301,24 +301,24 @@ func (s *APIUtilsService) FetchSubscriptionsForAPI(apiID string) ([]models.Subsc
 // controlPlaneAPIKey is the API key response from the control plane REST API.
 // The APIKeyHashes field holds a map of hash algorithm → hash value (e.g. {"sha256": "abc123..."}).
 type controlPlaneAPIKey struct {
-	ETag         string            `json:"etag"`
-	UUID         string            `json:"uuid"`
-	Name         string            `json:"name"`
-	MaskedAPIKey string            `json:"maskedApiKey"`
-	APIKeyHashes map[string]string `json:"apiKeyHashes"`
-	ArtifactUUID string            `json:"artifactUuid"`
-	Status       string            `json:"status"`
-	CreatedAt    time.Time         `json:"createdAt"`
-	CreatedBy    string            `json:"createdBy"`
-	UpdatedAt    time.Time         `json:"updatedAt"`
-	ExpiresAt    *time.Time        `json:"expiresAt"`
-	Source       string            `json:"source"`
-	ExternalRefId *string          `json:"externalRefId"`
-	Issuer       *string           `json:"issuer,omitempty"`
+	ETag          string            `json:"etag"`
+	UUID          string            `json:"uuid"`
+	Name          string            `json:"name"`
+	MaskedAPIKey  string            `json:"maskedApiKey"`
+	APIKeyHashes  map[string]string `json:"apiKeyHashes"`
+	ArtifactUUID  string            `json:"artifactUuid"`
+	Status        string            `json:"status"`
+	CreatedAt     time.Time         `json:"createdAt"`
+	CreatedBy     string            `json:"createdBy"`
+	UpdatedAt     time.Time         `json:"updatedAt"`
+	ExpiresAt     *time.Time        `json:"expiresAt"`
+	Source        string            `json:"source"`
+	ExternalRefId *string           `json:"externalRefId"`
+	Issuer        *string           `json:"issuer,omitempty"`
 }
 
 // FetchAPIKeysByKind fetches all API keys for the given artifact kind from the control plane.
-// Supported kinds: KindLlmProvider, KindLlmProxy, KindRestApi.
+// Supported kinds: KindLlmProvider, KindLlmProxy, KindRestApi, KindWebSubApi.
 // When issuer is non-empty it is appended as a query parameter so the server returns
 // only keys matching that issuer; an empty issuer fetches all keys for the kind.
 // Only active keys that carry a sha256 hash are returned; others are skipped.
@@ -332,6 +332,8 @@ func (s *APIUtilsService) FetchAPIKeysByKind(artifactKind, issuer string) ([]mod
 		path = "/llm-proxies/api-keys"
 	case models.KindRestApi:
 		path = "/apis/api-keys"
+	case models.KindWebSubApi:
+		path = "/websub-apis/api-keys"
 	default:
 		return nil, fmt.Errorf("unsupported artifact kind for API key fetch: %s", artifactKind)
 	}

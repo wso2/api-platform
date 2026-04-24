@@ -5,7 +5,7 @@ This document is a **short maintainer index** for where code and behaviour live.
 ## Goals
 
 - **Gateway (standard API):** Same *infrastructure* role as `APIGateway` — deploy the platform gateway via Helm, discover the gateway-controller **Service**, register it in the in-memory **GatewayRegistry** (no dependency on an `APIGateway` CR for this path).
-- **HTTPRoute:** Same *API* role as `RestApi` — build an `api.yaml`-compatible payload (`APIConfigData`) and call gateway-controller **REST** (`POST`/`PUT` `/rest-apis`, `DELETE` `/rest-apis/{handle}`).
+- **HTTPRoute:** Same *API* role as `RestApi` — build an `api.yaml`-compatible payload (`APIConfigData`) and call gateway-controller **REST** (`POST`/`PUT` `/api/management/v0.9/rest-apis`, `DELETE` `/api/management/v0.9/rest-apis/{handle}`).
 - **Service / APIPolicy / Secret:** Not reconciled as APIs themselves; **HTTPRoute** resolution plus **watches** on **Service**, **`APIPolicy`**, and **Secret** enqueue affected routes when backends, policy CRs, or referenced Secret data change.
 - **`APIPolicy` CR** (`gateway.api-platform.wso2.com/v1alpha1`, plural **`apipolicies`**): Gateway API–only policy attachment; **not** used by `RestApi` / `APIGateway` reconciliation. RestApi continues to embed `Policy` inline on the CR spec.
 
@@ -44,7 +44,7 @@ This document is a **short maintainer index** for where code and behaviour live.
 | Service / `APIPolicy` / Secret → HTTPRoute enqueue | `internal/controller/httproute_enqueue.go` |
 | HTTPRoute → `APIConfigData` mapping | `internal/controller/httproute_mapper.go` |
 | Policy loading (APIPolicy) | `internal/controller/httproute_policies.go` |
-| **`params` `valueFrom` → Secret resolution** (before REST) | `internal/controller/httproute_policy_params_resolve.go` |
+| **`params.valueFrom` → Secret / ConfigMap resolution** (before REST) | `internal/controller/httproute_policy_params_resolve.go` |
 | Annotation / label keys | `internal/controller/gateway_api_annotations.go` |
 | Shared Helm install/uninstall | `internal/helmgateway/deploy.go` |
 | Shared manifest/registry helpers | `internal/controller/gateway_infra.go` |
@@ -65,6 +65,48 @@ This document is a **short maintainer index** for where code and behaviour live.
 
 If the Helm values ConfigMap annotation is **omitted**, the operator uses the default Helm values file from config (same pattern as `APIGateway` without `configRef`).
 
+#### `spec.infrastructure` → gateway-runtime Service
+
+`Gateway.spec.infrastructure` is the Gateway API's standard place for "metadata to apply to any resources created in response to this Gateway". The operator honors it as follows, overlayed onto the gateway-runtime Service:
+
+| Source on the `Gateway` | Applied override |
+| ----------------------- | ---------------- |
+| `spec.infrastructure.annotations["gateway.api-platform.wso2.com/service-type"]` | `gateway.gatewayRuntime.service.type` (must be one of `ClusterIP`, `NodePort`, `LoadBalancer`, `ExternalName`; reconcile fails fast on invalid values) |
+| `spec.infrastructure.annotations` (all other keys) | Deep-merged into `gateway.gatewayRuntime.service.annotations` (e.g. `service.beta.kubernetes.io/aws-load-balancer-*` flows through naturally) |
+| `spec.infrastructure.labels` | Deep-merged into `gateway.gatewayRuntime.service.labels` |
+
+Example:
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+spec:
+  infrastructure:
+    annotations:
+      gateway.api-platform.wso2.com/service-type: LoadBalancer
+      service.beta.kubernetes.io/aws-load-balancer-type: external
+      service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+    labels:
+      team: platform
+```
+
+The reserved `service-type` key is consumed by the operator and **not** copied to the Service's `metadata.annotations`.
+
+#### `spec.listeners[]` → Helm router and Service ports
+
+The operator reads `Gateway.spec.listeners[]` and automatically overrides the Helm values the deployed gateway runtime uses, both for Envoy's listener bindings and for the `gateway-runtime` Kubernetes `Service` that sits in front of it:
+
+| Listener match | Applied overrides |
+| -------------- | ----------------- |
+| First listener with `protocol: HTTP` | `gateway.config.router.listener_port: <port>` **and** `gateway.gatewayRuntime.service.ports.http: <port>` |
+| First listener with `protocol: HTTPS` | `gateway.config.router.https_enabled: true`, `gateway.config.router.https_port: <port>` **and** `gateway.gatewayRuntime.service.ports.https: <port>` |
+| No listener with `protocol: HTTPS` | `gateway.config.router.https_enabled: false` (HTTPS is turned off; existing `https_port` / `service.ports.https` are left untouched) |
+| Listeners with any other protocol (TCP, UDP, TLS) | Ignored |
+
+Keeping the router port and the Service port in sync is required: the gateway-runtime Service template uses `port` as the implicit `targetPort`, so the Service `port` has to equal the port Envoy actually binds to inside the pod. By applying both keys from a single source (`spec.listeners[].port`), the Gateway CR becomes the sole source of truth for addressing.
+
+The overlay is applied **after** the ConfigMap overlay, so Gateway listener ports always win. Non-port values in the Helm values ConfigMap (replicas, image, controller config, TLS/cert wiring, etc.) are preserved.
+
 ### `HTTPRoute`
 
 | Annotation | Meaning |
@@ -73,7 +115,7 @@ If the Helm values ConfigMap annotation is **omitted**, the operator uses the de
 | `gateway.api-platform.wso2.com/context` | Overrides API **context** path. |
 | `gateway.api-platform.wso2.com/display-name` | Overrides display name (default: route `metadata.name`). |
 | `gateway.api-platform.wso2.com/project-id` | User-defined metadata; **all** `HTTPRoute` annotations are copied verbatim into the gateway-controller `api.yaml` payload under `metadata.annotations` (same keys as on the route). |
-| `gateway.api-platform.wso2.com/api-handle` | REST handle for `/rest-apis/{handle}` (default: `{namespace}-{name}` with `/` stripped). |
+| `gateway.api-platform.wso2.com/api-handle` | REST handle for `/api/management/v0.9/rest-apis/{handle}` (default: `{namespace}-{name}` with `/` stripped). |
 | *(no HTTPRoute policy annotations)* | Policy attachment is via `APIPolicy` only (API-level when `spec.targetRef` is set; rule-scope via `ExtensionRef` when `targetRef` is omitted). |
 
 ### `APIPolicy` CR (`gateway.api-platform.wso2.com/v1alpha1`)
@@ -87,9 +129,35 @@ Recommended way to attach policies for **HTTPRoute**-backed APIs (demo: `kuberne
 
 **Per-rule attachment:** `HTTPRouteFilter` with `type: ExtensionRef`, `group: gateway.api-platform.wso2.com`, `kind: APIPolicy`, `name: <metadata.name>`. The referenced CR must exist in the HTTPRoute namespace. If the `APIPolicy` has **`spec.targetRef`**, it must match that route; if **`targetRef`** is omitted, the policy is rule-attached only. **All** entries in `spec.policies` are appended to the operations derived from that rule’s matches. Rules **without** `ExtensionRef` get **no** rule-scoped policies (API-level only, if any).
 
-### `params` and Secrets (`valueFrom`)
+### `params` and external values (`valueFrom`)
 
-Policy `params` may use a nested object that is **only** `{ "valueFrom": { "name", "valueKey" [, "namespace"] } }` (same namespace as the HTTPRoute unless `namespace` is set). Before **`DeployRestAPI`**, the operator **resolves** these to **string** values by reading **`Secret.data[valueKey]`**, so gateway-controller receives the same JSON types as inline `RestApi` policies (e.g. `subscriptionKeyHeader` as a string, not an object). Missing Secret or key → **transient** reconcile error.
+Policy `params` may reference Kubernetes `Secret` or `ConfigMap` data using the same shape as PodSpec `env[].valueFrom`:
+
+```yaml
+params:
+  subscriptionKeyHeader:
+    valueFrom:
+      secretKeyRef:
+        name: demo-creds
+        key: subscriptionKey
+        # namespace: <optional; defaults to the APIPolicy namespace>
+  region:
+    valueFrom:
+      configMapKeyRef:
+        name: demo-config
+        key: region
+```
+
+**Rules (enforced by the resolver in `httproute_policy_params_resolve.go`):**
+
+- The `valueFrom` object must contain **exactly one** of `secretKeyRef` or `configMapKeyRef`; unknown sibling keys are rejected.
+- The selected ref must have non-empty `name` and `key`; unknown fields on the ref are rejected.
+- `namespace` is optional and defaults to the **APIPolicy** namespace (the operator only resolves within the same cluster; cross-namespace is permitted by the resolver but callers are responsible for authorization).
+- `secretKeyRef` reads from `Secret.data[key]`.
+- `configMapKeyRef` reads from `ConfigMap.data[key]`, falling back to `ConfigMap.binaryData[key]` (the bytes are inlined as a UTF-8 string).
+- A missing Secret / ConfigMap or missing key yields a **transient** reconcile error (requeue).
+
+Before **`DeployRestAPI`**, the operator **resolves** each `valueFrom` to a single **string** value replacing the `{ valueFrom: {...} }` object in the JSON tree, so gateway-controller sees the same JSON types as inline `RestApi` policies (e.g. `subscriptionKeyHeader` as a string, not an object).
 
 ## Reconciler behaviour (short)
 
@@ -110,7 +178,7 @@ Policy `params` may use a nested object that is **only** `{ "valueFrom": { "name
 3. Finalizer: `gateway.api-platform.wso2.com/httproute-finalizer`.
 4. **Registry lookup** by parent `namespace/name` (not label-based `RestApi` matching).
 5. Build `APIConfigData` (policies from **`APIPolicy`** CRs and rule **`ExtensionRef`s** — see `httproute_mapper.go` / `httproute_policies.go`).
-6. **`resolveAPIConfigPolicyParamsSecrets`** — replace `params` `valueFrom` blobs with string values from **Secrets** (`httproute_policy_params_resolve.go`).
+6. **`resolveAPIConfigPolicyParamsValueFrom`** — replace `params.valueFrom.secretKeyRef` / `configMapKeyRef` blobs with string values from **Secrets** / **ConfigMaps** (`httproute_policy_params_resolve.go`).
 7. Serialize → YAML via `gatewayclient.BuildRestAPIYAML` (`apiVersion` `gateway.api-platform.wso2.com/v1alpha1`, `Kind` `RestApi`).
 8. Auth: `GetAuthSettingsForRegistryGateway` (Helm values ConfigMap on `GatewayInfo` if set, else `APIGateway` CR with same name if present).
 9. `RestAPIExists` + `DeployRestAPI`; update **`status.parents`** entry with `ControllerName` `gateway.api-platform.wso2.com/gateway-operator`.
@@ -122,9 +190,10 @@ Policy `params` may use a nested object that is **only** `{ "valueFrom": { "name
 | ----- | --------- |
 | **Service** | On create/update/delete, list **`HTTPRoute`s** and enqueue those whose **backendRefs** reference that Service (namespace + name). |
 | **`APIPolicy`** | On create/update/delete, enqueue the **`HTTPRoute`** named in **`spec.targetRef`** when set; otherwise enqueue HTTPRoutes in the same namespace that reference this policy via rule **`ExtensionRef`**. Ensures policy CR edits redeploy without mutating the route. |
-| **Secret** | On create/update/delete (predicate skips **`kubernetes.io/service-account-token`**), list **`APIPolicy`** cluster-wide; if any **`spec.policies[].params`** JSON references the Secret via **`valueFrom`** (see `apiPolicyReferencesSecret` / tree walk), enqueue the affected HTTPRoute(s) (via **`targetRef`** or **`ExtensionRef`**). Ensures credential rotation triggers redeploy. |
+| **Secret** | On create/update/delete (predicate skips **`kubernetes.io/service-account-token`**), list **`APIPolicy`** cluster-wide; if any **`spec.policies[].params`** JSON references the Secret via **`valueFrom.secretKeyRef`** (see `apiPolicyReferencesValueFrom` / tree walk), enqueue the affected HTTPRoute(s) (via **`targetRef`** or **`ExtensionRef`**). Ensures credential rotation triggers redeploy. |
+| **ConfigMap** | Symmetric to the **Secret** watch: on create/update/delete, enqueue HTTPRoutes whose APIPolicy `params` reference this ConfigMap via **`valueFrom.configMapKeyRef`**. Enables live reload of non-sensitive policy inputs (e.g. model pricing JSON, regional config). |
 
-`SetupWithManager` wires all three in `httproute_controller.go`.
+`SetupWithManager` wires all four in `httproute_controller.go`.
 
 ## RBAC
 

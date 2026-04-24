@@ -1,5 +1,5 @@
 -- SQLite Schema for Gateway-Controller API Configurations
--- Version: 1
+-- Version: 2
 
 -- Base table for all artifact types (REST APIs, WebSub APIs, LLM Providers, LLM Proxies, MCP Proxies)
 CREATE TABLE IF NOT EXISTS artifacts (
@@ -201,6 +201,10 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     application_id TEXT,
     subscription_token_hash TEXT NOT NULL,
     subscription_plan_id TEXT,
+    -- NEW COLUMNS: billing_customer_id and billing_subscription_id must be added
+    -- to existing deployments via ALTER TABLE migration.
+    billing_customer_id TEXT,
+    billing_subscription_id TEXT,
     status TEXT NOT NULL CHECK(status IN ('ACTIVE', 'INACTIVE', 'REVOKED')) DEFAULT 'ACTIVE',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -269,4 +273,4 @@ CREATE TABLE IF NOT EXISTS secrets (
     PRIMARY KEY (gateway_id, handle)
 );
 
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;

@@ -4,11 +4,11 @@ This is a **separate** manifest set from [`../gateway-api-operator-demo`](../gat
 
 1. **API-level policies** — `APIPolicy` objects with **`spec.targetRef`** set to the **HTTPRoute** and one or more entries in **`spec.policies`** (same shape as RestApi embedded policies). All entries are merged into `APIConfigData.policies` (ordered by `APIPolicy` name, then list order).
 2. **Rule / resource scope** — `APIPolicy` objects **without** **`spec.targetRef`** are not loaded as API-level; reference them only from **`spec.rules[].filters`** with **`type: ExtensionRef`**. **All** entries in **`spec.policies`** on the referenced `APIPolicy` apply to operations derived from that rule’s matches.
-3. **Secret-backed params** — `02` + `03` add a **`Secret`**, an `APIPolicy` whose **`params`** use nested **`valueFrom`** (`name` / `valueKey`), and a second **`HTTPRoute`** so you can validate Secret watch → HTTPRoute re-reconcile (patch the Secret data and confirm the operator redeploys).
+3. **External params** — `02` + `03` add a **`Secret`**, an `APIPolicy` whose **`params`** use the k8s-native **`valueFrom`** shape (**`secretKeyRef`** / **`configMapKeyRef`** with `{name, key, namespace?}`), and a second **`HTTPRoute`** so you can validate the Secret/ConfigMap watch → HTTPRoute re-reconcile (patch the Secret or ConfigMap data and confirm the operator redeploys).
 
-There are **no** policy ConfigMaps or inline policy annotations in this demo (policies are attached only via `APIPolicy`).
+There are **no** inline policy annotations in this demo (policies are attached only via `APIPolicy`). ConfigMaps are supported purely as an external value source via **`valueFrom.configMapKeyRef`**, never as a policy attachment mechanism.
 
-When **`spec.policies[].params`** embed **`valueFrom`** (e.g. `name` / `valueKey`, optional `namespace`), the operator watches those **Secrets** and re-reconciles the target **HTTPRoute** when referenced Secret data changes. `ServiceAccount` token secrets are ignored by the watch.
+When **`spec.policies[].params`** embed **`valueFrom`** with either **`secretKeyRef`** or **`configMapKeyRef`** (optional cross-namespace `namespace`), the operator watches the referenced **Secrets** / **ConfigMaps** and re-reconciles the target **HTTPRoute** when their data changes. `ServiceAccount` token secrets are ignored by the watch.
 
 ## Prerequisites
 
@@ -60,7 +60,7 @@ kubectl get httproute -n gateway-api-demo hello-apipolicy-secrets-demo -o yaml
 kubectl get apipolicy,secret -n gateway-api-demo
 ```
 
-2. Operator logs and optional gateway-controller **`GET /rest-apis/{handle}`** payload.
+2. Operator logs and optional gateway-controller **`GET /api/management/v0.9/rest-apis/{handle}`** payload.
 
 3. Curl (HTTPS, self-signed):
 
@@ -86,7 +86,9 @@ curl --request GET \
   --header 'Accept: application/json' -k
 ```
 
-**Validate Secret watch:** change `subscriptionKey` in `Secret/httproute-demo-policy-credentials` (e.g. `kubectl edit secret -n gateway-api-demo httproute-demo-policy-credentials` or patch `stringData`). The operator resolves **`params.valueFrom`** to string values before calling gateway-controller, and should re-reconcile **`hello-apipolicy-secrets-demo`** without editing the HTTPRoute.
+**Validate Secret watch:** change `subscriptionKey` in `Secret/httproute-demo-policy-credentials` (e.g. `kubectl edit secret -n gateway-api-demo httproute-demo-policy-credentials` or patch `stringData`). The operator resolves **`params.valueFrom.secretKeyRef`** to a plain string before calling gateway-controller, and should re-reconcile **`hello-apipolicy-secrets-demo`** without editing the HTTPRoute.
+
+**Validate ConfigMap watch:** the ConfigMap watch fires symmetrically for **`valueFrom.configMapKeyRef`** references. Try adding a `ConfigMap` (e.g. `kubectl create configmap demo-config -n gateway-api-demo --from-literal=region=us-east-1`), swap the `httproute-demo-rule-secret-params` `APIPolicy` to reference it via `configMapKeyRef: { name: demo-config, key: region }`, then edit the ConfigMap and watch the operator redeploy.
 
 ## Files
 
@@ -94,7 +96,7 @@ curl --request GET \
 |------|---------|
 | `00-apipolicies.yaml` | API-level `APIPolicy` (`targetRef` → `hello-apipolicy-demo`) + rule-scoped `APIPolicy` (no `targetRef`). |
 | `01-httproute.yaml` | HTTPRoute with **ExtensionRef** to the rule-scoped `APIPolicy` and optional `project-id` annotation propagated to payload metadata. |
-| `02-secret-and-apipolicy.yaml` | `Secret` + rule `APIPolicy` with **`params.valueFrom`** (no `targetRef`; referenced from `03` HTTPRoute only). |
+| `02-secret-and-apipolicy.yaml` | `Secret` + rule `APIPolicy` with **`params.valueFrom.secretKeyRef`** (no `targetRef`; referenced from `03` HTTPRoute only). Includes a commented `configMapKeyRef` example. |
 | `03-httproute-secret-policy.yaml` | Second HTTPRoute; **ExtensionRef** to the secret-backed `APIPolicy`. |
 
 ## Policy attachment (operator)

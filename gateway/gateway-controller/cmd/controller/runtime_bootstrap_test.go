@@ -89,6 +89,34 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_LoadsFromDatabase(t *te
 	assert.False(t, ok)
 }
 
+func TestLoadRuntimeConfigsFromExistingAPIConfigurations_SkipsWebSubAPI(t *testing.T) {
+	runtimeStore := storage.NewRuntimeConfigStore()
+	transformer := &fakeRuntimeTransformer{}
+
+	configs := []*models.StoredConfig{
+		{UUID: "websub-1", Kind: models.KindWebSubApi, Handle: "websub-api", DisplayName: "WebSub API", Version: "v1"},
+		{UUID: "rest-1", Kind: models.KindRestApi, Handle: "rest-api", DisplayName: "Rest API", Version: "v1"},
+	}
+
+	loadedCount, err := loadRuntimeConfigsFromExistingAPIConfigurations(
+		configs,
+		runtimeStore,
+		nil,
+		transformer,
+		newDiscardLogger(),
+		false,
+	)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 1, loadedCount)
+	assert.Equal(t, []string{storage.Key(models.KindRestApi, "rest-api")}, transformer.calls)
+
+	_, ok := runtimeStore.Get(storage.Key(models.KindWebSubApi, "websub-api"))
+	assert.False(t, ok)
+	_, ok = runtimeStore.Get(storage.Key(models.KindRestApi, "rest-api"))
+	assert.True(t, ok)
+}
+
 func TestLoadRuntimeConfigsFromExistingAPIConfigurations_ContinuesAfterRenderFailureWhenSkippingInvalid(t *testing.T) {
 	runtimeStore := storage.NewRuntimeConfigStore()
 	secretResolver := &fakeSecretResolver{

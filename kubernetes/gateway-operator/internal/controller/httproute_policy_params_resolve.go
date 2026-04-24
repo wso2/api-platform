@@ -32,18 +32,37 @@ import (
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
 )
 
-// resolveAPIConfigPolicyParamsSecrets replaces params.valueFrom objects with string values read from Secrets
-// so gateway-controller receives the same JSON shape as inline RestApi policies.
-func resolveAPIConfigPolicyParamsSecrets(ctx context.Context, c client.Client, routeNS string, spec *apiv1.APIConfigData, log *zap.Logger) error {
+// Reserved keys for the k8s-native valueFrom shape used inside policy params:
+//
+//	valueFrom:
+//	  secretKeyRef:     { name, key, namespace? }
+//	  configMapKeyRef:  { name, key, namespace? }
+//
+// Exactly one of secretKeyRef / configMapKeyRef must be set; both paths resolve to a
+// single string value that replaces the `{ valueFrom: {...} }` object in the JSON tree
+// before gateway-controller is called.
+const (
+	valueFromKey        = "valueFrom"
+	secretKeyRefKey     = "secretKeyRef"
+	configMapKeyRefKey  = "configMapKeyRef"
+	keyRefFieldName     = "name"
+	keyRefFieldKey      = "key"
+	keyRefFieldNamespac = "namespace"
+)
+
+// resolveAPIConfigPolicyParamsValueFrom replaces policy params `valueFrom` objects with
+// string values read from either a Secret or a ConfigMap, so gateway-controller receives
+// the same JSON shape as inline RestApi policies.
+func resolveAPIConfigPolicyParamsValueFrom(ctx context.Context, c client.Client, routeNS string, spec *apiv1.APIConfigData, log *zap.Logger) error {
 	for i := range spec.Policies {
-		if err := resolvePolicyParamsSecrets(ctx, c, routeNS, &spec.Policies[i], "api-level", log); err != nil {
+		if err := resolvePolicyParamsValueFrom(ctx, c, routeNS, &spec.Policies[i], "api-level", log); err != nil {
 			return err
 		}
 	}
 	for i := range spec.Operations {
 		for j := range spec.Operations[i].Policies {
 			scope := string(spec.Operations[i].Method) + " " + spec.Operations[i].Path
-			if err := resolvePolicyParamsSecrets(ctx, c, routeNS, &spec.Operations[i].Policies[j], scope, log); err != nil {
+			if err := resolvePolicyParamsValueFrom(ctx, c, routeNS, &spec.Operations[i].Policies[j], scope, log); err != nil {
 				return err
 			}
 		}
@@ -51,7 +70,7 @@ func resolveAPIConfigPolicyParamsSecrets(ctx context.Context, c client.Client, r
 	return nil
 }
 
-func resolvePolicyParamsSecrets(ctx context.Context, c client.Client, defaultNS string, p *apiv1.Policy, scope string, log *zap.Logger) error {
+func resolvePolicyParamsValueFrom(ctx context.Context, c client.Client, defaultNS string, p *apiv1.Policy, scope string, log *zap.Logger) error {
 	if p.Params == nil || len(p.Params.Raw) == 0 {
 		return nil
 	}
@@ -101,28 +120,123 @@ func resolveValueFromInJSON(ctx context.Context, c client.Client, defaultNS stri
 	}
 }
 
-// tryResolveValueFromMap resolves maps that are exclusively { "valueFrom": { name, valueKey [, namespace] } }.
+// tryResolveValueFromMap resolves a leaf map that is exclusively
+//
+//	{ "valueFrom": { "secretKeyRef":    { name, key, namespace? } } }
+//	{ "valueFrom": { "configMapKeyRef": { name, key, namespace? } } }
+//
+// Returns (value, true, nil) when the map was consumed as a value-from reference,
+// (_, false, nil) when it should be treated as a regular nested object and recursed
+// into, or (_, true, err) when the shape is malformed or the resource/key is missing.
 func tryResolveValueFromMap(ctx context.Context, c client.Client, defaultNS string, m map[string]interface{}, policyName, scope string, log *zap.Logger) (string, bool, error) {
 	if len(m) != 1 {
 		return "", false, nil
 	}
-	vf, ok := m["valueFrom"]
+	rawVF, ok := m[valueFromKey]
 	if !ok {
 		return "", false, nil
 	}
-	inner, ok := vf.(map[string]interface{})
+	inner, ok := rawVF.(map[string]interface{})
 	if !ok {
-		return "", false, nil
+		return "", true, newInvalidHTTPRouteConfigError("policy %q params: %q must be an object", policyName, valueFromKey)
 	}
-	name, _ := inner["name"].(string)
-	key, _ := inner["valueKey"].(string)
-	if strings.TrimSpace(name) == "" || strings.TrimSpace(key) == "" {
-		return "", false, newInvalidHTTPRouteConfigError(`valueFrom requires "name" and "valueKey"`)
+
+	kind, ref, err := selectValueFromRef(inner, policyName)
+	if err != nil {
+		return "", true, err
+	}
+
+	name, key, ns, err := readKeyRef(ref, defaultNS, policyName, kind)
+	if err != nil {
+		return "", true, err
+	}
+
+	switch kind {
+	case secretKeyRefKey:
+		return resolveSecretKeyRef(ctx, c, ns, name, key, policyName, scope, log)
+	case configMapKeyRefKey:
+		return resolveConfigMapKeyRef(ctx, c, ns, name, key, policyName, scope, log)
+	default:
+		return "", true, newInvalidHTTPRouteConfigError("policy %q params: unsupported valueFrom kind %q", policyName, kind)
+	}
+}
+
+// selectValueFromRef enforces that exactly one of secretKeyRef / configMapKeyRef is set
+// inside a valueFrom object, and that no unknown sibling keys are present. Returns the
+// kind string (secretKeyRefKey | configMapKeyRefKey) and the ref map.
+func selectValueFromRef(inner map[string]interface{}, policyName string) (string, map[string]interface{}, error) {
+	var selectedKind string
+	var selectedRef map[string]interface{}
+	var unknown []string
+	for k, v := range inner {
+		switch k {
+		case secretKeyRefKey, configMapKeyRefKey:
+			m, ok := v.(map[string]interface{})
+			if !ok {
+				return "", nil, newInvalidHTTPRouteConfigError("policy %q params: %s must be an object", policyName, k)
+			}
+			if selectedKind != "" {
+				return "", nil, newInvalidHTTPRouteConfigError(
+					"policy %q params: valueFrom requires exactly one of %s/%s, got both",
+					policyName, secretKeyRefKey, configMapKeyRefKey)
+			}
+			selectedKind = k
+			selectedRef = m
+		default:
+			unknown = append(unknown, k)
+		}
+	}
+	if len(unknown) > 0 {
+		return "", nil, newInvalidHTTPRouteConfigError(
+			"policy %q params: unknown valueFrom field(s) %v (expected one of %s, %s)",
+			policyName, unknown, secretKeyRefKey, configMapKeyRefKey)
+	}
+	if selectedKind == "" {
+		return "", nil, newInvalidHTTPRouteConfigError(
+			"policy %q params: valueFrom requires one of %s or %s",
+			policyName, secretKeyRefKey, configMapKeyRefKey)
+	}
+	return selectedKind, selectedRef, nil
+}
+
+// readKeyRef validates {name, key, namespace?} on a secretKeyRef/configMapKeyRef map.
+// Returns the resolved (name, key, namespace) where namespace falls back to defaultNS
+// when omitted.
+func readKeyRef(ref map[string]interface{}, defaultNS, policyName, kind string) (string, string, string, error) {
+	name, _ := ref[keyRefFieldName].(string)
+	key, _ := ref[keyRefFieldKey].(string)
+	name = strings.TrimSpace(name)
+	key = strings.TrimSpace(key)
+	if name == "" || key == "" {
+		return "", "", "", newInvalidHTTPRouteConfigError(
+			"policy %q params: %s requires non-empty %q and %q",
+			policyName, kind, keyRefFieldName, keyRefFieldKey)
 	}
 	ns := defaultNS
-	if n, ok := inner["namespace"].(string); ok && strings.TrimSpace(n) != "" {
-		ns = strings.TrimSpace(n)
+	if rawNS, ok := ref[keyRefFieldNamespac]; ok {
+		s, ok := rawNS.(string)
+		if !ok {
+			return "", "", "", newInvalidHTTPRouteConfigError(
+				"policy %q params: %s.namespace must be a string", policyName, kind)
+		}
+		if trimmed := strings.TrimSpace(s); trimmed != "" {
+			ns = trimmed
+		}
 	}
+	// Reject unknown fields on the ref so typos surface.
+	for k := range ref {
+		switch k {
+		case keyRefFieldName, keyRefFieldKey, keyRefFieldNamespac:
+		default:
+			return "", "", "", newInvalidHTTPRouteConfigError(
+				"policy %q params: unknown field %q on %s (expected %s, %s, %s)",
+				policyName, k, kind, keyRefFieldName, keyRefFieldKey, keyRefFieldNamespac)
+		}
+	}
+	return name, key, ns, nil
+}
+
+func resolveSecretKeyRef(ctx context.Context, c client.Client, ns, name, key, policyName, scope string, log *zap.Logger) (string, bool, error) {
 	sec := &corev1.Secret{}
 	if err := c.Get(ctx, types.NamespacedName{Namespace: ns, Name: name}, sec); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -135,13 +249,58 @@ func tryResolveValueFromMap(ctx context.Context, c client.Client, defaultNS stri
 		return "", true, newTransientHTTPRouteConfigError("Secret %s/%s has no non-empty data key %q", ns, name, key)
 	}
 	if log != nil {
-		log.Debug("resolved policy param from Secret (valueFrom)",
+		log.Debug("resolved policy param from Secret (valueFrom.secretKeyRef)",
 			zap.String("policy", policyName),
 			zap.String("scope", scope),
 			zap.String("secretNamespace", ns),
 			zap.String("secret", name),
-			zap.String("valueKey", key),
+			zap.String("key", key),
 			zap.Int("valueLength", len(data)))
 	}
 	return string(data), true, nil
+}
+
+func resolveConfigMapKeyRef(ctx context.Context, c client.Client, ns, name, key, policyName, scope string, log *zap.Logger) (string, bool, error) {
+	cm := &corev1.ConfigMap{}
+	if err := c.Get(ctx, types.NamespacedName{Namespace: ns, Name: name}, cm); err != nil {
+		if apierrors.IsNotFound(err) {
+			return "", true, newTransientHTTPRouteConfigError("ConfigMap %s/%s not found: %w", ns, name, err)
+		}
+		return "", true, err
+	}
+	if v, ok := cm.Data[key]; ok {
+		if v == "" {
+			return "", true, newTransientHTTPRouteConfigError("ConfigMap %s/%s has empty data key %q", ns, name, key)
+		}
+		if log != nil {
+			log.Debug("resolved policy param from ConfigMap (valueFrom.configMapKeyRef)",
+				zap.String("policy", policyName),
+				zap.String("scope", scope),
+				zap.String("configMapNamespace", ns),
+				zap.String("configMap", name),
+				zap.String("key", key),
+				zap.String("source", "data"),
+				zap.Int("valueLength", len(v)))
+		}
+		return v, true, nil
+	}
+	if v, ok := cm.BinaryData[key]; ok {
+		if len(v) == 0 {
+			return "", true, newTransientHTTPRouteConfigError("ConfigMap %s/%s has empty binaryData key %q", ns, name, key)
+		}
+		if log != nil {
+			log.Debug("resolved policy param from ConfigMap (valueFrom.configMapKeyRef)",
+				zap.String("policy", policyName),
+				zap.String("scope", scope),
+				zap.String("configMapNamespace", ns),
+				zap.String("configMap", name),
+				zap.String("key", key),
+				zap.String("source", "binaryData"),
+				zap.Int("valueLength", len(v)))
+		}
+		return string(v), true, nil
+	}
+	return "", true, newTransientHTTPRouteConfigError(
+		"ConfigMap %s/%s has no key %q in data or binaryData",
+		ns, name, key)
 }

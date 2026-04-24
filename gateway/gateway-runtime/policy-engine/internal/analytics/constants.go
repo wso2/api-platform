@@ -173,4 +173,13 @@ const (
 	anonymousValue = "anonymous"
 	// Unknown is the default value used for unassigned properties.
 	Unknown = "UNKNOWN"
+
+	// BillingCustomerIDKey is the key for the billing customer ID.
+	BillingCustomerIDKey = Wso2MetadataPrefix + "billing-customer-id"
+	// BillingSubscriptionIDKey is the key for the billing subscription ID.
+	BillingSubscriptionIDKey = Wso2MetadataPrefix + "billing-subscription-id"
+	// SubscriptionStatusKey is the key for the subscription status.
+	SubscriptionStatusKey = Wso2MetadataPrefix + "subscription-status"
+	// SubscriptionPlanNameKey is the key for the subscription plan name.
+	SubscriptionPlanNameKey = Wso2MetadataPrefix + "subscription-plan-name"
 )

@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"gopkg.in/yaml.v3"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
@@ -753,6 +754,30 @@ func (r *GatewayReconciler) applyGatewayManifest(ctx context.Context, owner *api
 	return r.deployGatewayWithHelm(ctx, owner, namespace, dockerUserName, dockerPassword)
 }
 
+// buildCRValuesOverlay generates a Helm values YAML overlay from CR infrastructure labels/annotations.
+// The overlay sets commonLabels and commonAnnotations so they propagate to all gateway resources.
+func buildCRValuesOverlay(owner *apiv1.APIGateway) (string, error) {
+	if owner.Spec.Infrastructure == nil {
+		return "", nil
+	}
+	infra := owner.Spec.Infrastructure
+	if len(infra.Labels) == 0 && len(infra.Annotations) == 0 {
+		return "", nil
+	}
+	overlay := map[string]interface{}{}
+	if len(infra.Labels) > 0 {
+		overlay["commonLabels"] = infra.Labels
+	}
+	if len(infra.Annotations) > 0 {
+		overlay["commonAnnotations"] = infra.Annotations
+	}
+	out, err := yaml.Marshal(overlay)
+	if err != nil {
+		return "", fmt.Errorf("marshal CR values overlay: %w", err)
+	}
+	return string(out), nil
+}
+
 // deployGatewayWithHelm deploys the gateway using Helm chart
 func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *apiv1.APIGateway, namespace, dockerUserName, dockerPassword string) error {
 	log := r.Logger.With(zap.String("controller", "APIGateway"), zap.String("name", owner.Name))
@@ -760,18 +785,34 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 	valuesFilePath := r.Config.Gateway.HelmValuesFilePath
 	var valuesYAML string
 
+	// Build CR-derived values overlay from spec.infrastructure labels/annotations.
+	// This is the lowest-priority override (ConfigMap can override these).
+	crOverlay, err := buildCRValuesOverlay(owner)
+	if err != nil {
+		return fmt.Errorf("failed to build CR values overlay: %w", err)
+	}
+
 	if owner.Spec.ConfigRef != nil {
 		configMapValues, err := configMapValuesYAML(ctx, r.Client, owner.Spec.ConfigRef.Name, namespace)
 		if err != nil {
 			return fmt.Errorf("failed to get ConfigMap values: %w", err)
 		}
-		valuesYAML = configMapValues
-		log.Info("Merging Helm values: operator base file + APIGateway ConfigMap overlay",
+		// Merge order: CR overlay (base) → ConfigMap (higher priority)
+		if crOverlay != "" {
+			valuesYAML, err = helm.MergeValuesYAML(crOverlay, configMapValues)
+			if err != nil {
+				return fmt.Errorf("failed to merge CR overlay with ConfigMap values: %w", err)
+			}
+		} else {
+			valuesYAML = configMapValues
+		}
+		log.Info("Merging Helm values: operator base file + CR overlay + APIGateway ConfigMap overlay",
 			zap.String("configMap", owner.Spec.ConfigRef.Name),
 			zap.String("namespace", namespace),
 			zap.String("values_file", valuesFilePath))
 	} else {
-		log.Info("Using default Helm values file",
+		valuesYAML = crOverlay
+		log.Info("Using default Helm values file with CR overlay",
 			zap.String("values_file", valuesFilePath))
 	}
 

@@ -107,7 +107,7 @@ services:
       mock-platform-api:
         condition: service_started
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9092/health || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9092/api/admin/v0.9/health || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 10

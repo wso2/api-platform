@@ -18,7 +18,7 @@
 
 services:
   gateway-controller:
-    image: ghcr.io/wso2/api-platform/gateway-controller:1.1.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/event-gateway-controller:0.1.0-SNAPSHOT
     build:
       context: ../gateway/gateway-controller
       dockerfile: Dockerfile
@@ -37,7 +37,7 @@ services:
       - APIP_GW_CONTROLLER_LOGGING_LEVEL=info
       - APIP_GW_DEVELOPMENT_MODE=true
       - APIP_GW_ROUTER_EVENT__GATEWAY_ENABLED=true
-      - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB_URL=http://event-gateway:8080
+      - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB_URL=https://event-gateway:8080
       - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB_PORT=8080
       - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB__LISTENER__PORT=8080
       - APIP_GW_ROUTER_EVENT__GATEWAY_TIMEOUT__SECONDS=30
@@ -71,18 +71,21 @@ services:
       - APIP_EGW_SERVER_WEBSUB_PORT=8080
       - APIP_EGW_SERVER_WEBSOCKET_PORT=8081
       - APIP_EGW_CONTROLPLANE_ENABLED=true
+      - APIP_EGW_LOGGING_LEVEL=debug
       - APIP_EGW_CONTROLPLANE_XDS_ADDRESS=gateway-controller:18001
     extra_hosts:
       # Allow callbacks to services running on the Docker host (useful on Linux).
       - "host.docker.internal:host-gateway"
     volumes:
+      - ../gateway/gateway-controller/listener-certs:/etc/event-gateway/tls:ro
       - ./gateway-runtime/configs/config.toml:/etc/event-gateway/config.toml:ro
       - ./gateway-runtime/configs/channels.yaml:/etc/event-gateway/channels.yaml:ro
     depends_on:
       gateway-controller:
         condition: service_started
       kafka:
-        condition: service_healthy
+        # condition: service_healthy
+        condition: service_started
     networks:
       - egw-network
 
@@ -105,17 +108,17 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-    healthcheck:
-      test: ["CMD", "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "kafka:29092", "--list"]
-      interval: 2s
-      timeout: 3s
-      start_period: 5s
-      retries: 15
+    # healthcheck:
+    #   test: ["CMD", "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "kafka:29092", "--list"]
+    #   interval: 2s
+    #   timeout: 3s
+    #   start_period: 5s
+    #   retries: 15
     networks:
       - egw-network
 
   wh-listener:
-    image: event-gateway/webhook-listener:local
+    image: ghcr.io/wso2/api-platform/webhook-listener:0.1.0-SNAPSHOT
     build:
       context: webhook-listener
       dockerfile: Dockerfile

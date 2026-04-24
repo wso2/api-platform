@@ -38,7 +38,7 @@ ap gateway health`
 var healthCmd = &cobra.Command{
 	Use:     HealthCmdLiteral,
 	Short:   "Check the health status of the current gateway",
-	Long:    "Returns the health status of the currently active gateway by calling its /health endpoint.",
+	Long:    "Returns the health status of the currently active gateway by calling its " + utils.GatewayHealthPath + " endpoint.",
 	Example: HealthCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runHealthCommand(); err != nil {
