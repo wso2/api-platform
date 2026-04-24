@@ -84,7 +84,8 @@ services:
       gateway-controller:
         condition: service_started
       kafka:
-        condition: service_healthy
+        # condition: service_healthy
+        condition: service_started
     networks:
       - egw-network
 
@@ -107,12 +108,12 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-    healthcheck:
-      test: ["CMD", "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "kafka:29092", "--list"]
-      interval: 2s
-      timeout: 3s
-      start_period: 5s
-      retries: 15
+    # healthcheck:
+    #   test: ["CMD", "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "kafka:29092", "--list"]
+    #   interval: 2s
+    #   timeout: 3s
+    #   start_period: 5s
+    #   retries: 15
     networks:
       - egw-network
 

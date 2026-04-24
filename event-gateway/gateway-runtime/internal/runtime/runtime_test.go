@@ -20,7 +20,10 @@ package runtime
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/binding"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
@@ -121,7 +124,83 @@ func TestRemoveWebSubApiBinding_ClearsStalePolicyChains(t *testing.T) {
 	}
 }
 
+func TestStartReceiverWithRetry_RetriesUntilSuccess(t *testing.T) {
+	previousInitial := initialReceiverStartBackoff
+	previousMax := maxReceiverStartBackoff
+	initialReceiverStartBackoff = time.Millisecond
+	maxReceiverStartBackoff = time.Millisecond
+	defer func() {
+		initialReceiverStartBackoff = previousInitial
+		maxReceiverStartBackoff = previousMax
+	}()
+
+	rt := &Runtime{}
+	receiver := &flakyReceiver{failuresLeft: 2}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	if err := rt.startReceiverWithRetry(ctx, "test-binding", receiver); err != nil {
+		t.Fatalf("startReceiverWithRetry returned error: %v", err)
+	}
+	if got := receiver.Attempts(); got != 3 {
+		t.Fatalf("expected 3 start attempts, got %d", got)
+	}
+}
+
+func TestStartReceiverWithRetry_StopsWhenContextIsCanceled(t *testing.T) {
+	previousInitial := initialReceiverStartBackoff
+	previousMax := maxReceiverStartBackoff
+	initialReceiverStartBackoff = time.Millisecond
+	maxReceiverStartBackoff = time.Millisecond
+	defer func() {
+		initialReceiverStartBackoff = previousInitial
+		maxReceiverStartBackoff = previousMax
+	}()
+
+	rt := &Runtime{}
+	receiver := &flakyReceiver{failuresLeft: 100}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancel()
+
+	if err := rt.startReceiverWithRetry(ctx, "test-binding", receiver); err == nil {
+		t.Fatal("expected startReceiverWithRetry to return an error when context is canceled")
+	}
+	if got := receiver.Attempts(); got < 2 {
+		t.Fatalf("expected multiple start attempts before cancellation, got %d", got)
+	}
+}
+
 type testNoopPolicy struct{}
+
+type flakyReceiver struct {
+	mu           sync.Mutex
+	failuresLeft int
+	attempts     int
+}
+
+func (r *flakyReceiver) Start(context.Context) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.attempts++
+	if r.failuresLeft > 0 {
+		r.failuresLeft--
+		return errors.New("broker unavailable")
+	}
+	return nil
+}
+
+func (r *flakyReceiver) Stop(context.Context) error {
+	return nil
+}
+
+func (r *flakyReceiver) Attempts() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.attempts
+}
 
 func newTestNoopPolicy(policy.PolicyMetadata, map[string]interface{}) (policy.Policy, error) {
 	return testNoopPolicy{}, nil
