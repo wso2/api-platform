@@ -309,13 +309,27 @@ data:
       path: /{country}/{city}
 ```
 
-Response:
+Response (the server echoes back the full k8s-shaped resource with a
+server-managed `status` block):
 ```json
 {
-  "status": "success",
-  "message": "API configuration created successfully",
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "created_at": "2025-10-12T15:45:00Z"
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "RestApi",
+  "metadata": { "name": "weather-api-v1.0" },
+  "spec": {
+    "displayName": "Weather API",
+    "version": "v1.0",
+    "context": "/weather",
+    "upstream": { "main": { "url": "http://api.weather.com/api/v2" } },
+    "operations": [ { "method": "GET", "path": "/{country}/{city}" } ]
+  },
+  "status": {
+    "id": "weather-api-v1.0",
+    "state": "deployed",
+    "createdAt": "2025-10-12T15:45:00Z",
+    "updatedAt": "2025-10-12T15:45:00Z",
+    "deployedAt": "2025-10-12T15:45:00Z"
+  }
 }
 ```
 

@@ -2633,6 +2633,11 @@ func (s *sqlStore) SaveSecret(secret *models.Secret) error {
 		return fmt.Errorf("failed to save secret: %w", err)
 	}
 
+	// Reflect the persisted timestamps back onto the caller's struct so the
+	// handler layer can surface them in the response without a round-trip read.
+	secret.CreatedAt = now
+	secret.UpdatedAt = now
+
 	metrics.DatabaseOperationsTotal.WithLabelValues("insert", table, "success").Inc()
 	metrics.DatabaseOperationDurationSeconds.WithLabelValues("insert", table).Observe(time.Since(startTime).Seconds())
 

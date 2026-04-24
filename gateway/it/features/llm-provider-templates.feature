@@ -60,18 +60,18 @@ Feature: LLM Provider Template Management
     Then the response status code should be 201
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
-    And the JSON response field "id" should be "openai-test"
-    And the JSON response field "message" should be "LLM provider template created successfully"
+    And the JSON response field "status.id" should be "openai-test"
+    And the JSON response field "metadata.name" should be "openai-test"
 
     Given I authenticate using basic auth as "admin"
     When I retrieve the LLM provider template "openai-test"
     Then the response status code should be 200
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
-    And the JSON response field "template.id" should be "openai-test"
-    And the JSON response field "template.configuration.spec.displayName" should be "OpenAI"
-    And the JSON response field "template.configuration.spec.promptTokens.location" should be "payload"
-    And the JSON response field "template.configuration.spec.promptTokens.identifier" should be "$.usage.prompt_tokens"
+    And the JSON response field "status.id" should be "openai-test"
+    And the JSON response field "spec.displayName" should be "OpenAI"
+    And the JSON response field "spec.promptTokens.location" should be "payload"
+    And the JSON response field "spec.promptTokens.identifier" should be "$.usage.prompt_tokens"
 
     Given I authenticate using basic auth as "admin"
     When I update the LLM provider template "openai-test" with:
@@ -104,15 +104,15 @@ Feature: LLM Provider Template Management
     Then the response status code should be 200
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
-    And the JSON response field "id" should be "openai-test"
-    And the JSON response field "message" should be "LLM provider template updated successfully"
+    And the JSON response field "status.id" should be "openai-test"
+    And the JSON response field "metadata.name" should be "openai-test"
 
     Given I authenticate using basic auth as "admin"
     When I retrieve the LLM provider template "openai-test"
     Then the response status code should be 200
-    And the JSON response field "template.configuration.spec.displayName" should be "OpenAI Updated"
-    And the JSON response field "template.configuration.spec.promptTokens.location" should be "payload"
-    And the JSON response field "template.configuration.spec.promptTokens.identifier" should be "$.usage.promptTokens"
+    And the JSON response field "spec.displayName" should be "OpenAI Updated"
+    And the JSON response field "spec.promptTokens.location" should be "payload"
+    And the JSON response field "spec.promptTokens.identifier" should be "$.usage.promptTokens"
 
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider template "openai-test"
@@ -139,12 +139,12 @@ Feature: LLM Provider Template Management
         """
     Then the response status code should be 201
     And the response should be valid JSON
-    And the JSON response field "id" should be "minimal-template"
+    And the JSON response field "status.id" should be "minimal-template"
 
     Given I authenticate using basic auth as "admin"
     When I retrieve the LLM provider template "minimal-template"
     Then the response status code should be 200
-    And the JSON response field "template.configuration.spec.displayName" should be "Minimal Template"
+    And the JSON response field "spec.displayName" should be "Minimal Template"
 
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider template "minimal-template"
@@ -251,7 +251,7 @@ Feature: LLM Provider Template Management
     Given I authenticate using basic auth as "admin"
     When I retrieve the LLM provider template "header-tokens-template"
     Then the response status code should be 200
-    And the JSON response field "template.configuration.spec.promptTokens.location" should be "header"
+    And the JSON response field "spec.promptTokens.location" should be "header"
     # Cleanup
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider template "header-tokens-template"

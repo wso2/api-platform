@@ -29,12 +29,18 @@ import (
 
 // Gateway represents a gateway configuration
 type Gateway struct {
-	Name     string `yaml:"name"`
-	Server   string `yaml:"server"`
-	Auth     string `yaml:"auth,omitempty"`     // Auth type: none, basic, bearer (default: none)
-	Username string `yaml:"username,omitempty"` // For basic auth
-	Password string `yaml:"password,omitempty"` // For basic auth
-	Token    string `yaml:"token,omitempty"`    // For bearer auth
+	Name   string `yaml:"name"`
+	Server string `yaml:"server"`
+	// AdminServer is the base URL of the gateway-controller admin API. It is
+	// optional and is only consulted by commands that target admin-only
+	// endpoints (currently `gateway health`). When not set, those commands
+	// fall back to Server — convenient for deployments where the management
+	// and admin APIs share a hostname behind the same ingress.
+	AdminServer string `yaml:"adminServer,omitempty"`
+	Auth        string `yaml:"auth,omitempty"`     // Auth type: none, basic, bearer (default: none)
+	Username    string `yaml:"username,omitempty"` // For basic auth
+	Password    string `yaml:"password,omitempty"` // For basic auth
+	Token       string `yaml:"token,omitempty"`    // For bearer auth
 }
 
 // Config represents the ap configuration

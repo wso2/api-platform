@@ -141,7 +141,7 @@ func testLLMProviderYAML(t *testing.T, handle, displayName, template string) []b
 
 	cfg := api.LLMProviderConfiguration{
 		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.LlmProvider,
+		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata: api.Metadata{
 			Name: handle,
 		},
@@ -169,7 +169,7 @@ func testLLMProxyYAML(t *testing.T, handle, displayName, providerHandle string) 
 
 	cfg := api.LLMProxyConfiguration{
 		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.LlmProxy,
+		Kind:       api.LLMProxyConfigurationKindLlmProxy,
 		Metadata: api.Metadata{
 			Name: handle,
 		},
@@ -195,7 +195,7 @@ func testStoredLLMTemplate(uuid, handle, displayName string) *models.StoredLLMPr
 		UUID: uuid,
 		Configuration: api.LLMProviderTemplate{
 			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.LlmProviderTemplate,
+			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata: api.Metadata{
 				Name: handle,
 			},
@@ -235,12 +235,12 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 
 		llmConfig := &models.StoredConfig{
 			UUID:        "0000-llm-provider-1-0000-000000000000",
-			Kind:        string(api.LlmProvider),
+			Kind:        string(api.LLMProviderConfigurationKindLlmProvider),
 			Handle:      "0000-llm-provider-1-0000-000000000000",
 			DisplayName: "LLM Provider",
 			Version:     "1.0.0",
 			Configuration: api.RestAPI{
-				Kind:     api.RestApi,
+				Kind:     api.RestAPIKindRestApi,
 				Metadata: api.Metadata{Name: "0000-llm-provider-1-0000-000000000000"},
 				Spec:     apiData,
 			},
@@ -273,12 +273,12 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 
 		config1 := &models.StoredConfig{
 			UUID:        "0000-llm-provider-1-0000-000000000000",
-			Kind:        string(api.LlmProvider),
+			Kind:        string(api.LLMProviderConfigurationKindLlmProvider),
 			Handle:      "first-provider",
 			DisplayName: "First Provider",
 			Version:     "1.0.0",
 			Configuration: api.RestAPI{
-				Kind:     api.RestApi,
+				Kind:     api.RestAPIKindRestApi,
 				Metadata: api.Metadata{Name: "first-provider"},
 				Spec:     apiData1,
 			},
@@ -299,12 +299,12 @@ func TestLLMDeploymentService_ListLLMProviders(t *testing.T) {
 
 		config2 := &models.StoredConfig{
 			UUID:        "0000-llm-provider-2-0000-000000000000",
-			Kind:        string(api.LlmProvider),
+			Kind:        string(api.LLMProviderConfigurationKindLlmProvider),
 			Handle:      "filtered-provider",
 			DisplayName: "Filtered Provider",
 			Version:     "1.0.0",
 			Configuration: api.RestAPI{
-				Kind:     api.RestApi,
+				Kind:     api.RestAPIKindRestApi,
 				Metadata: api.Metadata{Name: "filtered-provider"},
 				Spec:     apiData2,
 			},
@@ -346,12 +346,12 @@ func TestLLMDeploymentService_ListLLMProxies(t *testing.T) {
 		}
 		llmProxyConfig := &models.StoredConfig{
 			UUID:        "0000-llm-proxy-1-0000-000000000000",
-			Kind:        string(api.LlmProxy),
+			Kind:        string(api.LLMProxyConfigurationKindLlmProxy),
 			Handle:      "0000-llm-proxy-1-0000-000000000000",
 			DisplayName: "LLM Proxy",
 			Version:     "1.0.0",
 			Configuration: api.RestAPI{
-				Kind: api.RestApi,
+				Kind: api.RestAPIKindRestApi,
 				Spec: apiData,
 			},
 			DesiredState: models.StateDeployed,
@@ -789,7 +789,7 @@ func TestLLMDeploymentService_DeployLLMProviderConfiguration_ConflictValidation(
 		require.NoError(t, db.SaveLLMProviderTemplate(testStoredLLMTemplate("template-openai-id", "openai", "OpenAI Template")))
 		require.NoError(t, db.SaveConfig(&models.StoredConfig{
 			UUID:        "provider-existing-id",
-			Kind:        string(api.LlmProvider),
+			Kind:        string(api.LLMProviderConfigurationKindLlmProvider),
 			Handle:      "existing-provider",
 			DisplayName: "Hotel Booking Provider",
 			Version:     "1.0.0",
@@ -818,7 +818,7 @@ func TestLLMDeploymentService_DeployLLMProviderConfiguration_ConflictValidation(
 		require.NoError(t, db.SaveLLMProviderTemplate(testStoredLLMTemplate("template-openai-id", "openai", "OpenAI Template")))
 		require.NoError(t, db.SaveConfig(&models.StoredConfig{
 			UUID:        "provider-existing-id",
-			Kind:        string(api.LlmProvider),
+			Kind:        string(api.LLMProviderConfigurationKindLlmProvider),
 			Handle:      "hotel-booking-provider",
 			DisplayName: "Hotel Booking Provider",
 			Version:     "1.0.0",
@@ -866,13 +866,13 @@ func TestLLMDeploymentService_DeployLLMProxyConfiguration_ConflictValidation(t *
 
 	baseProvider := &models.StoredConfig{
 		UUID:        "provider-a-id",
-		Kind:        string(api.LlmProvider),
+		Kind:        string(api.LLMProviderConfigurationKindLlmProvider),
 		Handle:      "provider-a",
 		DisplayName: "Provider A",
 		Version:     "1.0.0",
 		SourceConfiguration: api.LLMProviderConfiguration{
 			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.LlmProvider,
+			Kind:       api.LLMProviderConfigurationKindLlmProvider,
 			Metadata: api.Metadata{
 				Name: "provider-a",
 			},
@@ -896,7 +896,7 @@ func TestLLMDeploymentService_DeployLLMProxyConfiguration_ConflictValidation(t *
 		require.NoError(t, db.SaveConfig(baseProvider))
 		require.NoError(t, db.SaveConfig(&models.StoredConfig{
 			UUID:        "proxy-existing-id",
-			Kind:        string(api.LlmProxy),
+			Kind:        string(api.LLMProxyConfigurationKindLlmProxy),
 			Handle:      "existing-proxy",
 			DisplayName: "Assistant Proxy",
 			Version:     "1.0.0",
@@ -926,7 +926,7 @@ func TestLLMDeploymentService_DeployLLMProxyConfiguration_ConflictValidation(t *
 		require.NoError(t, db.SaveConfig(baseProvider))
 		require.NoError(t, db.SaveConfig(&models.StoredConfig{
 			UUID:        "proxy-existing-id",
-			Kind:        string(api.LlmProxy),
+			Kind:        string(api.LLMProxyConfigurationKindLlmProxy),
 			Handle:      "assistant-proxy",
 			DisplayName: "Assistant Proxy",
 			Version:     "1.0.0",
@@ -1013,13 +1013,13 @@ func TestLLMDeploymentService_DeleteLLMProvider_WithDBAndEventHubPublishesDelete
 
 	cfg := &models.StoredConfig{
 		UUID:        "llm-provider-delete-id",
-		Kind:        string(api.LlmProvider),
+		Kind:        string(api.LLMProviderConfigurationKindLlmProvider),
 		Handle:      "llm-provider-delete",
 		DisplayName: "LLM Provider Delete",
 		Version:     "v1.0.0",
 		SourceConfiguration: api.LLMProviderConfiguration{
 			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.LlmProvider,
+			Kind:       api.LLMProviderConfigurationKindLlmProvider,
 			Metadata: api.Metadata{
 				Name: "llm-provider-delete",
 			},
@@ -1089,13 +1089,13 @@ func TestLLMDeploymentService_DeleteLLMProxy_WithDBAndEventHubPublishesDeleteAnd
 
 	providerCfg := &models.StoredConfig{
 		UUID:        "provider-1",
-		Kind:        string(api.LlmProvider),
+		Kind:        string(api.LLMProviderConfigurationKindLlmProvider),
 		Handle:      "provider-a",
 		DisplayName: "Provider A",
 		Version:     "v1.0.0",
 		SourceConfiguration: api.LLMProviderConfiguration{
 			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.LlmProvider,
+			Kind:       api.LLMProviderConfigurationKindLlmProvider,
 			Metadata: api.Metadata{
 				Name: "provider-a",
 			},
@@ -1115,13 +1115,13 @@ func TestLLMDeploymentService_DeleteLLMProxy_WithDBAndEventHubPublishesDeleteAnd
 	}
 	cfg := &models.StoredConfig{
 		UUID:        "llm-proxy-delete-id",
-		Kind:        string(api.LlmProxy),
+		Kind:        string(api.LLMProxyConfigurationKindLlmProxy),
 		Handle:      "llm-proxy-delete",
 		DisplayName: "LLM Proxy Delete",
 		Version:     "v1.0.0",
 		SourceConfiguration: api.LLMProxyConfiguration{
 			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.LlmProxy,
+			Kind:       api.LLMProxyConfigurationKindLlmProxy,
 			Metadata: api.Metadata{
 				Name: "llm-proxy-delete",
 			},
@@ -1170,7 +1170,7 @@ func TestMatchesFilters(t *testing.T) {
 	t.Run("Invalid config returns false", func(t *testing.T) {
 		config := &models.StoredConfig{
 			UUID:        "0000-test-config-0000-000000000000",
-			Kind:        string(api.LlmProvider),
+			Kind:        string(api.LLMProviderConfigurationKindLlmProvider),
 			Handle:      "0000-test-config-0000-000000000000",
 			DisplayName: "Test Config",
 			Version:     "1.0.0",
@@ -1190,12 +1190,12 @@ func TestMatchesFilters(t *testing.T) {
 
 		config := &models.StoredConfig{
 			UUID:        "0000-test-config-0000-000000000000",
-			Kind:        string(api.LlmProvider),
+			Kind:        string(api.LLMProviderConfigurationKindLlmProvider),
 			Handle:      "0000-test-config-0000-000000000000",
 			DisplayName: "Test",
 			Version:     "1.0.0",
 			Configuration: api.RestAPI{
-				Kind: api.RestApi,
+				Kind: api.RestAPIKindRestApi,
 				Spec: apiData,
 			},
 			Origin: models.OriginGatewayAPI,
@@ -1220,12 +1220,12 @@ func TestMatchesFilters(t *testing.T) {
 
 		config := &models.StoredConfig{
 			UUID:        "0000-test-config-0000-000000000000",
-			Kind:        string(api.LlmProvider),
+			Kind:        string(api.LLMProviderConfigurationKindLlmProvider),
 			Handle:      "0000-test-config-0000-000000000000",
 			DisplayName: "Test Provider",
 			Version:     "1.0.0",
 			Configuration: api.RestAPI{
-				Kind: api.RestApi,
+				Kind: api.RestAPIKindRestApi,
 				Spec: apiData,
 			},
 			DesiredState: models.StateDeployed,
@@ -1256,12 +1256,12 @@ func TestMatchesFilters(t *testing.T) {
 
 		config := &models.StoredConfig{
 			UUID:        "0000-test-config-0000-000000000000",
-			Kind:        string(api.LlmProvider),
+			Kind:        string(api.LLMProviderConfigurationKindLlmProvider),
 			Handle:      "0000-test-config-0000-000000000000",
 			DisplayName: "Test Provider",
 			Version:     "1.0.0",
 			Configuration: api.RestAPI{
-				Kind: api.RestApi,
+				Kind: api.RestAPIKindRestApi,
 				Spec: apiData,
 			},
 			Origin: models.OriginGatewayAPI,
@@ -1297,7 +1297,7 @@ func TestLLMDeploymentService_InitializeOOBTemplates_ValidTemplates(t *testing.T
 	templates := map[string]*api.LLMProviderTemplate{
 		"openai": {
 			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.LlmProviderTemplate,
+			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata:   api.Metadata{Name: "openai"},
 			Spec: api.LLMProviderTemplateData{
 				DisplayName: "OpenAI Template",
@@ -1338,7 +1338,7 @@ func TestLLMDeploymentService_InitializeOOBTemplates_UpdateExisting(t *testing.T
 	templates := map[string]*api.LLMProviderTemplate{
 		"existing": {
 			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.LlmProviderTemplate,
+			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata:   api.Metadata{Name: "existing"},
 			Spec: api.LLMProviderTemplateData{
 				DisplayName: "Updated Template",

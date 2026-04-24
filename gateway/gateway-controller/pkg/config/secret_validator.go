@@ -53,26 +53,26 @@ func NewSecretValidator() *SecretValidator {
 // Validate performs comprehensive validation on a configuration
 func (v *SecretValidator) Validate(config any) []ValidationError {
 	switch cfg := config.(type) {
-	case *api.SecretConfiguration:
+	case *api.SecretConfigurationRequest:
 		return v.validateSecretConfiguration(cfg)
-	case api.SecretConfiguration:
+	case api.SecretConfigurationRequest:
 		return v.validateSecretConfiguration(&cfg)
 	default:
 		return []ValidationError{
 			{
 				Field:   "config",
-				Message: "Unsupported configuration type for SecretValidator (expected SecretConfiguration)",
+				Message: "Unsupported configuration type for SecretValidator (expected SecretConfigurationRequest)",
 			},
 		}
 	}
 }
 
 // validateSecretConfiguration validates the Secret configuration root object
-func (v *SecretValidator) validateSecretConfiguration(config *api.SecretConfiguration) []ValidationError {
+func (v *SecretValidator) validateSecretConfiguration(config *api.SecretConfigurationRequest) []ValidationError {
 	var errors []ValidationError
 
 	// Validate apiVersion
-	if config.ApiVersion != api.SecretConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1 {
+	if config.ApiVersion != api.SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha1 {
 		errors = append(errors, ValidationError{
 			Field:   "version",
 			Message: "Unsupported configuration version (must be 'gateway.api-platform.wso2.com/v1alpha1')",

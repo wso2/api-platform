@@ -22,7 +22,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
@@ -78,12 +77,9 @@ func (s *APIServer) CreateSecret(c *gin.Context) {
 		slog.String("secret_handle", secret.Handle),
 		slog.String("correlation_id", correlationID))
 
-	// Return created secret
-	c.JSON(http.StatusCreated, gin.H{
-		"id":        secret.Handle,
-		"createdAt": secret.CreatedAt,
-		"updatedAt": secret.UpdatedAt,
-	})
+	// Echo back the created secret in the k8s-shaped resource form. The plaintext
+	// value is omitted so response logs and clients don't surface secret material.
+	c.JSON(http.StatusCreated, buildSecretResourceResponse(secret, false))
 }
 
 // ListSecrets implements ServerInterface.ListSecrets
@@ -115,31 +111,15 @@ func (s *APIServer) ListSecrets(c *gin.Context) {
 		return
 	}
 
-	// Convert []SecretMeta to API response type
-	secretsList := make([]struct {
-		CreatedAt   time.Time `json:"createdAt" yaml:"createdAt"`
-		DisplayName string    `json:"displayName" yaml:"displayName"`
-		Id          string    `json:"id" yaml:"id"`
-		UpdatedAt   time.Time `json:"updatedAt" yaml:"updatedAt"`
-	}, 0, len(secretsMeta))
+	items := make([]any, 0, len(secretsMeta))
 	for _, meta := range secretsMeta {
-		secretsList = append(secretsList, struct {
-			CreatedAt   time.Time `json:"createdAt" yaml:"createdAt"`
-			DisplayName string    `json:"displayName" yaml:"displayName"`
-			Id          string    `json:"id" yaml:"id"`
-			UpdatedAt   time.Time `json:"updatedAt" yaml:"updatedAt"`
-		}{
-			CreatedAt:   meta.CreatedAt,
-			DisplayName: meta.DisplayName,
-			Id:          meta.Handle,
-			UpdatedAt:   meta.UpdatedAt,
-		})
+		items = append(items, buildSecretMetaResourceResponse(meta))
 	}
 
-	c.JSON(http.StatusOK, api.SecretListResponse{
-		Status:     stringPtr("success"),
-		TotalCount: intPtr(len(secretsList)),
-		Secrets:    &secretsList,
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"count":   len(items),
+		"secrets": items,
 	})
 }
 
@@ -204,32 +184,10 @@ func (s *APIServer) GetSecret(c *gin.Context, id string) {
 		slog.String("secret_handle", secret.Handle),
 		slog.String("correlation_id", correlationID))
 
-	// Reconstruct the SecretConfiguration from stored fields
-	configuration := api.SecretConfiguration{
-		ApiVersion: api.SecretConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.Secret,
-		Metadata: api.Metadata{
-			Name: secret.Handle,
-		},
-		Spec: api.SecretConfigData{
-			DisplayName: secret.DisplayName,
-			Description: secret.Description,
-			Value:       secret.Value,
-		},
-	}
-
-	// Return full secret detail
-	c.JSON(http.StatusOK, gin.H{
-		"status": "success",
-		"secret": gin.H{
-			"id":            secret.Handle,
-			"configuration": configuration,
-			"metadata": gin.H{
-				"createdAt": secret.CreatedAt.Format(time.RFC3339),
-				"updatedAt": secret.UpdatedAt.Format(time.RFC3339),
-			},
-		},
-	})
+	// Include the decrypted value on single-item GET (caller supplied id). The
+	// value is omitted from list views but exposed here so automation can read
+	// back a secret it just created/updated.
+	c.JSON(http.StatusOK, buildSecretResourceResponse(secret, true))
 }
 
 // UpdateSecret handles PUT /secrets/{id}
@@ -297,12 +255,7 @@ func (s *APIServer) UpdateSecret(c *gin.Context, id string) {
 		slog.String("secret_handle", secret.Handle),
 		slog.String("correlation_id", correlationID))
 
-	// Return created secret
-	c.JSON(http.StatusOK, gin.H{
-		"id":        secret.Handle,
-		"createdAt": secret.CreatedAt,
-		"updatedAt": secret.UpdatedAt,
-	})
+	c.JSON(http.StatusOK, buildSecretResourceResponse(secret, false))
 }
 
 // DeleteSecret handles DELETE /secrets/{id}

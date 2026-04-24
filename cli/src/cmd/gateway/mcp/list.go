@@ -48,16 +48,64 @@ var listCmd = &cobra.Command{
 	},
 }
 
-// MCPListItem represents a single MCP in the list response
+// MCPListItem is a list-view projection of an MCPProxy. The management API list
+// response returns each item as a full k8s-shaped resource body — we flatten
+// the fields we care about out of `metadata`, `spec` and `status` here.
 type MCPListItem struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	DisplayName string `json:"displayName"`
-	Version     string `json:"version"`
-	Context     string `json:"context"`
-	Status      string `json:"status"`
-	CreatedAt   string `json:"createdAt"`
-	UpdatedAt   string `json:"updatedAt"`
+	Metadata map[string]interface{} `json:"metadata"`
+	Spec     map[string]interface{} `json:"spec"`
+	Status   map[string]interface{} `json:"status"`
+}
+
+// ID returns the server-assigned id (status.id) falling back to metadata.name.
+func (i MCPListItem) ID() string {
+	if v, ok := i.Status["id"].(string); ok && v != "" {
+		return v
+	}
+	if v, ok := i.Metadata["name"].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// DisplayName returns spec.displayName.
+func (i MCPListItem) DisplayName() string {
+	if v, ok := i.Spec["displayName"].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// Version returns spec.version.
+func (i MCPListItem) Version() string {
+	if v, ok := i.Spec["version"].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// Context returns spec.context.
+func (i MCPListItem) Context() string {
+	if v, ok := i.Spec["context"].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// State returns status.state.
+func (i MCPListItem) State() string {
+	if v, ok := i.Status["state"].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// CreatedAt returns status.createdAt as a string.
+func (i MCPListItem) CreatedAt() string {
+	if v, ok := i.Status["createdAt"].(string); ok {
+		return v
+	}
+	return ""
 }
 
 // MCPListResponse represents the response from GET ${managementBase}/mcp-proxies
@@ -104,10 +152,10 @@ func runListCommand() error {
 		return nil
 	}
 
-	headers := []string{"ID", "DISPLAY_NAME", "VERSION", "CONTEXT", "STATUS", "CREATED_AT"}
+	headers := []string{"ID", "DISPLAY_NAME", "VERSION", "CONTEXT", "STATE", "CREATED_AT"}
 	rows := make([][]string, 0, len(listResp.MCPProxies))
 	for _, mcp := range listResp.MCPProxies {
-		rows = append(rows, []string{mcp.ID, mcp.DisplayName, mcp.Version, mcp.Context, mcp.Status, mcp.CreatedAt})
+		rows = append(rows, []string{mcp.ID(), mcp.DisplayName(), mcp.Version(), mcp.Context(), mcp.State(), mcp.CreatedAt()})
 	}
 	utils.PrintTable(headers, rows)
 

@@ -214,9 +214,9 @@ Feature: Test MCP CRUD and connectivity
         When I get the MCP proxy "labeled-mcp-v1.0"
         Then the response should be successful
         And the response should be valid JSON
-        And the JSON response field "mcp.configuration.metadata.labels.environment" should be "production"
-        And the JSON response field "mcp.configuration.metadata.labels.team" should be "mcp-team"
-        And the JSON response field "mcp.configuration.metadata.labels.service" should be "mcp-proxy"
+        And the JSON response field "metadata.labels.environment" should be "production"
+        And the JSON response field "metadata.labels.team" should be "mcp-team"
+        And the JSON response field "metadata.labels.service" should be "mcp-proxy"
         
         Given I authenticate using basic auth as "admin"
         When I delete the MCP proxy "labeled-mcp-v1.0"

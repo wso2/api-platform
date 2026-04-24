@@ -65,7 +65,7 @@ func setupTestDB(t *testing.T) (storage.Storage, string, func()) {
 func createTestConfig(name, version string) *models.StoredConfig {
 	apiConfig := api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Metadata:   api.Metadata{Name: name + "-" + version},
 		Spec: api.APIConfigData{
 			DisplayName: name,
@@ -89,7 +89,7 @@ func createTestConfig(name, version string) *models.StoredConfig {
 	}
 	return &models.StoredConfig{
 		UUID:                uuid.New().String(),
-		Kind:                string(api.RestApi),
+		Kind:                string(api.RestAPIKindRestApi),
 		Handle:              name + "-" + version,
 		DisplayName:         name,
 		Version:             version,
@@ -390,7 +390,7 @@ func createTestConfigWithLabels(name, version string, labels map[string]string) 
 
 	apiConfig := api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Metadata: api.Metadata{
 			Name:   name + "-" + version,
 			Labels: labelsPtr,
@@ -417,7 +417,7 @@ func createTestConfigWithLabels(name, version string, labels map[string]string) 
 	}
 	return &models.StoredConfig{
 		UUID:                uuid.New().String(),
-		Kind:                string(api.RestApi),
+		Kind:                string(api.RestAPIKindRestApi),
 		Handle:              name + "-" + version,
 		DisplayName:         name,
 		Version:             version,
@@ -693,8 +693,8 @@ func TestConfigStore_LabelsWithAllAPITypes(t *testing.T) {
 
 	t.Run("WebSubApi with labels", func(t *testing.T) {
 		asyncApiConfig := api.WebSubAPI{
-			ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.WebSubApi,
+			ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.WebSubAPIKindWebSubApi,
 			Metadata: api.Metadata{
 				Name:   "async-api-v1.0",
 				Labels: &labels,
@@ -713,7 +713,7 @@ func TestConfigStore_LabelsWithAllAPITypes(t *testing.T) {
 		}
 		cfg := &models.StoredConfig{
 			UUID:                uuid.New().String(),
-			Kind:                string(api.WebSubApi),
+			Kind:                string(api.WebSubAPIKindWebSubApi),
 			Handle:              "async-api-v1.0",
 			DisplayName:         "AsyncAPILabel",
 			Version:             "v1.0",

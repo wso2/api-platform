@@ -163,7 +163,7 @@ func TestTransform_MinimalProvider(t *testing.T) {
 	require.NotNil(t, result, "Result should not be nil")
 
 	// Verify basic fields
-	assert.Equal(t, api.RestApi, result.Kind)
+	assert.Equal(t, api.RestAPIKindRestApi, result.Kind)
 	assert.Equal(t, api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1, result.ApiVersion)
 
 	// Extract spec

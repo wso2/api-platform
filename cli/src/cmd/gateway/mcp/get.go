@@ -68,15 +68,12 @@ func init() {
 	utils.AddStringFlag(getCmd, utils.FlagFormat, &getMCPFormat, "yaml", "Output format (json or yaml)")
 }
 
-// MCPGetResponse represents the response from GET ${managementBase}/mcp-proxies/{id}
-type MCPGetResponse struct {
-	Status string `json:"status"`
-	MCP    struct {
-		ID            string                 `json:"id"`
-		Configuration map[string]interface{} `json:"configuration"`
-		Metadata      map[string]interface{} `json:"metadata"`
-	} `json:"mcp"`
-}
+// MCPGetResponse represents the response from GET ${managementBase}/mcp-proxies/{id}.
+//
+// The management API returns the full k8s-shaped resource body
+// ({apiVersion, kind, metadata, spec, status}). We alias it so callers can
+// reason about the resource shape without repeating the map type everywhere.
+type MCPGetResponse map[string]interface{}
 
 func runGetCommand() error {
 	// Validate flags
@@ -149,7 +146,10 @@ func getMCPByID(client *gateway.Client, id string) (map[string]interface{}, erro
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	return getResp.MCP.Configuration, nil
+	// The response is the resource body itself. Drop the server-managed status
+	// block so the display matches the declarative source the user applied.
+	delete(getResp, "status")
+	return getResp, nil
 }
 
 func getMCPByNameAndVersion(client *gateway.Client, name, version string) (map[string]interface{}, error) {
@@ -187,7 +187,7 @@ func getMCPByNameAndVersion(client *gateway.Client, name, version string) (map[s
 	}
 
 	// Get the full MCP configuration using the ID
-	return getMCPByID(client, listResp.MCPProxies[0].ID)
+	return getMCPByID(client, listResp.MCPProxies[0].ID())
 }
 
 func displayMCP(mcpConfig map[string]interface{}, format string) error {

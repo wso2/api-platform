@@ -232,7 +232,7 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 	}
 
 	configs := s.store.GetAllByKind(kind)
-	if kind == string(api.Mcp) && s.mcpDeploymentService != nil {
+	if kind == string(api.MCPProxyConfigurationKindMcp) && s.mcpDeploymentService != nil {
 		var err error
 		configs, err = s.mcpDeploymentService.ListMCPProxies()
 		if err != nil {
@@ -245,73 +245,16 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 		}
 	}
 
-	// Filter based on kind to return appropriate response format
-	if kind == string(api.Mcp) {
-		// Return MCP proxy format
-		mcpItems := make([]api.MCPProxyListItem, 0)
-		for _, cfg := range configs {
-			if v, ok := filters["displayName"]; ok && cfg.DisplayName != v {
-				continue
-			}
-			if v, ok := filters["version"]; ok && cfg.Version != v {
-				continue
-			}
-			cfgContext, err := cfg.GetContext()
-			if err != nil {
-				s.logger.Warn("Failed to get context for MCP config",
-					slog.String("id", cfg.UUID),
-					slog.String("displayName", cfg.DisplayName),
-					slog.Any("error", err))
-				continue
-			}
-			if v, ok := filters["context"]; ok && cfgContext != v {
-				continue
-			}
-			if v, ok := filters["status"]; ok && string(cfg.DesiredState) != v {
-				continue
-			}
-
-			status := api.MCPProxyListItemStatus(cfg.DesiredState)
-			// Convert SourceConfiguration to MCPProxyConfiguration to get spec fields
-			var mcp api.MCPProxyConfiguration
-			j, _ := json.Marshal(cfg.SourceConfiguration)
-			err = json.Unmarshal(j, &mcp)
-			if err != nil {
-				s.logger.Error("Failed to unmarshal stored MCP configuration",
-					slog.String("id", cfg.UUID),
-					slog.String("displayName", cfg.DisplayName))
-				continue
-			}
-
-			li := api.MCPProxyListItem{
-				Id:          stringPtr(cfg.Handle),
-				DisplayName: stringPtr(mcp.Spec.DisplayName),
-				Version:     stringPtr(mcp.Spec.Version),
-				Status:      &status,
-				CreatedAt:   timePtr(cfg.CreatedAt),
-				UpdatedAt:   timePtr(cfg.UpdatedAt),
-			}
-			if mcp.Spec.Context != nil {
-				li.Context = mcp.Spec.Context
-			}
-			mcpItems = append(mcpItems, li)
+	// Filter configs and build the k8s-style response items once, independent of kind.
+	items := make([]any, 0, len(configs))
+	for _, cfg := range configs {
+		if v, ok := filters["displayName"]; ok && cfg.DisplayName != v {
+			continue
 		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"status":     "success",
-			"count":      len(mcpItems),
-			"mcpProxies": mcpItems,
-		})
-	} else if kind == string(api.WebSubApi) {
-		// Return WebSub API format
-		websubItems := make([]api.WebSubAPIListItem, 0)
-		for _, cfg := range configs {
-			if v, ok := filters["displayName"]; ok && cfg.DisplayName != v {
-				continue
-			}
-			if v, ok := filters["version"]; ok && cfg.Version != v {
-				continue
-			}
+		if v, ok := filters["version"]; ok && cfg.Version != v {
+			continue
+		}
+		if v, ok := filters["context"]; ok {
 			cfgContext, err := cfg.GetContext()
 			if err != nil {
 				s.logger.Warn("Failed to get context for config",
@@ -320,73 +263,44 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 					slog.Any("error", err))
 				continue
 			}
-			if v, ok := filters["context"]; ok && cfgContext != v {
+			if cfgContext != v {
 				continue
 			}
-			if v, ok := filters["status"]; ok && string(cfg.DesiredState) != v {
-				continue
-			}
-
-			status := string(cfg.DesiredState)
-			websubItems = append(websubItems, api.WebSubAPIListItem{
-				Id:          stringPtr(cfg.Handle),
-				DisplayName: stringPtr(cfg.DisplayName),
-				Version:     stringPtr(cfg.Version),
-				Context:     stringPtr(cfgContext),
-				Status:      (*api.WebSubAPIListItemStatus)(&status),
-				CreatedAt:   timePtr(cfg.CreatedAt),
-				UpdatedAt:   timePtr(cfg.UpdatedAt),
-			})
+		}
+		if v, ok := filters["status"]; ok && string(cfg.DesiredState) != v {
+			continue
 		}
 
-		c.JSON(http.StatusOK, gin.H{
-			"status":     "success",
-			"count":      len(websubItems),
-			"websubApis": websubItems,
-		})
-	} else {
-		// Return REST API format
-		apiItems := make([]api.RestAPIListItem, 0)
-		for _, cfg := range configs {
-			if v, ok := filters["displayName"]; ok && cfg.DisplayName != v {
-				continue
-			}
-			if v, ok := filters["version"]; ok && cfg.Version != v {
-				continue
-			}
-			cfgContext, err := cfg.GetContext()
+		if kind == string(api.MCPProxyConfigurationKindMcp) {
+			mcp, err := rematerializeMCPProxyConfig(s.logger, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
 			if err != nil {
-				s.logger.Warn("Failed to get context for config",
-					slog.String("id", cfg.UUID),
-					slog.String("displayName", cfg.DisplayName),
-					slog.Any("error", err))
-				continue
+				c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+					Status:  "error",
+					Message: "Failed to get stored MCP configuration",
+				})
+				return
 			}
-			if v, ok := filters["context"]; ok && cfgContext != v {
-				continue
-			}
-			if v, ok := filters["status"]; ok && string(cfg.DesiredState) != v {
-				continue
-			}
-
-			status := string(cfg.DesiredState)
-			apiItems = append(apiItems, api.RestAPIListItem{
-				Id:          stringPtr(cfg.Handle),
-				DisplayName: stringPtr(cfg.DisplayName),
-				Version:     stringPtr(cfg.Version),
-				Context:     stringPtr(cfgContext),
-				Status:      (*api.RestAPIListItemStatus)(&status),
-				CreatedAt:   timePtr(cfg.CreatedAt),
-				UpdatedAt:   timePtr(cfg.UpdatedAt),
-			})
+			items = append(items, buildResourceResponseFromStored(mcp, cfg))
+			continue
 		}
 
-		c.JSON(http.StatusOK, gin.H{
-			"status": "success",
-			"count":  len(apiItems),
-			"apis":   apiItems,
-		})
+		items = append(items, buildResourceResponseFromStored(cfg.Configuration, cfg))
 	}
+
+	// Each kind has its own envelope key to preserve the existing URL contract.
+	envelopeKey := "apis"
+	switch kind {
+	case string(api.MCPProxyConfigurationKindMcp):
+		envelopeKey = "mcpProxies"
+	case string(api.WebSubAPIKindWebSubApi):
+		envelopeKey = "websubApis"
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":    "success",
+		"count":     len(items),
+		envelopeKey: items,
+	})
 }
 
 // GetAPIByNameVersion implements ServerInterface.GetAPIByNameVersion
@@ -407,24 +321,7 @@ func (s *APIServer) GetAPIByNameVersion(c *gin.Context, name string, version str
 		return
 	}
 
-	apiDetail := gin.H{
-		"id":            cfg.Handle,
-		"configuration": cfg.Configuration,
-		"metadata": gin.H{
-			"status":    string(cfg.DesiredState),
-			"createdAt": cfg.CreatedAt.Format(time.RFC3339),
-			"updatedAt": cfg.UpdatedAt.Format(time.RFC3339),
-		},
-	}
-
-	if cfg.DeployedAt != nil {
-		apiDetail["metadata"].(gin.H)["deployedAt"] = cfg.DeployedAt.Format(time.RFC3339)
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"status": "success",
-		"api":    apiDetail,
-	})
+	c.JSON(http.StatusOK, buildResourceResponseFromStored(cfg.Configuration, cfg))
 }
 
 // waitForDeploymentAndPush waits for API deployment to complete and pushes it to the control plane

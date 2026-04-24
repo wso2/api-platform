@@ -74,7 +74,7 @@ Required roles: `admin`
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[LLMProviderTemplate](#schemallmprovidertemplate)|true|none|
+|body|body|[LLMProviderTemplateRequest](schemas.md#schemallmprovidertemplaterequest)|true|none|
 
 > Example responses
 
@@ -82,10 +82,43 @@ Required roles: `admin`
 
 ```json
 {
-  "status": "success",
-  "message": "LLM provider template created successfully",
-  "id": "openai",
-  "createdAt": "2025-10-11T10:30:00Z"
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "LlmProviderTemplate",
+  "metadata": {
+    "name": "openai-template"
+  },
+  "spec": {
+    "displayName": "OpenAI",
+    "promptTokens": {
+      "location": "payload",
+      "identifier": "$.usage.prompt_tokens"
+    },
+    "completionTokens": {
+      "location": "payload",
+      "identifier": "$.usage.completion_tokens"
+    },
+    "totalTokens": {
+      "location": "payload",
+      "identifier": "$.usage.total_tokens"
+    },
+    "remainingTokens": {
+      "location": "header",
+      "identifier": "x-ratelimit-remaining-tokens"
+    },
+    "requestModel": {
+      "location": "payload",
+      "identifier": "$.model"
+    },
+    "responseModel": {
+      "location": "payload",
+      "identifier": "$.model"
+    }
+  },
+  "status": {
+    "id": "openai-template",
+    "createdAt": "2026-04-24T07:21:13Z",
+    "updatedAt": "2026-04-24T07:21:13Z"
+  }
 }
 ```
 
@@ -93,10 +126,10 @@ Required roles: `admin`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|LLM provider template created successfully|[LLMProviderTemplateCreateResponse](#schemallmprovidertemplatecreateresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - Template with same name already exists|[ErrorResponse](#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|LLM provider template created successfully|[LLMProviderTemplate](schemas.md#schemallmprovidertemplate)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - Template with same name already exists|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## List all LLM provider templates
 
@@ -141,10 +174,43 @@ Required roles: `admin`
   "count": 3,
   "templates": [
     {
-      "id": "openai",
-      "displayName": "OpenAI",
-      "createdAt": "2025-10-11T10:30:00Z",
-      "updatedAt": "2025-10-11T10:30:00Z"
+      "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+      "kind": "LlmProviderTemplate",
+      "metadata": {
+        "name": "openai-template"
+      },
+      "spec": {
+        "displayName": "OpenAI",
+        "promptTokens": {
+          "location": "payload",
+          "identifier": "$.usage.prompt_tokens"
+        },
+        "completionTokens": {
+          "location": "payload",
+          "identifier": "$.usage.completion_tokens"
+        },
+        "totalTokens": {
+          "location": "payload",
+          "identifier": "$.usage.total_tokens"
+        },
+        "remainingTokens": {
+          "location": "header",
+          "identifier": "x-ratelimit-remaining-tokens"
+        },
+        "requestModel": {
+          "location": "payload",
+          "identifier": "$.model"
+        },
+        "responseModel": {
+          "location": "payload",
+          "identifier": "$.model"
+        }
+      },
+      "status": {
+        "id": "openai-template",
+        "createdAt": "2026-04-24T07:21:13Z",
+        "updatedAt": "2026-04-24T07:21:13Z"
+      }
     }
   ]
 }
@@ -155,7 +221,7 @@ Required roles: `admin`
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of LLM provider templates|Inline|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="list-all-llm-provider-templates-responseschema">Response Schema</h3>
 
@@ -165,11 +231,65 @@ Status Code **200**
 |---|---|---|---|---|
 |» status|string|false|none|none|
 |» count|integer|false|none|none|
-|» templates|[[LLMProviderTemplateListItem](#schemallmprovidertemplatelistitem)]|false|none|none|
-|»» id|string|false|none|none|
-|»» displayName|string|false|none|none|
-|»» createdAt|string(date-time)|false|none|none|
-|»» updatedAt|string(date-time)|false|none|none|
+|» templates|[allOf]|false|none|none|
+
+*allOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|[LLMProviderTemplateRequest](schemas.md#schemallmprovidertemplaterequest)|false|none|none|
+|»»» apiVersion|string|true|none|Template specification version|
+|»»» kind|string|true|none|Template kind|
+|»»» metadata|[Metadata](schemas.md#schemametadata)|true|none|none|
+|»»»» name|string|true|none|Unique handle for the resource|
+|»»»» labels|object|false|none|Labels are key-value pairs for organizing and selecting APIs. Keys must not contain spaces.|
+|»»»»» **additionalProperties**|string|false|none|none|
+|»»»» annotations|object|false|none|Annotations are arbitrary non-identifying metadata. Use domain-prefixed keys.|
+|»»»»» **additionalProperties**|string|false|none|none|
+|»»» spec|[LLMProviderTemplateData](schemas.md#schemallmprovidertemplatedata)|true|none|none|
+|»»»» displayName|string|true|none|Human-readable LLM Template name|
+|»»»» promptTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»»» location|string|true|none|Where to find the token information|
+|»»»»» identifier|string|true|none|JSONPath expression or header name to identify the token value|
+|»»»» completionTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»» totalTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»» remainingTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»» requestModel|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»» responseModel|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»» resourceMappings|[LLMProviderTemplateResourceMappings](schemas.md#schemallmprovidertemplateresourcemappings)|false|none|none|
+|»»»»» resources|[[LLMProviderTemplateResourceMapping](schemas.md#schemallmprovidertemplateresourcemapping)]|false|none|none|
+|»»»»»» resource|string|true|none|Resource path pattern for this mapping|
+|»»»»»» promptTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»»»» completionTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»»»» totalTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»»»» remainingTokens|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»»»» requestModel|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+|»»»»»» responseModel|[ExtractionIdentifier](schemas.md#schemaextractionidentifier)|false|none|none|
+
+*and*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|object|false|none|none|
+|»»» status|[ResourceStatus](schemas.md#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
+|»»»» id|string|false|none|Unique identifier assigned by the server (equal to metadata.name)|
+|»»»» state|string|false|none|Desired deployment state reported by the server|
+|»»»» createdAt|string(date-time)|false|none|Timestamp when the resource was first created (UTC)|
+|»»»» updatedAt|string(date-time)|false|none|Timestamp when the resource was last updated (UTC)|
+|»»»» deployedAt|string(date-time)|false|none|Timestamp when the resource was last deployed (omitted when undeployed)|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|kind|LlmProviderTemplate|
+|location|payload|
+|location|header|
+|location|queryParam|
+|location|pathParam|
+|state|deployed|
+|state|undeployed|
 
 ## Get LLM provider template by id
 
@@ -210,47 +330,42 @@ Required roles: `admin`
 
 ```json
 {
-  "status": "success",
-  "template": {
-    "id": "openai",
-    "configuration": {
-      "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
-      "kind": "LlmProviderTemplate",
-      "metadata": {
-        "name": "openai-template"
-      },
-      "spec": {
-        "displayName": "OpenAI",
-        "promptTokens": {
-          "location": "payload",
-          "identifier": "$.usage.prompt_tokens"
-        },
-        "completionTokens": {
-          "location": "payload",
-          "identifier": "$.usage.completion_tokens"
-        },
-        "totalTokens": {
-          "location": "payload",
-          "identifier": "$.usage.total_tokens"
-        },
-        "remainingTokens": {
-          "location": "header",
-          "identifier": "x-ratelimit-remaining-tokens"
-        },
-        "requestModel": {
-          "location": "payload",
-          "identifier": "$.model"
-        },
-        "responseModel": {
-          "location": "payload",
-          "identifier": "$.model"
-        }
-      }
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "LlmProviderTemplate",
+  "metadata": {
+    "name": "openai-template"
+  },
+  "spec": {
+    "displayName": "OpenAI",
+    "promptTokens": {
+      "location": "payload",
+      "identifier": "$.usage.prompt_tokens"
     },
-    "metadata": {
-      "createdAt": "2025-10-11T10:30:00Z",
-      "updatedAt": "2025-10-11T10:30:00Z"
+    "completionTokens": {
+      "location": "payload",
+      "identifier": "$.usage.completion_tokens"
+    },
+    "totalTokens": {
+      "location": "payload",
+      "identifier": "$.usage.total_tokens"
+    },
+    "remainingTokens": {
+      "location": "header",
+      "identifier": "x-ratelimit-remaining-tokens"
+    },
+    "requestModel": {
+      "location": "payload",
+      "identifier": "$.model"
+    },
+    "responseModel": {
+      "location": "payload",
+      "identifier": "$.model"
     }
+  },
+  "status": {
+    "id": "openai-template",
+    "createdAt": "2026-04-24T07:21:13Z",
+    "updatedAt": "2026-04-24T07:21:13Z"
   }
 }
 ```
@@ -259,9 +374,9 @@ Required roles: `admin`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|LLM provider template details|[LLMProviderTemplateDetailResponse](#schemallmprovidertemplatedetailresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider template not found|[ErrorResponse](#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|LLM provider template details|[LLMProviderTemplate](schemas.md#schemallmprovidertemplate)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider template not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## Update an existing LLM provider template
 
@@ -336,7 +451,7 @@ Required roles: `admin`
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |id|path|string|true|Unique public identifier of the template to update|
-|body|body|[LLMProviderTemplate](#schemallmprovidertemplate)|true|none|
+|body|body|[LLMProviderTemplateRequest](schemas.md#schemallmprovidertemplaterequest)|true|none|
 
 > Example responses
 
@@ -344,10 +459,43 @@ Required roles: `admin`
 
 ```json
 {
-  "status": "success",
-  "message": "LLM provider template updated successfully",
-  "id": "openai",
-  "updatedAt": "2025-10-11T11:45:00Z"
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "LlmProviderTemplate",
+  "metadata": {
+    "name": "openai-template"
+  },
+  "spec": {
+    "displayName": "OpenAI",
+    "promptTokens": {
+      "location": "payload",
+      "identifier": "$.usage.prompt_tokens"
+    },
+    "completionTokens": {
+      "location": "payload",
+      "identifier": "$.usage.completion_tokens"
+    },
+    "totalTokens": {
+      "location": "payload",
+      "identifier": "$.usage.total_tokens"
+    },
+    "remainingTokens": {
+      "location": "header",
+      "identifier": "x-ratelimit-remaining-tokens"
+    },
+    "requestModel": {
+      "location": "payload",
+      "identifier": "$.model"
+    },
+    "responseModel": {
+      "location": "payload",
+      "identifier": "$.model"
+    }
+  },
+  "status": {
+    "id": "openai-template",
+    "createdAt": "2026-04-24T07:21:13Z",
+    "updatedAt": "2026-04-24T07:21:13Z"
+  }
 }
 ```
 
@@ -355,10 +503,10 @@ Required roles: `admin`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|LLM provider template updated successfully|[LLMProviderTemplateUpdateResponse](#schemallmprovidertemplateupdateresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider template not found|[ErrorResponse](#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|LLM provider template updated successfully|[LLMProviderTemplate](schemas.md#schemallmprovidertemplate)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider template not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## Delete an LLM provider template
 
@@ -410,8 +558,8 @@ Required roles: `admin`
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|LLM provider template deleted successfully|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider template not found|[ErrorResponse](#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider template not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="delete-an-llm-provider-template-responseschema">Response Schema</h3>
 

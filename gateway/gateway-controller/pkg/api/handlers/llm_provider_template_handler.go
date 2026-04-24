@@ -84,12 +84,7 @@ func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 		slog.String("uuid", storedTemplate.UUID),
 		slog.String("handle", storedTemplate.GetHandle()))
 
-	c.JSON(http.StatusCreated, api.LLMProviderTemplateCreateResponse{
-		Status:    stringPtr("success"),
-		Message:   stringPtr("LLM provider template created successfully"),
-		Id:        stringPtr(storedTemplate.GetHandle()),
-		CreatedAt: timePtr(storedTemplate.CreatedAt),
-	})
+	c.JSON(http.StatusCreated, buildTemplateResourceResponse(storedTemplate))
 }
 
 // ListLLMProviderTemplates implements ServerInterface.ListLLMProviderTemplates
@@ -97,14 +92,9 @@ func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 func (s *APIServer) ListLLMProviderTemplates(c *gin.Context, params api.ListLLMProviderTemplatesParams) {
 	templates := s.llmDeploymentService.ListLLMProviderTemplates(params.DisplayName)
 
-	items := make([]api.LLMProviderTemplateListItem, len(templates))
-	for i, tmpl := range templates {
-		items[i] = api.LLMProviderTemplateListItem{
-			Id:          stringPtr(tmpl.GetHandle()),
-			DisplayName: stringPtr(tmpl.Configuration.Spec.DisplayName),
-			CreatedAt:   timePtr(tmpl.CreatedAt),
-			UpdatedAt:   timePtr(tmpl.UpdatedAt),
-		}
+	items := make([]any, 0, len(templates))
+	for _, tmpl := range templates {
+		items = append(items, buildTemplateResourceResponse(tmpl))
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -137,20 +127,7 @@ func (s *APIServer) GetLLMProviderTemplateById(c *gin.Context, id string) {
 		return
 	}
 
-	// Return response with a simple JSON structure similar to GetAPIByNameVersion
-	tmplDetail := gin.H{
-		"id":            id,
-		"configuration": template.Configuration,
-		"metadata": gin.H{
-			"createdAt": template.CreatedAt,
-			"updatedAt": template.UpdatedAt,
-		},
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"status":   "success",
-		"template": tmplDetail,
-	})
+	c.JSON(http.StatusOK, buildTemplateResourceResponse(template))
 }
 
 // UpdateLLMProviderTemplate implements ServerInterface.UpdateLLMProviderTemplate
@@ -204,12 +181,7 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 		slog.String("uuid", updated.UUID),
 		slog.String("handle", updated.GetHandle()))
 
-	c.JSON(http.StatusOK, api.LLMProviderTemplateUpdateResponse{
-		Status:    stringPtr("success"),
-		Message:   stringPtr("LLM provider template updated successfully"),
-		Id:        stringPtr(updated.GetHandle()),
-		UpdatedAt: timePtr(updated.UpdatedAt),
-	})
+	c.JSON(http.StatusOK, buildTemplateResourceResponse(updated))
 }
 
 // DeleteLLMProviderTemplate implements ServerInterface.DeleteLLMProviderTemplate

@@ -73,7 +73,7 @@ func (l *EventListener) handleLLMProviderCreateOrUpdate(event eventhub.Event) {
 			slog.Any("error", err))
 		return
 	}
-	if storedConfig.Kind != string(api.LlmProvider) {
+	if storedConfig.Kind != string(api.LLMProviderConfigurationKindLlmProvider) {
 		l.logger.Warn("Skipping non-LLM-provider config for LLM provider event",
 			slog.String("provider_id", entityID),
 			slog.String("kind", storedConfig.Kind))
@@ -145,7 +145,7 @@ func (l *EventListener) handleLLMProxyCreateOrUpdate(event eventhub.Event) {
 			slog.Any("error", err))
 		return
 	}
-	if storedConfig.Kind != string(api.LlmProxy) {
+	if storedConfig.Kind != string(api.LLMProxyConfigurationKindLlmProxy) {
 		l.logger.Warn("Skipping non-LLM-proxy config for LLM proxy event",
 			slog.String("proxy_id", entityID),
 			slog.String("kind", storedConfig.Kind))

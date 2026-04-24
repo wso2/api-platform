@@ -50,7 +50,7 @@ type CreateResult struct {
 
 // ListResult holds the result of a List operation.
 type ListResult struct {
-	Items []api.RestAPIListItem
+	Items []*models.StoredConfig
 }
 
 // GetResult holds the result of a GetByHandle operation.
@@ -210,13 +210,13 @@ func (s *RestAPIService) validateArtifactConflicts(kind, currentID, displayName,
 
 // List returns REST API configurations, optionally filtered.
 func (s *RestAPIService) List(params api.ListRestAPIsParams) (*ListResult, error) {
-	configs, err := s.db.GetAllConfigsByKind(string(api.RestApi))
+	configs, err := s.db.GetAllConfigsByKind(string(api.RestAPIKindRestApi))
 	if err != nil {
 		s.logger.Error("Failed to get APIs", slog.Any("error", err))
 		return nil, fmt.Errorf("Failed to retrieve API configurations")
 	}
 
-	items := make([]api.RestAPIListItem, 0, len(configs))
+	items := make([]*models.StoredConfig, 0, len(configs))
 	for _, cfg := range configs {
 		// Apply filters when present
 		if params.DisplayName != nil && *params.DisplayName != "" && cfg.DisplayName != *params.DisplayName {
@@ -237,16 +237,7 @@ func (s *RestAPIService) List(params api.ListRestAPIsParams) (*ListResult, error
 			continue
 		}
 
-		status := string(cfg.DesiredState)
-		items = append(items, api.RestAPIListItem{
-			Id:          stringPtr(cfg.Handle),
-			DisplayName: stringPtr(cfg.DisplayName),
-			Version:     stringPtr(cfg.Version),
-			Context:     stringPtr(cfgContext),
-			Status:      (*api.RestAPIListItemStatus)(&status),
-			CreatedAt:   timePtr(cfg.CreatedAt),
-			UpdatedAt:   timePtr(cfg.UpdatedAt),
-		})
+		items = append(items, cfg)
 	}
 
 	return &ListResult{Items: items}, nil

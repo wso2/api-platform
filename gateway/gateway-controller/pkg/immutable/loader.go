@@ -124,7 +124,7 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 
 		a := artifact{path: path, data: data, kind: envelope.Kind, contentType: contentType}
 		switch envelope.Kind {
-		case string(api.LlmProviderTemplate):
+		case string(api.LLMProviderTemplateKindLlmProviderTemplate):
 			pass1 = append(pass1, a)
 		case models.KindLlmProvider:
 			pass2 = append(pass2, a)
@@ -161,7 +161,7 @@ func (g *ImmutableGW) applyArtifact(path, kind, contentType string, data []byte,
 	log.Info("Applying artifact", slog.String("path", path), slog.String("kind", kind))
 
 	switch kind {
-	case string(api.LlmProviderTemplate):
+	case string(api.LLMProviderTemplateKindLlmProviderTemplate):
 		if _, err := g.llmService.CreateLLMProviderTemplate(utils.LLMTemplateParams{
 			Spec:        data,
 			ContentType: contentType,

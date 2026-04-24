@@ -281,7 +281,7 @@ func TestSQLiteStorage_GetAllConfigs_Success(t *testing.T) {
 	config1.UUID = "config1"
 	config1.Configuration = api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Metadata:   api.Metadata{Name: "0000-test-api-1-0000-000000000000"},
 		Spec: api.APIConfigData{
 			DisplayName: "Test API 1",
@@ -294,7 +294,7 @@ func TestSQLiteStorage_GetAllConfigs_Success(t *testing.T) {
 	config2.UUID = "config2"
 	config2.Configuration = api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Metadata:   api.Metadata{Name: "test-api-2"},
 		Spec: api.APIConfigData{
 			DisplayName: "Test API 2",
@@ -377,7 +377,7 @@ func TestSQLiteStorage_GetAllConfigsByKind_Success(t *testing.T) {
 	apiConfig.Kind = "RestApi"
 	apiConfig.Configuration = api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Metadata:   api.Metadata{Name: "test-api-kind"},
 		Spec: api.APIConfigData{
 			DisplayName: "Test API Kind",
@@ -391,7 +391,7 @@ func TestSQLiteStorage_GetAllConfigsByKind_Success(t *testing.T) {
 	llmConfig.Kind = "LlmProvider"
 	llmConfig.Configuration = api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Metadata:   api.Metadata{Name: "test-llm-kind"},
 		Spec: api.APIConfigData{
 			DisplayName: "Test LLM Kind",
@@ -401,7 +401,7 @@ func TestSQLiteStorage_GetAllConfigsByKind_Success(t *testing.T) {
 	}
 	llmConfig.SourceConfiguration = api.LLMProviderConfiguration{
 		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.LlmProvider,
+		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata:   api.Metadata{Name: "test-llm-kind"},
 	}
 
@@ -1064,7 +1064,7 @@ func createTestStoredConfig() *models.StoredConfig {
 	configCounter++
 	apiConfig := api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Metadata:   api.Metadata{Name: fmt.Sprintf("test-api-%d", configCounter)},
 		Spec: api.APIConfigData{
 			DisplayName: fmt.Sprintf("Test API %d", configCounter),
@@ -1074,7 +1074,7 @@ func createTestStoredConfig() *models.StoredConfig {
 	}
 	return &models.StoredConfig{
 		UUID:                fmt.Sprintf("test-config-%d", configCounter),
-		Kind:                string(api.RestApi),
+		Kind:                string(api.RestAPIKindRestApi),
 		Handle:              fmt.Sprintf("test-api-%d", configCounter),
 		DisplayName:         fmt.Sprintf("Test API %d", configCounter),
 		Version:             "v1.0.0",
@@ -1093,7 +1093,7 @@ func createTestLLMProviderTemplate() *models.StoredLLMProviderTemplate {
 		UUID: fmt.Sprintf("test-template-%d", llmTemplateCounter),
 		Configuration: api.LLMProviderTemplate{
 			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.LlmProviderTemplate,
+			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata:   api.Metadata{Name: fmt.Sprintf("test-template-%d", llmTemplateCounter)},
 			Spec: api.LLMProviderTemplateData{
 				DisplayName: fmt.Sprintf("Test Template %d", llmTemplateCounter),

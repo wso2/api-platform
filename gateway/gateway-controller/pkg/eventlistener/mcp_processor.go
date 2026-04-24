@@ -55,7 +55,7 @@ func (l *EventListener) handleMCPProxyCreateOrUpdate(event eventhub.Event) {
 			slog.Any("error", err))
 		return
 	}
-	if storedConfig.Kind != string(api.Mcp) {
+	if storedConfig.Kind != string(api.MCPProxyConfigurationKindMcp) {
 		l.logger.Warn("Skipping non-MCP config for MCP proxy event",
 			slog.String("proxy_id", entityID),
 			slog.String("kind", storedConfig.Kind))

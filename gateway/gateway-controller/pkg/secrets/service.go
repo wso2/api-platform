@@ -69,7 +69,7 @@ func NewSecretsService(
 
 // CreateSecret creates a new secret with encryption
 func (s *SecretService) CreateSecret(params SecretParams) (*models.Secret, error) {
-	var secretConfig api.SecretConfiguration
+	var secretConfig api.SecretConfigurationRequest
 	// Parse configuration
 	err := s.parser.Parse(params.Data, params.ContentType, &secretConfig)
 	if err != nil {
@@ -247,7 +247,7 @@ func (s *SecretService) Resolve(handle string) (string, error) {
 
 // UpdateSecret updates an existing secret with re-encryption using current primary key
 func (s *SecretService) UpdateSecret(handle string, params SecretParams) (*models.Secret, error) {
-	var secretConfig api.SecretConfiguration
+	var secretConfig api.SecretConfigurationRequest
 	// Parse configuration
 	err := s.parser.Parse(params.Data, params.ContentType, &secretConfig)
 	if err != nil {

@@ -59,7 +59,7 @@ Feature: Lazy Resources xDS Synchronization
             identifier: $.model
         """
     Then the response status code should be 201
-    And the JSON response field "id" should be "xds-test-template"
+    And the JSON response field "status.id" should be "xds-test-template"
 
     # Wait for xDS propagation
     When I wait for 3 seconds
@@ -205,7 +205,7 @@ Feature: Lazy Resources xDS Synchronization
             mode: allow_all
         """
     Then the response status code should be 201
-    And the JSON response field "id" should be "test-openai-provider"
+    And the JSON response field "status.id" should be "test-openai-provider"
 
     # Wait for xDS propagation
     When I wait for 3 seconds
@@ -412,7 +412,7 @@ Feature: Lazy Resources xDS Synchronization
             identifier: $.usage.completion_tokens
         """
     Then the response status code should be 201
-    And the JSON response field "id" should be "collision-test"
+    And the JSON response field "status.id" should be "collision-test"
 
     # Wait for xDS propagation
     When I wait for 3 seconds
@@ -442,7 +442,7 @@ Feature: Lazy Resources xDS Synchronization
             mode: allow_all
         """
     Then the response status code should be 201
-    And the JSON response field "id" should be "collision-test"
+    And the JSON response field "status.id" should be "collision-test"
 
     # Wait for xDS propagation
     When I wait for 3 seconds

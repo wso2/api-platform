@@ -194,7 +194,7 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 		return nil, err
 	}
 
-	existingByNameVersion, err := s.db.GetConfigByKindNameAndVersion(string(api.Mcp), name, version)
+	existingByNameVersion, err := s.db.GetConfigByKindNameAndVersion(string(api.MCPProxyConfigurationKindMcp), name, version)
 	if err == nil {
 		if existingByNameVersion != nil && existingByNameVersion.UUID != apiID {
 			return nil, fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists", storage.ErrConflict, name, version)
@@ -203,7 +203,7 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 		return nil, fmt.Errorf("failed to check existing MCP proxy name/version conflict: %w", err)
 	}
 	if handle != "" {
-		existingByHandle, err := s.db.GetConfigByKindAndHandle(string(api.Mcp), handle)
+		existingByHandle, err := s.db.GetConfigByKindAndHandle(string(api.MCPProxyConfigurationKindMcp), handle)
 		if err == nil {
 			if existingByHandle != nil && existingByHandle.UUID != apiID {
 				return nil, fmt.Errorf("%w: configuration with handle '%s' already exists", storage.ErrConflict, handle)
@@ -234,7 +234,7 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 
 	storedCfg := &models.StoredConfig{
 		UUID:                apiID,
-		Kind:                string(api.Mcp),
+		Kind:                string(api.MCPProxyConfigurationKindMcp),
 		Handle:              mcpConfig.Metadata.Name,
 		DisplayName:         mcpConfig.Spec.DisplayName,
 		Version:             mcpConfig.Spec.Version,
@@ -353,7 +353,7 @@ func (s *MCPDeploymentService) parseValidateAndTransform(params MCPDeploymentPar
 
 // ListMCPProxies returns all stored MCP proxy configurations from the database.
 func (s *MCPDeploymentService) ListMCPProxies() ([]*models.StoredConfig, error) {
-	configs, err := s.db.GetAllConfigsByKind(string(api.Mcp))
+	configs, err := s.db.GetAllConfigsByKind(string(api.MCPProxyConfigurationKindMcp))
 	if err != nil {
 		return nil, err
 	}

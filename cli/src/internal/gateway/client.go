@@ -342,4 +342,43 @@ func (c *Client) GetBaseURL() string {
 	return c.gateway.Server
 }
 
+// GetAdminBaseURL returns the base URL of the gateway-controller admin API for
+// this gateway. If an explicit AdminServer is configured it is used verbatim;
+// otherwise the management Server URL is reused. This mirrors the behavior of
+// deployments where both APIs are exposed behind a single ingress.
+func (c *Client) GetAdminBaseURL() string {
+	if c.gateway.AdminServer != "" {
+		return c.gateway.AdminServer
+	}
+	return c.gateway.Server
+}
+
+// GetAdmin performs a GET against the gateway-controller admin API using
+// GetAdminBaseURL as the origin. The request is authenticated and processed
+// through the same Do pipeline as management-API calls.
+func (c *Client) GetAdmin(path string) (*http.Response, error) {
+	baseURL := strings.TrimSuffix(c.GetAdminBaseURL(), "/")
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	url := baseURL + path
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return resp, nil
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return resp, nil
+	}
+	return nil, c.formatHTTPError(fmt.Sprintf("GET %s", path), resp)
+}
+
 // FormatHTTPError is implemented in the utils package; use utils.FormatHTTPError

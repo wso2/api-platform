@@ -125,9 +125,10 @@ if [[ -n "$schemas_file" ]]; then
 
     filepath="$OUTDIR/$f"
     # (#schemaXXX) -> (schemas_file#schemaXXX)
-    sed -i -E "s|\(#(schema[a-zA-Z0-9_]+)\)|(${schemas_file}#\1)|g" "$filepath"
+    # macOS sed requires an explicit backup suffix with -i; use .bak then remove (portable with GNU sed).
+    sed -i.bak -E "s|\(#(schema[a-zA-Z0-9_]+)\)|(${schemas_file}#\1)|g" "$filepath" && rm -f "${filepath}.bak"
     # (#tocS_XXX) -> (schemas_file#tocS_XXX)
-    sed -i -E "s|\(#(tocS_[a-zA-Z0-9_]+)\)|(${schemas_file}#\1)|g" "$filepath"
+    sed -i.bak -E "s|\(#(tocS_[a-zA-Z0-9_]+)\)|(${schemas_file}#\1)|g" "$filepath" && rm -f "${filepath}.bak"
   done
 fi
 
@@ -159,8 +160,9 @@ fi
 
 # Also rewrite schema refs in README.md
 if [[ -n "$schemas_file" ]]; then
-  sed -i -E "s|\(#(schema[a-zA-Z0-9_]+)\)|(${schemas_file}#\1)|g" "$OUTDIR/README.md"
-  sed -i -E "s|\(#(tocS_[a-zA-Z0-9_]+)\)|(${schemas_file}#\1)|g" "$OUTDIR/README.md"
+  readme_path="$OUTDIR/README.md"
+  sed -i.bak -E "s|\(#(schema[a-zA-Z0-9_]+)\)|(${schemas_file}#\1)|g" "$readme_path" && rm -f "${readme_path}.bak"
+  sed -i.bak -E "s|\(#(tocS_[a-zA-Z0-9_]+)\)|(${schemas_file}#\1)|g" "$readme_path" && rm -f "${readme_path}.bak"
 fi
 
 echo ""

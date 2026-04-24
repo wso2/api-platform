@@ -1536,9 +1536,9 @@ func TestTranslator_ExtractTemplateHandle_ValidLLMProvider(t *testing.T) {
 	translator := NewTranslator(logger, routerCfg, nil, cfg)
 
 	storedCfg := &models.StoredConfig{
-		Kind: string(api.LlmProvider),
+		Kind: string(api.LLMProviderConfigurationKindLlmProvider),
 		SourceConfiguration: map[string]interface{}{
-			"kind": string(api.LlmProvider),
+			"kind": string(api.LLMProviderConfigurationKindLlmProvider),
 			"spec": map[string]interface{}{
 				"template": "openai-template",
 			},
@@ -1557,9 +1557,9 @@ func TestTranslator_ExtractProviderName_ValidLLMProvider(t *testing.T) {
 	translator := NewTranslator(logger, routerCfg, nil, cfg)
 
 	storedCfg := &models.StoredConfig{
-		Kind: string(api.LlmProvider),
+		Kind: string(api.LLMProviderConfigurationKindLlmProvider),
 		SourceConfiguration: map[string]interface{}{
-			"kind": string(api.LlmProvider),
+			"kind": string(api.LLMProviderConfigurationKindLlmProvider),
 			"metadata": map[string]interface{}{
 				"name": "openai-provider",
 			},
@@ -1784,8 +1784,8 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 					Name:        "websub-test",
 					Annotations: &map[string]string{"gateway.api-platform.wso2.com/project-id": "proj-123"},
 				},
-				Kind:       api.WebSubApi,
-				ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+				Kind:       api.WebSubAPIKindWebSubApi,
+				ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 				Spec: api.WebhookAPIData{
 					DisplayName: "WebSub Test API",
 					Version:     "v1.0",
@@ -1824,8 +1824,8 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 			Kind: "WebSubApi",
 			Configuration: api.WebSubAPI{
 				Metadata:   api.Metadata{Name: "websub-invalid"},
-				Kind:       api.WebSubApi,
-				ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+				Kind:       api.WebSubAPIKindWebSubApi,
+				ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 				Spec: api.WebhookAPIData{
 					DisplayName: "WebSub Invalid",
 					Version:     "v1.0",

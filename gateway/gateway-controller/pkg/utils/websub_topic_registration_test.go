@@ -47,7 +47,7 @@ spec:
 
 	cfg := &models.StoredConfig{
 		UUID:          "0000-test-config-1-0000-000000000000",
-		Kind:          string(api.WebSubApi),
+		Kind:          string(api.WebSubAPIKindWebSubApi),
 		Handle:        "testapi",
 		DisplayName:   "testapi",
 		Version:       "v1",
@@ -100,7 +100,7 @@ spec:
 
 	cfg := &models.StoredConfig{
 		UUID:          "0000-test-config-1-0000-000000000000",
-		Kind:          string(api.WebSubApi),
+		Kind:          string(api.WebSubAPIKindWebSubApi),
 		Handle:        "testapi",
 		DisplayName:   "testapi",
 		Version:       "v1",
@@ -207,7 +207,7 @@ spec:
 
 	cfgA := &models.StoredConfig{
 		UUID:          "0000-cfg-a-0000-000000000000",
-		Kind:          string(api.WebSubApi),
+		Kind:          string(api.WebSubAPIKindWebSubApi),
 		Handle:        "testapiA",
 		DisplayName:   "testapiA",
 		Version:       "v1",
@@ -221,7 +221,7 @@ spec:
 
 	cfgB := &models.StoredConfig{
 		UUID:          "0000-cfg-b-0000-000000000000",
-		Kind:          string(api.WebSubApi),
+		Kind:          string(api.WebSubAPIKindWebSubApi),
 		Handle:        "testapiB",
 		DisplayName:   "testapiB",
 		Version:       "v1",
@@ -301,7 +301,7 @@ spec:
 
 	cfg := &models.StoredConfig{
 		UUID:          "0000-test-config-1-0000-000000000000",
-		Kind:          string(api.WebSubApi),
+		Kind:          string(api.WebSubAPIKindWebSubApi),
 		Handle:        "testapi",
 		DisplayName:   "testapi",
 		Version:       "v1",
