@@ -241,9 +241,9 @@ The event gateway is configured via [`gateway-runtime/configs/config.toml`](gate
 | Section | Key | Default | Description |
 |---------|-----|---------|-------------|
 | `server` | `websub_port` | `8080` | WebSub listener port |
-| `server` | `websub_tls_enabled` | `false` | Serve the WebSub listener with HTTPS |
-| `server` | `websub_tls_cert_file` | `""` | PEM certificate path for the WebSub HTTPS listener |
-| `server` | `websub_tls_key_file` | `""` | PEM private key path for the WebSub HTTPS listener |
+| `server` | `websub_tls_enabled` | `true` | Serve the WebSub listener with HTTPS |
+| `server` | `websub_tls_cert_file` | `/etc/event-gateway/tls/default-listener.crt` | PEM certificate path for the WebSub HTTPS listener |
+| `server` | `websub_tls_key_file` | `/etc/event-gateway/tls/default-listener.key` | PEM private key path for the WebSub HTTPS listener |
 | `server` | `websocket_port` | `8081` | WebSocket listener port |
 | `server` | `admin_port` | `9002` | Admin/health endpoint port |
 | `server` | `metrics_port` | `9003` | Metrics endpoint port |
