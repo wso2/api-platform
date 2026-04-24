@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	discoveryv3 "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
@@ -58,10 +59,7 @@ func (h *APIKeyStateHandler) HandleResources(ctx context.Context, resources []*d
 		allKeys = append(allKeys, state.APIKeys...)
 	}
 
-	if err := h.store.ClearAll(); err != nil {
-		return fmt.Errorf("failed to clear API key store: %w", err)
-	}
-
+	newMap := make(map[string]map[string]*apikey.APIKey)
 	for _, key := range allKeys {
 		issuer := key.Issuer
 		ak := &apikey.APIKey{
@@ -81,9 +79,13 @@ func (h *APIKeyStateHandler) HandleResources(ctx context.Context, resources []*d
 			Issuer:          issuer,
 		}
 
-		if err := h.store.StoreAPIKey(key.APIId, ak); err != nil {
-			return fmt.Errorf("failed to store API key %q for API %q: %w", key.ID, key.APIId, err)
+		if err := addAPIKeyToSnapshot(newMap, key.APIId, ak); err != nil {
+			return fmt.Errorf("failed to build API key snapshot for API key %q and API %q: %w", key.ID, key.APIId, err)
 		}
+	}
+
+	if err := h.store.ReplaceAll(newMap); err != nil {
+		return fmt.Errorf("failed to replace API key store: %w", err)
 	}
 
 	slog.InfoContext(ctx, "Updated event-gateway API key state",
@@ -116,6 +118,41 @@ func decodeAPIKeyStateResource(resource *anypb.Any) (*APIKeyStateResource, error
 	}
 
 	return &state, nil
+}
+
+func addAPIKeyToSnapshot(snapshot map[string]map[string]*apikey.APIKey, apiId string, apiKey *apikey.APIKey) error {
+	if apiKey == nil {
+		return fmt.Errorf("API key cannot be nil")
+	}
+
+	apiKey.APIKey = strings.TrimSpace(apiKey.APIKey)
+	if apiKey.APIKey == "" {
+		return fmt.Errorf("%w: API key hash cannot be empty", apikey.ErrInvalidInput)
+	}
+
+	apiKeys, apiIdExists := snapshot[apiId]
+	var existingHash string
+	if apiIdExists {
+		for hash, existingKey := range apiKeys {
+			if existingKey.Name == apiKey.Name {
+				existingHash = hash
+				break
+			}
+		}
+	}
+	if existingHash != "" {
+		delete(apiKeys, existingHash)
+	}
+
+	if snapshot[apiId] == nil {
+		snapshot[apiId] = make(map[string]*apikey.APIKey)
+	}
+	if _, exists := snapshot[apiId][apiKey.APIKey]; exists {
+		return apikey.ErrConflict
+	}
+
+	snapshot[apiId][apiKey.APIKey] = apiKey
+	return nil
 }
 
 // APIKeyStateResource represents the complete API key snapshot distributed over xDS.
