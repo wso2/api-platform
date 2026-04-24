@@ -21,6 +21,7 @@ package xdsclient
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -103,6 +104,60 @@ func TestAPIKeyStateHandlerHandleResources_EmptySnapshotClearsStore(t *testing.T
 	resolved, err := store.ResolveValidatedAPIKey("api-1", "/repos/v1/hub", "POST", "plain-test-key", "")
 	if err == nil || resolved != nil {
 		t.Fatalf("expected API key store to be cleared, got resolved=%v err=%v", resolved, err)
+	}
+}
+
+func TestAPIKeyStateHandlerHandleResources_KeepsExistingStoreOnInvalidSnapshot(t *testing.T) {
+	store := apikey.NewAPIkeyStore()
+	if err := store.StoreAPIKey("api-1", &apikey.APIKey{
+		ID:         "existing-key",
+		Name:       "existing-key",
+		APIKey:     apikey.ComputeAPIKeyHash("plain-test-key"),
+		APIId:      "api-1",
+		Operations: "*",
+		Status:     apikey.Active,
+		CreatedAt:  time.Now(),
+		CreatedBy:  "tester",
+		UpdatedAt:  time.Now(),
+		Source:     "external",
+	}); err != nil {
+		t.Fatalf("failed to seed API key store: %v", err)
+	}
+
+	handler := NewAPIKeyStateHandler(store)
+	resources := []*discoveryv3.Resource{
+		{
+			Resource: mustBuildAPIKeyStateAny(t, APIKeyStateResource{
+				Version: 2,
+				APIKeys: []APIKeyData{
+					{
+						ID:         "invalid-key",
+						Name:       "invalid-key",
+						APIKey:     "",
+						APIId:      "api-1",
+						Operations: "*",
+						Status:     "active",
+						CreatedAt:  time.Now(),
+						CreatedBy:  "tester",
+						UpdatedAt:  time.Now(),
+						Source:     "external",
+					},
+				},
+			}),
+		},
+	}
+
+	err := handler.HandleResources(context.Background(), resources, "44")
+	if !errors.Is(err, apikey.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	}
+
+	resolved, err := store.ResolveValidatedAPIKey("api-1", "/repos/v1/hub", "POST", "plain-test-key", "")
+	if err != nil {
+		t.Fatalf("expected existing key to remain after failed update, got error: %v", err)
+	}
+	if resolved == nil || resolved.ID != "existing-key" {
+		t.Fatalf("expected existing key to remain, got %#v", resolved)
 	}
 }
 
