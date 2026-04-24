@@ -779,10 +779,10 @@ func (m *MockStorage) Close() error {
 func (m *MockStorage) UpdateCPSyncStatus(uuid, status, reason string) error {
 	if config, ok := m.configs[uuid]; ok {
 		config.CPSyncStatus = status
-		config.CPSyncReason = reason
+		config.CPSyncInfo = reason
 		return nil
 	}
-	return errors.New("config not found")
+	return storage.ErrNotFound
 }
 
 func (m *MockStorage) UpdateDeploymentID(uuid, deploymentID string) error {
@@ -790,13 +790,13 @@ func (m *MockStorage) UpdateDeploymentID(uuid, deploymentID string) error {
 		config.DeploymentID = deploymentID
 		return nil
 	}
-	return errors.New("config not found")
+	return storage.ErrNotFound
 }
 
 func (m *MockStorage) GetPendingBottomUpAPIs() ([]*models.StoredConfig, error) {
 	var pending []*models.StoredConfig
 	for _, config := range m.configs {
-		if config.EnableCPSync && config.CPSyncStatus != models.CPSyncStatusSuccess {
+		if config.Origin == models.OriginGatewayAPI && config.CPSyncStatus != models.CPSyncStatusSuccess {
 			pending = append(pending, config)
 		}
 	}

@@ -274,6 +274,10 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		truncated := now.Truncate(time.Millisecond)
 		deployedAt = &truncated
 	}
+	cpSyncStatus := ""
+	if params.Origin == models.OriginGatewayAPI {
+		cpSyncStatus = models.CPSyncStatusPending
+	}
 	storedCfg := &models.StoredConfig{
 		UUID:                apiID,
 		Kind:                kind,
@@ -285,6 +289,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		DesiredState:        models.StateDeployed,
 		DeploymentID:        params.DeploymentID,
 		Origin:              params.Origin,
+		CPSyncStatus:        cpSyncStatus,
 		CreatedAt:           now,
 		UpdatedAt:           now,
 		DeployedAt:          deployedAt,

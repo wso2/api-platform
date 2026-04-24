@@ -594,9 +594,9 @@ func syncCorrelationID(dep models.ControlPlaneDeployment) string {
 	return utils.GenerateDeterministicUUIDv7(dep.ArtifactID, dep.DeployedAt)
 }
 
-// parseCPSyncReason extracts the APIM API ID and revision ID from a CPSyncReason JSON string.
+// parseCPSyncInfo extracts the APIM API ID and revision ID from a CPSyncInfo JSON string.
 // Returns empty strings if the reason is empty, not valid JSON, or missing fields.
-func parseCPSyncReason(reason string) (apiID, revisionID string) {
+func parseCPSyncInfo(reason string) (apiID, revisionID string) {
 	if reason == "" {
 		return "", ""
 	}
@@ -650,7 +650,7 @@ func (c *Client) SyncBottomUpAPIs(apimConfig *utils.APIMConfig) {
 
 		// --- Undeploy flow ---
 		if api.DesiredState == models.StateUndeployed {
-			apimAPIID, revisionID := parseCPSyncReason(api.CPSyncReason)
+			apimAPIID, revisionID := parseCPSyncInfo(api.CPSyncInfo)
 
 			if apimAPIID == "" {
 				// Never synced to APIM — nothing to undeploy
@@ -716,9 +716,9 @@ func (c *Client) SyncBottomUpAPIs(apimConfig *utils.APIMConfig) {
 		// --- Deploy / update flow ---
 
 		// For updates (previously synced APIs), fetch swagger from APIM instead of generating locally.
-		// CPSyncReason contains {"id": "<apim-api-id>", "revision": "..."} from the last successful sync.
+		// CPSyncInfo contains {"id": "<apim-api-id>", "revision": "..."} from the last successful sync.
 		swaggerOverride := ""
-		if apimAPIID, _ := parseCPSyncReason(api.CPSyncReason); apimAPIID != "" {
+		if apimAPIID, _ := parseCPSyncInfo(api.CPSyncInfo); apimAPIID != "" {
 			swagger, err := utils.FetchSwaggerFromAPIM(*apimConfig, apimAPIID, c.logger)
 			if err != nil {
 				c.logger.Warn("Bottom-up sync: failed to fetch swagger from APIM, falling back to local generation",

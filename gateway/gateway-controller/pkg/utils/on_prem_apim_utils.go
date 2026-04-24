@@ -35,10 +35,26 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	management "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"gopkg.in/yaml.v3"
+)
+
+// APIM publisher API path constants
+const (
+	apimScheme             = "https://"
+	apimPublisherBasePath  = "/api/am/publisher/v4"
+	apimImportQueryParams  = "?preserveProvider=false&overwrite=true&dryRun=false&rotateRevision=true"
+	apimImportPath         = apimPublisherBasePath + "/apis/import" + apimImportQueryParams
+	apimUndeployPath       = apimPublisherBasePath + "/apis/%s/undeploy-revision?revisionId=%s"
+	apimSwaggerPath        = apimPublisherBasePath + "/apis/%s/swagger"
+)
+
+// APIM zip entry path constants
+const (
+	apimAPIYamlFile        = "api.yaml"
+	apimDeploymentEnvsFile = "deployment_environments.yaml"
+	apimSwaggerFile        = "Definitions/swagger.yaml"
 )
 
 // TokenResponse represents the OAuth2 token response from on-prem APIM
@@ -81,9 +97,6 @@ type APIMOperation struct {
 	ThrottlingPolicy          string                 `json:"throttlingPolicy" yaml:"throttlingPolicy"`
 	Scopes                    []interface{}          `json:"scopes" yaml:"scopes"`
 	UsedProductIds            []interface{}          `json:"usedProductIds" yaml:"usedProductIds"`
-	AmznResourceName          interface{}            `json:"amznResourceName" yaml:"amznResourceName"`
-	AmznResourceTimeout       interface{}            `json:"amznResourceTimeout" yaml:"amznResourceTimeout"`
-	AmznResourceContentEncode interface{}            `json:"amznResourceContentEncode" yaml:"amznResourceContentEncode"`
 	PayloadSchema             interface{}            `json:"payloadSchema" yaml:"payloadSchema"`
 	UriMapping                interface{}            `json:"uriMapping" yaml:"uriMapping"`
 	OperationPolicies         map[string]interface{} `json:"operationPolicies" yaml:"operationPolicies"`
@@ -118,6 +131,23 @@ type APIMTokenService struct {
 	cachedToken string
 	tokenExpiry time.Time
 	mu          sync.Mutex
+}
+
+// newAPIMPublisherHTTPClient creates an HTTP client with the given timeout and TLS settings.
+// Defaults to 30 seconds if timeout is zero.
+func newAPIMPublisherHTTPClient(timeout time.Duration, insecureSkipVerify bool) *http.Client {
+	if timeout == 0 {
+		timeout = 30 * time.Second
+	}
+	return &http.Client{
+		Timeout: timeout,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{ // #nosec G402 -- Explicit operator-controlled opt-out for dev/test environments.
+				InsecureSkipVerify: insecureSkipVerify,
+				MinVersion:         tls.VersionTLS12,
+			},
+		},
+	}
 }
 
 // NewAPIMTokenService creates a new APIM token service
@@ -156,14 +186,19 @@ func (s *APIMTokenService) getAccessToken() (string, error) {
 		return token, nil
 	}
 
-	// Priority 2: Use basic auth with username/password if available
+	// Priority 2: Use OAuth2 password grant if username/password are available
 	if s.config.Username != "" && s.config.Password != "" {
-		credentials := s.config.Username + ":" + s.config.Password
-		basicAuth := "Basic " + encodeBase64(credentials)
-		// Cache basic auth (no expiry, valid until changed)
-		s.cachedToken = basicAuth
-		s.tokenExpiry = time.Now().Add(1 * time.Hour) // Cache for 1 hour
-		return basicAuth, nil
+		token, expiresIn, err := s.generateOAuth2Token()
+		if err != nil {
+			return "", fmt.Errorf("OAuth2 token generation failed: %w", err)
+		}
+		s.cachedToken = token
+		if expiresIn > 0 {
+			s.tokenExpiry = time.Now().Add(time.Duration(float64(expiresIn)*0.9) * time.Second)
+		} else {
+			s.tokenExpiry = time.Now().Add(1 * time.Hour)
+		}
+		return token, nil
 	}
 
 	// No authentication method configured
@@ -209,19 +244,7 @@ func (s *APIMTokenService) generateOAuth2Token() (string, int, error) {
 		req.Header.Set("Authorization", authHeader)
 	}
 
-	// Create HTTP client with timeout and TLS configuration from config
-	timeout := s.config.Timeout
-	if timeout == 0 {
-		timeout = 30 * time.Second // Default timeout
-	}
-	client := &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: s.config.InsecureSkipVerify,
-			},
-		},
-	}
+	client := newAPIMPublisherHTTPClient(s.config.Timeout, s.config.InsecureSkipVerify)
 
 	// Make request
 	resp, err := client.Do(req)
@@ -264,7 +287,7 @@ func ImportAPIToAPIMWithConfig(apimConfig APIMConfig, logger *slog.Logger, apiZi
 	tokenService := NewAPIMTokenService(apimConfig)
 
 	// Construct the import URL with standard query parameters
-	importURL := "https://" + apimConfig.Host + "/api/am/publisher/v4/apis/import?preserveProvider=false&overwrite=true&dryRun=false&rotateRevision=true"
+	importURL := apimScheme + apimConfig.Host + apimImportPath
 
 	logger.Info("Importing API to on-prem APIM",
 		slog.String("url", importURL),
@@ -307,23 +330,8 @@ func ImportAPIToAPIMWithConfig(apimConfig APIMConfig, logger *slog.Logger, apiZi
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Accept", "application/json")
 
-	// Create HTTP client with TLS configuration and timeout from config
-	timeout := apimConfig.Timeout
-	if timeout == 0 {
-		timeout = 30 * time.Second // Default timeout
-	}
-	client := &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{ // #nosec G402 -- Explicit operator-controlled opt-out for dev/test environments.
-				InsecureSkipVerify: apimConfig.InsecureSkipVerify,
-				MinVersion:         tls.VersionTLS12,
-			},
-		},
-	}
-
 	// Make the request
-	resp, err := client.Do(req)
+	resp, err := newAPIMPublisherHTTPClient(apimConfig.Timeout, apimConfig.InsecureSkipVerify).Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send import request: %w", err)
 	}
@@ -598,8 +606,7 @@ func UndeployRevisionFromAPIM(apimConfig APIMConfig, apiID string, revisionID st
 		return fmt.Errorf("failed to get access token: %w", err)
 	}
 
-	undeployURL := fmt.Sprintf("https://%s/api/am/publisher/v4/apis/%s/undeploy-revision?revisionId=%s",
-		apimConfig.Host, apiID, revisionID)
+	undeployURL := fmt.Sprintf(apimScheme+"%s"+apimUndeployPath, apimConfig.Host, apiID, revisionID)
 	logger.Info("Undeploying API revision from APIM", slog.String("url", undeployURL))
 
 	payload := []map[string]interface{}{
@@ -620,20 +627,7 @@ func UndeployRevisionFromAPIM(apimConfig APIMConfig, apiID string, revisionID st
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	timeout := apimConfig.Timeout
-	if timeout == 0 {
-		timeout = 30 * time.Second
-	}
-	httpClient := &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: apimConfig.InsecureSkipVerify,
-			},
-		},
-	}
-
-	resp, err := httpClient.Do(req)
+	resp, err := newAPIMPublisherHTTPClient(apimConfig.Timeout, apimConfig.InsecureSkipVerify).Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send undeploy request: %w", err)
 	}
@@ -657,7 +651,7 @@ func FetchSwaggerFromAPIM(apimConfig APIMConfig, apiID string, logger *slog.Logg
 		return "", fmt.Errorf("failed to get access token: %w", err)
 	}
 
-	swaggerURL := fmt.Sprintf("https://%s/api/am/publisher/v4/apis/%s/swagger", apimConfig.Host, apiID)
+	swaggerURL := fmt.Sprintf(apimScheme+"%s"+apimSwaggerPath, apimConfig.Host, apiID)
 	logger.Info("Fetching swagger from APIM", slog.String("url", swaggerURL))
 
 	req, err := http.NewRequest("GET", swaggerURL, nil)
@@ -666,20 +660,7 @@ func FetchSwaggerFromAPIM(apimConfig APIMConfig, apiID string, logger *slog.Logg
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	timeout := apimConfig.Timeout
-	if timeout == 0 {
-		timeout = 30 * time.Second
-	}
-	httpClient := &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: apimConfig.InsecureSkipVerify,
-			},
-		},
-	}
-
-	resp, err := httpClient.Do(req)
+	resp, err := newAPIMPublisherHTTPClient(apimConfig.Timeout, apimConfig.InsecureSkipVerify).Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to send swagger request: %w", err)
 	}
@@ -694,7 +675,6 @@ func FetchSwaggerFromAPIM(apimConfig APIMConfig, apiID string, logger *slog.Logg
 	if err != nil {
 		return "", fmt.Errorf("failed to read swagger response: %w", err)
 	}
-	logger.Info("Successfully fetched swagger from APIM", slog.String("url",string(bodyBytes)), slog.Int("response_size", len(bodyBytes)))
 	return string(bodyBytes), nil
 }
 
@@ -732,15 +712,15 @@ func ExportAPIAsZip(api *models.StoredConfig, gatewayName string, swaggerOverrid
 	// Build zip files list using APIM structure
 	zipFiles := []ZipFile{
 		{
-			Path:    fmt.Sprintf("%s-%s/api.yaml", apiName, apiVersion),
+			Path:    fmt.Sprintf("%s-%s/%s", apiName, apiVersion, apimAPIYamlFile),
 			Content: apiYaml,
 		},
 		{
-			Path:    fmt.Sprintf("%s-%s/deployment_environments.yaml", apiName, apiVersion),
+			Path:    fmt.Sprintf("%s-%s/%s", apiName, apiVersion, apimDeploymentEnvsFile),
 			Content: deploymentYaml,
 		},
 		{
-			Path:    fmt.Sprintf("%s-%s/Definitions/swagger.yaml", apiName, apiVersion),
+			Path:    fmt.Sprintf("%s-%s/%s", apiName, apiVersion, apimSwaggerFile),
 			Content: openAPIDefinition,
 		},
 	}
@@ -802,7 +782,7 @@ func extractAPIMetadata(config interface{}) (string, string, error) {
 
 		return name, version, nil
 	}
-	if restAPI, ok := config.(api.RestAPI); ok {
+	if restAPI, ok := config.(management.RestAPI); ok {
 		return restAPI.Spec.DisplayName, restAPI.Spec.Version, nil
 	}
 	return "", "", fmt.Errorf("configuration is not a map or RestAPI struct: got %T", config)
@@ -811,27 +791,9 @@ func extractAPIMetadata(config interface{}) (string, string, error) {
 // extractUpstreamURL extracts the upstream URL from API configuration.
 // Handles both map-based and RestAPI struct-based configurations.
 func extractUpstreamURL(config interface{}) string {
-	// Handle map-based configuration
-	if configMap, ok := config.(map[string]interface{}); ok {
-		if upstream, exists := configMap["upstream"].(map[string]interface{}); exists {
-			if main, exists := upstream["main"].(map[string]interface{}); exists {
-				if url, exists := main["url"].(string); exists && url != "" {
-					return url
-				}
-			}
-		}
-	}
-
-	// Handle RestAPI value type
 	if restAPI, ok := config.(management.RestAPI); ok && restAPI.Spec.Upstream.Main.Url != nil && *restAPI.Spec.Upstream.Main.Url != "" {
 		return *restAPI.Spec.Upstream.Main.Url
 	}
-
-	// Handle RestAPI pointer configuration
-	if restAPI, ok := config.(*management.RestAPI); ok && restAPI != nil && restAPI.Spec.Upstream.Main.Url != nil && *restAPI.Spec.Upstream.Main.Url != "" {
-		return *restAPI.Spec.Upstream.Main.Url
-	}
-	// ========= check correct one above and remove this if not needed =========
 
 	return ""
 }
@@ -839,22 +801,20 @@ func extractUpstreamURL(config interface{}) string {
 // convertPolicyVersion converts policy version format (v1 → 1.0)
 func convertPolicyVersion(version string) string {
 	if version == "" {
+		slog.Default().Warn("Policy version is empty, defaulting to 1.0")
 		return "1.0"
 	}
 
 	// Remove 'v' prefix if present
 	version = strings.TrimPrefix(version, "v")
-
-	// If no dot, append .0
 	if !strings.Contains(version, ".") {
 		version = version + ".0"
 	}
-
 	return version
 }
 
 // convertAPILevelPolicies converts RestAPI spec policies to APIM apiHubPolicies
-func convertAPILevelPolicies(policies *[]api.Policy) []APIMHubPolicy {
+func convertAPILevelPolicies(policies *[]management.Policy) []APIMHubPolicy {
 	if policies == nil || len(*policies) == 0 {
 		return []APIMHubPolicy{}
 	}
@@ -877,7 +837,7 @@ func convertAPILevelPolicies(policies *[]api.Policy) []APIMHubPolicy {
 }
 
 // convertOperationPolicies converts operation policies to APIM operationHubPolicies
-func convertOperationPolicies(policies *[]api.Policy) []APIMHubPolicy {
+func convertOperationPolicies(policies *[]management.Policy) []APIMHubPolicy {
 	if policies == nil || len(*policies) == 0 {
 		return []APIMHubPolicy{}
 	}
@@ -910,8 +870,6 @@ func convertPolicyParams(params *map[string]interface{}) map[string]interface{} 
 }
 
 // generateRandomPolicyUUID generates a deterministic UUID for a policy
-// Same policy name+version always produces the same UUID (idempotent)
-// Different policies get different UUIDs
 func generateRandomPolicyUUID(policyName string, policyVersion string) string {
 	// Create a deterministic UUID v5 based on policy name and version
 	// Using DNS namespace for consistency
@@ -936,19 +894,25 @@ func buildAdditionalProperties(deploymentID string) []interface{} {
 
 // generateAPIYaml generates APIM-formatted api.yaml content
 func generateAPIYaml(api *models.StoredConfig, apiName, apiVersion string) string {
-	contextValue, err := api.GetContext()
+	apiData := buildAPIData(api, apiName, apiVersion)
+
+	yamlBytes, err := yaml.Marshal(apiData)
 	if err != nil {
-		contextValue = ""
+		return ""
 	}
 
-	// Extract upstream URL from API configuration
-	upstreamURL := extractUpstreamURL(api.Configuration)
+	return string(yamlBytes)
+}
+
+// buildEndpointConfig constructs the APIM endpoint configuration from the API's upstream URL.
+// Defaults to "http://localhost:8080" if no upstream URL is configured.
+func buildEndpointConfig(config interface{}) map[string]interface{} {
+	upstreamURL := extractUpstreamURL(config)
 	if upstreamURL == "" {
-		upstreamURL = "http://localhost:8080" // Default fallback
+		upstreamURL = "http://localhost:8080"
 	}
 
-	// Build endpoint configuration
-	endpointConfig := map[string]interface{}{
+	return map[string]interface{}{
 		"endpoint_type": "http",
 		"production_endpoints": map[string]interface{}{
 			"url": upstreamURL,
@@ -957,21 +921,23 @@ func generateAPIYaml(api *models.StoredConfig, apiName, apiVersion string) strin
 			"url": upstreamURL,
 		},
 	}
+}
 
-	// Extract and convert API-level policies
-	var apiHubPolicies []APIMHubPolicy
-	if restAPIVal, ok := api.Configuration.(management.RestAPI); ok {
-		if restAPIVal.Spec.Policies != nil {
-			apiHubPolicies = convertAPILevelPolicies(restAPIVal.Spec.Policies)
-		}
-	} else if restAPIPtr, ok := api.Configuration.(*management.RestAPI); ok {
-		if restAPIPtr != nil && restAPIPtr.Spec.Policies != nil {
-			apiHubPolicies = convertAPILevelPolicies(restAPIPtr.Spec.Policies)
-		}
+// buildAPIData constructs the APIM-compatible api.yaml data structure from a StoredConfig.
+func buildAPIData(api *models.StoredConfig, apiName, apiVersion string) map[string]interface{} {
+	contextValue, err := api.GetContext()
+	if err != nil {
+		contextValue = ""
 	}
 
-	// Build APIM-compatible api.yaml structure
-	apiData := map[string]interface{}{
+	endpointConfig := buildEndpointConfig(api.Configuration)
+
+	var apiHubPolicies []APIMHubPolicy
+	if restAPI, ok := api.Configuration.(management.RestAPI); ok && restAPI.Spec.Policies != nil {
+		apiHubPolicies = convertAPILevelPolicies(restAPI.Spec.Policies)
+	}
+
+	return map[string]interface{}{
 		"type":    "api",
 		"version": "v4.7.0",
 		"data": map[string]interface{}{
@@ -1007,31 +973,6 @@ func generateAPIYaml(api *models.StoredConfig, apiName, apiVersion string) strin
 			"operations":                 buildOperationsWithPolicies(api.Configuration),
 		},
 	}
-
-	// Merge any additional metadata from the stored config
-	if configMap, ok := api.Configuration.(map[string]interface{}); ok {
-		if dataMap, ok := apiData["data"].(map[string]interface{}); ok {
-			// Copy relevant fields from stored config to apiData
-			if context, exists := configMap["context"]; exists {
-				dataMap["context"] = context
-			}
-			if basePath, exists := configMap["basePath"]; exists {
-				dataMap["basePath"] = basePath
-			}
-			if description, exists := configMap["description"]; exists {
-				dataMap["description"] = description
-			}
-		}
-	}
-	
-
-	// Marshal to YAML
-	yamlBytes, err := yaml.Marshal(apiData)
-	if err != nil {
-		return ""
-	}
-
-	return string(yamlBytes)
 }
 
 // buildOperationsWithPolicies builds APIM operations with policies from RestAPI spec
@@ -1047,34 +988,22 @@ func buildOperationsWithPolicies(config interface{}) []map[string]interface{} {
 		return operations
 	}
 
-	// Handle RestAPI pointer type
-	if restAPIPtr, ok := config.(*management.RestAPI); ok && restAPIPtr != nil && restAPIPtr.Spec.Operations != nil {
-		for _, op := range restAPIPtr.Spec.Operations {
-			operation := buildAPIMOperation(op)
-			operations = append(operations, operation)
-		}
-		return operations
-	}
-
 	return operations
 }
 
 // buildAPIMOperation builds a single APIM operation with policies
-func buildAPIMOperation(op api.Operation) map[string]interface{} {
+func buildAPIMOperation(op management.Operation) map[string]interface{} {
 	// Convert operation policies
 	operationHubPolicies := convertOperationPolicies(op.Policies)
 
 	return map[string]interface{}{
 		"id":                        "",
-		"target":                    op.Path, // Use operation path
+		"target":                    op.Path,
 		"verb":                      strings.ToUpper(string(op.Method)),
 		"authType":                  "Application & Application User",
 		"throttlingPolicy":          "Unlimited",
 		"scopes":                    []interface{}{},
 		"usedProductIds":            []interface{}{},
-		"amznResourceName":          nil,
-		"amznResourceTimeout":       nil,
-		"amznResourceContentEncode": nil,
 		"payloadSchema":             nil,
 		"uriMapping":                nil,
 		"operationPolicies": map[string]interface{}{
@@ -1110,58 +1039,18 @@ func generateDeploymentEnvironmentsYaml(gatewayName string) string {
 // extractOpenAPIDefinition extracts OpenAPI/Swagger definition from configuration.
 // Generates paths from the operations in the spec using provided apiName and apiVersion.
 func extractOpenAPIDefinition(config interface{}, apiName, apiVersion string) string {
-	// Handle map-based configuration
-	if configMap, ok := config.(map[string]interface{}); ok {
-		paths := buildOpenAPIPaths(configMap)
-		return createMinimalOpenAPI(apiName, apiVersion, paths)
-	}
+	serverURL := extractUpstreamURL(config)
 
-	// Handle RestAPI struct configuration
 	if restAPI, ok := config.(management.RestAPI); ok && restAPI.Spec.Operations != nil {
 		paths := buildOpenAPIPathsFromRestAPI(restAPI.Spec.Operations)
-		return createMinimalOpenAPI(apiName, apiVersion, paths)
+		return createMinimalOpenAPI(apiName, apiVersion, serverURL, paths)
 	}
 
-	// Handle RestAPI pointer configuration
-	if restAPI, ok := config.(*management.RestAPI); ok && restAPI != nil && restAPI.Spec.Operations != nil {
-		paths := buildOpenAPIPathsFromRestAPI(restAPI.Spec.Operations)
-		return createMinimalOpenAPI(apiName, apiVersion, paths)
-	}
-
-	return createMinimalOpenAPI(apiName, apiVersion, nil)
-}
-
-// buildOpenAPIPaths builds OpenAPI path items from the operations in the configuration.
-func buildOpenAPIPaths(configMap map[string]interface{}) map[string]interface{} {
-	paths := make(map[string]interface{})
-	if operations, exists := configMap["operations"].([]interface{}); exists {
-		for _, op := range operations {
-			if opMap, ok := op.(map[string]interface{}); ok {
-				path, pathOk := opMap["path"].(string)
-				method, methodOk := opMap["method"].(string)
-
-				if pathOk && methodOk && path != "" && method != "" {
-					if paths[path] == nil {
-						paths[path] = make(map[string]interface{})
-					}
-					pathItem := paths[path].(map[string]interface{})
-					methodLower := strings.ToLower(method)
-					pathItem[methodLower] = map[string]interface{}{
-						"responses": map[string]interface{}{
-							"200": map[string]interface{}{
-								"description": "Successful response",
-							},
-						},
-					}
-				}
-			}
-		}
-	}
-	return paths
+	return createMinimalOpenAPI(apiName, apiVersion, serverURL, nil)
 }
 
 // buildOpenAPIPathsFromRestAPI builds OpenAPI path items from RestAPI operations.
-func buildOpenAPIPathsFromRestAPI(operations []api.Operation) map[string]interface{} {
+func buildOpenAPIPathsFromRestAPI(operations []management.Operation) map[string]interface{} {
 	paths := make(map[string]interface{})
 
 	for _, op := range operations {
@@ -1235,10 +1124,14 @@ func extractPathParameters(path string) []map[string]interface{} {
 	return parameters
 }
 
-// createMinimalOpenAPI creates a minimal OpenAPI 3.0.0 definition with the provided paths
-func createMinimalOpenAPI(apiName, apiVersion string, paths map[string]interface{}) string {
+// createMinimalOpenAPI creates a minimal OpenAPI 3.0.0 definition with the provided paths.
+// serverURL is used to populate the servers section; if empty it defaults to "/".
+func createMinimalOpenAPI(apiName, apiVersion, serverURL string, paths map[string]interface{}) string {
 	if paths == nil {
 		paths = make(map[string]interface{})
+	}
+	if serverURL == "" {
+		serverURL = "/"
 	}
 
 	openAPISpec := map[string]interface{}{
@@ -1246,6 +1139,9 @@ func createMinimalOpenAPI(apiName, apiVersion string, paths map[string]interface
 		"info": map[string]interface{}{
 			"title":   apiName,
 			"version": apiVersion,
+		},
+		"servers": []map[string]interface{}{
+			{"url": serverURL},
 		},
 		"paths": paths,
 	}

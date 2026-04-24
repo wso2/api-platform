@@ -96,10 +96,9 @@ type StoredConfig struct {
 	CreatedAt           time.Time    `json:"createdAt"`
 	UpdatedAt           time.Time    `json:"updatedAt"`
 	DeployedAt          *time.Time   `json:"deployedAt,omitempty"`
-	SensitiveValues     []string     `json:"-"` // not persisted — holds resolved secret values for redaction
-	EnableCPSync        bool         `json:"enableCpSync,omitempty"`
-	CPSyncStatus        string       `json:"cpSyncStatus,omitempty"`  // pending, success, failed
-	CPSyncReason        string       `json:"cpSyncReason,omitempty"`  // failure detail when CPSyncStatus=failed
+	SensitiveValues     []string     `json:"-"`                      // not persisted — holds resolved secret values for redaction
+	CPSyncStatus        string       `json:"cpSyncStatus,omitempty"` // pending, success, failed
+	CPSyncInfo          string       `json:"cpSyncInfo,omitempty"`   // failure detail when CPSyncStatus=failed
 }
 
 // GetCompositeKey returns the composite key "kind:displayName:version" for indexing

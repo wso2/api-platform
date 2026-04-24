@@ -205,8 +205,8 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 		INSERT INTO artifacts (
 			uuid, gateway_id, display_name, version, kind, handle,
 			desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
-			enable_cp_sync, cp_sync_status, cp_sync_reason
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			cp_sync_status, cp_sync_info
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	tx, err := s.begin()
@@ -239,9 +239,9 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 	if cfg.CPSyncStatus != "" {
 		cpSyncStatus = cfg.CPSyncStatus
 	}
-	var cpSyncReason interface{}
-	if cfg.CPSyncReason != "" {
-		cpSyncReason = cfg.CPSyncReason
+	var cpSyncInfo interface{}
+	if cfg.CPSyncInfo != "" {
+		cpSyncInfo = cfg.CPSyncInfo
 	}
 	_, err = stmt.Exec(
 		cfg.UUID,
@@ -256,9 +256,8 @@ func (s *sqlStore) SaveConfig(cfg *models.StoredConfig) error {
 		now,
 		now,
 		deployedAt,
-		cfg.EnableCPSync,
 		cpSyncStatus,
-		cpSyncReason,
+		cpSyncInfo,
 	)
 
 	if err != nil {
@@ -315,7 +314,7 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 		UPDATE artifacts
 		SET display_name = ?, version = ?, kind = ?, handle = ?,
 			desired_state = ?, deployment_id = ?, origin = ?, updated_at = ?, deployed_at = ?,
-			enable_cp_sync = ?, cp_sync_status = ?, cp_sync_reason = ?
+			cp_sync_status = ?, cp_sync_info = ?
 		WHERE uuid = ? AND gateway_id = ?
 	`
 
@@ -352,9 +351,9 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 	if cfg.CPSyncStatus != "" {
 		updateCPSyncStatus = cfg.CPSyncStatus
 	}
-	var updateCPSyncReason interface{}
-	if cfg.CPSyncReason != "" {
-		updateCPSyncReason = cfg.CPSyncReason
+	var updateCPSyncInfo interface{}
+	if cfg.CPSyncInfo != "" {
+		updateCPSyncInfo = cfg.CPSyncInfo
 	}
 	result, err := stmt.Exec(
 		cfg.DisplayName,
@@ -366,9 +365,8 @@ func (s *sqlStore) UpdateConfig(cfg *models.StoredConfig) error {
 		cfg.Origin,
 		time.Now(),
 		updateDeployedAt,
-		cfg.EnableCPSync,
 		updateCPSyncStatus,
-		updateCPSyncReason,
+		updateCPSyncInfo,
 		cfg.UUID,
 		s.gatewayId,
 	)
@@ -437,8 +435,8 @@ func (s *sqlStore) UpsertConfig(cfg *models.StoredConfig) (bool, error) {
 		INSERT INTO artifacts (
 			uuid, gateway_id, display_name, version, kind, handle,
 			desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
-			enable_cp_sync, cp_sync_status, cp_sync_reason
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			cp_sync_status, cp_sync_info
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(gateway_id, uuid) DO UPDATE SET
 			display_name  = excluded.display_name,
 			version       = excluded.version,
@@ -482,9 +480,9 @@ func (s *sqlStore) UpsertConfig(cfg *models.StoredConfig) (bool, error) {
 	if cfg.CPSyncStatus != "" {
 		upsertCPSyncStatus = cfg.CPSyncStatus
 	}
-	var upsertCPSyncReason interface{}
-	if cfg.CPSyncReason != "" {
-		upsertCPSyncReason = cfg.CPSyncReason
+	var upsertCPSyncInfo interface{}
+	if cfg.CPSyncInfo != "" {
+		upsertCPSyncInfo = cfg.CPSyncInfo
 	}
 	result, err := stmt.Exec(
 		cfg.UUID,
@@ -499,9 +497,8 @@ func (s *sqlStore) UpsertConfig(cfg *models.StoredConfig) (bool, error) {
 		now,
 		now,
 		cfg.DeployedAt,
-		cfg.EnableCPSync,
 		upsertCPSyncStatus,
-		upsertCPSyncReason,
+		upsertCPSyncInfo,
 	)
 	if err != nil {
 		metrics.DatabaseOperationsTotal.WithLabelValues("upsert", table, "error").Inc()
@@ -623,7 +620,7 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 	// Step 1: Get artifact base record
 	artifactQuery := `
 		SELECT uuid, kind, handle, display_name, version, desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
-			enable_cp_sync, cp_sync_status, cp_sync_reason
+			cp_sync_status, cp_sync_info
 		FROM artifacts
 		WHERE uuid = ? AND gateway_id = ?
 	`
@@ -632,7 +629,7 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 	var deployedAt sql.NullTime
 	var deploymentID sql.NullString
 	var cpSyncStatus sql.NullString
-	var cpSyncReason sql.NullString
+	var cpSyncInfo sql.NullString
 
 	err := s.queryRow(artifactQuery, id, s.gatewayId).Scan(
 		&cfg.UUID,
@@ -646,9 +643,8 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 		&cfg.CreatedAt,
 		&cfg.UpdatedAt,
 		&deployedAt,
-		&cfg.EnableCPSync,
 		&cpSyncStatus,
-		&cpSyncReason,
+		&cpSyncInfo,
 	)
 
 	if err != nil {
@@ -671,8 +667,8 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 	if cpSyncStatus.Valid {
 		cfg.CPSyncStatus = cpSyncStatus.String
 	}
-	if cpSyncReason.Valid {
-		cfg.CPSyncReason = cpSyncReason.String
+	if cpSyncInfo.Valid {
+		cfg.CPSyncInfo = cpSyncInfo.String
 	}
 
 	// Step 2: Get configuration from the correct type table
@@ -693,7 +689,7 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 func (s *sqlStore) GetConfigByKindAndHandle(kind string, handle string) (*models.StoredConfig, error) {
 	artifactQuery := `
 		SELECT uuid, kind, handle, display_name, version, desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
-			enable_cp_sync, cp_sync_status, cp_sync_reason
+			cp_sync_status, cp_sync_info
 		FROM artifacts
 		WHERE kind = ? AND handle = ? AND gateway_id = ?
 	`
@@ -702,7 +698,7 @@ func (s *sqlStore) GetConfigByKindAndHandle(kind string, handle string) (*models
 	var deployedAt sql.NullTime
 	var deploymentID sql.NullString
 	var cpSyncStatus sql.NullString
-	var cpSyncReason sql.NullString
+	var cpSyncInfo sql.NullString
 
 	err := s.queryRow(artifactQuery, kind, handle, s.gatewayId).Scan(
 		&cfg.UUID,
@@ -716,9 +712,8 @@ func (s *sqlStore) GetConfigByKindAndHandle(kind string, handle string) (*models
 		&cfg.CreatedAt,
 		&cfg.UpdatedAt,
 		&deployedAt,
-		&cfg.EnableCPSync,
 		&cpSyncStatus,
-		&cpSyncReason,
+		&cpSyncInfo,
 	)
 
 	if err != nil {
@@ -737,8 +732,8 @@ func (s *sqlStore) GetConfigByKindAndHandle(kind string, handle string) (*models
 	if cpSyncStatus.Valid {
 		cfg.CPSyncStatus = cpSyncStatus.String
 	}
-	if cpSyncReason.Valid {
-		cfg.CPSyncReason = cpSyncReason.String
+	if cpSyncInfo.Valid {
+		cfg.CPSyncInfo = cpSyncInfo.String
 	}
 
 	if err := s.loadResourceConfig(&cfg); err != nil {
@@ -752,7 +747,7 @@ func (s *sqlStore) GetConfigByKindAndHandle(kind string, handle string) (*models
 func (s *sqlStore) GetConfigByKindNameAndVersion(kind, displayName, version string) (*models.StoredConfig, error) {
 	artifactQuery := `
 		SELECT uuid, kind, handle, display_name, version, desired_state, deployment_id, origin, created_at, updated_at, deployed_at,
-			enable_cp_sync, cp_sync_status, cp_sync_reason
+			cp_sync_status, cp_sync_info
 		FROM artifacts
 		WHERE kind = ? AND display_name = ? AND version = ? AND gateway_id = ?
 	`
@@ -761,7 +756,7 @@ func (s *sqlStore) GetConfigByKindNameAndVersion(kind, displayName, version stri
 	var deployedAt sql.NullTime
 	var deploymentID sql.NullString
 	var cpSyncStatus sql.NullString
-	var cpSyncReason sql.NullString
+	var cpSyncInfo sql.NullString
 
 	err := s.queryRow(artifactQuery, kind, displayName, version, s.gatewayId).Scan(
 		&cfg.UUID,
@@ -775,9 +770,8 @@ func (s *sqlStore) GetConfigByKindNameAndVersion(kind, displayName, version stri
 		&cfg.CreatedAt,
 		&cfg.UpdatedAt,
 		&deployedAt,
-		&cfg.EnableCPSync,
 		&cpSyncStatus,
-		&cpSyncReason,
+		&cpSyncInfo,
 	)
 
 	if err != nil {
@@ -796,8 +790,8 @@ func (s *sqlStore) GetConfigByKindNameAndVersion(kind, displayName, version stri
 	if cpSyncStatus.Valid {
 		cfg.CPSyncStatus = cpSyncStatus.String
 	}
-	if cpSyncReason.Valid {
-		cfg.CPSyncReason = cpSyncReason.String
+	if cpSyncInfo.Valid {
+		cfg.CPSyncInfo = cpSyncInfo.String
 	}
 
 	if err := s.loadResourceConfig(&cfg); err != nil {
@@ -814,7 +808,7 @@ func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
 	query := `
 			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, r.configuration, a.desired_state,
 				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
-				a.enable_cp_sync, a.cp_sync_status, a.cp_sync_reason
+				a.cp_sync_status, a.cp_sync_info
 			FROM artifacts a
 			JOIN rest_apis r ON a.uuid = r.uuid AND a.gateway_id = r.gateway_id
 			WHERE a.gateway_id = ?
@@ -823,7 +817,7 @@ func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
 
 			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, w.configuration, a.desired_state,
 				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
-				a.enable_cp_sync, a.cp_sync_status, a.cp_sync_reason
+				a.cp_sync_status, a.cp_sync_info
 			FROM artifacts a
 			JOIN websub_apis w ON a.uuid = w.uuid AND a.gateway_id = w.gateway_id
 			WHERE a.gateway_id = ?
@@ -832,7 +826,7 @@ func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
 
 			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, lp.configuration, a.desired_state,
 				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
-				a.enable_cp_sync, a.cp_sync_status, a.cp_sync_reason
+				a.cp_sync_status, a.cp_sync_info
 			FROM artifacts a
 			JOIN llm_providers lp ON a.uuid = lp.uuid AND a.gateway_id = lp.gateway_id
 			WHERE a.gateway_id = ?
@@ -841,7 +835,7 @@ func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
 
 			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, lx.configuration, a.desired_state,
 				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
-				a.enable_cp_sync, a.cp_sync_status, a.cp_sync_reason
+				a.cp_sync_status, a.cp_sync_info
 			FROM artifacts a
 			JOIN llm_proxies lx ON a.uuid = lx.uuid AND a.gateway_id = lx.gateway_id
 			WHERE a.gateway_id = ?
@@ -850,7 +844,7 @@ func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
 
 		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, m.configuration, a.desired_state,
 			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
-			a.enable_cp_sync, a.cp_sync_status, a.cp_sync_reason
+			a.cp_sync_status, a.cp_sync_info
 		FROM artifacts a
 		JOIN mcp_proxies m ON a.uuid = m.uuid AND a.gateway_id = m.gateway_id
 		WHERE a.gateway_id = ?
@@ -876,7 +870,7 @@ func (s *sqlStore) GetAllConfigsByKind(kind string) ([]*models.StoredConfig, err
 	query := fmt.Sprintf(`
 			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, r.configuration, a.desired_state,
 				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
-				a.enable_cp_sync, a.cp_sync_status, a.cp_sync_reason
+				a.cp_sync_status, a.cp_sync_info
 			FROM artifacts a
 			JOIN %s r ON a.uuid = r.uuid AND a.gateway_id = r.gateway_id
 			WHERE a.kind = ? AND a.gateway_id = ?
@@ -892,7 +886,7 @@ func (s *sqlStore) GetAllConfigsByKind(kind string) ([]*models.StoredConfig, err
 	return s.scanConfigRows(rows)
 }
 
-// scanConfigRows scans rows from a query that returns (uuid, kind, handle, display_name, version, configuration, desired_state, deployment_id, origin, created_at, updated_at, deployed_at, enable_cp_sync, cp_sync_status, cp_sync_reason)
+// scanConfigRows scans rows from a query that returns (uuid, kind, handle, display_name, version, configuration, desired_state, deployment_id, origin, created_at, updated_at, deployed_at, enable_cp_sync, cp_sync_status, cp_sync_info)
 func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error) {
 	var configs []*models.StoredConfig
 
@@ -902,7 +896,7 @@ func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error
 		var deployedAt sql.NullTime
 		var deploymentID sql.NullString
 		var cpSyncStatus sql.NullString
-		var cpSyncReason sql.NullString
+		var cpSyncInfo sql.NullString
 
 		err := rows.Scan(
 			&cfg.UUID,
@@ -917,9 +911,8 @@ func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error
 			&cfg.CreatedAt,
 			&cfg.UpdatedAt,
 			&deployedAt,
-			&cfg.EnableCPSync,
 			&cpSyncStatus,
-			&cpSyncReason,
+			&cpSyncInfo,
 		)
 
 		if err != nil {
@@ -935,8 +928,8 @@ func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error
 		if cpSyncStatus.Valid {
 			cfg.CPSyncStatus = cpSyncStatus.String
 		}
-		if cpSyncReason.Valid {
-			cfg.CPSyncReason = cpSyncReason.String
+		if cpSyncInfo.Valid {
+			cfg.CPSyncInfo = cpSyncInfo.String
 		}
 
 		if configJSON.Valid && configJSON.String != "" {
@@ -962,7 +955,7 @@ func (s *sqlStore) GetAllConfigsByOrigin(origin models.Origin) ([]*models.Stored
 	query := `
 		SELECT uuid, kind, handle, display_name, version, desired_state,
 			deployment_id, origin, created_at, updated_at, deployed_at,
-			enable_cp_sync, cp_sync_status, cp_sync_reason
+			cp_sync_status, cp_sync_info
 		FROM artifacts
 		WHERE origin = ? AND gateway_id = ?
 		ORDER BY created_at DESC
@@ -980,7 +973,7 @@ func (s *sqlStore) GetAllConfigsByOrigin(origin models.Origin) ([]*models.Stored
 		var deployedAt sql.NullTime
 		var deploymentID sql.NullString
 		var cpSyncStatus sql.NullString
-		var cpSyncReason sql.NullString
+		var cpSyncInfo sql.NullString
 
 		err := rows.Scan(
 			&cfg.UUID,
@@ -994,9 +987,8 @@ func (s *sqlStore) GetAllConfigsByOrigin(origin models.Origin) ([]*models.Stored
 			&cfg.CreatedAt,
 			&cfg.UpdatedAt,
 			&deployedAt,
-			&cfg.EnableCPSync,
 			&cpSyncStatus,
-			&cpSyncReason,
+			&cpSyncInfo,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan row: %w", err)
@@ -1011,8 +1003,8 @@ func (s *sqlStore) GetAllConfigsByOrigin(origin models.Origin) ([]*models.Stored
 		if cpSyncStatus.Valid {
 			cfg.CPSyncStatus = cpSyncStatus.String
 		}
-		if cpSyncReason.Valid {
-			cfg.CPSyncReason = cpSyncReason.String
+		if cpSyncInfo.Valid {
+			cfg.CPSyncInfo = cpSyncInfo.String
 		}
 
 		configs = append(configs, &cfg)
@@ -1025,13 +1017,13 @@ func (s *sqlStore) GetAllConfigsByOrigin(origin models.Origin) ([]*models.Stored
 	return configs, nil
 }
 
-// UpdateCPSyncStatus updates only the cp_sync_status, cp_sync_reason, and updated_at fields
+// UpdateCPSyncStatus updates only the cp_sync_status, cp_sync_info, and updated_at fields
 // for an artifact. Used by the bottom-up sync engine to record sync outcomes without reloading
 // the full config.
 func (s *sqlStore) UpdateCPSyncStatus(uuid, status, reason string) error {
 	query := `
 		UPDATE artifacts
-		SET cp_sync_status = ?, cp_sync_reason = ?, updated_at = ?
+		SET cp_sync_status = ?, cp_sync_info = ?, updated_at = ?
 		WHERE uuid = ? AND gateway_id = ?
 	`
 	var reasonVal interface{}
@@ -1052,24 +1044,23 @@ func (s *sqlStore) UpdateCPSyncStatus(uuid, status, reason string) error {
 	return nil
 }
 
-// GetPendingBottomUpAPIs returns all RestApi artifacts that originated from the gateway REST API,
-// have enable_cp_sync=true, and have a cp_sync_status of 'pending' or 'failed'.
+// GetPendingBottomUpAPIs returns all RestApi artifacts that originated from the gateway REST API
+// and have a cp_sync_status of 'pending' or 'failed'.
 // Used by the bottom-up sync to determine which APIs need to be pushed to the control plane.
 func (s *sqlStore) GetPendingBottomUpAPIs() ([]*models.StoredConfig, error) {
 	query := `
 		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, r.configuration, a.desired_state,
 			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
-			a.enable_cp_sync, a.cp_sync_status, a.cp_sync_reason
+			a.cp_sync_status, a.cp_sync_info
 		FROM artifacts a
 		JOIN rest_apis r ON a.uuid = r.uuid AND a.gateway_id = r.gateway_id
 		WHERE a.gateway_id = ?
 		  AND a.origin = 'gateway_api'
-		  AND a.enable_cp_sync = ?
 		  AND a.cp_sync_status IN ('pending', 'failed')
 		ORDER BY a.created_at ASC
 	`
 
-	rows, err := s.query(query, s.gatewayId, true)
+	rows, err := s.query(query, s.gatewayId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query pending bottom-up APIs: %w", err)
 	}

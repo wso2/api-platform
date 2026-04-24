@@ -508,10 +508,10 @@ func (m *mockStorageForDeletion) GetDB() *sql.DB {
 func (m *mockStorageForDeletion) UpdateCPSyncStatus(uuid, status, reason string) error {
 	if config, ok := m.configs[uuid]; ok {
 		config.CPSyncStatus = status
-		config.CPSyncReason = reason
+		config.CPSyncInfo = reason
 		return nil
 	}
-	return errors.New("config not found")
+	return storage.ErrNotFound
 }
 
 func (m *mockStorageForDeletion) UpdateDeploymentID(uuid, deploymentID string) error {
@@ -519,13 +519,13 @@ func (m *mockStorageForDeletion) UpdateDeploymentID(uuid, deploymentID string) e
 		config.DeploymentID = deploymentID
 		return nil
 	}
-	return errors.New("config not found")
+	return storage.ErrNotFound
 }
 
 func (m *mockStorageForDeletion) GetPendingBottomUpAPIs() ([]*models.StoredConfig, error) {
 	var pending []*models.StoredConfig
 	for _, config := range m.configs {
-		if config.EnableCPSync && config.CPSyncStatus != models.CPSyncStatusSuccess {
+		if config.Origin == models.OriginGatewayAPI && config.CPSyncStatus != models.CPSyncStatusSuccess {
 			pending = append(pending, config)
 		}
 	}

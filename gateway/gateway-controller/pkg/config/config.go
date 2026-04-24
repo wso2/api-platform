@@ -509,6 +509,8 @@ func LoadConfig(configPath string) (*Config, error) {
 			return "controller.controlplane.apim_oauth2_username"
 		case "controller_controlplane_apim_oauth2_password":
 			return "controller.controlplane.apim_oauth2_password"
+		case "controller_controlplane_gateway_name":
+			return "controller.controlplane.gateway_name"
 		default:
 			// For other env vars, use standard mapping (underscore to dot)
 			// Step 1: Convert double underscore "__" into a temporary placeholder

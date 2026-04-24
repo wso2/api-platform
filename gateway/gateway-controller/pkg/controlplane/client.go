@@ -275,6 +275,8 @@ func (c *Client) GetAPIMConfig() *utils.APIMConfig {
 		GatewayName:        c.config.GatewayName,
 		ClientID:           c.config.ApimOAuth2ClientID,
 		ClientSecret:       c.config.ApimOAuth2ClientSecret,
+		Username:           c.config.ApimOAuth2Username,
+		Password:           c.config.ApimOAuth2Password,
 		TokenURL:           fmt.Sprintf("https://%s/oauth2/token", c.config.Host),
 	}
 }
