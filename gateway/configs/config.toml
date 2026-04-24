@@ -12,14 +12,13 @@ gateway_host = "*"
 
 [router.access_logs]
 enabled = true
-format = "text"
 
 [controller.server]
 gateway_id = "platform-gateway-id"
 
 [controller.controlplane]
-insecure_skip_verify = trueg
-ateway_name = "your gateway name"
+insecure_skip_verify = true
+gateway_name = "your gateway name"
 apim_oauth2_client_id = "your-client-id"
 apim_oauth2_client_secret = "your-client-secret"
 # Option 2: Resource Owner Password Credentials Flow (OAuth2)
