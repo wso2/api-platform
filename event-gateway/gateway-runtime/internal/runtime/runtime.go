@@ -287,8 +287,13 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 	if hasWS {
 		r.servers = append(r.servers, r.newManagedServer("WebSocket", r.cfg.Server.WebSocketPort, wsMux, false))
 	}
-	if hasWebSub {
-		r.servers = append(r.servers, r.newManagedServer("WebSub", r.cfg.Server.WebSubPort, websubMux, true))
+	if hasWebSub && r.cfg.Server.WebSubEnabled {
+		// Create HTTP server
+		r.servers = append(r.servers, r.newManagedServer("WebSub-HTTP", r.cfg.Server.WebSubHTTPPort, websubMux, false))
+		// Create HTTPS server if TLS is enabled
+		if r.cfg.Server.WebSubTLSEnabled {
+			r.servers = append(r.servers, r.newManagedServer("WebSub-HTTPS", r.cfg.Server.WebSubHTTPSPort, websubMux, true))
+		}
 	}
 
 	return nil
@@ -308,12 +313,23 @@ func (r *Runtime) Run(ctx context.Context) error {
 
 	// If in xDS mode, ensure the websub server is started for dynamic bindings.
 	r.mu.Lock()
-	if r.websubServer == nil && r.cfg.ControlPlane.Enabled {
-		r.websubServer = r.newManagedServer("WebSub", r.cfg.Server.WebSubPort, r.websubMux, true)
-		websubServer := r.websubServer
+	if r.websubServer == nil && r.cfg.ControlPlane.Enabled && r.cfg.Server.WebSubEnabled {
+		// Create and start HTTP server
+		websubHTTPServer := r.newManagedServer("WebSub-HTTP", r.cfg.Server.WebSubHTTPPort, r.websubMux, false)
+		r.servers = append(r.servers, websubHTTPServer)
 		go func() {
-			r.runServer(websubServer)
+			r.runServer(websubHTTPServer)
 		}()
+		// Create and start HTTPS server if TLS is enabled
+		if r.cfg.Server.WebSubTLSEnabled {
+			websubHTTPSServer := r.newManagedServer("WebSub-HTTPS", r.cfg.Server.WebSubHTTPSPort, r.websubMux, true)
+			r.websubServer = websubHTTPSServer
+			go func() {
+				r.runServer(websubHTTPSServer)
+			}()
+		}
+		// Note: r.websubServer is only set when TLS is enabled; HTTP-only mode leaves it nil
+		// to avoid double-shutdown since the HTTP server is already in r.servers
 	}
 	r.runCtx = ctx
 	r.running = true

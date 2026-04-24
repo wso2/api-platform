@@ -14,7 +14,7 @@ require (
 	github.com/twmb/franz-go/pkg/kadm v1.14.0
 	github.com/wso2/api-platform/common v0.0.0
 	github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine v0.0.0
-	github.com/wso2/api-platform/sdk/core v0.2.9
+	github.com/wso2/api-platform/sdk/core v0.2.12
 	github.com/wso2/gateway-controllers/policies/api-key-auth v1.0.1
 	github.com/wso2/gateway-controllers/policies/basic-auth v1.0.1
 	github.com/wso2/gateway-controllers/policies/set-headers v1.0.1
