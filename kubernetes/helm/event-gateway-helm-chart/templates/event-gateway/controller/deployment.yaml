@@ -4,6 +4,12 @@
 {{- if not $controller.encryptionKeys.enabled }}
 {{- fail "eventGateway.controller.encryptionKeys must be enabled when eventGateway.developmentMode is false. Either set eventGateway.developmentMode=true or configure eventGateway.controller.encryptionKeys with a Kubernetes secret containing the AES-GCM key." }}
 {{- end }}
+{{- if and $controller.encryptionKeys.enabled (empty (trim (default "" $controller.encryptionKeys.secretName))) }}
+{{- fail "eventGateway.controller.encryptionKeys.secretName must be set to a valid Kubernetes secret name when eventGateway.controller.encryptionKeys.enabled is true." }}
+{{- end }}
+{{- if empty (trim (default "" $controller.controlPlane.host)) }}
+{{- fail "eventGateway.controller.controlPlane.host must be set to your control plane hostname or IP when eventGateway.developmentMode is false. Either set eventGateway.developmentMode=true or provide a valid host via eventGateway.controller.controlPlane.host." }}
+{{- end }}
 {{- end }}
 {{- if $deployment.enabled }}
 apiVersion: apps/v1
@@ -12,7 +18,7 @@ metadata:
   name: {{ include "event-gateway.fullname" . }}-controller
   labels:
     {{- include "event-gateway.componentLabels" (list . "controller" $deployment.labels) | nindent 4 }}
-  {{- $annotations := merge (deepCopy (default (dict) .Values.commonAnnotations)) (default (dict) $deployment.annotations) }}
+  {{- $annotations := merge (deepCopy (default (dict) $deployment.annotations)) (default (dict) .Values.commonAnnotations) }}
   {{- if $annotations }}
   annotations:
     {{- toYaml $annotations | nindent 4 }}
@@ -107,7 +113,11 @@ spec:
             - name: APIP_GW_ROUTER_EVENT__GATEWAY_ENABLED
               value: {{ .Values.eventGateway.config.controller.eventGatewayConfig.enabled | toString | quote }}
             - name: APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB_URL
+              {{- if .Values.eventGateway.gatewayRuntime.websubTlsEnabled }}
+              value: {{ default (printf "https://%s-gateway-runtime:%d" (include "event-gateway.fullname" .) (int .Values.eventGateway.gatewayRuntime.service.ports.websubHttps)) .Values.eventGateway.config.controller.eventGatewayConfig.websubHubUrl | quote }}
+              {{- else }}
               value: {{ default (printf "http://%s-gateway-runtime:%d" (include "event-gateway.fullname" .) (int .Values.eventGateway.gatewayRuntime.service.ports.websubHttp)) .Values.eventGateway.config.controller.eventGatewayConfig.websubHubUrl | quote }}
+              {{- end }}
             - name: APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB_PORT
               value: {{ .Values.eventGateway.config.controller.eventGatewayConfig.websubHubPort | toString | quote }}
             - name: APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB__LISTENER__PORT

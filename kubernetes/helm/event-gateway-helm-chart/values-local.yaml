@@ -3,7 +3,7 @@
 #
 # This file overrides default values for local development:
 # - Uses IfNotPresent pullPolicy to use locally built images
-# - Uses latest tag for local builds
+# - Uses snapshot tag 0.1.0-SNAPSHOT for local builds
 # - Enables development mode (relaxes encryption key requirement)
 
 eventGateway:
