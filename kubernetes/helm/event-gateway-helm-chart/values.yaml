@@ -31,10 +31,7 @@ eventGateway:
           enabled: true
           users:
             - username: "admin"
-              # Leave empty to auto-generate a random password on first install.
-              # The generated password is stored in the '<release>-admin-credentials' Secret
-              # and reused on upgrades. Set this to override with a specific password.
-              password: ""
+              password: "admin"
               password_hashed: false
               roles: ["admin"]
         idp:
