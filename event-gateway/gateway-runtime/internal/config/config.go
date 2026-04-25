@@ -21,6 +21,7 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"os"
 	"strconv"
 	"strings"
 
@@ -249,12 +250,16 @@ func splitCSV(value string) []string {
 }
 
 func validate(cfg *Config) error {
-	if cfg.Server.WebSubEnabled && cfg.Server.WebSubTLSEnabled {
-		if strings.TrimSpace(cfg.Server.WebSubTLSCertFile) == "" {
-			return fmt.Errorf("server.websub_tls_cert_file is required when server.websub_tls_enabled is true")
+	if err := validateServerPorts(cfg.Server); err != nil {
+		return err
+	}
+
+	if cfg.Server.WebSubTLSEnabled {
+		if err := validateReadableFile(cfg.Server.WebSubTLSCertFile, "server.websub_tls_cert_file"); err != nil {
+			return err
 		}
-		if strings.TrimSpace(cfg.Server.WebSubTLSKeyFile) == "" {
-			return fmt.Errorf("server.websub_tls_key_file is required when server.websub_tls_enabled is true")
+		if err := validateReadableFile(cfg.Server.WebSubTLSKeyFile, "server.websub_tls_key_file"); err != nil {
+			return err
 		}
 	}
 
@@ -268,6 +273,60 @@ func validate(cfg *Config) error {
 	case "", "text", "json":
 	default:
 		return fmt.Errorf("logging.format must be one of text, json")
+	}
+
+	return nil
+}
+
+func validateServerPorts(serverCfg ServerConfig) error {
+	ports := []struct {
+		name  string
+		value int
+	}{
+		{name: "server.websub_http_port", value: serverCfg.WebSubHTTPPort},
+		{name: "server.websub_https_port", value: serverCfg.WebSubHTTPSPort},
+		{name: "server.websocket_port", value: serverCfg.WebSocketPort},
+		{name: "server.admin_port", value: serverCfg.AdminPort},
+		{name: "server.metrics_port", value: serverCfg.MetricsPort},
+	}
+
+	seen := make(map[int]string, len(ports))
+	for _, port := range ports {
+		if port.value <= 0 {
+			return fmt.Errorf("%s must be a positive integer, got %d", port.name, port.value)
+		}
+		if previous, exists := seen[port.value]; exists {
+			return fmt.Errorf("%s port %d conflicts with %s", port.name, port.value, previous)
+		}
+		seen[port.value] = port.name
+	}
+
+	return nil
+}
+
+func validateReadableFile(filePath, fieldName string) error {
+	trimmedPath := strings.TrimSpace(filePath)
+	if trimmedPath == "" {
+		return fmt.Errorf("%s is required when server.websub_tls_enabled is true", fieldName)
+	}
+
+	info, err := os.Stat(trimmedPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("%s file %q does not exist", fieldName, trimmedPath)
+		}
+		return fmt.Errorf("failed to access %s file %q: %w", fieldName, trimmedPath, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("%s path %q must be a file, not a directory", fieldName, trimmedPath)
+	}
+
+	fileHandle, err := os.Open(trimmedPath)
+	if err != nil {
+		return fmt.Errorf("%s file %q is not readable: %w", fieldName, trimmedPath, err)
+	}
+	if err := fileHandle.Close(); err != nil {
+		return fmt.Errorf("failed to close %s file %q after validation: %w", fieldName, trimmedPath, err)
 	}
 
 	return nil
