@@ -35,6 +35,9 @@ fi
 CHART_FILE="kubernetes/helm/gateway-helm-chart/Chart.yaml"
 VALUES_FILE="kubernetes/helm/gateway-helm-chart/values.yaml"
 
+EGW_CHART_FILE="kubernetes/helm/event-gateway-helm-chart/Chart.yaml"
+EGW_VALUES_FILE="kubernetes/helm/event-gateway-helm-chart/values.yaml"
+
 if [ ! -f "$CHART_FILE" ] || [ ! -f "$VALUES_FILE" ]; then
     echo "Warning: Helm chart files not found"
     exit 0
@@ -56,4 +59,25 @@ if [ "$COMPONENT" = "gateway" ]; then
     rm -f "$VALUES_FILE.bak"
 
     echo "Updated Helm charts with gateway version $VERSION"
+fi
+
+if [ "$COMPONENT" = "event-gateway" ]; then
+    if [ ! -f "$EGW_CHART_FILE" ] || [ ! -f "$EGW_VALUES_FILE" ]; then
+        echo "Warning: Event Gateway Helm chart files not found at $EGW_CHART_FILE / $EGW_VALUES_FILE"
+        exit 0
+    fi
+
+    # Update Chart.yaml - appVersion
+    sed -i.bak "s/^appVersion:.*/appVersion: \"$VERSION\"/" "$EGW_CHART_FILE"
+    rm -f "$EGW_CHART_FILE.bak"
+
+    # Update values.yaml - repository AND tags for event-gateway components
+    sed -i.bak \
+        -e "s|repository: .*/event-gateway-controller|repository: ${DOCKER_REGISTRY}/event-gateway-controller|" \
+        -e "s|repository: .*/event-gateway-runtime|repository: ${DOCKER_REGISTRY}/event-gateway-runtime|" \
+        -e "s|tag: \"[0-9][^\"]*\"|tag: \"$VERSION\"|g" \
+        "$EGW_VALUES_FILE"
+    rm -f "$EGW_VALUES_FILE.bak"
+
+    echo "Updated Event Gateway Helm charts with version $VERSION"
 fi
