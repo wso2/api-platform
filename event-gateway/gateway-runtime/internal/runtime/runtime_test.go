@@ -21,11 +21,16 @@ package runtime
 import (
 	"context"
 	"errors"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/binding"
+	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/config"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/hub"
 	enginepkg "github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/pkg/engine"
@@ -169,6 +174,62 @@ func TestStartReceiverWithRetry_StopsWhenContextIsCanceled(t *testing.T) {
 	}
 	if got := receiver.Attempts(); got < 2 {
 		t.Fatalf("expected multiple start attempts before cancellation, got %d", got)
+	}
+}
+
+func TestNewManagedServerRejectsMissingTLSFiles(t *testing.T) {
+	rt := &Runtime{
+		cfg: &config.Config{
+			Server: config.ServerConfig{
+				WebSubTLSEnabled:  true,
+				WebSubTLSCertFile: filepath.Join(t.TempDir(), "missing.crt"),
+				WebSubTLSKeyFile:  filepath.Join(t.TempDir(), "missing.key"),
+			},
+		},
+	}
+
+	_, err := rt.newManagedServer("WebSub-HTTPS", 8443, http.NewServeMux(), true)
+	if err == nil {
+		t.Fatal("expected newManagedServer to fail when TLS files are missing")
+	}
+	if !strings.Contains(err.Error(), "invalid TLS configuration for WebSub-HTTPS server") {
+		t.Fatalf("expected wrapped TLS configuration error, got %q", err.Error())
+	}
+}
+
+func TestNewManagedServerAcceptsReadableTLSFiles(t *testing.T) {
+	tempDir := t.TempDir()
+	certPath := filepath.Join(tempDir, "tls.crt")
+	keyPath := filepath.Join(tempDir, "tls.key")
+	if err := os.WriteFile(certPath, []byte("cert"), 0o644); err != nil {
+		t.Fatalf("write cert: %v", err)
+	}
+	if err := os.WriteFile(keyPath, []byte("key"), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+
+	rt := &Runtime{
+		cfg: &config.Config{
+			Server: config.ServerConfig{
+				WebSubTLSEnabled:  true,
+				WebSubTLSCertFile: certPath,
+				WebSubTLSKeyFile:  keyPath,
+			},
+		},
+	}
+
+	server, err := rt.newManagedServer("WebSub-HTTPS", 8443, http.NewServeMux(), true)
+	if err != nil {
+		t.Fatalf("expected newManagedServer to succeed, got %v", err)
+	}
+	if !server.tls {
+		t.Fatal("expected TLS to be enabled on the managed server")
+	}
+	if server.certFile != certPath {
+		t.Fatalf("expected cert path %q, got %q", certPath, server.certFile)
+	}
+	if server.keyFile != keyPath {
+		t.Fatalf("expected key path %q, got %q", keyPath, server.keyFile)
 	}
 }
 

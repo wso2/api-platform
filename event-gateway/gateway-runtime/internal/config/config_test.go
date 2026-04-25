@@ -4,16 +4,27 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
 func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
+	tempDir := t.TempDir()
+	certPath := filepath.Join(tempDir, "tls.crt")
+	keyPath := filepath.Join(tempDir, "tls.key")
+	if err := os.WriteFile(certPath, []byte("cert"), 0o644); err != nil {
+		t.Fatalf("write cert: %v", err)
+	}
+	if err := os.WriteFile(keyPath, []byte("key"), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+
 	t.Setenv("APIP_EGW_SERVER_WEBSUB_ENABLED", "false")
 	t.Setenv("APIP_EGW_SERVER_WEBSUB_HTTP_PORT", "9090")
 	t.Setenv("APIP_EGW_SERVER_WEBSUB_HTTPS_PORT", "9443")
 	t.Setenv("APIP_EGW_SERVER_WEBSUB_TLS_ENABLED", "true")
-	t.Setenv("APIP_EGW_SERVER_WEBSUB_TLS_CERT_FILE", "/tmp/tls.crt")
-	t.Setenv("APIP_EGW_SERVER_WEBSUB_TLS_KEY_FILE", "/tmp/tls.key")
+	t.Setenv("APIP_EGW_SERVER_WEBSUB_TLS_CERT_FILE", certPath)
+	t.Setenv("APIP_EGW_SERVER_WEBSUB_TLS_KEY_FILE", keyPath)
 	t.Setenv("APIP_EGW_KAFKA_BROKERS", "kafka-1:9092,kafka-2:9092")
 	t.Setenv("APIP_EGW_CONTROLPLANE_ENABLED", "true")
 	t.Setenv("APIP_EGW_CONTROLPLANE_XDS_ADDRESS", "xds:18001")
@@ -53,10 +64,10 @@ enabled = false
 	if !cfg.Server.WebSubTLSEnabled {
 		t.Fatalf("expected websub TLS to be enabled")
 	}
-	if cfg.Server.WebSubTLSCertFile != "/tmp/tls.crt" {
+	if cfg.Server.WebSubTLSCertFile != certPath {
 		t.Fatalf("expected websub TLS cert file override, got %q", cfg.Server.WebSubTLSCertFile)
 	}
-	if cfg.Server.WebSubTLSKeyFile != "/tmp/tls.key" {
+	if cfg.Server.WebSubTLSKeyFile != keyPath {
 		t.Fatalf("expected websub TLS key file override, got %q", cfg.Server.WebSubTLSKeyFile)
 	}
 
@@ -105,7 +116,7 @@ websub_tls_enabled = true
 	}
 }
 
-func TestLoadSkipsTLSValidationWhenWebSubDisabled(t *testing.T) {
+func TestLoadRequiresTLSFilesEvenWhenWebSubDisabled(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(configPath, []byte(`
 [server]
@@ -115,18 +126,14 @@ websub_tls_enabled = true
 		t.Fatalf("write config: %v", err)
 	}
 
-	// Should not fail even though TLS is enabled and cert/key files are missing
-	// because WebSub server is disabled
-	cfg, _, err := Load(configPath)
-	if err != nil {
-		t.Fatalf("expected load to succeed when WebSub is disabled: %v", err)
+	_, _, err := Load(configPath)
+	if err == nil {
+		t.Fatalf("expected load to fail when TLS is enabled without readable files")
 	}
 
-	if cfg.Server.WebSubEnabled {
-		t.Fatalf("expected WebSub to be disabled")
-	}
-	if !cfg.Server.WebSubTLSEnabled {
-		t.Fatalf("expected WebSubTLSEnabled to be true")
+	want := "server.websub_tls_cert_file is required when server.websub_tls_enabled is true"
+	if err.Error() != want {
+		t.Fatalf("expected error %q, got %q", want, err.Error())
 	}
 }
 
@@ -145,6 +152,117 @@ level = "trace"
 	}
 
 	want := "logging.level must be one of debug, info, warn, error"
+	if err.Error() != want {
+		t.Fatalf("expected error %q, got %q", want, err.Error())
+	}
+}
+
+func TestLoadRejectsMissingTLSFilesWhenEnabled(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	missingCert := filepath.Join(t.TempDir(), "missing.crt")
+	missingKey := filepath.Join(t.TempDir(), "missing.key")
+	if err := os.WriteFile(configPath, []byte(`
+[server]
+websub_enabled = true
+websub_tls_enabled = true
+websub_tls_cert_file = "`+missingCert+`"
+websub_tls_key_file = "`+missingKey+`"
+`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	_, _, err := Load(configPath)
+	if err == nil {
+		t.Fatalf("expected load to fail when TLS cert file is missing")
+	}
+
+	if !strings.Contains(err.Error(), `server.websub_tls_cert_file file "`) || !strings.Contains(err.Error(), `does not exist`) {
+		t.Fatalf("expected missing cert file error, got %q", err.Error())
+	}
+}
+
+func TestLoadRejectsUnreadableTLSKeyFileWhenEnabled(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("permission-based readability checks are unreliable when running as root")
+	}
+
+	tempDir := t.TempDir()
+	certPath := filepath.Join(tempDir, "tls.crt")
+	keyPath := filepath.Join(tempDir, "tls.key")
+	configPath := filepath.Join(tempDir, "config.toml")
+
+	if err := os.WriteFile(certPath, []byte("cert"), 0o644); err != nil {
+		t.Fatalf("write cert: %v", err)
+	}
+	if err := os.WriteFile(keyPath, []byte("key"), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+	if err := os.Chmod(keyPath, 0o000); err != nil {
+		t.Fatalf("chmod key unreadable: %v", err)
+	}
+	defer func() {
+		_ = os.Chmod(keyPath, 0o600)
+	}()
+
+	if err := os.WriteFile(configPath, []byte(`
+[server]
+websub_enabled = true
+websub_tls_enabled = true
+websub_tls_cert_file = "`+certPath+`"
+websub_tls_key_file = "`+keyPath+`"
+`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	_, _, err := Load(configPath)
+	if err == nil {
+		t.Fatalf("expected load to fail when TLS key file is unreadable")
+	}
+
+	if !strings.Contains(err.Error(), `server.websub_tls_key_file file "`) || !strings.Contains(err.Error(), `is not readable`) {
+		t.Fatalf("expected unreadable key file error, got %q", err.Error())
+	}
+}
+
+func TestLoadRejectsNonPositiveServerPorts(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(configPath, []byte(`
+[server]
+websub_http_port = 0
+`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	_, _, err := Load(configPath)
+	if err == nil {
+		t.Fatalf("expected load to fail for non-positive port")
+	}
+
+	want := "server.websub_http_port must be a positive integer, got 0"
+	if err.Error() != want {
+		t.Fatalf("expected error %q, got %q", want, err.Error())
+	}
+}
+
+func TestLoadRejectsDuplicateServerPorts(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(configPath, []byte(`
+[server]
+websub_http_port = 8080
+websub_https_port = 8443
+websocket_port = 8080
+admin_port = 9002
+metrics_port = 9003
+`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	_, _, err := Load(configPath)
+	if err == nil {
+		t.Fatalf("expected load to fail for duplicate ports")
+	}
+
+	want := "server.websocket_port port 8080 conflicts with server.websub_http_port"
 	if err.Error() != want {
 		t.Fatalf("expected error %q, got %q", want, err.Error())
 	}
