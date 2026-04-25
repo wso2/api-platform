@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
 authors = [
-  { name = "WSO2", email = "architecture@wso2.com" }
+  { name = "WSO2" }
 ]
 keywords = ["api-platform", "gateway", "policy", "sdk", "wso2", "wso2-api-platform"]
 classifiers = [

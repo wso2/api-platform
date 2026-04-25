@@ -2,7 +2,7 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/apip-sdk-core)](https://pypi.org/project/apip-sdk-core/)
 [![Python versions](https://img.shields.io/pypi/pyversions/apip-sdk-core)](https://pypi.org/project/apip-sdk-core/)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](https://github.com/wso2/api-platform/blob/main/LICENSE)
 
 Python interfaces for writing **gateway policies** on the [WSO2 API Platform](https://github.com/wso2/api-platform).
 
@@ -510,6 +510,6 @@ mypy src/
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE) for details.
+Apache License 2.0 — see [LICENSE](https://github.com/wso2/api-platform/blob/main/LICENSE) for details.
 
 © 2026 WSO2 LLC.
