@@ -113,7 +113,7 @@ spec:
             - name: APIP_GW_ROUTER_EVENT__GATEWAY_ENABLED
               value: {{ .Values.eventGateway.config.controller.eventGatewayConfig.enabled | toString | quote }}
             - name: APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB_URL
-              {{- if .Values.eventGateway.gatewayRuntime.websubTlsEnabled }}
+              {{- if .Values.eventGateway.gatewayRuntime.tls.enabled }}
               value: {{ default (printf "https://%s-gateway-runtime:%d" (include "event-gateway.fullname" .) (int .Values.eventGateway.gatewayRuntime.service.ports.websubHttps)) .Values.eventGateway.config.controller.eventGatewayConfig.websubHubUrl | quote }}
               {{- else }}
               value: {{ default (printf "http://%s-gateway-runtime:%d" (include "event-gateway.fullname" .) (int .Values.eventGateway.gatewayRuntime.service.ports.websubHttp)) .Values.eventGateway.config.controller.eventGatewayConfig.websubHubUrl | quote }}
