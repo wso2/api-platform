@@ -58,15 +58,16 @@ type Runtime struct {
 	servers       []*managedServer // shared servers for port sharing
 
 	// Dynamic binding management (xDS mode)
-	mu                  sync.RWMutex
-	activeReceivers     map[string]connectors.Receiver
-	activeBrokerDrivers map[string]connectors.BrokerDriver
-	bindingPaths        map[string][]string // name → registered mux paths
-	bindingTopics       map[string][]string // name → Kafka topics (data + internal sub)
-	websubMux           *DynamicMux
-	websubServer        *managedServer
-	runCtx              context.Context
-	running             bool // true after Run() starts servers
+	mu                   sync.RWMutex
+	activeReceivers      map[string]connectors.Receiver
+	activeBrokerDrivers  map[string]connectors.BrokerDriver
+	bindingPaths         map[string][]string // name → registered mux paths
+	bindingTopics        map[string][]string // name → Kafka topics (data + internal sub)
+	websubMux            *DynamicMux
+	websubServer         *managedServer
+	webSubServersCreated bool // true if LoadChannels created WebSub servers
+	runCtx               context.Context
+	running              bool // true after Run() starts servers
 }
 
 type managedServer struct {
@@ -307,6 +308,7 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 			}
 			r.servers = append(r.servers, websubHTTPSServer)
 		}
+		r.webSubServersCreated = true // Mark that LoadChannels created WebSub servers
 	}
 
 	return nil
@@ -326,7 +328,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 
 	// If in xDS mode, ensure the websub server is started for dynamic bindings.
 	r.mu.Lock()
-	if r.websubServer == nil && r.cfg.ControlPlane.Enabled && r.cfg.Server.WebSubEnabled {
+	if !r.webSubServersCreated && r.websubServer == nil && r.cfg.ControlPlane.Enabled && r.cfg.Server.WebSubEnabled {
 		// Create and start HTTP server
 		websubHTTPServer, err := r.newManagedServer("WebSub-HTTP", r.cfg.Server.WebSubHTTPPort, r.websubMux, false)
 		if err != nil {
