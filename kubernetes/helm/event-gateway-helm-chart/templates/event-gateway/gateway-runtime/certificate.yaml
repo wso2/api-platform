@@ -17,7 +17,7 @@ spec:
   duration: {{ $tls.certManager.duration | quote }}
   renewBefore: {{ $tls.certManager.renewBefore | quote }}
   issuerRef:
-    {{- if $tls.certManager.createIssuer }}
+    {{- if and $tls.certManager.createIssuer (eq $tls.certManager.issuerRef.kind "Issuer") }}
     name: {{ include "event-gateway.fullname" . }}-runtime-selfsigned-issuer
     {{- else }}
     name: {{ $tls.certManager.issuerRef.name }}

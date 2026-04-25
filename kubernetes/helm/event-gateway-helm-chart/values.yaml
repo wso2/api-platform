@@ -31,7 +31,10 @@ eventGateway:
           enabled: true
           users:
             - username: "admin"
-              password: "admin"
+              # Leave empty to auto-generate a random password on first install.
+              # The generated password is stored in the '<release>-admin-credentials' Secret
+              # and reused on upgrades. Set this to override with a specific password.
+              password: ""
               password_hashed: false
               roles: ["admin"]
         idp:
@@ -178,7 +181,7 @@ eventGateway:
         metrics: 9091
 
     controlPlane:
-      host: host.docker.internal
+      host: ""  # Required for non-development installs; set to your control plane hostname/IP
       port: 8443
       token:
         value: ""
@@ -241,8 +244,7 @@ eventGateway:
       volumeMountPath: /app/data
       extraEnv: []
       extraEnvFrom: []
-      env:
-        xdsServerAddress: ""
+      env: {}
       extraVolumeMounts: []
       extraVolumes: []
       labels: {}

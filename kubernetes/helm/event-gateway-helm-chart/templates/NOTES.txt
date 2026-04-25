@@ -2,6 +2,21 @@ Thank you for installing {{ .Chart.Name }}!
 
 Your release is named {{ .Release.Name }}.
 
+{{- if .Values.eventGateway.config.controller.auth.basic.enabled }}
+
+Admin Credentials
+-----------------
+To retrieve the admin password run:
+  kubectl get secret --namespace {{ .Release.Namespace }} {{ include "event-gateway.fullname" . }}-admin-credentials \
+    -o jsonpath="{.data.password}" | base64 -d && echo
+
+Username: admin
+
+To set a fixed password at install time:
+  helm install {{ .Release.Name }} ./event-gateway-helm-chart \
+    --set eventGateway.config.controller.auth.basic.adminPassword=<your-password>
+{{- end }}
+
 To learn more about the release, try:
 
   $ helm status {{ .Release.Name }} --namespace {{ .Release.Namespace }}

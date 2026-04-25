@@ -2,6 +2,18 @@
 {{- $gc := .Values.eventGateway.config.controller -}}
 {{- $rt := .Values.eventGateway.config.runtime -}}
 {{- $controllerHost := printf "%s-controller" (include "event-gateway.fullname" .) -}}
+{{- $adminSecretName := printf "%s-admin-credentials" (include "event-gateway.fullname" .) -}}
+{{- $existingAdminSecret := lookup "v1" "Secret" .Release.Namespace $adminSecretName -}}
+{{- $adminPassword := "" -}}
+{{- if and $existingAdminSecret $existingAdminSecret.data (index $existingAdminSecret.data "password") -}}
+{{- $adminPassword = index $existingAdminSecret.data "password" | b64dec -}}
+{{- else -}}
+{{- range $gc.auth.basic.users -}}
+{{- if eq .username "admin" -}}
+{{- $adminPassword = default (randAlphaNum 20) .password -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -66,7 +78,7 @@ data:
     {{- range $gc.auth.basic.users }}
     [[controller.auth.basic.users]]
     username = {{ .username | quote }}
-    password = {{ .password | quote }}
+    password = {{ if eq .username "admin" }}{{ $adminPassword | quote }}{{ else }}{{ .password | quote }}{{ end }}
     password_hashed = {{ .password_hashed | default false }}
     roles = [{{- range $i, $role := .roles }}{{- if gt $i 0 }}, {{ end }}{{ $role | quote }}{{- end }}]
     {{- end }}
@@ -136,4 +148,4 @@ data:
 
     [controlplane]
     enabled = {{ $rt.controlplane.enabled }}
-    xds_address = {{ default (printf "%s:18001" $controllerHost) $rt.controlplane.xdsAddress | quote }}
+    xds_address = {{ default (printf "%s:%d" $controllerHost (int $gc.policy_server.port)) $rt.controlplane.xdsAddress | quote }}
