@@ -18,7 +18,7 @@ jobs:
         run: |
           VERSION=$(make -C event-gateway version-get-release --no-print-directory)
           echo "Releasing event-gateway version: ${VERSION}"
-          echo "This includes: event-gateway-controller, event-gateway-runtime, and webhook-listener"
+          echo "This includes: event-gateway-controller and event-gateway-runtime"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
       - name: Validate release tag is available
         run: |
