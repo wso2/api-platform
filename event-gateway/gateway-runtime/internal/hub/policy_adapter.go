@@ -90,13 +90,13 @@ func MessageToRequestContext(msg *connectors.Message, binding *ChannelBinding) *
 // MessageToResponseHeaderContext maps an event message to a policy response header context.
 func MessageToResponseHeaderContext(msg *connectors.Message, binding *ChannelBinding) *policy.ResponseHeaderContext {
 	headers := normalizeHeaders(msg.Headers)
-	requestPath := requestPath(msg, defaultPhasePath(binding, "outbound"))
-	requestMethod := requestMethod(msg, directionToMethod(binding.Mode, "outbound"))
+	reqPath := requestPath(msg, defaultPhasePath(binding, "outbound"))
+	reqMethod := requestMethod(msg, directionToMethod(binding.Mode, "outbound"))
 
 	return &policy.ResponseHeaderContext{
-		SharedContext:   newSharedContext(binding, requestPath),
-		RequestPath:     requestPath,
-		RequestMethod:   requestMethod,
+		SharedContext:   newSharedContext(binding, reqPath),
+		RequestPath:     reqPath,
+		RequestMethod:   reqMethod,
 		ResponseHeaders: policy.NewHeaders(headers),
 		ResponseStatus:  200,
 	}
@@ -105,13 +105,13 @@ func MessageToResponseHeaderContext(msg *connectors.Message, binding *ChannelBin
 // MessageToResponseContext maps an event message to a policy response body context.
 func MessageToResponseContext(msg *connectors.Message, binding *ChannelBinding) *policy.ResponseContext {
 	headers := normalizeHeaders(msg.Headers)
-	requestPath := requestPath(msg, defaultPhasePath(binding, "outbound"))
-	requestMethod := requestMethod(msg, directionToMethod(binding.Mode, "outbound"))
+	reqPath := requestPath(msg, defaultPhasePath(binding, "outbound"))
+	reqMethod := requestMethod(msg, directionToMethod(binding.Mode, "outbound"))
 
 	return &policy.ResponseContext{
-		SharedContext:   newSharedContext(binding, requestPath),
-		RequestPath:     requestPath,
-		RequestMethod:   requestMethod,
+		SharedContext:   newSharedContext(binding, reqPath),
+		RequestPath:     reqPath,
+		RequestMethod:   reqMethod,
 		ResponseHeaders: policy.NewHeaders(headers),
 		ResponseBody:    &policy.Body{Content: msg.Value, EndOfStream: true, Present: len(msg.Value) > 0},
 		ResponseStatus:  200,

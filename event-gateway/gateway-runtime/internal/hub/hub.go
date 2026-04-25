@@ -244,6 +244,8 @@ func (h *Hub) ProcessOutbound(ctx context.Context, bindingName string, msg *conn
 	return msg, false, nil
 }
 
+// logShortCircuit keeps Info logs to metadata only; ImmediateResponse.Body is
+// user-visible content and must not contain sensitive information.
 func logShortCircuit(message, bindingName, chainKey string, resp *engine.ImmediateResponseResult) {
 	attrs := []any{
 		"binding", bindingName,
@@ -252,10 +254,15 @@ func logShortCircuit(message, bindingName, chainKey string, resp *engine.Immedia
 	if resp != nil {
 		attrs = append(attrs,
 			"status_code", resp.StatusCode,
-			"response_body", summarizeImmediateResponseBody(resp.Body),
+			"response_length", len(resp.Body),
 		)
 	}
 	slog.Info(message, attrs...)
+	if resp != nil {
+		bodyAttrs := append([]any{}, attrs...)
+		bodyAttrs = append(bodyAttrs, "response_body", summarizeImmediateResponseBody(resp.Body))
+		slog.Debug("Short-circuit immediate response body", bodyAttrs...)
+	}
 }
 
 func summarizeImmediateResponseBody(body []byte) string {

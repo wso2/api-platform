@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"path"
 	"strings"
 	"sync"
@@ -57,15 +58,16 @@ type Runtime struct {
 	servers       []*managedServer // shared servers for port sharing
 
 	// Dynamic binding management (xDS mode)
-	mu                  sync.RWMutex
-	activeReceivers     map[string]connectors.Receiver
-	activeBrokerDrivers map[string]connectors.BrokerDriver
-	bindingPaths        map[string][]string // name → registered mux paths
-	bindingTopics       map[string][]string // name → Kafka topics (data + internal sub)
-	websubMux           *DynamicMux
-	websubServer        *managedServer
-	runCtx              context.Context
-	running             bool // true after Run() starts servers
+	mu                   sync.RWMutex
+	activeReceivers      map[string]connectors.Receiver
+	activeBrokerDrivers  map[string]connectors.BrokerDriver
+	bindingPaths         map[string][]string // name → registered mux paths
+	bindingTopics        map[string][]string // name → Kafka topics (data + internal sub)
+	websubMux            *DynamicMux
+	websubServer         *managedServer
+	webSubServersCreated bool // true if LoadChannels created WebSub servers
+	runCtx               context.Context
+	running              bool // true after Run() starts servers
 }
 
 type managedServer struct {
@@ -285,15 +287,28 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 
 	// Create shared HTTP servers.
 	if hasWS {
-		r.servers = append(r.servers, r.newManagedServer("WebSocket", r.cfg.Server.WebSocketPort, wsMux, false))
+		wsServer, err := r.newManagedServer("WebSocket", r.cfg.Server.WebSocketPort, wsMux, false)
+		if err != nil {
+			return fmt.Errorf("failed to create WebSocket server: %w", err)
+		}
+		r.servers = append(r.servers, wsServer)
 	}
 	if hasWebSub && r.cfg.Server.WebSubEnabled {
 		// Create HTTP server
-		r.servers = append(r.servers, r.newManagedServer("WebSub-HTTP", r.cfg.Server.WebSubHTTPPort, websubMux, false))
+		websubHTTPServer, err := r.newManagedServer("WebSub-HTTP", r.cfg.Server.WebSubHTTPPort, websubMux, false)
+		if err != nil {
+			return fmt.Errorf("failed to create WebSub HTTP server: %w", err)
+		}
+		r.servers = append(r.servers, websubHTTPServer)
 		// Create HTTPS server if TLS is enabled
 		if r.cfg.Server.WebSubTLSEnabled {
-			r.servers = append(r.servers, r.newManagedServer("WebSub-HTTPS", r.cfg.Server.WebSubHTTPSPort, websubMux, true))
+			websubHTTPSServer, err := r.newManagedServer("WebSub-HTTPS", r.cfg.Server.WebSubHTTPSPort, websubMux, true)
+			if err != nil {
+				return fmt.Errorf("failed to create WebSub HTTPS server: %w", err)
+			}
+			r.servers = append(r.servers, websubHTTPSServer)
 		}
+		r.webSubServersCreated = true // Mark that LoadChannels created WebSub servers
 	}
 
 	return nil
@@ -313,16 +328,24 @@ func (r *Runtime) Run(ctx context.Context) error {
 
 	// If in xDS mode, ensure the websub server is started for dynamic bindings.
 	r.mu.Lock()
-	if r.websubServer == nil && r.cfg.ControlPlane.Enabled && r.cfg.Server.WebSubEnabled {
+	if !r.webSubServersCreated && r.websubServer == nil && r.cfg.ControlPlane.Enabled && r.cfg.Server.WebSubEnabled {
 		// Create and start HTTP server
-		websubHTTPServer := r.newManagedServer("WebSub-HTTP", r.cfg.Server.WebSubHTTPPort, r.websubMux, false)
+		websubHTTPServer, err := r.newManagedServer("WebSub-HTTP", r.cfg.Server.WebSubHTTPPort, r.websubMux, false)
+		if err != nil {
+			r.mu.Unlock()
+			return fmt.Errorf("failed to create WebSub HTTP server: %w", err)
+		}
 		r.servers = append(r.servers, websubHTTPServer)
 		go func() {
 			r.runServer(websubHTTPServer)
 		}()
 		// Create and start HTTPS server if TLS is enabled
 		if r.cfg.Server.WebSubTLSEnabled {
-			websubHTTPSServer := r.newManagedServer("WebSub-HTTPS", r.cfg.Server.WebSubHTTPSPort, r.websubMux, true)
+			websubHTTPSServer, err := r.newManagedServer("WebSub-HTTPS", r.cfg.Server.WebSubHTTPSPort, r.websubMux, true)
+			if err != nil {
+				r.mu.Unlock()
+				return fmt.Errorf("failed to create WebSub HTTPS server: %w", err)
+			}
 			r.websubServer = websubHTTPSServer
 			go func() {
 				r.runServer(websubHTTPSServer)
@@ -419,7 +442,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 	return nil
 }
 
-func (r *Runtime) newManagedServer(name string, port int, handler http.Handler, allowTLS bool) *managedServer {
+func (r *Runtime) newManagedServer(name string, port int, handler http.Handler, allowTLS bool) (*managedServer, error) {
 	server := &managedServer{
 		name: name,
 		server: &http.Server{
@@ -429,12 +452,37 @@ func (r *Runtime) newManagedServer(name string, port int, handler http.Handler, 
 	}
 
 	if allowTLS && r.cfg.Server.WebSubTLSEnabled {
+		if err := ensureReadableTLSAsset(r.cfg.Server.WebSubTLSCertFile, "server.websub_tls_cert_file"); err != nil {
+			return nil, fmt.Errorf("invalid TLS configuration for %s server: %w", name, err)
+		}
+		if err := ensureReadableTLSAsset(r.cfg.Server.WebSubTLSKeyFile, "server.websub_tls_key_file"); err != nil {
+			return nil, fmt.Errorf("invalid TLS configuration for %s server: %w", name, err)
+		}
 		server.tls = true
 		server.certFile = r.cfg.Server.WebSubTLSCertFile
 		server.keyFile = r.cfg.Server.WebSubTLSKeyFile
 	}
 
-	return server
+	return server, nil
+}
+
+func ensureReadableTLSAsset(filePath, fieldName string) error {
+	info, err := os.Stat(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("%s file %q does not exist", fieldName, filePath)
+		}
+		return fmt.Errorf("failed to access %s file %q: %w", fieldName, filePath, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("%s path %q must be a file, not a directory", fieldName, filePath)
+	}
+
+	fileHandle, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("%s file %q is not readable: %w", fieldName, filePath, err)
+	}
+	return fileHandle.Close()
 }
 
 func (r *Runtime) runServer(srv *managedServer) {
