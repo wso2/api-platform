@@ -228,13 +228,25 @@ func (m *testMockDB) DeleteSecret(handle string) error         { return nil }
 func (m *testMockDB) SecretExists(handle string) (bool, error) { return false, nil }
 
 // Bottom-up sync methods
-func (m *testMockDB) UpdateCPSyncStatus(uuid, status, reason string) error {
+func (m *testMockDB) UpdateCPSyncStatus(uuid, cpArtifactID, status, reason string) error {
 	if config, ok := m.configs[uuid]; ok {
 		config.CPSyncStatus = status
 		config.CPSyncInfo = reason
+		if cpArtifactID != "" {
+			config.CPArtifactID = cpArtifactID
+		}
 		return nil
 	}
 	return storage.ErrNotFound
+}
+
+func (m *testMockDB) GetConfigByCPArtifactID(cpArtifactID string) (*models.StoredConfig, error) {
+	for _, config := range m.configs {
+		if config.CPArtifactID == cpArtifactID {
+			return config, nil
+		}
+	}
+	return nil, storage.ErrNotFound
 }
 
 func (m *testMockDB) UpdateDeploymentID(uuid, deploymentID string) error {

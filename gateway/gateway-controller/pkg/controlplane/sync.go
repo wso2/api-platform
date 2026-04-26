@@ -658,7 +658,7 @@ func (c *Client) SyncBottomUpAPIs(apimConfig *utils.APIMConfig) {
 					slog.String("uuid", api.UUID),
 					slog.String("display_name", api.DisplayName),
 				)
-				if dbErr := c.db.UpdateCPSyncStatus(api.UUID, models.CPSyncStatusSuccess, ""); dbErr != nil {
+				if dbErr := c.db.UpdateCPSyncStatus(api.UUID, "", models.CPSyncStatusSuccess, ""); dbErr != nil {
 					c.logger.Error("Bottom-up sync: failed to record success status",
 						slog.String("uuid", api.UUID),
 						slog.String("display_name", api.DisplayName),
@@ -688,7 +688,7 @@ func (c *Client) SyncBottomUpAPIs(apimConfig *utils.APIMConfig) {
 					slog.String("display_name", api.DisplayName),
 					slog.Any("error", lastErr),
 				)
-				if dbErr := c.db.UpdateCPSyncStatus(api.UUID, models.CPSyncStatusFailed, lastErr.Error()); dbErr != nil {
+				if dbErr := c.db.UpdateCPSyncStatus(api.UUID, "", models.CPSyncStatusFailed, lastErr.Error()); dbErr != nil {
 					c.logger.Error("Bottom-up sync: failed to record failed status",
 						slog.String("uuid", api.UUID),
 						slog.String("display_name", api.DisplayName),
@@ -699,7 +699,7 @@ func (c *Client) SyncBottomUpAPIs(apimConfig *utils.APIMConfig) {
 			}
 
 			// Success — clear cp_sync_reason
-			if dbErr := c.db.UpdateCPSyncStatus(api.UUID, models.CPSyncStatusSuccess, ""); dbErr != nil {
+			if dbErr := c.db.UpdateCPSyncStatus(api.UUID, "", models.CPSyncStatusSuccess, ""); dbErr != nil {
 				c.logger.Error("Bottom-up sync: failed to record success status",
 					slog.String("uuid", api.UUID),
 					slog.String("display_name", api.DisplayName),
@@ -738,7 +738,7 @@ func (c *Client) SyncBottomUpAPIs(apimConfig *utils.APIMConfig) {
 				slog.String("uuid", api.UUID),
 				slog.Any("error", err),
 			)
-			if dbErr := c.db.UpdateCPSyncStatus(api.UUID, models.CPSyncStatusFailed, err.Error()); dbErr != nil {
+			if dbErr := c.db.UpdateCPSyncStatus(api.UUID, "", models.CPSyncStatusFailed, err.Error()); dbErr != nil {
 				c.logger.Error("Bottom-up sync: failed to record failed status",
 					slog.String("uuid", api.UUID),
 					slog.Any("error", dbErr),
@@ -776,7 +776,7 @@ func (c *Client) SyncBottomUpAPIs(apimConfig *utils.APIMConfig) {
 				slog.String("desired_state", string(api.DesiredState)),
 				slog.Any("error", lastErr),
 			)
-			if dbErr := c.db.UpdateCPSyncStatus(api.UUID, models.CPSyncStatusFailed, lastErr.Error()); dbErr != nil {
+			if dbErr := c.db.UpdateCPSyncStatus(api.UUID, "", models.CPSyncStatusFailed, lastErr.Error()); dbErr != nil {
 				c.logger.Error("Bottom-up sync: failed to record failed status",
 					slog.String("uuid", api.UUID),
 					slog.String("display_name", api.DisplayName),
@@ -798,7 +798,11 @@ func (c *Client) SyncBottomUpAPIs(apimConfig *utils.APIMConfig) {
 			}
 		}
 
-		if dbErr := c.db.UpdateCPSyncStatus(api.UUID, models.CPSyncStatusSuccess, importReasonJSON); dbErr != nil {
+		var cpArtifactID string
+		if importResp != nil {
+			cpArtifactID = importResp.ID
+		}
+		if dbErr := c.db.UpdateCPSyncStatus(api.UUID, cpArtifactID, models.CPSyncStatusSuccess, importReasonJSON); dbErr != nil {
 			c.logger.Error("Bottom-up sync: failed to record success status",
 				slog.String("uuid", api.UUID),
 				slog.String("display_name", api.DisplayName),

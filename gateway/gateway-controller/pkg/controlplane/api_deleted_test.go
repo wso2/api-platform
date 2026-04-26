@@ -505,13 +505,25 @@ func (m *mockStorageForDeletion) GetDB() *sql.DB {
 }
 
 // Bottom-up sync methods
-func (m *mockStorageForDeletion) UpdateCPSyncStatus(uuid, status, reason string) error {
+func (m *mockStorageForDeletion) UpdateCPSyncStatus(uuid, cpArtifactID, status, reason string) error {
 	if config, ok := m.configs[uuid]; ok {
 		config.CPSyncStatus = status
 		config.CPSyncInfo = reason
+		if cpArtifactID != "" {
+			config.CPArtifactID = cpArtifactID
+		}
 		return nil
 	}
 	return storage.ErrNotFound
+}
+
+func (m *mockStorageForDeletion) GetConfigByCPArtifactID(cpArtifactID string) (*models.StoredConfig, error) {
+	for _, config := range m.configs {
+		if config.CPArtifactID == cpArtifactID {
+			return config, nil
+		}
+	}
+	return nil, storage.ErrNotFound
 }
 
 func (m *mockStorageForDeletion) UpdateDeploymentID(uuid, deploymentID string) error {

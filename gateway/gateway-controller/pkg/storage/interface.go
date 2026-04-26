@@ -131,11 +131,18 @@ type Storage interface {
 	// Returns an empty slice if no configurations of the specified origin exist.
 	GetAllConfigsByOrigin(origin models.Origin) ([]*models.StoredConfig, error)
 
-	// UpdateCPSyncStatus updates the cp_sync_status and cp_sync_info fields for an artifact.
+	// UpdateCPSyncStatus updates the cp_sync_status, cp_sync_info, and cp_artifact_id
+	// fields for an artifact.
 	//
 	// Used by the bottom-up sync to record sync outcomes (pending/success/failed) without
-	// reloading the full configuration. Returns ErrNotFound if the UUID does not exist.
-	UpdateCPSyncStatus(uuid, status, reason string) error
+	// reloading the full configuration. The cpArtifactID is the APIM/control-plane UUID
+	// returned by a successful import; pass an empty string when no CP UUID is known.
+	// Returns ErrNotFound if the UUID does not exist.
+	UpdateCPSyncStatus(uuid, cpArtifactID, status, reason string) error
+
+	// GetConfigByCPArtifactID looks up a config by the APIM/Control Plane UUID
+	// assigned during bottom-up sync. Returns ErrNotFound if no match.
+	GetConfigByCPArtifactID(cpArtifactID string) (*models.StoredConfig, error)
 
 	// GetPendingBottomUpAPIs returns all RestApi artifacts with origin=gateway_api
 	// and cp_sync_status IN ('pending', 'failed').

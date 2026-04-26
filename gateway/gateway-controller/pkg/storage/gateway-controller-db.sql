@@ -17,10 +17,12 @@ CREATE TABLE IF NOT EXISTS artifacts (
     deployed_at TIMESTAMP, -- NULL until first deployment
     cp_sync_status TEXT CHECK(cp_sync_status IN ('pending', 'success', 'failed')),
     cp_sync_info TEXT,
+    cp_artifact_id TEXT,
     PRIMARY KEY (gateway_id, uuid),
     UNIQUE(gateway_id, kind, display_name, version),
     UNIQUE(gateway_id, kind, handle)
 );
+CREATE INDEX IF NOT EXISTS idx_artifacts_cp_artifact_id ON artifacts(gateway_id, cp_artifact_id) WHERE cp_artifact_id IS NOT NULL;
 
 -- Per-resource-type tables (each stores source configuration as JSON)
 
@@ -238,6 +240,7 @@ CREATE TABLE IF NOT EXISTS events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_gateway_id_processed_timestamp ON events(gateway_id, processed_timestamp);
+
 -- Applications
 CREATE TABLE IF NOT EXISTS applications (
     application_uuid TEXT NOT NULL,

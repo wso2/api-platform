@@ -17,10 +17,12 @@ CREATE TABLE IF NOT EXISTS artifacts (
     deployed_at TIMESTAMPTZ,
     cp_sync_status  TEXT CHECK(cp_sync_status IN ('pending', 'success', 'failed')),
     cp_sync_info    TEXT,
+    cp_artifact_id  TEXT,
     PRIMARY KEY (gateway_id, uuid),
     UNIQUE(gateway_id, kind, display_name, version),
     UNIQUE(gateway_id, kind, handle)
 );
+CREATE INDEX IF NOT EXISTS idx_artifacts_cp_artifact_id ON artifacts(gateway_id, cp_artifact_id) WHERE cp_artifact_id IS NOT NULL;
 
 -- Per-resource-type tables
 

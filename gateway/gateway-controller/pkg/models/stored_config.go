@@ -99,6 +99,7 @@ type StoredConfig struct {
 	SensitiveValues     []string     `json:"-"`                      // not persisted — holds resolved secret values for redaction
 	CPSyncStatus        string       `json:"cpSyncStatus,omitempty"` // pending, success, failed
 	CPSyncInfo          string       `json:"cpSyncInfo,omitempty"`   // failure detail when CPSyncStatus=failed
+	CPArtifactID        string       `json:"-"`                      // APIM/CP UUID for bottom-up synced artifacts; populated after successful sync
 }
 
 // GetCompositeKey returns the composite key "kind:displayName:version" for indexing

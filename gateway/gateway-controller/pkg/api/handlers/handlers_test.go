@@ -776,13 +776,25 @@ func (m *MockStorage) Close() error {
 }
 
 // Bottom-up sync methods
-func (m *MockStorage) UpdateCPSyncStatus(uuid, status, reason string) error {
+func (m *MockStorage) UpdateCPSyncStatus(uuid, cpArtifactID, status, reason string) error {
 	if config, ok := m.configs[uuid]; ok {
 		config.CPSyncStatus = status
 		config.CPSyncInfo = reason
+		if cpArtifactID != "" {
+			config.CPArtifactID = cpArtifactID
+		}
 		return nil
 	}
 	return storage.ErrNotFound
+}
+
+func (m *MockStorage) GetConfigByCPArtifactID(cpArtifactID string) (*models.StoredConfig, error) {
+	for _, config := range m.configs {
+		if config.CPArtifactID == cpArtifactID {
+			return config, nil
+		}
+	}
+	return nil, storage.ErrNotFound
 }
 
 func (m *MockStorage) UpdateDeploymentID(uuid, deploymentID string) error {
