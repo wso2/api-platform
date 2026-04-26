@@ -956,11 +956,11 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 	// Initialize RestAPI service and handler
 	restAPIService := restapi.NewRestAPIService(
 		store, db, nil, nil,
-		policyDefs, &server.policyDefMu,
 		deploymentService, nil, nil,
 		routerCfg, systemCfg,
 		httpClient, parser, validator, logger, hub, nil,
 	)
+	server.restAPIService = restAPIService
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
 
 	return server
@@ -1173,11 +1173,11 @@ func attachTestEventHub(server *APIServer, hub eventhub.EventHub, gatewayID stri
 	if server.RestAPIHandler != nil {
 		restAPIService := restapi.NewRestAPIService(
 			server.store, server.db, nil, nil,
-			server.policyDefinitions, &server.policyDefMu,
 			server.deploymentService, server.apiKeyXDSManager, nil,
 			server.routerConfig, server.systemConfig,
 			server.httpClient, server.parser, server.validator, server.logger, hub, nil,
 		)
+		server.restAPIService = restAPIService
 		server.RestAPIHandler = NewRestAPIHandler(restAPIService, server.logger)
 	}
 }

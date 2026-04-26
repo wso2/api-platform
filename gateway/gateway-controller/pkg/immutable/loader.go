@@ -32,6 +32,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
@@ -39,26 +40,26 @@ import (
 // read-only enforcement on the management API at runtime.
 // When cfg.Enabled is false, all methods are no-ops.
 type ImmutableGW struct {
-	cfg               config.ImmutableGatewayConfig
-	deploymentService *utils.APIDeploymentService
-	llmService        *utils.LLMDeploymentService
-	mcpService        *utils.MCPDeploymentService
-	parser            *config.Parser
+	cfg            config.ImmutableGatewayConfig
+	restAPIService *restapi.RestAPIService
+	llmService     *utils.LLMDeploymentService
+	mcpService     *utils.MCPDeploymentService
+	parser         *config.Parser
 }
 
 // NewImmutableGW creates an ImmutableGW. All methods are no-ops when cfg.Enabled is false.
 func NewImmutableGW(
 	cfg config.ImmutableGatewayConfig,
-	deploymentService *utils.APIDeploymentService,
+	restAPIService *restapi.RestAPIService,
 	llmService *utils.LLMDeploymentService,
 	mcpService *utils.MCPDeploymentService,
 ) *ImmutableGW {
 	return &ImmutableGW{
-		cfg:               cfg,
-		deploymentService: deploymentService,
-		llmService:        llmService,
-		mcpService:        mcpService,
-		parser:            config.NewParser(),
+		cfg:            cfg,
+		restAPIService: restAPIService,
+		llmService:     llmService,
+		mcpService:     mcpService,
+		parser:         config.NewParser(),
 	}
 }
 
@@ -166,10 +167,10 @@ func (g *ImmutableGW) applyArtifact(path, kind, contentType string, data []byte,
 			return fmt.Errorf("failed to apply %s %s: %w", kind, path, err)
 		}
 	case models.KindRestApi, models.KindWebSubApi:
-		if _, err := g.deploymentService.DeployAPIConfiguration(utils.APIDeploymentParams{
-			Data:        data,
+		if _, err := g.restAPIService.Create(restapi.CreateParams{
+			Body:        data,
 			ContentType: contentType,
-			Origin:      models.OriginGatewayAPI,
+			Kind:        kind,
 			Logger:      log,
 		}); err != nil {
 			return fmt.Errorf("failed to apply %s %s: %w", kind, path, err)

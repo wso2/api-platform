@@ -74,8 +74,6 @@ type RestAPIService struct {
 	db                 storage.Storage
 	snapshotManager    *xds.SnapshotManager
 	policyManager      *policyxds.PolicyManager
-	policyDefinitions  map[string]models.PolicyDefinition
-	policyDefMu        *sync.RWMutex
 	deploymentService  *utils.APIDeploymentService
 	apiKeyXDSManager   *apikeyxds.APIKeyStateManager
 	controlPlaneClient controlplane.ControlPlaneClient
@@ -95,8 +93,6 @@ func NewRestAPIService(
 	db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
 	policyManager *policyxds.PolicyManager,
-	policyDefinitions map[string]models.PolicyDefinition,
-	policyDefMu *sync.RWMutex,
 	deploymentService *utils.APIDeploymentService,
 	apiKeyXDSManager *apikeyxds.APIKeyStateManager,
 	controlPlaneClient controlplane.ControlPlaneClient,
@@ -130,8 +126,6 @@ func NewRestAPIService(
 		db:                 db,
 		snapshotManager:    snapshotManager,
 		policyManager:      policyManager,
-		policyDefinitions:  policyDefinitions,
-		policyDefMu:        policyDefMu,
 		deploymentService:  deploymentService,
 		apiKeyXDSManager:   apiKeyXDSManager,
 		controlPlaneClient: controlPlaneClient,
@@ -151,6 +145,7 @@ type CreateParams struct {
 	Body          []byte
 	ContentType   string
 	CorrelationID string
+	Kind          string
 	Logger        *slog.Logger
 }
 
@@ -158,10 +153,15 @@ type CreateParams struct {
 func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 	log := params.Logger
 
+	kind := params.Kind
+	if kind == "" {
+		kind = "RestApi"
+	}
+
 	result, err := s.deploymentService.DeployAPIConfiguration(utils.APIDeploymentParams{
 		Data:          params.Body,
 		ContentType:   params.ContentType,
-		Kind:          "RestApi",
+		Kind:          kind,
 		APIID:         "",
 		Origin:        models.OriginGatewayAPI,
 		CorrelationID: params.CorrelationID,
