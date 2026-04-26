@@ -1,0 +1,19 @@
+apiVersion: v2
+name: event-gateway
+kubeVersion: ">=1.24.0-0"
+description: Helm chart for deploying the Event Gateway components
+version: 0.1.0
+appVersion: "0.2.0-SNAPSHOT"
+type: application
+home: https://github.com/wso2/api-platform
+sources:
+  - https://github.com/wso2/api-platform
+keywords:
+  - event-gateway
+  - websub
+  - websocket
+  - wso2
+  - api-platform
+maintainers:
+  - name: ap-event-gateway-maintainers
+    email: contact@wso2.com

@@ -47,13 +47,11 @@ help: ## Show this help message
 	@echo '  make build-and-push-multiarch                   - Build and push all event gateway components for multiple architectures'
 	@echo '  make build-and-push-multiarch-event-gateway-controller - Build and push event-gateway-controller for multiple architectures'
 	@echo '  make build-and-push-multiarch-gateway-runtime   - Build and push event-gateway-runtime for multiple architectures'
-	@echo '  make build-and-push-multiarch-webhook-listener  - Build and push webhook-listener for multiple architectures'
 	@echo ''
 	@echo 'Test Targets:'
 	@echo '  make test                      - Run all tests'
 	@echo '  make test-event-gateway-controller - Test event-gateway-controller'
 	@echo '  make test-gateway-runtime      - Test event-gateway-runtime'
-	@echo '  make test-webhook-listener     - Test webhook-listener'
 	@echo ''
 	@echo 'Version Management:'
 	@echo '  make version-set VERSION=X              - Set event gateway version and update artifacts'
@@ -98,7 +96,7 @@ build-webhook-listener: ## Build webhook-listener Docker image
 
 # Multi-arch Build and Push Targets
 .PHONY: build-and-push-multiarch
-build-and-push-multiarch: build-and-push-multiarch-event-gateway-controller build-and-push-multiarch-gateway-runtime build-and-push-multiarch-webhook-listener ## Build and push all event gateway components for multiple architectures
+build-and-push-multiarch: build-and-push-multiarch-event-gateway-controller build-and-push-multiarch-gateway-runtime ## Build and push all event gateway components for multiple architectures
 
 .PHONY: build-and-push-multiarch-event-gateway-controller
 build-and-push-multiarch-event-gateway-controller: ## Build and push event-gateway-controller Docker image for multiple architectures
@@ -129,7 +127,7 @@ build-and-push-multiarch-webhook-listener: ## Build and push webhook-listener Do
 
 # Test Targets
 .PHONY: test
-test: test-event-gateway-controller test-gateway-runtime test-webhook-listener ## Run all tests
+test: test-event-gateway-controller test-gateway-runtime ## Run all tests
 
 .PHONY: test-event-gateway-controller
 test-event-gateway-controller: ## Test event-gateway-controller
@@ -153,6 +151,7 @@ version-set: ## Set event gateway version and update artifacts
 	fi
 	@echo "$(VERSION)" > VERSION
 	@(cd .. && bash scripts/update-docker-compose.sh event-gateway $(VERSION))
+	@(cd .. && bash scripts/update-helm.sh event-gateway $(VERSION))
 	@echo "✓ Set event gateway version to $(VERSION)"
 
 .PHONY: version-bump-patch

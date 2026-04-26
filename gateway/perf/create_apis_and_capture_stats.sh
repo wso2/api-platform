@@ -7,7 +7,7 @@ CONTROLLER_CTN="gateway-gateway-controller-1"
 
 
 # ---------------- API endpoint ----------------
-API_MGR_URL="http://localhost:9090/apis"
+API_MGR_URL="http://localhost:9090/api/management/v0.9/rest-apis"
 
 # ---------------- params ----------------
 TOTAL="${1:-50}"

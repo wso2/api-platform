@@ -3,11 +3,21 @@
 # --------------------------------------------------------------------
 # Environment variable overrides use prefix APIP_EGW_ with section/field
 # names such as:
-#   APIP_EGW_SERVER_WEBSUB_PORT=8080
+#   APIP_EGW_SERVER_WEBSUB_HTTP_PORT=8080
+#   APIP_EGW_SERVER_WEBSUB_HTTPS_PORT=8443
 #   APIP_EGW_KAFKA_BROKERS=broker1:9092,broker2:9092
 
 [server]
-websub_port = 8080
+# Set to true to enable the WebSub HTTP server. Set to false to disable it.
+websub_enabled = true
+# HTTP port for WebSub server
+websub_http_port = 8080
+# HTTPS port for WebSub server (used when TLS is enabled)
+websub_https_port = 8443
+# Set to true to serve the WebSub hub and webhook receiver over HTTPS.
+websub_tls_enabled = true
+websub_tls_cert_file = "/etc/event-gateway/tls/default-listener.crt"
+websub_tls_key_file = "/etc/event-gateway/tls/default-listener.key"
 websocket_port = 8081
 admin_port = 9002
 metrics_port = 9003
@@ -28,6 +38,10 @@ default_lease_seconds = 0
 [policy_engine]
 # config_file = ""
 # chains_file = ""
+
+[logging]
+level = "info"
+format = "text"
 
 # runtime_id is auto-generated if left empty
 # runtime_id = ""

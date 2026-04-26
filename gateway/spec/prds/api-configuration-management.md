@@ -47,7 +47,7 @@ The Gateway-Controller accepts, validates, and persists API configurations in YA
 
 **Scenario 1**: Deploy new API configuration
 ```bash
-curl -X POST http://localhost:9090/apis \
+curl -X POST http://localhost:9090/api/management/v0.9/rest-apis \
   -H "Content-Type: application/json" \
   -d @petstore-v1.yaml
 
@@ -62,7 +62,7 @@ curl -X POST http://localhost:9090/apis \
 
 **Scenario 2**: Validation error with field paths
 ```bash
-curl -X POST http://localhost:9090/apis \
+curl -X POST http://localhost:9090/api/management/v0.9/rest-apis \
   -H "Content-Type: application/json" \
   -d @invalid-config.yaml
 
@@ -85,7 +85,7 @@ curl -X POST http://localhost:9090/apis \
 
 **Scenario 3**: Duplicate name/version
 ```bash
-curl -X POST http://localhost:9090/apis \
+curl -X POST http://localhost:9090/api/management/v0.9/rest-apis \
   -H "Content-Type: application/json" \
   -d @petstore-v1.yaml
 

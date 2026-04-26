@@ -5,7 +5,7 @@ This document is a **short maintainer index** for where code and behaviour live.
 ## Goals
 
 - **Gateway (standard API):** Same *infrastructure* role as `APIGateway` — deploy the platform gateway via Helm, discover the gateway-controller **Service**, register it in the in-memory **GatewayRegistry** (no dependency on an `APIGateway` CR for this path).
-- **HTTPRoute:** Same *API* role as `RestApi` — build an `api.yaml`-compatible payload (`APIConfigData`) and call gateway-controller **REST** (`POST`/`PUT` `/rest-apis`, `DELETE` `/rest-apis/{handle}`).
+- **HTTPRoute:** Same *API* role as `RestApi` — build an `api.yaml`-compatible payload (`APIConfigData`) and call gateway-controller **REST** (`POST`/`PUT` `/api/management/v0.9/rest-apis`, `DELETE` `/api/management/v0.9/rest-apis/{handle}`).
 - **Service / APIPolicy / Secret:** Not reconciled as APIs themselves; **HTTPRoute** resolution plus **watches** on **Service**, **`APIPolicy`**, and **Secret** enqueue affected routes when backends, policy CRs, or referenced Secret data change.
 - **`APIPolicy` CR** (`gateway.api-platform.wso2.com/v1alpha1`, plural **`apipolicies`**): Gateway API–only policy attachment; **not** used by `RestApi` / `APIGateway` reconciliation. RestApi continues to embed `Policy` inline on the CR spec.
 
@@ -115,7 +115,7 @@ The overlay is applied **after** the ConfigMap overlay, so Gateway listener port
 | `gateway.api-platform.wso2.com/context` | Overrides API **context** path. |
 | `gateway.api-platform.wso2.com/display-name` | Overrides display name (default: route `metadata.name`). |
 | `gateway.api-platform.wso2.com/project-id` | User-defined metadata; **all** `HTTPRoute` annotations are copied verbatim into the gateway-controller `api.yaml` payload under `metadata.annotations` (same keys as on the route). |
-| `gateway.api-platform.wso2.com/api-handle` | REST handle for `/rest-apis/{handle}` (default: `{namespace}-{name}` with `/` stripped). |
+| `gateway.api-platform.wso2.com/api-handle` | REST handle for `/api/management/v0.9/rest-apis/{handle}` (default: `{namespace}-{name}` with `/` stripped). |
 | *(no HTTPRoute policy annotations)* | Policy attachment is via `APIPolicy` only (API-level when `spec.targetRef` is set; rule-scope via `ExtensionRef` when `targetRef` is omitted). |
 
 ### `APIPolicy` CR (`gateway.api-platform.wso2.com/v1alpha1`)

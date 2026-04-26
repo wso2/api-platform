@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"sync"
 
 	discoveryv3 "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
@@ -174,6 +175,9 @@ func (h *Handler) HandleResources(ctx context.Context, resources []*discoveryv3.
 	// Compute diff: additions and updates
 	for uuid, ecr := range incoming {
 		if old, exists := h.current[uuid]; exists {
+			if reflect.DeepEqual(old, ecr) {
+				continue
+			}
 			// Update: remove then re-add
 			slog.Info("Updating binding via xDS", "name", ecr.Name, "uuid", uuid)
 			if err := h.manager.RemoveWebSubApiBinding(old.Name); err != nil {
@@ -216,6 +220,7 @@ func (h *Handler) toWebSubApiBinding(ecr EventChannelResource) binding.WebSubApi
 
 	return binding.WebSubApiBinding{
 		Kind:     "WebSubApi",
+		APIID:    ecr.UUID,
 		Name:     ecr.Name,
 		Version:  ecr.Version,
 		Context:  ecr.Context,

@@ -84,7 +84,7 @@ Phase 1 establishes the required infrastructure before any tests run. All Phase 
 | ID | Component | Description | Port(s) | Health Check |
 |----|-----------|-------------|---------|--------------|
 | `CLI` | CLI Binary | Build `ap` binary from `cli/src/` | N/A | Binary exists and runs `--version` |
-| `GATEWAY` | Gateway Stack | Docker Compose: controller, router, policy-engine, sample-backend | 9090, 8080, 9901, 9080 | HTTP GET `localhost:9090/health` |
+| `GATEWAY` | Gateway Stack | Docker Compose: controller, router, policy-engine, sample-backend | 9090, 9092, 8080, 9901, 9080 | HTTP GET `localhost:9092/api/admin/v0.9/health` |
 | `MCP_SERVER` | MCP Server | Docker Compose: mcp-server-backend | 3001 | TCP connect `localhost:3001` |
 
 ### Infrastructure Startup Sequence

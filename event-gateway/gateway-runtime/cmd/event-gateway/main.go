@@ -27,6 +27,7 @@ import (
 	"syscall"
 
 	"github.com/google/uuid"
+	"github.com/wso2/api-platform/common/apikey"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/config"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/runtime"
@@ -43,6 +44,7 @@ func main() {
 		slog.Error("Failed to load config", "error", err)
 		os.Exit(1)
 	}
+	slog.SetDefault(setupLogger(cfg))
 
 	if cfg.RuntimeID == "" {
 		cfg.RuntimeID = uuid.New().String()
@@ -70,13 +72,24 @@ func main() {
 		handler := xdsclient.NewHandler(rt, xdsclient.KafkaConfig{
 			Brokers: cfg.Kafka.Brokers,
 		})
-		xdsClient := xdsclient.NewClient(
+		eventConfigClient := xdsclient.NewClient(
 			cfg.ControlPlane.XDSAddress,
 			cfg.ControlPlane.NodeID,
+			xdsclient.EventChannelConfigTypeURL,
 			handler.HandleResources,
 		)
-		xdsClient.Start()
-		defer xdsClient.Stop()
+		apiKeyHandler := xdsclient.NewAPIKeyStateHandler(apikey.GetAPIkeyStoreInstance())
+		apiKeyClient := xdsclient.NewClient(
+			cfg.ControlPlane.XDSAddress,
+			cfg.ControlPlane.NodeID,
+			xdsclient.APIKeyStateTypeURL,
+			apiKeyHandler.HandleResources,
+		)
+
+		eventConfigClient.Start()
+		apiKeyClient.Start()
+		defer eventConfigClient.Stop()
+		defer apiKeyClient.Stop()
 	} else {
 		// Static mode: parse channel bindings from YAML.
 		if err := rt.LoadChannels(*channelsPath); err != nil {
@@ -93,4 +106,29 @@ func main() {
 		slog.Error("Runtime error", "error", err)
 		os.Exit(1)
 	}
+}
+
+func setupLogger(cfg *config.Config) *slog.Logger {
+	var level slog.Level
+	switch cfg.Logging.Level {
+	case "debug":
+		level = slog.LevelDebug
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	default:
+		level = slog.LevelInfo
+	}
+
+	opts := &slog.HandlerOptions{Level: level}
+
+	var handler slog.Handler
+	if cfg.Logging.Format == "json" {
+		handler = slog.NewJSONHandler(os.Stdout, opts)
+	} else {
+		handler = slog.NewTextHandler(os.Stdout, opts)
+	}
+
+	return slog.New(handler)
 }

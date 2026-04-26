@@ -90,7 +90,7 @@ By default `build.yaml` uses `gomodule:` entries — policies compile from the G
 
 ```bash
 # Deploy a test API
-curl -X POST http://localhost:9090/apis \
+curl -X POST http://localhost:9090/api/management/v0.9/rest-apis \
   -H "Content-Type: application/yaml" \
   --data-binary @path/to/api.yaml
 
@@ -215,7 +215,7 @@ docker compose logs -ft gateway-runtime sample-backend
 Deploy a test API via the Gateway Controller REST API:
 
 ```bash
-curl -X POST http://localhost:9090/apis \
+curl -X POST http://localhost:9090/api/management/v0.9/rest-apis \
   -H "Content-Type: application/yaml" \
   --data-binary @path/to/api.yaml
 ```

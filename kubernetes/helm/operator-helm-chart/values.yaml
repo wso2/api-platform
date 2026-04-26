@@ -481,9 +481,10 @@ gateway:
           # Use named port admin (controller admin HTTP server), not rest. GET /health on :9090
           # goes through Gin + basic auth and returns 401 for kube-probe; standalone chart defaults
           # use admin :9092 where /health is probe-safe.
+          # Admin API is served under /api/admin/v0.9 (see gateway-controller admin OpenAPI spec).
           livenessProbe:
             httpGet:
-              path: /health
+              path: /api/admin/v0.9/health
               port: admin
             initialDelaySeconds: 10
             periodSeconds: 10
@@ -491,7 +492,7 @@ gateway:
             failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /health
+              path: /api/admin/v0.9/health
               port: admin
             initialDelaySeconds: 5
             periodSeconds: 5

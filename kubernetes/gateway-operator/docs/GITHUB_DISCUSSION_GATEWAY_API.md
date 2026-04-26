@@ -9,7 +9,7 @@
 The **gateway-operator** reconciles standard **Kubernetes Gateway API** resources (`gateway.networking.k8s.io` **Gateway** and **HTTPRoute**) alongside the existing **`APIGateway`** and **`RestApi`** CRDs.
 
 - **Gateway:** Same *infrastructure* role as **`APIGateway`** — deploy the platform gateway via Helm, discover the gateway-controller **Service**, register it in the in-memory **GatewayRegistry** (no dependency on an `APIGateway` CR for this path).
-- **HTTPRoute:** Same *API* role as **`RestApi`** — build an `api.yaml`-compatible payload (`APIConfigData`) and call gateway-controller **REST** (`POST`/`PUT` `/rest-apis`, `DELETE` `/rest-apis/{handle}`).
+- **HTTPRoute:** Same *API* role as **`RestApi`** — build an `api.yaml`-compatible payload (`APIConfigData`) and call gateway-controller **REST** (`POST`/`PUT` `/api/management/v0.9/rest-apis`, `DELETE` `/api/management/v0.9/rest-apis/{handle}`).
 - **Service / `APIPolicy` / Secret / ConfigMap:** **HTTPRoute** resolution plus **watches** on **Service**, **`APIPolicy`**, **Secret**, and **ConfigMap** enqueue routes when backends, policy CRs, or referenced Secret/ConfigMap data change.
 - **`APIPolicy` CR:** Gateway API–only (`gateway.api-platform.wso2.com/v1alpha1`); **`spec.policies`** array; optional **`spec.targetRef`** (**HTTPRoute**) for API-level merge; omit **`targetRef`** and attach via rule **`ExtensionRef`** for rule/resource scope. **`params.valueFrom`** (native k8s shape — `secretKeyRef` / `configMapKeyRef`) is resolved from Secrets or ConfigMaps before gateway-controller REST. Does **not** change `RestApi` / `APIGateway` reconciliation.
 
@@ -118,7 +118,7 @@ If the Helm values ConfigMap annotation is **omitted**, the operator uses the de
 | `gateway.api-platform.wso2.com/api-version` | `APIConfigData.Version` (default `v1.0`). |
 | `gateway.api-platform.wso2.com/context` | Overrides API **context** path. |
 | `gateway.api-platform.wso2.com/display-name` | Overrides display name (default: route `metadata.name`). |
-| `gateway.api-platform.wso2.com/api-handle` | REST handle for `/rest-apis/{handle}` (default: `{namespace}-{name}` with `/` stripped). |
+| `gateway.api-platform.wso2.com/api-handle` | REST handle for `/api/management/v0.9/rest-apis/{handle}` (default: `{namespace}-{name}` with `/` stripped). |
 | *(no HTTPRoute policy annotations)* | Policy attachment is via `APIPolicy` only (API-level when `spec.targetRef` is set; rule-scope via `ExtensionRef` when `targetRef` is omitted). |
 
 **`APIPolicy` CR**: `spec.policies` → array of `Policy`-shaped entries. **API-level:** set `spec.targetRef` to the `HTTPRoute`. **Rule-level:** omit `spec.targetRef`; reference from `spec.rules[].filters` with `ExtensionRef` (`group: gateway.api-platform.wso2.com`, `kind: APIPolicy`).

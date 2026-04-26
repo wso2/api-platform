@@ -27,6 +27,7 @@ import (
 // Used for protocol-mediation mode (1 channel = 1 topic).
 type Binding struct {
 	Kind         string           `yaml:"kind"`
+	APIID        string           `yaml:"apiId"`
 	Name         string           `yaml:"name"`
 	Mode         string           `yaml:"mode"` // "websub" or "protocol-mediation"
 	Context      string           `yaml:"context"`
@@ -41,6 +42,7 @@ type Binding struct {
 // sharing a single receiver and broker-driver.
 type WebSubApiBinding struct {
 	Kind         string           `yaml:"kind"` // "WebSubApi"
+	APIID        string           `yaml:"apiId"`
 	Name         string           `yaml:"name"`
 	Version      string           `yaml:"version"`
 	Context      string           `yaml:"context"`

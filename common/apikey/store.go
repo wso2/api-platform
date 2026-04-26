@@ -329,6 +329,49 @@ func (aks *APIkeyStore) ClearAll() error {
 	return nil
 }
 
+// ReplaceAll atomically replaces all API keys in the store with the provided snapshot.
+func (aks *APIkeyStore) ReplaceAll(newMap map[string]map[string]*APIKey) error {
+	replacement := make(map[string]map[string]*APIKey, len(newMap))
+	for apiId, apiKeys := range newMap {
+		if len(apiKeys) == 0 {
+			continue
+		}
+
+		clonedKeys := make(map[string]*APIKey, len(apiKeys))
+		for hash, apiKey := range apiKeys {
+			if apiKey == nil {
+				return fmt.Errorf("API key cannot be nil")
+			}
+
+			normalizedHash := strings.TrimSpace(hash)
+			clonedAPIKey := cloneAPIKey(apiKey)
+			clonedAPIKey.APIKey = strings.TrimSpace(clonedAPIKey.APIKey)
+			if clonedAPIKey.APIKey == "" {
+				return fmt.Errorf("%w: API key hash cannot be empty", ErrInvalidInput)
+			}
+			if normalizedHash == "" {
+				normalizedHash = clonedAPIKey.APIKey
+			}
+			if normalizedHash != clonedAPIKey.APIKey {
+				return fmt.Errorf("%w: API key map hash does not match API key hash", ErrInvalidInput)
+			}
+			if _, exists := clonedKeys[normalizedHash]; exists {
+				return ErrConflict
+			}
+
+			clonedKeys[normalizedHash] = clonedAPIKey
+		}
+
+		replacement[apiId] = clonedKeys
+	}
+
+	aks.mu.Lock()
+	defer aks.mu.Unlock()
+	aks.apiKeysByAPI = replacement
+
+	return nil
+}
+
 // ComputeAPIKeyHash computes a SHA-256 hash of the plain-text API key for storage and lookup
 // Returns the hash as hex-encoded string (64 characters)
 // Normalizes the key by trimming whitespace before hashing for consistency

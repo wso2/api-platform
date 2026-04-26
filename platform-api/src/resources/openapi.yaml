@@ -4670,6 +4670,54 @@ paths:
           $ref: '#/components/responses/InternalServerError'
 
   /websub-apis/{apiId}/api-keys/{keyName}:
+    put:
+      summary: Update an API key for WebSub API
+      description: |
+        Updates an existing API key for the specified WebSub API. The new API key value will
+        be hashed before storage and broadcasted to all gateways where the API is deployed.
+        This endpoint allows external platforms to rotate API keys on hybrid gateways.
+      operationId: updateWebSubAPIKey
+      tags:
+        - WebSubAPIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: keyName
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAPIKeyRequest'
+      responses:
+        '200':
+          description: API key updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateAPIKeyResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: Service Unavailable - No gateway connections available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
     delete:
       summary: Delete an API key for WebSub API
       operationId: deleteWebSubAPIKey

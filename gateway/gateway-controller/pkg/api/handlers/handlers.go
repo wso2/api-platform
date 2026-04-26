@@ -55,6 +55,7 @@ import (
 type APIServer struct {
 	*RestAPIHandler // embedded — promotes CreateRestAPI, ListRestAPIs, GetRestAPIById, UpdateRestAPI, DeleteRestAPI
 
+	restAPIService              *restapi.RestAPIService
 	store                       *storage.ConfigStore
 	db                          storage.Storage
 	snapshotManager             *xds.SnapshotManager
@@ -97,6 +98,7 @@ func NewAPIServer(
 	eventHub eventhub.EventHub,
 	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater,
 	secretService *secrets.SecretService,
+	restAPIService *restapi.RestAPIService,
 ) *APIServer {
 	if db == nil {
 		panic("APIServer requires non-nil storage")
@@ -148,15 +150,7 @@ func NewAPIServer(
 		subscriptionSnapshotUpdater: subscriptionSnapshotUpdater,
 		subscriptionResourceService: subscriptionResourceService,
 	}
-	// Create RestAPI service and handler
-	restAPIService := restapi.NewRestAPIService(
-		store, db, snapshotManager, policyManager,
-		policyDefinitions, &server.policyDefMu,
-		deploymentService, apiKeyXDSManager,
-		controlPlaneClient, routerConfig, systemConfig,
-		httpClient, parser, validator, logger,
-		eventHub, secretService,
-	)
+	server.restAPIService = restAPIService
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
 
 	// Register status update callback

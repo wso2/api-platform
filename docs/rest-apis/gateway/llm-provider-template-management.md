@@ -12,7 +12,7 @@ CRUD operations for LLM Provider Template configurations
 
 ```shell
 
-curl -X POST http://localhost:9090/llm-provider-templates \
+curl -X POST http://localhost:9090/api/management/v0.9/llm-provider-templates \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -74,7 +74,7 @@ Required roles: `admin`
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[LLMProviderTemplate](schemas.md#schemallmprovidertemplate)|true|none|
+|body|body|[LLMProviderTemplate](#schemallmprovidertemplate)|true|none|
 
 > Example responses
 
@@ -93,10 +93,10 @@ Required roles: `admin`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|LLM provider template created successfully|[LLMProviderTemplateCreateResponse](schemas.md#schemallmprovidertemplatecreateresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - Template with same name already exists|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|LLM provider template created successfully|[LLMProviderTemplateCreateResponse](#schemallmprovidertemplatecreateresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - Template with same name already exists|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## List all LLM provider templates
 
@@ -108,7 +108,7 @@ Required roles: `admin`
 
 ```shell
 
-curl -X GET http://localhost:9090/llm-provider-templates \
+curl -X GET http://localhost:9090/api/management/v0.9/llm-provider-templates \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -155,7 +155,7 @@ Required roles: `admin`
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of LLM provider templates|Inline|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 <h3 id="list-all-llm-provider-templates-responseschema">Response Schema</h3>
 
@@ -165,7 +165,7 @@ Status Code **200**
 |---|---|---|---|---|
 |» status|string|false|none|none|
 |» count|integer|false|none|none|
-|» templates|[[LLMProviderTemplateListItem](schemas.md#schemallmprovidertemplatelistitem)]|false|none|none|
+|» templates|[[LLMProviderTemplateListItem](#schemallmprovidertemplatelistitem)]|false|none|none|
 |»» id|string|false|none|none|
 |»» displayName|string|false|none|none|
 |»» createdAt|string(date-time)|false|none|none|
@@ -181,7 +181,7 @@ Status Code **200**
 
 ```shell
 
-curl -X GET http://localhost:9090/llm-provider-templates/{id} \
+curl -X GET http://localhost:9090/api/management/v0.9/llm-provider-templates/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -259,9 +259,9 @@ Required roles: `admin`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|LLM provider template details|[LLMProviderTemplateDetailResponse](schemas.md#schemallmprovidertemplatedetailresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider template not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|LLM provider template details|[LLMProviderTemplateDetailResponse](#schemallmprovidertemplatedetailresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider template not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Update an existing LLM provider template
 
@@ -273,7 +273,7 @@ Required roles: `admin`
 
 ```shell
 
-curl -X PUT http://localhost:9090/llm-provider-templates/{id} \
+curl -X PUT http://localhost:9090/api/management/v0.9/llm-provider-templates/{id} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -336,7 +336,7 @@ Required roles: `admin`
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |id|path|string|true|Unique public identifier of the template to update|
-|body|body|[LLMProviderTemplate](schemas.md#schemallmprovidertemplate)|true|none|
+|body|body|[LLMProviderTemplate](#schemallmprovidertemplate)|true|none|
 
 > Example responses
 
@@ -355,10 +355,10 @@ Required roles: `admin`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|LLM provider template updated successfully|[LLMProviderTemplateUpdateResponse](schemas.md#schemallmprovidertemplateupdateresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider template not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|LLM provider template updated successfully|[LLMProviderTemplateUpdateResponse](#schemallmprovidertemplateupdateresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider template not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 ## Delete an LLM provider template
 
@@ -370,7 +370,7 @@ Required roles: `admin`
 
 ```shell
 
-curl -X DELETE http://localhost:9090/llm-provider-templates/{id} \
+curl -X DELETE http://localhost:9090/api/management/v0.9/llm-provider-templates/{id} \
   -u {username}:{password} \
   -H 'Accept: application/json'
 
@@ -410,8 +410,8 @@ Required roles: `admin`
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|LLM provider template deleted successfully|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider template not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM provider template not found|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
 
 <h3 id="delete-an-llm-provider-template-responseschema">Response Schema</h3>
 

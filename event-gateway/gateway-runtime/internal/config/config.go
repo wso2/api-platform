@@ -21,6 +21,7 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"os"
 	"strconv"
 	"strings"
 
@@ -37,15 +38,21 @@ type Config struct {
 	WebSub       WebSubConfig       `koanf:"websub"`
 	PolicyEngine PolicyEngineConfig `koanf:"policy_engine"`
 	ControlPlane ControlPlaneConfig `koanf:"controlplane"`
+	Logging      LoggingConfig      `koanf:"logging"`
 	RuntimeID    string             `koanf:"runtime_id"`
 }
 
 // ServerConfig holds HTTP/WS server settings.
 type ServerConfig struct {
-	WebSubPort    int `koanf:"websub_port"`
-	WebSocketPort int `koanf:"websocket_port"`
-	AdminPort     int `koanf:"admin_port"`
-	MetricsPort   int `koanf:"metrics_port"`
+	WebSubEnabled     bool   `koanf:"websub_enabled"`
+	WebSubHTTPPort    int    `koanf:"websub_http_port"`
+	WebSubHTTPSPort   int    `koanf:"websub_https_port"`
+	WebSubTLSEnabled  bool   `koanf:"websub_tls_enabled"`
+	WebSubTLSCertFile string `koanf:"websub_tls_cert_file"`
+	WebSubTLSKeyFile  string `koanf:"websub_tls_key_file"`
+	WebSocketPort     int    `koanf:"websocket_port"`
+	AdminPort         int    `koanf:"admin_port"`
+	MetricsPort       int    `koanf:"metrics_port"`
 }
 
 // KafkaConfig holds Kafka connection settings.
@@ -81,14 +88,22 @@ type ControlPlaneConfig struct {
 	NodeID     string `koanf:"node_id"`
 }
 
+// LoggingConfig controls the runtime's structured logger.
+type LoggingConfig struct {
+	Level  string `koanf:"level"`
+	Format string `koanf:"format"`
+}
+
 // DefaultConfig returns configuration with sensible defaults.
 func DefaultConfig() *Config {
 	return &Config{
 		Server: ServerConfig{
-			WebSubPort:    8080,
-			WebSocketPort: 8081,
-			AdminPort:     9002,
-			MetricsPort:   9003,
+			WebSubEnabled:   true,
+			WebSubHTTPPort:  8080,
+			WebSubHTTPSPort: 8443,
+			WebSocketPort:   8081,
+			AdminPort:       9002,
+			MetricsPort:     9003,
 		},
 		Kafka: KafkaConfig{
 			Brokers:             []string{"localhost:9092"},
@@ -101,6 +116,10 @@ func DefaultConfig() *Config {
 			DeliveryMaxDelayMs:         60000,
 			DeliveryConcurrency:        64,
 			DefaultLeaseSeconds:        0,
+		},
+		Logging: LoggingConfig{
+			Level:  "info",
+			Format: "text",
 		},
 	}
 }
@@ -135,14 +154,23 @@ func Load(path string) (*Config, map[string]interface{}, error) {
 		return nil, nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
+	if err := validate(cfg); err != nil {
+		return nil, nil, err
+	}
+
 	// Extract the raw map for policy_configurations (used for ${config} resolution)
 	rawConfig := k.All()
 
 	slog.Info("Configuration loaded",
-		"websub_port", cfg.Server.WebSubPort,
+		"websub_enabled", cfg.Server.WebSubEnabled,
+		"websub_http_port", cfg.Server.WebSubHTTPPort,
+		"websub_https_port", cfg.Server.WebSubHTTPSPort,
+		"websub_tls_enabled", cfg.Server.WebSubTLSEnabled,
 		"websocket_port", cfg.Server.WebSocketPort,
 		"admin_port", cfg.Server.AdminPort,
 		"kafka_brokers", cfg.Kafka.Brokers,
+		"log_level", cfg.Logging.Level,
+		"log_format", cfg.Logging.Format,
 	)
 
 	return cfg, rawConfig, nil
@@ -164,6 +192,8 @@ func mapEnvKey(key string) string {
 		return "policy_engine." + strings.TrimPrefix(name, "policy_engine_")
 	case strings.HasPrefix(name, "controlplane_"):
 		return "controlplane." + strings.TrimPrefix(name, "controlplane_")
+	case strings.HasPrefix(name, "logging_"):
+		return "logging." + strings.TrimPrefix(name, "logging_")
 	default:
 		// Support generic nested keys using "__" for literal underscores.
 		name = strings.ReplaceAll(name, "__", "%UNDERSCORE%")
@@ -179,7 +209,8 @@ func mapEnvValue(path, value string) interface{} {
 	switch path {
 	case "kafka.brokers":
 		return splitCSV(value)
-	case "server.websub_port",
+	case "server.websub_http_port",
+		"server.websub_https_port",
 		"server.websocket_port",
 		"server.admin_port",
 		"server.metrics_port",
@@ -192,7 +223,7 @@ func mapEnvValue(path, value string) interface{} {
 		if n, err := strconv.Atoi(value); err == nil {
 			return n
 		}
-	case "kafka.tls", "controlplane.enabled":
+	case "kafka.tls", "controlplane.enabled", "server.websub_enabled", "server.websub_tls_enabled":
 		if b, err := strconv.ParseBool(value); err == nil {
 			return b
 		}
@@ -216,4 +247,87 @@ func splitCSV(value string) []string {
 		out = append(out, part)
 	}
 	return out
+}
+
+func validate(cfg *Config) error {
+	if err := validateServerPorts(cfg.Server); err != nil {
+		return err
+	}
+
+	if cfg.Server.WebSubTLSEnabled {
+		if err := validateReadableFile(cfg.Server.WebSubTLSCertFile, "server.websub_tls_cert_file"); err != nil {
+			return err
+		}
+		if err := validateReadableFile(cfg.Server.WebSubTLSKeyFile, "server.websub_tls_key_file"); err != nil {
+			return err
+		}
+	}
+
+	switch cfg.Logging.Level {
+	case "", "debug", "info", "warn", "error":
+	default:
+		return fmt.Errorf("logging.level must be one of debug, info, warn, error")
+	}
+
+	switch cfg.Logging.Format {
+	case "", "text", "json":
+	default:
+		return fmt.Errorf("logging.format must be one of text, json")
+	}
+
+	return nil
+}
+
+func validateServerPorts(serverCfg ServerConfig) error {
+	ports := []struct {
+		name  string
+		value int
+	}{
+		{name: "server.websub_http_port", value: serverCfg.WebSubHTTPPort},
+		{name: "server.websub_https_port", value: serverCfg.WebSubHTTPSPort},
+		{name: "server.websocket_port", value: serverCfg.WebSocketPort},
+		{name: "server.admin_port", value: serverCfg.AdminPort},
+		{name: "server.metrics_port", value: serverCfg.MetricsPort},
+	}
+
+	seen := make(map[int]string, len(ports))
+	for _, port := range ports {
+		if port.value <= 0 {
+			return fmt.Errorf("%s must be a positive integer, got %d", port.name, port.value)
+		}
+		if previous, exists := seen[port.value]; exists {
+			return fmt.Errorf("%s port %d conflicts with %s", port.name, port.value, previous)
+		}
+		seen[port.value] = port.name
+	}
+
+	return nil
+}
+
+func validateReadableFile(filePath, fieldName string) error {
+	trimmedPath := strings.TrimSpace(filePath)
+	if trimmedPath == "" {
+		return fmt.Errorf("%s is required when server.websub_tls_enabled is true", fieldName)
+	}
+
+	info, err := os.Stat(trimmedPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("%s file %q does not exist", fieldName, trimmedPath)
+		}
+		return fmt.Errorf("failed to access %s file %q: %w", fieldName, trimmedPath, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("%s path %q must be a file, not a directory", fieldName, trimmedPath)
+	}
+
+	fileHandle, err := os.Open(trimmedPath)
+	if err != nil {
+		return fmt.Errorf("%s file %q is not readable: %w", fieldName, trimmedPath, err)
+	}
+	if err := fileHandle.Close(); err != nil {
+		return fmt.Errorf("failed to close %s file %q after validation: %w", fieldName, trimmedPath, err)
+	}
+
+	return nil
 }

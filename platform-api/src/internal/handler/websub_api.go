@@ -38,15 +38,13 @@ import (
 // WebSubAPIHandler handles CRUD and auxiliary routes for WebSub APIs
 type WebSubAPIHandler struct {
 	websubAPIService *service.WebSubAPIService
-	apiKeyService    *service.APIKeyService
 	slogger          *slog.Logger
 }
 
 // NewWebSubAPIHandler creates a new WebSubAPIHandler instance
-func NewWebSubAPIHandler(websubAPIService *service.WebSubAPIService, apiKeyService *service.APIKeyService, slogger *slog.Logger) *WebSubAPIHandler {
+func NewWebSubAPIHandler(websubAPIService *service.WebSubAPIService, slogger *slog.Logger) *WebSubAPIHandler {
 	return &WebSubAPIHandler{
 		websubAPIService: websubAPIService,
-		apiKeyService:    apiKeyService,
 		slogger:          slogger,
 	}
 }
@@ -60,8 +58,6 @@ func (h *WebSubAPIHandler) RegisterRoutes(r *gin.Engine) {
 		v1.GET("/websub-apis/:apiId", h.GetWebSubAPI)
 		v1.PUT("/websub-apis/:apiId", h.UpdateWebSubAPI)
 		v1.DELETE("/websub-apis/:apiId", h.DeleteWebSubAPI)
-		v1.POST("/websub-apis/:apiId/api-keys", h.CreateAPIKey)
-		v1.DELETE("/websub-apis/:apiId/api-keys/:keyName", h.DeleteAPIKey)
 		v1.POST("/websub-apis/:apiId/devportals/publish", h.PublishToDevPortal)
 		v1.POST("/websub-apis/:apiId/devportals/unpublish", h.UnpublishFromDevPortal)
 	}
@@ -184,123 +180,6 @@ func (h *WebSubAPIHandler) DeleteWebSubAPI(c *gin.Context) {
 
 	if err := h.websubAPIService.Delete(orgID, id); err != nil {
 		h.handleServiceError(c, err)
-		return
-	}
-
-	c.Status(http.StatusNoContent)
-}
-
-// CreateAPIKey handles POST /api/v1/websub-apis/:apiId/api-keys
-func (h *WebSubAPIHandler) CreateAPIKey(c *gin.Context) {
-	orgID, ok := middleware.GetOrganizationFromContext(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
-		return
-	}
-
-	apiHandle := c.Param("apiId")
-	if apiHandle == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))
-		return
-	}
-
-	// Verify it's a WebSub API
-	if _, err := h.websubAPIService.Get(orgID, apiHandle); err != nil {
-		h.handleServiceError(c, err)
-		return
-	}
-
-	userId := c.GetHeader("x-user-id")
-
-	var req api.CreateAPIKeyRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
-		return
-	}
-
-	if req.ApiKey == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API key value is required"))
-		return
-	}
-
-	var name string
-	if req.Name != nil && *req.Name != "" {
-		name = *req.Name
-	} else {
-		displayName := ""
-		if req.DisplayName != nil {
-			displayName = *req.DisplayName
-		}
-		generatedName, err := utils.GenerateHandle(displayName, nil)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Failed to generate API key name"))
-			return
-		}
-		name = generatedName
-		req.Name = &name
-	}
-	if req.DisplayName == nil || *req.DisplayName == "" {
-		req.DisplayName = &name
-	}
-
-	if err := h.apiKeyService.CreateAPIKey(c.Request.Context(), apiHandle, orgID, userId, &req); err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "WebSub API not found"))
-			return
-		}
-		if errors.Is(err, constants.ErrGatewayUnavailable) {
-			c.JSON(http.StatusServiceUnavailable, utils.NewErrorResponse(503, "Service Unavailable", "No gateway connections available"))
-			return
-		}
-		h.slogger.Error("Failed to create API key for WebSub API", "apiHandle", apiHandle, "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to create API key"))
-		return
-	}
-
-	c.JSON(http.StatusCreated, api.CreateAPIKeyResponse{
-		Status:  api.CreateAPIKeyResponseStatusSuccess,
-		KeyId:   req.Name,
-		Message: "API key created and broadcasted to gateways successfully",
-	})
-}
-
-// DeleteAPIKey handles DELETE /api/v1/websub-apis/:apiId/api-keys/:keyName
-func (h *WebSubAPIHandler) DeleteAPIKey(c *gin.Context) {
-	orgID, ok := middleware.GetOrganizationFromContext(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
-		return
-	}
-
-	apiHandle := c.Param("apiId")
-	keyName := c.Param("keyName")
-
-	if apiHandle == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API handle is required"))
-		return
-	}
-	if keyName == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Key name is required"))
-		return
-	}
-
-	userId := c.GetHeader("x-user-id")
-
-	if err := h.apiKeyService.RevokeAPIKey(c.Request.Context(), apiHandle, orgID, keyName, userId); err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "WebSub API not found"))
-			return
-		}
-		if errors.Is(err, constants.ErrAPIKeyNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "API key not found"))
-			return
-		}
-		if errors.Is(err, constants.ErrGatewayUnavailable) {
-			c.JSON(http.StatusServiceUnavailable, utils.NewErrorResponse(503, "Service Unavailable", "No gateway connections available"))
-			return
-		}
-		h.slogger.Error("Failed to delete API key for WebSub API", "apiHandle", apiHandle, "keyName", keyName, "error", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to delete API key"))
 		return
 	}
 

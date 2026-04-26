@@ -59,7 +59,7 @@ jobs:
 
           docker compose -p "$PROJECT" -f docker-compose.test.postgres.yaml up -d postgres gateway-controller
 
-          timeout 90 bash -c 'until curl -fsS http://localhost:9092/health >/dev/null 2>&1; do sleep 2; done' || {
+          timeout 90 bash -c 'until curl -fsS http://localhost:9092/api/admin/v0.9/health >/dev/null 2>&1; do sleep 2; done' || {
             echo "=== Health check timed out — gateway-controller logs ==="
             docker logs it-gateway-controller 2>&1 || true
             exit 1
