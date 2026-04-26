@@ -646,7 +646,7 @@ func defaultConfig() *Config {
 				Format:  "text",
 				JSONFields: map[string]string{
 					"t":          "%START_TIME%",
-					"method":     "%REQ(:METHOD)%",
+					"meth":       "%REQ(:METHOD)%",
 					"path":       "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
 					"proto":      "%PROTOCOL%",
 					"respCd":     "%RESPONSE_CODE%",

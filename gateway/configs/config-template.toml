@@ -141,7 +141,7 @@ text_format = """
 
 [router.access_logs.json_fields]
 t = "%START_TIME%"
-method = "%REQ(:METHOD)%"
+meth = "%REQ(:METHOD)%"
 path = "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
 proto = "%PROTOCOL%"
 respCd = "%RESPONSE_CODE%"

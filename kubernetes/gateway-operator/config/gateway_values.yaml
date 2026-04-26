@@ -51,7 +51,7 @@ gateway:
       tracing_service_name: router
       access_logs:
         enabled: true
-        format: json
+        format: text
         json_fields:
           t: "%START_TIME%"
           meth: "%REQ(:METHOD)%"
@@ -62,18 +62,22 @@ gateway:
           bytesRx: "%BYTES_RECEIVED%"
           bytesTx: "%BYTES_SENT%"
           dur: "%DURATION%"
-          uSvcT: "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
+          upSvcT: "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
           xff: "%REQ(X-FORWARDED-FOR)%"
           ua: "%REQ(USER-AGENT)%"
           reqId: "%REQ(X-REQUEST-ID)%"
           host: "%REQ(:AUTHORITY)%"
-          uHost: "%UPSTREAM_HOST%"
-          uProto: "%UPSTREAM_PROTOCOL%"
-          uPath: "%REQ(:PATH)%"
+          upHost: "%UPSTREAM_HOST%"
+          upProto: "%UPSTREAM_PROTOCOL%"
+          upPath: "%REQ(:PATH)%"
           respCdDtl: "%RESPONSE_CODE_DETAILS%"
           connTrmDtl: "%CONNECTION_TERMINATION_DETAILS%"
+          reqTxDur: "%REQUEST_TX_DURATION%"
+          respTxDur: "%RESPONSE_TX_DURATION%"
+          reqDur: "%REQUEST_DURATION%"
+          respDur: "%RESPONSE_DURATION%"
         text_format: |
-          [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %REQ(:PATH)% %UPSTREAM_PROTOCOL% %RESPONSE_CODE% %RESPONSE_FLAGS% %RESPONSE_CODE_DETAILS% %CONNECTION_TERMINATION_DETAILS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% "%REQ(X-FORWARDED-FOR)%" "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"
+          [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %REQ(:PATH)% %UPSTREAM_PROTOCOL% %RESPONSE_CODE% %RESPONSE_FLAGS% %RESPONSE_CODE_DETAILS% %CONNECTION_TERMINATION_DETAILS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% %REQUEST_TX_DURATION% %RESPONSE_TX_DURATION% %REQUEST_DURATION% %RESPONSE_DURATION% "%REQ(X-FORWARDED-FOR)%" "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"
       downstream_tls:
         cert_path: "./listener-certs/default-listener.crt"
         key_path: "./listener-certs/default-listener.key"
