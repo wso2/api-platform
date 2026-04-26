@@ -11,7 +11,7 @@ eventGateway:
 
   controller:
     image:
-      tag: "0.1.0-SNAPSHOT"
+      tag: "0.2.0-SNAPSHOT"
       pullPolicy: IfNotPresent
 
   config:
@@ -23,5 +23,5 @@ eventGateway:
 
   gatewayRuntime:
     image:
-      tag: "0.1.0-SNAPSHOT"
+      tag: "0.2.0-SNAPSHOT"
       pullPolicy: IfNotPresent
