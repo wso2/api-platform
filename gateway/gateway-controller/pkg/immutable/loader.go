@@ -54,6 +54,9 @@ func NewImmutableGW(
 	llmService *utils.LLMDeploymentService,
 	mcpService *utils.MCPDeploymentService,
 ) *ImmutableGW {
+	if cfg.Enabled && restAPIService == nil {
+		panic("ImmutableGW requires non-nil RestAPIService when immutable mode is enabled")
+	}
 	return &ImmutableGW{
 		cfg:            cfg,
 		restAPIService: restAPIService,
