@@ -48,6 +48,7 @@ help: ## Show this help message
 	@echo '  make build-and-push-event-gateway-multiarch - Build and push all event gateway images for multiple architectures'
 	@echo '  make build-and-push-platform-api-multiarch VERSION=X - Build and push platform-api images for multiple architectures'
 	@echo '  make build-cli                        - Build CLI binaries for all platforms'
+	@echo '  make package-event-gateway            - Package event gateway as a self-contained zip'
 	@echo '  make test-gateway                     - Run gateway tests'
 	@echo '  make test-event-gateway               - Run event gateway tests'
 	@echo '  make test-platform-api                - Run platform-api tests'
