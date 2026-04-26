@@ -247,14 +247,10 @@ func NewClient(
 	if cfg.Host != "" {
 		client.apiUtilsService.TokenURL = fmt.Sprintf("https://%s/oauth2/token", cfg.Host)
 	}
-	client.apiUtilsService.ClientID = "JzYGlEgEzoD3nnPg7nQBKo0XEtga"
-	client.apiUtilsService.ClientSecret = "dAd476Wj03rN2gkyJYB8UK2dfkUa"
-	client.apiUtilsService.Username = "admin"
-	client.apiUtilsService.Password = "admin"
-	// client.apiUtilsService.ClientID = cfg.ApimOAuth2ClientID
-	// client.apiUtilsService.ClientSecret = cfg.ApimOAuth2ClientSecret
-	// client.apiUtilsService.Username = cfg.ApimOAuth2Username
-	// client.apiUtilsService.Password = cfg.ApimOAuth2Password
+	client.apiUtilsService.ClientID = ""
+	client.apiUtilsService.ClientSecret = ""
+	client.apiUtilsService.Username = ""
+	client.apiUtilsService.Password = ""
 
 	return client
 }
