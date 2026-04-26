@@ -776,7 +776,7 @@ func (m *MockStorage) Close() error {
 }
 
 // Bottom-up sync methods
-func (m *MockStorage) UpdateCPSyncStatus(uuid, cpArtifactID, status, reason string) error {
+func (m *MockStorage) UpdateCPSyncStatus(uuid, cpArtifactID string, status models.CPSyncStatus, reason string) error {
 	if config, ok := m.configs[uuid]; ok {
 		config.CPSyncStatus = status
 		config.CPSyncInfo = reason
@@ -808,7 +808,10 @@ func (m *MockStorage) UpdateDeploymentID(uuid, deploymentID string) error {
 func (m *MockStorage) GetPendingBottomUpAPIs() ([]*models.StoredConfig, error) {
 	var pending []*models.StoredConfig
 	for _, config := range m.configs {
-		if config.Origin == models.OriginGatewayAPI && config.CPSyncStatus != models.CPSyncStatusSuccess {
+		if config != nil &&
+			config.Kind == models.KindRestApi &&
+			config.Origin == models.OriginGatewayAPI &&
+			(config.CPSyncStatus == models.CPSyncStatusPending || config.CPSyncStatus == models.CPSyncStatusFailed) {
 			pending = append(pending, config)
 		}
 	}
@@ -910,8 +913,9 @@ func (m *MockStorage) SecretExists(handle string) (bool, error) {
 	return ok, nil
 }
 
-func (m *MockControlPlaneClient) SyncBottomUpAPIs(apimConfig *utils.APIMConfig) {
+func (m *MockControlPlaneClient) SyncArtifactsToOnPremAPIM(apimConfig *utils.APIMConfig) error {
 	// Mock implementation - does nothing for testing
+	return nil
 }
 
 func (m *MockControlPlaneClient) IsOnPrem() bool {

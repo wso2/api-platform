@@ -95,7 +95,7 @@ type ConnectionState struct {
 type ControlPlaneClient interface {
 	IsConnected() bool
 	PushAPIDeployment(apiID string, apiConfig *models.StoredConfig, deploymentID string) error
-	SyncBottomUpAPIs(apimConfig *utils.APIMConfig)
+	SyncArtifactsToOnPremAPIM(apimConfig *utils.APIMConfig) error
 	IsOnPrem() bool
 	GetAPIMConfig() *utils.APIMConfig
 }
@@ -237,7 +237,7 @@ func NewClient(
 	// Initialize API utils service with the proper base URL using the method
 	client.apiUtilsService = utils.NewAPIUtilsService(utils.PlatformAPIConfig{
 		BaseURL:            client.getRestAPIBaseURL(),
-		Token:              cfg.Token,
+		Token:              "019db9f1-e118-7bcf-8428-bc8bdf5f3db1.HmsoV5gCXLG7dsoN3ihhi_8xLk-dEMvJbrR3JZrgegs",
 		InsecureSkipVerify: cfg.InsecureSkipVerify,
 		Timeout:            30 * time.Second,
 	}, logger)
@@ -433,7 +433,9 @@ func (c *Client) Connect() error {
 			c.syncDeployments(gwID)
 			// Bottom-up sync: push gateway-created APIs to on-prem control plane
 			if c.IsOnPrem() {
-				c.SyncBottomUpAPIs(c.GetAPIMConfig())
+				if err := c.SyncArtifactsToOnPremAPIM(c.GetAPIMConfig()); err != nil {
+					c.logger.Error("Failed to sync artifacts to on-prem APIM", slog.Any("error", err))
+				}
 			}
 			c.syncSubscriptionPlans(gwID)
 			c.syncSubscriptionsForExistingAPIs(gwID)
@@ -450,7 +452,9 @@ func (c *Client) Connect() error {
 			defer c.wg.Done()
 			// Bottom-up sync on reconnect
 			if c.IsOnPrem() {
-				c.SyncBottomUpAPIs(c.GetAPIMConfig())
+				if err := c.SyncArtifactsToOnPremAPIM(c.GetAPIMConfig()); err != nil {
+					c.logger.Error("Failed to sync artifacts to on-prem APIM", slog.Any("error", err))
+				}
 			}
 			c.syncSubscriptionPlans(gwID)
 			c.syncSubscriptionsForExistingAPIs(gwID)

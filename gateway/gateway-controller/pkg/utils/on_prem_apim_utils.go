@@ -696,7 +696,10 @@ func ExportAPIAsZip(api *models.StoredConfig, gatewayName string, swaggerOverrid
 	}
 
 	// Generate the APIM-formatted api.yaml
-	apiYaml := generateAPIYaml(api, apiName, apiVersion)
+	apiYaml, err := generateAPIYaml(api, apiName, apiVersion)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate API YAML: %w", err)
+	}
 
 	// Generate deployment_environments.yaml
 	deploymentYaml := generateDeploymentEnvironmentsYaml(gatewayName)
@@ -893,23 +896,26 @@ func buildAdditionalProperties(deploymentID string) []interface{} {
 }
 
 // generateAPIYaml generates APIM-formatted api.yaml content
-func generateAPIYaml(api *models.StoredConfig, apiName, apiVersion string) string {
-	apiData := buildAPIData(api, apiName, apiVersion)
+func generateAPIYaml(api *models.StoredConfig, apiName, apiVersion string) (string, error) {
+	apiData, err := buildAPIData(api, apiName, apiVersion)
+	if err != nil {
+		return "", fmt.Errorf("failed to build API data: %w", err)
+	}
 
 	yamlBytes, err := yaml.Marshal(apiData)
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("failed to marshal API data to YAML: %w", err)
 	}
 
-	return string(yamlBytes)
+	return string(yamlBytes), nil
 }
 
 // buildEndpointConfig constructs the APIM endpoint configuration from the API's upstream URL.
-// Defaults to "http://localhost:8080" if no upstream URL is configured.
-func buildEndpointConfig(config interface{}) map[string]interface{} {
+// Returns an error if no upstream URL is configured.
+func buildEndpointConfig(config interface{}) (map[string]interface{}, error) {
 	upstreamURL := extractUpstreamURL(config)
 	if upstreamURL == "" {
-		upstreamURL = "http://localhost:8080"
+		return nil, fmt.Errorf("no upstream URL configured for endpoint")
 	}
 
 	return map[string]interface{}{
@@ -920,17 +926,20 @@ func buildEndpointConfig(config interface{}) map[string]interface{} {
 		"sandbox_endpoints": map[string]interface{}{
 			"url": upstreamURL,
 		},
-	}
+	}, nil
 }
 
 // buildAPIData constructs the APIM-compatible api.yaml data structure from a StoredConfig.
-func buildAPIData(api *models.StoredConfig, apiName, apiVersion string) map[string]interface{} {
+func buildAPIData(api *models.StoredConfig, apiName, apiVersion string) (map[string]interface{}, error) {
 	contextValue, err := api.GetContext()
 	if err != nil {
 		contextValue = ""
 	}
 
-	endpointConfig := buildEndpointConfig(api.Configuration)
+	endpointConfig, err := buildEndpointConfig(api.Configuration)
+	if err != nil {
+		return nil, err
+	}
 
 	var apiHubPolicies []APIMHubPolicy
 	if restAPI, ok := api.Configuration.(management.RestAPI); ok && restAPI.Spec.Policies != nil {
@@ -972,7 +981,7 @@ func buildAPIData(api *models.StoredConfig, apiName, apiVersion string) map[stri
 			"initiatedFromGateway":       true,
 			"operations":                 buildOperationsWithPolicies(api.Configuration),
 		},
-	}
+	}, nil
 }
 
 // buildOperationsWithPolicies builds APIM operations with policies from RestAPI spec

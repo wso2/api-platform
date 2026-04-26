@@ -138,7 +138,7 @@ type Storage interface {
 	// reloading the full configuration. The cpArtifactID is the APIM/control-plane UUID
 	// returned by a successful import; pass an empty string when no CP UUID is known.
 	// Returns ErrNotFound if the UUID does not exist.
-	UpdateCPSyncStatus(uuid, cpArtifactID, status, reason string) error
+	UpdateCPSyncStatus(uuid, cpArtifactID string, status models.CPSyncStatus, reason string) error
 
 	// GetConfigByCPArtifactID looks up a config by the APIM/Control Plane UUID
 	// assigned during bottom-up sync. Returns ErrNotFound if no match.

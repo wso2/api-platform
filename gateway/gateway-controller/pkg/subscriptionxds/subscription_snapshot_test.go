@@ -46,7 +46,7 @@ func (m *MockStorage) GetPendingBottomUpAPIs() ([]*models.StoredConfig, error) {
 }
 
 // UpdateCPSyncStatus implements [storage.Storage].
-func (m *MockStorage) UpdateCPSyncStatus(uuid, cpArtifactID, status, reason string) error {
+func (m *MockStorage) UpdateCPSyncStatus(uuid, cpArtifactID string, status models.CPSyncStatus, reason string) error {
 	return nil
 }
 

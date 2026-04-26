@@ -272,7 +272,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		truncated := now.Truncate(time.Millisecond)
 		deployedAt = &truncated
 	}
-	cpSyncStatus := ""
+	var cpSyncStatus models.CPSyncStatus
 	if params.Origin == models.OriginGatewayAPI {
 		cpSyncStatus = models.CPSyncStatusPending
 	}

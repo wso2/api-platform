@@ -501,14 +501,6 @@ func LoadConfig(configPath string) (*Config, error) {
 			return "controller.controlplane.sync_batch_size"
 		case "immutable_gateway_enabled":
 			return "immutable_gateway.enabled"
-		case "controller_controlplane_apim_oauth2_client_id":
-			return "controller.controlplane.apim_oauth2_client_id"
-		case "controller_controlplane_apim_oauth2_client_secret":
-			return "controller.controlplane.apim_oauth2_client_secret"
-		case "controller_controlplane_apim_oauth2_username":
-			return "controller.controlplane.apim_oauth2_username"
-		case "controller_controlplane_apim_oauth2_password":
-			return "controller.controlplane.apim_oauth2_password"
 		case "controller_controlplane_gateway_name":
 			return "controller.controlplane.gateway_name"
 		default:

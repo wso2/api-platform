@@ -228,7 +228,7 @@ func (m *testMockDB) DeleteSecret(handle string) error         { return nil }
 func (m *testMockDB) SecretExists(handle string) (bool, error) { return false, nil }
 
 // Bottom-up sync methods
-func (m *testMockDB) UpdateCPSyncStatus(uuid, cpArtifactID, status, reason string) error {
+func (m *testMockDB) UpdateCPSyncStatus(uuid, cpArtifactID string, status models.CPSyncStatus, reason string) error {
 	if config, ok := m.configs[uuid]; ok {
 		config.CPSyncStatus = status
 		config.CPSyncInfo = reason

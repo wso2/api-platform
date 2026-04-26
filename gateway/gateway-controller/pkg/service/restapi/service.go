@@ -175,9 +175,9 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 		// Trigger bottom-up sync immediately if connected and control plane type is on-prem
 		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.controlPlaneClient.IsOnPrem() {
 			go func() {
-				// Delay to allow DB persistence
-				time.Sleep(100 * time.Millisecond)
-				s.controlPlaneClient.SyncBottomUpAPIs(s.controlPlaneClient.GetAPIMConfig())
+				if err := s.controlPlaneClient.SyncArtifactsToOnPremAPIM(s.controlPlaneClient.GetAPIMConfig()); err != nil {
+					log.Error("Failed to sync API to on-prem APIM", slog.Any("error", err))
+				}
 			}()
 		}
 
@@ -362,8 +362,9 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 	// Trigger bottom-up sync if enabled and connected
 	if existing.Origin == models.OriginGatewayAPI && s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.controlPlaneClient.IsOnPrem() {
 		go func() {
-			time.Sleep(100 * time.Millisecond)
-			s.controlPlaneClient.SyncBottomUpAPIs(s.controlPlaneClient.GetAPIMConfig())
+			if err := s.controlPlaneClient.SyncArtifactsToOnPremAPIM(s.controlPlaneClient.GetAPIMConfig()); err != nil {
+				log.Error("Failed to sync API to on-prem APIM", slog.Any("error", err))
+			}
 		}()
 	}
 

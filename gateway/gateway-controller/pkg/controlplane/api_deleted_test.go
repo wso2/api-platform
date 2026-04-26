@@ -505,7 +505,7 @@ func (m *mockStorageForDeletion) GetDB() *sql.DB {
 }
 
 // Bottom-up sync methods
-func (m *mockStorageForDeletion) UpdateCPSyncStatus(uuid, cpArtifactID, status, reason string) error {
+func (m *mockStorageForDeletion) UpdateCPSyncStatus(uuid, cpArtifactID string, status models.CPSyncStatus, reason string) error {
 	if config, ok := m.configs[uuid]; ok {
 		config.CPSyncStatus = status
 		config.CPSyncInfo = reason
@@ -537,7 +537,9 @@ func (m *mockStorageForDeletion) UpdateDeploymentID(uuid, deploymentID string) e
 func (m *mockStorageForDeletion) GetPendingBottomUpAPIs() ([]*models.StoredConfig, error) {
 	var pending []*models.StoredConfig
 	for _, config := range m.configs {
-		if config.Origin == models.OriginGatewayAPI && config.CPSyncStatus != models.CPSyncStatusSuccess {
+		if config.Kind == string(api.RestApi) &&
+			config.Origin == models.OriginGatewayAPI &&
+			(config.CPSyncStatus == models.CPSyncStatusPending || config.CPSyncStatus == models.CPSyncStatusFailed) {
 			pending = append(pending, config)
 		}
 	}

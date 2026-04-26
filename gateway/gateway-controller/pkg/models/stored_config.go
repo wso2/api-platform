@@ -70,10 +70,12 @@ const (
 )
 
 // CPSyncStatus represents the sync state of a gateway-created artifact with the on-prem control plane (relevant to bottom up API deployments).
+type CPSyncStatus string
+
 const (
-	CPSyncStatusPending = "pending" // Awaiting sync to control plane
-	CPSyncStatusSuccess = "success" // Successfully synced to control plane
-	CPSyncStatusFailed  = "failed"  // Sync failed after retries
+	CPSyncStatusPending CPSyncStatus = "pending" // Awaiting sync to control plane
+	CPSyncStatusSuccess CPSyncStatus = "success" // Successfully synced to control plane
+	CPSyncStatusFailed  CPSyncStatus = "failed"  // Sync failed after retries
 )
 
 // IsValidOrigin returns true if the origin value is a recognized enum value.
@@ -97,7 +99,7 @@ type StoredConfig struct {
 	UpdatedAt           time.Time    `json:"updatedAt"`
 	DeployedAt          *time.Time   `json:"deployedAt,omitempty"`
 	SensitiveValues     []string     `json:"-"`                      // not persisted — holds resolved secret values for redaction
-	CPSyncStatus        string       `json:"cpSyncStatus,omitempty"` // pending, success, failed
+	CPSyncStatus        CPSyncStatus `json:"cpSyncStatus,omitempty"` // pending, success, failed
 	CPSyncInfo          string       `json:"cpSyncInfo,omitempty"`   // failure detail when CPSyncStatus=failed
 	CPArtifactID        string       `json:"-"`                      // APIM/CP UUID for bottom-up synced artifacts; populated after successful sync
 }

@@ -682,7 +682,7 @@ func (s *sqlStore) GetConfig(id string) (*models.StoredConfig, error) {
 		cfg.DeploymentID = deploymentID.String
 	}
 	if cpSyncStatus.Valid {
-		cfg.CPSyncStatus = cpSyncStatus.String
+		cfg.CPSyncStatus = models.CPSyncStatus(cpSyncStatus.String)
 	}
 	if cpSyncInfo.Valid {
 		cfg.CPSyncInfo = cpSyncInfo.String
@@ -752,7 +752,7 @@ func (s *sqlStore) GetConfigByKindAndHandle(kind string, handle string) (*models
 		cfg.DeploymentID = deploymentID.String
 	}
 	if cpSyncStatus.Valid {
-		cfg.CPSyncStatus = cpSyncStatus.String
+		cfg.CPSyncStatus = models.CPSyncStatus(cpSyncStatus.String)
 	}
 	if cpSyncInfo.Valid {
 		cfg.CPSyncInfo = cpSyncInfo.String
@@ -815,7 +815,7 @@ func (s *sqlStore) GetConfigByKindNameAndVersion(kind, displayName, version stri
 		cfg.DeploymentID = deploymentID.String
 	}
 	if cpSyncStatus.Valid {
-		cfg.CPSyncStatus = cpSyncStatus.String
+		cfg.CPSyncStatus = models.CPSyncStatus(cpSyncStatus.String)
 	}
 	if cpSyncInfo.Valid {
 		cfg.CPSyncInfo = cpSyncInfo.String
@@ -958,7 +958,7 @@ func (s *sqlStore) scanConfigRows(rows *sql.Rows) ([]*models.StoredConfig, error
 			cfg.DeploymentID = deploymentID.String
 		}
 		if cpSyncStatus.Valid {
-			cfg.CPSyncStatus = cpSyncStatus.String
+			cfg.CPSyncStatus = models.CPSyncStatus(cpSyncStatus.String)
 		}
 		if cpSyncInfo.Valid {
 			cfg.CPSyncInfo = cpSyncInfo.String
@@ -1038,7 +1038,7 @@ func (s *sqlStore) GetAllConfigsByOrigin(origin models.Origin) ([]*models.Stored
 			cfg.DeploymentID = deploymentID.String
 		}
 		if cpSyncStatus.Valid {
-			cfg.CPSyncStatus = cpSyncStatus.String
+			cfg.CPSyncStatus = models.CPSyncStatus(cpSyncStatus.String)
 		}
 		if cpSyncInfo.Valid {
 			cfg.CPSyncInfo = cpSyncInfo.String
@@ -1061,7 +1061,7 @@ func (s *sqlStore) GetAllConfigsByOrigin(origin models.Origin) ([]*models.Stored
 // fields for an artifact. Used by the bottom-up sync engine to record sync outcomes without
 // reloading the full config. Pass an empty cpArtifactID when no CP UUID is known (e.g. on
 // failure paths or pre-sync).
-func (s *sqlStore) UpdateCPSyncStatus(uuid, cpArtifactID, status, reason string) error {
+func (s *sqlStore) UpdateCPSyncStatus(uuid, cpArtifactID string, status models.CPSyncStatus, reason string) error {
 	query := `
 		UPDATE artifacts
 		SET cp_sync_status = ?, cp_sync_info = ?, cp_artifact_id = ?, updated_at = ?
@@ -1075,7 +1075,7 @@ func (s *sqlStore) UpdateCPSyncStatus(uuid, cpArtifactID, status, reason string)
 	if cpArtifactID != "" {
 		cpArtifactIDVal = cpArtifactID
 	}
-	result, err := s.exec(query, status, reasonVal, cpArtifactIDVal, time.Now(), uuid, s.gatewayId)
+	result, err := s.exec(query, string(status), reasonVal, cpArtifactIDVal, time.Now(), uuid, s.gatewayId)
 	if err != nil {
 		return fmt.Errorf("failed to update cp_sync_status: %w", err)
 	}
@@ -1136,7 +1136,7 @@ func (s *sqlStore) GetConfigByCPArtifactID(cpArtifactID string) (*models.StoredC
 		cfg.DeploymentID = deploymentID.String
 	}
 	if cpSyncStatus.Valid {
-		cfg.CPSyncStatus = cpSyncStatus.String
+		cfg.CPSyncStatus = models.CPSyncStatus(cpSyncStatus.String)
 	}
 	if cpSyncInfo.Valid {
 		cfg.CPSyncInfo = cpSyncInfo.String
