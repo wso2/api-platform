@@ -237,7 +237,7 @@ func NewClient(
 	// Initialize API utils service with the proper base URL using the method
 	client.apiUtilsService = utils.NewAPIUtilsService(utils.PlatformAPIConfig{
 		BaseURL:            client.getRestAPIBaseURL(),
-		Token:              "019db9f1-e118-7bcf-8428-bc8bdf5f3db1.HmsoV5gCXLG7dsoN3ihhi_8xLk-dEMvJbrR3JZrgegs",
+		Token:              "",
 		InsecureSkipVerify: cfg.InsecureSkipVerify,
 		Timeout:            30 * time.Second,
 	}, logger)
@@ -247,10 +247,14 @@ func NewClient(
 	if cfg.Host != "" {
 		client.apiUtilsService.TokenURL = fmt.Sprintf("https://%s/oauth2/token", cfg.Host)
 	}
-	client.apiUtilsService.ClientID = cfg.ApimOAuth2ClientID
-	client.apiUtilsService.ClientSecret = cfg.ApimOAuth2ClientSecret
-	client.apiUtilsService.Username = cfg.ApimOAuth2Username
-	client.apiUtilsService.Password = cfg.ApimOAuth2Password
+	client.apiUtilsService.ClientID = "JzYGlEgEzoD3nnPg7nQBKo0XEtga"
+	client.apiUtilsService.ClientSecret = "dAd476Wj03rN2gkyJYB8UK2dfkUa"
+	client.apiUtilsService.Username = "admin"
+	client.apiUtilsService.Password = "admin"
+	// client.apiUtilsService.ClientID = cfg.ApimOAuth2ClientID
+	// client.apiUtilsService.ClientSecret = cfg.ApimOAuth2ClientSecret
+	// client.apiUtilsService.Username = cfg.ApimOAuth2Username
+	// client.apiUtilsService.Password = cfg.ApimOAuth2Password
 
 	return client
 }
