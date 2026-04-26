@@ -19,6 +19,14 @@
 services:
   gateway-controller:
     image: ghcr.io/wso2/api-platform/event-gateway-controller:0.2.0-SNAPSHOT
+    build:
+      context: ../gateway/gateway-controller
+      dockerfile: Dockerfile
+      target: production
+      additional_contexts:
+        sdk-core: ../sdk/core
+        common: ../common
+        build-manifest: ../gateway
     command: ["-config", "/etc/gateway-controller/config.toml"]
     ports:
       - "9090:9090"    # Management API
@@ -33,8 +41,8 @@ services:
       - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB_PORT=8080
       - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB__LISTENER__PORT=8080
       - APIP_GW_ROUTER_EVENT__GATEWAY_TIMEOUT__SECONDS=30
-      - APIP_GW_GATEWAY_REGISTRATION_TOKEN=${GATEWAY_REGISTRATION_TOKEN:-}
-      - APIP_GW_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:-host.docker.internal:9243}
+      - APIP_GW_GATEWAY_REGISTRATION_TOKEN=${GATEWAY_REGISTRATION_TOKEN:?set GATEWAY_REGISTRATION_TOKEN in event-gateway/.env}
+      - APIP_GW_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:?set GATEWAY_CONTROLPLANE_HOST in event-gateway/.env}
 
     volumes:
       - controller-data:/app/data
@@ -46,6 +54,13 @@ services:
 
   event-gateway:
     image: ghcr.io/wso2/api-platform/event-gateway-runtime:0.2.0-SNAPSHOT
+    build:
+      context: gateway-runtime
+      dockerfile: Dockerfile
+      additional_contexts:
+        sdk-core: ../sdk/core
+        common: ../common
+        policy-engine: ../gateway/gateway-runtime/policy-engine
     ports:
       - "8080:8080"   # WebSub HTTP
       - "8443:8443"   # WebSub HTTPS
