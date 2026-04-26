@@ -38,9 +38,9 @@ services:
 
     volumes:
       - controller-data:/app/data
-      - ../gateway/configs/config.toml:/etc/gateway-controller/config.toml:ro
-      - ../gateway/gateway-controller/certificates:/app/certificates
-      - ../gateway/gateway-controller/listener-certs:/app/listener-certs:ro
+      - ./configs/gateway-controller/config.toml:/etc/gateway-controller/config.toml:ro
+      - ./certificates:/app/certificates
+      - ./listener-certs:/app/listener-certs:ro
     networks:
       - egw-network
 
@@ -68,9 +68,9 @@ services:
       # Allow callbacks to services running on the Docker host (useful on Linux).
       - "host.docker.internal:host-gateway"
     volumes:
-      - ../gateway/gateway-controller/listener-certs:/etc/event-gateway/tls:ro
-      - ./gateway-runtime/configs/config.toml:/etc/event-gateway/config.toml:ro
-      - ./gateway-runtime/configs/channels.yaml:/etc/event-gateway/channels.yaml:ro
+      - ./listener-certs:/etc/event-gateway/tls:ro
+      - ./configs/event-gateway/config.toml:/etc/event-gateway/config.toml:ro
+      - ./configs/event-gateway/channels.yaml:/etc/event-gateway/channels.yaml:ro
     depends_on:
       gateway-controller:
         condition: service_started
