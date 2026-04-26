@@ -256,7 +256,11 @@ func (s *APIMTokenService) generateOAuth2Token() (string, int, error) {
 	// Check response status
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return "", 0, fmt.Errorf("token endpoint returned status %d: %s", resp.StatusCode, string(bodyBytes))
+		slog.Default().Debug("token endpoint non-200 response",
+			slog.Int("status", resp.StatusCode),
+			slog.String("body", string(bodyBytes)),
+		)
+		return "", 0, fmt.Errorf("token endpoint returned unexpected status %d", resp.StatusCode)
 	}
 
 	// Parse response
@@ -267,13 +271,19 @@ func (s *APIMTokenService) generateOAuth2Token() (string, int, error) {
 
 	var tokenResp TokenResponse
 	if err := json.Unmarshal(bodyBytes, &tokenResp); err != nil {
-		return "", 0, fmt.Errorf("failed to parse token response: %w (response body: %s)", err, string(bodyBytes))
+		slog.Default().Debug("failed to parse token response",
+			slog.Any("error", err),
+			slog.String("body", string(bodyBytes)),
+		)
+		return "", 0, fmt.Errorf("failed to parse token response: %w", err)
 	}
 
 	accessToken := tokenResp.GetAccessToken()
 	if accessToken == "" {
-		// Log the full response for debugging
-		return "", 0, fmt.Errorf("access token not found in response: %s", string(bodyBytes))
+		slog.Default().Debug("access token not found in token response",
+			slog.String("body", string(bodyBytes)),
+		)
+		return "", 0, fmt.Errorf("access token not found in token endpoint response")
 	}
 
 	return accessToken, tokenResp.GetExpiresIn(), nil
@@ -461,7 +471,11 @@ func (s *APIUtilsService) generateOAuth2Token() (string, int, error) {
 	// Check response status
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return "", 0, fmt.Errorf("token endpoint returned status %d: %s", resp.StatusCode, string(bodyBytes))
+		slog.Default().Debug("token endpoint non-200 response",
+			slog.Int("status", resp.StatusCode),
+			slog.String("body", string(bodyBytes)),
+		)
+		return "", 0, fmt.Errorf("token endpoint returned unexpected status %d", resp.StatusCode)
 	}
 
 	// Parse response
@@ -472,13 +486,19 @@ func (s *APIUtilsService) generateOAuth2Token() (string, int, error) {
 
 	var tokenResp TokenResponse
 	if err := json.Unmarshal(bodyBytes, &tokenResp); err != nil {
-		return "", 0, fmt.Errorf("failed to parse token response: %w (response body: %s)", err, string(bodyBytes))
+		slog.Default().Debug("failed to parse token response",
+			slog.Any("error", err),
+			slog.String("body", string(bodyBytes)),
+		)
+		return "", 0, fmt.Errorf("failed to parse token response: %w", err)
 	}
 
 	accessToken := tokenResp.GetAccessToken()
 	if accessToken == "" {
-		// Log the full response for debugging
-		return "", 0, fmt.Errorf("access token not found in response: %s", string(bodyBytes))
+		slog.Default().Debug("access token not found in token response",
+			slog.String("body", string(bodyBytes)),
+		)
+		return "", 0, fmt.Errorf("access token not found in token endpoint response")
 	}
 
 	return accessToken, tokenResp.GetExpiresIn(), nil
