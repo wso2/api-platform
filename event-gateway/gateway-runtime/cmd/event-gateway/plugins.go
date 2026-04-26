@@ -64,7 +64,7 @@ func registerConnectors(registry *connectors.Registry, cfg *config.Config) {
 
 	registry.RegisterReceiver("websub", func(ecfg connectors.ReceiverConfig) (connectors.Receiver, error) {
 		return websub.NewReceiver(ecfg, websub.Options{
-			Port:                       cfg.Server.WebSubPort,
+			Port:                       cfg.Server.WebSubHTTPPort,
 			VerificationTimeoutSeconds: cfg.WebSub.VerificationTimeoutSeconds,
 			DefaultLeaseSeconds:        cfg.WebSub.DefaultLeaseSeconds,
 			DeliveryMaxRetries:         cfg.WebSub.DeliveryMaxRetries,

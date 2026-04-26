@@ -150,6 +150,13 @@ func (e *Engine) RegisterChain(routeKey string, chain *registry.PolicyChain) {
 	e.chains[routeKey] = chain
 }
 
+// UnregisterChain removes the policy chain for the given route key.
+func (e *Engine) UnregisterChain(routeKey string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	delete(e.chains, routeKey)
+}
+
 // GetChain returns the policy chain for the given route key, or nil if not found.
 func (e *Engine) GetChain(routeKey string) *registry.PolicyChain {
 	e.mu.RLock()

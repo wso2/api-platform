@@ -321,15 +321,16 @@ func (h *WebhookReceiverHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	headers := make(map[string][]string)
-	if ct := r.Header.Get("Content-Type"); ct != "" {
-		headers["content-type"] = []string{ct}
+	headers := make(map[string][]string, len(r.Header))
+	for k, v := range r.Header {
+		headers[k] = append([]string(nil), v...)
 	}
 
 	msg := &connectors.Message{
-		Value:   body,
-		Headers: headers,
-		Topic:   channelName,
+		Value:    body,
+		Headers:  headers,
+		Topic:    channelName,
+		Metadata: buildMessageMetadata(r),
 	}
 
 	if err := h.publishToBrokerDriver(r.Context(), kafkaTopic, msg); err != nil {
@@ -364,10 +365,22 @@ func (h *WebhookReceiverHandler) publishToBrokerDriver(ctx context.Context, kafk
 func httpRequestToMessage(r *http.Request) *connectors.Message {
 	headers := make(map[string][]string, len(r.Header))
 	for k, v := range r.Header {
-		headers[k] = v
+		headers[k] = append([]string(nil), v...)
 	}
 	return &connectors.Message{
-		Headers: headers,
-		Topic:   r.FormValue("hub.topic"),
+		Headers:  headers,
+		Topic:    r.FormValue("hub.topic"),
+		Metadata: buildMessageMetadata(r),
+	}
+}
+
+func buildMessageMetadata(r *http.Request) map[string]interface{} {
+	if r == nil || r.URL == nil {
+		return nil
+	}
+
+	return map[string]interface{}{
+		"request_path":   r.URL.RequestURI(),
+		"request_method": r.Method,
 	}
 }

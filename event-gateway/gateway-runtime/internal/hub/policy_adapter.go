@@ -30,94 +30,73 @@ import (
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
+const (
+	requestPathMetadataKey   = "request_path"
+	requestMethodMetadataKey = "request_method"
+)
+
 // SubscribeToRequestHeaderContext maps a subscribe request message to a policy request header context.
 func SubscribeToRequestHeaderContext(msg *connectors.Message, binding *ChannelBinding) *policy.RequestHeaderContext {
-	headers := make(map[string][]string)
-	for k, v := range msg.Headers {
-		headers[strings.ToLower(k)] = v
-	}
-
-	hubPath := bindingcfg.WebSubApiBasePath(binding.Context, binding.Version) + "/hub"
+	headers := normalizeHeaders(msg.Headers)
+	hubPath := requestPath(msg, defaultPhasePath(binding, "subscribe"))
+	method := requestMethod(msg, "SUBSCRIBE")
 
 	return &policy.RequestHeaderContext{
-		SharedContext: &policy.SharedContext{
-			RequestID: uuid.New().String(),
-			Metadata:  make(map[string]interface{}),
-			APIKind:   policy.APIKindWebSubApi,
-		},
-		Headers:   policy.NewHeaders(headers),
-		Path:      hubPath,
-		Method:    "SUBSCRIBE",
-		Authority: binding.Vhost,
-		Scheme:    "event",
-		Vhost:     binding.Vhost,
+		SharedContext: newSharedContext(binding, hubPath),
+		Headers:       policy.NewHeaders(headers),
+		Path:          hubPath,
+		Method:        method,
+		Authority:     binding.Vhost,
+		Scheme:        "event",
+		Vhost:         binding.Vhost,
 	}
 }
 
 // MessageToRequestHeaderContext maps an event message to a policy request header context.
 func MessageToRequestHeaderContext(msg *connectors.Message, binding *ChannelBinding) *policy.RequestHeaderContext {
-	headers := make(map[string][]string)
-	for k, v := range msg.Headers {
-		headers[strings.ToLower(k)] = v
-	}
-
-	channelPath := path.Join(binding.Context, binding.Name)
-	method := directionToMethod(binding.Mode, "inbound")
+	headers := normalizeHeaders(msg.Headers)
+	channelPath := requestPath(msg, defaultPhasePath(binding, "inbound"))
+	method := requestMethod(msg, directionToMethod(binding.Mode, "inbound"))
 
 	return &policy.RequestHeaderContext{
-		SharedContext: &policy.SharedContext{
-			RequestID: uuid.New().String(),
-			Metadata:  make(map[string]interface{}),
-			APIKind:   policy.APIKindWebSubApi,
-		},
-		Headers:   policy.NewHeaders(headers),
-		Path:      channelPath,
-		Method:    method,
-		Authority: binding.Vhost,
-		Scheme:    "event",
-		Vhost:     binding.Vhost,
+		SharedContext: newSharedContext(binding, channelPath),
+		Headers:       policy.NewHeaders(headers),
+		Path:          channelPath,
+		Method:        method,
+		Authority:     binding.Vhost,
+		Scheme:        "event",
+		Vhost:         binding.Vhost,
 	}
 }
 
 // MessageToRequestContext maps an event message to a policy request body context.
 func MessageToRequestContext(msg *connectors.Message, binding *ChannelBinding) *policy.RequestContext {
-	headers := make(map[string][]string)
-	for k, v := range msg.Headers {
-		headers[strings.ToLower(k)] = v
-	}
-
-	channelPath := path.Join(binding.Context, binding.Name)
-	method := directionToMethod(binding.Mode, "inbound")
+	headers := normalizeHeaders(msg.Headers)
+	channelPath := requestPath(msg, defaultPhasePath(binding, "inbound"))
+	method := requestMethod(msg, directionToMethod(binding.Mode, "inbound"))
 
 	return &policy.RequestContext{
-		SharedContext: &policy.SharedContext{
-			RequestID: uuid.New().String(),
-			Metadata:  make(map[string]interface{}),
-			APIKind:   policy.APIKindWebSubApi,
-		},
-		Headers:   policy.NewHeaders(headers),
-		Body:      &policy.Body{Content: msg.Value, EndOfStream: true, Present: len(msg.Value) > 0},
-		Path:      channelPath,
-		Method:    method,
-		Authority: binding.Vhost,
-		Scheme:    "event",
-		Vhost:     binding.Vhost,
+		SharedContext: newSharedContext(binding, channelPath),
+		Headers:       policy.NewHeaders(headers),
+		Body:          &policy.Body{Content: msg.Value, EndOfStream: true, Present: len(msg.Value) > 0},
+		Path:          channelPath,
+		Method:        method,
+		Authority:     binding.Vhost,
+		Scheme:        "event",
+		Vhost:         binding.Vhost,
 	}
 }
 
 // MessageToResponseHeaderContext maps an event message to a policy response header context.
 func MessageToResponseHeaderContext(msg *connectors.Message, binding *ChannelBinding) *policy.ResponseHeaderContext {
-	headers := make(map[string][]string)
-	for k, v := range msg.Headers {
-		headers[strings.ToLower(k)] = v
-	}
+	headers := normalizeHeaders(msg.Headers)
+	reqPath := requestPath(msg, defaultPhasePath(binding, "outbound"))
+	reqMethod := requestMethod(msg, directionToMethod(binding.Mode, "outbound"))
 
 	return &policy.ResponseHeaderContext{
-		SharedContext: &policy.SharedContext{
-			RequestID: uuid.New().String(),
-			Metadata:  make(map[string]interface{}),
-			APIKind:   policy.APIKindWebSubApi,
-		},
+		SharedContext:   newSharedContext(binding, reqPath),
+		RequestPath:     reqPath,
+		RequestMethod:   reqMethod,
 		ResponseHeaders: policy.NewHeaders(headers),
 		ResponseStatus:  200,
 	}
@@ -125,21 +104,76 @@ func MessageToResponseHeaderContext(msg *connectors.Message, binding *ChannelBin
 
 // MessageToResponseContext maps an event message to a policy response body context.
 func MessageToResponseContext(msg *connectors.Message, binding *ChannelBinding) *policy.ResponseContext {
-	headers := make(map[string][]string)
-	for k, v := range msg.Headers {
-		headers[strings.ToLower(k)] = v
-	}
+	headers := normalizeHeaders(msg.Headers)
+	reqPath := requestPath(msg, defaultPhasePath(binding, "outbound"))
+	reqMethod := requestMethod(msg, directionToMethod(binding.Mode, "outbound"))
 
 	return &policy.ResponseContext{
-		SharedContext: &policy.SharedContext{
-			RequestID: uuid.New().String(),
-			Metadata:  make(map[string]interface{}),
-			APIKind:   policy.APIKindWebSubApi,
-		},
+		SharedContext:   newSharedContext(binding, reqPath),
+		RequestPath:     reqPath,
+		RequestMethod:   reqMethod,
 		ResponseHeaders: policy.NewHeaders(headers),
 		ResponseBody:    &policy.Body{Content: msg.Value, EndOfStream: true, Present: len(msg.Value) > 0},
 		ResponseStatus:  200,
 	}
+}
+
+func normalizeHeaders(headers map[string][]string) map[string][]string {
+	normalized := make(map[string][]string, len(headers))
+	for k, v := range headers {
+		normalized[strings.ToLower(k)] = v
+	}
+	return normalized
+}
+
+func newSharedContext(binding *ChannelBinding, operationPath string) *policy.SharedContext {
+	return &policy.SharedContext{
+		RequestID:     uuid.New().String(),
+		Metadata:      make(map[string]interface{}),
+		APIId:         binding.APIID,
+		APIName:       binding.Name,
+		APIVersion:    binding.Version,
+		APIKind:       policy.APIKindWebSubApi,
+		APIContext:    binding.Context,
+		OperationPath: operationPath,
+	}
+}
+
+func requestPath(msg *connectors.Message, fallback string) string {
+	if msg != nil && msg.Metadata != nil {
+		if path, ok := msg.Metadata[requestPathMetadataKey].(string); ok && path != "" {
+			return path
+		}
+	}
+	return fallback
+}
+
+func requestMethod(msg *connectors.Message, fallback string) string {
+	if msg != nil && msg.Metadata != nil {
+		if method, ok := msg.Metadata[requestMethodMetadataKey].(string); ok && method != "" {
+			return method
+		}
+	}
+	return fallback
+}
+
+func defaultPhasePath(binding *ChannelBinding, phase string) string {
+	if binding == nil {
+		return ""
+	}
+
+	switch binding.Mode {
+	case "websub":
+		basePath := bindingcfg.WebSubApiBasePath(binding.Context, binding.Version)
+		switch phase {
+		case "subscribe", "outbound":
+			return basePath + "/hub"
+		case "inbound":
+			return basePath + "/webhook-receiver"
+		}
+	}
+
+	return path.Join(binding.Context, binding.Name)
 }
 
 // ApplyRequestHeaderResult applies the header result back to the message.

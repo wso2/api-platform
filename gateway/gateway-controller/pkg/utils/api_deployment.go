@@ -20,14 +20,12 @@ package utils
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
@@ -392,24 +390,11 @@ func (s *APIDeploymentService) completeWebSubTopicOperations(
 	// This communication bridge will be created on the gw startup and can perform
 	// internal communication with the WebSub hub without relying on dynamic rules.
 	var wg sync.WaitGroup
-	var regErrs int32
-	var deregErrs int32
-	var opErrsMu sync.Mutex
-	var opErrs []error
-
-	recordError := func(err error) {
-		opErrsMu.Lock()
-		opErrs = append(opErrs, err)
-		opErrsMu.Unlock()
-	}
 
 	runTopicOps := func(
 		list []string,
 		action string,
 		successMessage string,
-		failureMessage string,
-		counter *int32,
-		op func(context.Context, string) error,
 	) {
 		if len(list) == 0 {
 			return
@@ -428,22 +413,6 @@ func (s *APIDeploymentService) completeWebSubTopicOperations(
 				childWg.Add(1)
 				go func(topic string) {
 					defer childWg.Done()
-					ctx, cancel := context.WithTimeout(
-						context.Background(),
-						time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second,
-					)
-					defer cancel()
-
-					if err := op(ctx, topic); err != nil {
-						logger.Error(failureMessage,
-							slog.Any("error", err),
-							slog.String("topic", topic),
-							slog.String("api_id", apiID))
-						atomic.AddInt32(counter, 1)
-						recordError(fmt.Errorf("%s topic %q: %w", action, topic, err))
-						return
-					}
-
 					logger.Info(successMessage,
 						slog.String("topic", topic),
 						slog.String("api_id", apiID))
@@ -457,49 +426,19 @@ func (s *APIDeploymentService) completeWebSubTopicOperations(
 		topicsToRegister,
 		"register",
 		"Successfully registered topic with WebSubHub",
-		"Failed to register topic with WebSubHub",
-		&regErrs,
-		func(ctx context.Context, topic string) error {
-			return s.RegisterTopicWithHub(
-				ctx,
-				s.httpClient,
-				topic,
-				s.routerConfig.EventGateway.RouterHost,
-				s.routerConfig.EventGateway.WebSubHubListenerPort,
-				logger,
-			)
-		},
 	)
 
 	runTopicOps(
 		topicsToUnregister,
 		"deregister",
 		"Successfully deregistered topic from WebSubHub",
-		"Failed to deregister topic from WebSubHub",
-		&deregErrs,
-		func(ctx context.Context, topic string) error {
-			return s.UnregisterTopicWithHub(
-				ctx,
-				s.httpClient,
-				topic,
-				s.routerConfig.EventGateway.RouterHost,
-				s.routerConfig.EventGateway.WebSubHubListenerPort,
-				logger,
-			)
-		},
 	)
 
 	wg.Wait()
 	logger.Info("Topic lifecycle operations completed",
 		slog.String("api_id", apiID),
 		slog.Int("registered", len(topicsToRegister)),
-		slog.Int("deregistered", len(topicsToUnregister)),
-		slog.Int("register_errors", int(regErrs)),
-		slog.Int("deregister_errors", int(deregErrs)))
-
-	if len(opErrs) > 0 {
-		return fmt.Errorf("failed to complete topic operations: %w", errors.Join(opErrs...))
-	}
+		slog.Int("deregistered", len(topicsToUnregister)))
 
 	return nil
 }

@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"path"
 	"strings"
 	"sync"
@@ -37,6 +38,11 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/pkg/engine"
 )
 
+var (
+	initialReceiverStartBackoff = 1 * time.Second
+	maxReceiverStartBackoff     = 30 * time.Second
+)
+
 // Runtime orchestrates all event gateway components.
 // It owns the lifecycle of the policy engine, hub, admin server,
 // and all per-channel receiver+broker-driver pairs.
@@ -49,17 +55,27 @@ type Runtime struct {
 	admin         *admin.Server
 	brokerDrivers []connectors.BrokerDriver
 	receivers     []connectors.Receiver
-	servers       []*http.Server // shared HTTP servers for port sharing
+	servers       []*managedServer // shared servers for port sharing
 
 	// Dynamic binding management (xDS mode)
-	mu                  sync.RWMutex
-	activeReceivers     map[string]connectors.Receiver
-	activeBrokerDrivers map[string]connectors.BrokerDriver
-	bindingPaths        map[string][]string // name → registered mux paths
-	bindingTopics       map[string][]string // name → Kafka topics (data + internal sub)
-	websubMux           *DynamicMux
-	websubServer        *http.Server
-	running             bool // true after Run() starts servers
+	mu                   sync.RWMutex
+	activeReceivers      map[string]connectors.Receiver
+	activeBrokerDrivers  map[string]connectors.BrokerDriver
+	bindingPaths         map[string][]string // name → registered mux paths
+	bindingTopics        map[string][]string // name → Kafka topics (data + internal sub)
+	websubMux            *DynamicMux
+	websubServer         *managedServer
+	webSubServersCreated bool // true if LoadChannels created WebSub servers
+	runCtx               context.Context
+	running              bool // true after Run() starts servers
+}
+
+type managedServer struct {
+	name     string
+	server   *http.Server
+	tls      bool
+	certFile string
+	keyFile  string
 }
 
 // New creates a new Runtime. After creation:
@@ -129,6 +145,7 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 		qualifiedTopic := qualifyTopicName(b.Context, b.Version, b.BrokerDriver.Topic)
 
 		r.hub.RegisterBinding(hub.ChannelBinding{
+			APIID:             b.APIID,
 			Name:              b.Name,
 			Mode:              b.Mode,
 			Context:           b.Context,
@@ -212,6 +229,7 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 		}
 
 		r.hub.RegisterBinding(hub.ChannelBinding{
+			APIID:             wsb.APIID,
 			Name:              wsb.Name,
 			Mode:              "websub",
 			Context:           wsb.Context,
@@ -269,16 +287,28 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 
 	// Create shared HTTP servers.
 	if hasWS {
-		r.servers = append(r.servers, &http.Server{
-			Addr:    fmt.Sprintf(":%d", r.cfg.Server.WebSocketPort),
-			Handler: wsMux,
-		})
+		wsServer, err := r.newManagedServer("WebSocket", r.cfg.Server.WebSocketPort, wsMux, false)
+		if err != nil {
+			return fmt.Errorf("failed to create WebSocket server: %w", err)
+		}
+		r.servers = append(r.servers, wsServer)
 	}
-	if hasWebSub {
-		r.servers = append(r.servers, &http.Server{
-			Addr:    fmt.Sprintf(":%d", r.cfg.Server.WebSubPort),
-			Handler: websubMux,
-		})
+	if hasWebSub && r.cfg.Server.WebSubEnabled {
+		// Create HTTP server
+		websubHTTPServer, err := r.newManagedServer("WebSub-HTTP", r.cfg.Server.WebSubHTTPPort, websubMux, false)
+		if err != nil {
+			return fmt.Errorf("failed to create WebSub HTTP server: %w", err)
+		}
+		r.servers = append(r.servers, websubHTTPServer)
+		// Create HTTPS server if TLS is enabled
+		if r.cfg.Server.WebSubTLSEnabled {
+			websubHTTPSServer, err := r.newManagedServer("WebSub-HTTPS", r.cfg.Server.WebSubHTTPSPort, websubMux, true)
+			if err != nil {
+				return fmt.Errorf("failed to create WebSub HTTPS server: %w", err)
+			}
+			r.servers = append(r.servers, websubHTTPSServer)
+		}
+		r.webSubServersCreated = true // Mark that LoadChannels created WebSub servers
 	}
 
 	return nil
@@ -292,46 +322,61 @@ func (r *Runtime) Run(ctx context.Context) error {
 	for _, srv := range r.servers {
 		srv := srv
 		go func() {
-			slog.Info("Starting shared HTTP server", "addr", srv.Addr)
-			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				slog.Error("Shared HTTP server error", "addr", srv.Addr, "error", err)
-			}
+			r.runServer(srv)
 		}()
 	}
 
 	// If in xDS mode, ensure the websub server is started for dynamic bindings.
 	r.mu.Lock()
-	if r.websubServer == nil && r.cfg.ControlPlane.Enabled {
-		r.websubServer = &http.Server{
-			Addr:    fmt.Sprintf(":%d", r.cfg.Server.WebSubPort),
-			Handler: r.websubMux,
+	if !r.webSubServersCreated && r.websubServer == nil && r.cfg.ControlPlane.Enabled && r.cfg.Server.WebSubEnabled {
+		// Create and start HTTP server
+		websubHTTPServer, err := r.newManagedServer("WebSub-HTTP", r.cfg.Server.WebSubHTTPPort, r.websubMux, false)
+		if err != nil {
+			r.mu.Unlock()
+			return fmt.Errorf("failed to create WebSub HTTP server: %w", err)
 		}
+		r.servers = append(r.servers, websubHTTPServer)
 		go func() {
-			slog.Info("Starting WebSub HTTP server for xDS mode", "addr", r.websubServer.Addr)
-			if err := r.websubServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				slog.Error("WebSub HTTP server error", "addr", r.websubServer.Addr, "error", err)
-			}
+			r.runServer(websubHTTPServer)
 		}()
+		// Create and start HTTPS server if TLS is enabled
+		if r.cfg.Server.WebSubTLSEnabled {
+			websubHTTPSServer, err := r.newManagedServer("WebSub-HTTPS", r.cfg.Server.WebSubHTTPSPort, r.websubMux, true)
+			if err != nil {
+				r.mu.Unlock()
+				return fmt.Errorf("failed to create WebSub HTTPS server: %w", err)
+			}
+			r.websubServer = websubHTTPSServer
+			go func() {
+				r.runServer(websubHTTPSServer)
+			}()
+		}
+		// Note: r.websubServer is only set when TLS is enabled; HTTP-only mode leaves it nil
+		// to avoid double-shutdown since the HTTP server is already in r.servers
 	}
+	r.runCtx = ctx
 	r.running = true
 	r.mu.Unlock()
 
 	// Start receivers that were added before Run() (static mode).
-	for _, ep := range r.receivers {
-		if err := ep.Start(ctx); err != nil {
+	for i, ep := range r.receivers {
+		if err := r.startReceiverWithRetry(ctx, fmt.Sprintf("startup-%d", i), ep); err != nil {
 			return fmt.Errorf("failed to start receiver: %w", err)
 		}
 	}
 
 	// Start any dynamically added receivers that were queued before Run().
 	r.mu.RLock()
-	for _, ep := range r.activeReceivers {
-		if err := ep.Start(ctx); err != nil {
-			r.mu.RUnlock()
+	pendingReceivers := make(map[string]connectors.Receiver, len(r.activeReceivers))
+	for name, ep := range r.activeReceivers {
+		pendingReceivers[name] = ep
+	}
+	r.mu.RUnlock()
+	for name, ep := range pendingReceivers {
+		if err := r.startReceiverWithRetry(ctx, name, ep); err != nil {
 			return fmt.Errorf("failed to start dynamic receiver: %w", err)
 		}
 	}
-	r.mu.RUnlock()
 
 	r.admin.SetReady(true)
 	slog.Info("Event gateway is ready", "runtime_id", r.cfg.RuntimeID)
@@ -353,6 +398,7 @@ func (r *Runtime) Run(ctx context.Context) error {
 
 	// Stop dynamic receivers.
 	r.mu.Lock()
+	r.runCtx = nil
 	for name, ep := range r.activeReceivers {
 		if err := ep.Stop(shutdownCtx); err != nil {
 			slog.Error("Failed to stop dynamic receiver", "name", name, "error", err)
@@ -373,8 +419,8 @@ func (r *Runtime) Run(ctx context.Context) error {
 
 	// Shutdown shared HTTP servers.
 	for _, srv := range r.servers {
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			slog.Error("Failed to shutdown HTTP server", "addr", srv.Addr, "error", err)
+		if err := srv.server.Shutdown(shutdownCtx); err != nil {
+			slog.Error("Failed to shutdown server", "name", srv.name, "addr", srv.server.Addr, "error", err)
 		}
 	}
 
@@ -383,8 +429,8 @@ func (r *Runtime) Run(ctx context.Context) error {
 	wsSrv := r.websubServer
 	r.mu.RUnlock()
 	if wsSrv != nil {
-		if err := wsSrv.Shutdown(shutdownCtx); err != nil {
-			slog.Error("Failed to shutdown WebSub HTTP server", "error", err)
+		if err := wsSrv.server.Shutdown(shutdownCtx); err != nil {
+			slog.Error("Failed to shutdown WebSub server", "addr", wsSrv.server.Addr, "error", err)
 		}
 	}
 
@@ -394,6 +440,99 @@ func (r *Runtime) Run(ctx context.Context) error {
 
 	slog.Info("Event gateway shutdown complete")
 	return nil
+}
+
+func (r *Runtime) newManagedServer(name string, port int, handler http.Handler, allowTLS bool) (*managedServer, error) {
+	server := &managedServer{
+		name: name,
+		server: &http.Server{
+			Addr:    fmt.Sprintf(":%d", port),
+			Handler: handler,
+		},
+	}
+
+	if allowTLS && r.cfg.Server.WebSubTLSEnabled {
+		if err := ensureReadableTLSAsset(r.cfg.Server.WebSubTLSCertFile, "server.websub_tls_cert_file"); err != nil {
+			return nil, fmt.Errorf("invalid TLS configuration for %s server: %w", name, err)
+		}
+		if err := ensureReadableTLSAsset(r.cfg.Server.WebSubTLSKeyFile, "server.websub_tls_key_file"); err != nil {
+			return nil, fmt.Errorf("invalid TLS configuration for %s server: %w", name, err)
+		}
+		server.tls = true
+		server.certFile = r.cfg.Server.WebSubTLSCertFile
+		server.keyFile = r.cfg.Server.WebSubTLSKeyFile
+	}
+
+	return server, nil
+}
+
+func ensureReadableTLSAsset(filePath, fieldName string) error {
+	info, err := os.Stat(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("%s file %q does not exist", fieldName, filePath)
+		}
+		return fmt.Errorf("failed to access %s file %q: %w", fieldName, filePath, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("%s path %q must be a file, not a directory", fieldName, filePath)
+	}
+
+	fileHandle, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("%s file %q is not readable: %w", fieldName, filePath, err)
+	}
+	return fileHandle.Close()
+}
+
+func (r *Runtime) runServer(srv *managedServer) {
+	protocol := "HTTP"
+	errMsg := "server error"
+	if srv.tls {
+		protocol = "HTTPS"
+	}
+
+	slog.Info("Starting server", "name", srv.name, "protocol", protocol, "addr", srv.server.Addr)
+
+	var err error
+	if srv.tls {
+		errMsg = "HTTPS server error"
+		err = srv.server.ListenAndServeTLS(srv.certFile, srv.keyFile)
+	} else {
+		errMsg = "HTTP server error"
+		err = srv.server.ListenAndServe()
+	}
+
+	if err != nil && err != http.ErrServerClosed {
+		slog.Error(errMsg, "name", srv.name, "addr", srv.server.Addr, "error", err)
+	}
+}
+
+func (r *Runtime) startReceiverWithRetry(ctx context.Context, name string, receiver connectors.Receiver) error {
+	backoff := initialReceiverStartBackoff
+	for {
+		err := receiver.Start(ctx)
+		if err == nil {
+			return nil
+		}
+		if ctx.Err() != nil {
+			return fmt.Errorf("receiver start canceled for %q: %w", name, ctx.Err())
+		}
+
+		slog.Warn("Receiver start failed, will retry",
+			"name", name,
+			"backoff", backoff,
+			"error", err,
+		)
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("receiver start canceled for %q: %w", name, ctx.Err())
+		case <-time.After(backoff):
+		}
+
+		backoff = min(backoff*2, maxReceiverStartBackoff)
+	}
 }
 
 func (r *Runtime) buildPolicyChains(b binding.Binding) (subscribeKey, inboundKey, outboundKey string, err error) {
@@ -476,10 +615,24 @@ func (r *Runtime) buildChain(routeKey string, policies []binding.PolicyRef) erro
 	return nil
 }
 
+func (r *Runtime) unregisterBindingChains(b *hub.ChannelBinding) {
+	if b == nil {
+		return
+	}
+	if b.SubscribeChainKey != "" {
+		r.engine.UnregisterChain(b.SubscribeChainKey)
+	}
+	if b.InboundChainKey != "" {
+		r.engine.UnregisterChain(b.InboundChainKey)
+	}
+	if b.OutboundChainKey != "" {
+		r.engine.UnregisterChain(b.OutboundChainKey)
+	}
+}
+
 // AddWebSubApiBinding dynamically adds a WebSubApi binding at runtime (xDS mode).
 func (r *Runtime) AddWebSubApiBinding(wsb binding.WebSubApiBinding) error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	vhost := defaultVhost(wsb.Vhost)
 
@@ -494,10 +647,12 @@ func (r *Runtime) AddWebSubApiBinding(wsb binding.WebSubApiBinding) error {
 	// Build policy chains for the API.
 	subKey, inKey, outKey, err := r.buildWebSubApiPolicyChains(wsb, vhost)
 	if err != nil {
+		r.mu.Unlock()
 		return fmt.Errorf("failed to build chains for WebSubApi %q: %w", wsb.Name, err)
 	}
 
 	r.hub.RegisterBinding(hub.ChannelBinding{
+		APIID:             wsb.APIID,
 		Name:              wsb.Name,
 		Mode:              "websub",
 		Context:           wsb.Context,
@@ -516,6 +671,7 @@ func (r *Runtime) AddWebSubApiBinding(wsb binding.WebSubApiBinding) error {
 	}
 	brokerDriver, err := r.registry.CreateBrokerDriver(brokerDriverType, wsb.BrokerDriver.Config)
 	if err != nil {
+		r.mu.Unlock()
 		return fmt.Errorf("failed to create broker-driver for WebSubApi %q: %w", wsb.Name, err)
 	}
 	r.activeBrokerDrivers[wsb.Name] = brokerDriver
@@ -550,13 +706,21 @@ func (r *Runtime) AddWebSubApiBinding(wsb binding.WebSubApiBinding) error {
 		Mux:          r.websubMux,
 	})
 	if err != nil {
+		r.mu.Unlock()
 		return fmt.Errorf("failed to create receiver for WebSubApi %q: %w", wsb.Name, err)
 	}
 	r.activeReceivers[wsb.Name] = receiver
 
+	startNow := r.running
+	startCtx := r.runCtx
+	r.mu.Unlock()
+
 	// If runtime is already running, start the receiver immediately.
-	if r.running {
-		if err := receiver.Start(context.Background()); err != nil {
+	if startNow {
+		if startCtx == nil {
+			startCtx = context.Background()
+		}
+		if err := r.startReceiverWithRetry(startCtx, wsb.Name, receiver); err != nil {
 			return fmt.Errorf("failed to start receiver for WebSubApi %q: %w", wsb.Name, err)
 		}
 	}
@@ -605,6 +769,11 @@ func (r *Runtime) RemoveWebSubApiBinding(name string) error {
 		}
 		delete(r.activeBrokerDrivers, name)
 	}
+
+	// Dynamic xDS updates replace the complete policy state for a binding.
+	// Remove the old route keys before the binding disappears so empty-policy
+	// redeploys do not keep executing stale chains.
+	r.unregisterBindingChains(r.hub.GetBinding(name))
 
 	// Remove hub binding.
 	r.hub.RemoveBinding(name)

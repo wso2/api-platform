@@ -35,6 +35,8 @@ import (
 const (
 	// EventChannelConfigTypeURL is the xDS type URL for event channel configurations.
 	EventChannelConfigTypeURL = "api-platform.wso2.org/v1.EventChannelConfig"
+	// APIKeyStateTypeURL is the xDS type URL for API key state snapshots.
+	APIKeyStateTypeURL = "api-platform.wso2.org/v1.APIKeyState"
 
 	defaultNodeID  = "event-gateway-node"
 	defaultCluster = "event-gateway"
@@ -44,14 +46,15 @@ const (
 	connectTimeout = 10 * time.Second
 )
 
-// ResourceHandler is called when EventChannelConfig resources are received.
+// ResourceHandler is called when resources for the subscribed xDS type are received.
 type ResourceHandler func(ctx context.Context, resources []*discoveryv3.Resource, version string) error
 
 // Client connects to the gateway controller's xDS server and subscribes
-// to EventChannelConfig resources.
+// to one xDS resource type per ADS stream.
 type Client struct {
 	serverAddr string
 	nodeID     string
+	typeURL    string
 	handler    ResourceHandler
 
 	mu      sync.RWMutex
@@ -66,14 +69,18 @@ type Client struct {
 }
 
 // NewClient creates a new xDS client for the event gateway.
-func NewClient(serverAddr, nodeID string, handler ResourceHandler) *Client {
+func NewClient(serverAddr, nodeID, typeURL string, handler ResourceHandler) *Client {
 	if nodeID == "" {
 		nodeID = defaultNodeID
+	}
+	if typeURL == "" {
+		typeURL = EventChannelConfigTypeURL
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Client{
 		serverAddr: serverAddr,
 		nodeID:     nodeID,
+		typeURL:    typeURL,
 		handler:    handler,
 		ctx:        ctx,
 		cancel:     cancel,
@@ -85,14 +92,15 @@ func NewClient(serverAddr, nodeID string, handler ResourceHandler) *Client {
 func (c *Client) Start() {
 	slog.Info("Starting event gateway xDS client",
 		"server", c.serverAddr,
-		"node_id", c.nodeID)
+		"node_id", c.nodeID,
+		"type_url", c.typeURL)
 	go c.run()
 }
 
 // Stop gracefully stops the client.
 func (c *Client) Stop() {
 	c.stopOnce.Do(func() {
-		slog.Info("Stopping event gateway xDS client")
+		slog.Info("Stopping event gateway xDS client", "type_url", c.typeURL)
 		c.cancel()
 
 		c.mu.Lock()
@@ -174,9 +182,11 @@ func (c *Client) connectAndRun() error {
 	c.stream = stream
 	c.mu.Unlock()
 
-	slog.Info("Connected to xDS server", "server", c.serverAddr)
+	slog.Info("Connected to xDS server",
+		"server", c.serverAddr,
+		"type_url", c.typeURL)
 
-	// Send initial subscription for EventChannelConfig
+	// Send initial subscription for the configured resource type.
 	if err := c.sendRequest("", ""); err != nil {
 		return fmt.Errorf("failed to send initial request: %w", err)
 	}
@@ -194,7 +204,7 @@ func (c *Client) sendRequest(versionInfo, nonce string) error {
 	}
 
 	req := &discoveryv3.DiscoveryRequest{
-		TypeUrl:       EventChannelConfigTypeURL,
+		TypeUrl:       c.typeURL,
 		VersionInfo:   versionInfo,
 		ResponseNonce: nonce,
 		Node: &corev3.Node{
@@ -210,14 +220,14 @@ func (c *Client) processStream(stream discoveryv3.AggregatedDiscoveryService_Str
 	for {
 		resp, err := stream.Recv()
 		if err == io.EOF {
-			slog.Info("xDS stream closed by server")
+			slog.Info("xDS stream closed by server", "type_url", c.typeURL)
 			return err
 		}
 		if err != nil {
 			return fmt.Errorf("error receiving from stream: %w", err)
 		}
 
-		if resp.TypeUrl != EventChannelConfigTypeURL {
+		if resp.TypeUrl != c.typeURL {
 			slog.Warn("Ignoring unexpected resource type", "type_url", resp.TypeUrl)
 			continue
 		}
@@ -231,7 +241,8 @@ func (c *Client) processStream(stream discoveryv3.AggregatedDiscoveryService_Str
 		}
 
 		if err := c.handler(c.ctx, resources, resp.VersionInfo); err != nil {
-			slog.Error("Failed to handle EventChannelConfig update",
+			slog.Error("Failed to handle xDS update",
+				"type_url", c.typeURL,
 				"version", resp.VersionInfo,
 				"error", err)
 
@@ -254,7 +265,8 @@ func (c *Client) processStream(stream discoveryv3.AggregatedDiscoveryService_Str
 			return fmt.Errorf("failed to send ACK: %w", err)
 		}
 
-		slog.Info("Processed EventChannelConfig update",
+		slog.Info("Processed xDS update",
+			"type_url", c.typeURL,
 			"version", resp.VersionInfo,
 			"resources", len(resp.Resources))
 	}

@@ -102,6 +102,28 @@ build-and-push-platform-api-multiarch: ## Build and push platform-api Docker ima
 	$(MAKE) -C platform-api build-and-push-multiarch VERSION=$(PLATFORM_API_VERSION)
 	@echo "Successfully built and pushed multi-arch platform-api"
 
+# Package Targets
+.PHONY: package-event-gateway
+package-event-gateway: ## Package event gateway as a self-contained zip (wso2apip-event-gateway-<version>.zip)
+	@echo "Packaging event gateway $(EVENT_GATEWAY_VERSION)..."
+	@STAGE=$$(mktemp -d) && \
+	 DIST="$$STAGE/event-gateway" && \
+	 mkdir -p \
+	   "$$DIST/configs/gateway-controller" \
+	   "$$DIST/configs/event-gateway" \
+	   "$$DIST/certificates" \
+	   "$$DIST/listener-certs" && \
+	 cp gateway/configs/config.toml "$$DIST/configs/gateway-controller/config.toml" && \
+	 cp event-gateway/gateway-runtime/configs/config.toml "$$DIST/configs/event-gateway/config.toml" && \
+	 cp event-gateway/gateway-runtime/configs/channels.yaml "$$DIST/configs/event-gateway/channels.yaml" && \
+	 cp gateway/gateway-controller/certificates/default-listener.crt "$$DIST/certificates/" && \
+	 cp gateway/gateway-controller/listener-certs/default-listener.crt "$$DIST/listener-certs/" && \
+	 cp gateway/gateway-controller/listener-certs/default-listener.key "$$DIST/listener-certs/" && \
+	 cp event-gateway/docker-compose.yaml "$$DIST/docker-compose.yaml" && \
+	 cd "$$STAGE" && zip -r "$(CURDIR)/wso2apip-event-gateway-$(EVENT_GATEWAY_VERSION).zip" event-gateway/ && \
+	 rm -rf "$$STAGE"
+	@echo "Created: wso2apip-event-gateway-$(EVENT_GATEWAY_VERSION).zip"
+
 # Test Targets
 .PHONY: test-gateway
 test-gateway: ## Run gateway tests

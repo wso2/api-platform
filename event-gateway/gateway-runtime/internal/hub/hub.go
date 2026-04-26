@@ -22,6 +22,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
@@ -30,6 +31,7 @@ import (
 
 // ChannelBinding holds the runtime state for a registered channel.
 type ChannelBinding struct {
+	APIID             string
 	Name              string
 	Mode              string // "websub" or "protocol-mediation"
 	Context           string
@@ -132,10 +134,7 @@ func (h *Hub) ProcessSubscribe(ctx context.Context, bindingName string, msg *con
 	}
 
 	if result.ShortCircuited {
-		slog.Info("Subscribe request short-circuited by policy",
-			"binding", bindingName,
-			"chain", binding.SubscribeChainKey,
-		)
+		logShortCircuit("Subscribe request short-circuited by policy", bindingName, binding.SubscribeChainKey, result.ImmediateResponse)
 		return nil, true, nil
 	}
 
@@ -170,10 +169,7 @@ func (h *Hub) ProcessInbound(ctx context.Context, bindingName string, msg *conne
 	}
 
 	if result.ShortCircuited {
-		slog.Info("Inbound message short-circuited by policy",
-			"binding", bindingName,
-			"chain", binding.InboundChainKey,
-		)
+		logShortCircuit("Inbound message short-circuited by policy", bindingName, binding.InboundChainKey, result.ImmediateResponse)
 		return nil, true, nil
 	}
 
@@ -223,10 +219,7 @@ func (h *Hub) ProcessOutbound(ctx context.Context, bindingName string, msg *conn
 	}
 
 	if result.ShortCircuited {
-		slog.Info("Outbound message short-circuited by policy",
-			"binding", bindingName,
-			"chain", binding.OutboundChainKey,
-		)
+		logShortCircuit("Outbound message short-circuited by policy", bindingName, binding.OutboundChainKey, result.ImmediateResponse)
 		return nil, true, nil
 	}
 
@@ -249,4 +242,34 @@ func (h *Hub) ProcessOutbound(ctx context.Context, bindingName string, msg *conn
 	}
 
 	return msg, false, nil
+}
+
+// logShortCircuit keeps Info logs to metadata only; ImmediateResponse.Body is
+// user-visible content and must not contain sensitive information.
+func logShortCircuit(message, bindingName, chainKey string, resp *engine.ImmediateResponseResult) {
+	attrs := []any{
+		"binding", bindingName,
+		"chain", chainKey,
+	}
+	if resp != nil {
+		attrs = append(attrs,
+			"status_code", resp.StatusCode,
+			"response_length", len(resp.Body),
+		)
+	}
+	slog.Info(message, attrs...)
+	if resp != nil {
+		bodyAttrs := append([]any{}, attrs...)
+		bodyAttrs = append(bodyAttrs, "response_body", summarizeImmediateResponseBody(resp.Body))
+		slog.Debug("Short-circuit immediate response body", bodyAttrs...)
+	}
+}
+
+func summarizeImmediateResponseBody(body []byte) string {
+	text := strings.TrimSpace(string(body))
+	const maxLen = 256
+	if len(text) > maxLen {
+		return text[:maxLen] + "..."
+	}
+	return text
 }
