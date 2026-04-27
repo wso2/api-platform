@@ -159,6 +159,9 @@ type GatewayRepository interface {
 	// Manifest operations
 	UpdateGatewayManifest(gatewayID string, manifest []byte) error
 	GetGatewayManifest(gatewayID string) ([]byte, error)
+
+	// Version operations
+	UpdateGatewayVersion(gatewayID, version string) error
 }
 
 // DevPortalRepository interface for DevPortal-related database operations

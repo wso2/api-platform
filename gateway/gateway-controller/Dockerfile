@@ -59,14 +59,16 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     export GOOS=linux && \
     export GOARCH=${TARGETARCH} && \
     BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) && \
+    VERSION_PKG=github.com/wso2/api-platform/gateway/gateway-controller/pkg/version && \
+    LDFLAGS="-X ${VERSION_PKG}.Version=${VERSION} -X ${VERSION_PKG}.GitCommit=${GIT_COMMIT} -X ${VERSION_PKG}.BuildDate=${BUILD_DATE}" && \
     if [ "$ENABLE_DEBUG" = "true" ]; then \
         go build $COVER_FLAG \
         -gcflags "all=-N -l" \
-        -ldflags "-X main.Version=${VERSION} -X main.GitCommit=${GIT_COMMIT} -X main.BuildDate=${BUILD_DATE}" \
+        -ldflags "$LDFLAGS" \
         -o controller ./cmd/controller; \
     else \
         go build $COVER_FLAG \
-        -ldflags "-X main.Version=${VERSION} -X main.GitCommit=${GIT_COMMIT} -X main.BuildDate=${BUILD_DATE}" \
+        -ldflags "$LDFLAGS" \
         -o controller ./cmd/controller; \
     fi
 
