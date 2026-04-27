@@ -8,7 +8,6 @@ version = "0.1.0"
 description = "Typed Python interfaces for API Platform gateway policies"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { file = "LICENSE" }
 authors = [
   { name = "WSO2" }
 ]
@@ -46,7 +45,6 @@ packages = ["src/apip_sdk_core"]
 
 [tool.hatch.build.targets.sdist]
 only-include = [
-  "LICENSE",
   "CHANGELOG.md",
   "src/apip_sdk_core",
   "tests",
