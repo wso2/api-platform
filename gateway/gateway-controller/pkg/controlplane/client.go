@@ -2677,15 +2677,22 @@ func (c *Client) handleWebSubAPIDeletedEvent(event map[string]any) {
 		return
 	}
 
+	c.logger.Info("Processing WebSub API deletion",
+		slog.String("api_id", apiID),
+		slog.String("correlation_id", deletedEvent.CorrelationID),
+	)
+
 	apiConfig, err := c.findAPIConfig(apiID)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			c.logger.Warn("WebSub API configuration not found for deletion",
-				slog.String("api_id", apiID),
-			)
+			// Config not found locally. Run the same orphan cleanup flow used for
+			// generic API deletions so stale in-memory/xDS state still gets removed.
+			c.cleanupOrphanedResources(apiID, deletedEvent.CorrelationID)
 			return
 		}
-		c.logger.Error("Failed to fetch WebSub API configuration for deletion",
+		// Real storage error (DB failure, etc.) - log and abort.
+		// Do NOT proceed with orphan cleanup as the config might actually exist.
+		c.logger.Error("Failed to fetch WebSub API configuration for deletion, aborting",
 			slog.String("api_id", apiID),
 			slog.String("correlation_id", deletedEvent.CorrelationID),
 			slog.Any("error", err),

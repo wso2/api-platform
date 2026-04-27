@@ -797,6 +797,95 @@ func TestClient_handleAPIDeletedEvent_DBOnlyConfig(t *testing.T) {
 	}
 }
 
+func TestClient_handleWebSubAPIDeletedEvent_OrphanedCleanup(t *testing.T) {
+	client, _, db, hub := createDeletionTestClient()
+
+	apiID := "non-existent-websub-api"
+	event := map[string]interface{}{
+		"type": "websub.deleted",
+		"payload": map[string]interface{}{
+			"apiId": apiID,
+		},
+		"timestamp":     time.Now().Format(time.RFC3339),
+		"correlationId": "corr-websub-orphan",
+	}
+
+	client.handleWebSubAPIDeletedEvent(event)
+
+	if db.removeKeyCallCount != 1 {
+		t.Errorf("expected RemoveAPIKeysAPI to be called for orphan cleanup, got %d", db.removeKeyCallCount)
+	}
+	if db.removeSubscriptionCallCount != 1 {
+		t.Errorf("expected DeleteSubscriptionsForAPINotIn to be called for orphan cleanup, got %d", db.removeSubscriptionCallCount)
+	}
+	if db.lastSubscriptionCleanupAPIID != apiID {
+		t.Errorf("expected subscription cleanup for API %s, got %s", apiID, db.lastSubscriptionCleanupAPIID)
+	}
+
+	if len(hub.publishedEvents) != 1 {
+		t.Fatalf("expected one orphan cleanup event, got %d", len(hub.publishedEvents))
+	}
+	if hub.publishedEvents[0].gatewayID != "test-gateway" {
+		t.Errorf("expected gatewayID test-gateway, got %s", hub.publishedEvents[0].gatewayID)
+	}
+	if hub.publishedEvents[0].event.EventType != eventhub.EventTypeAPI {
+		t.Errorf("expected event type API, got %s", hub.publishedEvents[0].event.EventType)
+	}
+	if hub.publishedEvents[0].event.Action != "DELETE" {
+		t.Errorf("expected action DELETE, got %s", hub.publishedEvents[0].event.Action)
+	}
+	if hub.publishedEvents[0].event.EntityID != apiID {
+		t.Errorf("expected entity ID %s, got %s", apiID, hub.publishedEvents[0].event.EntityID)
+	}
+	if hub.publishedEvents[0].event.EventID != "corr-websub-orphan" {
+		t.Errorf("expected correlation ID corr-websub-orphan, got %s", hub.publishedEvents[0].event.EventID)
+	}
+}
+
+func TestClient_handleWebSubAPIDeletedEvent_FullDeletion(t *testing.T) {
+	client, store, db, hub := createDeletionTestClient()
+
+	apiID := "test-websub-full-delete"
+	apiConfig := createTestAPIConfigForDeletion(apiID)
+	apiConfig.Kind = models.KindWebSubApi
+	db.SaveConfig(apiConfig)
+	store.Add(apiConfig)
+
+	event := map[string]interface{}{
+		"type": "websub.deleted",
+		"payload": map[string]interface{}{
+			"apiId": apiID,
+		},
+		"timestamp":     time.Now().Format(time.RFC3339),
+		"correlationId": "corr-websub-full",
+	}
+
+	client.handleWebSubAPIDeletedEvent(event)
+
+	if db.deleteCallCount != 1 {
+		t.Errorf("expected DeleteConfig to be called once, got %d", db.deleteCallCount)
+	}
+	if db.removeKeyCallCount != 1 {
+		t.Errorf("expected RemoveAPIKeysAPI to be called once, got %d", db.removeKeyCallCount)
+	}
+	if len(hub.publishedEvents) != 1 {
+		t.Fatalf("expected one delete event, got %d", len(hub.publishedEvents))
+	}
+	if hub.publishedEvents[0].event.EventType != eventhub.EventTypeAPI {
+		t.Errorf("expected event type API, got %s", hub.publishedEvents[0].event.EventType)
+	}
+	if hub.publishedEvents[0].event.Action != "DELETE" {
+		t.Errorf("expected action DELETE, got %s", hub.publishedEvents[0].event.Action)
+	}
+	if hub.publishedEvents[0].event.EntityID != apiID {
+		t.Errorf("expected entity ID %s, got %s", apiID, hub.publishedEvents[0].event.EntityID)
+	}
+
+	if _, err := db.GetConfig(apiID); !storage.IsNotFoundError(err) {
+		t.Errorf("expected WebSub API config to be removed from database, got %v", err)
+	}
+}
+
 // TestClient_handleAPIDeletedEvent_StorageErrors tests error handling
 func TestClient_handleAPIDeletedEvent_StorageErrors(t *testing.T) {
 	client, store, db, hub := createDeletionTestClient()
