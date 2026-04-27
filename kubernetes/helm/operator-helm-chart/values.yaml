@@ -198,7 +198,7 @@ gateway:
             # Uses Envoy command operators: https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage
             json_fields:
               start_time: "%START_TIME%"
-              method: "%REQ(:METHOD)%"
+              meth: "%REQ(:METHOD)%"
               path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
               protocol: "%PROTOCOL%"
               response_code: "%RESPONSE_CODE%"

@@ -23,4 +23,4 @@ enabled = false
 # Log level: debug, info, warn, error
 level = "info"
 # Log format: json, text
-format = "json"
+format = "text"

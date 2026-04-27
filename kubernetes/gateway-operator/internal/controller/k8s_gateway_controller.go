@@ -240,7 +240,14 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 		if err != nil {
 			return err
 		}
-		// Merge order: infra overlay (base) → ConfigMap (higher priority)
+		// Merge order: infra overlay (base) → ConfigMap (higher priority).
+		// MergeValuesYAML delegates to deepMergeValues, which performs a recursive
+		// per-key merge: ConfigMap entries can add or override individual keys inside
+		// nested maps like commonLabels/commonAnnotations, but cannot remove keys that
+		// the infra overlay already set. If you need a wholesale map-level replace
+		// (e.g. discard all infra-set labels and use only the ConfigMap's map), add
+		// "commonLabels" or "commonAnnotations" to probeMergeReplaceKeys in
+		// internal/helm/client.go, or use an equivalent replace mechanism.
 		if infraOverlay != "" {
 			valuesYAML, err = helm.MergeValuesYAML(infraOverlay, cmValues)
 			if err != nil {

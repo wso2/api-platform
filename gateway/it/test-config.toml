@@ -45,112 +45,9 @@ vector_db_provider_ttl = 3600  # 1 hour in seconds
 # GATEWAY CONTROLLER CONFIGURATION
 # =============================================================================
 
-[controller.server]
-api_port = 9090
-xds_port = 18000
-shutdown_timeout = "15s"
-gateway_id = "platform-gateway-id"
-
-[controller.admin_server]
-enabled = true
-port = 9092
-allowed_ips = ["*"]
-
-[controller.policy_server]
-port = 18001
-
-[controller.policy_server.tls]
-enabled = false
-cert_file = "./certs/server.crt"
-key_file = "./certs/server.key"
-
-[controller.storage]
-type = "sqlite"
-
-[controller.storage.sqlite]
-path = "./data/gateway.db"
-
-[controller.policies]
-definitions_path = "./default-policies"
-
 [controller.event_hub]
-# Interval at which events are polled from the database
+# Faster poll interval for test responsiveness (default: 3s)
 poll_interval = "200ms"
-# Interval at which old events are cleaned up
-cleanup_interval = "10m"
-# How long events are retained before being deleted
-retention_period = "1h"
-
-[router]
-gateway_host = "*"
-listener_port = 8080
-https_enabled = true
-https_port = 8443
-tracing_service_name = "router"
-
-[router.access_logs]
-enabled = true
-format = "json"
-text_format = """
-[%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% "%REQ(X-FORWARDED-FOR)%" "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"
-"""
-
-[router.access_logs.json_fields]
-start_time = "%START_TIME%"
-method = "%REQ(:METHOD)%"
-path = "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
-protocol = "%PROTOCOL%"
-response_code = "%RESPONSE_CODE%"
-response_flags = "%RESPONSE_FLAGS%"
-response_flags_long = "%RESPONSE_FLAGS_LONG%"
-bytes_received = "%BYTES_RECEIVED%"
-bytes_sent = "%BYTES_SENT%"
-duration = "%DURATION%"
-upstream_service_time = "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
-x_forwarded_for = "%REQ(X-FORWARDED-FOR)%"
-user_agent = "%REQ(USER-AGENT)%"
-request_id = "%REQ(X-REQUEST-ID)%"
-authority = "%REQ(:AUTHORITY)%"
-upstream_host = "%UPSTREAM_HOST%"
-upstream_cluster = "%UPSTREAM_CLUSTER%"
-
-[router.downstream_tls]
-cert_path = "./listener-certs/default-listener.crt"
-key_path = "./listener-certs/default-listener.key"
-minimum_protocol_version = "TLS1_2"
-maximum_protocol_version = "TLS1_3"
-ciphers = "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA"
-
-[router.upstream.tls]
-minimum_protocol_version = "TLS1_2"
-maximum_protocol_version = "TLS1_3"
-ciphers = "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA"
-trusted_cert_path = "/etc/ssl/certs/ca-certificates.crt"
-custom_certs_path = "./certificates"
-verify_host_name = true
-disable_ssl_verification = false
-
-[router.upstream.timeouts]
-route_timeout_ms = 60000
-route_idle_timeout_ms = 300000
-connect_timeout_ms = 5000
-
-[router.policy_engine]
-host = "policy-engine"
-port = 9001
-timeout_ms = 60000
-failure_mode_allow = false
-route_cache_action = "RETAIN"
-allow_mode_override = true
-message_timeout_ms = 60000
-
-[router.policy_engine.tls]
-enabled = false
-cert_path = ""
-key_path = ""
-ca_path = ""
-server_name = ""
-skip_verify = false
 
 [controller.auth.basic]
 enabled = true
@@ -161,59 +58,33 @@ password = "admin"
 password_hashed = false
 roles = ["admin"]
 
-[controller.auth.idp]
-enabled = false
-jwks_url = ""
-issuer = ""
-
 [controller.logging]
 level = "debug"
-format = "json"
 
 [controller.metrics]
 enabled = true
-port = 9091
+
+# =============================================================================
+# ROUTER CONFIGURATION
+# =============================================================================
+
+[router.access_logs]
+enabled = true
+format = "text"
 
 # =============================================================================
 # POLICY ENGINE CONFIGURATION
 # =============================================================================
 
-[policy_engine.server]
-extproc_port = 9001
-
-[policy_engine.admin]
-enabled = true
-port = 9002
-allowed_ips = ["*", "127.0.0.1"]
-
-[policy_engine.config_mode]
-mode = "xds"
-
-[policy_engine.xds]
-# server_address is set via -xds-server flag (injected by gateway-runtime entrypoint)
-connect_timeout = "10s"
-request_timeout = "5s"
-initial_reconnect_delay = "1s"
-max_reconnect_delay = "60s"
-
-[policy_engine.xds.tls]
-enabled = false
-
-[policy_engine.file_config]
-path = ""
-
 [policy_engine.logging]
 level = "debug"
-format = "json"
 
 [policy_engine.metrics]
 enabled = true
-port = 9003
 
 # =============================================================================
 # POLICY CONFIGURATIONS
 # =============================================================================
-
 
 [[policy_configurations.jwtauth_v1.keymanagers]]
 name = "mock-jwks"
@@ -232,7 +103,8 @@ uri = "http://mock-jwks:8080/jwks"
 [policy_configurations.ratelimit_v1]
 algorithm = "fixed-window"
 
-
+[policy_configurations.llm_cost_v1]
+pricing_file = "/home/wso2/conf/llm-pricing/model_prices.json"
 
 # =============================================================================
 # ANALYTICS CONFIGURATION
@@ -247,34 +119,4 @@ enabled_publishers = ["moesif"]
 application_id = "test-application-id"
 moesif_base_url = "http://mock-analytics-collector:8080"
 publish_interval = 2
-event_queue_size = 10000
-batch_size = 50
 timer_wakeup_seconds = 1
-
-[analytics.grpc_event_server]
-buffer_flush_interval = 1000000000
-buffer_size_bytes = 16384
-grpc_request_timeout = 20000000000
-server_port = 18090
-shutdown_timeout = 600
-public_key_path = ""
-private_key_path = ""
-als_plain_text = true
-max_message_size = 1000000000
-max_header_limit = 8192
-
-[policy_configurations.llm_cost_v1]
-pricing_file = "/home/wso2/conf/llm-pricing/model_prices.json"
-
-# =============================================================================
-# TRACING CONFIGURATION
-# =============================================================================
-
-[tracing]
-enabled = false
-endpoint = "otel-collector:4317"
-insecure = true
-service_version = "1.0.0"
-batch_timeout = "1s"
-max_export_batch_size = 512
-sampling_rate = 1.0
