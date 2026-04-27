@@ -31,7 +31,7 @@ func TestLabelValidationForAllTypes(t *testing.T) {
 		validator := NewLLMValidator()
 		provider := api.LLMProviderConfiguration{
 			ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
-			Kind:       api.LlmProvider,
+			Kind:       api.LLMProviderConfigurationKindLlmProvider,
 			Metadata: api.Metadata{
 				Name: "test-provider",
 				Labels: &map[string]string{
@@ -72,7 +72,7 @@ func TestLabelValidationForAllTypes(t *testing.T) {
 		validator := NewLLMValidator()
 		provider := api.LLMProviderConfiguration{
 			ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
-			Kind:       api.LlmProvider,
+			Kind:       api.LLMProviderConfigurationKindLlmProvider,
 			Metadata: api.Metadata{
 				Name: "test-provider",
 				Labels: &map[string]string{
@@ -113,7 +113,7 @@ func TestLabelValidationForAllTypes(t *testing.T) {
 		validator := NewLLMValidator()
 		proxy := api.LLMProxyConfiguration{
 			ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
-			Kind:       api.LlmProxy,
+			Kind:       api.LLMProxyConfigurationKindLlmProxy,
 			Metadata: api.Metadata{
 				Name: "test-proxy",
 				Labels: &map[string]string{

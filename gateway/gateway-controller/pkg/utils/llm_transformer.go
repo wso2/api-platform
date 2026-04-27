@@ -96,7 +96,7 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	output *api.RestAPI) (*api.RestAPI, error) {
 
 	// Step 1: Retrieve and validate provider reference
-	provider, err := t.db.GetConfigByKindAndHandle(string(api.LlmProvider), proxy.Spec.Provider.Id)
+	provider, err := t.db.GetConfigByKindAndHandle(string(api.LLMProviderConfigurationKindLlmProvider), proxy.Spec.Provider.Id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up provider '%s': %w", proxy.Spec.Provider.Id, err)
 	}
@@ -116,7 +116,7 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	}
 
 	// Step 2: Configure API metadata and basic spec
-	output.Kind = api.RestApi
+	output.Kind = api.RestAPIKindRestApi
 	output.ApiVersion = api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1
 	output.Metadata = proxy.Metadata
 
@@ -319,7 +319,7 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 		return nil, fmt.Errorf("failed to retrieve template '%s': %w", provider.Spec.Template, err)
 	}
 
-	output.Kind = api.RestApi
+	output.Kind = api.RestAPIKindRestApi
 	output.ApiVersion = api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1
 	output.Metadata = provider.Metadata
 

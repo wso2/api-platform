@@ -18,6 +18,7 @@ package helm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -27,6 +28,7 @@ import (
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/registry"
+	"helm.sh/helm/v3/pkg/release"
 	"helm.sh/helm/v3/pkg/storage/driver"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -79,6 +81,10 @@ type InstallOrUpgradeOptions struct {
 
 	// Namespace is the Kubernetes namespace to install the chart into
 	Namespace string
+
+	// ChartPath is the path to a local chart directory or archive.
+	// When set, ChartName/Version/registry auth are ignored.
+	ChartPath string
 
 	// ChartName is the name of the remote chart (e.g., "bitnami/nginx" or "oci://registry/chart")
 	ChartName string
@@ -180,29 +186,35 @@ func (c *Client) install(ctx context.Context, actionConfig *action.Configuration
 		client.Timeout = time.Duration(opts.Timeout) * time.Second
 	}
 
-	// Handle registry authentication if provided
-	if opts.Username != "" && opts.Password != "" {
-		registryHost, err := extractRegistryHost(opts.ChartName)
+	var chartLoadPath string
+	if opts.ChartPath != "" {
+		chartLoadPath = opts.ChartPath
+	} else {
+		// Handle registry authentication if provided
+		if opts.Username != "" && opts.Password != "" {
+			registryHost, err := extractRegistryHost(opts.ChartName)
+			if err != nil {
+				return fmt.Errorf("failed to extract registry host: %w", err)
+			}
+
+			if err := c.registryClient.Login(
+				registryHost,
+				registry.LoginOptBasicAuth(opts.Username, opts.Password),
+				registry.LoginOptInsecure(opts.Insecure),
+			); err != nil {
+				return fmt.Errorf("failed to login to registry: %w", err)
+			}
+		}
+
+		// Locate and load chart from remote repository or OCI registry
+		located, err := client.ChartPathOptions.LocateChart(opts.ChartName, c.settings)
 		if err != nil {
-			return fmt.Errorf("failed to extract registry host: %w", err)
+			return fmt.Errorf("failed to locate chart %s: %w", opts.ChartName, err)
 		}
-
-		if err := c.registryClient.Login(
-			registryHost,
-			registry.LoginOptBasicAuth(opts.Username, opts.Password),
-			registry.LoginOptInsecure(opts.Insecure),
-		); err != nil {
-			return fmt.Errorf("failed to login to registry: %w", err)
-		}
+		chartLoadPath = located
 	}
 
-	// Locate and load chart from remote repository or OCI registry
-	chartPath, err := client.ChartPathOptions.LocateChart(opts.ChartName, c.settings)
-	if err != nil {
-		return fmt.Errorf("failed to locate chart %s: %w", opts.ChartName, err)
-	}
-
-	chart, err := loader.Load(chartPath)
+	chart, err := loader.Load(chartLoadPath)
 	if err != nil {
 		return fmt.Errorf("failed to load chart: %w", err)
 	}
@@ -240,29 +252,35 @@ func (c *Client) upgrade(ctx context.Context, actionConfig *action.Configuration
 		client.Timeout = time.Duration(opts.Timeout) * time.Second
 	}
 
-	// Handle registry authentication if provided
-	if opts.Username != "" && opts.Password != "" {
-		registryHost, err := extractRegistryHost(opts.ChartName)
+	var chartLoadPath string
+	if opts.ChartPath != "" {
+		chartLoadPath = opts.ChartPath
+	} else {
+		// Handle registry authentication if provided
+		if opts.Username != "" && opts.Password != "" {
+			registryHost, err := extractRegistryHost(opts.ChartName)
+			if err != nil {
+				return fmt.Errorf("failed to extract registry host: %w", err)
+			}
+
+			if err := c.registryClient.Login(
+				registryHost,
+				registry.LoginOptBasicAuth(opts.Username, opts.Password),
+				registry.LoginOptInsecure(opts.Insecure),
+			); err != nil {
+				return fmt.Errorf("failed to login to registry: %w", err)
+			}
+		}
+
+		// Locate and load chart from remote repository or OCI registry
+		located, err := client.ChartPathOptions.LocateChart(opts.ChartName, c.settings)
 		if err != nil {
-			return fmt.Errorf("failed to extract registry host: %w", err)
+			return fmt.Errorf("failed to locate chart %s: %w", opts.ChartName, err)
 		}
-
-		if err := c.registryClient.Login(
-			registryHost,
-			registry.LoginOptBasicAuth(opts.Username, opts.Password),
-			registry.LoginOptInsecure(opts.Insecure),
-		); err != nil {
-			return fmt.Errorf("failed to login to registry: %w", err)
-		}
+		chartLoadPath = located
 	}
 
-	// Locate and load chart from remote repository or OCI registry
-	chartPath, err := client.ChartPathOptions.LocateChart(opts.ChartName, c.settings)
-	if err != nil {
-		return fmt.Errorf("failed to locate chart %s: %w", opts.ChartName, err)
-	}
-
-	chart, err := loader.Load(chartPath)
+	chart, err := loader.Load(chartLoadPath)
 	if err != nil {
 		return fmt.Errorf("failed to load chart: %w", err)
 	}
@@ -333,6 +351,26 @@ func (c *Client) Uninstall(ctx context.Context, opts UninstallOptions) error {
 	return nil
 }
 
+// IsReleaseDeployed reports whether releaseName exists in namespace and its latest revision is deployed.
+func (c *Client) IsReleaseDeployed(namespace, releaseName string) (bool, error) {
+	actionConfig, err := c.newActionConfig(namespace)
+	if err != nil {
+		return false, fmt.Errorf("helm action config: %w", err)
+	}
+	get := action.NewGet(actionConfig)
+	rel, err := get.Run(releaseName)
+	if err != nil {
+		if errors.Is(err, driver.ErrReleaseNotFound) || errors.Is(err, driver.ErrNoDeployedReleases) {
+			return false, nil
+		}
+		return false, fmt.Errorf("helm get release %q in namespace %q: %w", releaseName, namespace, err)
+	}
+	if rel == nil || rel.Info == nil {
+		return false, nil
+	}
+	return rel.Info.Status == release.StatusDeployed, nil
+}
+
 // newActionConfig creates a new Helm action configuration
 func (c *Client) newActionConfig(namespace string) (*action.Configuration, error) {
 	actionConfig := new(action.Configuration)
@@ -357,6 +395,102 @@ func GetReleaseName(gatewayName string) string {
 	// Helm release names must be DNS-compliant
 	// Gateway name is already validated as a Kubernetes resource name
 	return fmt.Sprintf("%s-gateway", gatewayName)
+}
+
+// MergeValuesYAML deep-merges two Helm values YAML strings.
+// Keys in overlay take precedence; nested maps are merged recursively.
+// Returns the merged result as a YAML string.
+func MergeValuesYAML(base, overlay string) (string, error) {
+	parseYAML := func(s string) (map[string]interface{}, error) {
+		if s == "" {
+			return map[string]interface{}{}, nil
+		}
+		var raw interface{}
+		if err := yaml.Unmarshal([]byte(s), &raw); err != nil {
+			return nil, err
+		}
+		converted, err := convertToStringMap(raw)
+		if err != nil {
+			return nil, err
+		}
+		if m, ok := converted.(map[string]interface{}); ok {
+			return m, nil
+		}
+		return map[string]interface{}{}, nil
+	}
+
+	baseMap, err := parseYAML(base)
+	if err != nil {
+		return "", fmt.Errorf("parse base values: %w", err)
+	}
+	overlayMap, err := parseYAML(overlay)
+	if err != nil {
+		return "", fmt.Errorf("parse overlay values: %w", err)
+	}
+
+	merged := deepMergeValues(baseMap, overlayMap)
+	out, err := yaml.Marshal(merged)
+	if err != nil {
+		return "", fmt.Errorf("marshal merged values: %w", err)
+	}
+	return string(out), nil
+}
+
+// probeMergeReplaceKeys are PodSpec probe fields: deep-merging base+override would keep
+// e.g. chart default exec together with overlay httpGet, which is invalid (only one handler).
+var probeMergeReplaceKeys = map[string]struct{}{
+	"livenessProbe":  {},
+	"readinessProbe": {},
+	"startupProbe":   {},
+}
+
+// deepMergeValues merges override into base recursively. Non-map values in override replace
+// base; nested maps are merged so per-Gateway ConfigMap YAML can patch operator defaults.
+func deepMergeValues(base, override map[string]interface{}) map[string]interface{} {
+	if len(override) == 0 {
+		return base
+	}
+	if base == nil {
+		base = map[string]interface{}{}
+	}
+	out := make(map[string]interface{})
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range override {
+		if v == nil {
+			out[k] = nil
+			continue
+		}
+		bRaw, ok := out[k]
+		if !ok {
+			out[k] = v
+			continue
+		}
+		bm, bOk := bRaw.(map[string]interface{})
+		vm, vOk := v.(map[string]interface{})
+		if bOk && vOk {
+			if _, probe := probeMergeReplaceKeys[k]; probe {
+				out[k] = shallowStringMapCopy(vm)
+				continue
+			}
+			out[k] = deepMergeValues(bm, vm)
+			continue
+		}
+		out[k] = v
+	}
+	return out
+}
+
+func shallowStringMapCopy(m map[string]interface{}) map[string]interface{} {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]interface{}, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
 }
 
 // parseValues parses values from YAML string or file
@@ -399,11 +533,9 @@ func (c *Client) parseValues(opts InstallOrUpgradeOptions) (map[string]interface
 			return nil, fmt.Errorf("failed to convert inline values: %w", err)
 		}
 
-		// Merge inline values (they take precedence)
+		// Deep-merge inline values (they take precedence per key; nested maps are merged)
 		if inlineValues, ok := converted.(map[string]interface{}); ok {
-			for k, v := range inlineValues {
-				values[k] = v
-			}
+			values = deepMergeValues(values, inlineValues)
 		}
 	}
 

@@ -4,7 +4,6 @@ import (
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
@@ -28,7 +27,6 @@ func newTestAPIDeploymentService(
 	snapshotManager *xds.SnapshotManager,
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
-	policyResolver *resolver.PolicyResolver,
 ) *APIDeploymentService {
 	return newTestAPIDeploymentServiceWithHub(
 		store,
@@ -36,7 +34,6 @@ func newTestAPIDeploymentService(
 		snapshotManager,
 		validator,
 		routerConfig,
-		policyResolver,
 		newReplicaSyncTestEventHub(),
 		testGatewayID,
 	)
@@ -48,7 +45,6 @@ func newTestAPIDeploymentServiceWithHub(
 	snapshotManager *xds.SnapshotManager,
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
-	policyResolver *resolver.PolicyResolver,
 	hub eventhub.EventHub,
 	gatewayID string,
 ) *APIDeploymentService {
@@ -58,9 +54,9 @@ func newTestAPIDeploymentServiceWithHub(
 		snapshotManager,
 		validator,
 		routerConfig,
-		policyResolver,
 		hub,
 		gatewayID,
+		nil,
 	)
 }
 

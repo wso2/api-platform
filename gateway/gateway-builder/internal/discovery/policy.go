@@ -121,3 +121,66 @@ func CollectSourceFiles(policyDir string) ([]string, error) {
 
 	return goFiles, nil
 }
+
+// ValidatePythonDirectoryStructure checks if a Python policy directory has required files
+func ValidatePythonDirectoryStructure(policyDir string) error {
+	slog.Debug("Validating Python directory structure", "dir", policyDir, "phase", "discovery")
+
+	// Check for policy definition file
+	policyYAML := filepath.Join(policyDir, types.PolicyDefinitionFile)
+	if err := fsutil.ValidatePathExists(policyYAML, types.PolicyDefinitionFile); err != nil {
+		return fmt.Errorf("in %s: %w", policyDir, err)
+	}
+
+	// Check for policy.py (main policy file)
+	policyPy := filepath.Join(policyDir, "policy.py")
+	if err := fsutil.ValidatePathExists(policyPy, "policy.py"); err != nil {
+		// policy.py is optional if other .py files exist, but recommended
+		slog.Debug("policy.py not found, checking for any .py files", "dir", policyDir)
+	}
+
+	// Check for at least one .py file
+	files, err := os.ReadDir(policyDir)
+	if err != nil {
+		return fmt.Errorf("failed to read directory %s: %w", policyDir, err)
+	}
+
+	hasPyFiles := false
+	for _, file := range files {
+		if !file.IsDir() && filepath.Ext(file.Name()) == ".py" {
+			hasPyFiles = true
+			break
+		}
+	}
+
+	slog.Debug("Python file check", "dir", policyDir, "hasPyFiles", hasPyFiles, "phase", "discovery")
+
+	if !hasPyFiles {
+		return fmt.Errorf("no .py files found in %s", policyDir)
+	}
+
+	return nil
+}
+
+// CollectPythonSourceFiles finds all .py files in a policy directory
+func CollectPythonSourceFiles(policyDir string) ([]string, error) {
+	var pyFiles []string
+
+	files, err := os.ReadDir(policyDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read directory: %w", err)
+	}
+
+	for _, file := range files {
+		if !file.IsDir() && filepath.Ext(file.Name()) == ".py" {
+			fullPath := filepath.Join(policyDir, file.Name())
+			pyFiles = append(pyFiles, fullPath)
+			slog.Debug("Discovered Python source file",
+				"file", file.Name(),
+				"path", fullPath,
+				"phase", "discovery")
+		}
+	}
+
+	return pyFiles, nil
+}

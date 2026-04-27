@@ -18,7 +18,7 @@ func TestDeployAPIConfigurationWebSubKindTopicRegistration(t *testing.T) {
 	var db storage.Storage
 	snapshotManager := &xds.SnapshotManager{}
 	validator := config.NewAPIValidator()
-	service := newTestAPIDeploymentService(configStore, db, snapshotManager, validator, nil, nil)
+	service := newTestAPIDeploymentService(configStore, db, snapshotManager, validator, nil)
 
 	// Inline YAML config similar to websubhub.yaml
 	yamlConfig := `kind: WebSubApi
@@ -47,7 +47,7 @@ spec:
 
 	cfg := &models.StoredConfig{
 		UUID:          "0000-test-config-1-0000-000000000000",
-		Kind:          string(api.WebSubApi),
+		Kind:          string(api.WebSubAPIKindWebSubApi),
 		Handle:        "testapi",
 		DisplayName:   "testapi",
 		Version:       "v1",
@@ -71,7 +71,7 @@ spec:
 func TestDeployAPIConfigurationWebSubKindRevisionDeployment(t *testing.T) {
 	configStore := storage.NewConfigStore()
 	validator := config.NewAPIValidator()
-	service := newTestAPIDeploymentService(configStore, nil, nil, validator, nil, nil)
+	service := newTestAPIDeploymentService(configStore, nil, nil, validator, nil)
 
 	// Inline YAML config similar to websubhub.yaml
 	yamlConfig := `kind: WebSubApi
@@ -100,7 +100,7 @@ spec:
 
 	cfg := &models.StoredConfig{
 		UUID:          "0000-test-config-1-0000-000000000000",
-		Kind:          string(api.WebSubApi),
+		Kind:          string(api.WebSubAPIKindWebSubApi),
 		Handle:        "testapi",
 		DisplayName:   "testapi",
 		Version:       "v1",
@@ -161,7 +161,7 @@ spec:
 func TestTopicRegistrationForConcurrentAPIConfigs(t *testing.T) {
 	configStore := storage.NewConfigStore()
 	validator := config.NewAPIValidator()
-	service := newTestAPIDeploymentService(configStore, nil, nil, validator, nil, nil)
+	service := newTestAPIDeploymentService(configStore, nil, nil, validator, nil)
 
 	// Two different API YAMLs
 	yamlA := `kind: WebSubApi
@@ -207,7 +207,7 @@ spec:
 
 	cfgA := &models.StoredConfig{
 		UUID:          "0000-cfg-a-0000-000000000000",
-		Kind:          string(api.WebSubApi),
+		Kind:          string(api.WebSubAPIKindWebSubApi),
 		Handle:        "testapiA",
 		DisplayName:   "testapiA",
 		Version:       "v1",
@@ -221,7 +221,7 @@ spec:
 
 	cfgB := &models.StoredConfig{
 		UUID:          "0000-cfg-b-0000-000000000000",
-		Kind:          string(api.WebSubApi),
+		Kind:          string(api.WebSubAPIKindWebSubApi),
 		Handle:        "testapiB",
 		DisplayName:   "testapiB",
 		Version:       "v1",
@@ -273,7 +273,7 @@ spec:
 func TestTopicDeregistrationOnConfigDeletion(t *testing.T) {
 	configStore := storage.NewConfigStore()
 	validator := config.NewAPIValidator()
-	service := newTestAPIDeploymentService(configStore, nil, nil, validator, nil, nil)
+	service := newTestAPIDeploymentService(configStore, nil, nil, validator, nil)
 
 	// Inline YAML config similar to websubhub.yaml
 	yamlConfig := `kind: WebSubApi
@@ -301,7 +301,7 @@ spec:
 
 	cfg := &models.StoredConfig{
 		UUID:          "0000-test-config-1-0000-000000000000",
-		Kind:          string(api.WebSubApi),
+		Kind:          string(api.WebSubAPIKindWebSubApi),
 		Handle:        "testapi",
 		DisplayName:   "testapi",
 		Version:       "v1",

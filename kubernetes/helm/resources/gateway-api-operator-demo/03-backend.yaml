@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-backend
+  namespace: gateway-api-demo
+  labels:
+    app: hello-backend
+    app.kubernetes.io/part-of: gateway-api-operator-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hello-backend
+  template:
+    metadata:
+      labels:
+        app: hello-backend
+    spec:
+      containers:
+        - name: sample-backend
+          image: ghcr.io/wso2/api-platform/sample-service:latest
+          args:
+            - "-addr"
+            - ":9080"
+            - "-pretty"
+          ports:
+            - name: http
+              containerPort: 9080
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-backend
+  namespace: gateway-api-demo
+  labels:
+    app.kubernetes.io/part-of: gateway-api-operator-demo
+spec:
+  type: ClusterIP
+  selector:
+    app: hello-backend
+  ports:
+    - name: http
+      port: 9080
+      targetPort: 9080

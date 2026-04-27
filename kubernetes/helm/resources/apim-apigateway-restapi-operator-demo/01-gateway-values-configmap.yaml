@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: custom-gateway-values
+  namespace: apigateway-demo-apim
+data:
+  # The operator expects this key to be named exactly `values.yaml`.
+  # These are *overrides* deep-merged into the operator's default gateway_values.yaml.
+  values.yaml: |
+    gateway:
+      developmentMode: true
+      config:
+        controller:
+          controlplane:
+            # Skip TLS certificate verification for the control plane connection (insecure, dev/test only)
+            insecure_skip_verify: true
+      controller:
+        controlPlane:
+          host: host.docker.internal:9444
+          port: 443
+          token:
+            value: "xxx"
+

@@ -575,6 +575,48 @@ func TestAPIUtilsService_BatchFetchDeployments(t *testing.T) {
 	})
 }
 
+func TestAPIUtilsService_FetchAPIKeysByKind_WebSubAPI(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	server := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Equal(t, "/websub-apis/api-keys", r.URL.Path)
+		assert.Equal(t, "test-token", r.Header.Get("api-key"))
+		assert.Equal(t, "application/json", r.Header.Get("Accept"))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		err := json.NewEncoder(w).Encode([]map[string]any{
+			{
+				"etag":         "etag-1",
+				"uuid":         "key-1",
+				"name":         "test-key",
+				"maskedApiKey": "***key",
+				"apiKeyHashes": map[string]string{"sha256": "abc123"},
+				"artifactUuid": "api-1",
+				"status":       "active",
+				"createdAt":    time.Now().UTC(),
+				"createdBy":    "test-user",
+				"updatedAt":    time.Now().UTC(),
+				"source":       "external",
+			},
+		})
+		require.NoError(t, err)
+	}))
+	defer server.Close()
+
+	cfg := PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}
+	svc := NewAPIUtilsService(cfg, logger)
+
+	keys, err := svc.FetchAPIKeysByKind(models.KindWebSubApi, "")
+	require.NoError(t, err)
+	if assert.Len(t, keys, 1) {
+		assert.Equal(t, "key-1", keys[0].UUID)
+		assert.Equal(t, "api-1", keys[0].ArtifactUUID)
+		assert.Equal(t, "abc123", keys[0].APIKey)
+	}
+}
+
 func TestAPIUtilsService_ExtractDeploymentsFromBatchZip(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	cfg := PlatformAPIConfig{BaseURL: "http://localhost"}

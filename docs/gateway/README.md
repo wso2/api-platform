@@ -4,7 +4,7 @@ A complete API gateway system for managing, securing, and routing API traffic to
 
 ## Quick Start
 
-For step-by-step instructions on setting up and running the gateway using Docker Compose, including verifying the Gateway Controller admin health endpoint and deploying a sample REST API via `POST /rest-apis`, see the [Quick Start Guide](quick-start-guide.md).
+For step-by-step instructions on setting up and running the gateway using Docker Compose, including verifying the Gateway Controller admin health endpoint and deploying a sample REST API via `POST /api/management/v0.9/rest-apis`, see the [Quick Start Guide](quick-start-guide.md).
 
 ## Components
 
@@ -70,3 +70,4 @@ You can extend the gateway with your own policies or include specific policies f
 | [Analytics](analytics/) | Analytics integrations (Moesif) |
 | [REST APIs](../rest-apis/gateway/) | REST API authentication and usage |
 | [Policies and Guardrails](https://github.com/wso2/gateway-controllers/blob/main/docs/README.md) | Gateway policies and guardrails for API traffic control |
+| [Immutable Gateway](immutable-gateway.md) | File-based, GitOps-native gateway configuration |

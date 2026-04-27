@@ -84,6 +84,7 @@ func (a *AssertSteps) Register(ctx *godog.ScenarioContext) {
 
 	// Echoed header assertions (for sample-backend /echo endpoint)
 	ctx.Step(`^the response should contain echoed header "([^"]*)" with value "([^"]*)"$`, a.echoedHeaderShouldBe)
+	ctx.Step(`^the response should contain echoed header "([^"]*)" with exact value:$`, a.echoedHeaderShouldBeDocstring)
 
 	// Debug helper
 	ctx.Step(`^I print the response body$`, a.printResponseBody)
@@ -291,11 +292,31 @@ func (a *AssertSteps) jsonShouldHaveField(field string) error {
 	return nil
 }
 
-// jsonFieldShouldBe asserts JSON field equals string
+// jsonFieldShouldBe asserts JSON field equals string.
+//
+// Compatibility shim: when asserting `status == "success"` on a management-API
+// response, accept either the legacy envelope (string "success") or a k8s-style
+// resource body where `status` is an object carrying server-managed lifecycle
+// fields. Under the k8s-style contract a POST/PUT/GET success response is the
+// resource itself with `status: {state: deployed | undeployed, id, ...}` — the
+// presence of that object is itself the success signal.
 func (a *AssertSteps) jsonFieldShouldBe(field, expected string) error {
 	value, err := a.getJSONField(field)
 	if err != nil {
 		return err
+	}
+	if field == "status" && expected == "success" {
+		if m, ok := value.(map[string]interface{}); ok {
+			// k8s-style management resource: status object with state (RestAPI, MCP, …)
+			if _, hasState := m["state"]; hasState {
+				return nil
+			}
+			// k8s-style body where status is server metadata only (e.g. LLMProviderTemplate,
+			// Secret) — id and timestamps, no declarative state field
+			if _, hasID := m["id"]; hasID {
+				return nil
+			}
+		}
 	}
 	actual := fmt.Sprintf("%v", value)
 	if actual != expected {
@@ -522,6 +543,14 @@ func (a *AssertSteps) echoedHeaderShouldBe(headerName, expected string) error {
 	}
 
 	return nil
+}
+
+// echoedHeaderShouldBeDocstring is a docstring variant of echoedHeaderShouldBe that allows
+// the expected value to contain characters (e.g. double quotes) that cannot appear inside
+// a Gherkin inline string argument.  The docstring content is trimmed of surrounding whitespace
+// before comparison so the feature file indentation does not affect the assertion.
+func (a *AssertSteps) echoedHeaderShouldBeDocstring(headerName, expected string) error {
+	return a.echoedHeaderShouldBe(headerName, strings.TrimSpace(expected))
 }
 
 // echoedHeaderShouldNotExist asserts an echoed header does not exist

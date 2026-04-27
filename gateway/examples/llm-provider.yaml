@@ -19,18 +19,18 @@
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProvider
 metadata:
-  name: wso2-openai-provider
+  name: my-llm-provider
 spec:
-  displayName: WSO2 OpenAI Provider
+  displayName: WSO2 My LLM Provider
   version: v1.0
-  template: openai
-  vhost: api.openai.local
+  template: my-llm-provider-template
+  vhost: api.my-llm-provider.local
   upstream:
-    url: https://api.openai.com/v1
+    url: https://httpbin.org/anything/v1
     auth:
       type: api-key
       header: Authorization
-      value: <openai_apikey>
+      value: api_key_abc123
   accessControl:
     mode: deny_all
     exceptions:

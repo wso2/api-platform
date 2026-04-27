@@ -7,9 +7,10 @@ metadata:
   name: {{ include "gateway-operator.fullname" . }}-controller
   labels:
     {{- include "gateway-operator.componentLabels" (list . "controller" $service.labels) | nindent 4 }}
-  {{- if $service.annotations }}
+  {{- $annotations := merge (deepCopy (default (dict) .Values.commonAnnotations)) (default (dict) $service.annotations) }}
+  {{- if $annotations }}
   annotations:
-    {{- toYaml $service.annotations | nindent 4 }}
+    {{- toYaml $annotations | nindent 4 }}
   {{- end }}
 spec:
   type: {{ $service.type }}

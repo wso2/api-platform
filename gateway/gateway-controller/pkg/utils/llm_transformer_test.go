@@ -78,7 +78,7 @@ func TestLLMProviderTransformer_TransformProvider_ReadsTemplateFromDB(t *testing
 		UUID: "0000-db-template-id-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.LlmProviderTemplate,
+			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata:   api.Metadata{Name: "openai"},
 			Spec: api.LLMProviderTemplateData{
 				DisplayName: "openai",
@@ -94,7 +94,7 @@ func TestLLMProviderTransformer_TransformProvider_ReadsTemplateFromDB(t *testing
 
 	provider := &api.LLMProviderConfiguration{
 		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.LlmProvider,
+		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata:   api.Metadata{Name: "db-backed-provider"},
 		Spec: api.LLMProviderConfigData{
 			DisplayName: "db-backed-provider",
@@ -121,7 +121,7 @@ func TestLLMProviderTransformer_TransformProxy_ReadsProviderAndTemplateFromDB(t 
 		UUID: "0000-db-template-id-0000-000000000001",
 		Configuration: api.LLMProviderTemplate{
 			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.LlmProviderTemplate,
+			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata:   api.Metadata{Name: "openai"},
 			Spec: api.LLMProviderTemplateData{
 				DisplayName: "openai",
@@ -133,7 +133,7 @@ func TestLLMProviderTransformer_TransformProxy_ReadsProviderAndTemplateFromDB(t 
 	now := time.Now()
 	providerSourceConfig := api.LLMProviderConfiguration{
 		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.LlmProvider,
+		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata:   api.Metadata{Name: "db-provider"},
 		Spec: api.LLMProviderConfigData{
 			DisplayName: "db-provider",
@@ -148,7 +148,7 @@ func TestLLMProviderTransformer_TransformProxy_ReadsProviderAndTemplateFromDB(t 
 	}
 	providerRuntimeConfig := api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Metadata:   api.Metadata{Name: "db-provider"},
 		Spec: api.APIConfigData{
 			DisplayName: "db-provider",
@@ -164,7 +164,7 @@ func TestLLMProviderTransformer_TransformProxy_ReadsProviderAndTemplateFromDB(t 
 	}
 	provider := &models.StoredConfig{
 		UUID:                "0000-db-provider-id-0000-000000000000",
-		Kind:                string(api.LlmProvider),
+		Kind:                string(api.LLMProviderConfigurationKindLlmProvider),
 		Handle:              "db-provider",
 		DisplayName:         "db-provider",
 		Version:             "v1.0",
@@ -183,7 +183,7 @@ func TestLLMProviderTransformer_TransformProxy_ReadsProviderAndTemplateFromDB(t 
 
 	proxy := &api.LLMProxyConfiguration{
 		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.LlmProxy,
+		Kind:       api.LLMProxyConfigurationKindLlmProxy,
 		Metadata:   api.Metadata{Name: "db-proxy"},
 		Spec: api.LLMProxyConfigData{
 			DisplayName: "db-proxy",
@@ -845,7 +845,7 @@ func TestTransformProvider_AllowAllMode(t *testing.T) {
 	result, err := transformer.Transform(provider, output)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
-	assert.Equal(t, api.RestApi, result.Kind)
+	assert.Equal(t, api.RestAPIKindRestApi, result.Kind)
 }
 
 func TestTransformProvider_DenyAllMode(t *testing.T) {
@@ -891,7 +891,7 @@ func TestTransformProvider_DenyAllMode(t *testing.T) {
 	result, err := transformer.Transform(provider, output)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
-	assert.Equal(t, api.RestApi, result.Kind)
+	assert.Equal(t, api.RestAPIKindRestApi, result.Kind)
 }
 
 func TestTransformProvider_ExpandsWildcardPolicyPathWithTemplateMappings(t *testing.T) {
@@ -1113,7 +1113,7 @@ func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 
 	storedProvider := &models.StoredConfig{
 		UUID:                "0000-prov-cfg-1-0000-000000000000",
-		Kind:                string(api.LlmProvider),
+		Kind:                string(api.LLMProviderConfigurationKindLlmProvider),
 		Handle:              "openai-provider",
 		DisplayName:         "OpenAI Provider",
 		Version:             "v1.0",

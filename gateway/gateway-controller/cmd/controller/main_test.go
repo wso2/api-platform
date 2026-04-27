@@ -276,7 +276,7 @@ func TestDerivePolicyFromAPIConfig(t *testing.T) {
 		// resolved versions.
 
 		apiConfig := api.RestAPI{
-			Kind: api.RestApi,
+			Kind: api.RestAPIKindRestApi,
 			Metadata: api.Metadata{
 				Name: "test-api-mixed-majors",
 			},
@@ -312,7 +312,7 @@ func TestDerivePolicyFromAPIConfig(t *testing.T) {
 		}
 		cfg := &models.StoredConfig{
 			UUID:                "0000-test-mixed-majors-0000-000000",
-			Kind:                string(api.RestApi),
+			Kind:                string(api.RestAPIKindRestApi),
 			Configuration:       apiConfig,
 			SourceConfiguration: apiConfig,
 		}
@@ -354,12 +354,12 @@ func TestDerivePolicyFromAPIConfig_InvalidConfig(t *testing.T) {
 	t.Run("Invalid API spec returns nil", func(t *testing.T) {
 		// Create a config with an empty spec
 		apiConfig := api.RestAPI{
-			Kind: api.RestApi,
+			Kind: api.RestAPIKindRestApi,
 			Spec: api.APIConfigData{}, // Empty spec
 		}
 		cfg := &models.StoredConfig{
 			UUID:                "0000-invalid-api-0000-000000000000",
-			Kind:                string(api.RestApi),
+			Kind:                string(api.RestAPIKindRestApi),
 			Configuration:       apiConfig,
 			SourceConfiguration: apiConfig,
 		}
@@ -417,7 +417,7 @@ func createTestStoredConfig(name, version, context string, apiPolicies []api.Pol
 	}
 
 	apiConfig := api.RestAPI{
-		Kind: api.RestApi,
+		Kind: api.RestAPIKindRestApi,
 		Metadata: api.Metadata{
 			Name: name,
 		},
@@ -425,7 +425,7 @@ func createTestStoredConfig(name, version, context string, apiPolicies []api.Pol
 	}
 	return &models.StoredConfig{
 		UUID:                "0000-" + name + "-0000-000000000000",
-		Kind:                string(api.RestApi),
+		Kind:                string(api.RestAPIKindRestApi),
 		Handle:              name,
 		DisplayName:         "Test API",
 		Version:             version,
@@ -470,7 +470,7 @@ func createTestStoredConfigWithSandbox(name, version, context string, apiPolicie
 	}
 
 	apiConfig := api.RestAPI{
-		Kind: api.RestApi,
+		Kind: api.RestAPIKindRestApi,
 		Metadata: api.Metadata{
 			Name: name,
 		},
@@ -478,7 +478,7 @@ func createTestStoredConfigWithSandbox(name, version, context string, apiPolicie
 	}
 	return &models.StoredConfig{
 		UUID:                "0000-" + name + "-0000-000000000000",
-		Kind:                string(api.RestApi),
+		Kind:                string(api.RestAPIKindRestApi),
 		Handle:              name,
 		DisplayName:         "Test API",
 		Version:             version,
@@ -526,7 +526,7 @@ func createTestStoredConfigWithVhosts(name, version, context string, apiPolicies
 	}
 
 	apiConfig := api.RestAPI{
-		Kind: api.RestApi,
+		Kind: api.RestAPIKindRestApi,
 		Metadata: api.Metadata{
 			Name: name,
 		},
@@ -534,7 +534,7 @@ func createTestStoredConfigWithVhosts(name, version, context string, apiPolicies
 	}
 	return &models.StoredConfig{
 		UUID:                "0000-" + name + "-0000-000000000000",
-		Kind:                string(api.RestApi),
+		Kind:                string(api.RestAPIKindRestApi),
 		Handle:              name,
 		DisplayName:         "Test API",
 		Version:             version,
@@ -681,20 +681,30 @@ func TestGenerateAuthConfig(t *testing.T) {
 
 		authConfig := generateAuthConfig(cfg)
 
-		// Check some expected resource roles
+		// Check some expected resource roles (keys are prefixed with managementAPIBasePath)
+		assert.Contains(t, authConfig.ResourceRoles, "POST "+managementAPIBasePath+"/rest-apis")
+		assert.Contains(t, authConfig.ResourceRoles, "GET "+managementAPIBasePath+"/rest-apis")
+		assert.Contains(t, authConfig.ResourceRoles, "POST "+managementAPIBasePath+"/llm-providers/:id/api-keys")
+		assert.Contains(t, authConfig.ResourceRoles, "GET "+managementAPIBasePath+"/llm-providers/:id/api-keys")
+		assert.Contains(t, authConfig.ResourceRoles, "POST "+managementAPIBasePath+"/llm-proxies/:id/api-keys")
+		assert.Contains(t, authConfig.ResourceRoles, "GET "+managementAPIBasePath+"/llm-proxies/:id/api-keys")
+		assert.Contains(t, authConfig.ResourceRoles, "GET "+managementAPIBasePath+"/policies")
+		// Admin API paths are served separately and must not leak into management auth config.
+		assert.NotContains(t, authConfig.ResourceRoles, "GET "+managementAPIBasePath+"/config_dump")
+		assert.NotContains(t, authConfig.ResourceRoles, "GET "+managementAPIBasePath+"/xds_sync_status")
+
+		// Legacy unprefixed keys must also be present while the deprecated
+		// routes continue to be supported.
 		assert.Contains(t, authConfig.ResourceRoles, "POST /rest-apis")
 		assert.Contains(t, authConfig.ResourceRoles, "GET /rest-apis")
-		assert.Contains(t, authConfig.ResourceRoles, "POST /llm-providers/:id/api-keys")
-		assert.Contains(t, authConfig.ResourceRoles, "GET /llm-providers/:id/api-keys")
-		assert.Contains(t, authConfig.ResourceRoles, "POST /llm-proxies/:id/api-keys")
-		assert.Contains(t, authConfig.ResourceRoles, "GET /llm-proxies/:id/api-keys")
 		assert.Contains(t, authConfig.ResourceRoles, "GET /policies")
-		assert.NotContains(t, authConfig.ResourceRoles, "GET /config_dump")
-		assert.NotContains(t, authConfig.ResourceRoles, "GET /xds_sync_status")
 
 		// Check role assignments
-		assert.Contains(t, authConfig.ResourceRoles["POST /rest-apis"], "admin")
-		assert.Contains(t, authConfig.ResourceRoles["POST /rest-apis"], "developer")
+		postRestAPIs := "POST " + managementAPIBasePath + "/rest-apis"
+		assert.Contains(t, authConfig.ResourceRoles[postRestAPIs], "admin")
+		assert.Contains(t, authConfig.ResourceRoles[postRestAPIs], "developer")
+		// Legacy key carries the same role assignments.
+		assert.Equal(t, authConfig.ResourceRoles[postRestAPIs], authConfig.ResourceRoles["POST /rest-apis"])
 	})
 }
 
@@ -827,7 +837,7 @@ func createTestStoredConfigMultipleOps(name, version, context string, apiPolicie
 	}
 
 	apiConfig := api.RestAPI{
-		Kind: api.RestApi,
+		Kind: api.RestAPIKindRestApi,
 		Metadata: api.Metadata{
 			Name: name,
 		},
@@ -835,7 +845,7 @@ func createTestStoredConfigMultipleOps(name, version, context string, apiPolicie
 	}
 	return &models.StoredConfig{
 		UUID:                "0000-" + name + "-0000-000000000000",
-		Kind:                string(api.RestApi),
+		Kind:                string(api.RestAPIKindRestApi),
 		Handle:              name,
 		DisplayName:         "Test API",
 		Version:             version,

@@ -414,7 +414,7 @@ func (s *APIServer) resolveAPIIDByHandle(c *gin.Context, handle string, log *slo
 			return "", fmt.Errorf("database error")
 		}
 	} else if cfgByID != nil {
-		if cfgByID.Kind != string(api.RestApi) {
+		if cfgByID.Kind != string(api.RestAPIKindRestApi) {
 			log.Warn("Configuration is not a REST API",
 				slog.String("id", handle),
 				slog.String("kind", cfgByID.Kind))

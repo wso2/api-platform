@@ -1,0 +1,8 @@
+# Required by Gateway API before a Gateway can be created.
+# controllerName can be any unique string; this operator reconciles Gateways by gatewayClassName + config allowlist, not by implementing GatewayClass.
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: wso2-api-platform
+spec:
+  controllerName: gateway.api-platform.wso2.com/gateway-operator

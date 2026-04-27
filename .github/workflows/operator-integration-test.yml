@@ -696,7 +696,7 @@ jobs:
                     priorityClassName: ""
                     livenessProbe:
                       httpGet:
-                        path: /health
+                        path: /api/admin/v0.9/health
                         port: admin
                       initialDelaySeconds: 10
                       periodSeconds: 10
@@ -704,7 +704,7 @@ jobs:
                       failureThreshold: 3
                     readinessProbe:
                       httpGet:
-                        path: /health
+                        path: /api/admin/v0.9/health
                         port: admin
                       initialDelaySeconds: 5
                       periodSeconds: 5
@@ -1063,7 +1063,7 @@ jobs:
           PF_PID=$!
           sleep 5
 
-          HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9092/health)
+          HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9092/api/admin/v0.9/health)
           echo "Controller Health Status: $HEALTH_STATUS"
           
           kill $PF_PID || true

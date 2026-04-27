@@ -154,6 +154,13 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 					entry.ThrottleLimitUnit = *plan.ThrottleLimitUnit
 				}
 				entry.StopOnQuotaReach = plan.StopOnQuotaReach
+				entry.PlanName = plan.PlanName
+			}
+			if s.BillingCustomerID != nil {
+				entry.BillingCustomerId = s.BillingCustomerID
+			}
+			if s.BillingSubscriptionID != nil {
+				entry.BillingSubscriptionId = s.BillingSubscriptionID
 			}
 			subs = append(subs, entry)
 		}

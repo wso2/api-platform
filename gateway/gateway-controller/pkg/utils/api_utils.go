@@ -50,10 +50,18 @@ type PlatformAPIConfig struct {
 
 // APIUtilsService provides utilities for API operations
 type APIUtilsService struct {
-	mu     sync.RWMutex
-	config PlatformAPIConfig
-	logger *slog.Logger
-	client *http.Client
+	mu          sync.RWMutex
+	config      PlatformAPIConfig
+	logger      *slog.Logger
+	client      *http.Client
+	cachedToken string    // Cached OAuth2 access token
+	tokenExpiry time.Time // Token expiry time
+	// OAuth2 credentials for dynamic token generation
+	ClientID     string // OAuth2 client ID
+	ClientSecret string // OAuth2 client secret
+	Username     string // Resource owner username
+	Password     string // Resource owner password
+	TokenURL     string // Token endpoint URL
 }
 
 // NewAPIUtilsService creates a new API utilities service
@@ -301,24 +309,24 @@ func (s *APIUtilsService) FetchSubscriptionsForAPI(apiID string) ([]models.Subsc
 // controlPlaneAPIKey is the API key response from the control plane REST API.
 // The APIKeyHashes field holds a map of hash algorithm → hash value (e.g. {"sha256": "abc123..."}).
 type controlPlaneAPIKey struct {
-	ETag         string            `json:"etag"`
-	UUID         string            `json:"uuid"`
-	Name         string            `json:"name"`
-	MaskedAPIKey string            `json:"maskedApiKey"`
-	APIKeyHashes map[string]string `json:"apiKeyHashes"`
-	ArtifactUUID string            `json:"artifactUuid"`
-	Status       string            `json:"status"`
-	CreatedAt    time.Time         `json:"createdAt"`
-	CreatedBy    string            `json:"createdBy"`
-	UpdatedAt    time.Time         `json:"updatedAt"`
-	ExpiresAt    *time.Time        `json:"expiresAt"`
-	Source       string            `json:"source"`
-	ExternalRefId *string          `json:"externalRefId"`
-	Issuer       *string           `json:"issuer,omitempty"`
+	ETag          string            `json:"etag"`
+	UUID          string            `json:"uuid"`
+	Name          string            `json:"name"`
+	MaskedAPIKey  string            `json:"maskedApiKey"`
+	APIKeyHashes  map[string]string `json:"apiKeyHashes"`
+	ArtifactUUID  string            `json:"artifactUuid"`
+	Status        string            `json:"status"`
+	CreatedAt     time.Time         `json:"createdAt"`
+	CreatedBy     string            `json:"createdBy"`
+	UpdatedAt     time.Time         `json:"updatedAt"`
+	ExpiresAt     *time.Time        `json:"expiresAt"`
+	Source        string            `json:"source"`
+	ExternalRefId *string           `json:"externalRefId"`
+	Issuer        *string           `json:"issuer,omitempty"`
 }
 
 // FetchAPIKeysByKind fetches all API keys for the given artifact kind from the control plane.
-// Supported kinds: KindLlmProvider, KindLlmProxy, KindRestApi.
+// Supported kinds: KindLlmProvider, KindLlmProxy, KindRestApi, KindWebSubApi.
 // When issuer is non-empty it is appended as a query parameter so the server returns
 // only keys matching that issuer; an empty issuer fetches all keys for the kind.
 // Only active keys that carry a sha256 hash are returned; others are skipped.
@@ -332,6 +340,8 @@ func (s *APIUtilsService) FetchAPIKeysByKind(artifactKind, issuer string) ([]mod
 		path = "/llm-proxies/api-keys"
 	case models.KindRestApi:
 		path = "/apis/api-keys"
+	case models.KindWebSubApi:
+		path = "/websub-apis/api-keys"
 	default:
 		return nil, fmt.Errorf("unsupported artifact kind for API key fetch: %s", artifactKind)
 	}
@@ -618,6 +628,47 @@ func (s *APIUtilsService) FetchMCPProxyDefinition(proxyID string) ([]byte, error
 
 	s.logger.Debug("Successfully fetched MCP proxy definition",
 		slog.String("proxy_id", proxyID),
+		slog.Int("size_bytes", len(bodyBytes)),
+	)
+
+	return bodyBytes, nil
+}
+
+// FetchWebSubAPIDefinition downloads the WebSub API definition as a zip file from the control plane
+func (s *APIUtilsService) FetchWebSubAPIDefinition(apiID string) ([]byte, error) {
+	apiURL := s.getBaseURL() + "/websub-apis/" + apiID
+
+	s.logger.Debug("Fetching WebSub API definition",
+		slog.String("api_id", apiID),
+		slog.String("url", apiURL),
+	)
+
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Add("api-key", s.config.Token)
+	req.Header.Add("Accept", "application/zip")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch WebSub API definition: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("WebSub API request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	s.logger.Debug("Successfully fetched WebSub API definition",
+		slog.String("api_id", apiID),
 		slog.Int("size_bytes", len(bodyBytes)),
 	)
 

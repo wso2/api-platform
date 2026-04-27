@@ -110,3 +110,33 @@ type MCPProxyUpstream struct {
 	URL  string        `yaml:"url" binding:"required"`
 	Auth *UpstreamAuth `json:"auth,omitempty"`
 }
+
+// WebSubAPIDeploymentYAML represents the structure of the YAML used for deploying a WebSub API
+type WebSubAPIDeploymentYAML struct {
+	ApiVersion string                  `yaml:"apiVersion"`
+	Kind       string                  `yaml:"kind"`
+	Metadata   DeploymentMetadata      `yaml:"metadata"`
+	Spec       WebSubAPIDeploymentSpec `yaml:"spec"`
+}
+
+// WebSubAPIDeploymentSpec represents the spec section of the WebSub API deployment YAML
+type WebSubAPIDeploymentSpec struct {
+	DisplayName string                       `yaml:"displayName"`
+	Version     string                       `yaml:"version"`
+	Context     string                       `yaml:"context"`
+	Vhosts      *WebSubAPIDeploymentVhosts   `yaml:"vhosts,omitempty"`
+	Channels    []WebSubAPIDeploymentChannel `yaml:"channels,omitempty"`
+	Policies    []Policy                     `yaml:"policies,omitempty"`
+}
+
+// WebSubAPIDeploymentVhosts represents vhost configuration in the WebSub API deployment YAML
+type WebSubAPIDeploymentVhosts struct {
+	Main    string  `yaml:"main"`
+	Sandbox *string `yaml:"sandbox,omitempty"`
+}
+
+// WebSubAPIDeploymentChannel represents a channel in the WebSub API deployment YAML
+type WebSubAPIDeploymentChannel struct {
+	Name   string `yaml:"name"`
+	Method string `yaml:"method"`
+}

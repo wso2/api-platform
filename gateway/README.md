@@ -37,7 +37,7 @@ make build-gateway-builder
 
 ```bash
 docker compose up -d
-curl http://localhost:9090/health
+curl http://localhost:9092/api/admin/v0.9/health
 ```
 
 ### Test

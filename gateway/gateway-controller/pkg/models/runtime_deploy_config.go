@@ -30,6 +30,7 @@ type RuntimeDeployConfig struct {
 	Routes              map[string]*Route
 	PolicyChains        map[string]*PolicyChain
 	UpstreamClusters    map[string]*UpstreamCluster
+	SensitiveValues     []string // resolved secret plaintext values for redaction; populated from StoredConfig.SensitiveValues
 }
 
 // Metadata contains identity information for the deployed API.

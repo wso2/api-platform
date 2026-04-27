@@ -62,22 +62,22 @@ Given I set header "Content-Type" to "application/json"
 Given I clear all headers
 
 # GET requests
-When I send a GET request to "http://localhost:9092/health"
+When I send a GET request to "http://localhost:9092/api/admin/v0.9/health"
 When I send a GET request to the "gateway-controller-admin" service at "/health"
 
 # POST requests
-When I send a POST request to "http://localhost:9090/api"
-When I send a POST request to "http://localhost:9090/api" with body:
+When I send a POST request to "http://localhost:9090/api/management/v0.9/rest-apis"
+When I send a POST request to "http://localhost:9090/api/management/v0.9/rest-apis" with body:
   """
   {"name": "test"}
   """
 
 # PUT/PATCH/DELETE
-When I send a PUT request to "http://localhost:9090/api/1" with body:
+When I send a PUT request to "http://localhost:9090/api/management/v0.9/rest-apis/1" with body:
   """
   {"name": "updated"}
   """
-When I send a DELETE request to "http://localhost:9090/api/1"
+When I send a DELETE request to "http://localhost:9090/api/management/v0.9/rest-apis/1"
 ```
 
 ### Assertion Steps (from `steps/assert_steps.go`)
@@ -233,7 +233,7 @@ docker compose -f docker-compose.test.yaml -p gateway-it logs -f
 ### Check service health
 
 ```bash
-curl http://localhost:9092/health
+curl http://localhost:9092/api/admin/v0.9/health
 curl http://localhost:9901/ready
 ```
 

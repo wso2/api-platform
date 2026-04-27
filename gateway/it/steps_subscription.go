@@ -82,4 +82,29 @@ func RegisterSubscriptionSteps(ctx *godog.ScenarioContext, state *TestState, htt
 		time.Sleep(policyPropagationDelay)
 		return nil
 	})
+
+	ctx.Step(`^I create a monetized subscription for API "([^"]*)" with plan, token "([^"]*)", billing customer "([^"]*)" and billing subscription "([^"]*)"$`,
+		func(apiHandle, token, billingCustomerID, billingSubscriptionID string) error {
+			planID, ok := state.GetContextString("planId")
+			if !ok {
+				return fmt.Errorf("planId not found in context; create a subscription plan first and store its id")
+			}
+			body := fmt.Sprintf(`{"apiHandle":"%s","subscriptionToken":"%s","subscriptionPlanId":"%s","billingCustomerId":"%s","billingSubscriptionId":"%s"}`,
+				apiHandle, token, planID, billingCustomerID, billingSubscriptionID)
+			httpSteps.SetHeader("Content-Type", "application/json")
+			err := httpSteps.SendPOSTToService("mock-platform-api", "/inject-subscription", &godog.DocString{Content: body})
+			if err != nil {
+				return err
+			}
+			time.Sleep(policyPropagationDelay)
+			return nil
+		})
+
+	ctx.Step(`^I delete the subscription plan with stored id "([^"]*)"$`, func(contextKey string) error {
+		planID, ok := state.GetContextString(contextKey)
+		if !ok {
+			return fmt.Errorf("%q not found in context", contextKey)
+		}
+		return httpSteps.SendDELETEToService("gateway-controller", "/subscription-plans/"+planID)
+	})
 }

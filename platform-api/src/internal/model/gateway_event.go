@@ -174,6 +174,39 @@ type MCPProxyDeletionEvent struct {
 	ProxyId string `json:"proxyId"`
 }
 
+// WebSubAPIDeploymentEvent contains payload data for "websub.deployed" event type.
+// This event is sent when a WebSub API is successfully deployed to a gateway.
+type WebSubAPIDeploymentEvent struct {
+	// ApiId identifies the deployed WebSub API (UUID)
+	ApiId string `json:"apiId"`
+
+	// DeploymentID identifies the specific deployment artifact
+	DeploymentID string `json:"deploymentId"`
+
+	// PerformedAt is the timestamp when the deployment was initiated (concurrency token)
+	PerformedAt time.Time `json:"performedAt"`
+}
+
+// WebSubAPIUndeploymentEvent contains payload data for "websub.undeployed" event type.
+// This event is sent when a WebSub API is undeployed from a gateway.
+type WebSubAPIUndeploymentEvent struct {
+	// ApiId identifies the undeployed WebSub API (UUID)
+	ApiId string `json:"apiId"`
+
+	// DeploymentID identifies the specific deployment being undeployed
+	DeploymentID string `json:"deploymentId"`
+
+	// PerformedAt is the timestamp when the undeployment was initiated (concurrency token)
+	PerformedAt time.Time `json:"performedAt"`
+}
+
+// WebSubAPIDeletionEvent contains payload data for "websub.deleted" event type.
+// This event is sent when a WebSub API is permanently deleted from the platform.
+type WebSubAPIDeletionEvent struct {
+	// ApiId identifies the deleted WebSub API (UUID)
+	ApiId string `json:"apiId"`
+}
+
 // LLMProviderDeletionEvent contains payload data for "llmprovider.deleted" event type.
 // This event is sent when an LLM provider is permanently deleted from the platform.
 type LLMProviderDeletionEvent struct {

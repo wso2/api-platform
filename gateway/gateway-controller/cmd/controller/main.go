@@ -20,7 +20,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption/aesgcm"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventlistener"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/subscriptionxds"
 
@@ -36,6 +35,8 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/immutable"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
@@ -46,6 +47,14 @@ var (
 	Version   = "dev"
 	GitCommit = "unknown"
 	BuildDate = "unknown"
+)
+
+// API base paths for the gateway-controller HTTP surfaces.
+// These must stay in sync with the `servers.url` values in the OpenAPI specs
+// (api/management-openapi.yaml and api/admin-openapi.yaml).
+const (
+	managementAPIBasePath = "/api/management/v0.9"
+	adminAPIBasePath      = "/api/admin/v0.9"
 )
 
 func toBackendConfig(cfg *config.Config) storage.BackendConfig {
@@ -116,6 +125,17 @@ func main() {
 
 	if !cfg.Controller.Auth.Basic.Enabled && !cfg.Controller.Auth.IDP.Enabled {
 		log.Warn("No authentication configured: both basic auth and IDP are disabled. Gateway Controller API will allow all requests without authentication")
+	}
+
+	// In immutable mode, delete any stale SQLite files before opening the DB to
+	// guarantee a fresh, reproducible state on every boot.
+	if cfg.ImmutableGateway.Enabled {
+		log.Info("Immutable gateway mode enabled — removing existing SQLite files for fresh start",
+			slog.String("path", cfg.Controller.Storage.SQLite.Path))
+		if err := immutable.ResetSQLiteFiles(cfg.Controller.Storage.SQLite.Path, log); err != nil {
+			log.Error("Failed to reset SQLite files for immutable mode", slog.Any("error", err))
+			os.Exit(1)
+		}
 	}
 
 	// Initialize storage based on type
@@ -357,13 +377,11 @@ func main() {
 	// Initialize policy xDS server
 	log.Info("Initializing Policy xDS server", slog.Int("port", cfg.Controller.PolicyServer.Port))
 
-	// Initialize policy resolver
-	policyResolver := resolver.NewPolicyResolver(policyDefinitions, secretsService)
-
 	// Initialize policy snapshot manager and runtime config store
 	policySnapshotManager := policyxds.NewSnapshotManager(log)
 	runtimeStore := storage.NewRuntimeConfigStore()
 	policySnapshotManager.SetRuntimeStore(runtimeStore)
+	policySnapshotManager.SetConfigStore(configStore)
 
 	// Initialize subscription snapshot manager (driven by DB storage)
 	subscriptionSnapshotManager := subscriptionxds.NewSnapshotManager(db, log)
@@ -387,7 +405,7 @@ func main() {
 	loadedCount, err := loadRuntimeConfigsFromExistingAPIConfigurations(
 		loadedAPIs,
 		runtimeStore,
-		policyResolver,
+		secretsService,
 		transformerRegistry,
 		log,
 		cfg.Controller.Server.SkipInvalidDeploymentsOnStartup,
@@ -450,6 +468,11 @@ func main() {
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
 	validator.SetPolicyValidator(policyValidator)
 
+	apiSvc := utils.NewAPIDeploymentService(configStore, db, snapshotManager, validator, &cfg.Router, eventHubInstance, gatewayID, secretsService)
+	mcpSvc := utils.NewMCPDeploymentService(configStore, db, snapshotManager, policyManager, policyValidator, eventHubInstance, gatewayID)
+	llmSvc := utils.NewLLMDeploymentService(configStore, db, snapshotManager, lazyResourceXDSManager, templateDefinitions,
+		apiSvc, &cfg.Router, policyVersionResolver, policyValidator)
+
 	// Initialize and start control plane client with dependencies for API creation and API key management
 	cpClient := controlplane.NewClient(
 		cfg.Controller.ControlPlane,
@@ -465,12 +488,21 @@ func main() {
 		templateDefinitions,
 		subscriptionSnapshotManager,
 		eventHubInstance,
-		policyResolver,
+		secretsService,
 	)
 	if err := cpClient.Start(); err != nil {
 		log.Error("Failed to start control plane client", slog.Any("error", err))
 		// Don't fail startup - gateway can run in degraded mode without control plane
 	}
+
+	restAPIService := restapi.NewRestAPIService(
+		configStore, db, snapshotManager, policyManager,
+		apiSvc, apiKeyXDSManager,
+		cpClient, &cfg.Router, cfg,
+		&http.Client{Timeout: 10 * time.Second}, config.NewParser(), validator, log,
+		eventHubInstance, secretsService,
+	)
+	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc)
 
 	// Initialize Gin router
 	if os.Getenv("GIN_MODE") == "" {
@@ -513,7 +545,7 @@ func main() {
 		log,
 		cfg,
 		policyDefinitions,
-		policyResolver,
+		secretsService,
 	)
 	if err := evtListener.Start(); err != nil {
 		log.Error("Failed to start event listener", slog.Any("error", err))
@@ -538,8 +570,14 @@ func main() {
 		eventHubInstance,
 		subscriptionSnapshotManager,
 		secretsService,
-		policyResolver,
+		restAPIService,
 	)
+
+	// Load immutable gateway artifacts from the filesystem (no-op when immutable mode is disabled).
+	if err := igw.LoadArtifacts(log); err != nil {
+		log.Error("Failed to load immutable gateway artifacts", slog.Any("error", err))
+		os.Exit(1)
+	}
 
 	// Ensure initial lazy resource snapshot includes default templates loaded from files.
 	// At this point, the API server initialization has already persisted/published OOB templates.
@@ -555,8 +593,25 @@ func main() {
 		cancel()
 	}
 
-	// Register API routes (includes certificate management endpoints from OpenAPI spec)
-	api.RegisterHandlers(router, apiServer)
+	// Register immutable gateway middleware (passthrough when immutable mode is disabled).
+	router.Use(igw.Middleware())
+
+	// Register API routes under the versioned base path (includes certificate
+	// management endpoints from OpenAPI spec).
+	api.RegisterHandlersWithOptions(router, apiServer, api.GinServerOptions{
+		BaseURL: managementAPIBasePath,
+	})
+
+	// Also register the same routes on the legacy unprefixed paths for
+	// backwards compatibility. These are deprecated; responses include
+	// RFC 8594 `Deprecation: true` and a `Link` header pointing to the new
+	// versioned path so clients can migrate. Remove once all known clients
+	// have switched to the versioned base path.
+	api.RegisterHandlersWithOptions(router, apiServer, api.GinServerOptions{
+		Middlewares: []api.MiddlewareFunc{
+			deprecatedManagementPathMiddleware(managementAPIBasePath),
+		},
+	})
 
 	// Start controller admin server for debug endpoints if enabled.
 	var controllerAdminServer *adminserver.Server
@@ -688,7 +743,17 @@ func main() {
 }
 
 func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
-	var DefaultResourceRoles = map[string][]string{
+	// prefixed builds a resource key of the form "<METHOD> <managementAPIBasePath><path>"
+	// matching the actual routes registered via RegisterHandlersWithOptions(BaseURL=managementAPIBasePath).
+	prefixed := func(methodAndPath string) string {
+		idx := strings.Index(methodAndPath, " ")
+		if idx < 0 {
+			return methodAndPath
+		}
+		return methodAndPath[:idx+1] + managementAPIBasePath + methodAndPath[idx+1:]
+	}
+
+	relativeRoles := map[string][]string{
 		"POST /rest-apis":       {"admin", "developer"},
 		"GET /rest-apis":        {"admin", "developer"},
 		"GET /rest-apis/:id":    {"admin", "developer"},
@@ -770,6 +835,15 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		"PUT /secrets/:id":    {"admin"},
 		"DELETE /secrets/:id": {"admin"},
 	}
+
+	// Populate both the versioned and legacy (unprefixed) keys so the auth
+	// middleware matches either route form. The legacy form is deprecated and
+	// will be removed in a future release.
+	DefaultResourceRoles := make(map[string][]string, len(relativeRoles)*2)
+	for methodAndPath, roles := range relativeRoles {
+		DefaultResourceRoles[prefixed(methodAndPath)] = roles
+		DefaultResourceRoles[methodAndPath] = roles
+	}
 	basicAuth := commonmodels.BasicAuth{Enabled: false}
 	idpAuth := commonmodels.IDPConfig{Enabled: false}
 	if config.Controller.Auth.Basic.Enabled {
@@ -796,4 +870,24 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		ResourceRoles: DefaultResourceRoles,
 	}
 	return authConfig
+}
+
+// deprecatedManagementPathMiddleware returns a Gin middleware that marks
+// responses served on the legacy unprefixed management API paths as
+// deprecated, following RFC 8594. It adds:
+//   - `Deprecation: true`
+//   - `Link: <newBasePath+path>; rel="successor-version"`
+//   - `Warning: 299 - "Deprecated API: use <newBasePath> prefix"`
+//
+// The middleware is attached only to the second (legacy) registration of the
+// management API routes; requests to the versioned base path bypass it.
+func deprecatedManagementPathMiddleware(newBasePath string) api.MiddlewareFunc {
+	return func(c *gin.Context) {
+		successor := newBasePath + c.Request.URL.Path
+		c.Writer.Header().Set("Deprecation", "true")
+		c.Writer.Header().Set("Link", fmt.Sprintf("<%s>; rel=\"successor-version\"", successor))
+		c.Writer.Header().Set("Warning",
+			fmt.Sprintf("299 - \"Deprecated API: migrate to %s prefix\"", newBasePath))
+		c.Next()
+	}
 }

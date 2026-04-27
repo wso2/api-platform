@@ -1,0 +1,86 @@
+name: python-body-buffer-modifier
+version: v1.0.0
+displayName: Python Body Buffer Modifier
+description: |
+  Exercises buffered request-body and response-body execution for the Python runtime.
+  This sample mutates complete request and response bodies, can rewrite routing at
+  request-body time, can replace either side with ImmediateResponse, updates shared
+  metadata across phases, and emits dynamic metadata plus analytics header filters.
+
+parameters:
+  type: object
+  properties:
+    requestPrefix:
+      type: string
+      default: "[python-buffer-request] "
+    requestSuffix:
+      type: string
+      default: ""
+    responsePrefix:
+      type: string
+      default: "[python-buffer-response] "
+    responseSuffix:
+      type: string
+      default: ""
+    requestHeadersToRemove:
+      type: array
+      items:
+        type: string
+      default: []
+    responseHeadersToRemove:
+      type: array
+      items:
+        type: string
+      default: []
+    upstreamName:
+      type: string
+    rewritePath:
+      type: string
+    rewriteHost:
+      type: string
+    rewriteMethod:
+      type: string
+    queryParamToAddName:
+      type: string
+    queryParamToAddValues:
+      type: array
+      items:
+        type: string
+      default: []
+    queryParametersToRemove:
+      type: array
+      items:
+        type: string
+      default: []
+    shortCircuitOnRequestContains:
+      type: string
+    shortCircuitStatusCode:
+      type: integer
+      default: 422
+    shortCircuitBody:
+      type: string
+      default: "Request replaced by python-body-buffer-modifier"
+    replaceResponseOnContains:
+      type: string
+    replaceResponseStatusCode:
+      type: integer
+      default: 299
+    replaceResponseBody:
+      type: string
+      default: "Response replaced by python-body-buffer-modifier"
+    responseStatusCode:
+      type: integer
+      description: Override the upstream response status when provided.
+    analyticsFilterMode:
+      type: string
+      default: "deny"
+    analyticsFilterHeaders:
+      type: array
+      items:
+        type: string
+      default: []
+  required: []
+
+systemParameters:
+  type: object
+  properties: {}

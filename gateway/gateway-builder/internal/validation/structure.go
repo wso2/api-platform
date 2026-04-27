@@ -20,13 +20,14 @@ package validation
 
 import (
 	"fmt"
+	"log/slog"
 	"path/filepath"
 
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/fsutil"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
 )
 
-// ValidateDirectoryStructure validates the policy directory structure
+// ValidateDirectoryStructure validates the Go policy directory structure
 func ValidateDirectoryStructure(policy *types.DiscoveredPolicy) []types.ValidationError {
 	var errors []types.ValidationError
 
@@ -57,6 +58,55 @@ func ValidateDirectoryStructure(policy *types.DiscoveredPolicy) []types.Validati
 			PolicyVersion: policy.Version,
 			FilePath:      policy.Path,
 			Message:       "no .go source files found",
+		})
+	}
+
+	// Verify all source files exist
+	for _, sourceFile := range policy.SourceFiles {
+		if err := fsutil.ValidatePathExists(sourceFile, "source file"); err != nil {
+			errors = append(errors, types.ValidationError{
+				PolicyName:    policy.Name,
+				PolicyVersion: policy.Version,
+				FilePath:      sourceFile,
+				Message:       fmt.Sprintf("%s: %s", filepath.Base(sourceFile), err.Error()),
+			})
+		}
+	}
+
+	return errors
+}
+
+// ValidatePythonDirectoryStructure validates the Python policy directory structure
+func ValidatePythonDirectoryStructure(policy *types.DiscoveredPolicy) []types.ValidationError {
+	var errors []types.ValidationError
+
+	// Check policy definition file exists
+	if err := fsutil.ValidatePathExists(policy.YAMLPath, types.PolicyDefinitionFile); err != nil {
+		errors = append(errors, types.ValidationError{
+			PolicyName:    policy.Name,
+			PolicyVersion: policy.Version,
+			FilePath:      policy.YAMLPath,
+			Message:       err.Error(),
+		})
+	}
+
+	// Check policy.py exists (recommended but optional)
+	policyPyPath := filepath.Join(policy.Path, "policy.py")
+	if err := fsutil.ValidatePathExists(policyPyPath, "policy.py"); err != nil {
+		// This is a warning, not an error - policy.py is recommended but optional
+		// as long as there are other .py files
+		slog.Debug("policy.py not found, checking for other Python files",
+			"policy", policy.Name,
+			"path", policyPyPath)
+	}
+
+	// Check at least one .py file exists
+	if len(policy.SourceFiles) == 0 {
+		errors = append(errors, types.ValidationError{
+			PolicyName:    policy.Name,
+			PolicyVersion: policy.Version,
+			FilePath:      policy.Path,
+			Message:       "no .py source files found",
 		})
 	}
 

@@ -45,7 +45,7 @@ jobs:
 
           COMPOSE_FILE="gateway/docker-compose-perf.yaml"
           SVC="gateway-controller"
-          URL="http://127.0.0.1:9094/health"
+          URL="http://127.0.0.1:9094/api/admin/v0.9/health"
 
           echo "Waiting for $URL ..."
           for i in $(seq 1 90); do

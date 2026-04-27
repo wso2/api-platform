@@ -172,30 +172,52 @@ func applyResource(client *gateway.Client, handler gateway.ResourceHandler, reso
 		return nil
 	}
 
-	// Display the response
+	// Display the response. Management API POST/PUT responses are now the full
+	// k8s-shaped resource body ({apiVersion, kind, metadata, spec, status}).
+	// The server-managed status block carries the id/state/timestamps.
 	fmt.Println("Status: success")
 
-	// Try to extract common fields
-	if msg, ok := responseData["message"].(string); ok {
-		fmt.Printf("Message: %s\n", msg)
+	if exists {
+		fmt.Printf("Message: %s updated successfully\n", resource.Kind)
 	} else {
-		if exists {
-			fmt.Printf("Message: %s updated successfully\n", resource.Kind)
-		} else {
-			fmt.Printf("Message: %s applied successfully\n", resource.Kind)
+		fmt.Printf("Message: %s applied successfully\n", resource.Kind)
+	}
+
+	// Id: prefer status.id (server-assigned handle), then metadata.name, then
+	// the handle parsed from the applied YAML.
+	id := resource.Handle
+	if status, ok := responseData["status"].(map[string]interface{}); ok {
+		if v, ok := status["id"].(string); ok && v != "" {
+			id = v
 		}
 	}
-
-	if id, ok := responseData["id"].(string); ok {
-		fmt.Printf("ID: %s\n", id)
-	} else {
-		fmt.Printf("ID: %s\n", resource.Handle)
+	if id == resource.Handle {
+		if md, ok := responseData["metadata"].(map[string]interface{}); ok {
+			if name, ok := md["name"].(string); ok && name != "" {
+				id = name
+			}
+		}
 	}
+	fmt.Printf("ID: %s\n", id)
 
-	if createdAt, ok := responseData["createdAt"].(string); ok {
-		fmt.Printf("Created At: %s\n", createdAt)
-	} else if timestamp, ok := responseData["timestamp"].(string); ok {
-		fmt.Printf("Timestamp: %s\n", timestamp)
+	// Timestamps: read from the new status block, fall back to legacy fields
+	// for backwards compatibility with any non-k8s-shaped resources.
+	if status, ok := responseData["status"].(map[string]interface{}); ok {
+		if v, ok := status["createdAt"].(string); ok && v != "" {
+			fmt.Printf("Created At: %s\n", v)
+		}
+		if v, ok := status["updatedAt"].(string); ok && v != "" {
+			fmt.Printf("Updated At: %s\n", v)
+		}
+		if v, ok := status["state"].(string); ok && v != "" {
+			fmt.Printf("State: %s\n", v)
+		}
+	} else {
+		if v, ok := responseData["createdAt"].(string); ok {
+			fmt.Printf("Created At: %s\n", v)
+		} else if v, ok := responseData["timestamp"].(string); ok {
+			fmt.Printf("Timestamp: %s\n", v)
+		}
 	}
 
 	return nil

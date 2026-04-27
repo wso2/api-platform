@@ -55,7 +55,7 @@ Each filter parameter (`requestHeadersToFilter` and `responseHeadersToFilter`) i
 The following example demonstrates how to apply the Analytics Header Filter policy to a REST API:
 
 ```bash
-curl -X POST http://localhost:9090/apis \
+curl -X POST http://localhost:9090/api/management/v0.9/rest-apis \
   -H "Content-Type: application/yaml" \
   --data-binary @- <<'EOF'
 apiVersion: gateway.api-platform.wso2.com/v1alpha1

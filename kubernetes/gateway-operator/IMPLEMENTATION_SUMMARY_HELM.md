@@ -86,7 +86,7 @@ applyGatewayManifest()
     │       ├─ RenderTemplate()
     │       └─ helmClient.InstallOrUpgrade()
     └─ else:
-        └─ deployGatewayWithTemplate() [legacy]
+        └─ deployGatewayWithTemplate() [manifest-based]
 ```
 
 **Deletion Flow**:
@@ -96,14 +96,14 @@ deleteGatewayResources()
     │   └─ deleteGatewayWithHelm()
     │       └─ helmClient.Uninstall()
     └─ else:
-        └─ Rely on owner references [legacy]
+        └─ Rely on owner references [manifest-based]
 ```
 
 New functions:
 - `deployGatewayWithHelm()`: Handles Helm-based deployment
 - `buildHelmValuesData()`: Builds values from Gateway
 - `deleteGatewayWithHelm()`: Uninstalls Helm releases
-- `deployGatewayWithTemplate()`: Legacy template-based deployment
+- `deployGatewayWithTemplate()`: Manifest template-based deployment (non-Helm)
 
 ### 6. Template Rendering Utility (`internal/k8sutil/manifest.go`)
 

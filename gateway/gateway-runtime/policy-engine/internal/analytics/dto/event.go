@@ -25,6 +25,7 @@ type Event struct {
 	Operation         *Operation             `json:"operation,omitempty" bson:"operation"`
 	Target            *Target                `json:"target,omitempty" bson:"target"`
 	Application       *Application           `json:"application,omitempty" bson:"application"`
+	Subscription      *Subscription          `json:"subscription,omitempty" bson:"subscription"`
 	Latencies         *Latencies             `json:"latencies,omitempty" bson:"latencies"`
 	MetaInfo          *MetaInfo              `json:"metaInfo,omitempty" bson:"meta_info"`
 	Error             *Error                 `json:"error,omitempty" bson:"error"`

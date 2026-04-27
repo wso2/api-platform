@@ -1,0 +1,40 @@
+{{- $runtime := .Values.eventGateway.gatewayRuntime -}}
+{{- $deployment := $runtime.deployment -}}
+{{- if $deployment.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "event-gateway.fullname" . }}-gateway-runtime
+  labels:
+    {{- include "event-gateway.componentLabels" (list . "gateway-runtime" $runtime.service.labels) | nindent 4 }}
+  {{- $annotations := merge (deepCopy (default (dict) .Values.commonAnnotations)) (default (dict) $runtime.service.annotations) }}
+  {{- if $annotations }}
+  annotations:
+    {{- toYaml $annotations | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $runtime.service.type }}
+  ports:
+    - port: {{ $runtime.service.ports.websubHttp }}
+      targetPort: websub-http
+      protocol: TCP
+      name: websub-http
+    - port: {{ $runtime.service.ports.websubHttps }}
+      targetPort: websub-https
+      protocol: TCP
+      name: websub-https
+    - port: {{ $runtime.service.ports.websocket }}
+      targetPort: websocket
+      protocol: TCP
+      name: websocket
+    - port: {{ $runtime.service.ports.admin }}
+      targetPort: admin
+      protocol: TCP
+      name: admin
+    - port: {{ $runtime.service.ports.metrics }}
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
+  selector:
+    {{- include "event-gateway.componentSelectorLabels" (list . "gateway-runtime") | nindent 4 }}
+{{- end }}

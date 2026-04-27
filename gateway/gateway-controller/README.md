@@ -259,20 +259,27 @@ See `config/` directory for examples:
 
 ## API Reference
 
-The Gateway-Controller exposes a REST API for managing API configurations.
+The Gateway-Controller exposes two REST API surfaces:
 
-### Base URL
+- **Management API** — for managing APIs, subscriptions, certificates, secrets, LLM proxies, etc.
+- **Admin API** — for operational endpoints such as health and config dump.
+
+### Base URLs
 
 ```
-http://localhost:9090
+Management API: http://localhost:9090/api/management/v0.9
+Admin API:      http://localhost:9092/api/admin/v0.9
 ```
+
+The paths shown in the examples below are relative to these base URLs.
 
 ### Endpoints
 
-#### Health Check
+#### Health Check (Admin API)
 
 ```bash
 GET /health
+# i.e. GET http://localhost:9092/api/admin/v0.9/health
 ```
 
 Response:
@@ -286,7 +293,7 @@ Response:
 #### Create API Configuration
 
 ```bash
-POST /rest-apis
+POST /api/management/v0.9/rest-apis
 Content-Type: application/yaml
 
 version: api-platform.wso2.com/v1
@@ -302,37 +309,51 @@ data:
       path: /{country}/{city}
 ```
 
-Response:
+Response (the server echoes back the full k8s-shaped resource with a
+server-managed `status` block):
 ```json
 {
-  "status": "success",
-  "message": "API configuration created successfully",
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "created_at": "2025-10-12T15:45:00Z"
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "RestApi",
+  "metadata": { "name": "weather-api-v1.0" },
+  "spec": {
+    "displayName": "Weather API",
+    "version": "v1.0",
+    "context": "/weather",
+    "upstream": { "main": { "url": "http://api.weather.com/api/v2" } },
+    "operations": [ { "method": "GET", "path": "/{country}/{city}" } ]
+  },
+  "status": {
+    "id": "weather-api-v1.0",
+    "state": "deployed",
+    "createdAt": "2025-10-12T15:45:00Z",
+    "updatedAt": "2025-10-12T15:45:00Z",
+    "deployedAt": "2025-10-12T15:45:00Z"
+  }
 }
 ```
 
 #### List All APIs
 
 ```bash
-GET /rest-apis
+GET /api/management/v0.9/rest-apis
 ```
 
 #### Get API by Name and Version
 
 ```bash
-GET /rest-apis/{name}/{version}
+GET /api/management/v0.9/rest-apis/{name}/{version}
 ```
 
 Example:
 ```bash
-GET /rest-apis/Weather%20API/v1.0
+GET /api/management/v0.9/rest-apis/Weather%20API/v1.0
 ```
 
 #### Update API
 
 ```bash
-PUT /rest-apis/{name}/{version}
+PUT /api/management/v0.9/rest-apis/{name}/{version}
 Content-Type: application/yaml
 
 <updated configuration>
@@ -340,7 +361,7 @@ Content-Type: application/yaml
 
 Example:
 ```bash
-PUT /rest-apis/Weather%20API/v1.0
+PUT /api/management/v0.9/rest-apis/Weather%20API/v1.0
 Content-Type: application/yaml
 
 version: api-platform.wso2.com/v1
@@ -359,12 +380,12 @@ data:
 #### Delete API
 
 ```bash
-DELETE /rest-apis/{name}/{version}
+DELETE /api/management/v0.9/rest-apis/{name}/{version}
 ```
 
 Example:
 ```bash
-DELETE /rest-apis/Weather%20API/v1.0
+DELETE /api/management/v0.9/rest-apis/Weather%20API/v1.0
 ```
 
 ## Data Storage

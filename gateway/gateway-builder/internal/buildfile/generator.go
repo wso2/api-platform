@@ -34,7 +34,7 @@ import (
 
 // BuildInfo represents the build info structure
 type BuildInfo struct {
-	BuildTimestamp  string       `json:"buildTimestamp"`
+	BuildTimestamp string       `json:"buildTimestamp"`
 	BuilderVersion string       `json:"builderVersion"`
 	OutputDir      string       `json:"outputDir"`
 	Policies       []PolicyInfo `json:"policies"`
@@ -55,7 +55,7 @@ func CreateBuildInfo(
 	slog.Info("Creating build info")
 
 	info := &BuildInfo{
-		BuildTimestamp:  time.Now().UTC().Format(time.RFC3339),
+		BuildTimestamp: time.Now().UTC().Format(time.RFC3339),
 		BuilderVersion: builderVersion,
 		OutputDir:      outputDir,
 		Policies:       make([]PolicyInfo, 0, len(policies)),
@@ -116,10 +116,11 @@ func WriteBuildManifestWithVersions(buildFilePath string, discovered []*types.Di
 	}
 
 	type lockEntry struct {
-		Name     string `yaml:"name"`
-		Version  string `yaml:"version,omitempty"`
-		FilePath string `yaml:"filePath,omitempty"`
-		Gomodule string `yaml:"gomodule,omitempty"`
+		Name       string `yaml:"name"`
+		Version    string `yaml:"version,omitempty"`
+		FilePath   string `yaml:"filePath,omitempty"`
+		Gomodule   string `yaml:"gomodule,omitempty"`
+		PipPackage string `yaml:"pipPackage,omitempty"`
 	}
 
 	lock := struct {
@@ -133,7 +134,7 @@ func WriteBuildManifestWithVersions(buildFilePath string, discovered []*types.Di
 	buildFileDir := filepath.Dir(buildFilePath)
 
 	for _, me := range bf.Policies {
-		entry := lockEntry{Name: me.Name, FilePath: me.FilePath, Gomodule: me.Gomodule}
+		entry := lockEntry{Name: me.Name, FilePath: me.FilePath, Gomodule: me.Gomodule, PipPackage: me.PipPackage}
 
 		candidates := discoveredByName[me.Name]
 		var found *types.DiscoveredPolicy
@@ -178,6 +179,14 @@ func WriteBuildManifestWithVersions(buildFilePath string, discovered []*types.Di
 				// Fallback to path comparison (support file paths as well)
 				cAbs, _ := filepath.Abs(c.Path)
 				if c.Path != "" && (c.Path == me.Gomodule || cAbs == c.Path) {
+					found = c
+					break
+				}
+			}
+		} else if me.PipPackage != "" {
+			// pip packages: match by name directly since pip package is Python-specific
+			for _, c := range candidates {
+				if c.Runtime == "python" {
 					found = c
 					break
 				}

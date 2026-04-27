@@ -18,6 +18,15 @@ spec:
       limits:
         cpu: "2"
         memory: "4Gi"
+    # Custom labels propagated to all gateway-managed resources:
+    # Deployment metadata, Pod labels, Service metadata, and ConfigMaps.
+    labels:
+      environment: dev
+      team: platform
+    # Custom annotations propagated to all gateway-managed resources:
+    # Deployment metadata, Pod annotations, Service metadata, and ConfigMaps.
+    annotations:
+      prometheus.io/scrape: "true"
   
   controlPlane:
     host: "gateway-control-plane.gateway-operator-system.svc.cluster.local:8443"

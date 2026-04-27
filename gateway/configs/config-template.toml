@@ -273,6 +273,14 @@ max_header_limit = 8192
 pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"
 
 # =============================================================================
+# IMMUTABLE GATEWAY CONFIGURATION
+# =============================================================================
+
+[immutable_gateway]
+enabled = false
+artifacts_dir = "/etc/api-platform-gateway/immutable_gateway/artifacts"
+
+# =============================================================================
 # TRACING CONFIGURATION
 # =============================================================================
 

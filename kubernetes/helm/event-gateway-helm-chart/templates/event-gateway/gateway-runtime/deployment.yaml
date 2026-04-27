@@ -1,0 +1,151 @@
+{{- $runtime := .Values.eventGateway.gatewayRuntime -}}
+{{- $deployment := $runtime.deployment -}}
+{{- if and $runtime.tls.enabled (not (or (eq $runtime.tls.certificateProvider "cert-manager") (eq $runtime.tls.certificateProvider "secret"))) }}
+{{- fail (printf "eventGateway.gatewayRuntime.tls.certificateProvider has invalid value %q; allowed values are \"cert-manager\" and \"secret\"." $runtime.tls.certificateProvider) }}
+{{- end }}
+{{- if $deployment.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "event-gateway.fullname" . }}-gateway-runtime
+  labels:
+    {{- include "event-gateway.componentLabels" (list . "gateway-runtime" $deployment.labels) | nindent 4 }}
+  {{- $annotations := merge (deepCopy (default (dict) $deployment.annotations)) (default (dict) .Values.commonAnnotations) }}
+  {{- if $annotations }}
+  annotations:
+    {{- toYaml $annotations | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ $deployment.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "event-gateway.componentSelectorLabels" (list . "gateway-runtime") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- with .Values.commonLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with $deployment.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- include "event-gateway.componentSelectorLabels" (list . "gateway-runtime") | nindent 8 }}
+      {{- $podAnnotations := merge (deepCopy (default (dict) $deployment.podAnnotations)) (default (dict) .Values.commonAnnotations) }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/event-gateway/gateway-config.yaml") . | sha256sum }}
+        {{- with $podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "event-gateway.serviceAccountName" . }}
+      {{- $globalPullSecrets := default (list) .Values.imagePullSecrets }}
+      {{- $componentPullSecrets := default (list) $runtime.imagePullSecrets }}
+      {{- $pullSecrets := concat $globalPullSecrets $componentPullSecrets }}
+      {{- if $pullSecrets }}
+      imagePullSecrets:
+        {{- range $pullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      {{- with $deployment.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
+      {{- with $deployment.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: event-gateway-runtime
+          image: "{{ $runtime.image.repository }}:{{ $runtime.image.tag }}"
+          imagePullPolicy: {{ $runtime.image.pullPolicy }}
+          {{- with $deployment.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: APIP_EGW_CONTROLPLANE_XDS_ADDRESS
+              value: {{ default (printf "%s-controller:%d" (include "event-gateway.fullname" .) (int .Values.eventGateway.controller.service.ports.policy)) $deployment.env.gatewayControllerHost | quote }}
+            - name: APIP_EGW_LOGGING_LEVEL
+              value: {{ default "info" $deployment.env.logLevel | quote }}
+            {{- if $deployment.env.kafkaBrokers }}
+            - name: APIP_EGW_KAFKA_BROKERS
+              value: {{ $deployment.env.kafkaBrokers | quote }}
+            {{- end }}
+            {{- range $deployment.extraEnv }}
+            - {{- toYaml . | nindent 14 }}
+            {{- end }}
+          {{- with $deployment.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: websub-http
+              containerPort: {{ $runtime.service.ports.websubHttp }}
+              protocol: TCP
+            - name: websub-https
+              containerPort: {{ $runtime.service.ports.websubHttps }}
+              protocol: TCP
+            - name: websocket
+              containerPort: {{ $runtime.service.ports.websocket }}
+              protocol: TCP
+            - name: admin
+              containerPort: {{ $runtime.service.ports.admin }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ $runtime.service.ports.metrics }}
+              protocol: TCP
+          livenessProbe:
+            {{- toYaml $deployment.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml $deployment.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml ($deployment.resources | default dict) | nindent 12 }}
+          volumeMounts:
+            - name: runtime-config
+              mountPath: /etc/event-gateway/config.toml
+              subPath: config.toml
+            {{- if $runtime.tls.enabled }}
+            - name: tls-certs
+              mountPath: /etc/event-gateway/tls
+              readOnly: true
+            {{- end }}
+            {{- with $deployment.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: runtime-config
+          configMap:
+            name: {{ include "event-gateway.fullname" . }}-runtime-config
+            items:
+              - key: config.toml
+                path: config.toml
+        {{- if and $runtime.tls.enabled (or (eq $runtime.tls.certificateProvider "cert-manager") (eq $runtime.tls.certificateProvider "secret")) }}
+        - name: tls-certs
+          secret:
+            {{- if eq $runtime.tls.certificateProvider "cert-manager" }}
+            secretName: {{ include "event-gateway.fullname" . }}-runtime-tls
+            {{- else }}
+            secretName: {{ $runtime.tls.secret.name }}
+            {{- end }}
+            items:
+              - key: {{ if eq $runtime.tls.certificateProvider "cert-manager" }}tls.crt{{ else }}{{ $runtime.tls.secret.certKey }}{{ end }}
+                path: default-listener.crt
+              - key: {{ if eq $runtime.tls.certificateProvider "cert-manager" }}tls.key{{ else }}{{ $runtime.tls.secret.keyKey }}{{ end }}
+                path: default-listener.key
+        {{- end }}
+        {{- with $deployment.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+{{- end }}

@@ -54,11 +54,15 @@ type PolicyChain struct {
 	// When false, CEL evaluation is skipped entirely during execution.
 	HasExecutionConditions bool
 
-	// Computed flag: true if any policy in the chain implements RequestHeaderPolicy.
-	// Used to determine whether request headers need to be sent to ext_proc.
+	// Computed flag: true if any policy declares RequestHeaderMode=PROCESS in Mode()
+	// AND implements the RequestHeaderPolicy interface. Note: this flag does NOT
+	// control Envoy header transport (headers always flow for lifecycle reasons).
+	// It reflects callback participation intent.
 	RequiresRequestHeader bool
 
-	// Computed flag: true if any policy in the chain implements ResponseHeaderPolicy.
-	// Used to determine whether response headers need to be sent to ext_proc.
+	// Computed flag: true if any policy declares ResponseHeaderMode=PROCESS in Mode()
+	// AND implements the ResponseHeaderPolicy interface. Note: this flag does NOT
+	// control Envoy header transport (headers always flow for lifecycle reasons).
+	// It reflects callback participation intent.
 	RequiresResponseHeader bool
 }

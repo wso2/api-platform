@@ -34,7 +34,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     git \
     make \
-    ca-certificates
+    ca-certificates \
+    python3 \
+    python3-pip \
+    python3-venv
 
 WORKDIR /workspace
 
@@ -95,6 +98,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 # Copy all source and policy files
 COPY policy-engine/ /api-platform/gateway/gateway-runtime/policy-engine/
+COPY python-executor/ /api-platform/gateway/gateway-runtime/python-executor/
+COPY --from=sdk-python . /api-platform/sdk-python
 COPY --from=sdk-core . /api-platform/sdk/core
 COPY --from=common . /api-platform/common
 COPY --from=system-policies . /api-platform/gateway/system-policies/
@@ -117,13 +122,33 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         -policy-engine-src /api-platform/gateway/gateway-runtime/policy-engine \
         -out-dir /api-platform/output
 
-# Stage 3a: dlv installer (builds dlv for the debug stage)
+# Stage 3a: Python dependency installer
+# Uses the same base image as the production stage so that C extensions
+# (e.g. grpcio) are compiled against the identical Python version and glibc.
+# pip and venv are installed here only — they are NOT copied to production.
+FROM envoyproxy/envoy:v1.37.1 AS python-deps
+
+USER root
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-venv
+
+COPY --from=policy-compiler /api-platform/output/python-executor/requirements.txt /tmp/requirements.txt
+
+RUN pip3 install --no-cache-dir \
+    --target /app/python-libs \
+    -r /tmp/requirements.txt
+
+# Stage 3b: dlv installer (builds dlv for the debug stage)
 FROM golang:1.26.1-bookworm AS debug-dlv-builder
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go install github.com/go-delve/delve/cmd/dlv@v1.26.0
 
-# Stage 3b: Debug Runtime (policy-engine wrapped in dlv, port 2346)
+# Stage 3c: Debug Runtime (policy-engine wrapped in dlv, port 2346)
 FROM envoyproxy/envoy:v1.37.1 AS debug
 
 USER root
@@ -179,12 +204,24 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     dnsutils \
     iproute2 \
     iputils-ping \
-    net-tools
+    net-tools \
+    python3
 
 RUN mkdir -p /app /var/run/api-platform /coverage
 
+# Copy Policy Engine binary
 COPY --from=policy-compiler /api-platform/output/gateway-runtime/policy-engine /app/policy-engine
 COPY --from=policy-compiler /api-platform/gateway/build-manifest.yaml /app/build-manifest.yaml
+
+# Copy Python executor + policies + SDK from builder output
+COPY --from=policy-compiler /api-platform/output/python-executor/ /app/python-executor/
+
+# Copy pre-installed Python dependencies from the python-deps stage.
+# pip and venv are NOT present in this image — only the installed packages.
+COPY --from=python-deps /app/python-libs/ /app/python-libs/
+
+# Set PYTHONPATH so Python can find the libs and executor modules
+ENV PYTHONPATH="/app/python-libs:/app/python-executor"
 COPY router/config/envoy-bootstrap.yaml /etc/envoy/envoy.yaml
 COPY router/config/config-override.yaml /etc/envoy/config-override.yaml
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

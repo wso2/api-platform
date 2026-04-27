@@ -87,7 +87,7 @@ export default function StepTwoApis({
 
   // -------- Display + Copy strings --------
   const CMD_DISPLAY_MD = `\`\`\`bash
-curl -X POST http://localhost:9090/apis \\
+curl -X POST http://localhost:9090/api/management/v0.9/rest-apis \\
   -H "Content-Type: application/yaml" \\
   --data-binary @- <<'EOF'
 version: api-platform.wso2.com/v1
@@ -106,7 +106,7 @@ spec:
 EOF
 \`\`\``;
 
-  const CMD_COPY = `curl -X POST http://localhost:9090/apis \\
+  const CMD_COPY = `curl -X POST http://localhost:9090/api/management/v0.9/rest-apis \\
   -H "Content-Type: application/yaml" \\
   --data-binary @- <<'EOF'
 version: api-platform.wso2.com/v1

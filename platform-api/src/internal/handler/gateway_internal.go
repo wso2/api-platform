@@ -533,6 +533,58 @@ func (h *GatewayInternalAPIHandler) GetMCPProxy(c *gin.Context) {
 	c.Data(http.StatusOK, "application/zip", zipData)
 }
 
+// GetWebSubAPI handles GET /api/internal/v1/websub-apis/:apiId
+func (h *GatewayInternalAPIHandler) GetWebSubAPI(c *gin.Context) {
+	orgID, gatewayID, ok := h.authenticateRequest(c)
+	if !ok {
+		return
+	}
+
+	apiID := c.Param("apiId")
+	if apiID == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API ID is required"))
+		return
+	}
+
+	api, err := h.gatewayInternalService.GetActiveWebSubAPIDeploymentByGateway(apiID, orgID, gatewayID)
+	if err != nil {
+		if errors.Is(err, constants.ErrDeploymentNotActive) {
+			h.slogger.Error("No active deployment found for WebSub API", "clientIP", c.ClientIP(), "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"No active deployment found for this WebSub API on this gateway"))
+			return
+		}
+		if errors.Is(err, constants.ErrWebSubAPINotFound) {
+			h.slogger.Error("WebSub API not found", "clientIP", c.ClientIP(), "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"WebSub API not found"))
+			return
+		}
+		h.slogger.Error("Failed to get WebSub API", "clientIP", c.ClientIP(), "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get WebSub API"))
+		return
+	}
+
+	// Create ZIP file from WebSub API YAML file
+	zipData, err := utils.CreateWebSubAPIYamlZip(api)
+	if err != nil {
+		h.slogger.Error("Failed to create ZIP file", "apiID", apiID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to create WebSub API package"))
+		return
+	}
+
+	// Set headers for ZIP file download
+	c.Header("Content-Type", "application/zip")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"websub-api-%s.zip\"", apiID))
+	c.Header("Content-Length", fmt.Sprintf("%d", len(zipData)))
+
+	// Return ZIP file
+	c.Data(http.StatusOK, "application/zip", zipData)
+}
+
 // ReceiveGatewayManifest handles POST /api/internal/v1/gateways/:gatewayId/manifest
 // Called by the gateway controller to post back its installed custom policy manifest.
 func (h *GatewayInternalAPIHandler) ReceiveGatewayManifest(c *gin.Context) {
@@ -688,6 +740,11 @@ func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 	mcpProxyGroup := r.Group("/api/internal/v1/mcp-proxies")
 	{
 		mcpProxyGroup.GET("/:proxyId", h.GetMCPProxy)
+	}
+
+	websubAPIGroup := r.Group("/api/internal/v1/websub-apis")
+	{
+		websubAPIGroup.GET("/:apiId", h.GetWebSubAPI)
 	}
 	gatewayGroup := r.Group("/api/internal/v1/gateways")
 	{

@@ -1,0 +1,131 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+services:
+  gateway-controller:
+    image: ghcr.io/wso2/api-platform/event-gateway-controller:0.2.0-SNAPSHOT
+    build:
+      context: ../gateway/gateway-controller
+      dockerfile: Dockerfile
+      target: production
+      additional_contexts:
+        sdk-core: ../sdk/core
+        common: ../common
+        build-manifest: ../gateway
+    command: ["-config", "/etc/gateway-controller/config.toml"]
+    ports:
+      - "9090:9090"    # Management API
+      - "18001:18001"  # Policy xDS (EventChannelConfig)
+    environment:
+      - APIP_GW_CONTROLLER_STORAGE_TYPE=sqlite
+      - APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH=./data/gateway.db
+      - APIP_GW_CONTROLLER_LOGGING_LEVEL=info
+      - APIP_GW_DEVELOPMENT_MODE=true
+      - APIP_GW_ROUTER_EVENT__GATEWAY_ENABLED=true
+      - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB_URL=http://event-gateway:8080
+      - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB_PORT=8080
+      - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB__LISTENER__PORT=8080
+      - APIP_GW_ROUTER_EVENT__GATEWAY_TIMEOUT__SECONDS=30
+      - APIP_GW_GATEWAY_REGISTRATION_TOKEN=${GATEWAY_REGISTRATION_TOKEN:?set GATEWAY_REGISTRATION_TOKEN in event-gateway/.env}
+      - APIP_GW_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:?set GATEWAY_CONTROLPLANE_HOST in event-gateway/.env}
+
+    volumes:
+      - controller-data:/app/data
+      - ../gateway/configs/config.toml:/etc/gateway-controller/config.toml:ro
+      - ../gateway/gateway-controller/certificates:/app/certificates
+      - ../gateway/gateway-controller/listener-certs:/app/listener-certs:ro
+    networks:
+      - egw-network
+
+  event-gateway:
+    image: ghcr.io/wso2/api-platform/event-gateway-runtime:0.2.0-SNAPSHOT
+    build:
+      context: gateway-runtime
+      dockerfile: Dockerfile
+      additional_contexts:
+        sdk-core: ../sdk/core
+        common: ../common
+        policy-engine: ../gateway/gateway-runtime/policy-engine
+    ports:
+      - "8080:8080"   # WebSub HTTP
+      - "8443:8443"   # WebSub HTTPS
+      - "8081:8081"   # WebSocket
+      - "9002:9002"   # Admin API
+      - "9003:9003"   # Metrics
+    environment:
+      - APIP_EGW_KAFKA_BROKERS=kafka:29092
+      - APIP_EGW_SERVER_WEBSUB_ENABLED=true
+      - APIP_EGW_SERVER_WEBSUB_HTTP_PORT=8080
+      - APIP_EGW_SERVER_WEBSUB_HTTPS_PORT=8443
+      - APIP_EGW_SERVER_WEBSUB_TLS_ENABLED=true
+      - APIP_EGW_SERVER_WEBSUB_TLS_CERT_FILE=/etc/event-gateway/tls/default-listener.crt
+      - APIP_EGW_SERVER_WEBSUB_TLS_KEY_FILE=/etc/event-gateway/tls/default-listener.key
+      - APIP_EGW_SERVER_WEBSOCKET_PORT=8081
+      - APIP_EGW_CONTROLPLANE_ENABLED=true
+      - APIP_EGW_LOGGING_LEVEL=debug
+      - APIP_EGW_CONTROLPLANE_XDS_ADDRESS=gateway-controller:18001
+    extra_hosts:
+      # Allow callbacks to services running on the Docker host (useful on Linux).
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../gateway/gateway-controller/listener-certs:/etc/event-gateway/tls:ro
+      - ./gateway-runtime/configs/config.toml:/etc/event-gateway/config.toml:ro
+      - ./gateway-runtime/configs/channels.yaml:/etc/event-gateway/channels.yaml:ro
+    depends_on:
+      gateway-controller:
+        condition: service_started
+      kafka:
+        # condition: service_healthy
+        condition: service_started
+    networks:
+      - egw-network
+
+  kafka:
+    image: apache/kafka:latest
+    hostname: kafka
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    # healthcheck:
+    #   test: ["CMD", "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "kafka:29092", "--list"]
+    #   interval: 2s
+    #   timeout: 3s
+    #   start_period: 5s
+    #   retries: 15
+    networks:
+      - egw-network
+
+networks:
+  egw-network:
+    driver: bridge
+
+volumes:
+  controller-data:

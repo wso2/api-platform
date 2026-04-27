@@ -51,7 +51,8 @@ type Config struct {
 	APIKey               APIKeyConfig           `koanf:"api_key"`
 	// Subscriptions controls application-level subscription behaviour for APIs.
 	// When nil, subscription validation system policy remains disabled.
-	Subscriptions *SubscriptionsConfig `koanf:"subscriptions"`
+	Subscriptions    *SubscriptionsConfig   `koanf:"subscriptions"`
+	ImmutableGateway ImmutableGatewayConfig `koanf:"immutable_gateway"`
 }
 
 // AnalyticsConfig holds analytics configuration
@@ -70,6 +71,14 @@ type SubscriptionsConfig struct {
 	// EnableValidation toggles automatic injection of the subscriptionValidation
 	// system policy into API policy chains.
 	EnableValidation bool `koanf:"enable_validation"`
+}
+
+// ImmutableGatewayConfig holds configuration for immutable gateway mode.
+// When enabled, the gateway loads all API artifacts from the filesystem on startup
+// and rejects all mutating management API operations (POST, PUT, DELETE) at runtime.
+type ImmutableGatewayConfig struct {
+	Enabled      bool   `koanf:"enabled"`
+	ArtifactsDir string `koanf:"artifacts_dir"`
 }
 
 // AnalyticsPublishersConfig holds configuration for all analytics publishers
@@ -406,6 +415,12 @@ type ControlPlaneConfig struct {
 	InsecureSkipVerify    bool          `koanf:"insecure_skip_verify"`    // Skip TLS certificate verification (insecure, dev/test only)
 	DeploymentPushEnabled bool          `koanf:"deployment_push_enabled"` // Push API deployments to control plane (default: false)
 	SyncBatchSize         int           `koanf:"sync_batch_size"`         // Number of deployments to fetch per batch request during startup sync (default: 50)
+	// OAuth2 credentials for on-prem APIM API import (for bottom-up API deployment)
+	ApimOAuth2ClientID     string `koanf:"apim_oauth2_client_id"`     // APIM OAuth2 client ID
+	ApimOAuth2ClientSecret string `koanf:"apim_oauth2_client_secret"` // APIM OAuth2 client secret
+	ApimOAuth2Username     string `koanf:"apim_oauth2_username"`      // APIM resource owner username
+	ApimOAuth2Password     string `koanf:"apim_oauth2_password"`      // APIM resource owner password
+	GatewayName            string `koanf:"gateway_name"`              // Name of the gateway for deployment configuration
 }
 
 // APIKeyConfig represents the configuration for API keys
@@ -484,6 +499,10 @@ func LoadConfig(configPath string) (*Config, error) {
 			return "controller.controlplane.deployment_push_enabled"
 		case "controller_controlplane_sync_batch_size":
 			return "controller.controlplane.sync_batch_size"
+		case "immutable_gateway_enabled":
+			return "immutable_gateway.enabled"
+		case "controller_controlplane_gateway_name":
+			return "controller.controlplane.gateway_name"
 		default:
 			// For other env vars, use standard mapping (underscore to dot)
 			// Step 1: Convert double underscore "__" into a temporary placeholder
@@ -760,11 +779,23 @@ func defaultConfig() *Config {
 			MinKeyLength:         constants.DefaultMinAPIKeyLength,
 			MaxKeyLength:         constants.DefaultMaxAPIKeyLength,
 		},
+		ImmutableGateway: ImmutableGatewayConfig{
+			Enabled:      false,
+			ArtifactsDir: "/etc/api-platform-gateway/immutable_gateway/artifacts",
+		},
 	}
 }
 
 // Validate validates the configuration
 func (c *Config) Validate() error {
+	// Immutable mode requires SQLite — it starts with a fresh in-container DB on every boot,
+	// which is incompatible with external shared databases like Postgres.
+	if c.ImmutableGateway.Enabled && !strings.EqualFold(c.Controller.Storage.Type, "sqlite") {
+		return fmt.Errorf("immutable_gateway.enabled=true requires storage.type=sqlite; got %q. "+
+			"Immutable mode starts with a fresh in-container database on every boot and is incompatible with external databases",
+			c.Controller.Storage.Type)
+	}
+
 	// Validate storage type
 	validStorageTypes := []string{"sqlite", "postgres"}
 	isValidType := false

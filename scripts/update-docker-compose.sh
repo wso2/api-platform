@@ -34,8 +34,9 @@ fi
 
 COMPOSE_FILE="gateway/docker-compose.yaml"
 IT_COMPOSE_FILE="gateway/it/docker-compose.test.yaml"
+EVENT_GATEWAY_COMPOSE_FILE="event-gateway/docker-compose.yaml"
 
-if [ ! -f "$COMPOSE_FILE" ]; then
+if [ ! -f "$COMPOSE_FILE" ] && [ "$COMPONENT" != "event-gateway" ]; then
     echo "Warning: docker-compose.yaml not found at $COMPOSE_FILE"
     exit 0
 fi
@@ -48,6 +49,19 @@ if [ "$COMPONENT" = "gateway" ]; then
         "$COMPOSE_FILE"
     rm -f "$COMPOSE_FILE.bak"
     echo "Updated $COMPOSE_FILE with gateway version $VERSION"
+elif [ "$COMPONENT" = "event-gateway" ]; then
+    # Update all event-gateway component images in event-gateway docker-compose.yaml
+    if [ ! -f "$EVENT_GATEWAY_COMPOSE_FILE" ]; then
+        echo "Warning: docker-compose.yaml not found at $EVENT_GATEWAY_COMPOSE_FILE"
+        exit 0
+    fi
+    sed -i.bak \
+        -e "s|image: .*/event-gateway-controller:.*|image: ${DOCKER_REGISTRY}/event-gateway-controller:$VERSION|" \
+        -e "s|image: .*/event-gateway-runtime:.*|image: ${DOCKER_REGISTRY}/event-gateway-runtime:$VERSION|" \
+        -e "s|image: .*/webhook-listener:.*|image: ${DOCKER_REGISTRY}/webhook-listener:$VERSION|" \
+        "$EVENT_GATEWAY_COMPOSE_FILE"
+    rm -f "$EVENT_GATEWAY_COMPOSE_FILE.bak"
+    echo "Updated $EVENT_GATEWAY_COMPOSE_FILE with event-gateway version $VERSION"
 elif [ "$COMPONENT" = "platform-api" ]; then
     # Update platform-api image (if present in compose)
     sed -i.bak \

@@ -94,9 +94,9 @@ Feature: API Deployment and Invocation
     When I get the API "labeled-api-v1.0"
     Then the response should be successful
     And the response should be valid JSON
-    And the JSON response field "api.configuration.metadata.labels.environment" should be "production"
-    And the JSON response field "api.configuration.metadata.labels.team" should be "backend"
-    And the JSON response field "api.configuration.metadata.labels.version" should be "v1"
+    And the JSON response field "metadata.labels.environment" should be "production"
+    And the JSON response field "metadata.labels.team" should be "backend"
+    And the JSON response field "metadata.labels.version" should be "v1"
     
     Given I authenticate using basic auth as "admin"
     When I delete the API "labeled-api-v1.0"

@@ -33,10 +33,10 @@ cd wso2apip-api-gateway-1.0.0/
 docker compose up -d
 
 # Verify gateway controller admin endpoint is running
-curl http://localhost:9094/health
+curl http://localhost:9094/api/admin/v0.9/health
 
 # Deploy an API configuration
-curl -X POST http://localhost:9090/rest-apis \
+curl -X POST http://localhost:9090/api/management/v0.9/rest-apis \
   -u admin:admin \
   -H "Content-Type: application/yaml" \
   --data-binary @- <<'EOF'

@@ -57,7 +57,7 @@ func makeStoredConfig(t *testing.T, sandbox *api.Upstream) *models.StoredConfig 
 	}
 
 	apiConfig := api.RestAPI{
-		Kind: api.RestApi,
+		Kind: api.RestAPIKindRestApi,
 		Metadata: api.Metadata{
 			Name: "test-api",
 		},
@@ -66,7 +66,7 @@ func makeStoredConfig(t *testing.T, sandbox *api.Upstream) *models.StoredConfig 
 
 	return &models.StoredConfig{
 		UUID:                "test-api",
-		Kind:                string(api.RestApi),
+		Kind:                string(api.RestAPIKindRestApi),
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
 		Origin:              models.OriginGatewayAPI,
@@ -152,7 +152,7 @@ func TestDerivePolicyFromAPIConfig_EmptyVersionResolvesToLatest(t *testing.T) {
 	}
 
 	apiConfig := api.RestAPI{
-		Kind:     api.RestApi,
+		Kind:     api.RestAPIKindRestApi,
 		Metadata: api.Metadata{Name: "test-api"},
 		Spec: api.APIConfigData{
 			DisplayName: "Test API",
@@ -168,7 +168,7 @@ func TestDerivePolicyFromAPIConfig_EmptyVersionResolvesToLatest(t *testing.T) {
 	}
 	cfg := &models.StoredConfig{
 		UUID:                "test-api",
-		Kind:                string(api.RestApi),
+		Kind:                string(api.RestAPIKindRestApi),
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
 	}
@@ -190,7 +190,7 @@ func TestDerivePolicyFromAPIConfig_OperationLevelEmptyVersionResolvesToLatest(t 
 	}
 
 	apiConfig := api.RestAPI{
-		Kind:     api.RestApi,
+		Kind:     api.RestAPIKindRestApi,
 		Metadata: api.Metadata{Name: "test-api"},
 		Spec: api.APIConfigData{
 			DisplayName: "Test API",
@@ -211,7 +211,7 @@ func TestDerivePolicyFromAPIConfig_OperationLevelEmptyVersionResolvesToLatest(t 
 	}
 	cfg := &models.StoredConfig{
 		UUID:                "test-api",
-		Kind:                string(api.RestApi),
+		Kind:                string(api.RestAPIKindRestApi),
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
 	}
@@ -231,7 +231,7 @@ func TestDerivePolicyFromAPIConfig_UnknownPolicySkipped(t *testing.T) {
 	defs := map[string]models.PolicyDefinition{} // empty — policy won't be found
 
 	apiConfig := api.RestAPI{
-		Kind:     api.RestApi,
+		Kind:     api.RestAPIKindRestApi,
 		Metadata: api.Metadata{Name: "test-api"},
 		Spec: api.APIConfigData{
 			DisplayName: "Test API",
@@ -247,7 +247,7 @@ func TestDerivePolicyFromAPIConfig_UnknownPolicySkipped(t *testing.T) {
 	}
 	cfg := &models.StoredConfig{
 		UUID:                "test-api",
-		Kind:                string(api.RestApi),
+		Kind:                string(api.RestAPIKindRestApi),
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
 	}

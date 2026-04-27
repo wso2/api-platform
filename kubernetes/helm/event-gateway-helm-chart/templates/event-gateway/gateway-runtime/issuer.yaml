@@ -1,0 +1,17 @@
+{{- $runtime := .Values.eventGateway.gatewayRuntime -}}
+{{- $tls := $runtime.tls -}}
+{{- if and $runtime.deployment.enabled $tls.enabled (eq $tls.certificateProvider "cert-manager") }}
+{{- if and (eq $tls.certManager.issuerRef.kind "Issuer") $tls.certManager.createIssuer }}
+---
+# Self-signed Issuer for development/testing purposes
+# In production, replace this with a proper CA issuer (Let's Encrypt, corporate CA, etc.)
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "event-gateway.fullname" . }}-runtime-selfsigned-issuer
+  labels:
+    {{- include "event-gateway.componentLabels" (list . "gateway-runtime" dict) | nindent 4 }}
+spec:
+  selfSigned: {}
+{{- end }}
+{{- end }}

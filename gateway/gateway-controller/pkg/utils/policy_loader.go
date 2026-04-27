@@ -185,6 +185,11 @@ func (pl *PolicyLoader) GetCustomPolicyNames(buildManifestPath string) (map[stri
 
 	data, err := os.ReadFile(buildManifestPath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			pl.logger.Debug("build-manifest.yaml not found, skipping custom policy detection",
+				slog.String("path", buildManifestPath))
+			return customPolicies, nil
+		}
 		return nil, fmt.Errorf("failed to read build-manifest.yaml: %w", err)
 	}
 

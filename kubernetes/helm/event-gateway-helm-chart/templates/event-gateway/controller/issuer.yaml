@@ -1,0 +1,17 @@
+{{- $controller := .Values.eventGateway.controller -}}
+{{- $tls := $controller.tls -}}
+{{- if and $controller.deployment.enabled $tls.enabled (eq $tls.certificateProvider "cert-manager") }}
+{{- if and (eq $tls.certManager.issuerRef.kind "Issuer") $tls.certManager.createIssuer }}
+---
+# Self-signed Issuer for development/testing purposes
+# In production, replace this with a proper CA issuer (Let's Encrypt, corporate CA, etc.)
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "event-gateway.fullname" . }}-controller-selfsigned-issuer
+  labels:
+    {{- include "event-gateway.componentLabels" (list . "controller" dict) | nindent 4 }}
+spec:
+  selfSigned: {}
+{{- end }}
+{{- end }}

@@ -75,7 +75,7 @@ services:
     depends_on:
       - mock-platform-api
     # healthcheck:
-    #   test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9092/health"]
+    #   test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9092/api/admin/v0.9/health"]
     #   interval: 5s
     #   timeout: 3s
     #   retries: 10

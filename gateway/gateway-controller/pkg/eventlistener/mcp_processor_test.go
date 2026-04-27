@@ -38,7 +38,7 @@ func testMCPStoredConfig(uuid, handle, displayName, version string, desiredState
 	upstreamURL := "https://example.com"
 	mcp := api.MCPProxyConfiguration{
 		ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.Mcp,
+		Kind:       api.MCPProxyConfigurationKindMcp,
 		Metadata: api.Metadata{
 			Name: handle,
 		},
@@ -57,7 +57,7 @@ func testMCPStoredConfig(uuid, handle, displayName, version string, desiredState
 
 	cfg := &models.StoredConfig{
 		UUID:                uuid,
-		Kind:                string(api.Mcp),
+		Kind:                string(api.MCPProxyConfigurationKindMcp),
 		Handle:              handle,
 		DisplayName:         displayName,
 		Version:             version,

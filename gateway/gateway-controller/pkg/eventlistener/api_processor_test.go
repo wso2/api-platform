@@ -81,6 +81,40 @@ func TestHandleEvent_APIUpdate_RefreshesExistingConfigFromDB(t *testing.T) {
 	assert.Equal(t, models.StateUndeployed, stored.DesiredState)
 }
 
+func TestHandleEvent_APICreate_SyncsExistingAPIKeysToXDS(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := setupSQLiteDBForEventListenerTests(t)
+	xdsManager := &mockAPIKeyXDSManager{}
+
+	cfg := testRestStoredConfig("api-create-sync-id", "test-api", "Test API", "v1.0.0", models.StateDeployed)
+	require.NoError(t, db.SaveConfig(cfg))
+
+	apiKey := testAPIKey("api-key-sync-id", "test-key", cfg.UUID)
+	require.NoError(t, db.SaveAPIKey(apiKey))
+
+	listener := &EventListener{
+		store:            store,
+		db:               db,
+		apiKeyXDSManager: xdsManager,
+		logger:           newTestLogger(),
+	}
+
+	listener.handleEvent(eventhub.Event{
+		EventType: eventhub.EventTypeAPI,
+		Action:    "CREATE",
+		EntityID:  cfg.UUID,
+		EventID:   "corr-api-create-sync",
+	})
+
+	if assert.Len(t, xdsManager.storeCalls, 1) {
+		assert.Equal(t, cfg.UUID, xdsManager.storeCalls[0].apiID)
+		assert.Equal(t, cfg.DisplayName, xdsManager.storeCalls[0].apiName)
+		assert.Equal(t, cfg.Version, xdsManager.storeCalls[0].apiVersion)
+		assert.Equal(t, apiKey.UUID, xdsManager.storeCalls[0].apiKeyID)
+		assert.Equal(t, "corr-api-create-sync", xdsManager.storeCalls[0].correlationID)
+	}
+}
+
 func TestHandleEvent_APIDelete_RemovesAPIKeysFromMemoryAndXDS(t *testing.T) {
 	store := storage.NewConfigStore()
 	xdsManager := &mockAPIKeyXDSManager{}

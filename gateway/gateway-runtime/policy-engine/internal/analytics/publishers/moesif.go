@@ -310,6 +310,22 @@ func (m *Moesif) Publish(event *dto.Event) {
 		}
 	}
 
+	// subscription metadata
+	if event.Subscription != nil {
+		if event.Subscription.BillingCustomerID != "" {
+			metadataMap["billingCustomerId"] = event.Subscription.BillingCustomerID
+		}
+		if event.Subscription.BillingSubscriptionID != "" {
+			metadataMap["billingSubscriptionId"] = event.Subscription.BillingSubscriptionID
+		}
+		if event.Subscription.Status != "" {
+			metadataMap["subscriptionStatus"] = event.Subscription.Status
+		}
+		if event.Subscription.PlanName != "" {
+			metadataMap["subscriptionPlanName"] = event.Subscription.PlanName
+		}
+	}
+
 	// isEgress
 	if isEgress, ok := event.Properties["isEgress"]; ok && isEgress != nil {
 		metadataMap["isEgress"] = isEgress

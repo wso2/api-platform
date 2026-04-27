@@ -5,13 +5,13 @@ info:
     Admin/debug API for Gateway Controller.
 
     These endpoints are served on the dedicated admin server port (default: 9092).
-  version: 1.0.0
+  version: 0.9.0
   contact:
     name: WSO2 API Platform Team
 servers:
-  - url: http://localhost:9092
+  - url: http://localhost:9092/api/admin/v0.9
     description: Local development admin server
-  - url: http://gateway-controller:9092
+  - url: http://gateway-controller:9092/api/admin/v0.9
     description: Docker/Kubernetes admin server
 
 paths:

@@ -1,0 +1,361 @@
+# Default values for the Event Gateway Helm chart.
+# This file is intended to be exhaustive and well documented; adjust per environment.
+
+nameOverride: ""
+fullnameOverride: ""
+
+imagePullSecrets: []
+
+commonLabels: {}
+commonAnnotations: {}
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# Component-level configuration
+
+eventGateway:
+  # Enable development mode across event gateway components.
+  # Do NOT enable in production — relaxes security checks (e.g. encryption key enforcement).
+  developmentMode: false
+
+  # Shared configuration mounted as:
+  #   - gateway-controller: /etc/gateway-controller/config.toml
+  #   - event-gateway runtime: /etc/event-gateway/config.toml
+  config:
+    controller:
+      auth:
+        basic:
+          enabled: true
+          users:
+            - username: "admin"
+              password: "admin"
+              password_hashed: false
+              roles: ["admin"]
+        idp:
+          enabled: false
+          jwks_url: ""
+          issuer: ""
+          roles_claim: "scope"
+          role_mapping: {}
+
+      # Server configuration
+      server:
+        # REST API port for gateway management
+        api_port: 9090
+
+        # xDS gRPC port (Envoy/internal)
+        xds_port: 18000
+
+        # Graceful shutdown timeout
+        shutdown_timeout: 15s
+
+        # Unique identifier for the gateway instance
+        gateway_id: "platform-event-gateway-id"
+
+      # Policy xDS Server — distributes EventChannelConfig to the event-gateway runtime
+      policy_server:
+        # Port the event-gateway runtime connects to for xDS (EventChannelConfig)
+        port: 18001
+        tls:
+          enabled: false
+          cert_file: "./certs/server.crt"
+          key_file: "./certs/server.key"
+
+      # Storage configuration
+      storage:
+        # Storage type: "sqlite" or "memory"
+        type: sqlite
+        sqlite:
+          path: ./data/gateway.db
+
+      # Policy configuration
+      policies:
+        # Directory containing policy definitions
+        definitions_path: ./default-policies
+
+      # Control plane connection configuration
+      controlplane:
+        insecure_skip_verify: false
+        reconnect_initial: 1s
+        reconnect_max: 5m
+        polling_interval: 15m
+        deployment_push_enabled: false
+        sync_batch_size: 50
+
+      # Event gateway specific settings propagated via env vars
+      eventGatewayConfig:
+        # Enable event gateway mode in the controller
+        enabled: true
+        # WebSub hub URL (URL the controller advertises to subscribers)
+        # Leave empty to auto-derive from the release name (<release>-event-gateway-gateway-runtime service)
+        websubHubUrl: ""
+        websubHubPort: 8080
+        websubHubListenerPort: 8080
+        # Timeout in seconds for event delivery
+        timeoutSeconds: 30
+        # Paths to the listener TLS cert/key — must match controller.listenerCerts.mountPath
+        listenerCertFile: "/app/listener-certs/default-listener.crt"
+        listenerKeyFile: "/app/listener-certs/default-listener.key"
+
+      # Encryption provider configuration for secret management.
+      encryption:
+        providers:
+          - type: aesgcm
+            keys:
+              - version: aesgcm256-v1
+                file: /app/data/aesgcm-keys/default-aesgcm256-v1.bin
+
+      # Logging configuration
+      logging:
+        level: info
+        format: json
+
+    # Event Gateway Runtime configuration
+    runtime:
+      server:
+        # Enable WebSub HTTP server
+        websubEnabled: true
+        # HTTP port for WebSub server
+        websubHttpPort: 8080
+        # HTTPS port for WebSub server
+        websubHttpsPort: 8443
+        # Enable TLS for WebSub
+        websubTlsEnabled: true
+        websubTlsCertFile: "/etc/event-gateway/tls/default-listener.crt"
+        websubTlsKeyFile: "/etc/event-gateway/tls/default-listener.key"
+        # WebSocket port
+        websocketPort: 8081
+        # Admin API port
+        adminPort: 9002
+        # Metrics port
+        metricsPort: 9003
+
+      kafka:
+        brokers:
+          - "kafka:9092"
+        consumerGroupPrefix: "event-gateway"
+
+      websub:
+        verificationTimeoutSeconds: 10
+        deliveryMaxRetries: 5
+        deliveryInitialDelayMs: 1000
+        deliveryMaxDelayMs: 60000
+        deliveryConcurrency: 64
+        defaultLeaseSeconds: 0
+
+      controlplane:
+        enabled: true
+        # xds_address is set via APIP_EGW_CONTROLPLANE_XDS_ADDRESS env var
+        xdsAddress: ""
+
+      logging:
+        level: info
+        format: json
+
+  # metadata for the generated ConfigMaps (annotations / labels)
+  configMap:
+    annotations: {}
+    labels: {}
+
+  controller:
+    image:
+      repository: ghcr.io/wso2/api-platform/event-gateway-controller
+      tag: "0.2.0-SNAPSHOT"
+      pullPolicy: Always
+    imagePullSecrets: []
+    service:
+      type: ClusterIP
+      annotations: {}
+      labels: {}
+      ports:
+        rest: 9090
+        xds: 18000
+        policy: 18001
+        admin: 9092
+        metrics: 9091
+
+    controlPlane:
+      host: ""  # Required for non-development installs; set to your control plane hostname/IP
+      port: 8443
+      token:
+        value: ""
+        secretName: ""
+        key: token
+    # TLS certificate configuration for downstream (listener) HTTPS
+    tls:
+      enabled: true
+      # Certificate provisioning method: "cert-manager", "secret", or "none"
+      certificateProvider: cert-manager
+      certManager:
+        create: true
+        createIssuer: true
+        issuerRef:
+          name: selfsigned-issuer
+          kind: Issuer
+        commonName: localhost
+        dnsNames:
+          - localhost
+          - "*.localhost"
+        duration: 2160h
+        renewBefore: 720h
+      secret:
+        name: event-gateway-controller-tls
+        certKey: tls.crt
+        keyKey: tls.key
+    # Encryption key configuration
+    encryptionKeys:
+      enabled: false
+      secretName: ""
+      mountPath: /app/data/aesgcm-keys
+    # Listener TLS certificate for the WebSub HTTPS endpoint.
+    # The controller reads these certs to build xDS snapshots for the event-gateway runtime.
+    # By default, reuses the runtime TLS secret (cert-manager creates it as <release>-runtime-tls).
+    listenerCerts:
+      # Mount path inside the controller container
+      mountPath: /app/listener-certs
+      # Secret name containing tls.crt and tls.key.
+      # Leave empty to auto-derive from the gatewayRuntime TLS cert-manager secret.
+      secretName: ""
+      certKey: tls.crt
+      keyKey: tls.key
+    logging:
+      level: info
+    storage:
+      type: sqlite
+      sqlitePath: ./data/gateway.db
+    metrics:
+      port: 9091
+    persistence:
+      enabled: true
+      existingClaim: ""
+      accessModes:
+        - ReadWriteOnce
+      size: 100Mi
+      storageClass: ""
+    deployment:
+      enabled: true
+      replicaCount: 1
+      volumeMountPath: /app/data
+      extraEnv: []
+      extraEnvFrom: []
+      env: {}
+      extraVolumeMounts: []
+      extraVolumes: []
+      labels: {}
+      annotations: {}
+      podAnnotations: {}
+      podLabels: {}
+      priorityClassName: ""
+      livenessProbe:
+        httpGet:
+          path: /api/admin/v0.9/health
+          port: admin
+        initialDelaySeconds: 10
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 3
+      readinessProbe:
+        httpGet:
+          path: /api/admin/v0.9/health
+          port: admin
+        initialDelaySeconds: 5
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 3
+      resources: {}
+        # limits:
+        #   cpu: 500m
+        #   memory: 512Mi
+        # requests:
+        #   cpu: 250m
+        #   memory: 256Mi
+      podSecurityContext: {}
+      securityContext: {}
+      nodeSelector: {}
+      tolerations: []
+      affinity: {}
+
+  # Event Gateway Runtime — WebSub hub, WebSocket server, and policy engine
+  gatewayRuntime:
+    image:
+      repository: ghcr.io/wso2/api-platform/event-gateway-runtime
+      tag: "0.2.0-SNAPSHOT"
+      pullPolicy: Always
+    imagePullSecrets: []
+    service:
+      type: ClusterIP
+      annotations: {}
+      labels: {}
+      ports:
+        websubHttp: 8080
+        websubHttps: 8443
+        websocket: 8081
+        admin: 9002
+        metrics: 9003
+    # TLS certificate configuration for the WebSub HTTPS listener
+    tls:
+      enabled: true
+      certificateProvider: cert-manager
+      certManager:
+        create: true
+        createIssuer: true
+        issuerRef:
+          name: selfsigned-issuer
+          kind: Issuer
+        commonName: localhost
+        dnsNames:
+          - localhost
+          - "*.localhost"
+        duration: 2160h
+        renewBefore: 720h
+      secret:
+        name: event-gateway-runtime-tls
+        certKey: tls.crt
+        keyKey: tls.key
+    deployment:
+      enabled: true
+      replicaCount: 1
+      env:
+        gatewayControllerHost: ""
+        logLevel: info
+        kafkaBrokers: ""
+      extraEnv: []
+      extraEnvFrom: []
+      extraVolumeMounts: []
+      extraVolumes: []
+      labels: {}
+      annotations: {}
+      podAnnotations: {}
+      podLabels: {}
+      priorityClassName: ""
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: admin
+        initialDelaySeconds: 15
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 3
+      readinessProbe:
+        httpGet:
+          path: /ready
+          port: admin
+        initialDelaySeconds: 10
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 6
+      resources: {}
+        # limits:
+        #   cpu: 1000m
+        #   memory: 1Gi
+        # requests:
+        #   cpu: 500m
+        #   memory: 512Mi
+      podSecurityContext: {}
+      securityContext: {}
+      nodeSelector: {}
+      tolerations: []
+      affinity: {}

@@ -45,7 +45,7 @@ Feature: Secret Management Operations
       """
     Then the response status should be 201
     And the response should be valid JSON
-    And the JSON response field "id" should be "test-secret-1"
+    And the JSON response field "status.id" should be "test-secret-1"
     # Cleanup
     When I delete the secret "test-secret-1"
     Then the response status should be 200
@@ -54,7 +54,7 @@ Feature: Secret Management Operations
     When I create a secret named "simple-secret" with value "simple-value-123"
     Then the response status should be 201
     And the response should be valid JSON
-    And the JSON response field "id" should be "simple-secret"
+    And the JSON response field "status.id" should be "simple-secret"
     # Cleanup
     When I delete the secret "simple-secret"
     Then the response status should be 200
@@ -77,7 +77,7 @@ Feature: Secret Management Operations
       """
     Then the response status should be 201
     And the response should be valid JSON
-    And the JSON response field "id" should be "special-secret"
+    And the JSON response field "status.id" should be "special-secret"
     # Cleanup
     When I delete the secret "special-secret"
     Then the response status should be 200
@@ -100,7 +100,7 @@ Feature: Secret Management Operations
       """
     Then the response status should be 201
     And the response should be valid JSON
-    And the JSON response field "id" should be "long-secret"
+    And the JSON response field "status.id" should be "long-secret"
     # Cleanup
     When I delete the secret "long-secret"
     Then the response status should be 200
@@ -204,9 +204,8 @@ Feature: Secret Management Operations
     When I get the secret "get-test-secret"
     Then the response status should be 200
     And the response should be valid JSON
-    And the JSON response field "status" should be "success"
-    And the JSON response should have field "secret"
-    And the JSON response field "secret.configuration.metadata.name" should be "get-test-secret"
+    And the JSON response field "kind" should be "Secret"
+    And the JSON response field "metadata.name" should be "get-test-secret"
     # Cleanup
     When I delete the secret "get-test-secret"
     Then the response status should be 200
@@ -280,7 +279,7 @@ Feature: Secret Management Operations
       """
     Then the response status should be 200
     And the response should be valid JSON
-    And the JSON response field "id" should be "update-test-secret"
+    And the JSON response field "status.id" should be "update-test-secret"
     # Cleanup
     When I delete the secret "update-test-secret"
     Then the response status should be 200
@@ -291,7 +290,7 @@ Feature: Secret Management Operations
     When I update the secret "simple-update-secret" with value "updated-simple-value"
     Then the response status should be 200
     And the response should be valid JSON
-    And the JSON response field "id" should be "simple-update-secret"
+    And the JSON response field "status.id" should be "simple-update-secret"
     # Cleanup
     When I delete the secret "simple-update-secret"
     Then the response status should be 200
@@ -351,7 +350,7 @@ Feature: Secret Management Operations
     When I create a secret named "upstream-secret" with value "ssk-test-auth-key-12345"
     Then the response status should be 201
     And the response should be valid JSON
-    And the JSON response field "id" should be "upstream-secret"
+    And the JSON response field "status.id" should be "upstream-secret"
 
     When I create this LLM provider:
         """
@@ -365,18 +364,18 @@ Feature: Secret Management Operations
           template: openai
           context: /llm-auth-secret
           upstream:
-            url: http://mock-openapi:4010/openai/v1
+            url: http://echo-backend-multi-arch:8080/anything
             auth:
               type: api-key
               header: Authorization
-              value: Bearer $secret{upstream-secret}
+              value: 'Bearer {{ secret "upstream-secret" }}'
           accessControl:
             mode: allow_all
         """
     Then the response status code should be 201
     And I wait for 3 seconds
 
-    # Request should succeed (mock validates auth header presence)
+    # Verify the secret value is correctly injected into the Authorization header sent upstream
     When I set header "Content-Type" to "application/json"
     And I send a POST request to "http://localhost:8080/llm-auth-secret/chat/completions" with body:
       """
@@ -387,7 +386,7 @@ Feature: Secret Management Operations
       """
     Then the response status code should be 200
     And the response should be valid JSON
-    And the JSON response field "object" should be "chat.completion"
+    And the response should contain echoed header "Authorization" with value "Bearer ssk-test-auth-key-12345"
 
     # Cleanup
     Given I authenticate using basic auth as "admin"
@@ -395,6 +394,75 @@ Feature: Secret Management Operations
     Then the response status code should be 200
 
     When I delete the secret "upstream-secret"
+    Then the response status should be 200
+
+  Scenario: Invoke an LLM Provider where the secret value contains JSON special characters (backslash and quote)
+    # Secret value contains \ and " which must be JSON-escaped as \\ and \" when submitted
+    When I create a secret with the following configuration:
+      """
+      {
+        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "kind": "Secret",
+        "metadata": {
+          "name": "upstream-secret-special"
+        },
+        "spec": {
+          "displayName": "Special Chars Secret",
+          "description": "Secret whose value contains backslash and quote characters",
+          "value": "ssk-test\\auth-\"key\""
+        }
+      }
+      """
+    Then the response status should be 201
+    And the response should be valid JSON
+    And the JSON response field "status.id" should be "upstream-secret-special"
+
+    When I create this LLM provider:
+        """
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProvider
+        metadata:
+          name: invoke-auth-provider-special-secret
+        spec:
+          displayName: Invoke Auth Provider Special Secret
+          version: v1.0
+          template: openai
+          context: /llm-auth-special-secret
+          upstream:
+            url: http://echo-backend-multi-arch:8080/anything
+            auth:
+              type: api-key
+              header: Authorization
+              value: 'Bearer {{ secret "upstream-secret-special" }}'
+          accessControl:
+            mode: allow_all
+        """
+    Then the response status code should be 201
+    And I wait for 3 seconds
+
+    # Verify the secret value (with special chars) is correctly injected into the Authorization header sent upstream.
+    # Use the docstring variant so the expected value can contain embedded double-quote characters.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/llm-auth-special-secret/chat/completions" with body:
+      """
+      {
+        "model": "gpt-4",
+        "messages": [{"role": "user", "content": "Test special char auth"}]
+      }
+      """
+    Then the response status code should be 200
+    And the response should be valid JSON
+    And the response should contain echoed header "Authorization" with exact value:
+      """
+      Bearer ssk-test\auth-"key"
+      """
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "invoke-auth-provider-special-secret"
+    Then the response status code should be 200
+
+    When I delete the secret "upstream-secret-special"
     Then the response status should be 200
 
   Scenario: Create LLM Provider with a secret that does not exist
@@ -414,7 +482,7 @@ Feature: Secret Management Operations
           auth:
             type: api-key
             header: Authorization
-            value: Bearer $secret{non-existent-secret-abcde}
+            value: 'Bearer {{ secret "non-existent-secret-abcde" }}'
         accessControl:
           mode: allow_all
       """

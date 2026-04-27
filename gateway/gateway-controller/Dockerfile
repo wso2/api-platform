@@ -113,6 +113,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+# Copy build manifest 
+COPY --from=build-manifest build-manifest.yaml /app/build-manifest.yaml
 
 COPY --from=builder /build/controller .
 COPY default-policies /app/default-policies

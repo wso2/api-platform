@@ -30,7 +30,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
@@ -41,7 +40,7 @@ func testLLMProviderTemplate(uuid, handle string) *models.StoredLLMProviderTempl
 		UUID: uuid,
 		Configuration: api.LLMProviderTemplate{
 			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.LlmProviderTemplate,
+			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata: api.Metadata{
 				Name: handle,
 			},
@@ -58,7 +57,7 @@ func testLLMProviderStoredConfig(uuid, handle, template string, policies *[]api.
 	now := time.Now()
 	provider := api.LLMProviderConfiguration{
 		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.LlmProvider,
+		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata: api.Metadata{
 			Name: handle,
 		},
@@ -77,7 +76,7 @@ func testLLMProviderStoredConfig(uuid, handle, template string, policies *[]api.
 
 	return &models.StoredConfig{
 		UUID:                uuid,
-		Kind:                string(api.LlmProvider),
+		Kind:                string(api.LLMProviderConfigurationKindLlmProvider),
 		Handle:              handle,
 		DisplayName:         "Test Provider",
 		Version:             "v1.0.0",
@@ -92,7 +91,7 @@ func testLLMProxyStoredConfig(uuid, handle, provider string, policies *[]api.LLM
 	now := time.Now()
 	proxy := api.LLMProxyConfiguration{
 		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.LlmProxy,
+		Kind:       api.LLMProxyConfigurationKindLlmProxy,
 		Metadata: api.Metadata{
 			Name: handle,
 		},
@@ -109,7 +108,7 @@ func testLLMProxyStoredConfig(uuid, handle, provider string, policies *[]api.LLM
 
 	return &models.StoredConfig{
 		UUID:                uuid,
-		Kind:                string(api.LlmProxy),
+		Kind:                string(api.LLMProxyConfigurationKindLlmProxy),
 		Handle:              handle,
 		DisplayName:         "Test Proxy",
 		Version:             "v1.0.0",
@@ -165,7 +164,6 @@ func TestHandleEvent_LLMProviderCreate_RehydratesConfigAndPolicyFromDB(t *testin
 		},
 		systemConfig:      &config.Config{},
 		policyDefinitions: policyDefs,
-		policyResolver:    resolver.NewPolicyResolver(policyDefs, nil),
 		logger:            newTestLogger(),
 	}
 
@@ -289,7 +287,6 @@ func TestHandleEvent_LLMProxyCreate_RehydratesConfigAndPolicyFromDB(t *testing.T
 		},
 		systemConfig:      &config.Config{},
 		policyDefinitions: policyDefs,
-		policyResolver:    resolver.NewPolicyResolver(policyDefs, nil),
 		logger:            newTestLogger(),
 	}
 

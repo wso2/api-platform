@@ -1,0 +1,71 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Your release is named {{ .Release.Name }}.
+
+{{- if .Values.eventGateway.config.controller.auth.basic.enabled }}
+
+Admin Credentials
+-----------------
+Username: admin
+Password: admin
+{{- end }}
+
+To learn more about the release, try:
+
+  $ helm status {{ .Release.Name }} --namespace {{ .Release.Namespace }}
+  $ helm get all {{ .Release.Name }} --namespace {{ .Release.Namespace }}
+
+{{- if .Values.eventGateway.controller.deployment.enabled }}
+
+Gateway Controller has been deployed:
+  - Service: {{ include "event-gateway.fullname" . }}-controller
+  - REST API Port: {{ .Values.eventGateway.controller.service.ports.rest }}
+  - Policy xDS Port: {{ .Values.eventGateway.controller.service.ports.xds }}
+
+To access the Controller REST API:
+  $ kubectl port-forward svc/{{ include "event-gateway.fullname" . }}-controller {{ .Values.eventGateway.controller.service.ports.rest }}:{{ .Values.eventGateway.controller.service.ports.rest }} -n {{ .Release.Namespace }}
+
+Then visit: http://localhost:{{ .Values.eventGateway.controller.service.ports.rest }}
+{{- end }}
+
+{{- if .Values.eventGateway.gatewayRuntime.deployment.enabled }}
+
+Event Gateway Runtime (WebSub + WebSocket) has been deployed:
+  - Service: {{ include "event-gateway.fullname" . }}-gateway-runtime
+  - WebSub HTTP Port: {{ .Values.eventGateway.gatewayRuntime.service.ports.websubHttp }}
+  - WebSub HTTPS Port: {{ .Values.eventGateway.gatewayRuntime.service.ports.websubHttps }}
+  - WebSocket Port: {{ .Values.eventGateway.gatewayRuntime.service.ports.websocket }}
+  - Admin Port: {{ .Values.eventGateway.gatewayRuntime.service.ports.admin }}
+  - Metrics Port: {{ .Values.eventGateway.gatewayRuntime.service.ports.metrics }}
+
+To access the Event Gateway Runtime:
+  {{- if eq .Values.eventGateway.gatewayRuntime.service.type "LoadBalancer" }}
+  NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+  You can watch the status by running:
+    $ kubectl get svc {{ include "event-gateway.fullname" . }}-gateway-runtime -n {{ .Release.Namespace }} -w
+
+  Once available, get the external IP:
+    $ export SERVICE_IP=$(kubectl get svc {{ include "event-gateway.fullname" . }}-gateway-runtime -n {{ .Release.Namespace }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+    $ echo http://$SERVICE_IP:{{ .Values.eventGateway.gatewayRuntime.service.ports.websubHttp }}
+  {{- else if eq .Values.eventGateway.gatewayRuntime.service.type "NodePort" }}
+    $ export NODE_PORT=$(kubectl get svc {{ include "event-gateway.fullname" . }}-gateway-runtime -n {{ .Release.Namespace }} -o jsonpath='{.spec.ports[0].nodePort}')
+    $ export NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[0].address}')
+    $ echo http://$NODE_IP:$NODE_PORT
+  {{- else }}
+    $ kubectl port-forward svc/{{ include "event-gateway.fullname" . }}-gateway-runtime {{ .Values.eventGateway.gatewayRuntime.service.ports.websubHttp }}:{{ .Values.eventGateway.gatewayRuntime.service.ports.websubHttp }} -n {{ .Release.Namespace }}
+
+  Then visit: http://localhost:{{ .Values.eventGateway.gatewayRuntime.service.ports.websubHttp }}
+  {{- end }}
+{{- end }}
+
+{{- if .Values.eventGateway.controller.persistence.enabled }}
+
+Persistent storage is enabled for the controller.
+{{- if .Values.eventGateway.controller.persistence.existingClaim }}
+Using existing PVC: {{ .Values.eventGateway.controller.persistence.existingClaim }}
+{{- else }}
+PVC created: {{ include "event-gateway.fullname" . }}-controller-data
+{{- end }}
+{{- end }}
+
+Documentation: {{ .Chart.Home }}

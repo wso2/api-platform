@@ -31,7 +31,10 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/wso2/api-platform/common/constants"
+	"github.com/wso2/api-platform/common/eventhub"
 	commonmodels "github.com/wso2/api-platform/common/models"
+	"github.com/wso2/api-platform/common/redact"
 	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
@@ -41,20 +44,18 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
-	"github.com/wso2/api-platform/common/constants"
-	"github.com/wso2/api-platform/common/eventhub"
 )
 
 // APIServer implements the generated ServerInterface
 type APIServer struct {
 	*RestAPIHandler // embedded — promotes CreateRestAPI, ListRestAPIs, GetRestAPIById, UpdateRestAPI, DeleteRestAPI
 
+	restAPIService              *restapi.RestAPIService
 	store                       *storage.ConfigStore
 	db                          storage.Storage
 	snapshotManager             *xds.SnapshotManager
@@ -68,7 +69,6 @@ type APIServer struct {
 	mcpDeploymentService        *utils.MCPDeploymentService
 	llmDeploymentService        *utils.LLMDeploymentService
 	secretService               *secrets.SecretService
-	policyResolver              *resolver.PolicyResolver
 	apiKeyService               *utils.APIKeyService
 	apiKeyXDSManager            *apikeyxds.APIKeyStateManager
 	controlPlaneClient          controlplane.ControlPlaneClient
@@ -98,7 +98,7 @@ func NewAPIServer(
 	eventHub eventhub.EventHub,
 	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater,
 	secretService *secrets.SecretService,
-	policyResolver *resolver.PolicyResolver,
+	restAPIService *restapi.RestAPIService,
 ) *APIServer {
 	if db == nil {
 		panic("APIServer requires non-nil storage")
@@ -114,7 +114,7 @@ func NewAPIServer(
 		panic("APIServer requires non-empty gateway ID")
 	}
 
-	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.Router, policyResolver, eventHub, gatewayID)
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.Router, eventHub, gatewayID, secretService)
 	apiKeyService := utils.NewAPIKeyService(store, db, apiKeyXDSManager, &systemConfig.APIKey, eventHub, gatewayID)
 	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subscriptionSnapshotUpdater, eventHub, gatewayID)
 
@@ -139,7 +139,6 @@ func NewAPIServer(
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, lazyResourceManager, templateDefinitions,
 			deploymentService, routerConfig, policyVersionResolver, policyValidator),
 		secretService:               secretService,
-		policyResolver:              policyResolver,
 		apiKeyService:               apiKeyService,
 		apiKeyXDSManager:            apiKeyXDSManager,
 		controlPlaneClient:          controlPlaneClient,
@@ -151,15 +150,7 @@ func NewAPIServer(
 		subscriptionSnapshotUpdater: subscriptionSnapshotUpdater,
 		subscriptionResourceService: subscriptionResourceService,
 	}
-	// Create RestAPI service and handler
-	restAPIService := restapi.NewRestAPIService(
-		store, db, snapshotManager, policyManager,
-		policyDefinitions, &server.policyDefMu,
-		deploymentService, apiKeyXDSManager,
-		controlPlaneClient, routerConfig, systemConfig,
-		httpClient, parser, validator, logger,
-		eventHub, policyResolver,
-	)
+	server.restAPIService = restAPIService
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
 
 	// Register status update callback
@@ -241,7 +232,7 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 	}
 
 	configs := s.store.GetAllByKind(kind)
-	if kind == string(api.Mcp) && s.mcpDeploymentService != nil {
+	if kind == string(api.MCPProxyConfigurationKindMcp) && s.mcpDeploymentService != nil {
 		var err error
 		configs, err = s.mcpDeploymentService.ListMCPProxies()
 		if err != nil {
@@ -254,73 +245,16 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 		}
 	}
 
-	// Filter based on kind to return appropriate response format
-	if kind == string(api.Mcp) {
-		// Return MCP proxy format
-		mcpItems := make([]api.MCPProxyListItem, 0)
-		for _, cfg := range configs {
-			if v, ok := filters["displayName"]; ok && cfg.DisplayName != v {
-				continue
-			}
-			if v, ok := filters["version"]; ok && cfg.Version != v {
-				continue
-			}
-			cfgContext, err := cfg.GetContext()
-			if err != nil {
-				s.logger.Warn("Failed to get context for MCP config",
-					slog.String("id", cfg.UUID),
-					slog.String("displayName", cfg.DisplayName),
-					slog.Any("error", err))
-				continue
-			}
-			if v, ok := filters["context"]; ok && cfgContext != v {
-				continue
-			}
-			if v, ok := filters["status"]; ok && string(cfg.DesiredState) != v {
-				continue
-			}
-
-			status := api.MCPProxyListItemStatus(cfg.DesiredState)
-			// Convert SourceConfiguration to MCPProxyConfiguration to get spec fields
-			var mcp api.MCPProxyConfiguration
-			j, _ := json.Marshal(cfg.SourceConfiguration)
-			err = json.Unmarshal(j, &mcp)
-			if err != nil {
-				s.logger.Error("Failed to unmarshal stored MCP configuration",
-					slog.String("id", cfg.UUID),
-					slog.String("displayName", cfg.DisplayName))
-				continue
-			}
-
-			li := api.MCPProxyListItem{
-				Id:          stringPtr(cfg.Handle),
-				DisplayName: stringPtr(mcp.Spec.DisplayName),
-				Version:     stringPtr(mcp.Spec.Version),
-				Status:      &status,
-				CreatedAt:   timePtr(cfg.CreatedAt),
-				UpdatedAt:   timePtr(cfg.UpdatedAt),
-			}
-			if mcp.Spec.Context != nil {
-				li.Context = mcp.Spec.Context
-			}
-			mcpItems = append(mcpItems, li)
+	// Filter configs and build the k8s-style response items once, independent of kind.
+	items := make([]any, 0, len(configs))
+	for _, cfg := range configs {
+		if v, ok := filters["displayName"]; ok && cfg.DisplayName != v {
+			continue
 		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"status":     "success",
-			"count":      len(mcpItems),
-			"mcpProxies": mcpItems,
-		})
-	} else if kind == string(api.WebSubApi) {
-		// Return WebSub API format
-		websubItems := make([]api.WebSubAPIListItem, 0)
-		for _, cfg := range configs {
-			if v, ok := filters["displayName"]; ok && cfg.DisplayName != v {
-				continue
-			}
-			if v, ok := filters["version"]; ok && cfg.Version != v {
-				continue
-			}
+		if v, ok := filters["version"]; ok && cfg.Version != v {
+			continue
+		}
+		if v, ok := filters["context"]; ok {
 			cfgContext, err := cfg.GetContext()
 			if err != nil {
 				s.logger.Warn("Failed to get context for config",
@@ -329,73 +263,44 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 					slog.Any("error", err))
 				continue
 			}
-			if v, ok := filters["context"]; ok && cfgContext != v {
+			if cfgContext != v {
 				continue
 			}
-			if v, ok := filters["status"]; ok && string(cfg.DesiredState) != v {
-				continue
-			}
-
-			status := string(cfg.DesiredState)
-			websubItems = append(websubItems, api.WebSubAPIListItem{
-				Id:          stringPtr(cfg.Handle),
-				DisplayName: stringPtr(cfg.DisplayName),
-				Version:     stringPtr(cfg.Version),
-				Context:     stringPtr(cfgContext),
-				Status:      (*api.WebSubAPIListItemStatus)(&status),
-				CreatedAt:   timePtr(cfg.CreatedAt),
-				UpdatedAt:   timePtr(cfg.UpdatedAt),
-			})
+		}
+		if v, ok := filters["status"]; ok && string(cfg.DesiredState) != v {
+			continue
 		}
 
-		c.JSON(http.StatusOK, gin.H{
-			"status":     "success",
-			"count":      len(websubItems),
-			"websubApis": websubItems,
-		})
-	} else {
-		// Return REST API format
-		apiItems := make([]api.RestAPIListItem, 0)
-		for _, cfg := range configs {
-			if v, ok := filters["displayName"]; ok && cfg.DisplayName != v {
-				continue
-			}
-			if v, ok := filters["version"]; ok && cfg.Version != v {
-				continue
-			}
-			cfgContext, err := cfg.GetContext()
+		if kind == string(api.MCPProxyConfigurationKindMcp) {
+			mcp, err := rematerializeMCPProxyConfig(s.logger, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
 			if err != nil {
-				s.logger.Warn("Failed to get context for config",
-					slog.String("id", cfg.UUID),
-					slog.String("displayName", cfg.DisplayName),
-					slog.Any("error", err))
-				continue
+				c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+					Status:  "error",
+					Message: "Failed to get stored MCP configuration",
+				})
+				return
 			}
-			if v, ok := filters["context"]; ok && cfgContext != v {
-				continue
-			}
-			if v, ok := filters["status"]; ok && string(cfg.DesiredState) != v {
-				continue
-			}
-
-			status := string(cfg.DesiredState)
-			apiItems = append(apiItems, api.RestAPIListItem{
-				Id:          stringPtr(cfg.Handle),
-				DisplayName: stringPtr(cfg.DisplayName),
-				Version:     stringPtr(cfg.Version),
-				Context:     stringPtr(cfgContext),
-				Status:      (*api.RestAPIListItemStatus)(&status),
-				CreatedAt:   timePtr(cfg.CreatedAt),
-				UpdatedAt:   timePtr(cfg.UpdatedAt),
-			})
+			items = append(items, buildResourceResponseFromStored(mcp, cfg))
+			continue
 		}
 
-		c.JSON(http.StatusOK, gin.H{
-			"status": "success",
-			"count":  len(apiItems),
-			"apis":   apiItems,
-		})
+		items = append(items, buildResourceResponseFromStored(cfg.Configuration, cfg))
 	}
+
+	// Each kind has its own envelope key to preserve the existing URL contract.
+	envelopeKey := "apis"
+	switch kind {
+	case string(api.MCPProxyConfigurationKindMcp):
+		envelopeKey = "mcpProxies"
+	case string(api.WebSubAPIKindWebSubApi):
+		envelopeKey = "websubApis"
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":    "success",
+		"count":     len(items),
+		envelopeKey: items,
+	})
 }
 
 // GetAPIByNameVersion implements ServerInterface.GetAPIByNameVersion
@@ -416,24 +321,7 @@ func (s *APIServer) GetAPIByNameVersion(c *gin.Context, name string, version str
 		return
 	}
 
-	apiDetail := gin.H{
-		"id":            cfg.Handle,
-		"configuration": cfg.Configuration,
-		"metadata": gin.H{
-			"status":    string(cfg.DesiredState),
-			"createdAt": cfg.CreatedAt.Format(time.RFC3339),
-			"updatedAt": cfg.UpdatedAt.Format(time.RFC3339),
-		},
-	}
-
-	if cfg.DeployedAt != nil {
-		apiDetail["metadata"].(gin.H)["deployedAt"] = cfg.DeployedAt.Format(time.RFC3339)
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"status": "success",
-		"api":    apiDetail,
-	})
+	c.JSON(http.StatusOK, buildResourceResponseFromStored(cfg.Configuration, cfg))
 }
 
 // waitForDeploymentAndPush waits for API deployment to complete and pushes it to the control plane
@@ -487,6 +375,28 @@ func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID stri
 	}
 }
 
+// publishWebSubEvent publishes an event for WebSub API lifecycle changes.
+func (s *APIServer) publishWebSubEvent(eventType eventhub.EventType, action, entityID, correlationID string, logger *slog.Logger) {
+	event := eventhub.Event{
+		GatewayID:           s.gatewayID,
+		OriginatedTimestamp: time.Now(),
+		EventType:           eventType,
+		Action:              action,
+		EntityID:            entityID,
+		EventID:             correlationID,
+		EventData:           eventhub.EmptyEventData,
+	}
+
+	if err := s.eventHub.PublishEvent(s.gatewayID, event); err != nil {
+		logger.Warn("Failed to publish event to event hub",
+			slog.String("gateway_id", s.gatewayID),
+			slog.String("event_type", string(eventType)),
+			slog.String("action", action),
+			slog.String("entity_id", entityID),
+			slog.Any("error", err))
+	}
+}
+
 // GetConfigDump implements the GET /config_dump endpoint
 func (s *APIServer) GetConfigDump(c *gin.Context) {
 	log := middleware.GetLogger(c, s.logger)
@@ -502,7 +412,20 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, *response)
+	jsonBytes, err := json.Marshal(*response)
+	if err != nil {
+		log.Error("Failed to marshal configuration dump", slog.Any("error", err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	sensitiveValues := s.store.GetAllSensitiveValues()
+	redacted := redact.Redact(string(jsonBytes), sensitiveValues)
+
+	c.Data(http.StatusOK, "application/json", []byte(redacted))
 	log.Info("Configuration dump retrieved successfully",
 		slog.Int("apis", len(*response.Apis)),
 		slog.Int("policies", len(*response.Policies)),

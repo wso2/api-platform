@@ -83,9 +83,17 @@ func (s *CLISteps) RunWithArgs(args string) error {
 	return s.state.ExecuteCLI(parts...)
 }
 
-// RunGatewayAdd runs the gateway add command
+// RunGatewayAdd runs the gateway add command. The admin API (health,
+// config-dump, xds-sync-status) is served on a separate port in our compose
+// stack, so wire it up here so that commands like `gateway health` hit the
+// correct origin.
 func (s *CLISteps) RunGatewayAdd(name, server, auth string) error {
-	args := []string{"gateway", "add", "--display-name", name, "--server", server}
+	args := []string{
+		"gateway", "add",
+		"--display-name", name,
+		"--server", server,
+		"--admin-server", resources.GatewayControllerAdminURL,
+	}
 	if auth != "" && auth != "none" {
 		args = append(args, "--auth", auth)
 		// Add credentials for basic auth

@@ -28,9 +28,6 @@ import (
 var (
 	// ErrNotFound is returned when a REST API is not found.
 	ErrNotFound = errors.New("rest api not found")
-
-	// ErrMissingPolicyResolver is returned when policy resolution is attempted without a configured resolver.
-	ErrMissingPolicyResolver = errors.New("policy resolver is not configured")
 )
 
 // ValidationError wraps configuration validation errors.

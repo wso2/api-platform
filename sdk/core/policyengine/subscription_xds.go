@@ -25,6 +25,15 @@ type SubscriptionData struct {
 
 	// StopOnQuotaReach indicates whether to block requests when quota is exhausted.
 	StopOnQuotaReach bool `json:"stopOnQuotaReach,omitempty" yaml:"stopOnQuotaReach,omitempty"`
+
+	// PlanName is the name of the subscription plan
+	PlanName string `json:"planName,omitempty" yaml:"planName,omitempty"`
+
+	// BillingCustomerId is the billing customer identifier
+	BillingCustomerId *string `json:"billingCustomerId,omitempty" yaml:"billingCustomerId,omitempty"`
+
+	// BillingSubscriptionId is the billing subscription identifier
+	BillingSubscriptionId *string `json:"billingSubscriptionId,omitempty" yaml:"billingSubscriptionId,omitempty"`
 }
 
 // SubscriptionStateResource represents the complete state of subscriptions

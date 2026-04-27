@@ -285,14 +285,59 @@ type MCPProxyDeletedEvent struct {
 	CorrelationID string                      `json:"correlationId"`
 }
 
+// WebSubAPIDeployedEventPayload represents the payload of a WebSub API deployment event
+type WebSubAPIDeployedEventPayload struct {
+	APIID        string    `json:"apiId"`
+	DeploymentID string    `json:"deploymentId"`
+	PerformedAt  time.Time `json:"performedAt"`
+}
+
+// WebSubAPIDeployedEvent represents the complete WebSub API deployment event
+type WebSubAPIDeployedEvent struct {
+	Type          string                      `json:"type"`
+	Payload       WebSubAPIDeployedEventPayload `json:"payload"`
+	Timestamp     string                      `json:"timestamp"`
+	CorrelationID string                      `json:"correlationId"`
+}
+
+// WebSubAPIUndeployedEventPayload represents the payload of a WebSub API undeployment event
+type WebSubAPIUndeployedEventPayload struct {
+	APIID        string    `json:"apiId"`
+	DeploymentID string    `json:"deploymentId"`
+	PerformedAt  time.Time `json:"performedAt"`
+}
+
+// WebSubAPIUndeployedEvent represents the complete WebSub API undeployment event
+type WebSubAPIUndeployedEvent struct {
+	Type          string                        `json:"type"`
+	Payload       WebSubAPIUndeployedEventPayload `json:"payload"`
+	Timestamp     string                        `json:"timestamp"`
+	CorrelationID string                        `json:"correlationId"`
+}
+
+// WebSubAPIDeletedEventPayload represents the payload of a WebSub API deletion event
+type WebSubAPIDeletedEventPayload struct {
+	APIID string `json:"apiId"`
+}
+
+// WebSubAPIDeletedEvent represents the complete WebSub API deletion event
+type WebSubAPIDeletedEvent struct {
+	Type          string                      `json:"type"`
+	Payload       WebSubAPIDeletedEventPayload `json:"payload"`
+	Timestamp     string                      `json:"timestamp"`
+	CorrelationID string                      `json:"correlationId"`
+}
+
 // SubscriptionCreatedEventPayload represents the payload of a subscription created event.
 type SubscriptionCreatedEventPayload struct {
-	APIID              string `json:"apiId"`
-	SubscriptionID     string `json:"subscriptionId"`
-	ApplicationID      string `json:"applicationId,omitempty"`
-	SubscriptionToken  string `json:"subscriptionToken"`
-	SubscriptionPlanId string `json:"subscriptionPlanId,omitempty"`
-	Status             string `json:"status"`
+	APIID              	  string `json:"apiId"`
+	SubscriptionID     	  string `json:"subscriptionId"`
+	ApplicationID      	  string `json:"applicationId,omitempty"`
+	SubscriptionToken  	  string `json:"subscriptionToken"`
+	SubscriptionPlanId 	  string `json:"subscriptionPlanId,omitempty"`
+	Status             	  string `json:"status"`
+	BillingCustomerID 	  string `json:"billingCustomerId,omitempty"`
+	BillingSubscriptionID string `json:"billingSubscriptionId,omitempty"`
 }
 
 // SubscriptionCreatedEvent represents the complete subscription.created event.

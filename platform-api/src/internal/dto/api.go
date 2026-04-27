@@ -118,8 +118,9 @@ type APIDeploymentYAML struct {
 
 // DeploymentMetadata represents the metadata section of the API deployment YAML
 type DeploymentMetadata struct {
-	Name   string            `yaml:"name" binding:"required"`
-	Labels map[string]string `yaml:"labels,omitempty"`
+	Name        string            `yaml:"name" binding:"required"`
+	Labels      map[string]string `yaml:"labels,omitempty"`
+	Annotations map[string]string `yaml:"annotations,omitempty"`
 }
 
 // Vhosts represents per-API virtual host overrides in the deployment YAML
