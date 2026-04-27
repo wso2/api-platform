@@ -31,7 +31,6 @@ parameters:
         properties:
           upperTokenLimit:
             const: -1
-      minContains: 1
       items:
         type: object
         additionalProperties: false
