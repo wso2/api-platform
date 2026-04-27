@@ -186,7 +186,7 @@ func FetchPipPackage(pipPackage string) (*PipPackageInfo, error) {
 	if strings.Contains(pipPackage, " @ ") {
 		return nil, fmt.Errorf(
 			"unsupported pip direct reference: %q; only git+ VCS specs are supported for direct references",
-			pipPackage,
+			sanitizePipSpec(pipPackage),
 		)
 	}
 
@@ -448,7 +448,7 @@ func ParsePipPackageRef(ref string) (*PipPackageRef, error) {
 	if ref == "" {
 		return nil, fmt.Errorf(
 			"invalid pip spec: expected '<pkg>==<ver>', '<pkg>~=<major>.0', or '<pkg>~=<major>.<minor>.0', got %q",
-			ref,
+			sanitizePipSpec(ref),
 		)
 	}
 
@@ -461,7 +461,7 @@ func ParsePipPackageRef(ref string) (*PipPackageRef, error) {
 		if pkgName == "" || version == "" || (!isMajorOnly && !isMinorOnly) {
 			return nil, fmt.Errorf(
 				"invalid pip spec: expected '<pkg>==<ver>', '<pkg>~=<major>.0', or '<pkg>~=<major>.<minor>.0', got %q",
-				ref,
+				sanitizePipSpec(ref),
 			)
 		}
 
@@ -477,7 +477,7 @@ func ParsePipPackageRef(ref string) (*PipPackageRef, error) {
 	if len(parts) != 2 {
 		return nil, fmt.Errorf(
 			"invalid pip spec: expected '<pkg>==<ver>', '<pkg>~=<major>.0', or '<pkg>~=<major>.<minor>.0', got %q",
-			ref,
+			sanitizePipSpec(ref),
 		)
 	}
 
@@ -486,7 +486,7 @@ func ParsePipPackageRef(ref string) (*PipPackageRef, error) {
 	if pkgName == "" || version == "" {
 		return nil, fmt.Errorf(
 			"invalid pip spec: expected '<pkg>==<ver>', '<pkg>~=<major>.0', or '<pkg>~=<major>.<minor>.0', got %q",
-			ref,
+			sanitizePipSpec(ref),
 		)
 	}
 
