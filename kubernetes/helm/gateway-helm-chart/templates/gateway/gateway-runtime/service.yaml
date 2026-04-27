@@ -23,14 +23,6 @@ spec:
       targetPort: https
       protocol: TCP
       name: https
-    - port: {{ $unified.service.ports.envoyAdmin }}
-      targetPort: envoy-admin
-      protocol: TCP
-      name: envoy-admin
-    - port: {{ $unified.service.ports.policyEngineAdmin }}
-      targetPort: pe-admin
-      protocol: TCP
-      name: pe-admin
     - port: {{ $unified.service.ports.policyEngineMetrics }}
       targetPort: pe-metrics
       protocol: TCP
