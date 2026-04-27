@@ -237,7 +237,7 @@ func NewClient(
 	// Initialize API utils service with the proper base URL using the method
 	client.apiUtilsService = utils.NewAPIUtilsService(utils.PlatformAPIConfig{
 		BaseURL:            client.getRestAPIBaseURL(),
-		Token:              "",
+		Token:              cfg.Token,
 		InsecureSkipVerify: cfg.InsecureSkipVerify,
 		Timeout:            30 * time.Second,
 	}, logger)
