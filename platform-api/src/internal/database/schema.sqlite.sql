@@ -152,7 +152,6 @@ CREATE TABLE IF NOT EXISTS gateways (
     gateway_functionality_type VARCHAR(20) DEFAULT 'regular' NOT NULL,
     is_active BOOLEAN DEFAULT FALSE,
     manifest TEXT,
-    version VARCHAR(64),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,

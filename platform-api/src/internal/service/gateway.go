@@ -113,18 +113,14 @@ func (s *GatewayService) GetStoredManifest(gatewayID, orgID string) (*Manifest, 
 	return &Manifest{Policies: json.RawMessage(raw)}, nil
 }
 
-// legacyGatewayVersion is recorded when the gateway controller does not include a
+// legacyGatewayVersion is reported when the gateway controller does not include a
 // "version" field in the manifest payload. v1.0.0 was the only such release.
 const legacyGatewayVersion = "1.0.0"
-
-// maxGatewayVersionLen caps the version string length defensively. Any printable
-// version string we expect (semver, snapshots, optional build metadata) fits well within this.
-const maxGatewayVersionLen = 64
 
 // ReceiveGatewayManifest stores the manifest posted by the gateway controller on connect.
 // All policies are stored with name and version; customer-managed policies include policy_definition.
 // gatewayVersion is the controller's reported build version; an empty string means the controller
-// is on a legacy build (pre-1.1.0) that does not send a version — stored as "1.0.0" in that case.
+// is on a legacy build (pre-1.1.0) that does not send a version — logged as "1.0.0" in that case.
 func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion string, policies []GatewayPolicyInput) error {
 	entries := make([]GatewayPolicyDefinition, 0, len(policies))
 	for _, p := range policies {
@@ -156,15 +152,9 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion
 		return fmt.Errorf("failed to store gateway manifest: %w", err)
 	}
 
-	resolvedVersion := strings.TrimSpace(gatewayVersion)
-	if resolvedVersion == "" {
-		resolvedVersion = legacyGatewayVersion
-	}
-	if len(resolvedVersion) > maxGatewayVersionLen {
-		resolvedVersion = resolvedVersion[:maxGatewayVersionLen]
-	}
-	if err := s.gatewayRepo.UpdateGatewayVersion(gatewayID, resolvedVersion); err != nil {
-		return fmt.Errorf("failed to store gateway version: %w", err)
+	reportedVersion := strings.TrimSpace(gatewayVersion)
+	if reportedVersion == "" {
+		reportedVersion = legacyGatewayVersion
 	}
 
 	customerCount := 0
@@ -176,7 +166,7 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion
 	s.slogger.Info("Gateway manifest received and stored",
 		slog.String("org_id", orgID),
 		slog.String("gateway_id", gatewayID),
-		slog.String("gateway_version", resolvedVersion),
+		slog.String("gateway_version", reportedVersion),
 		slog.Int("total_policy_count", len(entries)),
 		slog.Int("customer_policy_count", customerCount),
 	)
