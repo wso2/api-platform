@@ -19,6 +19,7 @@
 package binding
 
 import (
+	"fmt"
 	"path"
 	"strings"
 )
@@ -96,15 +97,19 @@ type ChannelsConfig struct {
 }
 
 // WebSubApiTopicName derives a Kafka topic name for a WebSubApi channel.
-// Format: {api-name}.{version}.{channel-name}
+// Format: {normalized-api-name}.{normalized-version}.{normalized-channel-name}
+// The logical WebSub channel name remains unchanged elsewhere; only the broker topic is normalized.
 func WebSubApiTopicName(apiName, version, channelName string) string {
-	return apiName + "." + version + "." + channelName
+	return NormalizeTopicSegment(apiName) + "." +
+		NormalizeTopicSegment(version) + "." +
+		NormalizeTopicSegment(channelName)
 }
 
 // WebSubApiSubscriptionTopic derives the internal subscription sync topic for a WebSubApi.
-// Format: {api-name}.{version}.__subscriptions
+// Format: {normalized-api-name}.{normalized-version}.__subscriptions
 func WebSubApiSubscriptionTopic(apiName, version string) string {
-	return apiName + "." + version + ".__subscriptions"
+	return NormalizeTopicSegment(apiName) + "." +
+		NormalizeTopicSegment(version) + ".__subscriptions"
 }
 
 // WebSubApiBasePath derives the shared WebSub HTTP base path for an API.
@@ -144,4 +149,39 @@ func ensureLeadingSlash(value string) string {
 		return value
 	}
 	return "/" + value
+}
+
+// NormalizeTopicSegment converts a logical topic segment to a Kafka-safe name.
+// It uses an escape format so unsupported characters do not collide with
+// already-valid names:
+//   - [A-Za-z0-9.-] pass through unchanged
+//   - '_' becomes '__'
+//   - everything else becomes '_%x_' (for example '/' -> '_2f_')
+func NormalizeTopicSegment(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+
+	var normalized strings.Builder
+	normalized.Grow(len(value))
+
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z':
+			normalized.WriteRune(r)
+		case r >= 'A' && r <= 'Z':
+			normalized.WriteRune(r)
+		case r >= '0' && r <= '9':
+			normalized.WriteRune(r)
+		case r == '.', r == '-':
+			normalized.WriteRune(r)
+		case r == '_':
+			normalized.WriteString("__")
+		default:
+			normalized.WriteString(fmt.Sprintf("_%x_", r))
+		}
+	}
+
+	return normalized.String()
 }

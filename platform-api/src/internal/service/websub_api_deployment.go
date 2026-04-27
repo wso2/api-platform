@@ -23,7 +23,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"platform-api/src/api"
@@ -596,7 +595,6 @@ func buildWebSubAPIDeploymentYAML(websubAPI *model.WebSubAPI) *model.WebSubAPIDe
 		if ch.Request != nil && ch.Request.Name != "" {
 			channelName = ch.Request.Name
 		}
-		channelName = strings.TrimPrefix(channelName, "/")
 		channels = append(channels, model.WebSubAPIDeploymentChannel{
 			Name:   channelName,
 			Method: method,
