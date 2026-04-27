@@ -63,14 +63,14 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 	switch cfgTyped := cfg.Configuration.(type) {
 	case api.WebSubAPI:
 		apiData := cfgTyped.Spec
-		for _, ch := range apiData.Channels {
+		for _, ch := range apiData.Hub.Channels {
 			var finalPolicies []policyenginev1.PolicyInstance
 
-			// Policy execution order: API Level Policies -> Operation Level Policies
-			// Start with API-level policies
-			if apiData.Policies != nil {
-				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.Policies))
-				for _, p := range *apiData.Policies {
+			// Policy execution order: Hub Level Policies -> Channel Level Policies
+			// Start with hub-level policies
+			if apiData.Hub.Policies != nil {
+				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.Hub.Policies))
+				for _, p := range *apiData.Hub.Policies {
 					// Only append if the policy was successfully resolved (exists in apiPolicies map)
 					if v, ok := apiPolicies[p.Name]; ok {
 						finalPolicies = append(finalPolicies, v)

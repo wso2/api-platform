@@ -456,18 +456,18 @@ func (v *APIValidator) validateAsyncData(spec *api.WebhookAPIData) []ValidationE
 	errors = append(errors, v.validateContext(spec.Context)...)
 
 	// Validate channels
-	errors = append(errors, v.validateChannels(spec.Channels)...)
+	errors = append(errors, v.validateHubChannels(spec.Hub.Channels)...)
 
 	return errors
 }
 
-// validateChannels validates the channels configuration
-func (v *APIValidator) validateChannels(channels []api.Channel) []ValidationError {
+// validateHubChannels validates the hub channels configuration
+func (v *APIValidator) validateHubChannels(channels []api.HubChannel) []ValidationError {
 	var errors []ValidationError
 
 	if len(channels) == 0 {
 		errors = append(errors, ValidationError{
-			Field:   "spec.channels",
+			Field:   "spec.hub.channels",
 			Message: "At least one channel is required",
 		})
 		return errors
@@ -478,7 +478,7 @@ func (v *APIValidator) validateChannels(channels []api.Channel) []ValidationErro
 		// Validate path
 		if ch.Name == "" {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.channels[%d].name", i),
+				Field:   fmt.Sprintf("spec.hub.channels[%d].name", i),
 				Message: "Channel name is required",
 			})
 			continue
@@ -486,7 +486,7 @@ func (v *APIValidator) validateChannels(channels []api.Channel) []ValidationErro
 
 		if !v.validatePathParametersForAsyncAPIs(ch.Name) {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.channels[%d].name", i),
+				Field:   fmt.Sprintf("spec.hub.channels[%d].name", i),
 				Message: "Channel name has {} in parameters",
 			})
 		}

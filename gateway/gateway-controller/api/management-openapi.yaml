@@ -3725,7 +3725,7 @@ components:
         - displayName
         - version
         - context
-        - channels
+        - hub
       properties:
         displayName:
           type: string
@@ -3762,23 +3762,78 @@ components:
               description: Custom virtual host/domain for sandbox traffic
               pattern: '^[a-zA-Z0-9\.\-]+$'
               example: sandbox-api.example.com
-        channels:
-          type: array
-          description: List of channels - Async operations(SUB) for WebSub APIs
-          minItems: 1
-          items:
-            $ref: '#/components/schemas/Channel'
-        policies:
-          type: array
-          description: List of API-level policies applied to all operations unless overridden
-          items:
-            $ref: '#/components/schemas/Policy'
+        receiver:
+          $ref: '#/components/schemas/WebSubReceiver'
+        hub:
+          $ref: '#/components/schemas/WebSubHub'
+        delivery:
+          $ref: '#/components/schemas/WebSubDelivery'
         deploymentState:
           type: string
           description: Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.
           enum: [deployed, undeployed]
           default: deployed
           example: deployed
+
+    # WebSubReceiver defines inbound webhook receiver configuration (e.g., signature validation).
+    WebSubReceiver:
+      type: object
+      description: Receiver configuration for the WebSub API - handles inbound event publishing from publishers.
+      properties:
+        policies:
+          type: array
+          description: List of policies applied to inbound webhook requests (e.g., hmac-signature-validation)
+          items:
+            $ref: '#/components/schemas/Policy'
+
+    # WebSubDelivery defines outbound event delivery configuration (e.g., signing outbound requests).
+    WebSubDelivery:
+      type: object
+      description: Delivery configuration for the WebSub API - handles outbound event delivery to subscribers.
+      properties:
+        policies:
+          type: array
+          description: List of policies applied when delivering events to subscriber callback URLs (e.g., hmac-signature-validation)
+          items:
+            $ref: '#/components/schemas/Policy'
+
+    # WebSubHub defines hub-level configuration including subscriber auth and channels.
+    WebSubHub:
+      type: object
+      description: Hub configuration for the WebSub API - handles subscriber management and event fan-out.
+      required:
+        - channels
+      properties:
+        policies:
+          type: array
+          description: List of policies applied at the hub level (e.g., api-key-auth for subscribers)
+          items:
+            $ref: '#/components/schemas/Policy'
+        channels:
+          type: array
+          description: List of topic channels available for subscription
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/HubChannel'
+
+    # HubChannel defines a single subscribable channel within the WebSub hub.
+    HubChannel:
+      type: object
+      description: A subscribable topic channel within the WebSub hub.
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Channel name or topic identifier relative to API context.
+          minLength: 1
+          pattern: '^[^{}]+$'
+          example: issues
+        policies:
+          type: array
+          description: List of policies applied only to this channel (e.g., rbac)
+          items:
+            $ref: '#/components/schemas/Policy'
 
     # Simplified AsyncAPI Channel object represented as an OpenAPI schema.
     Channel:

@@ -29,6 +29,13 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/pkg/engine"
 )
 
+// ChannelChainKeySet holds the per-channel policy chain keys for a single channel.
+type ChannelChainKeySet struct {
+	SubscribeChainKey string
+	InboundChainKey   string
+	OutboundChainKey  string
+}
+
 // ChannelBinding holds the runtime state for a registered channel.
 type ChannelBinding struct {
 	APIID             string
@@ -41,8 +48,9 @@ type ChannelBinding struct {
 	InboundChainKey   string
 	OutboundChainKey  string
 	BrokerDriverTopic string
-	Ordering          string            // "ordered" or "unordered"
-	Channels          map[string]string // channel-name → Kafka topic (WebSubApi only)
+	Ordering          string                        // "ordered" or "unordered"
+	Channels          map[string]string             // channel-name → Kafka topic (WebSubApi only)
+	ChannelChainKeys  map[string]ChannelChainKeySet // channel-name → per-channel chain keys
 }
 
 // Hub is the central message router. It holds the policy engine reference and
@@ -111,6 +119,7 @@ func (h *Hub) Engine() *engine.Engine {
 }
 
 // ProcessSubscribe applies subscribe policies to a subscription request at the hub.
+// Hub-level policies are applied first, then per-channel policies if present.
 // Returns the (possibly mutated) message and whether it was short-circuited.
 func (h *Hub) ProcessSubscribe(ctx context.Context, bindingName string, msg *connectors.Message) (*connectors.Message, bool, error) {
 	binding := h.GetBinding(bindingName)
@@ -118,34 +127,51 @@ func (h *Hub) ProcessSubscribe(ctx context.Context, bindingName string, msg *con
 		return nil, false, fmt.Errorf("binding not found: %s", bindingName)
 	}
 
-	if binding.SubscribeChainKey == "" {
-		return msg, false, nil
+	// Apply hub-level subscribe chain first.
+	if binding.SubscribeChainKey != "" {
+		chain := h.engine.GetChain(binding.SubscribeChainKey)
+		if chain != nil {
+			reqHeaderCtx := SubscribeToRequestHeaderContext(msg, binding)
+			result, err := h.engine.ExecuteRequestHeaderPolicies(ctx, binding.SubscribeChainKey, reqHeaderCtx.SharedContext, reqHeaderCtx)
+			if err != nil {
+				return nil, false, fmt.Errorf("subscribe header policy execution failed: %w", err)
+			}
+			if result.ShortCircuited {
+				logShortCircuit("Subscribe request short-circuited by hub policy", bindingName, binding.SubscribeChainKey, result.ImmediateResponse)
+				return nil, true, nil
+			}
+			if err := ApplyRequestHeaderResult(result, msg); err != nil {
+				return nil, false, fmt.Errorf("failed to apply subscribe header result: %w", err)
+			}
+		}
 	}
 
-	chain := h.engine.GetChain(binding.SubscribeChainKey)
-	if chain == nil {
-		return msg, false, nil
-	}
-
-	reqHeaderCtx := SubscribeToRequestHeaderContext(msg, binding)
-	result, err := h.engine.ExecuteRequestHeaderPolicies(ctx, binding.SubscribeChainKey, reqHeaderCtx.SharedContext, reqHeaderCtx)
-	if err != nil {
-		return nil, false, fmt.Errorf("subscribe header policy execution failed: %w", err)
-	}
-
-	if result.ShortCircuited {
-		logShortCircuit("Subscribe request short-circuited by policy", bindingName, binding.SubscribeChainKey, result.ImmediateResponse)
-		return nil, true, nil
-	}
-
-	if err := ApplyRequestHeaderResult(result, msg); err != nil {
-		return nil, false, fmt.Errorf("failed to apply subscribe header result: %w", err)
+	// Apply channel-level subscribe chain if present.
+	if msg.Topic != "" && len(binding.ChannelChainKeys) > 0 {
+		if keys, ok := binding.ChannelChainKeys[msg.Topic]; ok && keys.SubscribeChainKey != "" {
+			chain := h.engine.GetChain(keys.SubscribeChainKey)
+			if chain != nil {
+				reqHeaderCtx := SubscribeToRequestHeaderContext(msg, binding)
+				result, err := h.engine.ExecuteRequestHeaderPolicies(ctx, keys.SubscribeChainKey, reqHeaderCtx.SharedContext, reqHeaderCtx)
+				if err != nil {
+					return nil, false, fmt.Errorf("subscribe channel policy execution failed: %w", err)
+				}
+				if result.ShortCircuited {
+					logShortCircuit("Subscribe request short-circuited by channel policy", bindingName, keys.SubscribeChainKey, result.ImmediateResponse)
+					return nil, true, nil
+				}
+				if err := ApplyRequestHeaderResult(result, msg); err != nil {
+					return nil, false, fmt.Errorf("failed to apply subscribe channel header result: %w", err)
+				}
+			}
+		}
 	}
 
 	return msg, false, nil
 }
 
 // ProcessInbound applies inbound policies to a message flowing from entrypoint to endpoint.
+// Hub-level policies are applied first, then per-channel policies if present.
 // Returns the (possibly mutated) message and whether it was short-circuited.
 func (h *Hub) ProcessInbound(ctx context.Context, bindingName string, msg *connectors.Message) (*connectors.Message, bool, error) {
 	binding := h.GetBinding(bindingName)
@@ -153,42 +179,69 @@ func (h *Hub) ProcessInbound(ctx context.Context, bindingName string, msg *conne
 		return nil, false, fmt.Errorf("binding not found: %s", bindingName)
 	}
 
-	if binding.InboundChainKey == "" {
-		return msg, false, nil
-	}
-
-	chain := h.engine.GetChain(binding.InboundChainKey)
-	if chain == nil {
-		return msg, false, nil
-	}
-
-	reqHeaderCtx := MessageToRequestHeaderContext(msg, binding)
-	result, err := h.engine.ExecuteRequestHeaderPolicies(ctx, binding.InboundChainKey, reqHeaderCtx.SharedContext, reqHeaderCtx)
-	if err != nil {
-		return nil, false, fmt.Errorf("inbound header policy execution failed: %w", err)
-	}
-
-	if result.ShortCircuited {
-		logShortCircuit("Inbound message short-circuited by policy", bindingName, binding.InboundChainKey, result.ImmediateResponse)
-		return nil, true, nil
-	}
-
-	if err := ApplyRequestHeaderResult(result, msg); err != nil {
-		return nil, false, fmt.Errorf("failed to apply inbound header result: %w", err)
-	}
-
-	// Execute body policies if the chain requires it
-	if chain.RequiresRequestBody {
-		reqCtx := MessageToRequestContext(msg, binding)
-		bodyResult, err := h.engine.ExecuteRequestBodyPolicies(ctx, binding.InboundChainKey, reqCtx.SharedContext, reqCtx)
-		if err != nil {
-			return nil, false, fmt.Errorf("inbound body policy execution failed: %w", err)
+	// Apply hub-level inbound chain first.
+	if binding.InboundChainKey != "" {
+		chain := h.engine.GetChain(binding.InboundChainKey)
+		if chain != nil {
+			reqHeaderCtx := MessageToRequestHeaderContext(msg, binding)
+			result, err := h.engine.ExecuteRequestHeaderPolicies(ctx, binding.InboundChainKey, reqHeaderCtx.SharedContext, reqHeaderCtx)
+			if err != nil {
+				return nil, false, fmt.Errorf("inbound header policy execution failed: %w", err)
+			}
+			if result.ShortCircuited {
+				logShortCircuit("Inbound message short-circuited by hub policy", bindingName, binding.InboundChainKey, result.ImmediateResponse)
+				return nil, true, nil
+			}
+			if err := ApplyRequestHeaderResult(result, msg); err != nil {
+				return nil, false, fmt.Errorf("failed to apply inbound header result: %w", err)
+			}
+			if chain.RequiresRequestBody {
+				reqCtx := MessageToRequestContext(msg, binding)
+				bodyResult, err := h.engine.ExecuteRequestBodyPolicies(ctx, binding.InboundChainKey, reqCtx.SharedContext, reqCtx)
+				if err != nil {
+					return nil, false, fmt.Errorf("inbound body policy execution failed: %w", err)
+				}
+				if bodyResult.ShortCircuited {
+					return nil, true, nil
+				}
+				if err := ApplyRequestBodyResult(bodyResult, msg); err != nil {
+					return nil, false, fmt.Errorf("failed to apply inbound body result: %w", err)
+				}
+			}
 		}
-		if bodyResult.ShortCircuited {
-			return nil, true, nil
-		}
-		if err := ApplyRequestBodyResult(bodyResult, msg); err != nil {
-			return nil, false, fmt.Errorf("failed to apply inbound body result: %w", err)
+	}
+
+	// Apply channel-level inbound chain if present.
+	if msg.Topic != "" && len(binding.ChannelChainKeys) > 0 {
+		if keys, ok := binding.ChannelChainKeys[msg.Topic]; ok && keys.InboundChainKey != "" {
+			chain := h.engine.GetChain(keys.InboundChainKey)
+			if chain != nil {
+				reqHeaderCtx := MessageToRequestHeaderContext(msg, binding)
+				result, err := h.engine.ExecuteRequestHeaderPolicies(ctx, keys.InboundChainKey, reqHeaderCtx.SharedContext, reqHeaderCtx)
+				if err != nil {
+					return nil, false, fmt.Errorf("inbound channel policy execution failed: %w", err)
+				}
+				if result.ShortCircuited {
+					logShortCircuit("Inbound message short-circuited by channel policy", bindingName, keys.InboundChainKey, result.ImmediateResponse)
+					return nil, true, nil
+				}
+				if err := ApplyRequestHeaderResult(result, msg); err != nil {
+					return nil, false, fmt.Errorf("failed to apply inbound channel header result: %w", err)
+				}
+				if chain.RequiresRequestBody {
+					reqCtx := MessageToRequestContext(msg, binding)
+					bodyResult, err := h.engine.ExecuteRequestBodyPolicies(ctx, keys.InboundChainKey, reqCtx.SharedContext, reqCtx)
+					if err != nil {
+						return nil, false, fmt.Errorf("inbound channel body policy execution failed: %w", err)
+					}
+					if bodyResult.ShortCircuited {
+						return nil, true, nil
+					}
+					if err := ApplyRequestBodyResult(bodyResult, msg); err != nil {
+						return nil, false, fmt.Errorf("failed to apply inbound channel body result: %w", err)
+					}
+				}
+			}
 		}
 	}
 
@@ -196,6 +249,7 @@ func (h *Hub) ProcessInbound(ctx context.Context, bindingName string, msg *conne
 }
 
 // ProcessOutbound applies outbound policies to a message flowing from endpoint to entrypoint.
+// Hub-level policies are applied first, then per-channel policies if present.
 // Returns the (possibly mutated) message and whether it was short-circuited.
 func (h *Hub) ProcessOutbound(ctx context.Context, bindingName string, msg *connectors.Message) (*connectors.Message, bool, error) {
 	binding := h.GetBinding(bindingName)
@@ -203,45 +257,88 @@ func (h *Hub) ProcessOutbound(ctx context.Context, bindingName string, msg *conn
 		return nil, false, fmt.Errorf("binding not found: %s", bindingName)
 	}
 
-	if binding.OutboundChainKey == "" {
-		return msg, false, nil
-	}
-
-	chain := h.engine.GetChain(binding.OutboundChainKey)
-	if chain == nil {
-		return msg, false, nil
-	}
-
-	respHeaderCtx := MessageToResponseHeaderContext(msg, binding)
-	result, err := h.engine.ExecuteResponseHeaderPolicies(ctx, binding.OutboundChainKey, respHeaderCtx.SharedContext, respHeaderCtx)
-	if err != nil {
-		return nil, false, fmt.Errorf("outbound header policy execution failed: %w", err)
-	}
-
-	if result.ShortCircuited {
-		logShortCircuit("Outbound message short-circuited by policy", bindingName, binding.OutboundChainKey, result.ImmediateResponse)
-		return nil, true, nil
-	}
-
-	if err := ApplyResponseHeaderResult(result, msg); err != nil {
-		return nil, false, fmt.Errorf("failed to apply outbound header result: %w", err)
-	}
-
-	if chain.RequiresResponseBody {
-		respCtx := MessageToResponseContext(msg, binding)
-		bodyResult, err := h.engine.ExecuteResponseBodyPolicies(ctx, binding.OutboundChainKey, respCtx.SharedContext, respCtx)
-		if err != nil {
-			return nil, false, fmt.Errorf("outbound body policy execution failed: %w", err)
+	// Apply hub-level outbound chain first.
+	if binding.OutboundChainKey != "" {
+		chain := h.engine.GetChain(binding.OutboundChainKey)
+		if chain != nil {
+			reqHeaderCtx := MessageToRequestHeaderContext(msg, binding)
+			result, err := h.engine.ExecuteRequestHeaderPolicies(ctx, binding.OutboundChainKey, reqHeaderCtx.SharedContext, reqHeaderCtx)
+			if err != nil {
+				return nil, false, fmt.Errorf("outbound header policy execution failed: %w", err)
+			}
+			if result.ShortCircuited {
+				logShortCircuit("Outbound message short-circuited by hub policy", bindingName, binding.OutboundChainKey, result.ImmediateResponse)
+				return nil, true, nil
+			}
+			if err := ApplyRequestHeaderResult(result, msg); err != nil {
+				return nil, false, fmt.Errorf("failed to apply outbound header result: %w", err)
+			}
+			if chain.RequiresRequestBody {
+				reqCtx := MessageToRequestContext(msg, binding)
+				bodyResult, err := h.engine.ExecuteRequestBodyPolicies(ctx, binding.OutboundChainKey, reqCtx.SharedContext, reqCtx)
+				if err != nil {
+					return nil, false, fmt.Errorf("outbound body policy execution failed: %w", err)
+				}
+				if bodyResult.ShortCircuited {
+					return nil, true, nil
+				}
+				if err := ApplyRequestBodyResult(bodyResult, msg); err != nil {
+					return nil, false, fmt.Errorf("failed to apply outbound body result: %w", err)
+				}
+			}
 		}
-		if bodyResult.ShortCircuited {
-			return nil, true, nil
-		}
-		if err := ApplyResponseBodyResult(bodyResult, msg); err != nil {
-			return nil, false, fmt.Errorf("failed to apply outbound body result: %w", err)
+	}
+
+	// Apply channel-level outbound chain if present.
+	// msg.Topic here is the Kafka topic; resolve back to channel name.
+	if msg.Topic != "" && len(binding.ChannelChainKeys) > 0 {
+		channelName := resolveChannelName(binding.Channels, msg.Topic)
+		if channelName != "" {
+			if keys, ok := binding.ChannelChainKeys[channelName]; ok && keys.OutboundChainKey != "" {
+				chain := h.engine.GetChain(keys.OutboundChainKey)
+				if chain != nil {
+					reqHeaderCtx := MessageToRequestHeaderContext(msg, binding)
+					result, err := h.engine.ExecuteRequestHeaderPolicies(ctx, keys.OutboundChainKey, reqHeaderCtx.SharedContext, reqHeaderCtx)
+					if err != nil {
+						return nil, false, fmt.Errorf("outbound channel policy execution failed: %w", err)
+					}
+					if result.ShortCircuited {
+						logShortCircuit("Outbound message short-circuited by channel policy", bindingName, keys.OutboundChainKey, result.ImmediateResponse)
+						return nil, true, nil
+					}
+					if err := ApplyRequestHeaderResult(result, msg); err != nil {
+						return nil, false, fmt.Errorf("failed to apply outbound channel header result: %w", err)
+					}
+					if chain.RequiresRequestBody {
+						reqCtx := MessageToRequestContext(msg, binding)
+						bodyResult, err := h.engine.ExecuteRequestBodyPolicies(ctx, keys.OutboundChainKey, reqCtx.SharedContext, reqCtx)
+						if err != nil {
+							return nil, false, fmt.Errorf("outbound channel body policy execution failed: %w", err)
+						}
+						if bodyResult.ShortCircuited {
+							return nil, true, nil
+						}
+						if err := ApplyRequestBodyResult(bodyResult, msg); err != nil {
+							return nil, false, fmt.Errorf("failed to apply outbound channel body result: %w", err)
+						}
+					}
+				}
+			}
 		}
 	}
 
 	return msg, false, nil
+}
+
+// resolveChannelName reverse-maps a Kafka topic name to the channel name
+// using the binding's channel-name → Kafka-topic map.
+func resolveChannelName(channels map[string]string, kafkaTopic string) string {
+	for channelName, topic := range channels {
+		if topic == kafkaTopic {
+			return channelName
+		}
+	}
+	return ""
 }
 
 // logShortCircuit keeps Info logs to metadata only; ImmediateResponse.Body is

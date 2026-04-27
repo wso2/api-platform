@@ -333,7 +333,20 @@ func (h *WebhookReceiverHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 		Metadata: buildMessageMetadata(r),
 	}
 
-	if err := h.publishToBrokerDriver(r.Context(), kafkaTopic, msg); err != nil {
+	// Enforce inbound policies before publishing.
+	processed, shortCircuited, err := h.processor.ProcessInbound(r.Context(), h.bindingName, msg)
+	if err != nil {
+		slog.Error("Inbound policy execution failed", "channel", channelName, "error", err)
+		http.Error(w, "policy execution failed", http.StatusInternalServerError)
+		return
+	}
+	if shortCircuited {
+		slog.Info("Inbound request rejected by policy", "channel", channelName, "binding", h.bindingName)
+		http.Error(w, "forbidden by policy", http.StatusForbidden)
+		return
+	}
+
+	if err := h.publishToBrokerDriver(r.Context(), kafkaTopic, processed); err != nil {
 		slog.Error("Webhook receiver publish failed", "channel", channelName, "topic", kafkaTopic, "error", err)
 		http.Error(w, "publish failed", http.StatusInternalServerError)
 		return
@@ -343,16 +356,7 @@ func (h *WebhookReceiverHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *WebhookReceiverHandler) publishToBrokerDriver(ctx context.Context, kafkaTopic string, msg *connectors.Message) error {
-	processed, shortCircuited, err := h.processor.ProcessInbound(ctx, h.bindingName, msg)
-	if err != nil {
-		return fmt.Errorf("inbound policy execution failed: %w", err)
-	}
-	if shortCircuited {
-		slog.Info("Publish short-circuited by inbound policy", "topic", kafkaTopic)
-		return nil
-	}
-
-	if err := h.brokerDriver.Publish(ctx, kafkaTopic, processed); err != nil {
+	if err := h.brokerDriver.Publish(ctx, kafkaTopic, msg); err != nil {
 		return fmt.Errorf("failed to publish to broker-driver: %w", err)
 	}
 
