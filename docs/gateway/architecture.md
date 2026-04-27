@@ -14,6 +14,7 @@ The Gateway Controller configures the Gateway Runtime by pushing API and route c
 ## Gateway Architecture
 
 ![Gateway Architecture](../images/gateway-architecture.png)
+<!-- image source: https://docs.google.com/drawings/d/1pgADdQNpNcvLrLVvV1fx2hxQOb3syoU0DEBhJd2N6Aw/edit?usp=sharing -->
 
 ## High Availability Setup
 
@@ -23,6 +24,7 @@ In a production HA deployment:
 - **Gateway Runtime** instances connect to a shared **Redis** instance used for distributed rate limiting, ensuring rate limit counters are synchronized across all runtime instances.
 
 ![Gateway High Availability Setup](../images/gateway-ha-setup.png)
+<!-- image source: https://docs.google.com/drawings/d/1CIH3V8Uc2YxCWEGS7yUz3qyBfSpdLK1VpWK0NgmP4OQ/edit?usp=sharing -->
 
 ## Configuration
 
