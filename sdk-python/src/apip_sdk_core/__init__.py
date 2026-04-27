@@ -19,4 +19,5 @@ try:
 except PackageNotFoundError:
     __version__ = "0.0.0+unknown"
 
-__all__ = [*policy.__all__, "policy", "__version__"]
+__all__ = list(policy.__all__)
+__all__.extend(["policy", "__version__"])
