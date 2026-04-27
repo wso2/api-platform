@@ -25,7 +25,6 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"strings"
 	"sync"
 	"time"
 
@@ -868,6 +867,9 @@ func defaultVhost(vhost string) string {
 // qualifyTopicName generates a unique topic name in the format context.version.topic.
 // For example: context="/orders", version="v1", topic="order-events" → "orders.v1.order-events".
 func qualifyTopicName(ctx, version, topic string) string {
-	ctx = strings.TrimPrefix(ctx, "/")
-	return fmt.Sprintf("%s.%s.%s", ctx, version, topic)
+	return fmt.Sprintf("%s.%s.%s",
+		binding.NormalizeTopicSegment(ctx),
+		binding.NormalizeTopicSegment(version),
+		binding.NormalizeTopicSegment(topic),
+	)
 }
