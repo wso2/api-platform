@@ -61,7 +61,8 @@ type EventChannelResource struct {
 
 // ChannelEntry represents one channel in the EventChannelConfig.
 type ChannelEntry struct {
-	Name string `json:"name"`
+	Name     string        `json:"name"`
+	Policies PoliciesEntry `json:"policies"`
 }
 
 // ReceiverEntry specifies the receiver type.
@@ -200,23 +201,19 @@ func (h *Handler) HandleResources(ctx context.Context, resources []*discoveryv3.
 func (h *Handler) toWebSubApiBinding(ecr EventChannelResource) binding.WebSubApiBinding {
 	channels := make([]binding.ChannelDef, len(ecr.Channels))
 	for i, ch := range ecr.Channels {
-		channels[i] = binding.ChannelDef{Name: ch.Name}
+		channels[i] = binding.ChannelDef{
+			Name: ch.Name,
+			Policies: binding.PolicyBindings{
+				Subscribe: mapPolicyEntries(ch.Policies.Subscribe),
+				Inbound:   mapPolicyEntries(ch.Policies.Inbound),
+				Outbound:  mapPolicyEntries(ch.Policies.Outbound),
+			},
+		}
 	}
 
-	subscribe := make([]binding.PolicyRef, len(ecr.Policies.Subscribe))
-	for i, p := range ecr.Policies.Subscribe {
-		subscribe[i] = binding.PolicyRef{Name: p.Name, Version: p.Version, Params: p.Params}
-	}
-
-	inbound := make([]binding.PolicyRef, len(ecr.Policies.Inbound))
-	for i, p := range ecr.Policies.Inbound {
-		inbound[i] = binding.PolicyRef{Name: p.Name, Version: p.Version, Params: p.Params}
-	}
-
-	outbound := make([]binding.PolicyRef, len(ecr.Policies.Outbound))
-	for i, p := range ecr.Policies.Outbound {
-		outbound[i] = binding.PolicyRef{Name: p.Name, Version: p.Version, Params: p.Params}
-	}
+	subscribe := mapPolicyEntries(ecr.Policies.Subscribe)
+	inbound := mapPolicyEntries(ecr.Policies.Inbound)
+	outbound := mapPolicyEntries(ecr.Policies.Outbound)
 
 	return binding.WebSubApiBinding{
 		Kind:     "WebSubApi",
@@ -235,6 +232,18 @@ func (h *Handler) toWebSubApiBinding(ecr EventChannelResource) binding.WebSubApi
 			Outbound:  outbound,
 		},
 	}
+}
+
+// mapPolicyEntries converts a slice of PolicyEntry to binding.PolicyRef.
+func mapPolicyEntries(entries []PolicyEntry) []binding.PolicyRef {
+	if len(entries) == 0 {
+		return nil
+	}
+	refs := make([]binding.PolicyRef, len(entries))
+	for i, p := range entries {
+		refs[i] = binding.PolicyRef{Name: p.Name, Version: p.Version, Params: p.Params}
+	}
+	return refs
 }
 
 // resolveBrokerDriver returns a BrokerDriverSpec, falling back to the local

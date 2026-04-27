@@ -703,10 +703,11 @@ func TestConfigStore_LabelsWithAllAPITypes(t *testing.T) {
 				DisplayName: "AsyncAPILabel",
 				Version:     "v1.0",
 				Context:     "/async",
-				Channels: []api.Channel{
-					{
-						Name:   "/events",
-						Method: api.SUB,
+				Hub: api.WebSubHub{
+					Channels: []api.HubChannel{
+						{
+							Name: "/events",
+						},
 					},
 				},
 			},
