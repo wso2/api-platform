@@ -775,6 +775,49 @@ func (m *MockStorage) Close() error {
 	return nil
 }
 
+// Bottom-up sync methods
+func (m *MockStorage) UpdateCPSyncStatus(uuid, cpArtifactID string, status models.CPSyncStatus, reason string) error {
+	if config, ok := m.configs[uuid]; ok {
+		config.CPSyncStatus = status
+		config.CPSyncInfo = reason
+		if cpArtifactID != "" {
+			config.CPArtifactID = cpArtifactID
+		}
+		return nil
+	}
+	return storage.ErrNotFound
+}
+
+func (m *MockStorage) GetConfigByCPArtifactID(cpArtifactID string) (*models.StoredConfig, error) {
+	for _, config := range m.configs {
+		if config.CPArtifactID == cpArtifactID {
+			return config, nil
+		}
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *MockStorage) UpdateDeploymentID(uuid, deploymentID string) error {
+	if config, ok := m.configs[uuid]; ok {
+		config.DeploymentID = deploymentID
+		return nil
+	}
+	return storage.ErrNotFound
+}
+
+func (m *MockStorage) GetPendingBottomUpAPIs() ([]*models.StoredConfig, error) {
+	var pending []*models.StoredConfig
+	for _, config := range m.configs {
+		if config != nil &&
+			config.Kind == models.KindRestApi &&
+			config.Origin == models.OriginGatewayAPI &&
+			(config.CPSyncStatus == models.CPSyncStatusPending || config.CPSyncStatus == models.CPSyncStatusFailed) {
+			pending = append(pending, config)
+		}
+	}
+	return pending, nil
+}
+
 // MockControlPlaneClient implements controlplane.ControlPlaneClient for testing
 type MockControlPlaneClient struct {
 	connected bool
@@ -868,6 +911,21 @@ func (m *MockStorage) SecretExists(handle string) (bool, error) {
 	}
 	_, ok := m.secrets[handle]
 	return ok, nil
+}
+
+func (m *MockControlPlaneClient) SyncArtifactsToOnPremAPIM(apimConfig *utils.APIMConfig) error {
+	// Mock implementation - does nothing for testing
+	return nil
+}
+
+func (m *MockControlPlaneClient) IsOnPrem() bool {
+	return false
+}
+
+func (m *MockControlPlaneClient) GetAPIMConfig() *utils.APIMConfig {
+	return &utils.APIMConfig{
+		Timeout: 30 * time.Second,
+	}
 }
 
 func (m *MockControlPlaneClient) Close() error {

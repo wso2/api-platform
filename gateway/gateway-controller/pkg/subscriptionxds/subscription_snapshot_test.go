@@ -40,6 +40,21 @@ type MockStorage struct {
 	subscriptionsErr     error
 }
 
+// GetPendingBottomUpAPIs implements [storage.Storage].
+func (m *MockStorage) GetPendingBottomUpAPIs() ([]*models.StoredConfig, error) {
+	return nil, nil
+}
+
+// UpdateCPSyncStatus implements [storage.Storage].
+func (m *MockStorage) UpdateCPSyncStatus(uuid, cpArtifactID string, status models.CPSyncStatus, reason string) error {
+	return nil
+}
+
+// GetConfigByCPArtifactID implements [storage.Storage].
+func (m *MockStorage) GetConfigByCPArtifactID(cpArtifactID string) (*models.StoredConfig, error) {
+	return nil, nil
+}
+
 func (m *MockStorage) GetAllConfigs() ([]*models.StoredConfig, error) {
 	return m.configs, m.configsErr
 }
@@ -53,11 +68,11 @@ func (m *MockStorage) ListActiveSubscriptions() ([]*models.Subscription, error) 
 }
 
 // Remaining interface methods (no-op implementations)
-func (m *MockStorage) SaveConfig(cfg *models.StoredConfig) error                   { return nil }
-func (m *MockStorage) UpdateConfig(cfg *models.StoredConfig) error                 { return nil }
-func (m *MockStorage) UpsertConfig(cfg *models.StoredConfig) (bool, error)         { return true, nil }
-func (m *MockStorage) DeleteConfig(id string) error                                { return nil }
-func (m *MockStorage) GetConfig(id string) (*models.StoredConfig, error)           { return nil, nil }
+func (m *MockStorage) SaveConfig(cfg *models.StoredConfig) error           { return nil }
+func (m *MockStorage) UpdateConfig(cfg *models.StoredConfig) error         { return nil }
+func (m *MockStorage) UpsertConfig(cfg *models.StoredConfig) (bool, error) { return true, nil }
+func (m *MockStorage) DeleteConfig(id string) error                        { return nil }
+func (m *MockStorage) GetConfig(id string) (*models.StoredConfig, error)   { return nil, nil }
 func (m *MockStorage) GetConfigByKindAndHandle(kind, handle string) (*models.StoredConfig, error) {
 	return nil, nil
 }
@@ -86,27 +101,27 @@ func (m *MockStorage) GetAllLLMProviderTemplates() ([]*models.StoredLLMProviderT
 func (m *MockStorage) GetLLMProviderTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
 	return nil, nil
 }
-func (m *MockStorage) SaveAPIKey(apiKey *models.APIKey) error           { return nil }
-func (m *MockStorage) UpsertAPIKey(apiKey *models.APIKey) error         { return nil }
-func (m *MockStorage) GetAPIKeyByID(id string) (*models.APIKey, error)  { return nil, nil }
-func (m *MockStorage) GetAPIKeyByUUID(uuid string) (*models.APIKey, error) { return nil, nil }
-func (m *MockStorage) GetAPIKeyByKey(key string) (*models.APIKey, error) { return nil, nil }
+func (m *MockStorage) SaveAPIKey(apiKey *models.APIKey) error                 { return nil }
+func (m *MockStorage) UpsertAPIKey(apiKey *models.APIKey) error               { return nil }
+func (m *MockStorage) GetAPIKeyByID(id string) (*models.APIKey, error)        { return nil, nil }
+func (m *MockStorage) GetAPIKeyByUUID(uuid string) (*models.APIKey, error)    { return nil, nil }
+func (m *MockStorage) GetAPIKeyByKey(key string) (*models.APIKey, error)      { return nil, nil }
 func (m *MockStorage) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) { return nil, nil }
-func (m *MockStorage) GetAllAPIKeys() ([]*models.APIKey, error)        { return nil, nil }
+func (m *MockStorage) GetAllAPIKeys() ([]*models.APIKey, error)               { return nil, nil }
 func (m *MockStorage) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey, error) {
 	return nil, nil
 }
-func (m *MockStorage) UpdateAPIKey(apiKey *models.APIKey) error           { return nil }
-func (m *MockStorage) DeleteAPIKey(key string) error                      { return nil }
-func (m *MockStorage) RemoveAPIKeysAPI(apiId string) error                { return nil }
-func (m *MockStorage) RemoveAPIKeyAPIAndName(apiId, name string) error    { return nil }
+func (m *MockStorage) UpdateAPIKey(apiKey *models.APIKey) error        { return nil }
+func (m *MockStorage) DeleteAPIKey(key string) error                   { return nil }
+func (m *MockStorage) RemoveAPIKeysAPI(apiId string) error             { return nil }
+func (m *MockStorage) RemoveAPIKeyAPIAndName(apiId, name string) error { return nil }
 func (m *MockStorage) CountActiveAPIKeysByUserAndAPI(apiId, userID string) (int, error) {
 	return 0, nil
 }
 func (m *MockStorage) ListAPIKeysForArtifactsNotIn(artifactUUIDs, keyUUIDs []string) ([]*models.APIKey, error) {
 	return nil, nil
 }
-func (m *MockStorage) DeleteAPIKeysByUUIDs(uuids []string) error { return nil }
+func (m *MockStorage) DeleteAPIKeysByUUIDs(uuids []string) error                { return nil }
 func (m *MockStorage) SaveSubscriptionPlan(plan *models.SubscriptionPlan) error { return nil }
 func (m *MockStorage) GetSubscriptionPlanByID(id, gatewayID string) (*models.SubscriptionPlan, error) {
 	return nil, nil
@@ -121,29 +136,29 @@ func (m *MockStorage) GetSubscriptionByID(id, gatewayID string) (*models.Subscri
 func (m *MockStorage) ListSubscriptionsByAPI(apiID, gatewayID string, applicationID, status *string) ([]*models.Subscription, error) {
 	return nil, nil
 }
-func (m *MockStorage) UpdateSubscription(sub *models.Subscription) error  { return nil }
-func (m *MockStorage) DeleteSubscription(id, gatewayID string) error      { return nil }
+func (m *MockStorage) UpdateSubscription(sub *models.Subscription) error { return nil }
+func (m *MockStorage) DeleteSubscription(id, gatewayID string) error     { return nil }
 func (m *MockStorage) DeleteSubscriptionsForAPINotIn(apiID string, ids []string) error {
 	return nil
 }
 func (m *MockStorage) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) error {
 	return nil
 }
-func (m *MockStorage) SaveCertificate(cert *models.StoredCertificate) error { return nil }
+func (m *MockStorage) SaveCertificate(cert *models.StoredCertificate) error        { return nil }
 func (m *MockStorage) GetCertificate(id string) (*models.StoredCertificate, error) { return nil, nil }
 func (m *MockStorage) GetCertificateByName(name string) (*models.StoredCertificate, error) {
 	return nil, nil
 }
-func (m *MockStorage) ListCertificates() ([]*models.StoredCertificate, error) { return nil, nil }
-func (m *MockStorage) DeleteCertificate(id string) error                      { return nil }
-func (m *MockStorage) SaveSecret(secret *models.Secret) error                 { return nil }
-func (m *MockStorage) GetSecrets() ([]models.SecretMeta, error)               { return nil, nil }
-func (m *MockStorage) GetSecret(handle string) (*models.Secret, error)        { return nil, nil }
+func (m *MockStorage) ListCertificates() ([]*models.StoredCertificate, error)     { return nil, nil }
+func (m *MockStorage) DeleteCertificate(id string) error                          { return nil }
+func (m *MockStorage) SaveSecret(secret *models.Secret) error                     { return nil }
+func (m *MockStorage) GetSecrets() ([]models.SecretMeta, error)                   { return nil, nil }
+func (m *MockStorage) GetSecret(handle string) (*models.Secret, error)            { return nil, nil }
 func (m *MockStorage) UpdateSecret(secret *models.Secret) (*models.Secret, error) { return nil, nil }
-func (m *MockStorage) DeleteSecret(handle string) error                       { return nil }
-func (m *MockStorage) SecretExists(handle string) (bool, error)               { return false, nil }
-func (m *MockStorage) GetDB() *sql.DB                                         { return nil }
-func (m *MockStorage) Close() error                                           { return nil }
+func (m *MockStorage) DeleteSecret(handle string) error                           { return nil }
+func (m *MockStorage) SecretExists(handle string) (bool, error)                   { return false, nil }
+func (m *MockStorage) GetDB() *sql.DB                                             { return nil }
+func (m *MockStorage) Close() error                                               { return nil }
 
 func TestNewSnapshotManager(t *testing.T) {
 	t.Run("creates snapshot manager with nil logger", func(t *testing.T) {

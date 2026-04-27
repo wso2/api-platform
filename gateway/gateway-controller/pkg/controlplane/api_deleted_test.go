@@ -504,6 +504,48 @@ func (m *mockStorageForDeletion) GetDB() *sql.DB {
 	return nil
 }
 
+// Bottom-up sync methods
+func (m *mockStorageForDeletion) UpdateCPSyncStatus(uuid, cpArtifactID string, status models.CPSyncStatus, reason string) error {
+	if config, ok := m.configs[uuid]; ok {
+		config.CPSyncStatus = status
+		config.CPSyncInfo = reason
+		if cpArtifactID != "" {
+			config.CPArtifactID = cpArtifactID
+		}
+		return nil
+	}
+	return storage.ErrNotFound
+}
+
+func (m *mockStorageForDeletion) GetConfigByCPArtifactID(cpArtifactID string) (*models.StoredConfig, error) {
+	for _, config := range m.configs {
+		if config.CPArtifactID == cpArtifactID {
+			return config, nil
+		}
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *mockStorageForDeletion) UpdateDeploymentID(uuid, deploymentID string) error {
+	if config, ok := m.configs[uuid]; ok {
+		config.DeploymentID = deploymentID
+		return nil
+	}
+	return storage.ErrNotFound
+}
+
+func (m *mockStorageForDeletion) GetPendingBottomUpAPIs() ([]*models.StoredConfig, error) {
+	var pending []*models.StoredConfig
+	for _, config := range m.configs {
+		if config.Kind == string(api.RestApi) &&
+			config.Origin == models.OriginGatewayAPI &&
+			(config.CPSyncStatus == models.CPSyncStatusPending || config.CPSyncStatus == models.CPSyncStatusFailed) {
+			pending = append(pending, config)
+		}
+	}
+	return pending, nil
+}
+
 // Helper to create test API config for deletion tests
 func createTestAPIConfigForDeletion(apiID string) *models.StoredConfig {
 	// Create a complete API configuration so deletion flow can properly process it

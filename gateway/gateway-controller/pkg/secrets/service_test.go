@@ -257,6 +257,15 @@ func (m *minimalStorage) SecretExists(handle string) (bool, error) {
 	_, ok := m.secrets[handle]
 	return ok, nil
 }
+func (m *minimalStorage) GetPendingBottomUpAPIs() ([]*models.StoredConfig, error) {
+	return nil, nil
+}
+func (m *minimalStorage) UpdateCPSyncStatus(uuid, cpArtifactID string, status models.CPSyncStatus, reason string) error {
+	return nil
+}
+func (m *minimalStorage) GetConfigByCPArtifactID(cpArtifactID string) (*models.StoredConfig, error) {
+	return nil, storage.ErrNotFound
+}
 func (m *minimalStorage) GetDB() *sql.DB { return nil }
 func (m *minimalStorage) Close() error   { return nil }
 

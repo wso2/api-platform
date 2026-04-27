@@ -15,10 +15,16 @@ CREATE TABLE IF NOT EXISTS artifacts (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deployed_at TIMESTAMPTZ,
+    -- NEW COLUMNS: cp_sync_status, cp_artifact_id and cp_sync_info must be added 
+    -- to existing deployments via ALTER TABLE migration.
+    cp_sync_status  TEXT CHECK(cp_sync_status IN ('pending', 'success', 'failed')),
+    cp_sync_info    TEXT,
+    cp_artifact_id  TEXT,
     PRIMARY KEY (gateway_id, uuid),
     UNIQUE(gateway_id, kind, display_name, version),
     UNIQUE(gateway_id, kind, handle)
 );
+CREATE INDEX IF NOT EXISTS idx_artifacts_cp_artifact_id ON artifacts(gateway_id, cp_artifact_id) WHERE cp_artifact_id IS NOT NULL;
 
 -- Per-resource-type tables
 

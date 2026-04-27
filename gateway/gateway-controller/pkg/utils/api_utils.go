@@ -50,10 +50,18 @@ type PlatformAPIConfig struct {
 
 // APIUtilsService provides utilities for API operations
 type APIUtilsService struct {
-	mu     sync.RWMutex
-	config PlatformAPIConfig
-	logger *slog.Logger
-	client *http.Client
+	mu          sync.RWMutex
+	config      PlatformAPIConfig
+	logger      *slog.Logger
+	client      *http.Client
+	cachedToken string    // Cached OAuth2 access token
+	tokenExpiry time.Time // Token expiry time
+	// OAuth2 credentials for dynamic token generation
+	ClientID     string // OAuth2 client ID
+	ClientSecret string // OAuth2 client secret
+	Username     string // Resource owner username
+	Password     string // Resource owner password
+	TokenURL     string // Token endpoint URL
 }
 
 // NewAPIUtilsService creates a new API utilities service

@@ -226,3 +226,43 @@ func (m *testMockDB) UpdateSecret(secret *models.Secret) (*models.Secret, error)
 }
 func (m *testMockDB) DeleteSecret(handle string) error         { return nil }
 func (m *testMockDB) SecretExists(handle string) (bool, error) { return false, nil }
+
+// Bottom-up sync methods
+func (m *testMockDB) UpdateCPSyncStatus(uuid, cpArtifactID string, status models.CPSyncStatus, reason string) error {
+	if config, ok := m.configs[uuid]; ok {
+		config.CPSyncStatus = status
+		config.CPSyncInfo = reason
+		if cpArtifactID != "" {
+			config.CPArtifactID = cpArtifactID
+		}
+		return nil
+	}
+	return storage.ErrNotFound
+}
+
+func (m *testMockDB) GetConfigByCPArtifactID(cpArtifactID string) (*models.StoredConfig, error) {
+	for _, config := range m.configs {
+		if config.CPArtifactID == cpArtifactID {
+			return config, nil
+		}
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *testMockDB) UpdateDeploymentID(uuid, deploymentID string) error {
+	if config, ok := m.configs[uuid]; ok {
+		config.DeploymentID = deploymentID
+		return nil
+	}
+	return storage.ErrNotFound
+}
+
+func (m *testMockDB) GetPendingBottomUpAPIs() ([]*models.StoredConfig, error) {
+	var pending []*models.StoredConfig
+	for _, config := range m.configs {
+		if config.Origin == models.OriginGatewayAPI && config.CPSyncStatus != models.CPSyncStatusSuccess {
+			pending = append(pending, config)
+		}
+	}
+	return pending, nil
+}

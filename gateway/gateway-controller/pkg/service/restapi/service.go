@@ -172,6 +172,15 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 	}
 
 	if !result.IsStale {
+		// Trigger bottom-up sync immediately if connected and control plane type is on-prem
+		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.controlPlaneClient.IsOnPrem() {
+			go func() {
+				if err := s.controlPlaneClient.SyncArtifactsToOnPremAPIM(s.controlPlaneClient.GetAPIMConfig()); err != nil {
+					log.Error("Failed to sync API to on-prem APIM", slog.Any("error", err))
+				}
+			}()
+		}
+
 		// Push to control plane asynchronously if connected
 		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
 			go s.waitForDeploymentAndPush(result.StoredConfig.UUID, params.CorrelationID, log)
@@ -338,6 +347,10 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 			slog.String("handle", params.Handle))
 	}
 
+	if existing.Origin == models.OriginGatewayAPI {
+		existing.CPSyncStatus = models.CPSyncStatusPending
+	}
+
 	// Dual-write: database first, then in-memory
 	if err := s.db.UpdateConfig(existing); err != nil {
 		log.Error("Failed to update config in database", slog.Any("error", err))
@@ -345,6 +358,15 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 	}
 
 	s.publishEvent(eventhub.EventTypeAPI, "UPDATE", existing.UUID, params.CorrelationID, log)
+
+	// Trigger bottom-up sync if enabled and connected
+	if existing.Origin == models.OriginGatewayAPI && s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.controlPlaneClient.IsOnPrem() {
+		go func() {
+			if err := s.controlPlaneClient.SyncArtifactsToOnPremAPIM(s.controlPlaneClient.GetAPIMConfig()); err != nil {
+				log.Error("Failed to sync API to on-prem APIM", slog.Any("error", err))
+			}
+		}()
+	}
 
 	log.Info("API configuration updated",
 		slog.String("id", existing.UUID),
@@ -544,3 +566,4 @@ func (s *RestAPIService) publishEvent(eventType eventhub.EventType, action, enti
 			slog.String("entity_id", entityID))
 	}
 }
+

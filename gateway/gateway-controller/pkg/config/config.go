@@ -415,6 +415,12 @@ type ControlPlaneConfig struct {
 	InsecureSkipVerify    bool          `koanf:"insecure_skip_verify"`    // Skip TLS certificate verification (insecure, dev/test only)
 	DeploymentPushEnabled bool          `koanf:"deployment_push_enabled"` // Push API deployments to control plane (default: false)
 	SyncBatchSize         int           `koanf:"sync_batch_size"`         // Number of deployments to fetch per batch request during startup sync (default: 50)
+	// OAuth2 credentials for on-prem APIM API import (for bottom-up API deployment)
+	ApimOAuth2ClientID     string `koanf:"apim_oauth2_client_id"`     // APIM OAuth2 client ID
+	ApimOAuth2ClientSecret string `koanf:"apim_oauth2_client_secret"` // APIM OAuth2 client secret
+	ApimOAuth2Username     string `koanf:"apim_oauth2_username"`      // APIM resource owner username
+	ApimOAuth2Password     string `koanf:"apim_oauth2_password"`      // APIM resource owner password
+	GatewayName            string `koanf:"gateway_name"`              // Name of the gateway for deployment configuration
 }
 
 // APIKeyConfig represents the configuration for API keys
@@ -495,6 +501,8 @@ func LoadConfig(configPath string) (*Config, error) {
 			return "controller.controlplane.sync_batch_size"
 		case "immutable_gateway_enabled":
 			return "immutable_gateway.enabled"
+		case "controller_controlplane_gateway_name":
+			return "controller.controlplane.gateway_name"
 		default:
 			// For other env vars, use standard mapping (underscore to dot)
 			// Step 1: Convert double underscore "__" into a temporary placeholder
