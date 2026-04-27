@@ -7,7 +7,7 @@ The API Gateway consists of two main components: **Gateway Controller** and **Ga
 - **Gateway Controller** is the control plane that manages API configurations and pushes them to the Gateway Runtime via the xDS protocol.
 - **Gateway Runtime** is the data plane that processes API traffic. It contains three sub-components:
   - **Router** (Envoy proxy) — handles traffic routing, load balancing, and TLS termination.
-  - **Policy Engine** — an ext_proc filter that executes request/response policies. Policies are compiled into the Policy Engine binary at image build time by the Gateway Builder.
+  - **Policy Engine** — an ext_proc filter that executes request/response policies. **Go-based** policies are compiled into the Policy Engine binary at image build time by the Gateway Builder.
   - **Python Executor** — a dedicated runtime component that dynamically evaluates Python-based policies, allowing developers to leverage the extensive Python ecosystem for custom logic.
 
 The Gateway Controller configures the Gateway Runtime by pushing API and route configurations through xDS. When a request arrives, the Router forwards it to the Policy Engine for policy evaluation, then routes it to the upstream backend.
