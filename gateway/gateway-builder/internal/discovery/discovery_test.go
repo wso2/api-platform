@@ -943,8 +943,19 @@ func TestFetchPipPackage_GitFileReference(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
 	}
-	if pipExe, _ := resolvePipExecutable(); pipExe == "" {
+	pipExe, pipArgs := resolvePipExecutable()
+	if pipExe == "" {
 		t.Skip("pip not available")
+	}
+
+	args := append(append([]string{}, pipArgs...), "show", "setuptools")
+	if exec.Command(pipExe, args...).Run() != nil {
+		t.Skip("setuptools not available")
+	}
+
+	args = append(append([]string{}, pipArgs...), "show", "wheel")
+	if exec.Command(pipExe, args...).Run() != nil {
+		t.Skip("wheel not available")
 	}
 
 	tmpDir := t.TempDir()

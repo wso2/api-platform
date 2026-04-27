@@ -27,6 +27,11 @@ parameters:
         The first matching rule is used. Use upperTokenLimit -1 as the catch-all
         fallback rule.
       minItems: 1
+      contains:
+        properties:
+          upperTokenLimit:
+            const: -1
+      minContains: 1
       items:
         type: object
         additionalProperties: false
