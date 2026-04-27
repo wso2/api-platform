@@ -537,7 +537,7 @@ func (m *mockStorageForDeletion) UpdateDeploymentID(uuid, deploymentID string) e
 func (m *mockStorageForDeletion) GetPendingBottomUpAPIs() ([]*models.StoredConfig, error) {
 	var pending []*models.StoredConfig
 	for _, config := range m.configs {
-		if config.Kind == string(api.RestApi) &&
+		if config.Kind == string(api.KindRestApi) &&
 			config.Origin == models.OriginGatewayAPI &&
 			(config.CPSyncStatus == models.CPSyncStatusPending || config.CPSyncStatus == models.CPSyncStatusFailed) {
 			pending = append(pending, config)
