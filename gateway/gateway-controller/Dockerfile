@@ -83,6 +83,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 # Copy debug-compiled binary and required runtime assets
 COPY --from=builder /build/controller .
+COPY --from=build-manifest build-manifest.yaml /app/build-manifest.yaml
 COPY default-policies /app/default-policies
 COPY lua /app/lua
 COPY default-llm-provider-templates /app/default-llm-provider-templates
