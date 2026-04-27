@@ -659,6 +659,11 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 												{
 													"limit":    requestLimit.Count,
 													"duration": duration,
+													"keyExtraction": []map[string]interface{}{
+														{
+															"type": "apiname",
+														},
+													},
 												},
 											},
 										},
