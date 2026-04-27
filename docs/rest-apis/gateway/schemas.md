@@ -1,11 +1,48 @@
 # Schemas
 
-<h2 id="tocS_RestAPI">RestAPI</h2>
+<h2 id="tocS_ResourceStatus">ResourceStatus</h2>
 
-<a id="schemarestapi"></a>
-<a id="schema_RestAPI"></a>
-<a id="tocSrestapi"></a>
-<a id="tocsrestapi"></a>
+<a id="schemaresourcestatus"></a>
+<a id="schema_ResourceStatus"></a>
+<a id="tocSresourcestatus"></a>
+<a id="tocsresourcestatus"></a>
+
+```json
+{
+  "id": "reading-list-api-v1.0",
+  "state": "deployed",
+  "createdAt": "2026-04-24T07:21:13Z",
+  "updatedAt": "2026-04-24T07:21:13Z",
+  "deployedAt": "2026-04-24T07:21:13Z"
+}
+
+```
+
+Server-managed lifecycle information for a resource
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|false|none|Unique identifier assigned by the server (equal to metadata.name)|
+|state|string|false|none|Desired deployment state reported by the server|
+|createdAt|string(date-time)|false|none|Timestamp when the resource was first created (UTC)|
+|updatedAt|string(date-time)|false|none|Timestamp when the resource was last updated (UTC)|
+|deployedAt|string(date-time)|false|none|Timestamp when the resource was last deployed (omitted when undeployed)|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|state|deployed|
+|state|undeployed|
+
+<h2 id="tocS_RestAPIRequest">RestAPIRequest</h2>
+
+<a id="schemarestapirequest"></a>
+<a id="schema_RestAPIRequest"></a>
+<a id="tocSrestapirequest"></a>
+<a id="tocsrestapirequest"></a>
 
 ```json
 {
@@ -90,12 +127,108 @@
 |apiVersion|gateway.api-platform.wso2.com/v1alpha1|
 |kind|RestApi|
 
-<h2 id="tocS_WebSubAPI">WebSubAPI</h2>
+<h2 id="tocS_RestAPI">RestAPI</h2>
 
-<a id="schemawebsubapi"></a>
-<a id="schema_WebSubAPI"></a>
-<a id="tocSwebsubapi"></a>
-<a id="tocswebsubapi"></a>
+<a id="schemarestapi"></a>
+<a id="schema_RestAPI"></a>
+<a id="tocSrestapi"></a>
+<a id="tocsrestapi"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "RestApi",
+  "metadata": {
+    "name": "reading-list-api-v1.0"
+  },
+  "spec": {
+    "displayName": "Reading-List-API",
+    "version": "v1.0",
+    "context": "/reading-list/$version",
+    "upstream": {
+      "main": {
+        "url": "https://apis.bijira.dev/samples/reading-list-api-service/v1.0"
+      }
+    },
+    "policies": [
+      {
+        "name": "set-headers",
+        "version": "v1",
+        "params": {
+          "request": {
+            "headers": [
+              {
+                "name": "x-wso2-apip-gateway-version",
+                "value": "v1.0.0"
+              }
+            ]
+          },
+          "response": {
+            "headers": [
+              {
+                "name": "x-environment",
+                "value": "development"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "operations": [
+      {
+        "method": "GET",
+        "path": "/books"
+      },
+      {
+        "method": "POST",
+        "path": "/books"
+      },
+      {
+        "method": "GET",
+        "path": "/books/{id}"
+      },
+      {
+        "method": "PUT",
+        "path": "/books/{id}"
+      },
+      {
+        "method": "DELETE",
+        "path": "/books/{id}"
+      }
+    ]
+  },
+  "status": {
+    "id": "reading-list-api-v1.0",
+    "state": "deployed",
+    "createdAt": "2026-04-24T07:21:13Z",
+    "updatedAt": "2026-04-24T07:21:13Z",
+    "deployedAt": "2026-04-24T07:21:13Z"
+  }
+}
+
+```
+
+### Properties
+
+allOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[RestAPIRequest](#schemarestapirequest)|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
+
+<h2 id="tocS_WebSubAPIRequest">WebSubAPIRequest</h2>
+
+<a id="schemawebsubapirequest"></a>
+<a id="schema_WebSubAPIRequest"></a>
+<a id="tocSwebsubapirequest"></a>
+<a id="tocswebsubapirequest"></a>
 
 ```json
 {
@@ -138,6 +271,61 @@
 |---|---|
 |apiVersion|gateway.api-platform.wso2.com/v1alpha1|
 |kind|WebSubApi|
+
+<h2 id="tocS_WebSubAPI">WebSubAPI</h2>
+
+<a id="schemawebsubapi"></a>
+<a id="schema_WebSubAPI"></a>
+<a id="tocSwebsubapi"></a>
+<a id="tocswebsubapi"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "WebSubApi",
+  "metadata": {
+    "name": "github-events-v1.0"
+  },
+  "spec": {
+    "displayName": "GitHub Events",
+    "version": "v1.0",
+    "context": "/github-events/$version",
+    "channels": [
+      {
+        "name": "issues",
+        "method": "SUB"
+      },
+      {
+        "name": "pull_requests",
+        "method": "SUB"
+      }
+    ]
+  },
+  "status": {
+    "id": "github-events-v1.0",
+    "state": "deployed",
+    "createdAt": "2026-04-24T07:21:13Z",
+    "updatedAt": "2026-04-24T07:21:13Z",
+    "deployedAt": "2026-04-24T07:21:13Z"
+  }
+}
+
+```
+
+### Properties
+
+allOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[WebSubAPIRequest](#schemawebsubapirequest)|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
 
 <h2 id="tocS_Metadata">Metadata</h2>
 
@@ -546,110 +734,6 @@ Channel (topic/event stream) definition for async APIs.
 |Property|Value|
 |---|---|
 |method|SUB|
-
-<h2 id="tocS_RestAPICreateResponse">RestAPICreateResponse</h2>
-
-<a id="schemarestapicreateresponse"></a>
-<a id="schema_RestAPICreateResponse"></a>
-<a id="tocSrestapicreateresponse"></a>
-<a id="tocsrestapicreateresponse"></a>
-
-```json
-{
-  "status": "success",
-  "message": "RestAPI created successfully",
-  "id": "reading-list-api-v1.0",
-  "createdAt": "2025-10-11T10:30:00Z"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|status|string|false|none|none|
-|message|string|false|none|none|
-|id|string|false|none|Unique id for the created RestAPI|
-|createdAt|string(date-time)|false|none|none|
-
-<h2 id="tocS_RestAPIUpdateResponse">RestAPIUpdateResponse</h2>
-
-<a id="schemarestapiupdateresponse"></a>
-<a id="schema_RestAPIUpdateResponse"></a>
-<a id="tocSrestapiupdateresponse"></a>
-<a id="tocsrestapiupdateresponse"></a>
-
-```json
-{
-  "status": "success",
-  "message": "RestAPI updated successfully",
-  "id": "reading-list-api-v1.0",
-  "updatedAt": "2025-10-11T11:45:00Z"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|status|string|false|none|none|
-|message|string|false|none|none|
-|id|string|false|none|none|
-|updatedAt|string(date-time)|false|none|none|
-
-<h2 id="tocS_WebSubAPICreateResponse">WebSubAPICreateResponse</h2>
-
-<a id="schemawebsubapicreateresponse"></a>
-<a id="schema_WebSubAPICreateResponse"></a>
-<a id="tocSwebsubapicreateresponse"></a>
-<a id="tocswebsubapicreateresponse"></a>
-
-```json
-{
-  "status": "success",
-  "message": "WebSubAPI created successfully",
-  "id": "weather-websub-api",
-  "createdAt": "2025-10-11T10:30:00Z"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|status|string|false|none|none|
-|message|string|false|none|none|
-|id|string|false|none|Unique id for the created WebSubAPI|
-|createdAt|string(date-time)|false|none|none|
-
-<h2 id="tocS_WebSubAPIUpdateResponse">WebSubAPIUpdateResponse</h2>
-
-<a id="schemawebsubapiupdateresponse"></a>
-<a id="schema_WebSubAPIUpdateResponse"></a>
-<a id="tocSwebsubapiupdateresponse"></a>
-<a id="tocswebsubapiupdateresponse"></a>
-
-```json
-{
-  "status": "success",
-  "message": "WebSubAPI updated successfully",
-  "id": "weather-websub-api",
-  "updatedAt": "2025-10-11T11:45:00Z"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|status|string|false|none|none|
-|message|string|false|none|none|
-|id|string|false|none|none|
-|updatedAt|string(date-time)|false|none|none|
 
 <h2 id="tocS_APIKeyCreationRequest">APIKeyCreationRequest</h2>
 
@@ -1168,263 +1252,12 @@ Details of an API key
 |subscriptions|[[SubscriptionResponse](#schemasubscriptionresponse)]|false|none|none|
 |count|integer|false|none|none|
 
-<h2 id="tocS_RestAPIListItem">RestAPIListItem</h2>
+<h2 id="tocS_MCPProxyConfigurationRequest">MCPProxyConfigurationRequest</h2>
 
-<a id="schemarestapilistitem"></a>
-<a id="schema_RestAPIListItem"></a>
-<a id="tocSrestapilistitem"></a>
-<a id="tocsrestapilistitem"></a>
-
-```json
-{
-  "id": "reading-list-api-v1.0",
-  "displayName": "Reading List API",
-  "version": "v1.0",
-  "context": "/reading-list/$version",
-  "status": "deployed",
-  "createdAt": "2025-10-11T10:30:00Z",
-  "updatedAt": "2025-10-11T10:30:00Z"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|id|string|false|none|none|
-|displayName|string|false|none|none|
-|version|string|false|none|none|
-|context|string|false|none|none|
-|status|string|false|none|none|
-|createdAt|string(date-time)|false|none|none|
-|updatedAt|string(date-time)|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|status|deployed|
-|status|undeployed|
-
-<h2 id="tocS_WebSubAPIListItem">WebSubAPIListItem</h2>
-
-<a id="schemawebsubapilistitem"></a>
-<a id="schema_WebSubAPIListItem"></a>
-<a id="tocSwebsubapilistitem"></a>
-<a id="tocswebsubapilistitem"></a>
-
-```json
-{
-  "id": "weather-websub-api",
-  "displayName": "weather-websub",
-  "version": "v1.0",
-  "context": "/weather-events",
-  "status": "deployed",
-  "createdAt": "2025-10-11T10:30:00Z",
-  "updatedAt": "2025-10-11T10:30:00Z"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|id|string|false|none|none|
-|displayName|string|false|none|none|
-|version|string|false|none|none|
-|context|string|false|none|none|
-|status|string|false|none|none|
-|createdAt|string(date-time)|false|none|none|
-|updatedAt|string(date-time)|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|status|deployed|
-|status|undeployed|
-
-<h2 id="tocS_RestAPIDetailResponse">RestAPIDetailResponse</h2>
-
-<a id="schemarestapidetailresponse"></a>
-<a id="schema_RestAPIDetailResponse"></a>
-<a id="tocSrestapidetailresponse"></a>
-<a id="tocsrestapidetailresponse"></a>
-
-```json
-{
-  "status": "success",
-  "api": {
-    "id": "reading-list-api-v1.0",
-    "configuration": {
-      "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
-      "kind": "RestApi",
-      "metadata": {
-        "name": "reading-list-api-v1.0"
-      },
-      "spec": {
-        "displayName": "Reading-List-API",
-        "version": "v1.0",
-        "context": "/reading-list/$version",
-        "upstream": {
-          "main": {
-            "url": "https://apis.bijira.dev/samples/reading-list-api-service/v1.0"
-          }
-        },
-        "policies": [
-          {
-            "name": "set-headers",
-            "version": "v1",
-            "params": {
-              "request": {
-                "headers": [
-                  {
-                    "name": "x-wso2-apip-gateway-version",
-                    "value": "v1.0.0"
-                  }
-                ]
-              },
-              "response": {
-                "headers": [
-                  {
-                    "name": "x-environment",
-                    "value": "development"
-                  }
-                ]
-              }
-            }
-          }
-        ],
-        "operations": [
-          {
-            "method": "GET",
-            "path": "/books"
-          },
-          {
-            "method": "POST",
-            "path": "/books"
-          },
-          {
-            "method": "GET",
-            "path": "/books/{id}"
-          },
-          {
-            "method": "PUT",
-            "path": "/books/{id}"
-          },
-          {
-            "method": "DELETE",
-            "path": "/books/{id}"
-          }
-        ]
-      }
-    },
-    "metadata": {
-      "status": "deployed",
-      "createdAt": "2025-10-11T10:30:00Z",
-      "updatedAt": "2025-10-11T10:30:00Z",
-      "deployedAt": "2025-10-11T10:30:05Z"
-    }
-  }
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|status|string|false|none|none|
-|api|object|false|none|none|
-|» id|string|false|none|Unique id for the RestAPI|
-|» configuration|[RestAPI](#schemarestapi)|false|none|none|
-|» metadata|object|false|none|none|
-|»» status|string|false|none|none|
-|»» createdAt|string(date-time)|false|none|none|
-|»» updatedAt|string(date-time)|false|none|none|
-|»» deployedAt|string(date-time)|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|status|deployed|
-|status|undeployed|
-
-<h2 id="tocS_WebSubAPIDetailResponse">WebSubAPIDetailResponse</h2>
-
-<a id="schemawebsubapidetailresponse"></a>
-<a id="schema_WebSubAPIDetailResponse"></a>
-<a id="tocSwebsubapidetailresponse"></a>
-<a id="tocswebsubapidetailresponse"></a>
-
-```json
-{
-  "status": "success",
-  "api": {
-    "id": "weather-websub-api",
-    "configuration": {
-      "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
-      "kind": "WebSubApi",
-      "metadata": {
-        "name": "github-events-v1.0"
-      },
-      "spec": {
-        "displayName": "GitHub Events",
-        "version": "v1.0",
-        "context": "/github-events/$version",
-        "channels": [
-          {
-            "name": "issues",
-            "method": "SUB"
-          },
-          {
-            "name": "pull_requests",
-            "method": "SUB"
-          }
-        ]
-      }
-    },
-    "metadata": {
-      "status": "deployed",
-      "createdAt": "2025-10-11T10:30:00Z",
-      "updatedAt": "2025-10-11T10:30:00Z",
-      "deployedAt": "2025-10-11T10:30:05Z"
-    }
-  }
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|status|string|false|none|none|
-|api|object|false|none|none|
-|» id|string|false|none|Unique id for the WebSubAPI|
-|» configuration|[WebSubAPI](#schemawebsubapi)|false|none|none|
-|» metadata|object|false|none|none|
-|»» status|string|false|none|none|
-|»» createdAt|string(date-time)|false|none|none|
-|»» updatedAt|string(date-time)|false|none|none|
-|»» deployedAt|string(date-time)|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|status|deployed|
-|status|undeployed|
-
-<h2 id="tocS_MCPProxyConfiguration">MCPProxyConfiguration</h2>
-
-<a id="schemamcpproxyconfiguration"></a>
-<a id="schema_MCPProxyConfiguration"></a>
-<a id="tocSmcpproxyconfiguration"></a>
-<a id="tocsmcpproxyconfiguration"></a>
+<a id="schemamcpproxyconfigurationrequest"></a>
+<a id="schema_MCPProxyConfigurationRequest"></a>
+<a id="tocSmcpproxyconfigurationrequest"></a>
+<a id="tocsmcpproxyconfigurationrequest"></a>
 
 ```json
 {
@@ -1464,6 +1297,58 @@ Details of an API key
 |---|---|
 |apiVersion|gateway.api-platform.wso2.com/v1alpha1|
 |kind|Mcp|
+
+<h2 id="tocS_MCPProxyConfiguration">MCPProxyConfiguration</h2>
+
+<a id="schemamcpproxyconfiguration"></a>
+<a id="schema_MCPProxyConfiguration"></a>
+<a id="tocSmcpproxyconfiguration"></a>
+<a id="tocsmcpproxyconfiguration"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "Mcp",
+  "metadata": {
+    "name": "everything-mcp-v1.0"
+  },
+  "spec": {
+    "displayName": "Everything",
+    "version": "v1.0",
+    "context": "/everything",
+    "specVersion": "2025-06-18",
+    "upstream": {
+      "url": "http://everything:3001"
+    },
+    "tools": [],
+    "resources": [],
+    "prompts": []
+  },
+  "status": {
+    "id": "everything-mcp-v1.0",
+    "state": "deployed",
+    "createdAt": "2026-04-24T07:21:13Z",
+    "updatedAt": "2026-04-24T07:21:13Z",
+    "deployedAt": "2026-04-24T07:21:13Z"
+  }
+}
+
+```
+
+### Properties
+
+allOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[MCPProxyConfigurationRequest](#schemamcpproxyconfigurationrequest)|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
 
 <h2 id="tocS_MCPProxyConfigData">MCPProxyConfigData</h2>
 
@@ -1671,162 +1556,6 @@ continued
 |» required|boolean|false|none|Whether the argument is required|
 |» title|string|false|none|Optional human-readable title of the argument|
 
-<h2 id="tocS_MCPProxyCreateResponse">MCPProxyCreateResponse</h2>
-
-<a id="schemamcpproxycreateresponse"></a>
-<a id="schema_MCPProxyCreateResponse"></a>
-<a id="tocSmcpproxycreateresponse"></a>
-<a id="tocsmcpproxycreateresponse"></a>
-
-```json
-{
-  "status": "success",
-  "message": "MCP proxy created successfully",
-  "id": "everything-mcp-v1.0",
-  "createdAt": "2025-12-12T10:30:00Z"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|status|string|false|none|none|
-|message|string|false|none|none|
-|id|string|false|none|Unique handle (metadata.name) for the created MCPProxy|
-|createdAt|string(date-time)|false|none|none|
-
-<h2 id="tocS_MCPProxyUpdateResponse">MCPProxyUpdateResponse</h2>
-
-<a id="schemamcpproxyupdateresponse"></a>
-<a id="schema_MCPProxyUpdateResponse"></a>
-<a id="tocSmcpproxyupdateresponse"></a>
-<a id="tocsmcpproxyupdateresponse"></a>
-
-```json
-{
-  "status": "success",
-  "message": "MCP proxy updated successfully",
-  "id": "everything-mcp-v1.0",
-  "updatedAt": "2025-12-12T11:45:00Z"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|status|string|false|none|none|
-|message|string|false|none|none|
-|id|string|false|none|Unique handle (metadata.name) for the created MCPProxy|
-|updatedAt|string(date-time)|false|none|none|
-
-<h2 id="tocS_MCPProxyListItem">MCPProxyListItem</h2>
-
-<a id="schemamcpproxylistitem"></a>
-<a id="schema_MCPProxyListItem"></a>
-<a id="tocSmcpproxylistitem"></a>
-<a id="tocsmcpproxylistitem"></a>
-
-```json
-{
-  "id": "everything-mcp-v1.0",
-  "displayName": "Everything",
-  "version": "v1.0",
-  "context": "/everything",
-  "specVersion": "2025-06-18",
-  "status": "deployed",
-  "createdAt": "2025-11-24T10:30:00Z",
-  "updatedAt": "2025-11-24T10:30:00Z"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|id|string|false|none|none|
-|displayName|string|false|none|none|
-|version|string|false|none|none|
-|context|string|false|none|none|
-|specVersion|string|false|none|none|
-|status|string|false|none|none|
-|createdAt|string(date-time)|false|none|none|
-|updatedAt|string(date-time)|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|status|deployed|
-|status|undeployed|
-
-<h2 id="tocS_MCPDetailResponse">MCPDetailResponse</h2>
-
-<a id="schemamcpdetailresponse"></a>
-<a id="schema_MCPDetailResponse"></a>
-<a id="tocSmcpdetailresponse"></a>
-<a id="tocsmcpdetailresponse"></a>
-
-```json
-{
-  "status": "success",
-  "mcp": {
-    "id": "everything-mcp-v1.0",
-    "configuration": {
-      "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
-      "kind": "Mcp",
-      "metadata": {
-        "name": "everything-mcp-v1.0"
-      },
-      "spec": {
-        "displayName": "Everything",
-        "version": "v1.0",
-        "context": "/everything",
-        "specVersion": "2025-06-18",
-        "upstream": {
-          "url": "http://everything:3001"
-        },
-        "tools": [],
-        "resources": [],
-        "prompts": []
-      }
-    },
-    "metadata": {
-      "status": "deployed",
-      "createdAt": "2025-11-24T10:30:00Z",
-      "updatedAt": "2025-11-24T10:30:00Z",
-      "deployedAt": "2025-11-24T10:30:05Z"
-    }
-  }
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|status|string|false|none|none|
-|mcp|object|false|none|none|
-|» id|string|false|none|Unique id for the MCPProxy|
-|» configuration|[MCPProxyConfiguration](#schemamcpproxyconfiguration)|false|none|none|
-|» metadata|object|false|none|none|
-|»» status|string|false|none|none|
-|»» createdAt|string(date-time)|false|none|none|
-|»» updatedAt|string(date-time)|false|none|none|
-|»» deployedAt|string(date-time)|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|status|deployed|
-|status|undeployed|
-
 <h2 id="tocS_ErrorResponse">ErrorResponse</h2>
 
 <a id="schemaerrorresponse"></a>
@@ -1878,12 +1607,12 @@ continued
 |field|string|false|none|Field that failed validation|
 |message|string|false|none|Human-readable error message|
 
-<h2 id="tocS_LLMProviderTemplate">LLMProviderTemplate</h2>
+<h2 id="tocS_LLMProviderTemplateRequest">LLMProviderTemplateRequest</h2>
 
-<a id="schemallmprovidertemplate"></a>
-<a id="schema_LLMProviderTemplate"></a>
-<a id="tocSllmprovidertemplate"></a>
-<a id="tocsllmprovidertemplate"></a>
+<a id="schemallmprovidertemplaterequest"></a>
+<a id="schema_LLMProviderTemplateRequest"></a>
+<a id="tocSllmprovidertemplaterequest"></a>
+<a id="tocsllmprovidertemplaterequest"></a>
 
 ```json
 {
@@ -1938,6 +1667,71 @@ continued
 |---|---|
 |apiVersion|gateway.api-platform.wso2.com/v1alpha1|
 |kind|LlmProviderTemplate|
+
+<h2 id="tocS_LLMProviderTemplate">LLMProviderTemplate</h2>
+
+<a id="schemallmprovidertemplate"></a>
+<a id="schema_LLMProviderTemplate"></a>
+<a id="tocSllmprovidertemplate"></a>
+<a id="tocsllmprovidertemplate"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "LlmProviderTemplate",
+  "metadata": {
+    "name": "openai-template"
+  },
+  "spec": {
+    "displayName": "OpenAI",
+    "promptTokens": {
+      "location": "payload",
+      "identifier": "$.usage.prompt_tokens"
+    },
+    "completionTokens": {
+      "location": "payload",
+      "identifier": "$.usage.completion_tokens"
+    },
+    "totalTokens": {
+      "location": "payload",
+      "identifier": "$.usage.total_tokens"
+    },
+    "remainingTokens": {
+      "location": "header",
+      "identifier": "x-ratelimit-remaining-tokens"
+    },
+    "requestModel": {
+      "location": "payload",
+      "identifier": "$.model"
+    },
+    "responseModel": {
+      "location": "payload",
+      "identifier": "$.model"
+    }
+  },
+  "status": {
+    "id": "openai-template",
+    "createdAt": "2026-04-24T07:21:13Z",
+    "updatedAt": "2026-04-24T07:21:13Z"
+  }
+}
+
+```
+
+### Properties
+
+allOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[LLMProviderTemplateRequest](#schemallmprovidertemplaterequest)|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
 
 <h2 id="tocS_LLMProviderTemplateData">LLMProviderTemplateData</h2>
 
@@ -2150,487 +1944,12 @@ continued
 |location|queryParam|
 |location|pathParam|
 
-<h2 id="tocS_LLMProviderTemplateCreateResponse">LLMProviderTemplateCreateResponse</h2>
-
-<a id="schemallmprovidertemplatecreateresponse"></a>
-<a id="schema_LLMProviderTemplateCreateResponse"></a>
-<a id="tocSllmprovidertemplatecreateresponse"></a>
-<a id="tocsllmprovidertemplatecreateresponse"></a>
-
-```json
-{
-  "status": "success",
-  "message": "LLM provider template created successfully",
-  "id": "openai",
-  "createdAt": "2025-10-11T10:30:00Z"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|status|string|false|none|none|
-|message|string|false|none|none|
-|id|string|false|none|none|
-|createdAt|string(date-time)|false|none|none|
-
-<h2 id="tocS_LLMProviderTemplateUpdateResponse">LLMProviderTemplateUpdateResponse</h2>
-
-<a id="schemallmprovidertemplateupdateresponse"></a>
-<a id="schema_LLMProviderTemplateUpdateResponse"></a>
-<a id="tocSllmprovidertemplateupdateresponse"></a>
-<a id="tocsllmprovidertemplateupdateresponse"></a>
-
-```json
-{
-  "status": "success",
-  "message": "LLM provider template updated successfully",
-  "id": "openai",
-  "updatedAt": "2025-10-11T11:45:00Z"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|status|string|false|none|none|
-|message|string|false|none|none|
-|id|string|false|none|none|
-|updatedAt|string(date-time)|false|none|none|
-
-<h2 id="tocS_LLMProviderTemplateListItem">LLMProviderTemplateListItem</h2>
-
-<a id="schemallmprovidertemplatelistitem"></a>
-<a id="schema_LLMProviderTemplateListItem"></a>
-<a id="tocSllmprovidertemplatelistitem"></a>
-<a id="tocsllmprovidertemplatelistitem"></a>
-
-```json
-{
-  "id": "openai",
-  "displayName": "OpenAI",
-  "createdAt": "2025-10-11T10:30:00Z",
-  "updatedAt": "2025-10-11T10:30:00Z"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|id|string|false|none|none|
-|displayName|string|false|none|none|
-|createdAt|string(date-time)|false|none|none|
-|updatedAt|string(date-time)|false|none|none|
-
-<h2 id="tocS_LLMProviderTemplateDetailResponse">LLMProviderTemplateDetailResponse</h2>
-
-<a id="schemallmprovidertemplatedetailresponse"></a>
-<a id="schema_LLMProviderTemplateDetailResponse"></a>
-<a id="tocSllmprovidertemplatedetailresponse"></a>
-<a id="tocsllmprovidertemplatedetailresponse"></a>
-
-```json
-{
-  "status": "success",
-  "template": {
-    "id": "openai",
-    "configuration": {
-      "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
-      "kind": "LlmProviderTemplate",
-      "metadata": {
-        "name": "openai-template"
-      },
-      "spec": {
-        "displayName": "OpenAI",
-        "promptTokens": {
-          "location": "payload",
-          "identifier": "$.usage.prompt_tokens"
-        },
-        "completionTokens": {
-          "location": "payload",
-          "identifier": "$.usage.completion_tokens"
-        },
-        "totalTokens": {
-          "location": "payload",
-          "identifier": "$.usage.total_tokens"
-        },
-        "remainingTokens": {
-          "location": "header",
-          "identifier": "x-ratelimit-remaining-tokens"
-        },
-        "requestModel": {
-          "location": "payload",
-          "identifier": "$.model"
-        },
-        "responseModel": {
-          "location": "payload",
-          "identifier": "$.model"
-        }
-      }
-    },
-    "metadata": {
-      "createdAt": "2025-10-11T10:30:00Z",
-      "updatedAt": "2025-10-11T10:30:00Z"
-    }
-  }
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|status|string|false|none|none|
-|template|object|false|none|none|
-|» id|string|false|none|none|
-|» configuration|[LLMProviderTemplate](#schemallmprovidertemplate)|false|none|none|
-|» metadata|object|false|none|none|
-|»» createdAt|string(date-time)|false|none|none|
-|»» updatedAt|string(date-time)|false|none|none|
-
-<h2 id="tocS_LLMProviderCreateResponse">LLMProviderCreateResponse</h2>
-
-<a id="schemallmprovidercreateresponse"></a>
-<a id="schema_LLMProviderCreateResponse"></a>
-<a id="tocSllmprovidercreateresponse"></a>
-<a id="tocsllmprovidercreateresponse"></a>
-
-```json
-{
-  "status": "success",
-  "message": "LLM provider created successfully",
-  "id": "wso2-openai-provider",
-  "createdAt": "2025-11-25T10:30:00Z"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|status|string|false|none|none|
-|message|string|false|none|none|
-|id|string|false|none|none|
-|createdAt|string(date-time)|false|none|none|
-
-<h2 id="tocS_LLMProxyCreateResponse">LLMProxyCreateResponse</h2>
-
-<a id="schemallmproxycreateresponse"></a>
-<a id="schema_LLMProxyCreateResponse"></a>
-<a id="tocSllmproxycreateresponse"></a>
-<a id="tocsllmproxycreateresponse"></a>
-
-```json
-{
-  "status": "success",
-  "message": "LLM proxy created successfully",
-  "id": "openai-proxy",
-  "createdAt": "2025-11-25T10:30:00Z"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|status|string|false|none|none|
-|message|string|false|none|none|
-|id|string|false|none|none|
-|createdAt|string(date-time)|false|none|none|
-
-<h2 id="tocS_LLMProviderUpdateResponse">LLMProviderUpdateResponse</h2>
-
-<a id="schemallmproviderupdateresponse"></a>
-<a id="schema_LLMProviderUpdateResponse"></a>
-<a id="tocSllmproviderupdateresponse"></a>
-<a id="tocsllmproviderupdateresponse"></a>
-
-```json
-{
-  "status": "success",
-  "message": "LLM provider updated successfully",
-  "id": "wso2-openai-provider",
-  "updatedAt": "2025-11-25T11:45:00Z"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|status|string|false|none|none|
-|message|string|false|none|none|
-|id|string|false|none|none|
-|updatedAt|string(date-time)|false|none|none|
-
-<h2 id="tocS_LLMProxyUpdateResponse">LLMProxyUpdateResponse</h2>
-
-<a id="schemallmproxyupdateresponse"></a>
-<a id="schema_LLMProxyUpdateResponse"></a>
-<a id="tocSllmproxyupdateresponse"></a>
-<a id="tocsllmproxyupdateresponse"></a>
-
-```json
-{
-  "status": "success",
-  "message": "LLM proxy updated successfully",
-  "id": "openai-proxy",
-  "updatedAt": "2025-11-25T11:45:00Z"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|status|string|false|none|none|
-|message|string|false|none|none|
-|id|string|false|none|none|
-|updatedAt|string(date-time)|false|none|none|
-
-<h2 id="tocS_LLMProviderListItem">LLMProviderListItem</h2>
-
-<a id="schemallmproviderlistitem"></a>
-<a id="schema_LLMProviderListItem"></a>
-<a id="tocSllmproviderlistitem"></a>
-<a id="tocsllmproviderlistitem"></a>
-
-```json
-{
-  "id": "wso2-openai-provider",
-  "displayName": "WSO2 OpenAI Provider",
-  "version": "v1.0",
-  "template": "openai",
-  "status": "deployed",
-  "createdAt": "2025-11-25T10:30:00Z",
-  "updatedAt": "2025-11-25T10:30:00Z"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|id|string|false|none|none|
-|displayName|string|false|none|none|
-|version|string|false|none|none|
-|template|string|false|none|none|
-|status|string|false|none|none|
-|createdAt|string(date-time)|false|none|none|
-|updatedAt|string(date-time)|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|status|deployed|
-|status|undeployed|
-
-<h2 id="tocS_LLMProxyListItem">LLMProxyListItem</h2>
-
-<a id="schemallmproxylistitem"></a>
-<a id="schema_LLMProxyListItem"></a>
-<a id="tocSllmproxylistitem"></a>
-<a id="tocsllmproxylistitem"></a>
-
-```json
-{
-  "id": "openai-proxy",
-  "displayName": "OpenAI Proxy",
-  "version": "v1.0",
-  "provider": "wso2-openai-provider",
-  "status": "deployed",
-  "createdAt": "2025-11-25T10:30:00Z",
-  "updatedAt": "2025-11-25T10:30:00Z"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|id|string|false|none|none|
-|displayName|string|false|none|none|
-|version|string|false|none|none|
-|provider|string|false|none|Unique id of a deployed llm provider|
-|status|string|false|none|none|
-|createdAt|string(date-time)|false|none|none|
-|updatedAt|string(date-time)|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|status|deployed|
-|status|undeployed|
-
-<h2 id="tocS_LLMProviderDetailResponse">LLMProviderDetailResponse</h2>
-
-<a id="schemallmproviderdetailresponse"></a>
-<a id="schema_LLMProviderDetailResponse"></a>
-<a id="tocSllmproviderdetailresponse"></a>
-<a id="tocsllmproviderdetailresponse"></a>
-
-```json
-{
-  "status": "success",
-  "provider": {
-    "id": "wso2-openai-provider",
-    "configuration": {
-      "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
-      "kind": "LlmProvider",
-      "metadata": {
-        "name": "wso2-openai-provider"
-      },
-      "spec": {
-        "displayName": "OpenAI Provider",
-        "version": "v1.0",
-        "template": "openai",
-        "context": "/openai/latest",
-        "upstream": {
-          "url": "https://api.openai.com/v1",
-          "auth": {
-            "type": "api-key",
-            "header": "Authorization",
-            "value": "Bearer sk-your-api-key"
-          }
-        },
-        "accessControl": {
-          "mode": "deny_all",
-          "exceptions": [
-            {
-              "path": "/chat/completions",
-              "methods": [
-                "POST"
-              ]
-            },
-            {
-              "path": "/models",
-              "methods": [
-                "GET"
-              ]
-            },
-            {
-              "path": "/models/{modelId}",
-              "methods": [
-                "GET"
-              ]
-            }
-          ]
-        }
-      }
-    },
-    "deploymentStatus": "deployed",
-    "metadata": {
-      "createdAt": "2025-11-25T10:30:00Z",
-      "updatedAt": "2025-11-25T10:30:00Z",
-      "deployedAt": "2025-11-25T10:35:00Z"
-    }
-  }
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|status|string|false|none|none|
-|provider|object|false|none|none|
-|» id|string|false|none|none|
-|» configuration|[LLMProviderConfiguration](#schemallmproviderconfiguration)|false|none|none|
-|» deploymentStatus|string|false|none|none|
-|» metadata|object|false|none|none|
-|»» createdAt|string(date-time)|false|none|none|
-|»» updatedAt|string(date-time)|false|none|none|
-|»» deployedAt|string(date-time)|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|deploymentStatus|deployed|
-|deploymentStatus|undeployed|
-
-<h2 id="tocS_LLMProxyDetailResponse">LLMProxyDetailResponse</h2>
-
-<a id="schemallmproxydetailresponse"></a>
-<a id="schema_LLMProxyDetailResponse"></a>
-<a id="tocSllmproxydetailresponse"></a>
-<a id="tocsllmproxydetailresponse"></a>
-
-```json
-{
-  "status": "success",
-  "proxy": {
-    "id": "openai-proxy",
-    "configuration": {
-      "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
-      "kind": "LlmProxy",
-      "metadata": {
-        "name": "openai-proxy"
-      },
-      "spec": {
-        "displayName": "OpenAI Proxy",
-        "version": "v1.0",
-        "context": "/openai-proxy",
-        "provider": {
-          "id": "wso2-openai-provider"
-        },
-        "policies": []
-      }
-    },
-    "deploymentStatus": "deployed",
-    "metadata": {
-      "createdAt": "2025-11-25T10:30:00Z",
-      "updatedAt": "2025-11-25T10:30:00Z",
-      "deployedAt": "2025-11-25T10:35:00Z"
-    }
-  }
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|status|string|false|none|none|
-|proxy|object|false|none|none|
-|» id|string|false|none|none|
-|» configuration|[LLMProxyConfiguration](#schemallmproxyconfiguration)|false|none|none|
-|» deploymentStatus|string|false|none|none|
-|» metadata|object|false|none|none|
-|»» createdAt|string(date-time)|false|none|none|
-|»» updatedAt|string(date-time)|false|none|none|
-|»» deployedAt|string(date-time)|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|deploymentStatus|deployed|
-|deploymentStatus|undeployed|
-
-<h2 id="tocS_LLMProviderConfiguration">LLMProviderConfiguration</h2>
-
-<a id="schemallmproviderconfiguration"></a>
-<a id="schema_LLMProviderConfiguration"></a>
-<a id="tocSllmproviderconfiguration"></a>
-<a id="tocsllmproviderconfiguration"></a>
+<h2 id="tocS_LLMProviderConfigurationRequest">LLMProviderConfigurationRequest</h2>
+
+<a id="schemallmproviderconfigurationrequest"></a>
+<a id="schema_LLMProviderConfigurationRequest"></a>
+<a id="tocSllmproviderconfigurationrequest"></a>
+<a id="tocsllmproviderconfigurationrequest"></a>
 
 ```json
 {
@@ -2695,6 +2014,83 @@ continued
 |---|---|
 |apiVersion|gateway.api-platform.wso2.com/v1alpha1|
 |kind|LlmProvider|
+
+<h2 id="tocS_LLMProviderConfiguration">LLMProviderConfiguration</h2>
+
+<a id="schemallmproviderconfiguration"></a>
+<a id="schema_LLMProviderConfiguration"></a>
+<a id="tocSllmproviderconfiguration"></a>
+<a id="tocsllmproviderconfiguration"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "LlmProvider",
+  "metadata": {
+    "name": "wso2-openai-provider"
+  },
+  "spec": {
+    "displayName": "OpenAI Provider",
+    "version": "v1.0",
+    "template": "openai",
+    "context": "/openai/latest",
+    "upstream": {
+      "url": "https://api.openai.com/v1",
+      "auth": {
+        "type": "api-key",
+        "header": "Authorization",
+        "value": "Bearer sk-your-api-key"
+      }
+    },
+    "accessControl": {
+      "mode": "deny_all",
+      "exceptions": [
+        {
+          "path": "/chat/completions",
+          "methods": [
+            "POST"
+          ]
+        },
+        {
+          "path": "/models",
+          "methods": [
+            "GET"
+          ]
+        },
+        {
+          "path": "/models/{modelId}",
+          "methods": [
+            "GET"
+          ]
+        }
+      ]
+    }
+  },
+  "status": {
+    "id": "wso2-openai-provider",
+    "state": "deployed",
+    "createdAt": "2026-04-24T07:21:13Z",
+    "updatedAt": "2026-04-24T07:21:13Z",
+    "deployedAt": "2026-04-24T07:21:13Z"
+  }
+}
+
+```
+
+### Properties
+
+allOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[LLMProviderConfigurationRequest](#schemallmproviderconfigurationrequest)|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
 
 <h2 id="tocS_LLMProviderConfigData">LLMProviderConfigData</h2>
 
@@ -2996,12 +2392,12 @@ continued
 |methods|[string]|true|none|none|
 |params|object|true|none|JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.|
 
-<h2 id="tocS_LLMProxyConfiguration">LLMProxyConfiguration</h2>
+<h2 id="tocS_LLMProxyConfigurationRequest">LLMProxyConfigurationRequest</h2>
 
-<a id="schemallmproxyconfiguration"></a>
-<a id="schema_LLMProxyConfiguration"></a>
-<a id="tocSllmproxyconfiguration"></a>
-<a id="tocsllmproxyconfiguration"></a>
+<a id="schemallmproxyconfigurationrequest"></a>
+<a id="schema_LLMProxyConfigurationRequest"></a>
+<a id="tocSllmproxyconfigurationrequest"></a>
+<a id="tocsllmproxyconfigurationrequest"></a>
 
 ```json
 {
@@ -3038,6 +2434,55 @@ continued
 |---|---|
 |apiVersion|gateway.api-platform.wso2.com/v1alpha1|
 |kind|LlmProxy|
+
+<h2 id="tocS_LLMProxyConfiguration">LLMProxyConfiguration</h2>
+
+<a id="schemallmproxyconfiguration"></a>
+<a id="schema_LLMProxyConfiguration"></a>
+<a id="tocSllmproxyconfiguration"></a>
+<a id="tocsllmproxyconfiguration"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "LlmProxy",
+  "metadata": {
+    "name": "openai-proxy"
+  },
+  "spec": {
+    "displayName": "OpenAI Proxy",
+    "version": "v1.0",
+    "context": "/openai-proxy",
+    "provider": {
+      "id": "wso2-openai-provider"
+    },
+    "policies": []
+  },
+  "status": {
+    "id": "openai-proxy",
+    "state": "deployed",
+    "createdAt": "2026-04-24T07:21:13Z",
+    "updatedAt": "2026-04-24T07:21:13Z",
+    "deployedAt": "2026-04-24T07:21:13Z"
+  }
+}
+
+```
+
+### Properties
+
+allOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[LLMProxyConfigurationRequest](#schemallmproxyconfigurationrequest)|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
 
 <h2 id="tocS_LLMProxyConfigData">LLMProxyConfigData</h2>
 
@@ -3099,12 +2544,12 @@ continued
 |deploymentState|deployed|
 |deploymentState|undeployed|
 
-<h2 id="tocS_SecretConfiguration">SecretConfiguration</h2>
+<h2 id="tocS_SecretConfigurationRequest">SecretConfigurationRequest</h2>
 
-<a id="schemasecretconfiguration"></a>
-<a id="schema_SecretConfiguration"></a>
-<a id="tocSsecretconfiguration"></a>
-<a id="tocssecretconfiguration"></a>
+<a id="schemasecretconfigurationrequest"></a>
+<a id="schema_SecretConfigurationRequest"></a>
+<a id="tocSsecretconfigurationrequest"></a>
+<a id="tocssecretconfigurationrequest"></a>
 
 ```json
 {
@@ -3138,6 +2583,54 @@ continued
 |apiVersion|gateway.api-platform.wso2.com/v1alpha1|
 |kind|Secret|
 
+<h2 id="tocS_SecretConfiguration">SecretConfiguration</h2>
+
+<a id="schemasecretconfiguration"></a>
+<a id="schema_SecretConfiguration"></a>
+<a id="tocSsecretconfiguration"></a>
+<a id="tocssecretconfiguration"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "Secret",
+  "metadata": {
+    "name": "database-password"
+  },
+  "spec": {
+    "displayName": "Database Password",
+    "description": "PostgreSQL main database password",
+    "value": "sup3rs3cr3t!"
+  },
+  "status": {
+    "id": "database-password",
+    "createdAt": "2026-04-24T07:21:13Z",
+    "updatedAt": "2026-04-24T07:21:13Z"
+  }
+}
+
+```
+
+Composite of request fields plus a generic k8s-style `status` for documentation.
+For actual HTTP response shapes, use `SecretConfigurationResponseCreateUpdate`,
+`SecretConfigurationResponseRetrieved`, or `SecretListItem` (see
+`SecretResourceServiceStatus` for the id/timestamp-only status on secret APIs).
+
+### Properties
+
+allOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[SecretConfigurationRequest](#schemasecretconfigurationrequest)|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
+
 <h2 id="tocS_SecretConfigData">SecretConfigData</h2>
 
 <a id="schemasecretconfigdata"></a>
@@ -3161,6 +2654,71 @@ continued
 |displayName|string|true|none|Human-readable secret name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)|
 |description|string|false|none|Description of the secret|
 |value|string(password)|true|none|Secret value (stored encrypted)|
+
+<h2 id="tocS_SecretConfigListData">SecretConfigListData</h2>
+
+<a id="schemasecretconfiglistdata"></a>
+<a id="schema_SecretConfigListData"></a>
+<a id="tocSsecretconfiglistdata"></a>
+<a id="tocssecretconfiglistdata"></a>
+
+```json
+{
+  "displayName": "Database Password",
+  "description": "PostgreSQL main database password"
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|displayName|string|true|none|Human-readable secret name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)|
+|description|string|false|none|Description of the secret, if the server includes it|
+
+<h2 id="tocS_SecretListItem">SecretListItem</h2>
+
+<a id="schemasecretlistitem"></a>
+<a id="schema_SecretListItem"></a>
+<a id="tocSsecretlistitem"></a>
+<a id="tocssecretlistitem"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "Secret",
+  "metadata": {
+    "name": "database-password"
+  },
+  "spec": {
+    "displayName": "Database Password"
+  },
+  "status": {
+    "id": "database-password",
+    "createdAt": "2026-04-24T07:21:13Z",
+    "updatedAt": "2026-04-24T07:21:13Z"
+  }
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|apiVersion|string|true|none|Secret specification version|
+|kind|string|true|none|Secret resource kind|
+|metadata|[Metadata](#schemametadata)|true|none|none|
+|spec|[SecretConfigListData](#schemasecretconfiglistdata)|true|none|none|
+|status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Omitted in list items may vary; the secret value is never included here.|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|kind|Secret|
 
 <h2 id="tocS_CertificateUploadRequest">CertificateUploadRequest</h2>
 
@@ -3298,30 +2856,6 @@ continued
 |totalCount|integer|false|none|Total number of API keys|
 |status|string|false|none|none|
 
-<h2 id="tocS_SecretResponse">SecretResponse</h2>
-
-<a id="schemasecretresponse"></a>
-<a id="schema_SecretResponse"></a>
-<a id="tocSsecretresponse"></a>
-<a id="tocssecretresponse"></a>
-
-```json
-{
-  "id": "prod-db-password",
-  "createdAt": "2026-01-05T10:00:00Z",
-  "updatedAt": "2026-01-05T10:00:00Z"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|id|string|true|none|Unique secret identifier|
-|createdAt|string(date-time)|true|none|Timestamp when the secret was created (UTC)|
-|updatedAt|string(date-time)|true|none|Timestamp when the secret was last updated (UTC)|
-
 <h2 id="tocS_SecretListResponse">SecretListResponse</h2>
 
 <a id="schemasecretlistresponse"></a>
@@ -3331,61 +2865,25 @@ continued
 
 ```json
 {
+  "status": "success",
+  "count": 5,
   "secrets": [
     {
-      "id": "openai-api-key",
-      "displayName": "OpenAI API Key",
-      "createdAt": "2026-01-05T10:00:00Z",
-      "updatedAt": "2026-01-05T10:30:00Z"
-    }
-  ],
-  "totalCount": 5,
-  "status": "success"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|secrets|[object]|false|none|List of secrets (without values for security)|
-|» id|string|true|none|Unique secret identifier (handle)|
-|» displayName|string|true|none|Human-readable display name|
-|» createdAt|string(date-time)|true|none|Timestamp when the secret was created (UTC)|
-|» updatedAt|string(date-time)|true|none|Timestamp when the secret was last updated (UTC)|
-|totalCount|integer|false|none|Total number of secrets|
-|status|string|false|none|none|
-
-<h2 id="tocS_SecretDetailResponse">SecretDetailResponse</h2>
-
-<a id="schemasecretdetailresponse"></a>
-<a id="schema_SecretDetailResponse"></a>
-<a id="tocSsecretdetailresponse"></a>
-<a id="tocssecretdetailresponse"></a>
-
-```json
-{
-  "status": "success",
-  "secret": {
-    "id": "database-password",
-    "configuration": {
       "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
       "kind": "Secret",
       "metadata": {
         "name": "database-password"
       },
       "spec": {
-        "displayName": "Database Password",
-        "description": "PostgreSQL main database password",
-        "value": "sup3rs3cr3t!"
+        "displayName": "Database Password"
+      },
+      "status": {
+        "id": "database-password",
+        "createdAt": "2026-04-24T07:21:13Z",
+        "updatedAt": "2026-04-24T07:21:13Z"
       }
-    },
-    "metadata": {
-      "createdAt": "2026-01-05T10:30:00Z",
-      "updatedAt": "2026-01-05T11:45:00Z"
     }
-  }
+  ]
 }
 
 ```
@@ -3395,9 +2893,125 @@ continued
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |status|string|false|none|none|
-|secret|object|false|none|none|
-|» id|string|false|none|Unique secret identifier|
-|» configuration|[SecretConfiguration](#schemasecretconfiguration)|false|none|none|
-|» metadata|object|false|none|none|
-|»» createdAt|string(date-time)|false|none|none|
-|»» updatedAt|string(date-time)|false|none|none|
+|count|integer|false|none|Total number of secrets|
+|secrets|[[SecretListItem](#schemasecretlistitem)]|false|none|List of secrets. For security, the spec.value field is omitted for every item in the list; retrieve a single secret by id to obtain the decrypted value.|
+
+<h2 id="tocS_SecretResourceServiceStatus">SecretResourceServiceStatus</h2>
+
+<a id="schemasecretresourceservicestatus"></a>
+<a id="schema_SecretResourceServiceStatus"></a>
+<a id="tocSsecretresourceservicestatus"></a>
+<a id="tocssecretresourceservicestatus"></a>
+
+```json
+{
+  "id": "database-password",
+  "createdAt": "2026-01-05T10:30:00Z",
+  "updatedAt": "2026-01-05T10:30:00Z"
+}
+
+```
+
+Id and optional timestamps. Not the full ResourceStatus model (no `state` or
+`deployedAt`).
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|true|none|Same as metadata.name / secret handle|
+|createdAt|string(date-time)|false|none|none|
+|updatedAt|string(date-time)|false|none|none|
+
+<h2 id="tocS_SecretConfigurationResponseCreateUpdate">SecretConfigurationResponseCreateUpdate</h2>
+
+<a id="schemasecretconfigurationresponsecreateupdate"></a>
+<a id="schema_SecretConfigurationResponseCreateUpdate"></a>
+<a id="tocSsecretconfigurationresponsecreateupdate"></a>
+<a id="tocssecretconfigurationresponsecreateupdate"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "Secret",
+  "metadata": {
+    "name": "database-password"
+  },
+  "spec": {
+    "displayName": "Database Password",
+    "description": "PostgreSQL main database password"
+  },
+  "status": {
+    "id": "database-password",
+    "createdAt": "2026-01-05T10:30:00Z",
+    "updatedAt": "2026-01-05T10:30:00Z"
+  }
+}
+
+```
+
+POST/PUT /secrets response. `spec.value` is not returned; see SecretConfigurationRequest for create/update request bodies.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|apiVersion|string|true|none|none|
+|kind|string|true|none|none|
+|metadata|[Metadata](#schemametadata)|true|none|none|
+|spec|[SecretConfigListData](#schemasecretconfiglistdata)|true|none|none|
+|status|[SecretResourceServiceStatus](#schemasecretresourceservicestatus)|true|none|Id and optional timestamps. Not the full ResourceStatus model (no `state` or<br>`deployedAt`).|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|kind|Secret|
+
+<h2 id="tocS_SecretConfigurationResponseRetrieved">SecretConfigurationResponseRetrieved</h2>
+
+<a id="schemasecretconfigurationresponseretrieved"></a>
+<a id="schema_SecretConfigurationResponseRetrieved"></a>
+<a id="tocSsecretconfigurationresponseretrieved"></a>
+<a id="tocssecretconfigurationresponseretrieved"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "Secret",
+  "metadata": {
+    "name": "database-password"
+  },
+  "spec": {
+    "displayName": "Database Password",
+    "description": "PostgreSQL main database password",
+    "value": "sup3rs3cr3t!"
+  },
+  "status": {
+    "id": "database-password",
+    "createdAt": "2026-01-05T10:30:00Z",
+    "updatedAt": "2026-01-05T10:30:00Z"
+  }
+}
+
+```
+
+GET /secrets/{id} response including decrypted `spec.value`.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|apiVersion|string|true|none|none|
+|kind|string|true|none|none|
+|metadata|[Metadata](#schemametadata)|true|none|none|
+|spec|[SecretConfigData](#schemasecretconfigdata)|true|none|none|
+|status|[SecretResourceServiceStatus](#schemasecretresourceservicestatus)|true|none|Id and optional timestamps. Not the full ResourceStatus model (no `state` or<br>`deployedAt`).|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|kind|Secret|

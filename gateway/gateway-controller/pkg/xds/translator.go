@@ -1629,7 +1629,7 @@ func (t *Translator) extractTemplateHandle(cfg *models.StoredConfig, allConfigs 
 
 	// For LlmProvider: extract template handle directly
 	switch kindStr {
-	case string(api.LlmProvider):
+	case string(api.LLMProviderConfigurationKindLlmProvider):
 		templateHandle, err := getValueFromSourceConfig(cfg.SourceConfiguration, "spec.template")
 		if err != nil {
 			t.logger.Debug("Failed to extract template handle from LlmProvider", slog.Any("error", err))
@@ -1640,7 +1640,7 @@ func (t *Translator) extractTemplateHandle(cfg *models.StoredConfig, allConfigs 
 		}
 
 	// For LlmProxy: resolve provider reference
-	case string(api.LlmProxy):
+	case string(api.LLMProxyConfigurationKindLlmProxy):
 		providerName, err := getValueFromSourceConfig(cfg.SourceConfiguration, "spec.provider.id")
 		if err != nil {
 			t.logger.Debug("Failed to extract provider name from LlmProxy", slog.Any("error", err))
@@ -1653,7 +1653,7 @@ func (t *Translator) extractTemplateHandle(cfg *models.StoredConfig, allConfigs 
 
 		// Find the provider config
 		for _, providerCfg := range allConfigs {
-			if providerCfg.Kind == string(api.LlmProvider) {
+			if providerCfg.Kind == string(api.LLMProviderConfigurationKindLlmProvider) {
 				// Check if this is the provider we're looking for
 				providerMetadataName, err := getValueFromSourceConfig(providerCfg.SourceConfiguration, "metadata.name")
 				if err == nil {
@@ -1694,7 +1694,7 @@ func (t *Translator) extractProviderName(cfg *models.StoredConfig, allConfigs []
 	}
 
 	switch kindStr {
-	case string(api.LlmProvider):
+	case string(api.LLMProviderConfigurationKindLlmProvider):
 		// For LlmProvider: return its own metadata.name
 		providerName, err := getValueFromSourceConfig(cfg.SourceConfiguration, "metadata.name")
 		if err != nil {
@@ -1705,7 +1705,7 @@ func (t *Translator) extractProviderName(cfg *models.StoredConfig, allConfigs []
 			return providerNameStr
 		}
 
-	case string(api.LlmProxy):
+	case string(api.LLMProxyConfigurationKindLlmProxy):
 		// For LlmProxy: return the referenced provider name from spec.provider.id
 		providerName, err := getValueFromSourceConfig(cfg.SourceConfiguration, "spec.provider.id")
 		if err != nil {

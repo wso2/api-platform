@@ -200,7 +200,7 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 
 			apiCfg := api.RestAPI{
 				ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1),
-				Kind:       api.RestApi,
+				Kind:       api.RestAPIKindRestApi,
 				Spec:       specData,
 			}
 			cfg := &models.StoredConfig{
@@ -279,7 +279,7 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 
 	apiCfg := api.RestAPI{
 		ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1),
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{
 			DisplayName: "test-api",
 			Version:     "v1.0",
@@ -425,7 +425,7 @@ func TestPolicyOrderingConsistency(t *testing.T) {
 
 	apiCfg := api.RestAPI{
 		ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1),
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{
 			DisplayName: "test-api",
 			Version:     "v1.0",

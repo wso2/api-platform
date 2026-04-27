@@ -178,7 +178,7 @@ func (s *LLMDeploymentService) hydrateStoredLLMConfig(cfg *models.StoredConfig) 
 func (s *LLMDeploymentService) InitializeExistingLLMState() error {
 	var errs []string
 
-	for _, cfg := range s.store.GetAllByKind(string(api.LlmProvider)) {
+	for _, cfg := range s.store.GetAllByKind(string(api.LLMProviderConfigurationKindLlmProvider)) {
 		if err := s.hydrateStoredLLMConfig(cfg); err != nil {
 			errs = append(errs, err.Error())
 			continue
@@ -193,7 +193,7 @@ func (s *LLMDeploymentService) InitializeExistingLLMState() error {
 		}
 	}
 
-	for _, cfg := range s.store.GetAllByKind(string(api.LlmProxy)) {
+	for _, cfg := range s.store.GetAllByKind(string(api.LLMProxyConfigurationKindLlmProxy)) {
 		if err := s.hydrateStoredLLMConfig(cfg); err != nil {
 			errs = append(errs, err.Error())
 		}
@@ -279,7 +279,7 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 
 	storedCfg := &models.StoredConfig{
 		UUID:                apiID,
-		Kind:                string(api.LlmProvider),
+		Kind:                string(api.LLMProviderConfigurationKindLlmProvider),
 		Handle:              providerConfig.Metadata.Name,
 		DisplayName:         providerConfig.Spec.DisplayName,
 		Version:             providerConfig.Spec.Version,
@@ -301,7 +301,7 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	}
 
 	if err := s.deploymentService.validateArtifactConflicts(
-		string(api.LlmProvider),
+		string(api.LLMProviderConfigurationKindLlmProvider),
 		storedCfg.UUID,
 		storedCfg.DisplayName,
 		storedCfg.Version,
@@ -438,7 +438,7 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 
 	storedCfg := &models.StoredConfig{
 		UUID:                apiID,
-		Kind:                string(api.LlmProxy),
+		Kind:                string(api.LLMProxyConfigurationKindLlmProxy),
 		Handle:              proxyConfig.Metadata.Name,
 		DisplayName:         proxyConfig.Spec.DisplayName,
 		Version:             proxyConfig.Spec.Version,
@@ -460,7 +460,7 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 	}
 
 	if err := s.deploymentService.validateArtifactConflicts(
-		string(api.LlmProxy),
+		string(api.LLMProxyConfigurationKindLlmProxy),
 		storedCfg.UUID,
 		storedCfg.DisplayName,
 		storedCfg.Version,
@@ -884,10 +884,10 @@ func (s *LLMDeploymentService) CreateLLMProvider(params LLMDeploymentParams) (*A
 
 // ListLLMProviders returns all stored LLM provider configurations with optional filtering
 func (s *LLMDeploymentService) ListLLMProviders(params api.ListLLMProvidersParams) []*models.StoredConfig {
-	configs := s.store.GetAllByKind(string(api.LlmProvider))
+	configs := s.store.GetAllByKind(string(api.LLMProviderConfigurationKindLlmProvider))
 	// Prefer database rows because EventHub-based flows can leave
 	// the local store briefly behind the canonical state right after a write.
-	if storedConfigs, err := s.db.GetAllConfigsByKind(string(api.LlmProvider)); err == nil {
+	if storedConfigs, err := s.db.GetAllConfigsByKind(string(api.LLMProviderConfigurationKindLlmProvider)); err == nil {
 		configs = storedConfigs
 	}
 
@@ -1039,7 +1039,7 @@ func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID string,
 
 func (s *LLMDeploymentService) GetLLMProviderByHandle(handle string) (*models.StoredConfig, error) {
 	// The database is the source of truth.
-	cfg, err := s.db.GetConfigByKindAndHandle(string(api.LlmProvider), handle)
+	cfg, err := s.db.GetConfigByKindAndHandle(string(api.LLMProviderConfigurationKindLlmProvider), handle)
 	if err == nil {
 		_ = s.hydrateStoredLLMConfig(cfg)
 		return cfg, nil
@@ -1049,8 +1049,8 @@ func (s *LLMDeploymentService) GetLLMProviderByHandle(handle string) (*models.St
 
 // ListLLMProxies returns all stored LLM proxy configurations
 func (s *LLMDeploymentService) ListLLMProxies(params api.ListLLMProxiesParams) []*models.StoredConfig {
-	configs := s.store.GetAllByKind(string(api.LlmProxy))
-	if storedConfigs, err := s.db.GetAllConfigsByKind(string(api.LlmProxy)); err == nil {
+	configs := s.store.GetAllByKind(string(api.LLMProxyConfigurationKindLlmProxy))
+	if storedConfigs, err := s.db.GetAllConfigsByKind(string(api.LLMProxyConfigurationKindLlmProxy)); err == nil {
 		configs = storedConfigs
 	}
 
@@ -1129,7 +1129,7 @@ func (s *LLMDeploymentService) isLLMProxyUndeployRequest(params LLMDeploymentPar
 }
 
 func (s *LLMDeploymentService) GetLLMProxyByHandle(handle string) (*models.StoredConfig, error) {
-	cfg, err := s.db.GetConfigByKindAndHandle(string(api.LlmProxy), handle)
+	cfg, err := s.db.GetConfigByKindAndHandle(string(api.LLMProxyConfigurationKindLlmProxy), handle)
 	if err == nil {
 		_ = s.hydrateStoredLLMConfig(cfg)
 		return cfg, nil

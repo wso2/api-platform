@@ -29,17 +29,17 @@ paths:
         content:
           application/yaml:
             schema:
-              $ref: "#/components/schemas/RestAPI"
+              $ref: "#/components/schemas/RestAPIRequest"
           application/json:
             schema:
-              $ref: "#/components/schemas/RestAPI"
+              $ref: "#/components/schemas/RestAPIRequest"
       responses:
         "201":
           description: RestAPI created successfully
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RestAPICreateResponse"
+                $ref: "#/components/schemas/RestAPI"
         "400":
           description: Invalid configuration (validation failed)
           content:
@@ -113,7 +113,7 @@ paths:
                   apis:
                     type: array
                     items:
-                      $ref: "#/components/schemas/RestAPIListItem"
+                      $ref: "#/components/schemas/RestAPI"
         "500":
           description: Internal server error
           content:
@@ -144,10 +144,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RestAPIDetailResponse"
+                $ref: "#/components/schemas/RestAPI"
             application/yaml:
               schema:
-                $ref: "#/components/schemas/RestAPIDetailResponse"
+                $ref: "#/components/schemas/RestAPI"
         "404":
           description: RestAPI not found
           content:
@@ -182,17 +182,17 @@ paths:
         content:
           application/yaml:
             schema:
-              $ref: "#/components/schemas/RestAPI"
+              $ref: "#/components/schemas/RestAPIRequest"
           application/json:
             schema:
-              $ref: "#/components/schemas/RestAPI"
+              $ref: "#/components/schemas/RestAPIRequest"
       responses:
         "200":
           description: RestAPI updated successfully
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RestAPIUpdateResponse"
+                $ref: "#/components/schemas/RestAPI"
         "400":
           description: Invalid configuration (validation failed)
           content:
@@ -864,17 +864,17 @@ paths:
         content:
           application/yaml:
             schema:
-              $ref: "#/components/schemas/WebSubAPI"
+              $ref: "#/components/schemas/WebSubAPIRequest"
           application/json:
             schema:
-              $ref: "#/components/schemas/WebSubAPI"
+              $ref: "#/components/schemas/WebSubAPIRequest"
       responses:
         "201":
           description: WebSubAPI created successfully
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WebSubAPICreateResponse"
+                $ref: "#/components/schemas/WebSubAPI"
         "400":
           description: Invalid configuration (validation failed)
           content:
@@ -948,7 +948,7 @@ paths:
                   apis:
                     type: array
                     items:
-                      $ref: "#/components/schemas/WebSubAPIListItem"
+                      $ref: "#/components/schemas/WebSubAPI"
         "500":
           description: Internal server error
           content:
@@ -979,10 +979,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WebSubAPIDetailResponse"
+                $ref: "#/components/schemas/WebSubAPI"
             application/yaml:
               schema:
-                $ref: "#/components/schemas/WebSubAPIDetailResponse"
+                $ref: "#/components/schemas/WebSubAPI"
         "404":
           description: WebSubAPI not found
           content:
@@ -1017,17 +1017,17 @@ paths:
         content:
           application/yaml:
             schema:
-              $ref: "#/components/schemas/WebSubAPI"
+              $ref: "#/components/schemas/WebSubAPIRequest"
           application/json:
             schema:
-              $ref: "#/components/schemas/WebSubAPI"
+              $ref: "#/components/schemas/WebSubAPIRequest"
       responses:
         "200":
           description: WebSubAPI updated successfully
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WebSubAPIUpdateResponse"
+                $ref: "#/components/schemas/WebSubAPI"
         "400":
           description: Invalid configuration (validation failed)
           content:
@@ -1249,17 +1249,17 @@ paths:
         content:
           application/yaml:
             schema:
-              $ref: "#/components/schemas/MCPProxyConfiguration"
+              $ref: "#/components/schemas/MCPProxyConfigurationRequest"
           application/json:
             schema:
-              $ref: "#/components/schemas/MCPProxyConfiguration"
+              $ref: "#/components/schemas/MCPProxyConfigurationRequest"
       responses:
         "201":
           description: MCPProxy created successfully
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MCPProxyCreateResponse"
+                $ref: "#/components/schemas/MCPProxyConfiguration"
         "400":
           description: Invalid configuration (validation failed)
           content:
@@ -1333,7 +1333,7 @@ paths:
                   mcpProxies:
                     type: array
                     items:
-                      $ref: "#/components/schemas/MCPProxyListItem"
+                      $ref: "#/components/schemas/MCPProxyConfiguration"
         "500":
           description: Internal server error
           content:
@@ -1364,10 +1364,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MCPDetailResponse"
+                $ref: "#/components/schemas/MCPProxyConfiguration"
             application/yaml:
               schema:
-                $ref: "#/components/schemas/MCPDetailResponse"
+                $ref: "#/components/schemas/MCPProxyConfiguration"
         "404":
           description: MCPProxy not found
           content:
@@ -1402,17 +1402,17 @@ paths:
         content:
           application/yaml:
             schema:
-              $ref: "#/components/schemas/MCPProxyConfiguration"
+              $ref: "#/components/schemas/MCPProxyConfigurationRequest"
           application/json:
             schema:
-              $ref: "#/components/schemas/MCPProxyConfiguration"
+              $ref: "#/components/schemas/MCPProxyConfigurationRequest"
       responses:
         "200":
           description: MCPProxy updated successfully
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MCPProxyUpdateResponse"
+                $ref: "#/components/schemas/MCPProxyConfiguration"
         "400":
           description: Invalid configuration (validation failed)
           content:
@@ -1491,17 +1491,17 @@ paths:
         content:
           application/yaml:
             schema:
-              $ref: '#/components/schemas/LLMProviderTemplate'
+              $ref: '#/components/schemas/LLMProviderTemplateRequest'
           application/json:
             schema:
-              $ref: '#/components/schemas/LLMProviderTemplate'
+              $ref: '#/components/schemas/LLMProviderTemplateRequest'
       responses:
         '201':
           description: LLM provider template created successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LLMProviderTemplateCreateResponse'
+                $ref: '#/components/schemas/LLMProviderTemplate'
         '400':
           description: Invalid configuration (validation failed)
           content:
@@ -1553,7 +1553,7 @@ paths:
                   templates:
                     type: array
                     items:
-                      $ref: '#/components/schemas/LLMProviderTemplateListItem'
+                      $ref: '#/components/schemas/LLMProviderTemplate'
         '500':
           description: Internal server error
           content:
@@ -1583,10 +1583,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LLMProviderTemplateDetailResponse'
+                $ref: '#/components/schemas/LLMProviderTemplate'
             application/yaml:
               schema:
-                $ref: '#/components/schemas/LLMProviderTemplateDetailResponse'
+                $ref: '#/components/schemas/LLMProviderTemplate'
         '404':
           description: LLM provider template not found
           content:
@@ -1620,17 +1620,17 @@ paths:
         content:
           application/yaml:
             schema:
-              $ref: '#/components/schemas/LLMProviderTemplate'
+              $ref: '#/components/schemas/LLMProviderTemplateRequest'
           application/json:
             schema:
-              $ref: '#/components/schemas/LLMProviderTemplate'
+              $ref: '#/components/schemas/LLMProviderTemplateRequest'
       responses:
         '200':
           description: LLM provider template updated successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LLMProviderTemplateUpdateResponse'
+                $ref: '#/components/schemas/LLMProviderTemplate'
         '400':
           description: Invalid configuration (validation failed)
           content:
@@ -1709,17 +1709,17 @@ paths:
         content:
           application/yaml:
             schema:
-              $ref: '#/components/schemas/LLMProviderConfiguration'
+              $ref: '#/components/schemas/LLMProviderConfigurationRequest'
           application/json:
             schema:
-              $ref: '#/components/schemas/LLMProviderConfiguration'
+              $ref: '#/components/schemas/LLMProviderConfigurationRequest'
       responses:
         '201':
           description: LLM provider created and deployed successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LLMProviderCreateResponse'
+                $ref: '#/components/schemas/LLMProviderConfiguration'
         '400':
           description: Invalid configuration (validation failed)
           content:
@@ -1800,7 +1800,7 @@ paths:
                   providers:
                     type: array
                     items:
-                      $ref: '#/components/schemas/LLMProviderListItem'
+                      $ref: '#/components/schemas/LLMProviderConfiguration'
         '500':
           description: Internal server error
           content:
@@ -1830,10 +1830,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LLMProviderDetailResponse'
+                $ref: '#/components/schemas/LLMProviderConfiguration'
             application/yaml:
               schema:
-                $ref: '#/components/schemas/LLMProviderDetailResponse'
+                $ref: '#/components/schemas/LLMProviderConfiguration'
         '404':
           description: LLM provider not found
           content:
@@ -1868,17 +1868,17 @@ paths:
         content:
           application/yaml:
             schema:
-              $ref: '#/components/schemas/LLMProviderConfiguration'
+              $ref: '#/components/schemas/LLMProviderConfigurationRequest'
           application/json:
             schema:
-              $ref: '#/components/schemas/LLMProviderConfiguration'
+              $ref: '#/components/schemas/LLMProviderConfigurationRequest'
       responses:
         '200':
           description: LLM provider updated successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LLMProviderUpdateResponse'
+                $ref: '#/components/schemas/LLMProviderConfiguration'
         '400':
           description: Invalid configuration
           content:
@@ -2218,17 +2218,17 @@ paths:
         content:
           application/yaml:
             schema:
-              $ref: '#/components/schemas/LLMProxyConfiguration'
+              $ref: '#/components/schemas/LLMProxyConfigurationRequest'
           application/json:
             schema:
-              $ref: '#/components/schemas/LLMProxyConfiguration'
+              $ref: '#/components/schemas/LLMProxyConfigurationRequest'
       responses:
         '201':
           description: LLM proxy created and deployed successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LLMProxyCreateResponse'
+                $ref: '#/components/schemas/LLMProxyConfiguration'
         '400':
           description: Invalid configuration (validation failed)
           content:
@@ -2309,7 +2309,7 @@ paths:
                   proxies:
                     type: array
                     items:
-                      $ref: '#/components/schemas/LLMProxyListItem'
+                      $ref: '#/components/schemas/LLMProxyConfiguration'
         '500':
           description: Internal server error
           content:
@@ -2339,10 +2339,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LLMProxyDetailResponse'
+                $ref: '#/components/schemas/LLMProxyConfiguration'
             application/yaml:
               schema:
-                $ref: '#/components/schemas/LLMProxyDetailResponse'
+                $ref: '#/components/schemas/LLMProxyConfiguration'
         '404':
           description: LLM proxy not found
           content:
@@ -2377,17 +2377,17 @@ paths:
         content:
           application/yaml:
             schema:
-              $ref: '#/components/schemas/LLMProxyConfiguration'
+              $ref: '#/components/schemas/LLMProxyConfigurationRequest'
           application/json:
             schema:
-              $ref: '#/components/schemas/LLMProxyConfiguration'
+              $ref: '#/components/schemas/LLMProxyConfigurationRequest'
       responses:
         '200':
           description: LLM proxy updated successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LLMProxyUpdateResponse'
+                $ref: '#/components/schemas/LLMProxyConfiguration'
         '400':
           description: Invalid configuration
           content:
@@ -2757,24 +2757,32 @@ paths:
         content:
           application/yaml:
             schema:
-              $ref: '#/components/schemas/SecretConfiguration'
+              $ref: '#/components/schemas/SecretConfigurationRequest'
           application/json:
             schema:
-              $ref: '#/components/schemas/SecretConfiguration'
+              $ref: '#/components/schemas/SecretConfigurationRequest'
       responses:
         '201':
           description: Secret created successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SecretResponse'
+                $ref: '#/components/schemas/SecretConfigurationResponseCreateUpdate'
               examples:
                 created:
                   summary: Successful creation
                   value:
-                    id: "database-password"
-                    createdAt: "2026-01-05T10:30:00Z"
-                    updatedAt: "2026-01-05T10:30:00Z"
+                    apiVersion: gateway.api-platform.wso2.com/v1alpha1
+                    kind: Secret
+                    metadata:
+                      name: database-password
+                    spec:
+                      displayName: Database Password
+                      description: PostgreSQL main database password
+                    status:
+                      id: database-password
+                      createdAt: "2026-01-05T10:30:00Z"
+                      updatedAt: "2026-01-05T10:30:00Z"
         '400':
           description: Bad request - missing or invalid fields
           content:
@@ -2832,27 +2840,23 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SecretDetailResponse'
+                $ref: '#/components/schemas/SecretConfigurationResponseRetrieved'
               examples:
                 success:
                   summary: Successful retrieval
                   value:
-                    status: "success"
-                    secret:
+                    apiVersion: "gateway.api-platform.wso2.com/v1alpha1"
+                    kind: "Secret"
+                    metadata:
+                      name: "database-password"
+                    spec:
+                      displayName: "Database Password"
+                      description: "PostgreSQL main database password"
+                      value: "sup3rs3cr3t!"
+                    status:
                       id: "database-password"
-                      configuration:
-                        apiVersion: "gateway.api-platform.wso2.com/v1alpha1"
-                        kind: "Secret"
-                        metadata:
-                          name: "database-password"
-                        spec:
-                          displayName: "Database Password"
-                          description: "PostgreSQL main database password"
-                          type: "default"
-                          value: "sup3rs3cr3t!"
-                      metadata:
-                        createdAt: "2026-01-05T10:30:00Z"
-                        updatedAt: "2026-01-05T10:30:00Z"
+                      createdAt: "2026-01-05T10:30:00Z"
+                      updatedAt: "2026-01-05T10:30:00Z"
         '401':
           description: Unauthorized - authentication required
           content:
@@ -2887,24 +2891,32 @@ paths:
         content:
           application/yaml:
             schema:
-              $ref: '#/components/schemas/SecretConfiguration'
+              $ref: '#/components/schemas/SecretConfigurationRequest'
           application/json:
             schema:
-              $ref: '#/components/schemas/SecretConfiguration'
+              $ref: '#/components/schemas/SecretConfigurationRequest'
       responses:
         '200':
           description: Secret updated successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SecretResponse'
+                $ref: '#/components/schemas/SecretConfigurationResponseCreateUpdate'
               examples:
                 updated:
                   summary: Successful update
                   value:
-                    id: "database-password"
-                    createdAt: "2026-01-05T10:30:00Z"
-                    updatedAt: "2026-01-05T11:45:00Z"
+                    apiVersion: gateway.api-platform.wso2.com/v1alpha1
+                    kind: Secret
+                    metadata:
+                      name: database-password
+                    spec:
+                      displayName: Database Password
+                      description: PostgreSQL main database password
+                    status:
+                      id: database-password
+                      createdAt: "2026-01-05T10:30:00Z"
+                      updatedAt: "2026-01-05T11:45:00Z"
         '400':
           description: Bad request - missing or invalid value
           content:
@@ -2974,7 +2986,42 @@ components:
       type: http
       scheme: basic
   schemas:
-    RestAPI:
+    # Shared server-managed status block returned on every k8s-shaped resource.
+    # Clients MUST NOT send this on POST/PUT – any user-provided status is ignored
+    # by the server and overwritten with the authoritative values on the response.
+    ResourceStatus:
+      type: object
+      description: Server-managed lifecycle information for a resource
+      properties:
+        id:
+          type: string
+          description: Unique identifier assigned by the server (equal to metadata.name)
+          example: reading-list-api-v1.0
+        state:
+          type: string
+          description: Desired deployment state reported by the server
+          enum:
+            - deployed
+            - undeployed
+          example: deployed
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the resource was first created (UTC)
+          example: 2026-04-24T07:21:13Z
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the resource was last updated (UTC)
+          example: 2026-04-24T07:21:13Z
+        deployedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the resource was last deployed (omitted when undeployed)
+          example: 2026-04-24T07:21:13Z
+
+    # Request body for create/update: user/resource fields only (no server-managed status).
+    RestAPIRequest:
       type: object
       required:
         - apiVersion
@@ -3034,7 +3081,60 @@ components:
             - method: DELETE
               path: /books/{id}
 
-    WebSubAPI:
+    # Full resource including server-managed status (list/get responses).
+    RestAPI:
+      allOf:
+        - $ref: '#/components/schemas/RestAPIRequest'
+        - type: object
+          properties:
+            status:
+              readOnly: true
+              description: Server-managed lifecycle fields. Populated on responses.
+              allOf:
+                - $ref: '#/components/schemas/ResourceStatus'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: RestApi
+        metadata:
+          name: reading-list-api-v1.0
+        spec:
+          displayName: Reading-List-API
+          version: v1.0
+          context: /reading-list/$version
+          upstream:
+            main:
+              url: https://apis.bijira.dev/samples/reading-list-api-service/v1.0
+          policies:
+            - name: set-headers
+              version: v1
+              params:
+                request:
+                  headers:
+                    - name: x-wso2-apip-gateway-version
+                      value: v1.0.0
+                response:
+                  headers:
+                    - name: x-environment
+                      value: development
+          operations:
+            - method: GET
+              path: /books
+            - method: POST
+              path: /books
+            - method: GET
+              path: /books/{id}
+            - method: PUT
+              path: /books/{id}
+            - method: DELETE
+              path: /books/{id}
+        status:
+          id: reading-list-api-v1.0
+          state: deployed
+          createdAt: 2026-04-24T07:21:13Z
+          updatedAt: 2026-04-24T07:21:13Z
+          deployedAt: 2026-04-24T07:21:13Z
+
+    WebSubAPIRequest:
       type: object
       required:
         - apiVersion
@@ -3072,6 +3172,37 @@ components:
               method: SUB
             - name: pull_requests
               method: SUB
+
+    WebSubAPI:
+      allOf:
+        - $ref: '#/components/schemas/WebSubAPIRequest'
+        - type: object
+          properties:
+            status:
+              readOnly: true
+              description: Server-managed lifecycle fields. Populated on responses.
+              allOf:
+                - $ref: '#/components/schemas/ResourceStatus'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: WebSubApi
+        metadata:
+          name: github-events-v1.0
+        spec:
+          displayName: GitHub Events
+          version: v1.0
+          context: /github-events/$version
+          channels:
+            - name: issues
+              method: SUB
+            - name: pull_requests
+              method: SUB
+        status:
+          id: github-events-v1.0
+          state: deployed
+          createdAt: 2026-04-24T07:21:13Z
+          updatedAt: 2026-04-24T07:21:13Z
+          deployedAt: 2026-04-24T07:21:13Z
 
     Metadata:
       type: object
@@ -3454,75 +3585,6 @@ components:
         #   type: object
         #   description: Protocol-specific channel bindings (arbitrary key/value structure).
         #   additionalProperties: true
-
-    # Message schema used within Channel publish/subscribe operations.
-    RestAPICreateResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: success
-        message:
-          type: string
-          example: RestAPI created successfully
-        id:
-          type: string
-          description: Unique id for the created RestAPI
-          example: reading-list-api-v1.0
-        createdAt:
-          type: string
-          format: date-time
-          example: 2025-10-11T10:30:00Z
-    RestAPIUpdateResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: success
-        message:
-          type: string
-          example: RestAPI updated successfully
-        id:
-          type: string
-          example: reading-list-api-v1.0
-        updatedAt:
-          type: string
-          format: date-time
-          example: 2025-10-11T11:45:00Z
-
-    WebSubAPICreateResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: success
-        message:
-          type: string
-          example: WebSubAPI created successfully
-        id:
-          type: string
-          description: Unique id for the created WebSubAPI
-          example: weather-websub-api
-        createdAt:
-          type: string
-          format: date-time
-          example: 2025-10-11T10:30:00Z
-    WebSubAPIUpdateResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: success
-        message:
-          type: string
-          example: WebSubAPI updated successfully
-        id:
-          type: string
-          example: weather-websub-api
-        updatedAt:
-          type: string
-          format: date-time
-          example: 2025-10-11T11:45:00Z
 
     APIKeyCreationRequest:
       type: object
@@ -3918,139 +3980,7 @@ components:
         count:
           type: integer
 
-    RestAPIListItem:
-      type: object
-      properties:
-        id:
-          type: string
-          example: reading-list-api-v1.0
-        displayName:
-          type: string
-          example: Reading List API
-        version:
-          type: string
-          example: v1.0
-        context:
-          type: string
-          example: /reading-list/$version
-        status:
-          type: string
-          enum:
-            - deployed
-            - undeployed
-          example: deployed
-        createdAt:
-          type: string
-          format: date-time
-          example: 2025-10-11T10:30:00Z
-        updatedAt:
-          type: string
-          format: date-time
-          example: 2025-10-11T10:30:00Z
-    WebSubAPIListItem:
-      type: object
-      properties:
-        id:
-          type: string
-          example: weather-websub-api
-        displayName:
-          type: string
-          example: weather-websub
-        version:
-          type: string
-          example: v1.0
-        context:
-          type: string
-          example: /weather-events
-        status:
-          type: string
-          enum:
-            - deployed
-            - undeployed
-          example: deployed
-        createdAt:
-          type: string
-          format: date-time
-          example: 2025-10-11T10:30:00Z
-        updatedAt:
-          type: string
-          format: date-time
-          example: 2025-10-11T10:30:00Z
-    RestAPIDetailResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: success
-        api:
-          type: object
-          properties:
-            id:
-              type: string
-              description: Unique id for the RestAPI
-              example: reading-list-api-v1.0
-            configuration:
-              $ref: "#/components/schemas/RestAPI"
-            metadata:
-              type: object
-              properties:
-                status:
-                  type: string
-                  enum:
-                    - deployed
-                    - undeployed
-                  example: deployed
-                createdAt:
-                  type: string
-                  format: date-time
-                  example: 2025-10-11T10:30:00Z
-                updatedAt:
-                  type: string
-                  format: date-time
-                  example: 2025-10-11T10:30:00Z
-                deployedAt:
-                  type: string
-                  format: date-time
-                  example: 2025-10-11T10:30:05Z
-
-    WebSubAPIDetailResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: success
-        api:
-          type: object
-          properties:
-            id:
-              type: string
-              description: Unique id for the WebSubAPI
-              example: weather-websub-api
-            configuration:
-              $ref: "#/components/schemas/WebSubAPI"
-            metadata:
-              type: object
-              properties:
-                status:
-                  type: string
-                  enum:
-                    - deployed
-                    - undeployed
-                  example: deployed
-                createdAt:
-                  type: string
-                  format: date-time
-                  example: 2025-10-11T10:30:00Z
-                updatedAt:
-                  type: string
-                  format: date-time
-                  example: 2025-10-11T10:30:00Z
-                deployedAt:
-                  type: string
-                  format: date-time
-                  example: 2025-10-11T10:30:05Z
-
-    MCPProxyConfiguration:
+    MCPProxyConfigurationRequest:
       type: object
       required:
         - apiVersion
@@ -4089,6 +4019,38 @@ components:
           tools: []
           resources: []
           prompts: []
+
+    MCPProxyConfiguration:
+      allOf:
+        - $ref: '#/components/schemas/MCPProxyConfigurationRequest'
+        - type: object
+          properties:
+            status:
+              readOnly: true
+              description: Server-managed lifecycle fields. Populated on responses.
+              allOf:
+                - $ref: '#/components/schemas/ResourceStatus'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: Mcp
+        metadata:
+          name: everything-mcp-v1.0
+        spec:
+          displayName: Everything
+          version: v1.0
+          context: /everything
+          specVersion: "2025-06-18"
+          upstream:
+            url: http://everything:3001
+          tools: []
+          resources: []
+          prompts: []
+        status:
+          id: everything-mcp-v1.0
+          state: deployed
+          createdAt: 2026-04-24T07:21:13Z
+          updatedAt: 2026-04-24T07:21:13Z
+          deployedAt: 2026-04-24T07:21:13Z
 
     MCPProxyConfigData:
       type: object
@@ -4238,112 +4200,6 @@ components:
                 type: string
                 description: Optional human-readable title of the argument
     
-    MCPProxyCreateResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: success
-        message:
-          type: string
-          example: MCP proxy created successfully
-        id:
-          type: string
-          description: Unique handle (metadata.name) for the created MCPProxy
-          example: everything-mcp-v1.0
-        createdAt:
-          type: string
-          format: date-time
-          example: 2025-12-12T10:30:00Z
-
-    MCPProxyUpdateResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: success
-        message:
-          type: string
-          example: MCP proxy updated successfully
-        id:
-          type: string
-          description: Unique handle (metadata.name) for the created MCPProxy
-          example: everything-mcp-v1.0
-        updatedAt:
-          type: string
-          format: date-time
-          example: 2025-12-12T11:45:00Z
-
-    MCPProxyListItem:
-      type: object
-      properties:
-        id:
-          type: string
-          example: everything-mcp-v1.0
-        displayName:
-          type: string
-          example: Everything
-        version:
-          type: string
-          example: v1.0
-        context:
-          type: string
-          example: /everything
-        specVersion:
-          type: string
-          example: 2025-06-18
-        status:
-          type: string
-          enum:
-            - deployed
-            - undeployed
-          example: deployed
-        createdAt:
-          type: string
-          format: date-time
-          example: 2025-11-24T10:30:00Z
-        updatedAt:
-          type: string
-          format: date-time
-          example: 2025-11-24T10:30:00Z
-
-    MCPDetailResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: success
-        mcp:
-          type: object
-          properties:
-            id:
-              type: string
-              description: Unique id for the MCPProxy
-              example: everything-mcp-v1.0
-            configuration:
-              $ref: "#/components/schemas/MCPProxyConfiguration"
-            metadata:
-              type: object
-              properties:
-                status:
-                  type: string
-                  enum:
-                    - deployed
-                    - undeployed
-                  example: deployed
-                createdAt:
-                  type: string
-                  format: date-time
-                  example: 2025-11-24T10:30:00Z
-                updatedAt:
-                  type: string
-                  format: date-time
-                  example: 2025-11-24T10:30:00Z
-                deployedAt:
-                  type: string
-                  format: date-time
-                  example: 2025-11-24T10:30:05Z
-
     ErrorResponse:
       type: object
       required:
@@ -4375,7 +4231,7 @@ components:
           description: Human-readable error message
           example: Context must start with / and cannot end with /
 
-    LLMProviderTemplate:
+    LLMProviderTemplateRequest:
       type: object
       required:
         - apiVersion
@@ -4424,6 +4280,46 @@ components:
           responseModel:
             location: payload
             identifier: $.model
+
+    LLMProviderTemplate:
+      allOf:
+        - $ref: '#/components/schemas/LLMProviderTemplateRequest'
+        - type: object
+          properties:
+            status:
+              readOnly: true
+              description: Server-managed lifecycle fields. Populated on responses.
+              allOf:
+                - $ref: '#/components/schemas/ResourceStatus'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProviderTemplate
+        metadata:
+          name: openai-template
+        spec:
+          displayName: OpenAI
+          promptTokens:
+            location: payload
+            identifier: $.usage.prompt_tokens
+          completionTokens:
+            location: payload
+            identifier: $.usage.completion_tokens
+          totalTokens:
+            location: payload
+            identifier: $.usage.total_tokens
+          remainingTokens:
+            location: header
+            identifier: x-ratelimit-remaining-tokens
+          requestModel:
+            location: payload
+            identifier: $.model
+          responseModel:
+            location: payload
+            identifier: $.model
+        status:
+          id: openai-template
+          createdAt: 2026-04-24T07:21:13Z
+          updatedAt: 2026-04-24T07:21:13Z
 
     LLMProviderTemplateData:
       type: object
@@ -4502,286 +4398,7 @@ components:
           description: JSONPath expression or header name to identify the token value
           example: $.usage.inputTokens
 
-    LLMProviderTemplateCreateResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: success
-        message:
-          type: string
-          example: LLM provider template created successfully
-        id:
-          type: string
-          example: openai
-        createdAt:
-          type: string
-          format: date-time
-          example: 2025-10-11T10:30:00Z
-
-    LLMProviderTemplateUpdateResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: success
-        message:
-          type: string
-          example: LLM provider template updated successfully
-        id:
-          type: string
-          example: openai
-        updatedAt:
-          type: string
-          format: date-time
-          example: 2025-10-11T11:45:00Z
-
-    LLMProviderTemplateListItem:
-      type: object
-      properties:
-        id:
-          type: string
-          example: openai
-        displayName:
-          type: string
-          example: OpenAI
-        createdAt:
-          type: string
-          format: date-time
-          example: 2025-10-11T10:30:00Z
-        updatedAt:
-          type: string
-          format: date-time
-          example: 2025-10-11T10:30:00Z
-
-    LLMProviderTemplateDetailResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: success
-        template:
-          type: object
-          properties:
-            id:
-              type: string
-              example: openai
-            configuration:
-              $ref: '#/components/schemas/LLMProviderTemplate'
-            metadata:
-              type: object
-              properties:
-                createdAt:
-                  type: string
-                  format: date-time
-                  example: 2025-10-11T10:30:00Z
-                updatedAt:
-                  type: string
-                  format: date-time
-                  example: 2025-10-11T10:30:00Z
-
-    LLMProviderCreateResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: success
-        message:
-          type: string
-          example: LLM provider created successfully
-        id:
-          type: string
-          example: wso2-openai-provider
-        createdAt:
-          type: string
-          format: date-time
-          example: 2025-11-25T10:30:00Z
-
-    LLMProxyCreateResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: success
-        message:
-          type: string
-          example: LLM proxy created successfully
-        id:
-          type: string
-          example: openai-proxy
-        createdAt:
-          type: string
-          format: date-time
-          example: 2025-11-25T10:30:00Z
-
-    LLMProviderUpdateResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: success
-        message:
-          type: string
-          example: LLM provider updated successfully
-        id:
-          type: string
-          example: wso2-openai-provider
-        updatedAt:
-          type: string
-          format: date-time
-          example: 2025-11-25T11:45:00Z
-
-    LLMProxyUpdateResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: success
-        message:
-          type: string
-          example: LLM proxy updated successfully
-        id:
-          type: string
-          example: openai-proxy
-        updatedAt:
-          type: string
-          format: date-time
-          example: 2025-11-25T11:45:00Z
-
-    LLMProviderListItem:
-      type: object
-      properties:
-        id:
-          type: string
-          example: wso2-openai-provider
-        displayName:
-          type: string
-          example: WSO2 OpenAI Provider
-        version:
-          type: string
-          example: v1.0
-        template:
-          type: string
-          example: openai
-        status:
-          type: string
-          enum:
-            - deployed
-            - undeployed
-          example: deployed
-        createdAt:
-          type: string
-          format: date-time
-          example: 2025-11-25T10:30:00Z
-        updatedAt:
-          type: string
-          format: date-time
-          example: 2025-11-25T10:30:00Z
-
-    LLMProxyListItem:
-      type: object
-      properties:
-        id:
-          type: string
-          example: openai-proxy
-        displayName:
-          type: string
-          example: OpenAI Proxy
-        version:
-          type: string
-          example: v1.0
-        provider:
-          type: string
-          description: Unique id of a deployed llm provider
-          example: wso2-openai-provider
-        status:
-          type: string
-          enum:
-            - deployed
-            - undeployed
-          example: deployed
-        createdAt:
-          type: string
-          format: date-time
-          example: 2025-11-25T10:30:00Z
-        updatedAt:
-          type: string
-          format: date-time
-          example: 2025-11-25T10:30:00Z
-
-    LLMProviderDetailResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: success
-        provider:
-          type: object
-          properties:
-            id:
-              type: string
-              example: wso2-openai-provider
-            configuration:
-              $ref: '#/components/schemas/LLMProviderConfiguration'
-            deploymentStatus:
-              type: string
-              enum:
-                - deployed
-                - undeployed
-              example: deployed
-            metadata:
-              type: object
-              properties:
-                createdAt:
-                  type: string
-                  format: date-time
-                  example: 2025-11-25T10:30:00Z
-                updatedAt:
-                  type: string
-                  format: date-time
-                  example: 2025-11-25T10:30:00Z
-                deployedAt:
-                  type: string
-                  format: date-time
-                  example: 2025-11-25T10:35:00Z
-
-    LLMProxyDetailResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: success
-        proxy:
-          type: object
-          properties:
-            id:
-              type: string
-              example: openai-proxy
-            configuration:
-              $ref: '#/components/schemas/LLMProxyConfiguration'
-            deploymentStatus:
-              type: string
-              enum:
-                - deployed
-                - undeployed
-              example: deployed
-            metadata:
-              type: object
-              properties:
-                createdAt:
-                  type: string
-                  format: date-time
-                  example: 2025-11-25T10:30:00Z
-                updatedAt:
-                  type: string
-                  format: date-time
-                  example: 2025-11-25T10:30:00Z
-                deployedAt:
-                  type: string
-                  format: date-time
-                  example: 2025-11-25T10:35:00Z
-
-    LLMProviderConfiguration:
+    LLMProviderConfigurationRequest:
       type: object
       required:
         - apiVersion
@@ -4830,6 +4447,48 @@ components:
                 methods: [GET]
               - path: /models/{modelId}
                 methods: [GET]
+
+    LLMProviderConfiguration:
+      allOf:
+        - $ref: '#/components/schemas/LLMProviderConfigurationRequest'
+        - type: object
+          properties:
+            status:
+              readOnly: true
+              description: Server-managed lifecycle fields. Populated on responses.
+              allOf:
+                - $ref: '#/components/schemas/ResourceStatus'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProvider
+        metadata:
+          name: wso2-openai-provider
+        spec:
+          displayName: OpenAI Provider
+          version: v1.0
+          template: openai
+          context: /openai/latest
+          upstream:
+            url: https://api.openai.com/v1
+            auth:
+              type: api-key
+              header: Authorization
+              value: Bearer sk-your-api-key
+          accessControl:
+            mode: deny_all
+            exceptions:
+              - path: /chat/completions
+                methods: [POST]
+              - path: /models
+                methods: [GET]
+              - path: /models/{modelId}
+                methods: [GET]
+        status:
+          id: wso2-openai-provider
+          state: deployed
+          createdAt: 2026-04-24T07:21:13Z
+          updatedAt: 2026-04-24T07:21:13Z
+          deployedAt: 2026-04-24T07:21:13Z
 
     LLMProviderConfigData:
       type: object
@@ -5011,7 +4670,7 @@ components:
           description: JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.
           additionalProperties: true
 
-    LLMProxyConfiguration:
+    LLMProxyConfigurationRequest:
       type: object
       required:
         - apiVersion
@@ -5047,6 +4706,35 @@ components:
           provider:
             id: wso2-openai-provider
           policies: []
+
+    LLMProxyConfiguration:
+      allOf:
+        - $ref: '#/components/schemas/LLMProxyConfigurationRequest'
+        - type: object
+          properties:
+            status:
+              readOnly: true
+              description: Server-managed lifecycle fields. Populated on responses.
+              allOf:
+                - $ref: '#/components/schemas/ResourceStatus'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: LlmProxy
+        metadata:
+          name: openai-proxy
+        spec:
+          displayName: OpenAI Proxy
+          version: v1.0
+          context: /openai-proxy
+          provider:
+            id: wso2-openai-provider
+          policies: []
+        status:
+          id: openai-proxy
+          state: deployed
+          createdAt: 2026-04-24T07:21:13Z
+          updatedAt: 2026-04-24T07:21:13Z
+          deployedAt: 2026-04-24T07:21:13Z
 
     LLMProxyConfigData:
       type: object
@@ -5099,7 +4787,7 @@ components:
           default: deployed
           example: deployed
 
-    SecretConfiguration:
+    SecretConfigurationRequest:
       type: object
       required:
         - apiVersion
@@ -5136,6 +4824,35 @@ components:
           description: PostgreSQL main database password
           value: sup3rs3cr3t!
 
+    SecretConfiguration:
+      description: |
+        Composite of request fields plus a generic k8s-style `status` for documentation.
+        For actual HTTP response shapes, use `SecretConfigurationResponseCreateUpdate`,
+        `SecretConfigurationResponseRetrieved`, or `SecretListItem` (see
+        `SecretResourceServiceStatus` for the id/timestamp-only status on secret APIs).
+      allOf:
+        - $ref: '#/components/schemas/SecretConfigurationRequest'
+        - type: object
+          properties:
+            status:
+              readOnly: true
+              description: Server-managed lifecycle fields. Populated on responses.
+              allOf:
+                - $ref: "#/components/schemas/ResourceStatus"
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: Secret
+        metadata:
+          name: database-password
+        spec:
+          displayName: Database Password
+          description: PostgreSQL main database password
+          value: sup3rs3cr3t!
+        status:
+          id: database-password
+          createdAt: 2026-04-24T07:21:13Z
+          updatedAt: 2026-04-24T07:21:13Z
+
     SecretConfigData:
       type: object
       required:
@@ -5163,6 +4880,72 @@ components:
           maxLength: 10240
           format: password
           example: sup3rs3cr3t!
+
+    # List responses omit the secret value; this matches GET /secrets wire payloads
+    # (buildSecretMetaResourceResponse) and avoids requiring spec.value.
+    SecretConfigListData:
+      type: object
+      required:
+        - displayName
+      properties:
+        displayName:
+          type: string
+          description: Human-readable secret name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+          minLength: 1
+          maxLength: 253
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: Database Password
+
+        description:
+          type: string
+          description: Description of the secret, if the server includes it
+          maxLength: 1024
+          example: PostgreSQL main database password
+
+    SecretListItem:
+      type: object
+      required:
+        - apiVersion
+        - kind
+        - metadata
+        - spec
+      properties:
+        apiVersion:
+          type: string
+          description: Secret specification version
+          example: gateway.api-platform.wso2.com/v1alpha1
+          enum:
+            - gateway.api-platform.wso2.com/v1alpha1
+
+        kind:
+          type: string
+          description: Secret resource kind
+          example: Secret
+          enum:
+            - Secret
+
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+
+        spec:
+          $ref: "#/components/schemas/SecretConfigListData"
+
+        status:
+          readOnly: true
+          description: Server-managed lifecycle fields. Omitted in list items may vary; the secret value is never included here.
+          allOf:
+            - $ref: "#/components/schemas/ResourceStatus"
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: Secret
+        metadata:
+          name: database-password
+        spec:
+          displayName: Database Password
+        status:
+          id: database-password
+          createdAt: 2026-04-24T07:21:13Z
+          updatedAt: 2026-04-24T07:21:13Z
 
     CertificateUploadRequest:
       type: object
@@ -5257,98 +5040,118 @@ components:
           type: string
           example: success
 
-    SecretResponse:
+    SecretListResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        count:
+          type: integer
+          description: Total number of secrets
+          example: 5
+        secrets:
+          type: array
+          description: List of secrets. For security, the spec.value field is omitted for every item in the list; retrieve a single secret by id to obtain the decrypted value.
+          items:
+            $ref: '#/components/schemas/SecretListItem'
+
+    # Status block returned for /secrets; matches buildSecretResourceResponse in
+    # resource_response.go. Secrets are not deployable via StoredConfig, so
+    # deployment state and deployedAt are not used.
+    SecretResourceServiceStatus:
       type: object
       required:
         - id
-        - createdAt
-        - updatedAt
+      description: |
+        Id and optional timestamps. Not the full ResourceStatus model (no `state` or
+        `deployedAt`).
       properties:
         id:
           type: string
-          description: Unique secret identifier
-          example: "database-password"
+          description: Same as metadata.name / secret handle
+          example: database-password
         createdAt:
           type: string
           format: date-time
-          description: Timestamp when the secret was created (UTC)
           example: "2026-01-05T10:30:00Z"
         updatedAt:
           type: string
           format: date-time
-          description: Timestamp when the secret was last updated (UTC)
-          example: "2026-01-05T11:45:00Z"
+          example: "2026-01-05T10:30:00Z"
+
+    SecretConfigurationResponseCreateUpdate:
+      type: object
+      required:
+        - apiVersion
+        - kind
+        - metadata
+        - spec
+        - status
+      description: |
+        POST/PUT /secrets response. `spec.value` is not returned; see SecretConfigurationRequest for create/update request bodies.
+      properties:
+        apiVersion:
+          type: string
+          enum: [ gateway.api-platform.wso2.com/v1alpha1 ]
+        kind:
+          type: string
+          enum: [ Secret ]
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+        spec:
+          $ref: '#/components/schemas/SecretConfigListData'
+        status:
+          $ref: '#/components/schemas/SecretResourceServiceStatus'
       example:
-        id: "prod-db-password"
-        createdAt: "2026-01-05T10:00:00Z"
-        updatedAt: "2026-01-05T10:00:00Z"
-
-    SecretListResponse:
-      type: object
-      properties:
-        secrets:
-          type: array
-          description: List of secrets (without values for security)
-          items:
-            type: object
-            properties:
-              id:
-                type: string
-                description: Unique secret identifier (handle)
-                example: "openai-api-key"
-              displayName:
-                type: string
-                description: Human-readable display name
-                example: "OpenAI API Key"
-              createdAt:
-                type: string
-                format: date-time
-                description: Timestamp when the secret was created (UTC)
-                example: "2026-01-05T10:00:00Z"
-              updatedAt:
-                type: string
-                format: date-time
-                description: Timestamp when the secret was last updated (UTC)
-                example: "2026-01-05T10:30:00Z"
-            required:
-              - id
-              - displayName
-              - createdAt
-              - updatedAt
-        totalCount:
-          type: integer
-          description: Total number of secrets
-          example: 5
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: Secret
+        metadata:
+          name: database-password
+        spec:
+          displayName: Database Password
+          description: PostgreSQL main database password
         status:
-          type: string
-          example: success
+          id: database-password
+          createdAt: "2026-01-05T10:30:00Z"
+          updatedAt: "2026-01-05T10:30:00Z"
 
-    SecretDetailResponse:
+    SecretConfigurationResponseRetrieved:
       type: object
+      required:
+        - apiVersion
+        - kind
+        - metadata
+        - spec
+        - status
+      description: |
+        GET /secrets/{id} response including decrypted `spec.value`.
       properties:
-        status:
+        apiVersion:
           type: string
-          example: success
-        secret:
-          type: object
-          properties:
-            id:
-              type: string
-              description: Unique secret identifier
-              example: "database-password"
-            configuration:
-              $ref: '#/components/schemas/SecretConfiguration'
-            metadata:
-              type: object
-              properties:
-                createdAt:
-                  type: string
-                  format: date-time
-                  example: "2026-01-05T10:30:00Z"
-                updatedAt:
-                  type: string
-                  format: date-time
-                  example: "2026-01-05T11:45:00Z"
+          enum: [ gateway.api-platform.wso2.com/v1alpha1 ]
+        kind:
+          type: string
+          enum: [ Secret ]
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+        spec:
+          $ref: '#/components/schemas/SecretConfigData'
+        status:
+          $ref: '#/components/schemas/SecretResourceServiceStatus'
+      example:
+        apiVersion: "gateway.api-platform.wso2.com/v1alpha1"
+        kind: "Secret"
+        metadata:
+          name: "database-password"
+        spec:
+          displayName: "Database Password"
+          description: "PostgreSQL main database password"
+          value: "sup3rs3cr3t!"
+        status:
+          id: "database-password"
+          createdAt: "2026-01-05T10:30:00Z"
+          updatedAt: "2026-01-05T10:30:00Z"
 
 tags:
   - name: Rest API Management

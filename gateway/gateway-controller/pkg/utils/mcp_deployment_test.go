@@ -40,13 +40,13 @@ func newUnhydratedTestMCPStoredConfig(id, handle, displayName, version, contextP
 
 	return &models.StoredConfig{
 		UUID:        id,
-		Kind:        string(api.Mcp),
+		Kind:        string(api.MCPProxyConfigurationKindMcp),
 		Handle:      handle,
 		DisplayName: displayName,
 		Version:     version,
 		SourceConfiguration: api.MCPProxyConfiguration{
 			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.Mcp,
+			Kind:       api.MCPProxyConfigurationKindMcp,
 			Metadata:   api.Metadata{Name: handle},
 			Spec: api.MCPProxyConfigData{
 				DisplayName: displayName,
@@ -117,12 +117,12 @@ func TestMCPDeploymentService_ListMCPProxies(t *testing.T) {
 
 		mcpConfig := &models.StoredConfig{
 			UUID:        "0000-mcp-1-0000-000000000000",
-			Kind:        string(api.Mcp),
+			Kind:        string(api.MCPProxyConfigurationKindMcp),
 			Handle:      "mcp-proxy",
 			DisplayName: "MCP Proxy",
 			Version:     "1.0.0",
 			Configuration: api.RestAPI{
-				Kind:     api.RestApi,
+				Kind:     api.RestAPIKindRestApi,
 				Metadata: api.Metadata{Name: "mcp-proxy"},
 				Spec:     apiData,
 			},
@@ -136,12 +136,12 @@ func TestMCPDeploymentService_ListMCPProxies(t *testing.T) {
 		// Add a REST API config (should not be returned)
 		restConfig := &models.StoredConfig{
 			UUID:        "0000-rest-1-0000-000000000000",
-			Kind:        string(api.RestApi),
+			Kind:        string(api.RestAPIKindRestApi),
 			Handle:      "rest-api",
 			DisplayName: "MCP Proxy",
 			Version:     "2.0.0",
 			Configuration: api.RestAPI{
-				Kind:     api.RestApi,
+				Kind:     api.RestAPIKindRestApi,
 				Metadata: api.Metadata{Name: "rest-api"},
 				Spec:     apiData,
 			},
@@ -198,7 +198,7 @@ func TestMCPDeploymentService_getMCPProxyByID_LogsHydrationFailures(t *testing.T
 		service := newTestMCPDeploymentService(store, db, nil, nil, nil)
 		cfg := &models.StoredConfig{
 			UUID:                "0000-bad-db-mcp-0000-000000000000",
-			Kind:                string(api.Mcp),
+			Kind:                string(api.MCPProxyConfigurationKindMcp),
 			Handle:              "bad-db-mcp",
 			SourceConfiguration: "invalid",
 			DesiredState:        models.StateDeployed,
@@ -226,13 +226,13 @@ func TestMCPDeploymentService_GetMCPProxyByHandle(t *testing.T) {
 
 	cfg := &models.StoredConfig{
 		UUID:        "0000-test-handle-0000-000000000000",
-		Kind:        string(api.Mcp),
+		Kind:        string(api.MCPProxyConfigurationKindMcp),
 		Handle:      "test-mcp",
 		DisplayName: "Test MCP",
 		Version:     "1.0.0",
 		SourceConfiguration: api.MCPProxyConfiguration{
 			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.Mcp,
+			Kind:       api.MCPProxyConfigurationKindMcp,
 			Metadata:   api.Metadata{Name: "test-mcp"},
 			Spec: api.MCPProxyConfigData{
 				DisplayName: "Test MCP",
@@ -314,12 +314,12 @@ func TestMCPDeploymentService_CreateMCPProxy_ConflictError(t *testing.T) {
 
 	existingConfig := &models.StoredConfig{
 		UUID:        "0000-existing-mcp-0000-000000000000",
-		Kind:        string(api.Mcp),
+		Kind:        string(api.MCPProxyConfigurationKindMcp),
 		Handle:      "test-mcp",
 		DisplayName: "Test MCP",
 		Version:     "1.0.0",
 		Configuration: api.RestAPI{
-			Kind:     api.RestApi,
+			Kind:     api.RestAPIKindRestApi,
 			Metadata: api.Metadata{Name: "test-mcp"},
 			Spec:     apiData,
 		},
@@ -399,12 +399,12 @@ func TestMCPDeploymentService_SaveOrUpdateConfig(t *testing.T) {
 
 		storedCfg := &models.StoredConfig{
 			UUID:        "0000-new-mcp-id-0000-000000000000",
-			Kind:        string(api.Mcp),
+			Kind:        string(api.MCPProxyConfigurationKindMcp),
 			Handle:      "test-mcp",
 			DisplayName: "Test MCP",
 			Version:     "1.0.0",
 			Configuration: api.RestAPI{
-				Kind:     api.RestApi,
+				Kind:     api.RestAPIKindRestApi,
 				Metadata: api.Metadata{Name: "test-mcp"},
 				Spec:     apiData,
 			},
@@ -443,12 +443,12 @@ func TestMCPDeploymentService_SaveOrUpdateConfig_UpdatesExisting(t *testing.T) {
 		// Add original config
 		original := &models.StoredConfig{
 			UUID:        "0000-config-to-update-0000-000000000000",
-			Kind:        string(api.Mcp),
+			Kind:        string(api.MCPProxyConfigurationKindMcp),
 			Handle:      "original-mcp",
 			DisplayName: "Original MCP",
 			Version:     "1.0.0",
 			Configuration: api.RestAPI{
-				Kind:     api.RestApi,
+				Kind:     api.RestAPIKindRestApi,
 				Metadata: api.Metadata{Name: "original-mcp"},
 				Spec:     apiData,
 			},
@@ -471,12 +471,12 @@ func TestMCPDeploymentService_SaveOrUpdateConfig_UpdatesExisting(t *testing.T) {
 
 		newConfig := &models.StoredConfig{
 			UUID:        "0000-config-to-update-0000-000000000000",
-			Kind:        string(api.Mcp),
+			Kind:        string(api.MCPProxyConfigurationKindMcp),
 			Handle:      "original-mcp",
 			DisplayName: "Original MCP",
 			Version:     "1.0.0",
 			Configuration: api.RestAPI{
-				Kind:     api.RestApi,
+				Kind:     api.RestAPIKindRestApi,
 				Metadata: api.Metadata{Name: "original-mcp"},
 				Spec:     newApiData,
 			},
@@ -504,12 +504,12 @@ func TestMCPDeploymentService_SaveOrUpdateConfig_UpdatesExisting(t *testing.T) {
 
 		newConfig := &models.StoredConfig{
 			UUID:        "0000-new-config-0000-000000000000",
-			Kind:        string(api.Mcp),
+			Kind:        string(api.MCPProxyConfigurationKindMcp),
 			Handle:      "new-mcp",
 			DisplayName: "New MCP",
 			Version:     "1.0.0",
 			Configuration: api.RestAPI{
-				Kind:     api.RestApi,
+				Kind:     api.RestAPIKindRestApi,
 				Metadata: api.Metadata{Name: "new-mcp"},
 				Spec:     apiData,
 			},
@@ -619,7 +619,7 @@ spec:
 
 	storedInDB, err := db.GetConfig(created.UUID)
 	require.NoError(t, err)
-	assert.Equal(t, string(api.Mcp), storedInDB.Kind)
+	assert.Equal(t, string(api.MCPProxyConfigurationKindMcp), storedInDB.Kind)
 
 	_, err = store.Get(created.UUID)
 	require.ErrorIs(t, err, storage.ErrNotFound)
@@ -643,7 +643,7 @@ func TestMCPDeploymentService_UndeployMCPProxy_WithDBAndEventHubPublishesUpdate(
 
 	cfg := &models.StoredConfig{
 		UUID:         "0000-mcp-undeploy-id-0000-000000000000",
-		Kind:         string(api.Mcp),
+		Kind:         string(api.MCPProxyConfigurationKindMcp),
 		Handle:       "test-mcp",
 		DisplayName:  "Test MCP",
 		Version:      "1.0.0",
@@ -651,7 +651,7 @@ func TestMCPDeploymentService_UndeployMCPProxy_WithDBAndEventHubPublishesUpdate(
 		Origin:       models.OriginControlPlane,
 		SourceConfiguration: api.MCPProxyConfiguration{
 			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.Mcp,
+			Kind:       api.MCPProxyConfigurationKindMcp,
 			Metadata:   api.Metadata{Name: "test-mcp"},
 			Spec: api.MCPProxyConfigData{
 				DisplayName: "Test MCP",

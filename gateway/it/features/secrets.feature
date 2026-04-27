@@ -45,7 +45,7 @@ Feature: Secret Management Operations
       """
     Then the response status should be 201
     And the response should be valid JSON
-    And the JSON response field "id" should be "test-secret-1"
+    And the JSON response field "status.id" should be "test-secret-1"
     # Cleanup
     When I delete the secret "test-secret-1"
     Then the response status should be 200
@@ -54,7 +54,7 @@ Feature: Secret Management Operations
     When I create a secret named "simple-secret" with value "simple-value-123"
     Then the response status should be 201
     And the response should be valid JSON
-    And the JSON response field "id" should be "simple-secret"
+    And the JSON response field "status.id" should be "simple-secret"
     # Cleanup
     When I delete the secret "simple-secret"
     Then the response status should be 200
@@ -77,7 +77,7 @@ Feature: Secret Management Operations
       """
     Then the response status should be 201
     And the response should be valid JSON
-    And the JSON response field "id" should be "special-secret"
+    And the JSON response field "status.id" should be "special-secret"
     # Cleanup
     When I delete the secret "special-secret"
     Then the response status should be 200
@@ -100,7 +100,7 @@ Feature: Secret Management Operations
       """
     Then the response status should be 201
     And the response should be valid JSON
-    And the JSON response field "id" should be "long-secret"
+    And the JSON response field "status.id" should be "long-secret"
     # Cleanup
     When I delete the secret "long-secret"
     Then the response status should be 200
@@ -204,9 +204,8 @@ Feature: Secret Management Operations
     When I get the secret "get-test-secret"
     Then the response status should be 200
     And the response should be valid JSON
-    And the JSON response field "status" should be "success"
-    And the JSON response should have field "secret"
-    And the JSON response field "secret.configuration.metadata.name" should be "get-test-secret"
+    And the JSON response field "kind" should be "Secret"
+    And the JSON response field "metadata.name" should be "get-test-secret"
     # Cleanup
     When I delete the secret "get-test-secret"
     Then the response status should be 200
@@ -280,7 +279,7 @@ Feature: Secret Management Operations
       """
     Then the response status should be 200
     And the response should be valid JSON
-    And the JSON response field "id" should be "update-test-secret"
+    And the JSON response field "status.id" should be "update-test-secret"
     # Cleanup
     When I delete the secret "update-test-secret"
     Then the response status should be 200
@@ -291,7 +290,7 @@ Feature: Secret Management Operations
     When I update the secret "simple-update-secret" with value "updated-simple-value"
     Then the response status should be 200
     And the response should be valid JSON
-    And the JSON response field "id" should be "simple-update-secret"
+    And the JSON response field "status.id" should be "simple-update-secret"
     # Cleanup
     When I delete the secret "simple-update-secret"
     Then the response status should be 200
@@ -351,7 +350,7 @@ Feature: Secret Management Operations
     When I create a secret named "upstream-secret" with value "ssk-test-auth-key-12345"
     Then the response status should be 201
     And the response should be valid JSON
-    And the JSON response field "id" should be "upstream-secret"
+    And the JSON response field "status.id" should be "upstream-secret"
 
     When I create this LLM provider:
         """
@@ -416,7 +415,7 @@ Feature: Secret Management Operations
       """
     Then the response status should be 201
     And the response should be valid JSON
-    And the JSON response field "id" should be "upstream-secret-special"
+    And the JSON response field "status.id" should be "upstream-secret-special"
 
     When I create this LLM provider:
         """

@@ -92,7 +92,7 @@ func (s *APIServer) CreateSubscription(c *gin.Context) {
 			})
 			return
 		}
-		if cfg.Kind == string(api.RestApi) {
+		if cfg.Kind == string(api.RestAPIKindRestApi) {
 			if restAPI, ok := cfg.Configuration.(api.RestAPI); ok {
 				if restAPI.Spec.SubscriptionPlans != nil && len(*restAPI.Spec.SubscriptionPlans) > 0 {
 					enabled := false

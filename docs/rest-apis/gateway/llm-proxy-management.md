@@ -56,7 +56,7 @@ Required roles: `admin`, `developer`
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[LLMProxyConfiguration](#schemallmproxyconfiguration)|true|LLM proxy in YAML or JSON format|
+|body|body|[LLMProxyConfigurationRequest](schemas.md#schemallmproxyconfigurationrequest)|true|LLM proxy in YAML or JSON format|
 
 > Example responses
 
@@ -64,10 +64,27 @@ Required roles: `admin`, `developer`
 
 ```json
 {
-  "status": "success",
-  "message": "LLM proxy created successfully",
-  "id": "openai-proxy",
-  "createdAt": "2025-11-25T10:30:00Z"
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "LlmProxy",
+  "metadata": {
+    "name": "openai-proxy"
+  },
+  "spec": {
+    "displayName": "OpenAI Proxy",
+    "version": "v1.0",
+    "context": "/openai-proxy",
+    "provider": {
+      "id": "wso2-openai-provider"
+    },
+    "policies": []
+  },
+  "status": {
+    "id": "openai-proxy",
+    "state": "deployed",
+    "createdAt": "2026-04-24T07:21:13Z",
+    "updatedAt": "2026-04-24T07:21:13Z",
+    "deployedAt": "2026-04-24T07:21:13Z"
+  }
 }
 ```
 
@@ -75,10 +92,10 @@ Required roles: `admin`, `developer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|LLM proxy created and deployed successfully|[LLMProxyCreateResponse](#schemallmproxycreateresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - Proxy with same name and version already exists|[ErrorResponse](#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|LLM proxy created and deployed successfully|[LLMProxyConfiguration](schemas.md#schemallmproxyconfiguration)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - Proxy with same name and version already exists|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## List all LLM proxies
 
@@ -134,13 +151,27 @@ Required roles: `admin`, `developer`
   "count": 2,
   "proxies": [
     {
-      "id": "openai-proxy",
-      "displayName": "OpenAI Proxy",
-      "version": "v1.0",
-      "provider": "wso2-openai-provider",
-      "status": "deployed",
-      "createdAt": "2025-11-25T10:30:00Z",
-      "updatedAt": "2025-11-25T10:30:00Z"
+      "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+      "kind": "LlmProxy",
+      "metadata": {
+        "name": "openai-proxy"
+      },
+      "spec": {
+        "displayName": "OpenAI Proxy",
+        "version": "v1.0",
+        "context": "/openai-proxy",
+        "provider": {
+          "id": "wso2-openai-provider"
+        },
+        "policies": []
+      },
+      "status": {
+        "id": "openai-proxy",
+        "state": "deployed",
+        "createdAt": "2026-04-24T07:21:13Z",
+        "updatedAt": "2026-04-24T07:21:13Z",
+        "deployedAt": "2026-04-24T07:21:13Z"
+      }
     }
   ]
 }
@@ -151,7 +182,7 @@ Required roles: `admin`, `developer`
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of LLM proxies|Inline|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="list-all-llm-proxies-responseschema">Response Schema</h3>
 
@@ -161,21 +192,64 @@ Status Code **200**
 |---|---|---|---|---|
 |» status|string|false|none|none|
 |» count|integer|false|none|none|
-|» proxies|[[LLMProxyListItem](#schemallmproxylistitem)]|false|none|none|
-|»» id|string|false|none|none|
-|»» displayName|string|false|none|none|
-|»» version|string|false|none|none|
-|»» provider|string|false|none|Unique id of a deployed llm provider|
-|»» status|string|false|none|none|
-|»» createdAt|string(date-time)|false|none|none|
-|»» updatedAt|string(date-time)|false|none|none|
+|» proxies|[allOf]|false|none|none|
+
+*allOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|[LLMProxyConfigurationRequest](schemas.md#schemallmproxyconfigurationrequest)|false|none|none|
+|»»» apiVersion|string|true|none|Proxy specification version|
+|»»» kind|string|true|none|Proxy kind|
+|»»» metadata|[Metadata](schemas.md#schemametadata)|true|none|none|
+|»»»» name|string|true|none|Unique handle for the resource|
+|»»»» labels|object|false|none|Labels are key-value pairs for organizing and selecting APIs. Keys must not contain spaces.|
+|»»»»» **additionalProperties**|string|false|none|none|
+|»»»» annotations|object|false|none|Annotations are arbitrary non-identifying metadata. Use domain-prefixed keys.|
+|»»»»» **additionalProperties**|string|false|none|none|
+|»»» spec|[LLMProxyConfigData](schemas.md#schemallmproxyconfigdata)|true|none|none|
+|»»»» displayName|string|true|none|Human-readable LLM proxy name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)|
+|»»»» version|string|true|none|Semantic version of the LLM proxy|
+|»»»» context|string|false|none|Base path for all API routes (must start with /, no trailing slash)|
+|»»»» vhost|string|false|none|Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).|
+|»»»» provider|[LLMProxyProvider](schemas.md#schemallmproxyprovider)|true|none|none|
+|»»»»» id|string|true|none|Unique id of a deployed llm provider|
+|»»»»» auth|[LLMUpstreamAuth](schemas.md#schemallmupstreamauth)|false|none|none|
+|»»»»»» type|string|true|none|none|
+|»»»»»» header|string|false|none|none|
+|»»»»»» value|string|false|none|none|
+|»»»» policies|[[LLMPolicy](schemas.md#schemallmpolicy)]|false|none|List of policies applied only to this operation (overrides or adds to API-level policies)|
+|»»»»» name|string|true|none|none|
+|»»»»» version|string|true|none|none|
+|»»»»» paths|[[LLMPolicyPath](schemas.md#schemallmpolicypath)]|true|none|none|
+|»»»»»» path|string|true|none|none|
+|»»»»»» methods|[string]|true|none|none|
+|»»»»»» params|object|true|none|JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.|
+|»»»» deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the LLM Proxy is removed from router traffic but configuration and policies are preserved for potential redeployment.|
+
+*and*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|object|false|none|none|
+|»»» status|[ResourceStatus](schemas.md#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
+|»»»» id|string|false|none|Unique identifier assigned by the server (equal to metadata.name)|
+|»»»» state|string|false|none|Desired deployment state reported by the server|
+|»»»» createdAt|string(date-time)|false|none|Timestamp when the resource was first created (UTC)|
+|»»»» updatedAt|string(date-time)|false|none|Timestamp when the resource was last updated (UTC)|
+|»»»» deployedAt|string(date-time)|false|none|Timestamp when the resource was last deployed (omitted when undeployed)|
 
 #### Enumerated Values
 
 |Property|Value|
 |---|---|
-|status|deployed|
-|status|undeployed|
+|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|kind|LlmProxy|
+|type|api-key|
+|deploymentState|deployed|
+|deploymentState|undeployed|
+|state|deployed|
+|state|undeployed|
 
 ## Get LLM proxy by unique identifier
 
@@ -216,31 +290,26 @@ Required roles: `admin`, `developer`
 
 ```json
 {
-  "status": "success",
-  "proxy": {
-    "id": "openai-proxy",
-    "configuration": {
-      "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
-      "kind": "LlmProxy",
-      "metadata": {
-        "name": "openai-proxy"
-      },
-      "spec": {
-        "displayName": "OpenAI Proxy",
-        "version": "v1.0",
-        "context": "/openai-proxy",
-        "provider": {
-          "id": "wso2-openai-provider"
-        },
-        "policies": []
-      }
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "LlmProxy",
+  "metadata": {
+    "name": "openai-proxy"
+  },
+  "spec": {
+    "displayName": "OpenAI Proxy",
+    "version": "v1.0",
+    "context": "/openai-proxy",
+    "provider": {
+      "id": "wso2-openai-provider"
     },
-    "deploymentStatus": "deployed",
-    "metadata": {
-      "createdAt": "2025-11-25T10:30:00Z",
-      "updatedAt": "2025-11-25T10:30:00Z",
-      "deployedAt": "2025-11-25T10:35:00Z"
-    }
+    "policies": []
+  },
+  "status": {
+    "id": "openai-proxy",
+    "state": "deployed",
+    "createdAt": "2026-04-24T07:21:13Z",
+    "updatedAt": "2026-04-24T07:21:13Z",
+    "deployedAt": "2026-04-24T07:21:13Z"
   }
 }
 ```
@@ -249,9 +318,9 @@ Required roles: `admin`, `developer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|LLM proxy details|[LLMProxyDetailResponse](#schemallmproxydetailresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM proxy not found|[ErrorResponse](#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|LLM proxy details|[LLMProxyConfiguration](schemas.md#schemallmproxyconfiguration)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM proxy not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## Update an existing LLM proxy
 
@@ -308,7 +377,7 @@ Required roles: `admin`, `developer`
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |id|path|string|true|Unique identifier of the LLM proxy|
-|body|body|[LLMProxyConfiguration](#schemallmproxyconfiguration)|true|Updated LLM proxy|
+|body|body|[LLMProxyConfigurationRequest](schemas.md#schemallmproxyconfigurationrequest)|true|Updated LLM proxy|
 
 > Example responses
 
@@ -316,10 +385,27 @@ Required roles: `admin`, `developer`
 
 ```json
 {
-  "status": "success",
-  "message": "LLM proxy updated successfully",
-  "id": "openai-proxy",
-  "updatedAt": "2025-11-25T11:45:00Z"
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "LlmProxy",
+  "metadata": {
+    "name": "openai-proxy"
+  },
+  "spec": {
+    "displayName": "OpenAI Proxy",
+    "version": "v1.0",
+    "context": "/openai-proxy",
+    "provider": {
+      "id": "wso2-openai-provider"
+    },
+    "policies": []
+  },
+  "status": {
+    "id": "openai-proxy",
+    "state": "deployed",
+    "createdAt": "2026-04-24T07:21:13Z",
+    "updatedAt": "2026-04-24T07:21:13Z",
+    "deployedAt": "2026-04-24T07:21:13Z"
+  }
 }
 ```
 
@@ -327,10 +413,10 @@ Required roles: `admin`, `developer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|LLM proxy updated successfully|[LLMProxyUpdateResponse](#schemallmproxyupdateresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration|[ErrorResponse](#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM proxy not found|[ErrorResponse](#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|LLM proxy updated successfully|[LLMProxyConfiguration](schemas.md#schemallmproxyconfiguration)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM proxy not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## Delete an LLM proxy
 
@@ -382,8 +468,8 @@ Required roles: `admin`, `developer`
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|LLM proxy deleted successfully|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM proxy not found|[ErrorResponse](#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM proxy not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="delete-an-llm-proxy-responseschema">Response Schema</h3>
 
@@ -437,7 +523,7 @@ Required roles: `admin`, `consumer`
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |id|path|string|true|Unique handle of the LLM proxy to generate the key for|
-|body|body|[APIKeyCreationRequest](#schemaapikeycreationrequest)|true|none|
+|body|body|[APIKeyCreationRequest](schemas.md#schemaapikeycreationrequest)|true|none|
 
 > Example responses
 
@@ -466,11 +552,11 @@ Required roles: `admin`, `consumer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|API key created successfully|[APIKeyCreationResponse](#schemaapikeycreationresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM proxy not found|[ErrorResponse](#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict (duplicate key or conflicting update)|[ErrorResponse](#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|API key created successfully|[APIKeyCreationResponse](schemas.md#schemaapikeycreationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM proxy not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict (duplicate key or conflicting update)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## Get the list of API keys for an LLM proxy
 
@@ -533,9 +619,9 @@ Required roles: `admin`, `consumer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of API keys|[APIKeyListResponse](#schemaapikeylistresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM proxy not found|[ErrorResponse](#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of API keys|[APIKeyListResponse](schemas.md#schemaapikeylistresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM proxy not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## Regenerate API key for an LLM proxy
 
@@ -578,7 +664,7 @@ Required roles: `admin`, `consumer`
 |---|---|---|---|---|
 |id|path|string|true|Unique handle of the LLM proxy|
 |apiKeyName|path|string|true|Name of the API key to regenerate|
-|body|body|[APIKeyRegenerationRequest](#schemaapikeyregenerationrequest)|true|none|
+|body|body|[APIKeyRegenerationRequest](schemas.md#schemaapikeyregenerationrequest)|true|none|
 
 > Example responses
 
@@ -607,10 +693,10 @@ Required roles: `admin`, `consumer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key rotated successfully|[APIKeyCreationResponse](#schemaapikeycreationresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM proxy or API key not found|[ErrorResponse](#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key rotated successfully|[APIKeyCreationResponse](schemas.md#schemaapikeycreationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM proxy or API key not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## Update an API key for an LLM proxy
 
@@ -655,7 +741,7 @@ Required roles: `admin`, `consumer`
 |---|---|---|---|---|
 |id|path|string|true|Unique handle of the LLM proxy|
 |apiKeyName|path|string|true|Name of the API key to update|
-|body|body|[APIKeyUpdateRequest](#schemaapikeyupdaterequest)|true|none|
+|body|body|[APIKeyUpdateRequest](schemas.md#schemaapikeyupdaterequest)|true|none|
 
 > Example responses
 
@@ -684,11 +770,11 @@ Required roles: `admin`, `consumer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key updated successfully|[APIKeyCreationResponse](#schemaapikeycreationresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid request (validation failed)|[ErrorResponse](#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM proxy or API key not found|[ErrorResponse](#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict (duplicate key or conflicting update)|[ErrorResponse](#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key updated successfully|[APIKeyCreationResponse](schemas.md#schemaapikeycreationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid request (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM proxy or API key not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict (duplicate key or conflicting update)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## Revoke an API key for an LLM proxy
 
@@ -739,7 +825,7 @@ Required roles: `admin`, `consumer`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key revoked successfully|[APIKeyRevocationResponse](#schemaapikeyrevocationresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM proxy or API key not found|[ErrorResponse](#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key revoked successfully|[APIKeyRevocationResponse](schemas.md#schemaapikeyrevocationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|LLM proxy or API key not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|

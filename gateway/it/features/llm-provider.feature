@@ -53,8 +53,8 @@ Feature: LLM Provider Management
     Then the response status code should be 201
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
-    And the JSON response field "id" should be "openai-provider"
-    And the JSON response field "message" should be "LLM provider created successfully"
+    And the JSON response field "status.id" should be "openai-provider"
+    And the JSON response field "metadata.name" should be "openai-provider"
 
     # Retrieve by ID
     Given I authenticate using basic auth as "admin"
@@ -62,11 +62,11 @@ Feature: LLM Provider Management
     Then the response status code should be 200
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
-    And the JSON response field "provider.configuration.metadata.name" should be "openai-provider"
-    And the JSON response field "provider.configuration.spec.displayName" should be "OpenAI Provider"
-    And the JSON response field "provider.configuration.spec.version" should be "v1.0"
-    And the JSON response field "provider.configuration.spec.template" should be "openai"
-    And the JSON response field "provider.configuration.spec.accessControl.mode" should be "allow_all"
+    And the JSON response field "metadata.name" should be "openai-provider"
+    And the JSON response field "spec.displayName" should be "OpenAI Provider"
+    And the JSON response field "spec.version" should be "v1.0"
+    And the JSON response field "spec.template" should be "openai"
+    And the JSON response field "spec.accessControl.mode" should be "allow_all"
 
     # Update
     Given I authenticate using basic auth as "admin"
@@ -95,16 +95,16 @@ Feature: LLM Provider Management
     Then the response status code should be 200
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
-    And the JSON response field "id" should be "openai-provider"
-    And the JSON response field "message" should be "LLM provider updated successfully"
+    And the JSON response field "status.id" should be "openai-provider"
+    And the JSON response field "metadata.name" should be "openai-provider"
 
     # Verify update
     Given I authenticate using basic auth as "admin"
     When I retrieve the LLM provider "openai-provider"
     Then the response status code should be 200
-    And the JSON response field "provider.configuration.spec.displayName" should be "OpenAI Provider Updated"
-    And the JSON response field "provider.configuration.spec.accessControl.mode" should be "deny_all"
-    And the JSON response field "provider.configuration.spec.accessControl.exceptions[0].path" should be "/chat/completions"
+    And the JSON response field "spec.displayName" should be "OpenAI Provider Updated"
+    And the JSON response field "spec.accessControl.mode" should be "deny_all"
+    And the JSON response field "spec.accessControl.exceptions[0].path" should be "/chat/completions"
 
     # Delete
     Given I authenticate using basic auth as "admin"
@@ -222,7 +222,7 @@ Feature: LLM Provider Management
     When I list LLM providers with filter "displayName" as "Test%20Provider%20Alpha"
     Then the response status code should be 200
     And the JSON response field "count" should be 1
-    And the JSON response field "providers[0].displayName" should be "Test Provider Alpha"
+    And the JSON response field "providers[0].spec.displayName" should be "Test Provider Alpha"
 
     # Cleanup
     Given I authenticate using basic auth as "admin"
@@ -252,7 +252,7 @@ Feature: LLM Provider Management
     When I list LLM providers with filter "version" as "v2.5"
     Then the response status code should be 200
     And the JSON response field "count" should be 1
-    And the JSON response field "providers[0].version" should be "v2.5"
+    And the JSON response field "providers[0].spec.version" should be "v2.5"
 
     # Cleanup
     Given I authenticate using basic auth as "admin"
@@ -292,7 +292,7 @@ Feature: LLM Provider Management
     Given I authenticate using basic auth as "admin"
     When I retrieve the LLM provider "vhost-provider"
     Then the response status code should be 200
-    And the JSON response field "provider.configuration.spec.vhost" should be "api.openai.local"
+    And the JSON response field "spec.vhost" should be "api.openai.local"
 
     # Cleanup
     Given I authenticate using basic auth as "admin"
@@ -330,7 +330,7 @@ Feature: LLM Provider Management
     Given I authenticate using basic auth as "admin"
     When I retrieve the LLM provider "openai-template-test"
     Then the response status code should be 200
-    And the JSON response field "provider.configuration.spec.template" should be "openai"
+    And the JSON response field "spec.template" should be "openai"
 
     # Cleanup
     Given I authenticate using basic auth as "admin"
@@ -379,8 +379,8 @@ Feature: LLM Provider Management
     Given I authenticate using basic auth as "admin"
     When I retrieve the LLM provider "policy-provider"
     Then the response status code should be 200
-    And the JSON response field "provider.configuration.spec.policies[0].name" should be "set-headers"
-    And the JSON response field "provider.configuration.spec.policies[0].version" should be "v1"
+    And the JSON response field "spec.policies[0].name" should be "set-headers"
+    And the JSON response field "spec.policies[0].version" should be "v1"
 
     # Cleanup
     Given I authenticate using basic auth as "admin"
@@ -463,7 +463,7 @@ Feature: LLM Provider Management
     Given I authenticate using basic auth as "admin"
     When I retrieve the LLM provider "minimal-provider"
     Then the response status code should be 200
-    And the JSON response field "provider.configuration.spec.displayName" should be "Minimal Provider"
+    And the JSON response field "spec.displayName" should be "Minimal Provider"
 
     # Cleanup
     Given I authenticate using basic auth as "admin"

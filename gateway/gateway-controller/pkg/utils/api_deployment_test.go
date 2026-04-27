@@ -92,12 +92,12 @@ func TestGetTopicsForUpdate(t *testing.T) {
 		// Create a config with invalid spec (will fail parsing)
 		storedCfg := models.StoredConfig{
 			UUID:   "0000-test-api-1-0000-000000000000",
-			Kind:   string(api.WebSubApi),
+			Kind:   string(api.WebSubAPIKindWebSubApi),
 			Origin: models.OriginGatewayAPI,
 		}
 		// Set up an empty spec that will fail to parse
 		storedCfg.Configuration = api.WebSubAPI{
-			Kind: api.WebSubApi,
+			Kind: api.WebSubAPIKindWebSubApi,
 			Spec: api.WebhookAPIData{},
 		}
 
@@ -119,10 +119,10 @@ func TestGetTopicsForUpdate(t *testing.T) {
 
 		storedCfg := models.StoredConfig{
 			UUID:   "0000-websub-api-1-0000-000000000000",
-			Kind:   string(api.WebSubApi),
+			Kind:   string(api.WebSubAPIKindWebSubApi),
 			Origin: models.OriginGatewayAPI,
 			Configuration: api.WebSubAPI{
-				Kind: api.WebSubApi,
+				Kind: api.WebSubAPIKindWebSubApi,
 				Spec: webhookData,
 			},
 		}
@@ -141,7 +141,7 @@ func TestGetTopicsForDelete(t *testing.T) {
 	t.Run("Returns topics from topic manager", func(t *testing.T) {
 		storedCfg := models.StoredConfig{
 			UUID:   "0000-test-api-1-0000-000000000000",
-			Kind:   string(api.WebSubApi),
+			Kind:   string(api.WebSubAPIKindWebSubApi),
 			Origin: models.OriginGatewayAPI,
 		}
 
@@ -158,7 +158,7 @@ func TestGetTopicsForDelete(t *testing.T) {
 	t.Run("Returns empty for non-existent config", func(t *testing.T) {
 		storedCfg := models.StoredConfig{
 			UUID:   "0000-non-existent-api-0000-000000000000",
-			Kind:   string(api.WebSubApi),
+			Kind:   string(api.WebSubAPIKindWebSubApi),
 			Origin: models.OriginGatewayAPI,
 		}
 
@@ -239,9 +239,9 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 
 		storedCfg := &models.StoredConfig{
 			UUID: "0000-new-api-id-0000-000000000000",
-			Kind: string(api.RestApi),
+			Kind: string(api.RestAPIKindRestApi),
 			Configuration: api.RestAPI{
-				Kind: api.RestApi,
+				Kind: api.RestAPIKindRestApi,
 				Spec: apiData,
 			},
 			DesiredState: models.StateDeployed,
@@ -273,9 +273,9 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 		// First, add a config
 		existingCfg := &models.StoredConfig{
 			UUID: "0000-existing-api-id-0000-000000000000",
-			Kind: string(api.RestApi),
+			Kind: string(api.RestAPIKindRestApi),
 			Configuration: api.RestAPI{
-				Kind: api.RestApi,
+				Kind: api.RestAPIKindRestApi,
 				Spec: apiData,
 			},
 			DesiredState: models.StateDeployed,
@@ -295,9 +295,9 @@ func TestSaveOrUpdateConfig(t *testing.T) {
 
 		updateCfg := &models.StoredConfig{
 			UUID: "0000-existing-api-id-0000-000000000000",
-			Kind: string(api.RestApi),
+			Kind: string(api.RestAPIKindRestApi),
 			Configuration: api.RestAPI{
-				Kind: api.RestApi,
+				Kind: api.RestAPIKindRestApi,
 				Spec: newApiData,
 			},
 			DesiredState: models.StateDeployed,
@@ -333,9 +333,9 @@ func TestUpdateExistingConfig(t *testing.T) {
 		// Add original config
 		original := &models.StoredConfig{
 			UUID: "0000-config-to-update-0000-000000000000",
-			Kind: string(api.RestApi),
+			Kind: string(api.RestAPIKindRestApi),
 			Configuration: api.RestAPI{
-				Kind: api.RestApi,
+				Kind: api.RestAPIKindRestApi,
 				Spec: apiData,
 			},
 			DesiredState: models.StateDeployed,
@@ -355,9 +355,9 @@ func TestUpdateExistingConfig(t *testing.T) {
 
 		newConfig := &models.StoredConfig{
 			UUID: "0000-config-to-update-0000-000000000000",
-			Kind: string(api.RestApi),
+			Kind: string(api.RestAPIKindRestApi),
 			Configuration: api.RestAPI{
-				Kind: api.RestApi,
+				Kind: api.RestAPIKindRestApi,
 				Spec: newApiData,
 			},
 			DesiredState: models.StateDeployed,
@@ -431,7 +431,7 @@ func TestDeployAPIConfiguration_DBConflictValidation(t *testing.T) {
 
 		require.NoError(t, db.SaveConfig(&models.StoredConfig{
 			UUID:        "rest-existing-1",
-			Kind:        string(api.RestApi),
+			Kind:        string(api.RestAPIKindRestApi),
 			Handle:      "existing-rest-api",
 			DisplayName: "Existing Rest API",
 			Version:     "1.0.0",
@@ -473,7 +473,7 @@ spec:
 
 		require.NoError(t, db.SaveConfig(&models.StoredConfig{
 			UUID:        "rest-existing-2",
-			Kind:        string(api.RestApi),
+			Kind:        string(api.RestAPIKindRestApi),
 			Handle:      "existing-rest-api",
 			DisplayName: "Existing Rest API",
 			Version:     "1.0.0",
@@ -678,9 +678,9 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 
 		newCfg := &models.StoredConfig{
 			UUID: "0000-new-api-id-0000-000000000000",
-			Kind: string(api.RestApi),
+			Kind: string(api.RestAPIKindRestApi),
 			Configuration: api.RestAPI{
-				Kind: api.RestApi,
+				Kind: api.RestAPIKindRestApi,
 				Spec: apiData,
 			},
 			DesiredState: models.StateDeployed,
@@ -712,9 +712,9 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 
 		existingCfg := &models.StoredConfig{
 			UUID: "0000-existing-id-0000-000000000000",
-			Kind: string(api.RestApi),
+			Kind: string(api.RestAPIKindRestApi),
 			Configuration: api.RestAPI{
-				Kind: api.RestApi,
+				Kind: api.RestAPIKindRestApi,
 				Spec: apiData,
 			},
 			DesiredState: models.StateDeployed,
@@ -730,9 +730,9 @@ func TestSaveOrUpdateConfig_MemoryStoreFailure(t *testing.T) {
 		// Try to save with same ID (should update instead)
 		updateCfg := &models.StoredConfig{
 			UUID: "0000-existing-id-0000-000000000000",
-			Kind: string(api.RestApi),
+			Kind: string(api.RestAPIKindRestApi),
 			Configuration: api.RestAPI{
-				Kind: api.RestApi,
+				Kind: api.RestAPIKindRestApi,
 				Spec: apiData,
 			},
 			DesiredState: models.StateDeployed,
@@ -764,9 +764,9 @@ func TestUpdateExistingConfig_Rollback(t *testing.T) {
 		// Add original config
 		original := &models.StoredConfig{
 			UUID: "0000-test-api-0000-000000000000",
-			Kind: string(api.RestApi),
+			Kind: string(api.RestAPIKindRestApi),
 			Configuration: api.RestAPI{
-				Kind: api.RestApi,
+				Kind: api.RestAPIKindRestApi,
 				Spec: apiData,
 			},
 			DesiredState: models.StateDeployed,
@@ -788,9 +788,9 @@ func TestUpdateExistingConfig_Rollback(t *testing.T) {
 
 		newConfig := &models.StoredConfig{
 			UUID: "0000-test-api-0000-000000000000",
-			Kind: string(api.RestApi),
+			Kind: string(api.RestAPIKindRestApi),
 			Configuration: api.RestAPI{
-				Kind: api.RestApi,
+				Kind: api.RestAPIKindRestApi,
 				Spec: newApiData,
 			},
 			DesiredState: models.StateDeployed,
@@ -827,7 +827,7 @@ func TestSaveOrUpdateConfig_StaleEvent(t *testing.T) {
 	// First: insert a config with the newer timestamp
 	newerCfg := &models.StoredConfig{
 		UUID:         "00000000-0000-0000-0000-000000000001",
-		Kind:         string(api.RestApi),
+		Kind:         string(api.RestAPIKindRestApi),
 		Handle:       "test-api",
 		DisplayName:  "Test API",
 		Version:      "1.0.0",
@@ -846,7 +846,7 @@ func TestSaveOrUpdateConfig_StaleEvent(t *testing.T) {
 	// Second: attempt to upsert with an older timestamp — should be stale
 	staleCfg := &models.StoredConfig{
 		UUID:         "00000000-0000-0000-0000-000000000001",
-		Kind:         string(api.RestApi),
+		Kind:         string(api.RestAPIKindRestApi),
 		Handle:       "test-api",
 		DisplayName:  "Test API Stale",
 		Version:      "0.9.0",
@@ -944,7 +944,7 @@ func TestResolveVhostSentinels_RestApi(t *testing.T) {
 
 	main := constants.VHostGatewayDefault
 	var cfg any = api.RestAPI{
-		Kind: api.RestApi,
+		Kind: api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{
 			Vhosts: &struct {
 				Main    string  `json:"main" yaml:"main"`
@@ -975,7 +975,7 @@ func TestResolveVhostSentinels_ExplicitValuesUnchanged(t *testing.T) {
 	}
 
 	var cfg any = api.RestAPI{
-		Kind: api.RestApi,
+		Kind: api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{
 			Vhosts: &struct {
 				Main    string  `json:"main" yaml:"main"`
@@ -1005,7 +1005,7 @@ func TestResolveVhostSentinels_NilVhostsPopulatesDefaults(t *testing.T) {
 	}
 
 	var cfg any = api.RestAPI{
-		Kind: api.RestApi,
+		Kind: api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{Vhosts: nil},
 	}
 
@@ -1026,7 +1026,7 @@ func TestResolveVhostSentinels_NilVhostsNoSandboxDefault(t *testing.T) {
 	}
 
 	var cfg any = api.RestAPI{
-		Kind: api.RestApi,
+		Kind: api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{Vhosts: nil},
 	}
 
@@ -1047,7 +1047,7 @@ func TestResolveVhostSentinels_WebSubApi_NilVhostsPopulatesDefaults(t *testing.T
 	}
 
 	var cfg any = api.WebSubAPI{
-		Kind: api.WebSubApi,
+		Kind: api.WebSubAPIKindWebSubApi,
 		Spec: api.WebhookAPIData{Vhosts: nil},
 	}
 
@@ -1070,7 +1070,7 @@ func TestResolveVhostSentinels_WebSubApi(t *testing.T) {
 	}
 
 	var cfg any = api.WebSubAPI{
-		Kind: api.WebSubApi,
+		Kind: api.WebSubAPIKindWebSubApi,
 		Spec: api.WebhookAPIData{
 			Vhosts: &struct {
 				Main    string  `json:"main" yaml:"main"`
@@ -1101,7 +1101,7 @@ func TestResolveVhostSentinels_WebSubApi_ExplicitValues(t *testing.T) {
 	}
 
 	var cfg any = api.WebSubAPI{
-		Kind: api.WebSubApi,
+		Kind: api.WebSubAPIKindWebSubApi,
 		Spec: api.WebhookAPIData{
 			Vhosts: &struct {
 				Main    string  `json:"main" yaml:"main"`
@@ -1128,6 +1128,6 @@ func TestResolveVhostSentinels_NilCfgNoOp(t *testing.T) {
 }
 
 func TestResolveVhostSentinels_NilRouterCfgNoOp(t *testing.T) {
-	var cfg any = api.RestAPI{Kind: api.RestApi}
+	var cfg any = api.RestAPI{Kind: api.RestAPIKindRestApi}
 	require.NoError(t, resolveVhostSentinels(&cfg, nil)) // should not panic
 }

@@ -224,11 +224,15 @@ func TestGetLLMProviderTemplateByIdSuccess(t *testing.T) {
 	var response map[string]interface{}
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
-	assert.Equal(t, "success", response["status"])
-	assert.NotNil(t, response["template"])
 
-	tmpl := response["template"].(map[string]interface{})
-	assert.Equal(t, "0000-template1-0000-000000000000", tmpl["id"])
+	// GET returns the k8s-shaped resource body directly. The server-managed
+	// status block carries the handle (name) as `id`.
+	metadata, ok := response["metadata"].(map[string]interface{})
+	require.True(t, ok, "metadata should be a map, got %T", response["metadata"])
+	assert.Equal(t, "0000-template1-0000-000000000000", metadata["name"])
+	status, ok := response["status"].(map[string]interface{})
+	require.True(t, ok, "status should be a map, got %T", response["status"])
+	assert.Equal(t, "0000-template1-0000-000000000000", status["id"])
 }
 
 // TestListLLMProvidersEmpty tests listing with no providers
@@ -262,7 +266,7 @@ func TestListLLMProvidersWithData(t *testing.T) {
 		Origin:       models.OriginGatewayAPI,
 		SourceConfiguration: api.LLMProviderConfiguration{
 			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.LlmProvider,
+			Kind:       api.LLMProviderConfigurationKindLlmProvider,
 			Metadata: api.Metadata{
 				Name: "openai-provider",
 			},
@@ -329,7 +333,7 @@ func TestListLLMProxiesWithData(t *testing.T) {
 		Origin:       models.OriginGatewayAPI,
 		SourceConfiguration: api.LLMProxyConfiguration{
 			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.LlmProxy,
+			Kind:       api.LLMProxyConfigurationKindLlmProxy,
 			Metadata: api.Metadata{
 				Name: "0000-llm-proxy-1-0000-000000000000",
 			},

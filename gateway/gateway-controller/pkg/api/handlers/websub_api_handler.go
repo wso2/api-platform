@@ -79,12 +79,7 @@ func (s *APIServer) CreateWebSubAPI(c *gin.Context) {
 
 	cfg := result.StoredConfig
 
-	c.JSON(http.StatusCreated, api.WebSubAPICreateResponse{
-		Status:    stringPtr("success"),
-		Message:   stringPtr("WebSub API configuration created successfully"),
-		Id:        stringPtr(cfg.Handle),
-		CreatedAt: timePtr(cfg.CreatedAt),
-	})
+	c.JSON(http.StatusCreated, buildResourceResponseFromStored(cfg.Configuration, cfg))
 
 	if result.IsStale {
 		return
@@ -102,11 +97,11 @@ func (s *APIServer) ListWebSubAPIs(c *gin.Context, params api.ListWebSubAPIsPara
 		(params.Version != nil && *params.Version != "") ||
 		(params.Context != nil && *params.Context != "") ||
 		(params.Status != nil && *params.Status != "") {
-		s.SearchDeployments(c, string(api.WebSubApi))
+		s.SearchDeployments(c, string(api.WebSubAPIKindWebSubApi))
 		return
 	}
 
-	configs, err := s.db.GetAllConfigsByKind(string(api.WebSubApi))
+	configs, err := s.db.GetAllConfigsByKind(string(api.WebSubAPIKindWebSubApi))
 	if err != nil {
 		s.logger.Error("Failed to list WebSub APIs", slog.Any("error", err))
 		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
@@ -116,26 +111,21 @@ func (s *APIServer) ListWebSubAPIs(c *gin.Context, params api.ListWebSubAPIsPara
 		return
 	}
 
-	items := make([]api.WebSubAPIListItem, 0, len(configs))
+	contextFilter := params.Context != nil && *params.Context != ""
+	items := make([]any, 0, len(configs))
 	for _, cfg := range configs {
-		cfgContext, err := cfg.GetContext()
+		_, err := cfg.GetContext()
 		if err != nil {
 			s.logger.Warn("Failed to get context for WebSub API config",
 				slog.String("id", cfg.UUID),
+				slog.String("displayName", cfg.DisplayName),
 				slog.Any("error", err))
-			continue
+			if contextFilter {
+				continue
+			}
 		}
 
-		status := string(cfg.DesiredState)
-		items = append(items, api.WebSubAPIListItem{
-			Id:          stringPtr(cfg.Handle),
-			DisplayName: stringPtr(cfg.DisplayName),
-			Version:     stringPtr(cfg.Version),
-			Context:     stringPtr(cfgContext),
-			Status:      (*api.WebSubAPIListItemStatus)(&status),
-			CreatedAt:   timePtr(cfg.CreatedAt),
-			UpdatedAt:   timePtr(cfg.UpdatedAt),
-		})
+		items = append(items, buildResourceResponseFromStored(cfg.Configuration, cfg))
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -169,24 +159,7 @@ func (s *APIServer) GetWebSubAPIById(c *gin.Context, id string) {
 		return
 	}
 
-	apiDetail := gin.H{
-		"id":            cfg.Handle,
-		"configuration": cfg.SourceConfiguration,
-		"metadata": gin.H{
-			"status":    string(cfg.DesiredState),
-			"createdAt": cfg.CreatedAt.Format(time.RFC3339),
-			"updatedAt": cfg.UpdatedAt.Format(time.RFC3339),
-		},
-	}
-
-	if cfg.DeployedAt != nil {
-		apiDetail["metadata"].(gin.H)["deployedAt"] = cfg.DeployedAt.Format(time.RFC3339)
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"status": "success",
-		"api":    apiDetail,
-	})
+	c.JSON(http.StatusOK, buildResourceResponseFromStored(cfg.SourceConfiguration, cfg))
 }
 
 // UpdateWebSubAPI implements ServerInterface.UpdateWebSubAPI
@@ -249,12 +222,7 @@ func (s *APIServer) UpdateWebSubAPI(c *gin.Context, id string) {
 		slog.String("id", updated.UUID),
 		slog.String("handle", handle))
 
-	c.JSON(http.StatusOK, api.WebSubAPIUpdateResponse{
-		Status:    stringPtr("success"),
-		Message:   stringPtr("WebSub API configuration updated successfully"),
-		Id:        stringPtr(updated.Handle),
-		UpdatedAt: timePtr(updated.UpdatedAt),
-	})
+	c.JSON(http.StatusOK, buildResourceResponseFromStored(updated.Configuration, updated))
 }
 
 // DeleteWebSubAPI implements ServerInterface.DeleteWebSubAPI

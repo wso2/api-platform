@@ -55,6 +55,7 @@ ap gateway add --display-name dev --server http://localhost:9090 --auth basic --
 var (
 	addName          string
 	addServer        string
+	addAdminServer   string
 	addAuth          string
 	addUsername      string
 	addPassword      string
@@ -78,6 +79,8 @@ var addCmd = &cobra.Command{
 func init() {
 	utils.AddStringFlag(addCmd, utils.FlagName, &addName, "", "Name of the gateway (required)")
 	utils.AddStringFlag(addCmd, utils.FlagServer, &addServer, "", "Server URL of the gateway (required)")
+	utils.AddStringFlag(addCmd, utils.FlagAdminServer, &addAdminServer, "",
+		"Admin API URL of the gateway-controller (used by `gateway health`). Defaults to --server when omitted.")
 	utils.AddStringFlag(addCmd, utils.FlagAuth, &addAuth, utils.AuthTypeNone, "Authentication type: none, basic, or bearer (default: none)")
 	utils.AddStringFlag(addCmd, utils.FlagUsername, &addUsername, "", "Username for basic auth (not recommended, use interactive mode)")
 	utils.AddStringFlag(addCmd, utils.FlagPassword, &addPassword, "", "Password for basic auth (not recommended, use interactive mode)")
@@ -164,9 +167,10 @@ func runAddCommand() error {
 
 	// Create new gateway
 	gateway := config.Gateway{
-		Name:   addName,
-		Server: addServer,
-		Auth:   addAuth,
+		Name:        addName,
+		Server:      addServer,
+		AdminServer: addAdminServer,
+		Auth:        addAuth,
 	}
 
 	if username != "" || password != "" || token != "" {

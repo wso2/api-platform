@@ -175,13 +175,13 @@ func TestHandleEvent_APIKeyCreate_SyncsMemoryAndXDS_ForLLMProxy(t *testing.T) {
 	require.NoError(t, db.SaveConfig(providerCfg))
 	cfg := &models.StoredConfig{
 		UUID:        "test-llm-proxy-id",
-		Kind:        string(api.LlmProxy),
+		Kind:        string(api.LLMProxyConfigurationKindLlmProxy),
 		Handle:      "test-llm-proxy",
 		DisplayName: "Test LLM Proxy",
 		Version:     "v1.0.0",
 		SourceConfiguration: api.LLMProxyConfiguration{
 			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.LlmProxy,
+			Kind:       api.LLMProxyConfigurationKindLlmProxy,
 			Metadata: api.Metadata{
 				Name: "test-llm-proxy",
 			},

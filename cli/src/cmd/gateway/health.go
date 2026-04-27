@@ -55,8 +55,10 @@ func runHealthCommand() error {
 		return err
 	}
 
-	// Call the health endpoint
-	resp, err := client.Get(utils.GatewayHealthPath)
+	// The health endpoint is served on the gateway-controller's admin API (a
+	// separate port from the management API in most deployments), so route
+	// through GetAdmin which resolves the configured admin base URL.
+	resp, err := client.GetAdmin(utils.GatewayHealthPath)
 	if err != nil {
 		return fmt.Errorf("failed to call health endpoint: %w", err)
 	}

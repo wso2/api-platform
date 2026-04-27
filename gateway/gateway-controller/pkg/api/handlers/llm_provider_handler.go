@@ -25,7 +25,6 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
@@ -41,30 +40,18 @@ func (s *APIServer) ListLLMProviders(c *gin.Context, params api.ListLLMProviders
 	log := middleware.GetLogger(c, s.logger)
 	configs := s.llmDeploymentService.ListLLMProviders(params)
 
-	items := make([]api.LLMProviderListItem, len(configs))
-	for i, cfg := range configs {
-		status := api.LLMProviderListItemStatus(cfg.DesiredState)
-
-		// Convert SourceConfiguration to LLMProviderConfiguration
-		var prov api.LLMProviderConfiguration
-		j, _ := json.Marshal(cfg.SourceConfiguration)
-		if err := json.Unmarshal(j, &prov); err != nil {
-			log.Error("Failed to unmarshal stored LLM provider configuration",
-				slog.String("uuid", cfg.UUID), slog.Any("error", err))
+	items := make([]any, 0, len(configs))
+	for _, cfg := range configs {
+		// Re-materialise SourceConfiguration into a typed LLMProviderConfiguration
+		// so each list item has a strongly-typed k8s-shaped body with status.
+		prov, err := rematerializeLLMProviderConfig(log, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
 				Message: "Failed to get stored LLM provider configuration"})
 			return
 		}
 
-		items[i] = api.LLMProviderListItem{
-			Id:          stringPtr(prov.Metadata.Name),
-			DisplayName: stringPtr(prov.Spec.DisplayName),
-			Version:     stringPtr(prov.Spec.Version),
-			Template:    stringPtr(prov.Spec.Template),
-			Status:      &status,
-			CreatedAt:   timePtr(cfg.CreatedAt),
-			UpdatedAt:   timePtr(cfg.UpdatedAt),
-		}
+		items = append(items, buildResourceResponseFromStored(prov, cfg))
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "success", "count": len(items), "providers": items})
@@ -126,11 +113,19 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 		slog.String("uuid", stored.UUID),
 		slog.String("handle", stored.Handle))
 
-	c.JSON(http.StatusCreated, api.LLMProviderCreateResponse{
-		Status:  stringPtr("success"),
-		Message: stringPtr("LLM provider created successfully"),
-		Id:      stringPtr(stored.Handle), CreatedAt: timePtr(stored.CreatedAt)})
+	// Re-materialise stored source config into a typed LLMProviderConfiguration
+	// so the response is a k8s-shaped body (server-managed Status is injected by
+	// buildResourceResponseFromStored).
+	prov, err := rematerializeLLMProviderConfig(log, stored.UUID, stored.DisplayName, stored.SourceConfiguration)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to get stored LLM provider configuration",
+		})
+		return
+	}
 
+	c.JSON(http.StatusCreated, buildResourceResponseFromStored(prov, stored))
 }
 
 // GetLLMProviderById implements ServerInterface.GetLLMProviderById
@@ -160,24 +155,18 @@ func (s *APIServer) GetLLMProviderById(c *gin.Context, id string) {
 		return
 	}
 
-	// Build response
-	providerDetail := gin.H{
-		"configuration": cfg.SourceConfiguration,
-		"metadata": gin.H{
-			"status":    string(cfg.DesiredState),
-			"createdAt": cfg.CreatedAt.Format(time.RFC3339),
-			"updatedAt": cfg.UpdatedAt.Format(time.RFC3339),
-		},
+	// Re-materialise the stored source configuration into a typed
+	// LLMProviderConfiguration so we can attach server-managed status fields.
+	prov, err := rematerializeLLMProviderConfig(log, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to get stored LLM provider configuration",
+		})
+		return
 	}
 
-	if cfg.DeployedAt != nil {
-		providerDetail["metadata"].(gin.H)["deployedAt"] = cfg.DeployedAt.Format(time.RFC3339)
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"status":   "success",
-		"provider": providerDetail,
-	})
+	c.JSON(http.StatusOK, buildResourceResponseFromStored(prov, cfg))
 }
 
 // UpdateLLMProvider implements ServerInterface.UpdateLLMProvider
@@ -226,13 +215,16 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 
 	updated := result.StoredConfig
 
-	c.JSON(http.StatusOK, api.LLMProviderUpdateResponse{
-		Id:        stringPtr(updated.Handle),
-		Message:   stringPtr("LLM provider updated successfully"),
-		Status:    stringPtr("success"),
-		UpdatedAt: timePtr(updated.UpdatedAt),
-	})
+	prov, err := rematerializeLLMProviderConfig(log, updated.UUID, updated.DisplayName, updated.SourceConfiguration)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to get stored LLM provider configuration",
+		})
+		return
+	}
 
+	c.JSON(http.StatusOK, buildResourceResponseFromStored(prov, updated))
 }
 
 // DeleteLLMProvider implements ServerInterface.DeleteLLMProvider
@@ -469,4 +461,29 @@ func (s *APIServer) ListLLMProviderAPIKeys(c *gin.Context, id string) {
 	}
 
 	c.JSON(http.StatusOK, result.Response)
+}
+
+// rematerializeLLMProviderConfig re-encodes persisted SourceConfiguration into
+// the generated API type. Logs marshal/unmarshal failures with full context and
+// returns a non-nil error (callers return 500 after persistence).
+func rematerializeLLMProviderConfig(log *slog.Logger, id, displayName string, source any) (api.LLMProviderConfiguration, error) {
+	j, err := json.Marshal(source)
+	if err != nil {
+		log.Error("Failed to marshal stored LLM provider source configuration",
+			slog.String("id", id),
+			slog.String("displayName", displayName),
+			slog.Any("sourceConfiguration", source),
+			slog.Any("error", err))
+		return api.LLMProviderConfiguration{}, fmt.Errorf("marshal LLM provider config: %w", err)
+	}
+	var prov api.LLMProviderConfiguration
+	if err := json.Unmarshal(j, &prov); err != nil {
+		log.Error("Failed to unmarshal stored LLM provider configuration",
+			slog.String("id", id),
+			slog.String("displayName", displayName),
+			slog.Any("sourceConfiguration", source),
+			slog.Any("error", err))
+		return api.LLMProviderConfiguration{}, fmt.Errorf("unmarshal LLM provider config: %w", err)
+	}
+	return prov, nil
 }

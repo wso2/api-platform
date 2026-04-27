@@ -36,16 +36,25 @@ Required roles: `admin`
 
 ```json
 {
+  "status": "success",
+  "count": 5,
   "secrets": [
     {
-      "id": "openai-api-key",
-      "displayName": "OpenAI API Key",
-      "createdAt": "2026-01-05T10:00:00Z",
-      "updatedAt": "2026-01-05T10:30:00Z"
+      "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+      "kind": "Secret",
+      "metadata": {
+        "name": "database-password"
+      },
+      "spec": {
+        "displayName": "Database Password"
+      },
+      "status": {
+        "id": "database-password",
+        "createdAt": "2026-04-24T07:21:13Z",
+        "updatedAt": "2026-04-24T07:21:13Z"
+      }
     }
-  ],
-  "totalCount": 5,
-  "status": "success"
+  ]
 }
 ```
 
@@ -53,9 +62,9 @@ Required roles: `admin`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of secrets retrieved successfully|[SecretListResponse](#schemasecretlistresponse)|
-|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized - authentication required|[ErrorResponse](#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of secrets retrieved successfully|[SecretListResponse](schemas.md#schemasecretlistresponse)|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized - authentication required|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## Create a new secret
 
@@ -108,7 +117,7 @@ Required roles: `admin`
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[SecretConfiguration](#schemasecretconfiguration)|true|none|
+|body|body|[SecretConfigurationRequest](schemas.md#schemasecretconfigurationrequest)|true|none|
 
 > Example responses
 
@@ -116,9 +125,20 @@ Required roles: `admin`
 
 ```json
 {
-  "id": "database-password",
-  "createdAt": "2026-01-05T10:30:00Z",
-  "updatedAt": "2026-01-05T10:30:00Z"
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "Secret",
+  "metadata": {
+    "name": "database-password"
+  },
+  "spec": {
+    "displayName": "Database Password",
+    "description": "PostgreSQL main database password"
+  },
+  "status": {
+    "id": "database-password",
+    "createdAt": "2026-01-05T10:30:00Z",
+    "updatedAt": "2026-01-05T10:30:00Z"
+  }
 }
 ```
 
@@ -141,11 +161,11 @@ Required roles: `admin`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Secret created successfully|[SecretResponse](#schemasecretresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request - missing or invalid fields|[ErrorResponse](#schemaerrorresponse)|
-|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized - authentication required|[ErrorResponse](#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - secret with this ID already exists|[ErrorResponse](#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error - encryption failed|[ErrorResponse](#schemaerrorresponse)|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Secret created successfully|[SecretConfigurationResponseCreateUpdate](schemas.md#schemasecretconfigurationresponsecreateupdate)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request - missing or invalid fields|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized - authentication required|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict - secret with this ID already exists|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error - encryption failed|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## Retrieve a secret
 
@@ -188,26 +208,20 @@ Required roles: `admin`
 
 ```json
 {
-  "status": "success",
-  "secret": {
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "Secret",
+  "metadata": {
+    "name": "database-password"
+  },
+  "spec": {
+    "displayName": "Database Password",
+    "description": "PostgreSQL main database password",
+    "value": "sup3rs3cr3t!"
+  },
+  "status": {
     "id": "database-password",
-    "configuration": {
-      "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
-      "kind": "Secret",
-      "metadata": {
-        "name": "database-password"
-      },
-      "spec": {
-        "displayName": "Database Password",
-        "description": "PostgreSQL main database password",
-        "type": "default",
-        "value": "sup3rs3cr3t!"
-      }
-    },
-    "metadata": {
-      "createdAt": "2026-01-05T10:30:00Z",
-      "updatedAt": "2026-01-05T10:30:00Z"
-    }
+    "createdAt": "2026-01-05T10:30:00Z",
+    "updatedAt": "2026-01-05T10:30:00Z"
   }
 }
 ```
@@ -231,10 +245,10 @@ Required roles: `admin`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Secret retrieved and decrypted successfully|[SecretDetailResponse](#schemasecretdetailresponse)|
-|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized - authentication required|[ErrorResponse](#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Secret configuration not found|[ErrorResponse](#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error - decryption failed|[ErrorResponse](#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Secret retrieved and decrypted successfully|[SecretConfigurationResponseRetrieved](schemas.md#schemasecretconfigurationresponseretrieved)|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized - authentication required|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Secret configuration not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error - decryption failed|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## Update a secret
 
@@ -288,7 +302,7 @@ Required roles: `admin`
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[SecretConfiguration](#schemasecretconfiguration)|true|none|
+|body|body|[SecretConfigurationRequest](schemas.md#schemasecretconfigurationrequest)|true|none|
 |id|path|string|true|Unique secret identifier|
 
 > Example responses
@@ -297,9 +311,20 @@ Required roles: `admin`
 
 ```json
 {
-  "id": "database-password",
-  "createdAt": "2026-01-05T10:30:00Z",
-  "updatedAt": "2026-01-05T11:45:00Z"
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "Secret",
+  "metadata": {
+    "name": "database-password"
+  },
+  "spec": {
+    "displayName": "Database Password",
+    "description": "PostgreSQL main database password"
+  },
+  "status": {
+    "id": "database-password",
+    "createdAt": "2026-01-05T10:30:00Z",
+    "updatedAt": "2026-01-05T11:45:00Z"
+  }
 }
 ```
 
@@ -322,11 +347,11 @@ Required roles: `admin`
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Secret updated successfully|[SecretResponse](#schemasecretresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request - missing or invalid value|[ErrorResponse](#schemaerrorresponse)|
-|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized - authentication required|[ErrorResponse](#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Secret configuration not found|[ErrorResponse](#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error - encryption failed|[ErrorResponse](#schemaerrorresponse)|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Secret updated successfully|[SecretConfigurationResponseCreateUpdate](schemas.md#schemasecretconfigurationresponsecreateupdate)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request - missing or invalid value|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized - authentication required|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Secret configuration not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error - encryption failed|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## Delete a secret
 
@@ -394,6 +419,6 @@ Required roles: `admin`
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Secret deleted successfully (no content)|None|
-|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized - authentication required|[ErrorResponse](#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Secret configuration not found|[ErrorResponse](#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error - database failure|[ErrorResponse](#schemaerrorresponse)|
+|401|[Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)|Unauthorized - authentication required|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Secret configuration not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error - database failure|[ErrorResponse](schemas.md#schemaerrorresponse)|

@@ -568,14 +568,14 @@ func TestClient_handleMCPProxyUndeploymentEvent_PublishesReplicaSyncUpdate(t *te
 
 	cfg := &models.StoredConfig{
 		UUID:         "mcp-123",
-		Kind:         string(api.Mcp),
+		Kind:         string(api.MCPProxyConfigurationKindMcp),
 		Handle:       "test-mcp",
 		DisplayName:  "Test MCP",
 		Version:      "v1.0.0",
 		DeploymentID: "rev-1",
 		Origin:       models.OriginControlPlane,
 		Configuration: api.RestAPI{
-			Kind:     api.RestApi,
+			Kind:     api.RestAPIKindRestApi,
 			Metadata: api.Metadata{Name: "test-mcp"},
 			Spec: api.APIConfigData{
 				DisplayName: "Test MCP",
@@ -594,7 +594,7 @@ func TestClient_handleMCPProxyUndeploymentEvent_PublishesReplicaSyncUpdate(t *te
 		},
 		SourceConfiguration: api.MCPProxyConfiguration{
 			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.Mcp,
+			Kind:       api.MCPProxyConfigurationKindMcp,
 			Metadata:   api.Metadata{Name: "test-mcp"},
 			Spec: api.MCPProxyConfigData{
 				DisplayName: "Test MCP",

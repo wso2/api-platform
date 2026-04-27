@@ -25,7 +25,6 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
@@ -112,13 +111,16 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 
 	cfg := result.StoredConfig
 
-	// Return success response (id is the handle)
-	c.JSON(http.StatusCreated, api.MCPProxyCreateResponse{
-		Status:    stringPtr("success"),
-		Message:   stringPtr("MCP proxy configuration created successfully"),
-		Id:        stringPtr(cfg.Handle),
-		CreatedAt: timePtr(cfg.CreatedAt),
-	})
+	mcp, err := rematerializeMCPProxyConfig(log, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to get stored MCP configuration",
+		})
+		return
+	}
+
+	c.JSON(http.StatusCreated, buildResourceResponseFromStored(mcp, cfg))
 
 	if result.IsStale {
 		return
@@ -134,7 +136,7 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 // (GET /mcp-proxies)
 func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesParams) {
 	if (params.DisplayName != nil && *params.DisplayName != "") || (params.Version != nil && *params.Version != "") || (params.Context != nil && *params.Context != "") || (params.Status != nil && *params.Status != "") {
-		s.SearchDeployments(c, string(api.Mcp))
+		s.SearchDeployments(c, string(api.MCPProxyConfigurationKindMcp))
 		return
 	}
 	configs, err := s.mcpDeploymentService.ListMCPProxies()
@@ -147,35 +149,20 @@ func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesPara
 		return
 	}
 
-	items := make([]api.MCPProxyListItem, len(configs))
-	for i, cfg := range configs {
-		status := api.MCPProxyListItemStatus(cfg.DesiredState)
-		// Convert SourceConfiguration to MCPProxyConfiguration
-		var mcp api.MCPProxyConfiguration
-		j, _ := json.Marshal(cfg.SourceConfiguration)
-		err := json.Unmarshal(j, &mcp)
+	items := make([]any, 0, len(configs))
+	for _, cfg := range configs {
+		// Re-materialise SourceConfiguration into a typed MCPProxyConfiguration so the
+		// response has a concrete apiVersion/kind/metadata/spec body (the raw stored
+		// value may be a plain map when it round-trips through the database).
+		mcp, err := rematerializeMCPProxyConfig(s.logger, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
 		if err != nil {
-			s.logger.Error("Failed to unmarshal stored MCP configuration",
-				slog.String("id", cfg.UUID),
-				slog.String("displayName", cfg.DisplayName))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "Failed to get stored MCP configuration",
 			})
 			return
 		}
-		li := api.MCPProxyListItem{
-			Id:          stringPtr(cfg.Handle),
-			DisplayName: stringPtr(mcp.Spec.DisplayName),
-			Version:     stringPtr(mcp.Spec.Version),
-			Status:      &status,
-			CreatedAt:   timePtr(cfg.CreatedAt),
-			UpdatedAt:   timePtr(cfg.UpdatedAt),
-		}
-		if mcp.Spec.Context != nil {
-			li.Context = mcp.Spec.Context
-		}
-		items[i] = li
+		items = append(items, buildResourceResponseFromStored(mcp, cfg))
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -224,9 +211,9 @@ func (s *APIServer) GetMCPProxyById(c *gin.Context, id string) {
 	}
 
 	// Check deployment kind is MCP
-	if cfg.Kind != string(api.Mcp) {
+	if cfg.Kind != string(api.MCPProxyConfigurationKindMcp) {
 		log.Warn("Configuration kind mismatch",
-			slog.String("expected", string(api.Mcp)),
+			slog.String("expected", string(api.MCPProxyConfigurationKindMcp)),
 			slog.String("actual", cfg.Kind),
 			slog.String("handle", handle))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
@@ -236,24 +223,18 @@ func (s *APIServer) GetMCPProxyById(c *gin.Context, id string) {
 		return
 	}
 
-	mcpDetail := gin.H{
-		"id":            cfg.Handle,
-		"configuration": cfg.SourceConfiguration,
-		"metadata": gin.H{
-			"status":    string(cfg.DesiredState),
-			"createdAt": cfg.CreatedAt.Format(time.RFC3339),
-			"updatedAt": cfg.UpdatedAt.Format(time.RFC3339),
-		},
+	// Re-materialise SourceConfiguration into a typed MCPProxyConfiguration so we
+	// can attach the server-managed Status field and emit a strongly-typed body.
+	mcp, err := rematerializeMCPProxyConfig(log, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to retrieve MCP proxy configuration",
+		})
+		return
 	}
 
-	if cfg.DeployedAt != nil {
-		mcpDetail["metadata"].(gin.H)["deployedAt"] = cfg.DeployedAt.Format(time.RFC3339)
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"status": "success",
-		"mcp":    mcpDetail,
-	})
+	c.JSON(http.StatusOK, buildResourceResponseFromStored(mcp, cfg))
 }
 
 // UpdateMCPProxy implements ServerInterface.UpdateMCPProxy
@@ -304,13 +285,16 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 		slog.String("id", updated.UUID),
 		slog.String("handle", handle))
 
-	// Return success response (id is the handle)
-	c.JSON(http.StatusOK, api.MCPProxyUpdateResponse{
-		Status:    stringPtr("success"),
-		Message:   stringPtr("MCP proxy configuration updated successfully"),
-		Id:        stringPtr(updated.Handle),
-		UpdatedAt: timePtr(updated.UpdatedAt),
-	})
+	mcp, err := rematerializeMCPProxyConfig(log, updated.UUID, updated.DisplayName, updated.SourceConfiguration)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to get stored MCP configuration",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, buildResourceResponseFromStored(mcp, updated))
 }
 
 // DeleteMCPProxy implements ServerInterface.DeleteMCPProxy
@@ -350,4 +334,28 @@ func (s *APIServer) DeleteMCPProxy(c *gin.Context, id string) {
 		"message": "MCP proxy configuration deleted successfully",
 		"id":      handle,
 	})
+}
+
+// rematerializeMCPProxyConfig re-encodes persisted SourceConfiguration into the
+// generated API type. Logs marshal/unmarshal failures; callers return 500.
+func rematerializeMCPProxyConfig(log *slog.Logger, id, displayName string, source any) (api.MCPProxyConfiguration, error) {
+	j, err := json.Marshal(source)
+	if err != nil {
+		log.Error("Failed to marshal stored MCP proxy source configuration",
+			slog.String("id", id),
+			slog.String("displayName", displayName),
+			slog.Any("sourceConfiguration", source),
+			slog.Any("error", err))
+		return api.MCPProxyConfiguration{}, fmt.Errorf("marshal MCP proxy config: %w", err)
+	}
+	var mcp api.MCPProxyConfiguration
+	if err := json.Unmarshal(j, &mcp); err != nil {
+		log.Error("Failed to unmarshal stored MCP configuration",
+			slog.String("id", id),
+			slog.String("displayName", displayName),
+			slog.Any("sourceConfiguration", source),
+			slog.Any("error", err))
+		return api.MCPProxyConfiguration{}, fmt.Errorf("unmarshal MCP proxy config: %w", err)
+	}
+	return mcp, nil
 }

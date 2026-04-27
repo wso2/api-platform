@@ -68,15 +68,12 @@ func init() {
 	utils.AddStringFlag(getCmd, utils.FlagFormat, &getAPIFormat, "yaml", "Output format (json or yaml)")
 }
 
-// APIGetResponse represents the response from GET /apis/{id}
-type APIGetResponse struct {
-	Status string `json:"status"`
-	API    struct {
-		ID            string                 `json:"id"`
-		Configuration map[string]interface{} `json:"configuration"`
-		Metadata      map[string]interface{} `json:"metadata"`
-	} `json:"api"`
-}
+// APIGetResponse represents the response from GET /rest-apis/{id}.
+//
+// Under the current management API the response body is the k8s-shaped resource
+// itself: {apiVersion, kind, metadata, spec, status}. We keep this around as a
+// convenience alias so callers can reason about the resource body shape.
+type APIGetResponse map[string]interface{}
 
 func runGetCommand() error {
 	// Validate flags
@@ -149,7 +146,10 @@ func getAPIByID(client *gateway.Client, id string) (map[string]interface{}, erro
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	return getResp.API.Configuration, nil
+	// The response is the resource body itself. Drop the server-managed status
+	// block so the display matches the declarative source the user applied.
+	delete(getResp, "status")
+	return getResp, nil
 }
 
 func getAPIByNameAndVersion(client *gateway.Client, name, version string) (map[string]interface{}, error) {
@@ -187,7 +187,7 @@ func getAPIByNameAndVersion(client *gateway.Client, name, version string) (map[s
 	}
 
 	// Get the full API configuration using the ID
-	return getAPIByID(client, listResp.APIs[0].ID)
+	return getAPIByID(client, listResp.APIs[0].ID())
 }
 
 func displayAPI(apiConfig map[string]interface{}, format string) error {

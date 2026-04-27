@@ -559,7 +559,7 @@ func createTestAPIConfigForDeletion(apiID string) *models.StoredConfig {
 		Kind:         "API",
 		Configuration: api.RestAPI{
 			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.RestApi,
+			Kind:       api.RestAPIKindRestApi,
 			Metadata: api.Metadata{
 				Name: apiID,
 			},

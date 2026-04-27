@@ -26,7 +26,6 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
@@ -42,30 +41,18 @@ func (s *APIServer) ListLLMProxies(c *gin.Context, params api.ListLLMProxiesPara
 	log := middleware.GetLogger(c, s.logger)
 	configs := s.llmDeploymentService.ListLLMProxies(params)
 
-	items := make([]api.LLMProxyListItem, len(configs))
-	for i, cfg := range configs {
-		status := api.LLMProxyListItemStatus(cfg.DesiredState)
-
-		// Convert SourceConfiguration to LLMProxyConfiguration
-		var proxy api.LLMProxyConfiguration
-		j, _ := json.Marshal(cfg.SourceConfiguration)
-		if err := json.Unmarshal(j, &proxy); err != nil {
-			log.Error("Failed to unmarshal stored LLM proxy configuration", slog.String("uuid", cfg.UUID),
-				slog.Any("error", err))
+	items := make([]any, 0, len(configs))
+	for _, cfg := range configs {
+		// Re-materialise SourceConfiguration into a typed LLMProxyConfiguration
+		// so each list item has a strongly-typed k8s-shaped body with status.
+		proxy, err := rematerializeLLMProxyConfig(log, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status: "error", Message: "Failed to get stored LLM proxy configuration"})
 			return
 		}
 
-		items[i] = api.LLMProxyListItem{
-			Id:          stringPtr(proxy.Metadata.Name),
-			DisplayName: stringPtr(proxy.Spec.DisplayName),
-			Version:     stringPtr(proxy.Spec.Version),
-			Provider:    stringPtr(proxy.Spec.Provider.Id),
-			Status:      &status,
-			CreatedAt:   timePtr(cfg.CreatedAt),
-			UpdatedAt:   timePtr(cfg.UpdatedAt),
-		}
+		items = append(items, buildResourceResponseFromStored(proxy, cfg))
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "success", "count": len(items), "proxies": items})
@@ -144,11 +131,14 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 		slog.String("uuid", stored.UUID),
 		slog.String("handle", stored.Handle))
 
-	c.JSON(http.StatusCreated, api.LLMProxyCreateResponse{
-		Status:  stringPtr("success"),
-		Message: stringPtr("LLM proxy created successfully"),
-		Id:      stringPtr(stored.Handle), CreatedAt: timePtr(stored.CreatedAt)})
+	proxy, err := rematerializeLLMProxyConfig(log, stored.UUID, stored.DisplayName, stored.SourceConfiguration)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status: "error", Message: "Failed to get stored LLM proxy configuration"})
+		return
+	}
 
+	c.JSON(http.StatusCreated, buildResourceResponseFromStored(proxy, stored))
 }
 
 // GetLLMProxyById implements ServerInterface.GetLLMProxyById
@@ -174,24 +164,14 @@ func (s *APIServer) GetLLMProxyById(c *gin.Context, id string) {
 		return
 	}
 
-	// Build response
-	proxyDetail := gin.H{
-		"configuration": cfg.SourceConfiguration,
-		"metadata": gin.H{
-			"status":    string(cfg.DesiredState),
-			"createdAt": cfg.CreatedAt.Format(time.RFC3339),
-			"updatedAt": cfg.UpdatedAt.Format(time.RFC3339),
-		},
+	proxy, err := rematerializeLLMProxyConfig(log, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status: "error", Message: "Failed to get stored LLM proxy configuration"})
+		return
 	}
 
-	if cfg.DeployedAt != nil {
-		proxyDetail["metadata"].(gin.H)["deployedAt"] = cfg.DeployedAt.Format(time.RFC3339)
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"status": "success",
-		"proxy":  proxyDetail,
-	})
+	c.JSON(http.StatusOK, buildResourceResponseFromStored(proxy, cfg))
 }
 
 // UpdateLLMProxy implements ServerInterface.UpdateLLMProxy
@@ -252,13 +232,14 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 
 	updated := result.StoredConfig
 
-	c.JSON(http.StatusOK, api.LLMProxyUpdateResponse{
-		Id:        stringPtr(updated.Handle),
-		Message:   stringPtr("LLM proxy updated successfully"),
-		Status:    stringPtr("success"),
-		UpdatedAt: timePtr(updated.UpdatedAt),
-	})
+	proxy, err := rematerializeLLMProxyConfig(log, updated.UUID, updated.DisplayName, updated.SourceConfiguration)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status: "error", Message: "Failed to get stored LLM proxy configuration"})
+		return
+	}
 
+	c.JSON(http.StatusOK, buildResourceResponseFromStored(proxy, updated))
 }
 
 // DeleteLLMProxy implements ServerInterface.DeleteLLMProxy
@@ -500,4 +481,29 @@ func (s *APIServer) ListLLMProxyAPIKeys(c *gin.Context, id string) {
 	}
 
 	c.JSON(http.StatusOK, result.Response)
+}
+
+// rematerializeLLMProxyConfig re-encodes persisted SourceConfiguration into the
+// generated API type. Logs marshal/unmarshal failures with full context; callers
+// return 500.
+func rematerializeLLMProxyConfig(log *slog.Logger, id, displayName string, source any) (api.LLMProxyConfiguration, error) {
+	j, err := json.Marshal(source)
+	if err != nil {
+		log.Error("Failed to marshal stored LLM proxy source configuration",
+			slog.String("id", id),
+			slog.String("displayName", displayName),
+			slog.Any("sourceConfiguration", source),
+			slog.Any("error", err))
+		return api.LLMProxyConfiguration{}, fmt.Errorf("marshal LLM proxy config: %w", err)
+	}
+	var proxy api.LLMProxyConfiguration
+	if err := json.Unmarshal(j, &proxy); err != nil {
+		log.Error("Failed to unmarshal stored LLM proxy configuration",
+			slog.String("id", id),
+			slog.String("displayName", displayName),
+			slog.Any("sourceConfiguration", source),
+			slog.Any("error", err))
+		return api.LLMProxyConfiguration{}, fmt.Errorf("unmarshal LLM proxy config: %w", err)
+	}
+	return proxy, nil
 }
