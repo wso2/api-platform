@@ -14,6 +14,16 @@ data:
           controlplane:
             # Skip TLS certificate verification for the control plane connection (insecure, dev/test only)
             insecure_skip_verify: true
+            gateway_name: ""
+            # OAuth2 Option 1: Client Credentials flow
+            apim_oauth2_client_id: ""
+            apim_oauth2_client_secret: ""
+            # OAuth2 Option 2: Resource Owner Password Credentials flow
+            apim_oauth2_username: ""
+            apim_oauth2_password: ""
+        immutable_gateway:
+          enabled: false
+          artifacts_dir: "/etc/api-platform-gateway/immutable_gateway/artifacts"
       controller:
         controlPlane:
           host: host.docker.internal:9444

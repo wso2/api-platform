@@ -110,6 +110,17 @@ gateway:
         # Number of deployments to fetch per batch during startup sync
         sync_batch_size: 50
 
+        # Friendly name shown for this gateway in the APIM control plane
+        gateway_name: ""
+
+        # OAuth2 Option 1: Client Credentials flow
+        apim_oauth2_client_id: ""
+        apim_oauth2_client_secret: ""
+
+        # OAuth2 Option 2: Resource Owner Password Credentials flow
+        apim_oauth2_username: ""
+        apim_oauth2_password: ""
+
       # Encryption provider configuration for secret management.
       # File paths must match the mount path set in gateway.controller.encryptionKeys.mountPath.
       encryption:
@@ -317,6 +328,11 @@ gateway:
 
         # Log format: json, text
         format: json
+
+    # Static API artifacts bundled with the gateway (see docs/gateway/immutable-gateway.md)
+    immutable_gateway:
+      enabled: false
+      artifacts_dir: "/etc/api-platform-gateway/immutable_gateway/artifacts"
 
   # Raw TOML string to append to the generated config.toml
   # Use this for additional configuration not covered by the structured values above
