@@ -330,7 +330,7 @@ func fetchVCSPipPackage(pipPackage string) (*PipPackageInfo, error) {
 	}
 	defer os.RemoveAll(wheelDir)
 
-	args := []string{"wheel", "--no-deps", "--no-build-isolation", resolvedSpec, "-w", wheelDir}
+	args := []string{"wheel", "--no-deps", resolvedSpec, "-w", wheelDir}
 	if err := runPipCommand(args, 5*time.Minute, resolvedSpec, "", "wheel"); err != nil {
 		return nil, err
 	}
@@ -743,6 +743,7 @@ func readVersionFromWheel(whlPath string) (string, error) {
 }
 
 // readTopLevelFromWheel reads the top-level module name from top_level.txt inside a wheel.
+// If top_level.txt is not present (e.g. hatchling builds), it infers the module name from the wheel contents.
 func readTopLevelFromWheel(whlPath string) (string, error) {
 	r, err := zip.OpenReader(whlPath)
 	if err != nil {
@@ -750,6 +751,7 @@ func readTopLevelFromWheel(whlPath string) (string, error) {
 	}
 	defer r.Close()
 
+	// First pass: look for top_level.txt (setuptools behavior)
 	for _, f := range r.File {
 		if strings.HasSuffix(f.Name, ".dist-info/top_level.txt") {
 			rc, err := f.Open()
@@ -777,7 +779,21 @@ func readTopLevelFromWheel(whlPath string) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("top_level.txt not found in wheel")
+	// Second pass: infer from wheel contents (hatchling behavior)
+	for _, f := range r.File {
+		if !strings.Contains(f.Name, ".dist-info/") && !strings.Contains(f.Name, ".data/") {
+			parts := strings.Split(f.Name, "/")
+			if len(parts) >= 2 {
+				topDir := parts[0]
+				fileName := parts[1]
+				if fileName == "policy.py" || fileName == "__init__.py" || fileName == "policy-definition.yaml" {
+					return topDir, nil
+				}
+			}
+		}
+	}
+
+	return "", fmt.Errorf("top_level.txt not found and could not infer top-level module from wheel contents")
 }
 
 // extractModuleFromWheel extracts the policy module directory from a wheel into a temp directory.
