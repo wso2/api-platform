@@ -956,6 +956,267 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /websub-apis/{id}/api-keys:
+    post:
+      summary: Create a new API key for a WebSub API
+      description: Generate a new API key for a WebSub API in the Gateway. The key is a 32-byte random value encoded in hexadecimal, prefixed with `apip_`. Use the API Key policy on the API to validate incoming requests with this key.
+      operationId: createWebSubAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the WebSub API to generate the key for
+          schema:
+            type: string
+          example: weather-websub-api
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreationRequest"
+      responses:
+        '201':
+          description: API key created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict (duplicate key or conflicting update)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: WebSub API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: Get the list of API keys for a WebSub API
+      description: List all API keys for a WebSub API in the Gateway.
+      operationId: listWebSubAPIKeys
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the WebSub API to retrieve the keys for
+          schema:
+            type: string
+          example: weather-websub-api
+      responses:
+        '200':
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyListResponse"
+        '404':
+          description: WebSub API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /websub-apis/{id}/api-keys/{apiKeyName}/regenerate:
+    post:
+      summary: Regenerate API key for a WebSub API
+      description: Regenerate an existing API key for a WebSub API in the Gateway. The previous key is revoked and replaced with a new 32-byte random value encoded in hexadecimal, prefixed with `apip_`.
+      operationId: regenerateWebSubAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the WebSub API
+          schema:
+            type: string
+          example: weather-websub-api
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to regenerate
+          schema:
+            type: string
+          example: weather-api-key
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+      responses:
+        '200':
+          description: API key rotated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: WebSub API or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /websub-apis/{id}/api-keys/{apiKeyName}:
+    put:
+      summary: Update an API key for a WebSub API
+      description: Update an API key with a custom value instead of auto-generating one.
+      operationId: updateWebSubAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the WebSub API
+          schema:
+            type: string
+          example: weather-websub-api
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to update
+          schema:
+            type: string
+          example: weather-api-key
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+      responses:
+        '200':
+          description: API key updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid request (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict (duplicate key or conflicting update)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: WebSub API or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Revoke an API key for a WebSub API
+      description: Revoke an API key. Once revoked, it can no longer be used to authenticate requests.
+      operationId: revokeWebSubAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the WebSub API
+          schema:
+            type: string
+          example: weather-websub-api
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to revoke
+          schema:
+            type: string
+          example: weather-api-key
+      responses:
+        '200':
+          description: API key revoked successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyRevocationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: WebSub API or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /websub-apis/{id}:
     get:
       summary: Get WebSubAPI by id

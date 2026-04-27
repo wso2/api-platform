@@ -31,12 +31,12 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/immutable"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/immutable"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
@@ -814,6 +814,12 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		"PUT /llm-proxies/:id/api-keys/:apiKeyName":             {"admin", "consumer"},
 		"POST /llm-proxies/:id/api-keys/:apiKeyName/regenerate": {"admin", "consumer"},
 		"DELETE /llm-proxies/:id/api-keys/:apiKeyName":          {"admin", "consumer"},
+
+		"POST /websub-apis/:id/api-keys":                        {"admin", "consumer"},
+		"GET /websub-apis/:id/api-keys":                         {"admin", "consumer"},
+		"PUT /websub-apis/:id/api-keys/:apiKeyName":             {"admin", "consumer"},
+		"POST /websub-apis/:id/api-keys/:apiKeyName/regenerate": {"admin", "consumer"},
+		"DELETE /websub-apis/:id/api-keys/:apiKeyName":          {"admin", "consumer"},
 
 		// Root-level subscription endpoints
 		"POST /subscriptions":                   {"admin", "developer"},
