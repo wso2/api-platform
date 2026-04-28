@@ -1126,6 +1126,376 @@ jobs:
           kubectl delete restapi multi-ns-api -n test-ns
           kubectl delete namespace test-ns
 
+      - name: K8s Gateway API Test
+        run: |
+          TEST_NS="gateway-api-test"
+          echo "Creating isolated namespace: ${TEST_NS}"
+          kubectl create namespace "${TEST_NS}" --dry-run=client -o yaml | kubectl apply -f -
+
+          echo "Copying gateway values ConfigMap into ${TEST_NS}..."
+          kubectl create configmap test-gateway-config \
+            --namespace "${TEST_NS}" \
+            --from-file=values.yaml=<(kubectl get cm test-gateway-config -n default -o jsonpath='{.data.values\.yaml}') \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          echo "Creating gateway encryption keys secret in ${TEST_NS}..."
+          kubectl create secret generic gateway-encryption-keys \
+            --from-file=default-aesgcm256-v1.bin=gateway/it/it-aesgcm-keys/default-aesgcm256-v1.bin \
+            --namespace "${TEST_NS}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          echo "Creating namespace-local backend service alias..."
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: httpbin
+            namespace: ${TEST_NS}
+          spec:
+            type: ExternalName
+            externalName: httpbin.default.svc.cluster.local
+            ports:
+              - name: http
+                port: 80
+                targetPort: 80
+          EOF
+
+          echo "Ensuring GatewayClass exists..."
+          if ! kubectl get gatewayclass wso2-api-platform >/dev/null 2>&1; then
+            printf '%s\n' \
+              'apiVersion: gateway.networking.k8s.io/v1' \
+              'kind: GatewayClass' \
+              'metadata:' \
+              '  name: wso2-api-platform' \
+              'spec:' \
+              '  controllerName: gateway.api-platform.wso2.com/gateway-operator' \
+              | kubectl apply -f -
+          fi
+
+          echo "Creating Gateway..."
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gateway.networking.k8s.io/v1
+          kind: Gateway
+          metadata:
+            name: test-k8s-gw
+            namespace: ${TEST_NS}
+            annotations:
+              gateway.api-platform.wso2.com/helm-values-configmap: test-gateway-config
+              gateway.api-platform.wso2.com/api-selector: '{"scope":"LabelSelector","matchLabels":{"gateway.api-platform.wso2.com/restapi-target":"k8s"}}'
+          spec:
+            gatewayClassName: wso2-api-platform
+            listeners:
+              - name: http
+                protocol: HTTP
+                port: 8080
+                allowedRoutes:
+                  namespaces:
+                    from: Same
+          EOF
+
+          echo "Waiting for Gateway to be programmed..."
+          programmed=""
+          for i in $(seq 1 84); do
+            programmed=$(kubectl get gateway test-k8s-gw -n "${TEST_NS}" -o jsonpath='{.status.conditions[?(@.type=="Programmed")].status}' 2>/dev/null || true)
+            accepted=$(kubectl get gateway test-k8s-gw -n "${TEST_NS}" -o jsonpath='{.status.conditions[?(@.type=="Accepted")].status}' 2>/dev/null || true)
+            reason=$(kubectl get gateway test-k8s-gw -n "${TEST_NS}" -o jsonpath='{.status.conditions[?(@.type=="Programmed")].reason}' 2>/dev/null || true)
+            msg=$(kubectl get gateway test-k8s-gw -n "${TEST_NS}" -o jsonpath='{.status.conditions[?(@.type=="Programmed")].message}' 2>/dev/null || true)
+            echo "Attempt $i: Accepted=${accepted:-<none>} Programmed=${programmed:-<none>} Reason=${reason:-<none>}"
+            if [ "$programmed" = "True" ]; then
+              break
+            fi
+            if [ "$i" -eq 1 ] || [ $((i % 6)) -eq 0 ]; then
+              echo "---- Diagnostics (attempt $i) ----"
+              kubectl get gateway test-k8s-gw -n "${TEST_NS}" -o yaml | sed -n '1,120p' || true
+              kubectl get deploy,po,svc -n "${TEST_NS}" -o wide || true
+              kubectl get events -n "${TEST_NS}" --sort-by=.lastTimestamp | tail -n 25 || true
+              kubectl logs -n default deployment/gateway-operator --tail=200 || true
+              echo "----------------------------------"
+            fi
+            sleep 5
+          done
+          if [ "$programmed" != "True" ]; then
+            echo "Gateway test-k8s-gw did not reach Programmed=True"
+            echo "Last Programmed message: ${msg:-<none>}"
+            kubectl get gateway test-k8s-gw -n "${TEST_NS}" -o yaml || true
+            kubectl get deploy,po,svc -n "${TEST_NS}" || true
+            kubectl logs -n default deployment/gateway-operator --tail=200 || true
+            exit 1
+          fi
+          kubectl get gateway test-k8s-gw -n "${TEST_NS}" -o yaml
+
+          echo "Creating HTTPRoute..."
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gateway.networking.k8s.io/v1
+          kind: HTTPRoute
+          metadata:
+            name: test-k8s-route
+            namespace: ${TEST_NS}
+            annotations:
+              gateway.api-platform.wso2.com/api-version: "v1.0"
+              gateway.api-platform.wso2.com/context: "/k8s"
+              gateway.api-platform.wso2.com/display-name: "k8s-gateway-api-smoke"
+          spec:
+            parentRefs:
+              - group: gateway.networking.k8s.io
+                kind: Gateway
+                name: test-k8s-gw
+                namespace: ${TEST_NS}
+            rules:
+              - matches:
+                  - path:
+                      type: PathPrefix
+                      value: /get
+                    method: GET
+                backendRefs:
+                  - group: ""
+                    kind: Service
+                    name: httpbin
+                    port: 80
+          EOF
+
+          echo "Checking HTTPRoute parent conditions..."
+          for i in $(seq 1 24); do
+            accepted=$(kubectl get httproute test-k8s-route -n "${TEST_NS}" -o jsonpath='{.status.parents[0].conditions[?(@.type=="Accepted")].status}')
+            resolved=$(kubectl get httproute test-k8s-route -n "${TEST_NS}" -o jsonpath='{.status.parents[0].conditions[?(@.type=="ResolvedRefs")].status}')
+            echo "Attempt $i: Accepted=$accepted ResolvedRefs=$resolved"
+            if [ "$accepted" = "True" ] && [ "$resolved" = "True" ]; then
+              break
+            fi
+            sleep 5
+          done
+          kubectl get httproute test-k8s-route -n "${TEST_NS}" -o yaml
+          accepted=$(kubectl get httproute test-k8s-route -n "${TEST_NS}" -o jsonpath='{.status.parents[0].conditions[?(@.type=="Accepted")].status}')
+          resolved=$(kubectl get httproute test-k8s-route -n "${TEST_NS}" -o jsonpath='{.status.parents[0].conditions[?(@.type=="ResolvedRefs")].status}')
+          if [ "$accepted" != "True" ] || [ "$resolved" != "True" ]; then
+            echo "HTTPRoute test-k8s-route did not reach Accepted=True and ResolvedRefs=True"
+            exit 1
+          fi
+
+          echo "Port-forwarding K8s Gateway runtime and testing invocation..."
+          kubectl port-forward svc/test-k8s-gw-gateway-gateway-runtime -n "${TEST_NS}" 8082:8080 &
+          PF_K8S_PID=$!
+          sleep 8
+
+          status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8082/k8s/get)
+          echo "GET /k8s/get returned: $status"
+
+          kill $PF_K8S_PID || true
+
+          if [ "$status" != "200" ]; then
+            echo "K8s Gateway API smoke test failed with status $status"
+            exit 1
+          fi
+
+          echo "K8s Gateway API smoke test passed!"
+
+      - name: K8s Gateway API HTTPRoute update test
+        run: |
+          TEST_NS="gateway-api-test"
+          echo "Updating HTTPRoute test-k8s-route to add PUT /put..."
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gateway.networking.k8s.io/v1
+          kind: HTTPRoute
+          metadata:
+            name: test-k8s-route
+            namespace: ${TEST_NS}
+            annotations:
+              gateway.api-platform.wso2.com/api-version: "v1.0"
+              gateway.api-platform.wso2.com/context: "/k8s"
+              gateway.api-platform.wso2.com/display-name: "k8s-gateway-api-smoke"
+          spec:
+            parentRefs:
+              - group: gateway.networking.k8s.io
+                kind: Gateway
+                name: test-k8s-gw
+                namespace: ${TEST_NS}
+            rules:
+              - matches:
+                  - path:
+                      type: PathPrefix
+                      value: /get
+                    method: GET
+                backendRefs:
+                  - group: ""
+                    kind: Service
+                    name: httpbin
+                    port: 80
+              - matches:
+                  - path:
+                      type: PathPrefix
+                      value: /put
+                    method: PUT
+                backendRefs:
+                  - group: ""
+                    kind: Service
+                    name: httpbin
+                    port: 80
+          EOF
+
+          echo "Waiting for updated HTTPRoute to be reconciled..."
+          for i in $(seq 1 24); do
+            accepted=$(kubectl get httproute test-k8s-route -n "${TEST_NS}" -o jsonpath='{.status.parents[0].conditions[?(@.type=="Accepted")].status}')
+            resolved=$(kubectl get httproute test-k8s-route -n "${TEST_NS}" -o jsonpath='{.status.parents[0].conditions[?(@.type=="ResolvedRefs")].status}')
+            echo "Attempt $i: Accepted=$accepted ResolvedRefs=$resolved"
+            if [ "$accepted" = "True" ] && [ "$resolved" = "True" ]; then
+              break
+            fi
+            sleep 5
+          done
+          accepted=$(kubectl get httproute test-k8s-route -n "${TEST_NS}" -o jsonpath='{.status.parents[0].conditions[?(@.type=="Accepted")].status}')
+          resolved=$(kubectl get httproute test-k8s-route -n "${TEST_NS}" -o jsonpath='{.status.parents[0].conditions[?(@.type=="ResolvedRefs")].status}')
+          if [ "$accepted" != "True" ] || [ "$resolved" != "True" ]; then
+            echo "Updated HTTPRoute test-k8s-route did not reach Accepted=True and ResolvedRefs=True"
+            exit 1
+          fi
+
+          echo "Testing updated PUT operation..."
+          kubectl port-forward svc/test-k8s-gw-gateway-gateway-runtime -n "${TEST_NS}" 8082:8080 &
+          PF_K8S_UPD_PID=$!
+          sleep 8
+
+          status=$(curl -s -o /dev/null -w "%{http_code}" -X PUT http://localhost:8082/k8s/put)
+          echo "PUT /k8s/put returned: $status"
+
+          kill $PF_K8S_UPD_PID || true
+
+          if [ "$status" != "200" ]; then
+            echo "K8s Gateway API update test failed with status $status"
+            exit 1
+          fi
+
+          echo "K8s Gateway API HTTPRoute update test passed!"
+
+      - name: K8s Gateway API APIPolicy ExtensionRef test
+        run: |
+          TEST_NS="gateway-api-test"
+          echo "Creating rule-scoped APIPolicy and HTTPRoute..."
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gateway.api-platform.wso2.com/v1alpha1
+          kind: APIPolicy
+          metadata:
+            name: test-k8s-rule-jwt
+            namespace: ${TEST_NS}
+          spec:
+            policies:
+              - name: jwt-auth
+                version: v1
+                params:
+                  issuers:
+                    - MockKeyManager
+          ---
+          apiVersion: gateway.networking.k8s.io/v1
+          kind: HTTPRoute
+          metadata:
+            name: test-k8s-policy-route
+            namespace: ${TEST_NS}
+            annotations:
+              gateway.api-platform.wso2.com/api-version: "v1.0"
+              gateway.api-platform.wso2.com/context: "/policy"
+              gateway.api-platform.wso2.com/display-name: "k8s-gateway-api-policy-smoke"
+          spec:
+            parentRefs:
+              - group: gateway.networking.k8s.io
+                kind: Gateway
+                name: test-k8s-gw
+                namespace: ${TEST_NS}
+            rules:
+              - matches:
+                  - path:
+                      type: PathPrefix
+                      value: /get
+                    method: GET
+                backendRefs:
+                  - group: ""
+                    kind: Service
+                    name: httpbin
+                    port: 80
+              - matches:
+                  - path:
+                      type: PathPrefix
+                      value: /headers
+                    method: GET
+                filters:
+                  - type: ExtensionRef
+                    extensionRef:
+                      group: gateway.api-platform.wso2.com
+                      kind: APIPolicy
+                      name: test-k8s-rule-jwt
+                backendRefs:
+                  - group: ""
+                    kind: Service
+                    name: httpbin
+                    port: 80
+          EOF
+
+          echo "Waiting for policy route HTTPRoute conditions..."
+          for i in $(seq 1 24); do
+            accepted=$(kubectl get httproute test-k8s-policy-route -n "${TEST_NS}" -o jsonpath='{.status.parents[0].conditions[?(@.type=="Accepted")].status}')
+            resolved=$(kubectl get httproute test-k8s-policy-route -n "${TEST_NS}" -o jsonpath='{.status.parents[0].conditions[?(@.type=="ResolvedRefs")].status}')
+            echo "Attempt $i: Accepted=$accepted ResolvedRefs=$resolved"
+            if [ "$accepted" = "True" ] && [ "$resolved" = "True" ]; then
+              break
+            fi
+            sleep 5
+          done
+          accepted=$(kubectl get httproute test-k8s-policy-route -n "${TEST_NS}" -o jsonpath='{.status.parents[0].conditions[?(@.type=="Accepted")].status}')
+          resolved=$(kubectl get httproute test-k8s-policy-route -n "${TEST_NS}" -o jsonpath='{.status.parents[0].conditions[?(@.type=="ResolvedRefs")].status}')
+          if [ "$accepted" != "True" ] || [ "$resolved" != "True" ]; then
+            echo "HTTPRoute test-k8s-policy-route did not reach Accepted=True and ResolvedRefs=True"
+            exit 1
+          fi
+
+          # Get a valid JWT token from mock-jwks (same issuer used in existing RestApi JWT tests)
+          kubectl port-forward svc/mock-jwks -n default 8081:8080 &
+          PF_JWKS_PID=$!
+          sleep 5
+          TOKEN=$(curl -s http://localhost:8081/token)
+          kill $PF_JWKS_PID || true
+
+          kubectl port-forward svc/test-k8s-gw-gateway-gateway-runtime -n "${TEST_NS}" 8082:8080 &
+          PF_K8S_POL_PID=$!
+          sleep 8
+
+          open_status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8082/policy/get)
+          secure_no_token=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8082/policy/headers)
+          secure_with_token=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN" http://localhost:8082/policy/headers)
+
+          echo "GET /policy/get returned: $open_status"
+          echo "GET /policy/headers (no token) returned: $secure_no_token"
+          echo "GET /policy/headers (with token) returned: $secure_with_token"
+
+          kill $PF_K8S_POL_PID || true
+
+          if [ "$open_status" != "200" ]; then
+            echo "Expected /policy/get to return 200, got $open_status"
+            exit 1
+          fi
+          if [ "$secure_no_token" != "401" ]; then
+            echo "Expected /policy/headers without token to return 401, got $secure_no_token"
+            exit 1
+          fi
+          if [ "$secure_with_token" != "200" ]; then
+            echo "Expected /policy/headers with token to return 200, got $secure_with_token"
+            exit 1
+          fi
+
+          echo "K8s Gateway API APIPolicy ExtensionRef test passed!"
+
+      - name: Cleanup K8s Gateway API test resources
+        run: |
+          TEST_NS="gateway-api-test"
+          echo "Deleting isolated test namespace ${TEST_NS}..."
+          kubectl delete namespace "${TEST_NS}" --ignore-not-found
+
+          echo "Waiting for namespace cleanup..."
+          if ! kubectl wait --for=delete namespace/"${TEST_NS}" --timeout=300s; then
+            echo "Namespace ${TEST_NS} still exists after cleanup timeout."
+            kubectl get ns "${TEST_NS}" -o yaml || true
+            kubectl get svc -A
+            exit 1
+          fi
+          echo "K8s Gateway API test namespace cleanup verified."
+
       - name: Delete test RestApi
         run: |
           echo "Deleting RestApi test-api..."
