@@ -112,7 +112,7 @@ metadata:
 spec:
   displayName: My API
   version: v1.0
-  context: /myapi
+  context: /test
   upstream:
     main:
       url: https://httpbin.org/anything
@@ -129,6 +129,14 @@ Apply the sample RestApi:
 kubectl apply -f https://raw.githubusercontent.com/wso2/api-platform/refs/heads/main/kubernetes/gateway-operator/config/samples/api_v1_restapi.yaml
 
 kubectl get restapi -n default -o json | jq '.items[0].status'
+```
+
+### Test API Endpoints
+
+**`RestApi` / APIGateway-managed API** (example context `/test`, operation `GET /info`):
+
+```sh
+curl https://localhost:8443/test/info -vk
 ```
 
 ## Kubernetes Gateway API path
@@ -343,35 +351,13 @@ Common annotations on `HTTPRoute` are copied into the **`api.yaml`** payload (fo
 
 If you run **both** `APIGateway`-selected **`RestApi`** resources and **Gateway API** routes, keep the **`gateway.api-platform.wso2.com/api-selector`** annotation on the **`Gateway`** (as in the YAML above) so this gateway does not select `RestApi` CRs meant for another `APIGateway`.
 
-## Testing APIs
-
-### Port-Forward Gateway Components
-
-```sh
-# Kill existing port-forward sessions
-pkill -f "kubectl.*port-forward"
-
-# Forward controller and router ports (add -n <namespace> if your gateway runs outside default),
-# e.g. for the Kubernetes Gateway API demo: -n gateway-api-demo
-NS=default
-kubectl port-forward -n "$NS" "$(kubectl get pods -n "$NS" -l app.kubernetes.io/component=controller -o jsonpath='{.items[0].metadata.name}')" 9090:9090 &
-kubectl port-forward -n "$NS" "$(kubectl get pods -n "$NS" -l app.kubernetes.io/component=router -o jsonpath='{.items[0].metadata.name}')" \
-  8081:8080 8444:8443 9901:9901 &
-```
-
 ### Test API Endpoints
-
-**`RestApi` / APIGateway-managed API** (example context `/test`, operation `GET /info`):
-
-```sh
-curl https://localhost:8444/test/info -vk
-```
 
 **Kubernetes Gateway API** — HTTPRoute **`hello-api`** from [above](#5-httproute-hello-api): API **`context`** `/hello-context`, route match path prefix **`/hello`** (hits Envoy HTTPS on the forwarded router port):
 
 ```sh
 curl --request GET \
-  --url 'https://localhost:8444/hello-context/hello' \
+  --url 'https://localhost:8443/hello-context/hello' \
   --header 'Accept: application/json' \
   -k
 ```
