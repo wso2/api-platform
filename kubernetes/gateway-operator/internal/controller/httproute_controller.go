@@ -45,10 +45,7 @@ import (
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
 )
 
-const (
-	httprouteFinalizer      = "gateway.api-platform.wso2.com/httproute-finalizer"
-	httprouteControllerName = gatewayv1.GatewayController("gateway.api-platform.wso2.com/gateway-operator")
-)
+const httprouteFinalizer = "gateway.api-platform.wso2.com/httproute-finalizer"
 
 // HTTPRouteReconciler maps HTTPRoute + backends to gateway-controller REST APIs.
 type HTTPRouteReconciler struct {
@@ -522,7 +519,7 @@ func (r *HTTPRouteReconciler) patchHTTPRouteParentCondition(ctx context.Context,
 	idx := -1
 	for i := range latest.Status.Parents {
 		if parentRefMatches(latest.Status.Parents[i].ParentRef, parentRef, latest.Namespace) &&
-			latest.Status.Parents[i].ControllerName == httprouteControllerName {
+			latest.Status.Parents[i].ControllerName == PlatformGatewayControllerName {
 			idx = i
 			break
 		}
@@ -530,7 +527,7 @@ func (r *HTTPRouteReconciler) patchHTTPRouteParentCondition(ctx context.Context,
 	if idx < 0 {
 		latest.Status.Parents = append(latest.Status.Parents, gatewayv1.RouteParentStatus{
 			ParentRef:      parentRef,
-			ControllerName: httprouteControllerName,
+			ControllerName: PlatformGatewayControllerName,
 		})
 		idx = len(latest.Status.Parents) - 1
 	}

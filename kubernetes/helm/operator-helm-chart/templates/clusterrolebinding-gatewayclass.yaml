@@ -1,0 +1,18 @@
+{{- if .Values.watchNamespaces }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "gateway-operator.fullname" . }}-gatewayclass-cluster-rolebinding
+  labels:
+    app.kubernetes.io/name: {{ include "gateway-operator.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "gateway-operator.fullname" . }}-gatewayclass-cluster-role
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.serviceAccount.name }}
+  namespace: {{ .Release.Namespace }}
+{{- end }}

@@ -20,7 +20,7 @@ spec:
       environment: dev
       team: platform
     annotations:
-      gateway.api-platform.wso2.com/service-type: LoadBalancer
+      # gateway.api-platform.wso2.com/service-type: LoadBalancer
       prometheus.io/scrape: "true"
   listeners:
     - name: http

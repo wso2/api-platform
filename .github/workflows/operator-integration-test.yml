@@ -1220,14 +1220,24 @@ jobs:
             exit 1
           fi
 
-          # Expect NO ClusterRole/ClusterRoleBinding
-          if kubectl get clusterrole gateway-operator-manager-role; then
-             echo "FAILED: ClusterRole found but should be disabled in scoped mode"
+          # Expect NO full manager ClusterRole/ClusterRoleBinding (all permissions are namespaced)
+          if kubectl get clusterrole gateway-operator-manager-role 2>/dev/null; then
+             echo "FAILED: manager ClusterRole found but should be disabled in scoped mode"
              exit 1
           fi
-          if kubectl get clusterrolebinding gateway-operator-manager-binding; then
-             echo "FAILED: ClusterRoleBinding found but should be disabled in scoped mode"
+          if kubectl get clusterrolebinding gateway-operator-manager-rolebinding 2>/dev/null; then
+             echo "FAILED: manager ClusterRoleBinding found but should be disabled in scoped mode"
              exit 1
+          fi
+
+          # GatewayClass is cluster-scoped; namespace Roles cannot grant list/watch on it.
+          if ! kubectl get clusterrole gateway-operator-gatewayclass-cluster-role; then
+            echo "FAILED: minimal GatewayClass ClusterRole not found (required when watchNamespaces is set)"
+            exit 1
+          fi
+          if ! kubectl get clusterrolebinding gateway-operator-gatewayclass-cluster-rolebinding; then
+            echo "FAILED: GatewayClass ClusterRoleBinding not found"
+            exit 1
           fi
 
           # 3. Positive Test: Deploy Gateway & API in scoped-test

@@ -40,6 +40,7 @@ This document is a **short maintainer index** for where code and behaviour live.
 | Gateway API scheme registration | `cmd/main.go` (`gatewayv1.AddToScheme`, `apiv1.AddToScheme`) |
 | **`APIPolicy` CRD types** | `api/v1alpha1/policy_types.go` |
 | Kubernetes `Gateway` reconciler | `internal/controller/k8s_gateway_controller.go` |
+| **`GatewayClass` status (Accepted)** | `internal/controller/k8s_gatewayclass_controller.go` (`PlatformGatewayControllerName` in `gateway_api_controller_name.go`) |
 | `HTTPRoute` reconciler | `internal/controller/httproute_controller.go` |
 | Service / `APIPolicy` / Secret → HTTPRoute enqueue | `internal/controller/httproute_enqueue.go` |
 | HTTPRoute → `APIConfigData` mapping | `internal/controller/httproute_mapper.go` |
@@ -112,11 +113,13 @@ The overlay is applied **after** the ConfigMap overlay, so Gateway listener port
 | Annotation | Meaning |
 | ---------- | ------- |
 | `gateway.api-platform.wso2.com/api-version` | `APIConfigData.Version` (default `v1.0`). |
-| `gateway.api-platform.wso2.com/context` | Overrides API **context** path. |
+| `gateway.api-platform.wso2.com/context` | API **context** path. When unset or blank after trim, defaults to **`/`** (operation paths are unchanged). |
 | `gateway.api-platform.wso2.com/display-name` | Overrides display name (default: route `metadata.name`). |
 | `gateway.api-platform.wso2.com/project-id` | User-defined metadata; **all** `HTTPRoute` annotations are copied verbatim into the gateway-controller `api.yaml` payload under `metadata.annotations` (same keys as on the route). |
 | `gateway.api-platform.wso2.com/api-handle` | REST handle for `/api/management/v0.9/rest-apis/{handle}` (default: `{namespace}-{name}` with `/` stripped). |
 | *(no HTTPRoute policy annotations)* | Policy attachment is via `APIPolicy` only (API-level when `spec.targetRef` is set; rule-scope via `ExtensionRef` when `targetRef` is omitted). |
+
+**`spec.rules[].matches[]`:** Each match must include **`path`** (or the Gateway implementation default applies). **`method`** is optional per Gateway API. When **`method`** is set, one `APIConfigData.operations` entry is emitted for that verb and path. When **`method`** is omitted, the operator emits **seven** operations — **GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS** — each with the same path and rule-attached policies, matching the verbs defined on `RestApi` / `APIConfigData`. A rule with **`matches: []`** is still rejected (at least one explicit match entry is required).
 
 ### `APIPolicy` CR (`gateway.api-platform.wso2.com/v1alpha1`)
 
@@ -160,6 +163,15 @@ params:
 Before **`DeployRestAPI`**, the operator **resolves** each `valueFrom` to a single **string** value replacing the `{ valueFrom: {...} }` object in the JSON tree, so gateway-controller sees the same JSON types as inline `RestApi` policies (e.g. `subscriptionKeyHeader` as a string, not an object).
 
 ## Reconciler behaviour (short)
+
+### `GatewayClass`
+
+The operator reconciles **cluster-scoped** `GatewayClass` resources whose **`spec.controllerName`** matches **`gateway.api-platform.wso2.com/gateway-operator`** (see `PlatformGatewayControllerName` in `gateway_api_controller_name.go`). It patches **`status.conditions`:**
+
+- **`Accepted=True`**, reason **`Accepted`**, when **`metadata.name`** is listed in the operator allowlist (`gatewayApi.managedGatewayClassNames` / `GATEWAY_API_GATEWAY_CLASS_NAMES`).
+- **`Accepted=False`**, reason **`Unsupported`**, when the controller name matches but the class name is **not** in that allowlist (so `kubectl get gatewayclasses` shows **Accepted=False** instead of lingering **Unknown**).
+
+**GatewayClass does not use a `Programmed` condition** in the Gateway API spec — that condition applies to **`Gateway`** resources (data plane readiness), not the class definition. Implementation: `internal/controller/k8s_gatewayclass_controller.go`.
 
 ### Kubernetes `Gateway`
 

@@ -506,7 +506,7 @@ gateway:
       pullPolicy: Always
     imagePullSecrets: []
     service:
-      type: ClusterIP
+      type: LoadBalancer
       annotations: {}
       labels: {}
       ports:

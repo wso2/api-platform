@@ -201,6 +201,15 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "K8sGateway")
 		os.Exit(1)
 	}
+	if err = controller.NewK8sGatewayClassReconciler(
+		mgr.GetClient(),
+		mgr.GetScheme(),
+		cfg,
+		zapLog,
+	).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "K8sGatewayClass")
+		os.Exit(1)
+	}
 	if err = controller.NewHTTPRouteReconciler(
 		mgr.GetClient(),
 		mgr.GetScheme(),

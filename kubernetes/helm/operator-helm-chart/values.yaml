@@ -70,7 +70,7 @@ gateway:
   controlPlaneHost: "http://platform-api:3001"
   helm:
     chartName: "oci://ghcr.io/wso2/api-platform/helm-charts/gateway"
-    chartVersion: "1.0.0"
+    chartVersion: "1.0.1"
     valuesFilePath: "/config/gateway_values.yaml"
     # Allow insecure connections to OCI registries (skips TLS verification, still uses HTTPS)
     insecureRegistry: false
@@ -557,7 +557,7 @@ gateway:
           pullPolicy: Always
         imagePullSecrets: []
         service:
-          type: ClusterIP
+          type: LoadBalancer
           annotations: {}
           labels: {}
           ports:

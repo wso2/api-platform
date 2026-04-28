@@ -108,7 +108,7 @@ func TestBuildAPIConfigFromHTTPRoute_ContextAnnotationTrimAndNormalize(t *testin
 	pathVal := "/api/hello"
 	method := gatewayv1.HTTPMethodGet
 
-	t.Run("whitespace-only treated as unset => fallback commonPathPrefix", func(t *testing.T) {
+	t.Run("whitespace-only treated as unset => default context /", func(t *testing.T) {
 		route := &gatewayv1.HTTPRoute{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-route",
@@ -137,7 +137,7 @@ func TestBuildAPIConfigFromHTTPRoute_ContextAnnotationTrimAndNormalize(t *testin
 
 		spec, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
 		require.NoError(t, err)
-		require.Equal(t, "/api/hello", spec.Context)
+		require.Equal(t, "/", spec.Context)
 	})
 
 	t.Run("missing leading slash normalized", func(t *testing.T) {
@@ -307,7 +307,7 @@ func TestBuildAPIConfigFromHTTPRoute_APIPolicyRuleExtensionRef(t *testing.T) {
 	require.Equal(t, "ext-ref-policy", spec.Operations[0].Policies[0].Name)
 }
 
-func TestBuildAPIConfigFromHTTPRoute_RequiresExplicitMethod(t *testing.T) {
+func TestBuildAPIConfigFromHTTPRoute_MatchMethodOptionalAndEmptyMatchesRejected(t *testing.T) {
 	scheme := runtime.NewScheme()
 	utilruntime.Must(corev1.AddToScheme(scheme))
 	utilruntime.Must(gatewayv1.AddToScheme(scheme))
@@ -347,7 +347,7 @@ func TestBuildAPIConfigFromHTTPRoute_RequiresExplicitMethod(t *testing.T) {
 		require.Contains(t, err.Error(), "no matches")
 	})
 
-	t.Run("nil match method", func(t *testing.T) {
+	t.Run("omitted match method expands to all RestApi operation methods", func(t *testing.T) {
 		route := &gatewayv1.HTTPRoute{
 			ObjectMeta: metav1.ObjectMeta{Name: "r2", Namespace: "default"},
 			Spec: gatewayv1.HTTPRouteSpec{
@@ -366,11 +366,14 @@ func TestBuildAPIConfigFromHTTPRoute_RequiresExplicitMethod(t *testing.T) {
 				},
 			},
 		}
-		_, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
-		require.Error(t, err)
-		require.True(t, IsInvalidHTTPRouteConfigError(err))
-		require.Contains(t, err.Error(), "rule[0] match[0]")
-		require.Contains(t, err.Error(), "omits method")
+		spec, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
+		require.NoError(t, err)
+		require.Len(t, spec.Operations, len(allRESTAPIOperationMethods()))
+		want := allRESTAPIOperationMethods()
+		for i := range want {
+			require.Equal(t, want[i], spec.Operations[i].Method)
+			require.Equal(t, "/x", spec.Operations[i].Path)
+		}
 	})
 }
 
