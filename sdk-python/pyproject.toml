@@ -3,31 +3,51 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "wso2-gateway-policy-sdk"
+name = "apip-sdk-core"
 version = "0.1.0"
-description = "Python policy SDK for the WSO2 API Platform Gateway"
+description = "Typed Python interfaces for API Platform gateway policies"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Apache-2.0" }
 authors = [
-  { name = "WSO2", email = "architecture@wso2.com" }
+  { name = "WSO2" }
 ]
+keywords = ["api-platform", "gateway", "policy", "sdk", "wso2", "wso2-api-platform"]
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
+    "Typing :: Typed",
 ]
 dependencies = []
 
 [project.urls]
 Homepage = "https://github.com/wso2/api-platform"
+Repository = "https://github.com/wso2/api-platform"
+Issues = "https://github.com/wso2/api-platform/issues"
+Changelog = "https://github.com/wso2/api-platform/blob/main/sdk-python/CHANGELOG.md"
+
+[project.optional-dependencies]
+dev = [
+  "build>=1.0",
+  "twine>=5.0",
+  "mypy>=1.9",
+]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/wso2_gateway_policy_sdk"]
+packages = ["src/apip_sdk_core"]
 
 [tool.hatch.build.targets.sdist]
-include = [
-  "src/wso2_gateway_policy_sdk",
+only-include = [
+  "CHANGELOG.md",
+  "src/apip_sdk_core",
+  "tests",
   "pyproject.toml",
   "README.md",
 ]

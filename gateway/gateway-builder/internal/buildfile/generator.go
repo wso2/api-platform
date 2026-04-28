@@ -27,6 +27,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/gateway/gateway-builder/internal/discovery"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
 	"golang.org/x/mod/modfile"
 	"gopkg.in/yaml.v3"
@@ -184,11 +185,18 @@ func WriteBuildManifestWithVersions(buildFilePath string, discovered []*types.Di
 				}
 			}
 		} else if me.PipPackage != "" {
-			// pip packages: match by name directly since pip package is Python-specific
 			for _, c := range candidates {
-				if c.Runtime == "python" {
+				if c.Runtime == "python" && c.IsPipPackage && c.OriginalPipSpec == me.PipPackage {
 					found = c
 					break
+				}
+			}
+			if found == nil {
+				for _, c := range candidates {
+					if c.Runtime == "python" && c.IsPipPackage {
+						found = c
+						break
+					}
 				}
 			}
 		}
@@ -198,6 +206,9 @@ func WriteBuildManifestWithVersions(buildFilePath string, discovered []*types.Di
 		}
 
 		entry.Version = found.Version
+		if found.IsPipPackage && found.PipSpec != "" {
+			entry.PipPackage = discovery.SanitizePipSpec(found.PipSpec)
+		}
 		lock.Policies = append(lock.Policies, entry)
 	}
 

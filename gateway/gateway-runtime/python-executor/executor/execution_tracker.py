@@ -20,7 +20,7 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime
 
-from wso2_gateway_policy_sdk import ExecutionPhase
+from apip_sdk_core import ExecutionPhase
 
 
 @dataclass(slots=True)

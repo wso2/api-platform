@@ -8,7 +8,7 @@ from executor.instance_store import PolicyInstanceStore
 from executor.server import PythonExecutorServicer
 from executor.translator import Translator
 import proto.python_executor_pb2 as proto
-from wso2_gateway_policy_sdk import (
+from apip_sdk_core import (
     BodyProcessingMode,
     DownstreamResponseHeaderModifications,
     DownstreamResponseModifications,

@@ -2,7 +2,7 @@ import unittest
 from datetime import datetime, timezone
 
 from executor.execution_tracker import ExecutionTracker
-from wso2_gateway_policy_sdk import ExecutionPhase
+from apip_sdk_core import ExecutionPhase
 
 
 class ExecutionTrackerTest(unittest.TestCase):
