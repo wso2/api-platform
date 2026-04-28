@@ -28,6 +28,18 @@ gateway:
         xds_port: 18000
         shutdown_timeout: 15s
         gateway_id: "platform-gateway-id"
+      controlplane:
+        insecure_skip_verify: false
+        reconnect_initial: 1s
+        reconnect_max: 5m
+        polling_interval: 15m
+        deployment_push_enabled: false
+        sync_batch_size: 50
+        gateway_name: ""
+        apim_oauth2_client_id: ""
+        apim_oauth2_client_secret: ""
+        apim_oauth2_username: ""
+        apim_oauth2_password: ""
       policy_server:
         port: 18001
         tls:
@@ -139,6 +151,10 @@ gateway:
       logging:
         level: info
         format: json
+
+    immutable_gateway:
+      enabled: false
+      artifacts_dir: "/etc/api-platform-gateway/immutable_gateway/artifacts"
 
   # Raw TOML appended to generated config.toml (see gateway chart values.yaml)
   config_toml: ""

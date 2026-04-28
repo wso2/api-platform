@@ -169,6 +169,38 @@ gateway:
             # Directory containing policy definitions
             definitions_path: ./default-policies
 
+          # Control plane connection configuration
+          # Note: host and token are set via gateway.controller.controlPlane and rendered as env vars in the deployment.
+          controlplane:
+            # Skip TLS certificate verification for the control plane connection (insecure, dev/test only)
+            insecure_skip_verify: false
+
+            # Initial delay before retrying a failed control plane connection
+            reconnect_initial: 1s
+
+            # Maximum delay between reconnection attempts (exponential backoff cap)
+            reconnect_max: 5m
+
+            # How often to reconcile state with the control plane
+            polling_interval: 15m
+
+            # Push API deployment events to the control plane
+            deployment_push_enabled: false
+
+            # Number of deployments to fetch per batch during startup sync
+            sync_batch_size: 50
+
+            # Friendly name shown for this gateway in the APIM control plane
+            gateway_name: ""
+
+            # OAuth2 Option 1: Client Credentials flow
+            apim_oauth2_client_id: ""
+            apim_oauth2_client_secret: ""
+
+            # OAuth2 Option 2: Resource Owner Password Credentials flow
+            apim_oauth2_username: ""
+            apim_oauth2_password: ""
+
           # Logging configuration
           logging:
             # Log level: "debug", "info", "warn", or "error"
@@ -366,6 +398,11 @@ gateway:
 
             # Log format: json, text
             format: json
+
+        # Static API artifacts bundled with the gateway (see docs/gateway/immutable-gateway.md)
+        immutable_gateway:
+          enabled: false
+          artifacts_dir: "/etc/api-platform-gateway/immutable_gateway/artifacts"
 
         policy_configurations: {}
 
