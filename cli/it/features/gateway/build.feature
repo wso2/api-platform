@@ -31,11 +31,11 @@ Feature: Gateway Build Command
 
     @GW-BUILD-001
     Scenario: Build gateway with invalid manifest
-        When I run ap with arguments "gateway build -f resources/gateway/invalid.yaml --docker-registry localhost:5000 --image-tag test --gateway-builder ghcr.io/wso2/api-platform/gateway-builder:latest"
+        When I run ap with arguments "gateway image build --path resources/gateway/invalid.yaml --repository localhost:5000 --name test-gateway"
         Then the command should fail
 
     @GW-BUILD-002
     Scenario: Build gateway with missing manifest file
-        When I run ap with arguments "gateway build -f non-existent-manifest.yaml --docker-registry localhost:5000 --image-tag test --gateway-builder ghcr.io/wso2/api-platform/gateway-builder:latest"
+        When I run ap with arguments "gateway image build --path non-existent-manifest.yaml --repository localhost:5000 --name test-gateway"
         Then the command should fail
-        And the output should contain "no such file"
+        And the output should contain "path does not exist"
