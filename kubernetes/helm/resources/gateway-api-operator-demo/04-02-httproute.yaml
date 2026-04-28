@@ -1,16 +1,14 @@
 # After platform-gw is Programmed, the operator maps this route to APIConfigData and calls gateway-controller /api/management/v0.9/rest-apis.
-# Default REST handle is namespace-name: gateway-api-demo-hello-api (override with gateway.api-platform.wso2.com/api-handle).
+# Default REST handle is namespace-name: gateway-api-demo-hello-api-2 (override with gateway.api-platform.wso2.com/api-handle).
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: hello-api
+  name: hello-api-2
   namespace: gateway-api-demo
   labels:
     app.kubernetes.io/part-of: gateway-api-operator-demo
   annotations:
-    gateway.api-platform.wso2.com/api-version: "v1.0"
-    gateway.api-platform.wso2.com/context: "/hello-context"
-    gateway.api-platform.wso2.com/display-name: "Hello API"
+    gateway.api-platform.wso2.com/display-name: "Hello API 2"
 spec:
   parentRefs:
     - group: gateway.networking.k8s.io
@@ -26,7 +24,6 @@ spec:
         - path:
             type: PathPrefix
             value: /hello
-          method: GET
       backendRefs:
         - group: ""
           kind: Service

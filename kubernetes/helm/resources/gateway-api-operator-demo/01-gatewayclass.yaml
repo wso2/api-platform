@@ -1,5 +1,4 @@
-# Required by Gateway API before a Gateway can be created.
-# controllerName can be any unique string; this operator reconciles Gateways by gatewayClassName + config allowlist, not by implementing GatewayClass.
+# GatewayClass must use controllerName matching the operator so the operator can set status.conditions[Accepted].
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
 metadata:

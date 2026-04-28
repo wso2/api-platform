@@ -60,8 +60,9 @@ helm install apip-operator oci://registry-1.docker.io/yourorg/api-platform-opera
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `gateway.controlPlaneHost` | Control plane API endpoint | `http://platform-api:3001` |
-| `gateway.helm.chartName` | Gateway Helm chart OCI reference | `oci://registry-1.docker.io/tharsanan/api-platform-gateway` |
-| `gateway.helm.chartVersion` | Gateway chart version | `0.0.1` |
+| `gateway.helm.chartName` | Gateway Helm chart OCI or repo reference (ignored if `chartPath` is set) | `oci://...` |
+| `gateway.helm.chartVersion` | Gateway chart version (for remote pulls; also used in upgrade signatures) | `1.0.0` |
+| `gateway.helm.chartPath` | Local chart dir or `.tgz` path **inside the operator pod**; when non-empty, remote chart lookup (`chartName`/`chartVersion`) and registry auth are ignored | `""` |
 | `gateway.helm.valuesFilePath` | Path to gateway values file | `/config/gateway_values.yaml` |
 
 ### Gateway Default Values
