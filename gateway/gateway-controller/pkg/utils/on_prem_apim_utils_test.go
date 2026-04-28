@@ -40,7 +40,7 @@ func buildStoredConfig(name, version, context, upstreamURL string, ops []managem
 		Origin: models.OriginGatewayAPI,
 		Configuration: management.RestAPI{
 			ApiVersion: management.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       management.RestApi,
+			Kind:       management.RestAPIKindRestApi,
 			Metadata: management.Metadata{
 				Name: name,
 			},
@@ -195,7 +195,7 @@ func TestExportAPIAsZip_MissingUpstreamURL(t *testing.T) {
 		Kind:   "RestApi",
 		Configuration: management.RestAPI{
 			ApiVersion: management.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       management.RestApi,
+			Kind:       management.RestAPIKindRestApi,
 			Metadata:   management.Metadata{Name: "NoUpstreamAPI"},
 			Spec: management.APIConfigData{
 				DisplayName: "NoUpstreamAPI",
