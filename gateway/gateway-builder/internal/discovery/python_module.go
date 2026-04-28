@@ -59,8 +59,11 @@ func sanitizeURL(u string) string {
 	return u
 }
 
-// sanitizePipSpec removes credentials from any URL-like part of a pip spec.
-func sanitizePipSpec(spec string) string {
+// SanitizePipSpec removes credentials from any URL-like part of a pip spec.
+// It handles VCS URLs (git+https://user:pass@host/...) and private index URLs
+// (pkg==ver@https://user:pass@host/...) by replacing credentials with a
+// <redacted-credentials> placeholder.
+func SanitizePipSpec(spec string) string {
 	spec = strings.TrimSpace(spec)
 	if spec == "" {
 		return spec
@@ -186,7 +189,7 @@ func FetchPipPackage(pipPackage string) (*PipPackageInfo, error) {
 	if strings.Contains(pipPackage, " @ ") {
 		return nil, fmt.Errorf(
 			"unsupported pip direct reference: %q; only git+ VCS specs are supported for direct references",
-			sanitizePipSpec(pipPackage),
+			SanitizePipSpec(pipPackage),
 		)
 	}
 
@@ -202,7 +205,7 @@ func FetchPipPackage(pipPackage string) (*PipPackageInfo, error) {
 
 		slog.Info("Expanded short URL to VCS spec",
 			"input", pipPackage,
-			"expanded", sanitizePipSpec(expanded),
+			"expanded", SanitizePipSpec(expanded),
 			"phase", "discovery")
 
 		return fetchVCSPipPackage(expanded)
@@ -314,12 +317,12 @@ func fetchVCSPipPackage(pipPackage string) (*PipPackageInfo, error) {
 
 		resolvedSpec = rebuildVCSPipSpec(vcs, exactRef)
 		slog.Info("Resolved VCS ranged pip package",
-			"original", sanitizePipSpec(vcs.FullSpec),
-			"resolved", sanitizePipSpec(resolvedSpec),
+			"original", SanitizePipSpec(vcs.FullSpec),
+			"resolved", SanitizePipSpec(resolvedSpec),
 			"phase", "discovery")
 	}
 
-	sanitizedSpec := sanitizePipSpec(resolvedSpec)
+	sanitizedSpec := SanitizePipSpec(resolvedSpec)
 	slog.Info("Fetching VCS pip package",
 		"pipSpec", sanitizedSpec,
 		"phase", "discovery")
@@ -387,7 +390,7 @@ func runPipCommand(args []string, timeout time.Duration, spec string, indexURL s
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		sanitizedSpec := sanitizePipSpec(spec)
+		sanitizedSpec := SanitizePipSpec(spec)
 		sanitizedStderr := stderr.String()
 		if spec != sanitizedSpec {
 			sanitizedStderr = strings.ReplaceAll(sanitizedStderr, spec, sanitizedSpec)
@@ -448,7 +451,7 @@ func ParsePipPackageRef(ref string) (*PipPackageRef, error) {
 	if ref == "" {
 		return nil, fmt.Errorf(
 			"invalid pip spec: expected '<pkg>==<ver>', '<pkg>~=<major>.0', or '<pkg>~=<major>.<minor>.0', got %q",
-			sanitizePipSpec(ref),
+			SanitizePipSpec(ref),
 		)
 	}
 
@@ -461,7 +464,7 @@ func ParsePipPackageRef(ref string) (*PipPackageRef, error) {
 		if pkgName == "" || version == "" || (!isMajorOnly && !isMinorOnly) {
 			return nil, fmt.Errorf(
 				"invalid pip spec: expected '<pkg>==<ver>', '<pkg>~=<major>.0', or '<pkg>~=<major>.<minor>.0', got %q",
-				sanitizePipSpec(ref),
+				SanitizePipSpec(ref),
 			)
 		}
 
@@ -477,7 +480,7 @@ func ParsePipPackageRef(ref string) (*PipPackageRef, error) {
 	if len(parts) != 2 {
 		return nil, fmt.Errorf(
 			"invalid pip spec: expected '<pkg>==<ver>', '<pkg>~=<major>.0', or '<pkg>~=<major>.<minor>.0', got %q",
-			sanitizePipSpec(ref),
+			SanitizePipSpec(ref),
 		)
 	}
 
@@ -486,7 +489,7 @@ func ParsePipPackageRef(ref string) (*PipPackageRef, error) {
 	if pkgName == "" || version == "" {
 		return nil, fmt.Errorf(
 			"invalid pip spec: expected '<pkg>==<ver>', '<pkg>~=<major>.0', or '<pkg>~=<major>.<minor>.0', got %q",
-			sanitizePipSpec(ref),
+			SanitizePipSpec(ref),
 		)
 	}
 
@@ -530,7 +533,7 @@ func parseVCSPipSpec(spec string) (*VCSPipSpec, error) {
 	}
 
 	if !strings.HasPrefix(s, "git+") {
-		return nil, fmt.Errorf("only git+ VCS specs are supported, got %q", sanitizePipSpec(spec))
+		return nil, fmt.Errorf("only git+ VCS specs are supported, got %q", SanitizePipSpec(spec))
 	}
 
 	atIdx := strings.LastIndex(s, "@")

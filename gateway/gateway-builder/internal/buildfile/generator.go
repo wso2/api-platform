@@ -27,6 +27,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/gateway/gateway-builder/internal/discovery"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
 	"golang.org/x/mod/modfile"
 	"gopkg.in/yaml.v3"
@@ -206,7 +207,7 @@ func WriteBuildManifestWithVersions(buildFilePath string, discovered []*types.Di
 
 		entry.Version = found.Version
 		if found.IsPipPackage && found.PipSpec != "" {
-			entry.PipPackage = found.PipSpec
+			entry.PipPackage = discovery.SanitizePipSpec(found.PipSpec)
 		}
 		lock.Policies = append(lock.Policies, entry)
 	}
