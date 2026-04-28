@@ -113,9 +113,15 @@ func (s *GatewayService) GetStoredManifest(gatewayID, orgID string) (*Manifest, 
 	return &Manifest{Policies: json.RawMessage(raw)}, nil
 }
 
+// legacyGatewayVersion is reported when the gateway controller does not include a
+// "version" field in the manifest payload. v1.0.0 was the only such release.
+const legacyGatewayVersion = "1.0.0"
+
 // ReceiveGatewayManifest stores the manifest posted by the gateway controller on connect.
 // All policies are stored with name and version; customer-managed policies include policy_definition.
-func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID string, policies []GatewayPolicyInput) error {
+// gatewayVersion is the controller's reported build version; an empty string means the controller
+// is on a legacy build (pre-1.1.0) that does not send a version — logged as "1.0.0" in that case.
+func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion string, policies []GatewayPolicyInput) error {
 	entries := make([]GatewayPolicyDefinition, 0, len(policies))
 	for _, p := range policies {
 		entry := GatewayPolicyDefinition{
@@ -146,6 +152,11 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID string, policie
 		return fmt.Errorf("failed to store gateway manifest: %w", err)
 	}
 
+	reportedVersion := strings.TrimSpace(gatewayVersion)
+	if reportedVersion == "" {
+		reportedVersion = legacyGatewayVersion
+	}
+
 	customerCount := 0
 	for _, p := range policies {
 		if p.ManagedBy == constants.PolicyManagedByCustomer {
@@ -155,6 +166,7 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID string, policie
 	s.slogger.Info("Gateway manifest received and stored",
 		slog.String("org_id", orgID),
 		slog.String("gateway_id", gatewayID),
+		slog.String("gateway_version", reportedVersion),
 		slog.Int("total_policy_count", len(entries)),
 		slog.Int("customer_policy_count", customerCount),
 	)

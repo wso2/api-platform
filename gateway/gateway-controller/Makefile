@@ -22,7 +22,8 @@
 VERSION ?= $(shell cat ../VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-LDFLAGS := -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.BuildDate=$(BUILD_DATE)
+VERSION_PKG := github.com/wso2/api-platform/gateway/gateway-controller/pkg/version
+LDFLAGS := -X $(VERSION_PKG).Version=$(VERSION) -X $(VERSION_PKG).GitCommit=$(GIT_COMMIT) -X $(VERSION_PKG).BuildDate=$(BUILD_DATE)
 
 # Docker image configuration
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
