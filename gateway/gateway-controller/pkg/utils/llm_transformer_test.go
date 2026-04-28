@@ -1006,6 +1006,80 @@ func TestTransformProvider_ExpandsWildcardPolicyPathWithTemplateMappings(t *test
 	assert.Equal(t, "value", (*wildcardPolicy.Params)["userParam"])
 }
 
+func TestTransformProvider_PolicyOrderDoesNotAffectWildcardCoverage(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := newTestMockDB()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-template-1-0000-000000000001",
+		Configuration: api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "openai"},
+			Spec:     api.LLMProviderTemplateData{},
+		},
+	}
+	db.SaveLLMProviderTemplate(template)
+	err := store.AddTemplate(template)
+	require.NoError(t, err)
+
+	upstreamURL := "https://api.openai.com"
+	provider := &api.LLMProviderConfiguration{
+		Metadata: api.Metadata{Name: "openai-provider"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName: "OpenAI Provider",
+			Version:     "1.0.0",
+			Template:    "openai",
+			Upstream: api.LLMProviderConfigData_Upstream{
+				Url: &upstreamURL,
+			},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			Policies: &[]api.LLMPolicy{
+				{
+					Name:    "set-headers-all",
+					Version: "v1",
+					Paths: []api.LLMPolicyPath{{
+						Path:    "/*",
+						Methods: []api.LLMPolicyPathMethods{"POST"},
+						Params:  map[string]interface{}{"scope": "all"},
+					}},
+				},
+				{
+					Name:    "set-headers",
+					Version: "v1",
+					Paths: []api.LLMPolicyPath{{
+						Path:    "/chat/completions",
+						Methods: []api.LLMPolicyPathMethods{"POST"},
+						Params:  map[string]interface{}{"scope": "specific"},
+					}},
+				},
+			},
+		},
+	}
+
+	result, err := transformer.Transform(provider, &api.RestAPI{})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	chatOp := findOperation(result.Spec.Operations, "/chat/completions", "POST")
+	require.NotNil(t, chatOp)
+	require.NotNil(t, chatOp.Policies)
+
+	policyNames := make(map[string]bool)
+	for _, policy := range *chatOp.Policies {
+		policyNames[policy.Name] = true
+	}
+
+	assert.True(t, policyNames["set-headers-all"], "/chat/completions should inherit the wildcard policy")
+	assert.True(t, policyNames["set-headers"], "/chat/completions should keep its specific policy")
+
+	wildcardOp := findOperation(result.Spec.Operations, "/*", "POST")
+	require.NotNil(t, wildcardOp)
+	require.NotNil(t, wildcardOp.Policies)
+	assert.Len(t, *wildcardOp.Policies, 1)
+	assert.Equal(t, "set-headers-all", (*wildcardOp.Policies)[0].Name)
+}
+
 func TestTransformProvider_WithUpstreamAuth(t *testing.T) {
 	store := storage.NewConfigStore()
 	db := newTestMockDB()

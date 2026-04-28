@@ -224,18 +224,11 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 
 	// Phase 2: Process User-Defined Policies
 	if proxy.Spec.Policies != nil {
+		registerExplicitLLMPolicyOperations(operationRegistry, *proxy.Spec.Policies, nil)
+
 		for _, llmPol := range *proxy.Spec.Policies {
 			for _, pathEntry := range llmPol.Paths {
-				// Expand wildcard methods in policy
-				var policyMethods []string
-				if len(pathEntry.Methods) == 1 && string(pathEntry.Methods[0]) == "*" {
-					policyMethods = constants.WILDCARD_HTTP_METHODS
-				} else {
-					policyMethods = make([]string, len(pathEntry.Methods))
-					for i, m := range pathEntry.Methods {
-						policyMethods[i] = string(m)
-					}
-				}
+				policyMethods := expandLLMPolicyMethods(pathEntry.Methods)
 
 				for _, policyMethod := range policyMethods {
 					attachedPolicyPaths := make(map[string]bool)
@@ -244,11 +237,7 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 					// Create operation if it doesn't exist (dynamic operation creation)
 					key := pathMethodKey{path: pathEntry.Path, method: policyMethod}
 					if _, exists := operationRegistry[key]; !exists {
-						op := &api.Operation{
-							Path:   pathEntry.Path,
-							Method: api.OperationMethod(policyMethod),
-						}
-						operationRegistry[key] = op
+						op := ensureOperation(operationRegistry, pathEntry.Path, policyMethod)
 						methodOperations = append(methodOperations, op)
 					}
 
@@ -451,18 +440,13 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 
 		// Phase 3: Process User-Defined Policies
 		if provider.Spec.Policies != nil {
+			registerExplicitLLMPolicyOperations(operationRegistry, *provider.Spec.Policies, func(path, method string) bool {
+				return !isDeniedByException(path, method, deniedPathMethods)
+			})
+
 			for _, llmPol := range *provider.Spec.Policies {
 				for _, pathEntry := range llmPol.Paths {
-					// Expand wildcard methods in policy
-					var policyMethods []string
-					if len(pathEntry.Methods) == 1 && string(pathEntry.Methods[0]) == "*" {
-						policyMethods = constants.WILDCARD_HTTP_METHODS
-					} else {
-						policyMethods = make([]string, len(pathEntry.Methods))
-						for i, m := range pathEntry.Methods {
-							policyMethods[i] = string(m)
-						}
-					}
+					policyMethods := expandLLMPolicyMethods(pathEntry.Methods)
 
 					for _, policyMethod := range policyMethods {
 						attachedPolicyPaths := make(map[string]bool)
@@ -477,11 +461,7 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 						key := pathMethodKey{path: pathEntry.Path, method: policyMethod}
 						if _, exists := operationRegistry[key]; !exists {
 							// Create operation for user policy
-							op := &api.Operation{
-								Path:   pathEntry.Path,
-								Method: api.OperationMethod(policyMethod),
-							}
-							operationRegistry[key] = op
+							op := ensureOperation(operationRegistry, pathEntry.Path, policyMethod)
 							methodOperations = append(methodOperations, op)
 						}
 
@@ -567,18 +547,13 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 
 		// Phase 3: Process Policies with Dynamic Operation Creation
 		if provider.Spec.Policies != nil {
+			registerExplicitLLMPolicyOperations(operationRegistry, *provider.Spec.Policies, func(path, method string) bool {
+				return isAllowedByAccessControl(path, method, normalizedExceptions)
+			})
+
 			for _, llmPol := range *provider.Spec.Policies {
 				for _, pathEntry := range llmPol.Paths {
-					// Expand wildcard methods in policy
-					var policyMethods []string
-					if len(pathEntry.Methods) == 1 && string(pathEntry.Methods[0]) == "*" {
-						policyMethods = constants.WILDCARD_HTTP_METHODS
-					} else {
-						policyMethods = make([]string, len(pathEntry.Methods))
-						for i, m := range pathEntry.Methods {
-							policyMethods[i] = string(m)
-						}
-					}
+					policyMethods := expandLLMPolicyMethods(pathEntry.Methods)
 
 					for _, policyMethod := range policyMethods {
 						attachedPolicyPaths := make(map[string]bool)
@@ -590,11 +565,7 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 							key := pathMethodKey{path: pathEntry.Path, method: policyMethod}
 							if _, exists := operationRegistry[key]; !exists {
 								// Create operation for specific policy path covered by wildcard access control
-								op := &api.Operation{
-									Path:   pathEntry.Path,
-									Method: api.OperationMethod(policyMethod),
-								}
-								operationRegistry[key] = op
+								op := ensureOperation(operationRegistry, pathEntry.Path, policyMethod)
 								methodOperations = append(methodOperations, op)
 							}
 						}
@@ -801,6 +772,51 @@ func appendOperationPolicy(op *api.Operation, pol api.Policy) {
 	existing := *op.Policies
 	existing = append(existing, pol)
 	op.Policies = &existing
+}
+
+// ensureOperation checks if an operation for the given path+method exists in the registry, and creates it if not
+func ensureOperation(operationRegistry map[pathMethodKey]*api.Operation, path, method string) *api.Operation {
+	key := pathMethodKey{path: path, method: method}
+	if op, exists := operationRegistry[key]; exists {
+		return op
+	}
+
+	op := &api.Operation{
+		Path:   path,
+		Method: api.OperationMethod(method),
+	}
+	operationRegistry[key] = op
+	return op
+}
+
+// expandLLMPolicyMethods takes the methods defined in an LLM policy and expands them to actual HTTP methods if wildcard is used
+func expandLLMPolicyMethods(methods []api.LLMPolicyPathMethods) []string {
+	if len(methods) == 1 && string(methods[0]) == constants.WILD_CARD {
+		return append([]string(nil), constants.WILDCARD_HTTP_METHODS...)
+	}
+
+	expanded := make([]string, len(methods))
+	for i, method := range methods {
+		expanded[i] = string(method)
+	}
+	return expanded
+}
+
+// registerExplicitLLMPolicyOperations iterates through the explicitly defined policies in the LLM policy and ensures that operations
+// exist for their paths and methods in the operation registry. The shouldRegister callback allows conditional registration based on
+// path and method (e.g., to skip paths/methods denied by access control exceptions).
+func registerExplicitLLMPolicyOperations(operationRegistry map[pathMethodKey]*api.Operation, policies []api.LLMPolicy,
+	shouldRegister func(path, method string) bool) {
+	for _, llmPol := range policies {
+		for _, pathEntry := range llmPol.Paths {
+			for _, method := range expandLLMPolicyMethods(pathEntry.Methods) {
+				if shouldRegister != nil && !shouldRegister(pathEntry.Path, method) {
+					continue
+				}
+				ensureOperation(operationRegistry, pathEntry.Path, method)
+			}
+		}
+	}
 }
 
 func getOperationsForMethod(operationRegistry map[pathMethodKey]*api.Operation, method string) []*api.Operation {
