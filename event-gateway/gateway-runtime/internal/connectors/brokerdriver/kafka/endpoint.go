@@ -33,19 +33,24 @@ import (
 // It owns a shared publisher and creates consumers on demand.
 type KafkaBrokerDriver struct {
 	publisher *Publisher
-	brokers   []string
+	config    ConnectionConfig
 	admin     *kadm.Client
 	adminKgo  *kgo.Client
 }
 
-// NewBrokerDriver creates a Kafka broker-driver backed by the given brokers.
-func NewBrokerDriver(brokers []string) (*KafkaBrokerDriver, error) {
-	pub, err := NewPublisher(brokers)
+// NewBrokerDriver creates a Kafka broker-driver backed by the given connection config.
+func NewBrokerDriver(cfg ConnectionConfig) (*KafkaBrokerDriver, error) {
+	pub, err := NewPublisher(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka publisher: %w", err)
 	}
 
-	adminKgo, err := kgo.NewClient(kgo.SeedBrokers(brokers...))
+	adminOpts, err := BuildClientOptions(cfg)
+	if err != nil {
+		pub.Close()
+		return nil, fmt.Errorf("invalid kafka connection config: %w", err)
+	}
+	adminKgo, err := kgo.NewClient(adminOpts...)
 	if err != nil {
 		pub.Close()
 		return nil, fmt.Errorf("failed to create kafka admin client: %w", err)
@@ -53,7 +58,7 @@ func NewBrokerDriver(brokers []string) (*KafkaBrokerDriver, error) {
 
 	return &KafkaBrokerDriver{
 		publisher: pub,
-		brokers:   brokers,
+		config:    cfg,
 		admin:     kadm.NewClient(adminKgo),
 		adminKgo:  adminKgo,
 	}, nil
@@ -67,7 +72,15 @@ func (e *KafkaBrokerDriver) Publish(ctx context.Context, topic string, msg *conn
 // Subscribe creates a consumer for the given topics using a shared consumer group.
 // The returned Receiver must be Start()ed by the caller.
 func (e *KafkaBrokerDriver) Subscribe(groupID string, topics []string, handler connectors.MessageHandler) (connectors.Receiver, error) {
-	return NewConsumer(e.brokers, groupID, topics, handler)
+	return NewConsumerWithConfig(e.config, groupID, topics, handler)
+}
+
+// Replay replays the given topics from the beginning until the current high watermark.
+func (e *KafkaBrokerDriver) Replay(ctx context.Context, topics []string, handler connectors.MessageHandler) error {
+	if len(topics) != 1 {
+		return fmt.Errorf("kafka replay expects exactly one topic, got %d", len(topics))
+	}
+	return ReplayTopic(ctx, e.config, topics[0], handler)
 }
 
 // TopicExists checks whether a topic exists in the Kafka cluster.
@@ -82,7 +95,19 @@ func (e *KafkaBrokerDriver) TopicExists(ctx context.Context, topic string) (bool
 
 // EnsureTopics creates topics if they don't already exist (idempotent).
 func (e *KafkaBrokerDriver) EnsureTopics(ctx context.Context, topics []string) error {
-	resp, err := e.admin.CreateTopics(ctx, 1, 1, nil, topics...)
+	return e.createTopics(ctx, nil, topics)
+}
+
+// EnsureStateTopics creates retained-state topics if they don't already exist.
+func (e *KafkaBrokerDriver) EnsureStateTopics(ctx context.Context, topics []string) error {
+	topicConfig := map[string]*string{
+		"cleanup.policy": kadm.StringPtr("compact"),
+	}
+	return e.createTopics(ctx, topicConfig, topics)
+}
+
+func (e *KafkaBrokerDriver) createTopics(ctx context.Context, topicConfig map[string]*string, topics []string) error {
+	resp, err := e.admin.CreateTopics(ctx, 1, 1, topicConfig, topics...)
 	if err != nil {
 		return fmt.Errorf("failed to create topics: %w", err)
 	}

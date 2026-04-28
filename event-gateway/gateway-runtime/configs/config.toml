@@ -26,6 +26,11 @@ metrics_port = 9003
 # Default Kafka brokers. Channels can override with broker-driver.config.brokers.
 brokers = ["localhost:9092"]
 consumer_group_prefix = "event-gateway"
+tls = false
+# Supported values: plain, scram-sha-256, scram-sha-512
+sasl_mechanism = "plain"
+sasl_username = "broker"
+sasl_password = "broker-pass"
 
 [websub]
 verification_timeout_seconds = 10

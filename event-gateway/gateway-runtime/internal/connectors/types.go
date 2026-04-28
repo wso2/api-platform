@@ -53,8 +53,10 @@ type MessageProcessor interface {
 type BrokerDriver interface {
 	Publish(ctx context.Context, topic string, msg *Message) error
 	Subscribe(groupID string, topics []string, handler MessageHandler) (Receiver, error)
+	Replay(ctx context.Context, topics []string, handler MessageHandler) error
 	TopicExists(ctx context.Context, topic string) (bool, error)
 	EnsureTopics(ctx context.Context, topics []string) error
+	EnsureStateTopics(ctx context.Context, topics []string) error
 	DeleteTopics(ctx context.Context, topics []string) error
 	Close() error
 }
@@ -70,7 +72,7 @@ type ChannelInfo struct {
 	PublicTopic       string
 	BrokerDriverTopic string
 	Ordering          string
-	Channels          map[string]string // channel-name → Kafka topic (WebSubApi only)
+	Channels          map[string]string // channel-name → broker-driver topic (WebSubApi only)
 	InternalSubTopic  string            // internal subscription sync topic (WebSubApi only)
 }
 

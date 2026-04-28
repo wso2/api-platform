@@ -26,6 +26,10 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("APIP_EGW_SERVER_WEBSUB_TLS_CERT_FILE", certPath)
 	t.Setenv("APIP_EGW_SERVER_WEBSUB_TLS_KEY_FILE", keyPath)
 	t.Setenv("APIP_EGW_KAFKA_BROKERS", "kafka-1:9092,kafka-2:9092")
+	t.Setenv("APIP_EGW_KAFKA_TLS", "true")
+	t.Setenv("APIP_EGW_KAFKA_SASL_MECHANISM", "scram-sha-512")
+	t.Setenv("APIP_EGW_KAFKA_SASL_USERNAME", "env-user")
+	t.Setenv("APIP_EGW_KAFKA_SASL_PASSWORD", "env-pass")
 	t.Setenv("APIP_EGW_CONTROLPLANE_ENABLED", "true")
 	t.Setenv("APIP_EGW_CONTROLPLANE_XDS_ADDRESS", "xds:18001")
 	t.Setenv("APIP_EGW_POLICY_ENGINE_CONFIG_FILE", "/tmp/policies.toml")
@@ -40,6 +44,9 @@ websub_https_port = 8443
 
 [kafka]
 brokers = ["localhost:9092"]
+sasl_mechanism = "plain"
+sasl_username = "file-user"
+sasl_password = "file-pass"
 
 [controlplane]
 enabled = false
@@ -74,6 +81,18 @@ enabled = false
 	wantBrokers := []string{"kafka-1:9092", "kafka-2:9092"}
 	if !reflect.DeepEqual(cfg.Kafka.Brokers, wantBrokers) {
 		t.Fatalf("expected brokers %v, got %v", wantBrokers, cfg.Kafka.Brokers)
+	}
+	if !cfg.Kafka.TLS {
+		t.Fatalf("expected kafka TLS to be enabled")
+	}
+	if cfg.Kafka.SASLMechanism != "scram-sha-512" {
+		t.Fatalf("expected kafka sasl mechanism scram-sha-512, got %q", cfg.Kafka.SASLMechanism)
+	}
+	if cfg.Kafka.SASLUsername != "env-user" {
+		t.Fatalf("expected kafka sasl username env-user, got %q", cfg.Kafka.SASLUsername)
+	}
+	if cfg.Kafka.SASLPassword != "env-pass" {
+		t.Fatalf("expected kafka sasl password env-pass, got %q", cfg.Kafka.SASLPassword)
 	}
 
 	if !cfg.ControlPlane.Enabled {
@@ -154,6 +173,102 @@ level = "trace"
 	want := "logging.level must be one of debug, info, warn, error"
 	if err.Error() != want {
 		t.Fatalf("expected error %q, got %q", want, err.Error())
+	}
+}
+
+func TestLoadKafkaSecurityFromConfigFile(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(configPath, []byte(`
+[kafka]
+brokers = ["secure-kafka:9093"]
+tls = true
+sasl_mechanism = "plain"
+sasl_username = "file-user"
+sasl_password = "file-pass"
+`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, _, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	if !reflect.DeepEqual(cfg.Kafka.Brokers, []string{"secure-kafka:9093"}) {
+		t.Fatalf("unexpected kafka brokers: %v", cfg.Kafka.Brokers)
+	}
+	if !cfg.Kafka.TLS {
+		t.Fatalf("expected kafka TLS to be enabled")
+	}
+	if cfg.Kafka.SASLMechanism != "plain" || cfg.Kafka.SASLUsername != "file-user" || cfg.Kafka.SASLPassword != "file-pass" {
+		t.Fatalf("unexpected kafka security config: %+v", cfg.Kafka)
+	}
+}
+
+func TestLoadRejectsInvalidKafkaSASLConfig(t *testing.T) {
+	tests := []struct {
+		name        string
+		configBody  string
+		errContains string
+	}{
+		{
+			name: "invalid mechanism",
+			configBody: `
+[kafka]
+brokers = ["kafka:9092"]
+sasl_mechanism = "oauth"
+sasl_username = "user"
+sasl_password = "pass"
+`,
+			errContains: "must be one of",
+		},
+		{
+			name: "credentials without mechanism",
+			configBody: `
+[kafka]
+brokers = ["kafka:9092"]
+sasl_username = "user"
+sasl_password = "pass"
+`,
+			errContains: "require sasl_mechanism",
+		},
+		{
+			name: "mechanism without username",
+			configBody: `
+[kafka]
+brokers = ["kafka:9092"]
+sasl_mechanism = "scram-sha-256"
+sasl_password = "pass"
+`,
+			errContains: "requires both",
+		},
+		{
+			name: "mechanism without password",
+			configBody: `
+[kafka]
+brokers = ["kafka:9092"]
+sasl_mechanism = "scram-sha-512"
+sasl_username = "user"
+`,
+			errContains: "requires both",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			configPath := filepath.Join(t.TempDir(), "config.toml")
+			if err := os.WriteFile(configPath, []byte(tt.configBody), 0o644); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+
+			_, _, err := Load(configPath)
+			if err == nil {
+				t.Fatalf("expected load to fail")
+			}
+			if !strings.Contains(err.Error(), tt.errContains) {
+				t.Fatalf("expected error containing %q, got %q", tt.errContains, err.Error())
+			}
+		})
 	}
 }
 
