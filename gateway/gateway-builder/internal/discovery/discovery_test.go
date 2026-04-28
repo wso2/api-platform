@@ -867,6 +867,82 @@ func TestDetectRuntime_EmptyDirectory(t *testing.T) {
 	assert.Equal(t, "go", runtime)
 }
 
+func TestDetectRuntime_PythonSrcLayout(t *testing.T) {
+	tmpDir := t.TempDir()
+	// src layout: pyproject.toml at root, .py files under src/<pkg>/
+	testutils.WriteFile(t, filepath.Join(tmpDir, "pyproject.toml"), "[build-system]\nrequires = [\"hatchling\"]\n")
+	pkgDir := filepath.Join(tmpDir, "src", "my_policy")
+	testutils.CreateDir(t, pkgDir)
+	testutils.WriteFile(t, filepath.Join(pkgDir, "__init__.py"), "")
+	testutils.WriteFile(t, filepath.Join(pkgDir, "policy.py"), "class MyPolicy:\n    pass\n")
+
+	runtime, err := DetectRuntime(tmpDir)
+
+	require.NoError(t, err)
+	assert.Equal(t, "python", runtime)
+}
+
+func TestDiscoverPoliciesFromBuildFile_PythonPackagePolicy(t *testing.T) {
+	pipExe, _ := resolvePipExecutable()
+	if pipExe == "" {
+		t.Skip("pip not available")
+	}
+
+	tmpDir := t.TempDir()
+
+	// Create a src-layout Python package policy with pyproject.toml
+	policyDir := filepath.Join(tmpDir, "policies", "my-pkg-policy")
+	pkgDir := filepath.Join(policyDir, "src", "my_pkg_policy")
+	testutils.CreateDir(t, pkgDir)
+
+	testutils.WriteFile(t, filepath.Join(policyDir, "policy-definition.yaml"), "name: my-pkg-policy\nversion: v1.0.0\n")
+	testutils.WriteFile(t, filepath.Join(policyDir, "requirements.txt"), "")
+	testutils.WriteFile(t, filepath.Join(policyDir, "pyproject.toml"), `[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "my-pkg-policy"
+version = "1.0.0"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/my_pkg_policy"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"policy-definition.yaml" = "my_pkg_policy/policy-definition.yaml"
+`)
+	testutils.WriteFile(t, filepath.Join(pkgDir, "__init__.py"), "__version__ = \"1.0.0\"\n")
+	testutils.WriteFile(t, filepath.Join(pkgDir, "policy.py"), "def get_policy(metadata, params):\n    return None\n")
+
+	manifestContent := `version: v1
+policies:
+  - name: my-pkg-policy
+    filePath: ./policies/my-pkg-policy
+`
+	manifestPath := filepath.Join(tmpDir, "build-manifest.yaml")
+	testutils.WriteFile(t, manifestPath, manifestContent)
+
+	policies, err := DiscoverPoliciesFromBuildFile(manifestPath, "")
+
+	require.NoError(t, err)
+	require.Len(t, policies, 1)
+	assert.Equal(t, "my-pkg-policy", policies[0].Name)
+	assert.Equal(t, "python", policies[0].Runtime)
+	// PythonSourceDir should be the extracted wheel module dir, NOT the policy root
+	assert.NotEqual(t, policies[0].Path, policies[0].PythonSourceDir)
+	// Path should point to original project root (for requirements.txt)
+	assert.Equal(t, policyDir, policies[0].Path)
+	// Source files should be from the extracted module dir
+	assert.GreaterOrEqual(t, len(policies[0].SourceFiles), 1)
+	// TopLevelModule should be set
+	assert.Equal(t, "my_pkg_policy", policies[0].PythonTopLevelModule)
+
+	// Cleanup extracted dir
+	if policies[0].PythonSourceDir != "" {
+		os.RemoveAll(filepath.Dir(policies[0].PythonSourceDir))
+	}
+}
+
 func TestDetectRuntime_NonexistentDirectory(t *testing.T) {
 	runtime, err := DetectRuntime("/nonexistent/path")
 

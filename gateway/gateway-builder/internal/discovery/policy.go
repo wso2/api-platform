@@ -122,7 +122,9 @@ func CollectSourceFiles(policyDir string) ([]string, error) {
 	return goFiles, nil
 }
 
-// ValidatePythonDirectoryStructure checks if a Python policy directory has required files
+// ValidatePythonDirectoryStructure checks if a Python policy directory has required files.
+// This validates a flat directory containing policy source files — either a simple policy
+// root or an extracted wheel module directory.
 func ValidatePythonDirectoryStructure(policyDir string) error {
 	slog.Debug("Validating Python directory structure", "dir", policyDir, "phase", "discovery")
 
@@ -162,7 +164,7 @@ func ValidatePythonDirectoryStructure(policyDir string) error {
 	return nil
 }
 
-// CollectPythonSourceFiles finds all .py files in a policy directory
+// CollectPythonSourceFiles finds all .py files in a flat policy directory.
 func CollectPythonSourceFiles(policyDir string) ([]string, error) {
 	var pyFiles []string
 

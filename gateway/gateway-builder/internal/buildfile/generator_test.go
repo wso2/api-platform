@@ -583,6 +583,79 @@ policies:
 	assert.NotContains(t, lockContent, "version: v9.9.9")
 }
 
+func TestWriteBuildManifestWithVersions_PipPackageRedactsIndexCredentials(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	buildFileContent := `version: "1.0"
+policies:
+  - name: prompt-compressor
+    pipPackage: "prompt-compressor~=1.0"
+`
+	buildFilePath := filepath.Join(tmpDir, "build.yaml")
+	testutils.WriteFile(t, buildFilePath, buildFileContent)
+
+	discovered := []*types.DiscoveredPolicy{
+		{
+			Name:         "prompt-compressor",
+			Version:      "v1.2.3",
+			Runtime:      "python",
+			IsPipPackage: true,
+			PipSpec:      "prompt-compressor==1.2.3@https://deploy-token:secret123@private.pypi.org/simple/",
+		},
+	}
+
+	err := WriteBuildManifestWithVersions(buildFilePath, discovered)
+	require.NoError(t, err)
+
+	lockPath := filepath.Join(tmpDir, "build-manifest.yaml")
+	content, err := os.ReadFile(lockPath)
+	require.NoError(t, err)
+
+	lockContent := string(content)
+	assert.Contains(t, lockContent, "version: v1.2.3")
+	// Credentials must be redacted in the manifest
+	assert.NotContains(t, lockContent, "secret123")
+	assert.NotContains(t, lockContent, "deploy-token")
+	assert.Contains(t, lockContent, "<redacted-credentials>@private.pypi.org/simple/")
+}
+
+func TestWriteBuildManifestWithVersions_PipPackageRedactsVCSCredentials(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	buildFileContent := `version: "1.0"
+policies:
+  - name: prompt-compressor
+    pipPackage: "github.com/wso2/gateway-controllers/policies/prompt-compressor@v1"
+`
+	buildFilePath := filepath.Join(tmpDir, "build.yaml")
+	testutils.WriteFile(t, buildFilePath, buildFileContent)
+
+	discovered := []*types.DiscoveredPolicy{
+		{
+			Name:            "prompt-compressor",
+			Version:         "v1.0.0",
+			Runtime:         "python",
+			IsPipPackage:    true,
+			OriginalPipSpec: "github.com/wso2/gateway-controllers/policies/prompt-compressor@v1",
+			PipSpec:         "git+https://ghp_secrettoken@github.com/wso2/gateway-controllers.git@policies/prompt-compressor/v1.0.0#subdirectory=policies/prompt-compressor",
+		},
+	}
+
+	err := WriteBuildManifestWithVersions(buildFilePath, discovered)
+	require.NoError(t, err)
+
+	lockPath := filepath.Join(tmpDir, "build-manifest.yaml")
+	content, err := os.ReadFile(lockPath)
+	require.NoError(t, err)
+
+	lockContent := string(content)
+	assert.Contains(t, lockContent, "version: v1.0.0")
+	// VCS credentials must be redacted in the manifest
+	assert.NotContains(t, lockContent, "ghp_secrettoken")
+	assert.Contains(t, lockContent, "<redacted-credentials>@github.com/wso2/gateway-controllers.git")
+	assert.Contains(t, lockContent, "#subdirectory=policies/prompt-compressor")
+}
+
 func TestWriteBuildManifestWithVersions_InvalidBuildFileYAML(t *testing.T) {
 	tmpDir := t.TempDir()
 

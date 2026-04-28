@@ -242,12 +242,15 @@ func DiscoverPoliciesFromBuildFile(buildFilePath string, baseDir string) ([]*typ
 
 // DetectRuntime auto-detects the policy runtime by examining the directory contents.
 // Presence of go.mod → "go"; presence of .py files (and no go.mod) → "python".
+// Also recognises the industry-standard src layout where pyproject.toml exists at
+// the root but .py files live under src/<package>/.
 func DetectRuntime(policyDir string) (string, error) {
 	goMod := filepath.Join(policyDir, "go.mod")
 	if _, err := os.Stat(goMod); err == nil {
 		return "go", nil
 	}
 
+	// Check for .py files directly in the policy root (flat layout)
 	entries, err := os.ReadDir(policyDir)
 	if err != nil {
 		return "", fmt.Errorf("failed to read policy directory %s: %w", policyDir, err)
@@ -256,6 +259,12 @@ func DetectRuntime(policyDir string) (string, error) {
 		if !e.IsDir() && filepath.Ext(e.Name()) == ".py" {
 			return "python", nil
 		}
+	}
+
+	// Check for pyproject.toml (src layout — .py files live under src/<pkg>/)
+	pyProject := filepath.Join(policyDir, "pyproject.toml")
+	if _, err := os.Stat(pyProject); err == nil {
+		return "python", nil
 	}
 
 	return "go", nil
@@ -281,7 +290,7 @@ func discoverPipPolicy(entry types.BuildEntry) (*types.DiscoveredPolicy, error) 
 		"resolvedPath", pkgInfo.Dir)
 
 	// Validate extracted source and parse definition
-	discovered, err := buildPythonDiscoveredPolicy(entry, pkgInfo.Dir, "pipPackage")
+	discovered, err := buildSimplePythonDiscoveredPolicy(entry, pkgInfo.Dir)
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +305,13 @@ func discoverPipPolicy(entry types.BuildEntry) (*types.DiscoveredPolicy, error) 
 	return discovered, nil
 }
 
-// discoverLocalPythonPolicy discovers a Python policy from a local filePath entry
+// discoverLocalPythonPolicy discovers a Python policy from a local filePath entry.
+// Python policies come in two forms:
+//   - Simple: policy.py + requirements.txt + policy-definition.yaml (no pyproject.toml)
+//   - Package: a proper Python package with pyproject.toml (any layout: flat, src, etc.)
+//
+// For packages, we build a wheel locally using pip and extract it — the same approach
+// used for remote pip packages. This is fully generic and works regardless of source layout.
 func discoverLocalPythonPolicy(entry types.BuildEntry, baseDir string) (*types.DiscoveredPolicy, error) {
 	policyPath := filepath.Join(baseDir, entry.FilePath)
 
@@ -305,11 +320,83 @@ func discoverLocalPythonPolicy(entry types.BuildEntry, baseDir string) (*types.D
 		"filePath", entry.FilePath,
 		"resolvedPath", policyPath)
 
-	return buildPythonDiscoveredPolicy(entry, policyPath, "filePath")
+	pyProject := filepath.Join(policyPath, "pyproject.toml")
+	if _, err := os.Stat(pyProject); err == nil {
+		return discoverLocalPythonPackagePolicy(entry, policyPath)
+	}
+
+	// Simple Python policy — flat directory with policy.py, requirements.txt, etc.
+	return buildSimplePythonDiscoveredPolicy(entry, policyPath)
 }
 
-// buildPythonDiscoveredPolicy is the shared logic for building a discovered Python policy
-func buildPythonDiscoveredPolicy(entry types.BuildEntry, policyPath string, source string) (*types.DiscoveredPolicy, error) {
+// discoverLocalPythonPackagePolicy discovers a Python policy that is a proper Python
+// package (has pyproject.toml). It builds a wheel from the local source — regardless
+// of source layout — extracts the module, and validates it.
+func discoverLocalPythonPackagePolicy(entry types.BuildEntry, policyPath string) (*types.DiscoveredPolicy, error) {
+	slog.Info("Building wheel for local Python package policy",
+		"name", entry.Name,
+		"path", policyPath,
+		"phase", "discovery")
+
+	wheelDir, err := os.MkdirTemp("", "pip-local-wheel-*")
+	if err != nil {
+		return nil, errors.NewDiscoveryError(
+			fmt.Sprintf("failed to create temp directory for %s", entry.Name), err)
+	}
+	defer os.RemoveAll(wheelDir)
+
+	args := []string{"wheel", "--no-deps", policyPath, "-w", wheelDir}
+	if err := runPipCommand(args, 2*time.Minute, policyPath, "", "wheel"); err != nil {
+		return nil, errors.NewDiscoveryError(
+			fmt.Sprintf("failed to build wheel for local Python package %s at %s", entry.Name, policyPath), err)
+	}
+
+	whlPath, err := findWheelFile(wheelDir)
+	if err != nil {
+		return nil, errors.NewDiscoveryError(
+			fmt.Sprintf("failed to find wheel for %s", entry.Name), err)
+	}
+
+	topLevelModule, err := readTopLevelFromWheel(whlPath)
+	if err != nil {
+		return nil, errors.NewDiscoveryError(
+			fmt.Sprintf("failed to read top-level module from wheel for %s", entry.Name), err)
+	}
+
+	extractDir, err := extractModuleFromWheel(whlPath, topLevelModule)
+	if err != nil {
+		return nil, errors.NewDiscoveryError(
+			fmt.Sprintf("failed to extract module from wheel for %s", entry.Name), err)
+	}
+
+	// Validate and build the discovered policy from the extracted module directory.
+	// The extracted dir is flat (policy.py, __init__.py, policy-definition.yaml, etc.)
+	// — the same structure as a simple policy or an extracted pip package.
+	discovered, err := buildSimplePythonDiscoveredPolicy(entry, extractDir)
+	if err != nil {
+		os.RemoveAll(extractDir)
+		return nil, err
+	}
+
+	// Override Path to the original project root so requirements.txt can be found there.
+	discovered.Path = policyPath
+	discovered.IsFilePathEntry = true
+	discovered.PythonTopLevelModule = topLevelModule
+
+	slog.Info("Discovered local Python package policy",
+		"name", discovered.Name,
+		"version", discovered.Version,
+		"topLevelModule", topLevelModule,
+		"extractDir", extractDir,
+		"phase", "discovery")
+
+	return discovered, nil
+}
+
+// buildSimplePythonDiscoveredPolicy builds a discovered policy from a flat directory
+// containing policy.py, policy-definition.yaml, and other Python source files.
+// Used for both simple (no pyproject.toml) policies and extracted wheel module directories.
+func buildSimplePythonDiscoveredPolicy(entry types.BuildEntry, policyPath string) (*types.DiscoveredPolicy, error) {
 	if err := fsutil.ValidatePathExists(policyPath, "policy path"); err != nil {
 		return nil, errors.NewDiscoveryError(
 			fmt.Sprintf("from build file entry %s: %v", entry.Name, err),
@@ -371,7 +458,6 @@ func buildPythonDiscoveredPolicy(entry types.BuildEntry, policyPath string, sour
 	slog.Info("Discovered Python policy",
 		"name", discovered.Name,
 		"version", discovered.Version,
-		"source", source,
 		"path", policyPath,
 		"phase", "discovery")
 
