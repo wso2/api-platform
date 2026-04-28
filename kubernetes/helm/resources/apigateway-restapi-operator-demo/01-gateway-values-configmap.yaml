@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: custom-gateway-values
+  namespace: apigateway-demo
+data:
+  # The operator expects this key to be named exactly `values.yaml`.
+  # These are *overrides* deep-merged into the operator's default gateway_values.yaml.
+  values.yaml: |
+    gateway:
+      gatewayRuntime:
+        service:
+          type: ClusterIP
+
