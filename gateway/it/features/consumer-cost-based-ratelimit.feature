@@ -1,0 +1,490 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+@consumer-cost-based-ratelimit
+Feature: Consumer Cost-Based Rate Limiting
+  As an API developer
+  I want cost limits to be enforced independently per GenAI application
+  So that one application exhausting its budget does not block other applications
+
+  Background:
+    Given the gateway services are running
+    And I authenticate using basic auth as "admin"
+
+  Scenario: Each consumer gets an independent cost budget
+    # mock-openai returns gpt-4.1-2025-04-14: 19 prompt × $2/1M + 10 completion × $8/1M = $0.0001180000
+    # Budget per consumer: $0.000236 = exactly 2 requests worth
+    # App A sends 2 requests (budget exhausted) and is blocked on the 3rd.
+    # App B is unaffected — its budget counter is still at $0.
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: ccbrl-template
+      spec:
+        displayName: CCBRL Template
+      """
+    Then the response status code should be 201
+
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: ccbrl-provider
+      spec:
+        displayName: CCBRL Provider
+        version: v1.0
+        context: /ccbrl
+        template: ccbrl-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: api-key-auth
+            version: v1
+            paths:
+              - path: /*
+                methods: ['*']
+                params:
+                  key: x-api-key
+                  in: header
+          - name: llm-cost-based-ratelimit
+            version: v1
+            paths:
+              - path: /*
+                methods: ['*']
+                params:
+                  budgetLimits:
+                    - amount: 0.000236
+                      duration: "1h"
+                  consumerBased: true
+          - name: llm-cost
+            version: v1
+            paths:
+              - path: /*
+                methods: ['*']
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    # Create API key for App A
+    When I send a POST request to the "gateway-controller" service at "/llm-providers/ccbrl-provider/api-keys" with body:
+      """
+      {
+        "name": "ccbrl-app-a",
+        "apiKey": "ccbrl-app-a-key-000000000000000000000000"
+      }
+      """
+    Then the response status code should be 201
+
+    # Create API key for App B
+    When I send a POST request to the "gateway-controller" service at "/llm-providers/ccbrl-provider/api-keys" with body:
+      """
+      {
+        "name": "ccbrl-app-b",
+        "apiKey": "ccbrl-app-b-key-000000000000000000000000"
+      }
+      """
+    Then the response status code should be 201
+    And I wait for 2 seconds
+
+    Given I set header "Content-Type" to "application/json"
+
+    # App A: request 1 — allowed, budget drops to $0.000118
+    When I send a POST request to "http://localhost:8080/ccbrl/openai/v1/chat/completions" with header "x-api-key" value "ccbrl-app-a-key-000000000000000000000000" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # App A: request 2 — allowed, budget reaches exactly $0
+    When I send a POST request to "http://localhost:8080/ccbrl/openai/v1/chat/completions" with header "x-api-key" value "ccbrl-app-a-key-000000000000000000000000" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # App A: request 3 — blocked, budget exhausted
+    When I send a POST request to "http://localhost:8080/ccbrl/openai/v1/chat/completions" with header "x-api-key" value "ccbrl-app-a-key-000000000000000000000000" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 429
+
+    # App B: request 1 — should succeed, App B has its own independent cost counter
+    When I send a POST request to "http://localhost:8080/ccbrl/openai/v1/chat/completions" with header "x-api-key" value "ccbrl-app-b-key-000000000000000000000000" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "ccbrl-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "ccbrl-template"
+    Then the response status code should be 200
+
+  Scenario: Backend cost limit blocks all consumers when shared budget is exhausted
+    # Backend limit: $0.000236/hour shared across all apps (exactly 2 requests worth).
+    # Consumer limit: $0.000236/hour per app independently.
+    # App A sends 2 requests — exhausts the shared backend budget.
+    # App B's next request is blocked by the backend limit even though
+    # App B's own consumer budget is still at $0.
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: ccbrl-both-template
+      spec:
+        displayName: CCBRL Both Template
+      """
+    Then the response status code should be 201
+
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: ccbrl-both-provider
+      spec:
+        displayName: CCBRL Both Provider
+        version: v1.0
+        context: /ccbrl-both
+        template: ccbrl-both-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: api-key-auth
+            version: v1
+            paths:
+              - path: /*
+                methods: ['*']
+                params:
+                  key: x-api-key
+                  in: header
+          - name: llm-cost-based-ratelimit
+            version: v1
+            paths:
+              - path: /*
+                methods: ['*']
+                params:
+                  budgetLimits:
+                    - amount: 0.000236
+                      duration: "1h"
+          - name: llm-cost-based-ratelimit
+            version: v1
+            paths:
+              - path: /*
+                methods: ['*']
+                params:
+                  budgetLimits:
+                    - amount: 0.000236
+                      duration: "1h"
+                  consumerBased: true
+          - name: llm-cost
+            version: v1
+            paths:
+              - path: /*
+                methods: ['*']
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    # Create API key for App A
+    When I send a POST request to the "gateway-controller" service at "/llm-providers/ccbrl-both-provider/api-keys" with body:
+      """
+      {
+        "name": "ccbrl-both-app-a",
+        "apiKey": "ccbrl-both-app-a-key-00000000000000000000000"
+      }
+      """
+    Then the response status code should be 201
+
+    # Create API key for App B
+    When I send a POST request to the "gateway-controller" service at "/llm-providers/ccbrl-both-provider/api-keys" with body:
+      """
+      {
+        "name": "ccbrl-both-app-b",
+        "apiKey": "ccbrl-both-app-b-key-00000000000000000000000"
+      }
+      """
+    Then the response status code should be 201
+    And I wait for 2 seconds
+
+    Given I set header "Content-Type" to "application/json"
+
+    # App A: request 1 — allowed, shared backend budget drops to $0.000118
+    When I send a POST request to "http://localhost:8080/ccbrl-both/openai/v1/chat/completions" with header "x-api-key" value "ccbrl-both-app-a-key-00000000000000000000000" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # App A: request 2 — allowed, shared backend budget reaches exactly $0
+    When I send a POST request to "http://localhost:8080/ccbrl-both/openai/v1/chat/completions" with header "x-api-key" value "ccbrl-both-app-a-key-00000000000000000000000" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # App B: blocked by the shared backend budget even though its own consumer budget is at $0
+    When I send a POST request to "http://localhost:8080/ccbrl-both/openai/v1/chat/completions" with header "x-api-key" value "ccbrl-both-app-b-key-00000000000000000000000" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "ccbrl-both-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "ccbrl-both-template"
+    Then the response status code should be 200
+
+  Scenario: Requests without an app ID share a single "default" cost budget
+    # When no api-key-auth is in the chain, x-wso2-application-id is never written to
+    # metadata. The fallback key "default" is used so all unauthenticated requests count
+    # against the same "default" cost bucket (not the backend "routename" bucket).
+    # Budget: $0.000236/hour (2 requests worth at gpt-4.1-2025-04-14 pricing).
+    # After 2 requests the "default" budget is exhausted and further requests are blocked.
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: ccbrl-fallback-template
+      spec:
+        displayName: CCBRL Fallback Template
+      """
+    Then the response status code should be 201
+
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: ccbrl-fallback-provider
+      spec:
+        displayName: CCBRL Fallback Provider
+        version: v1.0
+        context: /ccbrl-fallback
+        template: ccbrl-fallback-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: llm-cost-based-ratelimit
+            version: v1
+            paths:
+              - path: /*
+                methods: ['*']
+                params:
+                  budgetLimits:
+                    - amount: 0.000236
+                      duration: "1h"
+                  consumerBased: true
+          - name: llm-cost
+            version: v1
+            paths:
+              - path: /*
+                methods: ['*']
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    # Request 1 — no app ID, key = "ccbrl-fallback:default" — allowed, budget drops to $0.000118
+    When I send a POST request to "http://localhost:8080/ccbrl-fallback/openai/v1/chat/completions" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # Request 2 — no app ID, same "default" budget — allowed, budget reaches exactly $0
+    When I send a POST request to "http://localhost:8080/ccbrl-fallback/openai/v1/chat/completions" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # Request 3 — "default" budget exhausted — blocked
+    When I send a POST request to "http://localhost:8080/ccbrl-fallback/openai/v1/chat/completions" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "ccbrl-fallback-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "ccbrl-fallback-template"
+    Then the response status code should be 200
+
+  Scenario: Consumer counter is not double-deducted when both backend and consumer limits are active
+    # This test guards against the llm_cost_delegate metadata key collision.
+    #
+    # Without the fix: both backend and consumer LLMCostRateLimitPolicy instances write
+    # their delegate reference to the same metadata key ("llm_cost_delegate"). The consumer
+    # overwrites the backend's entry. In the response phase (reverse order), the backend
+    # instance reads back the consumer's delegate and calls it — so the consumer's
+    # OnResponseBody runs twice. The consumer counter is drained twice as fast.
+    #
+    # With the fix: backend uses "llm_cost_delegate", consumer uses
+    # "llm_cost_delegate_consumer". Each instance reads back only its own delegate.
+    #
+    # Setup:
+    #   Backend limit:  $1/hour  (very high — never exhausted in this test)
+    #   Consumer limit: $0.000236/hour = exactly 2 requests at gpt-4.1-2025-04-14 pricing
+    #
+    # Expected (with fix):
+    #   request 1 → 200  (consumer deducted once: $0.000236 - $0.000118 = $0.000118 remaining)
+    #   request 2 → 200  (consumer deducted once: $0.000118 - $0.000118 = $0 remaining)
+    #   request 3 → 429  (consumer exhausted)
+    #
+    # Without fix:
+    #   request 1 → 200  (consumer deducted twice: $0.000236 - 2×$0.000118 = $0 remaining)
+    #   request 2 → 429  ← test fails here
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: ccbrl-nodbl-template
+      spec:
+        displayName: CCBRL No-Double Template
+      """
+    Then the response status code should be 201
+
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: ccbrl-nodbl-provider
+      spec:
+        displayName: CCBRL No-Double Provider
+        version: v1.0
+        context: /ccbrl-nodbl
+        template: ccbrl-nodbl-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: api-key-auth
+            version: v1
+            paths:
+              - path: /*
+                methods: ['*']
+                params:
+                  key: x-api-key
+                  in: header
+          - name: llm-cost-based-ratelimit
+            version: v1
+            paths:
+              - path: /*
+                methods: ['*']
+                params:
+                  budgetLimits:
+                    - amount: 1.0
+                      duration: "1h"
+          - name: llm-cost-based-ratelimit
+            version: v1
+            paths:
+              - path: /*
+                methods: ['*']
+                params:
+                  budgetLimits:
+                    - amount: 0.000236
+                      duration: "1h"
+                  consumerBased: true
+          - name: llm-cost
+            version: v1
+            paths:
+              - path: /*
+                methods: ['*']
+      """
+    Then the response status code should be 201
+    And I wait for policy snapshot sync
+
+    When I send a POST request to the "gateway-controller" service at "/llm-providers/ccbrl-nodbl-provider/api-keys" with body:
+      """
+      {
+        "name": "ccbrl-nodbl-app-a",
+        "apiKey": "ccbrl-nodbl-app-a-key-0000000000000000000000"
+      }
+      """
+    Then the response status code should be 201
+    And I wait for 2 seconds
+
+    Given I set header "Content-Type" to "application/json"
+
+    # Request 1 — allowed; consumer budget: $0.000236 - $0.000118 = $0.000118 remaining
+    When I send a POST request to "http://localhost:8080/ccbrl-nodbl/openai/v1/chat/completions" with header "x-api-key" value "ccbrl-nodbl-app-a-key-0000000000000000000000" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # Request 2 — allowed; consumer budget: $0.000118 - $0.000118 = $0 remaining
+    # Without the fix this would be 429 because the consumer counter was double-deducted on request 1
+    When I send a POST request to "http://localhost:8080/ccbrl-nodbl/openai/v1/chat/completions" with header "x-api-key" value "ccbrl-nodbl-app-a-key-0000000000000000000000" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # Request 3 — blocked; consumer budget exhausted
+    When I send a POST request to "http://localhost:8080/ccbrl-nodbl/openai/v1/chat/completions" with header "x-api-key" value "ccbrl-nodbl-app-a-key-0000000000000000000000" with body:
+      """ json
+      {"model": "gpt-4.1-2025-04-14", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "ccbrl-nodbl-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "ccbrl-nodbl-template"
+    Then the response status code should be 200
