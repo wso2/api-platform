@@ -1,0 +1,13 @@
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Certificate
+metadata:
+  name: demo-certificate
+  namespace: apigateway-demo
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  displayName: demo-certificate
+  certificate:
+    valueFrom:
+        name: demo-management-secrets
+        key: cert.pem

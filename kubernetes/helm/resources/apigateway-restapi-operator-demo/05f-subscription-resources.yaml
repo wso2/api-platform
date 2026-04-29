@@ -1,0 +1,29 @@
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: SubscriptionPlan
+metadata:
+  name: demo-plan
+  namespace: apigateway-demo
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  planName: demo-plan
+  status: ACTIVE
+  stopOnQuotaReach: true
+  throttleLimitCount: 1000
+  throttleLimitUnit: Min
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Subscription
+metadata:
+  name: demo-subscription
+  namespace: apigateway-demo
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  apiId: hello-sub-api
+  subscriptionPlanId: demo-plan
+  status: ACTIVE
+  subscriptionToken:
+    valueFrom:
+        name: demo-management-secrets
+        key: subscription-token

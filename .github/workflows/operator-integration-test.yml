@@ -1032,6 +1032,216 @@ jobs:
 
           echo "Updated JWT API invocation test passed (correctly rejected)!"
 
+      # Uses the same manifests as kubernetes/helm/resources/apigateway-restapi-operator-demo
+      # (README apply order): namespace demo workloads stay in apigateway-demo so hello-backend FQDNs
+      # in RestApi specs resolve; LLM/MCP upstreams are rewritten to *.apigateway-demo.svc.cluster.local
+      # because gateway-runtime pods run in default (test-gateway).
+      # APIGateway test-gateway uses apiSelector.scope: Cluster, so gateways register APIs from all
+      # namespaces—including apigateway-demo (management CRs reconcile via the same registry match).
+      - name: Deploy demo management CRs (LLM MCP ApiKey Subscription)
+        run: |
+          set -euo pipefail
+          DEMO="kubernetes/helm/resources/apigateway-restapi-operator-demo"
+          kubectl apply -f "${DEMO}/00-namespace.yaml"
+          kubectl apply -f "${DEMO}/03-backend.yaml"
+          kubectl apply -f "${DEMO}/05a-management-prerequisites.yaml"
+          kubectl apply -f "${DEMO}/05b0-mock-openapi-https.yaml"
+          kubectl wait --for=condition=available deployment/hello-backend deployment/mock-openapi deployment/mock-openapi-https -n apigateway-demo --timeout=300s
+
+          kubectl apply -f "${DEMO}/05c0-mcp-server-backend.yaml"
+          kubectl wait --for=condition=available deployment/mcp-server-backend -n apigateway-demo --timeout=240s
+
+          sed 's#url: http://mock-openapi:4010#url: http://mock-openapi.apigateway-demo.svc.cluster.local:4010#g' "${DEMO}/05b-llm-resources.yaml" | kubectl apply -f -
+          sed 's#url: http://mock-openapi:4010#url: http://mock-openapi.apigateway-demo.svc.cluster.local:4010#g' "${DEMO}/05b-02-llm-resources-apikey.yaml" | kubectl apply -f -
+          sed 's#url: http://mcp-server-backend:3001#url: http://mcp-server-backend.apigateway-demo.svc.cluster.local:3001#g' "${DEMO}/05c-mcp-resources.yaml" | kubectl apply -f -
+
+          kubectl apply -f "${DEMO}/04-02-restapi.yaml"
+          kubectl apply -f "${DEMO}/04-03-restapi.yaml"
+          kubectl apply -f "${DEMO}/05f0-apikey-resources.yaml"
+          kubectl apply -f - <<'EOF'
+          apiVersion: gateway.api-platform.wso2.com/v1alpha1
+          kind: SubscriptionPlan
+          metadata:
+            name: demo-plan
+            namespace: apigateway-demo
+            labels:
+              gateway.api-platform.wso2.com/restapi-target: wso2-crd
+          spec:
+            planName: demo-plan
+            status: ACTIVE
+            stopOnQuotaReach: true
+            throttleLimitCount: 1000
+            throttleLimitUnit: Min
+          EOF
+
+          kubectl wait --for=condition=Programmed managedsecret/demo-managed-secret -n apigateway-demo --timeout=500s
+          kubectl wait --for=condition=Programmed llmprovidertemplate/openai-test -n apigateway-demo --timeout=500s
+          kubectl wait --for=condition=Programmed llmprovider/demo-llm-provider -n apigateway-demo --timeout=500s
+          kubectl wait --for=condition=Programmed llmproxy/demo-llm-proxy -n apigateway-demo --timeout=500s
+          kubectl wait --for=condition=Programmed llmprovidertemplate/openai-test-apikey -n apigateway-demo --timeout=500s
+          kubectl wait --for=condition=Programmed llmprovider/demo-llm-provider-apikey -n apigateway-demo --timeout=500s
+          kubectl wait --for=condition=Programmed llmproxy/demo-llm-proxy-apikey -n apigateway-demo --timeout=500s
+          kubectl wait --for=condition=Programmed mcp/everything-mcp-v1.0 -n apigateway-demo --timeout=500s
+          kubectl wait --for=condition=Programmed restapi/hello-sub-api -n apigateway-demo --timeout=500s
+          kubectl wait --for=condition=Programmed restapi/hello-apikey-api -n apigateway-demo --timeout=500s
+          kubectl wait --for=condition=Programmed subscriptionplan/demo-plan -n apigateway-demo --timeout=500s
+          echo "Waiting for subscriptionplan/demo-plan status.id..."
+          for i in $(seq 1 60); do
+            PLAN_ID=$(kubectl get subscriptionplan demo-plan -n apigateway-demo -o jsonpath='{.status.id}' || true)
+            if [ -n "${PLAN_ID}" ]; then
+              echo "demo-plan status.id=${PLAN_ID}"
+              break
+            fi
+            sleep 2
+          done
+          if [ -z "${PLAN_ID:-}" ]; then
+            echo "SubscriptionPlan demo-plan status.id is empty after wait"
+            kubectl get subscriptionplan demo-plan -n apigateway-demo -o yaml || true
+            exit 1
+          fi
+          kubectl apply -f - <<'EOF'
+          apiVersion: gateway.api-platform.wso2.com/v1alpha1
+          kind: Subscription
+          metadata:
+            name: demo-subscription
+            namespace: apigateway-demo
+            labels:
+              gateway.api-platform.wso2.com/restapi-target: wso2-crd
+          spec:
+            apiId: hello-sub-api
+            subscriptionPlanId: demo-plan
+            status: ACTIVE
+            subscriptionToken:
+              valueFrom:
+                  name: demo-management-secrets
+                  key: subscription-token
+          EOF
+          kubectl wait --for=condition=Programmed subscription/demo-subscription -n apigateway-demo --timeout=500s
+          kubectl wait --for=condition=Programmed apikey/demo-restapi-apikey -n apigateway-demo --timeout=500s
+          kubectl wait --for=condition=Programmed apikey/demo-llmprovider-apikey -n apigateway-demo --timeout=500s
+          kubectl wait --for=condition=Programmed apikey/demo-llmproxy-apikey -n apigateway-demo --timeout=500s
+
+      - name: Test LLM MCP ApiKey Subscription invocations via gateway-runtime
+        run: |
+          set -euo pipefail
+          pkill -f "kubectl port-forward.*8080:8080" || true
+          sleep 2
+          kubectl port-forward svc/test-gateway-gateway-gateway-runtime 8080:8080 &
+          PF_PID=$!
+          sleep 10
+
+          PORT=8080
+          REQ='{"model":"gpt-4","messages":[{"role":"user","content":"Hello from provider test"}]}'
+          RESP=$(curl -sS -w "\n%{http_code}" \
+            -H 'Content-Type: application/json' \
+            --request POST \
+            --url "http://localhost:${PORT}/llm-invoke-context/chat/completions" \
+            --data "${REQ}")
+          CODE=$(echo "${RESP}" | tail -n1)
+          BODY=$(echo "${RESP}" | sed '$d')
+          echo "POST /llm-invoke-context/chat/completions HTTP ${CODE}"
+          if [ "${CODE}" != "200" ]; then echo "${BODY}"; exit 1; fi
+          if ! printf '%s' "${BODY}" | grep -q 'chat.completion'; then echo "${BODY}"; exit 1; fi
+
+          RESP=$(curl -sS -w "\n%{http_code}" \
+            -H 'Content-Type: application/json' \
+            --request POST \
+            --url "http://localhost:${PORT}/proxy-invoke-test/chat/completions" \
+            --data "${REQ}")
+          CODE=$(echo "${RESP}" | tail -n1)
+          BODY=$(echo "${RESP}" | sed '$d')
+          echo "POST /proxy-invoke-test/chat/completions HTTP ${CODE}"
+          if [ "${CODE}" != "200" ]; then echo "${BODY}"; exit 1; fi
+          if ! printf '%s' "${BODY}" | grep -q 'chat.completion'; then echo "${BODY}"; exit 1; fi
+
+          REQ_APIKEY='{"model":"gpt-4","messages":[{"role":"user","content":"Hello from provider apikey test"}]}'
+          # LLM Provider API-key flow
+          LLMP_BAD=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H 'Content-Type: application/json' \
+            -H 'X-API-Key: wrong-api-key-not-valid' \
+            --request POST \
+            --url "http://localhost:${PORT}/llm-invoke-context-apikey/chat/completions" \
+            --data "${REQ_APIKEY}")
+          echo "POST /llm-invoke-context-apikey/chat/completions (wrong key): ${LLMP_BAD}"
+          if [ "${LLMP_BAD}" != "401" ] && [ "${LLMP_BAD}" != "403" ]; then exit 1; fi
+
+          LLMP_OK=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H 'Content-Type: application/json' \
+            -H 'X-API-Key: demo-llmprovider-apikey-value-1234567890-abcdef' \
+            --request POST \
+            --url "http://localhost:${PORT}/llm-invoke-context-apikey/chat/completions" \
+            --data "${REQ_APIKEY}")
+          echo "POST /llm-invoke-context-apikey/chat/completions (valid key): ${LLMP_OK}"
+          if [ "${LLMP_OK}" != "200" ]; then exit 1; fi
+
+          # LLM Proxy API-key flow
+          LLMPX_BAD=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H 'Content-Type: application/json' \
+            -H 'X-API-Key: wrong-api-key-not-valid' \
+            --request POST \
+            --url "http://localhost:${PORT}/proxy-invoke-test-apikey/chat/completions" \
+            --data "${REQ_APIKEY}")
+          echo "POST /proxy-invoke-test-apikey/chat/completions (wrong key): ${LLMPX_BAD}"
+          if [ "${LLMPX_BAD}" != "401" ] && [ "${LLMPX_BAD}" != "403" ]; then exit 1; fi
+
+          LLMPX_OK=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H 'Content-Type: application/json' \
+            -H 'X-API-Key: demo-llmproxy-apikey-value-1234567890-abcdef' \
+            --request POST \
+            --url "http://localhost:${PORT}/proxy-invoke-test-apikey/chat/completions" \
+            --data "${REQ_APIKEY}")
+          echo "POST /proxy-invoke-test-apikey/chat/completions (valid key): ${LLMPX_OK}"
+          if [ "${LLMPX_OK}" != "200" ]; then exit 1; fi
+
+          curl -sS -D /tmp/mcp-init-headers.txt -o /tmp/mcp-init-body.txt \
+            -H 'Content-Type: application/json' \
+            -H 'Accept: application/json, text/event-stream' \
+            --request POST \
+            --url "http://localhost:${PORT}/everything/mcp" \
+            --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{"roots":{"listChanged":true}},"clientInfo":{"name":"gateway-it-client","version":"1.0.0"}}}'
+
+          SESSION_ID=$(awk 'BEGIN{IGNORECASE=1} /^mcp-session-id:/ {print $2}' /tmp/mcp-init-headers.txt | tr -d '\r')
+          echo "SESSION_ID=${SESSION_ID}"
+          [ -n "${SESSION_ID}" ]
+
+          TOOL_BODY=$(curl -sS \
+            -H 'Content-Type: application/json' \
+            -H 'Accept: application/json, text/event-stream' \
+            -H "mcp-session-id: ${SESSION_ID}" \
+            --request POST \
+            --url "http://localhost:${PORT}/everything/mcp" \
+            --data '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"add","arguments":{"a":40,"b":60}}}')
+          echo "${TOOL_BODY}"
+          if ! printf '%s' "${TOOL_BODY}" | grep -q 'The sum of 40 and 60 is 100'; then exit 1; fi
+
+          UNAUTH=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${PORT}/hello-sub/new" -H 'Accept: application/json')
+          echo "GET /hello-sub/new (no subscription key): ${UNAUTH}"
+          # Gateway may return 401 Unauthorized or 403 Forbidden when the key is missing.
+          if [ "${UNAUTH}" != "401" ] && [ "${UNAUTH}" != "403" ]; then exit 1; fi
+
+          SUB_BAD=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${PORT}/hello-sub/new" \
+            -H 'Accept: application/json' -H 'My-Key: wrong-subscription-token-not-valid')
+          echo "GET /hello-sub/new (wrong subscription token): ${SUB_BAD}"
+          if [ "${SUB_BAD}" != "401" ] && [ "${SUB_BAD}" != "403" ]; then exit 1; fi
+
+          SUB_OK=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${PORT}/hello-sub/new" \
+            -H 'Accept: application/json' -H 'My-Key: demo-subscription-token-1234567890-abcdef')
+          echo "GET /hello-sub/new (with subscription token): ${SUB_OK}"
+          if [ "${SUB_OK}" != "200" ]; then exit 1; fi
+
+          AK_BAD=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${PORT}/hello-apikey/test" \
+            -H 'Accept: application/json' -H 'X-API-Key: wrong-api-key-not-valid')
+          echo "GET /hello-apikey/test (wrong API key): ${AK_BAD}"
+          if [ "${AK_BAD}" != "401" ]; then exit 1; fi
+
+          AK_OK=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${PORT}/hello-apikey/test" \
+            -H 'Accept: application/json' -H 'X-API-Key: demo-restapi-apikey-value-1234567890-abcdef')
+          echo "GET /hello-apikey/test (with API key): ${AK_OK}"
+          if [ "${AK_OK}" != "200" ]; then exit 1; fi
+
+          kill "${PF_PID}" || true
+          echo "LLM MCP ApiKey Subscription invocation tests passed!"
+
       - name: Test Gateway Helm Upgrade
         run: |
           echo "Updating ConfigMap to trigger Helm Upgrade..."
@@ -1514,6 +1724,67 @@ jobs:
             exit 1
           fi
           echo "RestApi deletion and route removal verified!"
+
+      - name: Cleanup demo management-resources (apigateway-demo)
+        run: |
+          set -euo pipefail
+          echo "Deleting demo LLM/MCP/ApiKey/Subscription workloads so finalizers reconcile while gateway is running..."
+          wait_for_delete() {
+            local resource="$1"
+            local timeout="${2:-180s}"
+            if ! kubectl wait --for=delete "${resource}" -n apigateway-demo --timeout="${timeout}"; then
+              echo "Timed out deleting ${resource}; dumping diagnostics..."
+              kubectl get "${resource}" -n apigateway-demo -o yaml || true
+              kubectl describe "${resource}" -n apigateway-demo || true
+              kubectl get events -n apigateway-demo --sort-by=.lastTimestamp | tail -n 50 || true
+              kubectl logs -n operator -l app.kubernetes.io/name=gateway-operator --tail=200 || true
+              return 1
+            fi
+          }
+
+          # Non-blocking deletes first.
+          kubectl delete apikey/demo-restapi-apikey -n apigateway-demo --ignore-not-found --wait=false
+          sleep 3
+          kubectl delete subscription/demo-subscription -n apigateway-demo --ignore-not-found --wait=false
+          sleep 3
+          kubectl delete subscriptionplan/demo-plan -n apigateway-demo --ignore-not-found --wait=false
+          sleep 3
+          kubectl delete restapi/hello-apikey-api -n apigateway-demo --ignore-not-found --wait=false
+          sleep 3
+          kubectl delete restapi/hello-sub-api -n apigateway-demo --ignore-not-found --wait=false
+          sleep 3
+          kubectl delete mcp/everything-mcp-v1.0 -n apigateway-demo --ignore-not-found --wait=false
+          sleep 3
+          kubectl delete llmproxy/demo-llm-proxy -n apigateway-demo --ignore-not-found --wait=false
+          sleep 3
+          kubectl delete llmprovider/demo-llm-provider -n apigateway-demo --ignore-not-found --wait=false
+          sleep 3
+          kubectl delete llmprovidertemplate/openai-test -n apigateway-demo --ignore-not-found --wait=false
+          sleep 3
+          kubectl delete managedsecret/demo-managed-secret -n apigateway-demo --ignore-not-found --wait=false
+          sleep 3
+
+          # Explicit waits with diagnostics.
+          wait_for_delete apikey/demo-restapi-apikey 180s
+          wait_for_delete subscription/demo-subscription 240s
+          wait_for_delete subscriptionplan/demo-plan 240s
+          wait_for_delete restapi/hello-apikey-api 240s
+          wait_for_delete restapi/hello-sub-api 240s
+          wait_for_delete mcp/everything-mcp-v1.0 180s
+          wait_for_delete llmproxy/demo-llm-proxy 240s
+          wait_for_delete llmprovider/demo-llm-provider 240s
+          wait_for_delete llmprovidertemplate/openai-test 180s
+          wait_for_delete managedsecret/demo-managed-secret 180s
+
+          kubectl delete namespace apigateway-demo --ignore-not-found --wait=false
+          if ! kubectl wait --for=delete namespace/apigateway-demo --timeout=400s; then
+            echo "apigateway-demo namespace deletion failed or timed out; diagnostic dump follows."
+            kubectl get ns apigateway-demo -o yaml || true
+            kubectl get all -n apigateway-demo -o wide || true
+            kubectl get events -n apigateway-demo --sort-by=.lastTimestamp | tail -n 50 || true
+            kubectl logs -n operator -l app.kubernetes.io/name=gateway-operator --tail=200 || true
+            exit 1
+          fi
 
       - name: Delete test APIGateway
         run: |

@@ -458,9 +458,9 @@ func (r *K8sGatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 	// Match APIGateway: updates/deletes to the values ConfigMap must re-run Helm (values hash changes).
 	configMapPred := predicate.Funcs{
-		CreateFunc: func(event.CreateEvent) bool { return false },
-		UpdateFunc: func(event.UpdateEvent) bool { return true },
-		DeleteFunc: func(event.DeleteEvent) bool { return true },
+		CreateFunc:  func(event.CreateEvent) bool { return false },
+		UpdateFunc:  func(event.UpdateEvent) bool { return true },
+		DeleteFunc:  func(event.DeleteEvent) bool { return true },
 		GenericFunc: func(event.GenericEvent) bool { return false },
 	}
 	return ctrl.NewControllerManagedBy(mgr).

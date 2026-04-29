@@ -1,0 +1,71 @@
+# LLM flow aligned with gateway IT:
+# - llm-provider-templates.feature: template `openai-test` (create payload).
+# - llm-provider.feature / llm-proxies.feature: provider upstream
+#   `http://mock-openapi:4010/openai/v1`, api-key `Bearer sk-test-key`,
+#   `accessControl.mode: allow_all`.
+# Template document precedes provider in this file; the operator also retries
+# / re-queues when the gateway has not yet stored the template or provider.
+# Requires `mock-openapi` (and optional `05b0` HTTPS mock) reachable from the gateway.
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProviderTemplate
+metadata:
+  name: openai-test
+  namespace: apigateway-demo
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  displayName: OpenAI
+  promptTokens:
+    location: payload
+    identifier: $.usage.prompt_tokens
+  completionTokens:
+    location: payload
+    identifier: $.usage.completion_tokens
+  totalTokens:
+    location: payload
+    identifier: $.usage.total_tokens
+  remainingTokens:
+    location: header
+    identifier: x-ratelimit-remaining-tokens
+  requestModel:
+    location: payload
+    identifier: $.model
+  responseModel:
+    location: payload
+    identifier: $.model
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProvider
+metadata:
+  name: demo-llm-provider
+  namespace: apigateway-demo
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  displayName: OpenAI Provider
+  version: v1.0
+  template: openai-test
+  context: /llm-invoke-context
+  accessControl:
+    mode: allow_all
+  upstream:
+    url: http://mock-openapi:4010/openai/v1
+    auth:
+      type: api-key
+      header: Authorization
+      value:
+        value: Bearer sk-test-key
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProxy
+metadata:
+  name: demo-llm-proxy
+  namespace: apigateway-demo
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  displayName: Lifecycle LLM Proxy
+  version: v1.0
+  context: /proxy-invoke-test
+  provider:
+    id: demo-llm-provider
