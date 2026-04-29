@@ -49,42 +49,40 @@ type ConnectionConfig struct {
 func ResolveConnectionConfig(defaults ConnectionConfig, overrides map[string]interface{}) (ConnectionConfig, error) {
 	cfg := normalizeConnectionConfig(defaults)
 
-	if overrides != nil {
-		for key, value := range overrides {
-			switch key {
-			case "brokers":
-				brokers, err := parseBrokerList(value)
-				if err != nil {
-					return ConnectionConfig{}, fmt.Errorf("invalid kafka broker-driver config %q: %w", key, err)
-				}
-				cfg.Brokers = brokers
-			case "tls":
-				enabled, ok := value.(bool)
-				if !ok {
-					return ConnectionConfig{}, fmt.Errorf("invalid kafka broker-driver config %q: expected bool", key)
-				}
-				cfg.TLS = enabled
-			case "sasl_mechanism":
-				mechanism, ok := value.(string)
-				if !ok {
-					return ConnectionConfig{}, fmt.Errorf("invalid kafka broker-driver config %q: expected string", key)
-				}
-				cfg.SASLMechanism = mechanism
-			case "sasl_username":
-				username, ok := value.(string)
-				if !ok {
-					return ConnectionConfig{}, fmt.Errorf("invalid kafka broker-driver config %q: expected string", key)
-				}
-				cfg.SASLUsername = username
-			case "sasl_password":
-				password, ok := value.(string)
-				if !ok {
-					return ConnectionConfig{}, fmt.Errorf("invalid kafka broker-driver config %q: expected string", key)
-				}
-				cfg.SASLPassword = password
-			default:
-				return ConnectionConfig{}, fmt.Errorf("unsupported kafka broker-driver config %q", key)
+	for key, value := range overrides {
+		switch key {
+		case "brokers":
+			brokers, err := parseBrokerList(value)
+			if err != nil {
+				return ConnectionConfig{}, fmt.Errorf("invalid kafka broker-driver config %q: %w", key, err)
 			}
+			cfg.Brokers = brokers
+		case "tls":
+			enabled, ok := value.(bool)
+			if !ok {
+				return ConnectionConfig{}, fmt.Errorf("invalid kafka broker-driver config %q: expected bool", key)
+			}
+			cfg.TLS = enabled
+		case "sasl_mechanism":
+			mechanism, ok := value.(string)
+			if !ok {
+				return ConnectionConfig{}, fmt.Errorf("invalid kafka broker-driver config %q: expected string", key)
+			}
+			cfg.SASLMechanism = mechanism
+		case "sasl_username":
+			username, ok := value.(string)
+			if !ok {
+				return ConnectionConfig{}, fmt.Errorf("invalid kafka broker-driver config %q: expected string", key)
+			}
+			cfg.SASLUsername = username
+		case "sasl_password":
+			password, ok := value.(string)
+			if !ok {
+				return ConnectionConfig{}, fmt.Errorf("invalid kafka broker-driver config %q: expected string", key)
+			}
+			cfg.SASLPassword = password
+		default:
+			return ConnectionConfig{}, fmt.Errorf("unsupported kafka broker-driver config %q", key)
 		}
 	}
 

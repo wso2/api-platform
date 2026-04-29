@@ -19,6 +19,7 @@
 package controlplane
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"log/slog"
@@ -591,16 +592,28 @@ func createDeletionTestClient() (*Client, *storage.ConfigStore, *mockStorageForD
 	store := storage.NewConfigStore()
 	db := newMockStorageForDeletion()
 	hub := &mockControlPlaneEventHub{}
+	snapshotUpdater := &mockSubscriptionSnapshotUpdater{}
 
 	client := &Client{
-		logger:    logger,
-		store:     store,
-		db:        db,
-		eventHub:  hub,
-		gatewayID: "test-gateway",
+		logger:                      logger,
+		store:                       store,
+		db:                          db,
+		eventHub:                    hub,
+		gatewayID:                   "test-gateway",
+		subscriptionSnapshotUpdater: snapshotUpdater,
 	}
 
 	return client, store, db, hub
+}
+
+type mockSubscriptionSnapshotUpdater struct {
+	updateCallCount int
+	updateErr       error
+}
+
+func (m *mockSubscriptionSnapshotUpdater) UpdateSnapshot(context.Context) error {
+	m.updateCallCount++
+	return m.updateErr
 }
 
 // TestClient_handleAPIDeletedEvent_InvalidPayload tests invalid event handling
@@ -799,6 +812,10 @@ func TestClient_handleAPIDeletedEvent_DBOnlyConfig(t *testing.T) {
 
 func TestClient_handleWebSubAPIDeletedEvent_OrphanedCleanup(t *testing.T) {
 	client, _, db, hub := createDeletionTestClient()
+	snapshotUpdater, ok := client.subscriptionSnapshotUpdater.(*mockSubscriptionSnapshotUpdater)
+	if !ok {
+		t.Fatal("expected mock subscription snapshot updater")
+	}
 
 	apiID := "non-existent-websub-api"
 	event := map[string]interface{}{
@@ -839,6 +856,9 @@ func TestClient_handleWebSubAPIDeletedEvent_OrphanedCleanup(t *testing.T) {
 	}
 	if hub.publishedEvents[0].event.EventID != "corr-websub-orphan" {
 		t.Errorf("expected correlation ID corr-websub-orphan, got %s", hub.publishedEvents[0].event.EventID)
+	}
+	if snapshotUpdater.updateCallCount != 1 {
+		t.Errorf("expected subscription snapshot refresh once, got %d", snapshotUpdater.updateCallCount)
 	}
 }
 

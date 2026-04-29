@@ -1653,8 +1653,8 @@ func (c *Client) updateXDSSnapshotAsync(apiID, correlationID string, isOrphaned,
 	}()
 }
 
-// cleanupOrphanedResources attempts to clean up stale resources when API config doesn't exist
-func (c *Client) cleanupOrphanedResources(apiID, correlationID string) {
+// cleanupOrphanedResources attempts to clean up stale resources when API config doesn't exist.
+func (c *Client) cleanupOrphanedResources(apiID, correlationID string) error {
 	c.logger.Info("API configuration not found on this gateway, checking for stale resources",
 		slog.String("api_id", apiID),
 		slog.String("correlation_id", correlationID),
@@ -1666,6 +1666,7 @@ func (c *Client) cleanupOrphanedResources(apiID, correlationID string) {
 			slog.String("api_id", apiID),
 			slog.Any("error", err),
 		)
+		return err
 	} else {
 		c.logger.Debug("Cleaned up any stale API keys from database",
 			slog.String("api_id", apiID),
@@ -1677,6 +1678,7 @@ func (c *Client) cleanupOrphanedResources(apiID, correlationID string) {
 			slog.String("api_id", apiID),
 			slog.Any("error", err),
 		)
+		return err
 	} else {
 		c.logger.Debug("Cleaned up any stale subscriptions from database",
 			slog.String("api_id", apiID),
@@ -1691,12 +1693,14 @@ func (c *Client) cleanupOrphanedResources(apiID, correlationID string) {
 	}
 	if err := c.eventHub.PublishEvent(c.gatewayID, evt); err != nil {
 		c.logger.Error("Failed to publish orphan cleanup event", slog.Any("error", err))
+		return err
 	}
 
 	c.logger.Info("Successfully processed stale resource cleanup",
 		slog.String("api_id", apiID),
 		slog.String("correlation_id", correlationID),
 	)
+	return nil
 }
 
 // performFullAPIDeletion performs complete deletion of API and all related resources
@@ -1803,7 +1807,13 @@ func (c *Client) handleAPIDeletedEvent(event map[string]interface{}) {
 	if err != nil {
 		if storage.IsNotFoundError(err) {
 			// Config not found - proceed with orphan cleanup
-			c.cleanupOrphanedResources(apiID, deletedEvent.CorrelationID)
+			if cleanupErr := c.cleanupOrphanedResources(apiID, deletedEvent.CorrelationID); cleanupErr != nil {
+				c.logger.Error("Failed to clean up orphaned API resources",
+					slog.String("api_id", apiID),
+					slog.String("correlation_id", deletedEvent.CorrelationID),
+					slog.Any("error", cleanupErr),
+				)
+			}
 			return
 		}
 		// Real storage error (DB failure, etc.) - log and abort
@@ -2688,7 +2698,15 @@ func (c *Client) handleWebSubAPIDeletedEvent(event map[string]any) {
 		if storage.IsNotFoundError(err) {
 			// Config not found locally. Run the same orphan cleanup flow used for
 			// generic API deletions so stale in-memory/xDS state still gets removed.
-			c.cleanupOrphanedResources(apiID, deletedEvent.CorrelationID)
+			if cleanupErr := c.cleanupOrphanedResources(apiID, deletedEvent.CorrelationID); cleanupErr != nil {
+				c.logger.Error("Failed to clean up orphaned WebSub API resources",
+					slog.String("api_id", apiID),
+					slog.String("correlation_id", deletedEvent.CorrelationID),
+					slog.Any("error", cleanupErr),
+				)
+				return
+			}
+			c.refreshSubscriptionSnapshot()
 			return
 		}
 		// Real storage error (DB failure, etc.) - log and abort.
