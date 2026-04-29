@@ -668,6 +668,41 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 						},
 					})
 				}
+				if providerLevel.Global.Cost != nil && providerLevel.Global.Cost.Enabled {
+					costLimit := providerLevel.Global.Cost
+					duration, err := formatRateLimitDuration(costLimit.Reset.Duration, costLimit.Reset.Unit)
+					if err != nil {
+						return "", fmt.Errorf("invalid cost reset window: %w", err)
+					}
+					policies = append(policies, api.LLMPolicy{
+						Name:    llmCostBasedRateLimitPolicyName,
+						Version: "",
+						Paths: []api.LLMPolicyPath{
+							{
+								Path:    "/*",
+								Methods: []api.LLMPolicyPathMethods{"*"},
+								Params: map[string]interface{}{
+									"budgetLimits": []map[string]interface{}{
+										{"amount": costLimit.Amount, "duration": duration},
+									},
+								},
+							},
+						},
+					})
+					if !hasPolicy(policies, llmCostPolicyName) {
+						policies = append(policies, api.LLMPolicy{
+							Name:    llmCostPolicyName,
+							Version: "",
+							Paths: []api.LLMPolicyPath{
+								{
+									Path:    "/*",
+									Methods: []api.LLMPolicyPathMethods{"*"},
+									Params:  map[string]interface{}{},
+								},
+							},
+						})
+					}
+				}
 			} else if providerLevel.ResourceWise != nil {
 				// Step 2.2 Handle resource-wise rate limiting
 				defaultLimit := &providerLevel.ResourceWise.Default
@@ -779,6 +814,35 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 							},
 						})
 					}
+					if r.Limit.Cost != nil && r.Limit.Cost.Enabled {
+						costLimit := r.Limit.Cost
+						duration, err := formatRateLimitDuration(costLimit.Reset.Duration, costLimit.Reset.Unit)
+						if err != nil {
+							return "", fmt.Errorf("invalid cost reset window for resource %s: %w", r.Resource, err)
+						}
+						addOrAppendPolicyPath(&policies, llmCostBasedRateLimitPolicyName, "", api.LLMPolicyPath{
+							Path:    r.Resource,
+							Methods: []api.LLMPolicyPathMethods{"*"},
+							Params: map[string]interface{}{
+								"budgetLimits": []map[string]interface{}{
+									{"amount": costLimit.Amount, "duration": duration},
+								},
+							},
+						})
+						if !hasPolicy(policies, llmCostPolicyName) {
+							policies = append(policies, api.LLMPolicy{
+								Name:    llmCostPolicyName,
+								Version: "",
+								Paths: []api.LLMPolicyPath{
+									{
+										Path:    "/*",
+										Methods: []api.LLMPolicyPathMethods{"*"},
+										Params:  map[string]interface{}{},
+									},
+								},
+							})
+						}
+					}
 				}
 			}
 		}
@@ -787,11 +851,183 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 		consumerLevel := rateLimit.ConsumerLevel
 		if consumerLevel != nil {
 			if consumerLevel.Global != nil {
-				// Handle global rate limiting
-				// TODO: Convert global rate limit to policy format
+				if consumerLevel.Global.Token != nil && consumerLevel.Global.Token.Enabled {
+					tokenLimit := consumerLevel.Global.Token
+					duration, err := formatRateLimitDuration(tokenLimit.Reset.Duration, tokenLimit.Reset.Unit)
+					if err != nil {
+						return "", fmt.Errorf("invalid consumer token reset window: %w", err)
+					}
+					policies = append(policies, api.LLMPolicy{
+						Name:    tokenBasedRateLimitPolicyName,
+						Version: "",
+						Paths: []api.LLMPolicyPath{
+							{
+								Path:    "/*",
+								Methods: []api.LLMPolicyPathMethods{"*"},
+								Params: map[string]interface{}{
+									"totalTokenLimits": []map[string]interface{}{
+										{
+											"count":    tokenLimit.Count,
+											"duration": duration,
+										},
+									},
+									"consumerBased": true,
+								},
+							},
+						},
+					})
+				}
+				if consumerLevel.Global.Request != nil && consumerLevel.Global.Request.Enabled {
+					requestLimit := consumerLevel.Global.Request
+					duration, err := formatRateLimitDuration(requestLimit.Reset.Duration, requestLimit.Reset.Unit)
+					if err != nil {
+						return "", fmt.Errorf("invalid consumer request reset window: %w", err)
+					}
+					policies = append(policies, api.LLMPolicy{
+						Name:    advancedRateLimitPolicyName,
+						Version: "",
+						Paths: []api.LLMPolicyPath{
+							{
+								Path:    "/*",
+								Methods: []api.LLMPolicyPathMethods{"*"},
+								Params: map[string]interface{}{
+									"quotas": []map[string]interface{}{
+										{
+											"name": "consumer-request-limit",
+											"limits": []map[string]interface{}{
+												{
+													"limit":    requestLimit.Count,
+													"duration": duration,
+												},
+											},
+											"keyExtraction": []map[string]interface{}{
+												{"type": "routename"},
+												{"type": "metadata", "key": "x-wso2-application-id"},
+											},
+										},
+									},
+								},
+							},
+						},
+					})
+				}
+				if consumerLevel.Global.Cost != nil && consumerLevel.Global.Cost.Enabled {
+					costLimit := consumerLevel.Global.Cost
+					duration, err := formatRateLimitDuration(costLimit.Reset.Duration, costLimit.Reset.Unit)
+					if err != nil {
+						return "", fmt.Errorf("invalid consumer cost reset window: %w", err)
+					}
+					policies = append(policies, api.LLMPolicy{
+						Name:    llmCostBasedRateLimitPolicyName,
+						Version: "",
+						Paths: []api.LLMPolicyPath{
+							{
+								Path:    "/*",
+								Methods: []api.LLMPolicyPathMethods{"*"},
+								Params: map[string]interface{}{
+									"budgetLimits": []map[string]interface{}{
+										{"amount": costLimit.Amount, "duration": duration},
+									},
+									"consumerBased": true,
+								},
+							},
+						},
+					})
+					if !hasPolicy(policies, llmCostPolicyName) {
+						policies = append(policies, api.LLMPolicy{
+							Name:    llmCostPolicyName,
+							Version: "",
+							Paths: []api.LLMPolicyPath{
+								{
+									Path:    "/*",
+									Methods: []api.LLMPolicyPathMethods{"*"},
+									Params:  map[string]interface{}{},
+								},
+							},
+						})
+					}
+				}
 			} else if consumerLevel.ResourceWise != nil {
-				// Handle resource-wise rate limiting
-				// TODO: Convert resource-wise rate limit to policy format
+				for _, r := range consumerLevel.ResourceWise.Resources {
+					if r.Limit.Token != nil && r.Limit.Token.Enabled {
+						tokenLimit := r.Limit.Token
+						duration, err := formatRateLimitDuration(tokenLimit.Reset.Duration, tokenLimit.Reset.Unit)
+						if err != nil {
+							return "", fmt.Errorf("invalid consumer token reset window for resource %s: %w", r.Resource, err)
+						}
+						addOrAppendPolicyPath(&policies, tokenBasedRateLimitPolicyName, "", api.LLMPolicyPath{
+							Path:    r.Resource,
+							Methods: []api.LLMPolicyPathMethods{"*"},
+							Params: map[string]interface{}{
+								"totalTokenLimits": []map[string]interface{}{
+									{
+										"count":    tokenLimit.Count,
+										"duration": duration,
+									},
+								},
+								"consumerBased": true,
+							},
+						})
+					}
+					if r.Limit.Request != nil && r.Limit.Request.Enabled {
+						requestLimit := r.Limit.Request
+						duration, err := formatRateLimitDuration(requestLimit.Reset.Duration, requestLimit.Reset.Unit)
+						if err != nil {
+							return "", fmt.Errorf("invalid consumer request reset window for resource %s: %w", r.Resource, err)
+						}
+						addOrAppendPolicyPath(&policies, advancedRateLimitPolicyName, "", api.LLMPolicyPath{
+							Path:    r.Resource,
+							Methods: []api.LLMPolicyPathMethods{"*"},
+							Params: map[string]interface{}{
+								"quotas": []map[string]interface{}{
+									{
+										"name": "consumer-request-limit",
+										"limits": []map[string]interface{}{
+											{
+												"limit":    requestLimit.Count,
+												"duration": duration,
+											},
+										},
+										"keyExtraction": []map[string]interface{}{
+											{"type": "routename"},
+											{"type": "metadata", "key": "x-wso2-application-id"},
+										},
+									},
+								},
+							},
+						})
+					}
+					if r.Limit.Cost != nil && r.Limit.Cost.Enabled {
+						costLimit := r.Limit.Cost
+						duration, err := formatRateLimitDuration(costLimit.Reset.Duration, costLimit.Reset.Unit)
+						if err != nil {
+							return "", fmt.Errorf("invalid consumer cost reset window for resource %s: %w", r.Resource, err)
+						}
+						addOrAppendPolicyPath(&policies, llmCostBasedRateLimitPolicyName, "", api.LLMPolicyPath{
+							Path:    r.Resource,
+							Methods: []api.LLMPolicyPathMethods{"*"},
+							Params: map[string]interface{}{
+								"budgetLimits": []map[string]interface{}{
+									{"amount": costLimit.Amount, "duration": duration},
+								},
+								"consumerBased": true,
+							},
+						})
+						if !hasPolicy(policies, llmCostPolicyName) {
+							policies = append(policies, api.LLMPolicy{
+								Name:    llmCostPolicyName,
+								Version: "",
+								Paths: []api.LLMPolicyPath{
+									{
+										Path:    "/*",
+										Methods: []api.LLMPolicyPathMethods{"*"},
+										Params:  map[string]interface{}{},
+									},
+								},
+							})
+						}
+					}
+				}
 			}
 		}
 	}
@@ -897,9 +1133,17 @@ func normalizePolicyVersionToMajor(version string) string {
 }
 
 func addOrAppendPolicyPath(policies *[]api.LLMPolicy, name, version string, path api.LLMPolicyPath) {
+	newConsumerBased, _ := path.Params["consumerBased"].(bool)
+
 	for i := range *policies {
 		if (*policies)[i].Name == name && (*policies)[i].Version == version {
-			// TODO: Temporary
+			// Only merge entries that share the same scope (backend vs consumer)
+			if len((*policies)[i].Paths) > 0 {
+				existingConsumerBased, _ := (*policies)[i].Paths[0].Params["consumerBased"].(bool)
+				if existingConsumerBased != newConsumerBased {
+					continue // different scope — skip, look for another entry
+				}
+			}
 			for _, existingPath := range (*policies)[i].Paths {
 				if existingPath.Path == path.Path {
 					// Keep first occurrence and avoid duplicates.
@@ -916,6 +1160,15 @@ func addOrAppendPolicyPath(policies *[]api.LLMPolicy, name, version string, path
 		Version: version,
 		Paths:   []api.LLMPolicyPath{path},
 	})
+}
+
+func hasPolicy(policies []api.LLMPolicy, name string) bool {
+	for _, p := range policies {
+		if p.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func isBoolTrue(v *bool) bool {

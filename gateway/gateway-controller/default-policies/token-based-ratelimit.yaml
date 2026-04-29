@@ -1,5 +1,5 @@
 name: token-based-ratelimit
-version: v1.0.2
+version: v1.0.3
 description: |
   Enforces token-based rate limits for LLM traffic by resolving token extraction
   paths from provider templates and delegating enforcement to the
@@ -75,6 +75,15 @@ parameters:
             description: Specifies the duration window for the limit as a Go
               duration string, for example "1s", "1m", "1h", or "24h".
             pattern: "^[-+]?(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|µs|ms|s|m|h))+$"
+    consumerBased:
+      type: boolean
+      x-wso2-policy-advanced-param: false
+      description: |
+        When true, rate limits are applied per consumer (GenAI application) identified
+        by the x-wso2-application-id metadata key set by the api-key-auth policy.
+        Each application gets its own independent token counter.
+        When false (default), a single shared limit applies across all consumers.
+      default: false
   oneOf:
     - required: ["promptTokenLimits"]
       not:
