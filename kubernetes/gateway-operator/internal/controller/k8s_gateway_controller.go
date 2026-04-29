@@ -33,11 +33,17 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	contctrl "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
@@ -72,6 +78,7 @@ func NewK8sGatewayReconciler(cl client.Client, scheme *runtime.Scheme, cfg *conf
 //+kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=gateways,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=gateways/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=gateway.networking.k8s.io,resources=gateways/finalizers,verbs=update
+//+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 
 func (r *K8sGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	gw := &gatewayv1.Gateway{}
@@ -407,15 +414,63 @@ func parseK8sGatewayAPISelector(gw *gatewayv1.Gateway) (*apiv1.APISelector, erro
 	return &s, nil
 }
 
+// enqueueK8sGatewaysForHelmValuesConfigMap enqueues reconciliation for Gateways that reference
+// the Helm values ConfigMap via gateway.api-platform.wso2.com/helm-values-configmap (same as
+// APIGateway spec.configRef for inline gateway values).
+func (r *K8sGatewayReconciler) enqueueK8sGatewaysForHelmValuesConfigMap(ctx context.Context, obj client.Object) []reconcile.Request {
+	cm, ok := obj.(*corev1.ConfigMap)
+	if !ok {
+		return nil
+	}
+	logger := log.FromContext(ctx)
+	gwList := &gatewayv1.GatewayList{}
+	if err := r.List(ctx, gwList, client.InNamespace(cm.Namespace)); err != nil {
+		logger.Error(err, "failed to list Gateways for ConfigMap event",
+			"configMap", cm.Name,
+			"namespace", cm.Namespace)
+		return nil
+	}
+	var requests []reconcile.Request
+	for i := range gwList.Items {
+		gw := &gwList.Items[i]
+		if gw.Annotations == nil {
+			continue
+		}
+		if gw.Annotations[AnnK8sGatewayHelmValuesConfigMap] != cm.Name {
+			continue
+		}
+		logger.Info("enqueue Gateway for Helm values ConfigMap change",
+			"gateway", gw.Name,
+			"namespace", gw.Namespace,
+			"configMap", cm.Name)
+		requests = append(requests, reconcile.Request{
+			NamespacedName: types.NamespacedName{Namespace: gw.Namespace, Name: gw.Name},
+		})
+	}
+	return requests
+}
+
 // SetupWithManager registers the Kubernetes Gateway controller.
 func (r *K8sGatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	opts := contctrl.Options{MaxConcurrentReconciles: r.Config.Reconciliation.MaxConcurrentReconciles}
 	if opts.MaxConcurrentReconciles <= 0 {
 		opts.MaxConcurrentReconciles = 1
 	}
+	// Match APIGateway: updates/deletes to the values ConfigMap must re-run Helm (values hash changes).
+	configMapPred := predicate.Funcs{
+		CreateFunc: func(event.CreateEvent) bool { return false },
+		UpdateFunc: func(event.UpdateEvent) bool { return true },
+		DeleteFunc: func(event.DeleteEvent) bool { return true },
+		GenericFunc: func(event.GenericEvent) bool { return false },
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		WithOptions(opts).
 		For(&gatewayv1.Gateway{}, builder.WithPredicates(k8sGatewayReconcilePredicate())).
+		Watches(
+			&corev1.ConfigMap{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueK8sGatewaysForHelmValuesConfigMap),
+			builder.WithPredicates(configMapPred),
+		).
 		Complete(r)
 }
 
