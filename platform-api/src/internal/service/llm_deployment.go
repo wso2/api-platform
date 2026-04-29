@@ -766,6 +766,37 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 						},
 					})
 				}
+				if defaultLimit.Cost != nil && defaultLimit.Cost.Enabled {
+					costLimit := defaultLimit.Cost
+					duration, err := formatRateLimitDuration(costLimit.Reset.Duration, costLimit.Reset.Unit)
+					if err != nil {
+						return "", fmt.Errorf("invalid cost reset window: %w", err)
+					}
+					policies = append(policies, api.LLMPolicy{
+						Name:    llmCostBasedRateLimitPolicyName,
+						Version: "",
+						Paths: []api.LLMPolicyPath{
+							{
+								Path:    "/*",
+								Methods: []api.LLMPolicyPathMethods{"*"},
+								Params: map[string]interface{}{
+									"budgetLimits": []map[string]interface{}{
+										{"amount": costLimit.Amount, "duration": duration},
+									},
+								},
+							},
+						},
+					})
+					if !hasPolicy(policies, llmCostPolicyName) {
+						policies = append(policies, api.LLMPolicy{
+							Name:    llmCostPolicyName,
+							Version: "",
+							Paths: []api.LLMPolicyPath{
+								{Path: "/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: map[string]interface{}{}},
+							},
+						})
+					}
+				}
 
 				// Step 2.2.2 Resource-wise rate limit
 				for _, r := range providerLevel.ResourceWise.Resources {

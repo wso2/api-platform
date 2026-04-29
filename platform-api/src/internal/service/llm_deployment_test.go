@@ -274,6 +274,67 @@ func TestGenerateYAML_BackendOnlyCostLimit(t *testing.T) {
 	t.Logf("Generated YAML:\n%s", yaml)
 }
 
+func TestGenerateYAML_BackendResourceWiseDefaultCostLimit(t *testing.T) {
+	rl := &model.LLMRateLimitingConfig{
+		ProviderLevel: &model.RateLimitingScopeConfig{
+			ResourceWise: &model.ResourceWiseRateLimitingConfig{
+				Default: model.RateLimitingLimitConfig{
+					Cost: &model.CostRateLimit{Enabled: true, Amount: 0.10, Reset: model.RateLimitResetWindow{Duration: 24, Unit: "hour"}},
+				},
+			},
+		},
+	}
+	yaml, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(yaml, "llm-cost-based-ratelimit") {
+		t.Error("expected llm-cost-based-ratelimit in generated YAML")
+	}
+	if !strings.Contains(yaml, "budgetLimits") {
+		t.Error("expected budgetLimits in generated YAML")
+	}
+	if strings.Contains(yaml, "consumerBased") {
+		t.Error("expected no consumerBased for backend-only cost limit")
+	}
+	t.Logf("Generated YAML:\n%s", yaml)
+}
+
+func TestGenerateYAML_BackendPerResourceCostLimit(t *testing.T) {
+	rl := &model.LLMRateLimitingConfig{
+		ProviderLevel: &model.RateLimitingScopeConfig{
+			ResourceWise: &model.ResourceWiseRateLimitingConfig{
+				Default: model.RateLimitingLimitConfig{},
+				Resources: []model.RateLimitingResourceLimit{
+					{
+						Resource: "/v1/messages",
+						Limit: model.RateLimitingLimitConfig{
+							Cost: &model.CostRateLimit{Enabled: true, Amount: 0.02, Reset: model.RateLimitResetWindow{Duration: 1, Unit: "hour"}},
+						},
+					},
+				},
+			},
+		},
+	}
+	yaml, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(yaml, "llm-cost-based-ratelimit") {
+		t.Error("expected llm-cost-based-ratelimit in generated YAML")
+	}
+	if !strings.Contains(yaml, "budgetLimits") {
+		t.Error("expected budgetLimits in generated YAML")
+	}
+	if !strings.Contains(yaml, "/v1/messages") {
+		t.Error("expected resource path /v1/messages in generated YAML")
+	}
+	if strings.Contains(yaml, "consumerBased") {
+		t.Error("expected no consumerBased for backend-only cost limit")
+	}
+	t.Logf("Generated YAML:\n%s", yaml)
+}
+
 // ---------------------------------------------------------------------------
 // Backend + consumer for individual limit types
 // ---------------------------------------------------------------------------
