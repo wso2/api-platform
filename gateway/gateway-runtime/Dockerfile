@@ -20,7 +20,7 @@
 # Combines Envoy Router and Policy Engine into a single container
 
 # Stage 1: Builder Base
-FROM --platform=$BUILDPLATFORM golang:1.26.1-bookworm AS builder-base
+FROM --platform=$BUILDPLATFORM golang:1.26.2-bookworm AS builder-base
 ARG BUILDARCH
 ARG VERSION=unknown
 ARG GIT_COMMIT=unknown
@@ -147,7 +147,7 @@ RUN pip3 install --no-cache-dir \
     -r /tmp/requirements.txt
 
 # Stage 3b: dlv installer (builds dlv for the debug stage)
-FROM golang:1.26.1-bookworm AS debug-dlv-builder
+FROM golang:1.26.2-bookworm AS debug-dlv-builder
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go install github.com/go-delve/delve/cmd/dlv@v1.26.0

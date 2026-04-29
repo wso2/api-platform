@@ -17,7 +17,7 @@
 # --------------------------------------------------------------------
 
 # Gateway Builder Image
-FROM --platform=$BUILDPLATFORM golang:1.26.1-bookworm AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.2-bookworm AS builder
 ARG TARGETARCH
 
 # Build arguments for version information
@@ -74,7 +74,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     -o /usr/local/bin/gateway-builder \
     ./cmd/builder
 
-FROM golang:1.26.1-bookworm
+FROM golang:1.26.2-bookworm
 
 # Install runtime dependencies
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \

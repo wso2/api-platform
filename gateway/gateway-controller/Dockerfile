@@ -1,6 +1,6 @@
 # Stage 1: Build the Go application
 # Using Debian-based image for better cross-compilation support
-FROM --platform=$BUILDPLATFORM golang:1.26.1-bookworm AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.2-bookworm AS builder
 ARG TARGETARCH
 ARG VERSION=0.0.1-SNAPSHOT
 ARG GIT_COMMIT=unknown
@@ -75,7 +75,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Stage: debug (select with --target debug; NOT part of the default build)
 # Full Go image needed to install dlv via go install; acceptable for dev-only use.
 # Runs as root — dlv requires ptrace; container security settings handle isolation.
-FROM golang:1.26.1-bookworm AS debug
+FROM golang:1.26.2-bookworm AS debug
 WORKDIR /app
 
 # Install dlv (Delve debugger)

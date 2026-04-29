@@ -1,11 +1,11 @@
 module github.com/wso2/api-platform/tests/mock-servers/mock-platform-api
 
-go 1.25.7
+go 1.26.2
 
 require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/jackc/pgx/v5 v5.8.0
+	github.com/jackc/pgx/v5 v5.9.2
 	github.com/mattn/go-sqlite3 v1.14.34
 )
 
