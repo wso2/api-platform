@@ -26,9 +26,14 @@ GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-runtime
 
-.PHONY: help build build-coverage-image build-debug push clean build-and-push-multiarch test test-go test-python test-pythonbridge proto test-proto
+.PHONY: help build build-coverage-image build-debug push clean build-and-push-multiarch test test-go test-python test-pythonbridge proto test-proto setup-python-dev
 
 PYTHON ?= python3
+
+# Python SDK source: "pypi" (default, from PyPI registry) or "local" (from monorepo source).
+# Developers iterating on the SDK can override:  make build PYTHON_SDK_SOURCE=local
+PYTHON_SDK_SOURCE ?= pypi
+
 GO_BIN := $(shell go env GOPATH)/bin
 PROTO_DIR := api
 PROTO_FILE := proto/python_executor.proto
@@ -58,6 +63,7 @@ build: test ## Build Gateway Runtime Docker image using buildx
 		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		--build-arg PYTHON_SDK_SOURCE=$(PYTHON_SDK_SOURCE) \
 		--target production \
 		-t $(IMAGE_NAME):$(VERSION) \
 		-t $(IMAGE_NAME):latest \
@@ -84,6 +90,7 @@ build-debug: ## Build debug Gateway Runtime image for remote debugging with dlv 
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg ENABLE_DEBUG=true \
+		--build-arg PYTHON_SDK_SOURCE=$(PYTHON_SDK_SOURCE) \
 		--target debug \
 		-t $(IMAGE_NAME)-debug:$(VERSION) \
 		-t $(IMAGE_NAME)-debug:latest \
@@ -109,6 +116,7 @@ build-coverage-image: test ## Build Gateway Runtime Docker image with coverage i
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg ENABLE_COVERAGE=true \
+		--build-arg PYTHON_SDK_SOURCE=$(PYTHON_SDK_SOURCE) \
 		--target production \
 		-t $(IMAGE_NAME)-coverage:$(VERSION) \
 		.
@@ -135,6 +143,7 @@ build-and-push-multiarch: ## Build and push Gateway Runtime Docker image for mul
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		--build-arg PYTHON_SDK_SOURCE=$(PYTHON_SDK_SOURCE) \
 		--target production \
 		-t $(IMAGE_NAME):$(VERSION) \
 		-t $(IMAGE_NAME):latest \
@@ -173,6 +182,9 @@ test-proto: proto ## Verify protobuf bindings regenerate and compile cleanly
 	git diff --exit-code -- $(PROTO_GENERATED)
 	cd policy-engine && go test ./internal/pythonbridge/... -run TestDoesNotExist
 	cd python-executor && $(PYTHON) -m py_compile proto/*.py
+
+setup-python-dev: ## Install Python executor dev dependencies with local SDK (editable)
+	cd python-executor && $(PYTHON) -m pip install -e ../../../sdk-python -r requirements.txt
 
 clean: ## Clean generated policy-engine files, and restore go.mod/go.sum
 	@rm -rf target

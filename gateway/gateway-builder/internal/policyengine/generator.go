@@ -133,12 +133,6 @@ func generatePythonExecutorBase(srcDir string, outputDir string) error {
 		return fmt.Errorf("failed to copy Python executor source: %w", err)
 	}
 
-	sdkPythonSrcDir := filepath.Join(srcDir, "..", "..", "..", "sdk-python", "src", "apip_sdk_core")
-	sdkPythonDestDir := filepath.Join(pythonOutputDir, "apip_sdk_core")
-	if err := copyDir(sdkPythonSrcDir, sdkPythonDestDir); err != nil {
-		return fmt.Errorf("failed to copy Python SDK source: %w", err)
-	}
-
 	return nil
 }
 

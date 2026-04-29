@@ -366,20 +366,6 @@ func TestUpdateGoMod_InvalidGoMod(t *testing.T) {
 
 // ==== GenerateCode tests ====
 
-func createPythonSDKCoreDir(t *testing.T, rootDir string) {
-	t.Helper()
-
-	sdkPythonDir := filepath.Join(rootDir, "sdk-python", "src", "apip_sdk_core")
-	testutils.CreateDir(t, filepath.Join(sdkPythonDir, "policy", "v1alpha2"))
-	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "__init__.py"), "# package root\n")
-	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "py.typed"), "")
-	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "policy", "__init__.py"), "# policy package\n")
-	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "policy", "v1alpha2", "__init__.py"), "# version package\n")
-	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "policy", "v1alpha2", "types.py"), "# core policy types\n")
-	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "policy", "v1alpha2", "actions.py"), "# core policy actions\n")
-	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "policy", "v1alpha2", "policy.py"), "# core policy interfaces\n")
-}
-
 func TestGenerateCode_Success(t *testing.T) {
 	rootDir := t.TempDir()
 	tmpDir := filepath.Join(rootDir, "gateway", "gateway-runtime", "policy-engine")
@@ -392,7 +378,6 @@ func TestGenerateCode_Success(t *testing.T) {
 	// Create python-executor sibling directory (required by generatePythonExecutorBase)
 	pythonExecDir := filepath.Join(rootDir, "gateway", "gateway-runtime", "python-executor")
 	testutils.CreateDir(t, pythonExecDir)
-	createPythonSDKCoreDir(t, rootDir)
 
 	// Create policy directory
 	policyPath := testutils.CreatePolicyDir(t, tmpDir, "ratelimit", "v1.0.0")
@@ -435,7 +420,6 @@ func TestGenerateCode_EmptyPolicies(t *testing.T) {
 	// Create python-executor sibling directory
 	pythonExecDir := filepath.Join(rootDir, "gateway", "gateway-runtime", "python-executor")
 	testutils.CreateDir(t, pythonExecDir)
-	createPythonSDKCoreDir(t, rootDir)
 
 	// Empty policies
 	policies := []*types.DiscoveredPolicy{}
@@ -449,7 +433,7 @@ func TestGenerateCode_EmptyPolicies(t *testing.T) {
 	assert.FileExists(t, filepath.Join(mainPkgDir, "build_info.go"))
 }
 
-func TestGenerateCode_CopiesPythonExecutorBaseFiles(t *testing.T) {
+func TestGenerateCode_CopiesExecutorWithoutSDK(t *testing.T) {
 	rootDir := t.TempDir()
 	tmpDir := filepath.Join(rootDir, "gateway", "gateway-runtime", "policy-engine")
 
@@ -463,21 +447,15 @@ func TestGenerateCode_CopiesPythonExecutorBaseFiles(t *testing.T) {
 	testutils.WriteFile(t, filepath.Join(pythonExecDir, "executor", "__init__.py"), "# executor package\n")
 	testutils.WriteFile(t, filepath.Join(pythonExecDir, "proto", "python_executor_pb2.py"), "# generated proto\n")
 
-	createPythonSDKCoreDir(t, rootDir)
-
 	outputDir := t.TempDir()
 	err := GenerateCode(tmpDir, nil, outputDir)
 	require.NoError(t, err)
 
 	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "executor", "__init__.py"))
-	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "apip_sdk_core", "__init__.py"))
-	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "apip_sdk_core", "py.typed"))
-	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "apip_sdk_core", "policy", "__init__.py"))
-	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "apip_sdk_core", "policy", "v1alpha2", "types.py"))
-	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "apip_sdk_core", "policy", "v1alpha2", "actions.py"))
-	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "apip_sdk_core", "policy", "v1alpha2", "__init__.py"))
-	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "apip_sdk_core", "policy", "v1alpha2", "policy.py"))
 	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "proto", "python_executor_pb2.py"))
+
+	// SDK must NOT be file-copied — it is pip-installed at Docker build time
+	assert.NoDirExists(t, filepath.Join(outputDir, "python-executor", "apip_sdk_core"))
 }
 
 func TestGenerateCode_MissingCmdDirectory(t *testing.T) {
@@ -490,7 +468,6 @@ func TestGenerateCode_MissingCmdDirectory(t *testing.T) {
 	// Create python-executor sibling directory
 	pythonExecDir := filepath.Join(rootDir, "gateway", "gateway-runtime", "python-executor")
 	testutils.CreateDir(t, pythonExecDir)
-	createPythonSDKCoreDir(t, rootDir)
 
 	policies := []*types.DiscoveredPolicy{
 		testutils.NewLocalDiscoveredPolicy("ratelimit", "v1.0.0", "/policies/ratelimit", "github.com/example/ratelimit"),
@@ -512,7 +489,6 @@ func TestGenerateCode_MissingGoMod(t *testing.T) {
 	// Create python-executor sibling directory
 	pythonExecDir := filepath.Join(rootDir, "gateway", "gateway-runtime", "python-executor")
 	testutils.CreateDir(t, pythonExecDir)
-	createPythonSDKCoreDir(t, rootDir)
 
 	// No go.mod file
 	policyPath := testutils.CreatePolicyDir(t, tmpDir, "ratelimit", "v1.0.0")
@@ -538,7 +514,6 @@ func TestGenerateCode_MultiplePolicies(t *testing.T) {
 	// Create python-executor sibling directory
 	pythonExecDir := filepath.Join(rootDir, "gateway", "gateway-runtime", "python-executor")
 	testutils.CreateDir(t, pythonExecDir)
-	createPythonSDKCoreDir(t, rootDir)
 
 	// Create multiple policy directories
 	policy1Path := testutils.CreatePolicyDir(t, tmpDir, "ratelimit", "v1.0.0")
