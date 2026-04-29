@@ -82,6 +82,8 @@ func ResolveConnectionConfig(defaults ConnectionConfig, overrides map[string]int
 					return ConnectionConfig{}, fmt.Errorf("invalid kafka broker-driver config %q: expected string", key)
 				}
 				cfg.SASLPassword = password
+			default:
+				return ConnectionConfig{}, fmt.Errorf("unsupported kafka broker-driver config %q", key)
 			}
 		}
 	}
@@ -165,8 +167,6 @@ func normalizeConnectionConfig(cfg ConnectionConfig) ConnectionConfig {
 
 	cfg.Brokers = brokers
 	cfg.SASLMechanism = strings.ToLower(strings.TrimSpace(cfg.SASLMechanism))
-	cfg.SASLUsername = strings.TrimSpace(cfg.SASLUsername)
-	cfg.SASLPassword = strings.TrimSpace(cfg.SASLPassword)
 	return cfg
 }
 

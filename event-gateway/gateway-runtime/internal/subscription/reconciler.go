@@ -75,7 +75,7 @@ func (r *Reconciler) Reconcile(ctx context.Context) error {
 		var sub Subscription
 		if err := json.Unmarshal(msg.Value, &sub); err != nil {
 			slog.Error("Failed to unmarshal subscription during reconciliation", "error", err)
-			return nil
+			return fmt.Errorf("failed to unmarshal subscription during reconciliation: %w", err)
 		}
 		_ = r.store.Add(&sub)
 		if r.callback != nil {
