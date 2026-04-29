@@ -61,12 +61,12 @@ type DeploymentContent struct {
 type DeploymentStatus string
 
 const (
-	DeploymentStatusDeployed   DeploymentStatus = "DEPLOYED"
-	DeploymentStatusUndeployed DeploymentStatus = "UNDEPLOYED"
+	DeploymentStatusDeployed    DeploymentStatus = "DEPLOYED"
+	DeploymentStatusUndeployed  DeploymentStatus = "UNDEPLOYED"
 	DeploymentStatusDeploying   DeploymentStatus = "DEPLOYING"
 	DeploymentStatusUndeploying DeploymentStatus = "UNDEPLOYING"
 	DeploymentStatusFailed      DeploymentStatus = "FAILED"
-	DeploymentStatusArchived   DeploymentStatus = "ARCHIVED" // Derived state: exists in history but not in status table
+	DeploymentStatusArchived    DeploymentStatus = "ARCHIVED" // Derived state: exists in history but not in status table
 )
 
 // DeploymentInfo is a lightweight representation of a deployment
@@ -121,12 +121,13 @@ type WebSubAPIDeploymentYAML struct {
 
 // WebSubAPIDeploymentSpec represents the spec section of the WebSub API deployment YAML
 type WebSubAPIDeploymentSpec struct {
-	DisplayName string                       `yaml:"displayName"`
-	Version     string                       `yaml:"version"`
-	Context     string                       `yaml:"context"`
-	Vhosts      *WebSubAPIDeploymentVhosts   `yaml:"vhosts,omitempty"`
-	Channels    []WebSubAPIDeploymentChannel `yaml:"channels,omitempty"`
-	Policies    []Policy                     `yaml:"policies,omitempty"`
+	DisplayName string                     `yaml:"displayName"`
+	Version     string                     `yaml:"version"`
+	Context     string                     `yaml:"context"`
+	Vhosts      *WebSubAPIDeploymentVhosts `yaml:"vhosts,omitempty"`
+	Hub         WebSubHub                  `json:"hub" yaml:"hub"`
+	Receiver    *WebSubReceiver            `json:"receiver,omitempty" yaml:"receiver,omitempty"`
+	Delivery    *WebSubDelivery            `json:"delivery,omitempty" yaml:"delivery,omitempty"`
 }
 
 // WebSubAPIDeploymentVhosts represents vhost configuration in the WebSub API deployment YAML
@@ -139,4 +140,35 @@ type WebSubAPIDeploymentVhosts struct {
 type WebSubAPIDeploymentChannel struct {
 	Name   string `yaml:"name"`
 	Method string `yaml:"method"`
+}
+
+// WebSubDelivery Delivery configuration for the WebSub API - handles outbound event delivery to subscribers.
+type WebSubDelivery struct {
+	// Policies List of policies applied when delivering events to subscriber callback URLs (e.g., hmac-signature-validation)
+	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+}
+
+// WebSubHub Hub configuration for the WebSub API - handles subscriber management and event fan-out.
+type WebSubHub struct {
+	// Channels List of topic channels available for subscription
+	Channels []HubChannel `json:"channels" yaml:"channels"`
+
+	// Policies List of policies applied at the hub level (e.g., api-key-auth for subscribers)
+	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+}
+
+// HubChannel A subscribable topic channel within the WebSub hub.
+type HubChannel struct {
+	// Name Channel name or topic identifier relative to API context.
+	Name string `json:"name" yaml:"name"`
+	// Method The method by which the channel is identified (e.g., "SUB" for subscription-based, "PUB" for publish-only)
+	Method string `json:"method" yaml:"method"`
+	// Policies List of policies applied only to this channel (e.g., rbac)
+	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+}
+
+// WebSubReceiver Receiver configuration for the WebSub API - handles inbound event publishing from publishers.
+type WebSubReceiver struct {
+	// Policies List of policies applied to inbound webhook requests (e.g., hmac-signature-validation)
+	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 }

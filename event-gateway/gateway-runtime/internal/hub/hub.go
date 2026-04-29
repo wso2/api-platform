@@ -38,19 +38,20 @@ type ChannelChainKeySet struct {
 
 // ChannelBinding holds the runtime state for a registered channel.
 type ChannelBinding struct {
-	APIID             string
-	Name              string
-	Mode              string // "websub" or "protocol-mediation"
-	Context           string
-	Version           string
-	Vhost             string
-	SubscribeChainKey string
-	InboundChainKey   string
-	OutboundChainKey  string
-	BrokerDriverTopic string
-	Ordering          string                        // "ordered" or "unordered"
-	Channels          map[string]string             // channel-name → Kafka topic (WebSubApi only)
-	ChannelChainKeys  map[string]ChannelChainKeySet // channel-name → per-channel chain keys
+	APIID               string
+	Name                string
+	Mode                string // "websub" or "protocol-mediation"
+	Context             string
+	Version             string
+	Vhost               string
+	SubscribeChainKey   string
+	InboundChainKey     string
+	OutboundChainKey    string
+	BrokerDriverTopic   string
+	Ordering            string                        // "ordered" or "unordered"
+	Channels            map[string]string             // channel-name → Kafka topic (WebSubApi only)
+	KafkaTopicToChannel map[string]string             // Kafka topic → channel-name (reverse of Channels, cached)
+	ChannelChainKeys    map[string]ChannelChainKeySet // channel-name → per-channel chain keys
 }
 
 // Hub is the central message router. It holds the policy engine reference and
@@ -70,9 +71,16 @@ func NewHub(eng *engine.Engine) *Hub {
 }
 
 // RegisterBinding adds a channel binding to the hub.
+// It automatically builds the KafkaTopicToChannel reverse map from b.Channels.
 func (h *Hub) RegisterBinding(b ChannelBinding) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if len(b.Channels) > 0 {
+		b.KafkaTopicToChannel = make(map[string]string, len(b.Channels))
+		for channelName, topic := range b.Channels {
+			b.KafkaTopicToChannel[topic] = channelName
+		}
+	}
 	h.bindings[b.Name] = &b
 }
 
@@ -138,7 +146,7 @@ func (h *Hub) ProcessSubscribe(ctx context.Context, bindingName string, msg *con
 			}
 			if result.ShortCircuited {
 				logShortCircuit("Subscribe request short-circuited by hub policy", bindingName, binding.SubscribeChainKey, result.ImmediateResponse)
-				return nil, true, nil
+				return immediateResponseToMessage(result.ImmediateResponse), true, nil
 			}
 			if err := ApplyRequestHeaderResult(result, msg); err != nil {
 				return nil, false, fmt.Errorf("failed to apply subscribe header result: %w", err)
@@ -158,7 +166,7 @@ func (h *Hub) ProcessSubscribe(ctx context.Context, bindingName string, msg *con
 				}
 				if result.ShortCircuited {
 					logShortCircuit("Subscribe request short-circuited by channel policy", bindingName, keys.SubscribeChainKey, result.ImmediateResponse)
-					return nil, true, nil
+					return immediateResponseToMessage(result.ImmediateResponse), true, nil
 				}
 				if err := ApplyRequestHeaderResult(result, msg); err != nil {
 					return nil, false, fmt.Errorf("failed to apply subscribe channel header result: %w", err)
@@ -190,7 +198,7 @@ func (h *Hub) ProcessInbound(ctx context.Context, bindingName string, msg *conne
 			}
 			if result.ShortCircuited {
 				logShortCircuit("Inbound message short-circuited by hub policy", bindingName, binding.InboundChainKey, result.ImmediateResponse)
-				return nil, true, nil
+				return immediateResponseToMessage(result.ImmediateResponse), true, nil
 			}
 			if err := ApplyRequestHeaderResult(result, msg); err != nil {
 				return nil, false, fmt.Errorf("failed to apply inbound header result: %w", err)
@@ -202,7 +210,7 @@ func (h *Hub) ProcessInbound(ctx context.Context, bindingName string, msg *conne
 					return nil, false, fmt.Errorf("inbound body policy execution failed: %w", err)
 				}
 				if bodyResult.ShortCircuited {
-					return nil, true, nil
+					return immediateResponseToMessage(bodyResult.ImmediateResponse), true, nil
 				}
 				if err := ApplyRequestBodyResult(bodyResult, msg); err != nil {
 					return nil, false, fmt.Errorf("failed to apply inbound body result: %w", err)
@@ -223,7 +231,7 @@ func (h *Hub) ProcessInbound(ctx context.Context, bindingName string, msg *conne
 				}
 				if result.ShortCircuited {
 					logShortCircuit("Inbound message short-circuited by channel policy", bindingName, keys.InboundChainKey, result.ImmediateResponse)
-					return nil, true, nil
+					return immediateResponseToMessage(result.ImmediateResponse), true, nil
 				}
 				if err := ApplyRequestHeaderResult(result, msg); err != nil {
 					return nil, false, fmt.Errorf("failed to apply inbound channel header result: %w", err)
@@ -235,7 +243,7 @@ func (h *Hub) ProcessInbound(ctx context.Context, bindingName string, msg *conne
 						return nil, false, fmt.Errorf("inbound channel body policy execution failed: %w", err)
 					}
 					if bodyResult.ShortCircuited {
-						return nil, true, nil
+						return immediateResponseToMessage(bodyResult.ImmediateResponse), true, nil
 					}
 					if err := ApplyRequestBodyResult(bodyResult, msg); err != nil {
 						return nil, false, fmt.Errorf("failed to apply inbound channel body result: %w", err)
@@ -292,7 +300,7 @@ func (h *Hub) ProcessOutbound(ctx context.Context, bindingName string, msg *conn
 	// Apply channel-level outbound chain if present.
 	// msg.Topic here is the Kafka topic; resolve back to channel name.
 	if msg.Topic != "" && len(binding.ChannelChainKeys) > 0 {
-		channelName := resolveChannelName(binding.Channels, msg.Topic)
+		channelName := resolveChannelName(binding.KafkaTopicToChannel, binding.Channels, msg.Topic)
 		if channelName != "" {
 			if keys, ok := binding.ChannelChainKeys[channelName]; ok && keys.OutboundChainKey != "" {
 				chain := h.engine.GetChain(keys.OutboundChainKey)
@@ -330,15 +338,41 @@ func (h *Hub) ProcessOutbound(ctx context.Context, bindingName string, msg *conn
 	return msg, false, nil
 }
 
-// resolveChannelName reverse-maps a Kafka topic name to the channel name
-// using the binding's channel-name → Kafka-topic map.
-func resolveChannelName(channels map[string]string, kafkaTopic string) string {
+// resolveChannelName reverse-maps a Kafka topic name to the channel name.
+// It first checks the pre-built kafkaTopicToChannel reverse map for an O(1) lookup,
+// and falls back to an O(n) scan over channels only if the cached map is absent.
+func resolveChannelName(kafkaTopicToChannel map[string]string, channels map[string]string, kafkaTopic string) string {
+	if len(kafkaTopicToChannel) > 0 {
+		return kafkaTopicToChannel[kafkaTopic]
+	}
 	for channelName, topic := range channels {
 		if topic == kafkaTopic {
 			return channelName
 		}
 	}
 	return ""
+}
+
+// immediateResponseToMessage encodes an ImmediateResponseResult from the policy engine
+// into a connectors.Message so callers can write the policy-provided HTTP response.
+// The status code is stored in Metadata["status_code"] (int), body in Value,
+// and response headers (single-value) in Headers ([]string slice per key).
+// Returns nil when resp is nil.
+func immediateResponseToMessage(resp *engine.ImmediateResponseResult) *connectors.Message {
+	if resp == nil {
+		return nil
+	}
+	headers := make(map[string][]string, len(resp.Headers))
+	for k, v := range resp.Headers {
+		headers[k] = []string{v}
+	}
+	return &connectors.Message{
+		Value:   resp.Body,
+		Headers: headers,
+		Metadata: map[string]interface{}{
+			"status_code": resp.StatusCode,
+		},
+	}
 }
 
 // logShortCircuit keeps Info logs to metadata only; ImmediateResponse.Body is

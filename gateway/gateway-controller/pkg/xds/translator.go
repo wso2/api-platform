@@ -494,7 +494,7 @@ func (t *Translator) TranslateConfigs(
 					Body: &core.DataSource{
 						Specifier: &core.DataSource_InlineString{
 							// TODO: (renuka) handle error codes in a separate issue: https://github.com/wso2/api-platform/issues/1637
-							InlineString: `{"error":"Not Found","code":"404RT001"}`,
+							InlineString: `{"error":"Not Found"}`,
 						},
 					},
 				},

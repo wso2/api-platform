@@ -28,7 +28,7 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/wso2/api-platform"
+Homepage = "https://wso2.com/api-platform/policy-hub"
 Repository = "https://github.com/wso2/api-platform"
 Issues = "https://github.com/wso2/api-platform/issues"
 Changelog = "https://github.com/wso2/api-platform/blob/main/sdk-python/CHANGELOG.md"

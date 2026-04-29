@@ -24,6 +24,8 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/dynamic-endpoint@v1
   - name: host-rewrite
     gomodule: github.com/wso2/gateway-controllers/policies/host-rewrite@v1
+  - name: interceptor-service
+    gomodule: github.com/wso2/gateway-controllers/policies/interceptor-service@v0
   - name: json-schema-guardrail
     gomodule: github.com/wso2/gateway-controllers/policies/json-schema-guardrail@v1
   - name: json-xml-mediator

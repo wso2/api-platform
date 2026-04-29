@@ -106,7 +106,7 @@ func (h *HubHandler) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if shortCircuited {
-		http.Error(w, "forbidden by policy", http.StatusForbidden)
+		writePolicyResponse(w, nil, http.StatusForbidden, "forbidden by policy")
 		return
 	}
 
@@ -210,7 +210,7 @@ func (h *HubHandler) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if shortCircuited {
-		http.Error(w, "forbidden by policy", http.StatusForbidden)
+		writePolicyResponse(w, nil, http.StatusForbidden, "forbidden by policy")
 		return
 	}
 
@@ -342,7 +342,7 @@ func (h *WebhookReceiverHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	}
 	if shortCircuited {
 		slog.Info("Inbound request rejected by policy", "channel", channelName, "binding", h.bindingName)
-		http.Error(w, "forbidden by policy", http.StatusForbidden)
+		writePolicyResponse(w, processed, http.StatusForbidden, "forbidden by policy")
 		return
 	}
 
@@ -353,6 +353,33 @@ func (h *WebhookReceiverHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	}
 
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// writePolicyResponse writes the HTTP response from a short-circuited policy execution.
+// If msg is non-nil and carries a status code in Metadata["status_code"], that status is used
+// along with any headers and body from the message. Otherwise the fallback status and body are used.
+func writePolicyResponse(w http.ResponseWriter, msg *connectors.Message, fallbackStatus int, fallbackBody string) {
+	if msg != nil {
+		statusCode := fallbackStatus
+		if sc, ok := msg.Metadata["status_code"]; ok {
+			if code, ok := sc.(int); ok && code > 0 {
+				statusCode = code
+			}
+		}
+		for k, vals := range msg.Headers {
+			for _, v := range vals {
+				w.Header().Add(k, v)
+			}
+		}
+		if len(msg.Value) > 0 {
+			w.WriteHeader(statusCode)
+			_, _ = w.Write(msg.Value)
+			return
+		}
+		w.WriteHeader(statusCode)
+		return
+	}
+	http.Error(w, fallbackBody, fallbackStatus)
 }
 
 func (h *WebhookReceiverHandler) publishToBrokerDriver(ctx context.Context, kafkaTopic string, msg *connectors.Message) error {

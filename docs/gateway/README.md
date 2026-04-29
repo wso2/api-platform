@@ -70,4 +70,5 @@ You can extend the gateway with your own policies or include specific policies f
 | [Analytics](analytics/) | Analytics integrations (Moesif) |
 | [REST APIs](../rest-apis/gateway/) | REST API authentication and usage |
 | [Policies and Guardrails](https://github.com/wso2/gateway-controllers/blob/main/docs/README.md) | Gateway policies and guardrails for API traffic control |
+| [Policy Languages and Runtimes](policy-languages-and-runtimes.md) | Dual-language policy development guide (Go and Python) |
 | [Immutable Gateway](immutable-gateway.md) | File-based, GitOps-native gateway configuration |

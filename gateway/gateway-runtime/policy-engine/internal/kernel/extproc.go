@@ -171,7 +171,7 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 							"content-type": "application/json",
 						}),
 						// TODO: (renuka) handle error codes in a separate issue: https://github.com/wso2/api-platform/issues/1637
-						Body: []byte(`{"error":"Internal Server Error","code":"500PE001"}`),
+						Body: []byte(`{"error":"Internal Server Error"}`),
 					},
 				},
 			}, nil

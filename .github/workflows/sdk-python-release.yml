@@ -1,0 +1,195 @@
+name: Python SDK Release
+
+# Manual-only release gate.
+# Trigger via Actions → "Run workflow", provide the version (e.g. 0.1.0).
+# The workflow builds, validates, tags, and publishes to PyPI using
+# the repository secret PYPI_API_TOKEN.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: >
+          Release version (e.g. 0.1.0). Must match [0-9]+\.[0-9]+\.[0-9]+.
+          Do NOT prefix with v.
+        required: true
+        type: string
+      dry_run:
+        description: >
+          Dry run — build and validate but do NOT publish or create the git tag.
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  # ─── 1. Validate inputs ────────────────────────────────────────────────────
+  validate:
+    name: Validate version input
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - name: Check version format
+        id: check
+        run: |
+          VERSION="${{ inputs.version }}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version '$VERSION' is not in MAJOR.MINOR.PATCH format."
+            exit 1
+          fi
+          TAG="sdk/python/v${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}"         >> "$GITHUB_OUTPUT"
+          echo "Version: ${VERSION}  |  Tag: ${TAG}"
+
+  # ─── 2. Build & verify ─────────────────────────────────────────────────────
+  build:
+    name: Build distribution
+    needs: validate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk-python
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: pip install --upgrade build twine
+
+      - name: Pin version in pyproject.toml
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" pyproject.toml
+          # Verify the pin actually took effect
+          grep -q "^version = \"${VERSION}\"" pyproject.toml || {
+            echo "::error::Failed to pin version to ${VERSION} in pyproject.toml"
+            exit 1
+          }
+          echo "Pinned version to ${VERSION}"
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Verify distribution metadata
+        run: python -m twine check --strict dist/*
+
+      - name: Run smoke tests against built wheel
+        run: |
+          pip install dist/apip_sdk_core-*.whl
+          python -m unittest discover -s tests -v
+
+      - name: Upload distribution artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-dist-${{ needs.validate.outputs.version }}
+          path: sdk-python/dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  # ─── 3. Tag the commit ─────────────────────────────────────────────────────
+  tag:
+    name: Create git tag
+    needs: [validate, build]
+    runs-on: ubuntu-latest
+    if: ${{ inputs.dry_run == false }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Abort if tag already exists
+        run: |
+          TAG="${{ needs.validate.outputs.tag }}"
+          if git rev-parse "$TAG" > /dev/null 2>&1; then
+            echo "::error::Tag $TAG already exists. Bump the version."
+            exit 1
+          fi
+
+      - name: Create and push tag
+        run: |
+          TAG="${{ needs.validate.outputs.tag }}"
+          VERSION="${{ needs.validate.outputs.version }}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "apip-sdk-core ${VERSION}"
+          git push origin "$TAG"
+
+  # ─── 4. Publish to PyPI ────────────────────────────────────────────────────
+  publish-pypi:
+    name: Publish to PyPI
+    needs: [validate, build, tag]
+    runs-on: ubuntu-latest
+    if: ${{ inputs.dry_run == false }}
+    environment:
+      name: pypi
+      url: https://pypi.org/p/apip-sdk-core
+    steps:
+      - name: Download distribution artefacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist-${{ needs.validate.outputs.version }}
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+  # ─── 5. Create GitHub Release ──────────────────────────────────────────────
+  github-release:
+    name: Create GitHub Release
+    needs: [validate, build, tag, publish-pypi]
+    runs-on: ubuntu-latest
+    if: ${{ inputs.dry_run == false }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Download distribution artefacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist-${{ needs.validate.outputs.version }}
+          path: dist/
+
+      - name: Extract changelog entry
+        id: changelog
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          # Pull the section for this version out of sdk-python/CHANGELOG.md
+          NOTES=$(awk "/^## \[${VERSION}\]/{found=1; next} found && /^## /{exit} found{print}" sdk-python/CHANGELOG.md)
+          if [ -z "$NOTES" ]; then
+            NOTES="See [CHANGELOG.md](https://github.com/wso2/api-platform/blob/main/sdk-python/CHANGELOG.md) for details."
+          fi
+          # Write multiline string to GITHUB_OUTPUT
+          {
+            echo "notes<<EOF"
+            echo "$NOTES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.validate.outputs.tag }}
+          name: "apip-sdk-core ${{ needs.validate.outputs.version }}"
+          body: ${{ steps.changelog.outputs.notes }}
+          files: dist/*
+          draft: false
+          prerelease: false
