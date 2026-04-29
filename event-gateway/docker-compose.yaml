@@ -18,7 +18,7 @@
 
 services:
   gateway-controller:
-    image: ghcr.io/wso2/api-platform/event-gateway-controller:0.5.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/event-gateway-controller:0.5.0
     command: ["-config", "/etc/gateway-controller/config.toml"]
     ports:
       - "9090:9090"    # Management API
@@ -45,7 +45,7 @@ services:
       - egw-network
 
   event-gateway:
-    image: ghcr.io/wso2/api-platform/event-gateway-runtime:0.5.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/event-gateway-runtime:0.5.0
     ports:
       - "8080:8080"   # WebSub HTTP
       - "8443:8443"   # WebSub HTTPS
