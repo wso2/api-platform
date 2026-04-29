@@ -163,7 +163,7 @@ eventGateway:
   controller:
     image:
       repository: ghcr.io/wso2/api-platform/event-gateway-controller
-      tag: "0.2.0-SNAPSHOT"
+      tag: "0.5.0-SNAPSHOT"
       pullPolicy: Always
     imagePullSecrets: []
     service:
@@ -282,7 +282,7 @@ eventGateway:
   gatewayRuntime:
     image:
       repository: ghcr.io/wso2/api-platform/event-gateway-runtime
-      tag: "0.2.0-SNAPSHOT"
+      tag: "0.5.0-SNAPSHOT"
       pullPolicy: Always
     imagePullSecrets: []
     service:

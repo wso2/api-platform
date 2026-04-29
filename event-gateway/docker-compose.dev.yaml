@@ -18,7 +18,7 @@
 
 services:
   gateway-controller:
-    image: ghcr.io/wso2/api-platform/event-gateway-controller:0.2.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/event-gateway-controller:0.5.0-SNAPSHOT
     build:
       context: ../gateway/gateway-controller
       dockerfile: Dockerfile
@@ -53,7 +53,7 @@ services:
       - egw-network
 
   event-gateway:
-    image: ghcr.io/wso2/api-platform/event-gateway-runtime:0.2.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/event-gateway-runtime:0.5.0-SNAPSHOT
     build:
       context: gateway-runtime
       dockerfile: Dockerfile
