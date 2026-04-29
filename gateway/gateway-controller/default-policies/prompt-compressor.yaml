@@ -1,5 +1,5 @@
 name: prompt-compressor
-version: v0.1.0
+version: v0.9.0
 displayName: Prompt Compressor
 description: |
   Compresses prompt text just before the upstream LLM call to reduce token usage.
