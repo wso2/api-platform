@@ -269,14 +269,10 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 									operationRegistry[targetKey] = targetOp
 								}
 
-								templateParams, err := buildTemplateParams(tmpl, targetPath)
-								if err != nil {
-									return nil, fmt.Errorf("failed to build template params: %w", err)
-								}
 								pol := api.Policy{
 									Name:    llmPol.Name,
 									Version: llmPol.Version,
-									Params:  mergeParams(pathEntry.Params, templateParams),
+									Params:  copyParams(pathEntry.Params),
 								}
 								appendOperationPolicy(targetOp, pol)
 								attachedPolicyPaths[targetPath] = true
@@ -510,14 +506,10 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 										continue
 									}
 
-									templateParams, err := buildTemplateParams(tmpl, targetPath)
-									if err != nil {
-										return nil, fmt.Errorf("failed to build template params: %w", err)
-									}
 									pol := api.Policy{
 										Name:    llmPol.Name,
 										Version: llmPol.Version,
-										Params:  mergeParams(pathEntry.Params, templateParams),
+										Params:  copyParams(pathEntry.Params),
 									}
 									appendOperationPolicy(targetOp, pol)
 									attachedPolicyPaths[targetPath] = true
@@ -615,14 +607,10 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 										operationRegistry[targetKey] = targetOp
 									}
 
-									templateParams, err := buildTemplateParams(tmpl, targetPath)
-									if err != nil {
-										return nil, fmt.Errorf("failed to build template params: %w", err)
-									}
 									pol := api.Policy{
 										Name:    llmPol.Name,
 										Version: llmPol.Version,
-										Params:  mergeParams(pathEntry.Params, templateParams),
+										Params:  copyParams(pathEntry.Params),
 									}
 									appendOperationPolicy(targetOp, pol)
 									attachedPolicyPaths[targetPath] = true
@@ -791,6 +779,19 @@ func mergeParams(base map[string]interface{}, extra map[string]interface{}) *map
 		merged[k] = v
 	}
 	return &merged
+}
+
+// copyParams creates a shallow copy of the parameters map and returns a pointer to it.
+// Returns nil if the input map is nil or empty.
+func copyParams(params map[string]interface{}) *map[string]interface{} {
+	if len(params) == 0 {
+		return nil
+	}
+	copied := make(map[string]interface{}, len(params))
+	for k, v := range params {
+		copied[k] = v
+	}
+	return &copied
 }
 
 func appendOperationPolicy(op *api.Operation, pol api.Policy) {
