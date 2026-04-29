@@ -36,7 +36,7 @@ from executor.policy_loader import PolicyLoader
 from executor.translator import Translator
 import proto.python_executor_pb2 as proto
 import proto.python_executor_pb2_grpc as proto_grpc
-from wso2_gateway_policy_sdk import (
+from apip_sdk_core import (
     BodyProcessingMode,
     ExecutionContext,
     HeaderProcessingMode,

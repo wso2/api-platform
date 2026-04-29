@@ -584,25 +584,25 @@ func TestTranslator_WildcardRegexBoundary(t *testing.T) {
 	translator := NewTranslator(logger, routerCfg, nil, cfg)
 
 	type wildcardCase struct {
-		context    string
-		apiVersion string
-		path       string
+		context        string
+		apiVersion     string
+		path           string
 		shouldMatch    []string
 		shouldNotMatch []string
 	}
 
 	cases := []wildcardCase{
 		{
-			context:    "/weather/$version",
-			apiVersion: "v1.0",
-			path:       "/*",
+			context:        "/weather/$version",
+			apiVersion:     "v1.0",
+			path:           "/*",
 			shouldMatch:    []string{"/weather/v1.0", "/weather/v1.0/", "/weather/v1.0/forecast", "/weather/v1.0/a/b/c"},
 			shouldNotMatch: []string{"/weather/v1.0beta", "/weather/v1.0extra"},
 		},
 		{
-			context:    "/api",
-			apiVersion: "v1",
-			path:       "/*",
+			context:        "/api",
+			apiVersion:     "v1",
+			path:           "/*",
 			shouldMatch:    []string{"/api", "/api/", "/api/users", "/api/v2/items"},
 			shouldNotMatch: []string{"/api2", "/apixyz"},
 		},
@@ -1790,9 +1790,11 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 					DisplayName: "WebSub Test API",
 					Version:     "v1.0",
 					Context:     "/webhook",
-					Channels: []api.Channel{
-						{Name: "/topic1", Method: "POST"},
-						{Name: "topic2", Method: "POST"},
+					Hub: api.WebSubHub{
+						Channels: []api.HubChannel{
+							{Name: "/topic1"},
+							{Name: "topic2"},
+						},
 					},
 				},
 			},
@@ -1830,7 +1832,9 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 					DisplayName: "WebSub Invalid",
 					Version:     "v1.0",
 					Context:     "/webhook",
-					Channels:    []api.Channel{{Name: "/test", Method: "POST"}},
+					Hub: api.WebSubHub{
+						Channels: []api.HubChannel{{Name: "/test"}},
+					},
 				},
 			},
 			Origin: models.OriginGatewayAPI,

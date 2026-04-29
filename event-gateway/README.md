@@ -120,21 +120,23 @@ Content-Type: application/json
     "displayName": "repo-watcher",
     "version": "v1.0",
     "context": "/repos",
-    "channels": [
-      { "name": "issues", "method": "SUB" },
-      { "name": "pull-requests", "method": "SUB" },
-      { "name": "commits", "method": "SUB" }
-    ],
-    "policies": [
-      {
-        "name": "basic-auth",
-        "version": "v1",
-        "params": {
-          "username": "admin",
-          "password": "admin"
+    "hub": {
+      "channels": [
+        { "name": "issues" },
+        { "name": "pull-requests" },
+        { "name": "commits" }
+      ],
+      "policies": [
+        {
+          "name": "basic-auth",
+          "version": "v1",
+          "params": {
+            "username": "admin",
+            "password": "admin"
+          }
         }
-      }
-    ],
+      ]
+    },
     "deploymentState": "deployed"
   }
 }
@@ -205,15 +207,17 @@ curl -X POST http://localhost:9090/api/management/v0.9/websub-apis \
       "displayName": "repo-watcher",
       "version": "v1.0",
       "context": "/repos",
-      "channels": [
-        { "name": "issues", "method": "SUB" },
-        { "name": "pull-requests", "method": "SUB" },
-        { "name": "commits", "method": "SUB" }
-      ],
-      "policies": [{
-        "name": "basic-auth", "version": "v1",
-        "params": { "username": "admin", "password": "admin" }
-      }],
+      "hub": {
+        "channels": [
+          { "name": "issues" },
+          { "name": "pull-requests" },
+          { "name": "commits" }
+        ],
+        "policies": [{
+          "name": "basic-auth", "version": "v1",
+          "params": { "username": "admin", "password": "admin" }
+        }]
+      },
       "deploymentState": "deployed"
     }
   }'

@@ -55,7 +55,8 @@ type WebSubApiBinding struct {
 
 // ChannelDef defines a single channel (topic) within a WebSubApi.
 type ChannelDef struct {
-	Name string `yaml:"name"`
+	Name     string         `yaml:"name"`
+	Policies PolicyBindings `yaml:"policies"`
 }
 
 // ReceiverSpec defines the receiver connector type and configuration.

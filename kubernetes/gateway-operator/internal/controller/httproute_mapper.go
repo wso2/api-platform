@@ -98,6 +98,29 @@ func IsTransientHTTPRouteConfigError(err error) bool {
 	return ok && e.Kind == httpRouteConfigErrorTransient
 }
 
+// allRESTAPIOperationMethods returns every HTTP verb modeled by APIConfigData / RestApi operations
+// (used when an HTTPRoute match omits method, which is valid in Gateway API).
+func allRESTAPIOperationMethods() []apiv1.OperationMethod {
+	return []apiv1.OperationMethod{
+		apiv1.OperationMethodGET,
+		apiv1.OperationMethodPOST,
+		apiv1.OperationMethodPUT,
+		apiv1.OperationMethodPATCH,
+		apiv1.OperationMethodDELETE,
+		apiv1.OperationMethodHEAD,
+		apiv1.OperationMethodOPTIONS,
+	}
+}
+
+// restAPIOperationMethodsForHTTPRouteMatch returns a single explicit method or all supported methods
+// when the Gateway API match leaves method unset.
+func restAPIOperationMethodsForHTTPRouteMatch(m gatewayv1.HTTPRouteMatch) []apiv1.OperationMethod {
+	if m.Method != nil {
+		return []apiv1.OperationMethod{apiv1.OperationMethod(*m.Method)}
+	}
+	return allRESTAPIOperationMethods()
+}
+
 // BuildAPIConfigFromHTTPRoute maps HTTPRoute rules to APIConfigData (MVP: single Service backend across rules).
 // clusterDomain is the cluster DNS suffix (e.g. cluster.local or from CLUSTER_DOMAIN / gateway_api.cluster_domain).
 // log may be nil (tests); when set, emits structured diagnostics for policy loading and mapping.
@@ -136,17 +159,11 @@ func BuildAPIConfigFromHTTPRoute(ctx context.Context, c client.Client, route *ga
 		}
 		if len(rule.Matches) == 0 {
 			return nil, newInvalidHTTPRouteConfigError(
-				"method-agnostic HTTPRoute matches are not supported: rule[%d] has no matches; use explicit rule.matches entries with method set on each match",
+				"rule[%d] has no matches; add at least one rule.matches entry (optional match.method; if omitted, all API verbs GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS are emitted)",
 				ruleIdx,
 			)
 		}
-		for matchIdx, m := range rule.Matches {
-			if m.Method == nil {
-				return nil, newInvalidHTTPRouteConfigError(
-					"method-agnostic HTTPRoute matches are not supported: rule[%d] match[%d] omits method; set match.method",
-					ruleIdx, matchIdx,
-				)
-			}
+		for _, m := range rule.Matches {
 			pathVal := "/"
 			if m.Path != nil && m.Path.Value != nil {
 				p := strings.TrimSpace(*m.Path.Value)
@@ -157,12 +174,14 @@ func BuildAPIConfigFromHTTPRoute(ctx context.Context, c client.Client, route *ga
 					}
 				}
 			}
-			method := apiv1.OperationMethod(*m.Method)
-			ops = append(ops, apiv1.Operation{
-				Method:   method,
-				Path:     pathVal,
-				Policies: copyPolicies(rulePolicies),
-			})
+			methods := restAPIOperationMethodsForHTTPRouteMatch(m)
+			for _, method := range methods {
+				ops = append(ops, apiv1.Operation{
+					Method:   method,
+					Path:     pathVal,
+					Policies: copyPolicies(rulePolicies),
+				})
+			}
 		}
 	}
 
@@ -172,10 +191,7 @@ func BuildAPIConfigFromHTTPRoute(ctx context.Context, c client.Client, route *ga
 
 	contextPath := strings.TrimSpace(route.Annotations[AnnHTTPRouteContext])
 	if contextPath == "" {
-		contextPath = commonPathPrefix(ops)
-		if contextPath == "" {
-			contextPath = "/"
-		}
+		contextPath = "/"
 	} else if !strings.HasPrefix(contextPath, "/") {
 		contextPath = "/" + contextPath
 	}
@@ -306,27 +322,6 @@ func resolveServicePort(svc *corev1.Service, refPort *gatewayv1.PortNumber) (int
 	}
 
 	return ports[0].Port, nil
-}
-
-func commonPathPrefix(ops []apiv1.Operation) string {
-	if len(ops) == 0 {
-		return "/"
-	}
-	prefix := ops[0].Path
-	for _, o := range ops[1:] {
-		prefix = sharedPrefix(prefix, o.Path)
-		if prefix == "" || prefix == "/" {
-			return "/"
-		}
-	}
-	if prefix == "" {
-		return "/"
-	}
-	// Strip trailing slash except root
-	for len(prefix) > 1 && strings.HasSuffix(prefix, "/") {
-		prefix = strings.TrimSuffix(prefix, "/")
-	}
-	return prefix
 }
 
 func sharedPrefix(a, b string) string {

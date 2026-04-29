@@ -1,0 +1,17 @@
+{{- /*
+ GatewayClass (and its status subresource) are cluster-scoped. Namespace Role rules
+ cannot grant list/watch at cluster scope; scoped mode (watchNamespaces) only
+ creates Roles per watched namespace, so we add this minimal ClusterRole.
+*/ -}}
+{{- if .Values.watchNamespaces }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "gateway-operator.fullname" . }}-gatewayclass-cluster-role
+  labels:
+    app.kubernetes.io/name: {{ include "gateway-operator.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+rules:
+{{ include "gateway-operator.rbacRulesGatewayClass" . }}
+{{- end }}

@@ -186,7 +186,7 @@ func (cs *ConfigStore) updateTopics(cfg *models.StoredConfig) error {
 	// TODO: Optimize topic management if needed by maintaining a separate topic manager struct
 
 	apiTopicsPerRevision := make(map[string]bool)
-	for _, topic := range asyncData.Channels {
+	for _, topic := range asyncData.Hub.Channels {
 		contextWithVersion := strings.ReplaceAll(asyncData.Context, "$version", asyncData.Version)
 		contextWithVersion = strings.TrimPrefix(contextWithVersion, "/")
 		contextWithVersion = strings.ReplaceAll(contextWithVersion, "/", "_")

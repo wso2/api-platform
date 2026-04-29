@@ -50,6 +50,8 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/model-weighted-round-robin@v1
   - name: pii-masking-regex
     gomodule: github.com/wso2/gateway-controllers/policies/pii-masking-regex@v1
+  - name: prompt-compressor
+    pipPackage: github.com/wso2/gateway-controllers/policies/prompt-compressor@v0
   - name: prompt-decorator
     gomodule: github.com/wso2/gateway-controllers/policies/prompt-decorator@v1
   - name: prompt-template

@@ -37,8 +37,6 @@ Gateway Runtime (Router + Policy Engine) has been deployed:
   - Service: {{ include "gateway-operator.fullname" . }}-gateway-runtime
   - HTTP Port: {{ .Values.gateway.gatewayRuntime.service.ports.http }}
   - HTTPS Port: {{ .Values.gateway.gatewayRuntime.service.ports.https }}
-  - Envoy Admin Port: {{ .Values.gateway.gatewayRuntime.service.ports.envoyAdmin }}
-  - Policy Engine Admin Port: {{ .Values.gateway.gatewayRuntime.service.ports.policyEngineAdmin }}
 
 To access the Gateway Runtime:
   {{- if eq .Values.gateway.gatewayRuntime.service.type "LoadBalancer" }}

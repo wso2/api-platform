@@ -1,4 +1,4 @@
-"""Versioned Python policy interfaces for the WSO2 Gateway Policy SDK."""
+"""Versioned Python policy interfaces for APIP SDK Core."""
 
 from . import v1alpha2
 from .v1alpha2 import *  # noqa: F401,F403

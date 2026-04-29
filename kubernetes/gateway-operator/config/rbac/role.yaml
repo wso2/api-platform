@@ -79,6 +79,25 @@ rules:
 - apiGroups:
   - gateway.networking.k8s.io
   resources:
+  - gatewayclasses
+  - referencegrants
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - gatewayclasses/status
+  - gateways/status
+  - httproutes/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
   - gateways
   verbs:
   - create
@@ -98,27 +117,10 @@ rules:
 - apiGroups:
   - gateway.networking.k8s.io
   resources:
-  - gateways/status
-  - httproutes/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - gateway.networking.k8s.io
-  resources:
   - httproutes
   verbs:
   - get
   - list
   - patch
   - update
-  - watch
-- apiGroups:
-  - gateway.networking.k8s.io
-  resources:
-  - referencegrants
-  verbs:
-  - get
-  - list
   - watch

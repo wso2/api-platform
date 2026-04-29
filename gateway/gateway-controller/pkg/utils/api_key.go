@@ -379,6 +379,12 @@ func extractConfigDisplayNameVersion(kind string, configuration any) (string, st
 			return "", "", fmt.Errorf("configuration is not a LLMProviderConfiguration (kind: %s)", kind)
 		}
 		return providerCfg.Spec.DisplayName, providerCfg.Spec.Version, nil
+	case models.KindWebSubApi:
+		webSubCfg, ok := configuration.(api.WebSubAPI)
+		if !ok {
+			return "", "", fmt.Errorf("configuration is not a WebSubAPI (kind: %s)", kind)
+		}
+		return webSubCfg.Spec.DisplayName, webSubCfg.Spec.Version, nil
 	default:
 		return "", "", fmt.Errorf("unsupported kind for API key operation: '%s'", kind)
 	}

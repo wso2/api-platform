@@ -17,3 +17,5 @@ spec:
       team: platform
     annotations:
       prometheus.io/scrape: "true"
+  configRef:
+    name: custom-gateway-values

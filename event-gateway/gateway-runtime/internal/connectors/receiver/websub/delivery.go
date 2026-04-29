@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
@@ -98,10 +99,19 @@ func (d *Deliverer) doDeliver(ctx context.Context, callbackURL, secret string, m
 		return fmt.Errorf("failed to create delivery request: %w", err)
 	}
 
-	// Set content type from message headers.
-	if ct, ok := msg.Headers["content-type"]; ok && len(ct) > 0 {
-		req.Header.Set("Content-Type", ct[0])
-	} else {
+	// Forward application-level headers only. Skip RFC 2616 hop-by-hop headers
+	// and any internal/gateway-specific headers to prevent information leakage
+	// and transport mis-configuration in the downstream subscriber request.
+	for k, vals := range msg.Headers {
+		if isForwardableHeader(k) {
+			for _, v := range vals {
+				req.Header.Add(k, v)
+			}
+		}
+	}
+
+	// Ensure a content-type is set if not already present via message headers.
+	if req.Header.Get("Content-Type") == "" {
 		req.Header.Set("Content-Type", "application/octet-stream")
 	}
 
@@ -129,4 +139,40 @@ func (d *Deliverer) doDeliver(ctx context.Context, callbackURL, secret string, m
 	}
 
 	return nil
+}
+
+// hopByHopHeaders contains the RFC 2616 hop-by-hop headers that must never be
+// forwarded to a downstream subscriber. Keys are lower-cased for comparison.
+var hopByHopHeaders = map[string]bool{
+	"connection":          true,
+	"keep-alive":          true,
+	"proxy-authenticate":  true,
+	"proxy-authorization": true,
+	"te":                  true,
+	"trailers":            true,
+	"transfer-encoding":   true,
+	"upgrade":             true,
+	"host":                true,
+}
+
+// internalHeaderPrefixes lists lower-cased prefixes used by the gateway for
+// internal metadata that must not be leaked to external subscribers.
+var internalHeaderPrefixes = []string{
+	"x-internal-",
+}
+
+// isForwardableHeader reports whether header k should be included in the
+// outgoing subscriber delivery request. It returns false for RFC hop-by-hop
+// headers and for any gateway-internal header prefix.
+func isForwardableHeader(k string) bool {
+	lower := strings.ToLower(k)
+	if hopByHopHeaders[lower] {
+		return false
+	}
+	for _, prefix := range internalHeaderPrefixes {
+		if strings.HasPrefix(lower, prefix) {
+			return false
+		}
+	}
+	return true
 }

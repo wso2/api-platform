@@ -31,22 +31,16 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/immutable"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/immutable"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
-)
-
-// Version information (set via ldflags during build)
-var (
-	Version   = "dev"
-	GitCommit = "unknown"
-	BuildDate = "unknown"
 )
 
 // API base paths for the gateway-controller HTTP surfaces.
@@ -112,9 +106,9 @@ func main() {
 	})
 
 	log.Info("Starting Gateway-Controller",
-		slog.String("version", Version),
-		slog.String("git_commit", GitCommit),
-		slog.String("build_date", BuildDate),
+		slog.String("version", version.Version),
+		slog.String("git_commit", version.GitCommit),
+		slog.String("build_date", version.BuildDate),
 		slog.String("config_file", *configPath),
 		slog.String("storage_type", cfg.Controller.Storage.Type),
 		slog.Bool("access_logs_enabled", cfg.Router.AccessLogs.Enabled),
@@ -632,7 +626,7 @@ func main() {
 		log.Info("Starting metrics server", slog.Int("port", cfg.Controller.Metrics.Port))
 
 		// Set build info metric
-		metrics.Info.WithLabelValues(Version, cfg.Controller.Storage.Type, BuildDate).Set(1)
+		metrics.Info.WithLabelValues(version.Version, cfg.Controller.Storage.Type, version.BuildDate).Set(1)
 
 		metricsServer = metrics.NewServer(&cfg.Controller.Metrics, log)
 		if err := metricsServer.Start(); err != nil {
@@ -814,6 +808,12 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		"PUT /llm-proxies/:id/api-keys/:apiKeyName":             {"admin", "consumer"},
 		"POST /llm-proxies/:id/api-keys/:apiKeyName/regenerate": {"admin", "consumer"},
 		"DELETE /llm-proxies/:id/api-keys/:apiKeyName":          {"admin", "consumer"},
+
+		"POST /websub-apis/:id/api-keys":                        {"admin", "consumer"},
+		"GET /websub-apis/:id/api-keys":                         {"admin", "consumer"},
+		"PUT /websub-apis/:id/api-keys/:apiKeyName":             {"admin", "consumer"},
+		"POST /websub-apis/:id/api-keys/:apiKeyName/regenerate": {"admin", "consumer"},
+		"DELETE /websub-apis/:id/api-keys/:apiKeyName":          {"admin", "consumer"},
 
 		// Root-level subscription endpoints
 		"POST /subscriptions":                   {"admin", "developer"},

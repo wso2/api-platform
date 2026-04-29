@@ -19,7 +19,7 @@ import threading
 from dataclasses import dataclass
 from typing import Optional
 
-from wso2_gateway_policy_sdk import Policy, PolicyMetadata
+from apip_sdk_core import Policy, PolicyMetadata
 
 logger = logging.getLogger(__name__)
 

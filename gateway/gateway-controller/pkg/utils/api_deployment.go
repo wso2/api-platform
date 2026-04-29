@@ -28,8 +28,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wso2/api-platform/common/eventhub"
 	commonconstants "github.com/wso2/api-platform/common/constants"
+	"github.com/wso2/api-platform/common/eventhub"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
@@ -481,7 +481,7 @@ func (s *APIDeploymentService) GetTopicsForUpdate(apiConfig models.StoredConfig)
 	}
 	asyncData := webSubCfg.Spec
 
-	for _, topic := range asyncData.Channels {
+	for _, topic := range asyncData.Hub.Channels {
 		// Remove leading '/' from name, context, version and topic path if present
 		contextWithVersion := strings.ReplaceAll(asyncData.Context, "$version", asyncData.Version)
 		contextWithVersion = strings.TrimPrefix(contextWithVersion, "/")

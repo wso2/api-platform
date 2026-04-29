@@ -133,8 +133,8 @@ func generatePythonExecutorBase(srcDir string, outputDir string) error {
 		return fmt.Errorf("failed to copy Python executor source: %w", err)
 	}
 
-	sdkPythonSrcDir := filepath.Join(srcDir, "..", "..", "..", "sdk-python", "src", "wso2_gateway_policy_sdk")
-	sdkPythonDestDir := filepath.Join(pythonOutputDir, "wso2_gateway_policy_sdk")
+	sdkPythonSrcDir := filepath.Join(srcDir, "..", "..", "..", "sdk-python", "src", "apip_sdk_core")
+	sdkPythonDestDir := filepath.Join(pythonOutputDir, "apip_sdk_core")
 	if err := copyDir(sdkPythonSrcDir, sdkPythonDestDir); err != nil {
 		return fmt.Errorf("failed to copy Python SDK source: %w", err)
 	}
@@ -307,9 +307,15 @@ func mergeRequirements(policies []*types.DiscoveredPolicy, baseRequirements stri
 			continue
 		}
 
-		// For local policies, read requirements.txt from the source directory
+		// For local policies, read requirements.txt from the source directory.
+		// For src-layout policies, PythonSourceDir points inside src/<pkg>/ so
+		// we also check the policy root (p.Path) where requirements.txt lives.
 		reqPath := filepath.Join(p.PythonSourceDir, "requirements.txt")
 		data, err := os.ReadFile(reqPath)
+		if err != nil && os.IsNotExist(err) && p.Path != p.PythonSourceDir {
+			reqPath = filepath.Join(p.Path, "requirements.txt")
+			data, err = os.ReadFile(reqPath)
+		}
 		if err != nil {
 			if os.IsNotExist(err) {
 				continue

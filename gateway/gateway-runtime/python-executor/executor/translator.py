@@ -23,7 +23,7 @@ from google.protobuf.struct_pb2 import Struct, Value
 from google.protobuf.wrappers_pb2 import BytesValue, Int32Value, StringValue
 
 import proto.python_executor_pb2 as proto
-from wso2_gateway_policy_sdk import (
+from apip_sdk_core import (
     AuthContext,
     Body,
     DownstreamResponseHeaderModifications,

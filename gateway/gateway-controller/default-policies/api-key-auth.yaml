@@ -1,8 +1,8 @@
 name: api-key-auth
 version: v1.0.2
 description: |
-  Secures APIs by validating API keys in incoming requests. API keys can be
-  provided through a configured HTTP header or query parameter.
+  Secures APIs by validating API keys in incoming requests. API keys are
+  provided through a configured HTTP header.
 
 parameters:
   type: object
@@ -12,8 +12,8 @@ parameters:
       type: string
       x-wso2-policy-advanced-param: false
       description: |
-        Specifies the header or query parameter name that carries the API key.
-        Header lookup is case-insensitive; query parameter lookup uses exact matching.
+        Specifies the header name that carries the API key.
+        Header lookup is case-insensitive.
       default: API-Key
       validation:
         minLength: 1
@@ -23,12 +23,11 @@ parameters:
       type: string
       x-wso2-policy-advanced-param: false
       description: |
-        Specifies where to read the API key. Supported values are "header" and
-        "query".
+        Specifies where to read the API key. Currently only "header" is
+        supported.
       default: header
       enum:
         - "header"
-        - "query"
 
   required:
     - key

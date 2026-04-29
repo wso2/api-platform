@@ -797,7 +797,14 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 		if err != nil {
 			return fmt.Errorf("failed to get ConfigMap values: %w", err)
 		}
-		// Merge order: CR overlay (base) → ConfigMap (higher priority)
+		// Merge order: CR overlay (base) → ConfigMap (higher priority).
+		// MergeValuesYAML delegates to deepMergeValues, which performs a recursive
+		// per-key merge: ConfigMap entries can add or override individual keys inside
+		// nested maps like commonLabels/commonAnnotations, but cannot remove keys that
+		// the CR infra overlay already set. If you need a wholesale map-level replace
+		// (e.g. discard all CR-set labels and use only the ConfigMap's map), add
+		// "commonLabels" or "commonAnnotations" to probeMergeReplaceKeys in
+		// internal/helm/client.go, or use an equivalent replace mechanism.
 		if crOverlay != "" {
 			valuesYAML, err = helm.MergeValuesYAML(crOverlay, configMapValues)
 			if err != nil {

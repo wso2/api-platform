@@ -91,7 +91,7 @@ func ValidatePythonDirectoryStructure(policy *types.DiscoveredPolicy) []types.Va
 	}
 
 	// Check policy.py exists (recommended but optional)
-	policyPyPath := filepath.Join(policy.Path, "policy.py")
+	policyPyPath := filepath.Join(policy.PythonSourceDir, "policy.py")
 	if err := fsutil.ValidatePathExists(policyPyPath, "policy.py"); err != nil {
 		// This is a warning, not an error - policy.py is recommended but optional
 		// as long as there are other .py files
