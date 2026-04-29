@@ -28,9 +28,9 @@ brokers = ["localhost:9092"]
 consumer_group_prefix = "event-gateway"
 tls = false
 # Supported values: plain, scram-sha-256, scram-sha-512
-sasl_mechanism = "plain"
-sasl_username = "broker"
-sasl_password = "broker-pass"
+# sasl_mechanism = ""
+# sasl_username = ""
+# sasl_password = ""
 
 [websub]
 verification_timeout_seconds = 10
