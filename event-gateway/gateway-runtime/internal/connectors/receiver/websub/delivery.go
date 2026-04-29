@@ -144,20 +144,19 @@ func (d *Deliverer) doDeliver(ctx context.Context, callbackURL, secret string, m
 // hopByHopHeaders contains the RFC 2616 hop-by-hop headers that must never be
 // forwarded to a downstream subscriber. Keys are lower-cased for comparison.
 var hopByHopHeaders = map[string]bool{
-	"connection":          true,
-	"keep-alive":          true,
-	"proxy-authenticate":  true,
-	"proxy-authorization": true,
-	"te":                  true,
-	"trailers":            true,
-	"transfer-encoding":   true,
-	"upgrade":             true,
-	"host":                true,
+	"connection":        true,
+	"keep-alive":        true,
+	"te":                true,
+	"trailer":           true,
+	"transfer-encoding": true,
+	"upgrade":           true,
+	"host":              true,
 }
 
 // internalHeaderPrefixes lists lower-cased prefixes used by the gateway for
 // internal metadata that must not be leaked to external subscribers.
 var internalHeaderPrefixes = []string{
+	"proxy-",
 	"x-internal-",
 }
 

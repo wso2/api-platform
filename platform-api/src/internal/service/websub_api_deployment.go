@@ -23,7 +23,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"platform-api/src/api"
@@ -586,23 +585,6 @@ func buildWebSubAPIDeploymentYAML(websubAPI *model.WebSubAPI) *model.WebSubAPIDe
 		contextValue = *websubAPI.Configuration.Context
 	}
 
-	channels := make([]model.WebSubAPIDeploymentChannel, 0, len(websubAPI.Configuration.Channels))
-	for _, ch := range websubAPI.Configuration.Channels {
-		method := "SUB"
-		if ch.Request != nil && ch.Request.Method != "" {
-			method = ch.Request.Method
-		}
-		channelName := ch.Name
-		if ch.Request != nil && ch.Request.Name != "" {
-			channelName = ch.Request.Name
-		}
-		channelName = strings.TrimPrefix(channelName, "/")
-		channels = append(channels, model.WebSubAPIDeploymentChannel{
-			Name:   channelName,
-			Method: method,
-		})
-	}
-
 	d := &model.WebSubAPIDeploymentYAML{
 		ApiVersion: constants.GatewayApiVersion,
 		Kind:       constants.WebSubApi,
@@ -616,8 +598,13 @@ func buildWebSubAPIDeploymentYAML(websubAPI *model.WebSubAPI) *model.WebSubAPIDe
 			Vhosts: &model.WebSubAPIDeploymentVhosts{
 				Main: constants.VhostGatewayDefault,
 			},
-			Channels: channels,
-			Policies: websubAPI.Configuration.Policies,
+			Receiver: &model.WebSubReceiver{
+				Policies: &[]model.Policy{},
+			},
+			Delivery: &model.WebSubDelivery{
+				Policies: &[]model.Policy{},
+			},
+			Hub: buildHub(websubAPI),
 		},
 	}
 
@@ -628,4 +615,47 @@ func buildWebSubAPIDeploymentYAML(websubAPI *model.WebSubAPI) *model.WebSubAPIDe
 	}
 
 	return d
+}
+
+// buildHub builds the WebSub hub configuration for the deployment YAML
+func buildHub(websubAPI *model.WebSubAPI) model.WebSubHub {
+	channels := make([]model.HubChannel, 0, len(websubAPI.Configuration.Channels))
+	for _, ch := range websubAPI.Configuration.Channels {
+		method := "SUB"
+		if ch.Request != nil && ch.Request.Method != "" {
+			method = ch.Request.Method
+		}
+		channelName := ch.Name
+		if ch.Request != nil && ch.Request.Name != "" {
+			channelName = ch.Request.Name
+		}
+		var policies *[]model.Policy
+		if ch.Request != nil {
+			policies = generatePolicyList(ch.Request.Policies)
+		}
+		channels = append(channels, model.HubChannel{
+			Name:     channelName,
+			Method:   method,
+			Policies: policies,
+		})
+	}
+	return model.WebSubHub{
+		Channels: channels,
+		Policies: generatePolicyList(websubAPI.Configuration.Policies),
+	}
+}
+func generatePolicyList(policyConfigs []model.Policy) *[]model.Policy {
+	if len(policyConfigs) == 0 {
+		empty := make([]model.Policy, 0)
+		return &empty
+	}
+	policies := make([]model.Policy, 0, len(policyConfigs))
+	for _, pc := range policyConfigs {
+		policies = append(policies, model.Policy{
+			Name:    pc.Name,
+			Version: pc.Version,
+			Params:  pc.Params,
+		})
+	}
+	return &policies
 }
