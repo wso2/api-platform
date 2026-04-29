@@ -75,3 +75,40 @@ jobs:
           format: 'table'
           ignore-unfixed: true
           vuln-type: 'os,library'
+
+      - name: Build & push event-gateway-runtime
+        run: |
+          make -C event-gateway/gateway-runtime build-and-push-multiarch \
+          IMAGE_NAME=localhost:5000/event-gateway-runtime \
+          VERSION=trivy
+
+      - name: Trivy scan event-gateway-runtime
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'localhost:5000/event-gateway-runtime:trivy'
+          format: 'table'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+
+      - name: Build & push event-gateway-controller
+        run: |
+          cd gateway/gateway-controller && \
+          docker buildx build -f Dockerfile \
+            --build-context sdk=../../sdk \
+            --build-context sdk-core=../../sdk/core \
+            --build-context common=../../common \
+            --build-context build-manifest=.. \
+            --platform linux/amd64,linux/arm64 \
+            --build-arg VERSION=trivy \
+            --target production \
+            -t localhost:5000/event-gateway-controller:trivy \
+            --push \
+            .
+
+      - name: Trivy scan event-gateway-controller
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'localhost:5000/event-gateway-controller:trivy'
+          format: 'table'
+          ignore-unfixed: true
+          vuln-type: 'os,library'

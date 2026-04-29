@@ -20,7 +20,7 @@ In top-down deployment, the **platform-API (central control plane) pushes APIs t
 
 #### **Bottom-Up Deployment (Gateway → On-Prem APIM)**
 
-Currently this support is only available for the on perm APIM used control plane type.
+Currently this support is only available for the on prem APIM control plane type.
 
 In bottom-up deployment, **REST APIs deployed directly to the gateway are automatically synced back to on-prem WSO2 APIM.** (If configured with on prem control plane type. Cloud control plane is not having this support at the moment.).
 

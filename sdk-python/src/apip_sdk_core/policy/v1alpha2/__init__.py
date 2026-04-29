@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Python SDK surface for WSO2 API Platform gateway policies."""
+"""Python SDK surface for APIP SDK Core gateway policies."""
 
 from .actions import (
     DownstreamResponseHeaderModifications,

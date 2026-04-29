@@ -71,7 +71,7 @@ func TestRemoveWebSubApiBinding_ClearsStalePolicyChains(t *testing.T) {
 		},
 	}
 
-	subKey, inKey, outKey, err := rt.buildWebSubApiPolicyChains(oldBinding, defaultVhost(""))
+	subKey, inKey, outKey, _, err := rt.buildWebSubApiPolicyChains(oldBinding, defaultVhost(""))
 	if err != nil {
 		t.Fatalf("failed to build initial policy chains: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestRemoveWebSubApiBinding_ClearsStalePolicyChains(t *testing.T) {
 	updatedBinding := oldBinding
 	updatedBinding.Policies = binding.PolicyBindings{}
 
-	newSubKey, newInKey, newOutKey, err := rt.buildWebSubApiPolicyChains(updatedBinding, defaultVhost(""))
+	newSubKey, newInKey, newOutKey, _, err := rt.buildWebSubApiPolicyChains(updatedBinding, defaultVhost(""))
 	if err != nil {
 		t.Fatalf("failed to build updated policy chains: %v", err)
 	}

@@ -369,16 +369,15 @@ func TestUpdateGoMod_InvalidGoMod(t *testing.T) {
 func createPythonSDKCoreDir(t *testing.T, rootDir string) {
 	t.Helper()
 
-	sdkPythonDir := filepath.Join(rootDir, "sdk-python", "src", "wso2_gateway_policy_sdk")
-	testutils.CreateDir(t, filepath.Join(sdkPythonDir, "core", "policy", "v1alpha2"))
+	sdkPythonDir := filepath.Join(rootDir, "sdk-python", "src", "apip_sdk_core")
+	testutils.CreateDir(t, filepath.Join(sdkPythonDir, "policy", "v1alpha2"))
 	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "__init__.py"), "# package root\n")
 	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "py.typed"), "")
-	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "core", "__init__.py"), "# core package\n")
-	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "core", "policy", "__init__.py"), "# policy package\n")
-	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "core", "policy", "v1alpha2", "__init__.py"), "# version package\n")
-	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "core", "policy", "v1alpha2", "types.py"), "# core policy types\n")
-	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "core", "policy", "v1alpha2", "actions.py"), "# core policy actions\n")
-	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "core", "policy", "v1alpha2", "policy.py"), "# core policy interfaces\n")
+	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "policy", "__init__.py"), "# policy package\n")
+	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "policy", "v1alpha2", "__init__.py"), "# version package\n")
+	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "policy", "v1alpha2", "types.py"), "# core policy types\n")
+	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "policy", "v1alpha2", "actions.py"), "# core policy actions\n")
+	testutils.WriteFile(t, filepath.Join(sdkPythonDir, "policy", "v1alpha2", "policy.py"), "# core policy interfaces\n")
 }
 
 func TestGenerateCode_Success(t *testing.T) {
@@ -471,13 +470,13 @@ func TestGenerateCode_CopiesPythonExecutorBaseFiles(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "executor", "__init__.py"))
-	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "wso2_gateway_policy_sdk", "__init__.py"))
-	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "wso2_gateway_policy_sdk", "py.typed"))
-	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "wso2_gateway_policy_sdk", "core", "policy", "__init__.py"))
-	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "wso2_gateway_policy_sdk", "core", "policy", "v1alpha2", "types.py"))
-	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "wso2_gateway_policy_sdk", "core", "policy", "v1alpha2", "actions.py"))
-	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "wso2_gateway_policy_sdk", "core", "policy", "v1alpha2", "__init__.py"))
-	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "wso2_gateway_policy_sdk", "core", "policy", "v1alpha2", "policy.py"))
+	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "apip_sdk_core", "__init__.py"))
+	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "apip_sdk_core", "py.typed"))
+	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "apip_sdk_core", "policy", "__init__.py"))
+	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "apip_sdk_core", "policy", "v1alpha2", "types.py"))
+	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "apip_sdk_core", "policy", "v1alpha2", "actions.py"))
+	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "apip_sdk_core", "policy", "v1alpha2", "__init__.py"))
+	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "apip_sdk_core", "policy", "v1alpha2", "policy.py"))
 	assert.FileExists(t, filepath.Join(outputDir, "python-executor", "proto", "python_executor_pb2.py"))
 }
 

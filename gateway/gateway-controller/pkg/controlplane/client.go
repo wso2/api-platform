@@ -45,6 +45,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
 
@@ -237,7 +238,7 @@ func NewClient(
 	// Initialize API utils service with the proper base URL using the method
 	client.apiUtilsService = utils.NewAPIUtilsService(utils.PlatformAPIConfig{
 		BaseURL:            client.getRestAPIBaseURL(),
-		Token:              "",
+		Token:              cfg.Token,
 		InsecureSkipVerify: cfg.InsecureSkipVerify,
 		Timeout:            30 * time.Second,
 	}, logger)
@@ -3937,8 +3938,9 @@ func (c *Client) pushGatewayManifest(gatewayID string, policies []models.PolicyD
 	url := c.getRestAPIBaseURL() + "/gateways/" + gatewayID + "/manifest"
 
 	body := struct {
+		Version  string                    `json:"version,omitempty"`
 		Policies []models.PolicyDefinition `json:"policies"`
-	}{Policies: policies}
+	}{Version: version.Version, Policies: policies}
 
 	jsonData, err := json.Marshal(body)
 	if err != nil {

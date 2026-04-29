@@ -31,7 +31,7 @@ def _ensure_sdk_python_path() -> None:
             root / "python-executor",
             root,
         ):
-            package_dir = candidate / "wso2_gateway_policy_sdk"
+            package_dir = candidate / "apip_sdk_core"
             if package_dir.is_dir():
                 candidate_str = str(candidate)
                 if candidate_str not in sys.path:

@@ -67,23 +67,33 @@ func (t *Translator) TranslateWebSubApisToEventChannelConfigs(configs []*models.
 func (t *Translator) buildEventChannelResource(uuid string, webSubCfg *api.WebSubAPI) (types.Resource, error) {
 	spec := webSubCfg.Spec
 
-	// Build channels list
-	channels := make([]map[string]interface{}, 0, len(spec.Channels))
-	for _, ch := range spec.Channels {
-		channels = append(channels, map[string]interface{}{
+	// Build channels list from hub channels, including per-channel subscribe policies.
+	channels := make([]map[string]interface{}, 0, len(spec.Hub.Channels))
+	for _, ch := range spec.Hub.Channels {
+		chEntry := map[string]interface{}{
 			"name": ch.Name,
-		})
+			"policies": map[string]interface{}{
+				"subscribe": buildPolicyList(ch.Policies),
+				"inbound":   []interface{}{},
+				"outbound":  []interface{}{},
+			},
+		}
+		channels = append(channels, chEntry)
 	}
 
-	// Build 3-phase policies from channel-level and API-level policies.
-	// The controller's Channel model has a flat Policies list; we map them
-	// all to the subscribe phase for now, with API-level policies applied
-	// as subscribe policies as well. Inbound/outbound are left empty for
-	// the event gateway to handle via its own defaults.
-	subscribePolicies := buildPolicyList(spec.Policies)
-	// Channel-level policies override API-level for subscribe phase
-	if len(spec.Channels) > 0 && spec.Channels[0].Policies != nil && len(*spec.Channels[0].Policies) > 0 {
-		subscribePolicies = buildPolicyList(spec.Channels[0].Policies)
+	// Hub-level policies apply to the subscribe phase only (authenticating subscribers).
+	subscribePolicies := buildPolicyList(spec.Hub.Policies)
+
+	// Receiver-level policies apply to the inbound phase only (validating publisher webhook requests).
+	inboundPolicies := []interface{}{}
+	if spec.Receiver != nil {
+		inboundPolicies = buildPolicyList(spec.Receiver.Policies)
+	}
+
+	// Delivery-level policies apply to the outbound phase only (signing/transforming delivery to subscriber callbacks).
+	outboundPolicies := []interface{}{}
+	if spec.Delivery != nil {
+		outboundPolicies = buildPolicyList(spec.Delivery.Policies)
 	}
 
 	data := map[string]interface{}{
@@ -98,8 +108,8 @@ func (t *Translator) buildEventChannelResource(uuid string, webSubCfg *api.WebSu
 		},
 		"policies": map[string]interface{}{
 			"subscribe": subscribePolicies,
-			"inbound":   []interface{}{},
-			"outbound":  []interface{}{},
+			"inbound":   inboundPolicies,
+			"outbound":  outboundPolicies,
 		},
 	}
 

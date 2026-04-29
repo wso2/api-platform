@@ -734,13 +734,13 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig, allConfig
 	}
 	apiProjectID := extractProjectIDFromConfig(cfg)
 
-	for _, ch := range apiData.Channels {
+	for _, ch := range apiData.Hub.Channels {
 		chName := ch.Name
 		if !strings.HasPrefix(chName, "/") {
 			chName = "/" + chName
 		}
-		// Use mainClusterName by default; path rewrite based on main upstream path
-		r := t.createRoutePerTopic(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, string(ch.Method), chName,
+		// WebSub hub channels are always SUB; use mainClusterName by default
+		r := t.createRoutePerTopic(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, "SUB", chName,
 			mainClusterName, effectiveMainVHost, cfg.Kind, apiProjectID)
 		mainRoutesList = append(mainRoutesList, r)
 	}

@@ -67,7 +67,7 @@ data:
 
     gateway:
       # Shared configuration for gateway-controller and policy-engine
-      # This config is mounted to both components as /configs/config.yaml
+      # This config is mounted to both components as /configs/config.toml
       config:
         controller:
           # Server configuration
@@ -80,6 +80,23 @@ data:
 
             # Graceful shutdown timeout
             shutdown_timeout: 15s
+
+            # Gateway identifier used when interacting with the control plane
+            gateway_id: "platform-gateway-id"
+
+          # Control plane sync/reconnect configuration
+          controlplane:
+            insecure_skip_verify: false
+            reconnect_initial: 1s
+            reconnect_max: 5m
+            polling_interval: 15m
+            deployment_push_enabled: false
+            sync_batch_size: 50
+            gateway_name: ""
+            apim_oauth2_client_id: ""
+            apim_oauth2_client_secret: ""
+            apim_oauth2_username: ""
+            apim_oauth2_password: ""
 
           # Policy xDS Server configuration
           policy_server:
@@ -173,31 +190,24 @@ data:
           https_enabled: true  # Enable/disable HTTPS listener
           https_port: 8443      # HTTPS listener port
 
+          tracing_service_name: router
+
           # Downstream TLS configuration (for HTTPS listener)
-            downstream_tls:
-            # Path to server certificate (PEM format)
+          downstream_tls:
             cert_path: "./listener-certs/default-listener.crt"
-
-            # Path to server private key (PEM format)
             key_path: "./listener-certs/default-listener.key"
-
-            # Minimum TLS protocol version (TLS1_0, TLS1_1, TLS1_2, TLS1_3)
             minimum_protocol_version: TLS1_2
-
-            # Maximum TLS protocol version (TLS1_0, TLS1_1, TLS1_2, TLS1_3)
             maximum_protocol_version: TLS1_3
-
-            # Cipher suites (comma-separated)
-            ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA"
+            ciphers: ""
 
           # Upstream configuration (TLS and timeouts for Envoy upstream)
           upstream:
             tls:
-                minimum_protocol_version: TLS1_2
-                maximum_protocol_version: TLS1_3
-                ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA"
-                trusted_cert_path: /etc/ssl/certs/ca-certificates.crt
-                custom_certs_path: ./certificates  # Directory containing custom trusted certificates (e.g., self-signed certs)
+              minimum_protocol_version: TLS1_2
+              maximum_protocol_version: TLS1_3
+              ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA"
+              trusted_cert_path: /etc/ssl/certs/ca-certificates.crt
+              custom_certs_path: ./certificates  # Directory containing custom trusted certificates (e.g., self-signed certs)
               verify_host_name: true
               disable_ssl_verification: false
 
@@ -345,7 +355,7 @@ data:
       controller:
         image:
           repository: ghcr.io/wso2/api-platform/gateway-controller
-          tag: "0.3.0"
+          tag: "1.0.0"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -356,6 +366,8 @@ data:
             rest: 9090
             xds: 18000
             policy: 18001
+            admin: 9092
+            metrics: 9091
         controlPlane:
           host: host.docker.internal
           port: 8443
@@ -433,6 +445,7 @@ data:
           replicaCount: 1
           volumeMountPath: /app/data
           extraEnv: []
+          extraEnvFrom: []
           env:
             xdsServerAddress: ""
           extraVolumeMounts: []
@@ -445,7 +458,7 @@ data:
           livenessProbe:
             httpGet:
               path: /health
-              port: rest
+            port: admin
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5
@@ -453,7 +466,7 @@ data:
           readinessProbe:
             httpGet:
               path: /health
-              port: rest
+            port: admin
             initialDelaySeconds: 5
             periodSeconds: 5
             timeoutSeconds: 3
@@ -473,112 +486,54 @@ data:
           tolerations: []
           affinity: {}
 
-      router:
+      # Unified gateway-runtime (Envoy + policy-engine). Recommended for operator deploys.
+      gatewayRuntime:
         image:
-          repository: ghcr.io/wso2/api-platform/gateway-router
-          tag: "0.3.0"
+          repository: ghcr.io/wso2/api-platform/gateway-runtime
+          tag: "1.0.0"
           pullPolicy: Always
         imagePullSecrets: []
         service:
-          type: ClusterIP
+          type: LoadBalancer
           annotations: {}
           labels: {}
           ports:
             http: 8080
             https: 8443
-            admin: 9901
+            envoyAdmin: 9901
+            policyEngineAdmin: 9002
+            policyEngineMetrics: 9003
         deployment:
           enabled: true
           replicaCount: 1
           env:
-            xdsServerHost: ""
-            xdsServerPort: ""
+            gatewayControllerHost: ""
+            logLevel: info
+            moesifKey: ""
           extraEnv: []
+          extraEnvFrom: []
+          extraVolumeMounts: []
+          extraVolumes: []
           labels: {}
           annotations: {}
           podAnnotations: {}
           podLabels: {}
           priorityClassName: ""
           livenessProbe:
-            httpGet:
-              path: /ready
-              port: admin
+            exec:
+              command: ["health-check.sh"]
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
           readinessProbe:
-            httpGet:
-              path: /ready
-              port: admin
+            exec:
+              command: ["health-check.sh"]
             initialDelaySeconds: 10
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 6
-          # Resource limits and requests
-          # Uncomment and adjust based on your workload
           resources: {}
-            # limits:
-            #   cpu: 1000m
-            #   memory: 1Gi
-            # requests:
-            #   cpu: 500m
-            #   memory: 512Mi
-          podSecurityContext: {}
-          securityContext: {}
-          nodeSelector: {}
-          tolerations: []
-          affinity: {}
-
-      policyEngine:
-        image:
-          repository: ghcr.io/wso2/api-platform/policy-engine
-          tag: "0.3.0"
-          pullPolicy: Always
-        imagePullSecrets: []
-        service:
-          type: ClusterIP
-          annotations: {}
-          labels: {}
-          ports:
-            ext: 9001
-            admin: 9002
-        deployment:
-          enabled: true
-          replicaCount: 1
-          env:
-            xdsServerAddress: ""
-          extraEnv: []
-          labels: {}
-          annotations: {}
-          podAnnotations: {}
-          podLabels: {}
-          priorityClassName: ""
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 9002
-            initialDelaySeconds: 10
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 9002
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            timeoutSeconds: 3
-            failureThreshold: 3
-          # Resource limits and requests
-          # Uncomment and adjust based on your workload
-          resources: {}
-            # limits:
-            #   cpu: 500m
-            #   memory: 512Mi
-            # requests:
-            #   cpu: 250m
-            #   memory: 256Mi
           podSecurityContext: {}
           securityContext: {}
           nodeSelector: {}

@@ -48,6 +48,11 @@ data:
     polling_interval = {{ $gc.controlplane.polling_interval | quote }}
     deployment_push_enabled = {{ $gc.controlplane.deployment_push_enabled }}
     sync_batch_size = {{ $gc.controlplane.sync_batch_size }}
+    gateway_name = {{ $gc.controlplane.gateway_name | quote }}
+    apim_oauth2_client_id = {{ $gc.controlplane.apim_oauth2_client_id | quote }}
+    apim_oauth2_client_secret = {{ $gc.controlplane.apim_oauth2_client_secret | quote }}
+    apim_oauth2_username = {{ $gc.controlplane.apim_oauth2_username | quote }}
+    apim_oauth2_password = {{ $gc.controlplane.apim_oauth2_password | quote }}
 
     {{- range $gc.encryption.providers }}
     [[controller.encryption.providers]]
@@ -226,6 +231,12 @@ data:
 
     {{- if .Values.gateway.config.policy_configurations }}
 {{ dict "policy_configurations" .Values.gateway.config.policy_configurations | toToml | indent 4 }}
+    {{- end }}
+
+    {{- if .Values.gateway.config.immutable_gateway }}
+    [immutable_gateway]
+    enabled = {{ .Values.gateway.config.immutable_gateway.enabled }}
+    artifacts_dir = {{ .Values.gateway.config.immutable_gateway.artifacts_dir | quote }}
     {{- end }}
 
     {{- if .Values.gateway.config_toml }}

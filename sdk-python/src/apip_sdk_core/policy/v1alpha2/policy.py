@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Python policy interfaces for `wso2_gateway_policy_sdk.policy.v1alpha2`."""
+"""Python policy interfaces for `apip_sdk_core.policy.v1alpha2`."""
 
 from __future__ import annotations
 

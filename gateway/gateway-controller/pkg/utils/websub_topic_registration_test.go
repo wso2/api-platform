@@ -31,11 +31,10 @@ spec:
   version: v1
   vhosts:
     main: "*"
-  channels:
-    - name: /topic1
-      method: SUB
-    - name: /topic2
-      method: SUB
+  hub:
+    channels:
+      - name: /topic1
+      - name: /topic2
 `
 
 	// Build a StoredAPIConfig from the YAML
@@ -84,11 +83,10 @@ spec:
   version: v1
   vhosts:
     main: "*"
-  channels:
-    - name: /topic1
-      method: SUB
-    - name: /topic2
-      method: SUB
+  hub:
+    channels:
+      - name: /topic1
+      - name: /topic2
 `
 
 	// Build a StoredAPIConfig from the YAML
@@ -130,9 +128,9 @@ spec:
   version: v1
   vhosts:
     main: "*"
-  channels:
-    - name: /topic1
-      method: SUB
+  hub:
+    channels:
+      - name: /topic1
 `
 
 	if err := parser.Parse([]byte(yamlConfig2), "application/yaml", &apiCfg); err != nil {
@@ -174,11 +172,10 @@ spec:
   version: v1
   vhosts:
     main: "*"
-  channels:
-    - name: /topic1
-      method: SUB
-    - name: /topic2
-      method: SUB`
+  hub:
+    channels:
+      - name: /topic1
+      - name: /topic2`
 
 	yamlB := `kind: WebSubApi
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
@@ -190,11 +187,10 @@ spec:
   version: v1
   vhosts:
     main: "*"
-  channels:
-    - name: /topic3
-      method: SUB
-    - name: /topic4
-      method: SUB`
+  hub:
+    channels:
+      - name: /topic3
+      - name: /topic4`
 
 	var apiCfgA, apiCfgB api.WebSubAPI
 	parser := config.NewParser()
@@ -286,11 +282,10 @@ spec:
   version: v1
   vhosts:
     main: "*"
-  channels:
-    - name: /topic1
-      method: SUB
-    - name: /topic2
-      method: SUB`
+  hub:
+    channels:
+      - name: /topic1
+      - name: /topic2`
 
 	// Build a StoredAPIConfig from the YAML
 	var apiCfg api.WebSubAPI

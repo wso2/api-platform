@@ -39,14 +39,8 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
-)
-
-// Version information (set via ldflags during build)
-var (
-	Version   = "dev"
-	GitCommit = "unknown"
-	BuildDate = "unknown"
 )
 
 // API base paths for the gateway-controller HTTP surfaces.
@@ -112,9 +106,9 @@ func main() {
 	})
 
 	log.Info("Starting Gateway-Controller",
-		slog.String("version", Version),
-		slog.String("git_commit", GitCommit),
-		slog.String("build_date", BuildDate),
+		slog.String("version", version.Version),
+		slog.String("git_commit", version.GitCommit),
+		slog.String("build_date", version.BuildDate),
 		slog.String("config_file", *configPath),
 		slog.String("storage_type", cfg.Controller.Storage.Type),
 		slog.Bool("access_logs_enabled", cfg.Router.AccessLogs.Enabled),
@@ -632,7 +626,7 @@ func main() {
 		log.Info("Starting metrics server", slog.Int("port", cfg.Controller.Metrics.Port))
 
 		// Set build info metric
-		metrics.Info.WithLabelValues(Version, cfg.Controller.Storage.Type, BuildDate).Set(1)
+		metrics.Info.WithLabelValues(version.Version, cfg.Controller.Storage.Type, version.BuildDate).Set(1)
 
 		metricsServer = metrics.NewServer(&cfg.Controller.Metrics, log)
 		if err := metricsServer.Start(); err != nil {

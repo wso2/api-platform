@@ -21,6 +21,8 @@ spec:
     - demo.gateway-api.local
   rules:
     - matches:
+        # match.method is optional per Gateway API; if omitted, the operator emits all RestApi verbs
+        # (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS) for this path in api.yaml.
         - path:
             type: PathPrefix
             value: /hello

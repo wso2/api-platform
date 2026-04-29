@@ -594,6 +594,7 @@ func (h *GatewayInternalAPIHandler) ReceiveGatewayManifest(c *gin.Context) {
 	}
 
 	var body struct {
+		Version  string                       `json:"version"`
 		Policies []service.GatewayPolicyInput `json:"policies"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
@@ -601,7 +602,7 @@ func (h *GatewayInternalAPIHandler) ReceiveGatewayManifest(c *gin.Context) {
 		return
 	}
 
-	if err := h.gatewayService.ReceiveGatewayManifest(orgID, gatewayID, body.Policies); err != nil {
+	if err := h.gatewayService.ReceiveGatewayManifest(orgID, gatewayID, body.Version, body.Policies); err != nil {
 		h.slogger.Error("Failed to store gateway manifest", "gatewayID", gatewayID, "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to store gateway manifest"))

@@ -82,6 +82,7 @@ kubectl apply -f 02-gateway.yaml
 kubectl apply -f 03-backend.yaml
 # Wait until Helm workloads for the gateway are Ready (see Verification).
 kubectl apply -f 04-httproute.yaml
+kubectl apply -f 04-02-httproute.yaml 
 ```
 
 ## Verification
@@ -184,4 +185,4 @@ See [GATEWAY_API_IMPLEMENTATION_NOTES](../../../gateway-operator/docs/GATEWAY_AP
 - `02a-gateway-values-configmap.yaml` — per-Gateway Helm values (`auth`, `developmentMode`, **cert-manager** listener TLS + SANs for in-cluster HTTPS)
 - `02-gateway.yaml` — listener + `allowedRoutes` + annotation to use `platform-gw-values`
 - `03-backend.yaml` — `ghcr.io/wso2/api-platform/sample-service` Deployment + ClusterIP Service (port **9080**, same image as integration tests)
-- `04-httproute.yaml` — `PathPrefix /hello`, GET → backend Service; annotations set `api-version`, `context`, `display-name`, and optional `project-id` for the generated API payload
+- `04-httproute.yaml` — `PathPrefix /hello`, GET → backend Service; annotations set `api-version`, **`context`** (omit or leave blank to use API context **`/`**), `display-name`, and optional `project-id` for the generated API payload

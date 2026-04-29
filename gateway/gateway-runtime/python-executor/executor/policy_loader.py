@@ -20,7 +20,7 @@ import os
 import sys
 from typing import Callable, Dict, Optional
 
-from wso2_gateway_policy_sdk import Policy, PolicyMetadata
+from apip_sdk_core import Policy, PolicyMetadata
 
 logger = logging.getLogger(__name__)
 
