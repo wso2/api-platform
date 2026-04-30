@@ -15,8 +15,9 @@
 
 """Python Executor entry point.
 
-Starts the gRPC server on UDS, loads all registered Python policies,
-and serves ExecuteStream RPCs from the Go Policy Engine.
+Starts the gRPC server on a Unix domain socket (default) or TCP port,
+loads all registered Python policies, and serves ExecuteStream RPCs
+from the Go Policy Engine.
 """
 
 import argparse
@@ -26,10 +27,18 @@ import os
 import signal
 import sys
 
+try:
+    import tomllib
+except ImportError:
+    try:
+        import tomli as tomllib
+    except ImportError:
+        tomllib = None
+
 from executor.server import PythonExecutorServer
 
 
-PYTHON_EXECUTOR_SOCKET = "/var/run/api-platform/python-executor.sock"
+DEFAULT_LISTEN_ADDRESS = "/var/run/api-platform/python-executor.sock"
 
 
 def positive_int(value):
@@ -68,7 +77,54 @@ def _parse_args():
             # Invalid env-derived default should not block startup or valid CLI overrides.
             return fallback
 
+    # First pass: Extract just the config file path
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument("--config", default=os.environ.get("PYTHON_EXECUTOR_CONFIG"))
+    pre_args, _ = pre_parser.parse_known_args()
+
+    config_data = {}
+    if pre_args.config and os.path.exists(pre_args.config):
+        if tomllib is None:
+            sys.exit(f"Error: tomli/tomllib not available to parse {pre_args.config}")
+        try:
+            with open(pre_args.config, "rb") as f:
+                config_data = tomllib.load(f)
+        except Exception as e:
+            sys.exit(f"Error reading config {pre_args.config}: {e}")
+
+    py_cfg = config_data.get("python_executor", {})
+    srv_cfg = py_cfg.get("server", {})
+
+    listen_default = os.environ.get("PYTHON_EXECUTOR_LISTEN")
+    if listen_default is None:
+        if srv_cfg:
+            mode = srv_cfg.get("mode", "uds")
+            if mode == "tcp":
+                listen_default = f"{srv_cfg.get('host', 'localhost')}:{srv_cfg.get('port', 9010)}"
+            else:
+                listen_default = DEFAULT_LISTEN_ADDRESS
+        else:
+            listen_default = DEFAULT_LISTEN_ADDRESS
+
+    timeout_default = os.environ.get("PYTHON_POLICY_TIMEOUT")
+    if timeout_default is None and "timeout" in py_cfg:
+        timeout_raw = py_cfg["timeout"]
+        if isinstance(timeout_raw, str) and timeout_raw.endswith("s"):
+            timeout_default = timeout_raw[:-1]
+        else:
+            timeout_default = str(timeout_raw)
+
     parser = argparse.ArgumentParser(description="Python Executor gRPC server")
+    parser.add_argument(
+        "--config",
+        default=os.environ.get("PYTHON_EXECUTOR_CONFIG"),
+        help="Path to TOML config file (env: PYTHON_EXECUTOR_CONFIG)",
+    )
+    parser.add_argument(
+        "--listen",
+        default=listen_default,
+        help=f"Listen address (env: PYTHON_EXECUTOR_LISTEN, default: %(default)s)",
+    )
     parser.add_argument(
         "--workers",
         default=os.environ.get("PYTHON_POLICY_WORKERS"),
@@ -81,7 +137,7 @@ def _parse_args():
     )
     parser.add_argument(
         "--timeout",
-        default=os.environ.get("PYTHON_POLICY_TIMEOUT"),
+        default=timeout_default,
         help="Timeout in seconds for policy execution (env: PYTHON_POLICY_TIMEOUT)",
     )
     parser.add_argument(
@@ -141,14 +197,18 @@ async def main():
     setup_logging()
     logger = logging.getLogger(__name__)
 
-    socket_path = PYTHON_EXECUTOR_SOCKET
+    listen_address = args.listen
     worker_count = args.workers
     max_concurrent = args.max_concurrent
     timeout = args.timeout
 
-    logger.info(f"Python Executor starting (workers={worker_count}, max_concurrent={max_concurrent}, timeout={timeout}s, log_level={LOG_LEVEL})")
+    logger.info(
+        "Python Executor starting (listen=%s, workers=%s, "
+        "max_concurrent=%s, timeout=%ss, log_level=%s)",
+        listen_address, worker_count, max_concurrent, timeout, LOG_LEVEL,
+    )
 
-    server = PythonExecutorServer(socket_path, worker_count, max_concurrent, timeout)
+    server = PythonExecutorServer(listen_address, worker_count, max_concurrent, timeout)
 
     # Graceful shutdown on SIGTERM/SIGINT
     loop = asyncio.get_event_loop()

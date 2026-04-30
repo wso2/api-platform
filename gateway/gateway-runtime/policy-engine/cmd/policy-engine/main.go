@@ -165,6 +165,9 @@ func main() {
 	// Policy registration happens automatically via Builder-generated plugin_registry.go
 	slog.InfoContext(ctx, "Policies registered via Builder-generated code")
 
+	// Initialize Python executor bridge from configuration
+	pythonbridge.Init(cfg.PythonExecutor)
+
 	// Initialize configuration source based on mode
 	var xdsClient *xdsclient.Client
 	var xdsSyncStatusProvider admin.XDSSyncStatusProvider = noOpXDSSyncStatusProvider{}
@@ -239,9 +242,8 @@ func main() {
 	// Start admin HTTP server if enabled
 	var adminServer *admin.Server
 	if cfg.PolicyEngine.Admin.Enabled {
-		// Check if Python executor is available (socket configured)
 		var pythonHealthChecker admin.PythonHealthChecker
-		if _, err := os.Stat("/var/run/api-platform/python-executor.sock"); err == nil {
+		if pythonbridge.IsAvailable(cfg.PythonExecutor) {
 			sm := pythonbridge.GetStreamManager()
 			pythonHealthChecker = pythonbridge.NewPythonHealthAdapter(sm)
 		}

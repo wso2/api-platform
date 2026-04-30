@@ -244,6 +244,22 @@ enabled = true
 port = 9003
 
 # =============================================================================
+# PYTHON EXECUTOR CONFIGURATION
+# =============================================================================
+
+[python_executor]
+# Timeout for policy execution
+timeout = "30s"
+
+[python_executor.server]
+# Mode: "uds" (Unix Domain Socket) or "tcp"
+mode = "uds"
+# Port (only used when mode = "tcp")
+port = 9010
+# Host (only used when mode = "tcp")
+host = "localhost"
+
+# =============================================================================
 # ANALYTICS CONFIGURATION
 # =============================================================================
 [analytics]

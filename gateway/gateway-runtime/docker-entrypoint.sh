@@ -74,6 +74,10 @@ while [[ $# -gt 0 ]]; do
                 log "ERROR: --py.socket override is not supported; socket path is fixed"
                 exit 1
             fi
+            if [[ "$py_arg" == "--py.listen" || "$py_arg" == --py.listen=* ]]; then
+                log "ERROR: --py.listen override is not supported; listen address is fixed in container mode"
+                exit 1
+            fi
             PY_ARGS+=("--${py_arg#--py.}")
             shift
             if [[ $# -gt 0 && "$1" != --* ]]; then

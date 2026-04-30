@@ -62,6 +62,13 @@ func validConfig() *Config {
 				Format: "json",
 			},
 		},
+		PythonExecutor: PythonExecutorConfig{
+			Server: PythonExecutorServerConfig{
+				Port: 9010,
+				Host: "localhost",
+			},
+			Timeout: 30 * time.Second,
+		},
 		Analytics: AnalyticsConfig{
 			Enabled: false,
 		},
