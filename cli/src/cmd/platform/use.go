@@ -16,11 +16,12 @@
  * under the License.
  */
 
-package gateway
+package platform
 
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/wso2/api-platform/cli/internal/config"
@@ -28,46 +29,42 @@ import (
 )
 
 const (
-	CurrentCmdLiteral = "current"
-	CurrentCmdExample = `# Show the current active gateway
-ap gateway current`
+	UseCmdLiteral = "use"
+	UseCmdExample = `# Set the current platform
+ap platform use --name dev`
 )
 
-var currentCmd = &cobra.Command{
-	Use:     CurrentCmdLiteral,
-	Short:   "Show the current active gateway",
-	Long:    "Display the current active gateway configuration.",
-	Example: CurrentCmdExample,
+var platformName string
+
+var useCmd = &cobra.Command{
+	Use:     UseCmdLiteral,
+	Short:   "Set the current platform",
+	Long:    "Set the current platform used by default for gateway and devportal commands.",
+	Example: UseCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := runCurrentCommand(); err != nil {
+		if err := runUseCommand(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 	},
 }
 
-var currentPlatform string
-
 func init() {
-	utils.AddStringFlag(currentCmd, utils.FlagPlatform, &currentPlatform, "", "Platform name")
+	utils.AddStringFlag(useCmd, utils.FlagPlatform, &platformName, "", "Name of the platform to use (required)")
 }
 
-func runCurrentCommand() error {
-	// Load existing config
+func runUseCommand() error {
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Get active gateway
-	resolvedPlatform := cfg.ResolvePlatform(currentPlatform)
-	gateway, err := cfg.GetActiveGatewayFromPlatform(resolvedPlatform)
-	if err != nil {
-		return err
+	platformName := cfg.SetCurrentPlatform(strings.TrimSpace(platformName))
+
+	if err := config.SaveConfig(cfg); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	// Display gateway info
-	fmt.Printf("Current gateway: %s - %s (platform: %s, auth: %s)\n", gateway.Name, gateway.Server, resolvedPlatform, gateway.Auth.Type)
-
+	fmt.Printf("Current platform set to %s.\n", platformName)
 	return nil
 }

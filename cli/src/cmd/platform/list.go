@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package gateway
+package platform
 
 import (
 	"fmt"
@@ -28,46 +28,46 @@ import (
 )
 
 const (
-	CurrentCmdLiteral = "current"
-	CurrentCmdExample = `# Show the current active gateway
-ap gateway current`
+	ListCmdLiteral = "list"
+	ListCmdExample = `# List all platforms
+ap platform list`
 )
 
-var currentCmd = &cobra.Command{
-	Use:     CurrentCmdLiteral,
-	Short:   "Show the current active gateway",
-	Long:    "Display the current active gateway configuration.",
-	Example: CurrentCmdExample,
+var listCmd = &cobra.Command{
+	Use:     ListCmdLiteral,
+	Short:   "List all platforms",
+	Long:    "List all platforms configured in the CLI.",
+	Example: ListCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := runCurrentCommand(); err != nil {
+		if err := runListCommand(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 	},
 }
 
-var currentPlatform string
-
-func init() {
-	utils.AddStringFlag(currentCmd, utils.FlagPlatform, &currentPlatform, "", "Platform name")
-}
-
-func runCurrentCommand() error {
-	// Load existing config
+func runListCommand() error {
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Get active gateway
-	resolvedPlatform := cfg.ResolvePlatform(currentPlatform)
-	gateway, err := cfg.GetActiveGatewayFromPlatform(resolvedPlatform)
-	if err != nil {
-		return err
+	platforms := cfg.ListPlatforms()
+	if len(platforms) == 0 {
+		fmt.Println("No platforms configured")
+		return nil
 	}
 
-	// Display gateway info
-	fmt.Printf("Current gateway: %s - %s (platform: %s, auth: %s)\n", gateway.Name, gateway.Server, resolvedPlatform, gateway.Auth.Type)
-
+	headers := []string{"NAME", "CURRENT"}
+	rows := make([][]string, 0, len(platforms))
+	current := cfg.GetCurrentPlatform()
+	for _, platform := range platforms {
+		marker := ""
+		if platform == current {
+			marker = "*"
+		}
+		rows = append(rows, []string{platform, marker})
+	}
+	utils.PrintTable(headers, rows)
 	return nil
 }

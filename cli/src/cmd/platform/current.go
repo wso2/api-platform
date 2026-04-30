@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package gateway
+package platform
 
 import (
 	"fmt"
@@ -24,19 +24,18 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/wso2/api-platform/cli/internal/config"
-	"github.com/wso2/api-platform/cli/utils"
 )
 
 const (
 	CurrentCmdLiteral = "current"
-	CurrentCmdExample = `# Show the current active gateway
-ap gateway current`
+	CurrentCmdExample = `# Show the current platform
+ap platform current`
 )
 
 var currentCmd = &cobra.Command{
 	Use:     CurrentCmdLiteral,
-	Short:   "Show the current active gateway",
-	Long:    "Display the current active gateway configuration.",
+	Short:   "Show the current platform",
+	Long:    "Display the current platform configured for the CLI.",
 	Example: CurrentCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runCurrentCommand(); err != nil {
@@ -46,28 +45,12 @@ var currentCmd = &cobra.Command{
 	},
 }
 
-var currentPlatform string
-
-func init() {
-	utils.AddStringFlag(currentCmd, utils.FlagPlatform, &currentPlatform, "", "Platform name")
-}
-
 func runCurrentCommand() error {
-	// Load existing config
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Get active gateway
-	resolvedPlatform := cfg.ResolvePlatform(currentPlatform)
-	gateway, err := cfg.GetActiveGatewayFromPlatform(resolvedPlatform)
-	if err != nil {
-		return err
-	}
-
-	// Display gateway info
-	fmt.Printf("Current gateway: %s - %s (platform: %s, auth: %s)\n", gateway.Name, gateway.Server, resolvedPlatform, gateway.Auth.Type)
-
+	fmt.Printf("Current platform: %s\n", cfg.GetCurrentPlatform())
 	return nil
 }

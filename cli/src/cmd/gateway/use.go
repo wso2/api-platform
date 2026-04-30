@@ -33,7 +33,10 @@ const (
 ap gateway use --name dev`
 )
 
-var useName string
+var (
+	useName     string
+	usePlatform string
+)
 
 var useCmd = &cobra.Command{
 	Use:     UseCmdLiteral,
@@ -50,6 +53,7 @@ var useCmd = &cobra.Command{
 
 func init() {
 	utils.AddStringFlag(useCmd, utils.FlagName, &useName, "", "Name of the gateway to use (required)")
+	utils.AddStringFlag(useCmd, utils.FlagPlatform, &usePlatform, "", "Platform name")
 	useCmd.MarkFlagRequired(utils.FlagName)
 }
 
@@ -61,13 +65,14 @@ func runUseCommand() error {
 	}
 
 	// Check if gateway exists and get it
-	gateway, err := cfg.GetGateway(useName)
+	resolvedPlatform := cfg.ResolvePlatform(usePlatform)
+	gateway, err := cfg.GetGatewayFromPlatform(resolvedPlatform, useName)
 	if err != nil {
 		return err
 	}
 
 	// Set as active
-	if err := cfg.SetActiveGateway(useName); err != nil {
+	if err := cfg.SetActiveGatewayForPlatform(resolvedPlatform, useName); err != nil {
 		return err
 	}
 
@@ -76,21 +81,21 @@ func runUseCommand() error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	fmt.Printf("Gateway set to %s (auth: %s).\n", useName, gateway.Auth)
+	fmt.Printf("Gateway set to %s (platform: %s, auth: %s).\n", useName, resolvedPlatform, gateway.Auth.Type)
 
 	// Validate credentials availability for the gateway's auth type
 	// Only warn if BOTH env vars AND config credentials are missing
-	if gateway.Auth != utils.AuthTypeNone {
-		hasEnvCreds := utils.HasEnvCredentials(gateway.Auth)
-		hasConfigCreds := utils.HasConfigCredentials(gateway.Auth, gateway.Username, gateway.Password, gateway.Token)
+	if gateway.Auth.Type != utils.AuthTypeNone {
+		hasEnvCreds := utils.HasEnvCredentials(gateway.Auth.Type)
+		hasConfigCreds := utils.HasConfigCredentials(gateway.Auth.Type, gateway.Auth.Username, gateway.Auth.Password, gateway.Auth.Token)
 
 		if !hasEnvCreds && !hasConfigCreds {
 			// Neither env vars nor config credentials are available
-			missing, _, err := utils.ValidateAuthEnvVars(gateway.Auth)
+			missing, _, err := utils.ValidateAuthEnvVars(gateway.Auth.Type)
 			if err != nil {
 				fmt.Printf("\nWarning: failed to validate auth env vars: %v\n", err)
 			} else {
-				fmt.Println("\n" + utils.FormatMissingEnvVarsWarning(gateway.Auth, missing))
+				fmt.Println("\n" + utils.FormatMissingEnvVarsWarning(gateway.Auth.Type, missing))
 			}
 		} else if hasConfigCreds && !hasEnvCreds {
 			// Config has credentials, env vars not set - this is fine, just inform

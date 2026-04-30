@@ -36,31 +36,32 @@ const (
 	DefaultGatewayController = "ghcr.io/wso2/api-platform/gateway-controller:%s" // %s = version
 	DefaultGatewayRuntime    = "ghcr.io/wso2/api-platform/gateway-runtime:%s"    // %s = version
 
-	// Gateway-controller API base paths. These must stay in sync with the
-	// `servers.url` prefixes declared in
-	//   gateway/gateway-controller/api/management-openapi.yaml
-	//   gateway/gateway-controller/api/admin-openapi.yaml
-	GatewayManagementBasePath = "/api/management/v0.9"
-	GatewayAdminBasePath      = "/api/admin/v0.9"
-
-	// REST API Endpoints (served on the gateway-controller's management port).
-	GatewayAPIsPath         = GatewayManagementBasePath + "/rest-apis"
-	GatewayAPIByIDPath      = GatewayManagementBasePath + "/rest-apis/%s"
-	GatewayMCPProxiesPath   = GatewayManagementBasePath + "/mcp-proxies"
-	GatewayMCPProxyByIDPath = GatewayManagementBasePath + "/mcp-proxies/%s"
-
-	// Health endpoint (served on the gateway-controller's admin port).
-	GatewayHealthPath = GatewayAdminBasePath + "/health"
+	// REST API Endpoints
+	GatewayHealthPath       = "/health"
+	GatewayAPIsPath         = "/rest-apis"
+	GatewayAPIByIDPath      = "/rest-apis/%s"
+	GatewayMCPProxiesPath   = "/mcp-proxies"
+	GatewayMCPProxyByIDPath = "/mcp-proxies/%s"
+	DevPortalHealthPath     = "/health"
 
 	// Auth Types
 	AuthTypeNone   = "none"
 	AuthTypeBasic  = "basic"
 	AuthTypeBearer = "bearer"
+	AuthTypeOAuth  = "oauth"
+	AuthTypeAPIKey = "api-key"
 
 	// Auth Environment Variables
 	EnvGatewayUsername = "WSO2AP_GW_USERNAME" // For Basic Auth
 	EnvGatewayPassword = "WSO2AP_GW_PASSWORD" // For Basic Auth
 	EnvGatewayToken    = "WSO2AP_GW_TOKEN"    // For Bearer Auth
+
+	// DevPortal Authentication Environment Variables
+	EnvDevPortalUsername = "WSO2AP_DEVPORTAL_USERNAME" // For DevPortal basic auth
+	EnvDevPortalPassword = "WSO2AP_DEVPORTAL_PASSWORD" // For DevPortal basic auth
+	EnvDevPortalToken    = "WSO2AP_DEVPORTAL_TOKEN"    // For DevPortal OAuth auth
+	EnvDevPortalAPIKey   = "WSO2AP_DEVPORTAL_API_KEY"  // For DevPortal API key auth
+	DevPortalAPIHeader   = "api-key"
 
 	// Image Build Configuration
 	GatewayVerifyChecksumOnBuild = true

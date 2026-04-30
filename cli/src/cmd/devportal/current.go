@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package gateway
+package devportal
 
 import (
 	"fmt"
@@ -29,14 +29,14 @@ import (
 
 const (
 	CurrentCmdLiteral = "current"
-	CurrentCmdExample = `# Show the current active gateway
-ap gateway current`
+	CurrentCmdExample = `# Show the current active devportal
+ap devportal current`
 )
 
 var currentCmd = &cobra.Command{
 	Use:     CurrentCmdLiteral,
-	Short:   "Show the current active gateway",
-	Long:    "Display the current active gateway configuration.",
+	Short:   "Show the current active devportal",
+	Long:    "Display the current active devportal configuration.",
 	Example: CurrentCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runCurrentCommand(); err != nil {
@@ -53,21 +53,18 @@ func init() {
 }
 
 func runCurrentCommand() error {
-	// Load existing config
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Get active gateway
 	resolvedPlatform := cfg.ResolvePlatform(currentPlatform)
-	gateway, err := cfg.GetActiveGatewayFromPlatform(resolvedPlatform)
+	devPortal, err := cfg.GetActiveDevPortalFromPlatform(resolvedPlatform)
 	if err != nil {
 		return err
 	}
 
-	// Display gateway info
-	fmt.Printf("Current gateway: %s - %s (platform: %s, auth: %s)\n", gateway.Name, gateway.Server, resolvedPlatform, gateway.Auth.Type)
+	fmt.Printf("Current devportal: %s - %s (platform: %s, auth: %s)\n", devPortal.Name, devPortal.URL, resolvedPlatform, devPortal.Auth.Type)
 
 	return nil
 }

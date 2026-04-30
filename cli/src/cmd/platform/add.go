@@ -16,11 +16,12 @@
  * under the License.
  */
 
-package gateway
+package platform
 
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/wso2/api-platform/cli/internal/config"
@@ -28,46 +29,42 @@ import (
 )
 
 const (
-	CurrentCmdLiteral = "current"
-	CurrentCmdExample = `# Show the current active gateway
-ap gateway current`
+	AddCmdLiteral = "add"
+	AddCmdExample = `# Add a platform
+ap platform add --display-name dev`
 )
 
-var currentCmd = &cobra.Command{
-	Use:     CurrentCmdLiteral,
-	Short:   "Show the current active gateway",
-	Long:    "Display the current active gateway configuration.",
-	Example: CurrentCmdExample,
+var addName string
+
+var addCmd = &cobra.Command{
+	Use:     AddCmdLiteral,
+	Short:   "Add a platform",
+	Long:    "Add a platform to the CLI configuration.",
+	Example: AddCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := runCurrentCommand(); err != nil {
+		if err := runAddCommand(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 	},
 }
 
-var currentPlatform string
-
 func init() {
-	utils.AddStringFlag(currentCmd, utils.FlagPlatform, &currentPlatform, "", "Platform name")
+	utils.AddStringFlag(addCmd, utils.FlagName, &addName, "", "Name of the Devportal")
 }
 
-func runCurrentCommand() error {
-	// Load existing config
+func runAddCommand() error {
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Get active gateway
-	resolvedPlatform := cfg.ResolvePlatform(currentPlatform)
-	gateway, err := cfg.GetActiveGatewayFromPlatform(resolvedPlatform)
-	if err != nil {
-		return err
+	platformName := cfg.AddPlatform(strings.TrimSpace(addName))
+
+	if err := config.SaveConfig(cfg); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	// Display gateway info
-	fmt.Printf("Current gateway: %s - %s (platform: %s, auth: %s)\n", gateway.Name, gateway.Server, resolvedPlatform, gateway.Auth.Type)
-
+	fmt.Printf("Platform %s added.\n", platformName)
 	return nil
 }

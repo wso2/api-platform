@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package gateway
+package devportal
 
 import (
 	"encoding/json"
@@ -26,20 +26,20 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/wso2/api-platform/cli/internal/config"
-	"github.com/wso2/api-platform/cli/internal/gateway"
+	internaldevportal "github.com/wso2/api-platform/cli/internal/devportal"
 	"github.com/wso2/api-platform/cli/utils"
 )
 
 const (
 	HealthCmdLiteral = "health"
-	HealthCmdExample = `# Check health of the current gateway
-ap gateway health`
+	HealthCmdExample = `# Check health of the current devportal
+ap devportal health`
 )
 
 var healthCmd = &cobra.Command{
 	Use:     HealthCmdLiteral,
-	Short:   "Check the health status of the current gateway",
-	Long:    "Returns the health status of the currently active gateway by calling its " + utils.GatewayHealthPath + " endpoint.",
+	Short:   "Check the health status of the current devportal",
+	Long:    "Returns the health status of the currently active devportal by calling its /health endpoint.",
 	Example: HealthCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runHealthCommand(); err != nil {
@@ -56,48 +56,39 @@ func init() {
 }
 
 func runHealthCommand() error {
-	// Create a client for the active gateway
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 	resolvedPlatform := cfg.ResolvePlatform(healthPlatform)
 
-	client, err := gateway.NewClientForActivePlatform(resolvedPlatform)
+	client, err := internaldevportal.NewClientForActivePlatform(resolvedPlatform)
 	if err != nil {
 		return err
 	}
 
-	// The health endpoint is served on the gateway-controller's admin API (a
-	// separate port from the management API in most deployments), so route
-	// through GetAdmin which resolves the configured admin base URL.
-	resp, err := client.GetAdmin(utils.GatewayHealthPath)
+	resp, err := client.Get(utils.DevPortalHealthPath)
 	if err != nil {
 		return fmt.Errorf("failed to call health endpoint: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("failed to read response: %w", err)
 	}
 
-	// Check if the response is successful
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("health check failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Try to parse the response as JSON to extract relevant fields
 	var healthData map[string]interface{}
 	if err := json.Unmarshal(body, &healthData); err != nil {
-		// If not JSON, print raw response
-		fmt.Println("Gateway Status: unknown")
+		fmt.Println("DevPortal Status: unknown")
 		fmt.Printf("Response: %s\n", string(body))
 		return nil
 	}
 
-	// Extract and display relevant information
 	status := "unknown"
 	timestamp := ""
 	message := ""
@@ -112,21 +103,19 @@ func runHealthCommand() error {
 		message = val
 	}
 
-	// Display the health information
-	fmt.Printf("Gateway Status: %s\n", status)
+	fmt.Printf("DevPortal Status: %s\n", status)
 	if timestamp != "" {
 		fmt.Printf("Timestamp: %s\n", timestamp)
 	}
 	if message != "" {
 		fmt.Printf("%s\n", message)
 	} else {
-		// Default message based on status
 		if status == "healthy" || status == "up" {
-			fmt.Println("Gateway is healthy.")
+			fmt.Println("DevPortal is healthy.")
 		} else if status == "unhealthy" || status == "down" {
-			fmt.Println("Gateway is unhealthy.")
+			fmt.Println("DevPortal is unhealthy.")
 		} else {
-			fmt.Println("Gateway health status is unclear.")
+			fmt.Println("DevPortal health status is unclear.")
 		}
 	}
 

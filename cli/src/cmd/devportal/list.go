@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package gateway
+package devportal
 
 import (
 	"fmt"
@@ -29,14 +29,14 @@ import (
 
 const (
 	ListCmdLiteral = "list"
-	ListCmdExample = `# List all gateways
-ap gateway list`
+	ListCmdExample = `# List all devportals
+ap devportal list`
 )
 
 var listCmd = &cobra.Command{
 	Use:     ListCmdLiteral,
-	Short:   "List all gateways",
-	Long:    "List all gateway configurations from the ap config file.",
+	Short:   "List all devportals",
+	Long:    "List all devportal configurations from the ap config file.",
 	Example: ListCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runListCommand(); err != nil {
@@ -53,29 +53,26 @@ func init() {
 }
 
 func runListCommand() error {
-	// Load existing config
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Check if there are any gateways
 	resolvedPlatform := cfg.ResolvePlatform(listPlatform)
 	platform := cfg.Platforms[resolvedPlatform]
-	if platform == nil || len(platform.Gateways) == 0 {
-		fmt.Printf("No gateways configured for platform %s\n", resolvedPlatform)
+	if platform == nil || len(platform.DevPortals) == 0 {
+		fmt.Printf("No devportal configured for platform %s\n", resolvedPlatform)
 		return nil
 	}
 
-	// Display as table
-	headers := []string{"PLATFORM", "NAME", "SERVER", "AUTH", "CURRENT"}
-	rows := make([][]string, 0, len(platform.Gateways))
-	for name, gw := range platform.Gateways {
+	headers := []string{"PLATFORM", "NAME", "URL", "AUTH", "CURRENT"}
+	rows := make([][]string, 0, len(platform.DevPortals))
+	for name, dp := range platform.DevPortals {
 		current := ""
-		if name == platform.ActiveGateway {
+		if name == platform.ActiveDevPortal {
 			current = "*"
 		}
-		rows = append(rows, []string{resolvedPlatform, name, gw.Server, gw.Auth.Type, current})
+		rows = append(rows, []string{resolvedPlatform, name, dp.URL, dp.Auth.Type, current})
 	}
 	utils.PrintTable(headers, rows)
 

@@ -32,23 +32,20 @@
 #### CLI Command
 
 ```shell
-ap gateway add --display-name <name> --server <server-url> [--auth <none|basic|bearer>]
+ap gateway add --display-name <name> --server <server> [--platform <platform>] [--auth <none|basic|bearer>]
 ```
 
 #### Sample Commands
 
 ```shell
 # Add a gateway with no authentication (default)
-ap gateway add --display-name dev --server http://localhost:9090
+ap gateway add --display-name dev --platform eu --server http://localhost:9090
 
 # Add a gateway with basic authentication
-ap gateway add --display-name dev --server http://localhost:9090 --auth basic
+ap gateway add --display-name dev --platform eu --server http://localhost:9090 --auth basic
 
 # Add a gateway with bearer token authentication
-ap gateway add --display-name prod --server https://api.example.com --auth bearer
-
-# Add a gateway, overriding the default admin server URL
-ap gateway add --display-name dev --server http://localhost:9090 --admin-server http://localhost:9094
+ap gateway add --display-name prod --platform eu --server https://api.example.com --auth bearer
 ```
 
 #### Authentication Setup
@@ -73,13 +70,13 @@ export WSO2AP_GW_TOKEN=<token>
 #### CLI Command
 
 ```shell
-ap gateway list
+ap gateway list --platform <platform>
 ```
 
 #### Sample Command
 
 ```shell
-ap gateway list
+ap gateway list --platform eu
 ```
 
 ---
@@ -89,13 +86,13 @@ ap gateway list
 #### CLI Command
 
 ```shell
-ap gateway remove --display-name <name>
+ap gateway remove --display-name <name> --platform <platform>
 ```
 
 #### Sample Command
 
 ```shell
-ap gateway remove --display-name dev
+ap gateway remove --display-name dev --platform eu
 ```
 
 ---
@@ -105,13 +102,13 @@ ap gateway remove --display-name dev
 #### CLI Command
 
 ```shell
-ap gateway use --display-name <name>
+ap gateway use --display-name <name> --platform <platform>
 ```
 
 #### Sample Command
 
 ```shell
-ap gateway use --display-name dev
+ap gateway use --display-name dev --platform eu
 ```
 
 ---
@@ -121,13 +118,13 @@ ap gateway use --display-name dev
 #### CLI Command
 
 ```shell
-ap gateway current
+ap gateway current --platform <platform>
 ```
 
 #### Sample Command
 
 ```shell
-ap gateway current
+ap gateway current --platform eu
 ```
 
 ---
@@ -137,13 +134,13 @@ ap gateway current
 #### CLI Command
 
 ```shell
-ap gateway health
+ap gateway health --platform <platform>
 ```
 
 #### Sample Command
 
 ```shell
-ap gateway health
+ap gateway health --platform eu
 ```
 
 ---
@@ -306,4 +303,84 @@ ap gateway mcp generate --server <server> --output <path>
 
 ```shell
 ap gateway mcp generate --server http://localhost:3001/mcp --output target
+```
+
+---
+
+## DevPortal Sub Commands
+
+### 1. Add a DevPortal
+
+#### CLI Command
+
+```shell
+ap devportal add --display-name <portal-name> --server <url> --platform <platform> --auth <basic|oauth|api-key> [--username <username>] [--password <password>] [--token <token>] [--api-key <api-key>] [--no-interactive]
+```
+
+#### Sample Commands
+
+```shell
+# Add a DevPortal with basic auth
+ap devportal add --display-name my-portal --platform eu --server https://devportal.example.com --auth basic
+
+# Add a DevPortal with OAuth auth
+ap devportal add --display-name my-portal --platform eu --server https://devportal.example.com --auth oauth
+
+# Add a DevPortal without interactive prompts
+ap devportal add --display-name my-portal --platform eu --server https://devportal.example.com --auth api-key --no-interactive --api-key <api-key>
+```
+
+#### Authentication Setup
+
+For DevPortal authentication, export the environment variables for the configured auth type:
+
+```shell
+export WSO2AP_DEVPORTAL_USERNAME=<username>
+export WSO2AP_DEVPORTAL_PASSWORD=<password>
+export WSO2AP_DEVPORTAL_TOKEN=<token>
+export WSO2AP_DEVPORTAL_API_KEY=<api-key>
+```
+
+**Note:** The environment variable can be used instead of storing the API key in the CLI configuration.
+
+---
+
+### 2. List DevPortals
+
+#### CLI Command
+
+```shell
+ap devportal list --platform <platform>
+```
+
+### 3. Remove a DevPortal
+
+#### CLI Command
+
+```shell
+ap devportal remove --display-name <portal-name> --platform <platform>
+```
+
+### 4. Set the Active DevPortal
+
+#### CLI Command
+
+```shell
+ap devportal use --display-name <portal-name> --platform <platform>
+```
+
+### 5. Show the Current DevPortal
+
+#### CLI Command
+
+```shell
+ap devportal current --platform <platform>
+```
+
+### 6. Check DevPortal Health
+
+#### CLI Command
+
+```shell
+ap devportal health --platform <platform>
 ```

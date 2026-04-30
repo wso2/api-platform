@@ -23,7 +23,10 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/wso2/api-platform/cli/cmd/devportal"
 	"github.com/wso2/api-platform/cli/cmd/gateway"
+	"github.com/wso2/api-platform/cli/cmd/platform"
+	"github.com/wso2/api-platform/cli/cmd/apiproject"
 	"github.com/wso2/api-platform/cli/utils"
 )
 
@@ -64,7 +67,9 @@ var versionCmd = &cobra.Command{
 }
 
 func init() {
+	rootCmd.AddCommand(devportal.DevPortalCmd)
 	rootCmd.AddCommand(gateway.GatewayCmd)
+	rootCmd.AddCommand(platform.PlatformCmd)
 	rootCmd.AddCommand(versionCmd)
 }
 

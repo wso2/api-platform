@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package gateway
+package devportal
 
 import (
 	"fmt"
@@ -28,46 +28,51 @@ import (
 )
 
 const (
-	CurrentCmdLiteral = "current"
-	CurrentCmdExample = `# Show the current active gateway
-ap gateway current`
+	RemoveCmdLiteral = "remove"
+	RemoveCmdExample = `# Remove a devportal
+ap devportal remove --display-name my-portal`
 )
 
-var currentCmd = &cobra.Command{
-	Use:     CurrentCmdLiteral,
-	Short:   "Show the current active gateway",
-	Long:    "Display the current active gateway configuration.",
-	Example: CurrentCmdExample,
+var (
+	removeName     string
+	removePlatform string
+)
+
+var removeCmd = &cobra.Command{
+	Use:     RemoveCmdLiteral,
+	Short:   "Remove a devportal",
+	Long:    "Remove a devportal configuration from the ap config file.",
+	Example: RemoveCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := runCurrentCommand(); err != nil {
+		if err := runRemoveCommand(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 	},
 }
 
-var currentPlatform string
-
 func init() {
-	utils.AddStringFlag(currentCmd, utils.FlagPlatform, &currentPlatform, "", "Platform name")
+	utils.AddStringFlag(removeCmd, utils.FlagName, &removeName, "", "Name of the devportal to remove (required)")
+	utils.AddStringFlag(removeCmd, utils.FlagPlatform, &removePlatform, "", "Platform name")
+	removeCmd.MarkFlagRequired(utils.FlagName)
 }
 
-func runCurrentCommand() error {
-	// Load existing config
+func runRemoveCommand() error {
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Get active gateway
-	resolvedPlatform := cfg.ResolvePlatform(currentPlatform)
-	gateway, err := cfg.GetActiveGatewayFromPlatform(resolvedPlatform)
-	if err != nil {
+	resolvedPlatform := cfg.ResolvePlatform(removePlatform)
+	if err := cfg.RemoveDevPortalFromPlatform(resolvedPlatform, removeName); err != nil {
 		return err
 	}
 
-	// Display gateway info
-	fmt.Printf("Current gateway: %s - %s (platform: %s, auth: %s)\n", gateway.Name, gateway.Server, resolvedPlatform, gateway.Auth.Type)
+	if err := config.SaveConfig(cfg); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	fmt.Println("DevPortal removed successfully.")
 
 	return nil
 }
