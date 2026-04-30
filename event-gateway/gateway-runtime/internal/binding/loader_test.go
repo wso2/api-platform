@@ -232,6 +232,7 @@ func TestNormalizeTopicSegment(t *testing.T) {
 		{"pull_requests", "pull__requests"},
 		{"v1/test", "v1_2f_test"},
 		{"topic#42", "topic_23_42"},
+		{" topic ", "_20_topic_20_"},
 	}
 
 	for _, tt := range tests {

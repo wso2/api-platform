@@ -159,7 +159,6 @@ func ensureLeadingSlash(value string) string {
 //   - '_' becomes '__'
 //   - everything else becomes '_%x_' (for example '/' -> '_2f_')
 func NormalizeTopicSegment(value string) string {
-	value = strings.TrimSpace(value)
 	if value == "" {
 		return ""
 	}
