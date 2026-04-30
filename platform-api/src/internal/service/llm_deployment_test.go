@@ -482,3 +482,144 @@ func TestGenerateYAML_AllThreeConsumerLimits(t *testing.T) {
 
 	t.Logf("Generated YAML:\n%s", yaml)
 }
+
+// ---------------------------------------------------------------------------
+// llm-cost deduplication
+// ---------------------------------------------------------------------------
+
+// providerWithCostRLAndDefaultPolicies builds a provider with a cost-based rate limit
+// configured AND llm-cost already in Configuration.Policies — which is exactly what
+// happens in production when the frontend attaches llm-cost by default at creation time
+// and the user later enables cost-based rate limiting via the rate limit tab.
+func providerWithCostRLAndDefaultPolicies(rl *model.LLMRateLimitingConfig) *model.LLMProvider {
+	p := providerWithConsumerLimits(rl)
+	p.Configuration.Policies = []model.LLMPolicy{
+		{
+			Name:    "llm-cost",
+			Version: "v1",
+			Paths:   []model.LLMPolicyPath{{Path: "/*", Methods: []string{"*"}, Params: map[string]interface{}{}}},
+		},
+	}
+	return p
+}
+
+// TestGenerateYAML_LLMCostNotDuplicatedWithProviderCostLimit verifies that when a
+// backend cost limit is configured (auto-adds llm-cost) and llm-cost is also present
+// in Configuration.Policies (added by the frontend by default), the final YAML
+// contains llm-cost exactly once.
+func TestGenerateYAML_LLMCostNotDuplicatedWithProviderCostLimit(t *testing.T) {
+	rl := &model.LLMRateLimitingConfig{
+		ProviderLevel: &model.RateLimitingScopeConfig{
+			Global: &model.RateLimitingLimitConfig{
+				Cost: &model.CostRateLimit{Enabled: true, Amount: 1.0, Reset: model.RateLimitResetWindow{Duration: 1, Unit: "hour"}},
+			},
+		},
+	}
+
+	yaml, err := generateLLMProviderDeploymentYAML(providerWithCostRLAndDefaultPolicies(rl), "anthropic")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if strings.Count(yaml, "name: llm-cost\n") != 1 {
+		t.Errorf("expected exactly one llm-cost policy, got:\n%s", yaml)
+	}
+	t.Logf("Generated YAML:\n%s", yaml)
+}
+
+// TestGenerateYAML_LLMCostNotDuplicatedWithConsumerCostLimit verifies the same
+// deduplication holds when the cost limit is on the consumer level.
+func TestGenerateYAML_LLMCostNotDuplicatedWithConsumerCostLimit(t *testing.T) {
+	rl := &model.LLMRateLimitingConfig{
+		ConsumerLevel: &model.RateLimitingScopeConfig{
+			Global: &model.RateLimitingLimitConfig{
+				Cost: &model.CostRateLimit{Enabled: true, Amount: 0.5, Reset: model.RateLimitResetWindow{Duration: 1, Unit: "hour"}},
+			},
+		},
+	}
+
+	yaml, err := generateLLMProviderDeploymentYAML(providerWithCostRLAndDefaultPolicies(rl), "anthropic")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if strings.Count(yaml, "name: llm-cost\n") != 1 {
+		t.Errorf("expected exactly one llm-cost policy, got:\n%s", yaml)
+	}
+	t.Logf("Generated YAML:\n%s", yaml)
+}
+
+// TestGenerateYAML_LLMCostNotDuplicatedWithBothProviderAndConsumerCostLimits verifies
+// that even when both backend and consumer cost limits are configured, llm-cost
+// still appears only once alongside two llm-cost-based-ratelimit entries.
+func TestGenerateYAML_LLMCostNotDuplicatedWithBothProviderAndConsumerCostLimits(t *testing.T) {
+	rl := &model.LLMRateLimitingConfig{
+		ProviderLevel: &model.RateLimitingScopeConfig{
+			Global: &model.RateLimitingLimitConfig{
+				Cost: &model.CostRateLimit{Enabled: true, Amount: 1.0, Reset: model.RateLimitResetWindow{Duration: 1, Unit: "hour"}},
+			},
+		},
+		ConsumerLevel: &model.RateLimitingScopeConfig{
+			Global: &model.RateLimitingLimitConfig{
+				Cost: &model.CostRateLimit{Enabled: true, Amount: 0.1, Reset: model.RateLimitResetWindow{Duration: 1, Unit: "hour"}},
+			},
+		},
+	}
+
+	yaml, err := generateLLMProviderDeploymentYAML(providerWithCostRLAndDefaultPolicies(rl), "anthropic")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if strings.Count(yaml, "name: llm-cost\n") != 1 {
+		t.Errorf("expected exactly one llm-cost policy, got:\n%s", yaml)
+	}
+	if strings.Count(yaml, "llm-cost-based-ratelimit") < 2 {
+		t.Errorf("expected two llm-cost-based-ratelimit policies (backend + consumer), got:\n%s", yaml)
+	}
+	t.Logf("Generated YAML:\n%s", yaml)
+}
+
+// TestGenerateYAML_LLMCostKeptWhenNoCostRLConfigured verifies that when no cost-based
+// rate limit is configured, the llm-cost policy from Configuration.Policies is still
+// included in the output (it should only be skipped if already added by the RL block).
+func TestGenerateYAML_LLMCostKeptWhenNoCostRLConfigured(t *testing.T) {
+	yaml, err := generateLLMProviderDeploymentYAML(providerWithCostRLAndDefaultPolicies(nil), "anthropic")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if strings.Count(yaml, "name: llm-cost\n") != 1 {
+		t.Errorf("expected exactly one llm-cost policy when no RL is configured, got:\n%s", yaml)
+	}
+	t.Logf("Generated YAML:\n%s", yaml)
+}
+
+// TestGenerateYAML_OtherCustomPoliciesNotDeduplicated verifies that the llm-cost
+// deduplication does not affect other guardrail policies — two entries with the same
+// name but different params must both be preserved.
+func TestGenerateYAML_OtherCustomPoliciesNotDeduplicated(t *testing.T) {
+	p := providerWithConsumerLimits(nil)
+	p.Configuration.Policies = []model.LLMPolicy{
+		{
+			Name:    "my-guardrail",
+			Version: "v1",
+			Paths:   []model.LLMPolicyPath{{Path: "/*", Methods: []string{"*"}, Params: map[string]interface{}{"threshold": 0.5}}},
+		},
+		{
+			Name:    "my-guardrail",
+			Version: "v1",
+			Paths:   []model.LLMPolicyPath{{Path: "/*", Methods: []string{"*"}, Params: map[string]interface{}{"threshold": 0.9}}},
+		},
+	}
+
+	yaml, err := generateLLMProviderDeploymentYAML(p, "anthropic")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if strings.Count(yaml, "name: my-guardrail") < 2 {
+		t.Errorf("expected both my-guardrail entries to be present, got:\n%s", yaml)
+	}
+	t.Logf("Generated YAML:\n%s", yaml)
+}

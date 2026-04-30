@@ -1064,6 +1064,11 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 	}
 
 	for _, p := range provider.Configuration.Policies {
+		// llm-cost is a parameterless tracker policy that the frontend attaches by default.
+		// Skip it here if the rate limiting block already added it to avoid duplication.
+		if p.Name == llmCostPolicyName && hasPolicy(policies, llmCostPolicyName) {
+			continue
+		}
 		paths := make([]api.LLMPolicyPath, 0, len(p.Paths))
 		for _, pp := range p.Paths {
 			methods := make([]api.LLMPolicyPathMethods, 0, len(pp.Methods))
