@@ -186,12 +186,19 @@ func GetStoredRestAPISourceConfiguration(ctx context.Context, handle string) (st
 // upserts synchronously on the request path, but in CI we occasionally see the
 // row not visible to a separate sqlite3 process for a few hundred ms.
 func GetStoredRestAPISourceConfigurationWithRetry(ctx context.Context, handle string) (string, error) {
+	return GetStoredSourceConfigurationWithRetry(ctx, "RestApi", "rest_apis", handle)
+}
+
+// GetStoredSourceConfigurationWithRetry generalises GetStoredRestAPISourceConfigurationWithRetry
+// to any artifact kind/table pair so template-rendering ITs can assert DB
+// persistence for LlmProvider, LlmProxy, and Mcp in addition to RestApi.
+func GetStoredSourceConfigurationWithRetry(ctx context.Context, kind, table, handle string) (string, error) {
 	const maxAttempts = 10
 	const interval = 200 * time.Millisecond
 
 	var lastErr error
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		row, err := GetStoredRestAPISourceConfiguration(ctx, handle)
+		row, err := queryStoredConfiguration(ctx, kind, table, handle)
 		if err == nil {
 			return row, nil
 		}
