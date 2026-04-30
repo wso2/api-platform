@@ -70,6 +70,7 @@ func init() {
 	rootCmd.AddCommand(devportal.DevPortalCmd)
 	rootCmd.AddCommand(gateway.GatewayCmd)
 	rootCmd.AddCommand(platform.PlatformCmd)
+	rootCmd.AddCommand(apiproject.ApiProjectCmd)
 	rootCmd.AddCommand(versionCmd)
 }
 

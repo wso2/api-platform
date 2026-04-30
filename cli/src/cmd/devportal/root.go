@@ -41,7 +41,7 @@ func init() {
 	DevPortalCmd.AddCommand(addCmd)
 	DevPortalCmd.AddCommand(listCmd)
 	DevPortalCmd.AddCommand(removeCmd)
-	// DevPortalCmd.AddCommand(useCmd)
-	// DevPortalCmd.AddCommand(currentCmd)
+	DevPortalCmd.AddCommand(useCmd)
+	DevPortalCmd.AddCommand(currentCmd)
 	DevPortalCmd.AddCommand(healthCmd)
 }

@@ -70,6 +70,10 @@ const (
 	MaxZipFiles            = 1000              // Maximum number of files allowed in the zip (non-directory entries).
 	MaxUncompressedPerFile = 20 * 1024 * 1024  // Maximum uncompressed size allowed per file (20 MB).
 	MaxTotalUncompressed   = 100 * 1024 * 1024 // Maximum total uncompressed size allowed for the archive (100 MB).
+
+	// API Types
+	APITypeREST = "rest"
+	APITypeSOAP = "soap"
 )
 
 // PolicyHub REST API defaults and paths
