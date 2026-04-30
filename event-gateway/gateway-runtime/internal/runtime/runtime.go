@@ -864,8 +864,11 @@ func defaultVhost(vhost string) string {
 	return vhost
 }
 
-// qualifyTopicName generates a unique topic name in the format context.version.topic.
-// For example: context="/orders", version="v1", topic="order-events" → "orders.v1.order-events".
+// qualifyTopicName generates a unique broker topic name in the format
+// normalized-context.normalized-version.normalized-topic.
+// Unsupported characters are escaped using binding.NormalizeTopicSegment
+// (for example '/' -> '_2f_'). For example: context="/orders", version="v1",
+// topic="order-events" -> "_2f_orders.v1.order-events".
 func qualifyTopicName(ctx, version, topic string) string {
 	return fmt.Sprintf("%s.%s.%s",
 		binding.NormalizeTopicSegment(ctx),
