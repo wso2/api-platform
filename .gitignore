@@ -145,3 +145,5 @@ dev-policies/
 
 # Copilot Prompts
 .github/prompts
+
+gateway/target/
