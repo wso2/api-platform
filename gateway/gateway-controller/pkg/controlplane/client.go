@@ -233,6 +233,7 @@ func NewClient(
 		policyValidator,
 		eventHubInstance,
 		gatewayID,
+		secretResolver,
 	)
 
 	// Initialize API utils service with the proper base URL using the method

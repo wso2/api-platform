@@ -89,7 +89,7 @@ func (h *RestAPIHandler) CreateRestAPI(c *gin.Context) {
 	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
 	metrics.APIsTotal.WithLabelValues("rest_api", "active").Inc()
 
-	c.JSON(http.StatusCreated, buildResourceResponseFromStored(result.StoredConfig.Configuration, result.StoredConfig))
+	c.JSON(http.StatusCreated, buildResourceResponseFromStored(result.StoredConfig.SourceConfiguration, result.StoredConfig))
 }
 
 // ListRestAPIs implements ServerInterface.ListRestAPIs
@@ -106,7 +106,7 @@ func (h *RestAPIHandler) ListRestAPIs(c *gin.Context, params api.ListRestAPIsPar
 
 	items := make([]any, 0, len(result.Items))
 	for _, cfg := range result.Items {
-		conf := cfg.Configuration
+		conf := cfg.SourceConfiguration
 		switch ra := conf.(type) {
 		case api.RestAPI:
 			if resolved, err := cfg.GetContext(); err == nil {
@@ -145,7 +145,7 @@ func (h *RestAPIHandler) GetRestAPIById(c *gin.Context, id string) {
 	}
 
 	cfg := result.Config
-	c.JSON(http.StatusOK, buildResourceResponseFromStored(cfg.Configuration, cfg))
+	c.JSON(http.StatusOK, buildResourceResponseFromStored(cfg.SourceConfiguration, cfg))
 }
 
 // UpdateRestAPI implements ServerInterface.UpdateRestAPI
@@ -187,7 +187,7 @@ func (h *RestAPIHandler) UpdateRestAPI(c *gin.Context, id string) {
 	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "rest_api").Inc()
 	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
 
-	c.JSON(http.StatusOK, buildResourceResponseFromStored(result.Config.Configuration, result.Config))
+	c.JSON(http.StatusOK, buildResourceResponseFromStored(result.Config.SourceConfiguration, result.Config))
 }
 
 // DeleteRestAPI implements ServerInterface.DeleteRestAPI

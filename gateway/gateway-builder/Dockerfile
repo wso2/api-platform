@@ -82,16 +82,21 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     git \
     make \
-    ca-certificates
+    ca-certificates \
+    python3 \
+    python3-pip \
+    python3-venv
 
 # Copy the compiled binary from builder stage
 COPY --from=builder /usr/local/bin/gateway-builder /usr/local/bin/gateway-builder
 
 # Copy Policy Engine framework source code
 COPY --from=policy-engine . /api-platform/gateway/gateway-runtime/policy-engine
+COPY --from=python-executor . /api-platform/gateway/gateway-runtime/python-executor
 COPY --from=system-policies . /api-platform/gateway/system-policies
 COPY --from=common . /api-platform/common
 COPY --from=sdk-core . /api-platform/sdk/core
+COPY --from=sdk-python . /api-platform/sdk-python
 
 # Set working directory
 WORKDIR /workspace

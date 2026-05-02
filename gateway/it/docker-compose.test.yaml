@@ -65,6 +65,8 @@ services:
       - APIP_GW_CONTROLLER_CONTROLPLANE_HOST=it-mock-platform-api:9243
       - APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=test-gateway-token
       - APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY=true
+      # Used by template-functions IT to verify {{ env "..." }} resolution in spec fields
+      - IT_TEMPLATE_PATH=/anything
     volumes:
       - controller-data-tests:/app/data
       - ./it-aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro
@@ -290,6 +292,19 @@ services:
     image: mccutchen/go-httpbin:latest
     ports:
       - "9082:8080"
+    networks:
+      - it-gateway-runtime-network
+
+  # Sidecar that mounts the controller's SQLite data volume read-only and exposes
+  # sqlite3 for tests. Used by the template-functions IT to assert the persisted
+  # SourceConfiguration is unrendered.
+  it-db-reader:
+    container_name: it-db-reader
+    image: alpine:3.20
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["apk add --no-cache sqlite && sleep infinity"]
+    volumes:
+      - controller-data-tests:/data:ro
     networks:
       - it-gateway-runtime-network
 

@@ -620,7 +620,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26.1'
+          go-version: '1.26.2'
       
       - name: Run CLI Integration Tests
         run: |

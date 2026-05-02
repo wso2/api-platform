@@ -73,6 +73,10 @@ help: ## Show this help message
 	@echo '  make version-bump-next-dev              - Bump to next minor dev version with SNAPSHOT'
 	@echo '  make version-get-release                - Get release version (strips SNAPSHOT suffix)'
 	@echo ''
+	@echo 'Distribution Targets:'
+	@echo '  make dist                      - Build standalone gateway distribution zip (target/wso2apip-api-gateway-<VERSION>.zip)'
+	@echo '  make clean-dist                - Remove distribution staging dir and zip'
+	@echo ''
 	@echo 'Clean Targets:'
 	@echo '  make clean                     - Clean all build artifacts'
 	@echo '  make clean-db                  - Remove local dev SQLite database files'
@@ -215,6 +219,46 @@ version-get-release: ## Get release version (strips SNAPSHOT suffix)
 	fi; \
 	echo "$$VERSION"
 
+# Distribution Targets
+DIST_VERSION := $(shell echo "$(VERSION)" | sed 's/-SNAPSHOT//')
+DIST_NAME    := wso2apip-api-gateway-$(DIST_VERSION)
+DIST_DIR     := target/$(DIST_NAME)
+DIST_ZIP     := target/$(DIST_NAME).zip
+AI_DIST_NAME := wso2apip-ai-gateway-$(DIST_VERSION)
+AI_DIST_DIR  := target/$(AI_DIST_NAME)
+AI_DIST_ZIP  := target/$(AI_DIST_NAME).zip
+
+.PHONY: dist
+dist: clean-dist ## Build standalone gateway distribution zip
+	@echo "Building distribution $(DIST_NAME)..."
+	@mkdir -p $(DIST_DIR)/configs $(DIST_DIR)/resources/certificates \
+	          $(DIST_DIR)/resources/listener-certs $(DIST_DIR)/resources/secure-backend
+	@cp build.yaml build-manifest.yaml $(DIST_DIR)/
+	@cp -R configs/. $(DIST_DIR)/configs/
+	@cp -R observability $(DIST_DIR)/
+	@cp gateway-controller/certificates/default-listener.crt   $(DIST_DIR)/resources/certificates/
+	@cp gateway-controller/listener-certs/default-listener.crt $(DIST_DIR)/resources/listener-certs/
+	@cp gateway-controller/listener-certs/default-listener.key $(DIST_DIR)/resources/listener-certs/
+	@cp -R resources/secure-backend/. $(DIST_DIR)/resources/secure-backend/
+	@cp distribution/docker-compose.yaml $(DIST_DIR)/docker-compose.yaml
+	@sed -i.bak \
+	    -e 's|/gateway-controller:[^[:space:]]*|/gateway-controller:$(DIST_VERSION)|g' \
+	    -e 's|/gateway-runtime:[^[:space:]]*|/gateway-runtime:$(DIST_VERSION)|g' \
+	    $(DIST_DIR)/docker-compose.yaml
+	@rm -f $(DIST_DIR)/docker-compose.yaml.bak
+	@sed -i.bak 's/^  version: .*/  version: $(DIST_VERSION)/' $(DIST_DIR)/build.yaml
+	@rm -f $(DIST_DIR)/build.yaml.bak
+	@cd target && zip -rq $(DIST_NAME).zip $(DIST_NAME)
+	@mv $(DIST_DIR) $(AI_DIST_DIR)
+	@cd target && zip -rq $(AI_DIST_NAME).zip $(AI_DIST_NAME)
+	@rm -rf $(AI_DIST_DIR)
+	@echo "✓ Built $(DIST_ZIP)"
+	@echo "✓ Built $(AI_DIST_ZIP)"
+
+.PHONY: clean-dist
+clean-dist: ## Remove distribution staging dir and zip
+	@rm -rf target/wso2apip-api-gateway-* target/wso2apip-ai-gateway-*
+
 # Clean Targets
 .PHONY: clean-db
 clean-db: ## Remove local dev SQLite database files
@@ -222,7 +266,7 @@ clean-db: ## Remove local dev SQLite database files
 	@echo "Cleaned local dev database files"
 
 .PHONY: clean
-clean: ## Clean all build artifacts
+clean: clean-dist ## Clean all build artifacts
 	$(MAKE) -C gateway-controller clean
 	$(MAKE) -C gateway-builder clean
 	$(MAKE) -C gateway-runtime clean

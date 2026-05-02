@@ -24,7 +24,7 @@ Feature: Interceptor Service Policy Integration Tests
             path: /mutate
             policies:
               - name: interceptor-service
-                version: v0
+                version: v1
                 params:
                   endpoint: http://mock-interceptor-service:8080
                   request:
@@ -66,7 +66,7 @@ Feature: Interceptor Service Policy Integration Tests
             path: /block
             policies:
               - name: interceptor-service
-                version: v0
+                version: v1
                 params:
                   endpoint: http://mock-interceptor-service:8080
                   request:
@@ -104,7 +104,7 @@ Feature: Interceptor Service Policy Integration Tests
             path: /response-rewrite
             policies:
               - name: interceptor-service
-                version: v0
+                version: v1
                 params:
                   endpoint: http://mock-interceptor-service:8080
                   request:

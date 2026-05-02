@@ -94,6 +94,8 @@ services:
       - APIP_GW_CONTROLLER_CONTROLPLANE_HOST=it-mock-platform-api:9243
       - APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=test-gateway-token
       - APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY=true
+      # Used by template-functions IT to verify {{ env "..." }} resolution in spec fields
+      - IT_TEMPLATE_PATH=/anything
     volumes:
       - controller-data-tests:/app/data
       - ./it-aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro

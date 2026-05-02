@@ -31,6 +31,8 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
 
@@ -64,6 +66,7 @@ type MCPDeploymentService struct {
 	policyManager   *policyxds.PolicyManager
 	eventHub        eventhub.EventHub
 	gatewayID       string
+	secretResolver  funcs.SecretResolver
 }
 
 // NewMCPDeploymentService creates a new MCP deployment service
@@ -75,6 +78,7 @@ func NewMCPDeploymentService(
 	policyValidator *config.PolicyValidator,
 	eventHub eventhub.EventHub,
 	gatewayID string,
+	secretResolver funcs.SecretResolver,
 ) *MCPDeploymentService {
 	if db == nil {
 		panic("MCPDeploymentService requires non-nil storage")
@@ -91,6 +95,7 @@ func NewMCPDeploymentService(
 		policyManager:   policyManager,
 		eventHub:        eventHub,
 		gatewayID:       trimmedGatewayID,
+		secretResolver:  secretResolver,
 	}
 }
 
@@ -321,8 +326,21 @@ func (s *MCPDeploymentService) parseValidateAndTransform(params MCPDeploymentPar
 		return nil, nil, fmt.Errorf("failed to parse configuration: %w", err)
 	}
 
-	// Validate configuration
-	validationErrors := s.validator.Validate(&mcpConfig)
+	// Render template expressions ({{ secret "..." }}, {{ env "..." }}, {{ default ... }}, etc.)
+	// BEFORE validation so the validator sees resolved values, not raw template syntax.
+	// We render in a temp StoredConfig then cast back. The original mcpConfig (unrendered)
+	// is what callers persist as SourceConfiguration; each replica re-renders on consumption.
+	renderHolder := &models.StoredConfig{Configuration: mcpConfig}
+	if err := templateengine.RenderSpec(renderHolder, s.secretResolver, params.Logger); err != nil {
+		return nil, nil, err
+	}
+	renderedMCP, ok := renderHolder.Configuration.(api.MCPProxyConfiguration)
+	if !ok {
+		return nil, nil, fmt.Errorf("unexpected configuration type %T after rendering MCP proxy", renderHolder.Configuration)
+	}
+
+	// Validate configuration against rendered values
+	validationErrors := s.validator.Validate(&renderedMCP)
 	if len(validationErrors) > 0 {
 		errors := make([]string, 0, len(validationErrors))
 		params.Logger.Warn("Configuration validation failed",

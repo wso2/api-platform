@@ -16,12 +16,6 @@
 # under the License.
 # --------------------------------------------------------------------
 
-# NOTE: gateway-controller and gateway-runtime are duplicated in docker-compose.debug.yaml — keep in sync.
-# NOTE: distribution/docker-compose.yaml ships the standalone variant (assembled by `make dist`) — keep
-#       gateway-controller/gateway-runtime services in sync there too. Documented differences that should
-#       diverge: cert mount paths under ./resources/, no sample-backend service, empty default for
-#       APIP_GW_CONTROLPLANE_HOST.
-
 services:
   gateway-controller:
     image: ghcr.io/wso2/api-platform/gateway-controller:1.1.0-SNAPSHOT
@@ -36,12 +30,12 @@ services:
     environment:
       - APIP_GW_DEVELOPMENT_MODE=true
       - APIP_GW_GATEWAY_REGISTRATION_TOKEN=${GATEWAY_REGISTRATION_TOKEN:-}
-      - APIP_GW_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:-host.docker.internal:9243}
+      - APIP_GW_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:-}
     volumes:
       - controller-data:/app/data
       - ./configs/config.toml:/etc/gateway-controller/config.toml:ro
-      - ./gateway-controller/certificates:/app/certificates  # Read-write for dynamic certificate management
-      - ./gateway-controller/listener-certs:/app/listener-certs:ro  # Read-only for HTTPS listener certificates
+      - ./resources/certificates:/app/certificates
+      - ./resources/listener-certs:/app/listener-certs:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -68,15 +62,6 @@ services:
     volumes:
       - ./configs/config.toml:/etc/policy-engine/config.toml:ro
       - ./configs/llm-pricing/model_prices.json:/etc/policy-engine/llm-pricing/model_prices.json:ro
-    networks:
-      - gateway-network
-
-  sample-backend:
-    image: ghcr.io/wso2/api-platform/sample-service:latest
-    ports:
-      - "15000:5000"
-    command: ["-addr", ":5000", "-pretty"]
-    # command: ["-addr", ":5000", "-pretty", "-https", "-cert", "/app/certs/server.pem", "-key", "/app/certs/server.key"]
     networks:
       - gateway-network
 

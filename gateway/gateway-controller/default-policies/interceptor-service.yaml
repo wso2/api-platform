@@ -1,5 +1,5 @@
 name: interceptor-service
-version: v0.9.0
+version: v1.0.0
 description: |
   Calls a user-defined HTTP interceptor service for request and/or response
   phases. The interceptor can mutate headers, body, path, route to a dynamic

@@ -168,10 +168,8 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 
 	var (
 		parsedConfig         any
-		apiName              string
-		apiVersion           string
-		handle               string
 		kind                 string
+		handle               string
 		annotationArtifactID string
 	)
 
@@ -190,43 +188,29 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		resolvedKind = envelope.Kind
 	}
 
+	// Parse into the typed config and extract identifiers that live outside the spec block
+	// (kind, metadata.name, artifact-id annotation). Spec-level identifiers (DisplayName,
+	// Version) are extracted later from the rendered Configuration so the validator and
+	// downstream logic see resolved template values, not raw template syntax.
 	switch resolvedKind {
 	case "WebSubApi":
 		var webSubConfig api.WebSubAPI
 		if err := s.parser.Parse(params.Data, params.ContentType, &webSubConfig); err != nil {
 			return nil, fmt.Errorf("failed to parse configuration: %w", err)
 		}
-		apiName = webSubConfig.Spec.DisplayName
-		apiVersion = webSubConfig.Spec.Version
 		handle = webSubConfig.Metadata.Name
 		kind = string(webSubConfig.Kind)
 		parsedConfig = webSubConfig
 		annotationArtifactID = annotationValue(webSubConfig.Metadata.Annotations, commonconstants.AnnotationArtifactID)
-
-		// Validate
-		validationErrors := s.validator.Validate(&webSubConfig)
-		if len(validationErrors) > 0 {
-			s.logValidationErrors(params.Logger, params.APIID, apiName, validationErrors)
-			return nil, &ValidationErrorListError{Errors: validationErrors}
-		}
 	case "RestApi":
 		var restConfig api.RestAPI
 		if err := s.parser.Parse(params.Data, params.ContentType, &restConfig); err != nil {
 			return nil, fmt.Errorf("failed to parse configuration: %w", err)
 		}
-		apiName = restConfig.Spec.DisplayName
-		apiVersion = restConfig.Spec.Version
 		handle = restConfig.Metadata.Name
 		kind = string(restConfig.Kind)
 		parsedConfig = restConfig
 		annotationArtifactID = annotationValue(restConfig.Metadata.Annotations, commonconstants.AnnotationArtifactID)
-
-		// Validate
-		validationErrors := s.validator.Validate(&restConfig)
-		if len(validationErrors) > 0 {
-			s.logValidationErrors(params.Logger, params.APIID, apiName, validationErrors)
-			return nil, &ValidationErrorListError{Errors: validationErrors}
-		}
 	default:
 		return nil, fmt.Errorf("unsupported resource kind %q: must be \"RestApi\" or \"WebSubApi\"", resolvedKind)
 	}
@@ -261,11 +245,8 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		}
 	}
 
-	if err := s.validateArtifactConflicts(kind, apiID, apiName, apiVersion, handle); err != nil {
-		return nil, err
-	}
-
-	// Create stored configuration
+	// Create stored configuration. DisplayName/Version are populated below from the
+	// rendered Configuration so identifiers reflect resolved template values.
 	now := time.Now()
 	deployedAt := params.DeployedAt
 	if deployedAt == nil {
@@ -280,8 +261,6 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		UUID:                apiID,
 		Kind:                kind,
 		Handle:              handle,
-		DisplayName:         apiName,
-		Version:             apiVersion,
 		Configuration:       parsedConfig,
 		SourceConfiguration: parsedConfig,
 		DesiredState:        models.StateDeployed,
@@ -293,27 +272,57 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		DeployedAt:          deployedAt,
 	}
 
-	// Compute WebSub topic diff BEFORE persisting — ConfigStore.Add populates TopicManager,
-	// so GetTopicsForUpdate must run while the store still has the old state.
-	var topicsToRegister, topicsToUnregister []string
-	if kind == "WebSubApi" {
-		topicsToRegister, topicsToUnregister = s.GetTopicsForUpdate(*storedCfg)
-	}
-
-	// Resolve gateway-default sentinels to the current config values before persisting so that
-	// the stored vhosts are immune to future gateway config changes.
+	// Resolve gateway-default vhost sentinels before render so the stored vhosts are
+	// immune to future gateway config changes. Sync SourceConfiguration so the resolved
+	// (but still unrendered) vhosts are what gets persisted — the DB layer marshals
+	// SourceConfiguration, and each replica re-renders Configuration on consumption.
 	if err := resolveVhostSentinels(&storedCfg.Configuration, s.routerConfig); err != nil {
 		return nil, fmt.Errorf("failed to resolve vhost sentinels: %w", err)
 	}
-	// Sync SourceConfiguration so the resolved vhosts are persisted to the database
-	// (the DB layer marshals SourceConfiguration, not Configuration).
 	storedCfg.SourceConfiguration = storedCfg.Configuration
 
-	// Render template expressions in the spec (e.g. {{ secret "..." }}, {{ env "..." }}).
-	// Rendering must succeed before persisting — catches missing secrets and malformed templates.
-	// cfg.Configuration is set to the resolved version; cfg.SourceConfiguration stays unrendered.
+	// Render template expressions ({{ secret "..." }}, {{ env "..." }}, {{ default ... }}, etc.)
+	// BEFORE validation so the validator sees resolved values, not raw template syntax.
+	// Configuration becomes the rendered version; SourceConfiguration stays unrendered.
 	if err := templateengine.RenderSpec(storedCfg, s.secretResolver, params.Logger); err != nil {
 		return nil, err
+	}
+
+	// Validate against the rendered Configuration and extract spec-level identifiers.
+	var apiName, apiVersion string
+	switch c := storedCfg.Configuration.(type) {
+	case api.WebSubAPI:
+		apiName = c.Spec.DisplayName
+		apiVersion = c.Spec.Version
+		validationErrors := s.validator.Validate(&c)
+		if len(validationErrors) > 0 {
+			s.logValidationErrors(params.Logger, apiID, apiName, validationErrors)
+			return nil, &ValidationErrorListError{Errors: validationErrors}
+		}
+	case api.RestAPI:
+		apiName = c.Spec.DisplayName
+		apiVersion = c.Spec.Version
+		validationErrors := s.validator.Validate(&c)
+		if len(validationErrors) > 0 {
+			s.logValidationErrors(params.Logger, apiID, apiName, validationErrors)
+			return nil, &ValidationErrorListError{Errors: validationErrors}
+		}
+	default:
+		return nil, fmt.Errorf("unexpected configuration type %T after rendering", storedCfg.Configuration)
+	}
+	storedCfg.DisplayName = apiName
+	storedCfg.Version = apiVersion
+
+	if err := s.validateArtifactConflicts(kind, apiID, apiName, apiVersion, handle); err != nil {
+		return nil, err
+	}
+
+	// Compute WebSub topic diff BEFORE persisting — ConfigStore.Add populates TopicManager,
+	// so GetTopicsForUpdate must run while the store still has the old state. Runs against
+	// the rendered Configuration so topic names reflect resolved template values.
+	var topicsToRegister, topicsToUnregister []string
+	if kind == "WebSubApi" {
+		topicsToRegister, topicsToUnregister = s.GetTopicsForUpdate(*storedCfg)
 	}
 
 	var saveErr error

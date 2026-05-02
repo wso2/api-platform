@@ -25,7 +25,7 @@ policies:
   - name: host-rewrite
     gomodule: github.com/wso2/gateway-controllers/policies/host-rewrite@v1
   - name: interceptor-service
-    gomodule: github.com/wso2/gateway-controllers/policies/interceptor-service@v0
+    gomodule: github.com/wso2/gateway-controllers/policies/interceptor-service@v1
   - name: json-schema-guardrail
     gomodule: github.com/wso2/gateway-controllers/policies/json-schema-guardrail@v1
   - name: json-xml-mediator
