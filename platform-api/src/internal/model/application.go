@@ -39,15 +39,26 @@ func (Application) TableName() string {
 
 // ApplicationAPIKey represents an API key mapped to an application.
 type ApplicationAPIKey struct {
-	ID         string     `json:"id"`
-	APIKeyUUID string     `json:"-" db:"uuid"`
-	Name       string     `json:"name" db:"name"`
-	ArtifactID string     `json:"artifactId" db:"artifact_uuid"`
-	ArtifactHandle string   `json:"-" db:"handle"`
-	ArtifactKind   string   `json:"-" db:"kind"`
-	Status     string     `json:"status,omitempty" db:"status"`
-	CreatedBy  string     `json:"createdBy,omitempty" db:"created_by"`
-	CreatedAt  time.Time  `json:"createdAt,omitempty" db:"created_at"`
-	UpdatedAt  time.Time  `json:"updatedAt,omitempty" db:"updated_at"`
-	ExpiresAt  *time.Time `json:"expiresAt,omitempty" db:"expires_at"`
+	ID             string     `json:"id"`
+	APIKeyUUID     string     `json:"-" db:"uuid"`
+	Name           string     `json:"name" db:"name"`
+	ArtifactID     string     `json:"artifactId" db:"artifact_uuid"`
+	ArtifactHandle string     `json:"-" db:"handle"`
+	ArtifactKind   string     `json:"-" db:"kind"`
+	Status         string     `json:"status,omitempty" db:"status"`
+	CreatedBy      string     `json:"createdBy,omitempty" db:"created_by"`
+	CreatedAt      time.Time  `json:"createdAt,omitempty" db:"created_at"`
+	UpdatedAt      time.Time  `json:"updatedAt,omitempty" db:"updated_at"`
+	ExpiresAt      *time.Time `json:"expiresAt,omitempty" db:"expires_at"`
+}
+
+// ApplicationAssociationTarget represents an association target mapped to an application.
+type ApplicationAssociationTarget struct {
+	TargetUUID    string    `json:"-" db:"uuid"`
+	TargetHandle  string    `json:"-" db:"handle"`
+	TargetName    string    `json:"-" db:"name"`
+	TargetVersion string    `json:"-" db:"version"`
+	Kind          string    `json:"-" db:"kind"`
+	CreatedAt     time.Time `json:"-" db:"created_at"`
+	UpdatedAt     time.Time `json:"-" db:"updated_at"`
 }

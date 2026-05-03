@@ -33,27 +33,34 @@ import (
 
 type mockApplicationRepository struct {
 	repository.ApplicationRepository
-	app                *model.Application
-	applications       []*model.Application
-	mappedKeys         []*model.ApplicationAPIKey
-	apiKeysByLookupKey map[string]*model.ApplicationAPIKey
-	artifactByID       map[string]*model.Artifact
-	deployedGatewayIDs map[string][]string
-	existingByName     *model.Application
-	appErr             error
-	mappedErr          error
-	artifactErr        error
-	deployedGatewayErr error
-	existingByNameErr  error
-	handleExists       bool
-	handleExistsErr    error
-	createErr          error
-	addMappedCalled    bool
-	removeMappedCalled bool
-	createCalled       bool
-	createdApplication *model.Application
-	addedAPIKeyIDs     []string
-	removedAPIKeyID    string
+	app                     *model.Application
+	applications            []*model.Application
+	mappedKeys              []*model.ApplicationAPIKey
+	mappedAssociations      []*model.ApplicationAssociationTarget
+	apiKeysByLookupKey      map[string]*model.ApplicationAPIKey
+	artifactByID            map[string]*model.Artifact
+	artifactsByLookup       map[string]*model.Artifact
+	proxyProjectByID        map[string]string
+	deployedGatewayIDs      map[string][]string
+	existingByName          *model.Application
+	appErr                  error
+	mappedErr               error
+	artifactErr             error
+	deployedGatewayErr      error
+	existingByNameErr       error
+	handleExists            bool
+	handleExistsErr         error
+	createErr               error
+	addMappedCalled         bool
+	removeMappedCalled      bool
+	createCalled            bool
+	createdApplication      *model.Application
+	addedAPIKeyIDs          []string
+	removedAPIKeyID         string
+	addAssociationsCalled   bool
+	addedAssociationIDs     []string
+	removeAssociationCalled bool
+	removedAssociationID    string
 }
 
 func (m *mockApplicationRepository) GetApplicationByIDOrHandle(appIDOrHandle, orgID string) (*model.Application, error) {
@@ -145,7 +152,7 @@ func (m *mockApplicationRepository) RemoveApplicationAPIKey(applicationUUID, api
 	return nil
 }
 
-func (m *mockApplicationRepository) GetArtifactByUUID(artifactID, orgID string) (*model.Artifact, error) {
+func (m *mockApplicationRepository) GetAssociationTargetByUUID(artifactID, orgID string) (*model.Artifact, error) {
 	if m.artifactErr != nil {
 		return nil, m.artifactErr
 	}
@@ -153,6 +160,59 @@ func (m *mockApplicationRepository) GetArtifactByUUID(artifactID, orgID string) 
 		return nil, nil
 	}
 	return m.artifactByID[artifactID], nil
+}
+
+func (m *mockApplicationRepository) GetAssociationTargetByIDOrHandle(artifactIDOrHandle, orgID string) (*model.Artifact, error) {
+	if m.artifactErr != nil {
+		return nil, m.artifactErr
+	}
+	if m.artifactsByLookup == nil {
+		return nil, nil
+	}
+	return m.artifactsByLookup[artifactIDOrHandle], nil
+}
+
+func (m *mockApplicationRepository) GetAssociationTargetByIDOrHandleAndKind(artifactIDOrHandle, kind, orgID string) (*model.Artifact, error) {
+	if m.artifactErr != nil {
+		return nil, m.artifactErr
+	}
+	if m.artifactsByLookup == nil {
+		return nil, nil
+	}
+	artifact := m.artifactsByLookup[artifactIDOrHandle]
+	if artifact == nil {
+		return nil, nil
+	}
+	if artifact.Kind != kind {
+		return nil, nil
+	}
+	return artifact, nil
+}
+
+func (m *mockApplicationRepository) GetLLMProxyProjectUUID(artifactUUID, orgID string) (string, error) {
+	if m.artifactErr != nil {
+		return "", m.artifactErr
+	}
+	if m.proxyProjectByID == nil {
+		return "", nil
+	}
+	return m.proxyProjectByID[artifactUUID], nil
+}
+
+func (m *mockApplicationRepository) ListApplicationAssociations(applicationUUID string) ([]*model.ApplicationAssociationTarget, error) {
+	return m.mappedAssociations, m.mappedErr
+}
+
+func (m *mockApplicationRepository) AddApplicationAssociations(applicationUUID string, associationUUIDs []string) error {
+	m.addAssociationsCalled = true
+	m.addedAssociationIDs = append([]string(nil), associationUUIDs...)
+	return nil
+}
+
+func (m *mockApplicationRepository) RemoveApplicationAssociation(applicationUUID, associationUUID string) error {
+	m.removeAssociationCalled = true
+	m.removedAssociationID = associationUUID
+	return nil
 }
 
 func (m *mockApplicationRepository) GetDeployedGatewayIDsByArtifactUUID(artifactID, orgID string) ([]string, error) {
@@ -513,6 +573,129 @@ func TestAddMappedAPIKeys_DoesNotFailWhenBroadcastResolutionFails(t *testing.T) 
 	}
 	if !appRepo.addMappedCalled {
 		t.Fatalf("expected AddApplicationAPIKeys to be called")
+	}
+}
+
+func TestAddApplicationAssociations_AssociatesProviderAndProxy(t *testing.T) {
+	appRepo := &mockApplicationRepository{
+		app: &model.Application{UUID: "app-uuid", ProjectUUID: "project-1", OrganizationUUID: "org-1"},
+		artifactsByLookup: map[string]*model.Artifact{
+			"provider-1": {
+				UUID:             "artifact-provider-1",
+				Handle:           "provider-1",
+				Kind:             constants.LLMProvider,
+				OrganizationUUID: "org-1",
+			},
+			"proxy-1": {
+				UUID:             "artifact-proxy-1",
+				Handle:           "proxy-1",
+				Kind:             constants.LLMProxy,
+				OrganizationUUID: "org-1",
+			},
+		},
+		proxyProjectByID: map[string]string{
+			"artifact-proxy-1": "project-1",
+		},
+	}
+
+	svc := &ApplicationService{appRepo: appRepo}
+
+	_, err := svc.AddApplicationAssociations("my-app", &AddApplicationAssociationsRequest{Associations: []ApplicationAssociationSelector{
+		{Id: "provider-1", Kind: constants.LLMProvider},
+		{Id: "proxy-1", Kind: constants.LLMProxy},
+	}}, "org-1")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+
+	if !appRepo.addAssociationsCalled {
+		t.Fatalf("expected AddApplicationAssociations to be called")
+	}
+	if len(appRepo.addedAssociationIDs) != 2 {
+		t.Fatalf("expected 2 mapped associations, got %d", len(appRepo.addedAssociationIDs))
+	}
+}
+
+func TestAddApplicationAssociations_RejectsCrossProjectProxy(t *testing.T) {
+	appRepo := &mockApplicationRepository{
+		app: &model.Application{UUID: "app-uuid", ProjectUUID: "project-1", OrganizationUUID: "org-1"},
+		artifactsByLookup: map[string]*model.Artifact{
+			"proxy-1": {
+				UUID:             "artifact-proxy-1",
+				Handle:           "proxy-1",
+				Kind:             constants.LLMProxy,
+				OrganizationUUID: "org-1",
+			},
+		},
+		proxyProjectByID: map[string]string{
+			"artifact-proxy-1": "project-2",
+		},
+	}
+
+	svc := &ApplicationService{appRepo: appRepo}
+
+	_, err := svc.AddApplicationAssociations("my-app", &AddApplicationAssociationsRequest{Associations: []ApplicationAssociationSelector{{
+		Id:   "proxy-1",
+		Kind: constants.LLMProxy,
+	}}}, "org-1")
+	if !errors.Is(err, constants.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	}
+}
+
+func TestListApplicationAssociations_AppliesPagination(t *testing.T) {
+	createdAt := time.Now().Add(-time.Hour)
+	updatedAt := time.Now()
+
+	appRepo := &mockApplicationRepository{
+		app: &model.Application{UUID: "app-uuid", OrganizationUUID: "org-1"},
+		mappedAssociations: []*model.ApplicationAssociationTarget{
+			{TargetUUID: "artifact-1", TargetHandle: "provider-1", TargetName: "Provider 1", TargetVersion: "v1", Kind: constants.LLMProvider, CreatedAt: createdAt, UpdatedAt: updatedAt},
+			{TargetUUID: "artifact-2", TargetHandle: "proxy-1", TargetName: "Proxy 1", TargetVersion: "v1", Kind: constants.LLMProxy, CreatedAt: createdAt, UpdatedAt: updatedAt},
+		},
+	}
+
+	svc := &ApplicationService{appRepo: appRepo}
+
+	resp, err := svc.ListApplicationAssociations("my-app", "org-1", 1, 0)
+	if err != nil {
+		t.Fatalf("ListApplicationAssociations returned error: %v", err)
+	}
+	if resp.Count != 1 || len(resp.List) != 1 {
+		t.Fatalf("expected one item in first page, got count=%d len=%d", resp.Count, len(resp.List))
+	}
+	if resp.List[0].Id != "provider-1" {
+		t.Fatalf("expected provider-1, got %s", resp.List[0].Id)
+	}
+}
+
+func TestRemoveApplicationAssociation_RemovesByResolvedTarget(t *testing.T) {
+	appRepo := &mockApplicationRepository{
+		app: &model.Application{UUID: "app-uuid", ProjectUUID: "project-1", OrganizationUUID: "org-1"},
+		artifactsByLookup: map[string]*model.Artifact{
+			"proxy-1": {
+				UUID:             "artifact-proxy-1",
+				Handle:           "proxy-1",
+				Kind:             constants.LLMProxy,
+				OrganizationUUID: "org-1",
+			},
+		},
+		proxyProjectByID: map[string]string{
+			"artifact-proxy-1": "project-1",
+		},
+	}
+
+	svc := &ApplicationService{appRepo: appRepo}
+
+	err := svc.RemoveApplicationAssociation("my-app", "proxy-1", "org-1")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if !appRepo.removeAssociationCalled {
+		t.Fatalf("expected RemoveApplicationAssociation to be called")
+	}
+	if appRepo.removedAssociationID != "artifact-proxy-1" {
+		t.Fatalf("expected removed association uuid artifact-proxy-1, got %s", appRepo.removedAssociationID)
 	}
 }
 

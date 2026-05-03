@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
@@ -38,6 +39,31 @@ type ApplicationService struct {
 	apiRepo              repository.APIRepository
 	gatewayEventsService *GatewayEventsService
 	slogger              *slog.Logger
+}
+
+type ApplicationAssociationSelector struct {
+	Id   string `json:"id"`
+	Kind string `json:"kind"`
+}
+
+type AddApplicationAssociationsRequest struct {
+	Associations []ApplicationAssociationSelector `json:"associations"`
+}
+
+type ApplicationAssociation struct {
+	Id        string     `json:"id"`
+	Uuid      string     `json:"uuid"`
+	Name      string     `json:"name"`
+	Version   string     `json:"version"`
+	Kind      string     `json:"kind"`
+	CreatedAt *time.Time `json:"createdAt,omitempty"`
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
+}
+
+type ApplicationAssociationListResponse struct {
+	Count      int                      `json:"count"`
+	List       []ApplicationAssociation `json:"list"`
+	Pagination api.Pagination           `json:"pagination"`
 }
 
 func NewApplicationService(
@@ -297,6 +323,20 @@ func (s *ApplicationService) ListMappedAPIKeys(appIDOrHandle, orgID string, limi
 	return keys, nil
 }
 
+func (s *ApplicationService) ListApplicationAssociations(appIDOrHandle, orgID string, limit, offset int) (*ApplicationAssociationListResponse, error) {
+	app, err := s.getApplication(appIDOrHandle, orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	associations, err := s.buildApplicationAssociationListPaginated(app.UUID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	return associations, nil
+}
+
 func (s *ApplicationService) AddMappedAPIKeys(appIDOrHandle string, req *api.AddApplicationAPIKeysRequest, orgID, userID string) (*api.MappedAPIKeyListResponse, error) {
 	app, err := s.getApplication(appIDOrHandle, orgID)
 	if err != nil {
@@ -326,6 +366,24 @@ func (s *ApplicationService) AddMappedAPIKeys(appIDOrHandle string, req *api.Add
 	}
 
 	return keys, nil
+}
+
+func (s *ApplicationService) AddApplicationAssociations(appIDOrHandle string, req *AddApplicationAssociationsRequest, orgID string) (*ApplicationAssociationListResponse, error) {
+	app, err := s.getApplication(appIDOrHandle, orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	targetUUIDs, err := s.resolveAssociationTargets(req.Associations, app, orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.appRepo.AddApplicationAssociations(app.UUID, targetUUIDs); err != nil {
+		return nil, err
+	}
+
+	return s.buildApplicationAssociationListPaginated(app.UUID, -1, 0)
 }
 
 func (s *ApplicationService) RemoveMappedAPIKey(appIDOrHandle, keyID, entityID, orgID, userID string) error {
@@ -358,6 +416,27 @@ func (s *ApplicationService) RemoveMappedAPIKey(appIDOrHandle, keyID, entityID, 
 	}
 
 	return nil
+}
+
+func (s *ApplicationService) RemoveApplicationAssociation(appIDOrHandle, associationIDOrHandle, orgID string) error {
+	app, err := s.getApplication(appIDOrHandle, orgID)
+	if err != nil {
+		return err
+	}
+
+	target, err := s.appRepo.GetAssociationTargetByIDOrHandle(associationIDOrHandle, orgID)
+	if err != nil {
+		return err
+	}
+	if target == nil {
+		return constants.ErrArtifactNotFound
+	}
+
+	if err := s.validateAssociationTargetForApplication(target, app, orgID); err != nil {
+		return err
+	}
+
+	return s.appRepo.RemoveApplicationAssociation(app.UUID, target.UUID)
 }
 
 func (s *ApplicationService) HandleExistsCheck(orgID string) func(string) bool {
@@ -419,6 +498,88 @@ func (s *ApplicationService) resolveAPIKeys(selectors []api.APIKeyMappingSelecto
 	return result, nil
 }
 
+func (s *ApplicationService) resolveAssociationTargets(selectors []ApplicationAssociationSelector, app *model.Application, orgID string) ([]string, error) {
+	seen := make(map[string]struct{})
+	result := make([]string, 0, len(selectors))
+
+	for _, selector := range selectors {
+		targetID := strings.TrimSpace(selector.Id)
+		if targetID == "" {
+			return nil, constants.ErrArtifactNotFound
+		}
+
+		kind, err := normalizeApplicationAssociationKind(selector.Kind)
+		if err != nil {
+			return nil, err
+		}
+
+		target, err := s.appRepo.GetAssociationTargetByIDOrHandleAndKind(targetID, kind, orgID)
+		if err != nil {
+			return nil, err
+		}
+		if target == nil {
+			return nil, constants.ErrArtifactNotFound
+		}
+
+		if err := s.validateAssociationTargetForApplication(target, app, orgID); err != nil {
+			return nil, err
+		}
+
+		if _, ok := seen[target.UUID]; ok {
+			continue
+		}
+		seen[target.UUID] = struct{}{}
+		result = append(result, target.UUID)
+	}
+
+	return result, nil
+}
+
+func normalizeApplicationAssociationKind(kind string) (string, error) {
+	trimmed := strings.TrimSpace(kind)
+	if trimmed == "" {
+		return "", constants.ErrArtifactInvalidKind
+	}
+
+	switch {
+	case strings.EqualFold(trimmed, constants.LLMProvider):
+		return constants.LLMProvider, nil
+	case strings.EqualFold(trimmed, constants.LLMProxy):
+		return constants.LLMProxy, nil
+	default:
+		return "", constants.ErrArtifactInvalidKind
+	}
+}
+
+func (s *ApplicationService) validateAssociationTargetForApplication(target *model.Artifact, app *model.Application, orgID string) error {
+	if target == nil {
+		return constants.ErrArtifactNotFound
+	}
+
+	if target.OrganizationUUID != orgID {
+		return constants.ErrArtifactNotFound
+	}
+
+	if target.Kind != constants.LLMProvider && target.Kind != constants.LLMProxy {
+		return constants.ErrArtifactInvalidKind
+	}
+
+	if target.Kind == constants.LLMProxy {
+		proxyProjectUUID, err := s.appRepo.GetLLMProxyProjectUUID(target.UUID, orgID)
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(proxyProjectUUID) == "" {
+			return constants.ErrArtifactNotFound
+		}
+		if proxyProjectUUID != app.ProjectUUID {
+			return constants.ErrInvalidInput
+		}
+	}
+
+	return nil
+}
+
 func (s *ApplicationService) resolveAPIKey(selector api.APIKeyMappingSelector, orgID string) (*model.ApplicationAPIKey, error) {
 	keyID := strings.TrimSpace(selector.KeyId)
 	entityID := strings.TrimSpace(selector.AssociatedEntity.Id)
@@ -459,6 +620,49 @@ func (s *ApplicationService) validateAPIKeyBindingPermission(key *model.Applicat
 
 func (s *ApplicationService) buildMappedAPIKeyList(applicationUUID string) (*api.MappedAPIKeyListResponse, error) {
 	return s.buildMappedAPIKeyListPaginated(applicationUUID, -1, 0)
+}
+
+func (s *ApplicationService) buildApplicationAssociationListPaginated(applicationUUID string, limit, offset int) (*ApplicationAssociationListResponse, error) {
+	associations, err := s.appRepo.ListApplicationAssociations(applicationUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	if offset < 0 {
+		offset = 0
+	}
+
+	total := len(associations)
+	if offset > total {
+		offset = total
+	}
+
+	pagedAssociations := associations
+	effectiveLimit := len(associations)
+	if limit > 0 {
+		effectiveLimit = limit
+		end := offset + limit
+		if end > total {
+			end = total
+		}
+		pagedAssociations = associations[offset:end]
+	}
+
+	response := &ApplicationAssociationListResponse{
+		Count: len(pagedAssociations),
+		List:  make([]ApplicationAssociation, 0, len(pagedAssociations)),
+		Pagination: api.Pagination{
+			Total:  total,
+			Offset: offset,
+			Limit:  effectiveLimit,
+		},
+	}
+
+	for _, association := range pagedAssociations {
+		response.List = append(response.List, s.modelToApplicationAssociation(association))
+	}
+
+	return response, nil
 }
 
 func (s *ApplicationService) buildMappedAPIKeyListPaginated(applicationUUID string, limit, offset int) (*api.MappedAPIKeyListResponse, error) {
@@ -543,6 +747,22 @@ func (s *ApplicationService) modelToMappedAPIKeyResponse(key *model.ApplicationA
 	}
 }
 
+func (s *ApplicationService) modelToApplicationAssociation(association *model.ApplicationAssociationTarget) ApplicationAssociation {
+	if association == nil {
+		return ApplicationAssociation{}
+	}
+
+	return ApplicationAssociation{
+		Id:        association.TargetHandle,
+		Uuid:      association.TargetUUID,
+		Name:      association.TargetName,
+		Version:   association.TargetVersion,
+		Kind:      association.Kind,
+		CreatedAt: utils.TimePtrIfNotZero(association.CreatedAt),
+		UpdatedAt: utils.TimePtrIfNotZero(association.UpdatedAt),
+	}
+}
+
 func (s *ApplicationService) listMappedAPIKeysForBroadcast(applicationUUID string) ([]*model.ApplicationAPIKey, error) {
 	return s.appRepo.ListMappedAPIKeys(applicationUUID)
 }
@@ -604,7 +824,7 @@ func (s *ApplicationService) broadcastApplicationMappingUpdateWithArtifactHints(
 	}
 
 	for artifactID := range affectedArtifactIDs {
-		artifact, err := s.appRepo.GetArtifactByUUID(artifactID, app.OrganizationUUID)
+		artifact, err := s.appRepo.GetAssociationTargetByUUID(artifactID, app.OrganizationUUID)
 		if err != nil {
 			return fmt.Errorf("failed to resolve mapped artifact by artifact id %s: %w", artifactID, err)
 		}

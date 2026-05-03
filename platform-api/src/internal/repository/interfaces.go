@@ -61,7 +61,10 @@ type ApplicationRepository interface {
 	CreateApplication(app *model.Application) error
 	GetApplicationByUUID(appID string) (*model.Application, error)
 	GetApplicationByIDOrHandle(appIDOrHandle, orgID string) (*model.Application, error)
-	GetArtifactByUUID(artifactUUID, orgID string) (*model.Artifact, error)
+	GetAssociationTargetByUUID(targetUUID, orgID string) (*model.Artifact, error)
+	GetAssociationTargetByIDOrHandle(targetIDOrHandle, orgID string) (*model.Artifact, error)
+	GetAssociationTargetByIDOrHandleAndKind(targetIDOrHandle, kind, orgID string) (*model.Artifact, error)
+	GetLLMProxyProjectUUID(artifactUUID, orgID string) (string, error)
 	GetApplicationsByProjectID(projectID, orgID string) ([]*model.Application, error)
 	GetApplicationsByOrganizationID(orgID string) ([]*model.Application, error)
 	GetApplicationsByProjectIDPaginated(projectID, orgID string, limit, offset int) ([]*model.Application, error)
@@ -76,8 +79,11 @@ type ApplicationRepository interface {
 	GetAPIKeyByNameAndArtifactHandle(keyName, artifactHandle, orgID string) (*model.ApplicationAPIKey, error)
 	GetDeployedGatewayIDsByArtifactUUID(artifactUUID, orgID string) ([]string, error)
 	ListMappedAPIKeys(applicationUUID string) ([]*model.ApplicationAPIKey, error)
+	ListApplicationAssociations(applicationUUID string) ([]*model.ApplicationAssociationTarget, error)
 	AddApplicationAPIKeys(applicationUUID string, apiKeyIDs []string) error
+	AddApplicationAssociations(applicationUUID string, targetUUIDs []string) error
 	RemoveApplicationAPIKey(applicationUUID, apiKeyID string) error
+	RemoveApplicationAssociation(applicationUUID, targetUUID string) error
 }
 
 // APIRepository defines the interface for API data operations
