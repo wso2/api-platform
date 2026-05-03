@@ -20,7 +20,11 @@ package repository
 import (
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
+	sqlite3 "github.com/mattn/go-sqlite3"
 
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/database"
@@ -474,46 +478,41 @@ func (r *ApplicationRepo) AddApplicationAssociations(applicationUUID string, tar
 	}
 	defer tx.Rollback()
 
-	existingRows, err := tx.Query(r.db.Rebind(`
-		SELECT artifact_uuid
-		FROM application_artifacts
-		WHERE application_uuid = ?
-	`), applicationUUID)
-	if err != nil {
-		return err
-	}
-
-	existing := make(map[string]struct{})
-	for existingRows.Next() {
-		var targetUUID string
-		if err := existingRows.Scan(&targetUUID); err != nil {
-			_ = existingRows.Close()
-			return err
-		}
-		existing[targetUUID] = struct{}{}
-	}
-	if err := existingRows.Err(); err != nil {
-		_ = existingRows.Close()
-		return err
-	}
-	if err := existingRows.Close(); err != nil {
-		return err
-	}
-
 	for _, targetUUID := range uniqueStrings(targetUUIDs) {
-		if _, ok := existing[targetUUID]; ok {
-			continue
-		}
 		now := time.Now()
 		if _, err = tx.Exec(r.db.Rebind(`
 			INSERT INTO application_artifacts (application_uuid, artifact_uuid, created_at, updated_at)
 			VALUES (?, ?, ?, ?)
 		`), applicationUUID, targetUUID, now, now); err != nil {
+			if isDuplicateKeyError(err) {
+				continue
+			}
 			return err
 		}
 	}
 
 	return tx.Commit()
+}
+
+func isDuplicateKeyError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return true
+	}
+
+	var sqliteErr sqlite3.Error
+	if errors.As(err, &sqliteErr) {
+		return sqliteErr.ExtendedCode == sqlite3.ErrConstraintPrimaryKey ||
+			sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique
+	}
+
+	lowerMsg := strings.ToLower(err.Error())
+	return strings.Contains(lowerMsg, "duplicate key") ||
+		strings.Contains(lowerMsg, "unique constraint failed")
 }
 
 func (r *ApplicationRepo) RemoveApplicationAPIKey(applicationUUID, apiKeyID string) error {
