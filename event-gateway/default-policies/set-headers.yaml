@@ -1,3 +1,4 @@
+# MANUAL COPY of github.com/wso2/gateway-controllers/policies/set-headers@v1 — keep in sync with ../build.yaml until gateway-builder is integrated into event-gateway build.
 name: set-headers
 version: v1.0.1
 description: |

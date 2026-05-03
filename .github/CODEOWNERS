@@ -12,3 +12,6 @@
 # All go.mod and go.sum files throughout the repository
 **/go.mod          @pubudu538 @malinthaprasan @Krishanx92
 **/go.sum          @pubudu538 @malinthaprasan @Krishanx92
+
+# VS Code launch configuration
+/.vscode/launch.json @renuka-fernando

@@ -122,6 +122,12 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         -policy-engine-src /api-platform/gateway/gateway-runtime/policy-engine \
         -out-dir /api-platform/output
 
+# Stage: policy-export — extracts controller policy definitions for host consumption.
+# Built with `--target policy-export --output type=local,dest=...`. Reuses the
+# policy-compiler stage cache, so no second gateway-builder run is required.
+FROM scratch AS policy-export
+COPY --from=policy-compiler /api-platform/output/gateway-controller/policies /
+
 # Stage 3a: Python dependency installer
 # Uses the same base image as the production stage so that C extensions
 # (e.g. grpcio) are compiled against the identical Python version and glibc.
