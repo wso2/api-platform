@@ -505,7 +505,7 @@ func (s *ApplicationService) resolveAssociationTargets(selectors []ApplicationAs
 	for _, selector := range selectors {
 		targetID := strings.TrimSpace(selector.Id)
 		if targetID == "" {
-			return nil, constants.ErrArtifactNotFound
+			return nil, constants.ErrInvalidInput
 		}
 
 		kind, err := normalizeApplicationAssociationKind(selector.Kind)
