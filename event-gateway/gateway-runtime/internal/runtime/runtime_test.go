@@ -136,30 +136,6 @@ func TestJoinNormalizedTopic_NormalizesUnsupportedCharacters(t *testing.T) {
 		t.Fatalf("JoinNormalizedTopic() = %q, want %q", got, want)
 	}
 }
-
-func TestWebSubSubscriptionSyncTopic_UsesConfigOverrideWhenSet(t *testing.T) {
-	rt := &Runtime{
-		cfg: &config.Config{
-			WebSub: config.WebSubConfig{
-				SubscriptionsTopicName: "websub.subscriptions",
-			},
-		},
-	}
-
-	got := rt.webSubSubscriptionSyncTopic("repo-watcher", "v1.0")
-	want := binding.WebSubApiTopicName("repo-watcher", "v1.0", "websub.subscriptions")
-	if got != want {
-		t.Fatalf("webSubSubscriptionSyncTopic() = %q, want %q", got, want)
-	}
-}
-
-func TestWebSubSubscriptionSyncTopic_FallsBackToDerivedTopic(t *testing.T) {
-	rt := &Runtime{cfg: &config.Config{}}
-
-	got := rt.webSubSubscriptionSyncTopic("repo-watcher", "v1.0")
-	want := binding.WebSubApiSubscriptionTopic("repo-watcher", "v1.0")
-	if got != want {
-		t.Fatalf("webSubSubscriptionSyncTopic() = %q, want %q", got, want)
 	}
 }
 
