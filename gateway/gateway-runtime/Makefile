@@ -26,7 +26,12 @@ GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-runtime
 
-.PHONY: help build build-coverage-image build-debug push clean build-and-push-multiarch test test-go test-python test-pythonbridge proto test-proto setup-python-dev
+# Controller policy YAMLs extracted from the policy-compiler stage.
+# EXPORT_DIR feeds the controller image build; DEV_LAUNCH_DIR feeds the local "Gateway Controller" VS Code launch.
+POLICIES_EXPORT_DIR ?= ../target/build/gateway-controller/policies
+POLICIES_DEV_LAUNCH_DIR ?= ../gateway-builder/target/output/gateway-controller/policies
+
+.PHONY: help build build-coverage-image build-debug push clean build-and-push-multiarch test test-go test-python test-pythonbridge proto test-proto extract-policies setup-python-dev
 
 PYTHON ?= python3
 
