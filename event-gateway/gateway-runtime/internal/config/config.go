@@ -117,7 +117,7 @@ func DefaultConfig() *Config {
 			DeliveryMaxDelayMs:         60000,
 			DeliveryConcurrency:        64,
 			DefaultLeaseSeconds:        0,
-			SubscriptionsTopicName:     "",
+			SubscriptionsTopicName:     "__subscriptions",
 		},
 		Logging: LoggingConfig{
 			Level:  "info",
