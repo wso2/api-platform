@@ -1,6 +1,6 @@
 # Stage 1: Build the Go application
 # Using Debian-based image for better cross-compilation support
-FROM --platform=$BUILDPLATFORM golang:1.26.1-bookworm AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.2-bookworm AS builder
 ARG TARGETARCH
 ARG VERSION=0.0.1-SNAPSHOT
 ARG GIT_COMMIT=unknown
@@ -75,7 +75,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Stage: debug (select with --target debug; NOT part of the default build)
 # Full Go image needed to install dlv via go install; acceptable for dev-only use.
 # Runs as root — dlv requires ptrace; container security settings handle isolation.
-FROM golang:1.26.1-bookworm AS debug
+FROM golang:1.26.2-bookworm AS debug
 WORKDIR /app
 
 # Install dlv (Delve debugger)
@@ -86,7 +86,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Copy debug-compiled binary and required runtime assets
 COPY --from=builder /build/controller .
 COPY --from=build-manifest build-manifest.yaml /app/build-manifest.yaml
-COPY default-policies /app/default-policies
+COPY --from=policies . /app/default-policies
 COPY lua /app/lua
 COPY default-llm-provider-templates /app/default-llm-provider-templates
 
@@ -120,7 +120,7 @@ WORKDIR /app
 COPY --from=build-manifest build-manifest.yaml /app/build-manifest.yaml
 
 COPY --from=builder /build/controller .
-COPY default-policies /app/default-policies
+COPY --from=policies . /app/default-policies
 COPY lua /app/lua
 COPY default-llm-provider-templates /app/default-llm-provider-templates
 

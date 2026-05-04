@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
@@ -23,6 +24,11 @@ type LLMProviderTransformer struct {
 type pathMethodKey struct {
 	path   string
 	method string
+}
+
+type llmPolicyAttachment struct {
+	policy    api.LLMPolicy
+	pathEntry api.LLMPolicyPath
 }
 
 func NewLLMProviderTransformer(store *storage.ConfigStore, db storage.Storage, routerConfig *config.RouterConfig, policyVersionResolver PolicyVersionResolver) *LLMProviderTransformer {
@@ -224,63 +230,43 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 
 	// Phase 2: Process User-Defined Policies
 	if proxy.Spec.Policies != nil {
-		for _, llmPol := range *proxy.Spec.Policies {
-			for _, pathEntry := range llmPol.Paths {
-				// Expand wildcard methods in policy
-				var policyMethods []string
-				if len(pathEntry.Methods) == 1 && string(pathEntry.Methods[0]) == "*" {
-					policyMethods = constants.WILDCARD_HTTP_METHODS
-				} else {
-					policyMethods = make([]string, len(pathEntry.Methods))
-					for i, m := range pathEntry.Methods {
-						policyMethods[i] = string(m)
-					}
-				}
+		registerExplicitLLMPolicyOperations(operationRegistry, *proxy.Spec.Policies, nil)
 
-				for _, policyMethod := range policyMethods {
-					attachedPolicyPaths := make(map[string]bool)
-					methodOperations := getOperationsForMethod(operationRegistry, policyMethod)
+		for _, attachment := range orderedLLMPolicyAttachments(*proxy.Spec.Policies) {
+			policyMethods := expandLLMPolicyMethods(attachment.pathEntry.Methods)
 
-					// Create operation if it doesn't exist (dynamic operation creation)
-					key := pathMethodKey{path: pathEntry.Path, method: policyMethod}
-					if _, exists := operationRegistry[key]; !exists {
-						op := &api.Operation{
-							Path:   pathEntry.Path,
-							Method: api.OperationMethod(policyMethod),
-						}
-						operationRegistry[key] = op
-						methodOperations = append(methodOperations, op)
-					}
+			for _, policyMethod := range policyMethods {
+				attachedPolicyPaths := make(map[string]bool)
+				methodOperations := getOperationsForMethod(operationRegistry, policyMethod)
 
-					for _, op := range methodOperations {
-						// Use pathsMatch to determine if policy applies to this operation
-						if pathsMatch(op.Path, pathEntry.Path) {
-							for _, targetPath := range expandPolicyTargetPaths(op.Path, &tmpl.Configuration.Spec) {
-								if attachedPolicyPaths[targetPath] {
-									continue
-								}
-								targetKey := pathMethodKey{path: targetPath, method: policyMethod}
-								targetOp, exists := operationRegistry[targetKey]
-								if !exists {
-									targetOp = &api.Operation{
-										Path:   targetPath,
-										Method: api.OperationMethod(policyMethod),
-									}
-									operationRegistry[targetKey] = targetOp
-								}
-
-								templateParams, err := buildTemplateParams(tmpl, targetPath)
-								if err != nil {
-									return nil, fmt.Errorf("failed to build template params: %w", err)
-								}
-								pol := api.Policy{
-									Name:    llmPol.Name,
-									Version: llmPol.Version,
-									Params:  mergeParams(pathEntry.Params, templateParams),
-								}
-								appendOperationPolicy(targetOp, pol)
-								attachedPolicyPaths[targetPath] = true
+				for _, op := range methodOperations {
+					// Use pathsMatch to determine if policy applies to this operation
+					if pathsMatch(op.Path, attachment.pathEntry.Path) {
+						for _, targetPath := range expandPolicyTargetPaths(op.Path, &tmpl.Configuration.Spec) {
+							if attachedPolicyPaths[targetPath] {
+								continue
 							}
+							targetKey := pathMethodKey{path: targetPath, method: policyMethod}
+							targetOp, exists := operationRegistry[targetKey]
+							if !exists {
+								targetOp = &api.Operation{
+									Path:   targetPath,
+									Method: api.OperationMethod(policyMethod),
+								}
+								operationRegistry[targetKey] = targetOp
+							}
+
+							templateParams, err := buildTemplateParams(tmpl, targetPath)
+							if err != nil {
+								return nil, fmt.Errorf("failed to build template params: %w", err)
+							}
+							pol := api.Policy{
+								Name:    attachment.policy.Name,
+								Version: attachment.policy.Version,
+								Params:  mergeParams(attachment.pathEntry.Params, templateParams),
+							}
+							appendOperationPolicy(targetOp, pol)
+							attachedPolicyPaths[targetPath] = true
 						}
 					}
 				}
@@ -451,77 +437,58 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 
 		// Phase 3: Process User-Defined Policies
 		if provider.Spec.Policies != nil {
-			for _, llmPol := range *provider.Spec.Policies {
-				for _, pathEntry := range llmPol.Paths {
-					// Expand wildcard methods in policy
-					var policyMethods []string
-					if len(pathEntry.Methods) == 1 && string(pathEntry.Methods[0]) == "*" {
-						policyMethods = constants.WILDCARD_HTTP_METHODS
-					} else {
-						policyMethods = make([]string, len(pathEntry.Methods))
-						for i, m := range pathEntry.Methods {
-							policyMethods[i] = string(m)
-						}
+			registerExplicitLLMPolicyOperations(operationRegistry, *provider.Spec.Policies, func(path, method string) bool {
+				return !isDeniedByException(path, method, deniedPathMethods)
+			})
+
+			for _, attachment := range orderedLLMPolicyAttachments(*provider.Spec.Policies) {
+				policyMethods := expandLLMPolicyMethods(attachment.pathEntry.Methods)
+
+				for _, policyMethod := range policyMethods {
+					attachedPolicyPaths := make(map[string]bool)
+					methodOperations := getOperationsForMethod(operationRegistry, policyMethod)
+
+					// CRITICAL: Skip if this path+method is denied by exception
+					if isDeniedByException(attachment.pathEntry.Path, policyMethod, deniedPathMethods) {
+						continue // Exception deny policy takes precedence
 					}
 
-					for _, policyMethod := range policyMethods {
-						attachedPolicyPaths := make(map[string]bool)
-						methodOperations := getOperationsForMethod(operationRegistry, policyMethod)
-
-						// CRITICAL: Skip if this path+method is denied by exception
-						if isDeniedByException(pathEntry.Path, policyMethod, deniedPathMethods) {
-							continue // Exception deny policy takes precedence
+					for _, op := range methodOperations {
+						// Skip if this operation has deny policy (from exceptions)
+						if denyPolicyVersion != "" && hasDenyPolicy(op, denyPolicyVersion) {
+							continue
 						}
 
-						// Check if explicit operation exists for this policy path+method
-						key := pathMethodKey{path: pathEntry.Path, method: policyMethod}
-						if _, exists := operationRegistry[key]; !exists {
-							// Create operation for user policy
-							op := &api.Operation{
-								Path:   pathEntry.Path,
-								Method: api.OperationMethod(policyMethod),
-							}
-							operationRegistry[key] = op
-							methodOperations = append(methodOperations, op)
-						}
-
-						for _, op := range methodOperations {
-							// Skip if this operation has deny policy (from exceptions)
-							if denyPolicyVersion != "" && hasDenyPolicy(op, denyPolicyVersion) {
-								continue
-							}
-
-							if pathsMatch(op.Path, pathEntry.Path) {
-								for _, targetPath := range expandPolicyTargetPaths(op.Path, &tmpl.Configuration.Spec) {
-									if attachedPolicyPaths[targetPath] {
-										continue
-									}
-									targetKey := pathMethodKey{path: targetPath, method: policyMethod}
-									targetOp, exists := operationRegistry[targetKey]
-									if !exists {
-										targetOp = &api.Operation{
-											Path:   targetPath,
-											Method: api.OperationMethod(policyMethod),
-										}
-										operationRegistry[targetKey] = targetOp
-									}
-
-									if denyAppliesToTarget(targetPath, policyMethod, denyPolicyVersion, operationRegistry) {
-										continue
-									}
-
-									templateParams, err := buildTemplateParams(tmpl, targetPath)
-									if err != nil {
-										return nil, fmt.Errorf("failed to build template params: %w", err)
-									}
-									pol := api.Policy{
-										Name:    llmPol.Name,
-										Version: llmPol.Version,
-										Params:  mergeParams(pathEntry.Params, templateParams),
-									}
-									appendOperationPolicy(targetOp, pol)
-									attachedPolicyPaths[targetPath] = true
+						if pathsMatch(op.Path, attachment.pathEntry.Path) {
+							for _, targetPath := range expandPolicyTargetPaths(op.Path, &tmpl.Configuration.Spec) {
+								if attachedPolicyPaths[targetPath] {
+									continue
 								}
+								targetKey := pathMethodKey{path: targetPath, method: policyMethod}
+								targetOp, exists := operationRegistry[targetKey]
+								if !exists {
+									targetOp = &api.Operation{
+										Path:   targetPath,
+										Method: api.OperationMethod(policyMethod),
+									}
+									operationRegistry[targetKey] = targetOp
+								}
+
+								if denyAppliesToTarget(targetPath, policyMethod, denyPolicyVersion, operationRegistry) {
+									continue
+								}
+
+								templateParams, err := buildTemplateParams(tmpl, targetPath)
+								if err != nil {
+									return nil, fmt.Errorf("failed to build template params: %w", err)
+								}
+								pol := api.Policy{
+									Name:    attachment.policy.Name,
+									Version: attachment.policy.Version,
+									Params:  mergeParams(attachment.pathEntry.Params, templateParams),
+								}
+								appendOperationPolicy(targetOp, pol)
+								attachedPolicyPaths[targetPath] = true
 							}
 						}
 					}
@@ -567,66 +534,44 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 
 		// Phase 3: Process Policies with Dynamic Operation Creation
 		if provider.Spec.Policies != nil {
-			for _, llmPol := range *provider.Spec.Policies {
-				for _, pathEntry := range llmPol.Paths {
-					// Expand wildcard methods in policy
-					var policyMethods []string
-					if len(pathEntry.Methods) == 1 && string(pathEntry.Methods[0]) == "*" {
-						policyMethods = constants.WILDCARD_HTTP_METHODS
-					} else {
-						policyMethods = make([]string, len(pathEntry.Methods))
-						for i, m := range pathEntry.Methods {
-							policyMethods[i] = string(m)
-						}
-					}
+			registerExplicitLLMPolicyOperations(operationRegistry, *provider.Spec.Policies, func(path, method string) bool {
+				return isAllowedByAccessControl(path, method, normalizedExceptions)
+			})
 
-					for _, policyMethod := range policyMethods {
-						attachedPolicyPaths := make(map[string]bool)
-						methodOperations := getOperationsForMethod(operationRegistry, policyMethod)
+			for _, attachment := range orderedLLMPolicyAttachments(*provider.Spec.Policies) {
+				policyMethods := expandLLMPolicyMethods(attachment.pathEntry.Methods)
 
-						// Check if this policy path+method is allowed by access control
-						if isAllowedByAccessControl(pathEntry.Path, policyMethod, normalizedExceptions) {
-							// Check if explicit operation exists for this policy path+method
-							key := pathMethodKey{path: pathEntry.Path, method: policyMethod}
-							if _, exists := operationRegistry[key]; !exists {
-								// Create operation for specific policy path covered by wildcard access control
-								op := &api.Operation{
-									Path:   pathEntry.Path,
-									Method: api.OperationMethod(policyMethod),
+				for _, policyMethod := range policyMethods {
+					attachedPolicyPaths := make(map[string]bool)
+					methodOperations := getOperationsForMethod(operationRegistry, policyMethod)
+
+					for _, op := range methodOperations {
+						if pathsMatch(op.Path, attachment.pathEntry.Path) {
+							for _, targetPath := range expandPolicyTargetPaths(op.Path, &tmpl.Configuration.Spec) {
+								if attachedPolicyPaths[targetPath] {
+									continue
 								}
-								operationRegistry[key] = op
-								methodOperations = append(methodOperations, op)
-							}
-						}
-
-						for _, op := range methodOperations {
-							if pathsMatch(op.Path, pathEntry.Path) {
-								for _, targetPath := range expandPolicyTargetPaths(op.Path, &tmpl.Configuration.Spec) {
-									if attachedPolicyPaths[targetPath] {
-										continue
+								targetKey := pathMethodKey{path: targetPath, method: policyMethod}
+								targetOp, exists := operationRegistry[targetKey]
+								if !exists {
+									targetOp = &api.Operation{
+										Path:   targetPath,
+										Method: api.OperationMethod(policyMethod),
 									}
-									targetKey := pathMethodKey{path: targetPath, method: policyMethod}
-									targetOp, exists := operationRegistry[targetKey]
-									if !exists {
-										targetOp = &api.Operation{
-											Path:   targetPath,
-											Method: api.OperationMethod(policyMethod),
-										}
-										operationRegistry[targetKey] = targetOp
-									}
-
-									templateParams, err := buildTemplateParams(tmpl, targetPath)
-									if err != nil {
-										return nil, fmt.Errorf("failed to build template params: %w", err)
-									}
-									pol := api.Policy{
-										Name:    llmPol.Name,
-										Version: llmPol.Version,
-										Params:  mergeParams(pathEntry.Params, templateParams),
-									}
-									appendOperationPolicy(targetOp, pol)
-									attachedPolicyPaths[targetPath] = true
+									operationRegistry[targetKey] = targetOp
 								}
+
+								templateParams, err := buildTemplateParams(tmpl, targetPath)
+								if err != nil {
+									return nil, fmt.Errorf("failed to build template params: %w", err)
+								}
+								pol := api.Policy{
+									Name:    attachment.policy.Name,
+									Version: attachment.policy.Version,
+									Params:  mergeParams(attachment.pathEntry.Params, templateParams),
+								}
+								appendOperationPolicy(targetOp, pol)
+								attachedPolicyPaths[targetPath] = true
 							}
 						}
 					}
@@ -801,6 +746,84 @@ func appendOperationPolicy(op *api.Operation, pol api.Policy) {
 	existing := *op.Policies
 	existing = append(existing, pol)
 	op.Policies = &existing
+}
+
+func orderedLLMPolicyAttachments(policies []api.LLMPolicy) []llmPolicyAttachment {
+	attachments := make([]llmPolicyAttachment, 0)
+	for _, llmPol := range policies {
+		for _, pathEntry := range llmPol.Paths {
+			attachments = append(attachments, llmPolicyAttachment{
+				policy:    llmPol,
+				pathEntry: pathEntry,
+			})
+		}
+	}
+
+	sort.SliceStable(attachments, func(i, j int) bool {
+		return shouldAttachPathBefore(attachments[i].pathEntry.Path, attachments[j].pathEntry.Path)
+	})
+
+	return attachments
+}
+
+func shouldAttachPathBefore(leftPath, rightPath string) bool {
+	leftHasWildcard := strings.Contains(leftPath, constants.WILD_CARD)
+	rightHasWildcard := strings.Contains(rightPath, constants.WILD_CARD)
+
+	if leftHasWildcard != rightHasWildcard {
+		return leftHasWildcard
+	}
+
+	if len(leftPath) != len(rightPath) {
+		return len(leftPath) < len(rightPath)
+	}
+
+	return leftPath < rightPath
+}
+
+// ensureOperation checks if an operation for the given path+method exists in the registry, and creates it if not
+func ensureOperation(operationRegistry map[pathMethodKey]*api.Operation, path, method string) *api.Operation {
+	key := pathMethodKey{path: path, method: method}
+	if op, exists := operationRegistry[key]; exists {
+		return op
+	}
+
+	op := &api.Operation{
+		Path:   path,
+		Method: api.OperationMethod(method),
+	}
+	operationRegistry[key] = op
+	return op
+}
+
+// expandLLMPolicyMethods takes the methods defined in an LLM policy and expands them to actual HTTP methods if wildcard is used
+func expandLLMPolicyMethods(methods []api.LLMPolicyPathMethods) []string {
+	if len(methods) == 1 && string(methods[0]) == constants.WILD_CARD {
+		return append([]string(nil), constants.WILDCARD_HTTP_METHODS...)
+	}
+
+	expanded := make([]string, len(methods))
+	for i, method := range methods {
+		expanded[i] = string(method)
+	}
+	return expanded
+}
+
+// registerExplicitLLMPolicyOperations iterates through the explicitly defined policies in the LLM policy and ensures that operations
+// exist for their paths and methods in the operation registry. The shouldRegister callback allows conditional registration based on
+// path and method (e.g., to skip paths/methods denied by access control exceptions).
+func registerExplicitLLMPolicyOperations(operationRegistry map[pathMethodKey]*api.Operation, policies []api.LLMPolicy,
+	shouldRegister func(path, method string) bool) {
+	for _, llmPol := range policies {
+		for _, pathEntry := range llmPol.Paths {
+			for _, method := range expandLLMPolicyMethods(pathEntry.Methods) {
+				if shouldRegister != nil && !shouldRegister(pathEntry.Path, method) {
+					continue
+				}
+				ensureOperation(operationRegistry, pathEntry.Path, method)
+			}
+		}
+	}
 }
 
 func getOperationsForMethod(operationRegistry map[pathMethodKey]*api.Operation, method string) []*api.Operation {

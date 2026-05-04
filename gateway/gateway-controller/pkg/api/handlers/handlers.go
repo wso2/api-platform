@@ -123,7 +123,7 @@ func NewAPIServer(
 	parser := config.NewParser()
 	httpClient := &http.Client{Timeout: 10 * time.Second}
 	routerConfig := &systemConfig.Router
-	mcpDeploymentService := utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager, policyValidator, eventHub, gatewayID)
+	mcpDeploymentService := utils.NewMCPDeploymentService(store, db, snapshotManager, policyManager, policyValidator, eventHub, gatewayID, secretService)
 
 	server := &APIServer{
 		store:                store,
@@ -284,7 +284,7 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 			continue
 		}
 
-		items = append(items, buildResourceResponseFromStored(cfg.Configuration, cfg))
+		items = append(items, buildResourceResponseFromStored(cfg.SourceConfiguration, cfg))
 	}
 
 	// Each kind has its own envelope key to preserve the existing URL contract.
@@ -321,7 +321,7 @@ func (s *APIServer) GetAPIByNameVersion(c *gin.Context, name string, version str
 		return
 	}
 
-	c.JSON(http.StatusOK, buildResourceResponseFromStored(cfg.Configuration, cfg))
+	c.JSON(http.StatusOK, buildResourceResponseFromStored(cfg.SourceConfiguration, cfg))
 }
 
 // waitForDeploymentAndPush waits for API deployment to complete and pushes it to the control plane

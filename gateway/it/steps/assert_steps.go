@@ -79,6 +79,8 @@ func (a *AssertSteps) Register(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the JSON response field "([^"]*)" should contain "([^"]*)"$`, a.jsonFieldShouldContain)
 	ctx.Step(`^the JSON response field "([^"]*)" should be (\d+)$`, a.jsonFieldShouldBeInt)
 	ctx.Step(`^the JSON response field "([^"]*)" should be (true|false)$`, a.jsonFieldShouldBeBool)
+	ctx.Step(`^the JSON response string field "([^"]*)" should have length less than (\d+)$`, a.jsonStringFieldShouldHaveLengthLessThan)
+	ctx.Step(`^the JSON response string field "([^"]*)" should have length greater than (\d+)$`, a.jsonStringFieldShouldHaveLengthGreaterThan)
 	ctx.Step(`^the JSON response should have (\d+) items$`, a.jsonShouldHaveItems)
 	ctx.Step(`^the JSON response array field "([^"]*)" should have (\d+) items$`, a.jsonArrayFieldShouldHaveItems)
 
@@ -373,6 +375,38 @@ func (a *AssertSteps) jsonFieldShouldBeBool(field, expected string) error {
 	}
 	if actual != expectedBool {
 		return fmt.Errorf("expected JSON field %q to be %v, got %v", field, expectedBool, actual)
+	}
+	return nil
+}
+
+// jsonStringFieldShouldHaveLengthLessThan asserts that a JSON string field's length is less than expected
+func (a *AssertSteps) jsonStringFieldShouldHaveLengthLessThan(field string, expected int) error {
+	value, err := a.getJSONField(field)
+	if err != nil {
+		return err
+	}
+	strVal, ok := value.(string)
+	if !ok {
+		return fmt.Errorf("expected JSON field %q to be string, got %T", field, value)
+	}
+	if len(strVal) >= expected {
+		return fmt.Errorf("expected JSON field %q length to be less than %d, got %d", field, expected, len(strVal))
+	}
+	return nil
+}
+
+// jsonStringFieldShouldHaveLengthGreaterThan asserts that a JSON string field's length is greater than expected
+func (a *AssertSteps) jsonStringFieldShouldHaveLengthGreaterThan(field string, expected int) error {
+	value, err := a.getJSONField(field)
+	if err != nil {
+		return err
+	}
+	strVal, ok := value.(string)
+	if !ok {
+		return fmt.Errorf("expected JSON field %q to be string, got %T", field, value)
+	}
+	if len(strVal) <= expected {
+		return fmt.Errorf("expected JSON field %q length to be greater than %d, got %d", field, expected, len(strVal))
 	}
 	return nil
 }

@@ -1,6 +1,6 @@
 module github.com/wso2/api-platform/gateway/gateway-controller
 
-go 1.26.1
+go 1.26.2
 
 require (
 	github.com/envoyproxy/go-control-plane v0.14.0
@@ -10,7 +10,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.4.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/jackc/pgx/v5 v5.9.1
+	github.com/jackc/pgx/v5 v5.9.2
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/knadh/koanf/parsers/toml/v2 v2.2.0
 	github.com/knadh/koanf/providers/env v1.1.0

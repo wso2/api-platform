@@ -224,6 +224,24 @@ services:
     networks:
       - it-gateway-runtime-network
 
+  # Mock Interceptor Service for interceptor-service policy testing
+  mock-interceptor-service:
+    container_name: it-mock-interceptor-service
+    image: ghcr.io/wso2/api-platform/mock-interceptor-service:latest
+    build:
+      context: ../../tests/mock-servers/mock-interceptor-service
+      dockerfile: Dockerfile
+    ports:
+      - "8087:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "--tries=1", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - it-gateway-runtime-network
+
   # Redis with RediSearch for semantic cache vector storage
   redis:
     container_name: it-redis

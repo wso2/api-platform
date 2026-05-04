@@ -20,7 +20,7 @@
 # Combines Envoy Router and Policy Engine into a single container
 
 # Stage 1: Builder Base
-FROM --platform=$BUILDPLATFORM golang:1.26.1-bookworm AS builder-base
+FROM --platform=$BUILDPLATFORM golang:1.26.2-bookworm AS builder-base
 ARG BUILDARCH
 ARG VERSION=unknown
 ARG GIT_COMMIT=unknown
@@ -122,6 +122,12 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         -policy-engine-src /api-platform/gateway/gateway-runtime/policy-engine \
         -out-dir /api-platform/output
 
+# Stage: policy-export — extracts controller policy definitions for host consumption.
+# Built with `--target policy-export --output type=local,dest=...`. Reuses the
+# policy-compiler stage cache, so no second gateway-builder run is required.
+FROM scratch AS policy-export
+COPY --from=policy-compiler /api-platform/output/gateway-controller/policies /
+
 # Stage 3a: Python dependency installer
 # Uses the same base image as the production stage so that C extensions
 # (e.g. grpcio) are compiled against the identical Python version and glibc.
@@ -164,7 +170,7 @@ RUN if [ "$PYTHON_SDK_SOURCE" = "local" ]; then \
     fi
 
 # Stage 3b: dlv installer (builds dlv for the debug stage)
-FROM golang:1.26.1-bookworm AS debug-dlv-builder
+FROM golang:1.26.2-bookworm AS debug-dlv-builder
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go install github.com/go-delve/delve/cmd/dlv@v1.26.0

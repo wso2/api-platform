@@ -4857,7 +4857,7 @@ func TestTransform_PathMatchingEdgeCases_AllowAll_PolicyMoreGeneral(t *testing.T
 
 func TestTransform_PathMatchingEdgeCases_AllowAll_NestedWildcardPolicies(t *testing.T) {
 	// AllowAll: Multiple nested wildcard policies with no exceptions
-	// All policies should attach to catch-all operations
+	// Broader wildcard policies should also apply to nested wildcard operations
 	transformer, _ := setupTestTransformer(t)
 
 	policies := []api.LLMPolicy{
@@ -4916,8 +4916,9 @@ func TestTransform_PathMatchingEdgeCases_AllowAll_NestedWildcardPolicies(t *test
 	nestedOp := findOperation(spec.Operations, "api/v1/*", "GET")
 	require.NotNil(t, nestedOp, "api/v1/* GET should exist")
 	require.NotNil(t, nestedOp.Policies)
-	assert.Len(t, *nestedOp.Policies, 1)
-	assert.Equal(t, "NestedPolicy", (*nestedOp.Policies)[0].Name)
+	assert.Len(t, *nestedOp.Policies, 2)
+	assert.Equal(t, "TopLevelPolicy", (*nestedOp.Policies)[0].Name)
+	assert.Equal(t, "NestedPolicy", (*nestedOp.Policies)[1].Name)
 
 	// Find api/* operation
 	topOp := findOperation(spec.Operations, "api/*", "GET")

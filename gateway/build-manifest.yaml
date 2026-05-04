@@ -7,7 +7,7 @@ policies:
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/analytics-header-filter@v1
     - name: api-key-auth
-      version: v1.0.2
+      version: v1.0.3
       gomodule: github.com/wso2/gateway-controllers/policies/api-key-auth@v1
     - name: aws-bedrock-guardrail
       version: v1.0.2
@@ -33,6 +33,9 @@ policies:
     - name: host-rewrite
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/host-rewrite@v1
+    - name: interceptor-service
+      version: v1.0.0
+      gomodule: github.com/wso2/gateway-controllers/policies/interceptor-service@v1
     - name: json-schema-guardrail
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/json-schema-guardrail@v1
@@ -40,7 +43,7 @@ policies:
       version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/json-xml-mediator@v1
     - name: jwt-auth
-      version: v1.0.2
+      version: v1.0.4
       gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v1
     - name: llm-cost
       version: v1.0.3
@@ -73,8 +76,8 @@ policies:
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/pii-masking-regex@v1
     - name: prompt-compressor
-      version: v0.1.0
-      pipPackage: git+https://github.com/wso2/gateway-controllers.git@policies/prompt-compressor/v0.1.0#subdirectory=policies/prompt-compressor
+      version: v0.9.0
+      pipPackage: git+https://github.com/wso2/gateway-controllers.git@policies/prompt-compressor/v0.9.0#subdirectory=policies/prompt-compressor
     - name: prompt-decorator
       version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/prompt-decorator@v1

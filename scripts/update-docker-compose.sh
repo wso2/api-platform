@@ -33,6 +33,7 @@ if [ -z "$COMPONENT" ] || [ -z "$VERSION" ]; then
 fi
 
 COMPOSE_FILE="gateway/docker-compose.yaml"
+DIST_COMPOSE_FILE="gateway/distribution/docker-compose.yaml"
 IT_COMPOSE_FILE="gateway/it/docker-compose.test.yaml"
 EVENT_GATEWAY_COMPOSE_FILE="event-gateway/docker-compose.yaml"
 
@@ -49,6 +50,15 @@ if [ "$COMPONENT" = "gateway" ]; then
         "$COMPOSE_FILE"
     rm -f "$COMPOSE_FILE.bak"
     echo "Updated $COMPOSE_FILE with gateway version $VERSION"
+    # Mirror the same image-tag rewrite in the distribution compose template
+    if [ -f "$DIST_COMPOSE_FILE" ]; then
+        sed -i.bak \
+            -e "s|image: .*/gateway-controller:.*|image: ${DOCKER_REGISTRY}/gateway-controller:$VERSION|" \
+            -e "s|image: .*/gateway-runtime:.*|image: ${DOCKER_REGISTRY}/gateway-runtime:$VERSION|" \
+            "$DIST_COMPOSE_FILE"
+        rm -f "$DIST_COMPOSE_FILE.bak"
+        echo "Updated $DIST_COMPOSE_FILE with gateway version $VERSION"
+    fi
 elif [ "$COMPONENT" = "event-gateway" ]; then
     # Update all event-gateway component images in event-gateway docker-compose.yaml
     if [ ! -f "$EVENT_GATEWAY_COMPOSE_FILE" ]; then

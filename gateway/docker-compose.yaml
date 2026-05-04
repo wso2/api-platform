@@ -17,10 +17,14 @@
 # --------------------------------------------------------------------
 
 # NOTE: gateway-controller and gateway-runtime are duplicated in docker-compose.debug.yaml — keep in sync.
+# NOTE: distribution/docker-compose.yaml ships the standalone variant (assembled by `make dist`) — keep
+#       gateway-controller/gateway-runtime services in sync there too. Documented differences that should
+#       diverge: cert mount paths under ./resources/, no sample-backend service, empty default for
+#       APIP_GW_CONTROLPLANE_HOST.
 
 services:
   gateway-controller:
-    image: ghcr.io/wso2/api-platform/gateway-controller:1.1.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/gateway-controller:1.2.0-SNAPSHOT
     mem_limit: 60m
     mem_reservation: 60m
     cpus: 0.025
@@ -28,14 +32,8 @@ services:
     ports:
       - "9090:9090"   # REST API
       - "9094:9092"   # Admin API
-      - "18000:18000" # xDS gRPC
-      - "18001:18001" # xDS gRPC
       - "9011:9091"   # Metrics
     environment:
-      - APIP_GW_CONTROLLER_STORAGE_TYPE=sqlite
-      - APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH=./data/gateway.db
-      - APIP_GW_CONTROLLER_LOGGING_LEVEL=info
-      - APIP_GW_CONTROLLER_METRICS_PORT=9091
       - APIP_GW_DEVELOPMENT_MODE=true
       - APIP_GW_GATEWAY_REGISTRATION_TOKEN=${GATEWAY_REGISTRATION_TOKEN:-}
       - APIP_GW_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:-host.docker.internal:9243}
@@ -50,7 +48,7 @@ services:
       - gateway-network
 
   gateway-runtime:
-    image: ghcr.io/wso2/api-platform/gateway-runtime:1.1.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/gateway-runtime:1.2.0-SNAPSHOT
     mem_limit: 180m
     mem_reservation: 180m
     cpus: 0.175
@@ -60,8 +58,6 @@ services:
       - "8080:8080"   # HTTP ingress
       - "8443:8443"   # HTTPS ingress
       - "8081:8081"   # xDS-managed API listener
-      - "8082:8082"   # WebSub Hub dynamic forward proxy
-      - "8083:8083"   # WebSub Hub internal listener
       - "9901:9901"   # Envoy admin
       # Policy Engine
       - "9002:9002"   # Admin API
@@ -69,7 +65,6 @@ services:
     environment:
       - GATEWAY_CONTROLLER_HOST=gateway-controller
       - MOESIF_KEY=${MOESIF_KEY:-}
-      - LOG_LEVEL=info
     volumes:
       - ./configs/config.toml:/etc/policy-engine/config.toml:ro
       - ./configs/llm-pricing/model_prices.json:/etc/policy-engine/llm-pricing/model_prices.json:ro

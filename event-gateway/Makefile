@@ -69,6 +69,8 @@ help: ## Show this help message
 build: build-event-gateway-controller build-gateway-runtime build-webhook-listener ## Build all event gateway components
 
 .PHONY: build-event-gateway-controller
+# TODO: drop the manual `policies` build-context (and event-gateway/default-policies/)
+# once gateway-builder is integrated into the event-gateway build pipeline.
 build-event-gateway-controller: ## Build event-gateway-controller Docker image
 	@echo "Building event-gateway-controller Docker image ($(VERSION))..."
 	@cd ../gateway/gateway-controller && \
@@ -77,6 +79,7 @@ build-event-gateway-controller: ## Build event-gateway-controller Docker image
 			--build-context sdk-core=../../sdk/core \
 			--build-context common=../../common \
 			--build-context build-manifest=.. \
+			--build-context policies=../../event-gateway/default-policies \
 			--build-arg VERSION=$(VERSION) \
 			--build-arg GIT_COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo "unknown") \
 			--target production \
@@ -99,6 +102,8 @@ build-webhook-listener: ## Build webhook-listener Docker image
 build-and-push-multiarch: build-and-push-multiarch-event-gateway-controller build-and-push-multiarch-gateway-runtime ## Build and push all event gateway components for multiple architectures
 
 .PHONY: build-and-push-multiarch-event-gateway-controller
+# TODO: drop the manual `policies` build-context (and event-gateway/default-policies/)
+# once gateway-builder is integrated into the event-gateway build pipeline.
 build-and-push-multiarch-event-gateway-controller: ## Build and push event-gateway-controller Docker image for multiple architectures
 	@echo "Building and pushing multi-arch event-gateway-controller Docker image ($(VERSION))..."
 	@cd ../gateway/gateway-controller && \
@@ -107,6 +112,7 @@ build-and-push-multiarch-event-gateway-controller: ## Build and push event-gatew
 			--build-context sdk-core=../../sdk/core \
 			--build-context common=../../common \
 			--build-context build-manifest=.. \
+			--build-context policies=../../event-gateway/default-policies \
 			--platform linux/amd64,linux/arm64 \
 			--build-arg VERSION=$(VERSION) \
 			--build-arg GIT_COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo "unknown") \

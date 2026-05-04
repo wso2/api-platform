@@ -19,7 +19,7 @@
 ARG PORT=9243
 
 # Build stage
-FROM --platform=$BUILDPLATFORM golang:1.25.8-bookworm AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.2-bookworm AS builder
 ARG TARGETARCH
 
 # Build arguments for version information

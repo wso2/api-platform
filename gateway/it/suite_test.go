@@ -100,6 +100,7 @@ func getFeaturePaths() []string {
 		"features/url-guardrail.feature",
 		"features/regex-guardrail.feature",
 		"features/prompt-decorator.feature",
+		"features/prompt-compressor.feature",
 		"features/prompt-template.feature",
 		"features/pii-masking-regex.feature",
 		"features/model-weighted-round-robin.feature",
@@ -124,6 +125,7 @@ func getFeaturePaths() []string {
 		"features/api-error-responses.feature",
 		"features/api-keys.feature",
 		"features/api-with-policies.feature",
+		"features/interceptor-service.feature",
 		"features/llm-proxies.feature",
 		"features/startup-db-bootstrap.feature",
 		"features/search-deployments.feature",
@@ -138,6 +140,7 @@ func getFeaturePaths() []string {
 		"features/log-message.feature",
 		"features/route-path-matching.feature",
 		"features/secrets.feature",
+		"features/template-functions.feature",
 		// These tests require different gateway configurations and are not included in the default suite run.
 		// "features/vhost-routing-single.feature", // cd it && make test-vhosts-single
 		// "features/vhost-routing-multi.feature", // cd it && make test-vhosts-multi
@@ -328,6 +331,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		RegisterAnalyticsSteps(ctx, testState, httpSteps)
 		RegisterSubscriptionSteps(ctx, testState, httpSteps)
 		RegisterSecretSteps(ctx, testState, httpSteps)
+		RegisterTemplateSteps(ctx, testState, httpSteps)
 	}
 
 	// Register common HTTP and assertion steps

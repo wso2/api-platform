@@ -1,5 +1,5 @@
 # Stage 1: Build the Go application
-FROM --platform=$BUILDPLATFORM golang:1.26.1-bookworm AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.2-bookworm AS builder
 ARG TARGETARCH
 ARG VERSION=0.1.0-SNAPSHOT
 ARG GIT_COMMIT=unknown

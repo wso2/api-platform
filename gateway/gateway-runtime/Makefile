@@ -74,10 +74,33 @@ build: test ## Build Gateway Runtime Docker image using buildx
 		-t $(IMAGE_NAME):latest \
 		--load \
 		.
+	@$(MAKE) extract-policies
 	@rm -rf target
 	@docker run --rm --entrypoint cat $(IMAGE_NAME):$(VERSION) /app/build-manifest.yaml > ../build-manifest.yaml
 	@echo "  ✓ Extracted build-manifest.yaml"
 	@echo "Docker image built successfully: $(IMAGE_NAME):$(VERSION)"
+
+extract-policies: ## Extract controller policy YAMLs from the policy-compiler stage cache to $(POLICIES_EXPORT_DIR)
+	@echo "Extracting controller policy definitions to $(POLICIES_EXPORT_DIR)..."
+	@mkdir -p target/configs && [ -f target/build.yaml ] || cp ../build.yaml target/
+	@[ -d target/configs/llm-pricing ] || cp -r ../configs/llm-pricing target/configs/
+	@rm -rf $(POLICIES_EXPORT_DIR) && mkdir -p $(POLICIES_EXPORT_DIR)
+	docker buildx build -f Dockerfile \
+		--build-context sdk=../../sdk \
+		--build-context sdk-python=../../sdk-python \
+		--build-context sdk-core=../../sdk/core \
+		--build-context common=../../common \
+		--build-context gateway-builder=../gateway-builder \
+		--build-context system-policies=../system-policies \
+		--build-context dev-policies=../dev-policies \
+		--build-context target=target \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		--target policy-export \
+		--output type=local,dest=$(POLICIES_EXPORT_DIR) \
+		.
+	@rm -rf $(POLICIES_DEV_LAUNCH_DIR) && mkdir -p $(POLICIES_DEV_LAUNCH_DIR) && cp -R $(POLICIES_EXPORT_DIR)/. $(POLICIES_DEV_LAUNCH_DIR)
+	@echo "  ✓ Policies extracted to $(POLICIES_EXPORT_DIR) and mirrored to $(POLICIES_DEV_LAUNCH_DIR)"
 
 
 build-debug: ## Build debug Gateway Runtime image for remote debugging with dlv (VS Code attach on port 2346)
@@ -101,6 +124,7 @@ build-debug: ## Build debug Gateway Runtime image for remote debugging with dlv 
 		-t $(IMAGE_NAME)-debug:latest \
 		--load \
 		.
+	@$(MAKE) extract-policies
 	@rm -rf target
 	@docker run --rm --entrypoint cat $(IMAGE_NAME)-debug:$(VERSION) /app/build-manifest.yaml > ../build-manifest.yaml
 	@echo "  ✓ Extracted build-manifest.yaml"
@@ -125,6 +149,7 @@ build-coverage-image: test ## Build Gateway Runtime Docker image with coverage i
 		--target production \
 		-t $(IMAGE_NAME)-coverage:$(VERSION) \
 		.
+	@$(MAKE) extract-policies
 	@rm -rf target
 	@echo "Coverage image built successfully: $(IMAGE_NAME)-coverage:$(VERSION)"
 
@@ -154,6 +179,7 @@ build-and-push-multiarch: ## Build and push Gateway Runtime Docker image for mul
 		-t $(IMAGE_NAME):latest \
 		--push \
 		.
+	@$(MAKE) extract-policies
 	@rm -rf target
 	@docker pull --platform linux/amd64 $(IMAGE_NAME):$(VERSION)
 	@docker run --rm --entrypoint cat $(IMAGE_NAME):$(VERSION) /app/build-manifest.yaml > ../build-manifest.yaml

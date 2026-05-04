@@ -1,3 +1,4 @@
+# MANUAL COPY of github.com/wso2/gateway-controllers/policies/api-key-auth@v1 — keep in sync with ../build.yaml until gateway-builder is integrated into event-gateway build.
 name: api-key-auth
 version: v1.0.3
 description: |

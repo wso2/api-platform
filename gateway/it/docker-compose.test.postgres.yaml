@@ -94,6 +94,8 @@ services:
       - APIP_GW_CONTROLLER_CONTROLPLANE_HOST=it-mock-platform-api:9243
       - APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=test-gateway-token
       - APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY=true
+      # Used by template-functions IT to verify {{ env "..." }} resolution in spec fields
+      - IT_TEMPLATE_PATH=/anything
     volumes:
       - controller-data-tests:/app/data
       - ./it-aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro
@@ -279,6 +281,24 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8086:8080"
+    networks:
+      - it-gateway-runtime-network
+
+  # Mock Interceptor Service for interceptor-service policy testing
+  mock-interceptor-service:
+    container_name: it-mock-interceptor-service
+    image: ghcr.io/wso2/api-platform/mock-interceptor-service:latest
+    build:
+      context: ../../tests/mock-servers/mock-interceptor-service
+      dockerfile: Dockerfile
+    ports:
+      - "8087:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "--tries=1", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     networks:
       - it-gateway-runtime-network
 

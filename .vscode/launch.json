@@ -22,47 +22,6 @@
             },
         },
         {
-            "name": "Gateway Controller",
-            "type": "go",
-            "request": "launch",
-            "mode": "auto",
-            "program": "${workspaceFolder}/gateway/gateway-controller/cmd/controller",
-            "args": [
-                "-config",
-                "${workspaceFolder}/gateway/configs/config.toml",
-            ],
-            "env": {
-                // Database configuration for the controller
-                "APIP_GW_CONTROLLER_STORAGE_TYPE": "sqlite", // sqlite, postgres
-                //// SQLite (default)
-                "APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH": "${workspaceFolder}/gateway/gateway-controller/data/gateway.db",
-                //// PostgreSQL
-                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_HOST": "localhost",
-                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PORT": "5432",
-                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_DATABASE": "gateway",
-                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_USER": "gateway",
-                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD": "gateway",
-                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_SSLMODE": "disable",
-                // Controlplane connectivity details
-                "APIP_GW_CONTROLPLANE_HOST": "", // host.docker.internal:9243 for locally running Platform API
-                "APIP_GW_GATEWAY_REGISTRATION_TOKEN": "",
-                "APIP_GW_CONTROLLER_LLM_TEMPLATE__DEFINITIONS__PATH": "${workspaceFolder}/gateway/gateway-controller/default-llm-provider-templates",
-                "APIP_GW_CONTROLLER_ROUTER_DOWNSTREAM__TLS_CERT__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.crt",
-                "APIP_GW_CONTROLLER_ROUTER_DOWNSTREAM__TLS_KEY__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.key",
-                "APIP_GW_CONTROLLER_POLICIES_DEFINITIONS__PATH": "${workspaceFolder}/gateway/gateway-controller/default-policies",
-                "APIP_GW_ROUTER_LUA_REQUEST__TRANSFORMATION_SCRIPT__PATH": "${workspaceFolder}/gateway/gateway-controller/lua/request_transformation.lua",
-                "APIP_GW_ROUTER_POLICY__ENGINE_MODE": "tcp",
-                "APIP_GW_ROUTER_POLICY__ENGINE_HOST": "host.docker.internal",
-                "APIP_GW_ANALYTICS_GRPC__EVENT__SERVER_MODE": "tcp",
-                "APIP_GW_ROUTER_DOWNSTREAM__TLS_CERT__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.crt",
-                "APIP_GW_ROUTER_DOWNSTREAM__TLS_KEY__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.key",
-                "APIP_GW_DEVELOPMENT_MODE": "true",
-                // Immutable gateway mode
-                "APIP_GW_IMMUTABLE__GATEWAY_ENABLED": "false",
-                "APIP_GW_IMMUTABLE__GATEWAY_ARTIFACTS__DIR": "${workspaceFolder}/gateway/examples",
-            },
-        },
-        {
             "name": "Gateway Builder",
             "type": "go",
             "request": "launch",
@@ -76,6 +35,51 @@
                 "-out-dir", "${workspaceFolder}/gateway/gateway-builder/target/output",
                 "-log-level", "debug",
             ],
+        },
+        {
+            "name": "Gateway Controller",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/gateway/gateway-controller/cmd/controller",
+            "args": [
+                "-config",
+                "${workspaceFolder}/gateway/configs/config.toml",
+            ],
+            "env": {
+                // Controlplane connectivity details
+                "APIP_GW_CONTROLPLANE_HOST": "localhost:9243", // localhost:9243 for locally running Platform API
+                "APIP_GW_GATEWAY_REGISTRATION_TOKEN": "",
+                // Database configuration for the controller
+                "APIP_GW_CONTROLLER_STORAGE_TYPE": "sqlite", // sqlite, postgres
+                //// SQLite (default)
+                "APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH": "${workspaceFolder}/gateway/gateway-controller/data/gateway.db",
+                //// PostgreSQL
+                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_HOST": "localhost",
+                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PORT": "5432",
+                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_DATABASE": "gateway",
+                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_USER": "gateway",
+                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD": "gateway",
+                "APIP_GW_CONTROLLER_STORAGE_POSTGRES_SSLMODE": "disable",
+                // Paths for file-based configurations
+                "APIP_GW_CONTROLLER_LLM_TEMPLATE__DEFINITIONS__PATH": "${workspaceFolder}/gateway/gateway-controller/default-llm-provider-templates",
+                "APIP_GW_CONTROLLER_ROUTER_DOWNSTREAM__TLS_CERT__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.crt",
+                "APIP_GW_CONTROLLER_ROUTER_DOWNSTREAM__TLS_KEY__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.key",
+                "APIP_GW_ROUTER_DOWNSTREAM__TLS_CERT__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.crt",
+                "APIP_GW_ROUTER_DOWNSTREAM__TLS_KEY__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.key",
+                "APIP_GW_ROUTER_LUA_REQUEST__TRANSFORMATION_SCRIPT__PATH": "${workspaceFolder}/gateway/gateway-controller/lua/request_transformation.lua",
+                // Policy definitions path
+                "APIP_GW_CONTROLLER_POLICIES_DEFINITIONS__PATH": "${workspaceFolder}/gateway/gateway-builder/target/output/gateway-controller/policies",
+                // Policy Engine connectivity details
+                "APIP_GW_ROUTER_POLICY__ENGINE_MODE": "tcp",
+                "APIP_GW_ROUTER_POLICY__ENGINE_HOST": "host.docker.internal",
+                "APIP_GW_ANALYTICS_GRPC__EVENT__SERVER_MODE": "tcp",
+                // Enable development mode
+                "APIP_GW_DEVELOPMENT_MODE": "true",
+                // Immutable gateway mode
+                "APIP_GW_IMMUTABLE__GATEWAY_ENABLED": "false",
+                "APIP_GW_IMMUTABLE__GATEWAY_ARTIFACTS__DIR": "${workspaceFolder}/gateway/examples",
+            },
         },
         {
             "name": "Policy Engine - xDS",

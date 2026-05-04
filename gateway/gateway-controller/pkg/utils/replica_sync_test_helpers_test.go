@@ -104,5 +104,6 @@ func newTestMCPDeploymentServiceWithHub(
 		policyValidator,
 		hub,
 		gatewayID,
+		nil,
 	)
 }
