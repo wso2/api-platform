@@ -129,11 +129,11 @@ func TestRemoveWebSubApiBinding_ClearsStalePolicyChains(t *testing.T) {
 	}
 }
 
-func TestQualifyTopicName_NormalizesUnsupportedCharacters(t *testing.T) {
-	got := qualifyTopicName("/orders/eu", "v1/test", "order_events")
-	want := "_2f_orders_2f_eu.v1_2f_test.order__events"
+func TestJoinNormalizedTopic_NormalizesUnsupportedCharacters(t *testing.T) {
+	got := binding.JoinNormalizedTopic("/orders/eu", "v1/test", "order_events")
+	want := "_2f_orders_2f_eu_v1_2f_test_order__events"
 	if got != want {
-		t.Fatalf("qualifyTopicName() = %q, want %q", got, want)
+		t.Fatalf("JoinNormalizedTopic() = %q, want %q", got, want)
 	}
 }
 

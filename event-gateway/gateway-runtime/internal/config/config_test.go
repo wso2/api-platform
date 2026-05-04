@@ -31,7 +31,7 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("APIP_EGW_POLICY_ENGINE_CONFIG_FILE", "/tmp/policies.toml")
 	t.Setenv("APIP_EGW_LOGGING_LEVEL", "debug")
 	t.Setenv("APIP_EGW_LOGGING_FORMAT", "json")
-	t.Setenv("APIP_EGW_WEBSUB_SUBSCRIPTION_SYNC_TOPIC", "websub.subscriptions")
+	t.Setenv("APIP_EGW_WEBSUB_SUBSCRIPTIONS_TOPIC_NAME", "websub.subscriptions")
 
 	configPath := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(configPath, []byte(`

@@ -141,7 +141,7 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 
 		vhost := defaultVhost(b.Vhost)
 
-		qualifiedTopic := qualifyTopicName(b.Context, b.Version, b.BrokerDriver.Topic)
+		qualifiedTopic := binding.JoinNormalizedTopic(b.Context, b.Version, b.BrokerDriver.Topic)
 
 		r.hub.RegisterBinding(hub.ChannelBinding{
 			APIID:             b.APIID,
@@ -870,17 +870,4 @@ func (r *Runtime) webSubSubscriptionSyncTopic(apiName, version string) string {
 		suffix = r.cfg.WebSub.SubscriptionsTopicName
 	}
 	return binding.WebSubApiTopicName(apiName, version, suffix)
-}
-
-// qualifyTopicName generates a unique broker topic name in the format
-// normalized-context.normalized-version.normalized-topic.
-// Unsupported characters are escaped using binding.NormalizeTopicSegment
-// (for example '/' -> '_2f_'). For example: context="/orders", version="v1",
-// topic="order-events" -> "_2f_orders.v1.order-events".
-func qualifyTopicName(ctx, version, topic string) string {
-	return fmt.Sprintf("%s.%s.%s",
-		binding.NormalizeTopicSegment(ctx),
-		binding.NormalizeTopicSegment(version),
-		binding.NormalizeTopicSegment(topic),
-	)
 }
