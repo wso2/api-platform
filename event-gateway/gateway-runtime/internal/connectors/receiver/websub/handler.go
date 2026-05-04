@@ -379,6 +379,9 @@ func writePolicyResponse(w http.ResponseWriter, msg *connectors.Message, fallbac
 		w.WriteHeader(statusCode)
 		return
 	}
+	if fallbackStatus == http.StatusUnauthorized {
+		w.Header().Set("WWW-Authenticate", `Bearer realm="event-gateway"`)
+	}
 	http.Error(w, fallbackBody, fallbackStatus)
 }
 
