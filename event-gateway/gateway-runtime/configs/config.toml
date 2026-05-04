@@ -34,8 +34,7 @@ delivery_initial_delay_ms = 1000
 delivery_max_delay_ms = 60000
 delivery_concurrency = 64
 default_lease_seconds = 0
-# Optional shared internal topic for WebSub subscription sync/state.
-# When empty, the runtime derives a per-API topic name.
+# Internal topic for WebSub subscription sync/state. This is a per-API suffix.
 subscriptions_topic_name = "__subscriptions"
 
 [policy_engine]
