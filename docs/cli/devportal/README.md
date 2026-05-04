@@ -242,6 +242,21 @@ ap devportal org edit --org org_1 -f organization.json
 ap devportal org edit --org org_1 -f organization.json --display-name my-portal --platform eu
 ```
 
+### `ap devportal org delete`
+
+Deletes an organization by ID.
+
+```shell
+ap devportal org delete --org <org-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal org delete --org org_1
+ap devportal org delete --org org_1 --display-name my-portal --platform eu
+```
+
 Expected payload shape for `ap devportal org add` and `ap devportal org edit`:
 
 ```json
