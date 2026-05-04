@@ -630,6 +630,49 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /applications/{appId}/associations/{associationId}/api-keys:
+    get:
+      summary: List application API key mappings for an association
+      description: |
+        Lists API keys mapped to the specified application for the given associated target.
+      operationId: ListApplicationAssociationAPIKeys
+      tags:
+        - Applications
+        - API Keys
+      parameters:
+        - $ref: '#/components/parameters/appId'
+        - $ref: '#/components/parameters/associationId'
+        - name: limit
+          in: query
+          description: Maximum number of mapped API keys to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of mapped API keys to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Mapped API keys retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MappedAPIKeyListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /validate/api-project:
     post:
       summary: Validate API project

@@ -411,6 +411,68 @@ func TestListMappedAPIKeys_LimitOneReturnsFirstPage(t *testing.T) {
 	}
 }
 
+func TestListMappedAPIKeysForAssociation_FiltersToAssociation(t *testing.T) {
+	createdAt := time.Now().Add(-time.Hour)
+	updatedAt := time.Now()
+
+	appRepo := &mockApplicationRepository{
+		app: &model.Application{UUID: "app-uuid", OrganizationUUID: "org-1", ProjectUUID: "project-1"},
+		artifactsByLookup: map[string]*model.Artifact{
+			"provider-1": {UUID: "artifact-1", Handle: "provider-1", Kind: constants.LLMProvider, OrganizationUUID: "org-1"},
+		},
+		mappedAssociations: []*model.ApplicationAssociationTarget{
+			{TargetUUID: "artifact-1", TargetHandle: "provider-1", Kind: constants.LLMProvider},
+		},
+		mappedKeys: []*model.ApplicationAPIKey{
+			{ID: "key-1", APIKeyUUID: "uuid-1", Name: "key-1", ArtifactID: "artifact-1", ArtifactHandle: "provider-1", ArtifactKind: constants.LLMProvider, CreatedAt: createdAt, UpdatedAt: updatedAt},
+			{ID: "key-2", APIKeyUUID: "uuid-2", Name: "key-2", ArtifactID: "artifact-2", ArtifactHandle: "proxy-1", ArtifactKind: constants.LLMProxy, CreatedAt: createdAt, UpdatedAt: updatedAt},
+		},
+	}
+
+	svc := &ApplicationService{appRepo: appRepo}
+
+	resp, err := svc.ListMappedAPIKeysForAssociation("my-app", "provider-1", "org-1", 20, 0)
+	if err != nil {
+		t.Fatalf("ListMappedAPIKeysForAssociation returned error: %v", err)
+	}
+
+	if resp.Count != 1 {
+		t.Fatalf("expected count 1, got %d", resp.Count)
+	}
+	if len(resp.List) != 1 {
+		t.Fatalf("expected 1 mapping, got %d", len(resp.List))
+	}
+	if resp.List[0].KeyId != "key-1" {
+		t.Fatalf("expected key-1, got %s", resp.List[0].KeyId)
+	}
+	if resp.List[0].AssociatedEntity.Id != "provider-1" {
+		t.Fatalf("expected associated entity provider-1, got %s", resp.List[0].AssociatedEntity.Id)
+	}
+	if resp.Pagination.Total != 1 {
+		t.Fatalf("expected total 1, got %d", resp.Pagination.Total)
+	}
+	if resp.Pagination.Limit != 20 {
+		t.Fatalf("expected limit 20, got %d", resp.Pagination.Limit)
+	}
+}
+
+func TestListMappedAPIKeysForAssociation_ErrorsWhenAssociationMissing(t *testing.T) {
+	appRepo := &mockApplicationRepository{
+		app: &model.Application{UUID: "app-uuid", OrganizationUUID: "org-1", ProjectUUID: "project-1"},
+		artifactsByLookup: map[string]*model.Artifact{
+			"provider-1": {UUID: "artifact-1", Handle: "provider-1", Kind: constants.LLMProvider, OrganizationUUID: "org-1"},
+		},
+		mappedAssociations: []*model.ApplicationAssociationTarget{},
+	}
+
+	svc := &ApplicationService{appRepo: appRepo}
+
+	_, err := svc.ListMappedAPIKeysForAssociation("my-app", "provider-1", "org-1", 20, 0)
+	if !errors.Is(err, constants.ErrArtifactNotFound) {
+		t.Fatalf("expected ErrArtifactNotFound, got %v", err)
+	}
+}
+
 func TestGetApplicationsByOrganization_AppliesPagination(t *testing.T) {
 	orgID := "org-1"
 	projectID := "11111111-1111-1111-1111-111111111111"

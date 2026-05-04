@@ -325,6 +325,52 @@ func (h *ApplicationHandler) ListApplicationAPIKeys(c *gin.Context) {
 	c.JSON(http.StatusOK, keys)
 }
 
+func (h *ApplicationHandler) ListApplicationAssociationAPIKeys(c *gin.Context) {
+	orgID, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		return
+	}
+
+	appID := c.Param("appId")
+	associationID := c.Param("associationId")
+	if strings.TrimSpace(appID) == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		return
+	}
+	if strings.TrimSpace(associationID) == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Association ID is required"))
+		return
+	}
+
+	limit := 20
+	if limitStr := strings.TrimSpace(c.Query("limit")); limitStr != "" {
+		parsedLimit, err := strconv.Atoi(limitStr)
+		if err == nil && parsedLimit > 0 {
+			if parsedLimit > 100 {
+				parsedLimit = 100
+			}
+			limit = parsedLimit
+		}
+	}
+
+	offset := 0
+	if offsetStr := strings.TrimSpace(c.Query("offset")); offsetStr != "" {
+		parsedOffset, err := strconv.Atoi(offsetStr)
+		if err == nil && parsedOffset >= 0 {
+			offset = parsedOffset
+		}
+	}
+
+	keys, err := h.applicationService.ListMappedAPIKeysForAssociation(appID, associationID, orgID, limit, offset)
+	if err != nil {
+		h.writeApplicationError(c, err, "Failed to list mapped API keys for association")
+		return
+	}
+
+	c.JSON(http.StatusOK, keys)
+}
+
 func (h *ApplicationHandler) AddApplicationAPIKeys(c *gin.Context) {
 	orgID, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -404,6 +450,7 @@ func (h *ApplicationHandler) RegisterRoutes(r *gin.Engine) {
 		applicationGroup.DELETE("/:appId/api-keys/:keyId", h.RemoveApplicationAPIKey)
 		applicationGroup.GET("/:appId/associations", h.ListApplicationAssociations)
 		applicationGroup.POST("/:appId/associations", h.AddApplicationAssociations)
+		applicationGroup.GET("/:appId/associations/:associationId/api-keys", h.ListApplicationAssociationAPIKeys)
 		applicationGroup.DELETE("/:appId/associations/:associationId", h.RemoveApplicationAssociation)
 	}
 }

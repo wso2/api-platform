@@ -323,6 +323,32 @@ func (s *ApplicationService) ListMappedAPIKeys(appIDOrHandle, orgID string, limi
 	return keys, nil
 }
 
+func (s *ApplicationService) ListMappedAPIKeysForAssociation(appIDOrHandle, associationIDOrHandle, orgID string, limit, offset int) (*api.MappedAPIKeyListResponse, error) {
+	app, err := s.getApplication(appIDOrHandle, orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	target, err := s.appRepo.GetAssociationTargetByIDOrHandle(associationIDOrHandle, orgID)
+	if err != nil {
+		return nil, err
+	}
+	if target == nil {
+		return nil, constants.ErrArtifactNotFound
+	}
+
+	if err := s.validateAssociationTargetForApplication(target, app, orgID); err != nil {
+		return nil, err
+	}
+
+	keys, err := s.buildMappedAPIKeyListForAssociationPaginated(app.UUID, target.UUID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	return keys, nil
+}
+
 func (s *ApplicationService) ListApplicationAssociations(appIDOrHandle, orgID string, limit, offset int) (*ApplicationAssociationListResponse, error) {
 	app, err := s.getApplication(appIDOrHandle, orgID)
 	if err != nil {
@@ -622,6 +648,38 @@ func (s *ApplicationService) buildMappedAPIKeyList(applicationUUID string) (*api
 	return s.buildMappedAPIKeyListPaginated(applicationUUID, -1, 0)
 }
 
+func (s *ApplicationService) buildMappedAPIKeyListForAssociationPaginated(applicationUUID, associationUUID string, limit, offset int) (*api.MappedAPIKeyListResponse, error) {
+	keys, err := s.appRepo.ListMappedAPIKeys(applicationUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	associations, err := s.appRepo.ListApplicationAssociations(applicationUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	associated := false
+	filteredKeys := make([]*model.ApplicationAPIKey, 0)
+	for _, association := range associations {
+		if association != nil && association.TargetUUID == associationUUID {
+			associated = true
+			break
+		}
+	}
+	if !associated {
+		return nil, constants.ErrArtifactNotFound
+	}
+
+	for _, key := range keys {
+		if key != nil && key.ArtifactID == associationUUID {
+			filteredKeys = append(filteredKeys, key)
+		}
+	}
+
+	return s.buildMappedAPIKeyResponse(filteredKeys, limit, offset), nil
+}
+
 func (s *ApplicationService) buildApplicationAssociationListPaginated(applicationUUID string, limit, offset int) (*ApplicationAssociationListResponse, error) {
 	associations, err := s.appRepo.ListApplicationAssociations(applicationUUID)
 	if err != nil {
@@ -673,6 +731,11 @@ func (s *ApplicationService) buildMappedAPIKeyListPaginated(applicationUUID stri
 		return nil, err
 	}
 
+	return s.buildMappedAPIKeyResponse(keys, limit, offset), nil
+}
+
+func (s *ApplicationService) buildMappedAPIKeyResponse(keys []*model.ApplicationAPIKey, limit, offset int) *api.MappedAPIKeyListResponse {
+
 	if offset < 0 {
 		offset = 0
 	}
@@ -707,7 +770,7 @@ func (s *ApplicationService) buildMappedAPIKeyListPaginated(applicationUUID stri
 		response.List = append(response.List, s.modelToMappedAPIKeyResponse(key))
 	}
 
-	return response, nil
+	return response
 }
 
 func (s *ApplicationService) modelToApplicationResponse(app *model.Application) *api.Application {
