@@ -44,4 +44,5 @@ func init() {
 	DevPortalCmd.AddCommand(useCmd)
 	DevPortalCmd.AddCommand(currentCmd)
 	DevPortalCmd.AddCommand(healthCmd)
+	DevPortalCmd.AddCommand(buildCmd)
 }
