@@ -110,6 +110,33 @@ func ResolveArtifactPath(requestedPath string) (string, error) {
 	return artifactPath, nil
 }
 
+// ReadJSONFile reads a JSON payload file from disk after validating that the
+// path exists and points to a regular file.
+func ReadJSONFile(filePath string) ([]byte, error) {
+	resolvedPath, err := filepath.Abs(strings.TrimSpace(filePath))
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve file path: %w", err)
+	}
+
+	info, err := os.Stat(resolvedPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("file not found: %s", resolvedPath)
+		}
+		return nil, fmt.Errorf("failed to inspect file: %w", err)
+	}
+	if info.IsDir() {
+		return nil, fmt.Errorf("file path must point to a JSON file, got directory: %s", resolvedPath)
+	}
+
+	content, err := os.ReadFile(resolvedPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file: %w", err)
+	}
+
+	return content, nil
+}
+
 // WrapRequestError formats DevPortal request failures and adds a hint about
 // --insecure when the error is caused by certificate verification.
 func WrapRequestError(action string, err error, insecure bool) error {

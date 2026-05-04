@@ -2,6 +2,12 @@
 
 This guide covers the DevPortal-related commands currently implemented under `cli/src/cmd/devportal`.
 
+Available command groups:
+
+- `ap devportal`
+- `ap devportal rest-api`
+- `ap devportal org`
+
 ## Prerequisites
 
 - Add at least one DevPortal configuration before using commands that contact a DevPortal server.
@@ -23,6 +29,13 @@ Environment variables override credentials stored in the CLI config.
 | `basic` | `WSO2AP_DEVPORTAL_USERNAME`, `WSO2AP_DEVPORTAL_PASSWORD` |
 | `oauth` | `WSO2AP_DEVPORTAL_TOKEN` |
 | `api-key` | `WSO2AP_DEVPORTAL_API_KEY` |
+
+## Connection Notes
+
+- Commands that call the DevPortal API support `--insecure` when certificate verification must be skipped for local or self-signed HTTPS endpoints.
+- When a command accepts `--display-name` and `--platform`, it resolves the DevPortal explicitly.
+- When `--display-name` is provided without `--platform`, the command looks in the `default` platform.
+- When `--display-name` is not provided, the command uses the active DevPortal in the resolved platform.
 
 ## Commands
 
@@ -161,6 +174,123 @@ Generated artifact names:
 - `default` DevPortal config: `build/devportal.zip`
 - named DevPortal config: `build/devportal_<name>.zip`
 
+## Organization Commands
+
+These commands manage DevPortal organizations using the `/devportal/organizations` endpoints.
+
+### `ap devportal org list`
+
+Lists organizations in the selected DevPortal.
+
+```shell
+ap devportal org list [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal org list
+ap devportal org list --display-name my-portal --platform eu
+```
+
+Behavior:
+
+- Prints a table with `ORG_ID`, `ORG_NAME`, `BUSINESS_OWNER`, and `ORGANIZATION_IDENTIFIER`.
+
+### `ap devportal org get`
+
+Gets a single organization by ID.
+
+```shell
+ap devportal org get --org <org-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal org get --org org_1
+ap devportal org get --org org_1 --display-name my-portal --platform eu
+```
+
+### `ap devportal org add`
+
+Creates an organization using a JSON request payload file.
+
+```shell
+ap devportal org add --file <organization.json> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal org add -f organization.json
+ap devportal org add -f organization.json --display-name my-portal --platform eu
+```
+
+### `ap devportal org edit`
+
+Updates an organization using a JSON request payload file.
+
+```shell
+ap devportal org edit --org <org-id> --file <organization.json> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal org edit --org org_1 -f organization.json
+ap devportal org edit --org org_1 -f organization.json --display-name my-portal --platform eu
+```
+
+Expected payload shape for `ap devportal org add` and `ap devportal org edit`:
+
+```json
+{
+  "orgName": "Acme",
+  "organizationIdentifier": "acme",
+  "businessOwner": "Jane Doe"
+}
+```
+
+## REST API Commands
+
+These commands manage API artifacts in a DevPortal organization.
+
+### `ap devportal rest-api list`
+
+Lists APIs in a DevPortal organization.
+
+```shell
+ap devportal rest-api list --org <org-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal rest-api list --org org_1
+ap devportal rest-api list --org org_1 --display-name my-portal --platform eu
+```
+
+Behavior:
+
+- Prints a table with `API_ID`, `API_HANDLE`, `API_NAME`, and `API_VERSION`.
+- Use the `API_ID` value from the table with `ap devportal rest-api get`.
+
+### `ap devportal rest-api get`
+
+Gets a single API artifact from a DevPortal organization.
+
+```shell
+ap devportal rest-api get --org <org-id> --id <api-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal rest-api get --org org_1 --id api_1
+ap devportal rest-api get --org org_1 --id api_1 --display-name my-portal --platform eu
+```
+
 ### `ap devportal rest-api publish`
 
 Publishes a DevPortal artifact zip to a DevPortal organization.
@@ -186,6 +316,42 @@ Behavior:
 - If `--display-name` is provided without `--platform`, the command looks in the `default` platform.
 - If `--display-name` is not provided, the command uses the active DevPortal of the resolved platform.
 - `--insecure` skips TLS certificate verification for local or self-signed HTTPS endpoints.
+
+### `ap devportal rest-api edit`
+
+Updates an existing API artifact in a DevPortal organization.
+
+```shell
+ap devportal rest-api edit [--file <zip-path>] --org <org-id> --id <api-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal rest-api edit --org org_1 --id api_1
+ap devportal rest-api edit -f fooapi/build/devportal.zip --org org_1 --id api_1
+ap devportal rest-api edit -f fooapi/build/devportal.zip --org org_1 --id api_1 --display-name my-portal --platform eu
+```
+
+Behavior:
+
+- If `--file` is omitted, the command looks for `./devportal.zip` in the current directory.
+- If neither `--file` nor `./devportal.zip` is available, the command returns an error.
+
+### `ap devportal rest-api delete`
+
+Deletes an API artifact from a DevPortal organization.
+
+```shell
+ap devportal rest-api delete --org <org-id> --id <api-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal rest-api delete --org org_1 --id api_1
+ap devportal rest-api delete --org org_1 --id api_1 --display-name my-portal --platform eu
+```
 
 ## Related Commands
 

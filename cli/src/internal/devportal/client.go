@@ -201,13 +201,25 @@ func (c *Client) PutMultipartFile(path, fieldName, filePath string) (*http.Respo
 }
 
 func (c *Client) Delete(path string) (*http.Response, error) {
+	return c.sendRequestWithoutBody("DELETE", path)
+}
+
+func (c *Client) PostJSON(path string, body []byte) (*http.Response, error) {
+	return c.sendJSON("POST", path, body)
+}
+
+func (c *Client) PutJSON(path string, body []byte) (*http.Response, error) {
+	return c.sendJSON("PUT", path, body)
+}
+
+func (c *Client) sendRequestWithoutBody(method, path string) (*http.Response, error) {
 	baseURL := strings.TrimSuffix(c.devPortal.URL, "/")
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
 	}
 	url := baseURL + path
 
-	req, err := http.NewRequest("DELETE", url, nil)
+	req, err := http.NewRequest(method, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -224,7 +236,36 @@ func (c *Client) Delete(path string) (*http.Response, error) {
 		return resp, nil
 	}
 
-	return nil, c.formatHTTPError(fmt.Sprintf("DELETE %s", path), resp)
+	return nil, c.formatHTTPError(fmt.Sprintf("%s %s", method, path), resp)
+}
+
+func (c *Client) sendJSON(method, path string, body []byte) (*http.Response, error) {
+	baseURL := strings.TrimSuffix(c.devPortal.URL, "/")
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	url := baseURL + path
+
+	req, err := http.NewRequest(method, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return resp, nil
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return resp, nil
+	}
+
+	return nil, c.formatHTTPError(fmt.Sprintf("%s %s", method, path), resp)
 }
 
 func (c *Client) sendMultipartFile(method, path, fieldName, filePath string) (*http.Response, error) {
