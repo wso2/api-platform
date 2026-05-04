@@ -865,7 +865,7 @@ func defaultVhost(vhost string) string {
 }
 
 func (r *Runtime) webSubSubscriptionSyncTopic(apiName, version string) string {
-	suffix := "_subscriptions"
+	suffix := "__subscriptions"
 	if r != nil && r.cfg != nil && r.cfg.WebSub.SubscriptionsTopicName != "" {
 		suffix = r.cfg.WebSub.SubscriptionsTopicName
 	}
