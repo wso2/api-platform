@@ -21,6 +21,10 @@ package utils
 import (
 	"archive/zip"
 	"bytes"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -225,4 +229,71 @@ func TestExportAPIAsZip_InvalidConfiguration(t *testing.T) {
 
 	assert.Nil(t, buf)
 	assert.Error(t, err, "should return error for unsupported configuration type")
+}
+
+// buildImportTestServers starts a TLS token server and a TLS import server for testing
+// ImportAPIToAPIMWithConfig. Both servers are closed automatically via t.Cleanup.
+// tokenBody is the raw response body the token server will return (status 200).
+// importHandler handles the import request and is responsible for writing the response.
+func buildImportTestServers(t *testing.T, tokenBody string, importHandler http.HandlerFunc) APIMConfig {
+	t.Helper()
+
+	tokenServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, tokenBody)
+	}))
+	t.Cleanup(tokenServer.Close)
+
+	importServer := httptest.NewTLSServer(importHandler)
+	t.Cleanup(importServer.Close)
+
+	// Strip the "https://" prefix so Host contains only "host:port"
+	importHost := strings.TrimPrefix(importServer.URL, "https://")
+
+	return APIMConfig{
+		Host:               importHost,
+		TokenURL:           tokenServer.URL,
+		ClientID:           "test-client-id",
+		ClientSecret:       "test-client-secret",
+		InsecureSkipVerify: true, // required for httptest TLS certificates
+	}
+}
+
+// validTokenBody is a minimal OAuth2 token response accepted by APIMTokenService.
+const validTokenBody = `{"access_token":"test-token","expires_in":3600}`
+
+// TestImportAPIToAPIM_InvalidImportResponseJSON verifies that ImportAPIToAPIMWithConfig
+// returns an error when the import endpoint responds with HTTP 200 but a non-JSON body.
+func TestImportAPIToAPIM_InvalidImportResponseJSON(t *testing.T) {
+	cfg := buildImportTestServers(t, validTokenBody, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "not valid json")
+	})
+
+	zipBuf := &bytes.Buffer{}
+	resp, err := ImportAPIToAPIMWithConfig(cfg, slog.Default(), "api.zip", zipBuf)
+
+	assert.Nil(t, resp, "response should be nil when JSON parsing fails")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to parse import response",
+		"error should indicate that the response body could not be parsed")
+}
+
+// TestImportAPIToAPIM_EmptyIDAndRevisionInResponse verifies that ImportAPIToAPIMWithConfig
+// succeeds (no error) when the import endpoint returns HTTP 200 with {"id":"","revision":""}
+func TestImportAPIToAPIM_EmptyIDAndRevisionInResponse(t *testing.T) {
+	cfg := buildImportTestServers(t, validTokenBody, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"id":"","revision":""}`)
+	})
+
+	zipBuf := &bytes.Buffer{}
+	resp, err := ImportAPIToAPIMWithConfig(cfg, slog.Default(), "api.zip", zipBuf)
+
+	require.NoError(t, err, "empty id/revision in a 200 response should not cause an error")
+	require.NotNil(t, resp, "response struct must be available")
+
+	assert.NotNil(t, &resp.ID, "ID field must be present on OnPremAPIMImportResponse")
+	assert.NotNil(t, &resp.Revision, "Revision field must be present on OnPremAPIMImportResponse")
 }
