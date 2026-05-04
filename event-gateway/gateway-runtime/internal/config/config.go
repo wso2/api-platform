@@ -67,12 +67,13 @@ type KafkaConfig struct {
 
 // WebSubConfig holds WebSub-specific settings.
 type WebSubConfig struct {
-	VerificationTimeoutSeconds int `koanf:"verification_timeout_seconds"`
-	DeliveryMaxRetries         int `koanf:"delivery_max_retries"`
-	DeliveryInitialDelayMs     int `koanf:"delivery_initial_delay_ms"`
-	DeliveryMaxDelayMs         int `koanf:"delivery_max_delay_ms"`
-	DeliveryConcurrency        int `koanf:"delivery_concurrency"`
-	DefaultLeaseSeconds        int `koanf:"default_lease_seconds"`
+	VerificationTimeoutSeconds int    `koanf:"verification_timeout_seconds"`
+	DeliveryMaxRetries         int    `koanf:"delivery_max_retries"`
+	DeliveryInitialDelayMs     int    `koanf:"delivery_initial_delay_ms"`
+	DeliveryMaxDelayMs         int    `koanf:"delivery_max_delay_ms"`
+	DeliveryConcurrency        int    `koanf:"delivery_concurrency"`
+	DefaultLeaseSeconds        int    `koanf:"default_lease_seconds"`
+	SubscriptionsTopicName     string `koanf:"subscriptions_topic_name"`
 }
 
 // PolicyEngineConfig points to the policy engine configuration.
@@ -116,6 +117,7 @@ func DefaultConfig() *Config {
 			DeliveryMaxDelayMs:         60000,
 			DeliveryConcurrency:        64,
 			DefaultLeaseSeconds:        0,
+			SubscriptionsTopicName:     "",
 		},
 		Logging: LoggingConfig{
 			Level:  "info",

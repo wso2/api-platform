@@ -31,6 +31,7 @@ func TestLoadAppliesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("APIP_EGW_POLICY_ENGINE_CONFIG_FILE", "/tmp/policies.toml")
 	t.Setenv("APIP_EGW_LOGGING_LEVEL", "debug")
 	t.Setenv("APIP_EGW_LOGGING_FORMAT", "json")
+	t.Setenv("APIP_EGW_WEBSUB_SUBSCRIPTION_SYNC_TOPIC", "websub.subscriptions")
 
 	configPath := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(configPath, []byte(`
@@ -86,6 +87,9 @@ enabled = false
 
 	if cfg.PolicyEngine.ConfigFile != "/tmp/policies.toml" {
 		t.Fatalf("expected policy engine config file override, got %q", cfg.PolicyEngine.ConfigFile)
+	}
+	if cfg.WebSub.SubscriptionsTopicName != "websub.subscriptions" {
+		t.Fatalf("expected websub subscription sync topic override, got %q", cfg.WebSub.SubscriptionsTopicName)
 	}
 	if cfg.Logging.Level != "debug" {
 		t.Fatalf("expected logging level debug, got %q", cfg.Logging.Level)

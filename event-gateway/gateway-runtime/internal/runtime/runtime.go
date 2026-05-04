@@ -219,7 +219,7 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 			channels[ch.Name] = kafkaTopic
 			allKafkaTopics = append(allKafkaTopics, kafkaTopic)
 		}
-		internalSubTopic := binding.WebSubApiSubscriptionTopic(wsb.Name, wsb.Version)
+		internalSubTopic := r.webSubSubscriptionSyncTopic(wsb.Name, wsb.Version)
 
 		// Build policy chains for the API.
 		subKey, inKey, outKey, chChainKeys, err := r.buildWebSubApiPolicyChains(wsb, vhost)
@@ -679,7 +679,7 @@ func (r *Runtime) AddWebSubApiBinding(wsb binding.WebSubApiBinding) error {
 		kafkaTopic := binding.WebSubApiTopicName(wsb.Name, wsb.Version, ch.Name)
 		channels[ch.Name] = kafkaTopic
 	}
-	internalSubTopic := binding.WebSubApiSubscriptionTopic(wsb.Name, wsb.Version)
+	internalSubTopic := r.webSubSubscriptionSyncTopic(wsb.Name, wsb.Version)
 
 	// Build policy chains for the API.
 	subKey, inKey, outKey, chChainKeys, err := r.buildWebSubApiPolicyChains(wsb, vhost)
@@ -862,6 +862,14 @@ func defaultVhost(vhost string) string {
 		return "*"
 	}
 	return vhost
+}
+
+func (r *Runtime) webSubSubscriptionSyncTopic(apiName, version string) string {
+	suffix := "_subscriptions"
+	if r != nil && r.cfg != nil && r.cfg.WebSub.SubscriptionsTopicName != "" {
+		suffix = r.cfg.WebSub.SubscriptionsTopicName
+	}
+	return binding.WebSubApiTopicName(apiName, version, suffix)
 }
 
 // qualifyTopicName generates a unique broker topic name in the format
