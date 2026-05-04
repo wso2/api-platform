@@ -99,14 +99,14 @@ func (h *HubHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *HubHandler) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	// Enforce subscribe policies before processing.
 	subMsg := httpRequestToMessage(r)
-	message, shortCircuited, err := h.processor.ProcessSubscribe(r.Context(), h.bindingName, subMsg)
+	_, shortCircuited, err := h.processor.ProcessSubscribe(r.Context(), h.bindingName, subMsg)
 	if err != nil {
 		slog.Error("Subscribe policy execution failed", "error", err)
 		http.Error(w, "policy execution failed", http.StatusInternalServerError)
 		return
 	}
 	if shortCircuited {
-		writePolicyResponse(w, message, http.StatusForbidden, "forbidden by policy")
+		writePolicyResponse(w, nil, http.StatusUnauthorized, http.StatusText(http.StatusUnauthorized))
 		return
 	}
 
@@ -203,14 +203,14 @@ func (h *HubHandler) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 func (h *HubHandler) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
 	// Enforce subscribe policies before processing.
 	subMsg := httpRequestToMessage(r)
-	message, shortCircuited, err := h.processor.ProcessSubscribe(r.Context(), h.bindingName, subMsg)
+	_, shortCircuited, err := h.processor.ProcessSubscribe(r.Context(), h.bindingName, subMsg)
 	if err != nil {
 		slog.Error("Unsubscribe policy execution failed", "error", err)
 		http.Error(w, "policy execution failed", http.StatusInternalServerError)
 		return
 	}
 	if shortCircuited {
-		writePolicyResponse(w, message, http.StatusForbidden, "forbidden by policy")
+		writePolicyResponse(w, nil, http.StatusUnauthorized, http.StatusText(http.StatusUnauthorized))
 		return
 	}
 
@@ -342,7 +342,7 @@ func (h *WebhookReceiverHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	}
 	if shortCircuited {
 		slog.Info("Inbound request rejected by policy", "channel", channelName, "binding", h.bindingName)
-		writePolicyResponse(w, processed, http.StatusForbidden, "forbidden by policy")
+		writePolicyResponse(w, processed, http.StatusUnauthorized, http.StatusText(http.StatusUnauthorized))
 		return
 	}
 
