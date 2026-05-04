@@ -187,9 +187,11 @@ func TestWebSubApiTopicName(t *testing.T) {
 		channelName string
 		expected    string
 	}{
-		{"repo-watcher", "v1", "issues", "repo-watcher.v1.issues"},
-		{"repo-watcher", "v1", "pull-requests", "repo-watcher.v1.pull-requests"},
-		{"order-api", "v2", "orders", "order-api.v2.orders"},
+		{"repo-watcher", "v1", "issues", "repo-watcher_v1_issues"},
+		{"repo-watcher", "v1", "pull-requests", "repo-watcher_v1_pull-requests"},
+		{"order-api", "v2", "orders", "order-api_v2_orders"},
+		{"repo/watcher", "v1", "/api/er3", "repo_2f_watcher_v1__2f_api_2f_er3"},
+		{"repo_watcher", "v1/test", "pull_requests", "repo__watcher_v1_2f_test_pull__requests"},
 	}
 
 	for _, tt := range tests {
@@ -202,10 +204,41 @@ func TestWebSubApiTopicName(t *testing.T) {
 }
 
 func TestWebSubApiSubscriptionTopic(t *testing.T) {
-	got := WebSubApiSubscriptionTopic("repo-watcher", "v1")
-	expected := "repo-watcher.v1.__subscriptions"
-	if got != expected {
-		t.Errorf("WebSubApiSubscriptionTopic = %q, want %q", got, expected)
+	tests := []struct {
+		apiName  string
+		version  string
+		expected string
+	}{
+		{"repo-watcher", "v1", "repo-watcher_v1_____subscriptions"},
+		{"repo/watcher", "v1/test", "repo_2f_watcher_v1_2f_test_____subscriptions"},
+	}
+
+	for _, tt := range tests {
+		got := WebSubApiSubscriptionTopic(tt.apiName, tt.version)
+		if got != tt.expected {
+			t.Errorf("WebSubApiSubscriptionTopic(%q, %q) = %q, want %q",
+				tt.apiName, tt.version, got, tt.expected)
+		}
+	}
+}
+
+func TestNormalizeTopicSegment(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"issues", "issues"},
+		{"/api/er3", "_2f_api_2f_er3"},
+		{"pull_requests", "pull__requests"},
+		{"v1/test", "v1_2f_test"},
+		{"topic#42", "topic_23_42"},
+		{" topic ", "_20_topic_20_"},
+	}
+
+	for _, tt := range tests {
+		if got := NormalizeTopicSegment(tt.input); got != tt.expected {
+			t.Errorf("NormalizeTopicSegment(%q) = %q, want %q", tt.input, got, tt.expected)
+		}
 	}
 }
 

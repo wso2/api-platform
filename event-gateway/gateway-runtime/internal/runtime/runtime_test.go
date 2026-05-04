@@ -129,6 +129,40 @@ func TestRemoveWebSubApiBinding_ClearsStalePolicyChains(t *testing.T) {
 	}
 }
 
+func TestJoinNormalizedTopic_NormalizesUnsupportedCharacters(t *testing.T) {
+	got := binding.JoinNormalizedTopic("/orders/eu", "v1/test", "order_events")
+	want := "_2f_orders_2f_eu_v1_2f_test_order__events"
+	if got != want {
+		t.Fatalf("JoinNormalizedTopic() = %q, want %q", got, want)
+	}
+}
+
+func TestWebSubSubscriptionSyncTopic_UsesConfigOverrideWhenSet(t *testing.T) {
+	rt := &Runtime{
+		cfg: &config.Config{
+			WebSub: config.WebSubConfig{
+				SubscriptionsTopicName: "websub.subscriptions",
+			},
+		},
+	}
+
+	got := rt.webSubSubscriptionSyncTopic("repo-watcher", "v1.0")
+	want := binding.WebSubApiTopicName("repo-watcher", "v1.0", "websub.subscriptions")
+	if got != want {
+		t.Fatalf("webSubSubscriptionSyncTopic() = %q, want %q", got, want)
+	}
+}
+
+func TestWebSubSubscriptionSyncTopic_FallsBackToDerivedTopic(t *testing.T) {
+	rt := &Runtime{cfg: &config.Config{}}
+
+	got := rt.webSubSubscriptionSyncTopic("repo-watcher", "v1.0")
+	want := binding.WebSubApiTopicName("repo-watcher", "v1.0", "_subscriptions")
+	if got != want {
+		t.Fatalf("webSubSubscriptionSyncTopic() = %q, want %q", got, want)
+	}
+}
+
 func TestStartReceiverWithRetry_RetriesUntilSuccess(t *testing.T) {
 	previousInitial := initialReceiverStartBackoff
 	previousMax := maxReceiverStartBackoff

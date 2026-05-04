@@ -19,6 +19,7 @@
 package binding
 
 import (
+	"fmt"
 	"path"
 	"strings"
 )
@@ -96,16 +97,31 @@ type ChannelsConfig struct {
 	Channels []Binding `yaml:"channels"`
 }
 
+// JoinNormalizedTopic derives a Kafka topic name by normalizing each logical
+// segment and joining them with underscores.
+func JoinNormalizedTopic(parts ...string) string {
+	if len(parts) == 0 {
+		return ""
+	}
+
+	normalizedParts := make([]string, 0, len(parts))
+	for _, part := range parts {
+		normalizedParts = append(normalizedParts, NormalizeTopicSegment(part))
+	}
+	return strings.Join(normalizedParts, "_")
+}
+
 // WebSubApiTopicName derives a Kafka topic name for a WebSubApi channel.
-// Format: {api-name}.{version}.{channel-name}
+// Format: {normalized-api-name}_{normalized-version}_{normalized-channel-name}
+// The logical WebSub channel name remains unchanged elsewhere; only the broker topic is normalized.
 func WebSubApiTopicName(apiName, version, channelName string) string {
-	return apiName + "." + version + "." + channelName
+	return JoinNormalizedTopic(apiName, version, channelName)
 }
 
 // WebSubApiSubscriptionTopic derives the internal subscription sync topic for a WebSubApi.
-// Format: {api-name}.{version}.__subscriptions
+// Format: {normalized-api-name}_{normalized-version}_{normalized-subscription-suffix}
 func WebSubApiSubscriptionTopic(apiName, version string) string {
-	return apiName + "." + version + ".__subscriptions"
+	return JoinNormalizedTopic(apiName, version, "__subscriptions")
 }
 
 // WebSubApiBasePath derives the shared WebSub HTTP base path for an API.
@@ -145,4 +161,38 @@ func ensureLeadingSlash(value string) string {
 		return value
 	}
 	return "/" + value
+}
+
+// NormalizeTopicSegment converts a logical topic segment to a Kafka-safe name.
+// It uses an escape format so unsupported characters do not collide with
+// already-valid names:
+//   - [A-Za-z0-9.-] pass through unchanged
+//   - '_' becomes '__'
+//   - everything else becomes '_%x_' (for example '/' -> '_2f_')
+func NormalizeTopicSegment(value string) string {
+	if value == "" {
+		return ""
+	}
+
+	var normalized strings.Builder
+	normalized.Grow(len(value))
+
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z':
+			normalized.WriteRune(r)
+		case r >= 'A' && r <= 'Z':
+			normalized.WriteRune(r)
+		case r >= '0' && r <= '9':
+			normalized.WriteRune(r)
+		case r == '.', r == '-':
+			normalized.WriteRune(r)
+		case r == '_':
+			normalized.WriteString("__")
+		default:
+			normalized.WriteString(fmt.Sprintf("_%x_", r))
+		}
+	}
+
+	return normalized.String()
 }

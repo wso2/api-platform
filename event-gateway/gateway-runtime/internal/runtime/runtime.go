@@ -25,7 +25,6 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"strings"
 	"sync"
 	"time"
 
@@ -142,7 +141,7 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 
 		vhost := defaultVhost(b.Vhost)
 
-		qualifiedTopic := qualifyTopicName(b.Context, b.Version, b.BrokerDriver.Topic)
+		qualifiedTopic := binding.JoinNormalizedTopic(b.Context, b.Version, b.BrokerDriver.Topic)
 
 		r.hub.RegisterBinding(hub.ChannelBinding{
 			APIID:             b.APIID,
@@ -220,7 +219,7 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 			channels[ch.Name] = kafkaTopic
 			allKafkaTopics = append(allKafkaTopics, kafkaTopic)
 		}
-		internalSubTopic := binding.WebSubApiSubscriptionTopic(wsb.Name, wsb.Version)
+		internalSubTopic := r.webSubSubscriptionSyncTopic(wsb.Name, wsb.Version)
 
 		// Build policy chains for the API.
 		subKey, inKey, outKey, chChainKeys, err := r.buildWebSubApiPolicyChains(wsb, vhost)
@@ -680,7 +679,7 @@ func (r *Runtime) AddWebSubApiBinding(wsb binding.WebSubApiBinding) error {
 		kafkaTopic := binding.WebSubApiTopicName(wsb.Name, wsb.Version, ch.Name)
 		channels[ch.Name] = kafkaTopic
 	}
-	internalSubTopic := binding.WebSubApiSubscriptionTopic(wsb.Name, wsb.Version)
+	internalSubTopic := r.webSubSubscriptionSyncTopic(wsb.Name, wsb.Version)
 
 	// Build policy chains for the API.
 	subKey, inKey, outKey, chChainKeys, err := r.buildWebSubApiPolicyChains(wsb, vhost)
@@ -865,9 +864,10 @@ func defaultVhost(vhost string) string {
 	return vhost
 }
 
-// qualifyTopicName generates a unique topic name in the format context.version.topic.
-// For example: context="/orders", version="v1", topic="order-events" → "orders.v1.order-events".
-func qualifyTopicName(ctx, version, topic string) string {
-	ctx = strings.TrimPrefix(ctx, "/")
-	return fmt.Sprintf("%s.%s.%s", ctx, version, topic)
+func (r *Runtime) webSubSubscriptionSyncTopic(apiName, version string) string {
+	suffix := "_subscriptions"
+	if r != nil && r.cfg != nil && r.cfg.WebSub.SubscriptionsTopicName != "" {
+		suffix = r.cfg.WebSub.SubscriptionsTopicName
+	}
+	return binding.WebSubApiTopicName(apiName, version, suffix)
 }
