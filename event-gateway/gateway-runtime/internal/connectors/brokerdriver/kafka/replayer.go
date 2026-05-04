@@ -22,79 +22,75 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sync"
 
+	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
 )
 
-// Replayer consumes from a compacted topic from offset 0, replaying all state.
-// Each runtime uses its own consumer identity (NOT shared-group).
-type Replayer struct {
-	client  *kgo.Client
-	handler connectors.MessageHandler
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
-}
+// ReplayTopic replays a compacted topic from offset 0 until the current high watermark.
+func ReplayTopic(ctx context.Context, cfg ConnectionConfig, topic string, handler connectors.MessageHandler) error {
+	adminOpts, err := BuildClientOptions(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create kafka replay admin client: %w", err)
+	}
+	adminClient, err := kgo.NewClient(adminOpts...)
+	if err != nil {
+		return fmt.Errorf("failed to create kafka replay admin client: %w", err)
+	}
+	admin := kadm.NewClient(adminClient)
 
-// NewReplayer creates a new replayer for a compacted topic.
-func NewReplayer(brokers []string, topic string, handler connectors.MessageHandler) (*Replayer, error) {
-	client, err := kgo.NewClient(
-		kgo.SeedBrokers(brokers...),
+	endOffsets, err := admin.ListEndOffsets(ctx, topic)
+	if err != nil {
+		adminClient.Close()
+		return fmt.Errorf("failed to list end offsets: %w", err)
+	}
+	adminClient.Close()
+
+	var totalEnd int64
+	endOffsets.Each(func(o kadm.ListedOffset) {
+		totalEnd += o.Offset
+	})
+	if totalEnd == 0 {
+		return nil
+	}
+
+	opts, err := BuildClientOptions(
+		cfg,
 		kgo.ConsumeTopics(topic),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create kafka replayer: %w", err)
+		return fmt.Errorf("failed to create kafka replay consumer: %w", err)
 	}
-
-	return &Replayer{
-		client:  client,
-		handler: handler,
-	}, nil
-}
-
-// Start begins consuming and replaying events.
-func (r *Replayer) Start(ctx context.Context) {
-	ctx, r.cancel = context.WithCancel(ctx)
-	r.wg.Add(1)
-	go func() {
-		defer r.wg.Done()
-		r.consumeLoop(ctx)
-	}()
-}
-
-// Stop stops the replayer.
-func (r *Replayer) Stop() {
-	if r.cancel != nil {
-		r.cancel()
+	client, err := kgo.NewClient(opts...)
+	if err != nil {
+		return fmt.Errorf("failed to create kafka replay consumer: %w", err)
 	}
-	r.wg.Wait()
-	r.client.Close()
-}
+	defer client.Close()
 
-func (r *Replayer) consumeLoop(ctx context.Context) {
-	for {
-		fetches := r.client.PollFetches(ctx)
+	var replayed int64
+	for replayed < totalEnd {
+		fetches := client.PollFetches(ctx)
 		if ctx.Err() != nil {
-			return
+			return ctx.Err()
 		}
-
 		if errs := fetches.Errors(); len(errs) > 0 {
-			for _, e := range errs {
-				slog.Error("Kafka replayer fetch error", "topic", e.Topic, "partition", e.Partition, "error", e.Err)
-			}
+			return fmt.Errorf("fetch errors during replay: %v", errs)
 		}
 
 		fetches.EachRecord(func(record *kgo.Record) {
 			msg := recordToMessage(record)
-			if err := r.handler(ctx, msg); err != nil {
-				slog.Error("Replayer handler error",
+			if err := handler(ctx, msg); err != nil {
+				slog.Error("Replay handler error",
 					"topic", record.Topic,
 					"offset", record.Offset,
 					"error", err,
 				)
 			}
+			replayed++
 		})
 	}
+
+	return nil
 }

@@ -129,6 +129,14 @@ func TestRemoveWebSubApiBinding_ClearsStalePolicyChains(t *testing.T) {
 	}
 }
 
+func TestQualifyTopicName_NormalizesUnsupportedCharacters(t *testing.T) {
+	got := qualifyTopicName("/orders/eu", "v1/test", "order_events")
+	want := "_2f_orders_2f_eu.v1_2f_test.order__events"
+	if got != want {
+		t.Fatalf("qualifyTopicName() = %q, want %q", got, want)
+	}
+}
+
 func TestStartReceiverWithRetry_RetriesUntilSuccess(t *testing.T) {
 	previousInitial := initialReceiverStartBackoff
 	previousMax := maxReceiverStartBackoff

@@ -24,8 +24,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/twmb/franz-go/pkg/kadm"
-	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
 )
 
 // SubscriptionCallback is called when a subscription is added/removed during reconciliation.
@@ -33,7 +32,7 @@ type SubscriptionCallback func(sub *Subscription, isTombstone bool)
 
 // Reconciler rebuilds the in-memory subscription store from a per-API Kafka compacted topic on startup.
 type Reconciler struct {
-	brokers   []string
+	broker    connectors.BrokerDriver
 	store     SubscriptionStore
 	runtimeID string
 	syncTopic string
@@ -41,9 +40,9 @@ type Reconciler struct {
 }
 
 // NewReconciler creates a new Reconciler that replays from the given syncTopic.
-func NewReconciler(brokers []string, store SubscriptionStore, runtimeID, syncTopic string) *Reconciler {
+func NewReconciler(broker connectors.BrokerDriver, store SubscriptionStore, runtimeID, syncTopic string) *Reconciler {
 	return &Reconciler{
-		brokers:   brokers,
+		broker:    broker,
 		store:     store,
 		runtimeID: runtimeID,
 		syncTopic: syncTopic,
@@ -61,95 +60,32 @@ func (r *Reconciler) SetCallback(cb SubscriptionCallback) {
 func (r *Reconciler) Reconcile(ctx context.Context) error {
 	slog.Info("Starting subscription reconciliation from Kafka")
 
-	// Get high watermarks to know when we're caught up
-	adminClient, err := kgo.NewClient(kgo.SeedBrokers(r.brokers...))
-	if err != nil {
-		return fmt.Errorf("failed to create admin client: %w", err)
-	}
-	admin := kadm.NewClient(adminClient)
-
-	endOffsets, err := admin.ListEndOffsets(ctx, r.syncTopic)
-	if err != nil {
-		adminClient.Close()
-		return fmt.Errorf("failed to list end offsets: %w", err)
-	}
-	adminClient.Close()
-
-	// Calculate total messages to replay
-	var totalEnd int64
-	endOffsets.Each(func(o kadm.ListedOffset) {
-		totalEnd += o.Offset
-	})
-
-	if totalEnd == 0 {
-		slog.Info("No subscription data to reconcile")
-		return nil
-	}
-
-	// Create a consumer from the beginning
-	client, err := kgo.NewClient(
-		kgo.SeedBrokers(r.brokers...),
-		kgo.ConsumeTopics(r.syncTopic),
-		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create reconciliation consumer: %w", err)
-	}
-	defer client.Close()
-
-	var replayed int64
-	for {
-		fetches := client.PollFetches(ctx)
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-
-		if errs := fetches.Errors(); len(errs) > 0 {
-			return fmt.Errorf("fetch errors during reconciliation: %v", errs)
-		}
-
-		fetches.EachRecord(func(record *kgo.Record) {
-			if record.Value == nil {
-				// Tombstone — remove from store
-				parts := parseSyncKey(string(record.Key))
-				if parts != nil {
-					_ = r.store.Remove(parts[0], parts[1])
-					if r.callback != nil {
-						r.callback(&Subscription{Topic: parts[0], CallbackURL: parts[1]}, true)
-					}
-				}
-			} else {
-				var sub Subscription
-				if err := json.Unmarshal(record.Value, &sub); err != nil {
-					slog.Error("Failed to unmarshal subscription during reconciliation", "error", err)
-					return
-				}
-				_ = r.store.Add(&sub)
+	if err := r.broker.Replay(ctx, []string{r.syncTopic}, func(_ context.Context, msg *connectors.Message) error {
+		if msg.Value == nil {
+			parts := parseSyncKey(string(msg.Key))
+			if parts != nil {
+				_ = r.store.Remove(parts[0], parts[1])
 				if r.callback != nil {
-					r.callback(&sub, false)
+					r.callback(&Subscription{Topic: parts[0], CallbackURL: parts[1]}, true)
 				}
 			}
-			replayed++
-		})
-
-		// Check if we've caught up to all partitions
-		caughtUp := true
-		endOffsets.Each(func(o kadm.ListedOffset) {
-			if o.Offset > 0 {
-				// Simplified catch-up check
-				caughtUp = caughtUp && (replayed >= totalEnd)
-			}
-		})
-
-		if caughtUp {
-			break
+			return nil
 		}
+
+		var sub Subscription
+		if err := json.Unmarshal(msg.Value, &sub); err != nil {
+			slog.Error("Failed to unmarshal subscription during reconciliation", "error", err)
+			return fmt.Errorf("failed to unmarshal subscription during reconciliation: %w", err)
+		}
+		_ = r.store.Add(&sub)
+		if r.callback != nil {
+			r.callback(&sub, false)
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("failed to replay subscription state: %w", err)
 	}
 
-	slog.Info("Subscription reconciliation complete",
-		"replayed", replayed,
-		"active_subscriptions", len(r.store.GetActive()),
-	)
-
+	slog.Info("Subscription reconciliation complete", "active_subscriptions", len(r.store.GetActive()))
 	return nil
 }

@@ -39,12 +39,21 @@ type Consumer struct {
 
 // NewConsumer creates a new shared-group Kafka consumer.
 func NewConsumer(brokers []string, groupID string, topics []string, handler connectors.MessageHandler) (*Consumer, error) {
-	client, err := kgo.NewClient(
-		kgo.SeedBrokers(brokers...),
+	return NewConsumerWithConfig(ConnectionConfig{Brokers: brokers}, groupID, topics, handler)
+}
+
+// NewConsumerWithConfig creates a new shared-group Kafka consumer.
+func NewConsumerWithConfig(cfg ConnectionConfig, groupID string, topics []string, handler connectors.MessageHandler) (*Consumer, error) {
+	opts, err := BuildClientOptions(
+		cfg,
 		kgo.ConsumerGroup(groupID),
 		kgo.ConsumeTopics(topics...),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtEnd()),
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create kafka consumer: %w", err)
+	}
+	client, err := kgo.NewClient(opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka consumer: %w", err)
 	}
@@ -117,13 +126,22 @@ type ManualCommitConsumer struct {
 
 // NewManualCommitConsumer creates a consumer with manual offset commit.
 func NewManualCommitConsumer(brokers []string, groupID string, topics []string, handler connectors.MessageHandler) (*ManualCommitConsumer, error) {
-	client, err := kgo.NewClient(
-		kgo.SeedBrokers(brokers...),
+	return NewManualCommitConsumerWithConfig(ConnectionConfig{Brokers: brokers}, groupID, topics, handler)
+}
+
+// NewManualCommitConsumerWithConfig creates a consumer with manual offset commit.
+func NewManualCommitConsumerWithConfig(cfg ConnectionConfig, groupID string, topics []string, handler connectors.MessageHandler) (*ManualCommitConsumer, error) {
+	opts, err := BuildClientOptions(
+		cfg,
 		kgo.ConsumerGroup(groupID),
 		kgo.ConsumeTopics(topics...),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtEnd()),
 		kgo.DisableAutoCommit(),
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create manual-commit kafka consumer: %w", err)
+	}
+	client, err := kgo.NewClient(opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create manual-commit kafka consumer: %w", err)
 	}

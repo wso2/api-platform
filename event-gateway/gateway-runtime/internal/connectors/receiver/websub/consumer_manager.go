@@ -27,7 +27,6 @@ import (
 	"sync"
 
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
-	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors/brokerdriver/kafka"
 )
 
 // managedConsumer tracks a per-callback consumer and its topic set.
@@ -40,31 +39,31 @@ type managedConsumer struct {
 // Each unique callback URL gets its own consumer group. When a callback's
 // topic set changes (subscribe/unsubscribe), the consumer is recreated.
 type ConsumerManager struct {
-	mu          sync.Mutex
-	consumers   map[string]*managedConsumer // callbackURL → managedConsumer
-	brokers     []string
-	groupPrefix string
-	processor   connectors.MessageProcessor
-	bindingName string
-	deliverer   *Deliverer
-	ctx         context.Context
+	mu           sync.Mutex
+	consumers    map[string]*managedConsumer // callbackURL → managedConsumer
+	brokerDriver connectors.BrokerDriver
+	groupPrefix  string
+	processor    connectors.MessageProcessor
+	bindingName  string
+	deliverer    *Deliverer
+	ctx          context.Context
 }
 
 // NewConsumerManager creates a new ConsumerManager.
 func NewConsumerManager(
-	brokers []string,
+	brokerDriver connectors.BrokerDriver,
 	groupPrefix string,
 	processor connectors.MessageProcessor,
 	bindingName string,
 	deliverer *Deliverer,
 ) *ConsumerManager {
 	return &ConsumerManager{
-		consumers:   make(map[string]*managedConsumer),
-		brokers:     brokers,
-		groupPrefix: groupPrefix,
-		processor:   processor,
-		bindingName: bindingName,
-		deliverer:   deliverer,
+		consumers:    make(map[string]*managedConsumer),
+		brokerDriver: brokerDriver,
+		groupPrefix:  groupPrefix,
+		processor:    processor,
+		bindingName:  bindingName,
+		deliverer:    deliverer,
 	}
 }
 
@@ -211,7 +210,7 @@ func (cm *ConsumerManager) createConsumer(groupID string, topics []string, callb
 		return cm.deliverer.Deliver(ctx, callbackURL, secret, processed)
 	}
 
-	consumer, err := kafka.NewManualCommitConsumer(cm.brokers, groupID, topics, handler)
+	consumer, err := cm.brokerDriver.Subscribe(groupID, topics, handler)
 	if err != nil {
 		return nil, err
 	}

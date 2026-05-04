@@ -29,6 +29,7 @@ import (
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
+	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors/brokerdriver/kafka"
 )
 
 // Config is the top-level runtime configuration for the event gateway.
@@ -108,6 +109,7 @@ func DefaultConfig() *Config {
 		Kafka: KafkaConfig{
 			Brokers:             []string{"localhost:9092"},
 			ConsumerGroupPrefix: "event-gateway",
+			TLS:                 false,
 		},
 		WebSub: WebSubConfig{
 			VerificationTimeoutSeconds: 10,
@@ -261,6 +263,16 @@ func validate(cfg *Config) error {
 		if err := validateReadableFile(cfg.Server.WebSubTLSKeyFile, "server.websub_tls_key_file"); err != nil {
 			return err
 		}
+	}
+
+	if err := kafka.ValidateConnectionConfig(kafka.ConnectionConfig{
+		Brokers:       cfg.Kafka.Brokers,
+		TLS:           cfg.Kafka.TLS,
+		SASLMechanism: cfg.Kafka.SASLMechanism,
+		SASLUsername:  cfg.Kafka.SASLUsername,
+		SASLPassword:  cfg.Kafka.SASLPassword,
+	}); err != nil {
+		return err
 	}
 
 	switch cfg.Logging.Level {
