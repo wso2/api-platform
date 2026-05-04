@@ -97,20 +97,31 @@ type ChannelsConfig struct {
 	Channels []Binding `yaml:"channels"`
 }
 
+// JoinNormalizedTopic derives a Kafka topic name by normalizing each logical
+// segment and joining them with underscores.
+func JoinNormalizedTopic(parts ...string) string {
+	if len(parts) == 0 {
+		return ""
+	}
+
+	normalizedParts := make([]string, 0, len(parts))
+	for _, part := range parts {
+		normalizedParts = append(normalizedParts, NormalizeTopicSegment(part))
+	}
+	return strings.Join(normalizedParts, "_")
+}
+
 // WebSubApiTopicName derives a Kafka topic name for a WebSubApi channel.
-// Format: {normalized-api-name}.{normalized-version}.{normalized-channel-name}
+// Format: {normalized-api-name}_{normalized-version}_{normalized-channel-name}
 // The logical WebSub channel name remains unchanged elsewhere; only the broker topic is normalized.
 func WebSubApiTopicName(apiName, version, channelName string) string {
-	return NormalizeTopicSegment(apiName) + "." +
-		NormalizeTopicSegment(version) + "." +
-		NormalizeTopicSegment(channelName)
+	return JoinNormalizedTopic(apiName, version, channelName)
 }
 
 // WebSubApiSubscriptionTopic derives the internal subscription sync topic for a WebSubApi.
-// Format: {normalized-api-name}.{normalized-version}.__subscriptions
+// Format: {normalized-api-name}_{normalized-version}_{normalized-subscription-suffix}
 func WebSubApiSubscriptionTopic(apiName, version string) string {
-	return NormalizeTopicSegment(apiName) + "." +
-		NormalizeTopicSegment(version) + ".__subscriptions"
+	return JoinNormalizedTopic(apiName, version, "__subscriptions")
 }
 
 // WebSubApiBasePath derives the shared WebSub HTTP base path for an API.
