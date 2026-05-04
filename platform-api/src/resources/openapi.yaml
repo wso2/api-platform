@@ -535,6 +535,101 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /applications/{appId}/associations:
+    get:
+      summary: List application associations
+      description: |
+        Lists association targets mapped to the specified application.
+      operationId: ListApplicationAssociations
+      tags:
+        - Applications
+      parameters:
+        - $ref: '#/components/parameters/appId'
+        - name: limit
+          in: query
+          description: Maximum number of associations to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of associations to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Application associations retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationAssociationListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Add application associations
+      description: |
+        Adds association targets to the specified application.
+      operationId: AddApplicationAssociations
+      tags:
+        - Applications
+      parameters:
+        - $ref: '#/components/parameters/appId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddApplicationAssociationsRequest'
+      responses:
+        '200':
+          description: Application associations added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationAssociationListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /applications/{appId}/associations/{associationId}:
+    delete:
+      summary: Remove application association
+      description: |
+        Removes an association target from the specified application.
+      operationId: RemoveApplicationAssociation
+      tags:
+        - Applications
+      parameters:
+        - $ref: '#/components/parameters/appId'
+        - $ref: '#/components/parameters/associationId'
+      responses:
+        '204':
+          description: Application association removed successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /validate/api-project:
     post:
       summary: Validate API project
@@ -5434,6 +5529,94 @@ components:
           items:
             $ref: '#/components/schemas/APIKeyMappingSelector'
 
+    AddApplicationAssociationsRequest:
+      type: object
+      required:
+        - associations
+      properties:
+        associations:
+          type: array
+          description: List of association selectors to add to the application
+          items:
+            $ref: '#/components/schemas/ApplicationAssociationSelector'
+
+    ApplicationAssociationSelector:
+      type: object
+      required:
+        - id
+        - kind
+      properties:
+        id:
+          type: string
+          description: ID or handle of the association target
+          example: provider-handle
+        kind:
+          type: string
+          description: Type of the association target
+          enum:
+            - LlmProvider
+            - LlmProxy
+          example: LlmProvider
+
+    ApplicationAssociation:
+      type: object
+      required:
+        - id
+        - uuid
+        - name
+        - version
+        - kind
+      properties:
+        id:
+          type: string
+          description: Handle/ID of the associated target
+          example: provider-handle
+        uuid:
+          type: string
+          format: uuid
+          description: UUID of the associated target
+          example: "7d7a51fd-daa1-4095-b7ff-98a1aa05cc0f"
+        name:
+          type: string
+          description: Display name of the associated target
+          example: "OpenAI Provider"
+        version:
+          type: string
+          description: Version of the associated target
+          example: "v1.0"
+        kind:
+          type: string
+          description: Type of associated target
+          example: LlmProvider
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the association was created
+          example: "2025-11-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the association was updated
+          example: "2025-11-15T11:30:00Z"
+
+    ApplicationAssociationListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of items in current response
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApplicationAssociation'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
     APIKeyMappingSelector:
       type: object
       required:
@@ -9018,6 +9201,16 @@ components:
       schema:
         type: string
         example: my-app-handle
+
+    associationId:
+      name: associationId
+      in: path
+      description: |
+        **Association ID** consisting of the **handle** or **UUID** of the association target.
+      required: true
+      schema:
+        type: string
+        example: provider-handle
 
     keyId:
       name: keyId
