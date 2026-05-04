@@ -61,7 +61,7 @@ const (
 	EnvDevPortalPassword = "WSO2AP_DEVPORTAL_PASSWORD" // For DevPortal basic auth
 	EnvDevPortalToken    = "WSO2AP_DEVPORTAL_TOKEN"    // For DevPortal OAuth auth
 	EnvDevPortalAPIKey   = "WSO2AP_DEVPORTAL_API_KEY"  // For DevPortal API key auth
-	DevPortalAPIHeader   = "api-key"
+	DevPortalAPIHeader   = "x-wso2-api-key"
 
 	// Image Build Configuration
 	GatewayVerifyChecksumOnBuild = true

@@ -39,6 +39,7 @@ const (
 	FlagFormat                 = "format"
 	FlagVersion                = "version"
 	FlagID                     = "id"
+	FlagAPIID                  = "api-id"
 	FlagConfirm                = "confirm"
 	FlagDockerRegistry         = "docker-registry"
 	FlagImageTag               = "image-tag"
@@ -46,6 +47,7 @@ const (
 	FlagGatewayControllerImage = "gateway-controller-base-image"
 	FlagRouterBaseImage        = "router-base-image"
 	FlagHeader                 = "header"
+	FlagOrgID				   = "org"
 )
 
 var shortFlags = map[string]string{

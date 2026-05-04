@@ -19,11 +19,15 @@
 package devportal
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -39,9 +43,14 @@ type Client struct {
 type credCtxKey struct{}
 
 func NewClient(devPortal *config.DevPortal) *Client {
+	return NewClientWithOptions(devPortal, false)
+}
+
+func NewClientWithOptions(devPortal *config.DevPortal, insecure bool) *Client {
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: insecure,
 		},
 	}
 
@@ -181,6 +190,89 @@ func (c *Client) Get(path string) (*http.Response, error) {
 	}
 
 	return nil, c.formatHTTPError(fmt.Sprintf("GET %s", path), resp)
+}
+
+func (c *Client) PostMultipartFile(path, fieldName, filePath string) (*http.Response, error) {
+	return c.sendMultipartFile("POST", path, fieldName, filePath)
+}
+
+func (c *Client) PutMultipartFile(path, fieldName, filePath string) (*http.Response, error) {
+	return c.sendMultipartFile("PUT", path, fieldName, filePath)
+}
+
+func (c *Client) Delete(path string) (*http.Response, error) {
+	baseURL := strings.TrimSuffix(c.devPortal.URL, "/")
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	url := baseURL + path
+
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return resp, nil
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return resp, nil
+	}
+
+	return nil, c.formatHTTPError(fmt.Sprintf("DELETE %s", path), resp)
+}
+
+func (c *Client) sendMultipartFile(method, path, fieldName, filePath string) (*http.Response, error) {
+	baseURL := strings.TrimSuffix(c.devPortal.URL, "/")
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	url := baseURL + path
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open artifact file: %w", err)
+	}
+	defer file.Close()
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+
+	part, err := writer.CreateFormFile(fieldName, filepath.Base(filePath))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create multipart form file: %w", err)
+	}
+
+	if _, err := io.Copy(part, file); err != nil {
+		return nil, fmt.Errorf("failed to copy artifact into multipart request: %w", err)
+	}
+
+	if err := writer.Close(); err != nil {
+		return nil, fmt.Errorf("failed to finalize multipart request: %w", err)
+	}
+
+	req, err := http.NewRequest(method, url, &body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return resp, nil
+	}
+
+	return nil, c.formatHTTPError(fmt.Sprintf("%s %s", method, path), resp)
 }
 
 func (c *Client) formatHTTPError(operation string, resp *http.Response) error {

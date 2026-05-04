@@ -2,6 +2,11 @@
 
 `ap` is a command-line tool for managing and interacting with the WSO2 API Platform.
 
+## Command Guides
+
+- [DevPortal CLI Reference](devportal/README.md)
+- [API Project CLI Reference](apiproject/README.md)
+
 ## Supported Short Flags
 
 | Flag             | Short Flag |

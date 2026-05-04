@@ -18,7 +18,10 @@
 
 package devportal
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/spf13/cobra"
+	"github.com/wso2/api-platform/cli/cmd/devportal/restapi"
+)
 
 const (
 	DevPortalCmdLiteral = "devportal"
@@ -45,4 +48,5 @@ func init() {
 	DevPortalCmd.AddCommand(currentCmd)
 	DevPortalCmd.AddCommand(healthCmd)
 	DevPortalCmd.AddCommand(buildCmd)
+	DevPortalCmd.AddCommand(restapi.APICmd)
 }
