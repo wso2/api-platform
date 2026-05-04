@@ -103,7 +103,7 @@ func (e *KafkaBrokerDriver) TopicExists(ctx context.Context, topic string) (bool
 func (e *KafkaBrokerDriver) EnsureTopics(ctx context.Context, topics []string) error {
 	resp, err := e.admin.CreateTopics(ctx, 1, 1, nil, topics...)
 	if err != nil {
-		return fmt.Errorf("failed to create topics: %w", err)
+		return fmt.Errorf("failed to create topics: %w", err)	
 	}
 
 	for _, t := range resp.Sorted() {
