@@ -32,8 +32,11 @@ type Publisher struct {
 }
 
 // NewPublisher creates a new Kafka publisher.
-func NewPublisher(brokers []string, opts ...kgo.Opt) (*Publisher, error) {
-	allOpts := append([]kgo.Opt{kgo.SeedBrokers(brokers...)}, opts...)
+func NewPublisher(cfg ConnectionConfig, opts ...kgo.Opt) (*Publisher, error) {
+	allOpts, err := BuildClientOptions(cfg, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build kafka publisher options: %w", err)
+	}
 	client, err := kgo.NewClient(allOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka publisher: %w", err)
