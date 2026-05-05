@@ -157,7 +157,7 @@ func TestWebSubSubscriptionSyncTopic_FallsBackToDerivedTopic(t *testing.T) {
 	rt := &Runtime{cfg: &config.Config{}}
 
 	got := rt.webSubSubscriptionSyncTopic("repo-watcher", "v1.0")
-	want := binding.WebSubApiTopicName("repo-watcher", "v1.0", "_subscriptions")
+	want := binding.WebSubApiSubscriptionTopic("repo-watcher", "v1.0")
 	if got != want {
 		t.Fatalf("webSubSubscriptionSyncTopic() = %q, want %q", got, want)
 	}

@@ -33,19 +33,28 @@ import (
 // It owns a shared publisher and creates consumers on demand.
 type KafkaBrokerDriver struct {
 	publisher *Publisher
-	brokers   []string
+	cfg       ConnectionConfig
 	admin     *kadm.Client
 	adminKgo  *kgo.Client
 }
 
-// NewBrokerDriver creates a Kafka broker-driver backed by the given brokers.
-func NewBrokerDriver(brokers []string) (*KafkaBrokerDriver, error) {
-	pub, err := NewPublisher(brokers)
+// NewClient creates a franz-go client using the shared Kafka connection config.
+func NewClient(cfg ConnectionConfig, extraOpts ...kgo.Opt) (*kgo.Client, error) {
+	opts, err := BuildClientOptions(cfg, extraOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return kgo.NewClient(opts...)
+}
+
+// NewBrokerDriver creates a Kafka broker-driver backed by the given connection config.
+func NewBrokerDriver(cfg ConnectionConfig) (*KafkaBrokerDriver, error) {
+	pub, err := NewPublisher(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka publisher: %w", err)
 	}
 
-	adminKgo, err := kgo.NewClient(kgo.SeedBrokers(brokers...))
+	adminKgo, err := NewClient(cfg)
 	if err != nil {
 		pub.Close()
 		return nil, fmt.Errorf("failed to create kafka admin client: %w", err)
@@ -53,7 +62,7 @@ func NewBrokerDriver(brokers []string) (*KafkaBrokerDriver, error) {
 
 	return &KafkaBrokerDriver{
 		publisher: pub,
-		brokers:   brokers,
+		cfg:       cfg,
 		admin:     kadm.NewClient(adminKgo),
 		adminKgo:  adminKgo,
 	}, nil
@@ -67,7 +76,17 @@ func (e *KafkaBrokerDriver) Publish(ctx context.Context, topic string, msg *conn
 // Subscribe creates a consumer for the given topics using a shared consumer group.
 // The returned Receiver must be Start()ed by the caller.
 func (e *KafkaBrokerDriver) Subscribe(groupID string, topics []string, handler connectors.MessageHandler) (connectors.Receiver, error) {
-	return NewConsumer(e.brokers, groupID, topics, handler)
+	return NewConsumer(e.cfg, groupID, topics, handler)
+}
+
+// SubscribeManual creates a consumer with manual offset commits for the given topics.
+func (e *KafkaBrokerDriver) SubscribeManual(groupID string, topics []string, handler connectors.MessageHandler) (connectors.Receiver, error) {
+	return NewManualCommitConsumer(e.cfg, groupID, topics, handler)
+}
+
+// Replay replays all records from the start of a compacted topic until caught up.
+func (e *KafkaBrokerDriver) Replay(ctx context.Context, topic string, handler connectors.MessageHandler) error {
+	return ReplayTopic(ctx, e.cfg, topic, handler)
 }
 
 // TopicExists checks whether a topic exists in the Kafka cluster.
@@ -99,6 +118,25 @@ func (e *KafkaBrokerDriver) EnsureTopics(ctx context.Context, topics []string) e
 		slog.Info("Created topic", "topic", t.Topic)
 	}
 
+	return nil
+}
+
+// EnsureCompactedTopic creates a compacted topic if it does not already exist.
+func (e *KafkaBrokerDriver) EnsureCompactedTopic(ctx context.Context, topic string) error {
+	resp, err := e.admin.CreateTopics(ctx, 1, 1, map[string]*string{
+		"cleanup.policy": kadm.StringPtr("compact"),
+	}, topic)
+	if err != nil {
+		return fmt.Errorf("failed to create compacted topic %s: %w", topic, err)
+	}
+	for _, t := range resp.Sorted() {
+		if t.Err != nil {
+			if isTopicAlreadyExistsErr(t.Err) {
+				return nil
+			}
+			return fmt.Errorf("failed to create compacted topic %s: %w", t.Topic, t.Err)
+		}
+	}
 	return nil
 }
 

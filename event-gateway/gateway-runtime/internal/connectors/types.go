@@ -53,8 +53,11 @@ type MessageProcessor interface {
 type BrokerDriver interface {
 	Publish(ctx context.Context, topic string, msg *Message) error
 	Subscribe(groupID string, topics []string, handler MessageHandler) (Receiver, error)
+	SubscribeManual(groupID string, topics []string, handler MessageHandler) (Receiver, error)
+	Replay(ctx context.Context, topic string, handler MessageHandler) error
 	TopicExists(ctx context.Context, topic string) (bool, error)
 	EnsureTopics(ctx context.Context, topics []string) error
+	EnsureCompactedTopic(ctx context.Context, topic string) error
 	DeleteTopics(ctx context.Context, topics []string) error
 	Close() error
 }
