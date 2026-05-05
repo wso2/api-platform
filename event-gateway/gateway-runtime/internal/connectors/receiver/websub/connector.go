@@ -138,9 +138,6 @@ func (e *WebSubReceiver) Start(ctx context.Context) error {
 	for _, kafkaTopic := range e.channel.Channels {
 		topicsToEnsure = append(topicsToEnsure, kafkaTopic)
 	}
-	if e.channel.InternalSubTopic != "" {
-		topicsToEnsure = append(topicsToEnsure, e.channel.InternalSubTopic)
-	}
 
 	if len(topicsToEnsure) > 0 {
 		if err := e.brokerDriver.EnsureTopics(ctx, topicsToEnsure); err != nil {

@@ -23,7 +23,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"sync"
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -102,93 +101,6 @@ func (p *SyncProducer) PublishTombstone(_ context.Context, topic, callbackURL st
 
 // Close flushes any buffered records and closes the sync producer.
 func (p *SyncProducer) Close() {
-}
-
-// SyncConsumer consumes subscription state changes from the sync topic.
-type SyncConsumer struct {
-	client    *kgo.Client
-	store     SubscriptionStore
-	runtimeID string
-	cancel    context.CancelFunc
-	wg        sync.WaitGroup
-}
-
-// NewSyncConsumer creates a new sync consumer that reads from the given syncTopic.
-func NewSyncConsumer(brokers []string, store SubscriptionStore, runtimeID, syncTopic string) (*SyncConsumer, error) {
-	client, err := kgo.NewClient(
-		kgo.SeedBrokers(brokers...),
-		kgo.ConsumeTopics(syncTopic),
-		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create sync consumer: %w", err)
-	}
-	return &SyncConsumer{
-		client:    client,
-		store:     store,
-		runtimeID: runtimeID,
-	}, nil
-}
-
-// Start begins consuming subscription state changes.
-func (c *SyncConsumer) Start(ctx context.Context) {
-	ctx, c.cancel = context.WithCancel(ctx)
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-		c.consumeLoop(ctx)
-	}()
-}
-
-// Stop stops the sync consumer.
-func (c *SyncConsumer) Stop() {
-	if c.cancel != nil {
-		c.cancel()
-	}
-	c.wg.Wait()
-	c.client.Close()
-}
-
-func (c *SyncConsumer) consumeLoop(ctx context.Context) {
-	for {
-		fetches := c.client.PollFetches(ctx)
-		if ctx.Err() != nil {
-			return
-		}
-
-		fetches.EachRecord(func(record *kgo.Record) {
-			c.processRecord(record)
-		})
-	}
-}
-
-func (c *SyncConsumer) processRecord(record *kgo.Record) {
-	// Tombstone — remove subscription
-	if record.Value == nil {
-		parts := parseSyncKey(string(record.Key))
-		if parts == nil {
-			return
-		}
-		if err := c.store.Remove(parts[0], parts[1]); err != nil {
-			slog.Debug("Failed to remove subscription from sync", "key", string(record.Key), "error", err)
-		}
-		return
-	}
-
-	var sub Subscription
-	if err := json.Unmarshal(record.Value, &sub); err != nil {
-		slog.Error("Failed to unmarshal subscription from sync", "error", err)
-		return
-	}
-
-	// Skip self-originated messages
-	if sub.RuntimeID == c.runtimeID {
-		return
-	}
-
-	if err := c.store.Add(&sub); err != nil {
-		slog.Error("Failed to add subscription from sync", "error", err)
-	}
 }
 
 func syncKey(topic, callbackURL string) string {
