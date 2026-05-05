@@ -23,61 +23,28 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strings"
-	"sync"
 	"time"
 
-	"github.com/twmb/franz-go/pkg/kadm"
-	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
 )
 
 // SyncProducer publishes subscription state changes to a per-API sync topic.
 type SyncProducer struct {
-	client    *kgo.Client
+	driver    connectors.BrokerDriver
 	runtimeID string
-	brokers   []string
 	syncTopic string
 }
 
 // NewSyncProducer creates a new sync producer that writes to the given syncTopic.
-func NewSyncProducer(brokers []string, runtimeID, syncTopic string) (*SyncProducer, error) {
-	client, err := kgo.NewClient(
-		kgo.SeedBrokers(brokers...),
-		kgo.DefaultProduceTopic(syncTopic),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create sync producer: %w", err)
-	}
-	return &SyncProducer{client: client, runtimeID: runtimeID, brokers: brokers, syncTopic: syncTopic}, nil
+func NewSyncProducer(driver connectors.BrokerDriver, runtimeID, syncTopic string) *SyncProducer {
+	return &SyncProducer{driver: driver, runtimeID: runtimeID, syncTopic: syncTopic}
 }
 
 // EnsureSyncTopic creates the per-API subscription sync topic if it
 // does not already exist. The topic is created with cleanup.policy=compact
 // so that the latest subscription state per key is retained indefinitely.
 func (p *SyncProducer) EnsureSyncTopic(ctx context.Context) error {
-	adminKgo, err := kgo.NewClient(kgo.SeedBrokers(p.brokers...))
-	if err != nil {
-		return fmt.Errorf("failed to create admin client: %w", err)
-	}
-	defer adminKgo.Close()
-
-	admin := kadm.NewClient(adminKgo)
-	topicConfig := map[string]*string{
-		"cleanup.policy": kadm.StringPtr("compact"),
-	}
-	resp, err := admin.CreateTopics(ctx, 1, 1, topicConfig, p.syncTopic)
-	if err != nil {
-		return fmt.Errorf("failed to create sync topic: %w", err)
-	}
-	for _, t := range resp.Sorted() {
-		if t.Err != nil {
-			errStr := t.Err.Error()
-			if !(strings.Contains(errStr, "TOPIC_ALREADY_EXISTS") || strings.Contains(errStr, "already exists")) {
-				return fmt.Errorf("failed to create sync topic %s: %w", t.Topic, t.Err)
-			}
-		}
-	}
-	return nil
+	return p.driver.EnsureCompactedTopic(ctx, p.syncTopic)
 }
 
 // PublishSubscription publishes a subscription state change synchronously.
@@ -92,16 +59,15 @@ func (p *SyncProducer) PublishSubscription(_ context.Context, sub *Subscription)
 	}
 
 	key := syncKey(sub.Topic, sub.CallbackURL)
-	record := &kgo.Record{
-		Key:   []byte(key),
-		Value: value,
-		Topic: p.syncTopic,
-	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := p.client.ProduceSync(ctx, record).FirstErr(); err != nil {
+	if err := p.driver.Publish(ctx, p.syncTopic, &connectors.Message{
+		Key:   []byte(key),
+		Value: value,
+		Topic: p.syncTopic,
+	}); err != nil {
 		slog.Error("Failed to publish subscription sync", "key", key, "error", err)
 		return fmt.Errorf("failed to publish subscription sync: %w", err)
 	}
@@ -112,16 +78,14 @@ func (p *SyncProducer) PublishSubscription(_ context.Context, sub *Subscription)
 // PublishTombstone publishes a tombstone (deletion) for a subscription synchronously.
 func (p *SyncProducer) PublishTombstone(_ context.Context, topic, callbackURL string) error {
 	key := syncKey(topic, callbackURL)
-	record := &kgo.Record{
-		Key:   []byte(key),
-		Value: nil, // tombstone
-		Topic: p.syncTopic,
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := p.client.ProduceSync(ctx, record).FirstErr(); err != nil {
+	if err := p.driver.Publish(ctx, p.syncTopic, &connectors.Message{
+		Key:   []byte(key),
+		Value: nil,
+		Topic: p.syncTopic,
+	}); err != nil {
 		slog.Error("Failed to publish subscription tombstone", "key", key, "error", err)
 		return fmt.Errorf("failed to publish subscription tombstone: %w", err)
 	}
@@ -131,99 +95,6 @@ func (p *SyncProducer) PublishTombstone(_ context.Context, topic, callbackURL st
 
 // Close flushes any buffered records and closes the sync producer.
 func (p *SyncProducer) Close() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := p.client.Flush(ctx); err != nil {
-		slog.Warn("Failed to flush sync producer before close", "error", err)
-	}
-	p.client.Close()
-}
-
-// SyncConsumer consumes subscription state changes from the sync topic.
-type SyncConsumer struct {
-	client    *kgo.Client
-	store     SubscriptionStore
-	runtimeID string
-	cancel    context.CancelFunc
-	wg        sync.WaitGroup
-}
-
-// NewSyncConsumer creates a new sync consumer that reads from the given syncTopic.
-func NewSyncConsumer(brokers []string, store SubscriptionStore, runtimeID, syncTopic string) (*SyncConsumer, error) {
-	client, err := kgo.NewClient(
-		kgo.SeedBrokers(brokers...),
-		kgo.ConsumeTopics(syncTopic),
-		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create sync consumer: %w", err)
-	}
-	return &SyncConsumer{
-		client:    client,
-		store:     store,
-		runtimeID: runtimeID,
-	}, nil
-}
-
-// Start begins consuming subscription state changes.
-func (c *SyncConsumer) Start(ctx context.Context) {
-	ctx, c.cancel = context.WithCancel(ctx)
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-		c.consumeLoop(ctx)
-	}()
-}
-
-// Stop stops the sync consumer.
-func (c *SyncConsumer) Stop() {
-	if c.cancel != nil {
-		c.cancel()
-	}
-	c.wg.Wait()
-	c.client.Close()
-}
-
-func (c *SyncConsumer) consumeLoop(ctx context.Context) {
-	for {
-		fetches := c.client.PollFetches(ctx)
-		if ctx.Err() != nil {
-			return
-		}
-
-		fetches.EachRecord(func(record *kgo.Record) {
-			c.processRecord(record)
-		})
-	}
-}
-
-func (c *SyncConsumer) processRecord(record *kgo.Record) {
-	// Tombstone — remove subscription
-	if record.Value == nil {
-		parts := parseSyncKey(string(record.Key))
-		if parts == nil {
-			return
-		}
-		if err := c.store.Remove(parts[0], parts[1]); err != nil {
-			slog.Debug("Failed to remove subscription from sync", "key", string(record.Key), "error", err)
-		}
-		return
-	}
-
-	var sub Subscription
-	if err := json.Unmarshal(record.Value, &sub); err != nil {
-		slog.Error("Failed to unmarshal subscription from sync", "error", err)
-		return
-	}
-
-	// Skip self-originated messages
-	if sub.RuntimeID == c.runtimeID {
-		return
-	}
-
-	if err := c.store.Add(&sub); err != nil {
-		slog.Error("Failed to add subscription from sync", "error", err)
-	}
 }
 
 func syncKey(topic, callbackURL string) string {

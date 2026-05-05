@@ -70,7 +70,15 @@ func main() {
 			"xds_address", cfg.ControlPlane.XDSAddress)
 
 		handler := xdsclient.NewHandler(rt, xdsclient.KafkaConfig{
-			Brokers: cfg.Kafka.Brokers,
+			Brokers:       cfg.Kafka.Brokers,
+			TLS:           cfg.Kafka.TLS,
+			TLSCAFile:     cfg.Kafka.TLSCAFile,
+			TLSCertFile:   cfg.Kafka.TLSCertFile,
+			TLSKeyFile:    cfg.Kafka.TLSKeyFile,
+			TLSServerName: cfg.Kafka.TLSServerName,
+			SASLMechanism: cfg.Kafka.SASLMechanism,
+			SASLUsername:  cfg.Kafka.SASLUsername,
+			SASLPassword:  cfg.Kafka.SASLPassword,
 		})
 		eventConfigClient := xdsclient.NewClient(
 			cfg.ControlPlane.XDSAddress,

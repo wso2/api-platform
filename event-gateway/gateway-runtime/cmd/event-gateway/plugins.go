@@ -38,28 +38,11 @@ import (
 //  3. Add bindings in channels.yaml — no changes to main.go or runtime needed
 func registerConnectors(registry *connectors.Registry, cfg *config.Config) {
 	registry.RegisterBrokerDriver("kafka", func(brokerDriverCfg map[string]interface{}) (connectors.BrokerDriver, error) {
-		brokers := cfg.Kafka.Brokers // fallback to global config
-		if brokerDriverCfg != nil {
-			if b, ok := brokerDriverCfg["brokers"]; ok {
-				switch v := b.(type) {
-				case []interface{}:
-					parsed := make([]string, 0, len(v))
-					for _, item := range v {
-						if s, ok := item.(string); ok {
-							parsed = append(parsed, s)
-						}
-					}
-					if len(parsed) > 0 {
-						brokers = parsed
-					}
-				case []string:
-					if len(v) > 0 {
-						brokers = v
-					}
-				}
-			}
+		connectionCfg, err := kafka.ResolveConnectionConfig(cfg.Kafka, brokerDriverCfg)
+		if err != nil {
+			return nil, err
 		}
-		return kafka.NewBrokerDriver(brokers)
+		return kafka.NewBrokerDriver(connectionCfg)
 	})
 
 	registry.RegisterReceiver("websub", func(ecfg connectors.ReceiverConfig) (connectors.Receiver, error) {
@@ -73,7 +56,6 @@ func registerConnectors(registry *connectors.Registry, cfg *config.Config) {
 			DeliveryConcurrency:        cfg.WebSub.DeliveryConcurrency,
 			RuntimeID:                  cfg.RuntimeID,
 			ConsumerGroupPrefix:        cfg.Kafka.ConsumerGroupPrefix,
-			Brokers:                    cfg.Kafka.Brokers,
 		})
 	})
 
