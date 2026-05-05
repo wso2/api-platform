@@ -1873,14 +1873,23 @@ func (s *APIKeyService) getArtifactConfigByID(artifactUUID string) (*models.Stor
 	if !storage.IsNotFoundError(err) {
 		return nil, fmt.Errorf("database error while fetching artifact %s: %w", artifactUUID, err)
 	}
-	// Fallback: incoming UUID may be the APIM/control-plane UUID for a bottom-up
+	// Fallback 1: incoming UUID may be the APIM/control-plane UUID for a bottom-up
 	// synced artifact. Look it up by cp_artifact_id.
 	cfg, err = s.db.GetConfigByCPArtifactID(artifactUUID)
+	if err == nil {
+		return cfg, nil
+	}
+	if !storage.IsNotFoundError(err) {
+		return nil, fmt.Errorf("database error while fetching artifact by cp id %s: %w", artifactUUID, err)
+	}
+	// Fallback 2: treat artifactUUID as a RestApi handle (used by agents whose RestApi CRD
+	// name is a deterministic slug rather than the artifact UUID).
+	cfg, err = s.db.GetConfigByKindAndHandle(models.KindRestApi, artifactUUID)
 	if err == nil {
 		return cfg, nil
 	}
 	if storage.IsNotFoundError(err) {
 		return nil, storage.ErrNotFound
 	}
-	return nil, fmt.Errorf("database error while fetching artifact by cp id %s: %w", artifactUUID, err)
+	return nil, fmt.Errorf("database error while fetching artifact by handle %s: %w", artifactUUID, err)
 }
