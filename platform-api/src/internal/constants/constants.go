@@ -134,7 +134,7 @@ const (
 	// MaxMCPProxiesPerOrganization is the maximum number of MCP proxies allowed per organization.
 	MaxMCPProxiesPerOrganization = 5
 	// MaxWebSubAPIsPerOrganization is the maximum number of WebSub APIs allowed per organization.
-	MaxWebSubAPIsPerOrganization = 20
+	MaxWebSubAPIsPerOrganization = 5
 )
 
 const GatewayApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
