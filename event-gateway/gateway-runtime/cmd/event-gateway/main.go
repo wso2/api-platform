@@ -55,14 +55,13 @@ func main() {
 	registerConnectors(registry, cfg)
 
 	// Create the runtime — owns engine, hub, admin.
+	// Compiled-in policies are registered into the global registry via init() in
+	// plugin_registry.go; engine.New() (called inside runtime.New) seeds from it.
 	rt, err := runtime.New(cfg, rawConfig, registry)
 	if err != nil {
 		slog.Error("Failed to create runtime", "error", err)
 		os.Exit(1)
 	}
-
-	// Register compiled-in policies with the engine.
-	registerPolicies(rt.Engine())
 
 	// Decide startup mode: xDS control plane or static channels.yaml.
 	if cfg.ControlPlane.Enabled {

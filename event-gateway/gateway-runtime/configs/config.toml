@@ -45,6 +45,12 @@ subscriptions_topic_name = "__subscriptions"
 level = "info"
 format = "text"
 
+[analytics]
+# Set to true to enable the analytics system policy on every chain.
+enabled = false
+# Set to true to include request/response payloads in analytics events.
+allow_payloads = false
+
 # runtime_id is auto-generated if left empty
 # runtime_id = ""
 
@@ -52,3 +58,4 @@ format = "text"
 enabled = true
 xds_address = "localhost:18001"
 # node_id = ""
+

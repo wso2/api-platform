@@ -34,6 +34,7 @@ import (
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/config"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/hub"
+	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/systempolicies"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/pkg/engine"
 )
 
@@ -619,7 +620,7 @@ func (r *Runtime) buildWebSubApiPolicyChains(wsb binding.WebSubApiBinding, vhost
 }
 
 func (r *Runtime) buildChain(routeKey string, policies []binding.PolicyRef) error {
-	if len(policies) == 0 {
+	if routeKey == "" {
 		return nil
 	}
 
@@ -631,6 +632,12 @@ func (r *Runtime) buildChain(routeKey string, policies []binding.PolicyRef) erro
 			Enabled:    true,
 			Parameters: p.Params,
 		}
+	}
+
+	specs = systempolicies.Inject(specs, r.cfg, nil)
+
+	if len(specs) == 0 {
+		return nil
 	}
 
 	chain, err := r.engine.BuildChain(routeKey, specs)

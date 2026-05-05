@@ -19,14 +19,6 @@
 services:
   gateway-controller:
     image: ghcr.io/wso2/api-platform/event-gateway-controller:0.6.0-SNAPSHOT
-    build:
-      context: ../gateway/gateway-controller
-      dockerfile: Dockerfile
-      target: production
-      additional_contexts:
-        sdk-core: ../sdk/core
-        common: ../common
-        build-manifest: ../gateway
     command: ["-config", "/etc/gateway-controller/config.toml"]
     ports:
       - "9090:9090"    # Management API
@@ -54,13 +46,6 @@ services:
 
   event-gateway:
     image: ghcr.io/wso2/api-platform/event-gateway-runtime:0.6.0-SNAPSHOT
-    build:
-      context: gateway-runtime
-      dockerfile: Dockerfile
-      additional_contexts:
-        sdk-core: ../sdk/core
-        common: ../common
-        policy-engine: ../gateway/gateway-runtime/policy-engine
     ports:
       - "8080:8080"   # WebSub HTTP
       - "8443:8443"   # WebSub HTTPS

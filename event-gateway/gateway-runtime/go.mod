@@ -13,11 +13,8 @@ require (
 	github.com/twmb/franz-go v1.18.1
 	github.com/twmb/franz-go/pkg/kadm v1.14.0
 	github.com/wso2/api-platform/common v0.0.0
-	github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine v0.0.0
+	github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine v0.0.0-00010101000000-000000000000
 	github.com/wso2/api-platform/sdk/core v0.2.12
-	github.com/wso2/gateway-controllers/policies/api-key-auth v1.0.1
-	github.com/wso2/gateway-controllers/policies/basic-auth v1.0.1
-	github.com/wso2/gateway-controllers/policies/set-headers v1.0.1
 	google.golang.org/grpc v1.79.3
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1

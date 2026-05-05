@@ -53,15 +53,21 @@ type Engine struct {
 }
 
 // New creates a new Engine instance with its own policy registry and executor.
-// The configPath points to a TOML configuration file containing policy_configurations
-// entries used to resolve ${config...} references in system parameters.
-// If configPath is empty, config resolution is skipped.
+// It seeds the private registry from the global singleton (populated by init() in
+// the generated plugin_registry.go) so policies registered via init() are available.
+// The config map provides values for ${config...} references in system parameters.
 func New(config map[string]interface{}) (*Engine, error) {
 	// Ensure policy engine metrics are initialized (safe for repeated calls).
 	metrics.Init()
 
+	// Seed the private registry from the global registry (populated by init() calls
+	// in the generated plugin_registry.go before main() runs).
+	global := registry.GetRegistry()
 	reg := &registry.PolicyRegistry{
-		Policies: make(map[string]*registry.PolicyEntry),
+		Policies: make(map[string]*registry.PolicyEntry, len(global.Policies)),
+	}
+	for key, entry := range global.Policies {
+		reg.Policies[key] = entry
 	}
 
 	if config != nil {
@@ -89,6 +95,14 @@ func New(config map[string]interface{}) (*Engine, error) {
 		chains:   make(map[string]*registry.PolicyChain),
 		tracer:   tracer,
 	}, nil
+}
+
+// RegisterPolicy registers a policy definition and factory in the global registry.
+// It is intended to be called from generated plugin_registry.go init() functions
+// so that policies are available when engine.New() seeds from the global registry.
+// Must be called before any Engine is created (i.e., from init() only).
+func RegisterPolicy(def *policy.PolicyDefinition, factory policy.PolicyFactory) error {
+	return registry.GetRegistry().Register(def, factory)
 }
 
 // RegisterPolicy registers a policy definition and factory in this engine's

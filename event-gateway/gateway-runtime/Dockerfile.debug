@@ -16,8 +16,8 @@
 # under the License.
 # --------------------------------------------------------------------
 
-# Event Gateway Runtime Dockerfile
-# Uses event-gateway-builder to compile the event-gateway binary with embedded policies
+# Event Gateway Runtime Dockerfile (Debug)
+# Builds the event-gateway binary with debug symbols and runs it under Delve.
 
 # Stage 1: Builder Base — compile the event-gateway-builder tool
 FROM --platform=$BUILDPLATFORM golang:1.26.2-bookworm AS builder-base
@@ -44,7 +44,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     -o /usr/local/bin/event-gateway-builder \
     ./cmd/builder
 
-# Stage 2: Policy Compilation — run event-gateway-builder to produce the event-gateway binary
+# Stage 2: Policy Compilation — run event-gateway-builder to produce the event-gateway binary (debug build)
 FROM builder-base AS policy-compiler
 
 ARG VERSION
@@ -56,11 +56,11 @@ ENV GIT_COMMIT=${GIT_COMMIT}
 ENV BUILD_DATE=${BUILD_DATE}
 ENV TARGETARCH=${TARGETARCH}
 
+# Install Delve debugger
+RUN go install github.com/go-delve/delve/cmd/dlv@latest
+
 # Copy sdk-core for go.mod replace directive
 COPY --from=sdk-core go.mod /api-platform/sdk/core/
-
-# Copy analytics go.mod for policy-engine replace directive
-COPY --from=analytics go.mod /api-platform/gateway/system-policies/analytics/
 
 # Download common dependencies (cached by go.mod/go.sum changes)
 COPY --from=common go.mod go.sum /api-platform/common/
@@ -84,7 +84,6 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 COPY . /api-platform/event-gateway/gateway-runtime/
 COPY --from=sdk-core . /api-platform/sdk/core
 COPY --from=common . /api-platform/common
-COPY --from=analytics . /api-platform/gateway/system-policies/analytics
 COPY --from=policy-engine . /api-platform/gateway/gateway-runtime/policy-engine
 COPY --from=target build.yaml /api-platform/event-gateway/build.yaml
 
@@ -92,38 +91,52 @@ RUN mkdir -p /api-platform/output
 
 WORKDIR /api-platform
 
-# Run event-gateway-builder to generate plugin registry and compile event-gateway binary
+# Run event-gateway-builder with debug flags:
+#   -gcflags "all=-N -l"  disables inlining and optimisations so Delve can step correctly
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     /usr/local/bin/event-gateway-builder \
         -build-file /api-platform/event-gateway/build.yaml \
         -gateway-src /api-platform/event-gateway/gateway-runtime \
-        -out-dir /api-platform/output
+        -out-dir /api-platform/output \
+        -gcflags "all=-N -l"
 
-# Stage 3: Minimal runtime image
-FROM alpine:3.22
+# Stage 3: Debug runtime image — includes Delve and the unoptimised binary
+FROM golang:1.26.2-bookworm
 
 ARG VERSION=unknown
 
-RUN apk add --no-cache ca-certificates bash tini && \
-    addgroup -S egw && adduser -S egw -G egw
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tini bash && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Delve
+RUN go install github.com/go-delve/delve/cmd/dlv@latest
 
 WORKDIR /app
 
 COPY --from=policy-compiler /api-platform/output/event-gateway/event-gateway /app/event-gateway
 COPY configs/config.toml /etc/event-gateway/config.toml
 COPY configs/channels.yaml /etc/event-gateway/channels.yaml
-COPY docker-entrypoint.sh /app/docker-entrypoint.sh
-RUN chmod +x /app/event-gateway /app/docker-entrypoint.sh
 
-USER egw
+RUN chmod +x /app/event-gateway
 
-EXPOSE 8080 8081 9002 9003
+EXPOSE 8080 8081 9002 9003 2345
 
 # Metadata labels
-LABEL org.opencontainers.image.title="API Platform Event Gateway Runtime"
-LABEL org.opencontainers.image.description="API Platform Event Gateway Runtime with compiled-in policies"
+LABEL org.opencontainers.image.title="API Platform Event Gateway Runtime (Debug)"
+LABEL org.opencontainers.image.description="API Platform Event Gateway Runtime with Delve remote debugger"
 LABEL org.opencontainers.image.vendor="WSO2"
 LABEL org.opencontainers.image.version="${VERSION}"
 
-ENTRYPOINT ["/sbin/tini", "--", "/app/docker-entrypoint.sh"]
+# Run Delve in headless DAP mode listening on port 2345, then launch the event-gateway binary.
+# --continue keeps the process running without waiting for a debugger to attach first.
+# Do NOT pass --api-version=2: that forces JSON-RPC and breaks VS Code's DAP connection.
+# Delve >= 1.7.3 serves DAP natively when --api-version is omitted.
+# In the golang base image GOPATH=/go so dlv lands at /go/bin/dlv.
+ENTRYPOINT ["/usr/bin/tini", "--", "/go/bin/dlv", \
+    "exec", "/app/event-gateway", \
+    "--headless", \
+    "--listen=:2345", \
+    "--accept-multiclient", \
+    "--", \
+    "-config", "/etc/event-gateway/config.toml"]
