@@ -92,5 +92,7 @@ keytool \
   -storepass "${password}" \
   -file "${cert_dir}/ca.crt"
 
+# Local dev: these files are shared read-only with the Kafka, Kafka UI, and runtime
+# containers via a Docker volume, so they must remain world-readable here.
 chmod 0644 "${cert_dir}/ca.crt"
-chmod 0600 "${cert_dir}/kafka.keystore.jks" "${cert_dir}/kafka.truststore.jks"
+chmod 0644 "${cert_dir}/kafka.keystore.jks" "${cert_dir}/kafka.truststore.jks"
