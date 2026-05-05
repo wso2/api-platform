@@ -64,8 +64,6 @@ This tells the Policy Engine to connect to the Python Executor over TCP instead 
 ### Step 2: Build the Gateway (one-time)
 
 ```bash
-cd gateway
-
 go run ./gateway-builder/cmd/builder \
   -build-file ./build.yaml \
   -system-build-lock ./system-policies/system-build-lock.yaml \
@@ -178,7 +176,7 @@ The executor binds to `localhost:9010` over TCP.
 
 You should see:
 
-```
+```text
 Python Executor starting (listen=localhost:9010, workers=4, ...)
 Starting Python Executor on localhost:9010 (mode=tcp)
 Loaded policy registry with 1 entries
@@ -237,7 +235,7 @@ APIP_GW_ANALYTICS_ACCESS__LOGS__SERVICE_MODE=tcp \
 
 The Policy Engine will connect to the Python Executor over TCP when the first Python policy is triggered. You should see:
 
-```
+```text
 Python executor bridge initialized  address=localhost:9010  mode=tcp  timeout=30s
 ```
 
@@ -246,7 +244,6 @@ Python executor bridge initialized  address=localhost:9010  mode=tcp  timeout=30
 Run the router in Docker Compose:
 
 ```bash
-cd gateway
 docker compose up gateway-runtime sample-backend -d
 docker compose logs -ft gateway-runtime sample-backend
 ```

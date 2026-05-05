@@ -23,6 +23,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -502,7 +503,7 @@ func Init(cfg config.PythonExecutorConfig) {
 		if host == "" {
 			host = "localhost"
 		}
-		address = fmt.Sprintf("%s:%d", host, cfg.Server.Port)
+		address = net.JoinHostPort(host, strconv.Itoa(cfg.Server.Port))
 		isTCP = true
 	}
 
