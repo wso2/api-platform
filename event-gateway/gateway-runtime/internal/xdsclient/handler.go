@@ -42,7 +42,15 @@ type BindingManager interface {
 
 // KafkaConfig holds local Kafka broker settings used as defaults.
 type KafkaConfig struct {
-	Brokers []string
+	Brokers       []string
+	TLS           bool
+	TLSCAFile     string
+	TLSCertFile   string
+	TLSKeyFile    string
+	TLSServerName string
+	SASLMechanism string
+	SASLUsername  string
+	SASLPassword  string
 }
 
 // EventChannelResource represents the decoded EventChannelConfig JSON payload.
@@ -258,7 +266,15 @@ func (h *Handler) resolveBrokerDriver(bd BrokerDriverEntry) binding.BrokerDriver
 	if len(cfg) == 0 {
 		// Use the event gateway's own Kafka brokers.
 		cfg = map[string]interface{}{
-			"brokers": h.kafkaConfig.Brokers,
+			"brokers":         h.kafkaConfig.Brokers,
+			"tls":             h.kafkaConfig.TLS,
+			"tls_ca_file":     h.kafkaConfig.TLSCAFile,
+			"tls_cert_file":   h.kafkaConfig.TLSCertFile,
+			"tls_key_file":    h.kafkaConfig.TLSKeyFile,
+			"tls_server_name": h.kafkaConfig.TLSServerName,
+			"sasl_mechanism":  h.kafkaConfig.SASLMechanism,
+			"sasl_username":   h.kafkaConfig.SASLUsername,
+			"sasl_password":   h.kafkaConfig.SASLPassword,
 		}
 	}
 
