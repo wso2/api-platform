@@ -132,12 +132,54 @@ func (e *KafkaBrokerDriver) EnsureCompactedTopic(ctx context.Context, topic stri
 	for _, t := range resp.Sorted() {
 		if t.Err != nil {
 			if isTopicAlreadyExistsErr(t.Err) {
+				if err := e.verifyCompactedTopic(ctx, t.Topic); err != nil {
+					return err
+				}
 				return nil
 			}
 			return fmt.Errorf("failed to create compacted topic %s: %w", t.Topic, t.Err)
 		}
 	}
 	return nil
+}
+
+func (e *KafkaBrokerDriver) verifyCompactedTopic(ctx context.Context, topic string) error {
+	configs, err := e.admin.DescribeTopicConfigs(ctx, topic)
+	if err != nil {
+		return fmt.Errorf("failed to describe compacted topic %s config: %w", topic, err)
+	}
+
+	config, err := configs.On(topic, nil)
+	if err != nil {
+		return fmt.Errorf("failed to load compacted topic %s config: %w", topic, err)
+	}
+	if config.Err != nil {
+		return fmt.Errorf("failed to describe compacted topic %s config: %w", topic, config.Err)
+	}
+	if !hasCleanupPolicy(config, "compact") {
+		return fmt.Errorf("existing topic %s is not compacted", topic)
+	}
+	return nil
+}
+
+func hasCleanupPolicy(config kadm.ResourceConfig, required string) bool {
+	required = strings.ToLower(strings.TrimSpace(required))
+	if required == "" {
+		return false
+	}
+
+	for _, entry := range config.Configs {
+		if entry.Key != "cleanup.policy" {
+			continue
+		}
+		for _, policy := range strings.Split(entry.MaybeValue(), ",") {
+			if strings.ToLower(strings.TrimSpace(policy)) == required {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // isTopicAlreadyExistsErr checks if the error indicates the topic already exists.

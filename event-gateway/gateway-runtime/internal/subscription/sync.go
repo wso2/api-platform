@@ -25,7 +25,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
 )
 
@@ -60,19 +59,14 @@ func (p *SyncProducer) PublishSubscription(_ context.Context, sub *Subscription)
 	}
 
 	key := syncKey(sub.Topic, sub.CallbackURL)
-	record := &kgo.Record{
-		Key:   []byte(key),
-		Value: value,
-		Topic: p.syncTopic,
-	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := p.driver.Publish(ctx, p.syncTopic, &connectors.Message{
-		Key:   record.Key,
-		Value: record.Value,
-		Topic: record.Topic,
+		Key:   []byte(key),
+		Value: value,
+		Topic: p.syncTopic,
 	}); err != nil {
 		slog.Error("Failed to publish subscription sync", "key", key, "error", err)
 		return fmt.Errorf("failed to publish subscription sync: %w", err)
