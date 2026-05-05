@@ -8,7 +8,7 @@ The Gateway Runtime is responsible for handling all API traffic. It consists of 
 
 Go policies are compiled directly into the Policy Engine binary at build time via the Gateway Builder. No additional process is involved at runtime.
 
-```
+```text
 API Consumer
      ↓  HTTP/HTTPS
   Router (Envoy Proxy)          ← xDS config from Gateway Controller (:18000)
@@ -23,7 +23,7 @@ API Consumer
 
 Python policies run in a separate executor process. The Policy Engine delegates to it over a local gRPC socket, keeping the Go runtime isolated from the Python interpreter.
 
-```
+```text
 API Consumer
      ↓  HTTP/HTTPS
   Router (Envoy Proxy)          ← xDS config from Gateway Controller (:18000)
@@ -108,40 +108,7 @@ make proto
 
 ## Running
 
-### Docker
-
-```bash
-docker run \
-  -p 8080:8080 \
-  -p 8443:8443 \
-  -p 9901:9901 \
-  -e GATEWAY_CONTROLLER_HOST=gateway-controller \
-  -e ROUTER_XDS_PORT=18000 \
-  -e POLICY_ENGINE_XDS_PORT=18001 \
-  wso2/gateway-runtime:latest
-```
-
-### Docker Compose (with Gateway Controller)
-
-```yaml
-services:
-  gateway-controller:
-    image: wso2/gateway-controller:latest
-    ports:
-      - "9090:9090"
-      - "18000:18000"
-      - "18001:18001"
-
-  gateway-runtime:
-    image: wso2/gateway-runtime:latest
-    ports:
-      - "8080:8080"
-      - "8443:8443"
-    environment:
-      GATEWAY_CONTROLLER_HOST: gateway-controller
-    depends_on:
-      - gateway-controller
-```
+See the [Gateway README](../README.md) for how to run the full gateway stack including the Gateway Controller and Gateway Runtime together.
 
 ## Configuration
 
@@ -190,7 +157,7 @@ docker run gateway-runtime --py.workers 8
 
 ### Project Structure
 
-```
+```text
 gateway-runtime/
 ├── Dockerfile                      # Multi-stage build
 ├── Makefile
@@ -210,17 +177,7 @@ gateway-runtime/
 
 ### Debug Mode
 
-The debug image starts the Policy Engine under the [delve](https://github.com/go-delve/delve) debugger, listening on port `2346` for remote connections.
-
-```bash
-# Build debug image
-make build-debug
-
-# Run debug image
-docker run -p 2346:2346 -p 8080:8080 wso2/gateway-runtime:debug
-```
-
-Connect your IDE to `localhost:2346` for remote debugging.
+See the [Gateway Debug Guide](https://github.com/wso2/api-platform/blob/main/gateway/DEBUG_GUIDE.md) for full instructions on remote and local debugging options.
 
 ### Writing a Custom Policy
 
