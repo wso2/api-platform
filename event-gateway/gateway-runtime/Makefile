@@ -33,8 +33,11 @@ help: ## Show this help message
 	@echo ''
 	@echo 'Build Targets:'
 	@echo '  make build                      - Build Docker image'
-	@echo '  make build-local                - Build event-gateway binary locally'
+	@echo '  make generate                   - Run event-gateway-builder locally to generate plugin_registry.go (required before build-local)'
+	@echo '  make build-local                - Build event-gateway binary locally (runs generate first)'
 	@echo '  make build-docker               - Build Docker image'
+	@echo '  make build-debug                - Build Docker image with Delve remote debugger (port 2345)'
+	@echo '  make debug-local                - Build locally with debug symbols and launch Delve on :2345'
 	@echo '  make build-and-push-multiarch   - Build and push Docker image for multiple architectures'
 	@echo ''
 	@echo 'Test Targets:'
@@ -46,39 +49,92 @@ help: ## Show this help message
 .PHONY: build
 build: build-docker ## Build Docker image
 
+.PHONY: generate
+generate: ## Run event-gateway-builder locally to generate plugin_registry.go with all policies from build.yaml
+	@echo "Generating plugin_registry.go from ../build.yaml..."
+	cd ../gateway-builder && go run ./cmd/builder \
+		-build-file ../build.yaml \
+		-gateway-src ../gateway-runtime \
+		-generate-only \
+		-log-format text
+	@echo "✓ plugin_registry.go generated — policies from build.yaml are now compiled in"
+
 .PHONY: build-local
-build-local: ## Build event-gateway binary
+build-local: generate ## Build event-gateway binary locally with all policies from build.yaml
 	mkdir -p bin
 	go build -o bin/$(BINARY_NAME) ./cmd/event-gateway/
+
+.PHONY: debug-local
+debug-local: generate ## Build locally with debug symbols and launch Delve on :2345 (attach via VS Code or dlv)
+	@command -v dlv >/dev/null 2>&1 || { echo "ERROR: dlv not found. Install with: go install github.com/go-delve/delve/cmd/dlv@latest"; exit 1; }
+	mkdir -p bin
+	go build -gcflags "all=-N -l" -o bin/$(BINARY_NAME)-debug ./cmd/event-gateway/
+	@echo "Starting Delve on :2345 — attach your debugger now"
+	dlv exec bin/$(BINARY_NAME)-debug \
+		--headless \
+		--listen=:2345 \
+		--accept-multiclient \
+		--continue \
+		-- -config configs/config.toml
 
 .PHONY: build-docker
 build-docker: ## Build Docker image
 	@echo "Building event-gateway-runtime Docker image ($(VERSION))..."
+	@mkdir -p target && cp ../build.yaml target/
 	docker buildx build \
 		--load \
 		--platform linux/$(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-context policy-engine=../../gateway/gateway-runtime/policy-engine \
+		--build-context analytics=../../gateway/system-policies/analytics \
+		--build-context gateway-builder=../gateway-builder \
+		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(IMAGE_NAME):$(VERSION) \
 		-f Dockerfile .
+	@rm -rf target
 	@echo "✓ Built $(IMAGE_NAME):$(VERSION)"
+
+.PHONY: build-debug
+build-debug: ## Build Docker image with Delve remote debugger (port 2345)
+	@echo "Building event-gateway-runtime debug Docker image ($(VERSION))..."
+	@mkdir -p target && cp ../build.yaml target/
+	docker buildx build \
+		--load \
+		--platform linux/$(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
+		--build-context sdk-core=../../sdk/core \
+		--build-context common=../../common \
+		--build-context policy-engine=../../gateway/gateway-runtime/policy-engine \
+		--build-context analytics=../../gateway/system-policies/analytics \
+		--build-context gateway-builder=../gateway-builder \
+		--build-context target=target \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		-t $(IMAGE_NAME)-debug:$(VERSION) \
+		-f Dockerfile.debug .
+	@rm -rf target
+	@echo "✓ Built $(IMAGE_NAME)-debug:$(VERSION) (Delve on :2345)"
 
 .PHONY: build-and-push-multiarch
 build-and-push-multiarch: ## Build and push Docker image for multiple architectures
 	@echo "Building and pushing multi-arch event-gateway-runtime Docker image ($(VERSION))..."
+	@mkdir -p target && cp ../build.yaml target/
 	docker buildx build \
 		--push \
 		--platform linux/amd64,linux/arm64 \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-context policy-engine=../../gateway/gateway-runtime/policy-engine \
+		--build-context analytics=../../gateway/system-policies/analytics \
+		--build-context gateway-builder=../gateway-builder \
+		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(IMAGE_NAME):$(VERSION) \
 		-f Dockerfile .
+	@rm -rf target
 	@echo "✓ Built and pushed $(IMAGE_NAME):$(VERSION) for linux/amd64,linux/arm64"
 
 .PHONY: test

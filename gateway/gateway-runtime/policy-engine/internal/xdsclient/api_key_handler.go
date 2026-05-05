@@ -20,17 +20,13 @@ package xdsclient
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/wso2/api-platform/common/apikey"
+	pkgapikey "github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/pkg/apikey"
 	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // APIKeyOperationHandler handles API key operations received via xDS
@@ -59,32 +55,12 @@ func (h *APIKeyOperationHandler) HandleAPIKeyOperation(ctx context.Context, reso
 			continue
 		}
 
-		// Unmarshal google.protobuf.Struct from the Any
-		// The xDS server double-wraps: res.Value contains serialized Any,
-		// which in turn contains the serialized Struct
-		innerAny := &anypb.Any{}
-		if err := proto.Unmarshal(resource.Value, innerAny); err != nil {
-			return fmt.Errorf("failed to unmarshal inner Any from resource: %w", err)
-		}
-
-		// Now unmarshal the Struct from the inner Any's Value
-		apiKeyStruct := &structpb.Struct{}
-		if err := proto.Unmarshal(innerAny.Value, apiKeyStruct); err != nil {
-			return fmt.Errorf("failed to unmarshal api keys struct from inner Any: %w", err)
-		}
-
-		// Convert Struct to JSON then to StoredPolicyConfig
-		jsonBytes, err := protojson.Marshal(apiKeyStruct)
+		apiKeyState, err := pkgapikey.DecodeAPIKeyStateResource(resource)
 		if err != nil {
-			return fmt.Errorf("failed to marshal api keys struct to JSON: %w", err)
-		}
-
-		var apiKeyState APIKeyStateResource
-		if err := json.Unmarshal(jsonBytes, &apiKeyState); err != nil {
-			h.logger.Error("Failed to unmarshal API key state",
+			h.logger.Error("Failed to decode API key state",
 				"error", err,
 				"resource_name", resourceName)
-			continue
+			return fmt.Errorf("failed to unmarshal inner Any from resource %s: %w", resourceName, err)
 		}
 
 		h.logger.Info("Processing API key state",
@@ -200,7 +176,7 @@ func (h *APIKeyOperationHandler) handleRemoveByAPIOperation(operation policyengi
 }
 
 // replaceAllAPIKeys replaces all API keys with the new state (state-of-the-world approach)
-func (h *APIKeyOperationHandler) replaceAllAPIKeys(apiKeyDataList []APIKeyData) error {
+func (h *APIKeyOperationHandler) replaceAllAPIKeys(apiKeyDataList []pkgapikey.APIKeyData) error {
 	h.logger.Info("Replacing all API keys with new state", "api_key_count", len(apiKeyDataList))
 
 	// First, clear all existing API keys
@@ -245,28 +221,8 @@ func (h *APIKeyOperationHandler) replaceAllAPIKeys(apiKeyDataList []APIKeyData) 
 	return nil
 }
 
-// APIKeyStateResource represents the complete state of API keys for the policy engine
-type APIKeyStateResource struct {
-	APIKeys   []APIKeyData `json:"apiKeys"`
-	Version   int64        `json:"version"`
-	Timestamp int64        `json:"timestamp"`
-}
+// APIKeyStateResource is an alias for the shared type from pkg/apikey.
+type APIKeyStateResource = pkgapikey.APIKeyStateResource
 
-// APIKeyData represents an API key in the state resource
-type APIKeyData struct {
-	ID              string     `json:"id"`
-	Name            string     `json:"name"`
-	APIKey          string     `json:"apiKey"`
-	APIId           string     `json:"apiId"`
-	ApplicationID   string     `json:"applicationId,omitempty"`
-	ApplicationName string     `json:"applicationName,omitempty"`
-	Operations      string     `json:"operations"`
-	Status          string     `json:"status"`
-	CreatedAt       time.Time  `json:"createdAt"`
-	CreatedBy       string     `json:"createdBy"`
-	UpdatedAt       time.Time  `json:"updatedAt"`
-	ExpiresAt       *time.Time `json:"expiresAt"`
-	Source          string     `json:"source"` // "local" | "external"
-	Issuer          *string    `json:"issuer,omitempty"`
-	AllowedTargets  string     `json:"allowedTargets"`
-}
+// APIKeyData is an alias for the shared type from pkg/apikey.
+type APIKeyData = pkgapikey.APIKeyData

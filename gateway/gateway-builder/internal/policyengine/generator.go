@@ -73,6 +73,9 @@ func GenerateCode(srcDir string, policies []*types.DiscoveredPolicy, outputDir s
 	}
 
 	registryPath := filepath.Join(mainPkgDir, "plugin_registry.go")
+	slog.Info("Writing plugin_registry.go",
+		"path", registryPath,
+		"phase", "generation")
 	if err := os.WriteFile(registryPath, []byte(registryCode), 0600); err != nil {
 		return errors.NewGenerationError("failed to write plugin_registry.go", err)
 	}

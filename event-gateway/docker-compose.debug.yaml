@@ -1,0 +1,53 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+#
+# Debug overlay for the event-gateway-runtime service.
+#
+# Usage (combine with docker-compose.dev.yaml):
+#   cd event-gateway
+#   docker compose -f docker-compose.dev.yaml -f docker-compose.debug.yaml up -d
+#
+# Then attach VS Code (or any Delve client) to localhost:2345.
+#
+# Before starting, build the debug image from gateway-runtime/:
+#   make -C gateway-runtime build-debug
+#
+# VS Code launch.json example:
+#   {
+#     "name": "Event Gateway Remote Debug",
+#     "type": "go",
+#     "request": "attach",
+#     "mode": "remote",
+#     "remotePath": "/api-platform/event-gateway/gateway-runtime",
+#     "port": 2345,
+#     "host": "127.0.0.1"
+#   }
+
+services:
+  event-gateway:
+    # Override with the debug image built by `make -C gateway-runtime build-debug`
+    image: ghcr.io/wso2/api-platform/event-gateway-runtime-debug:0.6.0-SNAPSHOT
+    # Delve manages the entrypoint; clear the base image command override if any
+    command: []
+    ports:
+      - "2345:2345"   # Delve remote debugger
+    # Allow Delve to use ptrace (required for process attach inside the container)
+    security_opt:
+      - seccomp:unconfined
+    cap_add:
+      - SYS_PTRACE

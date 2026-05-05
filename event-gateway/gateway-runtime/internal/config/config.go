@@ -160,8 +160,11 @@ func Load(path string) (*Config, map[string]interface{}, error) {
 		return nil, nil, err
 	}
 
-	// Extract the raw map for policy_configurations (used for ${config} resolution)
-	rawConfig := k.All()
+	// Extract the raw map for policy_configurations (used for ${config} resolution).
+	// k.Raw() returns a nested map[string]interface{} which is what the policy engine's
+	// SetConfig/config resolver expects. k.All() returns a flat dot-separated map and
+	// would cause ${config.policy_configurations.*} references to fail silently.
+	rawConfig := k.Raw()
 
 	slog.Info("Configuration loaded",
 		"websub_enabled", cfg.Server.WebSubEnabled,
