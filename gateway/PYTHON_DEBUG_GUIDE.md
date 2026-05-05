@@ -137,7 +137,7 @@ services:
 > ```
 > Then apply it to the affected steps:
 > - **Step 4:** Set `GATEWAY_CONTROLLER_HOST=$HOST_IP` instead of `host.docker.internal`
-> - **Step 5:** Add `APIP_GW_ROUTER_POLICY__ENGINE_HOST=$HOST_IP` to the controller env vars
+> - **Step 5:** Replace `APIP_GW_ROUTER_POLICY__ENGINE_HOST=host.docker.internal` with `$HOST_IP` in the controller env vars
 > - **Step 8:** Start the router with `GATEWAY_CONTROLLER_HOST=$HOST_IP docker compose up gateway-runtime sample-backend -d`
 
 ### Step 5: Start the Gateway Controller
@@ -157,6 +157,7 @@ APIP_GW_ROUTER_DOWNSTREAM__TLS_CERT__PATH=./gateway-controller/listener-certs/de
 APIP_GW_ROUTER_DOWNSTREAM__TLS_KEY__PATH=./gateway-controller/listener-certs/default-listener.key \
 APIP_GW_ROUTER_LUA_REQUEST__TRANSFORMATION_SCRIPT__PATH=./gateway-controller/lua/request_transformation.lua \
 APIP_GW_ROUTER_POLICY__ENGINE_MODE=tcp \
+APIP_GW_ROUTER_POLICY__ENGINE_HOST=host.docker.internal \
 APIP_GW_ANALYTICS_GRPC__EVENT__SERVER_MODE=tcp \
   go run ./gateway-controller/cmd/controller \
     -config ./configs/config.toml
@@ -255,7 +256,7 @@ docker compose logs -ft gateway-runtime sample-backend
 ```bash
 # Deploy an API with a Python policy (e.g., prompt-compressor)
 curl -X POST http://localhost:9090/api/management/v0.9/rest-apis \
-  -u admin:admin \
+  -u "<USERNAME>:<PASSWORD>" \
   -H "Content-Type: application/yaml" \
   --data-binary @path/to/api.yaml
 

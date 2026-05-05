@@ -153,6 +153,9 @@ type PythonExecutorServerConfig struct {
 
 	// Host is the TCP host for the Python executor (TCP mode only, default: "localhost")
 	Host string `koanf:"host"`
+
+	// Path is the Unix Domain Socket path (UDS mode only)
+	Path string `koanf:"path"`
 }
 
 // AdminConfig holds admin HTTP server configuration
@@ -399,6 +402,9 @@ func (c *Config) Validate() error {
 	switch c.PythonExecutor.Server.Mode {
 	case "uds", "":
 	case "tcp":
+		if c.PythonExecutor.Server.Host == "" {
+			return fmt.Errorf("invalid python_executor.server.host: must be non-empty when mode = 'tcp'")
+		}
 		if c.PythonExecutor.Server.Port <= 0 || c.PythonExecutor.Server.Port > 65535 {
 			return fmt.Errorf("invalid python_executor.server.port: %d (must be 1-65535)", c.PythonExecutor.Server.Port)
 		}

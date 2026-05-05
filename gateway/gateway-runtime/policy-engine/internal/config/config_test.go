@@ -212,6 +212,106 @@ func TestValidate_ServerMode(t *testing.T) {
 	}
 }
 
+// TestValidate_PythonExecutorConfig tests validation rules for PythonExecutorConfig
+func TestValidate_PythonExecutorConfig(t *testing.T) {
+	tests := []struct {
+		name      string
+		mode      string
+		host      string
+		port      int
+		timeout   time.Duration
+		expectErr bool
+		errMsg    string
+	}{
+		{
+			name:      "UDS mode default (empty string)",
+			mode:      "",
+			timeout:   30 * time.Second,
+			expectErr: false,
+		},
+		{
+			name:      "UDS mode explicit",
+			mode:      "uds",
+			timeout:   30 * time.Second,
+			expectErr: false,
+		},
+		{
+			name:      "TCP mode with valid port and host",
+			mode:      "tcp",
+			host:      "localhost",
+			port:      9010,
+			timeout:   30 * time.Second,
+			expectErr: false,
+		},
+		{
+			name:      "TCP mode with empty host",
+			mode:      "tcp",
+			host:      "",
+			port:      9010,
+			timeout:   30 * time.Second,
+			expectErr: true,
+			errMsg:    "invalid python_executor.server.host: must be non-empty when mode = 'tcp'",
+		},
+		{
+			name:      "TCP mode with invalid port - zero",
+			mode:      "tcp",
+			host:      "localhost",
+			port:      0,
+			timeout:   30 * time.Second,
+			expectErr: true,
+			errMsg:    "invalid python_executor.server.port",
+		},
+		{
+			name:      "TCP mode with invalid port - too high",
+			mode:      "tcp",
+			host:      "localhost",
+			port:      70000,
+			timeout:   30 * time.Second,
+			expectErr: true,
+			errMsg:    "invalid python_executor.server.port",
+		},
+		{
+			name:      "invalid mode",
+			mode:      "invalid",
+			timeout:   30 * time.Second,
+			expectErr: true,
+			errMsg:    "python_executor.server.mode must be 'uds' or 'tcp'",
+		},
+		{
+			name:      "invalid timeout - zero",
+			mode:      "uds",
+			timeout:   0,
+			expectErr: true,
+			errMsg:    "python_executor.timeout must be positive",
+		},
+		{
+			name:      "invalid timeout - negative",
+			mode:      "uds",
+			timeout:   -1 * time.Second,
+			expectErr: true,
+			errMsg:    "python_executor.timeout must be positive",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.PythonExecutor.Server.Mode = tt.mode
+			cfg.PythonExecutor.Server.Host = tt.host
+			cfg.PythonExecutor.Server.Port = tt.port
+			cfg.PythonExecutor.Timeout = tt.timeout
+
+			err := cfg.Validate()
+			if tt.expectErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errMsg)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 // TestValidate_UDS_PortConflict tests that UDS mode skips port conflict checks
 func TestValidate_UDS_PortConflict(t *testing.T) {
 	t.Run("UDS mode - admin port conflict with extproc port ignored", func(t *testing.T) {

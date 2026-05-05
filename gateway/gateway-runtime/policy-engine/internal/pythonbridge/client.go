@@ -478,6 +478,8 @@ var (
 	pythonExecutorTimeout = 30 * time.Second
 	globalStreamManager   *StreamManager
 	streamManagerOnce     sync.Once
+	configuredAddress     = DefaultSocketPath
+	configuredIsTCP       = false
 )
 
 // Init configures the Python executor bridge from the loaded configuration.
@@ -485,7 +487,10 @@ var (
 func Init(cfg config.PythonExecutorConfig) {
 	pythonExecutorTimeout = cfg.Timeout
 
-	address := DefaultSocketPath
+	address := cfg.Server.Path
+	if address == "" {
+		address = DefaultSocketPath
+	}
 	isTCP := false
 
 	mode := cfg.Server.Mode
@@ -501,8 +506,11 @@ func Init(cfg config.PythonExecutorConfig) {
 		isTCP = true
 	}
 
+	configuredAddress = address
+	configuredIsTCP = isTCP
+
 	streamManagerOnce.Do(func() {
-		globalStreamManager = NewStreamManager(address, isTCP)
+		globalStreamManager = NewStreamManager(configuredAddress, configuredIsTCP)
 	})
 
 	slog.Info("Python executor bridge initialized",
@@ -515,14 +523,14 @@ func Init(cfg config.PythonExecutorConfig) {
 // GetStreamManager returns the singleton StreamManager instance.
 func GetStreamManager() *StreamManager {
 	streamManagerOnce.Do(func() {
-		globalStreamManager = NewStreamManager(DefaultSocketPath, false)
+		globalStreamManager = NewStreamManager(configuredAddress, configuredIsTCP)
 	})
 	return globalStreamManager
 }
 
 // IsAvailable reports whether a Python executor is configured.
 // Returns true if TCP mode is set (always considered available) or the
-// default UDS socket exists on disk.
+// configured UDS socket exists on disk.
 func IsAvailable(cfg config.PythonExecutorConfig) bool {
 	mode := cfg.Server.Mode
 	if mode == "" {
@@ -531,6 +539,10 @@ func IsAvailable(cfg config.PythonExecutorConfig) bool {
 	if mode == "tcp" {
 		return true
 	}
-	_, err := os.Stat(DefaultSocketPath)
+	address := cfg.Server.Path
+	if address == "" {
+		address = DefaultSocketPath
+	}
+	_, err := os.Stat(address)
 	return err == nil
 }
