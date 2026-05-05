@@ -136,8 +136,6 @@ func TestJoinNormalizedTopic_NormalizesUnsupportedCharacters(t *testing.T) {
 		t.Fatalf("JoinNormalizedTopic() = %q, want %q", got, want)
 	}
 }
-	}
-}
 
 func TestWebSubSubscriptionSyncTopic_UsesConfigOverrideWhenSet(t *testing.T) {
 	rt := &Runtime{
