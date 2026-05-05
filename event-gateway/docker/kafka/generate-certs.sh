@@ -92,4 +92,5 @@ keytool \
   -storepass "${password}" \
   -file "${cert_dir}/ca.crt"
 
-chmod 0644 "${cert_dir}/ca.crt" "${cert_dir}/kafka.keystore.jks" "${cert_dir}/kafka.truststore.jks"
+chmod 0644 "${cert_dir}/ca.crt"
+chmod 0600 "${cert_dir}/kafka.keystore.jks" "${cert_dir}/kafka.truststore.jks"
