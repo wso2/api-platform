@@ -186,6 +186,104 @@ func (h *ApplicationHandler) DeleteApplication(c *gin.Context) {
 	c.JSON(http.StatusNoContent, nil)
 }
 
+func (h *ApplicationHandler) ListApplicationAssociations(c *gin.Context) {
+	orgID, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		return
+	}
+
+	appID := c.Param("appId")
+	if strings.TrimSpace(appID) == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		return
+	}
+
+	limit := 20
+	if limitStr := strings.TrimSpace(c.Query("limit")); limitStr != "" {
+		parsedLimit, err := strconv.Atoi(limitStr)
+		if err == nil && parsedLimit > 0 {
+			if parsedLimit > 100 {
+				parsedLimit = 100
+			}
+			limit = parsedLimit
+		}
+	}
+
+	offset := 0
+	if offsetStr := strings.TrimSpace(c.Query("offset")); offsetStr != "" {
+		parsedOffset, err := strconv.Atoi(offsetStr)
+		if err == nil && parsedOffset >= 0 {
+			offset = parsedOffset
+		}
+	}
+
+	associations, err := h.applicationService.ListApplicationAssociations(appID, orgID, limit, offset)
+	if err != nil {
+		h.writeApplicationError(c, err, "Failed to list application associations")
+		return
+	}
+
+	c.JSON(http.StatusOK, associations)
+}
+
+func (h *ApplicationHandler) AddApplicationAssociations(c *gin.Context) {
+	orgID, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		return
+	}
+
+	appID := c.Param("appId")
+	if strings.TrimSpace(appID) == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		return
+	}
+
+	var req service.AddApplicationAssociationsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.NewValidationErrorResponse(c, err)
+		return
+	}
+	if len(req.Associations) == 0 {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "At least one association is required"))
+		return
+	}
+
+	associations, err := h.applicationService.AddApplicationAssociations(appID, &req, orgID)
+	if err != nil {
+		h.writeApplicationError(c, err, "Failed to add application associations")
+		return
+	}
+
+	c.JSON(http.StatusOK, associations)
+}
+
+func (h *ApplicationHandler) RemoveApplicationAssociation(c *gin.Context) {
+	orgID, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		return
+	}
+
+	appID := c.Param("appId")
+	associationID := c.Param("associationId")
+	if strings.TrimSpace(appID) == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		return
+	}
+	if strings.TrimSpace(associationID) == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Association ID is required"))
+		return
+	}
+
+	if err := h.applicationService.RemoveApplicationAssociation(appID, associationID, orgID); err != nil {
+		h.writeApplicationError(c, err, "Failed to remove application association")
+		return
+	}
+
+	c.JSON(http.StatusNoContent, nil)
+}
 func (h *ApplicationHandler) ListApplicationAPIKeys(c *gin.Context) {
 	orgID, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -221,6 +319,52 @@ func (h *ApplicationHandler) ListApplicationAPIKeys(c *gin.Context) {
 	keys, err := h.applicationService.ListMappedAPIKeys(appID, orgID, limit, offset)
 	if err != nil {
 		h.writeApplicationError(c, err, "Failed to list mapped API keys")
+		return
+	}
+
+	c.JSON(http.StatusOK, keys)
+}
+
+func (h *ApplicationHandler) ListApplicationAssociationAPIKeys(c *gin.Context) {
+	orgID, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		return
+	}
+
+	appID := c.Param("appId")
+	associationID := c.Param("associationId")
+	if strings.TrimSpace(appID) == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Application ID is required"))
+		return
+	}
+	if strings.TrimSpace(associationID) == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Association ID is required"))
+		return
+	}
+
+	limit := 20
+	if limitStr := strings.TrimSpace(c.Query("limit")); limitStr != "" {
+		parsedLimit, err := strconv.Atoi(limitStr)
+		if err == nil && parsedLimit > 0 {
+			if parsedLimit > 100 {
+				parsedLimit = 100
+			}
+			limit = parsedLimit
+		}
+	}
+
+	offset := 0
+	if offsetStr := strings.TrimSpace(c.Query("offset")); offsetStr != "" {
+		parsedOffset, err := strconv.Atoi(offsetStr)
+		if err == nil && parsedOffset >= 0 {
+			offset = parsedOffset
+		}
+	}
+
+	keys, err := h.applicationService.ListMappedAPIKeysForAssociation(appID, associationID, orgID, limit, offset)
+	if err != nil {
+		h.writeApplicationError(c, err, "Failed to list mapped API keys for association")
 		return
 	}
 
@@ -304,6 +448,10 @@ func (h *ApplicationHandler) RegisterRoutes(r *gin.Engine) {
 		applicationGroup.GET("/:appId/api-keys", h.ListApplicationAPIKeys)
 		applicationGroup.POST("/:appId/api-keys", h.AddApplicationAPIKeys)
 		applicationGroup.DELETE("/:appId/api-keys/:keyId", h.RemoveApplicationAPIKey)
+		applicationGroup.GET("/:appId/associations", h.ListApplicationAssociations)
+		applicationGroup.POST("/:appId/associations", h.AddApplicationAssociations)
+		applicationGroup.GET("/:appId/associations/:associationId/api-keys", h.ListApplicationAssociationAPIKeys)
+		applicationGroup.DELETE("/:appId/associations/:associationId", h.RemoveApplicationAssociation)
 	}
 }
 
@@ -357,6 +505,12 @@ func (h *ApplicationHandler) writeApplicationError(c *gin.Context, err error, fa
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid application id"))
 	case errors.Is(err, constants.ErrInvalidAPIKey):
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid API key id"))
+	case errors.Is(err, constants.ErrArtifactNotFound):
+		c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Association target not found"))
+	case errors.Is(err, constants.ErrArtifactInvalidKind):
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid association kind. Only LlmProvider and LlmProxy are supported"))
+	case errors.Is(err, constants.ErrInvalidInput):
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid application association input"))
 	default:
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", fallback))
 	}

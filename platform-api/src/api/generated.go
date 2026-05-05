@@ -29,6 +29,12 @@ const (
 	APIKeySecurityInQuery  APIKeySecurityIn = "query"
 )
 
+// Defines values for ApplicationAssociationSelectorKind.
+const (
+	ApplicationAssociationSelectorKindLlmProvider ApplicationAssociationSelectorKind = "LlmProvider"
+	ApplicationAssociationSelectorKindLlmProxy    ApplicationAssociationSelectorKind = "LlmProxy"
+)
+
 // Defines values for ApplicationType.
 const (
 	Genai ApplicationType = "genai"
@@ -483,9 +489,9 @@ const (
 
 // Defines values for ListUserAPIKeysParamsType.
 const (
-	ListUserAPIKeysParamsTypeLlmProvider ListUserAPIKeysParamsType = "LlmProvider"
-	ListUserAPIKeysParamsTypeLlmProxy    ListUserAPIKeysParamsType = "LlmProxy"
-	ListUserAPIKeysParamsTypeRestApi     ListUserAPIKeysParamsType = "RestApi"
+	LlmProvider ListUserAPIKeysParamsType = "LlmProvider"
+	LlmProxy    ListUserAPIKeysParamsType = "LlmProxy"
+	RestApi     ListUserAPIKeysParamsType = "RestApi"
 )
 
 // Defines values for GetDeploymentsParamsStatus.
@@ -573,6 +579,12 @@ type AddApplicationAPIKeysRequest struct {
 	ApiKeys []APIKeyMappingSelector `binding:"required" json:"apiKeys" yaml:"apiKeys"`
 }
 
+// AddApplicationAssociationsRequest defines model for AddApplicationAssociationsRequest.
+type AddApplicationAssociationsRequest struct {
+	// Associations List of association selectors to add to the application
+	Associations []ApplicationAssociationSelector `binding:"required" json:"associations" yaml:"associations"`
+}
+
 // AddGatewayToRESTAPIRequest defines model for AddGatewayToRESTAPIRequest.
 type AddGatewayToRESTAPIRequest struct {
 	GatewayId openapi_types.UUID `binding:"required" json:"gatewayId" yaml:"gatewayId"`
@@ -601,6 +613,50 @@ type Application struct {
 	Type      ApplicationType `json:"type" yaml:"type"`
 	UpdatedAt *time.Time      `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 }
+
+// ApplicationAssociation defines model for ApplicationAssociation.
+type ApplicationAssociation struct {
+	// CreatedAt Timestamp when the association was created
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// Id Handle/ID of the associated target
+	Id string `binding:"required" json:"id" yaml:"id"`
+
+	// Kind Type of associated target
+	Kind string `binding:"required" json:"kind" yaml:"kind"`
+
+	// Name Display name of the associated target
+	Name string `binding:"required" json:"name" yaml:"name"`
+
+	// UpdatedAt Timestamp when the association was updated
+	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// Uuid UUID of the associated target
+	Uuid openapi_types.UUID `binding:"required" json:"uuid" yaml:"uuid"`
+
+	// Version Version of the associated target
+	Version string `binding:"required" json:"version" yaml:"version"`
+}
+
+// ApplicationAssociationListResponse defines model for ApplicationAssociationListResponse.
+type ApplicationAssociationListResponse struct {
+	// Count Number of items in current response
+	Count      int                      `binding:"required" json:"count" yaml:"count"`
+	List       []ApplicationAssociation `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination               `json:"pagination" yaml:"pagination"`
+}
+
+// ApplicationAssociationSelector defines model for ApplicationAssociationSelector.
+type ApplicationAssociationSelector struct {
+	// Id ID or handle of the association target
+	Id string `binding:"required" json:"id" yaml:"id"`
+
+	// Kind Type of the association target
+	Kind ApplicationAssociationSelectorKind `binding:"required" json:"kind" yaml:"kind"`
+}
+
+// ApplicationAssociationSelectorKind Type of the association target
+type ApplicationAssociationSelectorKind string
 
 // ApplicationListResponse defines model for ApplicationListResponse.
 type ApplicationListResponse struct {
@@ -3097,6 +3153,9 @@ type ApiId = string
 // AppId defines model for appId.
 type AppId = string
 
+// AssociationId defines model for associationId.
+type AssociationId = string
+
 // DeploymentId defines model for deploymentId.
 type DeploymentId = openapi_types.UUID
 
@@ -3164,6 +3223,24 @@ type ListApplicationAPIKeysParams struct {
 type RemoveApplicationAPIKeyParams struct {
 	// EntityID **Entity ID** of the artifact associated with the API key mapping.
 	EntityID EntityIDQ `form:"entityID" json:"entityID" yaml:"entityID"`
+}
+
+// ListApplicationAssociationsParams defines parameters for ListApplicationAssociations.
+type ListApplicationAssociationsParams struct {
+	// Limit Maximum number of associations to return
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Number of associations to skip
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
+
+// ListApplicationAssociationAPIKeysParams defines parameters for ListApplicationAssociationAPIKeys.
+type ListApplicationAssociationAPIKeysParams struct {
+	// Limit Maximum number of mapped API keys to return
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+
+	// Offset Number of mapped API keys to skip
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
 }
 
 // ListDevPortalsParams defines parameters for ListDevPortals.
@@ -3498,6 +3575,9 @@ type UpdateApplicationJSONRequestBody = UpdateApplicationRequest
 
 // AddApplicationAPIKeysJSONRequestBody defines body for AddApplicationAPIKeys for application/json ContentType.
 type AddApplicationAPIKeysJSONRequestBody = AddApplicationAPIKeysRequest
+
+// AddApplicationAssociationsJSONRequestBody defines body for AddApplicationAssociations for application/json ContentType.
+type AddApplicationAssociationsJSONRequestBody = AddApplicationAssociationsRequest
 
 // CreateDevPortalJSONRequestBody defines body for CreateDevPortal for application/json ContentType.
 type CreateDevPortalJSONRequestBody = CreateDevPortalRequest

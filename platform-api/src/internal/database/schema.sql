@@ -391,6 +391,17 @@ CREATE TABLE IF NOT EXISTS application_api_keys (
     FOREIGN KEY (api_key_id) REFERENCES api_keys(uuid) ON DELETE CASCADE
 );
 
+-- Application to artifacts mapping table
+CREATE TABLE IF NOT EXISTS application_artifacts (
+    application_uuid VARCHAR(40) NOT NULL,
+    artifact_uuid VARCHAR(40) NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (application_uuid, artifact_uuid),
+    FOREIGN KEY (application_uuid) REFERENCES applications(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE
+);
+
 -- Indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_projects_organization_id ON projects(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_rest_apis_project_id ON rest_apis(project_uuid);
@@ -428,3 +439,5 @@ CREATE INDEX IF NOT EXISTS idx_applications_name_project ON applications(name, p
 CREATE INDEX IF NOT EXISTS idx_applications_handle_org ON applications(handle, organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_application_api_keys_app_id ON application_api_keys(application_uuid);
 CREATE INDEX IF NOT EXISTS idx_application_api_keys_key_id ON application_api_keys(api_key_id);
+CREATE INDEX IF NOT EXISTS idx_application_artifacts_app_id ON application_artifacts(application_uuid);
+CREATE INDEX IF NOT EXISTS idx_application_artifacts_artifact_id ON application_artifacts(artifact_uuid);

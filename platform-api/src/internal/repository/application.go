@@ -20,8 +20,13 @@ package repository
 import (
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+	sqlite3 "github.com/mattn/go-sqlite3"
+
+	"platform-api/src/internal/constants"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/model"
 )
@@ -85,23 +90,23 @@ func (r *ApplicationRepo) GetApplicationByIDOrHandle(appIDOrHandle, orgID string
 	return app, err
 }
 
-func (r *ApplicationRepo) GetArtifactByUUID(artifactUUID, orgID string) (*model.Artifact, error) {
+func (r *ApplicationRepo) GetAssociationTargetByUUID(targetUUID, orgID string) (*model.Artifact, error) {
 	row := r.db.QueryRow(r.db.Rebind(`
 		SELECT uuid, handle, name, version, kind, organization_uuid, created_at, updated_at
 		FROM artifacts
 		WHERE uuid = ? AND organization_uuid = ?
-	`), artifactUUID, orgID)
+	`), targetUUID, orgID)
 
-	artifact := &model.Artifact{}
+	target := &model.Artifact{}
 	err := row.Scan(
-		&artifact.UUID,
-		&artifact.Handle,
-		&artifact.Name,
-		&artifact.Version,
-		&artifact.Kind,
-		&artifact.OrganizationUUID,
-		&artifact.CreatedAt,
-		&artifact.UpdatedAt,
+		&target.UUID,
+		&target.Handle,
+		&target.Name,
+		&target.Version,
+		&target.Kind,
+		&target.OrganizationUUID,
+		&target.CreatedAt,
+		&target.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -110,7 +115,87 @@ func (r *ApplicationRepo) GetArtifactByUUID(artifactUUID, orgID string) (*model.
 		return nil, err
 	}
 
-	return artifact, nil
+	return target, nil
+}
+
+func (r *ApplicationRepo) GetAssociationTargetByIDOrHandle(targetIDOrHandle, orgID string) (*model.Artifact, error) {
+	row := r.db.QueryRow(r.db.Rebind(`
+		SELECT uuid, handle, name, version, kind, organization_uuid, created_at, updated_at
+		FROM artifacts
+		WHERE organization_uuid = ? AND (uuid = ? OR handle = ?)
+		ORDER BY CASE WHEN uuid = ? THEN 0 ELSE 1 END
+		LIMIT 1
+	`), orgID, targetIDOrHandle, targetIDOrHandle, targetIDOrHandle)
+
+	target := &model.Artifact{}
+	err := row.Scan(
+		&target.UUID,
+		&target.Handle,
+		&target.Name,
+		&target.Version,
+		&target.Kind,
+		&target.OrganizationUUID,
+		&target.CreatedAt,
+		&target.UpdatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return target, nil
+}
+
+func (r *ApplicationRepo) GetAssociationTargetByIDOrHandleAndKind(targetIDOrHandle, kind, orgID string) (*model.Artifact, error) {
+	row := r.db.QueryRow(r.db.Rebind(`
+		SELECT uuid, handle, name, version, kind, organization_uuid, created_at, updated_at
+		FROM artifacts
+		WHERE organization_uuid = ? AND kind = ? AND (uuid = ? OR handle = ?)
+		ORDER BY CASE WHEN uuid = ? THEN 0 ELSE 1 END
+		LIMIT 1
+	`), orgID, kind, targetIDOrHandle, targetIDOrHandle, targetIDOrHandle)
+
+	target := &model.Artifact{}
+	err := row.Scan(
+		&target.UUID,
+		&target.Handle,
+		&target.Name,
+		&target.Version,
+		&target.Kind,
+		&target.OrganizationUUID,
+		&target.CreatedAt,
+		&target.UpdatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return target, nil
+}
+
+func (r *ApplicationRepo) GetLLMProxyProjectUUID(targetUUID, orgID string) (string, error) {
+	row := r.db.QueryRow(r.db.Rebind(`
+		SELECT p.project_uuid
+		FROM llm_proxies p
+		INNER JOIN artifacts a ON a.uuid = p.uuid
+		WHERE a.uuid = ? AND a.organization_uuid = ? AND a.kind = ?
+	`), targetUUID, orgID, constants.LLMProxy)
+
+	var projectUUID string
+	err := row.Scan(&projectUUID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+
+	return projectUUID, nil
 }
 
 func (r *ApplicationRepo) GetApplicationsByProjectID(projectID, orgID string) ([]*model.Application, error) {
@@ -312,6 +397,31 @@ func (r *ApplicationRepo) ListMappedAPIKeys(applicationUUID string) ([]*model.Ap
 	return keys, rows.Err()
 }
 
+func (r *ApplicationRepo) ListApplicationAssociations(applicationUUID string) ([]*model.ApplicationAssociationTarget, error) {
+	rows, err := r.db.Query(r.db.Rebind(`
+		SELECT art.uuid, art.handle, art.name, art.version, art.kind, aa.created_at, aa.updated_at
+		FROM application_artifacts aa
+		INNER JOIN artifacts art ON art.uuid = aa.artifact_uuid
+		WHERE aa.application_uuid = ?
+		ORDER BY aa.created_at DESC, art.name ASC, art.uuid ASC
+	`), applicationUUID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	associations := make([]*model.ApplicationAssociationTarget, 0)
+	for rows.Next() {
+		association, err := scanApplicationAssociationTarget(rows)
+		if err != nil {
+			return nil, err
+		}
+		associations = append(associations, association)
+	}
+
+	return associations, rows.Err()
+}
+
 func (r *ApplicationRepo) AddApplicationAPIKeys(applicationUUID string, apiKeyIDs []string) error {
 	tx, err := r.db.Begin()
 	if err != nil {
@@ -361,11 +471,63 @@ func (r *ApplicationRepo) AddApplicationAPIKeys(applicationUUID string, apiKeyID
 	return tx.Commit()
 }
 
+func (r *ApplicationRepo) AddApplicationAssociations(applicationUUID string, targetUUIDs []string) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	for _, targetUUID := range uniqueStrings(targetUUIDs) {
+		now := time.Now()
+		if _, err = tx.Exec(r.db.Rebind(`
+			INSERT INTO application_artifacts (application_uuid, artifact_uuid, created_at, updated_at)
+			VALUES (?, ?, ?, ?)
+		`), applicationUUID, targetUUID, now, now); err != nil {
+			if isDuplicateKeyError(err) {
+				continue
+			}
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+func isDuplicateKeyError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return true
+	}
+
+	var sqliteErr sqlite3.Error
+	if errors.As(err, &sqliteErr) {
+		return sqliteErr.ExtendedCode == sqlite3.ErrConstraintPrimaryKey ||
+			sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique
+	}
+
+	lowerMsg := strings.ToLower(err.Error())
+	return strings.Contains(lowerMsg, "duplicate key") ||
+		strings.Contains(lowerMsg, "unique constraint failed")
+}
+
 func (r *ApplicationRepo) RemoveApplicationAPIKey(applicationUUID, apiKeyID string) error {
 	_, err := r.db.Exec(r.db.Rebind(`
 		DELETE FROM application_api_keys
 		WHERE application_uuid = ? AND api_key_id = ?
 	`), applicationUUID, apiKeyID)
+	return err
+}
+
+func (r *ApplicationRepo) RemoveApplicationAssociation(applicationUUID, targetUUID string) error {
+	_, err := r.db.Exec(r.db.Rebind(`
+		DELETE FROM application_artifacts
+		WHERE application_uuid = ? AND artifact_uuid = ?
+	`), applicationUUID, targetUUID)
 	return err
 }
 
@@ -455,6 +617,25 @@ func scanApplicationAPIKey(scanner rowScanner) (*model.ApplicationAPIKey, error)
 	}
 
 	return &key, nil
+}
+
+func scanApplicationAssociationTarget(scanner rowScanner) (*model.ApplicationAssociationTarget, error) {
+	var association model.ApplicationAssociationTarget
+
+	err := scanner.Scan(
+		&association.TargetUUID,
+		&association.TargetHandle,
+		&association.TargetName,
+		&association.TargetVersion,
+		&association.Kind,
+		&association.CreatedAt,
+		&association.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &association, nil
 }
 
 func uniqueStrings(values []string) []string {
