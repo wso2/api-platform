@@ -40,6 +40,7 @@ const (
 	FlagVersion                = "version"
 	FlagID                     = "id"
 	FlagAPIID                  = "api-id"
+	FlagSubID				   = "sub-id"
 	FlagConfirm                = "confirm"
 	FlagDockerRegistry         = "docker-registry"
 	FlagImageTag               = "image-tag"
@@ -47,7 +48,19 @@ const (
 	FlagGatewayControllerImage = "gateway-controller-base-image"
 	FlagRouterBaseImage        = "router-base-image"
 	FlagHeader                 = "header"
-	FlagOrgID				   = "org"
+	FlagPolicyId			   = "policy-id"
+	FlagOrgID                  = "org"
+	FlagRequestCount           = "request-count"
+	FlagEventCount             = "event-count"
+	FlagPricingModel           = "pricing-model"
+	FlagBillingPeriod          = "billing-period"
+	FlagFlatAmount             = "flat-amount"
+	FlagUnitAmount             = "unit-amount"
+	FlagCurrency               = "currency"
+	FlagInsecure               = "insecure"
+	FlagStatus                 = "status"
+	FlagApplicationID          = "application-id"
+	FlagSubscriptionPlan       = "subscription-plan"
 )
 
 var shortFlags = map[string]string{

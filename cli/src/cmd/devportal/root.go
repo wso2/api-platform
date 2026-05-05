@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -21,6 +21,8 @@ package devportal
 import (
 	"github.com/spf13/cobra"
 	devportalorg "github.com/wso2/api-platform/cli/cmd/devportal/org"
+	devportalsubscription "github.com/wso2/api-platform/cli/cmd/devportal/subscription"
+	devportalsubpolicy "github.com/wso2/api-platform/cli/cmd/devportal/subpolicy"
 	"github.com/wso2/api-platform/cli/cmd/devportal/restapi"
 )
 
@@ -50,5 +52,7 @@ func init() {
 	DevPortalCmd.AddCommand(healthCmd)
 	DevPortalCmd.AddCommand(buildCmd)
 	DevPortalCmd.AddCommand(devportalorg.OrgCmd)
+	DevPortalCmd.AddCommand(devportalsubscription.SubscriptionCmd)
+	DevPortalCmd.AddCommand(devportalsubpolicy.SubPolicyCmd)
 	DevPortalCmd.AddCommand(restapi.APICmd)
 }

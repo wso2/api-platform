@@ -7,6 +7,8 @@ Available command groups:
 - `ap devportal`
 - `ap devportal rest-api`
 - `ap devportal org`
+- `ap devportal subscription`
+- `ap devportal sub-policy`
 
 ## Prerequisites
 
@@ -267,6 +269,89 @@ Expected payload shape for `ap devportal org add` and `ap devportal org edit`:
 }
 ```
 
+## Subscription Commands
+
+These commands manage DevPortal platform subscriptions using the `/devportal/organizations/{orgId}/api-platform-subscriptions` endpoints.
+
+### `ap devportal subscription create`
+
+Creates a platform subscription using a JSON request payload file.
+
+```shell
+ap devportal subscription create --org <org-id> --file <subscription.json> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal subscription create --org org_1 -f subscription.json
+ap devportal subscription create --org org_1 -f subscription.json --display-name my-portal --platform eu
+```
+
+Expected payload shape:
+
+```json
+{
+  "apiId": "api_1",
+  "subscriptionPlanName": "gold",
+  "applicationId": "app_1"
+}
+```
+
+### `ap devportal subscription edit`
+
+Updates a platform subscription using a JSON request payload file.
+
+```shell
+ap devportal subscription edit --org <org-id> --id <subscription-id> --file <subscription-update.json> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal subscription edit --org org_1 --id sub_1 -f subscription-update.json
+ap devportal subscription edit --org org_1 --id sub_1 -f subscription-update.json --display-name my-portal --platform eu
+```
+
+Expected payload shape:
+
+```json
+{
+  "status": "ACTIVE"
+}
+```
+
+### `ap devportal subscription get`
+
+Gets all platform subscriptions in an organization, or a single subscription when `--id` is provided.
+
+```shell
+ap devportal subscription get --org <org-id> [--id <subscription-id>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal subscription get --org org_1
+ap devportal subscription get --org org_1 --id sub_1
+ap devportal subscription get --org org_1 --id sub_1 --display-name my-portal --platform eu
+```
+
+### `ap devportal subscription delete`
+
+Deletes a platform subscription by ID.
+
+```shell
+ap devportal subscription delete --org <org-id> --id <subscription-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal subscription delete --org org_1 --id sub_1
+ap devportal subscription delete --org org_1 --id sub_1 --display-name my-portal --platform eu
+```
+
 ## REST API Commands
 
 These commands manage API artifacts in a DevPortal organization.
@@ -367,6 +452,47 @@ Examples:
 ap devportal rest-api delete --org org_1 --id api_1
 ap devportal rest-api delete --org org_1 --id api_1 --display-name my-portal --platform eu
 ```
+
+## Subscription Policy Commands
+
+These commands help generate and apply DevPortal subscription policy payloads.
+
+### `ap devportal sub-policy build`
+
+Generates a subscription policy JSON template in the current directory using the derived policy name.
+
+```shell
+ap devportal sub-policy build --display-name <name> --type <requestcount|eventcount> --pricing-model <FREE|VOLUME_TIERS|GRADUATED_TIERS> [--request-count <count>] [--event-count <count>] [--flat-amount <amount>] [--unit-amount <amount>] [--billing-period <period>] [--currency <currency>] [--no-interactive]
+```
+
+Examples:
+
+```shell
+ap devportal sub-policy build --display-name gold --type requestcount --pricing-model FREE
+ap devportal sub-policy build --display-name monetized-events --type eventcount --pricing-model VOLUME_TIERS
+ap devportal sub-policy build --display-name tiered-policy --type requestcount --pricing-model GRADUATED_TIERS --flat-amount 150 --unit-amount 25 --billing-period year --currency EUR
+```
+
+Behavior:
+
+- The output file is always generated in the current directory.
+- The file name is derived from `display-name`, for example `Gold Plan` becomes `gold-plan.json`.
+- `FREE` templates stay minimal and include only the fields needed for that pricing model.
+- `VOLUME_TIERS` and `GRADUATED_TIERS` include additional billing fields and a `pricingTiers` placeholder block.
+- `--request-count` and `--event-count` prefill the corresponding quota field when provided.
+- `--flat-amount`, `--unit-amount`, `--billing-period`, and `--currency` act as optional prefills for tiered pricing templates.
+
+### `ap devportal sub-policy apply`
+
+Reserved for applying a generated subscription policy file.
+
+```shell
+ap devportal sub-policy apply -f <policy.json>
+```
+
+Current status:
+
+- The command exists in the CLI surface, but the apply flow is not implemented yet.
 
 ## Related Commands
 
