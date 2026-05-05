@@ -2,7 +2,7 @@
 
 Debug and develop Python policies by running the Python Executor as a standalone process on your host machine while the rest of the gateway runs normally.
 
-> **When to use this:** You are developing or debugging a Python policy (like `prompt-compressor`) and need to set breakpoints, add print statements, or iterate rapidly without rebuilding Docker images.
+> **When to use this:** You are developing or debugging a Python policy and need to set breakpoints, add print statements, or iterate rapidly without rebuilding Docker images.
 
 ---
 
@@ -10,18 +10,18 @@ Debug and develop Python policies by running the Python Executor as a standalone
 
 ```mermaid
 graph TB
-    subgraph "Docker Compose"
-        Router["Envoy Router<br/>HTTP: :8080<br/>HTTPS: :8443"]
-    end
-
     subgraph "Host Process (VS Code / Terminal)"
         GC["Gateway Controller<br/>REST API: :9090<br/>xDS: :18000 / :18001"]
-        PE["Policy Engine<br/>ext_proc: :9001 (TCP)"]
+        PE["Policy Engine<br/>ext_proc: :9001 (TCP)<br/>Admin: :9002"]
         PYE["Python Executor<br/>gRPC: localhost:9010 (TCP)"]
     end
 
-    Router -->|"$HOST_IP:9001"| PE
-    Router -->|"$HOST_IP:18000"| GC
+    subgraph "Docker Compose"
+        Router["Gateway Runtime<br/>Envoy Router<br/>HTTP: :8080<br/>HTTPS: :8443<br/>Admin: :9901"]
+    end
+
+    Router -->|"host.docker.internal:9001"| PE
+    Router -->|"host.docker.internal:18000"| GC
     GC -->|"localhost:18001"| PE
     PE -->|"localhost:9010"| PYE
 ```
@@ -29,14 +29,17 @@ graph TB
 > [!NOTE]
 > Only the Envoy Router runs in Docker. All other components — Gateway Controller, Policy Engine, and **Python Executor** — run as host processes. This gives you full debugger access to the Python runtime.
 
+> [!WARNING]
+> Processes run directly on the host, so Go resolves modules via `go.work`. Local versions of `sdk` and other workspace modules are used instead of the published Go module versions — including any uncommitted or untagged changes. Behavior may differ from a production build.
+
 ---
 
 ## Prerequisites
 
 - Python 3.10+ with `venv`
-- Go 1.22+
-- Docker / Docker Compose (for the Router)
-- A Python IDE or debugger (VS Code with Python extension recommended)
+- VS Code with Go and Python extensions installed
+- Docker and Docker Compose
+- Control plane host and registration token (optional, for gateway registration)
 
 ---
 
@@ -56,7 +59,7 @@ host = "localhost"
 This tells the Policy Engine to connect to the Python Executor over TCP instead of the default Unix domain socket.
 
 > [!WARNING]
-> **Remove this block when you are done debugging.** The default `config.toml` is also mounted into the Docker container (`docker-compose.yaml`), where the Python Executor runs in UDS mode. If this TCP block is left in, the containerized Policy Engine will try to dial `localhost:9010` while the embedded Python Executor is listening on a UDS socket — causing silent connection failures.
+> **Remove this block when you are done debugging.** The `config.toml` is also mounted into the Docker container (`docker-compose.yaml`), where the Python Executor runs in UDS mode. If this TCP block is left in, the containerized Policy Engine will try to dial `localhost:9010` while the embedded Python Executor is listening on a UDS socket — causing silent connection failures.
 
 ### Step 2: Build the Gateway (one-time)
 
@@ -76,6 +79,8 @@ This generates:
 - `python_policy_registry.py` (maps policy names to Python modules)
 - Merged `requirements.txt` (all Python policy dependencies)
 
+> **Note:** Wait for the builder to complete successfully before starting the other components.
+
 ### Step 3: Prepare the Python Environment
 
 ```bash
@@ -94,11 +99,49 @@ cp gateway-builder/target/output/python-executor/python_policy_registry.py \
 > [!IMPORTANT]
 > Re-run the `pip install` and `cp` steps after every builder run if policies change.
 
-### Step 4: Start the Gateway Controller
+### Step 4: Update Docker Compose Configuration
+
+In `gateway/docker-compose.yaml`, make two changes to the `gateway-runtime` service:
+
+1. Set `GATEWAY_CONTROLLER_HOST` to `host.docker.internal` so the runtime reaches the locally-running controller:
+
+```yaml
+services:
+  gateway-runtime:
+    environment:
+      - GATEWAY_CONTROLLER_HOST=host.docker.internal
+```
+
+2. Comment out the **Policy Engine** port block:
+
+```yaml
+services:
+  gateway-runtime:
+    ports:
+      # Router (Envoy) - keep these
+      - "8080:8080"   # HTTP ingress
+      - "8443:8443"   # HTTPS ingress
+      - "8081:8081"   # xDS-managed API listener
+      - "8082:8082"   # WebSub Hub dynamic forward proxy
+      - "8083:8083"   # WebSub Hub internal listener
+      - "9901:9901"   # Envoy admin
+      # Policy Engine - comment these out
+      # - "9002:9002"   # Admin API
+      # - "9003:9003"   # Metrics
+```
+
+> [!NOTE]
+> **Rancher Desktop (Lima) users:** `host.docker.internal` may not resolve correctly. Use your actual host IP instead:
+> ```bash
+> HOST_IP=$(ifconfig en0 | grep "inet " | awk '{print $2}')
+> ```
+> Set `GATEWAY_CONTROLLER_HOST=$HOST_IP` in step 4, and use `APIP_GW_ROUTER_POLICY__ENGINE_HOST=$HOST_IP` in step 5.
+
+### Step 5: Start the Gateway Controller
+
+Run the **Gateway Controller** debug configuration from VS Code, or start it from the terminal:
 
 ```bash
-HOST_IP=$(ifconfig en0 | grep "inet " | awk '{print $2}')
-
 APIP_GW_CONTROLLER_STORAGE_TYPE=sqlite \
 APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH=./gateway-controller/data/gateway.db \
 APIP_GW_CONTROLLER_LOGGING_LEVEL=debug \
@@ -111,13 +154,14 @@ APIP_GW_ROUTER_DOWNSTREAM__TLS_CERT__PATH=./gateway-controller/listener-certs/de
 APIP_GW_ROUTER_DOWNSTREAM__TLS_KEY__PATH=./gateway-controller/listener-certs/default-listener.key \
 APIP_GW_ROUTER_LUA_REQUEST__TRANSFORMATION_SCRIPT__PATH=./gateway-controller/lua/request_transformation.lua \
 APIP_GW_ROUTER_POLICY__ENGINE_MODE=tcp \
-APIP_GW_ROUTER_POLICY__ENGINE_HOST=$HOST_IP \
 APIP_GW_ANALYTICS_GRPC__EVENT__SERVER_MODE=tcp \
   go run ./gateway-controller/cmd/controller \
     -config ./configs/config.toml
 ```
 
-### Step 5: Start the Python Executor
+> **Note:** Leave `APIP_GW_CONTROLPLANE_HOST` and `APIP_GW_GATEWAY_REGISTRATION_TOKEN` empty (`""`) if you want to run in standalone mode without control plane connection.
+
+### Step 6: Start the Python Executor
 
 ```bash
 gateway-runtime/python-executor/.venv/bin/python3 \
@@ -141,11 +185,11 @@ Python Executor ready on localhost:9010
 
 #### Debugging with VS Code
 
-To use the VS Code Python debugger instead of the terminal, create a launch configuration:
+To use the VS Code Python debugger instead of the terminal, add this to `.vscode/launch.json`:
 
 ```json
 {
-    "name": "Python Executor (Debug)",
+    "name": "Python Executor",
     "type": "debugpy",
     "request": "launch",
     "module": "main",
@@ -177,7 +221,9 @@ For quick terminal-based debugging, add breakpoints directly in policy code:
 import pdb; pdb.set_trace()
 ```
 
-### Step 6: Start the Policy Engine
+### Step 7: Start the Policy Engine
+
+Run the **Policy Engine - xDS** debug configuration from VS Code, or start it from the terminal:
 
 ```bash
 APIP_GW_POLICY__ENGINE_SERVER_MODE=tcp \
@@ -193,24 +239,24 @@ The Policy Engine will connect to the Python Executor over TCP when the first Py
 Python executor bridge initialized  address=localhost:9010  mode=tcp  timeout=30s
 ```
 
-### Step 7: Start the Router
+### Step 8: Start the Gateway Runtime (Router)
+
+Run the router in Docker Compose:
 
 ```bash
-HOST_IP=$(ifconfig en0 | grep "inet " | awk '{print $2}')
-GATEWAY_CONTROLLER_HOST=$HOST_IP docker compose up gateway-runtime sample-backend -d
+cd gateway
+docker compose up gateway-runtime sample-backend -d
+docker compose logs -ft gateway-runtime sample-backend
 ```
 
-> [!WARNING]
-> **Rancher Desktop (Lima) users:** `host.docker.internal` may not work. Use your actual `en0` IP address.
-
-### Step 8: Deploy and Test
+### Step 9: Deploy and Test
 
 ```bash
 # Deploy an API with a Python policy (e.g., prompt-compressor)
 curl -X POST http://localhost:9090/api/management/v0.9/rest-apis \
   -u admin:admin \
   -H "Content-Type: application/yaml" \
-  --data-binary @examples/prompt-compressor-api.yaml
+  --data-binary @path/to/api.yaml
 
 # Send a request that triggers the policy
 curl -X POST http://localhost:8080/your-api/chat \
@@ -218,9 +264,11 @@ curl -X POST http://localhost:8080/your-api/chat \
   -d '{"messages": [{"role": "user", "content": "Your test prompt here"}]}'
 ```
 
-### Step 9: Clean Up
+### Step 10: Clean Up
 
-When you are done debugging, **remove the TCP block** from `configs/config.toml`:
+When you are done debugging:
+
+1. **Remove the TCP block** from `configs/config.toml`:
 
 ```diff
 -[python_executor.server]
@@ -228,6 +276,8 @@ When you are done debugging, **remove the TCP block** from `configs/config.toml`
 -port = 9010
 -host = "localhost"
 ```
+
+2. **Revert the Docker Compose changes** from Step 4 (restore `GATEWAY_CONTROLLER_HOST` and uncomment Policy Engine ports).
 
 This ensures `docker compose up` continues to work correctly with UDS mode.
 
@@ -245,6 +295,8 @@ This ensures `docker compose up` continues to work correctly with UDS mode.
 | 9001 | Policy Engine ext_proc | gRPC (TCP) |
 | 9010 | Python Executor | gRPC (TCP) |
 | 8080 | Router HTTP ingress | HTTP |
+| 8443 | Router HTTPS ingress | HTTPS |
+| 9901 | Router (Envoy) Admin | HTTP |
 | 15000 | Sample Backend | HTTP |
 
 ### Environment Variables for the Python Executor
@@ -277,4 +329,4 @@ cp gateway-builder/target/output/python-executor/python_policy_registry.py \
 → Kill stale Python Executor processes: `pkill -f "python.*main.py"`
 
 **Container mode broken after debugging**
-→ You likely left `[python_executor.server] mode = "tcp"` in `configs/config.toml`. Remove it — see [Step 9](#step-9-clean-up).
+→ You likely left `[python_executor.server] mode = "tcp"` in `configs/config.toml`. Remove it — see [Step 10](#step-10-clean-up).
