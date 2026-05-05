@@ -115,7 +115,6 @@
             "cwd": "${workspaceFolder}/gateway/gateway-runtime/python-executor",
             "python": "${workspaceFolder}/gateway/gateway-runtime/python-executor/.venv/bin/python3",
             "args": [
-                "--config", "${workspaceFolder}/gateway/configs/config.toml",
                 "--listen", "localhost:9010",
                 "--log-level", "debug"
             ],

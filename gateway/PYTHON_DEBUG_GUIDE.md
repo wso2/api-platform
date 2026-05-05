@@ -131,11 +131,14 @@ services:
 ```
 
 > [!NOTE]
-> **Rancher Desktop (Lima) users:** `host.docker.internal` may not resolve correctly. Use your actual host IP instead:
+> **Rancher Desktop (Lima) users:** `host.docker.internal` may not resolve correctly. Export your actual host IP once at the start of the debug session:
 > ```bash
-> HOST_IP=$(ifconfig en0 | grep "inet " | awk '{print $2}')
+> export HOST_IP=$(ifconfig en0 | grep "inet " | awk '{print $2}')
 > ```
-> Set `GATEWAY_CONTROLLER_HOST=$HOST_IP` in step 4, and use `APIP_GW_ROUTER_POLICY__ENGINE_HOST=$HOST_IP` in step 5.
+> Then apply it to the affected steps:
+> - **Step 4:** Set `GATEWAY_CONTROLLER_HOST=$HOST_IP` instead of `host.docker.internal`
+> - **Step 5:** Add `APIP_GW_ROUTER_POLICY__ENGINE_HOST=$HOST_IP` to the controller env vars
+> - **Step 8:** Start the router with `GATEWAY_CONTROLLER_HOST=$HOST_IP docker compose up gateway-runtime sample-backend -d`
 
 ### Step 5: Start the Gateway Controller
 
@@ -166,12 +169,11 @@ APIP_GW_ANALYTICS_GRPC__EVENT__SERVER_MODE=tcp \
 ```bash
 gateway-runtime/python-executor/.venv/bin/python3 \
   gateway-runtime/python-executor/main.py \
-  --config ./configs/config.toml \
   --listen localhost:9010 \
   --log-level debug
 ```
 
-The executor reads `config.toml` for timeout/worker settings and binds to `localhost:9010` over TCP.
+The executor binds to `localhost:9010` over TCP.
 
 You should see:
 
@@ -196,7 +198,6 @@ To use the VS Code Python debugger instead of the terminal, add this to `.vscode
     "cwd": "${workspaceFolder}/gateway/gateway-runtime/python-executor",
     "python": "${workspaceFolder}/gateway/gateway-runtime/python-executor/.venv/bin/python3",
     "args": [
-        "--config", "${workspaceFolder}/gateway/configs/config.toml",
         "--listen", "localhost:9010",
         "--log-level", "debug"
     ],
@@ -303,8 +304,7 @@ This ensures `docker compose up` continues to work correctly with UDS mode.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PYTHON_EXECUTOR_LISTEN` | UDS socket path | Override listen address (e.g., `localhost:9010`) |
-| `PYTHON_EXECUTOR_CONFIG` | none | Path to TOML config file |
+| `PYTHON_EXECUTOR_LISTEN` | UDS socket path | Listen address — UDS path or `host:port` for TCP |
 | `PYTHON_POLICY_WORKERS` | 4 | gRPC worker thread count |
 | `PYTHON_POLICY_MAX_CONCURRENT` | 100 | Max concurrent policy executions |
 | `PYTHON_POLICY_TIMEOUT` | 30 | Execution timeout in seconds |
