@@ -304,6 +304,8 @@ Run the **Gateway Builder** debug configuration from VS Code. This compiles all 
 ### Step 3: Prepare the Python Environment
 
 ```bash
+cd gateway
+
 # Create or activate the venv
 python3 -m venv gateway-runtime/python-executor/.venv
 source gateway-runtime/python-executor/.venv/bin/activate
