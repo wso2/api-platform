@@ -594,17 +594,23 @@ func (h *GatewayInternalAPIHandler) ReceiveGatewayManifest(c *gin.Context) {
 	}
 
 	var body struct {
-		Version  string                       `json:"version"`
-		Policies []service.GatewayPolicyInput `json:"policies"`
+		Version     string                       `json:"version"`
+		GatewayType string                       `json:"gatewayType"`
+		Policies    []service.GatewayPolicyInput `json:"policies"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 		return
 	}
 
-	if err := h.gatewayService.ReceiveGatewayManifest(orgID, gatewayID, body.Version, body.Policies); err != nil {
+	if err := h.gatewayService.ReceiveGatewayManifest(orgID, gatewayID, body.Version, body.GatewayType, body.Policies); err != nil {
 		if errors.Is(err, constants.ErrGatewayVersionMismatch) {
 			h.slogger.Warn("Gateway manifest rejected: version mismatch", "gatewayID", gatewayID, "error", err)
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", err.Error()))
+			return
+		}
+		if errors.Is(err, constants.ErrGatewayTypeMismatch) {
+			h.slogger.Warn("Gateway manifest rejected: type mismatch", "gatewayID", gatewayID, "error", err)
 			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", err.Error()))
 			return
 		}
