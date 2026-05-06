@@ -142,7 +142,7 @@ func (h *Hub) ProcessSubscribe(ctx context.Context, bindingName string, msg *con
 			reqHeaderCtx := SubscribeToRequestHeaderContext(msg, binding)
 			result, err := h.engine.ExecuteRequestHeaderPolicies(ctx, binding.SubscribeChainKey, reqHeaderCtx.SharedContext, reqHeaderCtx)
 			if err != nil {
-				return nil, false, fmt.Errorf("subscribe header policy execution failed: %w", err)
+				return nil, false, fmt.Errorf("subscribe policy execution failed: %w", err)
 			}
 			if result.ShortCircuited {
 				logShortCircuit("Subscribe request short-circuited by hub policy", bindingName, binding.SubscribeChainKey, result.ImmediateResponse)
@@ -150,6 +150,22 @@ func (h *Hub) ProcessSubscribe(ctx context.Context, bindingName string, msg *con
 			}
 			if err := ApplyRequestHeaderResult(result, msg); err != nil {
 				return nil, false, fmt.Errorf("failed to apply subscribe header result: %w", err)
+			}
+			if chain.RequiresRequestBody {
+				reqCtx := MessageToRequestContext(msg, binding)
+				reqBodyResult, respErrors := h.engine.ExecuteRequestBodyPolicies(ctx, binding.SubscribeChainKey, reqHeaderCtx.SharedContext, reqCtx)
+				if respErrors != nil {
+					return nil, false, fmt.Errorf("subscribe policy execution failed: %w", respErrors)
+				}
+				if reqBodyResult != nil {
+					if reqBodyResult.ShortCircuited {
+						logShortCircuit("Subscribe request short-circuited by hub policy", bindingName, binding.SubscribeChainKey, reqBodyResult.ImmediateResponse)
+						return immediateResponseToMessage(reqBodyResult.ImmediateResponse), true, nil
+					}
+					if err := ApplyRequestBodyResult(reqBodyResult, msg); err != nil {
+						return nil, false, fmt.Errorf("failed to apply subscribe body result: %w", err)
+					}
+				}
 			}
 		}
 	}
@@ -170,6 +186,22 @@ func (h *Hub) ProcessSubscribe(ctx context.Context, bindingName string, msg *con
 				}
 				if err := ApplyRequestHeaderResult(result, msg); err != nil {
 					return nil, false, fmt.Errorf("failed to apply subscribe channel header result: %w", err)
+				}
+				if chain.RequiresRequestBody {
+					reqCtx := MessageToRequestContext(msg, binding)
+					reqBodyResult, respErrors := h.engine.ExecuteRequestBodyPolicies(ctx, keys.SubscribeChainKey, reqHeaderCtx.SharedContext, reqCtx)
+					if respErrors != nil {
+						return nil, false, fmt.Errorf("subscribe policy execution failed: %w", respErrors)
+					}
+					if reqBodyResult != nil {
+						if reqBodyResult.ShortCircuited {
+							logShortCircuit("Subscribe request short-circuited by channel policy", bindingName, keys.SubscribeChainKey, reqBodyResult.ImmediateResponse)
+							return immediateResponseToMessage(reqBodyResult.ImmediateResponse), true, nil
+						}
+						if err := ApplyRequestBodyResult(reqBodyResult, msg); err != nil {
+							return nil, false, fmt.Errorf("failed to apply subscribe body result: %w", err)
+						}
+					}
 				}
 			}
 		}
@@ -204,16 +236,20 @@ func (h *Hub) ProcessInbound(ctx context.Context, bindingName string, msg *conne
 				return nil, false, fmt.Errorf("failed to apply inbound header result: %w", err)
 			}
 			if chain.RequiresRequestBody {
+
 				reqCtx := MessageToRequestContext(msg, binding)
-				bodyResult, err := h.engine.ExecuteRequestBodyPolicies(ctx, binding.InboundChainKey, reqCtx.SharedContext, reqCtx)
-				if err != nil {
-					return nil, false, fmt.Errorf("inbound body policy execution failed: %w", err)
+				reqBodyResult, respErrors := h.engine.ExecuteRequestBodyPolicies(ctx, binding.InboundChainKey, reqHeaderCtx.SharedContext, reqCtx)
+				if respErrors != nil {
+					return nil, false, fmt.Errorf("inbound policy execution failed: %w", respErrors)
 				}
-				if bodyResult.ShortCircuited {
-					return immediateResponseToMessage(bodyResult.ImmediateResponse), true, nil
-				}
-				if err := ApplyRequestBodyResult(bodyResult, msg); err != nil {
-					return nil, false, fmt.Errorf("failed to apply inbound body result: %w", err)
+				if reqBodyResult != nil {
+					if reqBodyResult.ShortCircuited {
+						logShortCircuit("Inbound message short-circuited by hub policy", bindingName, binding.InboundChainKey, reqBodyResult.ImmediateResponse)
+						return immediateResponseToMessage(reqBodyResult.ImmediateResponse), true, nil
+					}
+					if err := ApplyRequestBodyResult(reqBodyResult, msg); err != nil {
+						return nil, false, fmt.Errorf("failed to apply inbound body result: %w", err)
+					}
 				}
 			}
 		}
@@ -238,15 +274,18 @@ func (h *Hub) ProcessInbound(ctx context.Context, bindingName string, msg *conne
 				}
 				if chain.RequiresRequestBody {
 					reqCtx := MessageToRequestContext(msg, binding)
-					bodyResult, err := h.engine.ExecuteRequestBodyPolicies(ctx, keys.InboundChainKey, reqCtx.SharedContext, reqCtx)
-					if err != nil {
-						return nil, false, fmt.Errorf("inbound channel body policy execution failed: %w", err)
+					reqBodyResult, respErrors := h.engine.ExecuteRequestBodyPolicies(ctx, keys.InboundChainKey, reqHeaderCtx.SharedContext, reqCtx)
+					if respErrors != nil {
+						return nil, false, fmt.Errorf("inbound policy execution failed: %w", respErrors)
 					}
-					if bodyResult.ShortCircuited {
-						return immediateResponseToMessage(bodyResult.ImmediateResponse), true, nil
-					}
-					if err := ApplyRequestBodyResult(bodyResult, msg); err != nil {
-						return nil, false, fmt.Errorf("failed to apply inbound channel body result: %w", err)
+					if reqBodyResult != nil {
+						if reqBodyResult.ShortCircuited {
+							logShortCircuit("Inbound message short-circuited by channel policy", bindingName, keys.InboundChainKey, reqBodyResult.ImmediateResponse)
+							return immediateResponseToMessage(reqBodyResult.ImmediateResponse), true, nil
+						}
+						if err := ApplyRequestBodyResult(reqBodyResult, msg); err != nil {
+							return nil, false, fmt.Errorf("failed to apply inbound body result: %w", err)
+						}
 					}
 				}
 			}
