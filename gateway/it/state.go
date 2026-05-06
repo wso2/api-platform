@@ -34,20 +34,27 @@ type AuthUser struct {
 
 // Config holds configuration for the test suite
 type Config struct {
-	GatewayControllerURL       string
-	GatewayControllerAdminURL  string
-	RouterURL                  string
-	PolicyEngineURL            string
-	SampleBackendURL           string
-	EchoBackendURL             string
-	MockJWKSURL                string
-	MockAzureContentSafetyURL  string
-	MockAWSBedrockGuardrailURL string
-	MockEmbeddingProviderURL   string
-	MockPlatformAPIURL         string
-	RedisURL                   string
-	HTTPTimeout                time.Duration
-	Users                      map[string]AuthUser
+	GatewayControllerURL      string
+	GatewayControllerAdminURL string
+	// PolicySnapshotControllerAdminURL is the admin base URL probed for the
+	// policy-chain xDS-sync version. It targets the controller that feeds xDS to
+	// gateway-runtime, which in the two-controller Postgres topology is
+	// gateway-controller-runtime rather than the management controller. When
+	// empty, waitForPolicySnapshotSync falls back to GatewayControllerAdminURL
+	// (single-controller topologies and unit tests).
+	PolicySnapshotControllerAdminURL string
+	RouterURL                        string
+	PolicyEngineURL                  string
+	SampleBackendURL                 string
+	EchoBackendURL                   string
+	MockJWKSURL                      string
+	MockAzureContentSafetyURL        string
+	MockAWSBedrockGuardrailURL       string
+	MockEmbeddingProviderURL         string
+	MockPlatformAPIURL               string
+	RedisURL                         string
+	HTTPTimeout                      time.Duration
+	Users                            map[string]AuthUser
 }
 
 // MockPlatformAPIPort is the port for mock-platform-api inject endpoint

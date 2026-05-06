@@ -56,9 +56,13 @@ build-coverage:
 # Build and run tests in one command
 test-all: build-coverage test
 
-# Run integration tests against Postgres-backed controller
+# Run integration tests against Postgres-backed controller.
+# This compose runs two gateway-controllers: the management one (REST) and
+# gateway-controller-runtime (feeds xDS to gateway-runtime). IT_GATEWAY_CONTROLLER_RUNTIME
+# tells the suite to probe the runtime controller (host port 9093) for the
+# policy-chain xDS-sync version, since that is the version the policy engine echoes.
 test-postgres:
-	COMPOSE_FILE=docker-compose.test.postgres.yaml $(MAKE) test
+	COMPOSE_FILE=docker-compose.test.postgres.yaml IT_GATEWAY_CONTROLLER_RUNTIME=true $(MAKE) test
 
 # Run vhost integration tests with single-domain gateway vhost config
 test-vhosts-single:
