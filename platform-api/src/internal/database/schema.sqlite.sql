@@ -150,6 +150,7 @@ CREATE TABLE IF NOT EXISTS gateways (
     vhost VARCHAR(255) NOT NULL,
     is_critical BOOLEAN DEFAULT FALSE,
     gateway_functionality_type VARCHAR(20) DEFAULT 'regular' NOT NULL,
+    version VARCHAR(13) NOT NULL DEFAULT '1.0',
     is_active BOOLEAN DEFAULT FALSE,
     manifest TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

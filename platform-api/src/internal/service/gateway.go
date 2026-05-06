@@ -117,11 +117,55 @@ func (s *GatewayService) GetStoredManifest(gatewayID, orgID string) (*Manifest, 
 // "version" field in the manifest payload. v1.0.0 was the only such release.
 const legacyGatewayVersion = "1.0.0"
 
+// extractMajorMinor parses a version string and returns its `major.minor` form.
+// Pre-release / build metadata (after `-` or `+`) is stripped. If only a major
+// is present (e.g. "2"), `.0` is appended. Empty input returns an empty string.
+func extractMajorMinor(raw string) string {
+	v := strings.TrimSpace(raw)
+	if v == "" {
+		return ""
+	}
+	if i := strings.IndexAny(v, "-+"); i >= 0 {
+		v = v[:i]
+	}
+	parts := strings.Split(v, ".")
+	switch len(parts) {
+	case 0:
+		return ""
+	case 1:
+		return parts[0] + ".0"
+	default:
+		return parts[0] + "." + parts[1]
+	}
+}
+
 // ReceiveGatewayManifest stores the manifest posted by the gateway controller on connect.
 // All policies are stored with name and version; customer-managed policies include policy_definition.
 // gatewayVersion is the controller's reported build version; an empty string means the controller
-// is on a legacy build (pre-1.1.0) that does not send a version — logged as "1.0.0" in that case.
+// is on a legacy build (pre-1.1.0) that does not send a version — assumed to be "1.0.0".
+// The reported major.minor must match the gateway's registered version, otherwise the manifest is rejected.
 func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion string, policies []GatewayPolicyInput) error {
+	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
+	if err != nil {
+		return fmt.Errorf("failed to get gateway: %w", err)
+	}
+	if gateway == nil || gateway.OrganizationID != orgID {
+		return constants.ErrGatewayNotFound
+	}
+
+	reported := strings.TrimSpace(gatewayVersion)
+	if reported == "" {
+		reported = legacyGatewayVersion
+	}
+	reportedMinor := extractMajorMinor(reported)
+	registeredMinor := extractMajorMinor(gateway.Version)
+	if registeredMinor == "" {
+		registeredMinor = defaultGatewayVersion
+	}
+	if reportedMinor != registeredMinor {
+		return fmt.Errorf("%w: registered=%s, reported=%s", constants.ErrGatewayVersionMismatch, registeredMinor, reportedMinor)
+	}
+
 	entries := make([]GatewayPolicyDefinition, 0, len(policies))
 	for _, p := range policies {
 		entry := GatewayPolicyDefinition{
@@ -152,11 +196,6 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion
 		return fmt.Errorf("failed to store gateway manifest: %w", err)
 	}
 
-	reportedVersion := strings.TrimSpace(gatewayVersion)
-	if reportedVersion == "" {
-		reportedVersion = legacyGatewayVersion
-	}
-
 	customerCount := 0
 	for _, p := range policies {
 		if p.ManagedBy == constants.PolicyManagedByCustomer {
@@ -166,7 +205,7 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion
 	s.slogger.Info("Gateway manifest received and stored",
 		slog.String("org_id", orgID),
 		slog.String("gateway_id", gatewayID),
-		slog.String("gateway_version", reportedVersion),
+		slog.String("gateway_version", reported),
 		slog.Int("total_policy_count", len(entries)),
 		slog.Int("customer_policy_count", customerCount),
 	)
@@ -381,12 +420,19 @@ func (s *GatewayService) DeleteCustomPolicyByUUID(orgID, policyUUID, version str
 	return s.customPolicyRepo.DeleteCustomPolicyIfUnused(orgID, policyUUID)
 }
 
+// defaultGatewayVersion is the value stored when a client registers a gateway without a version.
+const defaultGatewayVersion = "1.0"
+
 // RegisterGateway registers a new gateway with organization validation
 func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, vhost string, isCritical bool,
-	functionalityType string, properties map[string]interface{}) (*api.GatewayResponse, error) {
+	functionalityType, version string, properties map[string]interface{}) (*api.GatewayResponse, error) {
 	// 1. Validate inputs
 	if err := s.validateGatewayInput(orgID, name, displayName, vhost, functionalityType); err != nil {
 		return nil, err
+	}
+
+	if strings.TrimSpace(version) == "" {
+		version = defaultGatewayVersion
 	}
 
 	// 2. Validate organization exists
@@ -424,6 +470,7 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, 
 		Vhost:             vhost,
 		IsCritical:        isCritical,
 		FunctionalityType: functionalityType,
+		Version:           version,
 		CreatedAt:         time.Now(),
 		UpdatedAt:         time.Now(),
 	}
@@ -942,6 +989,7 @@ func gatewayModelToAPI(gateway *model.Gateway) *api.GatewayResponse {
 		Vhost:             &gateway.Vhost,
 		IsCritical:        &gateway.IsCritical,
 		FunctionalityType: &functionalityType,
+		Version:           &gateway.Version,
 		IsActive:          &gateway.IsActive,
 		CreatedAt:         &gateway.CreatedAt,
 		UpdatedAt:         &gateway.UpdatedAt,

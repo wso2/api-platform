@@ -603,6 +603,15 @@ func (h *GatewayInternalAPIHandler) ReceiveGatewayManifest(c *gin.Context) {
 	}
 
 	if err := h.gatewayService.ReceiveGatewayManifest(orgID, gatewayID, body.Version, body.Policies); err != nil {
+		if errors.Is(err, constants.ErrGatewayVersionMismatch) {
+			h.slogger.Warn("Gateway manifest rejected: version mismatch", "gatewayID", gatewayID, "error", err)
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", err.Error()))
+			return
+		}
+		if errors.Is(err, constants.ErrGatewayNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", err.Error()))
+			return
+		}
 		h.slogger.Error("Failed to store gateway manifest", "gatewayID", gatewayID, "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to store gateway manifest"))
