@@ -16,33 +16,33 @@
  * under the License.
  */
 
-package subscription
+package subapikey
 
 import "github.com/spf13/cobra"
 
 const (
-	SubscriptionCmdLiteral = "subscription"
-	SubscriptionCmdExample = `# Create a platform subscription
-ap devportal subscription create --org org_1 --api-id api_1 --subscription-plan gold --application-id app_1
+	SubKeyCmdLiteral = "sub-api-key"
+	SubKeyCmdExample = `# Generate a platform API key
+ap devportal sub-api-key generate --org org_1 --api-id api_1 --key-name mobile-app-key
 
-# Get a platform subscription
-ap devportal subscription get --org org_1 --sub-id sub_1`
+# List platform API keys
+ap devportal sub-api-key get --org org_1`
 )
 
-// SubscriptionCmd represents the platform subscription command group.
-var SubscriptionCmd = &cobra.Command{
-	Use:     SubscriptionCmdLiteral,
-	Short:   "Manage DevPortal platform subscriptions",
-	Long:    "This command allows you to manage DevPortal platform subscriptions.",
-	Example: SubscriptionCmdExample,
+// SubKeyCmd represents the platform API key command group.
+var SubKeyCmd = &cobra.Command{
+	Use:     SubKeyCmdLiteral,
+	Short:   "Manage DevPortal platform API keys",
+	Long:    "This command allows you to manage DevPortal platform API keys.",
+	Example: SubKeyCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
 	},
 }
 
 func init() {
-	SubscriptionCmd.AddCommand(createCmd)
-	SubscriptionCmd.AddCommand(editCmd)
-	SubscriptionCmd.AddCommand(getCmd)
-	SubscriptionCmd.AddCommand(deleteCmd)
+	SubKeyCmd.AddCommand(generateCmd)
+	SubKeyCmd.AddCommand(getCmd)
+	SubKeyCmd.AddCommand(regenerateCmd)
+	SubKeyCmd.AddCommand(revokeCmd)
 }

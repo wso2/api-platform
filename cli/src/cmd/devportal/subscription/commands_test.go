@@ -29,14 +29,17 @@ func TestRunCreateCommand_SendsJSONPayload(t *testing.T) {
 		}
 		gotBody = string(body)
 		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{"subscriptionId":"sub-1"}`))
 	})
 
 	writeSubscriptionConfig(t, server.URL)
 
-	workDir := t.TempDir()
 	createOrgID = "org-1"
-	createFilePath = testutil.WriteJSONFixture(t, workDir, "subscription.json", []byte(`{"apiId":"api-1","subscriptionPlanName":"gold"}`))
+	createFilePath = ""
+	createAPIID = "api-1"
+	createSubscriptionPlan = "gold"
+	createApplicationID = "app-1"
 	createName = ""
 	createPlatform = ""
 	createInsecure = false
@@ -44,7 +47,7 @@ func TestRunCreateCommand_SendsJSONPayload(t *testing.T) {
 	if err := runCreateCommand(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if gotBody != `{"apiId":"api-1","subscriptionPlanName":"gold"}` {
+	if gotBody != `{"apiId":"api-1","applicationId":"app-1","subscriptionPlanName":"gold"}` {
 		t.Fatalf("unexpected request body %q", gotBody)
 	}
 }
@@ -71,10 +74,10 @@ func TestRunEditCommand_SendsJSONPayload(t *testing.T) {
 
 	writeSubscriptionConfig(t, server.URL)
 
-	workDir := t.TempDir()
 	editOrgID = "org-1"
 	editSubscription = "sub-1"
-	editFilePath = testutil.WriteJSONFixture(t, workDir, "subscription-update.json", []byte(`{"status":"ACTIVE"}`))
+	editFilePath = ""
+	editStatus = "ACTIVE"
 	editName = ""
 	editPlatform = ""
 	editInsecure = false
@@ -175,6 +178,9 @@ func TestRunCreateCommand_MissingJSONFile(t *testing.T) {
 
 	createOrgID = "org-1"
 	createFilePath = filepath.Join(t.TempDir(), "missing.json")
+	createAPIID = ""
+	createSubscriptionPlan = ""
+	createApplicationID = ""
 	createName = ""
 	createPlatform = ""
 	createInsecure = false
@@ -182,6 +188,43 @@ func TestRunCreateCommand_MissingJSONFile(t *testing.T) {
 	err := runCreateCommand()
 	if err == nil || !strings.Contains(err.Error(), "file not found") {
 		t.Fatalf("expected missing file error, got %v", err)
+	}
+}
+
+func TestRunCreateCommand_MissingRequiredFlags(t *testing.T) {
+	testutil.WithTempHome(t)
+	writeSubscriptionConfig(t, "http://example.com")
+
+	createOrgID = "org-1"
+	createFilePath = ""
+	createAPIID = ""
+	createSubscriptionPlan = "gold"
+	createApplicationID = "app-1"
+	createName = ""
+	createPlatform = ""
+	createInsecure = false
+
+	err := runCreateCommand()
+	if err == nil || !strings.Contains(err.Error(), "api ID is required") {
+		t.Fatalf("expected api ID validation error, got %v", err)
+	}
+}
+
+func TestRunEditCommand_MissingStatusWithoutFile(t *testing.T) {
+	testutil.WithTempHome(t)
+	writeSubscriptionConfig(t, "http://example.com")
+
+	editOrgID = "org-1"
+	editSubscription = "sub-1"
+	editFilePath = ""
+	editStatus = ""
+	editName = ""
+	editPlatform = ""
+	editInsecure = false
+
+	err := runEditCommand()
+	if err == nil || !strings.Contains(err.Error(), "status is required") {
+		t.Fatalf("expected status validation error, got %v", err)
 	}
 }
 

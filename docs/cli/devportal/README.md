@@ -7,6 +7,7 @@ Available command groups:
 - `ap devportal`
 - `ap devportal rest-api`
 - `ap devportal org`
+- `ap devportal sub-api-key`
 - `ap devportal subscription`
 - `ap devportal sub-policy`
 
@@ -261,11 +262,21 @@ ap devportal org delete --org org_1 --display-name my-portal --platform eu
 
 Expected payload shape for `ap devportal org add` and `ap devportal org edit`:
 
+`organization.json`
 ```json
 {
-  "orgName": "Acme",
-  "organizationIdentifier": "acme",
-  "businessOwner": "Jane Doe"
+  "orgName": "John",
+  "businessOwner": "Jane Doe",
+  "businessOwnerContact": "+1-202-555-0147",
+  "businessOwnerEmail": "jane.doe@abc.example",
+  "orgHandle": "johndoe",
+  "roleClaimName": "roles",
+  "groupsClaimName": "groups",
+  "organizationClaimName": "organizationIdentifier",
+  "organizationIdentifier": "JOHN",
+  "adminRole": "admin",
+  "subscriberRole": "subscriber",
+  "superAdminRole": "superAdmin"
 }
 ```
 
@@ -275,17 +286,18 @@ These commands manage DevPortal platform subscriptions using the `/devportal/org
 
 ### `ap devportal subscription create`
 
-Creates a platform subscription using a JSON request payload file.
+Creates a platform subscription using flags or a JSON request payload file.
 
 ```shell
-ap devportal subscription create --org <org-id> --file <subscription.json> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal subscription create --org <org-id> (--api-id <api-id> --subscription-plan <plan-name> --application-id <application-id> | --file <subscription.json>) [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
+ap devportal subscription create --org org_1 --api-id api_1 --subscription-plan gold --application-id app_1
+ap devportal subscription create --org org_1 --api-id api_1 --subscription-plan gold --application-id app_1 --display-name my-portal --platform eu
 ap devportal subscription create --org org_1 -f subscription.json
-ap devportal subscription create --org org_1 -f subscription.json --display-name my-portal --platform eu
 ```
 
 Expected payload shape:
@@ -300,17 +312,18 @@ Expected payload shape:
 
 ### `ap devportal subscription edit`
 
-Updates a platform subscription using a JSON request payload file.
+Updates a platform subscription using flags or a JSON request payload file.
 
 ```shell
-ap devportal subscription edit --org <org-id> --id <subscription-id> --file <subscription-update.json> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal subscription edit --org <org-id> --sub-id <subscription-id> (--status <status> | --file <subscription-update.json>) [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap devportal subscription edit --org org_1 --id sub_1 -f subscription-update.json
-ap devportal subscription edit --org org_1 --id sub_1 -f subscription-update.json --display-name my-portal --platform eu
+ap devportal subscription edit --org org_1 --sub-id sub_1 --status ACTIVE
+ap devportal subscription edit --org org_1 --sub-id sub_1 --status ACTIVE --display-name my-portal --platform eu
+ap devportal subscription edit --org org_1 --sub-id sub_1 -f subscription-update.json
 ```
 
 Expected payload shape:
@@ -323,18 +336,18 @@ Expected payload shape:
 
 ### `ap devportal subscription get`
 
-Gets all platform subscriptions in an organization, or a single subscription when `--id` is provided.
+Gets all platform subscriptions in an organization, or a single subscription when `--sub-id` is provided.
 
 ```shell
-ap devportal subscription get --org <org-id> [--id <subscription-id>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal subscription get --org <org-id> [--sub-id <subscription-id>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
 ap devportal subscription get --org org_1
-ap devportal subscription get --org org_1 --id sub_1
-ap devportal subscription get --org org_1 --id sub_1 --display-name my-portal --platform eu
+ap devportal subscription get --org org_1 --sub-id sub_1
+ap devportal subscription get --org org_1 --sub-id sub_1 --display-name my-portal --platform eu
 ```
 
 ### `ap devportal subscription delete`
@@ -342,14 +355,98 @@ ap devportal subscription get --org org_1 --id sub_1 --display-name my-portal --
 Deletes a platform subscription by ID.
 
 ```shell
-ap devportal subscription delete --org <org-id> --id <subscription-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal subscription delete --org <org-id> --sub-id <subscription-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap devportal subscription delete --org org_1 --id sub_1
-ap devportal subscription delete --org org_1 --id sub_1 --display-name my-portal --platform eu
+ap devportal subscription delete --org org_1 --sub-id sub_1
+ap devportal subscription delete --org org_1 --sub-id sub_1 --display-name my-portal --platform eu
+```
+
+## Platform API Key Commands
+
+These commands manage DevPortal platform API keys using the `/devportal/organizations/{orgId}/platform-api-keys` endpoints.
+
+### `ap devportal sub-api-key generate`
+
+Generates a platform API key.
+
+```shell
+ap devportal sub-api-key generate --org <org-id> --api-id <api-id> --key-name <key-name> [--expires-at <iso-8601-datetime>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal sub-api-key generate --org org_1 --api-id api_1 --key-name mobile-app-key
+ap devportal sub-api-key generate --org org_1 --api-id api_1 --key-name mobile-app-key --expires-at 2026-12-31T23:59:59Z
+```
+
+Expected payload shape:
+
+```json
+{
+  "apiId": "api_1",
+  "name": "mobile-app-key",
+  "expiresAt": "2026-12-31T23:59:59Z"
+}
+```
+
+### `ap devportal sub-api-key get`
+
+Lists platform API keys in an organization.
+
+```shell
+ap devportal sub-api-key get --org <org-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal sub-api-key get --org org_1
+ap devportal sub-api-key get --org org_1 --display-name my-portal --platform eu
+```
+
+### `ap devportal sub-api-key regenerate`
+
+Regenerates a platform API key.
+
+```shell
+ap devportal sub-api-key regenerate --org <org-id> --api-key-id <api-key-id> --api-id <api-id> --key-name <key-name> [--expires-at <iso-8601-datetime>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal sub-api-key regenerate --org org_1 --api-key-id key_1 --api-id api_1 --key-name mobile-app-key
+ap devportal sub-api-key regenerate --org org_1 --api-key-id key_1 --api-id api_1 --key-name mobile-app-key --expires-at 2026-12-31T23:59:59Z
+```
+
+Expected payload shape:
+
+```json
+{
+  "apiId": "api_1",
+  "name": "mobile-app-key",
+  "expiresAt": "2026-12-31T23:59:59Z"
+}
+```
+
+### `ap devportal sub-api-key revoke`
+
+Revokes a platform API key.
+
+```shell
+ap devportal sub-api-key revoke --org <org-id> --api-key-id <api-key-id> --api-id <api-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal sub-api-key revoke --org org_1 --api-key-id key_1 --api-id api_1
+ap devportal sub-api-key revoke --org org_1 --api-key-id key_1 --api-id api_1 --display-name my-portal --platform eu
 ```
 
 ## REST API Commands

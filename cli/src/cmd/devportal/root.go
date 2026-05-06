@@ -21,9 +21,10 @@ package devportal
 import (
 	"github.com/spf13/cobra"
 	devportalorg "github.com/wso2/api-platform/cli/cmd/devportal/org"
-	devportalsubscription "github.com/wso2/api-platform/cli/cmd/devportal/subscription"
-	devportalsubpolicy "github.com/wso2/api-platform/cli/cmd/devportal/subpolicy"
 	"github.com/wso2/api-platform/cli/cmd/devportal/restapi"
+	devportalsubapikey "github.com/wso2/api-platform/cli/cmd/devportal/subapikey"
+	devportalsubpolicy "github.com/wso2/api-platform/cli/cmd/devportal/subpolicy"
+	devportalsubscription "github.com/wso2/api-platform/cli/cmd/devportal/subscription"
 )
 
 const (
@@ -52,6 +53,7 @@ func init() {
 	DevPortalCmd.AddCommand(healthCmd)
 	DevPortalCmd.AddCommand(buildCmd)
 	DevPortalCmd.AddCommand(devportalorg.OrgCmd)
+	DevPortalCmd.AddCommand(devportalsubapikey.SubKeyCmd)
 	DevPortalCmd.AddCommand(devportalsubscription.SubscriptionCmd)
 	DevPortalCmd.AddCommand(devportalsubpolicy.SubPolicyCmd)
 	DevPortalCmd.AddCommand(restapi.APICmd)

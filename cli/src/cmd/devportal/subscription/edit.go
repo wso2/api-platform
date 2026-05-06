@@ -19,6 +19,7 @@
 package subscription
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -33,17 +34,21 @@ import (
 
 const (
 	EditCmdLiteral = "edit"
-	EditCmdExample = `# Update a platform subscription from a JSON file
-ap devportal subscription edit --org org_1 --sub-id sub_1 -f subscription-update.json
+	EditCmdExample = `# Update a platform subscription status using flags
+ap devportal subscription edit --org org_1 --sub-id sub_1 --status ACTIVE
 
 # Update using a specific devportal
-ap devportal subscription edit --org org_1 --sub-id sub_1 -f subscription-update.json --display-name my-portal --platform eu`
+ap devportal subscription edit --org org_1 --sub-id sub_1 --status ACTIVE --display-name my-portal --platform eu
+
+# Update a platform subscription from a JSON file
+ap devportal subscription edit --org org_1 --sub-id sub_1 -f subscription-update.json`
 )
 
 var (
 	editOrgID        string
 	editSubscription string
 	editFilePath     string
+	editStatus       string
 	editName         string
 	editPlatform     string
 	editInsecure     bool
@@ -52,7 +57,7 @@ var (
 var editCmd = &cobra.Command{
 	Use:     EditCmdLiteral,
 	Short:   "Update a DevPortal platform subscription",
-	Long:    "Updates a platform subscription in the selected DevPortal using a JSON request body from a file.",
+	Long:    "Updates a platform subscription in the selected DevPortal using request flags or a JSON request body from a file.",
 	Example: EditCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runEditCommand(); err != nil {
@@ -66,12 +71,12 @@ func init() {
 	utils.AddStringFlag(editCmd, utils.FlagOrgID, &editOrgID, "", "Organization ID")
 	utils.AddStringFlag(editCmd, utils.FlagSubID, &editSubscription, "", "Subscription ID")
 	utils.AddStringFlag(editCmd, utils.FlagFile, &editFilePath, "", "Path to the subscription JSON file")
+	utils.AddStringFlag(editCmd, utils.FlagStatus, &editStatus, "", "Subscription status")
 	utils.AddStringFlag(editCmd, utils.FlagName, &editName, "", "DevPortal display name")
 	utils.AddStringFlag(editCmd, utils.FlagPlatform, &editPlatform, "", "Platform name")
 	editCmd.Flags().BoolVar(&editInsecure, utils.FlagInsecure, false, "Skip TLS certificate verification")
 	_ = editCmd.MarkFlagRequired(utils.FlagOrgID)
 	_ = editCmd.MarkFlagRequired(utils.FlagSubID)
-	_ = editCmd.MarkFlagRequired(utils.FlagFile)
 }
 
 func runEditCommand() error {
@@ -80,7 +85,7 @@ func runEditCommand() error {
 		return fmt.Errorf("subscription ID is required")
 	}
 
-	payload, err := internaldevportal.ReadJSONFile(editFilePath)
+	payload, err := buildEditPayload()
 	if err != nil {
 		return err
 	}
@@ -109,3 +114,26 @@ func runEditCommand() error {
 	return internaldevportal.PrintJSONResponse(resp)
 }
 
+func buildEditPayload() ([]byte, error) {
+	filePath := strings.TrimSpace(editFilePath)
+	status := strings.TrimSpace(editStatus)
+
+	if filePath != "" {
+		return internaldevportal.ReadJSONFile(filePath)
+	}
+
+	if status == "" {
+		return nil, fmt.Errorf("status is required")
+	}
+
+	payload := map[string]string{
+		"status": status,
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build subscription payload: %w", err)
+	}
+
+	return data, nil
+}
