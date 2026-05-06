@@ -53,7 +53,7 @@ func TestPolicyValidator_ValidateRestAPIPolicies_Success(t *testing.T) {
 	// Create API config with valid policy
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{
 			DisplayName: "Test API",
 			Version:     "v1.0",
@@ -99,7 +99,7 @@ func TestPolicyValidator_PolicyNotFound(t *testing.T) {
 	// Create API config with non-existent policy
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{
 			DisplayName: "Test API",
 			Version:     "v1.0",
@@ -162,7 +162,7 @@ func TestPolicyValidator_InvalidParameters(t *testing.T) {
 	// Create API config with invalid params (missing required field)
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{
 			DisplayName: "Test API",
 			Version:     "v1.0",
@@ -223,7 +223,7 @@ func TestPolicyValidator_OperationLevelPolicies(t *testing.T) {
 	// Create API config with operation-level policy
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{
 			DisplayName: "Test API",
 			Version:     "v1.0",
@@ -274,7 +274,7 @@ func TestPolicyValidator_MultipleErrors(t *testing.T) {
 	// Create API config with multiple invalid policies
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{
 			DisplayName: "Test API",
 			Version:     "v1.0",
@@ -340,7 +340,7 @@ func TestPolicyValidator_TypeMismatch(t *testing.T) {
 	// Create API config with wrong type (string instead of integer)
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{
 			DisplayName: "Test API",
 			Version:     "v1.0",
@@ -403,7 +403,7 @@ func TestPolicyValidator_MissingRequiredParams(t *testing.T) {
 	// Test case 1: Policy with nil params (should fail validation for required field)
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{
 			DisplayName: "Test API",
 			Version:     "v1.0",
@@ -483,7 +483,7 @@ func TestPolicyValidator_MixedMajorVersions_SamePolicyName(t *testing.T) {
 
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{
 			DisplayName: "Test API",
 			Version:     "v1.0",
@@ -535,7 +535,7 @@ func TestPolicyValidator_FullSemverRejected(t *testing.T) {
 
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{
 			DisplayName: "Test API",
 			Version:     "v1.0",
@@ -589,7 +589,7 @@ func TestPolicyValidator_MajorVersionResolution_Success(t *testing.T) {
 
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{
 			DisplayName: "Test API",
 			Version:     "v1.0",
@@ -636,7 +636,7 @@ func TestPolicyValidator_MajorVersionResolution_NotFound(t *testing.T) {
 
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{
 			DisplayName: "Test API",
 			Version:     "v1.0",
@@ -690,7 +690,7 @@ func TestPolicyValidator_MajorVersionResolution_MultipleMatches(t *testing.T) {
 
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{
 			DisplayName: "Test API",
 			Version:     "v1.0",
@@ -748,7 +748,7 @@ func TestPolicyValidator_EmptyVersion_ResolvesToLatest(t *testing.T) {
 
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{
 			DisplayName: "Test API",
 			Version:     "v1.0",
@@ -786,7 +786,7 @@ func TestPolicyValidator_EmptyVersion_PolicyNotFound(t *testing.T) {
 
 	apiConfig := &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{
 			DisplayName: "Test API",
 			Version:     "v1.0",
@@ -869,7 +869,7 @@ func TestPolicyValidator_ValidateMCPProxyPolicies_NilPolicies(t *testing.T) {
 
 	mcpConfig := &api.MCPProxyConfiguration{
 		ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.Mcp,
+		Kind:       api.MCPProxyConfigurationKindMcp,
 		Metadata:   api.Metadata{Name: "test-mcp"},
 		Spec: api.MCPProxyConfigData{
 			DisplayName: "Test MCP",
@@ -895,7 +895,7 @@ func TestPolicyValidator_ValidateMCPProxyPolicies_ValidPolicy(t *testing.T) {
 	}
 	mcpConfig := &api.MCPProxyConfiguration{
 		ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.Mcp,
+		Kind:       api.MCPProxyConfigurationKindMcp,
 		Metadata:   api.Metadata{Name: "test-mcp"},
 		Spec: api.MCPProxyConfigData{
 			DisplayName: "Test MCP",
@@ -917,7 +917,7 @@ func TestPolicyValidator_ValidateMCPProxyPolicies_PolicyNotFound(t *testing.T) {
 	}
 	mcpConfig := &api.MCPProxyConfiguration{
 		ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.Mcp,
+		Kind:       api.MCPProxyConfigurationKindMcp,
 		Metadata:   api.Metadata{Name: "test-mcp"},
 		Spec: api.MCPProxyConfigData{
 			DisplayName: "Test MCP",
@@ -946,7 +946,7 @@ func TestPolicyValidator_ValidateMCPProxyPolicies_MultiplePoliciesWithErrors(t *
 	}
 	mcpConfig := &api.MCPProxyConfiguration{
 		ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.Mcp,
+		Kind:       api.MCPProxyConfigurationKindMcp,
 		Metadata:   api.Metadata{Name: "test-mcp"},
 		Spec: api.MCPProxyConfigData{
 			DisplayName: "Test MCP",

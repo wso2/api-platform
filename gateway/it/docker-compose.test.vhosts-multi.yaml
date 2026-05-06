@@ -49,7 +49,7 @@ services:
       - ../gateway-controller/listener-certs:/app/listener-certs:ro
       - ./coverage/gateway-controller:/coverage
     # healthcheck:
-    #   test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/health"]
+    #   test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9092/api/admin/v0.9/health"]
     #   interval: 5s
     #   timeout: 3s
     #   retries: 10
@@ -221,6 +221,24 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8086:8080"
+    networks:
+      - it-gateway-runtime-network
+
+  # Mock Interceptor Service for interceptor-service policy testing
+  mock-interceptor-service:
+    container_name: it-mock-interceptor-service
+    image: ghcr.io/wso2/api-platform/mock-interceptor-service:latest
+    build:
+      context: ../../tests/mock-servers/mock-interceptor-service
+      dockerfile: Dockerfile
+    ports:
+      - "8087:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "--tries=1", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     networks:
       - it-gateway-runtime-network
 

@@ -1,0 +1,43 @@
+# MANUAL COPY of github.com/wso2/gateway-controllers/policies/basic-auth@v1 — keep in sync with ../build.yaml until gateway-builder is integrated into event-gateway build.
+name: basic-auth
+version: v1.0.1
+description: |
+  Protects APIs using Basic Authentication by validating username and password credentials.
+
+parameters:
+  type: object
+  properties:
+    username:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: Expected username
+      minLength: 1
+      maxLength: 256
+    password:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: Expected password
+      minLength: 1
+      maxLength: 256
+    allowUnauthenticated:
+      type: boolean
+      x-wso2-policy-advanced-param: true
+      description: If true, allows unauthenticated requests to proceed to upstream.
+        Authentication status is still recorded in metadata (auth.success = false).
+        If false (default), returns 401 Unauthorized for failed authentication.
+      default: false
+    realm:
+      type: string
+      x-wso2-policy-advanced-param: true
+      description: Authentication realm shown in the WWW-Authenticate header. Displayed
+        to users in browser authentication prompts.
+      minLength: 1
+      maxLength: 256
+      default: Restricted
+  required:
+  - username
+  - password
+
+systemParameters:
+  type: object
+  properties: {}

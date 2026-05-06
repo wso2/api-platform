@@ -58,6 +58,30 @@ runAsNonRoot: true
 {{- end }}
 
 {{- /*
+RBAC for GatewayClass (cluster-scoped). Namespace Roles cannot grant these
+verbs at cluster scope; when watchNamespaces is set, chart also installs
+clusterrole-gatewayclass.yaml + binding.
+*/ -}}
+{{- define "gateway-operator.rbacRulesGatewayClass" -}}
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - gatewayclasses
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - gatewayclasses/status
+  verbs:
+  - get
+  - patch
+  - update
+{{- end }}
+
+{{- /*
 Common RBAC rules shared between ClusterRole (global) and Role (scoped)
 */ -}}
 {{- define "gateway-operator.rbacRules" -}}
@@ -141,6 +165,22 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
   - patch
   - update
 - apiGroups:
+  - gateway.api-platform.wso2.com
+  resources:
+  - apipolicies
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - gateway.api-platform.wso2.com
+  resources:
+  - apipolicies/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
   - apps
   resources:
   - deployments
@@ -165,5 +205,62 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
   - list
   - patch
   - update
+  - watch
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - gateways
+  verbs:
+  - get
+  - list
+  - watch
+  - update
+  - patch
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - gateways/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - gateways/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - httproutes
+  verbs:
+  - get
+  - list
+  - watch
+  - update
+  - patch
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - httproutes/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - httproutes/finalizers
+  verbs:
+  - update
+{{ include "gateway-operator.rbacRulesGatewayClass" . }}
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - referencegrants
+  verbs:
+  - get
+  - list
   - watch
 {{- end -}}

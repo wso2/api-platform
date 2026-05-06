@@ -14,7 +14,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-FROM golang:1.23-alpine AS builder
+FROM golang:1.26.2-alpine AS builder
 
 WORKDIR /app
 

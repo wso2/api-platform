@@ -1,11 +1,11 @@
 
-<h1 id="gateway-controller-management-api">Gateway Controller Management API v1.0.0</h1>
+<h1 id="gateway-controller-management-api">Gateway Controller Management API v0.9.0</h1>
 
 REST API for managing API configurations in the WSO2 API Platform Gateway.
 
 Base URLs:
-* <a href="http://localhost:9090">http://localhost:9090</a>
-* <a href="http://gateway-controller:9090">http://gateway-controller:9090</a>
+* <a href="http://localhost:9090/api/management/v0.9">http://localhost:9090/api/management/v0.9</a>
+* <a href="http://gateway-controller:9090/api/management/v0.9">http://gateway-controller:9090/api/management/v0.9</a>
 
 ## Table of Contents
 

@@ -33,7 +33,7 @@ func TestConstructorReplicaSyncWiring(t *testing.T) {
 	apiKeyConfig := &config.APIKeyConfig{}
 
 	t.Run("api deployment stores constructor wiring", func(t *testing.T) {
-		service := NewAPIDeploymentService(store, db, nil, nil, nil, nil, newReplicaSyncTestEventHub(), " gateway-1 ")
+		service := NewAPIDeploymentService(store, db, nil, nil, nil, newReplicaSyncTestEventHub(), " gateway-1 ", nil)
 		require.NotNil(t, service.eventHub)
 		assert.Equal(t, "gateway-1", service.gatewayID)
 	})
@@ -45,7 +45,7 @@ func TestConstructorReplicaSyncWiring(t *testing.T) {
 	})
 
 	t.Run("mcp deployment stores constructor wiring", func(t *testing.T) {
-		service := NewMCPDeploymentService(store, db, nil, nil, nil, newReplicaSyncTestEventHub(), " gateway-3 ")
+		service := NewMCPDeploymentService(store, db, nil, nil, nil, newReplicaSyncTestEventHub(), " gateway-3 ", nil)
 		require.NotNil(t, service.eventHub)
 		assert.Equal(t, "gateway-3", service.gatewayID)
 	})

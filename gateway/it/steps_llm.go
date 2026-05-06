@@ -96,7 +96,9 @@ func RegisterLLMSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 		var response struct {
 			Count     int `json:"count"`
 			Templates []struct {
-				ID string `json:"id"`
+				Metadata struct {
+					Name string `json:"name"`
+				} `json:"metadata"`
 			} `json:"templates"`
 		}
 
@@ -125,10 +127,12 @@ func RegisterLLMSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 			)
 		}
 
-		// 3️⃣ Collect actual template IDs
+		// 3️⃣ Collect actual template IDs (k8s-shaped list uses metadata.name)
 		actualIDs := make(map[string]bool)
 		for _, t := range response.Templates {
-			actualIDs[t.ID] = true
+			if t.Metadata.Name != "" {
+				actualIDs[t.Metadata.Name] = true
+			}
 		}
 
 		// 4️⃣ Validate all expected IDs are present

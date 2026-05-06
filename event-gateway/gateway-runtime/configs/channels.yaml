@@ -1,0 +1,85 @@
+# --------------------------------------------------------------------
+# Channel Bindings Configuration
+# --------------------------------------------------------------------
+# Two binding kinds are supported:
+#
+# 1. WebSubApi (kind: WebSubApi) — Multi-channel per API.
+#    Each channel maps to a separate Kafka topic: {name}.{version}.{channel}.
+#    Shared receiver at {context}/{version}/hub (sub/unsub)
+#    and {context}/{version}/webhook-receiver?topic=X (ingress).
+#
+# 2. Flat binding (no kind) — Legacy 1-channel-per-entry format.
+#    Used for protocol-mediation (WebSocket) and single-topic WebSub.
+#
+# Policy Routes
+# ─────────────
+# There are three policy enforcement points:
+#
+#   subscribe: Applied to subscribe/unsubscribe requests at the hub.
+#   inbound:   Applied when an event is published via the webhook receiver (data ingress).
+#   outbound:  Applied when an event is delivered to a subscriber callback (data delivery).
+
+channels:
+  # WebSubApi example: repo-watcher with multiple channels
+  - kind: WebSubApi
+    name: repo-watcher
+    version: v1
+    context: /repos
+    channels:
+      - name: issues
+      - name: pull-requests
+      - name: commits
+    receiver:
+      type: websub
+    broker-driver:
+      type: kafka
+      config:
+        brokers:
+          - kafka:29092
+    policies:
+      subscribe:
+        - name: basic-auth
+          version: v1
+          params:
+            username: "admin"
+            password: "admin"
+      inbound: []
+      outbound: []
+
+  # Protocol Mediation example (WS → Kafka, 1:1 passthrough)
+  - name: live-prices
+    mode: protocol-mediation
+    context: /prices
+    version: v1
+    receiver:
+      type: websocket
+      path: /stream
+    broker-driver:
+      type: kafka
+      topic: price-updates
+      config:
+        brokers:
+          - kafka:29092
+    policies:
+      subscribe: []
+      inbound: []
+      outbound: []
+
+  # WebSubApi with single channel
+  # - kind: WebSubApi
+  #   name: order-events
+  #   version: v1
+  #   context: /orders
+  #   channels:
+  #     - name: orders
+  #   receiver:
+  #     type: websub
+  #   broker-driver:
+  #     type: kafka
+  #     config:
+  #       brokers:
+  #         - kafka:29092
+  #   policies:
+  #     subscribe: []
+  #     inbound: []
+  #     outbound: []

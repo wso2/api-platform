@@ -29,8 +29,8 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
 
@@ -61,7 +61,7 @@ type EventListener struct {
 	logger              *slog.Logger
 	systemConfig        *config.Config
 	policyDefinitions   map[string]models.PolicyDefinition
-	policyResolver      *resolver.PolicyResolver
+	secretResolver      funcs.SecretResolver
 
 	eventCh <-chan eventhub.Event
 	ctx     context.Context
@@ -82,7 +82,7 @@ func NewEventListener(
 	logger *slog.Logger,
 	systemConfig *config.Config,
 	policyDefinitions map[string]models.PolicyDefinition,
-	policyResolver *resolver.PolicyResolver,
+	secretResolver funcs.SecretResolver,
 ) *EventListener {
 	if eventHub == nil {
 		panic("event listener requires non-nil EventHub")
@@ -115,7 +115,7 @@ func NewEventListener(
 		logger:              logger,
 		systemConfig:        systemConfig,
 		policyDefinitions:   policyDefinitions,
-		policyResolver:      policyResolver,
+		secretResolver:      secretResolver,
 		ctx:                 ctx,
 		cancel:              cancel,
 	}

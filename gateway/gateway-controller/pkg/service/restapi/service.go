@@ -35,8 +35,9 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
@@ -49,7 +50,7 @@ type CreateResult struct {
 
 // ListResult holds the result of a List operation.
 type ListResult struct {
-	Items []api.RestAPIListItem
+	Items []*models.StoredConfig
 }
 
 // GetResult holds the result of a GetByHandle operation.
@@ -73,8 +74,6 @@ type RestAPIService struct {
 	db                 storage.Storage
 	snapshotManager    *xds.SnapshotManager
 	policyManager      *policyxds.PolicyManager
-	policyDefinitions  map[string]models.PolicyDefinition
-	policyDefMu        *sync.RWMutex
 	deploymentService  *utils.APIDeploymentService
 	apiKeyXDSManager   *apikeyxds.APIKeyStateManager
 	controlPlaneClient controlplane.ControlPlaneClient
@@ -85,7 +84,7 @@ type RestAPIService struct {
 	validator          config.Validator
 	logger             *slog.Logger
 	eventHub           eventhub.EventHub
-	policyResolver     *resolver.PolicyResolver
+	secretResolver     funcs.SecretResolver
 }
 
 // NewRestAPIService creates a new RestAPIService.
@@ -94,8 +93,6 @@ func NewRestAPIService(
 	db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
 	policyManager *policyxds.PolicyManager,
-	policyDefinitions map[string]models.PolicyDefinition,
-	policyDefMu *sync.RWMutex,
 	deploymentService *utils.APIDeploymentService,
 	apiKeyXDSManager *apikeyxds.APIKeyStateManager,
 	controlPlaneClient controlplane.ControlPlaneClient,
@@ -106,7 +103,7 @@ func NewRestAPIService(
 	validator config.Validator,
 	logger *slog.Logger,
 	eventHub eventhub.EventHub,
-	policyResolver *resolver.PolicyResolver,
+	secretResolver funcs.SecretResolver,
 ) *RestAPIService {
 	if db == nil {
 		panic("RestAPIService requires non-nil storage")
@@ -129,8 +126,6 @@ func NewRestAPIService(
 		db:                 db,
 		snapshotManager:    snapshotManager,
 		policyManager:      policyManager,
-		policyDefinitions:  policyDefinitions,
-		policyDefMu:        policyDefMu,
 		deploymentService:  deploymentService,
 		apiKeyXDSManager:   apiKeyXDSManager,
 		controlPlaneClient: controlPlaneClient,
@@ -141,7 +136,7 @@ func NewRestAPIService(
 		validator:          validator,
 		logger:             logger,
 		eventHub:           eventHub,
-		policyResolver:     policyResolver,
+		secretResolver:     secretResolver,
 	}
 }
 
@@ -150,6 +145,7 @@ type CreateParams struct {
 	Body          []byte
 	ContentType   string
 	CorrelationID string
+	Kind          string
 	Logger        *slog.Logger
 }
 
@@ -157,10 +153,15 @@ type CreateParams struct {
 func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 	log := params.Logger
 
+	kind := params.Kind
+	if kind == "" {
+		kind = "RestApi"
+	}
+
 	result, err := s.deploymentService.DeployAPIConfiguration(utils.APIDeploymentParams{
 		Data:          params.Body,
 		ContentType:   params.ContentType,
-		Kind:          "RestApi",
+		Kind:          kind,
 		APIID:         "",
 		Origin:        models.OriginGatewayAPI,
 		CorrelationID: params.CorrelationID,
@@ -171,6 +172,15 @@ func (s *RestAPIService) Create(params CreateParams) (*CreateResult, error) {
 	}
 
 	if !result.IsStale {
+		// Trigger bottom-up sync immediately if connected and control plane type is on-prem
+		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.controlPlaneClient.IsOnPrem() {
+			go func() {
+				if err := s.controlPlaneClient.SyncArtifactsToOnPremAPIM(s.controlPlaneClient.GetAPIMConfig()); err != nil {
+					log.Error("Failed to sync API to on-prem APIM", slog.Any("error", err))
+				}
+			}()
+		}
+
 		// Push to control plane asynchronously if connected
 		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
 			go s.waitForDeploymentAndPush(result.StoredConfig.UUID, params.CorrelationID, log)
@@ -209,13 +219,13 @@ func (s *RestAPIService) validateArtifactConflicts(kind, currentID, displayName,
 
 // List returns REST API configurations, optionally filtered.
 func (s *RestAPIService) List(params api.ListRestAPIsParams) (*ListResult, error) {
-	configs, err := s.db.GetAllConfigsByKind(string(api.RestApi))
+	configs, err := s.db.GetAllConfigsByKind(string(api.RestAPIKindRestApi))
 	if err != nil {
 		s.logger.Error("Failed to get APIs", slog.Any("error", err))
 		return nil, fmt.Errorf("Failed to retrieve API configurations")
 	}
 
-	items := make([]api.RestAPIListItem, 0, len(configs))
+	items := make([]*models.StoredConfig, 0, len(configs))
 	for _, cfg := range configs {
 		// Apply filters when present
 		if params.DisplayName != nil && *params.DisplayName != "" && cfg.DisplayName != *params.DisplayName {
@@ -236,16 +246,7 @@ func (s *RestAPIService) List(params api.ListRestAPIsParams) (*ListResult, error
 			continue
 		}
 
-		status := string(cfg.DesiredState)
-		items = append(items, api.RestAPIListItem{
-			Id:          stringPtr(cfg.Handle),
-			DisplayName: stringPtr(cfg.DisplayName),
-			Version:     stringPtr(cfg.Version),
-			Context:     stringPtr(cfgContext),
-			Status:      (*api.RestAPIListItemStatus)(&status),
-			CreatedAt:   timePtr(cfg.CreatedAt),
-			UpdatedAt:   timePtr(cfg.UpdatedAt),
-		})
+		items = append(items, cfg)
 	}
 
 	return &ListResult{Items: items}, nil
@@ -288,10 +289,10 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 		}
 	}
 
-	// Validate configuration
-	validationErrors := s.validator.Validate(&apiConfig)
-	if len(validationErrors) > 0 {
-		return nil, &ValidationError{Errors: validationErrors}
+	// Extract deploymentState from spec (defaults to "deployed" if not specified)
+	desiredState := models.StateDeployed
+	if apiConfig.Spec.DeploymentState != nil && *apiConfig.Spec.DeploymentState == api.APIConfigDataDeploymentStateUndeployed {
+		desiredState = models.StateUndeployed
 	}
 
 	// Check if config exists
@@ -300,22 +301,31 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 		return nil, ErrNotFound
 	}
 
-	// Extract deploymentState from spec (defaults to "deployed" if not specified)
-	desiredState := models.StateDeployed
-	if apiConfig.Spec.DeploymentState != nil && *apiConfig.Spec.DeploymentState == api.APIConfigDataDeploymentStateUndeployed {
-		desiredState = models.StateUndeployed
+	// Populate existing with the incoming config so RenderSpec can operate on it.
+	existing.Configuration = apiConfig
+	existing.SourceConfiguration = apiConfig
+
+	// Render template expressions before validation so the validator sees resolved values
+	// (e.g. {{ env "BACKEND_URL" }} → actual URL).
+	if err := templateengine.RenderSpec(existing, s.secretResolver, log); err != nil {
+		return nil, err
 	}
 
-	if err := s.validateArtifactConflicts(models.KindRestApi, existing.UUID, apiConfig.Spec.DisplayName, apiConfig.Spec.Version, existing.Handle); err != nil {
+	// Validate configuration against resolved values
+	renderedConfig := existing.Configuration.(api.RestAPI)
+	validationErrors := s.validator.Validate(&renderedConfig)
+	if len(validationErrors) > 0 {
+		return nil, &ValidationError{Errors: validationErrors}
+	}
+
+	if err := s.validateArtifactConflicts(models.KindRestApi, existing.UUID, renderedConfig.Spec.DisplayName, renderedConfig.Spec.Version, existing.Handle); err != nil {
 		return nil, err
 	}
 
 	// Update stored configuration
 	now := time.Now()
-	existing.DisplayName = apiConfig.Spec.DisplayName
-	existing.Version = apiConfig.Spec.Version
-	existing.Configuration = apiConfig
-	existing.SourceConfiguration = apiConfig
+	existing.DisplayName = renderedConfig.Spec.DisplayName
+	existing.Version = renderedConfig.Spec.Version
 	existing.DesiredState = desiredState
 	existing.UpdatedAt = now
 
@@ -326,15 +336,10 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 		log.Info("Undeploying API configuration",
 			slog.String("id", existing.UUID),
 			slog.String("handle", params.Handle))
-	} else {
-		// Normal config update: preserve existing DeployedAt (already set during initial creation)
+	}
 
-		// Resolve policy configuration (handles secret resolution)
-		// Blocks the update if there are policy resolution errors to prevent storing configs with unresolved secrets
-		_, err = s.resolvePolicyConfiguration(existing)
-		if err != nil {
-			return nil, err
-		}
+	if existing.Origin == models.OriginGatewayAPI {
+		existing.CPSyncStatus = models.CPSyncStatusPending
 	}
 
 	// Dual-write: database first, then in-memory
@@ -344,6 +349,15 @@ func (s *RestAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 	}
 
 	s.publishEvent(eventhub.EventTypeAPI, "UPDATE", existing.UUID, params.CorrelationID, log)
+
+	// Trigger bottom-up sync if enabled and connected
+	if existing.Origin == models.OriginGatewayAPI && s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.controlPlaneClient.IsOnPrem() {
+		go func() {
+			if err := s.controlPlaneClient.SyncArtifactsToOnPremAPIM(s.controlPlaneClient.GetAPIMConfig()); err != nil {
+				log.Error("Failed to sync API to on-prem APIM", slog.Any("error", err))
+			}
+		}()
+	}
 
 	log.Info("API configuration updated",
 		slog.String("id", existing.UUID),
@@ -507,30 +521,6 @@ func (s *RestAPIService) deregisterWebSubTopics(cfg *models.StoredConfig, log *s
 	return nil
 }
 
-// resolvePolicyConfiguration resolves policy templates and secret references in the configuration.
-// Returns the resolved configuration or an error if policy resolution fails.
-func (s *RestAPIService) resolvePolicyConfiguration(storedCfg *models.StoredConfig) (*models.StoredConfig, error) {
-	if s.policyResolver == nil {
-		return nil, ErrMissingPolicyResolver
-	}
-	resolvedCfg, validationErrors := s.policyResolver.ResolvePolicies(storedCfg)
-	if len(validationErrors) > 0 {
-		errMsgs := make([]string, 0, len(validationErrors))
-		for _, ve := range validationErrors {
-			errMsgs = append(errMsgs, ve.Message)
-		}
-		errMsg := strings.Join(errMsgs, "; ")
-
-		slog.Error("Policy resolution failed",
-			slog.String("config_handle", storedCfg.Handle),
-			slog.String("errors", errMsg),
-		)
-
-		return nil, fmt.Errorf("policy resolution failed with %d errors: %s", len(validationErrors), errMsg)
-	}
-	return resolvedCfg, nil
-}
-
 func stringPtr(s string) *string {
 	return &s
 }
@@ -567,3 +557,4 @@ func (s *RestAPIService) publishEvent(eventType eventhub.EventType, action, enti
 			slog.String("entity_id", entityID))
 	}
 }
+

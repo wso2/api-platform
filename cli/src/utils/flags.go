@@ -23,6 +23,7 @@ import "github.com/spf13/cobra"
 const (
 	FlagName                   = "display-name"
 	FlagServer                 = "server"
+	FlagAdminServer            = "admin-server"
 	FlagAuth                   = "auth"
 	FlagUsername               = "username"
 	FlagPassword               = "password"

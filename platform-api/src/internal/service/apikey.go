@@ -284,16 +284,6 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 	}
 	apiId := apiMetadata.ID
 
-	// Validate API exists and get its deployments
-	api, err := s.apiRepo.GetAPIByUUID(apiId, orgId)
-	if err != nil {
-		s.slogger.Error("Failed to get API for API key creation", "apiHandle", apiHandle, "error", err)
-		return fmt.Errorf("failed to get API: %w", err)
-	}
-	if api == nil {
-		return constants.ErrAPINotFound
-	}
-
 	// Get all deployments for this API to find target gateways
 	gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(apiId, orgId)
 	if err != nil {
@@ -303,7 +293,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 	if len(gateways) == 0 {
 		return constants.ErrGatewayUnavailable
 	}
-
+	
 	// Resolve key name (required for DB uniqueness; derive from request or generate)
 	keyName, err := s.resolveUniqueKeyName(apiId, req, apiHandle)
 	if err != nil {
@@ -396,16 +386,14 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, orgId, user
 		}
 	}
 
-	// Log summary
+	// Log summary — API key is persisted to DB regardless of broadcast outcome
 	s.slogger.Info("API key creation broadcast summary", "apiHandle", apiHandle, "keyName", keyName, "total", len(gateways), "success", successCount, "failed", failureCount)
-
-	// Return error if all deliveries failed
 	if successCount == 0 {
-		s.slogger.Error("Failed to deliver API key to any gateway", "apiHandle", apiHandle, "keyName", keyName)
-		return fmt.Errorf("failed to deliver API key event to any gateway: %w", lastError)
+		s.slogger.Error("API key created event was not broadcast to any gateway", "apiHandle", apiHandle, "keyName", keyName, "lastError", lastError)
+	} else if failureCount > 0 {
+		s.slogger.Warn("Failed to broadcast API key created event to some gateways", "apiHandle", apiHandle, "keyName", keyName, "failed", failureCount, "lastError", lastError)
 	}
 
-	// Partial success is still considered success (some gateways received the event)
 	return nil
 }
 
@@ -423,17 +411,6 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 		return constants.ErrAPINotFound
 	}
 	apiId := apiMetadata.ID
-
-	// Validate API exists and get its deployments
-	api, err := s.apiRepo.GetAPIByUUID(apiId, orgId)
-	if err != nil {
-		s.slogger.Error("Failed to get API for API key update", "apiHandle", apiHandle, "error", err)
-		return fmt.Errorf("failed to get API: %w", err)
-	}
-	if api == nil {
-		s.slogger.Warn("API not found for API key update", "apiHandle", apiHandle)
-		return constants.ErrAPINotFound
-	}
 
 	// Get all deployments for this API to find target gateways
 	gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(apiId, orgId)
@@ -518,13 +495,10 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, orgId, keyN
 	// Log summary
 	s.slogger.Info("API key update broadcast summary", "apiHandle", apiHandle, "keyName", keyName, "total", len(gateways), "success", successCount, "failed", failureCount)
 
-	// Return error if all deliveries failed
 	if successCount == 0 {
-		s.slogger.Error("Failed to deliver API key update to any gateway", "apiHandle", apiHandle, "keyName", keyName)
-		return fmt.Errorf("failed to deliver API key update event to any gateway: %w", lastError)
+		s.slogger.Error("Failed to deliver API key update to any gateway", "apiHandle", apiHandle, "keyName", keyName, "lastError", lastError)
 	}
 
-	// Partial success is still considered success (some gateways received the event)
 	return nil
 }
 
@@ -541,14 +515,6 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, orgId, keyN
 		return constants.ErrAPINotFound
 	}
 	apiId := apiMetadata.ID
-	// Validate API exists and get its deployments
-	api, err := s.apiRepo.GetAPIByUUID(apiId, orgId)
-	if err != nil {
-		return fmt.Errorf("failed to get API: %w", err)
-	}
-	if api == nil {
-		return constants.ErrAPINotFound
-	}
 
 	// Get all deployments for this API to find target gateways
 	gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(apiId, orgId)
@@ -599,7 +565,7 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, orgId, keyN
 	s.slogger.Info("API key revocation broadcast summary", "apiHandle", apiId, "keyName", keyName, "total", len(gateways), "success", successCount, "failed", failureCount)
 
 	if failureCount == len(gateways) {
-		return fmt.Errorf("failed to deliver API key revocation to all gateways: %w", lastError)
+		s.slogger.Error("Failed to deliver API key revocation to any gateway", "apiHandle", apiId, "keyName", keyName, "lastError", lastError)
 	}
 	if failureCount > 0 {
 		s.slogger.Warn("Partial delivery of API key revocation", "apiHandle", apiId, "keyName", keyName, "failureCount", failureCount, "total", len(gateways))

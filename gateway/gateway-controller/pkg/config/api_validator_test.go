@@ -524,13 +524,13 @@ func TestAPIValidator_ValidateChannels(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		channels  []api.Channel
+		channels  []api.HubChannel
 		wantError bool
 		errField  string
 	}{
 		{
 			name: "Valid channels",
-			channels: []api.Channel{
+			channels: []api.HubChannel{
 				{Name: "channel1"},
 				{Name: "channel2"},
 			},
@@ -538,32 +538,32 @@ func TestAPIValidator_ValidateChannels(t *testing.T) {
 		},
 		{
 			name:      "Empty channels",
-			channels:  []api.Channel{},
+			channels:  []api.HubChannel{},
 			wantError: true,
-			errField:  "spec.channels",
+			errField:  "spec.hub.channels",
 		},
 		{
 			name: "Missing channel name",
-			channels: []api.Channel{
+			channels: []api.HubChannel{
 				{Name: ""},
 			},
 			wantError: true,
-			errField:  "spec.channels[0].name",
+			errField:  "spec.hub.channels[0].name",
 		},
 		{
 			name: "Channel with braces (invalid)",
-			channels: []api.Channel{
+			channels: []api.HubChannel{
 				{Name: "channel/{id}"},
 			},
 			wantError: true,
-			errField:  "spec.channels[0].name",
+			errField:  "spec.hub.channels[0].name",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := createValidWebSubAPIConfig()
-			config.Spec.Channels = tt.channels
+			config.Spec.Hub.Channels = tt.channels
 
 			errors := v.Validate(config)
 			hasExpectedError := false
@@ -672,7 +672,7 @@ func TestAPIValidator_ValidatePathParametersForAsyncAPIs(t *testing.T) {
 func createValidRestAPIConfig() *api.RestAPI {
 	return &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Metadata: api.Metadata{
 			Name: "test-api",
 		},
@@ -697,8 +697,8 @@ func createValidRestAPIConfig() *api.RestAPI {
 
 func createValidWebSubAPIConfig() *api.WebSubAPI {
 	return &api.WebSubAPI{
-		ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.WebSubApi,
+		ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.WebSubAPIKindWebSubApi,
 		Metadata: api.Metadata{
 			Name: "test-websub",
 		},
@@ -706,8 +706,10 @@ func createValidWebSubAPIConfig() *api.WebSubAPI {
 			DisplayName: "Test WebSub",
 			Version:     "v1.0",
 			Context:     "/websub",
-			Channels: []api.Channel{
-				{Name: "channel1"},
+			Hub: api.WebSubHub{
+				Channels: []api.HubChannel{
+					{Name: "channel1"},
+				},
 			},
 		},
 	}

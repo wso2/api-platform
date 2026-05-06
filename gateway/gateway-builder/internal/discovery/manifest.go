@@ -99,6 +99,7 @@ func validateBuildFile(bf *types.BuildFile) error {
 			"name", entry.Name,
 			"filePath", entry.FilePath,
 			"gomodule", entry.Gomodule,
+			"pipPackage", entry.PipPackage,
 			"phase", "discovery")
 
 		// Check required fields
@@ -109,19 +110,34 @@ func validateBuildFile(bf *types.BuildFile) error {
 			)
 		}
 
-		if entry.FilePath == "" && entry.Gomodule == "" {
+		// Count sources provided
+		sourceCount := 0
+		if entry.FilePath != "" {
+			sourceCount++
+		}
+		if entry.Gomodule != "" {
+			sourceCount++
+		}
+		if entry.PipPackage != "" {
+			sourceCount++
+		}
+
+		if sourceCount == 0 {
 			return errors.NewDiscoveryError(
-				fmt.Sprintf("policy entry %d (%s): either filePath or gomodule must be provided", i, entry.Name),
+				fmt.Sprintf("policy entry %d (%s): either filePath, gomodule, or pipPackage must be provided", i, entry.Name),
 				nil,
 			)
 		}
 
-		if entry.FilePath != "" && entry.Gomodule != "" {
-			slog.Debug("Both filePath and gomodule provided; preferring filePath", "name", entry.Name)
+		if sourceCount > 1 {
+			return errors.NewDiscoveryError(
+				fmt.Sprintf("policy entry %d (%s): only one of filePath, gomodule, or pipPackage may be provided", i, entry.Name),
+				nil,
+			)
 		}
 
-		// Check for duplicates based on name + filePath/gomodule to avoid ambiguity
-		key := fmt.Sprintf("%s:%s|%s", entry.Name, entry.FilePath, entry.Gomodule)
+		// Check for duplicates based on name + source to avoid ambiguity
+		key := fmt.Sprintf("%s:%s|%s|%s", entry.Name, entry.FilePath, entry.Gomodule, entry.PipPackage)
 		if seen[key] {
 			return errors.NewDiscoveryError(
 				fmt.Sprintf("duplicate policy entry: %s", key),
@@ -165,148 +181,429 @@ func DiscoverPoliciesFromBuildFile(buildFilePath string, baseDir string) ([]*typ
 	var discovered []*types.DiscoveredPolicy
 
 	for _, entry := range bf.Policies {
-		var policyPath string
-		var source string
-		var goModulePath string
-		var goModuleVersion string
-		var isFilePathEntry bool
+		// Handle pip package (explicit Python remote)
+		if entry.PipPackage != "" {
+			policy, err := discoverPipPolicy(entry)
+			if err != nil {
+				return nil, err
+			}
+			discovered = append(discovered, policy)
+			continue
+		}
 
+		// Handle Go module (explicit Go remote)
+		if entry.Gomodule != "" {
+			policy, err := discoverGoPolicy(entry, baseDir)
+			if err != nil {
+				return nil, err
+			}
+			discovered = append(discovered, policy)
+			continue
+		}
+
+		// Handle filePath — auto-detect runtime by directory fingerprint
 		if entry.FilePath != "" {
-			policyPath = filepath.Join(baseDir, entry.FilePath)
-			source = "filePath"
-			isFilePathEntry = true
+			policyPath := filepath.Join(baseDir, entry.FilePath)
 
-			// Read the module path from the policy's own go.mod
-			modulePath, err := extractModulePathFromGoMod(filepath.Join(policyPath, "go.mod"))
-			if err != nil {
+			if err := fsutil.ValidatePathExists(policyPath, "policy path"); err != nil {
 				return nil, errors.NewDiscoveryError(
-					fmt.Sprintf("failed to read module path from go.mod for %s: %v", entry.Name, err),
+					fmt.Sprintf("from build file entry %s: %v", entry.Name, err),
 					err,
 				)
 			}
-			goModulePath = modulePath
 
-			slog.Info("Resolved policy entry via filePath",
-				"name", entry.Name,
-				"filePath", entry.FilePath,
-				"resolvedPath", policyPath,
-				"goModulePath", goModulePath)
-		} else if entry.Gomodule != "" {
-			modInfo, err := resolveModuleInfo(entry.Gomodule)
+			runtime, err := DetectRuntime(policyPath)
 			if err != nil {
 				return nil, errors.NewDiscoveryError(
-					fmt.Sprintf("failed to resolve gomodule for %s: %v", entry.Name, err),
+					fmt.Sprintf("failed to detect policy runtime for %s", policyPath),
 					err,
 				)
 			}
-			policyPath = modInfo.Dir
-			goModulePath = modInfo.Path
-			goModuleVersion = modInfo.Version
-			source = "gomodule"
 
-			slog.Info("Resolved policy entry via remote module",
-				"name", entry.Name,
-				"gomodule", entry.Gomodule,
-				"resolvedPath", policyPath,
-				"goModuleVersion", goModuleVersion)
-		} else {
-			return nil, errors.NewDiscoveryError(
-				fmt.Sprintf("policy entry %s: either filePath or gomodule must be provided", entry.Name),
-				nil,
-			)
+			if runtime == "python" {
+				policy, err := discoverLocalPythonPolicy(entry, baseDir)
+				if err != nil {
+					return nil, err
+				}
+				discovered = append(discovered, policy)
+			} else {
+				policy, err := discoverGoPolicy(entry, baseDir)
+				if err != nil {
+					return nil, err
+				}
+				discovered = append(discovered, policy)
+			}
+			continue
 		}
-
-		slog.Debug("Resolving policy",
-			"policy", entry.Name,
-			"source", source,
-			"path", policyPath,
-			"goModulePath", goModulePath,
-			"goModuleVersion", goModuleVersion,
-			"phase", "discovery")
-
-		// Check path exists and is accessible
-		if err := fsutil.ValidatePathExists(policyPath, "policy path"); err != nil {
-			return nil, errors.NewDiscoveryError(
-				fmt.Sprintf("from build file entry %s: %v", entry.Name, err),
-				err,
-			)
-		}
-
-		// Validate directory structure
-		if err := ValidateDirectoryStructure(policyPath); err != nil {
-			return nil, errors.NewDiscoveryError(
-				fmt.Sprintf("invalid structure for %s at %s", entry.Name, policyPath),
-				err,
-			)
-		}
-
-		// Parse policy definition
-		policyYAMLPath := filepath.Join(policyPath, types.PolicyDefinitionFile)
-		definition, err := ParsePolicyYAML(policyYAMLPath)
-		if err != nil {
-			return nil, errors.NewDiscoveryError(
-				fmt.Sprintf("failed to parse %s for %s at %s", types.PolicyDefinitionFile, entry.Name, policyPath),
-				err,
-			)
-		}
-
-		slog.Debug("Parsed policy definition",
-			"name", definition.Name,
-			"version", definition.Version,
-			"path", policyYAMLPath,
-			"phase", "discovery")
-
-		// Validate build file entry matches policy definition name
-		if entry.Name != definition.Name {
-			return nil, errors.NewDiscoveryError(
-				fmt.Sprintf("policy name mismatch: build file declares '%s' but %s has '%s' at %s",
-					entry.Name, types.PolicyDefinitionFile, definition.Name, policyPath),
-				nil,
-			)
-		}
-
-		if definition.Version == "" {
-			return nil, errors.NewDiscoveryError(
-				fmt.Sprintf("policy version cannot be found in definition for %s", entry.Name),
-				nil,
-			)
-		}
-
-		// Collect source files
-		sourceFiles, err := CollectSourceFiles(policyPath)
-		if err != nil {
-			return nil, errors.NewDiscoveryError(
-				fmt.Sprintf("failed to collect source files for %s:%s at %s", entry.Name, definition.Version, policyPath),
-				err,
-			)
-		}
-
-		slog.Debug("Collected source files",
-			"policy", entry.Name,
-			"count", len(sourceFiles),
-			"files", sourceFiles,
-			"phase", "discovery")
-
-		// Create discovered policy
-		policy := &types.DiscoveredPolicy{
-			Name:             definition.Name,
-			Version:          definition.Version,
-			Path:             policyPath,
-			YAMLPath:         policyYAMLPath,
-			GoModPath:        filepath.Join(policyPath, "go.mod"),
-			SourceFiles:      sourceFiles,
-			SystemParameters: ExtractDefaultValues(definition.SystemParameters),
-			Definition:       definition,
-			GoModulePath:     goModulePath,
-			GoModuleVersion:  goModuleVersion,
-			IsFilePathEntry:  isFilePathEntry,
-		}
-
-		discovered = append(discovered, policy)
 	}
 
 	return discovered, nil
 }
+
+// DetectRuntime auto-detects the policy runtime by examining the directory contents.
+// Presence of go.mod → "go"; presence of .py files (and no go.mod) → "python".
+// Also recognises the industry-standard src layout where pyproject.toml exists at
+// the root but .py files live under src/<package>/.
+func DetectRuntime(policyDir string) (string, error) {
+	goMod := filepath.Join(policyDir, "go.mod")
+	if _, err := os.Stat(goMod); err == nil {
+		return "go", nil
+	}
+
+	// Check for .py files directly in the policy root (flat layout)
+	entries, err := os.ReadDir(policyDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to read policy directory %s: %w", policyDir, err)
+	}
+	for _, e := range entries {
+		if !e.IsDir() && filepath.Ext(e.Name()) == ".py" {
+			return "python", nil
+		}
+	}
+
+	// Check for pyproject.toml (src layout — .py files live under src/<pkg>/)
+	pyProject := filepath.Join(policyDir, "pyproject.toml")
+	if _, err := os.Stat(pyProject); err == nil {
+		return "python", nil
+	}
+
+	return "go", nil
+}
+
+// discoverPipPolicy discovers a Python policy from a pip package reference.
+// It downloads the wheel (without deps), extracts metadata and source for
+// build-time validation, and records the pip spec so the python-deps Docker
+// stage can do the real install on the correct platform.
+func discoverPipPolicy(entry types.BuildEntry) (*types.DiscoveredPolicy, error) {
+	pkgInfo, err := FetchPipPackage(entry.PipPackage)
+	if err != nil {
+		return nil, errors.NewDiscoveryError(
+			fmt.Sprintf("failed to fetch pip package for %s: %v", entry.Name, err),
+			err,
+		)
+	}
+
+	slog.Info("Resolved Python policy entry via pip",
+		"name", entry.Name,
+		"pipPackage", entry.PipPackage,
+		"topLevelModule", pkgInfo.TopLevelModule,
+		"resolvedPath", pkgInfo.Dir)
+
+	// Validate extracted source and parse definition
+	discovered, err := buildSimplePythonDiscoveredPolicy(entry, pkgInfo.Dir)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set pip-specific fields
+	discovered.IsPipPackage = true
+	discovered.OriginalPipSpec = entry.PipPackage
+	discovered.PipSpec = pkgInfo.PipSpec
+	discovered.PipIndexURL = pkgInfo.IndexURL
+	discovered.PythonTopLevelModule = pkgInfo.TopLevelModule
+
+	return discovered, nil
+}
+
+// discoverLocalPythonPolicy discovers a Python policy from a local filePath entry.
+// Python policies come in two forms:
+//   - Simple: policy.py + requirements.txt + policy-definition.yaml (no pyproject.toml)
+//   - Package: a proper Python package with pyproject.toml (any layout: flat, src, etc.)
+//
+// For packages, we build a wheel locally using pip and extract it — the same approach
+// used for remote pip packages. This is fully generic and works regardless of source layout.
+func discoverLocalPythonPolicy(entry types.BuildEntry, baseDir string) (*types.DiscoveredPolicy, error) {
+	policyPath := filepath.Join(baseDir, entry.FilePath)
+
+	slog.Info("Resolved Python policy entry via filePath",
+		"name", entry.Name,
+		"filePath", entry.FilePath,
+		"resolvedPath", policyPath)
+
+	pyProject := filepath.Join(policyPath, "pyproject.toml")
+	if _, err := os.Stat(pyProject); err == nil {
+		return discoverLocalPythonPackagePolicy(entry, policyPath)
+	}
+
+	// Simple Python policy — flat directory with policy.py, requirements.txt, etc.
+	return buildSimplePythonDiscoveredPolicy(entry, policyPath)
+}
+
+// discoverLocalPythonPackagePolicy discovers a Python policy that is a proper Python
+// package (has pyproject.toml). It builds a wheel from the local source — regardless
+// of source layout — extracts the module, and validates it.
+func discoverLocalPythonPackagePolicy(entry types.BuildEntry, policyPath string) (*types.DiscoveredPolicy, error) {
+	slog.Info("Building wheel for local Python package policy",
+		"name", entry.Name,
+		"path", policyPath,
+		"phase", "discovery")
+
+	wheelDir, err := os.MkdirTemp("", "pip-local-wheel-*")
+	if err != nil {
+		return nil, errors.NewDiscoveryError(
+			fmt.Sprintf("failed to create temp directory for %s", entry.Name), err)
+	}
+	defer os.RemoveAll(wheelDir)
+
+	args := []string{"wheel", "--no-deps", policyPath, "-w", wheelDir}
+	if err := runPipCommand(args, 2*time.Minute, policyPath, "", "wheel"); err != nil {
+		return nil, errors.NewDiscoveryError(
+			fmt.Sprintf("failed to build wheel for local Python package %s at %s", entry.Name, policyPath), err)
+	}
+
+	whlPath, err := findWheelFile(wheelDir)
+	if err != nil {
+		return nil, errors.NewDiscoveryError(
+			fmt.Sprintf("failed to find wheel for %s", entry.Name), err)
+	}
+
+	topLevelModule, err := readTopLevelFromWheel(whlPath)
+	if err != nil {
+		return nil, errors.NewDiscoveryError(
+			fmt.Sprintf("failed to read top-level module from wheel for %s", entry.Name), err)
+	}
+
+	extractDir, err := extractModuleFromWheel(whlPath, topLevelModule)
+	if err != nil {
+		return nil, errors.NewDiscoveryError(
+			fmt.Sprintf("failed to extract module from wheel for %s", entry.Name), err)
+	}
+
+	// Validate and build the discovered policy from the extracted module directory.
+	// The extracted dir is flat (policy.py, __init__.py, policy-definition.yaml, etc.)
+	// — the same structure as a simple policy or an extracted pip package.
+	discovered, err := buildSimplePythonDiscoveredPolicy(entry, extractDir)
+	if err != nil {
+		os.RemoveAll(extractDir)
+		return nil, err
+	}
+
+	// Override Path to the original project root so requirements.txt can be found there.
+	discovered.Path = policyPath
+	discovered.IsFilePathEntry = true
+	discovered.PythonTopLevelModule = topLevelModule
+
+	slog.Info("Discovered local Python package policy",
+		"name", discovered.Name,
+		"version", discovered.Version,
+		"topLevelModule", topLevelModule,
+		"extractDir", extractDir,
+		"phase", "discovery")
+
+	return discovered, nil
+}
+
+// buildSimplePythonDiscoveredPolicy builds a discovered policy from a flat directory
+// containing policy.py, policy-definition.yaml, and other Python source files.
+// Used for both simple (no pyproject.toml) policies and extracted wheel module directories.
+func buildSimplePythonDiscoveredPolicy(entry types.BuildEntry, policyPath string) (*types.DiscoveredPolicy, error) {
+	if err := fsutil.ValidatePathExists(policyPath, "policy path"); err != nil {
+		return nil, errors.NewDiscoveryError(
+			fmt.Sprintf("from build file entry %s: %v", entry.Name, err),
+			err,
+		)
+	}
+
+	if err := ValidatePythonDirectoryStructure(policyPath); err != nil {
+		return nil, errors.NewDiscoveryError(
+			fmt.Sprintf("invalid Python policy structure for %s at %s", entry.Name, policyPath),
+			err,
+		)
+	}
+
+	policyYAMLPath := filepath.Join(policyPath, types.PolicyDefinitionFile)
+	definition, err := ParsePolicyYAML(policyYAMLPath)
+	if err != nil {
+		return nil, errors.NewDiscoveryError(
+			fmt.Sprintf("failed to parse %s for %s at %s", types.PolicyDefinitionFile, entry.Name, policyPath),
+			err,
+		)
+	}
+
+	if entry.Name != definition.Name {
+		return nil, errors.NewDiscoveryError(
+			fmt.Sprintf("policy name mismatch: build file declares '%s' but %s has '%s' at %s",
+				entry.Name, types.PolicyDefinitionFile, definition.Name, policyPath),
+			nil,
+		)
+	}
+
+	if definition.Version == "" {
+		return nil, errors.NewDiscoveryError(
+			fmt.Sprintf("policy version cannot be found in definition for %s", entry.Name),
+			nil,
+		)
+	}
+
+	sourceFiles, err := CollectPythonSourceFiles(policyPath)
+	if err != nil {
+		return nil, errors.NewDiscoveryError(
+			fmt.Sprintf("failed to collect Python source files for %s:%s at %s", entry.Name, definition.Version, policyPath),
+			err,
+		)
+	}
+
+	discovered := &types.DiscoveredPolicy{
+		Name:             definition.Name,
+		Version:          definition.Version,
+		Path:             policyPath,
+		YAMLPath:         policyYAMLPath,
+		SourceFiles:      sourceFiles,
+		SystemParameters: ExtractDefaultValues(definition.SystemParameters),
+		Definition:       definition,
+		Runtime:          "python",
+		PythonSourceDir:  policyPath,
+	}
+
+	slog.Info("Discovered Python policy",
+		"name", discovered.Name,
+		"version", discovered.Version,
+		"path", policyPath,
+		"phase", "discovery")
+
+	return discovered, nil
+}
+
+// discoverGoPolicy discovers a Go policy from build file entry
+func discoverGoPolicy(entry types.BuildEntry, baseDir string) (*types.DiscoveredPolicy, error) {
+	var policyPath string
+	var source string
+	var goModulePath string
+	var goModuleVersion string
+	var isFilePathEntry bool
+
+	if entry.FilePath != "" {
+		policyPath = filepath.Join(baseDir, entry.FilePath)
+		source = "filePath"
+		isFilePathEntry = true
+
+		// Read the module path from the policy's own go.mod
+		modulePath, err := extractModulePathFromGoMod(filepath.Join(policyPath, "go.mod"))
+		if err != nil {
+			return nil, errors.NewDiscoveryError(
+				fmt.Sprintf("failed to read module path from go.mod for %s: %v", entry.Name, err),
+				err,
+			)
+		}
+		goModulePath = modulePath
+
+		slog.Info("Resolved policy entry via filePath",
+			"name", entry.Name,
+			"filePath", entry.FilePath,
+			"resolvedPath", policyPath,
+			"goModulePath", goModulePath)
+	} else if entry.Gomodule != "" {
+		modInfo, err := resolveModuleInfo(entry.Gomodule)
+		if err != nil {
+			return nil, errors.NewDiscoveryError(
+				fmt.Sprintf("failed to resolve gomodule for %s: %v", entry.Name, err),
+				err,
+			)
+		}
+		policyPath = modInfo.Dir
+		goModulePath = modInfo.Path
+		goModuleVersion = modInfo.Version
+		source = "gomodule"
+
+		slog.Info("Resolved policy entry via remote module",
+			"name", entry.Name,
+			"gomodule", entry.Gomodule,
+			"resolvedPath", policyPath,
+			"goModuleVersion", goModuleVersion)
+	}
+
+	slog.Debug("Resolving policy",
+		"policy", entry.Name,
+		"source", source,
+		"path", policyPath,
+		"goModulePath", goModulePath,
+		"goModuleVersion", goModuleVersion,
+		"phase", "discovery")
+
+	// Check path exists and is accessible
+	if err := fsutil.ValidatePathExists(policyPath, "policy path"); err != nil {
+		return nil, errors.NewDiscoveryError(
+			fmt.Sprintf("from build file entry %s: %v", entry.Name, err),
+			err,
+		)
+	}
+
+	// Validate directory structure
+	if err := ValidateDirectoryStructure(policyPath); err != nil {
+		return nil, errors.NewDiscoveryError(
+			fmt.Sprintf("invalid structure for %s at %s", entry.Name, policyPath),
+			err,
+		)
+	}
+
+	// Parse policy definition
+	policyYAMLPath := filepath.Join(policyPath, types.PolicyDefinitionFile)
+	definition, err := ParsePolicyYAML(policyYAMLPath)
+	if err != nil {
+		return nil, errors.NewDiscoveryError(
+			fmt.Sprintf("failed to parse %s for %s at %s", types.PolicyDefinitionFile, entry.Name, policyPath),
+			err,
+		)
+	}
+
+	slog.Debug("Parsed policy definition",
+		"name", definition.Name,
+		"version", definition.Version,
+		"path", policyYAMLPath,
+		"phase", "discovery")
+
+	// Validate build file entry matches policy definition name
+	if entry.Name != definition.Name {
+		return nil, errors.NewDiscoveryError(
+			fmt.Sprintf("policy name mismatch: build file declares '%s' but %s has '%s' at %s",
+				entry.Name, types.PolicyDefinitionFile, definition.Name, policyPath),
+			nil,
+		)
+	}
+
+	if definition.Version == "" {
+		return nil, errors.NewDiscoveryError(
+			fmt.Sprintf("policy version cannot be found in definition for %s", entry.Name),
+			nil,
+		)
+	}
+
+	// Collect source files
+	sourceFiles, err := CollectSourceFiles(policyPath)
+	if err != nil {
+		return nil, errors.NewDiscoveryError(
+			fmt.Sprintf("failed to collect source files for %s:%s at %s", entry.Name, definition.Version, policyPath),
+			err,
+		)
+	}
+
+	slog.Debug("Collected source files",
+		"policy", entry.Name,
+		"count", len(sourceFiles),
+		"files", sourceFiles,
+		"phase", "discovery")
+
+	// Create discovered policy
+	discovered := &types.DiscoveredPolicy{
+		Name:             definition.Name,
+		Version:          definition.Version,
+		Path:             policyPath,
+		YAMLPath:         policyYAMLPath,
+		GoModPath:        filepath.Join(policyPath, "go.mod"),
+		SourceFiles:      sourceFiles,
+		SystemParameters: ExtractDefaultValues(definition.SystemParameters),
+		Definition:       definition,
+		GoModulePath:     goModulePath,
+		GoModuleVersion:  goModuleVersion,
+		IsFilePathEntry:  isFilePathEntry,
+		Runtime:          "go", // Default runtime for Go policies
+	}
+
+	return discovered, nil
+}
+
+// processingMode is intentionally no longer parsed from YAML.
+// Python policy processing requirements are provided by the Python policy instance itself.
 
 // moduleInfo contains resolved module information from 'go mod download'
 type moduleInfo struct {

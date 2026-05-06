@@ -19,6 +19,9 @@
 package controlplane
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -590,6 +593,233 @@ func syncCorrelationID(dep models.ControlPlaneDeployment) string {
 		return dep.Etag
 	}
 	return utils.GenerateDeterministicUUIDv7(dep.ArtifactID, dep.DeployedAt)
+}
+
+// parseCPSyncInfo extracts the APIM API ID and revision ID from a CPSyncInfo JSON string.
+// Returns empty strings if the reason is empty, not valid JSON, or missing fields.
+func parseCPSyncInfo(cpSyncInfo string) (apiID, revisionID string) {
+	if cpSyncInfo == "" {
+		return "", ""
+	}
+	var data map[string]string
+	if err := json.Unmarshal([]byte(cpSyncInfo), &data); err != nil {
+		return "", ""
+	}
+	return data["id"], data["revision"]
+}
+
+// SyncBottomUpAPIs pushes all pending gateway-created APIs to the on-prem control plane.
+// It is called on connect/reconnect (when IsOnPrem() is true) and immediately after a
+// gateway-initiated create/update/undeploy when the gateway is already connected.
+//
+// For each API with cp_sync_status IN ('pending', 'failed'):
+//   - Calls PushAPIDeployment (with initiatedFromGateway=true) up to maxRetries times.
+//   - On success: records cp_sync_status=success and stores any returned deploymentId.
+//   - On all retries exhausted: records cp_sync_status=failed with the error reason.
+func (c *Client) SyncArtifactsToOnPremAPIM(apimConfig *utils.APIMConfig) error {
+	if !c.isOnPrem() {
+		return fmt.Errorf("bottom-up API sync skipped: on-prem control plane mode is not enabled")
+	}
+
+	if c.db == nil {
+		return fmt.Errorf("cannot run bottom-up sync: database is not available")
+	}
+
+	if apimConfig == nil {
+		return fmt.Errorf("cannot run bottom-up sync: APIM configuration is nil")
+	}
+
+	apis, err := c.db.GetPendingBottomUpAPIs()
+	if err != nil {
+		c.logger.Error("Bottom-up sync: failed to query pending APIs", slog.Any("error", err))
+		return fmt.Errorf("failed to query pending bottom-up APIs: %w", err)
+	}
+
+	if len(apis) == 0 {
+		c.logger.Info("Bottom-up sync: no pending APIs to process")
+		return nil
+	}
+
+	c.logger.Info("Bottom-up sync: starting", slog.Int("pending", len(apis)))
+
+	const maxRetries = 3
+
+	for _, api := range apis {
+		var lastErr error
+
+		// --- Undeploy flow ---
+		if api.DesiredState == models.StateUndeployed {
+			apimAPIID, revisionID := parseCPSyncInfo(api.CPSyncInfo)
+
+			if apimAPIID == "" {
+				// Never synced to APIM — nothing to undeploy
+				c.logger.Info("Bottom-up sync: API was never synced to APIM, skipping undeploy",
+					slog.String("uuid", api.UUID),
+					slog.String("display_name", api.DisplayName),
+				)
+				if dbErr := c.db.UpdateCPSyncStatus(api.UUID, "", models.CPSyncStatusSuccess, ""); dbErr != nil {
+					c.logger.Error("Bottom-up sync: failed to record success status",
+						slog.String("uuid", api.UUID),
+						slog.String("display_name", api.DisplayName),
+						slog.Any("error", dbErr),
+					)
+				}
+				continue
+			}
+
+			for attempt := 1; attempt <= maxRetries; attempt++ {
+				lastErr = utils.UndeployRevisionFromAPIM(*apimConfig, apimAPIID, revisionID, c.logger)
+				if lastErr == nil {
+					break
+				}
+				c.logger.Warn("Bottom-up sync: undeploy attempt failed",
+					slog.String("uuid", api.UUID),
+					slog.String("display_name", api.DisplayName),
+					slog.String("apim_api_id", apimAPIID),
+					slog.Int("attempt", attempt),
+					slog.Any("error", lastErr),
+				)
+			}
+
+			if lastErr != nil {
+				c.logger.Error("Bottom-up sync: undeploy all retries exhausted",
+					slog.String("uuid", api.UUID),
+					slog.String("display_name", api.DisplayName),
+					slog.Any("error", lastErr),
+				)
+				if dbErr := c.db.UpdateCPSyncStatus(api.UUID, "", models.CPSyncStatusFailed, lastErr.Error()); dbErr != nil {
+					c.logger.Error("Bottom-up sync: failed to record failed status",
+						slog.String("uuid", api.UUID),
+						slog.String("display_name", api.DisplayName),
+						slog.Any("error", dbErr),
+					)
+				}
+				continue
+			}
+
+			// Success — clear cp_sync_reason
+			if dbErr := c.db.UpdateCPSyncStatus(api.UUID, "", models.CPSyncStatusSuccess, ""); dbErr != nil {
+				c.logger.Error("Bottom-up sync: failed to record success status",
+					slog.String("uuid", api.UUID),
+					slog.String("display_name", api.DisplayName),
+					slog.Any("error", dbErr),
+				)
+			}
+			c.logger.Info("Bottom-up sync: API undeployed successfully",
+				slog.String("uuid", api.UUID),
+				slog.String("display_name", api.DisplayName),
+			)
+			continue
+		}
+
+		// --- Deploy / update flow ---
+
+		// For updates (previously synced APIs), fetch swagger from APIM instead of generating locally.
+		// CPSyncInfo contains {"id": "<apim-api-id>", "revision": "..."} from the last successful sync.
+		swaggerOverride := ""
+		if apimAPIID, _ := parseCPSyncInfo(api.CPSyncInfo); apimAPIID != "" {
+			swagger, err := utils.FetchSwaggerFromAPIM(*apimConfig, apimAPIID, c.logger)
+			if err != nil {
+				c.logger.Warn("Bottom-up sync: failed to fetch swagger from APIM, falling back to local generation",
+					slog.String("uuid", api.UUID),
+					slog.String("apim_api_id", apimAPIID),
+					slog.Any("error", err),
+				)
+			} else {
+				swaggerOverride = swagger
+			}
+		}
+
+		// Export the API as a zip
+		zipBuffer, err := utils.ExportAPIAsZip(api, apimConfig.GatewayName, swaggerOverride)
+		if err != nil {
+			c.logger.Error("Bottom-up sync: failed to export API as zip",
+				slog.String("uuid", api.UUID),
+				slog.Any("error", err),
+			)
+			if dbErr := c.db.UpdateCPSyncStatus(api.UUID, "", models.CPSyncStatusFailed, err.Error()); dbErr != nil {
+				c.logger.Error("Bottom-up sync: failed to record failed status",
+					slog.String("uuid", api.UUID),
+					slog.Any("error", dbErr),
+				)
+			}
+			continue
+		}
+
+		// Store the exported bytes to reuse in retries
+		zipBytes := zipBuffer.Bytes()
+
+		var importResp *utils.OnPremAPIMImportResponse
+
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			currentBuffer := bytes.NewBuffer(zipBytes)
+
+			importResp, lastErr = utils.ImportAPIToAPIMWithConfig(
+				*apimConfig, c.logger, api.UUID+".zip", currentBuffer,
+			)
+			if lastErr == nil {
+				break
+			}
+			c.logger.Warn("Bottom-up sync: attempt failed",
+				slog.String("uuid", api.UUID),
+				slog.String("desired_state", string(api.DesiredState)),
+				slog.Int("attempt", attempt),
+				slog.Any("error", lastErr),
+			)
+		}
+
+		if lastErr != nil {
+			c.logger.Error("Bottom-up sync: all retries exhausted",
+				slog.String("uuid", api.UUID),
+				slog.String("display_name", api.DisplayName),
+				slog.String("desired_state", string(api.DesiredState)),
+				slog.Any("error", lastErr),
+			)
+			if dbErr := c.db.UpdateCPSyncStatus(api.UUID, "", models.CPSyncStatusFailed, lastErr.Error()); dbErr != nil {
+				c.logger.Error("Bottom-up sync: failed to record failed status",
+					slog.String("uuid", api.UUID),
+					slog.String("display_name", api.DisplayName),
+					slog.Any("error", dbErr),
+				)
+			}
+			continue
+		}
+
+		// Success — persist sync outcome with import response data
+		importReasonJSON := "{}"
+		if importResp != nil {
+			reasonData := map[string]string{
+				"id":       importResp.ID,
+				"revision": importResp.Revision,
+			}
+			if reasonBytes, err := json.Marshal(reasonData); err == nil {
+				importReasonJSON = string(reasonBytes)
+			}
+		}
+
+		var cpArtifactID string
+		if importResp != nil {
+			cpArtifactID = importResp.ID
+		}
+		if dbErr := c.db.UpdateCPSyncStatus(api.UUID, cpArtifactID, models.CPSyncStatusSuccess, importReasonJSON); dbErr != nil {
+			c.logger.Error("Bottom-up sync: failed to record success status",
+				slog.String("uuid", api.UUID),
+				slog.String("display_name", api.DisplayName),
+				slog.Any("error", dbErr),
+			)
+		}
+
+		c.logger.Info("Bottom-up sync: API synced successfully",
+			slog.String("uuid", api.UUID),
+			slog.String("display_name", api.DisplayName),
+			slog.String("desired_state", string(api.DesiredState)),
+			slog.String("api_id", importResp.ID),
+			slog.String("revision", importResp.Revision),
+		)
+	}
+
+	c.logger.Info("Bottom-up API sync completed successfully", slog.Int("processed", len(apis)))
+	return nil
 }
 
 // syncEventType maps an artifact kind to the corresponding eventhub.EventType.

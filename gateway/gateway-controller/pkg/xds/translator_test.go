@@ -584,25 +584,25 @@ func TestTranslator_WildcardRegexBoundary(t *testing.T) {
 	translator := NewTranslator(logger, routerCfg, nil, cfg)
 
 	type wildcardCase struct {
-		context    string
-		apiVersion string
-		path       string
+		context        string
+		apiVersion     string
+		path           string
 		shouldMatch    []string
 		shouldNotMatch []string
 	}
 
 	cases := []wildcardCase{
 		{
-			context:    "/weather/$version",
-			apiVersion: "v1.0",
-			path:       "/*",
+			context:        "/weather/$version",
+			apiVersion:     "v1.0",
+			path:           "/*",
 			shouldMatch:    []string{"/weather/v1.0", "/weather/v1.0/", "/weather/v1.0/forecast", "/weather/v1.0/a/b/c"},
 			shouldNotMatch: []string{"/weather/v1.0beta", "/weather/v1.0extra"},
 		},
 		{
-			context:    "/api",
-			apiVersion: "v1",
-			path:       "/*",
+			context:        "/api",
+			apiVersion:     "v1",
+			path:           "/*",
 			shouldMatch:    []string{"/api", "/api/", "/api/users", "/api/v2/items"},
 			shouldNotMatch: []string{"/api2", "/apixyz"},
 		},
@@ -1536,9 +1536,9 @@ func TestTranslator_ExtractTemplateHandle_ValidLLMProvider(t *testing.T) {
 	translator := NewTranslator(logger, routerCfg, nil, cfg)
 
 	storedCfg := &models.StoredConfig{
-		Kind: string(api.LlmProvider),
+		Kind: string(api.LLMProviderConfigurationKindLlmProvider),
 		SourceConfiguration: map[string]interface{}{
-			"kind": string(api.LlmProvider),
+			"kind": string(api.LLMProviderConfigurationKindLlmProvider),
 			"spec": map[string]interface{}{
 				"template": "openai-template",
 			},
@@ -1557,9 +1557,9 @@ func TestTranslator_ExtractProviderName_ValidLLMProvider(t *testing.T) {
 	translator := NewTranslator(logger, routerCfg, nil, cfg)
 
 	storedCfg := &models.StoredConfig{
-		Kind: string(api.LlmProvider),
+		Kind: string(api.LLMProviderConfigurationKindLlmProvider),
 		SourceConfiguration: map[string]interface{}{
-			"kind": string(api.LlmProvider),
+			"kind": string(api.LLMProviderConfigurationKindLlmProvider),
 			"metadata": map[string]interface{}{
 				"name": "openai-provider",
 			},
@@ -1781,18 +1781,20 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 			Kind: "WebSubApi",
 			Configuration: api.WebSubAPI{
 				Metadata: api.Metadata{
-					Name:   "websub-test",
-					Labels: &map[string]string{"project-id": "proj-123"},
+					Name:        "websub-test",
+					Annotations: &map[string]string{"gateway.api-platform.wso2.com/project-id": "proj-123"},
 				},
-				Kind:       api.WebSubApi,
-				ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+				Kind:       api.WebSubAPIKindWebSubApi,
+				ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 				Spec: api.WebhookAPIData{
 					DisplayName: "WebSub Test API",
 					Version:     "v1.0",
 					Context:     "/webhook",
-					Channels: []api.Channel{
-						{Name: "/topic1", Method: "POST"},
-						{Name: "topic2", Method: "POST"},
+					Hub: api.WebSubHub{
+						Channels: []api.HubChannel{
+							{Name: "/topic1"},
+							{Name: "topic2"},
+						},
 					},
 				},
 			},
@@ -1824,13 +1826,15 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 			Kind: "WebSubApi",
 			Configuration: api.WebSubAPI{
 				Metadata:   api.Metadata{Name: "websub-invalid"},
-				Kind:       api.WebSubApi,
-				ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+				Kind:       api.WebSubAPIKindWebSubApi,
+				ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
 				Spec: api.WebhookAPIData{
 					DisplayName: "WebSub Invalid",
 					Version:     "v1.0",
 					Context:     "/webhook",
-					Channels:    []api.Channel{{Name: "/test", Method: "POST"}},
+					Hub: api.WebSubHub{
+						Channels: []api.HubChannel{{Name: "/test"}},
+					},
 				},
 			},
 			Origin: models.OriginGatewayAPI,

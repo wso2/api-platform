@@ -69,11 +69,6 @@ const (
 	Success CertificateResponseStatus = "success"
 )
 
-// Defines values for ChannelMethod.
-const (
-	SUB ChannelMethod = "SUB"
-)
-
 // Defines values for ExtractionIdentifierLocation.
 const (
 	Header     ExtractionIdentifierLocation = "header"
@@ -124,19 +119,17 @@ const (
 
 // Defines values for LLMProviderConfigurationKind.
 const (
-	LlmProvider LLMProviderConfigurationKind = "LlmProvider"
+	LLMProviderConfigurationKindLlmProvider LLMProviderConfigurationKind = "LlmProvider"
 )
 
-// Defines values for LLMProviderDetailResponseProviderDeploymentStatus.
+// Defines values for LLMProviderConfigurationRequestApiVersion.
 const (
-	LLMProviderDetailResponseProviderDeploymentStatusDeployed   LLMProviderDetailResponseProviderDeploymentStatus = "deployed"
-	LLMProviderDetailResponseProviderDeploymentStatusUndeployed LLMProviderDetailResponseProviderDeploymentStatus = "undeployed"
+	LLMProviderConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha1 LLMProviderConfigurationRequestApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
 )
 
-// Defines values for LLMProviderListItemStatus.
+// Defines values for LLMProviderConfigurationRequestKind.
 const (
-	LLMProviderListItemStatusDeployed   LLMProviderListItemStatus = "deployed"
-	LLMProviderListItemStatusUndeployed LLMProviderListItemStatus = "undeployed"
+	LLMProviderConfigurationRequestKindLlmProvider LLMProviderConfigurationRequestKind = "LlmProvider"
 )
 
 // Defines values for LLMProviderTemplateApiVersion.
@@ -146,7 +139,17 @@ const (
 
 // Defines values for LLMProviderTemplateKind.
 const (
-	LlmProviderTemplate LLMProviderTemplateKind = "LlmProviderTemplate"
+	LLMProviderTemplateKindLlmProviderTemplate LLMProviderTemplateKind = "LlmProviderTemplate"
+)
+
+// Defines values for LLMProviderTemplateRequestApiVersion.
+const (
+	LLMProviderTemplateRequestApiVersionGatewayApiPlatformWso2Comv1alpha1 LLMProviderTemplateRequestApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
+)
+
+// Defines values for LLMProviderTemplateRequestKind.
+const (
+	LLMProviderTemplateRequestKindLlmProviderTemplate LLMProviderTemplateRequestKind = "LlmProviderTemplate"
 )
 
 // Defines values for LLMProxyConfigDataDeploymentState.
@@ -162,30 +165,22 @@ const (
 
 // Defines values for LLMProxyConfigurationKind.
 const (
-	LlmProxy LLMProxyConfigurationKind = "LlmProxy"
+	LLMProxyConfigurationKindLlmProxy LLMProxyConfigurationKind = "LlmProxy"
 )
 
-// Defines values for LLMProxyDetailResponseProxyDeploymentStatus.
+// Defines values for LLMProxyConfigurationRequestApiVersion.
 const (
-	LLMProxyDetailResponseProxyDeploymentStatusDeployed   LLMProxyDetailResponseProxyDeploymentStatus = "deployed"
-	LLMProxyDetailResponseProxyDeploymentStatusUndeployed LLMProxyDetailResponseProxyDeploymentStatus = "undeployed"
+	LLMProxyConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha1 LLMProxyConfigurationRequestApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
 )
 
-// Defines values for LLMProxyListItemStatus.
+// Defines values for LLMProxyConfigurationRequestKind.
 const (
-	LLMProxyListItemStatusDeployed   LLMProxyListItemStatus = "deployed"
-	LLMProxyListItemStatusUndeployed LLMProxyListItemStatus = "undeployed"
+	LLMProxyConfigurationRequestKindLlmProxy LLMProxyConfigurationRequestKind = "LlmProxy"
 )
 
 // Defines values for LLMUpstreamAuthType.
 const (
 	LLMUpstreamAuthTypeApiKey LLMUpstreamAuthType = "api-key"
-)
-
-// Defines values for MCPDetailResponseMcpMetadataStatus.
-const (
-	MCPDetailResponseMcpMetadataStatusDeployed   MCPDetailResponseMcpMetadataStatus = "deployed"
-	MCPDetailResponseMcpMetadataStatusUndeployed MCPDetailResponseMcpMetadataStatus = "undeployed"
 )
 
 // Defines values for MCPProxyConfigDataDeploymentState.
@@ -212,13 +207,17 @@ const (
 
 // Defines values for MCPProxyConfigurationKind.
 const (
-	Mcp MCPProxyConfigurationKind = "Mcp"
+	MCPProxyConfigurationKindMcp MCPProxyConfigurationKind = "Mcp"
 )
 
-// Defines values for MCPProxyListItemStatus.
+// Defines values for MCPProxyConfigurationRequestApiVersion.
 const (
-	MCPProxyListItemStatusDeployed   MCPProxyListItemStatus = "deployed"
-	MCPProxyListItemStatusUndeployed MCPProxyListItemStatus = "undeployed"
+	MCPProxyConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha1 MCPProxyConfigurationRequestApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
+)
+
+// Defines values for MCPProxyConfigurationRequestKind.
+const (
+	MCPProxyConfigurationRequestKindMcp MCPProxyConfigurationRequestKind = "Mcp"
 )
 
 // Defines values for OperationMethod.
@@ -232,6 +231,12 @@ const (
 	OperationMethodPUT     OperationMethod = "PUT"
 )
 
+// Defines values for ResourceStatusState.
+const (
+	ResourceStatusStateDeployed   ResourceStatusState = "deployed"
+	ResourceStatusStateUndeployed ResourceStatusState = "undeployed"
+)
+
 // Defines values for RestAPIApiVersion.
 const (
 	RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1 RestAPIApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
@@ -239,19 +244,17 @@ const (
 
 // Defines values for RestAPIKind.
 const (
-	RestApi RestAPIKind = "RestApi"
+	RestAPIKindRestApi RestAPIKind = "RestApi"
 )
 
-// Defines values for RestAPIDetailResponseApiMetadataStatus.
+// Defines values for RestAPIRequestApiVersion.
 const (
-	RestAPIDetailResponseApiMetadataStatusDeployed   RestAPIDetailResponseApiMetadataStatus = "deployed"
-	RestAPIDetailResponseApiMetadataStatusUndeployed RestAPIDetailResponseApiMetadataStatus = "undeployed"
+	RestAPIRequestApiVersionGatewayApiPlatformWso2Comv1alpha1 RestAPIRequestApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
 )
 
-// Defines values for RestAPIListItemStatus.
+// Defines values for RestAPIRequestKind.
 const (
-	RestAPIListItemStatusDeployed   RestAPIListItemStatus = "deployed"
-	RestAPIListItemStatusUndeployed RestAPIListItemStatus = "undeployed"
+	RestAPIRequestKindRestApi RestAPIRequestKind = "RestApi"
 )
 
 // Defines values for RouteExceptionMethods.
@@ -263,14 +266,44 @@ const (
 	PUT    RouteExceptionMethods = "PUT"
 )
 
-// Defines values for SecretConfigurationApiVersion.
+// Defines values for SecretConfigurationRequestApiVersion.
 const (
-	SecretConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1 SecretConfigurationApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
+	SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1alpha1 SecretConfigurationRequestApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
 )
 
-// Defines values for SecretConfigurationKind.
+// Defines values for SecretConfigurationRequestKind.
 const (
-	Secret SecretConfigurationKind = "Secret"
+	SecretConfigurationRequestKindSecret SecretConfigurationRequestKind = "Secret"
+)
+
+// Defines values for SecretConfigurationResponseCreateUpdateApiVersion.
+const (
+	SecretConfigurationResponseCreateUpdateApiVersionGatewayApiPlatformWso2Comv1alpha1 SecretConfigurationResponseCreateUpdateApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
+)
+
+// Defines values for SecretConfigurationResponseCreateUpdateKind.
+const (
+	SecretConfigurationResponseCreateUpdateKindSecret SecretConfigurationResponseCreateUpdateKind = "Secret"
+)
+
+// Defines values for SecretConfigurationResponseRetrievedApiVersion.
+const (
+	SecretConfigurationResponseRetrievedApiVersionGatewayApiPlatformWso2Comv1alpha1 SecretConfigurationResponseRetrievedApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
+)
+
+// Defines values for SecretConfigurationResponseRetrievedKind.
+const (
+	SecretConfigurationResponseRetrievedKindSecret SecretConfigurationResponseRetrievedKind = "Secret"
+)
+
+// Defines values for SecretListItemApiVersion.
+const (
+	SecretListItemApiVersionGatewayApiPlatformWso2Comv1alpha1 SecretListItemApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
+)
+
+// Defines values for SecretListItemKind.
+const (
+	SecretListItemKindSecret SecretListItemKind = "Secret"
 )
 
 // Defines values for SubscriptionCreateRequestStatus.
@@ -341,24 +374,22 @@ const (
 
 // Defines values for WebSubAPIApiVersion.
 const (
-	GatewayApiPlatformWso2Comv1alpha1 WebSubAPIApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
+	WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1 WebSubAPIApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
 )
 
 // Defines values for WebSubAPIKind.
 const (
-	WebSubApi WebSubAPIKind = "WebSubApi"
+	WebSubAPIKindWebSubApi WebSubAPIKind = "WebSubApi"
 )
 
-// Defines values for WebSubAPIDetailResponseApiMetadataStatus.
+// Defines values for WebSubAPIRequestApiVersion.
 const (
-	WebSubAPIDetailResponseApiMetadataStatusDeployed   WebSubAPIDetailResponseApiMetadataStatus = "deployed"
-	WebSubAPIDetailResponseApiMetadataStatusUndeployed WebSubAPIDetailResponseApiMetadataStatus = "undeployed"
+	WebSubAPIRequestApiVersionGatewayApiPlatformWso2Comv1alpha1 WebSubAPIRequestApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
 )
 
-// Defines values for WebSubAPIListItemStatus.
+// Defines values for WebSubAPIRequestKind.
 const (
-	WebSubAPIListItemStatusDeployed   WebSubAPIListItemStatus = "deployed"
-	WebSubAPIListItemStatusUndeployed WebSubAPIListItemStatus = "undeployed"
+	WebSubAPIRequestKindWebSubApi WebSubAPIRequestKind = "WebSubApi"
 )
 
 // Defines values for WebhookAPIDataDeploymentState.
@@ -400,8 +431,8 @@ const (
 
 // Defines values for ListWebSubAPIsParamsStatus.
 const (
-	ListWebSubAPIsParamsStatusDeployed   ListWebSubAPIsParamsStatus = "deployed"
-	ListWebSubAPIsParamsStatusUndeployed ListWebSubAPIsParamsStatus = "undeployed"
+	Deployed   ListWebSubAPIsParamsStatus = "deployed"
+	Undeployed ListWebSubAPIsParamsStatus = "undeployed"
 )
 
 // APIConfigData defines model for APIConfigData.
@@ -628,21 +659,6 @@ type CertificateUploadRequest struct {
 	Name string `json:"name" yaml:"name"`
 }
 
-// Channel Channel (topic/event stream) definition for async APIs.
-type Channel struct {
-	// Method Operation method type.
-	Method ChannelMethod `json:"method" yaml:"method"`
-
-	// Name Channel name or topic identifier relative to API context.
-	Name string `json:"name" yaml:"name"`
-
-	// Policies List of policies applied only to this channel (overrides or adds to API-level policies)
-	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
-}
-
-// ChannelMethod Operation method type.
-type ChannelMethod string
-
 // ErrorResponse defines model for ErrorResponse.
 type ErrorResponse struct {
 	// Errors Detailed validation errors
@@ -664,6 +680,15 @@ type ExtractionIdentifier struct {
 
 // ExtractionIdentifierLocation Where to find the token information
 type ExtractionIdentifierLocation string
+
+// HubChannel A subscribable topic channel within the WebSub hub.
+type HubChannel struct {
+	// Name Channel name or topic identifier relative to API context.
+	Name string `json:"name" yaml:"name"`
+
+	// Policies List of policies applied only to this channel (e.g., rbac)
+	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+}
 
 // LLMAccessControl defines model for LLMAccessControl.
 type LLMAccessControl struct {
@@ -766,6 +791,9 @@ type LLMProviderConfiguration struct {
 	Kind     LLMProviderConfigurationKind `json:"kind" yaml:"kind"`
 	Metadata Metadata                     `json:"metadata" yaml:"metadata"`
 	Spec     LLMProviderConfigData        `json:"spec" yaml:"spec"`
+
+	// Status Server-managed lifecycle fields. Populated on responses.
+	Status *ResourceStatus `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // LLMProviderConfigurationApiVersion Provider specification version
@@ -774,45 +802,22 @@ type LLMProviderConfigurationApiVersion string
 // LLMProviderConfigurationKind Provider kind
 type LLMProviderConfigurationKind string
 
-// LLMProviderCreateResponse defines model for LLMProviderCreateResponse.
-type LLMProviderCreateResponse struct {
-	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
-	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
-	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
+// LLMProviderConfigurationRequest defines model for LLMProviderConfigurationRequest.
+type LLMProviderConfigurationRequest struct {
+	// ApiVersion Provider specification version
+	ApiVersion LLMProviderConfigurationRequestApiVersion `json:"apiVersion" yaml:"apiVersion"`
+
+	// Kind Provider kind
+	Kind     LLMProviderConfigurationRequestKind `json:"kind" yaml:"kind"`
+	Metadata Metadata                            `json:"metadata" yaml:"metadata"`
+	Spec     LLMProviderConfigData               `json:"spec" yaml:"spec"`
 }
 
-// LLMProviderDetailResponse defines model for LLMProviderDetailResponse.
-type LLMProviderDetailResponse struct {
-	Provider *struct {
-		Configuration    *LLMProviderConfiguration                          `json:"configuration,omitempty" yaml:"configuration,omitempty"`
-		DeploymentStatus *LLMProviderDetailResponseProviderDeploymentStatus `json:"deploymentStatus,omitempty" yaml:"deploymentStatus,omitempty"`
-		Id               *string                                            `json:"id,omitempty" yaml:"id,omitempty"`
-		Metadata         *struct {
-			CreatedAt  *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-			DeployedAt *time.Time `json:"deployedAt,omitempty" yaml:"deployedAt,omitempty"`
-			UpdatedAt  *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-		} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	} `json:"provider,omitempty" yaml:"provider,omitempty"`
-	Status *string `json:"status,omitempty" yaml:"status,omitempty"`
-}
+// LLMProviderConfigurationRequestApiVersion Provider specification version
+type LLMProviderConfigurationRequestApiVersion string
 
-// LLMProviderDetailResponseProviderDeploymentStatus defines model for LLMProviderDetailResponse.Provider.DeploymentStatus.
-type LLMProviderDetailResponseProviderDeploymentStatus string
-
-// LLMProviderListItem defines model for LLMProviderListItem.
-type LLMProviderListItem struct {
-	CreatedAt   *time.Time                 `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	DisplayName *string                    `json:"displayName,omitempty" yaml:"displayName,omitempty"`
-	Id          *string                    `json:"id,omitempty" yaml:"id,omitempty"`
-	Status      *LLMProviderListItemStatus `json:"status,omitempty" yaml:"status,omitempty"`
-	Template    *string                    `json:"template,omitempty" yaml:"template,omitempty"`
-	UpdatedAt   *time.Time                 `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-	Version     *string                    `json:"version,omitempty" yaml:"version,omitempty"`
-}
-
-// LLMProviderListItemStatus defines model for LLMProviderListItem.Status.
-type LLMProviderListItemStatus string
+// LLMProviderConfigurationRequestKind Provider kind
+type LLMProviderConfigurationRequestKind string
 
 // LLMProviderTemplate defines model for LLMProviderTemplate.
 type LLMProviderTemplate struct {
@@ -823,6 +828,9 @@ type LLMProviderTemplate struct {
 	Kind     LLMProviderTemplateKind `json:"kind" yaml:"kind"`
 	Metadata Metadata                `json:"metadata" yaml:"metadata"`
 	Spec     LLMProviderTemplateData `json:"spec" yaml:"spec"`
+
+	// Status Server-managed lifecycle fields. Populated on responses.
+	Status *ResourceStatus `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // LLMProviderTemplateApiVersion Template specification version
@@ -830,14 +838,6 @@ type LLMProviderTemplateApiVersion string
 
 // LLMProviderTemplateKind Template kind
 type LLMProviderTemplateKind string
-
-// LLMProviderTemplateCreateResponse defines model for LLMProviderTemplateCreateResponse.
-type LLMProviderTemplateCreateResponse struct {
-	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
-	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
-	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
-}
 
 // LLMProviderTemplateData defines model for LLMProviderTemplateData.
 type LLMProviderTemplateData struct {
@@ -853,26 +853,22 @@ type LLMProviderTemplateData struct {
 	TotalTokens      *ExtractionIdentifier                `json:"totalTokens,omitempty" yaml:"totalTokens,omitempty"`
 }
 
-// LLMProviderTemplateDetailResponse defines model for LLMProviderTemplateDetailResponse.
-type LLMProviderTemplateDetailResponse struct {
-	Status   *string `json:"status,omitempty" yaml:"status,omitempty"`
-	Template *struct {
-		Configuration *LLMProviderTemplate `json:"configuration,omitempty" yaml:"configuration,omitempty"`
-		Id            *string              `json:"id,omitempty" yaml:"id,omitempty"`
-		Metadata      *struct {
-			CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-			UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-		} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	} `json:"template,omitempty" yaml:"template,omitempty"`
+// LLMProviderTemplateRequest defines model for LLMProviderTemplateRequest.
+type LLMProviderTemplateRequest struct {
+	// ApiVersion Template specification version
+	ApiVersion LLMProviderTemplateRequestApiVersion `json:"apiVersion" yaml:"apiVersion"`
+
+	// Kind Template kind
+	Kind     LLMProviderTemplateRequestKind `json:"kind" yaml:"kind"`
+	Metadata Metadata                       `json:"metadata" yaml:"metadata"`
+	Spec     LLMProviderTemplateData        `json:"spec" yaml:"spec"`
 }
 
-// LLMProviderTemplateListItem defines model for LLMProviderTemplateListItem.
-type LLMProviderTemplateListItem struct {
-	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	DisplayName *string    `json:"displayName,omitempty" yaml:"displayName,omitempty"`
-	Id          *string    `json:"id,omitempty" yaml:"id,omitempty"`
-	UpdatedAt   *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-}
+// LLMProviderTemplateRequestApiVersion Template specification version
+type LLMProviderTemplateRequestApiVersion string
+
+// LLMProviderTemplateRequestKind Template kind
+type LLMProviderTemplateRequestKind string
 
 // LLMProviderTemplateResourceMapping defines model for LLMProviderTemplateResourceMapping.
 type LLMProviderTemplateResourceMapping struct {
@@ -890,22 +886,6 @@ type LLMProviderTemplateResourceMapping struct {
 // LLMProviderTemplateResourceMappings defines model for LLMProviderTemplateResourceMappings.
 type LLMProviderTemplateResourceMappings struct {
 	Resources *[]LLMProviderTemplateResourceMapping `json:"resources,omitempty" yaml:"resources,omitempty"`
-}
-
-// LLMProviderTemplateUpdateResponse defines model for LLMProviderTemplateUpdateResponse.
-type LLMProviderTemplateUpdateResponse struct {
-	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
-	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
-	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
-	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-}
-
-// LLMProviderUpdateResponse defines model for LLMProviderUpdateResponse.
-type LLMProviderUpdateResponse struct {
-	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
-	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
-	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
-	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 }
 
 // LLMProxyConfigData defines model for LLMProxyConfigData.
@@ -942,6 +922,9 @@ type LLMProxyConfiguration struct {
 	Kind     LLMProxyConfigurationKind `json:"kind" yaml:"kind"`
 	Metadata Metadata                  `json:"metadata" yaml:"metadata"`
 	Spec     LLMProxyConfigData        `json:"spec" yaml:"spec"`
+
+	// Status Server-managed lifecycle fields. Populated on responses.
+	Status *ResourceStatus `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // LLMProxyConfigurationApiVersion Proxy specification version
@@ -950,47 +933,22 @@ type LLMProxyConfigurationApiVersion string
 // LLMProxyConfigurationKind Proxy kind
 type LLMProxyConfigurationKind string
 
-// LLMProxyCreateResponse defines model for LLMProxyCreateResponse.
-type LLMProxyCreateResponse struct {
-	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
-	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
-	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
+// LLMProxyConfigurationRequest defines model for LLMProxyConfigurationRequest.
+type LLMProxyConfigurationRequest struct {
+	// ApiVersion Proxy specification version
+	ApiVersion LLMProxyConfigurationRequestApiVersion `json:"apiVersion" yaml:"apiVersion"`
+
+	// Kind Proxy kind
+	Kind     LLMProxyConfigurationRequestKind `json:"kind" yaml:"kind"`
+	Metadata Metadata                         `json:"metadata" yaml:"metadata"`
+	Spec     LLMProxyConfigData               `json:"spec" yaml:"spec"`
 }
 
-// LLMProxyDetailResponse defines model for LLMProxyDetailResponse.
-type LLMProxyDetailResponse struct {
-	Proxy *struct {
-		Configuration    *LLMProxyConfiguration                       `json:"configuration,omitempty" yaml:"configuration,omitempty"`
-		DeploymentStatus *LLMProxyDetailResponseProxyDeploymentStatus `json:"deploymentStatus,omitempty" yaml:"deploymentStatus,omitempty"`
-		Id               *string                                      `json:"id,omitempty" yaml:"id,omitempty"`
-		Metadata         *struct {
-			CreatedAt  *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-			DeployedAt *time.Time `json:"deployedAt,omitempty" yaml:"deployedAt,omitempty"`
-			UpdatedAt  *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-		} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	} `json:"proxy,omitempty" yaml:"proxy,omitempty"`
-	Status *string `json:"status,omitempty" yaml:"status,omitempty"`
-}
+// LLMProxyConfigurationRequestApiVersion Proxy specification version
+type LLMProxyConfigurationRequestApiVersion string
 
-// LLMProxyDetailResponseProxyDeploymentStatus defines model for LLMProxyDetailResponse.Proxy.DeploymentStatus.
-type LLMProxyDetailResponseProxyDeploymentStatus string
-
-// LLMProxyListItem defines model for LLMProxyListItem.
-type LLMProxyListItem struct {
-	CreatedAt   *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	DisplayName *string    `json:"displayName,omitempty" yaml:"displayName,omitempty"`
-	Id          *string    `json:"id,omitempty" yaml:"id,omitempty"`
-
-	// Provider Unique id of a deployed llm provider
-	Provider  *string                 `json:"provider,omitempty" yaml:"provider,omitempty"`
-	Status    *LLMProxyListItemStatus `json:"status,omitempty" yaml:"status,omitempty"`
-	UpdatedAt *time.Time              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-	Version   *string                 `json:"version,omitempty" yaml:"version,omitempty"`
-}
-
-// LLMProxyListItemStatus defines model for LLMProxyListItem.Status.
-type LLMProxyListItemStatus string
+// LLMProxyConfigurationRequestKind Proxy kind
+type LLMProxyConfigurationRequestKind string
 
 // LLMProxyProvider defines model for LLMProxyProvider.
 type LLMProxyProvider struct {
@@ -998,14 +956,6 @@ type LLMProxyProvider struct {
 
 	// Id Unique id of a deployed llm provider
 	Id string `json:"id" yaml:"id"`
-}
-
-// LLMProxyUpdateResponse defines model for LLMProxyUpdateResponse.
-type LLMProxyUpdateResponse struct {
-	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
-	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
-	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
-	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 }
 
 // LLMUpstreamAuth defines model for LLMUpstreamAuth.
@@ -1017,26 +967,6 @@ type LLMUpstreamAuth struct {
 
 // LLMUpstreamAuthType defines model for LLMUpstreamAuth.Type.
 type LLMUpstreamAuthType string
-
-// MCPDetailResponse defines model for MCPDetailResponse.
-type MCPDetailResponse struct {
-	Mcp *struct {
-		Configuration *MCPProxyConfiguration `json:"configuration,omitempty" yaml:"configuration,omitempty"`
-
-		// Id Unique id for the MCPProxy
-		Id       *string `json:"id,omitempty" yaml:"id,omitempty"`
-		Metadata *struct {
-			CreatedAt  *time.Time                          `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-			DeployedAt *time.Time                          `json:"deployedAt,omitempty" yaml:"deployedAt,omitempty"`
-			Status     *MCPDetailResponseMcpMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
-			UpdatedAt  *time.Time                          `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-		} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	} `json:"mcp,omitempty" yaml:"mcp,omitempty"`
-	Status *string `json:"status,omitempty" yaml:"status,omitempty"`
-}
-
-// MCPDetailResponseMcpMetadataStatus defines model for MCPDetailResponse.Mcp.Metadata.Status.
-type MCPDetailResponseMcpMetadataStatus string
 
 // MCPPrompt defines model for MCPPrompt.
 type MCPPrompt struct {
@@ -1138,6 +1068,9 @@ type MCPProxyConfiguration struct {
 	Kind     MCPProxyConfigurationKind `json:"kind" yaml:"kind"`
 	Metadata Metadata                  `json:"metadata" yaml:"metadata"`
 	Spec     MCPProxyConfigData        `json:"spec" yaml:"spec"`
+
+	// Status Server-managed lifecycle fields. Populated on responses.
+	Status *ResourceStatus `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // MCPProxyConfigurationApiVersion MCP Proxy specification version
@@ -1146,39 +1079,22 @@ type MCPProxyConfigurationApiVersion string
 // MCPProxyConfigurationKind MCP Proxy type
 type MCPProxyConfigurationKind string
 
-// MCPProxyCreateResponse defines model for MCPProxyCreateResponse.
-type MCPProxyCreateResponse struct {
-	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+// MCPProxyConfigurationRequest defines model for MCPProxyConfigurationRequest.
+type MCPProxyConfigurationRequest struct {
+	// ApiVersion MCP Proxy specification version
+	ApiVersion MCPProxyConfigurationRequestApiVersion `json:"apiVersion" yaml:"apiVersion"`
 
-	// Id Unique handle (metadata.name) for the created MCPProxy
-	Id      *string `json:"id,omitempty" yaml:"id,omitempty"`
-	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
-	Status  *string `json:"status,omitempty" yaml:"status,omitempty"`
+	// Kind MCP Proxy type
+	Kind     MCPProxyConfigurationRequestKind `json:"kind" yaml:"kind"`
+	Metadata Metadata                         `json:"metadata" yaml:"metadata"`
+	Spec     MCPProxyConfigData               `json:"spec" yaml:"spec"`
 }
 
-// MCPProxyListItem defines model for MCPProxyListItem.
-type MCPProxyListItem struct {
-	Context     *string                 `json:"context,omitempty" yaml:"context,omitempty"`
-	CreatedAt   *time.Time              `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	DisplayName *string                 `json:"displayName,omitempty" yaml:"displayName,omitempty"`
-	Id          *string                 `json:"id,omitempty" yaml:"id,omitempty"`
-	SpecVersion *string                 `json:"specVersion,omitempty" yaml:"specVersion,omitempty"`
-	Status      *MCPProxyListItemStatus `json:"status,omitempty" yaml:"status,omitempty"`
-	UpdatedAt   *time.Time              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-	Version     *string                 `json:"version,omitempty" yaml:"version,omitempty"`
-}
+// MCPProxyConfigurationRequestApiVersion MCP Proxy specification version
+type MCPProxyConfigurationRequestApiVersion string
 
-// MCPProxyListItemStatus defines model for MCPProxyListItem.Status.
-type MCPProxyListItemStatus string
-
-// MCPProxyUpdateResponse defines model for MCPProxyUpdateResponse.
-type MCPProxyUpdateResponse struct {
-	// Id Unique handle (metadata.name) for the created MCPProxy
-	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
-	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
-	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
-	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-}
+// MCPProxyConfigurationRequestKind MCP Proxy type
+type MCPProxyConfigurationRequestKind string
 
 // MCPResource defines model for MCPResource.
 type MCPResource struct {
@@ -1221,6 +1137,9 @@ type MCPTool struct {
 
 // Metadata defines model for Metadata.
 type Metadata struct {
+	// Annotations Annotations are arbitrary non-identifying metadata. Use domain-prefixed keys.
+	Annotations *map[string]string `json:"annotations,omitempty" yaml:"annotations,omitempty"`
+
 	// Labels Labels are key-value pairs for organizing and selecting APIs. Keys must not contain spaces.
 	Labels *map[string]string `json:"labels,omitempty" yaml:"labels,omitempty"`
 
@@ -1258,6 +1177,27 @@ type Policy struct {
 	Version string `json:"version" yaml:"version"`
 }
 
+// ResourceStatus Server-managed lifecycle information for a resource
+type ResourceStatus struct {
+	// CreatedAt Timestamp when the resource was first created (UTC)
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// DeployedAt Timestamp when the resource was last deployed (omitted when undeployed)
+	DeployedAt *time.Time `json:"deployedAt,omitempty" yaml:"deployedAt,omitempty"`
+
+	// Id Unique identifier assigned by the server (equal to metadata.name)
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// State Desired deployment state reported by the server
+	State *ResourceStatusState `json:"state,omitempty" yaml:"state,omitempty"`
+
+	// UpdatedAt Timestamp when the resource was last updated (UTC)
+	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+}
+
+// ResourceStatusState Desired deployment state reported by the server
+type ResourceStatusState string
+
 // RestAPI defines model for RestAPI.
 type RestAPI struct {
 	// ApiVersion API specification version
@@ -1267,6 +1207,9 @@ type RestAPI struct {
 	Kind     RestAPIKind   `json:"kind" yaml:"kind"`
 	Metadata Metadata      `json:"metadata" yaml:"metadata"`
 	Spec     APIConfigData `json:"spec" yaml:"spec"`
+
+	// Status Server-managed lifecycle fields. Populated on responses.
+	Status *ResourceStatus `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // RestAPIApiVersion API specification version
@@ -1275,57 +1218,22 @@ type RestAPIApiVersion string
 // RestAPIKind API type
 type RestAPIKind string
 
-// RestAPICreateResponse defines model for RestAPICreateResponse.
-type RestAPICreateResponse struct {
-	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+// RestAPIRequest defines model for RestAPIRequest.
+type RestAPIRequest struct {
+	// ApiVersion API specification version
+	ApiVersion RestAPIRequestApiVersion `json:"apiVersion" yaml:"apiVersion"`
 
-	// Id Unique id for the created RestAPI
-	Id      *string `json:"id,omitempty" yaml:"id,omitempty"`
-	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
-	Status  *string `json:"status,omitempty" yaml:"status,omitempty"`
+	// Kind API type
+	Kind     RestAPIRequestKind `json:"kind" yaml:"kind"`
+	Metadata Metadata           `json:"metadata" yaml:"metadata"`
+	Spec     APIConfigData      `json:"spec" yaml:"spec"`
 }
 
-// RestAPIDetailResponse defines model for RestAPIDetailResponse.
-type RestAPIDetailResponse struct {
-	Api *struct {
-		Configuration *RestAPI `json:"configuration,omitempty" yaml:"configuration,omitempty"`
+// RestAPIRequestApiVersion API specification version
+type RestAPIRequestApiVersion string
 
-		// Id Unique id for the RestAPI
-		Id       *string `json:"id,omitempty" yaml:"id,omitempty"`
-		Metadata *struct {
-			CreatedAt  *time.Time                              `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-			DeployedAt *time.Time                              `json:"deployedAt,omitempty" yaml:"deployedAt,omitempty"`
-			Status     *RestAPIDetailResponseApiMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
-			UpdatedAt  *time.Time                              `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-		} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	} `json:"api,omitempty" yaml:"api,omitempty"`
-	Status *string `json:"status,omitempty" yaml:"status,omitempty"`
-}
-
-// RestAPIDetailResponseApiMetadataStatus defines model for RestAPIDetailResponse.Api.Metadata.Status.
-type RestAPIDetailResponseApiMetadataStatus string
-
-// RestAPIListItem defines model for RestAPIListItem.
-type RestAPIListItem struct {
-	Context     *string                `json:"context,omitempty" yaml:"context,omitempty"`
-	CreatedAt   *time.Time             `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	DisplayName *string                `json:"displayName,omitempty" yaml:"displayName,omitempty"`
-	Id          *string                `json:"id,omitempty" yaml:"id,omitempty"`
-	Status      *RestAPIListItemStatus `json:"status,omitempty" yaml:"status,omitempty"`
-	UpdatedAt   *time.Time             `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-	Version     *string                `json:"version,omitempty" yaml:"version,omitempty"`
-}
-
-// RestAPIListItemStatus defines model for RestAPIListItem.Status.
-type RestAPIListItemStatus string
-
-// RestAPIUpdateResponse defines model for RestAPIUpdateResponse.
-type RestAPIUpdateResponse struct {
-	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
-	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
-	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
-	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-}
+// RestAPIRequestKind API type
+type RestAPIRequestKind string
 
 // RouteException defines model for RouteException.
 type RouteException struct {
@@ -1351,70 +1259,106 @@ type SecretConfigData struct {
 	Value string `json:"value" yaml:"value"`
 }
 
-// SecretConfiguration defines model for SecretConfiguration.
-type SecretConfiguration struct {
+// SecretConfigListData defines model for SecretConfigListData.
+type SecretConfigListData struct {
+	// Description Description of the secret, if the server includes it
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// DisplayName Human-readable secret name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+	DisplayName string `json:"displayName" yaml:"displayName"`
+}
+
+// SecretConfigurationRequest defines model for SecretConfigurationRequest.
+type SecretConfigurationRequest struct {
 	// ApiVersion Secret specification version
-	ApiVersion SecretConfigurationApiVersion `json:"apiVersion" yaml:"apiVersion"`
+	ApiVersion SecretConfigurationRequestApiVersion `json:"apiVersion" yaml:"apiVersion"`
 
 	// Kind Secret resource kind
-	Kind     SecretConfigurationKind `json:"kind" yaml:"kind"`
-	Metadata Metadata                `json:"metadata" yaml:"metadata"`
-	Spec     SecretConfigData        `json:"spec" yaml:"spec"`
+	Kind     SecretConfigurationRequestKind `json:"kind" yaml:"kind"`
+	Metadata Metadata                       `json:"metadata" yaml:"metadata"`
+	Spec     SecretConfigData               `json:"spec" yaml:"spec"`
 }
 
-// SecretConfigurationApiVersion Secret specification version
-type SecretConfigurationApiVersion string
+// SecretConfigurationRequestApiVersion Secret specification version
+type SecretConfigurationRequestApiVersion string
 
-// SecretConfigurationKind Secret resource kind
-type SecretConfigurationKind string
+// SecretConfigurationRequestKind Secret resource kind
+type SecretConfigurationRequestKind string
 
-// SecretDetailResponse defines model for SecretDetailResponse.
-type SecretDetailResponse struct {
-	Secret *struct {
-		Configuration *SecretConfiguration `json:"configuration,omitempty" yaml:"configuration,omitempty"`
+// SecretConfigurationResponseCreateUpdate POST/PUT /secrets response. `spec.value` is not returned; see SecretConfigurationRequest for create/update request bodies.
+type SecretConfigurationResponseCreateUpdate struct {
+	ApiVersion SecretConfigurationResponseCreateUpdateApiVersion `json:"apiVersion" yaml:"apiVersion"`
+	Kind       SecretConfigurationResponseCreateUpdateKind       `json:"kind" yaml:"kind"`
+	Metadata   Metadata                                          `json:"metadata" yaml:"metadata"`
+	Spec       SecretConfigListData                              `json:"spec" yaml:"spec"`
 
-		// Id Unique secret identifier
-		Id       *string `json:"id,omitempty" yaml:"id,omitempty"`
-		Metadata *struct {
-			CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-			UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-		} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	} `json:"secret,omitempty" yaml:"secret,omitempty"`
-	Status *string `json:"status,omitempty" yaml:"status,omitempty"`
+	// Status Id and optional timestamps. Not the full ResourceStatus model (no `state` or
+	// `deployedAt`).
+	Status SecretResourceServiceStatus `json:"status" yaml:"status"`
 }
+
+// SecretConfigurationResponseCreateUpdateApiVersion defines model for SecretConfigurationResponseCreateUpdate.ApiVersion.
+type SecretConfigurationResponseCreateUpdateApiVersion string
+
+// SecretConfigurationResponseCreateUpdateKind defines model for SecretConfigurationResponseCreateUpdate.Kind.
+type SecretConfigurationResponseCreateUpdateKind string
+
+// SecretConfigurationResponseRetrieved GET /secrets/{id} response including decrypted `spec.value`.
+type SecretConfigurationResponseRetrieved struct {
+	ApiVersion SecretConfigurationResponseRetrievedApiVersion `json:"apiVersion" yaml:"apiVersion"`
+	Kind       SecretConfigurationResponseRetrievedKind       `json:"kind" yaml:"kind"`
+	Metadata   Metadata                                       `json:"metadata" yaml:"metadata"`
+	Spec       SecretConfigData                               `json:"spec" yaml:"spec"`
+
+	// Status Id and optional timestamps. Not the full ResourceStatus model (no `state` or
+	// `deployedAt`).
+	Status SecretResourceServiceStatus `json:"status" yaml:"status"`
+}
+
+// SecretConfigurationResponseRetrievedApiVersion defines model for SecretConfigurationResponseRetrieved.ApiVersion.
+type SecretConfigurationResponseRetrievedApiVersion string
+
+// SecretConfigurationResponseRetrievedKind defines model for SecretConfigurationResponseRetrieved.Kind.
+type SecretConfigurationResponseRetrievedKind string
+
+// SecretListItem defines model for SecretListItem.
+type SecretListItem struct {
+	// ApiVersion Secret specification version
+	ApiVersion SecretListItemApiVersion `json:"apiVersion" yaml:"apiVersion"`
+
+	// Kind Secret resource kind
+	Kind     SecretListItemKind   `json:"kind" yaml:"kind"`
+	Metadata Metadata             `json:"metadata" yaml:"metadata"`
+	Spec     SecretConfigListData `json:"spec" yaml:"spec"`
+
+	// Status Server-managed lifecycle fields. Omitted in list items may vary; the secret value is never included here.
+	Status *ResourceStatus `json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+// SecretListItemApiVersion Secret specification version
+type SecretListItemApiVersion string
+
+// SecretListItemKind Secret resource kind
+type SecretListItemKind string
 
 // SecretListResponse defines model for SecretListResponse.
 type SecretListResponse struct {
-	// Secrets List of secrets (without values for security)
-	Secrets *[]struct {
-		// CreatedAt Timestamp when the secret was created (UTC)
-		CreatedAt time.Time `json:"createdAt" yaml:"createdAt"`
+	// Count Total number of secrets
+	Count *int `json:"count,omitempty" yaml:"count,omitempty"`
 
-		// DisplayName Human-readable display name
-		DisplayName string `json:"displayName" yaml:"displayName"`
-
-		// Id Unique secret identifier (handle)
-		Id string `json:"id" yaml:"id"`
-
-		// UpdatedAt Timestamp when the secret was last updated (UTC)
-		UpdatedAt time.Time `json:"updatedAt" yaml:"updatedAt"`
-	} `json:"secrets,omitempty" yaml:"secrets,omitempty"`
-	Status *string `json:"status,omitempty" yaml:"status,omitempty"`
-
-	// TotalCount Total number of secrets
-	TotalCount *int `json:"totalCount,omitempty" yaml:"totalCount,omitempty"`
+	// Secrets List of secrets. For security, the spec.value field is omitted for every item in the list; retrieve a single secret by id to obtain the decrypted value.
+	Secrets *[]SecretListItem `json:"secrets,omitempty" yaml:"secrets,omitempty"`
+	Status  *string           `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
-// SecretResponse defines model for SecretResponse.
-type SecretResponse struct {
-	// CreatedAt Timestamp when the secret was created (UTC)
-	CreatedAt time.Time `json:"createdAt" yaml:"createdAt"`
+// SecretResourceServiceStatus Id and optional timestamps. Not the full ResourceStatus model (no `state` or
+// `deployedAt`).
+type SecretResourceServiceStatus struct {
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
-	// Id Unique secret identifier
-	Id string `json:"id" yaml:"id"`
-
-	// UpdatedAt Timestamp when the secret was last updated (UTC)
-	UpdatedAt time.Time `json:"updatedAt" yaml:"updatedAt"`
+	// Id Same as metadata.name / secret handle
+	Id        string     `json:"id" yaml:"id"`
+	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 }
 
 // SubscriptionCreateRequest defines model for SubscriptionCreateRequest.
@@ -1423,8 +1367,14 @@ type SubscriptionCreateRequest struct {
 	ApiId string `json:"apiId" yaml:"apiId"`
 
 	// ApplicationId Application identifier (from DevPortal/STS). Optional for token-based subscriptions.
-	ApplicationId *string                          `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
-	Status        *SubscriptionCreateRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	ApplicationId *string `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
+
+	// BillingCustomerId Billing customer identifier (optional, for analytics tracking).
+	BillingCustomerId *string `json:"billingCustomerId,omitempty" yaml:"billingCustomerId,omitempty"`
+
+	// BillingSubscriptionId Billing subscription identifier (optional, for analytics tracking).
+	BillingSubscriptionId *string                          `json:"billingSubscriptionId,omitempty" yaml:"billingSubscriptionId,omitempty"`
+	Status                *SubscriptionCreateRequestStatus `json:"status,omitempty" yaml:"status,omitempty"`
 
 	// SubscriptionPlanId Subscription plan UUID for rate limit and billing configuration.
 	SubscriptionPlanId *string `json:"subscriptionPlanId,omitempty" yaml:"subscriptionPlanId,omitempty"`
@@ -1502,12 +1452,18 @@ type SubscriptionPlanUpdateRequestThrottleLimitUnit string
 
 // SubscriptionResponse defines model for SubscriptionResponse.
 type SubscriptionResponse struct {
-	ApiId         *string                     `json:"apiId,omitempty" yaml:"apiId,omitempty"`
-	ApplicationId *string                     `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
-	CreatedAt     *time.Time                  `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	GatewayId     *string                     `json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
-	Id            *string                     `json:"id,omitempty" yaml:"id,omitempty"`
-	Status        *SubscriptionResponseStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	ApiId         *string `json:"apiId,omitempty" yaml:"apiId,omitempty"`
+	ApplicationId *string `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
+
+	// BillingCustomerId Billing customer identifier
+	BillingCustomerId *string `json:"billingCustomerId,omitempty" yaml:"billingCustomerId,omitempty"`
+
+	// BillingSubscriptionId Billing subscription identifier
+	BillingSubscriptionId *string                     `json:"billingSubscriptionId,omitempty" yaml:"billingSubscriptionId,omitempty"`
+	CreatedAt             *time.Time                  `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	GatewayId             *string                     `json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
+	Id                    *string                     `json:"id,omitempty" yaml:"id,omitempty"`
+	Status                *SubscriptionResponseStatus `json:"status,omitempty" yaml:"status,omitempty"`
 
 	// SubscriptionPlanId Subscription plan UUID
 	SubscriptionPlanId *string `json:"subscriptionPlanId,omitempty" yaml:"subscriptionPlanId,omitempty"`
@@ -1607,6 +1563,9 @@ type WebSubAPI struct {
 	Kind     WebSubAPIKind  `json:"kind" yaml:"kind"`
 	Metadata Metadata       `json:"metadata" yaml:"metadata"`
 	Spec     WebhookAPIData `json:"spec" yaml:"spec"`
+
+	// Status Server-managed lifecycle fields. Populated on responses.
+	Status *ResourceStatus `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // WebSubAPIApiVersion API specification version
@@ -1615,65 +1574,51 @@ type WebSubAPIApiVersion string
 // WebSubAPIKind API type
 type WebSubAPIKind string
 
-// WebSubAPICreateResponse defines model for WebSubAPICreateResponse.
-type WebSubAPICreateResponse struct {
-	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+// WebSubAPIRequest defines model for WebSubAPIRequest.
+type WebSubAPIRequest struct {
+	// ApiVersion API specification version
+	ApiVersion WebSubAPIRequestApiVersion `json:"apiVersion" yaml:"apiVersion"`
 
-	// Id Unique id for the created WebSubAPI
-	Id      *string `json:"id,omitempty" yaml:"id,omitempty"`
-	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
-	Status  *string `json:"status,omitempty" yaml:"status,omitempty"`
+	// Kind API type
+	Kind     WebSubAPIRequestKind `json:"kind" yaml:"kind"`
+	Metadata Metadata             `json:"metadata" yaml:"metadata"`
+	Spec     WebhookAPIData       `json:"spec" yaml:"spec"`
 }
 
-// WebSubAPIDetailResponse defines model for WebSubAPIDetailResponse.
-type WebSubAPIDetailResponse struct {
-	Api *struct {
-		Configuration *WebSubAPI `json:"configuration,omitempty" yaml:"configuration,omitempty"`
+// WebSubAPIRequestApiVersion API specification version
+type WebSubAPIRequestApiVersion string
 
-		// Id Unique id for the WebSubAPI
-		Id       *string `json:"id,omitempty" yaml:"id,omitempty"`
-		Metadata *struct {
-			CreatedAt  *time.Time                                `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-			DeployedAt *time.Time                                `json:"deployedAt,omitempty" yaml:"deployedAt,omitempty"`
-			Status     *WebSubAPIDetailResponseApiMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
-			UpdatedAt  *time.Time                                `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-		} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	} `json:"api,omitempty" yaml:"api,omitempty"`
-	Status *string `json:"status,omitempty" yaml:"status,omitempty"`
+// WebSubAPIRequestKind API type
+type WebSubAPIRequestKind string
+
+// WebSubDelivery Delivery configuration for the WebSub API - handles outbound event delivery to subscribers.
+type WebSubDelivery struct {
+	// Policies List of policies applied when delivering events to subscriber callback URLs (e.g., hmac-signature-validation)
+	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 }
 
-// WebSubAPIDetailResponseApiMetadataStatus defines model for WebSubAPIDetailResponse.Api.Metadata.Status.
-type WebSubAPIDetailResponseApiMetadataStatus string
+// WebSubHub Hub configuration for the WebSub API - handles subscriber management and event fan-out.
+type WebSubHub struct {
+	// Channels List of topic channels available for subscription
+	Channels []HubChannel `json:"channels" yaml:"channels"`
 
-// WebSubAPIListItem defines model for WebSubAPIListItem.
-type WebSubAPIListItem struct {
-	Context     *string                  `json:"context,omitempty" yaml:"context,omitempty"`
-	CreatedAt   *time.Time               `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
-	DisplayName *string                  `json:"displayName,omitempty" yaml:"displayName,omitempty"`
-	Id          *string                  `json:"id,omitempty" yaml:"id,omitempty"`
-	Status      *WebSubAPIListItemStatus `json:"status,omitempty" yaml:"status,omitempty"`
-	UpdatedAt   *time.Time               `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-	Version     *string                  `json:"version,omitempty" yaml:"version,omitempty"`
+	// Policies List of policies applied at the hub level (e.g., api-key-auth for subscribers)
+	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 }
 
-// WebSubAPIListItemStatus defines model for WebSubAPIListItem.Status.
-type WebSubAPIListItemStatus string
-
-// WebSubAPIUpdateResponse defines model for WebSubAPIUpdateResponse.
-type WebSubAPIUpdateResponse struct {
-	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
-	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
-	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
-	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+// WebSubReceiver Receiver configuration for the WebSub API - handles inbound event publishing from publishers.
+type WebSubReceiver struct {
+	// Policies List of policies applied to inbound webhook requests (e.g., hmac-signature-validation)
+	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 }
 
 // WebhookAPIData defines model for WebhookAPIData.
 type WebhookAPIData struct {
-	// Channels List of channels - Async operations(SUB) for WebSub APIs
-	Channels []Channel `json:"channels" yaml:"channels"`
-
 	// Context Base path for all API routes (must start with /, no trailing slash)
 	Context string `json:"context" yaml:"context"`
+
+	// Delivery Delivery configuration for the WebSub API - handles outbound event delivery to subscribers.
+	Delivery *WebSubDelivery `json:"delivery,omitempty" yaml:"delivery,omitempty"`
 
 	// DeploymentState Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.
 	DeploymentState *WebhookAPIDataDeploymentState `json:"deploymentState,omitempty" yaml:"deploymentState,omitempty"`
@@ -1681,8 +1626,11 @@ type WebhookAPIData struct {
 	// DisplayName Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
 	DisplayName string `json:"displayName" yaml:"displayName"`
 
-	// Policies List of API-level policies applied to all operations unless overridden
-	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+	// Hub Hub configuration for the WebSub API - handles subscriber management and event fan-out.
+	Hub WebSubHub `json:"hub" yaml:"hub"`
+
+	// Receiver Receiver configuration for the WebSub API - handles inbound event publishing from publishers.
+	Receiver *WebSubReceiver `json:"receiver,omitempty" yaml:"receiver,omitempty"`
 
 	// Version Semantic version of the API
 	Version string `json:"version" yaml:"version"`
@@ -1817,16 +1765,16 @@ type ListWebSubAPIsParamsStatus string
 type UploadCertificateJSONRequestBody = CertificateUploadRequest
 
 // CreateLLMProviderTemplateJSONRequestBody defines body for CreateLLMProviderTemplate for application/json ContentType.
-type CreateLLMProviderTemplateJSONRequestBody = LLMProviderTemplate
+type CreateLLMProviderTemplateJSONRequestBody = LLMProviderTemplateRequest
 
 // UpdateLLMProviderTemplateJSONRequestBody defines body for UpdateLLMProviderTemplate for application/json ContentType.
-type UpdateLLMProviderTemplateJSONRequestBody = LLMProviderTemplate
+type UpdateLLMProviderTemplateJSONRequestBody = LLMProviderTemplateRequest
 
 // CreateLLMProviderJSONRequestBody defines body for CreateLLMProvider for application/json ContentType.
-type CreateLLMProviderJSONRequestBody = LLMProviderConfiguration
+type CreateLLMProviderJSONRequestBody = LLMProviderConfigurationRequest
 
 // UpdateLLMProviderJSONRequestBody defines body for UpdateLLMProvider for application/json ContentType.
-type UpdateLLMProviderJSONRequestBody = LLMProviderConfiguration
+type UpdateLLMProviderJSONRequestBody = LLMProviderConfigurationRequest
 
 // CreateLLMProviderAPIKeyJSONRequestBody defines body for CreateLLMProviderAPIKey for application/json ContentType.
 type CreateLLMProviderAPIKeyJSONRequestBody = APIKeyCreationRequest
@@ -1838,10 +1786,10 @@ type UpdateLLMProviderAPIKeyJSONRequestBody = APIKeyUpdateRequest
 type RegenerateLLMProviderAPIKeyJSONRequestBody = APIKeyRegenerationRequest
 
 // CreateLLMProxyJSONRequestBody defines body for CreateLLMProxy for application/json ContentType.
-type CreateLLMProxyJSONRequestBody = LLMProxyConfiguration
+type CreateLLMProxyJSONRequestBody = LLMProxyConfigurationRequest
 
 // UpdateLLMProxyJSONRequestBody defines body for UpdateLLMProxy for application/json ContentType.
-type UpdateLLMProxyJSONRequestBody = LLMProxyConfiguration
+type UpdateLLMProxyJSONRequestBody = LLMProxyConfigurationRequest
 
 // CreateLLMProxyAPIKeyJSONRequestBody defines body for CreateLLMProxyAPIKey for application/json ContentType.
 type CreateLLMProxyAPIKeyJSONRequestBody = APIKeyCreationRequest
@@ -1853,16 +1801,16 @@ type UpdateLLMProxyAPIKeyJSONRequestBody = APIKeyUpdateRequest
 type RegenerateLLMProxyAPIKeyJSONRequestBody = APIKeyRegenerationRequest
 
 // CreateMCPProxyJSONRequestBody defines body for CreateMCPProxy for application/json ContentType.
-type CreateMCPProxyJSONRequestBody = MCPProxyConfiguration
+type CreateMCPProxyJSONRequestBody = MCPProxyConfigurationRequest
 
 // UpdateMCPProxyJSONRequestBody defines body for UpdateMCPProxy for application/json ContentType.
-type UpdateMCPProxyJSONRequestBody = MCPProxyConfiguration
+type UpdateMCPProxyJSONRequestBody = MCPProxyConfigurationRequest
 
 // CreateRestAPIJSONRequestBody defines body for CreateRestAPI for application/json ContentType.
-type CreateRestAPIJSONRequestBody = RestAPI
+type CreateRestAPIJSONRequestBody = RestAPIRequest
 
 // UpdateRestAPIJSONRequestBody defines body for UpdateRestAPI for application/json ContentType.
-type UpdateRestAPIJSONRequestBody = RestAPI
+type UpdateRestAPIJSONRequestBody = RestAPIRequest
 
 // CreateAPIKeyJSONRequestBody defines body for CreateAPIKey for application/json ContentType.
 type CreateAPIKeyJSONRequestBody = APIKeyCreationRequest
@@ -1874,10 +1822,10 @@ type UpdateAPIKeyJSONRequestBody = APIKeyUpdateRequest
 type RegenerateAPIKeyJSONRequestBody = APIKeyRegenerationRequest
 
 // CreateSecretJSONRequestBody defines body for CreateSecret for application/json ContentType.
-type CreateSecretJSONRequestBody = SecretConfiguration
+type CreateSecretJSONRequestBody = SecretConfigurationRequest
 
 // UpdateSecretJSONRequestBody defines body for UpdateSecret for application/json ContentType.
-type UpdateSecretJSONRequestBody = SecretConfiguration
+type UpdateSecretJSONRequestBody = SecretConfigurationRequest
 
 // CreateSubscriptionPlanJSONRequestBody defines body for CreateSubscriptionPlan for application/json ContentType.
 type CreateSubscriptionPlanJSONRequestBody = SubscriptionPlanCreateRequest
@@ -1892,10 +1840,19 @@ type CreateSubscriptionJSONRequestBody = SubscriptionCreateRequest
 type UpdateSubscriptionJSONRequestBody = SubscriptionUpdateRequest
 
 // CreateWebSubAPIJSONRequestBody defines body for CreateWebSubAPI for application/json ContentType.
-type CreateWebSubAPIJSONRequestBody = WebSubAPI
+type CreateWebSubAPIJSONRequestBody = WebSubAPIRequest
 
 // UpdateWebSubAPIJSONRequestBody defines body for UpdateWebSubAPI for application/json ContentType.
-type UpdateWebSubAPIJSONRequestBody = WebSubAPI
+type UpdateWebSubAPIJSONRequestBody = WebSubAPIRequest
+
+// CreateWebSubAPIKeyJSONRequestBody defines body for CreateWebSubAPIKey for application/json ContentType.
+type CreateWebSubAPIKeyJSONRequestBody = APIKeyCreationRequest
+
+// UpdateWebSubAPIKeyJSONRequestBody defines body for UpdateWebSubAPIKey for application/json ContentType.
+type UpdateWebSubAPIKeyJSONRequestBody = APIKeyUpdateRequest
+
+// RegenerateWebSubAPIKeyJSONRequestBody defines body for RegenerateWebSubAPIKey for application/json ContentType.
+type RegenerateWebSubAPIKeyJSONRequestBody = APIKeyRegenerationRequest
 
 // AsLLMProviderConfigDataUpstream0 returns the union data inside the LLMProviderConfigData_Upstream as a LLMProviderConfigDataUpstream0
 func (t LLMProviderConfigData_Upstream) AsLLMProviderConfigDataUpstream0() (LLMProviderConfigDataUpstream0, error) {
@@ -2491,6 +2448,21 @@ type ServerInterface interface {
 	// Update an existing WebSubAPI
 	// (PUT /websub-apis/{id})
 	UpdateWebSubAPI(c *gin.Context, id string)
+	// Get the list of API keys for a WebSub API
+	// (GET /websub-apis/{id}/api-keys)
+	ListWebSubAPIKeys(c *gin.Context, id string)
+	// Create a new API key for a WebSub API
+	// (POST /websub-apis/{id}/api-keys)
+	CreateWebSubAPIKey(c *gin.Context, id string)
+	// Revoke an API key for a WebSub API
+	// (DELETE /websub-apis/{id}/api-keys/{apiKeyName})
+	RevokeWebSubAPIKey(c *gin.Context, id string, apiKeyName string)
+	// Update an API key for a WebSub API
+	// (PUT /websub-apis/{id}/api-keys/{apiKeyName})
+	UpdateWebSubAPIKey(c *gin.Context, id string, apiKeyName string)
+	// Regenerate API key for a WebSub API
+	// (POST /websub-apis/{id}/api-keys/{apiKeyName}/regenerate)
+	RegenerateWebSubAPIKey(c *gin.Context, id string, apiKeyName string)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -4259,6 +4231,163 @@ func (siw *ServerInterfaceWrapper) UpdateWebSubAPI(c *gin.Context) {
 	siw.Handler.UpdateWebSubAPI(c, id)
 }
 
+// ListWebSubAPIKeys operation middleware
+func (siw *ServerInterfaceWrapper) ListWebSubAPIKeys(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(BasicAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListWebSubAPIKeys(c, id)
+}
+
+// CreateWebSubAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) CreateWebSubAPIKey(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(BasicAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateWebSubAPIKey(c, id)
+}
+
+// RevokeWebSubAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) RevokeWebSubAPIKey(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "apiKeyName" -------------
+	var apiKeyName string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "apiKeyName", c.Param("apiKeyName"), &apiKeyName, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyName: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(BasicAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.RevokeWebSubAPIKey(c, id, apiKeyName)
+}
+
+// UpdateWebSubAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) UpdateWebSubAPIKey(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "apiKeyName" -------------
+	var apiKeyName string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "apiKeyName", c.Param("apiKeyName"), &apiKeyName, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyName: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(BasicAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateWebSubAPIKey(c, id, apiKeyName)
+}
+
+// RegenerateWebSubAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) RegenerateWebSubAPIKey(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "apiKeyName" -------------
+	var apiKeyName string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "apiKeyName", c.Param("apiKeyName"), &apiKeyName, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKeyName: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(BasicAuthScopes, []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.RegenerateWebSubAPIKey(c, id, apiKeyName)
+}
+
 // GinServerOptions provides options for the Gin server.
 type GinServerOptions struct {
 	BaseURL      string
@@ -4350,242 +4479,254 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.DELETE(options.BaseURL+"/websub-apis/:id", wrapper.DeleteWebSubAPI)
 	router.GET(options.BaseURL+"/websub-apis/:id", wrapper.GetWebSubAPIById)
 	router.PUT(options.BaseURL+"/websub-apis/:id", wrapper.UpdateWebSubAPI)
+	router.GET(options.BaseURL+"/websub-apis/:id/api-keys", wrapper.ListWebSubAPIKeys)
+	router.POST(options.BaseURL+"/websub-apis/:id/api-keys", wrapper.CreateWebSubAPIKey)
+	router.DELETE(options.BaseURL+"/websub-apis/:id/api-keys/:apiKeyName", wrapper.RevokeWebSubAPIKey)
+	router.PUT(options.BaseURL+"/websub-apis/:id/api-keys/:apiKeyName", wrapper.UpdateWebSubAPIKey)
+	router.POST(options.BaseURL+"/websub-apis/:id/api-keys/:apiKeyName/regenerate", wrapper.RegenerateWebSubAPIKey)
 }
 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"AQA=",
+	"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",
+	"K9mWoWTi0+3T/wsAAP//P2OZHWT2AQA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

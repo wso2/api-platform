@@ -68,11 +68,21 @@ const MockEmbeddingProviderPort = "8085"
 // RedisPort is the port for redis service
 const RedisPort = "6379"
 
+// GatewayManagementAPIBasePath is the URL prefix under which the gateway-controller
+// management API is served. Must stay in sync with `servers.url` in
+// gateway/gateway-controller/api/management-openapi.yaml.
+const GatewayManagementAPIBasePath = "/api/management/v0.9"
+
+// GatewayAdminAPIBasePath is the URL prefix under which the gateway-controller
+// admin API is served. Must stay in sync with `servers.url` in
+// gateway/gateway-controller/api/admin-openapi.yaml.
+const GatewayAdminAPIBasePath = "/api/admin/v0.9"
+
 // DefaultConfig returns the default test configuration
 func DefaultConfig() *Config {
 	return &Config{
-		GatewayControllerURL:       fmt.Sprintf("http://localhost:%s", GatewayControllerPort),
-		GatewayControllerAdminURL:  fmt.Sprintf("http://localhost:%s", GatewayControllerAdminPort),
+		GatewayControllerURL:       fmt.Sprintf("http://localhost:%s%s", GatewayControllerPort, GatewayManagementAPIBasePath),
+		GatewayControllerAdminURL:  fmt.Sprintf("http://localhost:%s%s", GatewayControllerAdminPort, GatewayAdminAPIBasePath),
 		RouterURL:                  fmt.Sprintf("http://localhost:%s", RouterPort),
 		PolicyEngineURL:            "http://localhost:9002",
 		SampleBackendURL:           "http://localhost:9080",

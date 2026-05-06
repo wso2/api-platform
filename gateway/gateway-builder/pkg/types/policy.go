@@ -37,6 +37,17 @@ type DiscoveredPolicy struct {
 	GoModulePath     string // The actual Go module path (from go.mod or gomodule field)
 	GoModuleVersion  string // Resolved version for gomodule entries (e.g., "v0.1.0")
 	IsFilePathEntry  bool   // True if from filePath manifest entry (needs replace directive)
+
+	// Runtime is auto-detected: "go" or "python"
+	Runtime         string
+	PythonSourceDir string // Path to Python source directory (local filePath and extracted pip policies)
+
+	// Pip package fields (set only for pipPackage policies)
+	IsPipPackage         bool   // True if from pipPackage manifest entry
+	OriginalPipSpec      string // Original pipPackage value from build.yaml before resolution
+	PipSpec              string // Full pip specifier (e.g., "my-gateway-policy==1.0.0")
+	PipIndexURL          string // Optional custom PyPI index URL
+	PythonTopLevelModule string // Python module name from wheel's top_level.txt
 }
 
 // ConditionDef represents execution conditions

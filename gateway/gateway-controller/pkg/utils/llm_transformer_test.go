@@ -78,7 +78,7 @@ func TestLLMProviderTransformer_TransformProvider_ReadsTemplateFromDB(t *testing
 		UUID: "0000-db-template-id-0000-000000000000",
 		Configuration: api.LLMProviderTemplate{
 			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.LlmProviderTemplate,
+			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata:   api.Metadata{Name: "openai"},
 			Spec: api.LLMProviderTemplateData{
 				DisplayName: "openai",
@@ -94,7 +94,7 @@ func TestLLMProviderTransformer_TransformProvider_ReadsTemplateFromDB(t *testing
 
 	provider := &api.LLMProviderConfiguration{
 		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.LlmProvider,
+		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata:   api.Metadata{Name: "db-backed-provider"},
 		Spec: api.LLMProviderConfigData{
 			DisplayName: "db-backed-provider",
@@ -121,7 +121,7 @@ func TestLLMProviderTransformer_TransformProxy_ReadsProviderAndTemplateFromDB(t 
 		UUID: "0000-db-template-id-0000-000000000001",
 		Configuration: api.LLMProviderTemplate{
 			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.LlmProviderTemplate,
+			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata:   api.Metadata{Name: "openai"},
 			Spec: api.LLMProviderTemplateData{
 				DisplayName: "openai",
@@ -133,7 +133,7 @@ func TestLLMProviderTransformer_TransformProxy_ReadsProviderAndTemplateFromDB(t 
 	now := time.Now()
 	providerSourceConfig := api.LLMProviderConfiguration{
 		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.LlmProvider,
+		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata:   api.Metadata{Name: "db-provider"},
 		Spec: api.LLMProviderConfigData{
 			DisplayName: "db-provider",
@@ -148,7 +148,7 @@ func TestLLMProviderTransformer_TransformProxy_ReadsProviderAndTemplateFromDB(t 
 	}
 	providerRuntimeConfig := api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Metadata:   api.Metadata{Name: "db-provider"},
 		Spec: api.APIConfigData{
 			DisplayName: "db-provider",
@@ -164,7 +164,7 @@ func TestLLMProviderTransformer_TransformProxy_ReadsProviderAndTemplateFromDB(t 
 	}
 	provider := &models.StoredConfig{
 		UUID:                "0000-db-provider-id-0000-000000000000",
-		Kind:                string(api.LlmProvider),
+		Kind:                string(api.LLMProviderConfigurationKindLlmProvider),
 		Handle:              "db-provider",
 		DisplayName:         "db-provider",
 		Version:             "v1.0",
@@ -183,7 +183,7 @@ func TestLLMProviderTransformer_TransformProxy_ReadsProviderAndTemplateFromDB(t 
 
 	proxy := &api.LLMProxyConfiguration{
 		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.LlmProxy,
+		Kind:       api.LLMProxyConfigurationKindLlmProxy,
 		Metadata:   api.Metadata{Name: "db-proxy"},
 		Spec: api.LLMProxyConfigData{
 			DisplayName: "db-proxy",
@@ -845,7 +845,7 @@ func TestTransformProvider_AllowAllMode(t *testing.T) {
 	result, err := transformer.Transform(provider, output)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
-	assert.Equal(t, api.RestApi, result.Kind)
+	assert.Equal(t, api.RestAPIKindRestApi, result.Kind)
 }
 
 func TestTransformProvider_DenyAllMode(t *testing.T) {
@@ -891,7 +891,7 @@ func TestTransformProvider_DenyAllMode(t *testing.T) {
 	result, err := transformer.Transform(provider, output)
 	assert.NoError(t, err)
 	assert.NotNil(t, result)
-	assert.Equal(t, api.RestApi, result.Kind)
+	assert.Equal(t, api.RestAPIKindRestApi, result.Kind)
 }
 
 func TestTransformProvider_ExpandsWildcardPolicyPathWithTemplateMappings(t *testing.T) {
@@ -1006,6 +1006,95 @@ func TestTransformProvider_ExpandsWildcardPolicyPathWithTemplateMappings(t *test
 	assert.Equal(t, "value", (*wildcardPolicy.Params)["userParam"])
 }
 
+func TestTransformProvider_PolicyOrderDoesNotAffectWildcardCoverage(t *testing.T) {
+	store := storage.NewConfigStore()
+	db := newTestMockDB()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-template-1-0000-000000000001",
+		Configuration: api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "openai"},
+			Spec:     api.LLMProviderTemplateData{},
+		},
+	}
+	db.SaveLLMProviderTemplate(template)
+	err := store.AddTemplate(template)
+	require.NoError(t, err)
+
+	upstreamURL := "https://api.openai.com"
+	assertPolicies := func(t *testing.T, result *api.RestAPI) {
+		chatOp := findOperation(result.Spec.Operations, "/chat/completions", "POST")
+		require.NotNil(t, chatOp)
+		require.NotNil(t, chatOp.Policies)
+		require.Len(t, *chatOp.Policies, 2)
+		assert.Equal(t, "set-headers-all", (*chatOp.Policies)[0].Name, "/chat/completions should apply the wildcard policy before the specific policy")
+		assert.Equal(t, "set-headers", (*chatOp.Policies)[1].Name, "/chat/completions should keep its specific policy after the wildcard policy")
+
+		wildcardOp := findOperation(result.Spec.Operations, "/*", "POST")
+		require.NotNil(t, wildcardOp)
+		require.NotNil(t, wildcardOp.Policies)
+		assert.Len(t, *wildcardOp.Policies, 1)
+		assert.Equal(t, "set-headers-all", (*wildcardOp.Policies)[0].Name)
+	}
+
+	newProvider := func(policies []api.LLMPolicy) *api.LLMProviderConfiguration {
+		return &api.LLMProviderConfiguration{
+			Metadata: api.Metadata{Name: "openai-provider"},
+			Spec: api.LLMProviderConfigData{
+				DisplayName: "OpenAI Provider",
+				Version:     "1.0.0",
+				Template:    "openai",
+				Upstream: api.LLMProviderConfigData_Upstream{
+					Url: &upstreamURL,
+				},
+				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+				Policies:      &policies,
+			},
+		}
+	}
+
+	wildcardPolicy := api.LLMPolicy{
+		Name:    "set-headers-all",
+		Version: "v1",
+		Paths: []api.LLMPolicyPath{{
+			Path:    "/*",
+			Methods: []api.LLMPolicyPathMethods{"POST"},
+			Params:  map[string]interface{}{"scope": "all"},
+		}},
+	}
+	specificPolicy := api.LLMPolicy{
+		Name:    "set-headers",
+		Version: "v1",
+		Paths: []api.LLMPolicyPath{{
+			Path:    "/chat/completions",
+			Methods: []api.LLMPolicyPathMethods{"POST"},
+			Params:  map[string]interface{}{"scope": "specific"},
+		}},
+	}
+
+	t.Run("wildcard then specific", func(t *testing.T) {
+		provider := newProvider([]api.LLMPolicy{wildcardPolicy, specificPolicy})
+
+		result, err := transformer.Transform(provider, &api.RestAPI{})
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		assertPolicies(t, result)
+	})
+
+	t.Run("specific then wildcard", func(t *testing.T) {
+		provider := newProvider([]api.LLMPolicy{specificPolicy, wildcardPolicy})
+
+		result, err := transformer.Transform(provider, &api.RestAPI{})
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		assertPolicies(t, result)
+	})
+}
+
 func TestTransformProvider_WithUpstreamAuth(t *testing.T) {
 	store := storage.NewConfigStore()
 	db := newTestMockDB()
@@ -1113,7 +1202,7 @@ func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 
 	storedProvider := &models.StoredConfig{
 		UUID:                "0000-prov-cfg-1-0000-000000000000",
-		Kind:                string(api.LlmProvider),
+		Kind:                string(api.LLMProviderConfigurationKindLlmProvider),
 		Handle:              "openai-provider",
 		DisplayName:         "OpenAI Provider",
 		Version:             "v1.0",

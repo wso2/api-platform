@@ -1,0 +1,445 @@
+/*
+ *  Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+syntax = "proto3";
+
+package wso2.gateway.python.v1alpha2;
+
+option go_package = "github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/pythonbridge/proto";
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
+
+// PythonExecutorService defines the gRPC contract between the Go policy engine
+// and the Python executor process.
+service PythonExecutorService {
+  // Bidirectional stream for all hot-path execution requests.
+  rpc ExecuteStream(stream StreamRequest) returns (stream StreamResponse);
+
+  // Unary lifecycle and health RPCs.
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+  rpc InitPolicy(InitPolicyRequest) returns (InitPolicyResponse);
+  rpc DestroyPolicy(DestroyPolicyRequest) returns (DestroyPolicyResponse);
+}
+
+enum HeaderProcessingMode {
+  HEADER_PROCESSING_MODE_UNSPECIFIED = 0;
+  HEADER_PROCESSING_MODE_SKIP = 1;
+  HEADER_PROCESSING_MODE_PROCESS = 2;
+}
+
+enum BodyProcessingMode {
+  BODY_PROCESSING_MODE_UNSPECIFIED = 0;
+  BODY_PROCESSING_MODE_SKIP = 1;
+  BODY_PROCESSING_MODE_BUFFER = 2;
+  BODY_PROCESSING_MODE_STREAM = 3;
+}
+
+enum Phase {
+  PHASE_UNSPECIFIED = 0;
+  PHASE_REQUEST_HEADERS = 1;
+  PHASE_REQUEST_BODY = 2;
+  PHASE_RESPONSE_HEADERS = 3;
+  PHASE_RESPONSE_BODY = 4;
+  PHASE_NEEDS_MORE_REQUEST_DATA = 5;
+  PHASE_REQUEST_BODY_CHUNK = 6;
+  PHASE_NEEDS_MORE_RESPONSE_DATA = 7;
+  PHASE_RESPONSE_BODY_CHUNK = 8;
+  PHASE_CANCEL = 9;
+}
+
+enum DropHeaderActionType {
+  DROP_HEADER_ACTION_TYPE_UNSPECIFIED = 0;
+  DROP_HEADER_ACTION_TYPE_ALLOW = 1;
+  DROP_HEADER_ACTION_TYPE_DENY = 2;
+}
+
+message StreamRequest {
+  string request_id = 1;
+  string instance_id = 2;
+  string policy_name = 3;
+  string policy_version = 4;
+  google.protobuf.Struct params = 5;
+  SharedContext shared_context = 6;
+  ExecutionMetadata execution_metadata = 7;
+
+  oneof payload {
+    RequestHeadersPayload request_headers = 8;
+    RequestBodyPayload request_body = 9;
+    ResponseHeadersPayload response_headers = 10;
+    ResponseBodyPayload response_body = 11;
+    NeedsMoreRequestDataPayload needs_more_request_data = 12;
+    RequestChunkPayload request_chunk = 13;
+    NeedsMoreResponseDataPayload needs_more_response_data = 14;
+    ResponseChunkPayload response_chunk = 15;
+    CancelExecutionPayload cancel_execution = 16;
+  }
+}
+
+message StreamResponse {
+  string request_id = 1;
+  google.protobuf.Struct updated_metadata = 2;
+
+  oneof payload {
+    RequestHeaderActionPayload request_header_action = 3;
+    RequestActionPayload request_action = 4;
+    ResponseHeaderActionPayload response_header_action = 5;
+    ResponseActionPayload response_action = 6;
+    NeedsMoreDecisionPayload needs_more_decision = 7;
+    StreamingRequestActionPayload streaming_request_action = 8;
+    StreamingResponseActionPayload streaming_response_action = 9;
+    ExecutionError error = 10;
+  }
+}
+
+message ProcessingMode {
+  HeaderProcessingMode request_header_mode = 1;
+  BodyProcessingMode request_body_mode = 2;
+  HeaderProcessingMode response_header_mode = 3;
+  BodyProcessingMode response_body_mode = 4;
+}
+
+message PolicyCapabilities {
+  bool request_headers = 1;
+  bool request_body = 2;
+  bool response_headers = 3;
+  bool response_body = 4;
+  bool streaming_request = 5;
+  bool streaming_response = 6;
+}
+
+message InitPolicyRequest {
+  string policy_name = 1;
+  string policy_version = 2;
+  PolicyMetadata policy_metadata = 3;
+  google.protobuf.Struct params = 4;
+}
+
+message InitPolicyResponse {
+  bool success = 1;
+  string instance_id = 2;
+  string error_message = 3;
+  ProcessingMode processing_mode = 4;
+  PolicyCapabilities capabilities = 5;
+}
+
+message DestroyPolicyRequest {
+  string instance_id = 1;
+}
+
+message DestroyPolicyResponse {
+  bool success = 1;
+  string error_message = 2;
+}
+
+message ExecutionMetadata {
+  Phase phase = 1;
+  google.protobuf.Timestamp deadline = 2;
+  TraceMetadata trace = 3;
+  string route_name = 4;
+}
+
+message TraceMetadata {
+  string trace_id = 1;
+  string span_id = 2;
+}
+
+message SharedContext {
+  string project_id = 1;
+  string request_id = 2;
+  google.protobuf.Struct metadata = 3;
+  string api_id = 4;
+  string api_name = 5;
+  string api_version = 6;
+  string api_kind = 7;
+  string api_context = 8;
+  string operation_path = 9;
+  AuthContext auth_context = 10;
+}
+
+message Headers {
+  map<string, StringList> values = 1;
+}
+
+message StringList {
+  repeated string values = 1;
+}
+
+message Body {
+  bytes content = 1;
+  bool end_of_stream = 2;
+  bool present = 3;
+}
+
+message StreamBody {
+  bytes chunk = 1;
+  bool end_of_stream = 2;
+  uint64 index = 3;
+}
+
+message AuthContext {
+  bool authenticated = 1;
+  bool authorized = 2;
+  string auth_type = 3;
+  string subject = 4;
+  string issuer = 5;
+  repeated string audience = 6;
+  map<string, bool> scopes = 7;
+  string credential_id = 8;
+  map<string, string> properties = 9;
+  AuthContext previous = 10;
+}
+
+message RequestHeaderContext {
+  Headers headers = 1;
+  string path = 2;
+  string method = 3;
+  string authority = 4;
+  string scheme = 5;
+  string vhost = 6;
+}
+
+message RequestContext {
+  Headers headers = 1;
+  Body body = 2;
+  string path = 3;
+  string method = 4;
+  string authority = 5;
+  string scheme = 6;
+  string vhost = 7;
+}
+
+message ResponseHeaderContext {
+  Headers request_headers = 1;
+  Body request_body = 2;
+  string request_path = 3;
+  string request_method = 4;
+  Headers response_headers = 5;
+  int32 response_status = 6;
+}
+
+message ResponseContext {
+  Headers request_headers = 1;
+  Body request_body = 2;
+  string request_path = 3;
+  string request_method = 4;
+  Headers response_headers = 5;
+  Body response_body = 6;
+  int32 response_status = 7;
+}
+
+message RequestStreamContext {
+  Headers headers = 1;
+  string path = 2;
+  string method = 3;
+  string authority = 4;
+  string scheme = 5;
+  string vhost = 6;
+}
+
+message ResponseStreamContext {
+  Headers request_headers = 1;
+  Body request_body = 2;
+  string request_path = 3;
+  string request_method = 4;
+  Headers response_headers = 5;
+  int32 response_status = 6;
+}
+
+message RequestHeadersPayload {
+  RequestHeaderContext context = 1;
+}
+
+message RequestBodyPayload {
+  RequestContext context = 1;
+}
+
+message ResponseHeadersPayload {
+  ResponseHeaderContext context = 1;
+}
+
+message ResponseBodyPayload {
+  ResponseContext context = 1;
+}
+
+message NeedsMoreRequestDataPayload {
+  bytes accumulated = 1;
+}
+
+message RequestChunkPayload {
+  RequestStreamContext context = 1;
+  StreamBody chunk = 2;
+}
+
+message NeedsMoreResponseDataPayload {
+  bytes accumulated = 1;
+}
+
+message ResponseChunkPayload {
+  ResponseStreamContext context = 1;
+  StreamBody chunk = 2;
+}
+
+message CancelExecutionPayload {
+  Phase target_phase = 1;
+  string reason = 2;
+}
+
+message PolicyMetadata {
+  string route_name = 1;
+  string api_id = 2;
+  string api_name = 3;
+  string api_version = 4;
+  string attached_to = 5;
+}
+
+message DropHeaderAction {
+  DropHeaderActionType action = 1;
+  repeated string headers = 2;
+}
+
+message ImmediateResponse {
+  int32 status_code = 1;
+  map<string, string> headers = 2;
+  google.protobuf.BytesValue body = 3;
+  google.protobuf.Struct analytics_metadata = 4;
+  map<string, google.protobuf.Struct> dynamic_metadata = 5;
+  DropHeaderAction analytics_header_filter = 6;
+}
+
+message UpstreamRequestHeaderModifications {
+  map<string, string> headers_to_set = 1;
+  repeated string headers_to_remove = 2;
+  google.protobuf.StringValue upstream_name = 3;
+  google.protobuf.StringValue path = 4;
+  google.protobuf.StringValue host = 5;
+  google.protobuf.StringValue method = 6;
+  map<string, StringList> query_parameters_to_add = 7;
+  repeated string query_parameters_to_remove = 8;
+  google.protobuf.Struct analytics_metadata = 9;
+  map<string, google.protobuf.Struct> dynamic_metadata = 10;
+  DropHeaderAction analytics_header_filter = 11;
+}
+
+message UpstreamRequestModifications {
+  google.protobuf.BytesValue body = 1;
+  map<string, string> headers_to_set = 2;
+  repeated string headers_to_remove = 3;
+  google.protobuf.StringValue upstream_name = 4;
+  google.protobuf.StringValue path = 5;
+  google.protobuf.StringValue host = 6;
+  google.protobuf.StringValue method = 7;
+  map<string, StringList> query_parameters_to_add = 8;
+  repeated string query_parameters_to_remove = 9;
+  google.protobuf.Struct analytics_metadata = 10;
+  map<string, google.protobuf.Struct> dynamic_metadata = 11;
+  DropHeaderAction analytics_header_filter = 12;
+}
+
+message DownstreamResponseHeaderModifications {
+  map<string, string> headers_to_set = 1;
+  repeated string headers_to_remove = 2;
+  google.protobuf.Struct analytics_metadata = 3;
+  map<string, google.protobuf.Struct> dynamic_metadata = 4;
+  DropHeaderAction analytics_header_filter = 5;
+}
+
+message DownstreamResponseModifications {
+  google.protobuf.BytesValue body = 1;
+  google.protobuf.Int32Value status_code = 2;
+  map<string, string> headers_to_set = 3;
+  repeated string headers_to_remove = 4;
+  google.protobuf.Struct analytics_metadata = 5;
+  map<string, google.protobuf.Struct> dynamic_metadata = 6;
+  DropHeaderAction analytics_header_filter = 7;
+}
+
+message ForwardRequestChunk {
+  google.protobuf.BytesValue body = 1;
+  google.protobuf.Struct analytics_metadata = 2;
+  map<string, google.protobuf.Struct> dynamic_metadata = 3;
+}
+
+message ForwardResponseChunk {
+  google.protobuf.BytesValue body = 1;
+  google.protobuf.Struct analytics_metadata = 2;
+  map<string, google.protobuf.Struct> dynamic_metadata = 3;
+}
+
+message TerminateResponseChunk {
+  google.protobuf.BytesValue body = 1;
+  google.protobuf.Struct analytics_metadata = 2;
+  map<string, google.protobuf.Struct> dynamic_metadata = 3;
+}
+
+message RequestHeaderActionPayload {
+  oneof action {
+    UpstreamRequestHeaderModifications upstream_request_header_modifications = 1;
+    ImmediateResponse immediate_response = 2;
+  }
+}
+
+message RequestActionPayload {
+  oneof action {
+    UpstreamRequestModifications upstream_request_modifications = 1;
+    ImmediateResponse immediate_response = 2;
+  }
+}
+
+message ResponseHeaderActionPayload {
+  oneof action {
+    DownstreamResponseHeaderModifications downstream_response_header_modifications = 1;
+    ImmediateResponse immediate_response = 2;
+  }
+}
+
+message ResponseActionPayload {
+  oneof action {
+    DownstreamResponseModifications downstream_response_modifications = 1;
+    ImmediateResponse immediate_response = 2;
+  }
+}
+
+message NeedsMoreDecisionPayload {
+  bool needs_more = 1;
+}
+
+message StreamingRequestActionPayload {
+  ForwardRequestChunk forward_request_chunk = 1;
+}
+
+message StreamingResponseActionPayload {
+  oneof action {
+    ForwardResponseChunk forward_response_chunk = 1;
+    TerminateResponseChunk terminate_response_chunk = 2;
+  }
+}
+
+message ExecutionError {
+  string message = 1;
+  string policy_name = 2;
+  string policy_version = 3;
+  string error_type = 4;
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  bool ready = 1;
+  int32 loaded_policies = 2;
+}

@@ -20,14 +20,13 @@ package eventlistener
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 )
 
 // processAPIEvent dispatches API events by action
@@ -78,10 +77,10 @@ func (l *EventListener) handleAPICreateOrUpdate(event eventhub.Event) {
 		return
 	}
 
-	// Resolve policy configuration (handles secret resolution)
-	resolvedCfg, err := l.resolvePolicyConfiguration(storedConfig)
-	if err != nil {
-		l.logger.Error("Failed to resolve policy configuration for API",
+	// Render template expressions in the spec (e.g. {{ secret "..." }}, {{ env "..." }}).
+	// storedConfig.Configuration is set to the resolved version; SourceConfiguration stays unrendered.
+	if err := templateengine.RenderSpec(storedConfig, l.secretResolver, l.logger); err != nil {
+		l.logger.Error("Failed to render config templates for API",
 			slog.String("api_id", entityID),
 			slog.String("event_id", event.EventID),
 			slog.Any("error", err))
@@ -112,7 +111,8 @@ func (l *EventListener) handleAPICreateOrUpdate(event eventhub.Event) {
 	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after replica sync")
 
 	// Update policies
-	l.updatePoliciesForAPI(resolvedCfg, event.EventID)
+	l.updatePoliciesForAPI(storedConfig, event.EventID)
+	l.syncAPIKeysForAPI(storedConfig, event.EventID)
 
 	l.logger.Info("Successfully processed API create/update event",
 		slog.String("api_id", entityID),
@@ -189,7 +189,14 @@ func (l *EventListener) handleAPIDelete(event eventhub.Event) {
 
 	// Remove runtime config for the deleted API
 	if l.policyManager != nil && existingConfig != nil {
-		if err := l.policyManager.DeleteAPIConfig(existingConfig.Kind, existingConfig.Handle); err != nil {
+		if existingConfig.Kind == models.KindWebSubApi {
+			// WebSubApi: refresh event channel cache (config already removed from ConfigStore)
+			if err := l.policyManager.UpdateEventChannelSnapshot(); err != nil {
+				l.logger.Warn("Failed to update event channel snapshot after WebSubApi deletion",
+					slog.String("api_id", entityID),
+					slog.Any("error", err))
+			}
+		} else if err := l.policyManager.DeleteAPIConfig(existingConfig.Kind, existingConfig.Handle); err != nil {
 			l.logger.Warn("Failed to remove runtime config after API deletion",
 				slog.String("api_id", entityID),
 				slog.Any("error", err))
@@ -207,6 +214,18 @@ func (l *EventListener) updatePoliciesForAPI(cfg *models.StoredConfig, correlati
 		return
 	}
 
+	if cfg.Kind == models.KindWebSubApi {
+		// WebSubApi doesn't need RuntimeDeployConfig transformation.
+		// Just refresh the event channel config cache.
+		if err := l.policyManager.UpdateEventChannelSnapshot(); err != nil {
+			l.logger.Error("Failed to update event channel snapshot",
+				slog.String("api_id", cfg.UUID),
+				slog.String("correlation_id", correlationID),
+				slog.Any("error", err))
+		}
+		return
+	}
+
 	if err := l.policyManager.UpsertAPIConfig(cfg); err != nil {
 		l.logger.Error("Failed to upsert runtime config from replica sync",
 			slog.String("api_id", cfg.UUID),
@@ -215,25 +234,37 @@ func (l *EventListener) updatePoliciesForAPI(cfg *models.StoredConfig, correlati
 	}
 }
 
-// resolvePolicyConfiguration resolves policy templates and secret references in the configuration.
-// Returns the resolved configuration or an error if policy resolution fails.
-func (l *EventListener) resolvePolicyConfiguration(storedCfg *models.StoredConfig) (*models.StoredConfig, error) {
-	resolvedCfg, validationErrors := l.policyResolver.ResolvePolicies(storedCfg)
-	if len(validationErrors) > 0 {
-		errMsgs := make([]string, 0, len(validationErrors))
-		for _, ve := range validationErrors {
-			errMsgs = append(errMsgs, ve.Message)
-		}
-		errMsg := strings.Join(errMsgs, "; ")
-
-		slog.Error("Policy resolution failed",
-			slog.String("config_handle", storedCfg.Handle),
-			slog.String("errors", errMsg),
-		)
-
-		return nil, fmt.Errorf("policy resolution failed with %d errors: %s", len(validationErrors), errMsg)
+func (l *EventListener) syncAPIKeysForAPI(cfg *models.StoredConfig, correlationID string) {
+	if cfg == nil || l.apiKeyXDSManager == nil || l.db == nil {
+		return
 	}
-	return resolvedCfg, nil
+
+	apiName, apiVersion := extractAPINameVersion(cfg)
+	if apiName == "" {
+		return
+	}
+
+	apiKeys, err := l.db.GetAPIKeysByAPI(cfg.UUID)
+	if err != nil {
+		l.logger.Warn("Failed to load API keys while syncing API create/update event",
+			slog.String("api_id", cfg.UUID),
+			slog.String("correlation_id", correlationID),
+			slog.Any("error", err))
+		return
+	}
+
+	for _, apiKey := range apiKeys {
+		if apiKey == nil {
+			continue
+		}
+		if err := l.apiKeyXDSManager.StoreAPIKey(cfg.UUID, apiName, apiVersion, apiKey, correlationID); err != nil {
+			l.logger.Warn("Failed to sync existing API key to policy engine after API create/update",
+				slog.String("api_id", cfg.UUID),
+				slog.String("api_key_id", apiKey.UUID),
+				slog.String("correlation_id", correlationID),
+				slog.Any("error", err))
+		}
+	}
 }
 
 // extractAPINameVersion extracts the display name and version from a StoredConfig.

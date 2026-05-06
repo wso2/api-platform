@@ -367,10 +367,11 @@ func SetupTempGatewayWorkspace(buildFilePath string) (string, error) {
 	var buildFile struct {
 		Version  string `yaml:"version"`
 		Policies []struct {
-			Name     string `yaml:"name"`
-			Version  string `yaml:"version,omitempty"`
-			FilePath string `yaml:"filePath,omitempty"`
-			Gomodule string `yaml:"gomodule,omitempty"`
+			Name       string `yaml:"name"`
+			Version    string `yaml:"version,omitempty"`
+			FilePath   string `yaml:"filePath,omitempty"`
+			Gomodule   string `yaml:"gomodule,omitempty"`
+			PipPackage string `yaml:"pipPackage,omitempty"`
 		} `yaml:"policies"`
 	}
 	if err := yaml.Unmarshal(buildFileData, &buildFile); err != nil {

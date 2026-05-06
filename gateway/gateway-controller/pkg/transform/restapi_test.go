@@ -72,14 +72,14 @@ func makeRestAPIStoredConfig(apiPolicies []api.Policy, opPolicies []api.Policy) 
 	}
 
 	restAPI := api.RestAPI{
-		Kind:     api.RestApi,
+		Kind:     api.RestAPIKindRestApi,
 		Metadata: api.Metadata{Name: "test-api"},
 		Spec:     apiData,
 	}
 
 	return &models.StoredConfig{
 		UUID:          "test-api",
-		Kind:          string(api.RestApi),
+		Kind:          string(api.RestAPIKindRestApi),
 		Configuration: restAPI,
 	}
 }

@@ -99,7 +99,7 @@ func (v *LLMValidator) validateLLMProviderTemplate(template *api.LLMProviderTemp
 	}
 
 	// Validate kind
-	if template.Kind != api.LlmProviderTemplate {
+	if template.Kind != api.LLMProviderTemplateKindLlmProviderTemplate {
 		errors = append(errors, ValidationError{
 			Field:   "kind",
 			Message: "Kind must be 'LlmProviderTemplate'",
@@ -301,7 +301,7 @@ func (v *LLMValidator) validateLLMProvider(provider *api.LLMProviderConfiguratio
 	}
 
 	// Validate kind
-	if provider.Kind != api.LlmProvider {
+	if provider.Kind != api.LLMProviderConfigurationKindLlmProvider {
 		errors = append(errors, ValidationError{
 			Field:   "kind",
 			Message: "Kind must be 'LlmProvider'",
@@ -483,7 +483,7 @@ func (v *LLMValidator) validateLLMProxy(proxy *api.LLMProxyConfiguration) []Vali
 	}
 
 	// Validate kind
-	if proxy.Kind != api.LlmProxy {
+	if proxy.Kind != api.LLMProxyConfigurationKindLlmProxy {
 		errors = append(errors, ValidationError{
 			Field:   "kind",
 			Message: "Kind must be 'LlmProxy'",

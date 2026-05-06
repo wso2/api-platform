@@ -1,6 +1,6 @@
 module github.com/wso2/api-platform/cli
 
-go 1.26.1
+go 1.26.2
 
 require (
 	github.com/spf13/cobra v1.10.1

@@ -1,0 +1,49 @@
+# MANUAL COPY of github.com/wso2/gateway-controllers/policies/api-key-auth@v1 — keep in sync with ../build.yaml until gateway-builder is integrated into event-gateway build.
+name: api-key-auth
+version: v1.0.3
+description: |
+  Secures APIs by validating API keys in incoming requests. API keys are
+  provided through a configured HTTP header.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    key:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Specifies the header name that carries the API key.
+        Header lookup is case-insensitive.
+      default: API-Key
+      validation:
+        minLength: 1
+        maxLength: 128
+
+    in:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Specifies where to read the API key. Currently only "header" is
+        supported.
+      default: header
+      enum:
+        - "header"
+
+  required:
+    - key
+    - in
+
+systemParameters:
+  type: object
+  properties:
+    issuer:
+      type: string
+      description: |
+        Identifier of the portal that associated with this gateway.
+        Resolved from config.toml [api_key] issuer at startup.
+        When resolved to a non-empty string, the policy rejects any API key
+        whose issuer field is non-null and does not match this value.
+        When empty or absent, the issuer check is skipped entirely.
+      default: ""
+      "wso2/defaultValue": "${config.api_key.issuer}"

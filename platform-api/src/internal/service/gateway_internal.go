@@ -41,6 +41,7 @@ type GatewayInternalAPIService struct {
 	providerRepo         repository.LLMProviderRepository
 	proxyRepo            repository.LLMProxyRepository
 	mcpProxyRepo         repository.MCPProxyRepository
+	websubAPIRepo        repository.WebSubAPIRepository
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	orgRepo              repository.OrganizationRepository
@@ -55,7 +56,8 @@ type GatewayInternalAPIService struct {
 // NewGatewayInternalAPIService creates a new gateway internal API service
 func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscriptionRepo repository.SubscriptionRepository,
 	subscriptionPlanRepo repository.SubscriptionPlanRepository, providerRepo repository.LLMProviderRepository,
-	proxyRepo repository.LLMProxyRepository, mcpProxyRepo repository.MCPProxyRepository, deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
+	proxyRepo repository.LLMProxyRepository, mcpProxyRepo repository.MCPProxyRepository, websubAPIRepo repository.WebSubAPIRepository,
+	deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository, projectRepo repository.ProjectRepository, apiKeyRepo repository.APIKeyRepository,
 	artifactRepo repository.ArtifactRepository, cfg *config.Server, slogger *slog.Logger) *GatewayInternalAPIService {
 	return &GatewayInternalAPIService{
@@ -65,6 +67,7 @@ func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscription
 		providerRepo:         providerRepo,
 		proxyRepo:            proxyRepo,
 		mcpProxyRepo:         mcpProxyRepo,
+		websubAPIRepo:        websubAPIRepo,
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,
@@ -299,6 +302,31 @@ func (s *GatewayInternalAPIService) GetActiveMCPProxyDeploymentByGateway(proxyID
 		proxyID: proxyYaml,
 	}
 	return proxyYamlMap, nil
+}
+
+// GetActiveWebSubAPIDeploymentByGateway retrieves the currently deployed WebSub API artifact for a specific gateway
+func (s *GatewayInternalAPIService) GetActiveWebSubAPIDeploymentByGateway(apiID, orgID, gatewayID string) (map[string]string, error) {
+	websubAPI, err := s.websubAPIRepo.GetByUUID(apiID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get WebSub API: %w", err)
+	}
+	if websubAPI == nil {
+		return nil, constants.ErrWebSubAPINotFound
+	}
+
+	deployment, err := s.deploymentRepo.GetCurrentByGateway(websubAPI.UUID, gatewayID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deployment: %w", err)
+	}
+	if deployment == nil {
+		return nil, constants.ErrDeploymentNotActive
+	}
+
+	apiYaml := string(deployment.Content)
+	apiYamlMap := map[string]string{
+		apiID: apiYaml,
+	}
+	return apiYamlMap, nil
 }
 
 // CreateGatewayDeployment handles the registration of an API deployment from a gateway

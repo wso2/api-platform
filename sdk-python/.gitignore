@@ -1,0 +1,25 @@
+# Python build artefacts
+dist/
+build/
+*.egg-info/
+
+# Bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# mypy cache
+.mypy_cache/
+
+# pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# macOS metadata
+.DS_Store

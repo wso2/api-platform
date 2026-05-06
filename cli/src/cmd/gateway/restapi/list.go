@@ -49,19 +49,68 @@ var listCmd = &cobra.Command{
 	},
 }
 
-// APIListItem represents a single API in the list response
+// APIListItem is a list-view projection of a RestAPI. The management API list
+// response returns each item as a full k8s-shaped resource body — we flatten
+// the fields we care about out of `metadata`, `spec` and `status` here.
 type APIListItem struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	DisplayName string `json:"displayName"`
-	Version     string `json:"version"`
-	Context     string `json:"context"`
-	Status      string `json:"status"`
-	CreatedAt   string `json:"createdAt"`
-	UpdatedAt   string `json:"updatedAt"`
+	// Full resource body as returned by the server. Kept for display/debugging.
+	Metadata map[string]interface{} `json:"metadata"`
+	Spec     map[string]interface{} `json:"spec"`
+	Status   map[string]interface{} `json:"status"`
 }
 
-// APIListResponse represents the response from GET /apis
+// ID returns the server-assigned id (status.id) falling back to metadata.name.
+func (i APIListItem) ID() string {
+	if v, ok := i.Status["id"].(string); ok && v != "" {
+		return v
+	}
+	if v, ok := i.Metadata["name"].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// DisplayName returns spec.displayName.
+func (i APIListItem) DisplayName() string {
+	if v, ok := i.Spec["displayName"].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// Version returns spec.version.
+func (i APIListItem) Version() string {
+	if v, ok := i.Spec["version"].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// Context returns spec.context.
+func (i APIListItem) Context() string {
+	if v, ok := i.Spec["context"].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// State returns status.state (the declarative desired state).
+func (i APIListItem) State() string {
+	if v, ok := i.Status["state"].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// CreatedAt returns status.createdAt as a string.
+func (i APIListItem) CreatedAt() string {
+	if v, ok := i.Status["createdAt"].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// APIListResponse represents the response from GET /rest-apis
 type APIListResponse struct {
 	Status string        `json:"status"`
 	Count  int           `json:"count"`
@@ -106,10 +155,10 @@ func runListCommand() error {
 		return nil
 	}
 
-	headers := []string{"ID", "DISPLAY_NAME", "VERSION", "CONTEXT", "STATUS", "CREATED_AT"}
+	headers := []string{"ID", "DISPLAY_NAME", "VERSION", "CONTEXT", "STATE", "CREATED_AT"}
 	rows := make([][]string, 0, len(listResp.APIs))
 	for _, api := range listResp.APIs {
-		rows = append(rows, []string{api.ID, api.DisplayName, api.Version, api.Context, api.Status, api.CreatedAt})
+		rows = append(rows, []string{api.ID(), api.DisplayName(), api.Version(), api.Context(), api.State(), api.CreatedAt()})
 	}
 	utils.PrintTable(headers, rows)
 

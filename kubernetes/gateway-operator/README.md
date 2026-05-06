@@ -35,7 +35,7 @@ helm upgrade --install \
 ## 2. Install Gateway Operator
 
 ```sh
-helm install my-gateway-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-operator --version 0.2.0
+helm install my-gateway-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-operator --version 0.6.0
 ```
 
 ---
@@ -125,7 +125,7 @@ Add certificate to Gateway:
 
 ```sh
 cert_path="/tmp/test-backend.crt"
-curl -X POST http://localhost:9090/certificates \
+curl -X POST http://localhost:9090/api/management/v0.9/certificates \
   -H "Content-Type: application/json" \
   -d "{\"certificate\":$(jq -Rs . < $cert_path),\"filename\":\"my-cert.pem\", \"name\":\"test\"}"
 ```

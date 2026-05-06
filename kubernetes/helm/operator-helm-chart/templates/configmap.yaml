@@ -12,12 +12,22 @@ data:
     gateway:
       helm_chart_name: {{ .Values.gateway.helm.chartName | quote }}
       helm_chart_version: {{ .Values.gateway.helm.chartVersion | quote }}
+{{- if .Values.gateway.helm.chartPath }}
+      helm_chart_path: {{ .Values.gateway.helm.chartPath | quote }}
+{{- end }}
       helm_values_file_path: {{ .Values.gateway.helm.valuesFilePath | quote }}
       insecure_registry: {{ .Values.gateway.helm.insecureRegistry | default false }}
       plain_http: {{ .Values.gateway.helm.plainHTTP | default false }}
     reconciliation:
       enabled: {{ .Values.reconciliation.enabled | default true }}
       interval: {{ .Values.reconciliation.interval | default 300 }}
+      max_concurrent_reconciles: {{ .Values.reconciliation.maxConcurrentReconciles | default 1 }}
     logging:
       level: {{ .Values.logging.level | quote }}
       format: {{ .Values.logging.format | quote }}
+    gateway_api:
+      gateway_class_names:
+{{- range .Values.gatewayApi.managedGatewayClassNames }}
+        - {{ . | quote }}
+{{- end }}
+      cluster_domain: {{ .Values.gatewayApi.clusterDomain | default "cluster.local" | quote }}

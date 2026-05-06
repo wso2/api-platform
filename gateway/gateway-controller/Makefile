@@ -22,11 +22,16 @@
 VERSION ?= $(shell cat ../VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-LDFLAGS := -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.BuildDate=$(BUILD_DATE)
+VERSION_PKG := github.com/wso2/api-platform/gateway/gateway-controller/pkg/version
+LDFLAGS := -X $(VERSION_PKG).Version=$(VERSION) -X $(VERSION_PKG).GitCommit=$(GIT_COMMIT) -X $(VERSION_PKG).BuildDate=$(BUILD_DATE)
 
 # Docker image configuration
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-controller
+
+# Policy definitions are produced by the gateway-runtime build (policy-compiler stage)
+# and extracted via `make -C ../gateway-runtime extract-policies`.
+POLICIES_BUILD_CONTEXT ?= ../target/build/gateway-controller/policies
 
 # Doc generation
 REPO_ROOT := $(shell git rev-parse --show-toplevel)
@@ -73,6 +78,7 @@ build: generate-server-code test ## Build Docker image using buildx
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-context build-manifest=.. \
+		--build-context policies=$(POLICIES_BUILD_CONTEXT) \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--target production \
@@ -94,6 +100,7 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-context build-manifest=.. \
+		--build-context policies=$(POLICIES_BUILD_CONTEXT) \
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
@@ -109,6 +116,7 @@ build-coverage-image: test ## Build coverage-instrumented gateway-controller ima
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-context build-manifest=.. \
+		--build-context policies=$(POLICIES_BUILD_CONTEXT) \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg ENABLE_COVERAGE=true \
@@ -123,6 +131,7 @@ build-debug: ## Build debug image for remote debugging with dlv (VS Code attach 
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-context build-manifest=.. \
+		--build-context policies=$(POLICIES_BUILD_CONTEXT) \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg ENABLE_DEBUG=true \

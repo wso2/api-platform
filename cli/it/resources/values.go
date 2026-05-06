@@ -29,8 +29,12 @@ const (
 	// GatewayControllerURL is the gateway controller REST API endpoint
 	GatewayControllerURL = "http://localhost:9090"
 
-	// GatewayControllerHealthURL is the health check endpoint
-	GatewayControllerHealthURL = "http://localhost:9090/health"
+	// GatewayControllerAdminURL is the gateway controller admin API endpoint base URL
+	GatewayControllerAdminURL = "http://localhost:9092"
+
+	// GatewayControllerHealthURL is the health check endpoint (served on the admin port
+	// under the admin API base path)
+	GatewayControllerHealthURL = GatewayControllerAdminURL + "/api/admin/v0.9/health"
 
 	// RouterURL is the gateway router HTTP endpoint
 	RouterURL = "http://localhost:8080"

@@ -65,6 +65,8 @@ services:
       - APIP_GW_CONTROLLER_CONTROLPLANE_HOST=it-mock-platform-api:9243
       - APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=test-gateway-token
       - APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY=true
+      # Used by template-functions IT to verify {{ env "..." }} resolution in spec fields
+      - IT_TEMPLATE_PATH=/anything
     volumes:
       - controller-data-tests:/app/data
       - ./it-aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro
@@ -75,7 +77,7 @@ services:
     depends_on:
       - mock-platform-api
     # healthcheck:
-    #   test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9092/health"]
+    #   test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9092/api/admin/v0.9/health"]
     #   interval: 5s
     #   timeout: 3s
     #   retries: 10
@@ -250,6 +252,24 @@ services:
     networks:
       - it-gateway-runtime-network
 
+  # Mock Interceptor Service for interceptor-service policy testing
+  mock-interceptor-service:
+    container_name: it-mock-interceptor-service
+    image: ghcr.io/wso2/api-platform/mock-interceptor-service:latest
+    build:
+      context: ../../tests/mock-servers/mock-interceptor-service
+      dockerfile: Dockerfile
+    ports:
+      - "8087:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "--tries=1", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - it-gateway-runtime-network
+
   # Redis with RediSearch for semantic cache vector storage
   redis:
     container_name: it-redis
@@ -272,6 +292,19 @@ services:
     image: mccutchen/go-httpbin:latest
     ports:
       - "9082:8080"
+    networks:
+      - it-gateway-runtime-network
+
+  # Sidecar that mounts the controller's SQLite data volume read-only and exposes
+  # sqlite3 for tests. Used by the template-functions IT to assert the persisted
+  # SourceConfiguration is unrendered.
+  it-db-reader:
+    container_name: it-db-reader
+    image: alpine:3.20
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["apk add --no-cache sqlite && sleep infinity"]
+    volumes:
+      - controller-data-tests:/data:ro
     networks:
       - it-gateway-runtime-network
 

@@ -89,12 +89,7 @@ func (h *RestAPIHandler) CreateRestAPI(c *gin.Context) {
 	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
 	metrics.APIsTotal.WithLabelValues("rest_api", "active").Inc()
 
-	c.JSON(http.StatusCreated, api.RestAPICreateResponse{
-		Status:    stringPtr("success"),
-		Message:   stringPtr("RestAPI created successfully"),
-		Id:        stringPtr(result.StoredConfig.Handle),
-		CreatedAt: timePtr(result.StoredConfig.CreatedAt),
-	})
+	c.JSON(http.StatusCreated, buildResourceResponseFromStored(result.StoredConfig.SourceConfiguration, result.StoredConfig))
 }
 
 // ListRestAPIs implements ServerInterface.ListRestAPIs
@@ -109,10 +104,32 @@ func (h *RestAPIHandler) ListRestAPIs(c *gin.Context, params api.ListRestAPIsPar
 		return
 	}
 
+	items := make([]any, 0, len(result.Items))
+	for _, cfg := range result.Items {
+		conf := cfg.SourceConfiguration
+		switch ra := conf.(type) {
+		case api.RestAPI:
+			if resolved, err := cfg.GetContext(); err == nil {
+				ra2 := ra
+				ra2.Spec.Context = resolved
+				conf = ra2
+			}
+		case *api.RestAPI:
+			if ra != nil {
+				if resolved, err := cfg.GetContext(); err == nil {
+					ra2 := *ra
+					ra2.Spec.Context = resolved
+					conf = ra2
+				}
+			}
+		}
+		items = append(items, buildResourceResponseFromStored(conf, cfg))
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"status": "success",
-		"count":  len(result.Items),
-		"apis":   result.Items,
+		"count":  len(items),
+		"apis":   items,
 	})
 }
 
@@ -128,23 +145,7 @@ func (h *RestAPIHandler) GetRestAPIById(c *gin.Context, id string) {
 	}
 
 	cfg := result.Config
-	apiDetail := gin.H{
-		"id":            cfg.Handle,
-		"configuration": cfg.Configuration,
-		"metadata": gin.H{
-			"status":    string(cfg.DesiredState),
-			"createdAt": cfg.CreatedAt.Format(time.RFC3339),
-			"updatedAt": cfg.UpdatedAt.Format(time.RFC3339),
-		},
-	}
-	if cfg.DeployedAt != nil {
-		apiDetail["metadata"].(gin.H)["deployedAt"] = cfg.DeployedAt.Format(time.RFC3339)
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"status": "success",
-		"api":    apiDetail,
-	})
+	c.JSON(http.StatusOK, buildResourceResponseFromStored(cfg.SourceConfiguration, cfg))
 }
 
 // UpdateRestAPI implements ServerInterface.UpdateRestAPI
@@ -186,12 +187,7 @@ func (h *RestAPIHandler) UpdateRestAPI(c *gin.Context, id string) {
 	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "rest_api").Inc()
 	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
 
-	c.JSON(http.StatusOK, api.RestAPIUpdateResponse{
-		Status:    stringPtr("success"),
-		Message:   stringPtr("RestAPI updated successfully"),
-		Id:        stringPtr(result.Config.Handle),
-		UpdatedAt: timePtr(result.Config.UpdatedAt),
-	})
+	c.JSON(http.StatusOK, buildResourceResponseFromStored(result.Config.SourceConfiguration, result.Config))
 }
 
 // DeleteRestAPI implements ServerInterface.DeleteRestAPI
@@ -228,6 +224,10 @@ func (h *RestAPIHandler) DeleteRestAPI(c *gin.Context, id string) {
 
 // mapCreateError maps service errors to HTTP responses for Create.
 func (h *RestAPIHandler) mapCreateError(c *gin.Context, err error) {
+	if mapRenderError(c, "create", err) {
+		return
+	}
+
 	if storage.IsConflictError(err) {
 		c.JSON(http.StatusConflict, api.ErrorResponse{
 			Status:  "error",
@@ -278,6 +278,10 @@ func (h *RestAPIHandler) mapGetError(c *gin.Context, log *slog.Logger, handle st
 
 // mapUpdateError maps service errors to HTTP responses for Update.
 func (h *RestAPIHandler) mapUpdateError(c *gin.Context, handle string, err error) {
+	if mapRenderError(c, "update", err) {
+		return
+	}
+
 	var parseErr *restapi.ParseError
 	if errors.As(err, &parseErr) {
 		metrics.ValidationErrorsTotal.WithLabelValues("update", "parse_failed").Inc()

@@ -1,0 +1,139 @@
+{{- $annotations := merge (deepCopy (default (dict) .Values.commonAnnotations)) (default (dict) .Values.eventGateway.configMap.annotations) -}}
+{{- $gc := .Values.eventGateway.config.controller -}}
+{{- $rt := .Values.eventGateway.config.runtime -}}
+{{- $controllerHost := printf "%s-controller" (include "event-gateway.fullname" .) -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "event-gateway.fullname" . }}-controller-config
+  labels:
+    {{- include "event-gateway.labels" . | nindent 4 }}
+    {{- with .Values.eventGateway.configMap.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- if $annotations }}
+  annotations:
+    {{- toYaml $annotations | nindent 4 }}
+  {{- end }}
+data:
+  config.toml: |
+    [controller.server]
+    api_port = {{ $gc.server.api_port }}
+    xds_port = {{ $gc.server.xds_port }}
+    shutdown_timeout = {{ $gc.server.shutdown_timeout | quote }}
+    gateway_id = {{ $gc.server.gateway_id | quote }}
+
+    [controller.policy_server]
+    port = {{ $gc.policy_server.port }}
+
+    [controller.policy_server.tls]
+    enabled = {{ $gc.policy_server.tls.enabled }}
+    cert_file = {{ $gc.policy_server.tls.cert_file | quote }}
+    key_file = {{ $gc.policy_server.tls.key_file | quote }}
+
+    [controller.storage]
+    type = {{ $gc.storage.type | quote }}
+
+    [controller.storage.sqlite]
+    path = {{ $gc.storage.sqlite.path | quote }}
+
+    [controller.policies]
+    definitions_path = {{ $gc.policies.definitions_path | quote }}
+
+    [controller.controlplane]
+    insecure_skip_verify = {{ $gc.controlplane.insecure_skip_verify }}
+    reconnect_initial = {{ $gc.controlplane.reconnect_initial | quote }}
+    reconnect_max = {{ $gc.controlplane.reconnect_max | quote }}
+    polling_interval = {{ $gc.controlplane.polling_interval | quote }}
+    deployment_push_enabled = {{ $gc.controlplane.deployment_push_enabled }}
+    sync_batch_size = {{ $gc.controlplane.sync_batch_size }}
+
+    {{- range $gc.encryption.providers }}
+    [[controller.encryption.providers]]
+    type = {{ .type | quote }}
+    {{- range .keys }}
+    [[controller.encryption.providers.keys]]
+    version = {{ .version | quote }}
+    file = {{ .file | quote }}
+    {{- end }}
+    {{- end }}
+
+    {{- if $gc.auth }}
+    {{- if $gc.auth.basic }}
+    [controller.auth.basic]
+    enabled = {{ $gc.auth.basic.enabled }}
+    {{- if $gc.auth.basic.users }}
+    {{- range $gc.auth.basic.users }}
+    [[controller.auth.basic.users]]
+    username = {{ .username | quote }}
+    password = {{ .password | quote }}
+    password_hashed = {{ .password_hashed | default false }}
+    roles = [{{- range $i, $role := .roles }}{{- if gt $i 0 }}, {{ end }}{{ $role | quote }}{{- end }}]
+    {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- if $gc.auth.idp }}
+    [controller.auth.idp]
+    enabled = {{ $gc.auth.idp.enabled }}
+    jwks_url = {{ $gc.auth.idp.jwks_url | quote }}
+    issuer = {{ $gc.auth.idp.issuer | quote }}
+    roles_claim = {{ $gc.auth.idp.roles_claim | quote }}
+    {{- if $gc.auth.idp.role_mapping }}
+    [controller.auth.idp.role_mapping]
+    {{- range $key, $value := $gc.auth.idp.role_mapping }}
+    {{ $key }} = {{ $value | quote }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+
+    [controller.logging]
+    level = {{ $gc.logging.level | quote }}
+    format = {{ $gc.logging.format | quote }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "event-gateway.fullname" . }}-runtime-config
+  labels:
+    {{- include "event-gateway.labels" . | nindent 4 }}
+    {{- with .Values.eventGateway.configMap.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- if $annotations }}
+  annotations:
+    {{- toYaml $annotations | nindent 4 }}
+  {{- end }}
+data:
+  config.toml: |
+    [server]
+    websub_enabled = {{ $rt.server.websubEnabled }}
+    websub_http_port = {{ $rt.server.websubHttpPort }}
+    websub_https_port = {{ $rt.server.websubHttpsPort }}
+    websub_tls_enabled = {{ $rt.server.websubTlsEnabled }}
+    websub_tls_cert_file = {{ $rt.server.websubTlsCertFile | quote }}
+    websub_tls_key_file = {{ $rt.server.websubTlsKeyFile | quote }}
+    websocket_port = {{ $rt.server.websocketPort }}
+    admin_port = {{ $rt.server.adminPort }}
+    metrics_port = {{ $rt.server.metricsPort }}
+
+    [kafka]
+    brokers = [{{- range $i, $b := $rt.kafka.brokers }}{{- if gt $i 0 }}, {{ end }}{{ $b | quote }}{{- end }}]
+    consumer_group_prefix = {{ $rt.kafka.consumerGroupPrefix | quote }}
+
+    [websub]
+    verification_timeout_seconds = {{ $rt.websub.verificationTimeoutSeconds }}
+    delivery_max_retries = {{ $rt.websub.deliveryMaxRetries }}
+    delivery_initial_delay_ms = {{ $rt.websub.deliveryInitialDelayMs }}
+    delivery_max_delay_ms = {{ $rt.websub.deliveryMaxDelayMs }}
+    delivery_concurrency = {{ $rt.websub.deliveryConcurrency }}
+    default_lease_seconds = {{ $rt.websub.defaultLeaseSeconds }}
+
+    [logging]
+    level = {{ $rt.logging.level | quote }}
+    format = {{ $rt.logging.format | quote }}
+
+    [controlplane]
+    enabled = {{ $rt.controlplane.enabled }}
+    xds_address = {{ default (printf "%s:%d" $controllerHost (int $gc.policy_server.port)) $rt.controlplane.xdsAddress | quote }}

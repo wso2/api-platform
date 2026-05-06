@@ -1,0 +1,32 @@
+{{- $runtime := .Values.eventGateway.gatewayRuntime -}}
+{{- $tls := $runtime.tls -}}
+{{- if and $runtime.deployment.enabled $tls.enabled (eq $tls.certificateProvider "cert-manager") $tls.certManager.create }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "event-gateway.fullname" . }}-runtime-tls
+  labels:
+    {{- include "event-gateway.componentLabels" (list . "gateway-runtime" dict) | nindent 4 }}
+spec:
+  secretName: {{ include "event-gateway.fullname" . }}-runtime-tls
+  commonName: {{ $tls.certManager.commonName }}
+  dnsNames:
+    {{- range $tls.certManager.dnsNames }}
+    - {{ . | quote }}
+    {{- end }}
+  duration: {{ $tls.certManager.duration | quote }}
+  renewBefore: {{ $tls.certManager.renewBefore | quote }}
+  issuerRef:
+    {{- if and $tls.certManager.createIssuer (eq $tls.certManager.issuerRef.kind "Issuer") }}
+    name: {{ include "event-gateway.fullname" . }}-runtime-selfsigned-issuer
+    {{- else }}
+    name: {{ $tls.certManager.issuerRef.name }}
+    {{- end }}
+    kind: {{ $tls.certManager.issuerRef.kind }}
+    {{- if $tls.certManager.issuerRef.group }}
+    group: {{ $tls.certManager.issuerRef.group }}
+    {{- end }}
+  privateKey:
+    algorithm: RSA
+    size: 2048
+{{- end }}

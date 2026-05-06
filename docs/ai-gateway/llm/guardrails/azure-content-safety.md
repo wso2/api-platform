@@ -102,7 +102,7 @@ If `jsonPath` is empty or not specified, the entire payload is treated as a stri
 Deploy an LLM provider with Azure Content Safety validation:
 
 ```bash
-curl -X POST http://localhost:9090/llm-providers \
+curl -X POST http://localhost:9090/api/management/v0.9/llm-providers \
   -H "Content-Type: application/yaml" \
   -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'

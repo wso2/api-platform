@@ -1,6 +1,6 @@
 version: v1
 gateway:
-  version: 1.1.0-SNAPSHOT
+  version: 1.2.0-SNAPSHOT
 policies:
   - name: advanced-ratelimit
     gomodule: github.com/wso2/gateway-controllers/policies/advanced-ratelimit@v1
@@ -24,6 +24,8 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/dynamic-endpoint@v1
   - name: host-rewrite
     gomodule: github.com/wso2/gateway-controllers/policies/host-rewrite@v1
+  - name: interceptor-service
+    gomodule: github.com/wso2/gateway-controllers/policies/interceptor-service@v1
   - name: json-schema-guardrail
     gomodule: github.com/wso2/gateway-controllers/policies/json-schema-guardrail@v1
   - name: json-xml-mediator
@@ -50,6 +52,8 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/model-weighted-round-robin@v1
   - name: pii-masking-regex
     gomodule: github.com/wso2/gateway-controllers/policies/pii-masking-regex@v1
+  - name: prompt-compressor
+    pipPackage: github.com/wso2/gateway-controllers/policies/prompt-compressor@v0
   - name: prompt-decorator
     gomodule: github.com/wso2/gateway-controllers/policies/prompt-decorator@v1
   - name: prompt-template

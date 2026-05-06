@@ -33,16 +33,19 @@ type ProjectService struct {
 	orgRepo      repository.OrganizationRepository
 	apiRepo      repository.APIRepository
 	mcpProxyRepo repository.MCPProxyRepository
+	websubAPIRepo repository.WebSubAPIRepository
 	slogger      *slog.Logger
 }
 
 func NewProjectService(projectRepo repository.ProjectRepository, orgRepo repository.OrganizationRepository,
-	apiRepo repository.APIRepository, mcpProxyRepo repository.MCPProxyRepository, slogger *slog.Logger) *ProjectService {
+	apiRepo repository.APIRepository, mcpProxyRepo repository.MCPProxyRepository,
+	websubAPIRepo repository.WebSubAPIRepository, slogger *slog.Logger) *ProjectService {
 	return &ProjectService{
 		projectRepo:  projectRepo,
 		orgRepo:      orgRepo,
 		apiRepo:      apiRepo,
 		mcpProxyRepo: mcpProxyRepo,
+		websubAPIRepo: websubAPIRepo,
 		slogger:      slogger,
 	}
 }
@@ -236,6 +239,15 @@ func (s *ProjectService) DeleteProject(projectId, orgId string) error {
 	}
 	if mcpProxiesCount > 0 {
 		return constants.ErrProjectHasAssociatedMCPProxies
+	}
+
+	// check if there are any WebSub APIs associated with the project
+	websubAPICount, err := s.websubAPIRepo.CountByProject(orgId, projectId)
+	if err != nil {
+		return err
+	}
+	if websubAPICount > 0 {
+		return constants.ErrProjectHasAssociatedWebSubAPIs
 	}
 
 	return s.projectRepo.DeleteProject(projectId)

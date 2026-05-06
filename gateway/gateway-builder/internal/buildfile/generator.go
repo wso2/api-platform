@@ -27,6 +27,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/gateway/gateway-builder/internal/discovery"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
 	"golang.org/x/mod/modfile"
 	"gopkg.in/yaml.v3"
@@ -34,7 +35,7 @@ import (
 
 // BuildInfo represents the build info structure
 type BuildInfo struct {
-	BuildTimestamp  string       `json:"buildTimestamp"`
+	BuildTimestamp string       `json:"buildTimestamp"`
 	BuilderVersion string       `json:"builderVersion"`
 	OutputDir      string       `json:"outputDir"`
 	Policies       []PolicyInfo `json:"policies"`
@@ -55,7 +56,7 @@ func CreateBuildInfo(
 	slog.Info("Creating build info")
 
 	info := &BuildInfo{
-		BuildTimestamp:  time.Now().UTC().Format(time.RFC3339),
+		BuildTimestamp: time.Now().UTC().Format(time.RFC3339),
 		BuilderVersion: builderVersion,
 		OutputDir:      outputDir,
 		Policies:       make([]PolicyInfo, 0, len(policies)),
@@ -116,10 +117,11 @@ func WriteBuildManifestWithVersions(buildFilePath string, discovered []*types.Di
 	}
 
 	type lockEntry struct {
-		Name     string `yaml:"name"`
-		Version  string `yaml:"version,omitempty"`
-		FilePath string `yaml:"filePath,omitempty"`
-		Gomodule string `yaml:"gomodule,omitempty"`
+		Name       string `yaml:"name"`
+		Version    string `yaml:"version,omitempty"`
+		FilePath   string `yaml:"filePath,omitempty"`
+		Gomodule   string `yaml:"gomodule,omitempty"`
+		PipPackage string `yaml:"pipPackage,omitempty"`
 	}
 
 	lock := struct {
@@ -133,7 +135,7 @@ func WriteBuildManifestWithVersions(buildFilePath string, discovered []*types.Di
 	buildFileDir := filepath.Dir(buildFilePath)
 
 	for _, me := range bf.Policies {
-		entry := lockEntry{Name: me.Name, FilePath: me.FilePath, Gomodule: me.Gomodule}
+		entry := lockEntry{Name: me.Name, FilePath: me.FilePath, Gomodule: me.Gomodule, PipPackage: me.PipPackage}
 
 		candidates := discoveredByName[me.Name]
 		var found *types.DiscoveredPolicy
@@ -182,6 +184,21 @@ func WriteBuildManifestWithVersions(buildFilePath string, discovered []*types.Di
 					break
 				}
 			}
+		} else if me.PipPackage != "" {
+			for _, c := range candidates {
+				if c.Runtime == "python" && c.IsPipPackage && c.OriginalPipSpec == me.PipPackage {
+					found = c
+					break
+				}
+			}
+			if found == nil {
+				for _, c := range candidates {
+					if c.Runtime == "python" && c.IsPipPackage {
+						found = c
+						break
+					}
+				}
+			}
 		}
 
 		if found == nil {
@@ -189,6 +206,9 @@ func WriteBuildManifestWithVersions(buildFilePath string, discovered []*types.Di
 		}
 
 		entry.Version = found.Version
+		if found.IsPipPackage && found.PipSpec != "" {
+			entry.PipPackage = discovery.SanitizePipSpec(found.PipSpec)
+		}
 		lock.Policies = append(lock.Policies, entry)
 	}
 

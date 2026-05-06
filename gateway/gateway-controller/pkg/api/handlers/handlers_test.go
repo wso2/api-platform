@@ -48,7 +48,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
@@ -789,6 +788,49 @@ func (m *MockStorage) Close() error {
 	return nil
 }
 
+// Bottom-up sync methods
+func (m *MockStorage) UpdateCPSyncStatus(uuid, cpArtifactID string, status models.CPSyncStatus, reason string) error {
+	if config, ok := m.configs[uuid]; ok {
+		config.CPSyncStatus = status
+		config.CPSyncInfo = reason
+		if cpArtifactID != "" {
+			config.CPArtifactID = cpArtifactID
+		}
+		return nil
+	}
+	return storage.ErrNotFound
+}
+
+func (m *MockStorage) GetConfigByCPArtifactID(cpArtifactID string) (*models.StoredConfig, error) {
+	for _, config := range m.configs {
+		if config.CPArtifactID == cpArtifactID {
+			return config, nil
+		}
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *MockStorage) UpdateDeploymentID(uuid, deploymentID string) error {
+	if config, ok := m.configs[uuid]; ok {
+		config.DeploymentID = deploymentID
+		return nil
+	}
+	return storage.ErrNotFound
+}
+
+func (m *MockStorage) GetPendingBottomUpAPIs() ([]*models.StoredConfig, error) {
+	var pending []*models.StoredConfig
+	for _, config := range m.configs {
+		if config != nil &&
+			config.Kind == models.KindRestApi &&
+			config.Origin == models.OriginGatewayAPI &&
+			(config.CPSyncStatus == models.CPSyncStatusPending || config.CPSyncStatus == models.CPSyncStatusFailed) {
+			pending = append(pending, config)
+		}
+	}
+	return pending, nil
+}
+
 // MockControlPlaneClient implements controlplane.ControlPlaneClient for testing
 type MockControlPlaneClient struct {
 	connected bool
@@ -884,6 +926,21 @@ func (m *MockStorage) SecretExists(handle string) (bool, error) {
 	return ok, nil
 }
 
+func (m *MockControlPlaneClient) SyncArtifactsToOnPremAPIM(apimConfig *utils.APIMConfig) error {
+	// Mock implementation - does nothing for testing
+	return nil
+}
+
+func (m *MockControlPlaneClient) IsOnPrem() bool {
+	return false
+}
+
+func (m *MockControlPlaneClient) GetAPIMConfig() *utils.APIMConfig {
+	return &utils.APIMConfig{
+		Timeout: 30 * time.Second,
+	}
+}
+
 func (m *MockControlPlaneClient) Close() error {
 	return nil
 }
@@ -907,7 +964,6 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 	parser := config.NewParser()
 	validator := config.NewAPIValidator()
 	policyDefs := make(map[string]models.PolicyDefinition)
-	policyResolver := resolver.NewPolicyResolver(policyDefs, nil)
 	routerCfg := &config.RouterConfig{
 		GatewayHost: "localhost",
 		VHosts:      *vhosts,
@@ -946,12 +1002,11 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 		httpClient:        httpClient,
 		systemConfig:      systemCfg,
 		gatewayID:         gatewayID,
-		policyResolver:    policyResolver,
 	}
 
-	deploymentService := utils.NewAPIDeploymentService(store, db, nil, validator, routerCfg, policyResolver, hub, gatewayID)
+	deploymentService := utils.NewAPIDeploymentService(store, db, nil, validator, routerCfg, hub, gatewayID, nil)
 	server.deploymentService = deploymentService
-	server.mcpDeploymentService = utils.NewMCPDeploymentService(store, db, nil, nil, nil, hub, gatewayID)
+	server.mcpDeploymentService = utils.NewMCPDeploymentService(store, db, nil, nil, nil, hub, gatewayID, nil)
 	server.llmDeploymentService = utils.NewLLMDeploymentService(
 		store,
 		db,
@@ -972,11 +1027,11 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 	// Initialize RestAPI service and handler
 	restAPIService := restapi.NewRestAPIService(
 		store, db, nil, nil,
-		policyDefs, &server.policyDefMu,
 		deploymentService, nil, nil,
 		routerCfg, systemCfg,
-		httpClient, parser, validator, logger, hub, policyResolver,
+		httpClient, parser, validator, logger, hub, nil,
 	)
+	server.restAPIService = restAPIService
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
 
 	return server
@@ -1009,7 +1064,7 @@ func createTestContextWithHeader(method, path string, body []byte, headers map[s
 func createTestStoredConfig(id, name, version, context string) *models.StoredConfig {
 	apiConfig := api.RestAPI{
 		ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1),
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Metadata: api.Metadata{
 			Name: id,
 		},
@@ -1035,7 +1090,7 @@ func createTestStoredConfig(id, name, version, context string) *models.StoredCon
 	}
 	return &models.StoredConfig{
 		UUID:                id,
-		Kind:                string(api.RestApi),
+		Kind:                string(api.RestAPIKindRestApi),
 		Handle:              id,
 		DisplayName:         name,
 		Version:             version,
@@ -1053,7 +1108,7 @@ func createLLMTemplateBody(t *testing.T, handle, displayName string) []byte {
 
 	template := api.LLMProviderTemplate{
 		ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.LlmProviderTemplate,
+		Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 		Metadata: api.Metadata{
 			Name: handle,
 		},
@@ -1072,7 +1127,7 @@ func createTestRestAPIRequestBody(t *testing.T, handle, displayName, version, co
 
 	apiConfig := api.RestAPI{
 		ApiVersion: api.RestAPIApiVersion(api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1),
-		Kind:       api.RestApi,
+		Kind:       api.RestAPIKindRestApi,
 		Metadata: api.Metadata{
 			Name: handle,
 		},
@@ -1108,7 +1163,7 @@ func createTestMCPRequestBody(t *testing.T, handle, displayName, version, contex
 
 	mcpConfig := api.MCPProxyConfiguration{
 		ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.Mcp,
+		Kind:       api.MCPProxyConfigurationKindMcp,
 		Metadata: api.Metadata{
 			Name: handle,
 		},
@@ -1133,13 +1188,13 @@ func createTestMCPStoredConfig(t *testing.T, id, handle, displayName, version, c
 
 	cfg := &models.StoredConfig{
 		UUID:        id,
-		Kind:        string(api.Mcp),
+		Kind:        string(api.MCPProxyConfigurationKindMcp),
 		Handle:      handle,
 		DisplayName: displayName,
 		Version:     version,
 		SourceConfiguration: api.MCPProxyConfiguration{
 			ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.Mcp,
+			Kind:       api.MCPProxyConfigurationKindMcp,
 			Metadata: api.Metadata{
 				Name: handle,
 			},
@@ -1168,17 +1223,12 @@ func attachTestEventHub(server *APIServer, hub eventhub.EventHub, gatewayID stri
 	if server.systemConfig != nil {
 		server.systemConfig.Controller.Server.GatewayID = gatewayID
 	}
-	policyResolver := server.policyResolver
-	if policyResolver == nil {
-		policyResolver = resolver.NewPolicyResolver(server.policyDefinitions, nil)
-		server.policyResolver = policyResolver
-	}
 	policyValidator := config.NewPolicyValidator(server.policyDefinitions)
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(server.policyDefinitions)
-	server.deploymentService = utils.NewAPIDeploymentService(server.store, server.db, server.snapshotManager, server.validator, server.routerConfig, policyResolver, hub, gatewayID)
+	server.deploymentService = utils.NewAPIDeploymentService(server.store, server.db, server.snapshotManager, server.validator, server.routerConfig, hub, gatewayID, nil)
 	server.apiKeyService = utils.NewAPIKeyService(server.store, server.db, server.apiKeyXDSManager, &server.systemConfig.APIKey, hub, gatewayID)
 	server.subscriptionResourceService = utils.NewSubscriptionResourceService(server.db, server.subscriptionSnapshotUpdater, hub, gatewayID)
-	server.mcpDeploymentService = utils.NewMCPDeploymentService(server.store, server.db, server.snapshotManager, server.policyManager, policyValidator, hub, gatewayID)
+	server.mcpDeploymentService = utils.NewMCPDeploymentService(server.store, server.db, server.snapshotManager, server.policyManager, policyValidator, hub, gatewayID, nil)
 	server.llmDeploymentService = utils.NewLLMDeploymentService(
 		server.store,
 		server.db,
@@ -1194,11 +1244,11 @@ func attachTestEventHub(server *APIServer, hub eventhub.EventHub, gatewayID stri
 	if server.RestAPIHandler != nil {
 		restAPIService := restapi.NewRestAPIService(
 			server.store, server.db, nil, nil,
-			server.policyDefinitions, &server.policyDefMu,
 			server.deploymentService, server.apiKeyXDSManager, nil,
 			server.routerConfig, server.systemConfig,
-			server.httpClient, server.parser, server.validator, server.logger, hub, policyResolver,
+			server.httpClient, server.parser, server.validator, server.logger, hub, nil,
 		)
+		server.restAPIService = restAPIService
 		server.RestAPIHandler = NewRestAPIHandler(restAPIService, server.logger)
 	}
 }
@@ -1333,7 +1383,10 @@ func TestGetAPIByNameVersion(t *testing.T) {
 	var response map[string]interface{}
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
-	assert.Equal(t, "success", response["status"])
+	assert.Equal(t, "RestApi", response["kind"])
+	status, ok := response["status"].(map[string]interface{})
+	require.True(t, ok, "status should be a map, got %T", response["status"])
+	assert.Equal(t, "deployed", status["state"])
 }
 
 // TestGetAPIByNameVersionNotFound tests getting an API that doesn't exist
@@ -1368,7 +1421,14 @@ func TestGetRestAPIById(t *testing.T) {
 	var response map[string]interface{}
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
-	assert.Equal(t, "success", response["status"])
+
+	// The GET response is the k8s-shaped resource body with server-managed
+	// status merged in as a top-level field.
+	assert.Equal(t, "RestApi", response["kind"])
+	status, ok := response["status"].(map[string]interface{})
+	require.True(t, ok, "status should be a map, got %T", response["status"])
+	assert.Equal(t, "0000-test-handle-0000-000000000000", status["id"])
+	assert.Equal(t, "deployed", status["state"])
 }
 
 // TestGetAPIByIdNotFound tests getting an API by ID that doesn't exist
@@ -1402,7 +1462,7 @@ func TestGetRestAPIByIdWrongKind(t *testing.T) {
 	mockDB := server.db.(*MockStorage)
 
 	cfg := createTestStoredConfig("0000-test-handle-0000-000000000000", "0000-test-api-0000-000000000000", "v1.0.0", "/test")
-	cfg.Kind = string(api.Mcp) // Wrong kind
+	cfg.Kind = string(api.MCPProxyConfigurationKindMcp) // Wrong kind
 	cfg.GetMetadata().Name = "0000-test-handle-0000-000000000000"
 	mockDB.SaveConfig(cfg)
 
@@ -1419,7 +1479,7 @@ func TestSearchDeploymentsWithNilStore(t *testing.T) {
 
 	c, w := createTestContext("GET", "/rest-apis?displayName=test", nil)
 	c.Request.URL.RawQuery = "displayName=test"
-	server.SearchDeployments(c, string(api.RestApi))
+	server.SearchDeployments(c, string(api.RestAPIKindRestApi))
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -1435,7 +1495,7 @@ func TestSearchDeploymentsMCP(t *testing.T) {
 
 	c, w := createTestContext("GET", "/mcp-proxies?displayName=test", nil)
 	c.Request.URL.RawQuery = "displayName=test"
-	server.SearchDeployments(c, string(api.Mcp))
+	server.SearchDeployments(c, string(api.MCPProxyConfigurationKindMcp))
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -1778,7 +1838,7 @@ func TestUpdateLLMProviderTemplateWithDBAndEventHub(t *testing.T) {
 		UUID: "template-update-id",
 		Configuration: api.LLMProviderTemplate{
 			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.LlmProviderTemplate,
+			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata: api.Metadata{
 				Name: "openai",
 			},
@@ -1827,7 +1887,7 @@ func TestDeleteLLMProviderTemplateWithDBAndEventHub(t *testing.T) {
 		UUID: "template-delete-id",
 		Configuration: api.LLMProviderTemplate{
 			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.LlmProviderTemplate,
+			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata: api.Metadata{
 				Name: "openai",
 			},
@@ -1984,7 +2044,7 @@ func TestCreateMCPProxyWithDBAndEventHub(t *testing.T) {
 
 	assert.Equal(t, http.StatusCreated, w.Code)
 
-	cfg, err := mockDB.GetConfigByKindAndHandle(string(api.Mcp), "test-mcp")
+	cfg, err := mockDB.GetConfigByKindAndHandle(string(api.MCPProxyConfigurationKindMcp), "test-mcp")
 	require.NoError(t, err)
 	require.Len(t, mockHub.publishedEvents, 1)
 	assert.Equal(t, "test-gateway", mockHub.publishedEvents[0].gatewayID)
@@ -2305,7 +2365,7 @@ func TestBuildStoredPolicyFromAPINoPolicies(t *testing.T) {
 	server := createTestAPIServer()
 
 	apiConfig := api.RestAPI{
-		Kind: api.RestApi,
+		Kind: api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{
 			DisplayName: "0000-test-api-0000-000000000000",
 			Version:     "v1.0",
@@ -2328,7 +2388,7 @@ func TestBuildStoredPolicyFromAPINoPolicies(t *testing.T) {
 	}
 	cfg := &models.StoredConfig{
 		UUID:                "0000-test-id-0000-000000000000",
-		Kind:                string(api.RestApi),
+		Kind:                string(api.RestAPIKindRestApi),
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
 		Origin:              models.OriginGatewayAPI,
@@ -2543,7 +2603,7 @@ func TestSearchDeploymentsFilters(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			c, w := createTestContext("GET", "/rest-apis?"+tc.query, nil)
 			c.Request.URL.RawQuery = tc.query
-			server.SearchDeployments(c, string(api.RestApi))
+			server.SearchDeployments(c, string(api.RestAPIKindRestApi))
 
 			assert.Equal(t, http.StatusOK, w.Code)
 
@@ -2575,9 +2635,11 @@ func TestGetRestAPIByIdWithDeployedAt(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
 
-	apiData := response["api"].(map[string]interface{})
-	metadata := apiData["metadata"].(map[string]interface{})
-	assert.Contains(t, metadata, "deployedAt")
+	// Responses are k8s-shaped: server-managed timestamps live under the
+	// top-level status block.
+	status, ok := response["status"].(map[string]interface{})
+	require.True(t, ok, "status should be a map, got %T", response["status"])
+	assert.Contains(t, status, "deployedAt")
 }
 
 // TestGetAPIByNameVersionWithDeployedAt tests GetAPIByNameVersion with deployedAt in response
@@ -2598,9 +2660,9 @@ func TestGetAPIByNameVersionWithDeployedAt(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
 
-	apiData := response["api"].(map[string]interface{})
-	metadata := apiData["metadata"].(map[string]interface{})
-	assert.Contains(t, metadata, "deployedAt")
+	status, ok := response["status"].(map[string]interface{})
+	require.True(t, ok, "status should be a map, got %T", response["status"])
+	assert.Contains(t, status, "deployedAt")
 }
 
 // TestTimePtr tests the timePtr helper function
@@ -2723,7 +2785,7 @@ func TestSearchDeploymentsAPIKind(t *testing.T) {
 
 	c, w := createTestContext("GET", "/rest-apis?displayName=api-one&version=v1.0.0", nil)
 	c.Request.URL.RawQuery = "displayName=api-one&version=v1.0.0"
-	server.SearchDeployments(c, string(api.RestApi))
+	server.SearchDeployments(c, string(api.RestAPIKindRestApi))
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -2747,7 +2809,7 @@ func TestGetLLMProviderByIdFound(t *testing.T) {
 
 	providerConfig := api.LLMProviderConfiguration{
 		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.LlmProvider,
+		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata: api.Metadata{
 			Name: "test-llm-provider",
 		},
@@ -2763,7 +2825,7 @@ func TestGetLLMProviderByIdFound(t *testing.T) {
 	}
 	cfg := &models.StoredConfig{
 		UUID:                "0000-llm-id-0000-000000000000",
-		Kind:                string(api.LlmProvider),
+		Kind:                string(api.LLMProviderConfigurationKindLlmProvider),
 		Handle:              "test-llm-provider",
 		DisplayName:         "test-llm",
 		Version:             "v1.0",
@@ -2787,7 +2849,7 @@ func TestGetLLMProviderByIdFoundInDBWithoutStore(t *testing.T) {
 
 	providerConfig := api.LLMProviderConfiguration{
 		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.LlmProvider,
+		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata: api.Metadata{
 			Name: "test-llm-provider",
 		},
@@ -2803,7 +2865,7 @@ func TestGetLLMProviderByIdFoundInDBWithoutStore(t *testing.T) {
 	}
 	cfg := &models.StoredConfig{
 		UUID:                "0000-llm-id-0000-000000000000",
-		Kind:                string(api.LlmProvider),
+		Kind:                string(api.LLMProviderConfigurationKindLlmProvider),
 		Handle:              "test-llm-provider",
 		DisplayName:         "test-llm",
 		Version:             "v1.0",
@@ -2827,7 +2889,7 @@ func TestGetLLMProxyByIdFound(t *testing.T) {
 
 	proxyConfig := api.LLMProxyConfiguration{
 		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.LlmProxy,
+		Kind:       api.LLMProxyConfigurationKindLlmProxy,
 		Metadata: api.Metadata{
 			Name: "test-llm-proxy-handle",
 		},
@@ -2841,7 +2903,7 @@ func TestGetLLMProxyByIdFound(t *testing.T) {
 	}
 	cfg := &models.StoredConfig{
 		UUID:                "0000-llm-proxy-id-0000-000000000000",
-		Kind:                string(api.LlmProxy),
+		Kind:                string(api.LLMProxyConfigurationKindLlmProxy),
 		Handle:              "test-llm-proxy-handle",
 		DisplayName:         "test-llm-proxy",
 		Version:             "v1.0",
@@ -2867,7 +2929,7 @@ func TestGetLLMProviderByIdWithDeployedAt(t *testing.T) {
 	deployedAt := time.Now()
 	providerConfig := api.LLMProviderConfiguration{
 		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.LlmProvider,
+		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata: api.Metadata{
 			Name: "test-llm-provider",
 		},
@@ -2883,7 +2945,7 @@ func TestGetLLMProviderByIdWithDeployedAt(t *testing.T) {
 	}
 	cfg := &models.StoredConfig{
 		UUID:                "0000-llm-id-0000-000000000000",
-		Kind:                string(api.LlmProvider),
+		Kind:                string(api.LLMProviderConfigurationKindLlmProvider),
 		Handle:              "test-llm-provider",
 		DisplayName:         "test-llm",
 		Version:             "v1.0",
@@ -2904,9 +2966,9 @@ func TestGetLLMProviderByIdWithDeployedAt(t *testing.T) {
 	var response map[string]interface{}
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
-	provider := response["provider"].(map[string]interface{})
-	metadata := provider["metadata"].(map[string]interface{})
-	assert.Contains(t, metadata, "deployedAt")
+	status, ok := response["status"].(map[string]interface{})
+	require.True(t, ok, "status should be a map, got %T", response["status"])
+	assert.Contains(t, status, "deployedAt")
 }
 
 // TestGetLLMProxyByIdWithDeployedAt tests GetLLMProxyById with deployedAt
@@ -2917,7 +2979,7 @@ func TestGetLLMProxyByIdWithDeployedAt(t *testing.T) {
 	deployedAt := time.Now()
 	proxyConfig := api.LLMProxyConfiguration{
 		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-		Kind:       api.LlmProxy,
+		Kind:       api.LLMProxyConfigurationKindLlmProxy,
 		Metadata: api.Metadata{
 			Name: "test-llm-proxy-handle",
 		},
@@ -2931,7 +2993,7 @@ func TestGetLLMProxyByIdWithDeployedAt(t *testing.T) {
 	}
 	cfg := &models.StoredConfig{
 		UUID:                "0000-llm-proxy-id-0000-000000000000",
-		Kind:                string(api.LlmProxy),
+		Kind:                string(api.LLMProxyConfigurationKindLlmProxy),
 		Handle:              "test-llm-proxy-handle",
 		DisplayName:         "test-llm-proxy",
 		Version:             "v1.0",
@@ -2990,13 +3052,13 @@ func TestDeleteLLMProviderWithDBAndEventHub(t *testing.T) {
 
 	cfg := &models.StoredConfig{
 		UUID:        "0000-llm-provider-id-0000-000000000000",
-		Kind:        string(api.LlmProvider),
+		Kind:        string(api.LLMProviderConfigurationKindLlmProvider),
 		Handle:      "test-llm-provider",
 		DisplayName: "test-llm",
 		Version:     "v1.0.0",
 		SourceConfiguration: api.LLMProviderConfiguration{
 			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.LlmProvider,
+			Kind:       api.LLMProviderConfigurationKindLlmProvider,
 			Metadata: api.Metadata{
 				Name: "test-llm-provider",
 			},
@@ -3061,13 +3123,13 @@ func TestDeleteLLMProxyWithDBAndEventHub(t *testing.T) {
 
 	cfg := &models.StoredConfig{
 		UUID:        "0000-llm-proxy-id-0000-000000000000",
-		Kind:        string(api.LlmProxy),
+		Kind:        string(api.LLMProxyConfigurationKindLlmProxy),
 		Handle:      "test-llm-proxy",
 		DisplayName: "test-llm-proxy",
 		Version:     "v1.0.0",
 		SourceConfiguration: api.LLMProxyConfiguration{
 			ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.LlmProxy,
+			Kind:       api.LLMProxyConfigurationKindLlmProxy,
 			Metadata: api.Metadata{
 				Name: "test-llm-proxy",
 			},
@@ -3226,11 +3288,11 @@ func TestBuildStoredPolicyFromAPIWebSubApi(t *testing.T) {
 	// Note: WebSubApi requires different data structure than RestApi
 	// The function will return nil if parsing fails
 	apiConfig := api.WebSubAPI{
-		Kind: api.WebSubApi,
+		Kind: api.WebSubAPIKindWebSubApi,
 	}
 	cfg := &models.StoredConfig{
 		UUID:                "0000-test-id-0000-000000000000",
-		Kind:                string(api.WebSubApi),
+		Kind:                string(api.WebSubAPIKindWebSubApi),
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
 		Origin:              models.OriginGatewayAPI,
@@ -3247,7 +3309,7 @@ func TestGetConfigDumpMissingHandle(t *testing.T) {
 
 	// Create config with empty handle
 	apiConfig := api.RestAPI{
-		Kind:     api.RestApi,
+		Kind:     api.RestAPIKindRestApi,
 		Metadata: api.Metadata{Name: ""}, // Empty handle
 		Spec: api.APIConfigData{
 			DisplayName: "test",
@@ -3266,7 +3328,7 @@ func TestGetConfigDumpMissingHandle(t *testing.T) {
 	}
 	cfg := &models.StoredConfig{
 		UUID:                "0000-test-id-0000-000000000000",
-		Kind:                string(api.RestApi),
+		Kind:                string(api.RestAPIKindRestApi),
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
 		Origin:              models.OriginGatewayAPI,
@@ -3288,10 +3350,11 @@ func TestSearchDeploymentsMCPUnmarshalError(t *testing.T) {
 	// Add an MCP config with invalid source configuration
 	cfg := &models.StoredConfig{
 		UUID:                "0000-mcp-id-0000-000000000000",
-		Kind:                string(api.Mcp),
+		Kind:                string(api.MCPProxyConfigurationKindMcp),
+		DisplayName:         "test",
 		SourceConfiguration: make(chan int), // Invalid - can't be marshaled to JSON
 		Configuration: api.RestAPI{
-			Kind: api.RestApi, // Use RestApi for RestAPI type
+			Kind: api.RestAPIKindRestApi, // Use RestApi for RestAPI type
 			Metadata: api.Metadata{
 				Name: "test-mcp",
 			},
@@ -3303,12 +3366,16 @@ func TestSearchDeploymentsMCPUnmarshalError(t *testing.T) {
 	}
 	_ = server.store.Add(cfg)
 
+	// Exercise the store listing path: when mcpDeploymentService is set,
+	// SearchDeployments uses ListMCPProxies() and never sees SourceConfiguration.
+	server.mcpDeploymentService = nil
+
 	c, w := createTestContext("GET", "/mcp-proxies?displayName=test", nil)
 	c.Request.URL.RawQuery = "displayName=test"
-	server.SearchDeployments(c, string(api.Mcp))
+	server.SearchDeployments(c, string(api.MCPProxyConfigurationKindMcp))
 
-	// SearchDeployments logs unmarshal errors and continues, returning StatusOK with valid configs only
-	assert.Equal(t, http.StatusOK, w.Code)
+	// Rematerializing MCP list items from SourceConfiguration fails; request errors as a whole.
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
 // TestBuildStoredPolicyFromAPIWithVhosts tests buildStoredPolicyFromAPI with custom vhosts
@@ -3323,7 +3390,7 @@ func TestBuildStoredPolicyFromAPIWithVhosts(t *testing.T) {
 	sandboxUrl := "http://sandbox.example.com"
 	sandboxVhost := "sandbox.localhost"
 	apiConfig := api.RestAPI{
-		Kind: api.RestApi,
+		Kind: api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{
 			DisplayName: "0000-test-api-0000-000000000000",
 			Version:     "v1.0",
@@ -3357,7 +3424,7 @@ func TestBuildStoredPolicyFromAPIWithVhosts(t *testing.T) {
 	}
 	cfg := &models.StoredConfig{
 		UUID:                "0000-test-id-0000-000000000000",
-		Kind:                string(api.RestApi),
+		Kind:                string(api.RestAPIKindRestApi),
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
 		Origin:              models.OriginGatewayAPI,
@@ -3384,7 +3451,7 @@ func TestBuildStoredPolicyFromAPIOperationPolicies(t *testing.T) {
 	}
 
 	apiConfig := api.RestAPI{
-		Kind: api.RestApi,
+		Kind: api.RestAPIKindRestApi,
 		Spec: api.APIConfigData{
 			DisplayName: "0000-test-api-0000-000000000000",
 			Version:     "v1.0",
@@ -3409,7 +3476,7 @@ func TestBuildStoredPolicyFromAPIOperationPolicies(t *testing.T) {
 	}
 	cfg := &models.StoredConfig{
 		UUID:                "0000-test-id-0000-000000000000",
-		Kind:                string(api.RestApi),
+		Kind:                string(api.RestAPIKindRestApi),
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
 		Origin:              models.OriginGatewayAPI,
@@ -3475,11 +3542,11 @@ func TestBuildStoredPolicyFromAPIWebSubApiWithPolicies(t *testing.T) {
 	// WebSubApi requires specific data structure that's complex to mock
 	// Testing that the function handles WebSubApi kind without panicking
 	apiConfig := api.WebSubAPI{
-		Kind: api.WebSubApi,
+		Kind: api.WebSubAPIKindWebSubApi,
 	}
 	cfg := &models.StoredConfig{
 		UUID:                "0000-test-id-0000-000000000000",
-		Kind:                string(api.WebSubApi),
+		Kind:                string(api.WebSubAPIKindWebSubApi),
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
 		Origin:              models.OriginGatewayAPI,
@@ -3498,9 +3565,9 @@ func TestListMCPProxiesUnmarshalError(t *testing.T) {
 	// Add MCP config, then replace SourceConfiguration with something that can't be marshaled to JSON
 	cfg := &models.StoredConfig{
 		UUID: "0000-mcp-id-0000-000000000000",
-		Kind: string(api.Mcp),
+		Kind: string(api.MCPProxyConfigurationKindMcp),
 		SourceConfiguration: api.MCPProxyConfiguration{
-			Kind:     api.Mcp,
+			Kind:     api.MCPProxyConfigurationKindMcp,
 			Metadata: api.Metadata{Name: "test-mcp"},
 			Spec: api.MCPProxyConfigData{
 				DisplayName: "Test MCP",
@@ -3508,7 +3575,7 @@ func TestListMCPProxiesUnmarshalError(t *testing.T) {
 			},
 		},
 		Configuration: api.RestAPI{
-			Kind:     api.RestApi,
+			Kind:     api.RestAPIKindRestApi,
 			Metadata: api.Metadata{Name: "test-mcp"},
 		},
 		Origin:    models.OriginGatewayAPI,

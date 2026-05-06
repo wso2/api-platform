@@ -23,14 +23,14 @@ Replace `${version}` with the API Platform AI Gateway release version you want t
 
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/ai-gateway/v1.0.0/wso2apip-ai-gateway-1.0.0.zip
+wget https://github.com/wso2/api-platform/releases/download/ai-gateway/v1.1.0/wso2apip-ai-gateway-1.1.0.zip
 
 # Unzip the downloaded distribution.
-unzip wso2apip-ai-gateway-1.0.0.zip
+unzip wso2apip-ai-gateway-1.1.0.zip
 
 
 # Start the complete stack
-cd wso2apip-ai-gateway-1.0.0/
+cd wso2apip-ai-gateway-1.1.0/
 docker compose -p ai-gateway up -d
 
 # Verify gateway controller admin endpoint is running
@@ -48,7 +48,7 @@ docker run -p 3001:3001 --name everything --network ai-gateway_gateway-network r
 Run the following command to deploy the MCP proxy.
 
 ```bash
-curl -X POST http://localhost:9090/mcp-proxies \
+curl -X POST http://localhost:9090/api/management/v0.9/mcp-proxies \
   -H "Content-Type: application/yaml" \
   -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'

@@ -1,0 +1,40 @@
+{{- $controller := .Values.eventGateway.controller -}}
+{{- $service := $controller.service -}}
+{{- if $controller.deployment.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "event-gateway.fullname" . }}-controller
+  labels:
+    {{- include "event-gateway.componentLabels" (list . "controller" $service.labels) | nindent 4 }}
+  {{- $annotations := merge (deepCopy (default (dict) .Values.commonAnnotations)) (default (dict) $service.annotations) }}
+  {{- if $annotations }}
+  annotations:
+    {{- toYaml $annotations | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $service.type }}
+  selector:
+    {{- include "event-gateway.componentSelectorLabels" (list . "controller") | nindent 4 }}
+  ports:
+    - name: rest
+      port: {{ $service.ports.rest }}
+      targetPort: rest
+      protocol: TCP
+    - name: xds
+      port: {{ $service.ports.xds }}
+      targetPort: xds
+      protocol: TCP
+    - name: policy
+      port: {{ $service.ports.policy }}
+      targetPort: policy
+      protocol: TCP
+    - name: admin
+      port: {{ $service.ports.admin }}
+      targetPort: admin
+      protocol: TCP
+    - name: metrics
+      port: {{ $service.ports.metrics }}
+      targetPort: metrics
+      protocol: TCP
+{{- end }}

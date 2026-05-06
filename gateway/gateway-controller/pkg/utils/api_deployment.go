@@ -26,16 +26,17 @@ import (
 	"net/url"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
+	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/eventhub"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/resolver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
 
@@ -80,7 +81,7 @@ type APIDeploymentService struct {
 	httpClient      *http.Client
 	eventHub        eventhub.EventHub
 	gatewayID       string
-	policyResolver  *resolver.PolicyResolver
+	secretResolver  funcs.SecretResolver
 }
 
 func (s *APIDeploymentService) validateArtifactConflicts(kind, currentID, displayName, version, handle string) error {
@@ -114,9 +115,9 @@ func NewAPIDeploymentService(
 	snapshotManager *xds.SnapshotManager,
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
-	policyResolver *resolver.PolicyResolver,
 	eventHub eventhub.EventHub,
 	gatewayID string,
+	secretResolver funcs.SecretResolver,
 ) *APIDeploymentService {
 	if db == nil {
 		panic("APIDeploymentService requires non-nil storage")
@@ -133,7 +134,7 @@ func NewAPIDeploymentService(
 		routerConfig:    routerConfig,
 		eventHub:        eventHub,
 		gatewayID:       trimmedGatewayID,
-		policyResolver:  policyResolver,
+		secretResolver:  secretResolver,
 	}
 }
 
@@ -166,11 +167,10 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	}
 
 	var (
-		parsedConfig any
-		apiName      string
-		apiVersion   string
-		handle       string
-		kind         string
+		parsedConfig         any
+		kind                 string
+		handle               string
+		annotationArtifactID string
 	)
 
 	// If Kind is not provided, infer it from the payload
@@ -188,59 +188,56 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		resolvedKind = envelope.Kind
 	}
 
+	// Parse into the typed config and extract identifiers that live outside the spec block
+	// (kind, metadata.name, artifact-id annotation). Spec-level identifiers (DisplayName,
+	// Version) are extracted later from the rendered Configuration so the validator and
+	// downstream logic see resolved template values, not raw template syntax.
 	switch resolvedKind {
 	case "WebSubApi":
 		var webSubConfig api.WebSubAPI
 		if err := s.parser.Parse(params.Data, params.ContentType, &webSubConfig); err != nil {
 			return nil, fmt.Errorf("failed to parse configuration: %w", err)
 		}
-		apiName = webSubConfig.Spec.DisplayName
-		apiVersion = webSubConfig.Spec.Version
 		handle = webSubConfig.Metadata.Name
 		kind = string(webSubConfig.Kind)
 		parsedConfig = webSubConfig
-
-		// Validate
-		validationErrors := s.validator.Validate(&webSubConfig)
-		if len(validationErrors) > 0 {
-			s.logValidationErrors(params.Logger, params.APIID, apiName, validationErrors)
-			return nil, &ValidationErrorListError{Errors: validationErrors}
-		}
+		annotationArtifactID = annotationValue(webSubConfig.Metadata.Annotations, commonconstants.AnnotationArtifactID)
 	case "RestApi":
 		var restConfig api.RestAPI
 		if err := s.parser.Parse(params.Data, params.ContentType, &restConfig); err != nil {
 			return nil, fmt.Errorf("failed to parse configuration: %w", err)
 		}
-		apiName = restConfig.Spec.DisplayName
-		apiVersion = restConfig.Spec.Version
 		handle = restConfig.Metadata.Name
 		kind = string(restConfig.Kind)
 		parsedConfig = restConfig
-
-		// Validate
-		validationErrors := s.validator.Validate(&restConfig)
-		if len(validationErrors) > 0 {
-			s.logValidationErrors(params.Logger, params.APIID, apiName, validationErrors)
-			return nil, &ValidationErrorListError{Errors: validationErrors}
-		}
+		annotationArtifactID = annotationValue(restConfig.Metadata.Annotations, commonconstants.AnnotationArtifactID)
 	default:
 		return nil, fmt.Errorf("unsupported resource kind %q: must be \"RestApi\" or \"WebSubApi\"", resolvedKind)
 	}
 
-	// Generate API ID if not provided
+	// Resolve API ID: explicit param > artifact-id annotation > auto-generate
 	apiID := params.APIID
 	if apiID == "" {
-		var err error
-		apiID, err = GenerateUUID()
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate API ID: %w", err)
+		if annotationArtifactID != "" {
+			if err := ValidateUUIDFormat(annotationArtifactID); err != nil {
+				return nil, fmt.Errorf("invalid %s annotation: %w", commonconstants.AnnotationArtifactID, err)
+			}
+			apiID = annotationArtifactID
+		} else {
+			var err error
+			apiID, err = GenerateUUID()
+			if err != nil {
+				return nil, fmt.Errorf("failed to generate API ID: %w", err)
+			}
 		}
 	}
 
 	var isUpdate bool
+	var existingConfig *models.StoredConfig
 
 	if s.db != nil {
-		existingConfig, err := s.db.GetConfig(apiID)
+		var err error
+		existingConfig, err = s.db.GetConfig(apiID)
 		if err == nil && existingConfig != nil {
 			isUpdate = true
 		} else if err != nil && !storage.IsNotFoundError(err) && !storage.IsDatabaseUnavailableError(err) {
@@ -248,56 +245,87 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		}
 	}
 
-	if err := s.validateArtifactConflicts(kind, apiID, apiName, apiVersion, handle); err != nil {
-		return nil, err
-	}
-
-	// Create stored configuration
+	// Create stored configuration. DisplayName/Version are populated below from the
+	// rendered Configuration so identifiers reflect resolved template values.
 	now := time.Now()
 	deployedAt := params.DeployedAt
 	if deployedAt == nil {
 		truncated := now.Truncate(time.Millisecond)
 		deployedAt = &truncated
 	}
+	var cpSyncStatus models.CPSyncStatus
+	if params.Origin == models.OriginGatewayAPI {
+		cpSyncStatus = models.CPSyncStatusPending
+	}
 	storedCfg := &models.StoredConfig{
 		UUID:                apiID,
 		Kind:                kind,
 		Handle:              handle,
-		DisplayName:         apiName,
-		Version:             apiVersion,
 		Configuration:       parsedConfig,
 		SourceConfiguration: parsedConfig,
 		DesiredState:        models.StateDeployed,
 		DeploymentID:        params.DeploymentID,
 		Origin:              params.Origin,
+		CPSyncStatus:        cpSyncStatus,
 		CreatedAt:           now,
 		UpdatedAt:           now,
 		DeployedAt:          deployedAt,
 	}
 
+	// Resolve gateway-default vhost sentinels before render so the stored vhosts are
+	// immune to future gateway config changes. Sync SourceConfiguration so the resolved
+	// (but still unrendered) vhosts are what gets persisted — the DB layer marshals
+	// SourceConfiguration, and each replica re-renders Configuration on consumption.
+	if err := resolveVhostSentinels(&storedCfg.Configuration, s.routerConfig); err != nil {
+		return nil, fmt.Errorf("failed to resolve vhost sentinels: %w", err)
+	}
+	storedCfg.SourceConfiguration = storedCfg.Configuration
+
+	// Render template expressions ({{ secret "..." }}, {{ env "..." }}, {{ default ... }}, etc.)
+	// BEFORE validation so the validator sees resolved values, not raw template syntax.
+	// Configuration becomes the rendered version; SourceConfiguration stays unrendered.
+	if err := templateengine.RenderSpec(storedCfg, s.secretResolver, params.Logger); err != nil {
+		return nil, err
+	}
+
+	// Validate against the rendered Configuration and extract spec-level identifiers.
+	var apiName, apiVersion string
+	switch c := storedCfg.Configuration.(type) {
+	case api.WebSubAPI:
+		apiName = c.Spec.DisplayName
+		apiVersion = c.Spec.Version
+		validationErrors := s.validator.Validate(&c)
+		if len(validationErrors) > 0 {
+			s.logValidationErrors(params.Logger, apiID, apiName, validationErrors)
+			return nil, &ValidationErrorListError{Errors: validationErrors}
+		}
+	case api.RestAPI:
+		apiName = c.Spec.DisplayName
+		apiVersion = c.Spec.Version
+		validationErrors := s.validator.Validate(&c)
+		if len(validationErrors) > 0 {
+			s.logValidationErrors(params.Logger, apiID, apiName, validationErrors)
+			return nil, &ValidationErrorListError{Errors: validationErrors}
+		}
+	default:
+		return nil, fmt.Errorf("unexpected configuration type %T after rendering", storedCfg.Configuration)
+	}
+	storedCfg.DisplayName = apiName
+	storedCfg.Version = apiVersion
+
+	if err := s.validateArtifactConflicts(kind, apiID, apiName, apiVersion, handle); err != nil {
+		return nil, err
+	}
+
 	// Compute WebSub topic diff BEFORE persisting — ConfigStore.Add populates TopicManager,
-	// so GetTopicsForUpdate must run while the store still has the old state.
+	// so GetTopicsForUpdate must run while the store still has the old state. Runs against
+	// the rendered Configuration so topic names reflect resolved template values.
 	var topicsToRegister, topicsToUnregister []string
 	if kind == "WebSubApi" {
 		topicsToRegister, topicsToUnregister = s.GetTopicsForUpdate(*storedCfg)
 	}
 
-	// Resolve gateway-default sentinels to the current config values before persisting so that
-	// the stored vhosts are immune to future gateway config changes.
-	if err := resolveVhostSentinels(&storedCfg.Configuration, s.routerConfig); err != nil {
-		return nil, fmt.Errorf("failed to resolve vhost sentinels: %w", err)
-	}
-	// Sync SourceConfiguration so the resolved vhosts are persisted to the database
-	// (the DB layer marshals SourceConfiguration, not Configuration).
-	storedCfg.SourceConfiguration = storedCfg.Configuration
-
 	var saveErr error
-
-	// Resolve policy configuration (handles secret resolution)
-	resolvedCfg, saveErr := s.resolvePolicyConfiguration(storedCfg)
-	if saveErr != nil {
-		return nil, saveErr
-	}
 
 	// Try to save/update the configuration using timestamp-guarded upsert.
 	// affected=true means the row was actually inserted or updated in the DB.
@@ -318,90 +346,11 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 
 	// WebSub topic registration/deregistration — only after successful, non-stale persistence.
 	if kind == "WebSubApi" {
-		// TODO: Pre configure the dynamic forward proxy rules for event gw
-		// This was communication bridge will be created on the gw startup
-		// Can perform internal communication with websub hub without relying on the dynamic rules
-		// Execute topic operations with wait group and errors tracking
-		var wg2 sync.WaitGroup
-		var regErrs int32
-		var deregErrs int32
-
-		if len(topicsToRegister) > 0 {
-			wg2.Add(1)
-			go func(list []string) {
-				defer wg2.Done()
-				params.Logger.Info("Starting topic registration", slog.Int("total_topics", len(list)), slog.String("api_id", apiID))
-				var childWg sync.WaitGroup
-				for _, topic := range list {
-					childWg.Add(1)
-					go func(topic string) {
-						defer childWg.Done()
-						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
-						defer cancel()
-
-						if err := s.RegisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, params.Logger); err != nil {
-							params.Logger.Error("Failed to register topic with WebSubHub",
-								slog.Any("error", err),
-								slog.String("topic", topic),
-								slog.String("api_id", apiID))
-							atomic.AddInt32(&regErrs, 1)
-							return
-						} else {
-							params.Logger.Info("Successfully registered topic with WebSubHub",
-								slog.String("topic", topic),
-								slog.String("api_id", apiID))
-						}
-					}(topic)
-				}
-				childWg.Wait()
-			}(topicsToRegister)
-		}
-
-		if len(topicsToUnregister) > 0 {
-			wg2.Add(1)
-			go func(list []string) {
-				defer wg2.Done()
-				var childWg sync.WaitGroup
-				params.Logger.Info("Starting topic deregistration", slog.Int("total_topics", len(list)), slog.String("api_id", apiID))
-				for _, topic := range list {
-					childWg.Add(1)
-					go func(topic string) {
-						defer childWg.Done()
-						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
-						defer cancel()
-
-						if err := s.UnregisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, params.Logger); err != nil {
-							params.Logger.Error("Failed to deregister topic from WebSubHub",
-								slog.Any("error", err),
-								slog.String("topic", topic),
-								slog.String("api_id", apiID))
-							atomic.AddInt32(&deregErrs, 1)
-							return
-						} else {
-							params.Logger.Info("Successfully deregistered topic from WebSubHub",
-								slog.String("topic", topic),
-								slog.String("api_id", apiID))
-						}
-					}(topic)
-				}
-				childWg.Wait()
-			}(topicsToUnregister)
-		}
-
-		wg2.Wait()
-		params.Logger.Info("Topic lifecycle operations completed",
-			slog.String("api_id", apiID),
-			slog.Int("registered", len(topicsToRegister)),
-			slog.Int("deregistered", len(topicsToUnregister)),
-			slog.Int("register_errors", int(regErrs)),
-			slog.Int("deregister_errors", int(deregErrs)))
-
-		// Check if topic operations failed and return error
-		if regErrs > 0 || deregErrs > 0 {
-			params.Logger.Error("Topic lifecycle operations failed",
-				slog.Int("register_errors", int(regErrs)),
-				slog.Int("deregister_errors", int(deregErrs)))
-			return nil, fmt.Errorf("failed to complete topic operations: %d registration error(s), %d deregistration error(s)", regErrs, deregErrs)
+		if err := s.completeWebSubTopicOperations(apiID, topicsToRegister, topicsToUnregister, params.Logger); err != nil {
+			if rollbackErr := s.rollbackPersistedAPIConfiguration(storedCfg, existingConfig, isUpdate, params.Logger); rollbackErr != nil {
+				return nil, fmt.Errorf("%w; rollback failed: %v", err, rollbackErr)
+			}
+			return nil, err
 		}
 	}
 
@@ -427,31 +376,106 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	s.publishEvent(eventhub.EventTypeAPI, action, apiID, params.CorrelationID, params.Logger)
 
 	return &APIDeploymentResult{
-		StoredConfig: resolvedCfg,
+		StoredConfig: storedCfg,
 		IsUpdate:     isUpdate,
 		IsStale:      false,
 	}, nil
 }
 
-// resolvePolicyConfiguration resolves policy templates and secret references in the configuration.
-// Returns the resolved configuration or an error if policy resolution fails.
-func (s *APIDeploymentService) resolvePolicyConfiguration(storedCfg *models.StoredConfig) (*models.StoredConfig, error) {
-	resolvedCfg, validationErrors := s.policyResolver.ResolvePolicies(storedCfg)
-	if len(validationErrors) > 0 {
-		errMsgs := make([]string, 0, len(validationErrors))
-		for _, ve := range validationErrors {
-			errMsgs = append(errMsgs, ve.Message)
-		}
-		errMsg := strings.Join(errMsgs, "; ")
-
-		slog.Error("Policy resolution failed",
-			slog.String("config_handle", storedCfg.Handle),
-			slog.String("errors", errMsg),
-		)
-
-		return nil, fmt.Errorf("policy resolution failed with %d errors: %s", len(validationErrors), errMsg)
+func (s *APIDeploymentService) completeWebSubTopicOperations(
+	apiID string,
+	topicsToRegister []string,
+	topicsToUnregister []string,
+	logger *slog.Logger,
+) error {
+	if len(topicsToRegister) == 0 && len(topicsToUnregister) == 0 {
+		return nil
 	}
-	return resolvedCfg, nil
+	if s.routerConfig == nil {
+		return fmt.Errorf("failed to complete topic operations: router configuration is required for WebSub topic operations")
+	}
+
+	// TODO: Pre configure the dynamic forward proxy rules for event gw.
+	// This communication bridge will be created on the gw startup and can perform
+	// internal communication with the WebSub hub without relying on dynamic rules.
+	var wg sync.WaitGroup
+
+	runTopicOps := func(
+		list []string,
+		action string,
+		successMessage string,
+	) {
+		if len(list) == 0 {
+			return
+		}
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			logger.Info("Starting topic operation",
+				slog.String("action", action),
+				slog.Int("total_topics", len(list)),
+				slog.String("api_id", apiID))
+
+			var childWg sync.WaitGroup
+			for _, topic := range list {
+				childWg.Add(1)
+				go func(topic string) {
+					defer childWg.Done()
+					logger.Info(successMessage,
+						slog.String("topic", topic),
+						slog.String("api_id", apiID))
+				}(topic)
+			}
+			childWg.Wait()
+		}()
+	}
+
+	runTopicOps(
+		topicsToRegister,
+		"register",
+		"Successfully registered topic with WebSubHub",
+	)
+
+	runTopicOps(
+		topicsToUnregister,
+		"deregister",
+		"Successfully deregistered topic from WebSubHub",
+	)
+
+	wg.Wait()
+	logger.Info("Topic lifecycle operations completed",
+		slog.String("api_id", apiID),
+		slog.Int("registered", len(topicsToRegister)),
+		slog.Int("deregistered", len(topicsToUnregister)))
+
+	return nil
+}
+
+func (s *APIDeploymentService) rollbackPersistedAPIConfiguration(
+	storedCfg *models.StoredConfig,
+	previousCfg *models.StoredConfig,
+	isUpdate bool,
+	logger *slog.Logger,
+) error {
+	if isUpdate {
+		if previousCfg == nil {
+			return fmt.Errorf("previous configuration was not found for rollback")
+		}
+		if err := s.db.UpdateConfig(previousCfg); err != nil {
+			return fmt.Errorf("failed to restore previous configuration after topic operation failure: %w", err)
+		}
+		logger.Warn("Rolled back API configuration update after topic operation failure",
+			slog.String("api_id", storedCfg.UUID))
+		return nil
+	}
+
+	if err := s.db.DeleteConfig(storedCfg.UUID); err != nil {
+		return fmt.Errorf("failed to delete newly persisted configuration after topic operation failure: %w", err)
+	}
+	logger.Warn("Rolled back API configuration create after topic operation failure",
+		slog.String("api_id", storedCfg.UUID))
+	return nil
 }
 
 func (s *APIDeploymentService) GetTopicsForUpdate(apiConfig models.StoredConfig) ([]string, []string) {
@@ -466,7 +490,7 @@ func (s *APIDeploymentService) GetTopicsForUpdate(apiConfig models.StoredConfig)
 	}
 	asyncData := webSubCfg.Spec
 
-	for _, topic := range asyncData.Channels {
+	for _, topic := range asyncData.Hub.Channels {
 		// Remove leading '/' from name, context, version and topic path if present
 		contextWithVersion := strings.ReplaceAll(asyncData.Context, "$version", asyncData.Version)
 		contextWithVersion = strings.TrimPrefix(contextWithVersion, "/")
@@ -672,4 +696,12 @@ func resolveVhostSentinels(cfg *any, routerCfg *config.RouterConfig) error {
 		*cfg = c
 	}
 	return nil
+}
+
+// annotationValue safely reads a single annotation key from a pointer-to-map.
+func annotationValue(annotations *map[string]string, key string) string {
+	if annotations == nil {
+		return ""
+	}
+	return (*annotations)[key]
 }

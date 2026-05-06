@@ -38,7 +38,7 @@ ap gateway health`
 var healthCmd = &cobra.Command{
 	Use:     HealthCmdLiteral,
 	Short:   "Check the health status of the current gateway",
-	Long:    "Returns the health status of the currently active gateway by calling its /health endpoint.",
+	Long:    "Returns the health status of the currently active gateway by calling its " + utils.GatewayHealthPath + " endpoint.",
 	Example: HealthCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runHealthCommand(); err != nil {
@@ -55,8 +55,10 @@ func runHealthCommand() error {
 		return err
 	}
 
-	// Call the health endpoint
-	resp, err := client.Get(utils.GatewayHealthPath)
+	// The health endpoint is served on the gateway-controller's admin API (a
+	// separate port from the management API in most deployments), so route
+	// through GetAdmin which resolves the configured admin base URL.
+	resp, err := client.GetAdmin(utils.GatewayHealthPath)
 	if err != nil {
 		return fmt.Errorf("failed to call health endpoint: %w", err)
 	}

@@ -1,0 +1,27 @@
+# Local development values for the Event Gateway Helm chart.
+# Usage: helm install event-gateway ./event-gateway-helm-chart -f values-local.yaml
+#
+# This file overrides default values for local development:
+# - Uses IfNotPresent pullPolicy to use locally built images
+# - Uses snapshot tag 0.1.0-SNAPSHOT for local builds
+# - Enables development mode (relaxes encryption key requirement)
+
+eventGateway:
+  developmentMode: true
+
+  controller:
+    image:
+      tag: "0.2.0-SNAPSHOT"
+      pullPolicy: IfNotPresent
+
+  config:
+    runtime:
+      kafka:
+        brokers:
+          - "kafka-service.kafka.svc.cluster.local:9092"
+        consumerGroupPrefix: "event-gateway"
+
+  gatewayRuntime:
+    image:
+      tag: "0.2.0-SNAPSHOT"
+      pullPolicy: IfNotPresent

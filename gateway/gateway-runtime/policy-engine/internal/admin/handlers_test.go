@@ -46,6 +46,16 @@ func (m *mockHealthProvider) IsHealthy() bool {
 	return m.healthy
 }
 
+type mockPythonHealthChecker struct {
+	ready          bool
+	loadedPolicies int32
+	err            error
+}
+
+func (m *mockPythonHealthChecker) IsPythonHealthy() (bool, int32, error) {
+	return m.ready, m.loadedPolicies, m.err
+}
+
 // TestConfigDumpHandler_MethodNotAllowed tests that non-GET methods return 405
 func TestConfigDumpHandler_MethodNotAllowed(t *testing.T) {
 	handler := &ConfigDumpHandler{
@@ -474,7 +484,7 @@ func TestDumpPolicySpecs(t *testing.T) {
 
 // TestHealthHandler_Healthy tests that healthy provider returns 200
 func TestHealthHandler_Healthy(t *testing.T) {
-	handler := NewHealthHandler(&mockHealthProvider{healthy: true})
+	handler := NewHealthHandler(&mockHealthProvider{healthy: true}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	recorder := httptest.NewRecorder()
@@ -487,11 +497,12 @@ func TestHealthHandler_Healthy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "healthy", response.Status)
 	assert.NotEmpty(t, response.Timestamp)
+	assert.Empty(t, response.Reason)
 }
 
 // TestHealthHandler_Unhealthy tests that unhealthy provider returns 503
 func TestHealthHandler_Unhealthy(t *testing.T) {
-	handler := NewHealthHandler(&mockHealthProvider{healthy: false})
+	handler := NewHealthHandler(&mockHealthProvider{healthy: false}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	recorder := httptest.NewRecorder()
@@ -504,11 +515,12 @@ func TestHealthHandler_Unhealthy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "unhealthy", response.Status)
 	assert.NotEmpty(t, response.Timestamp)
+	assert.Equal(t, "policy engine is unhealthy", response.Reason)
 }
 
 // TestHealthHandler_NilProvider tests that nil provider returns healthy (safe default)
 func TestHealthHandler_NilProvider(t *testing.T) {
-	handler := NewHealthHandler(nil)
+	handler := NewHealthHandler(nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	recorder := httptest.NewRecorder()
@@ -520,11 +532,13 @@ func TestHealthHandler_NilProvider(t *testing.T) {
 	err := json.Unmarshal(recorder.Body.Bytes(), &response)
 	require.NoError(t, err)
 	assert.Equal(t, "healthy", response.Status)
+	assert.NotEmpty(t, response.Timestamp)
+	assert.Empty(t, response.Reason)
 }
 
 // TestHealthHandler_MethodNotAllowed tests that non-GET methods return 405
 func TestHealthHandler_MethodNotAllowed(t *testing.T) {
-	handler := NewHealthHandler(&mockHealthProvider{healthy: true})
+	handler := NewHealthHandler(&mockHealthProvider{healthy: true}, nil)
 
 	methods := []string{
 		http.MethodPost,
@@ -542,4 +556,99 @@ func TestHealthHandler_MethodNotAllowed(t *testing.T) {
 			assert.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
 		})
 	}
+}
+
+// TestHealthHandler_BothHealthy_WithPython tests that both healthy returns 200
+func TestHealthHandler_BothHealthy_WithPython(t *testing.T) {
+	pythonHealth := &mockPythonHealthChecker{ready: true, loadedPolicies: 3}
+	handler := NewHealthHandler(&mockHealthProvider{healthy: true}, pythonHealth)
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+
+	var response HealthResponse
+	err := json.Unmarshal(recorder.Body.Bytes(), &response)
+	require.NoError(t, err)
+	assert.Equal(t, "healthy", response.Status)
+	assert.NotEmpty(t, response.Timestamp)
+	assert.Empty(t, response.Reason)
+}
+
+// TestHealthHandler_PEUnhealthy_PythonHealthy tests policy engine unhealthy returns 503 with reason
+func TestHealthHandler_PEUnhealthy_PythonHealthy(t *testing.T) {
+	pythonHealth := &mockPythonHealthChecker{ready: true, loadedPolicies: 2}
+	handler := NewHealthHandler(&mockHealthProvider{healthy: false}, pythonHealth)
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+
+	var response HealthResponse
+	err := json.Unmarshal(recorder.Body.Bytes(), &response)
+	require.NoError(t, err)
+	assert.Equal(t, "unhealthy", response.Status)
+	assert.NotEmpty(t, response.Timestamp)
+	assert.Equal(t, "policy engine is unhealthy", response.Reason)
+}
+
+// TestHealthHandler_PEHealthy_PythonUnhealthy tests Python unhealthy returns 503 with reason
+func TestHealthHandler_PEHealthy_PythonUnhealthy(t *testing.T) {
+	pythonHealth := &mockPythonHealthChecker{ready: false, loadedPolicies: 0}
+	handler := NewHealthHandler(&mockHealthProvider{healthy: true}, pythonHealth)
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+
+	var response HealthResponse
+	err := json.Unmarshal(recorder.Body.Bytes(), &response)
+	require.NoError(t, err)
+	assert.Equal(t, "unhealthy", response.Status)
+	assert.NotEmpty(t, response.Timestamp)
+	assert.Equal(t, "python executor is unhealthy", response.Reason)
+}
+
+// TestHealthHandler_BothUnhealthy tests both unhealthy returns 503 with reason
+func TestHealthHandler_BothUnhealthy(t *testing.T) {
+	pythonHealth := &mockPythonHealthChecker{ready: false, loadedPolicies: 0}
+	handler := NewHealthHandler(&mockHealthProvider{healthy: false}, pythonHealth)
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+
+	var response HealthResponse
+	err := json.Unmarshal(recorder.Body.Bytes(), &response)
+	require.NoError(t, err)
+	assert.Equal(t, "unhealthy", response.Status)
+	assert.NotEmpty(t, response.Timestamp)
+	assert.Equal(t, "policy engine and python executor are unhealthy", response.Reason)
+}
+
+// TestHealthHandler_PythonError tests Python health check error returns 503 with reason
+func TestHealthHandler_PythonError(t *testing.T) {
+	pythonHealth := &mockPythonHealthChecker{ready: false, loadedPolicies: 0, err: assert.AnError}
+	handler := NewHealthHandler(&mockHealthProvider{healthy: true}, pythonHealth)
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+
+	var response HealthResponse
+	err := json.Unmarshal(recorder.Body.Bytes(), &response)
+	require.NoError(t, err)
+	assert.Equal(t, "unhealthy", response.Status)
+	assert.NotEmpty(t, response.Timestamp)
+	assert.Equal(t, "python executor is unhealthy", response.Reason)
 }

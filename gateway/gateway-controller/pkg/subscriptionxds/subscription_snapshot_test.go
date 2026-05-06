@@ -40,6 +40,21 @@ type MockStorage struct {
 	subscriptionsErr     error
 }
 
+// GetPendingBottomUpAPIs implements [storage.Storage].
+func (m *MockStorage) GetPendingBottomUpAPIs() ([]*models.StoredConfig, error) {
+	return nil, nil
+}
+
+// UpdateCPSyncStatus implements [storage.Storage].
+func (m *MockStorage) UpdateCPSyncStatus(uuid, cpArtifactID string, status models.CPSyncStatus, reason string) error {
+	return nil
+}
+
+// GetConfigByCPArtifactID implements [storage.Storage].
+func (m *MockStorage) GetConfigByCPArtifactID(cpArtifactID string) (*models.StoredConfig, error) {
+	return nil, nil
+}
+
 func (m *MockStorage) GetAllConfigs() ([]*models.StoredConfig, error) {
 	return m.configs, m.configsErr
 }

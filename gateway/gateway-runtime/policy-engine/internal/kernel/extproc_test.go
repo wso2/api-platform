@@ -219,7 +219,7 @@ func TestProcess_RequestHeaders_NoPolicyChain(t *testing.T) {
 	immResp := resp.GetImmediateResponse()
 	require.NotNil(t, immResp)
 	assert.Equal(t, uint32(500), uint32(immResp.Status.Code))
-	assert.Contains(t, string(immResp.Body), "500PE001")
+	assert.Contains(t, string(immResp.Body), "Internal Server Error")
 }
 
 func TestProcess_UnknownRequestType(t *testing.T) {

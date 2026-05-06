@@ -15,10 +15,13 @@ func HashSubscriptionToken(token string) string {
 
 // SubscriptionEntry holds the subscription state and rate limit info from the plan.
 type SubscriptionEntry struct {
-	Status             string
-	ThrottleLimitCount int
-	ThrottleLimitUnit  string
-	StopOnQuotaReach   bool
+	Status                string
+	ThrottleLimitCount    int
+	ThrottleLimitUnit     string
+	StopOnQuotaReach      bool
+	PlanName              string
+	BillingCustomerID     *string
+	BillingSubscriptionID *string
 }
 
 // SubscriptionStore stores subscription state in memory for fast lookups by policies.
@@ -65,10 +68,13 @@ func (s *SubscriptionStore) ReplaceAll(subs []SubscriptionData) {
 		}
 
 		entry := &SubscriptionEntry{
-			Status:             sub.Status,
-			ThrottleLimitCount: sub.ThrottleLimitCount,
-			ThrottleLimitUnit:  sub.ThrottleLimitUnit,
-			StopOnQuotaReach:   sub.StopOnQuotaReach,
+			Status:                sub.Status,
+			ThrottleLimitCount:    sub.ThrottleLimitCount,
+			ThrottleLimitUnit:     sub.ThrottleLimitUnit,
+			StopOnQuotaReach:      sub.StopOnQuotaReach,
+			PlanName:              sub.PlanName,
+			BillingCustomerID:     sub.BillingCustomerId,
+			BillingSubscriptionID: sub.BillingSubscriptionId,
 		}
 
 		// Build token-based index

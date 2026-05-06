@@ -1,18 +1,21 @@
-go 1.26.1
+go 1.26.2
 
 use (
 	./cli/it
 	./cli/src
 	./common
+	./event-gateway/webhook-listener
+	./event-gateway/gateway-runtime
 	./gateway/gateway-builder
 	./gateway/gateway-controller
 	./gateway/gateway-runtime/policy-engine
 	./gateway/it
 	./gateway/sample-policies/transform-payload-case
 	./gateway/system-policies/analytics
+	./kubernetes/gateway-operator
 	./platform-api/src
 	./samples/sample-service
-	./sdk/core
 	./sdk/ai
+	./sdk/core
 	./tests/mock-servers/mock-platform-api
 )

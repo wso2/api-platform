@@ -1,3 +1,3 @@
 module github.com/wso2/api-platform/samples/sample-service
 
-go 1.25.1
+go 1.26.2

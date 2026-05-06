@@ -494,7 +494,7 @@ func (t *Translator) TranslateConfigs(
 					Body: &core.DataSource{
 						Specifier: &core.DataSource_InlineString{
 							// TODO: (renuka) handle error codes in a separate issue: https://github.com/wso2/api-platform/issues/1637
-							InlineString: `{"error":"Not Found","code":"404RT001"}`,
+							InlineString: `{"error":"Not Found"}`,
 						},
 					},
 				},
@@ -732,21 +732,15 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig, allConfig
 			effectiveMainVHost = apiData.Vhosts.Main
 		}
 	}
-	// Extract project ID from labels
-	apiProjectID := ""
-	if labels := cfg.GetLabels(); labels != nil {
-		if pid, exists := (*labels)["project-id"]; exists {
-			apiProjectID = pid
-		}
-	}
+	apiProjectID := extractProjectIDFromConfig(cfg)
 
-	for _, ch := range apiData.Channels {
+	for _, ch := range apiData.Hub.Channels {
 		chName := ch.Name
 		if !strings.HasPrefix(chName, "/") {
 			chName = "/" + chName
 		}
-		// Use mainClusterName by default; path rewrite based on main upstream path
-		r := t.createRoutePerTopic(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, string(ch.Method), chName,
+		// WebSub hub channels are always SUB; use mainClusterName by default
+		r := t.createRoutePerTopic(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, "SUB", chName,
 			mainClusterName, effectiveMainVHost, cfg.Kind, apiProjectID)
 		mainRoutesList = append(mainRoutesList, r)
 	}
@@ -805,13 +799,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 	templateHandle := t.extractTemplateHandle(cfg, allConfigs)
 	providerName := t.extractProviderName(cfg, allConfigs)
 
-	// Extract project ID from labels
-	apiProjectID := ""
-	if labels := cfg.GetLabels(); labels != nil {
-		if pid, exists := (*labels)["project-id"]; exists {
-			apiProjectID = pid
-		}
-	}
+	apiProjectID := extractProjectIDFromConfig(cfg)
 
 	// Build a map of upstream definition name -> basePath for dynamic routing
 	// This allows the policy engine to apply the correct path transformation when UpstreamName is used
@@ -1603,6 +1591,26 @@ func getValueFromSourceConfig(sourceConfig any, key string) (any, error) {
 // extractTemplateHandle extracts the template handle from source configuration
 // For LlmProvider: extracts from spec.template
 // For LlmProxy: resolves provider reference to get spec.template
+// extractProjectIDFromConfig reads project ID from the annotation (preferred) then falls back
+// to the deprecated bare label, logging a warning if only the label is present.
+func extractProjectIDFromConfig(cfg *models.StoredConfig) string {
+	if annotations := cfg.GetAnnotations(); annotations != nil {
+		if pid, exists := (*annotations)[commonconstants.AnnotationProjectID]; exists {
+			return pid
+		}
+	}
+	if labels := cfg.GetLabels(); labels != nil {
+		if pid, exists := (*labels)[commonconstants.DeprecatedLabelProjectID]; exists {
+			// Use a debug log here since this log will be emitted for any change (delete other config)
+			slog.Debug("deprecated project-id label detected; migrate to annotation",
+				"annotation", commonconstants.AnnotationProjectID,
+				"api", cfg.Handle)
+			return pid
+		}
+	}
+	return ""
+}
+
 func (t *Translator) extractTemplateHandle(cfg *models.StoredConfig, allConfigs []*models.StoredConfig) string {
 	if cfg.SourceConfiguration == nil {
 		return ""
@@ -1621,7 +1629,7 @@ func (t *Translator) extractTemplateHandle(cfg *models.StoredConfig, allConfigs 
 
 	// For LlmProvider: extract template handle directly
 	switch kindStr {
-	case string(api.LlmProvider):
+	case string(api.LLMProviderConfigurationKindLlmProvider):
 		templateHandle, err := getValueFromSourceConfig(cfg.SourceConfiguration, "spec.template")
 		if err != nil {
 			t.logger.Debug("Failed to extract template handle from LlmProvider", slog.Any("error", err))
@@ -1632,7 +1640,7 @@ func (t *Translator) extractTemplateHandle(cfg *models.StoredConfig, allConfigs 
 		}
 
 	// For LlmProxy: resolve provider reference
-	case string(api.LlmProxy):
+	case string(api.LLMProxyConfigurationKindLlmProxy):
 		providerName, err := getValueFromSourceConfig(cfg.SourceConfiguration, "spec.provider.id")
 		if err != nil {
 			t.logger.Debug("Failed to extract provider name from LlmProxy", slog.Any("error", err))
@@ -1645,7 +1653,7 @@ func (t *Translator) extractTemplateHandle(cfg *models.StoredConfig, allConfigs 
 
 		// Find the provider config
 		for _, providerCfg := range allConfigs {
-			if providerCfg.Kind == string(api.LlmProvider) {
+			if providerCfg.Kind == string(api.LLMProviderConfigurationKindLlmProvider) {
 				// Check if this is the provider we're looking for
 				providerMetadataName, err := getValueFromSourceConfig(providerCfg.SourceConfiguration, "metadata.name")
 				if err == nil {
@@ -1686,7 +1694,7 @@ func (t *Translator) extractProviderName(cfg *models.StoredConfig, allConfigs []
 	}
 
 	switch kindStr {
-	case string(api.LlmProvider):
+	case string(api.LLMProviderConfigurationKindLlmProvider):
 		// For LlmProvider: return its own metadata.name
 		providerName, err := getValueFromSourceConfig(cfg.SourceConfiguration, "metadata.name")
 		if err != nil {
@@ -1697,7 +1705,7 @@ func (t *Translator) extractProviderName(cfg *models.StoredConfig, allConfigs []
 			return providerNameStr
 		}
 
-	case string(api.LlmProxy):
+	case string(api.LLMProxyConfigurationKindLlmProxy):
 		// For LlmProxy: return the referenced provider name from spec.provider.id
 		providerName, err := getValueFromSourceConfig(cfg.SourceConfiguration, "spec.provider.id")
 		if err != nil {

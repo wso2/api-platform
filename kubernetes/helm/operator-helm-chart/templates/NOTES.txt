@@ -22,9 +22,13 @@ Operator Details:
   - Connect your debugger to port {{ .Values.debug.port }}
 {{- end }}
 
-Custom Resource Definitions (CRDs) installed:
-  - APIConfiguration (api.api-platform.wso2.com/v1alpha1)
-  - GatewayConfiguration (api.api-platform.wso2.com/v1alpha1)
+Custom Resource Definitions:
+  - From chart crds/: APIGateway, RestApi (gateway.api-platform.wso2.com/v1alpha1)
+{{- if .Values.gatewayApi.installStandardCRDs }}
+  - Gateway API standard v1.3.0 (GatewayClass, Gateway, HTTPRoute, GRPCRoute, ReferenceGrant) — included because gatewayApi.installStandardCRDs is true
+{{- else }}
+  - Gateway API CRDs were not installed by this chart (gatewayApi.installStandardCRDs=false). Install them separately if needed, or reinstall with --set gatewayApi.installStandardCRDs=true on a cluster with no existing Gateway API CRDs.
+{{- end }}
 
 Gateway Configuration:
   - Control Plane: {{ .Values.gateway.controlPlaneHost }}

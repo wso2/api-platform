@@ -130,6 +130,16 @@ func (pm *PolicyManager) RemoveRuntimeConfig(key string) error {
 	return nil
 }
 
+// UpdateEventChannelSnapshot triggers an update of just the event channel config cache.
+// This is used for WebSubApi configs that don't need RuntimeDeployConfig transformation.
+func (pm *PolicyManager) UpdateEventChannelSnapshot() error {
+	if err := pm.snapshotManager.UpdateSnapshot(context.Background()); err != nil {
+		pm.logger.Error("Failed to update event channel snapshot", slog.Any("error", err))
+		return fmt.Errorf("failed to update event channel snapshot: %w", err)
+	}
+	return nil
+}
+
 // GetResourceVersion returns the current resource version used for xDS updates.
 func (pm *PolicyManager) GetResourceVersion() int64 {
 	if pm.runtimeStore != nil {

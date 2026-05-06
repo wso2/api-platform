@@ -1108,9 +1108,23 @@ spec:
                             x-kubernetes-list-type: atomic
                         type: object
                     type: object
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Annotations are custom annotations propagated to all gateway-managed resources:
+                      Deployment metadata, Pod annotations, Service metadata, and ConfigMaps.
+                    type: object
                   image:
                     description: Image is the container image for the gateway
                     type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      Labels are custom labels propagated to all gateway-managed resources:
+                      Deployment metadata, Pod labels, Service metadata, and ConfigMaps.
+                    type: object
                   nodeSelector:
                     additionalProperties:
                       type: string

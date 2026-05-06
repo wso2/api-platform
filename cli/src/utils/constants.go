@@ -36,12 +36,21 @@ const (
 	DefaultGatewayController = "ghcr.io/wso2/api-platform/gateway-controller:%s" // %s = version
 	DefaultGatewayRuntime    = "ghcr.io/wso2/api-platform/gateway-runtime:%s"    // %s = version
 
-	// REST API Endpoints
-	GatewayHealthPath       = "/health"
-	GatewayAPIsPath         = "/rest-apis"
-	GatewayAPIByIDPath      = "/rest-apis/%s"
-	GatewayMCPProxiesPath   = "/mcp-proxies"
-	GatewayMCPProxyByIDPath = "/mcp-proxies/%s"
+	// Gateway-controller API base paths. These must stay in sync with the
+	// `servers.url` prefixes declared in
+	//   gateway/gateway-controller/api/management-openapi.yaml
+	//   gateway/gateway-controller/api/admin-openapi.yaml
+	GatewayManagementBasePath = "/api/management/v0.9"
+	GatewayAdminBasePath      = "/api/admin/v0.9"
+
+	// REST API Endpoints (served on the gateway-controller's management port).
+	GatewayAPIsPath         = GatewayManagementBasePath + "/rest-apis"
+	GatewayAPIByIDPath      = GatewayManagementBasePath + "/rest-apis/%s"
+	GatewayMCPProxiesPath   = GatewayManagementBasePath + "/mcp-proxies"
+	GatewayMCPProxyByIDPath = GatewayManagementBasePath + "/mcp-proxies/%s"
+
+	// Health endpoint (served on the gateway-controller's admin port).
+	GatewayHealthPath = GatewayAdminBasePath + "/health"
 
 	// Auth Types
 	AuthTypeNone   = "none"

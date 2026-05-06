@@ -186,7 +186,7 @@ func (cs *ConfigStore) updateTopics(cfg *models.StoredConfig) error {
 	// TODO: Optimize topic management if needed by maintaining a separate topic manager struct
 
 	apiTopicsPerRevision := make(map[string]bool)
-	for _, topic := range asyncData.Channels {
+	for _, topic := range asyncData.Hub.Channels {
 		contextWithVersion := strings.ReplaceAll(asyncData.Context, "$version", asyncData.Version)
 		contextWithVersion = strings.TrimPrefix(contextWithVersion, "/")
 		contextWithVersion = strings.ReplaceAll(contextWithVersion, "/", "_")
@@ -245,6 +245,19 @@ func (cs *ConfigStore) GetAll() []*models.StoredConfig {
 	result := make([]*models.StoredConfig, 0, len(cs.configs))
 	for _, cfg := range cs.configs {
 		result = append(result, cfg)
+	}
+	return result
+}
+
+// GetAllSensitiveValues aggregates SensitiveValues from all stored configs.
+// Used by the config dump handler to redact resolved secret values from the dump output.
+func (cs *ConfigStore) GetAllSensitiveValues() []string {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	var result []string
+	for _, cfg := range cs.configs {
+		result = append(result, cfg.SensitiveValues...)
 	}
 	return result
 }

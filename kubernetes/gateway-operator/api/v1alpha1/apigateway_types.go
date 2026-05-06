@@ -95,6 +95,16 @@ type GatewayInfrastructure struct {
 	// Affinity for pod assignment
 	// +optional
 	Affinity *corev1.Affinity `json:"affinity,omitempty"`
+
+	// Labels are custom labels propagated to all gateway-managed resources:
+	// Deployment metadata, Pod labels, Service metadata, and ConfigMaps.
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
+
+	// Annotations are custom annotations propagated to all gateway-managed resources:
+	// Deployment metadata, Pod annotations, Service metadata, and ConfigMaps.
+	// +optional
+	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
 // GatewaySpec defines the desired state of APIGateway
@@ -173,7 +183,7 @@ const (
 	GatewayConditionAccepted = "Accepted"
 	// GatewayConditionProgrammed indicates the Gateway is successfully deployed/programmed
 	GatewayConditionProgrammed = "Programmed"
-	// GatewayConditionReady is the canonical Ready condition type for Gateway (legacy, kept for compatibility)
+	// GatewayConditionReady is the canonical Ready condition type for Gateway (retained for compatibility)
 	GatewayConditionReady = "Ready"
 )
 
