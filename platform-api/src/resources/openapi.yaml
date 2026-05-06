@@ -8355,7 +8355,7 @@ components:
         context:
           type: string
           description: Base path for all REST API routes (must start with /, no trailing slash)
-          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
+          pattern: '^\/([a-zA-Z0-9_\-.\/]*[^\/])?$'
           default: /
           minLength: 1
           maxLength: 20
@@ -8550,7 +8550,7 @@ components:
         context:
           type: string
           description: Base path for all REST API routes (must start with /, no trailing slash)
-          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
+          pattern: '^\/([a-zA-Z0-9_\-.\/]*[^\/])?$'
           default: /
           minLength: 1
           maxLength: 200
@@ -8823,7 +8823,7 @@ components:
         context:
           type: string
           description: Base path for all REST API routes (must start with /, no trailing slash)
-          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
+          pattern: '^\/([a-zA-Z0-9_\-.\/]*[^\/])?$'
           default: /
           minLength: 1
           maxLength: 200
@@ -9030,7 +9030,7 @@ components:
         context:
           type: string
           description: Base path for the API (must start with /)
-          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
+          pattern: '^\/([a-zA-Z0-9_\-.\/]*[^\/])?$'
           example: /my-websub-api
         upstream:
           $ref: '#/components/schemas/Upstream'
