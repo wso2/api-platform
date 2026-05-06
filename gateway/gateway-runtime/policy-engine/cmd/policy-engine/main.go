@@ -166,7 +166,7 @@ func main() {
 	slog.InfoContext(ctx, "Policies registered via Builder-generated code")
 
 	// Initialize Python executor bridge from configuration
-	pythonbridge.Init(cfg.PythonExecutor)
+	pythonbridge.Init(cfg.PolicyEngine.PythonExecutor)
 
 	// Initialize configuration source based on mode
 	var xdsClient *xdsclient.Client
@@ -243,7 +243,7 @@ func main() {
 	var adminServer *admin.Server
 	if cfg.PolicyEngine.Admin.Enabled {
 		var pythonHealthChecker admin.PythonHealthChecker
-		if pythonbridge.IsAvailable(cfg.PythonExecutor) {
+		if pythonbridge.IsAvailable(cfg.PolicyEngine.PythonExecutor) {
 			sm := pythonbridge.GetStreamManager()
 			pythonHealthChecker = pythonbridge.NewPythonHealthAdapter(sm)
 		}

@@ -61,13 +61,13 @@ func validConfig() *Config {
 				Level:  "info",
 				Format: "json",
 			},
-		},
-		PythonExecutor: PythonExecutorConfig{
-			Server: PythonExecutorServerConfig{
-				Port: 9010,
-				Host: "localhost",
+			PythonExecutor: PythonExecutorConfig{
+				Server: PythonExecutorServerConfig{
+					Port: 9010,
+					Host: "localhost",
+				},
+				Timeout: 30 * time.Second,
 			},
-			Timeout: 30 * time.Second,
 		},
 		Analytics: AnalyticsConfig{
 			Enabled: false,
@@ -250,7 +250,7 @@ func TestValidate_PythonExecutorConfig(t *testing.T) {
 			port:      9010,
 			timeout:   30 * time.Second,
 			expectErr: true,
-			errMsg:    "invalid python_executor.server.host: must be non-empty when mode = 'tcp'",
+			errMsg:    "invalid policy_engine.python_executor.server.host: must be non-empty when mode = 'tcp'",
 		},
 		{
 			name:      "TCP mode with invalid port - zero",
@@ -259,7 +259,7 @@ func TestValidate_PythonExecutorConfig(t *testing.T) {
 			port:      0,
 			timeout:   30 * time.Second,
 			expectErr: true,
-			errMsg:    "invalid python_executor.server.port",
+			errMsg:    "invalid policy_engine.python_executor.server.port",
 		},
 		{
 			name:      "TCP mode with invalid port - too high",
@@ -268,38 +268,38 @@ func TestValidate_PythonExecutorConfig(t *testing.T) {
 			port:      70000,
 			timeout:   30 * time.Second,
 			expectErr: true,
-			errMsg:    "invalid python_executor.server.port",
+			errMsg:    "invalid policy_engine.python_executor.server.port",
 		},
 		{
 			name:      "invalid mode",
 			mode:      "invalid",
 			timeout:   30 * time.Second,
 			expectErr: true,
-			errMsg:    "python_executor.server.mode must be 'uds' or 'tcp'",
+			errMsg:    "policy_engine.python_executor.server.mode must be 'uds' or 'tcp'",
 		},
 		{
 			name:      "invalid timeout - zero",
 			mode:      "uds",
 			timeout:   0,
 			expectErr: true,
-			errMsg:    "python_executor.timeout must be positive",
+			errMsg:    "policy_engine.python_executor.timeout must be positive",
 		},
 		{
 			name:      "invalid timeout - negative",
 			mode:      "uds",
 			timeout:   -1 * time.Second,
 			expectErr: true,
-			errMsg:    "python_executor.timeout must be positive",
+			errMsg:    "policy_engine.python_executor.timeout must be positive",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := validConfig()
-			cfg.PythonExecutor.Server.Mode = tt.mode
-			cfg.PythonExecutor.Server.Host = tt.host
-			cfg.PythonExecutor.Server.Port = tt.port
-			cfg.PythonExecutor.Timeout = tt.timeout
+			cfg.PolicyEngine.PythonExecutor.Server.Mode = tt.mode
+			cfg.PolicyEngine.PythonExecutor.Server.Host = tt.host
+			cfg.PolicyEngine.PythonExecutor.Server.Port = tt.port
+			cfg.PolicyEngine.PythonExecutor.Timeout = tt.timeout
 
 			err := cfg.Validate()
 			if tt.expectErr {

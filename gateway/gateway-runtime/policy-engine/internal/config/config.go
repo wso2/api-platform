@@ -39,7 +39,6 @@ const (
 
 type Config struct {
 	PolicyEngine         PolicyEngine           `koanf:"policy_engine"`
-	PythonExecutor       PythonExecutorConfig   `koanf:"python_executor"`
 	GatewayController    map[string]interface{} `koanf:"gateway_controller"`
 	PolicyConfigurations map[string]interface{} `koanf:"policy_configurations"`
 	Analytics            AnalyticsConfig        `koanf:"analytics"`
@@ -82,6 +81,7 @@ type PolicyEngine struct {
 	XDS        XDSConfig        `koanf:"xds"`
 	FileConfig FileConfigConfig `koanf:"file_config"`
 	Logging    LoggingConfig    `koanf:"logging"`
+	PythonExecutor PythonExecutorConfig `koanf:"python_executor"`
 	// Tracing holds OpenTelemetry exporter configuration
 	TracingServiceName string `koanf:"tracing_service_name"`
 
@@ -332,15 +332,15 @@ func defaultConfig() *Config {
 				Level:  "info",
 				Format: "text",
 			},
-			TracingServiceName: "policy-engine",
-		},
-		PythonExecutor: PythonExecutorConfig{
-			Server: PythonExecutorServerConfig{
-				Mode: "",
-				Port: 9010,
-				Host: "localhost",
+			PythonExecutor: PythonExecutorConfig{
+				Server: PythonExecutorServerConfig{
+					Mode: "",
+					Port: 9010,
+					Host: "localhost",
+				},
+				Timeout: 30 * time.Second,
 			},
-			Timeout: 30 * time.Second,
+			TracingServiceName: "policy-engine",
 		},
 		Analytics: AnalyticsConfig{
 			Enabled:           false,
@@ -399,20 +399,20 @@ func (c *Config) Validate() error {
 	}
 
 	// Validate python executor config
-	switch c.PythonExecutor.Server.Mode {
+	switch c.PolicyEngine.PythonExecutor.Server.Mode {
 	case "uds", "":
 	case "tcp":
-		if c.PythonExecutor.Server.Host == "" {
-			return fmt.Errorf("invalid python_executor.server.host: must be non-empty when mode = 'tcp'")
+		if c.PolicyEngine.PythonExecutor.Server.Host == "" {
+			return fmt.Errorf("invalid policy_engine.python_executor.server.host: must be non-empty when mode = 'tcp'")
 		}
-		if c.PythonExecutor.Server.Port <= 0 || c.PythonExecutor.Server.Port > 65535 {
-			return fmt.Errorf("invalid python_executor.server.port: %d (must be 1-65535)", c.PythonExecutor.Server.Port)
+		if c.PolicyEngine.PythonExecutor.Server.Port <= 0 || c.PolicyEngine.PythonExecutor.Server.Port > 65535 {
+			return fmt.Errorf("invalid policy_engine.python_executor.server.port: %d (must be 1-65535)", c.PolicyEngine.PythonExecutor.Server.Port)
 		}
 	default:
-		return fmt.Errorf("python_executor.server.mode must be 'uds' or 'tcp', got: %s", c.PythonExecutor.Server.Mode)
+		return fmt.Errorf("policy_engine.python_executor.server.mode must be 'uds' or 'tcp', got: %s", c.PolicyEngine.PythonExecutor.Server.Mode)
 	}
-	if c.PythonExecutor.Timeout <= 0 {
-		return fmt.Errorf("python_executor.timeout must be positive")
+	if c.PolicyEngine.PythonExecutor.Timeout <= 0 {
+		return fmt.Errorf("policy_engine.python_executor.timeout must be positive")
 	}
 
 	// Validate admin config

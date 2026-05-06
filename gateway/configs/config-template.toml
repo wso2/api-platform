@@ -247,11 +247,11 @@ port = 9003
 # PYTHON EXECUTOR CONFIGURATION
 # =============================================================================
 
-[python_executor]
+[policy_engine.python_executor]
 # Timeout for policy execution
 timeout = "30s"
 
-[python_executor.server]
+[policy_engine.python_executor.server]
 # Mode: "uds" (Unix Domain Socket) or "tcp"
 mode = "uds"
 # Port (only used when mode = "tcp")

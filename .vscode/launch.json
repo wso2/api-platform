@@ -108,10 +108,11 @@
             },
         },
         {
-            "name": "Python Executor (Debug)",
+            "name": "Python Executor",
             "type": "debugpy",
             "request": "launch",
             "module": "main",
+            "console": "internalConsole",
             "cwd": "${workspaceFolder}/gateway/gateway-runtime/python-executor",
             "python": "${workspaceFolder}/gateway/gateway-runtime/python-executor/.venv/bin/python3",
             "args": [
