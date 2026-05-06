@@ -126,6 +126,9 @@ func main() {
 	}
 	buildDateStr := os.Getenv("BUILD_DATE")
 	if buildDateStr == "" {
+		buildDateStr = BuildDate
+	}
+	if buildDateStr == "" || buildDateStr == "unknown" {
 		buildDateStr = time.Now().UTC().Format(time.RFC3339)
 	}
 
