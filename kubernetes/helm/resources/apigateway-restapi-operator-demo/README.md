@@ -33,6 +33,7 @@ kubectl apply -f 02-apigateway.yaml
 kubectl apply -f 03-backend.yaml
 # Wait for the gateway Helm workloads to become Ready.
 kubectl apply -f 04-restapi.yaml
+kubectl apply -f 04-restapi-policy.yaml
 
 ```
 
@@ -231,6 +232,18 @@ If `SESSION_ID` is empty, inspect `/tmp/mcp-init-headers.txt` and copy the `mcp-
 ```bash
 curl --request GET \
   --url https://localhost:8443/hello-normal \
+  --header 'Accept: application/json' -k
+```
+
+```bash
+curl --request GET \
+  --url https://localhost:8443/hello-normal-policy/test-policy \
+  --header 'Accept: application/json' -k
+```
+
+```bash
+curl --request GET \
+  --url https://localhost:8443/hello-normal-policy/test-policy-resource \
   --header 'Accept: application/json' -k
 ```
 

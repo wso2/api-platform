@@ -19,8 +19,11 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"go.uber.org/zap"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -54,6 +57,8 @@ func NewLlmProxyReconciler(c client.Client, cfg *config.OperatorConfig, logger *
 //+kubebuilder:rbac:groups=gateway.api-platform.wso2.com,resources=llmproxies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=gateway.api-platform.wso2.com,resources=llmproxies/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=gateway.api-platform.wso2.com,resources=llmproxies/finalizers,verbs=update
+//+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+//+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 
 // SetupWithManager registers the controller with mgr.
 func (r *LlmProxyReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -67,6 +72,12 @@ func (r *LlmProxyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			builder.WithPredicates(gatewayWatchPredicate())).
 		Watches(&apiv1.LlmProvider{},
 			handler.EnqueueRequestsFromMapFunc(enqueueLlmProxiesReferencingProvider(r.Client))).
+		Watches(&corev1.Secret{},
+			handler.EnqueueRequestsFromMapFunc(enqueueLlmProxiesForSecret(r.Client)),
+			builder.WithPredicates(secretMutationPredicate())).
+		Watches(&corev1.ConfigMap{},
+			handler.EnqueueRequestsFromMapFunc(enqueueLlmProxiesForConfigMap(r.Client)),
+			builder.WithPredicates(configMapMutationPredicate())).
 		Complete(r)
 }
 
@@ -94,19 +105,69 @@ func (a *llmProxyAdapter) GatewaySelectionKey(obj client.Object) (string, map[st
 	return cr.Namespace, cr.Labels
 }
 
+func (a *llmProxyAdapter) needsRedeployForExternalDeps(ctx context.Context, c client.Client, obj client.Object) (bool, error) {
+	cr := obj.(*apiv1.LlmProxy)
+	fp, err := llmProxyExternalDepsFingerprint(ctx, c, cr)
+	if err != nil {
+		return false, err
+	}
+	if strings.TrimSpace(fp) == "" {
+		return false, nil
+	}
+	cur := ""
+	if obj.GetAnnotations() != nil {
+		cur = strings.TrimSpace(obj.GetAnnotations()[annLlmProxyPolicyValueFromFingerprint])
+	}
+	return cur != fp, nil
+}
+
+func (a *llmProxyAdapter) onExternalDepsApplied(ctx context.Context, c client.Client, obj client.Object, extDepsFingerprint string) error {
+	if strings.TrimSpace(extDepsFingerprint) == "" {
+		return nil
+	}
+	var latest apiv1.LlmProxy
+	if err := c.Get(ctx, types.NamespacedName{Namespace: obj.GetNamespace(), Name: obj.GetName()}, &latest); err != nil {
+		return err
+	}
+	base := latest.DeepCopy()
+	ann := latest.GetAnnotations()
+	if ann == nil {
+		ann = map[string]string{}
+	} else {
+		cp := make(map[string]string, len(ann)+1)
+		for k, v := range ann {
+			cp[k] = v
+		}
+		ann = cp
+	}
+	ann[annLlmProxyPolicyValueFromFingerprint] = extDepsFingerprint
+	latest.SetAnnotations(ann)
+	return c.Patch(ctx, &latest, client.MergeFrom(base))
+}
+
 func (a *llmProxyAdapter) Deploy(ctx context.Context, k8sClient client.Client, gatewayEndpoint string, obj client.Object, authFn gatewayclient.AuthHeaderFunc) (DeployResult, error) {
 	cr := obj.(*apiv1.LlmProxy)
 
-	specPayload := interface{}(cr.Spec)
-	if cr.Spec.Provider.Auth != nil {
-		resolved, err := resolveLLMProviderUpstreamAuth(ctx, k8sClient, cr.Namespace, cr.Spec.Provider.Auth, "spec.provider.auth.value")
+	spec := *cr.Spec.DeepCopy()
+	for i := range spec.Policies {
+		for j := range spec.Policies[i].Paths {
+			scope := fmt.Sprintf("policy %s %s path %s", spec.Policies[i].Name, spec.Policies[i].Version, spec.Policies[i].Paths[j].Path)
+			if err := resolveRawExtensionValueFrom(ctx, k8sClient, cr.Namespace, spec.Policies[i].Paths[j].Params, spec.Policies[i].Name, scope); err != nil {
+				return DeployResult{}, err
+			}
+		}
+	}
+
+	specPayload := interface{}(spec)
+	if spec.Provider.Auth != nil {
+		resolved, err := resolveLLMProviderUpstreamAuth(ctx, k8sClient, cr.Namespace, spec.Provider.Auth, "spec.provider.auth.value")
 		if err != nil {
 			return DeployResult{}, err
 		}
 		if resolved == nil {
 			return DeployResult{}, &gatewayclient.NonRetryableError{Err: fmt.Errorf("internal: provider.auth resolution produced nil")}
 		}
-		m, err := specToJSONMap(cr.Spec)
+		m, err := specToJSONMap(spec)
 		if err != nil {
 			return DeployResult{}, &gatewayclient.NonRetryableError{Err: err}
 		}
@@ -128,7 +189,13 @@ func (a *llmProxyAdapter) Deploy(ctx context.Context, k8sClient client.Client, g
 	if err := deployEnvelopeResource(ctx, gatewayEndpoint, gatewayclient.LLMProxiesPath(), cr.Name, body, authFn); err != nil {
 		return DeployResult{}, rewriteLLMDeployDependencyErrors(err)
 	}
-	return DeployResult{}, nil
+	// Compute the fingerprint of the deployed state so it can be written to the
+	// annotation by onExternalDepsApplied without a racy re-computation.
+	fp, err := llmProxyExternalDepsFingerprint(ctx, k8sClient, cr)
+	if err != nil {
+		return DeployResult{}, err
+	}
+	return DeployResult{Fingerprint: fp}, nil
 }
 
 func (a *llmProxyAdapter) Delete(ctx context.Context, gatewayEndpoint string, obj client.Object, authFn gatewayclient.AuthHeaderFunc) error {

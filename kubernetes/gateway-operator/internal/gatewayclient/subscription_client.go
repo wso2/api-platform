@@ -21,6 +21,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 )
 
 // SubscriptionCreatePayload mirrors the management-API
@@ -43,9 +46,15 @@ type SubscriptionUpdatePayload struct {
 // SubscriptionResponse captures the gateway-issued fields returned from
 // POST/PUT /subscriptions.
 type SubscriptionResponse struct {
-	Id        string `json:"id"`
-	ApiId     string `json:"apiId"`
-	GatewayId string `json:"gatewayId"`
+	Id            string  `json:"id"`
+	ApiId         string  `json:"apiId"`
+	ApplicationId *string `json:"applicationId,omitempty"`
+	GatewayId     string  `json:"gatewayId"`
+}
+
+type subscriptionListResponse struct {
+	Subscriptions []SubscriptionResponse `json:"subscriptions"`
+	Count         *int                   `json:"count,omitempty"`
 }
 
 // CreateSubscription POSTs the payload and returns the parsed response.
@@ -92,4 +101,97 @@ func DeleteSubscription(ctx context.Context, gatewayEndpoint, subscriptionID str
 		return fmt.Errorf("subscription id is required")
 	}
 	return DeleteResource(ctx, gatewayEndpoint, subscriptionsPath, subscriptionID, auth)
+}
+
+// FindSubscriptionIDByAPIAndApplication lists subscriptions for the given apiID
+// (and optional applicationID) and returns a single matching subscription ID
+// when it can be unambiguously identified.
+func FindSubscriptionIDByAPIAndApplication(ctx context.Context, gatewayEndpoint, apiID string, applicationID *string, auth AuthHeaderFunc) (string, error) {
+	if apiID == "" {
+		return "", fmt.Errorf("api id is required")
+	}
+
+	q := url.Values{}
+	q.Set("apiId", apiID)
+	if applicationID != nil && *applicationID != "" {
+		q.Set("applicationId", *applicationID)
+	}
+
+	endpoint := gatewayEndpoint + subscriptionsPath + "?" + q.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", &RetryableError{Err: fmt.Errorf("create HTTP request: %w", err)}
+	}
+	if auth != nil {
+		if err := auth(ctx, req); err != nil {
+			return "", err
+		}
+	}
+
+	client := &http.Client{Timeout: defaultProbeTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", &RetryableError{Err: fmt.Errorf("list subscriptions: %w", err)}
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	switch {
+	case resp.StatusCode == http.StatusOK:
+		// continue
+	case IsRetryableStatusCode(resp.StatusCode):
+		return "", &RetryableError{
+			Err:        fmt.Errorf("list subscriptions returned status %d: %s", resp.StatusCode, string(body)),
+			StatusCode: resp.StatusCode,
+		}
+	default:
+		return "", &NonRetryableError{
+			Err:        fmt.Errorf("list subscriptions returned status %d: %s", resp.StatusCode, string(body)),
+			StatusCode: resp.StatusCode,
+		}
+	}
+
+	items := make([]SubscriptionResponse, 0)
+	var wrapped subscriptionListResponse
+	if err := json.Unmarshal(body, &wrapped); err == nil && wrapped.Subscriptions != nil {
+		items = wrapped.Subscriptions
+	} else {
+		var plain []SubscriptionResponse
+		if err := json.Unmarshal(body, &plain); err != nil {
+			return "", fmt.Errorf("decode subscription list response: %w", err)
+		}
+		items = plain
+	}
+
+	if len(items) == 0 {
+		return "", nil
+	}
+	if len(items) == 1 {
+		return items[0].Id, nil
+	}
+
+	if applicationID != nil && *applicationID != "" {
+		matches := make([]SubscriptionResponse, 0, len(items))
+		for i := range items {
+			if items[i].ApplicationId != nil && *items[i].ApplicationId == *applicationID {
+				matches = append(matches, items[i])
+			}
+		}
+		if len(matches) == 1 {
+			return matches[0].Id, nil
+		}
+		return "", nil
+	}
+
+	nonAppMatches := make([]SubscriptionResponse, 0, len(items))
+	for i := range items {
+		if items[i].ApplicationId == nil || *items[i].ApplicationId == "" {
+			nonAppMatches = append(nonAppMatches, items[i])
+		}
+	}
+	if len(nonAppMatches) == 1 {
+		return nonAppMatches[0].Id, nil
+	}
+
+	return "", nil
 }

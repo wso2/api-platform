@@ -225,7 +225,7 @@ func (a *apiKeyAdapter) needsRedeployForExternalDeps(ctx context.Context, c clie
 	return cur != fp, nil
 }
 
-func (a *apiKeyAdapter) onExternalDepsApplied(ctx context.Context, c client.Client, obj client.Object) error {
+func (a *apiKeyAdapter) onExternalDepsApplied(ctx context.Context, c client.Client, obj client.Object, _ string) error {
 	var latest apiv1.ApiKey
 	if err := c.Get(ctx, types.NamespacedName{Namespace: obj.GetNamespace(), Name: obj.GetName()}, &latest); err != nil {
 		return err
