@@ -42,7 +42,16 @@ rules:
   - gateway.api-platform.wso2.com
   resources:
   - apigateways
+  - apikeys
+  - certificates
+  - llmproviders
+  - llmprovidertemplates
+  - llmproxies
+  - managedsecrets
+  - mcps
   - restapis
+  - subscriptionplans
+  - subscriptions
   verbs:
   - create
   - delete
@@ -55,15 +64,33 @@ rules:
   - gateway.api-platform.wso2.com
   resources:
   - apigateways/finalizers
+  - apikeys/finalizers
+  - certificates/finalizers
+  - llmproviders/finalizers
+  - llmprovidertemplates/finalizers
+  - llmproxies/finalizers
+  - managedsecrets/finalizers
+  - mcps/finalizers
   - restapis/finalizers
+  - subscriptionplans/finalizers
+  - subscriptions/finalizers
   verbs:
   - update
 - apiGroups:
   - gateway.api-platform.wso2.com
   resources:
   - apigateways/status
+  - apikeys/status
   - apipolicies/status
+  - certificates/status
+  - llmproviders/status
+  - llmprovidertemplates/status
+  - llmproxies/status
+  - managedsecrets/status
+  - mcps/status
   - restapis/status
+  - subscriptionplans/status
+  - subscriptions/status
   verbs:
   - get
   - patch

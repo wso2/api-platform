@@ -30,13 +30,13 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
-	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
-	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	"github.com/go-logr/zapr"
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
@@ -218,6 +218,30 @@ func main() {
 	).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "HTTPRoute")
 		os.Exit(1)
+	}
+
+	// Management-API resource controllers (WSO2 APIGateway flow only).
+	// All share one in-memory ResourceTracker keyed by kind+namespace/name.
+	resourceTracker := controller.NewResourceTracker()
+	managementControllers := []struct {
+		name  string
+		setup func(ctrl.Manager) error
+	}{
+		{"LlmProviderTemplate", controller.NewLlmProviderTemplateReconciler(mgr.GetClient(), cfg, zapLog, resourceTracker).SetupWithManager},
+		{"LlmProvider", controller.NewLlmProviderReconciler(mgr.GetClient(), cfg, zapLog, resourceTracker).SetupWithManager},
+		{"LlmProxy", controller.NewLlmProxyReconciler(mgr.GetClient(), cfg, zapLog, resourceTracker).SetupWithManager},
+		{"Mcp", controller.NewMcpReconciler(mgr.GetClient(), cfg, zapLog, resourceTracker).SetupWithManager},
+		{"ManagedSecret", controller.NewManagedSecretReconciler(mgr.GetClient(), cfg, zapLog, resourceTracker).SetupWithManager},
+		{"Certificate", controller.NewCertificateReconciler(mgr.GetClient(), cfg, zapLog, resourceTracker).SetupWithManager},
+		{"ApiKey", controller.NewApiKeyReconciler(mgr.GetClient(), cfg, zapLog, resourceTracker).SetupWithManager},
+		{"SubscriptionPlan", controller.NewSubscriptionPlanReconciler(mgr.GetClient(), cfg, zapLog, resourceTracker).SetupWithManager},
+		{"Subscription", controller.NewSubscriptionReconciler(mgr.GetClient(), cfg, zapLog, resourceTracker).SetupWithManager},
+	}
+	for _, mc := range managementControllers {
+		if err := mc.setup(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", mc.name)
+			os.Exit(1)
+		}
 	}
 	//+kubebuilder:scaffold:builder
 
