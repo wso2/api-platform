@@ -360,7 +360,7 @@ CREATE TABLE IF NOT EXISTS websub_apis (
     description VARCHAR(1023),
     created_by VARCHAR(255),
     lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
-    transport JSONB NOT NULL DEFAULT '["http","https"]',
+    transport VARCHAR(255),
     configuration JSONB NOT NULL,
     FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE
