@@ -16,6 +16,7 @@ import (
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/adminserver"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/devportalwebhook"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption/aesgcm"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventlistener"
@@ -514,6 +515,39 @@ func main() {
 	if cfg.Controller.Metrics.Enabled {
 		router.Use(middleware.MetricsMiddleware())
 	}
+	// Register the devportal webhook endpoint before auth middleware so it uses its own
+	// HMAC-based authentication rather than the gateway management API auth.
+	if cfg.DevPortalWebhook.Enabled {
+		rsaKey, loadErr := devportalwebhook.LoadRSAPrivateKey(cfg.DevPortalWebhook.PrivateKeyPath)
+		if loadErr != nil {
+			log.Error("Failed to load devportal webhook RSA private key",
+				slog.String("path", cfg.DevPortalWebhook.PrivateKeyPath),
+				slog.Any("error", loadErr))
+			os.Exit(1)
+		}
+
+		idempCache := devportalwebhook.NewIdempotencyCache(
+			cfg.DevPortalWebhook.Idempotency.TTL,
+			cfg.DevPortalWebhook.Idempotency.MaxSize,
+		)
+		defer idempCache.Close()
+
+		webhookHandler := devportalwebhook.NewHandler(devportalwebhook.HandlerConfig{
+			Secret:      []byte(cfg.DevPortalWebhook.Secret),
+			PrivateKey:  rsaKey,
+			GatewayType: cfg.DevPortalWebhook.GatewayType,
+			Cache:       idempCache,
+			APIKeyMgr:   apiKeyXDSManager,
+			DB:          db,
+			EventHub:    eventHubInstance,
+			GatewayID:   gatewayID,
+			Logger:      log,
+		})
+
+		router.POST("/webhooks/devportal", webhookHandler.HandleWebhook)
+		log.Info("Devportal webhook listener registered", slog.String("path", "/webhooks/devportal"))
+	}
+
 	authConfig := generateAuthConfig(cfg)
 	authMiddleWare, err := authenticators.AuthMiddleware(authConfig, log)
 	if err != nil {

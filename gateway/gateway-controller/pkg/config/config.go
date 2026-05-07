@@ -53,6 +53,8 @@ type Config struct {
 	// When nil, subscription validation system policy remains disabled.
 	Subscriptions    *SubscriptionsConfig   `koanf:"subscriptions"`
 	ImmutableGateway ImmutableGatewayConfig `koanf:"immutable_gateway"`
+	// DevPortalWebhook holds configuration for the inbound developer portal webhook listener.
+	DevPortalWebhook DevPortalWebhookConfig `koanf:"devportal_webhook"`
 }
 
 // AnalyticsConfig holds analytics configuration
@@ -79,6 +81,34 @@ type SubscriptionsConfig struct {
 type ImmutableGatewayConfig struct {
 	Enabled      bool   `koanf:"enabled"`
 	ArtifactsDir string `koanf:"artifacts_dir"`
+}
+
+// DevPortalWebhookConfig holds configuration for the inbound developer portal webhook listener.
+// When Enabled is true, POST /webhooks/devportal receives signed events from the devportal
+// and translates them into gateway-side API key and subscription state changes.
+type DevPortalWebhookConfig struct {
+	// Enabled controls whether the webhook endpoint is registered. Default: false.
+	Enabled bool `koanf:"enabled"`
+	// Secret is the HMAC-SHA256 shared secret agreed with the devportal. Required when enabled.
+	Secret string `koanf:"secret"`
+	// PrivateKeyPath is the path to the PEM-encoded RSA private key used to decrypt
+	// API key secrets sent by the devportal. Required when enabled.
+	PrivateKeyPath string `koanf:"private_key_path"`
+	// GatewayType filters events by the gateway_type field in the event envelope.
+	// Events with a different gateway_type are silently accepted (200) but not processed.
+	// Default: "" (process events for all gateway types).
+	GatewayType string `koanf:"gateway_type"`
+	// Idempotency controls the in-memory event deduplication cache.
+	Idempotency DevPortalIdempotencyConfig `koanf:"idempotency"`
+}
+
+// DevPortalIdempotencyConfig controls the in-memory event deduplication cache used by the
+// devportal webhook listener to prevent duplicate processing on delivery retries.
+type DevPortalIdempotencyConfig struct {
+	// TTL is how long a processed event_id is retained. Default: 10m.
+	TTL time.Duration `koanf:"ttl"`
+	// MaxSize is the maximum number of entries in the cache. Default: 10000.
+	MaxSize int `koanf:"max_size"`
 }
 
 // AnalyticsPublishersConfig holds configuration for all analytics publishers
@@ -791,6 +821,13 @@ func defaultConfig() *Config {
 			Enabled:      false,
 			ArtifactsDir: "/etc/api-platform-gateway/immutable_gateway/artifacts",
 		},
+		DevPortalWebhook: DevPortalWebhookConfig{
+			Enabled: false,
+			Idempotency: DevPortalIdempotencyConfig{
+				TTL:     10 * time.Minute,
+				MaxSize: 10_000,
+			},
+		},
 	}
 }
 
@@ -1053,6 +1090,11 @@ func (c *Config) Validate() error {
 
 	// Validate subscriptions configuration (subscription token encryption key when set)
 	if err := c.validateSubscriptionsConfig(); err != nil {
+		return err
+	}
+
+	// Validate devportal webhook configuration when enabled
+	if err := c.validateDevPortalWebhookConfig(); err != nil {
 		return err
 	}
 
@@ -1580,5 +1622,25 @@ func (c *Config) validateHTTPListenerConfig() error {
 			httpListener.ServerHeaderTransformation)
 	}
 
+	return nil
+}
+
+func (c *Config) validateDevPortalWebhookConfig() error {
+	wh := &c.DevPortalWebhook
+	if !wh.Enabled {
+		return nil
+	}
+	if strings.TrimSpace(wh.Secret) == "" {
+		return fmt.Errorf("devportal_webhook.secret is required when devportal_webhook.enabled is true")
+	}
+	if strings.TrimSpace(wh.PrivateKeyPath) == "" {
+		return fmt.Errorf("devportal_webhook.private_key_path is required when devportal_webhook.enabled is true")
+	}
+	if wh.Idempotency.TTL <= 0 {
+		return fmt.Errorf("devportal_webhook.idempotency.ttl must be positive")
+	}
+	if wh.Idempotency.MaxSize <= 0 {
+		return fmt.Errorf("devportal_webhook.idempotency.max_size must be positive")
+	}
 	return nil
 }
