@@ -34,29 +34,33 @@ import (
 
 // ConnectionConfig holds the Kafka connection settings used by the driver.
 type ConnectionConfig struct {
-	Brokers       []string
-	TLS           bool
-	TLSCAFile     string
-	TLSCertFile   string
-	TLSKeyFile    string
-	TLSServerName string
-	SASLMechanism string
-	SASLUsername  string
-	SASLPassword  string
+	Brokers                       []string
+	CompactTopicPartitions        int
+	CompactTopicReplicationFactor int16
+	TLS                           bool
+	TLSCAFile                     string
+	TLSCertFile                   string
+	TLSKeyFile                    string
+	TLSServerName                 string
+	SASLMechanism                 string
+	SASLUsername                  string
+	SASLPassword                  string
 }
 
 // ResolveConnectionConfig merges global runtime config with per-binding overrides.
 func ResolveConnectionConfig(global config.KafkaConfig, overrides map[string]interface{}) (ConnectionConfig, error) {
 	cfg := ConnectionConfig{
-		Brokers:       append([]string(nil), global.Brokers...),
-		TLS:           global.TLS,
-		TLSCAFile:     global.TLSCAFile,
-		TLSCertFile:   global.TLSCertFile,
-		TLSKeyFile:    global.TLSKeyFile,
-		TLSServerName: global.TLSServerName,
-		SASLMechanism: global.SASLMechanism,
-		SASLUsername:  global.SASLUsername,
-		SASLPassword:  global.SASLPassword,
+		Brokers:                       append([]string(nil), global.Brokers...),
+		CompactTopicPartitions:        defaultPositiveInt(global.CompactTopicPartitions, 1),
+		CompactTopicReplicationFactor: defaultPositiveInt16(global.CompactTopicReplicationFactor, 1),
+		TLS:                           global.TLS,
+		TLSCAFile:                     global.TLSCAFile,
+		TLSCertFile:                   global.TLSCertFile,
+		TLSKeyFile:                    global.TLSKeyFile,
+		TLSServerName:                 global.TLSServerName,
+		SASLMechanism:                 global.SASLMechanism,
+		SASLUsername:                  global.SASLUsername,
+		SASLPassword:                  global.SASLPassword,
 	}
 
 	if overrides != nil {
@@ -105,6 +109,16 @@ func ResolveConnectionConfig(global config.KafkaConfig, overrides map[string]int
 		} else if ok {
 			cfg.SASLPassword = v
 		}
+		if v, ok, err := intOverride(overrides["compact_topic_partitions"]); err != nil {
+			return ConnectionConfig{}, err
+		} else if ok {
+			cfg.CompactTopicPartitions = v
+		}
+		if v, ok, err := int16Override(overrides["compact_topic_replication_factor"]); err != nil {
+			return ConnectionConfig{}, err
+		} else if ok {
+			cfg.CompactTopicReplicationFactor = v
+		}
 	}
 
 	normalizeConnectionConfig(&cfg)
@@ -134,6 +148,12 @@ func normalizeConnectionConfig(cfg *ConnectionConfig) {
 func validateConnectionConfig(cfg ConnectionConfig) error {
 	if len(cfg.Brokers) == 0 {
 		return fmt.Errorf("kafka brokers must not be empty")
+	}
+	if cfg.CompactTopicPartitions < 1 {
+		return fmt.Errorf("kafka.compact_topic_partitions must be greater than 0")
+	}
+	if cfg.CompactTopicReplicationFactor < 1 {
+		return fmt.Errorf("kafka.compact_topic_replication_factor must be greater than 0")
 	}
 
 	if !cfg.TLS {
@@ -296,6 +316,50 @@ func stringSliceOverride(value interface{}) ([]string, bool, error) {
 	default:
 		return nil, false, fmt.Errorf("expected string slice Kafka config override, got %T", value)
 	}
+}
+
+func intOverride(value interface{}) (int, bool, error) {
+	if value == nil {
+		return 0, false, nil
+	}
+	switch v := value.(type) {
+	case int:
+		return v, true, nil
+	case int64:
+		return int(v), true, nil
+	case float64:
+		if v != float64(int(v)) {
+			return 0, false, fmt.Errorf("expected integer Kafka config override, got %v", value)
+		}
+		return int(v), true, nil
+	default:
+		return 0, false, fmt.Errorf("expected integer Kafka config override, got %T", value)
+	}
+}
+
+func int16Override(value interface{}) (int16, bool, error) {
+	v, ok, err := intOverride(value)
+	if err != nil || !ok {
+		return 0, ok, err
+	}
+	if v < 0 || v > int(^uint16(0)>>1) {
+		return 0, false, fmt.Errorf("expected 16-bit integer Kafka config override, got %d", v)
+	}
+	return int16(v), true, nil
+}
+
+func defaultPositiveInt(value, fallback int) int {
+	if value > 0 {
+		return value
+	}
+	return fallback
+}
+
+func defaultPositiveInt16(value, fallback int16) int16 {
+	if value > 0 {
+		return value
+	}
+	return fallback
 }
 
 func validateReadableFile(filePath, fieldName string) error {

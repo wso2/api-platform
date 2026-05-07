@@ -57,16 +57,18 @@ type ServerConfig struct {
 
 // KafkaConfig holds Kafka connection settings.
 type KafkaConfig struct {
-	Brokers             []string `koanf:"brokers"`
-	ConsumerGroupPrefix string   `koanf:"consumer_group_prefix"`
-	TLS                 bool     `koanf:"tls"`
-	TLSCAFile           string   `koanf:"tls_ca_file"`
-	TLSCertFile         string   `koanf:"tls_cert_file"`
-	TLSKeyFile          string   `koanf:"tls_key_file"`
-	TLSServerName       string   `koanf:"tls_server_name"`
-	SASLMechanism       string   `koanf:"sasl_mechanism"`
-	SASLUsername        string   `koanf:"sasl_username"`
-	SASLPassword        string   `koanf:"sasl_password"`
+	Brokers                       []string `koanf:"brokers"`
+	ConsumerGroupPrefix           string   `koanf:"consumer_group_prefix"`
+	CompactTopicPartitions        int      `koanf:"compact_topic_partitions"`
+	CompactTopicReplicationFactor int16    `koanf:"compact_topic_replication_factor"`
+	TLS                           bool     `koanf:"tls"`
+	TLSCAFile                     string   `koanf:"tls_ca_file"`
+	TLSCertFile                   string   `koanf:"tls_cert_file"`
+	TLSKeyFile                    string   `koanf:"tls_key_file"`
+	TLSServerName                 string   `koanf:"tls_server_name"`
+	SASLMechanism                 string   `koanf:"sasl_mechanism"`
+	SASLUsername                  string   `koanf:"sasl_username"`
+	SASLPassword                  string   `koanf:"sasl_password"`
 }
 
 // WebSubConfig holds WebSub-specific settings.
@@ -111,8 +113,10 @@ func DefaultConfig() *Config {
 			MetricsPort:     9003,
 		},
 		Kafka: KafkaConfig{
-			Brokers:             []string{"localhost:9092"},
-			ConsumerGroupPrefix: "event-gateway",
+			Brokers:                       []string{"localhost:9092"},
+			ConsumerGroupPrefix:           "event-gateway",
+			CompactTopicPartitions:        1,
+			CompactTopicReplicationFactor: 1,
 		},
 		WebSub: WebSubConfig{
 			VerificationTimeoutSeconds: 10,
@@ -291,6 +295,12 @@ func validate(cfg *Config) error {
 func validateKafkaConfig(kafkaCfg KafkaConfig) error {
 	if len(kafkaCfg.Brokers) == 0 {
 		return fmt.Errorf("kafka.brokers must contain at least one broker")
+	}
+	if kafkaCfg.CompactTopicPartitions < 1 {
+		return fmt.Errorf("kafka.compact_topic_partitions must be greater than 0")
+	}
+	if kafkaCfg.CompactTopicReplicationFactor < 1 {
+		return fmt.Errorf("kafka.compact_topic_replication_factor must be greater than 0")
 	}
 
 	if kafkaCfg.TLS {
