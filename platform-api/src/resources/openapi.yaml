@@ -6138,6 +6138,12 @@ components:
           additionalProperties: true
           description: Custom key-value properties for the gateway
           example: {"region": "us-west", "tier": "premium"}
+        version:
+          type: string
+          pattern: '^[0-9]{1,6}\.[0-9]{1,6}$'
+          description: Gateway version in `major.minor` format. Defaults to `1.0` if not provided.
+          default: "1.0"
+          example: "1.0"
     CustomPolicyResponse:
       type: object
       description: A custom policy stored in the platform's custom policy registry.
@@ -6268,6 +6274,10 @@ components:
           enum: [regular, ai, event]
           description: Type of gateway functionality
           example: "regular"
+        version:
+          type: string
+          description: Gateway version in `major.minor` format
+          example: "1.0"
         isActive:
           type: boolean
           description: Indicates if the gateway is currently connected to the platform via WebSocket

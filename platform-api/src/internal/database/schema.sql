@@ -141,6 +141,7 @@ CREATE TABLE IF NOT EXISTS gateways (
     uuid VARCHAR(40) PRIMARY KEY,
     organization_uuid VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
+    version VARCHAR(64) NOT NULL DEFAULT '1.0',
     display_name VARCHAR(255) NOT NULL,
     description VARCHAR(1023),
     properties TEXT NOT NULL DEFAULT '{}',

@@ -81,6 +81,7 @@ build-event-gateway-controller: ## Build event-gateway-controller Docker image
 			--build-context build-manifest=.. \
 			--build-context policies=../../event-gateway/default-policies \
 			--build-arg VERSION=$(VERSION) \
+			--build-arg FUNCTIONALITY_TYPE=event \
 			--build-arg GIT_COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo "unknown") \
 			--target production \
 			-t $(EVENT_GATEWAY_CONTROLLER_IMAGE):$(VERSION) \
@@ -115,6 +116,7 @@ build-and-push-multiarch-event-gateway-controller: ## Build and push event-gatew
 			--build-context policies=../../event-gateway/default-policies \
 			--platform linux/amd64,linux/arm64 \
 			--build-arg VERSION=$(VERSION) \
+			--build-arg FUNCTIONALITY_TYPE=event \
 			--build-arg GIT_COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo "unknown") \
 			--target production \
 			-t $(EVENT_GATEWAY_CONTROLLER_IMAGE):$(VERSION) \

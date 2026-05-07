@@ -369,12 +369,19 @@ func (c *Client) Connect() error {
 				slog.Int("status_code", resp.StatusCode),
 			)
 
-			// Handle authentication failures
+			// Handle authentication failures with extra troubleshooting hint.
 			if resp.StatusCode == http.StatusUnauthorized {
 				c.logger.Error("Authentication failed - invalid or revoked token",
 					slog.String("troubleshooting", "Check GATEWAY_REGISTRATION_TOKEN environment variable"),
 				)
-				return fmt.Errorf("authentication failed: %w", err)
+			}
+
+			// Permanent (non-retryable) failures: bad credentials, wrong gateway
+			// identity, or version mismatch. Surface via wrapped sentinel so the
+			// connection loop can exit instead of looping forever.
+			if isPermanentControlPlaneStatus(resp.StatusCode) {
+				return fmt.Errorf("%w: websocket dial returned %d: %v",
+					errPermanentControlPlaneFailure, resp.StatusCode, err)
 			}
 		} else {
 			c.logger.Error("WebSocket connection failed",
@@ -1103,6 +1110,10 @@ func (c *Client) connectionLoop() {
 		// Attempt connection
 		err := c.Connect()
 		if err != nil {
+			if errors.Is(err, errPermanentControlPlaneFailure) {
+				c.exitOnPermanentFailure("websocket connect rejected by control plane", err)
+			}
+
 			c.logger.Warn("Connection failed, will retry",
 				slog.Any("error", err),
 				slog.Duration("retry_delay", c.state.NextRetryDelay),
@@ -3932,9 +3943,10 @@ func (c *Client) pushGatewayManifest(gatewayID string, policies []models.PolicyD
 	url := c.getRestAPIBaseURL() + "/gateways/" + gatewayID + "/manifest"
 
 	body := struct {
-		Version  string                    `json:"version,omitempty"`
-		Policies []models.PolicyDefinition `json:"policies"`
-	}{Version: version.Version, Policies: policies}
+		Version           string                    `json:"version,omitempty"`
+		FunctionalityType string                    `json:"functionalityType,omitempty"`
+		Policies          []models.PolicyDefinition `json:"policies"`
+	}{Version: version.Version, FunctionalityType: version.FunctionalityType, Policies: policies}
 
 	jsonData, err := json.Marshal(body)
 	if err != nil {
@@ -3965,6 +3977,10 @@ func (c *Client) pushGatewayManifest(gatewayID string, policies []models.PolicyD
 
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
+		if isPermanentControlPlaneStatus(resp.StatusCode) {
+			return fmt.Errorf("%w: gateway manifest push returned %d: %s",
+				errPermanentControlPlaneFailure, resp.StatusCode, string(bodyBytes))
+		}
 		return fmt.Errorf("gateway manifest push failed with status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 	return nil
@@ -4000,6 +4016,11 @@ func (c *Client) pushGatewayManifestOnConnect(gatewayID string) {
 		pushErr = c.pushGatewayManifest(gatewayID, policies)
 		if pushErr == nil {
 			break
+		}
+		// Permanent failures (e.g. 409 version mismatch) cannot be retried away —
+		// exit so the misconfiguration is surfaced via the container restart status.
+		if errors.Is(pushErr, errPermanentControlPlaneFailure) {
+			c.exitOnPermanentFailure("gateway manifest rejected by control plane", pushErr)
 		}
 		c.logger.Warn("Failed to push gateway manifest, retrying",
 			slog.String("gateway_id", gatewayID),
