@@ -23,6 +23,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -31,12 +32,14 @@ import (
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/pythonbridge/proto"
 )
 
 // StreamManager manages the persistent bidirectional stream to the Python executor.
 type StreamManager struct {
-	socketPath     string
+	address        string
+	isTCP          bool
 	dialContext    func(context.Context, string) (net.Conn, error)
 	conn           *grpc.ClientConn
 	client         proto.PythonExecutorServiceClient
@@ -51,10 +54,13 @@ type StreamManager struct {
 	connID         atomic.Uint64
 }
 
-// NewStreamManager creates a StreamManager for the given Unix-domain socket.
-func NewStreamManager(socketPath string) *StreamManager {
+// NewStreamManager creates a StreamManager for the given address.
+// If isTCP is true, the address is dialled as TCP (host:port);
+// otherwise it is treated as a Unix domain socket path.
+func NewStreamManager(address string, isTCP bool) *StreamManager {
 	return &StreamManager{
-		socketPath:     socketPath,
+		address:        address,
+		isTCP:          isTCP,
 		pendingReqs:    make(map[string]chan *proto.StreamResponse),
 		suppressedReqs: make(map[string]struct{}),
 	}
@@ -69,7 +75,7 @@ func (sm *StreamManager) Connect(ctx context.Context) error {
 		return nil
 	}
 
-	slogger := slog.With("component", "pythonbridge", "socket", sm.socketPath)
+	slogger := slog.With("component", "pythonbridge", "address", sm.address, "tcp", sm.isTCP)
 	slogger.InfoContext(ctx, "Connecting to Python Executor")
 
 	if sm.streamCancel != nil {
@@ -84,14 +90,21 @@ func (sm *StreamManager) Connect(ctx context.Context) error {
 
 	dialContext := sm.dialContext
 	if dialContext == nil {
-		dialContext = func(ctx context.Context, addr string) (net.Conn, error) {
-			var d net.Dialer
-			return d.DialContext(ctx, "unix", addr)
+		if sm.isTCP {
+			dialContext = func(ctx context.Context, addr string) (net.Conn, error) {
+				var d net.Dialer
+				return d.DialContext(ctx, "tcp", addr)
+			}
+		} else {
+			dialContext = func(ctx context.Context, addr string) (net.Conn, error) {
+				var d net.Dialer
+				return d.DialContext(ctx, "unix", addr)
+			}
 		}
 	}
 	conn, err := grpc.DialContext(
 		ctx,
-		sm.socketPath,
+		sm.address,
 		grpc.WithContextDialer(dialContext),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithBlock(),
@@ -456,31 +469,81 @@ func errorReason(err error) string {
 	return err.Error()
 }
 
-// pythonPolicyTimeout is resolved once at package init.
-var pythonPolicyTimeout = func() time.Duration {
-	if s := os.Getenv("PYTHON_POLICY_TIMEOUT"); s != "" {
-		if d, err := time.ParseDuration(s); err == nil {
-			return d
-		}
-	}
-	return 30 * time.Second
-}()
-
 func getTimeout() time.Duration {
-	return pythonPolicyTimeout
+	return pythonExecutorTimeout
 }
 
+const DefaultSocketPath = "/var/run/api-platform/python-executor.sock"
+
 var (
-	globalStreamManager *StreamManager
-	streamManagerOnce   sync.Once
+	pythonExecutorTimeout = 30 * time.Second
+	globalStreamManager   *StreamManager
+	streamManagerOnce     sync.Once
+	configuredAddress     = DefaultSocketPath
+	configuredIsTCP       = false
 )
 
-const pythonExecutorSocketPath = "/var/run/api-platform/python-executor.sock"
+// Init configures the Python executor bridge from the loaded configuration.
+// Must be called once from main before GetStreamManager is used.
+func Init(cfg config.PythonExecutorConfig) {
+	pythonExecutorTimeout = cfg.Timeout
+
+	address := cfg.Server.Path
+	if address == "" {
+		address = DefaultSocketPath
+	}
+	isTCP := false
+
+	mode := cfg.Server.Mode
+	if mode == "" {
+		mode = "uds"
+	}
+	if mode == "tcp" {
+		host := cfg.Server.Host
+		if host == "" {
+			host = "localhost"
+		}
+		address = net.JoinHostPort(host, strconv.Itoa(cfg.Server.Port))
+		isTCP = true
+	}
+
+	configuredAddress = address
+	configuredIsTCP = isTCP
+
+	streamManagerOnce.Do(func() {
+		globalStreamManager = NewStreamManager(configuredAddress, configuredIsTCP)
+	})
+
+	slog.Info("Python executor bridge initialized",
+		"address", address,
+		"mode", mode,
+		"timeout", cfg.Timeout,
+	)
+}
 
 // GetStreamManager returns the singleton StreamManager instance.
 func GetStreamManager() *StreamManager {
 	streamManagerOnce.Do(func() {
-		globalStreamManager = NewStreamManager(pythonExecutorSocketPath)
+		globalStreamManager = NewStreamManager(configuredAddress, configuredIsTCP)
 	})
 	return globalStreamManager
+}
+
+// IsAvailable reports whether a Python executor is configured.
+// Returns true if TCP mode is set (always considered available) or the
+// configured UDS socket exists on disk.
+func IsAvailable(cfg config.PythonExecutorConfig) bool {
+	mode := cfg.Server.Mode
+	if mode == "" {
+		mode = "uds"
+	}
+	if mode == "tcp" {
+		return true
+	}
+	address := cfg.Server.Path
+	if address == "" {
+		address = DefaultSocketPath
+	}
+	_, err := os.Stat(address)
+	return err == nil
 }

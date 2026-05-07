@@ -174,7 +174,7 @@ func TestStreamManagerExecuteCancellationSuppressesLateResponses(t *testing.T) {
 		}(req.GetRequestId())
 	})
 
-	sm := NewStreamManager("bufconn")
+	sm := NewStreamManager("bufconn", false)
 	sm.dialContext = func(context.Context, string) (net.Conn, error) {
 		return harness.listener.Dial()
 	}
@@ -214,7 +214,7 @@ func TestStreamManagerReconnectsAfterDisconnect(t *testing.T) {
 		}
 	})
 
-	sm := NewStreamManager("bufconn")
+	sm := NewStreamManager("bufconn", false)
 	sm.dialContext = func(context.Context, string) (net.Conn, error) {
 		return harness1.listener.Dial()
 	}
@@ -264,7 +264,7 @@ func BenchmarkStreamManagerNeedsMoreRoundTrip(b *testing.B) {
 		}
 	})
 
-	sm := NewStreamManager("bufconn")
+	sm := NewStreamManager("bufconn", false)
 	sm.dialContext = func(context.Context, string) (net.Conn, error) {
 		return harness.listener.Dial()
 	}
