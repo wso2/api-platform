@@ -34,8 +34,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// gatewayVersionPattern enforces `major.minor` (1–6 digits each) for the registration version field.
-var gatewayVersionPattern = regexp.MustCompile(`^[0-9]{1,6}\.[0-9]{1,6}$`)
+// gatewayVersionPattern accepts two shapes for the registration version field:
+//   - `major.minor`                          (e.g. "1.0")
+//   - `major.minor.patch-preview-<numbers>`  (e.g. "1.1.0-preview-202603",
+//     "1.1.0-preview-202603.1")
+var gatewayVersionPattern = regexp.MustCompile(`^[0-9]{1,6}\.[0-9]{1,6}(\.[0-9]{1,6}-preview-[0-9]+(\.[0-9]+)*)?$`)
 
 // GatewayHandler handles HTTP requests for gateway operations
 type GatewayHandler struct {
@@ -97,7 +100,7 @@ func (h *GatewayHandler) CreateGateway(c *gin.Context) {
 	}
 	if version != "" && !gatewayVersionPattern.MatchString(version) {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"version must be in 'major.minor' format (e.g. '1.0')"))
+			"version must be in 'major.minor' format (e.g. '1.0') or 'major.minor.patch-preview-<build>' format (e.g. '1.1.0-preview-202603' or '1.1.0-preview-202603.1')"))
 		return
 	}
 
