@@ -2,6 +2,14 @@
 
 The WSO2 API Platform Gateway Operator enables native Kubernetes deployment using a GitOps-friendly, operator-based model. It manages the full lifecycle of API gateways and REST APIs. You can use **either** platform CRDs **or** the **Kubernetes Gateway API** on the same operator build.
 
+Use this mode when you need:
+
+- Operator-driven reconciliation and drift correction.
+- GitOps-friendly CRD workflows.
+- A unified control surface for both API Platform CRDs and Kubernetes Gateway API resources.
+
+For mode comparison and overall context, see [`kubernetes-gateway-v2.md`](./kubernetes-gateway-v2.md).
+
 ## Overview
 
 ### Path A — Platform CRDs (`APIGateway` + `RestApi`)
@@ -38,19 +46,19 @@ The operator watches these CRs, runs Helm for the gateway runtime, and deploys A
 The operator requires cert-manager for TLS certificate management:
 
 ```sh
-helm upgrade --install \
-  cert-manager oci://quay.io/jetstack/charts/cert-manager \
-  --version v1.19.1 \
+helm repo add jetstack https://charts.jetstack.io --force-update
+helm repo update
+
+helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set crds.enabled=true \
-  --debug --wait --timeout 10m
+  --set crds.enabled=true
 ```
 
 ### 2. Install Gateway Operator
 
 ```sh
-helm install my-gateway-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-operator --version 0.6.0
+helm install my-gateway-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-operator --version 0.8.0
 ```
 
 ## Deploying an API Gateway
