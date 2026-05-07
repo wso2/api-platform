@@ -1,0 +1,404 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.5
+  name: llmprovidertemplates.gateway.api-platform.wso2.com
+spec:
+  group: gateway.api-platform.wso2.com
+  names:
+    kind: LlmProviderTemplate
+    listKind: LlmProviderTemplateList
+    plural: llmprovidertemplates
+    shortNames:
+    - llmpt
+    singular: llmprovidertemplate
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: LlmProviderTemplate is the Schema for the llmprovidertemplates
+          API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              LLMProviderTemplateData mirrors the management-API LLMProviderTemplateData
+              payload. The non-resource extractor fields apply when no resourceMappings
+              entry matches the request path.
+            properties:
+              completionTokens:
+                description: |-
+                  ExtractionIdentifier locates a value within an HTTP request or response.
+                  Mirrors the gateway-controller management API ExtractionIdentifier model.
+                properties:
+                  identifier:
+                    description: Identifier is a JSONPath expression or header name.
+                    type: string
+                  location:
+                    description: Location is where to look for the value.
+                    enum:
+                    - header
+                    - pathParam
+                    - payload
+                    - queryParam
+                    type: string
+                required:
+                - identifier
+                - location
+                type: object
+              displayName:
+                description: DisplayName is a human-readable LLM template name.
+                type: string
+              promptTokens:
+                description: |-
+                  ExtractionIdentifier locates a value within an HTTP request or response.
+                  Mirrors the gateway-controller management API ExtractionIdentifier model.
+                properties:
+                  identifier:
+                    description: Identifier is a JSONPath expression or header name.
+                    type: string
+                  location:
+                    description: Location is where to look for the value.
+                    enum:
+                    - header
+                    - pathParam
+                    - payload
+                    - queryParam
+                    type: string
+                required:
+                - identifier
+                - location
+                type: object
+              remainingTokens:
+                description: |-
+                  ExtractionIdentifier locates a value within an HTTP request or response.
+                  Mirrors the gateway-controller management API ExtractionIdentifier model.
+                properties:
+                  identifier:
+                    description: Identifier is a JSONPath expression or header name.
+                    type: string
+                  location:
+                    description: Location is where to look for the value.
+                    enum:
+                    - header
+                    - pathParam
+                    - payload
+                    - queryParam
+                    type: string
+                required:
+                - identifier
+                - location
+                type: object
+              requestModel:
+                description: |-
+                  ExtractionIdentifier locates a value within an HTTP request or response.
+                  Mirrors the gateway-controller management API ExtractionIdentifier model.
+                properties:
+                  identifier:
+                    description: Identifier is a JSONPath expression or header name.
+                    type: string
+                  location:
+                    description: Location is where to look for the value.
+                    enum:
+                    - header
+                    - pathParam
+                    - payload
+                    - queryParam
+                    type: string
+                required:
+                - identifier
+                - location
+                type: object
+              resourceMappings:
+                description: LLMProviderTemplateResourceMappings lists per-resource
+                  extraction mappings.
+                properties:
+                  resources:
+                    items:
+                      description: |-
+                        LLMProviderTemplateResourceMapping maps a resource path pattern to per-field
+                        extraction identifiers for a given LLM API resource.
+                      properties:
+                        completionTokens:
+                          description: |-
+                            ExtractionIdentifier locates a value within an HTTP request or response.
+                            Mirrors the gateway-controller management API ExtractionIdentifier model.
+                          properties:
+                            identifier:
+                              description: Identifier is a JSONPath expression or
+                                header name.
+                              type: string
+                            location:
+                              description: Location is where to look for the value.
+                              enum:
+                              - header
+                              - pathParam
+                              - payload
+                              - queryParam
+                              type: string
+                          required:
+                          - identifier
+                          - location
+                          type: object
+                        promptTokens:
+                          description: |-
+                            ExtractionIdentifier locates a value within an HTTP request or response.
+                            Mirrors the gateway-controller management API ExtractionIdentifier model.
+                          properties:
+                            identifier:
+                              description: Identifier is a JSONPath expression or
+                                header name.
+                              type: string
+                            location:
+                              description: Location is where to look for the value.
+                              enum:
+                              - header
+                              - pathParam
+                              - payload
+                              - queryParam
+                              type: string
+                          required:
+                          - identifier
+                          - location
+                          type: object
+                        remainingTokens:
+                          description: |-
+                            ExtractionIdentifier locates a value within an HTTP request or response.
+                            Mirrors the gateway-controller management API ExtractionIdentifier model.
+                          properties:
+                            identifier:
+                              description: Identifier is a JSONPath expression or
+                                header name.
+                              type: string
+                            location:
+                              description: Location is where to look for the value.
+                              enum:
+                              - header
+                              - pathParam
+                              - payload
+                              - queryParam
+                              type: string
+                          required:
+                          - identifier
+                          - location
+                          type: object
+                        requestModel:
+                          description: |-
+                            ExtractionIdentifier locates a value within an HTTP request or response.
+                            Mirrors the gateway-controller management API ExtractionIdentifier model.
+                          properties:
+                            identifier:
+                              description: Identifier is a JSONPath expression or
+                                header name.
+                              type: string
+                            location:
+                              description: Location is where to look for the value.
+                              enum:
+                              - header
+                              - pathParam
+                              - payload
+                              - queryParam
+                              type: string
+                          required:
+                          - identifier
+                          - location
+                          type: object
+                        resource:
+                          description: Resource is the resource path pattern this
+                            mapping applies to.
+                          type: string
+                        responseModel:
+                          description: |-
+                            ExtractionIdentifier locates a value within an HTTP request or response.
+                            Mirrors the gateway-controller management API ExtractionIdentifier model.
+                          properties:
+                            identifier:
+                              description: Identifier is a JSONPath expression or
+                                header name.
+                              type: string
+                            location:
+                              description: Location is where to look for the value.
+                              enum:
+                              - header
+                              - pathParam
+                              - payload
+                              - queryParam
+                              type: string
+                          required:
+                          - identifier
+                          - location
+                          type: object
+                        totalTokens:
+                          description: |-
+                            ExtractionIdentifier locates a value within an HTTP request or response.
+                            Mirrors the gateway-controller management API ExtractionIdentifier model.
+                          properties:
+                            identifier:
+                              description: Identifier is a JSONPath expression or
+                                header name.
+                              type: string
+                            location:
+                              description: Location is where to look for the value.
+                              enum:
+                              - header
+                              - pathParam
+                              - payload
+                              - queryParam
+                              type: string
+                          required:
+                          - identifier
+                          - location
+                          type: object
+                      required:
+                      - resource
+                      type: object
+                    type: array
+                type: object
+              responseModel:
+                description: |-
+                  ExtractionIdentifier locates a value within an HTTP request or response.
+                  Mirrors the gateway-controller management API ExtractionIdentifier model.
+                properties:
+                  identifier:
+                    description: Identifier is a JSONPath expression or header name.
+                    type: string
+                  location:
+                    description: Location is where to look for the value.
+                    enum:
+                    - header
+                    - pathParam
+                    - payload
+                    - queryParam
+                    type: string
+                required:
+                - identifier
+                - location
+                type: object
+              totalTokens:
+                description: |-
+                  ExtractionIdentifier locates a value within an HTTP request or response.
+                  Mirrors the gateway-controller management API ExtractionIdentifier model.
+                properties:
+                  identifier:
+                    description: Identifier is a JSONPath expression or header name.
+                    type: string
+                  location:
+                    description: Location is where to look for the value.
+                    enum:
+                    - header
+                    - pathParam
+                    - payload
+                    - queryParam
+                    type: string
+                required:
+                - identifier
+                - location
+                type: object
+            required:
+            - displayName
+            type: object
+          status:
+            description: |-
+              ResourceStatus carries the controller-managed lifecycle fields shared by
+              the new management-API CRDs.
+
+              For UUID-keyed kinds (Subscription, SubscriptionPlan, Certificate) the
+              gateway-controller assigns Id on first deploy; controllers persist it and
+              use it to address the resource for subsequent update/delete calls.
+            properties:
+              conditions:
+                description: |-
+                  Conditions represent the latest available observations of the
+                  resource's state. The standard types are Accepted and Programmed.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              id:
+                description: |-
+                  Id is the gateway-issued identifier for UUID-keyed resources. When
+                  set the controller addresses the resource via PUT/DELETE /<plural>/{id}.
+                type: string
+              lastUpdateTime:
+                description: LastUpdateTime is the last time the status was updated.
+                format: date-time
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

@@ -1,0 +1,35 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+
+# A Subscription binds an application to an API and (optionally) a plan.
+# The token is sourced from a Kubernetes Secret so the plaintext is never
+# stored in the CR; the operator forwards it to the gateway which only
+# persists its hash. The gateway-issued UUID is recorded in .status.id and
+# used for subsequent update/delete calls.
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Subscription
+metadata:
+  name: petstore-acme-bronze
+spec:
+  apiId: petstore-api-v1.0
+  subscriptionPlanId: bronze-1k-per-min
+  status: ACTIVE
+  subscriptionToken:
+    valueFrom:
+        name: petstore-acme-token
+        key: token
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: petstore-acme-token
+type: Opaque
+stringData:
+  token: replace-with-a-strong-token-of-at-least-36-characters

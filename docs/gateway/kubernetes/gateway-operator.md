@@ -131,6 +131,353 @@ kubectl apply -f https://raw.githubusercontent.com/wso2/api-platform/refs/heads/
 kubectl get restapi -n default -o json | jq '.items[0].status'
 ```
 
+## Management CRDs (LLM, MCP, API Key, Subscription)
+
+In addition to `RestApi`, the operator supports management-API-backed CRDs such as `ManagedSecret`, `LlmProviderTemplate`, `LlmProvider`, `LlmProxy`, `Mcp`, `ApiKey`, `SubscriptionPlan`, `Subscription`, and `Certificate`.
+
+These resources use the same gateway selection model as `RestApi` (labels + `APIGateway.spec.apiSelector`).
+
+### Shared prerequisites (YAML)
+
+Apply these once before the individual flows:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: demo-management-secrets
+  namespace: apigateway-demo
+type: Opaque
+stringData:
+  provider-token: demo-provider-token
+  managed-secret-value: demo-managed-secret-value
+  subscription-token: demo-subscription-token-1234567890-abcdef
+  apikey-value: demo-apikey-value-1234567890-abcdef
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: ManagedSecret
+metadata:
+  name: demo-managed-secret
+  namespace: apigateway-demo
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  displayName: demo-managed-secret
+  description: demo managed secret for CRD flow
+  value:
+    valueFrom:
+        name: demo-management-secrets
+        key: managed-secret-value
+```
+
+### Deploy LLMProviderTemplate, LLMProvider, LLMProxy.
+
+```yaml
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProviderTemplate
+metadata:
+  name: openai-test
+  namespace: apigateway-demo
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  displayName: OpenAI
+  promptTokens:
+    location: payload
+    identifier: $.usage.prompt_tokens
+  completionTokens:
+    location: payload
+    identifier: $.usage.completion_tokens
+  totalTokens:
+    location: payload
+    identifier: $.usage.total_tokens
+  remainingTokens:
+    location: header
+    identifier: x-ratelimit-remaining-tokens
+  requestModel:
+    location: payload
+    identifier: $.model
+  responseModel:
+    location: payload
+    identifier: $.model
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProvider
+metadata:
+  name: demo-llm-provider
+  namespace: apigateway-demo
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  displayName: OpenAI Provider
+  version: v1.0
+  template: openai-test
+  context: /llm-invoke-context
+  accessControl:
+    mode: allow_all
+  upstream:
+    url: http://mock-openapi:4010/openai/v1
+    auth:
+      type: api-key
+      header: Authorization
+      value:
+        value: Bearer sk-test-key
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProxy
+metadata:
+  name: demo-llm-proxy
+  namespace: apigateway-demo
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  displayName: Lifecycle LLM Proxy
+  version: v1.0
+  context: /proxy-invoke-test
+  provider:
+    id: demo-llm-provider
+```
+
+Sample verification curls (after CRs are `Programmed` and gateway runtime is reachable):
+
+```sh
+# LlmProvider context
+curl -sS -k \
+  -H 'Content-Type: application/json' \
+  --request POST \
+  --url 'https://localhost:8443/llm-invoke-context/chat/completions' \
+  --data '{
+    "model": "gpt-4",
+    "messages": [{"role":"user","content":"Hello from provider test"}]
+  }'
+
+# LlmProxy context
+curl -sS -k \
+  -H 'Content-Type: application/json' \
+  --request POST \
+  --url 'https://localhost:8443/proxy-invoke-test/chat/completions' \
+  --data '{
+    "model": "gpt-4",
+    "messages": [{"role":"user","content":"Hello from proxy test"}]
+  }'
+```
+
+### Deploy MCP
+
+```yaml
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Mcp
+metadata:
+  name: everything-mcp-v1.0
+  namespace: apigateway-demo
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  displayName: Everything
+  version: v1.0
+  context: /everything
+  specVersion: "2025-06-18"
+  upstream:
+    url: http://mcp-server-backend:3001
+  tools: []
+  resources: []
+  prompts: []
+```
+
+Sample verification curls:
+
+```sh
+# 1) initialize and capture headers (for mcp-session-id)
+curl -sS -k -D /tmp/mcp-init-headers.txt \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  --request POST \
+  --url 'https://localhost:8443/everything/mcp' \
+  --data '{
+    "jsonrpc":"2.0",
+    "id":1,
+    "method":"initialize",
+    "params":{
+      "protocolVersion":"2025-06-18",
+      "capabilities":{"roots":{"listChanged":true}},
+      "clientInfo":{"name":"gateway-it-client","version":"1.0.0"}
+    }
+  }'
+
+SESSION_ID="$(awk 'BEGIN{IGNORECASE=1} /^mcp-session-id:/ {print $2}' /tmp/mcp-init-headers.txt | tr -d '\r')"
+echo "SESSION_ID=$SESSION_ID"
+
+# 2) tools/call using the same session
+curl -sS -k \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H "mcp-session-id: ${SESSION_ID}" \
+  --request POST \
+  --url 'https://localhost:8443/everything/mcp' \
+  --data '{
+    "jsonrpc":"2.0",
+    "id":2,
+    "method":"tools/call",
+    "params":{
+      "name":"add",
+      "arguments":{"a":40,"b":60}
+    }
+  }'
+```
+
+### Deploy RESTAPI with API Key
+
+```yaml
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: hello-apikey-api
+  namespace: apigateway-demo
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  displayName: hello-apikey-api
+  version: v1.0
+  context: /hello-apikey
+  upstream:
+    main:
+      url: http://hello-backend.apigateway-demo.svc.cluster.local:9080
+  policies:
+    - name: api-key-auth
+      version: v1
+      params:
+        key: X-API-Key
+        in: header
+  operations:
+    - method: GET
+      path: /test
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: ApiKey
+metadata:
+  name: demo-restapi-apikey
+  namespace: apigateway-demo
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  parentRef:
+    kind: RestApi
+    name: hello-apikey-api
+  displayName: demo key for rest api parent
+  apiKey:
+    valueFrom:
+        name: demo-management-secrets
+        key: apikey-value
+  expiresIn:
+    duration: 30
+    unit: days
+```
+
+Sample verification curls:
+
+```sh
+# Wrong key should be rejected (typically 401)
+curl --request GET \
+  --url https://localhost:8443/hello-apikey/test \
+  --header 'Accept: application/json' \
+  --header 'X-API-Key: wrong-api-key-not-valid' \
+  -k -i
+
+# Correct key should pass (200)
+curl --request GET \
+  --url https://localhost:8443/hello-apikey/test \
+  --header 'Accept: application/json' \
+  --header 'X-API-Key: demo-apikey-value-1234567890-abcdef' \
+  -k
+```
+
+### Deploy REST API with Subscriptions.
+
+```yaml
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: hello-sub-api
+  namespace: apigateway-demo
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  displayName: hello-sub-api
+  version: v1.0
+  context: /hello-sub
+  upstream:
+    main:
+      url: http://hello-backend.apigateway-demo.svc.cluster.local:9080
+  policies:
+    - name: subscription-validation
+      version: v1
+      params:
+        subscriptionKeyHeader: "My-Key"
+  operations:
+    - method: GET
+      path: /new
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: SubscriptionPlan
+metadata:
+  name: demo-plan
+  namespace: apigateway-demo
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  planName: demo-plan
+  status: ACTIVE
+  stopOnQuotaReach: true
+  throttleLimitCount: 1000
+  throttleLimitUnit: Min
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Subscription
+metadata:
+  name: demo-subscription
+  namespace: apigateway-demo
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  apiId: hello-sub-api
+  subscriptionPlanId: demo-plan
+  status: ACTIVE
+  subscriptionToken:
+    valueFrom:
+        name: demo-management-secrets
+        key: subscription-token
+```
+
+Sample verification curls:
+
+```sh
+# No key should be rejected (401/403 depending on gateway response mapping)
+curl --request GET \
+  --url https://localhost:8443/hello-sub/new \
+  --header 'Accept: application/json' \
+  -k -i
+
+# Wrong key should be rejected (401/403)
+curl --request GET \
+  --url https://localhost:8443/hello-sub/new \
+  --header 'Accept: application/json' \
+  --header 'My-Key: wrong-subscription-token-not-valid' \
+  -k -i
+
+# Correct subscription token should pass (200)
+curl --request GET \
+  --url https://localhost:8443/hello-sub/new \
+  --header 'Accept: application/json' \
+  --header 'My-Key: demo-subscription-token-1234567890-abcdef' \
+  -k
+```
+
+### Validation notes
+
+- `Subscription.spec.subscriptionPlanId` can be a literal ID or a `SubscriptionPlan` CR name.
+- `ApiKey.spec.parentRef.kind` supports `RestApi`, `LlmProvider`, and `LlmProxy`.
+- `ApiKey.spec.expiresAt` and `ApiKey.spec.expiresIn` are mutually exclusive (CEL validation rejects both together).
+
 ### Test API Endpoints
 
 **`RestApi` / APIGateway-managed API** (example context `/test`, operation `GET /info`):

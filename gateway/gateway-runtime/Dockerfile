@@ -134,6 +134,8 @@ COPY --from=policy-compiler /api-platform/output/gateway-controller/policies /
 # pip, venv, and git are installed here only — they are NOT copied to production.
 FROM envoyproxy/envoy:v1.37.1 AS python-deps
 
+ARG PYTHON_SDK_SOURCE=pypi
+
 USER root
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
@@ -143,14 +145,29 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     python3-pip \
     python3-venv
 
+# Copy local SDK source (always available; used only when PYTHON_SDK_SOURCE=local)
+COPY --from=sdk-python . /tmp/sdk-python
+
 COPY --from=policy-compiler /api-platform/output/python-executor/requirements.txt /tmp/requirements.txt
 
 # Upgrade pip and setuptools so PEP 621 (pyproject.toml) and recent git dependencies are supported
 RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel
 
-RUN pip3 install --no-cache-dir \
-    --target /app/python-libs \
-    -r /tmp/requirements.txt
+# Install Python dependencies.
+# - "pypi" mode (default): install everything from requirements.txt (SDK from PyPI).
+# - "local" mode: install SDK from monorepo source + remaining deps in one transaction.
+#   pip resolves the local SDK against the apip-sdk-core constraint in requirements.txt,
+#   so version conflicts fail-fast rather than silently diverging.
+RUN if [ "$PYTHON_SDK_SOURCE" = "local" ]; then \
+        pip3 install --no-cache-dir --target /app/python-libs \
+            /tmp/sdk-python -r /tmp/requirements.txt; \
+    elif [ "$PYTHON_SDK_SOURCE" = "pypi" ]; then \
+        pip3 install --no-cache-dir --target /app/python-libs \
+            -r /tmp/requirements.txt; \
+    else \
+        echo "ERROR: invalid PYTHON_SDK_SOURCE=$PYTHON_SDK_SOURCE; expected 'local' or 'pypi'" >&2; \
+        exit 1; \
+    fi
 
 # Generate locked requirements with exact installed versions.
 # pip freeze --path reports only packages in the specified directory,

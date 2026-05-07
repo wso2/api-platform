@@ -1,0 +1,30 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+
+# An ApiKey provisions an API key under a parent resource (RestApi,
+# LlmProvider, or LlmProxy). The operator translates the
+# spec.parentRef into the nested gateway-controller path, e.g.
+#
+#   /rest-apis/<parentName>/api-keys/<metadata.name>
+#
+# The optional spec.apiKey lets clients ship pre-generated keys; omit the
+# field to let the gateway-controller generate the value on POST.
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: ApiKey
+metadata:
+  name: petstore-key-acme
+spec:
+  parentRef:
+    kind: RestApi
+    name: petstore-api-v1.0
+  displayName: ACME corporate key
+  expiresIn:
+    duration: 30
+    unit: days

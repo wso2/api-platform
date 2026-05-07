@@ -1,0 +1,61 @@
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: ApiKey
+metadata:
+  name: demo-restapi-apikey
+  namespace: apigateway-demo
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  parentRef:
+    kind: RestApi
+    name: hello-apikey-api
+  displayName: demo key for rest api parent
+  apiKey:
+    valueFrom:
+        name: demo-management-secrets
+        key: apikey-restapi-value
+  expiresIn:
+    duration: 30
+    unit: days
+
+# LLM flow with API-key-protected invoke paths.
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: ApiKey
+metadata:
+  name: demo-llmprovider-apikey
+  namespace: apigateway-demo
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  parentRef:
+    kind: LlmProvider
+    name: demo-llm-provider-apikey
+  displayName: demo key for llm provider parent
+  apiKey:
+    valueFrom:
+        name: demo-management-secrets
+        key: apikey-llmprovider-value
+  expiresIn:
+    duration: 30
+    unit: days
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: ApiKey
+metadata:
+  name: demo-llmproxy-apikey
+  namespace: apigateway-demo
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  parentRef:
+    kind: LlmProxy
+    name: demo-llm-proxy-apikey
+  displayName: demo key for llm proxy parent
+  apiKey:
+    valueFrom:
+        name: demo-management-secrets
+        key: apikey-llmproxy-value
+  expiresIn:
+    duration: 30
+    unit: days

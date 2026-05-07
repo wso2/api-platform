@@ -1,0 +1,17 @@
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Mcp
+metadata:
+  name: everything-mcp-v1.0
+  namespace: apigateway-demo
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  displayName: Everything
+  version: v1.0
+  context: /everything
+  specVersion: "2025-06-18"
+  upstream:
+    url: http://mcp-server-backend:3001
+  tools: []
+  resources: []
+  prompts: []

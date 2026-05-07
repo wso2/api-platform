@@ -1,0 +1,24 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+
+# A SubscriptionPlan defines rate limits and access tiers for API
+# subscriptions. The gateway-controller assigns a UUID id on first POST
+# which the operator persists to .status.id and uses for subsequent
+# update/delete calls.
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: SubscriptionPlan
+metadata:
+  name: bronze-1k-per-min
+spec:
+  planName: Bronze
+  status: active
+  stopOnQuotaReach: true
+  throttleLimitCount: 1000
+  throttleLimitUnit: minutes

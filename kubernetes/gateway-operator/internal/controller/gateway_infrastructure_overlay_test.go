@@ -128,7 +128,7 @@ func TestApplyInfrastructureOverlayToValues_OverridesServiceType(t *testing.T) {
 func TestApplyInfrastructureOverlayToValues_PropagatesAnnotationsAndLabels(t *testing.T) {
 	gw := gatewayWithInfrastructure(
 		map[string]string{
-			AnnK8sGatewayServiceType: "LoadBalancer",
+			AnnK8sGatewayServiceType:                              "LoadBalancer",
 			"service.beta.kubernetes.io/aws-load-balancer-type":   "external",
 			"service.beta.kubernetes.io/aws-load-balancer-scheme": "internet-facing",
 		},
