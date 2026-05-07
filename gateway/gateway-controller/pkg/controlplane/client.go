@@ -3943,10 +3943,10 @@ func (c *Client) pushGatewayManifest(gatewayID string, policies []models.PolicyD
 	url := c.getRestAPIBaseURL() + "/gateways/" + gatewayID + "/manifest"
 
 	body := struct {
-		Version     string                    `json:"version,omitempty"`
-		GatewayType string                    `json:"gatewayType,omitempty"`
-		Policies    []models.PolicyDefinition `json:"policies"`
-	}{Version: version.Version, GatewayType: version.GatewayType, Policies: policies}
+		Version           string                    `json:"version,omitempty"`
+		FunctionalityType string                    `json:"functionalityType,omitempty"`
+		Policies          []models.PolicyDefinition `json:"policies"`
+	}{Version: version.Version, FunctionalityType: version.FunctionalityType, Policies: policies}
 
 	jsonData, err := json.Marshal(body)
 	if err != nil {

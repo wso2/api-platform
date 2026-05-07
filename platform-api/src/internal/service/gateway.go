@@ -149,17 +149,17 @@ func extractMajorMinor(raw string) string {
 	return strconv.Itoa(major) + "." + strconv.Itoa(minor)
 }
 
-// legacyGatewayType is reported when the gateway controller does not include a
-// "gatewayType" field in the manifest payload (pre-1.1.0 builds).
-const legacyGatewayType = "regular"
+// legacyFunctionalityType is reported when the gateway controller does not include a
+// "functionalityType" field in the manifest payload (pre-1.1.0 builds).
+const legacyFunctionalityType = "regular"
 
 // ReceiveGatewayManifest stores the manifest posted by the gateway controller on connect.
 // All policies are stored with name and version; customer-managed policies include policy_definition.
 // gatewayVersion is the controller's reported build version; an empty string means the controller
 // is on a legacy build (pre-1.1.0) that does not send a version — assumed to be "1.0.0".
-// gatewayType is the controller's flavor ("regular", "event", ...); empty is treated as "regular".
-// The reported major.minor and gateway type must match the registered values, otherwise the manifest is rejected.
-func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion, gatewayType string, policies []GatewayPolicyInput) error {
+// functionalityType is the controller's flavor ("regular", "event", ...); empty is treated as "regular".
+// The reported major.minor and functionality type must match the registered values, otherwise the manifest is rejected.
+func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion, functionalityType string, policies []GatewayPolicyInput) error {
 	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
 	if err != nil {
 		return fmt.Errorf("failed to get gateway: %w", err)
@@ -181,12 +181,12 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion
 		return fmt.Errorf("%w: registered=%s, reported=%s", constants.ErrGatewayVersionMismatch, registeredMinor, reportedMinor)
 	}
 
-	reportedType := strings.TrimSpace(gatewayType)
+	reportedType := strings.TrimSpace(functionalityType)
 	if reportedType == "" {
-		reportedType = legacyGatewayType
+		reportedType = legacyFunctionalityType
 	}
 	if reportedType != gateway.FunctionalityType {
-		return fmt.Errorf("%w: registered=%s, reported=%s", constants.ErrGatewayTypeMismatch, gateway.FunctionalityType, reportedType)
+		return fmt.Errorf("%w: registered=%s, reported=%s", constants.ErrGatewayFunctionalityTypeMismatch, gateway.FunctionalityType, reportedType)
 	}
 
 	entries := make([]GatewayPolicyDefinition, 0, len(policies))
@@ -229,7 +229,7 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion
 		slog.String("org_id", orgID),
 		slog.String("gateway_id", gatewayID),
 		slog.String("gateway_version", reported),
-		slog.String("gateway_type", reportedType),
+		slog.String("functionality_type", reportedType),
 		slog.Int("total_policy_count", len(entries)),
 		slog.Int("customer_policy_count", customerCount),
 	)

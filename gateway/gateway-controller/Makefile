@@ -20,11 +20,11 @@
 
 # Version management
 VERSION ?= $(shell cat ../VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
-GATEWAY_TYPE ?= regular
+FUNCTIONALITY_TYPE ?= regular
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 VERSION_PKG := github.com/wso2/api-platform/gateway/gateway-controller/pkg/version
-LDFLAGS := -X $(VERSION_PKG).Version=$(VERSION) -X $(VERSION_PKG).GatewayType=$(GATEWAY_TYPE) -X $(VERSION_PKG).GitCommit=$(GIT_COMMIT) -X $(VERSION_PKG).BuildDate=$(BUILD_DATE)
+LDFLAGS := -X $(VERSION_PKG).Version=$(VERSION) -X $(VERSION_PKG).FunctionalityType=$(FUNCTIONALITY_TYPE) -X $(VERSION_PKG).GitCommit=$(GIT_COMMIT) -X $(VERSION_PKG).BuildDate=$(BUILD_DATE)
 
 # Docker image configuration
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
@@ -81,7 +81,7 @@ build: generate-server-code test ## Build Docker image using buildx
 		--build-context build-manifest=.. \
 		--build-context policies=$(POLICIES_BUILD_CONTEXT) \
 		--build-arg VERSION=$(VERSION) \
-		--build-arg GATEWAY_TYPE=$(GATEWAY_TYPE) \
+		--build-arg FUNCTIONALITY_TYPE=$(FUNCTIONALITY_TYPE) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--target production \
 		-t $(IMAGE_NAME):$(VERSION) \
@@ -105,7 +105,7 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 		--build-context policies=$(POLICIES_BUILD_CONTEXT) \
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
-		--build-arg GATEWAY_TYPE=$(GATEWAY_TYPE) \
+		--build-arg FUNCTIONALITY_TYPE=$(FUNCTIONALITY_TYPE) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--target production \
 		-t $(IMAGE_NAME):$(VERSION) \
@@ -121,7 +121,7 @@ build-coverage-image: test ## Build coverage-instrumented gateway-controller ima
 		--build-context build-manifest=.. \
 		--build-context policies=$(POLICIES_BUILD_CONTEXT) \
 		--build-arg VERSION=$(VERSION) \
-		--build-arg GATEWAY_TYPE=$(GATEWAY_TYPE) \
+		--build-arg FUNCTIONALITY_TYPE=$(FUNCTIONALITY_TYPE) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg ENABLE_COVERAGE=true \
 		--target production \
@@ -137,7 +137,7 @@ build-debug: ## Build debug image for remote debugging with dlv (VS Code attach 
 		--build-context build-manifest=.. \
 		--build-context policies=$(POLICIES_BUILD_CONTEXT) \
 		--build-arg VERSION=$(VERSION) \
-		--build-arg GATEWAY_TYPE=$(GATEWAY_TYPE) \
+		--build-arg FUNCTIONALITY_TYPE=$(FUNCTIONALITY_TYPE) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg ENABLE_DEBUG=true \
 		--target debug \

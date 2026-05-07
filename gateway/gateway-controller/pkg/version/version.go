@@ -13,8 +13,8 @@
 package version
 
 var (
-	Version     = "1.0.0"
-	GatewayType = "regular"
-	GitCommit   = "unknown"
-	BuildDate   = "unknown"
+	Version           = "1.0.0"
+	FunctionalityType = "regular"
+	GitCommit         = "unknown"
+	BuildDate         = "unknown"
 )
