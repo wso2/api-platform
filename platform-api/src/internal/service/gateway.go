@@ -455,14 +455,19 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, 
 		return nil, err
 	}
 
-	if strings.TrimSpace(version) == "" {
+	version = strings.TrimSpace(version)
+	if version == "" {
 		version = defaultGatewayVersion
 	}
-	// Canonicalize so equality checks against controller-reported versions
+	// Preview versions (e.g. "1.1.0-preview-202603") are persisted verbatim so
+	// the exact build is preserved. Stable versions are canonicalized to
+	// `major.minor` so equality checks against controller-reported versions
 	// (also normalized via extractMajorMinor) cannot diverge over leading
 	// zeros or other lexical variants.
-	if canonical := extractMajorMinor(version); canonical != "" {
-		version = canonical
+	if !strings.Contains(version, "-preview") {
+		if canonical := extractMajorMinor(version); canonical != "" {
+			version = canonical
+		}
 	}
 
 	// 2. Validate organization exists
