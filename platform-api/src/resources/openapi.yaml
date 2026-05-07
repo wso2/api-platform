@@ -6140,8 +6140,8 @@ components:
           example: {"region": "us-west", "tier": "premium"}
         version:
           type: string
-          pattern: '^[0-9]{1,6}\.[0-9]{1,6}$'
-          description: Gateway version in `major.minor` format. Defaults to `1.0` if not provided.
+          pattern: '^[0-9]{1,6}\.[0-9]{1,6}(\.[0-9]{1,6}-preview-[0-9]+(\.[0-9]+)*)?$'
+          description: Gateway version in `major.minor` format (e.g. `1.0`) or `major.minor.patch-preview-<build>` format (e.g. `1.1.0-preview-202603` or `1.1.0-preview-202603.1`). Defaults to `1.0` if not provided.
           default: "1.0"
           example: "1.0"
     CustomPolicyResponse:
@@ -6276,7 +6276,7 @@ components:
           example: "regular"
         version:
           type: string
-          description: Gateway version in `major.minor` format
+          description: Gateway version in `major.minor` format (e.g. `1.0`) or `major.minor.patch-preview-<build>` format (e.g. `1.1.0-preview-202603` or `1.1.0-preview-202603.1`)
           example: "1.0"
         isActive:
           type: boolean
