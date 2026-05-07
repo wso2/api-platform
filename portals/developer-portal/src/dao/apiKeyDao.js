@@ -92,4 +92,12 @@ async function setApplication(orgId, keyId, appId, updatedBy, transaction, { act
     return true;
 }
 
-module.exports = { create, get, list, revoke, setApplication };
+async function updateExpiry(orgId, keyId, expiresAt, updatedBy, transaction) {
+    const [count] = await APIKey.update(
+        { expires_at: expiresAt, updated_by: updatedBy },
+        { where: { uuid: keyId, org_uuid: orgId, status: constants.API_KEY_STATUS.ACTIVE }, transaction }
+    );
+    return count > 0;
+}
+
+module.exports = { create, get, list, revoke, setApplication, updateExpiry };

@@ -2498,7 +2498,9 @@ components:
                 name: weather_sandbox_key
     ApiKeyRegenerateBody:
       required: true
-      description: Identifies the API key to regenerate by its `keyId`.
+      description: >-
+        Identifies the API key to regenerate by its `keyId`. `expiresAt` is optional and, if provided,
+        updates the key's expiry; the key's `name` cannot be changed by this operation.
       content:
         application/json:
           schema:
@@ -2510,6 +2512,12 @@ components:
                 type: string
                 description: Developer Portal key ID returned by generate or list.
                 example: key-12345
+              expiresAt:
+                type: string
+                description: >-
+                  New expiry for the key. Can be an ISO-8601 datetime with timezone, epoch seconds, or
+                  epoch milliseconds. Omit to leave the current expiry unchanged.
+                example: "2027-01-01T00:00:00Z"
             additionalProperties: true
           example:
             keyId: key-12345
@@ -4200,6 +4208,12 @@ components:
       required:
         - planId
       properties:
+        apiId:
+          type: string
+          description: >-
+            Developer Portal API ID the subscription belongs to. Optional — used as a fallback when
+            the API cannot be derived from the subscription record.
+          example: api-5f2b8c1a
         planId:
           type: string
           description: Developer Portal subscription plan ID to switch to.

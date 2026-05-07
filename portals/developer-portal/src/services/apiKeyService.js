@@ -209,13 +209,17 @@ async function generate({ orgId, apiId, subscriptionId, appId, name, expiresAt, 
  * Regenerate an existing key: same keyId, new secret, status stays ACTIVE.
  * The old secret is silently invalidated by whatever consumes the webhook event.
  */
-async function regenerate({ orgId, apiId, keyId, actor }) {
+async function regenerate({ orgId, apiId, keyId, expiresAt, actor }) {
     if (config.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
     const existing = await apiKeyDao.get(orgId, keyId);
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
     if (apiId && existing.api_uuid !== apiId) throw Object.assign(new Error('API key not found'), { status: 404 });
     if (existing.status === constants.API_KEY_STATUS.REVOKED) throw Object.assign(new Error('Cannot regenerate a revoked key'), { status: 409 });
+
+    const expiry = parseExpiresAt(expiresAt);
+    if (!expiry.ok) throw Object.assign(new Error(expiry.description), { status: 400 });
+    const newExpiresAt = expiresAt === undefined ? existing.expires_at : expiry.date;
 
     const apiInfo = await resolveApiDirect(orgId, existing.api_uuid);
     let plaintext = generateSecret();
@@ -224,11 +228,16 @@ async function regenerate({ orgId, apiId, keyId, actor }) {
 
     try {
         await sequelize.transaction(async (t) => {
+            if (expiresAt !== undefined) {
+                const updated = await apiKeyDao.updateExpiry(orgId, keyId, newExpiresAt, actor, t);
+                if (!updated) throw Object.assign(new Error('Cannot regenerate a revoked key'), { status: 409 });
+            }
+
             await publish('apikey.regenerated',
                 {
                     key_id: keyId,
                     name: existing.name,
-                    expires_at: existing.expires_at ? new Date(existing.expires_at).toISOString() : null,
+                    expires_at: newExpiresAt ? new Date(newExpiresAt).toISOString() : null,
                     api: { name: apiInfo ? apiInfo.name : null, version: apiInfo ? apiInfo.version : null, ref_id: apiInfo ? apiInfo.refId : '' },
                     ...(subscription && { subscription }),
                     ...(application && { application })
@@ -243,7 +252,7 @@ async function regenerate({ orgId, apiId, keyId, actor }) {
     }
 
     logger.info('API key regenerated', { keyId, orgId, actor });
-    return { keyId, name: existing.name, key: plaintext, expiresAt: existing.expires_at, status: constants.API_KEY_STATUS.ACTIVE };
+    return { keyId, name: existing.name, key: plaintext, expiresAt: newExpiresAt, status: constants.API_KEY_STATUS.ACTIVE };
 }
 
 /**

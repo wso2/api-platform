@@ -218,7 +218,7 @@ const updateSubscription = async (req, res) => {
 const changePlan = async (req, res) => {
     const orgId = req.orgId;
     const subscriptionId = req.params.subId;
-    const { planId: reqPlanId } = req.body;
+    const { apiId: reqApiId, planId: reqPlanId } = req.body;
 
     try {
         const existing = await subDao.get(orgId, subscriptionId, req.user.sub);
@@ -228,10 +228,15 @@ const changePlan = async (req, res) => {
             });
         }
 
-        const apiId = existing.dp_api_metadata ? existing.dp_api_metadata.uuid : null;
+        const apiId = existing.api_uuid || (existing.dp_api_metadata ? existing.dp_api_metadata.uuid : null) || null;
         if (!apiId) {
             return res.status(400).json({
                 code: '400', message: 'Bad Request', description: 'API not found for this subscription',
+            });
+        }
+        if (reqApiId && reqApiId !== apiId) {
+            return res.status(400).json({
+                code: '400', message: 'Bad Request', description: 'apiId does not match this subscription',
             });
         }
 

@@ -168,7 +168,7 @@ async function runPendingPlanSwitch(orgId, apiId, planName, displayName, subscri
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
-                body: JSON.stringify({ planId }),
+                body: JSON.stringify({ apiId, planId }),
             }
         );
 
