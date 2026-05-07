@@ -152,6 +152,10 @@ RUN pip3 install --no-cache-dir \
     --target /app/python-libs \
     -r /tmp/requirements.txt
 
+# Generate locked requirements with exact installed versions.
+# pip freeze --path reports only packages in the specified directory,
+RUN pip3 freeze --path /app/python-libs > /app/python-libs/requirements-lock.txt
+
 # Stage 3b: dlv installer (builds dlv for the debug stage)
 FROM golang:1.26.2-bookworm AS debug-dlv-builder
 RUN --mount=type=cache,target=/go/pkg/mod \
