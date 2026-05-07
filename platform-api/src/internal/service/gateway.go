@@ -117,9 +117,11 @@ func (s *GatewayService) GetStoredManifest(gatewayID, orgID string) (*Manifest, 
 // "version" field in the manifest payload. v1.0.0 was the only such release.
 const legacyGatewayVersion = "1.0.0"
 
-// extractMajorMinor parses a version string and returns its `major.minor` form.
-// Pre-release / build metadata (after `-` or `+`) is stripped. If only a major
-// is present (e.g. "2"), `.0` is appended. Empty input returns an empty string.
+// extractMajorMinor parses a version string and returns its canonical
+// `major.minor` form (numeric, no leading zeros). Pre-release / build metadata
+// (after `-` or `+`) is stripped. If only a major is present (e.g. "2"), the
+// minor defaults to 0. Returns an empty string if the input is empty or the
+// numeric segments cannot be parsed.
 func extractMajorMinor(raw string) string {
 	v := strings.TrimSpace(raw)
 	if v == "" {
@@ -129,14 +131,22 @@ func extractMajorMinor(raw string) string {
 		v = v[:i]
 	}
 	parts := strings.Split(v, ".")
-	switch len(parts) {
-	case 0:
+	if len(parts) == 0 || parts[0] == "" {
 		return ""
-	case 1:
-		return parts[0] + ".0"
-	default:
-		return parts[0] + "." + parts[1]
 	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return ""
+	}
+	minor := 0
+	if len(parts) >= 2 && parts[1] != "" {
+		m, err := strconv.Atoi(parts[1])
+		if err != nil {
+			return ""
+		}
+		minor = m
+	}
+	return strconv.Itoa(major) + "." + strconv.Itoa(minor)
 }
 
 // legacyGatewayType is reported when the gateway controller does not include a
@@ -447,6 +457,12 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, 
 
 	if strings.TrimSpace(version) == "" {
 		version = defaultGatewayVersion
+	}
+	// Canonicalize so equality checks against controller-reported versions
+	// (also normalized via extractMajorMinor) cannot diverge over leading
+	// zeros or other lexical variants.
+	if canonical := extractMajorMinor(version); canonical != "" {
+		version = canonical
 	}
 
 	// 2. Validate organization exists
