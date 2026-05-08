@@ -250,6 +250,7 @@ COPY --from=policy-compiler /api-platform/output/python-executor/ /app/python-ex
 # Copy pre-installed Python dependencies from the python-deps stage.
 # pip and venv are NOT present in this image — only the installed packages.
 COPY --from=python-deps /app/python-libs/ /app/python-libs/
+RUN ln -s /app/python-libs/requirements-lock.txt /app/python-requirements-lock.txt
 
 # Set PYTHONPATH so Python can find the libs and executor modules
 ENV PYTHONPATH="/app/python-libs:/app/python-executor"
