@@ -141,11 +141,17 @@ func TestHandlerHandleResources_UpdatesOnlyChangedBinding(t *testing.T) {
 		t.Fatalf("updated HandleResources returned error: %v", err)
 	}
 
-	if got := manager.removedNames(); len(got) != 1 || got[0] != "githubser" {
-		t.Fatalf("expected only githubser to be removed on change, got %#v", got)
+	if got := len(manager.updated); got != 1 {
+		t.Fatalf("expected exactly one update call, got %d", got)
 	}
-	if got := manager.addedCount("githubser"); got != 2 {
-		t.Fatalf("expected githubser to be added twice, got %d", got)
+	if manager.updated[0].old.Name != "githubser" || manager.updated[0].new.Name != "githubser" {
+		t.Fatalf("unexpected update binding names: %#v", manager.updated[0])
+	}
+	if got := manager.removedNames(); len(got) != 0 {
+		t.Fatalf("expected no removals on delta update, got %#v", got)
+	}
+	if got := manager.addedCount("githubser"); got != 1 {
+		t.Fatalf("expected githubser to be added once, got %d", got)
 	}
 	if got := manager.addedCount("gitlabser"); got != 1 {
 		t.Fatalf("expected gitlabser to be added once, got %d", got)
@@ -155,6 +161,12 @@ func TestHandlerHandleResources_UpdatesOnlyChangedBinding(t *testing.T) {
 type recordingBindingManager struct {
 	added   []string
 	removed []string
+	updated []updatedBindingCall
+}
+
+type updatedBindingCall struct {
+	old binding.WebSubApiBinding
+	new binding.WebSubApiBinding
 }
 
 func (m *recordingBindingManager) AddWebSubApiBinding(wsb binding.WebSubApiBinding) error {
@@ -164,6 +176,11 @@ func (m *recordingBindingManager) AddWebSubApiBinding(wsb binding.WebSubApiBindi
 
 func (m *recordingBindingManager) RemoveWebSubApiBinding(name string) error {
 	m.removed = append(m.removed, name)
+	return nil
+}
+
+func (m *recordingBindingManager) UpdateWebSubApiBinding(oldWSB, newWSB binding.WebSubApiBinding) error {
+	m.updated = append(m.updated, updatedBindingCall{old: oldWSB, new: newWSB})
 	return nil
 }
 

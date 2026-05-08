@@ -55,6 +55,18 @@ type Server struct {
 
 	// API key configurations
 	APIKey APIKey `envconfig:"API_KEY"`
+
+	// Gateway configurations
+	Gateway Gateway `envconfig:"GATEWAY"`
+}
+
+// Gateway holds gateway-related configuration.
+type Gateway struct {
+	// EnableVersionVerification controls whether the platform API rejects gateway
+	// connections whose reported version does not match the registered version.
+	// When false (default), a mismatch is logged and the connection is allowed to proceed.
+	// Env: GATEWAY_ENABLE_VERSION_VERIFICATION (default: false)
+	EnableVersionVerification bool `envconfig:"ENABLE_VERSION_VERIFICATION" default:"false"`
 }
 
 // TLS holds TLS certificate configuration
