@@ -159,8 +159,14 @@ func validateConnectionConfig(cfg ConnectionConfig) error {
 	if cfg.CompactTopicPartitions <= 0 {
 		return fmt.Errorf("kafka.compact_topic_partitions must be a positive integer, got %d", cfg.CompactTopicPartitions)
 	}
+	if cfg.CompactTopicPartitions > math.MaxInt32 {
+		return fmt.Errorf("kafka.compact_topic_partitions must be <= %d, got %d", math.MaxInt32, cfg.CompactTopicPartitions)
+	}
 	if cfg.CompactTopicReplicationFactor <= 0 {
 		return fmt.Errorf("kafka.compact_topic_replication_factor must be a positive integer, got %d", cfg.CompactTopicReplicationFactor)
+	}
+	if cfg.CompactTopicReplicationFactor > math.MaxInt16 {
+		return fmt.Errorf("kafka.compact_topic_replication_factor must be <= %d, got %d", math.MaxInt16, cfg.CompactTopicReplicationFactor)
 	}
 
 	if !cfg.TLS {
