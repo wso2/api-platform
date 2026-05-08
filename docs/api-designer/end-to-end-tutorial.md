@@ -28,6 +28,7 @@ Note: If Copilot prompts you to open the specification in API Designer, confirm 
 
 1. With the openapi spec file (e.g: `orders-api.yaml`) focused, open API Designer using one of these options:
     - Copilot Chat: Confirm the prompt to open in API Designer (uses the `openInApiDesigner` tool).
+      ![Copilot Chat Open In API Designer prompt](./images/open-in-api-designer-chat.png)
     - CodeLens: Open in API Designer.
     - Title bar: Open in API Designer.
     - Command Palette: API Designer: Open in API Designer.
@@ -40,7 +41,13 @@ Outcome: You get a structured view of paths, operations, and components.
 1. Stay in the designer (or use the AI entry point your build provides for "edit with AI").
 2. Prompt with scope, for example:
 
-   > On GET `/orders`, add `limit` and `offset` query parameters with defaults documented in the parameter descriptions. Expand the POST `/orders` description to state idempotency expectations and what the Location header points to.
+   Click on the **Edit with AI** button in the orders GET endpoint and type:
+
+      > Add `limit` and `offset` query parameters with defaults documented in the parameter descriptions.
+
+      ![Edit with AI](./images/ai-based-editor.png)
+
+   This will open up the copilot chat in agent mode and run the prompt with the provided scope.
 
 3. Review the proposed changes and accept only what matches your API conventions.
 
@@ -51,15 +58,19 @@ Outcome: Fast updates for larger or repetitive changes.
 1. In the designer, open the Edit form for a specific operation or schema.
 2. Adjust a response code, update an operation summary/description, mark a schema field as required, or refine a parameter type and constraints.
 
+   ![Edit with Forms](./images/form-based-editor.png)
+
 Outcome: Safe and precise structural edits.
 
-## Step 5: Open a report and review findings
+## Step 5: Open a governance report and review findings
 
-1. In the designer, report cards are already available for bundled rulesets, for example:
+1. In the designer, report cards are available for the following:
    - WSO2 REST API AI Readiness Guidelines
    - WSO2 REST API Design Guidelines
    - OWASP API Security Top 10
 2. Click any report card to open the full report and review its score and issue list.
+
+![Governance Report](./images/analyze-view.png)
 
 Outcome: You can prioritize issues by impact and severity.
 
