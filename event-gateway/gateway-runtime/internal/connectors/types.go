@@ -45,6 +45,7 @@ type Receiver interface {
 // Implemented by the hub; consumed by receivers via dependency injection.
 type MessageProcessor interface {
 	ProcessSubscribe(ctx context.Context, bindingName string, msg *Message) (*Message, bool, error)
+	ProcessUnsubscribe(ctx context.Context, bindingName string, msg *Message) (*Message, bool, error)
 	ProcessInbound(ctx context.Context, bindingName string, msg *Message) (*Message, bool, error)
 	ProcessOutbound(ctx context.Context, bindingName string, msg *Message) (*Message, bool, error)
 }

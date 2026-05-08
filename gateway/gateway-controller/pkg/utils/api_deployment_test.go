@@ -111,11 +111,9 @@ func TestGetTopicsForUpdate(t *testing.T) {
 			DisplayName: "Test WebSub API",
 			Version:     "1.0.0",
 			Context:     "/test/$version",
-			Hub: api.WebSubHub{
-				Channels: []api.HubChannel{
-					{Name: "/events"},
-					{Name: "/notifications"},
-				},
+			ChannelPolicies: &map[string]api.WebSubChannelPolicies{
+				"/events":        {},
+				"/notifications": {},
 			},
 		}
 

@@ -63,40 +63,77 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 	switch cfgTyped := cfg.Configuration.(type) {
 	case api.WebSubAPI:
 		apiData := cfgTyped.Spec
-		for _, ch := range apiData.Hub.Channels {
+		var channelPolicies map[string]api.WebSubChannelPolicies
+		if apiData.ChannelPolicies != nil {
+			channelPolicies = *apiData.ChannelPolicies
+		}
+		for chName, chPolicies := range channelPolicies {
 			var finalPolicies []policyenginev1.PolicyInstance
 
-			// Policy execution order: Hub Level Policies -> Channel Level Policies
-			// Start with hub-level policies
-			if apiData.Hub.Policies != nil {
-				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.Hub.Policies))
-				for _, p := range *apiData.Hub.Policies {
-					// Only append if the policy was successfully resolved (exists in apiPolicies map)
-					if v, ok := apiPolicies[p.Name]; ok {
-						finalPolicies = append(finalPolicies, v)
+			// Policy execution order: AllChannelPolicies (on_subscription) -> per-channel policies
+			// Start with allChannelPolicies subscription-level policies
+			if apiData.AllChannelPolicies != nil && apiData.AllChannelPolicies.OnSubscription != nil {
+				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.AllChannelPolicies.OnSubscription))
+				for _, p := range *apiData.AllChannelPolicies.OnSubscription {
+					resolved, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, p.Name, p.Version)
+					if err != nil {
+						slog.Error("Failed to resolve policy version for all-channel subscription policy", "policy_name", p.Name, "error", err)
+						continue
 					}
+					finalPolicies = append(finalPolicies, ConvertAPIPolicyToModel(p, policyv1alpha.LevelAPI, versionutil.MajorVersion(resolved)))
 				}
 			}
 
-			// Append operation-level policies (they don't override, just execute after API-level)
-			if ch.Policies != nil && len(*ch.Policies) > 0 {
-				for _, opPolicy := range *ch.Policies {
+			// Append channel-level on_subscription policies
+			if chPolicies.OnSubscription != nil && len(*chPolicies.OnSubscription) > 0 {
+				for _, opPolicy := range *chPolicies.OnSubscription {
 					resolved, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, opPolicy.Name, opPolicy.Version)
 					if err != nil {
-						slog.Error("Failed to resolve policy version for operation-level policy", "policy_name", opPolicy.Name, "channel_name", ch.Name, "error", err)
+						slog.Error("Failed to resolve policy version for channel-level policy", "policy_name", opPolicy.Name, "channel_name", chName, "error", err)
 						continue
 					}
 					finalPolicies = append(finalPolicies, ConvertAPIPolicyToModel(opPolicy, policyv1alpha.LevelRoute, versionutil.MajorVersion(resolved)))
 				}
 			}
 
-			routeKey := xds.GenerateRouteName("SUB", apiData.Context, apiData.Version, ch.Name, routerConfig.GatewayHost)
+			routeKey := xds.GenerateRouteName("SUB", apiData.Context, apiData.Version, chName, routerConfig.GatewayHost)
 			props := make(map[string]any)
 			injectedPolicies := utils.InjectSystemPolicies(finalPolicies, systemConfig, props)
 
 			routes = append(routes, policyenginev1.PolicyChain{
 				RouteKey: routeKey,
 				Policies: injectedPolicies,
+			})
+
+			// Build UNSUB (unsubscription) policy chain for this channel
+			var unsubPolicies []policyenginev1.PolicyInstance
+			if apiData.AllChannelPolicies != nil && apiData.AllChannelPolicies.OnUnsubscription != nil {
+				unsubPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.AllChannelPolicies.OnUnsubscription))
+				for _, p := range *apiData.AllChannelPolicies.OnUnsubscription {
+					resolved, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, p.Name, p.Version)
+					if err != nil {
+						slog.Error("Failed to resolve policy version for all-channel unsubscription policy", "policy_name", p.Name, "error", err)
+						continue
+					}
+					unsubPolicies = append(unsubPolicies, ConvertAPIPolicyToModel(p, policyv1alpha.LevelAPI, versionutil.MajorVersion(resolved)))
+				}
+			}
+			if chPolicies.OnUnsubscription != nil && len(*chPolicies.OnUnsubscription) > 0 {
+				for _, opPolicy := range *chPolicies.OnUnsubscription {
+					resolved, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, opPolicy.Name, opPolicy.Version)
+					if err != nil {
+						slog.Error("Failed to resolve policy version for channel-level unsubscription policy", "policy_name", opPolicy.Name, "channel_name", chName, "error", err)
+						continue
+					}
+					unsubPolicies = append(unsubPolicies, ConvertAPIPolicyToModel(opPolicy, policyv1alpha.LevelRoute, versionutil.MajorVersion(resolved)))
+				}
+			}
+			unsubRouteKey := xds.GenerateRouteName("UNSUB", apiData.Context, apiData.Version, chName, routerConfig.GatewayHost)
+			unsubProps := make(map[string]any)
+			injectedUnsubPolicies := utils.InjectSystemPolicies(unsubPolicies, systemConfig, unsubProps)
+			routes = append(routes, policyenginev1.PolicyChain{
+				RouteKey: unsubRouteKey,
+				Policies: injectedUnsubPolicies,
 			})
 		}
 
