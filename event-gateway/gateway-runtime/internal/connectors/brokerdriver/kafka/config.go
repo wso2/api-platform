@@ -63,10 +63,10 @@ func ResolveConnectionConfig(global config.KafkaConfig, overrides map[string]int
 		SASLPassword:                  global.SASLPassword,
 	}
 	if cfg.CompactTopicPartitions <= 0 {
-		cfg.CompactTopicPartitions = 1
+		return ConnectionConfig{}, fmt.Errorf("kafka.compact_topic_partitions must be a positive integer, got %d", cfg.CompactTopicPartitions)
 	}
 	if cfg.CompactTopicReplicationFactor <= 0 {
-		cfg.CompactTopicReplicationFactor = 1
+		return ConnectionConfig{}, fmt.Errorf("kafka.compact_topic_replication_factor must be a positive integer, got %d", cfg.CompactTopicReplicationFactor)
 	}
 
 	if overrides != nil {
