@@ -69,28 +69,30 @@ type Manifest struct {
 
 // GatewayService handles gateway business logic
 type GatewayService struct {
-	gatewayRepo               repository.GatewayRepository
-	orgRepo                   repository.OrganizationRepository
-	apiRepo                   repository.APIRepository
-	customPolicyRepo          repository.CustomPolicyRepository
-	gatewayEventsService      *GatewayEventsService
-	slogger                   *slog.Logger
-	enableVersionVerification bool
+	gatewayRepo                         repository.GatewayRepository
+	orgRepo                             repository.OrganizationRepository
+	apiRepo                             repository.APIRepository
+	customPolicyRepo                    repository.CustomPolicyRepository
+	gatewayEventsService                *GatewayEventsService
+	slogger                             *slog.Logger
+	enableVersionVerification           bool
+	enableFunctionalityTypeVerification bool
 }
 
 // NewGatewayService creates a new gateway service
 func NewGatewayService(gatewayRepo repository.GatewayRepository, orgRepo repository.OrganizationRepository,
 	apiRepo repository.APIRepository, customPolicyRepo repository.CustomPolicyRepository,
 	gatewayEventsService *GatewayEventsService, slogger *slog.Logger,
-	enableVersionVerification bool) *GatewayService {
+	enableVersionVerification bool, enableFunctionalityTypeVerification bool) *GatewayService {
 	return &GatewayService{
-		gatewayRepo:               gatewayRepo,
-		orgRepo:                   orgRepo,
-		apiRepo:                   apiRepo,
-		customPolicyRepo:          customPolicyRepo,
-		gatewayEventsService:      gatewayEventsService,
-		slogger:                   slogger,
-		enableVersionVerification: enableVersionVerification,
+		gatewayRepo:                         gatewayRepo,
+		orgRepo:                             orgRepo,
+		apiRepo:                             apiRepo,
+		customPolicyRepo:                    customPolicyRepo,
+		gatewayEventsService:                gatewayEventsService,
+		slogger:                             slogger,
+		enableVersionVerification:           enableVersionVerification,
+		enableFunctionalityTypeVerification: enableFunctionalityTypeVerification,
 	}
 }
 
@@ -214,7 +216,15 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion
 		reportedType = legacyFunctionalityType
 	}
 	if !functionalityTypeCompatible(gateway.FunctionalityType, reportedType) {
-		return fmt.Errorf("%w: registered=%s, reported=%s", constants.ErrGatewayFunctionalityTypeMismatch, gateway.FunctionalityType, reportedType)
+		if s.enableFunctionalityTypeVerification {
+			return fmt.Errorf("%w: registered=%s, reported=%s", constants.ErrGatewayFunctionalityTypeMismatch, gateway.FunctionalityType, reportedType)
+		}
+		s.slogger.Warn("Gateway functionality type mismatch ignored (verification disabled)",
+			slog.String("org_id", orgID),
+			slog.String("gateway_id", gatewayID),
+			slog.String("registered", gateway.FunctionalityType),
+			slog.String("reported", reportedType),
+		)
 	}
 
 	entries := make([]GatewayPolicyDefinition, 0, len(policies))
