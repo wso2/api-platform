@@ -59,11 +59,15 @@ func (e *WebSubReceiver) ApplyBindingDelta(ctx context.Context, removedChannels 
 			}
 		}
 
+		e.channelMu.Lock()
 		delete(e.channel.Channels, channelName)
+		e.channelMu.Unlock()
 	}
 
 	for channelName, kafkaTopic := range addedChannels {
+		e.channelMu.Lock()
 		e.channel.Channels[channelName] = kafkaTopic
+		e.channelMu.Unlock()
 		e.topics.Register(channelName)
 	}
 
