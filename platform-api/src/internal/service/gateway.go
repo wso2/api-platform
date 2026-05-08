@@ -156,6 +156,23 @@ func extractMajorMinor(raw string) string {
 // "functionalityType" field in the manifest payload (pre-1.1.0 builds).
 const legacyFunctionalityType = "regular"
 
+// functionalityTypeCompatible reports whether a controller-reported functionality
+// type is acceptable for the registered gateway type.
+//
+// AI and regular gateways are compiled into the same binary, which reports
+// itself as "regular". A gateway registered as either "ai" or "regular"
+// therefore accepts a controller reporting "regular". The event gateway has
+// its own binary and must match exactly.
+func functionalityTypeCompatible(registered, reported string) bool {
+	if registered == reported {
+		return true
+	}
+	if registered == constants.GatewayFunctionalityTypeAI && reported == constants.GatewayFunctionalityTypeRegular {
+		return true
+	}
+	return false
+}
+
 // ReceiveGatewayManifest stores the manifest posted by the gateway controller on connect.
 // All policies are stored with name and version; customer-managed policies include policy_definition.
 // gatewayVersion is the controller's reported build version; an empty string means the controller
@@ -196,7 +213,7 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion
 	if reportedType == "" {
 		reportedType = legacyFunctionalityType
 	}
-	if reportedType != gateway.FunctionalityType {
+	if !functionalityTypeCompatible(gateway.FunctionalityType, reportedType) {
 		return fmt.Errorf("%w: registered=%s, reported=%s", constants.ErrGatewayFunctionalityTypeMismatch, gateway.FunctionalityType, reportedType)
 	}
 
