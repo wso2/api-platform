@@ -31,9 +31,10 @@ import (
 
 // ChannelChainKeySet holds the per-channel policy chain keys for a single channel.
 type ChannelChainKeySet struct {
-	SubscribeChainKey string
-	InboundChainKey   string
-	OutboundChainKey  string
+	SubscribeChainKey   string
+	UnsubscribeChainKey string
+	InboundChainKey     string
+	OutboundChainKey    string
 }
 
 // ChannelBinding holds the runtime state for a registered channel.
@@ -45,6 +46,7 @@ type ChannelBinding struct {
 	Version             string
 	Vhost               string
 	SubscribeChainKey   string
+	UnsubscribeChainKey string
 	InboundChainKey     string
 	OutboundChainKey    string
 	BrokerDriverTopic   string
@@ -200,6 +202,90 @@ func (h *Hub) ProcessSubscribe(ctx context.Context, bindingName string, msg *con
 						}
 						if err := ApplyRequestBodyResult(reqBodyResult, msg); err != nil {
 							return nil, false, fmt.Errorf("failed to apply subscribe body result: %w", err)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return msg, false, nil
+}
+
+// ProcessUnsubscribe applies unsubscribe policies to an unsubscription request at the hub.
+// Hub-level policies are applied first, then per-channel policies if present.
+// Returns the (possibly mutated) message and whether it was short-circuited.
+func (h *Hub) ProcessUnsubscribe(ctx context.Context, bindingName string, msg *connectors.Message) (*connectors.Message, bool, error) {
+	binding := h.GetBinding(bindingName)
+	if binding == nil {
+		return nil, false, fmt.Errorf("binding not found: %s", bindingName)
+	}
+
+	// Apply hub-level unsubscribe chain first.
+	if binding.UnsubscribeChainKey != "" {
+		chain := h.engine.GetChain(binding.UnsubscribeChainKey)
+		if chain != nil {
+			reqHeaderCtx := SubscribeToRequestHeaderContext(msg, binding)
+			result, err := h.engine.ExecuteRequestHeaderPolicies(ctx, binding.UnsubscribeChainKey, reqHeaderCtx.SharedContext, reqHeaderCtx)
+			if err != nil {
+				return nil, false, fmt.Errorf("unsubscribe policy execution failed: %w", err)
+			}
+			if result.ShortCircuited {
+				logShortCircuit("Unsubscribe request short-circuited by hub policy", bindingName, binding.UnsubscribeChainKey, result.ImmediateResponse)
+				return immediateResponseToMessage(result.ImmediateResponse), true, nil
+			}
+			if err := ApplyRequestHeaderResult(result, msg); err != nil {
+				return nil, false, fmt.Errorf("failed to apply unsubscribe header result: %w", err)
+			}
+			if chain.RequiresRequestBody {
+				reqCtx := MessageToRequestContext(msg, binding)
+				reqBodyResult, respErrors := h.engine.ExecuteRequestBodyPolicies(ctx, binding.UnsubscribeChainKey, reqHeaderCtx.SharedContext, reqCtx)
+				if respErrors != nil {
+					return nil, false, fmt.Errorf("unsubscribe policy execution failed: %w", respErrors)
+				}
+				if reqBodyResult != nil {
+					if reqBodyResult.ShortCircuited {
+						logShortCircuit("Unsubscribe request short-circuited by hub policy", bindingName, binding.UnsubscribeChainKey, reqBodyResult.ImmediateResponse)
+						return immediateResponseToMessage(reqBodyResult.ImmediateResponse), true, nil
+					}
+					if err := ApplyRequestBodyResult(reqBodyResult, msg); err != nil {
+						return nil, false, fmt.Errorf("failed to apply unsubscribe body result: %w", err)
+					}
+				}
+			}
+		}
+	}
+
+	// Apply channel-level unsubscribe chain if present.
+	if msg.Topic != "" && len(binding.ChannelChainKeys) > 0 {
+		if keys, ok := binding.ChannelChainKeys[msg.Topic]; ok && keys.UnsubscribeChainKey != "" {
+			chain := h.engine.GetChain(keys.UnsubscribeChainKey)
+			if chain != nil {
+				reqHeaderCtx := SubscribeToRequestHeaderContext(msg, binding)
+				result, err := h.engine.ExecuteRequestHeaderPolicies(ctx, keys.UnsubscribeChainKey, reqHeaderCtx.SharedContext, reqHeaderCtx)
+				if err != nil {
+					return nil, false, fmt.Errorf("unsubscribe channel policy execution failed: %w", err)
+				}
+				if result.ShortCircuited {
+					logShortCircuit("Unsubscribe request short-circuited by channel policy", bindingName, keys.UnsubscribeChainKey, result.ImmediateResponse)
+					return immediateResponseToMessage(result.ImmediateResponse), true, nil
+				}
+				if err := ApplyRequestHeaderResult(result, msg); err != nil {
+					return nil, false, fmt.Errorf("failed to apply unsubscribe channel header result: %w", err)
+				}
+				if chain.RequiresRequestBody {
+					reqCtx := MessageToRequestContext(msg, binding)
+					reqBodyResult, respErrors := h.engine.ExecuteRequestBodyPolicies(ctx, keys.UnsubscribeChainKey, reqHeaderCtx.SharedContext, reqCtx)
+					if respErrors != nil {
+						return nil, false, fmt.Errorf("unsubscribe policy execution failed: %w", respErrors)
+					}
+					if reqBodyResult != nil {
+						if reqBodyResult.ShortCircuited {
+							logShortCircuit("Unsubscribe request short-circuited by channel policy", bindingName, keys.UnsubscribeChainKey, reqBodyResult.ImmediateResponse)
+							return immediateResponseToMessage(reqBodyResult.ImmediateResponse), true, nil
+						}
+						if err := ApplyRequestBodyResult(reqBodyResult, msg); err != nil {
+							return nil, false, fmt.Errorf("failed to apply unsubscribe channel body result: %w", err)
 						}
 					}
 				}

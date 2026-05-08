@@ -464,12 +464,8 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 				DisplayName: "TestAPI",
 				Version:     "v1.0",
 				Context:     "/test",
-				Hub: api.WebSubHub{
-					Channels: []api.HubChannel{
-						{
-							Name: "/events",
-						},
-					},
+				ChannelPolicies: &map[string]api.WebSubChannelPolicies{
+					"/events": {},
 				},
 			},
 		}
@@ -537,12 +533,8 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 				DisplayName: "TestAPI",
 				Version:     "v1.0",
 				Context:     "/test",
-				Hub: api.WebSubHub{
-					Channels: []api.HubChannel{
-						{
-							Name: "/events",
-						},
-					},
+				ChannelPolicies: &map[string]api.WebSubChannelPolicies{
+					"/events": {},
 				},
 			},
 		}

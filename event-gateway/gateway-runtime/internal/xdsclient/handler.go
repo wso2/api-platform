@@ -84,11 +84,12 @@ type BrokerDriverEntry struct {
 	Config map[string]interface{} `json:"config"`
 }
 
-// PoliciesEntry holds the 3-phase policy references.
+// PoliciesEntry holds the 4-phase policy references.
 type PoliciesEntry struct {
-	Subscribe []PolicyEntry `json:"subscribe"`
-	Inbound   []PolicyEntry `json:"inbound"`
-	Outbound  []PolicyEntry `json:"outbound"`
+	Subscribe   []PolicyEntry `json:"subscribe"`
+	Unsubscribe []PolicyEntry `json:"unsubscribe"`
+	Inbound     []PolicyEntry `json:"inbound"`
+	Outbound    []PolicyEntry `json:"outbound"`
 }
 
 // PolicyEntry represents one policy reference.
@@ -212,14 +213,16 @@ func (h *Handler) toWebSubApiBinding(ecr EventChannelResource) binding.WebSubApi
 		channels[i] = binding.ChannelDef{
 			Name: ch.Name,
 			Policies: binding.PolicyBindings{
-				Subscribe: mapPolicyEntries(ch.Policies.Subscribe),
-				Inbound:   mapPolicyEntries(ch.Policies.Inbound),
-				Outbound:  mapPolicyEntries(ch.Policies.Outbound),
+				Subscribe:   mapPolicyEntries(ch.Policies.Subscribe),
+				Unsubscribe: mapPolicyEntries(ch.Policies.Unsubscribe),
+				Inbound:     mapPolicyEntries(ch.Policies.Inbound),
+				Outbound:    mapPolicyEntries(ch.Policies.Outbound),
 			},
 		}
 	}
 
 	subscribe := mapPolicyEntries(ecr.Policies.Subscribe)
+	unsubscribe := mapPolicyEntries(ecr.Policies.Unsubscribe)
 	inbound := mapPolicyEntries(ecr.Policies.Inbound)
 	outbound := mapPolicyEntries(ecr.Policies.Outbound)
 
@@ -235,9 +238,10 @@ func (h *Handler) toWebSubApiBinding(ecr EventChannelResource) binding.WebSubApi
 		},
 		BrokerDriver: h.resolveBrokerDriver(ecr.BrokerDriver),
 		Policies: binding.PolicyBindings{
-			Subscribe: subscribe,
-			Inbound:   inbound,
-			Outbound:  outbound,
+			Subscribe:   subscribe,
+			Unsubscribe: unsubscribe,
+			Inbound:     inbound,
+			Outbound:    outbound,
 		},
 	}
 }

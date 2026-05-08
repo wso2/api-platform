@@ -523,47 +523,39 @@ func TestAPIValidator_ValidateChannels(t *testing.T) {
 	v := NewAPIValidator()
 
 	tests := []struct {
-		name      string
-		channels  []api.HubChannel
-		wantError bool
-		errField  string
+		name            string
+		channelPolicies map[string]api.WebSubChannelPolicies
+		wantError       bool
+		errField        string
 	}{
 		{
 			name: "Valid channels",
-			channels: []api.HubChannel{
-				{Name: "channel1"},
-				{Name: "channel2"},
+			channelPolicies: map[string]api.WebSubChannelPolicies{
+				"channel1": {},
+				"channel2": {},
 			},
 			wantError: false,
 		},
 		{
-			name:      "Empty channels",
-			channels:  []api.HubChannel{},
-			wantError: true,
-			errField:  "spec.hub.channels",
-		},
-		{
-			name: "Missing channel name",
-			channels: []api.HubChannel{
-				{Name: ""},
-			},
-			wantError: true,
-			errField:  "spec.hub.channels[0].name",
+			name:            "Empty channels",
+			channelPolicies: map[string]api.WebSubChannelPolicies{},
+			wantError:       true,
+			errField:        "spec.channelPolicies",
 		},
 		{
 			name: "Channel with braces (invalid)",
-			channels: []api.HubChannel{
-				{Name: "channel/{id}"},
+			channelPolicies: map[string]api.WebSubChannelPolicies{
+				"channel/{id}": {},
 			},
 			wantError: true,
-			errField:  "spec.hub.channels[0].name",
+			errField:  "spec.channelPolicies.channel/{id}",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := createValidWebSubAPIConfig()
-			config.Spec.Hub.Channels = tt.channels
+			config.Spec.ChannelPolicies = &tt.channelPolicies
 
 			errors := v.Validate(config)
 			hasExpectedError := false
@@ -706,10 +698,8 @@ func createValidWebSubAPIConfig() *api.WebSubAPI {
 			DisplayName: "Test WebSub",
 			Version:     "v1.0",
 			Context:     "/websub",
-			Hub: api.WebSubHub{
-				Channels: []api.HubChannel{
-					{Name: "channel1"},
-				},
+			ChannelPolicies: &map[string]api.WebSubChannelPolicies{
+				"channel1": {},
 			},
 		},
 	}

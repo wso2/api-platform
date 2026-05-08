@@ -201,9 +201,9 @@ func (h *HubHandler) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HubHandler) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
-	// Enforce subscribe policies before processing.
+	// Enforce unsubscribe policies before processing.
 	subMsg := httpRequestToMessage(r)
-	message, shortCircuited, err := h.processor.ProcessSubscribe(r.Context(), h.bindingName, subMsg)
+	message, shortCircuited, err := h.processor.ProcessUnsubscribe(r.Context(), h.bindingName, subMsg)
 	if err != nil {
 		slog.Error("Unsubscribe policy execution failed", "error", err)
 		http.Error(w, "policy execution failed", http.StatusInternalServerError)

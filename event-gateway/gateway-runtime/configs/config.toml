@@ -70,4 +70,3 @@ allow_payloads = false
 enabled = true
 xds_address = "localhost:18001"
 # node_id = ""
-

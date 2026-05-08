@@ -3725,7 +3725,6 @@ components:
         - displayName
         - version
         - context
-        - hub
       properties:
         displayName:
           type: string
@@ -3762,12 +3761,13 @@ components:
               description: Custom virtual host/domain for sandbox traffic
               pattern: '^[a-zA-Z0-9\.\-]+$'
               example: sandbox-api.example.com
-        receiver:
-          $ref: '#/components/schemas/WebSubReceiver'
-        hub:
-          $ref: '#/components/schemas/WebSubHub'
-        delivery:
-          $ref: '#/components/schemas/WebSubDelivery'
+        allChannelPolicies:
+          $ref: '#/components/schemas/WebSubAllChannelPolicies'
+        channelPolicies:
+          type: object
+          description: Per-channel policy configuration keyed by channel name. Each key is a channel name and defines policies applied only to that channel.
+          additionalProperties:
+            $ref: '#/components/schemas/WebSubChannelPolicies'
         deploymentState:
           type: string
           description: Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.
@@ -3775,63 +3775,55 @@ components:
           default: deployed
           example: deployed
 
-    # WebSubReceiver defines inbound webhook receiver configuration (e.g., signature validation).
-    WebSubReceiver:
+    # WebSubAllChannelPolicies defines policies applied to all channels for each event type.
+    WebSubAllChannelPolicies:
       type: object
-      description: Receiver configuration for the WebSub API - handles inbound event publishing from publishers.
+      description: Policies applied to all channels, organized by event type.
       properties:
-        policies:
+        on_subscription:
           type: array
-          description: List of policies applied to inbound webhook requests (e.g., hmac-signature-validation)
+          description: Policies applied when a client subscribes to a channel (e.g., api-key-auth)
+          items:
+            $ref: '#/components/schemas/Policy'
+        on_unsubscription:
+          type: array
+          description: Policies applied when a client unsubscribes from a channel (e.g., api-key-auth)
+          items:
+            $ref: '#/components/schemas/Policy'
+        on_message_received:
+          type: array
+          description: Policies applied when a message is received from the publisher via webhook (e.g., hmac-signature-validation)
+          items:
+            $ref: '#/components/schemas/Policy'
+        on_message_delivery:
+          type: array
+          description: Policies applied when delivering a message to a subscriber callback URL (e.g., hmac-sign-messages)
           items:
             $ref: '#/components/schemas/Policy'
 
-    # WebSubDelivery defines outbound event delivery configuration (e.g., signing outbound requests).
-    WebSubDelivery:
+    # WebSubChannelPolicies defines per-channel policies organized by event type.
+    WebSubChannelPolicies:
       type: object
-      description: Delivery configuration for the WebSub API - handles outbound event delivery to subscribers.
+      description: Policies applied to a specific channel, organized by event type.
       properties:
-        policies:
+        on_subscription:
           type: array
-          description: List of policies applied when delivering events to subscriber callback URLs (e.g., hmac-signature-validation)
+          description: Policies applied when a client subscribes to this channel (e.g., rbac)
           items:
             $ref: '#/components/schemas/Policy'
-
-    # WebSubHub defines hub-level configuration including subscriber auth and channels.
-    WebSubHub:
-      type: object
-      description: Hub configuration for the WebSub API - handles subscriber management and event fan-out.
-      required:
-        - channels
-      properties:
-        policies:
+        on_unsubscription:
           type: array
-          description: List of policies applied at the hub level (e.g., api-key-auth for subscribers)
+          description: Policies applied when a client unsubscribes from this channel
           items:
             $ref: '#/components/schemas/Policy'
-        channels:
+        on_message_received:
           type: array
-          description: List of topic channels available for subscription
-          minItems: 1
+          description: Policies applied when a message is received for this channel
           items:
-            $ref: '#/components/schemas/HubChannel'
-
-    # HubChannel defines a single subscribable channel within the WebSub hub.
-    HubChannel:
-      type: object
-      description: A subscribable topic channel within the WebSub hub.
-      required:
-        - name
-      properties:
-        name:
-          type: string
-          description: Channel name or topic identifier relative to API context.
-          minLength: 1
-          pattern: '^[^{}]+$'
-          example: issues
-        policies:
+            $ref: '#/components/schemas/Policy'
+        on_message_delivery:
           type: array
-          description: List of policies applied only to this channel (e.g., rbac)
+          description: Policies applied when delivering a message for this channel
           items:
             $ref: '#/components/schemas/Policy'
 
