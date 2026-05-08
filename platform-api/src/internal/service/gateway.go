@@ -69,25 +69,28 @@ type Manifest struct {
 
 // GatewayService handles gateway business logic
 type GatewayService struct {
-	gatewayRepo          repository.GatewayRepository
-	orgRepo              repository.OrganizationRepository
-	apiRepo              repository.APIRepository
-	customPolicyRepo     repository.CustomPolicyRepository
-	gatewayEventsService *GatewayEventsService
-	slogger              *slog.Logger
+	gatewayRepo               repository.GatewayRepository
+	orgRepo                   repository.OrganizationRepository
+	apiRepo                   repository.APIRepository
+	customPolicyRepo          repository.CustomPolicyRepository
+	gatewayEventsService      *GatewayEventsService
+	slogger                   *slog.Logger
+	enableVersionVerification bool
 }
 
 // NewGatewayService creates a new gateway service
 func NewGatewayService(gatewayRepo repository.GatewayRepository, orgRepo repository.OrganizationRepository,
 	apiRepo repository.APIRepository, customPolicyRepo repository.CustomPolicyRepository,
-	gatewayEventsService *GatewayEventsService, slogger *slog.Logger) *GatewayService {
+	gatewayEventsService *GatewayEventsService, slogger *slog.Logger,
+	enableVersionVerification bool) *GatewayService {
 	return &GatewayService{
-		gatewayRepo:          gatewayRepo,
-		orgRepo:              orgRepo,
-		apiRepo:              apiRepo,
-		customPolicyRepo:     customPolicyRepo,
-		gatewayEventsService: gatewayEventsService,
-		slogger:              slogger,
+		gatewayRepo:               gatewayRepo,
+		orgRepo:                   orgRepo,
+		apiRepo:                   apiRepo,
+		customPolicyRepo:          customPolicyRepo,
+		gatewayEventsService:      gatewayEventsService,
+		slogger:                   slogger,
+		enableVersionVerification: enableVersionVerification,
 	}
 }
 
@@ -178,7 +181,15 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion
 		registeredMinor = defaultGatewayVersion
 	}
 	if reportedMinor != registeredMinor {
-		return fmt.Errorf("%w: registered=%s, reported=%s", constants.ErrGatewayVersionMismatch, registeredMinor, reportedMinor)
+		if s.enableVersionVerification {
+			return fmt.Errorf("%w: registered=%s, reported=%s", constants.ErrGatewayVersionMismatch, registeredMinor, reportedMinor)
+		}
+		s.slogger.Warn("Gateway version mismatch ignored (verification disabled)",
+			slog.String("org_id", orgID),
+			slog.String("gateway_id", gatewayID),
+			slog.String("registered", registeredMinor),
+			slog.String("reported", reportedMinor),
+		)
 	}
 
 	reportedType := strings.TrimSpace(functionalityType)
