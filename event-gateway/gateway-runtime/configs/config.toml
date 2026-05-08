@@ -26,6 +26,9 @@ metrics_port = 9003
 # Default Kafka brokers. Channels can override with broker-driver.config.brokers.
 brokers = ["localhost:9092"]
 consumer_group_prefix = "event-gateway"
+# Partitions and replication factor used for internal compacted topics.
+compact_topic_partitions = 1
+compact_topic_replication_factor = 1
 tls = false
 # Optional PEM CA file for self-signed or private Kafka CAs.
 # tls_ca_file = "/etc/event-gateway/kafka/ca.crt"
