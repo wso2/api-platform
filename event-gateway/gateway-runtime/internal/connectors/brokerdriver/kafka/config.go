@@ -22,6 +22,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 
@@ -294,11 +295,23 @@ func intOverride(value interface{}) (int, bool, error) {
 	if value == nil {
 		return 0, false, nil
 	}
-	v, ok := value.(int)
-	if !ok {
+	switch v := value.(type) {
+	case int:
+		return v, true, nil
+	case float64:
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return 0, false, fmt.Errorf("expected integer Kafka config override, got non-finite float64 %v", v)
+		}
+		if v != math.Trunc(v) {
+			return 0, false, fmt.Errorf("expected integer Kafka config override, got non-integer float64 %v", v)
+		}
+		if v < math.MinInt32 || v > math.MaxInt32 {
+			return 0, false, fmt.Errorf("expected integer Kafka config override within [%d, %d], got float64 %v", math.MinInt32, math.MaxInt32, v)
+		}
+		return int(v), true, nil
+	default:
 		return 0, false, fmt.Errorf("expected int override, got %T", value)
 	}
-	return v, true, nil
 }
 
 func stringOverride(value interface{}) (string, bool, error) {
