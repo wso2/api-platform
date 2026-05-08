@@ -762,12 +762,13 @@ class PythonExecutorServer:
 
     def __init__(
         self,
-        socket_path: str,
+        listen_address: str,
         worker_count: int = 4,
         max_concurrent: int = 100,
         timeout: int = 30,
     ):
-        self.socket_path = socket_path
+        self.listen_address = listen_address
+        self._is_tcp = ":" in listen_address
         self.worker_count = worker_count
         self.max_concurrent = max_concurrent
         self.timeout = timeout
@@ -780,7 +781,8 @@ class PythonExecutorServer:
 
     async def start(self) -> None:
         """Start the gRPC server."""
-        logger.info("Starting Python Executor on %s", self.socket_path)
+        mode = "tcp" if self._is_tcp else "uds"
+        logger.info("Starting Python Executor on %s (mode=%s)", self.listen_address, mode)
 
         loaded_count = self._loader.load_policies()
         logger.info("Loaded %s policy factories", loaded_count)
@@ -807,26 +809,33 @@ class PythonExecutorServer:
         )
         proto_grpc.add_PythonExecutorServiceServicer_to_server(self._servicer, self.server)
 
-        if os.path.exists(self.socket_path):
-            try:
-                socket_stat = os.stat(self.socket_path)
-                if stat.S_ISSOCK(socket_stat.st_mode):
-                    os.remove(self.socket_path)
-                else:
-                    raise RuntimeError(
-                        f"path exists but is not a socket: {self.socket_path}"
-                    )
-            except OSError as exc:
-                logger.error("Error preparing socket path %s: %s", self.socket_path, exc)
-                raise
+        if self._is_tcp:
+            bind_address = self.listen_address
+        else:
+            self._cleanup_stale_socket()
+            bind_address = f"unix:{self.listen_address}"
 
-        if self.server.add_insecure_port(f"unix:{self.socket_path}") == 0:
-            error_message = f"failed to bind to UNIX domain socket at {self.socket_path}"
-            logger.error(error_message)
-            raise RuntimeError(error_message)
+        if self.server.add_insecure_port(bind_address) == 0:
+            raise RuntimeError(f"failed to bind to {bind_address}")
 
         await self.server.start()
-        logger.info("Python Executor ready on %s", self.socket_path)
+        logger.info("Python Executor ready on %s", bind_address)
+
+    def _cleanup_stale_socket(self) -> None:
+        """Remove a leftover UDS socket file from a previous run."""
+        if not os.path.exists(self.listen_address):
+            return
+        try:
+            socket_stat = os.stat(self.listen_address)
+            if stat.S_ISSOCK(socket_stat.st_mode):
+                os.remove(self.listen_address)
+            else:
+                raise RuntimeError(
+                    f"path exists but is not a socket: {self.listen_address}"
+                )
+        except OSError as exc:
+            logger.error("Error preparing socket path %s: %s", self.listen_address, exc)
+            raise
 
     async def wait_for_termination(self) -> None:
         if self.server:

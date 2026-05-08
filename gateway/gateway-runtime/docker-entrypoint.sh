@@ -74,6 +74,10 @@ while [[ $# -gt 0 ]]; do
                 log "ERROR: --py.socket override is not supported; socket path is fixed"
                 exit 1
             fi
+            if [[ "$py_arg" == "--py.listen" || "$py_arg" == --py.listen=* ]]; then
+                log "ERROR: --py.listen override is not supported; listen address is fixed in container mode"
+                exit 1
+            fi
             PY_ARGS+=("--${py_arg#--py.}")
             shift
             if [[ $# -gt 0 && "$1" != --* ]]; then
@@ -119,7 +123,7 @@ export XDS_SERVER_PORT="${ROUTER_XDS_PORT}"
 PE_XDS_SERVER="${GATEWAY_CONTROLLER_HOST}:${POLICY_ENGINE_XDS_PORT}"
 
 POLICY_ENGINE_SOCKET="/var/run/api-platform/policy-engine.sock"
-PYTHON_EXECUTOR_SOCKET="/var/run/api-platform/python-executor.sock"
+export PYTHON_EXECUTOR_SOCKET="/var/run/api-platform/python-executor.sock"
 
 log "Starting Gateway Runtime"
 log "  Gateway Controller: ${GATEWAY_CONTROLLER_HOST}"
@@ -181,7 +185,8 @@ trap shutdown SIGTERM SIGINT SIGQUIT
 # python_policy_registry.py is only generated when Python policies exist;
 if [ -f /app/python-executor/python_policy_registry.py ]; then
     log "Starting Python Executor..."
-    python3 /app/python-executor/main.py "${PY_ARGS[@]}" \
+    unset PYTHON_EXECUTOR_LISTEN
+    python3 /app/python-executor/main.py --listen "${PYTHON_EXECUTOR_SOCKET}" "${PY_ARGS[@]}" \
         > >(while IFS= read -r line; do echo "[pye] $line"; done) \
         2> >(while IFS= read -r line; do echo "[pye] $line" >&2; done) &
     PY_PID=$!

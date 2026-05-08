@@ -175,7 +175,7 @@ func (f *fakePythonExecutorClient) DestroyPolicy(context.Context, *proto.Destroy
 func TestBridgeCloseReturnsExecutorDestroyFailure(t *testing.T) {
 	harness := startTestPythonExecutorServer(t, nil)
 
-	sm := NewStreamManager("bufconn")
+	sm := NewStreamManager("bufconn", false)
 	sm.dialContext = func(context.Context, string) (net.Conn, error) {
 		return harness.listener.Dial()
 	}
