@@ -1,0 +1,130 @@
+# ==============================================================================
+# Policy Definition — slugify-body
+# ==============================================================================
+#
+# This file tells the API Platform Gateway **what** the policy does, **which
+# parameters** it accepts, and how those parameters are validated. The gateway
+# controller reads this file at deployment time, presents the parameters in the
+# management UI, and performs JSON Schema validation *before* the Python code
+# ever runs.
+#
+# IMPORTANT NOTES FOR POLICY AUTHORS:
+#   • The file MUST be named `policy-definition.yaml` and live at the root of
+#     the policy directory (next to `policy.py` and `requirements.txt`).
+#   • `name` must be a lowercase, kebab-case identifier. It is unique across
+#     the gateway and is the key used in API deployment manifests.
+#   • `version` follows semver prefixed with `v` (e.g. v1.0.0).
+#   • `parameters` and `systemParameters` sections follow JSON Schema draft-7.
+#     The gateway validates incoming parameter payloads against this schema.
+# ==============================================================================
+
+# --- Core metadata -----------------------------------------------------------
+# `name`        – unique policy identifier (kebab-case, lowercase).
+# `version`     – semantic version prefixed with `v`.
+# `displayName` – human-readable name shown in the management console.
+# `description` – multi-line description rendered as documentation.
+name: slugify-body
+version: v1.0.0
+displayName: Slugify Body
+description: |
+  Extracts a string value from the JSON request body at the configured JSONPath,
+  converts it into a URL-friendly slug using the `python-slugify` library, and
+  writes the slug back into the payload before forwarding to the upstream
+  service.
+
+  Typical use cases include:
+    - Generating URL slugs from user-supplied titles or names.
+    - Normalising free-text identifiers into safe, lowercase, ASCII strings.
+    - Cleaning up input data at the gateway layer before it reaches backends.
+
+  This is a **sample policy** that demonstrates:
+    1. Using a third-party PyPI dependency (`python-slugify`).
+    2. Reading and modifying JSON request bodies (buffered mode).
+    3. Declaring configurable parameters with JSON Schema validation.
+    4. Returning modified request bodies via `UpstreamRequestModifications`.
+    5. Returning early error responses via `ImmediateResponse`.
+
+# --- User-configurable parameters --------------------------------------------
+# The `parameters` section is a full JSON Schema object. Every key under
+# `properties` becomes a configurable knob that the API deployer can set per
+# route/operation.
+#
+# TIPS FOR POLICY AUTHORS:
+#   • Always include `description` and `default` for every property.
+#   • Use `enum` to restrict values to a known set.
+#   • Use `additionalProperties: false` to catch typos in parameter names.
+#   • List mandatory parameters in `required`.
+parameters:
+  type: object
+  additionalProperties: false  # reject unknown parameters early
+  properties:
+
+    # -- jsonPath --------------------------------------------------------------
+    # A simple dot-notation path used to locate the string field within the
+    # JSON request body.
+    #
+    # Examples:
+    #   "$.title"                   → top-level "title" field
+    #   "$.article.headline"       → nested "headline" inside "article"
+    #   "$.data.name"              → nested "name" inside "data"
+    jsonPath:
+      type: string
+      description: |
+        Dot-notation JSONPath that resolves to the string field to slugify.
+        Only simple dot paths are supported (no array indices, no wildcards).
+      default: "$.title"
+
+    # -- separator -------------------------------------------------------------
+    # The character(s) used to separate words in the generated slug.
+    # Most URL conventions use hyphens, but underscores are also common.
+    separator:
+      type: string
+      description: |
+        Character used to separate words in the output slug.
+        Common choices are "-" (hyphen) or "_" (underscore).
+      default: "-"
+
+    # -- transliterate ---------------------------------------------------------
+    # When enabled, Unicode characters are transliterated to their closest ASCII
+    # equivalents (e.g. "ü" → "u", "日本" → "ri-ben").  Powered by the
+    # `text-unidecode` transitive dependency of `python-slugify`.
+    transliterate:
+      type: boolean
+      description: |
+        Whether to transliterate Unicode characters to ASCII equivalents.
+        When true, characters like "ü" become "u" and "日本語" becomes
+        "ri-ben-yu". When false, non-ASCII characters are stripped.
+      default: true
+
+    # -- lowercase -------------------------------------------------------------
+    # Controls whether the output slug is forced to lowercase.
+    lowercase:
+      type: boolean
+      description: |
+        Whether to force the output slug to lowercase.
+        Set to false to preserve the original casing of the input words.
+      default: true
+
+    # -- maxLength -------------------------------------------------------------
+    # Truncates the slug to the specified maximum number of characters. A value
+    # of 0 means no limit is applied.
+    maxLength:
+      type: integer
+      description: |
+        Maximum character length for the output slug. Truncation happens at
+        word boundaries when possible. Set to 0 for unlimited length.
+      default: 0
+      minimum: 0
+
+  # `required` is intentionally empty — all parameters have sensible defaults,
+  # making this policy work out-of-the-box with zero configuration.
+  required: []
+
+# --- System parameters -------------------------------------------------------
+# System parameters are injected by the gateway runtime itself (not by the API
+# deployer). They are used for features like per-policy analytics overrides or
+# internal flags. Most policies leave this section empty.
+systemParameters:
+  type: object
+  additionalProperties: false
+  properties: {}

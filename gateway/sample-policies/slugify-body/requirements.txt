@@ -1,0 +1,32 @@
+# ==============================================================================
+# Requirements — slugify-body
+# ==============================================================================
+#
+# This file declares the third-party Python packages that this policy depends
+# on. The gateway builder reads this file during the container build process
+# and installs these packages into the Python runtime environment.
+#
+# HOW DEPENDENCY INSTALLATION WORKS:
+#   1. The gateway builder discovers `requirements.txt` in the policy directory.
+#   2. During the Docker image build, `pip install -r requirements.txt` is run.
+#   3. The installed packages become available at runtime when `policy.py` is
+#      loaded by the Python executor.
+#
+# BEST PRACTICES FOR POLICY AUTHORS:
+#   • Keep the dependency list minimal — every extra package increases the
+#     container image size and the potential attack surface.
+#   • The SDK itself (`apip-sdk-core`) is pre-installed in the runtime and
+#     should NOT be listed here.
+#   • Run `pip install -r requirements.txt` locally to verify resolution
+#     before pushing changes.
+#
+# ABOUT python-slugify:
+#   python-slugify is a popular library for generating URL-friendly slugs from
+#   arbitrary Unicode text. It handles transliteration (via text-unidecode),
+#   separator customisation, and length truncation. See:
+#   https://pypi.org/project/python-slugify/
+# ==============================================================================
+
+# `python-slugify` — the core slugification library used by this policy.
+# It transitively pulls in `text-unidecode` for Unicode → ASCII transliteration.
+python-slugify>=8.0.4
