@@ -29,4 +29,4 @@
 
 # `python-slugify` — the core slugification library used by this policy.
 # It transitively pulls in `text-unidecode` for Unicode → ASCII transliteration.
-python-slugify>=8.0.4
+python-slugify>=8.0.4,<9.0.0

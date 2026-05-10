@@ -430,13 +430,13 @@ class SlugifyBodyPolicy(RequestPolicy):
             separator=separator,
             lowercase=lowercase,
             max_length=max_length if max_length > 0 else 0,
+            allow_unicode=not transliterate,
         )
 
         LOGGER.info(
-            "[SlugifyBody] request_id=%s — Slugified '%s' at '%s' → '%s'",
+            "[SlugifyBody] request_id=%s — Slugified %d chars at '%s' → '%s'",
             execution_ctx.request_id,
-            # Truncate long input values in logs to avoid log flooding.
-            target_value[:80] + ("..." if len(target_value) > 80 else ""),
+            len(target_value),
             json_path,
             slug,
         )
