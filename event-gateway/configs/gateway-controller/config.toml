@@ -1,0 +1,23 @@
+# Gateway Controller Configuration
+
+# TODO We will have to move this to a common place. Separate controller config file is not gonna work
+
+[controller.server]
+gateway_id = "event-gateway-id"
+
+[controller.logging]
+level = "info"
+
+[controller.controlplane]
+insecure_skip_verify = true
+gateway_name = "default"
+apim_oauth2_client_id = "your-client-id"
+apim_oauth2_client_secret = "your-client-secret"
+
+[controller.auth.basic]
+enabled = true
+
+[[controller.auth.basic.users]]
+username = "admin"
+password = "admin"
+roles = ["admin"]

@@ -37,13 +37,15 @@ type rawChannelsConfig struct {
 
 // ParseResult holds the parsed bindings from a channels YAML file.
 type ParseResult struct {
-	Bindings          []Binding
-	WebSubApiBindings []WebSubApiBinding
+	Bindings             []Binding
+	WebSubApiBindings    []WebSubApiBinding
+	WebBrokerApiBindings []WebBrokerApiBinding
 }
 
 // ParseChannels reads and parses the channels YAML file.
 // It discriminates entries by the "kind" field:
 //   - "WebSubApi" entries are parsed as WebSubApiBinding (multi-channel per API)
+//   - "WebBrokerApi" entries are parsed as WebBrokerApiBinding (protocol mediation)
 //   - All other entries are parsed as Binding (legacy flat format)
 func ParseChannels(filePath string) (*ParseResult, error) {
 	data, err := os.ReadFile(filePath)
@@ -70,6 +72,12 @@ func ParseChannels(filePath string) (*ParseResult, error) {
 				return nil, fmt.Errorf("failed to parse WebSubApi entry %d: %w", i, err)
 			}
 			result.WebSubApiBindings = append(result.WebSubApiBindings, wsb)
+		case "WebBrokerApi":
+			var wbb WebBrokerApiBinding
+			if err := node.Decode(&wbb); err != nil {
+				return nil, fmt.Errorf("failed to parse WebBrokerApi entry %d: %w", i, err)
+			}
+			result.WebBrokerApiBindings = append(result.WebBrokerApiBindings, wbb)
 		default:
 			var b Binding
 			if err := node.Decode(&b); err != nil {

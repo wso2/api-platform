@@ -202,6 +202,15 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		kind = string(webSubConfig.Kind)
 		parsedConfig = webSubConfig
 		annotationArtifactID = annotationValue(webSubConfig.Metadata.Annotations, commonconstants.AnnotationArtifactID)
+	case "WebBrokerApi":
+		var webBrokerConfig api.WebBrokerApi
+		if err := s.parser.Parse(params.Data, params.ContentType, &webBrokerConfig); err != nil {
+			return nil, fmt.Errorf("failed to parse configuration: %w", err)
+		}
+		handle = webBrokerConfig.Metadata.Name
+		kind = string(webBrokerConfig.Kind)
+		parsedConfig = webBrokerConfig
+		annotationArtifactID = annotationValue(webBrokerConfig.Metadata.Annotations, commonconstants.AnnotationArtifactID)
 	case "RestApi":
 		var restConfig api.RestAPI
 		if err := s.parser.Parse(params.Data, params.ContentType, &restConfig); err != nil {
@@ -212,7 +221,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		parsedConfig = restConfig
 		annotationArtifactID = annotationValue(restConfig.Metadata.Annotations, commonconstants.AnnotationArtifactID)
 	default:
-		return nil, fmt.Errorf("unsupported resource kind %q: must be \"RestApi\" or \"WebSubApi\"", resolvedKind)
+		return nil, fmt.Errorf("unsupported resource kind %q: must be \"RestApi\", \"WebSubApi\", or \"WebBrokerApi\"", resolvedKind)
 	}
 
 	// Resolve API ID: explicit param > artifact-id annotation > auto-generate
@@ -299,6 +308,15 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 			s.logValidationErrors(params.Logger, apiID, apiName, validationErrors)
 			return nil, &ValidationErrorListError{Errors: validationErrors}
 		}
+	case api.WebBrokerApi:
+		apiName = c.Spec.DisplayName
+		apiVersion = c.Spec.Version
+		// TODO: Add validation for WebBrokerApi once validator supports it
+		// validationErrors := s.validator.Validate(&c)
+		// if len(validationErrors) > 0 {
+		// 	s.logValidationErrors(params.Logger, apiID, apiName, validationErrors)
+		// 	return nil, &ValidationErrorListError{Errors: validationErrors}
+		// }
 	case api.RestAPI:
 		apiName = c.Spec.DisplayName
 		apiVersion = c.Spec.Version
@@ -668,6 +686,33 @@ func resolveVhostSentinels(cfg *any, routerCfg *config.RouterConfig) error {
 		}
 		*cfg = c
 	case api.WebSubAPI:
+		if c.Spec.Vhosts == nil {
+			main := routerCfg.VHosts.Main.Default
+			c.Spec.Vhosts = &struct {
+				Main    string  `json:"main" yaml:"main"`
+				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{
+				Main: main,
+			}
+			if sandboxDefault := routerCfg.VHosts.Sandbox.Default; sandboxDefault != "" {
+				c.Spec.Vhosts.Sandbox = &sandboxDefault
+			}
+			*cfg = c
+			return nil
+		}
+		if c.Spec.Vhosts.Main == constants.VHostGatewayDefault {
+			c.Spec.Vhosts.Main = routerCfg.VHosts.Main.Default
+		}
+		if c.Spec.Vhosts.Sandbox != nil && *c.Spec.Vhosts.Sandbox == constants.VHostGatewayDefault {
+			resolved := routerCfg.VHosts.Sandbox.Default
+			if resolved != "" {
+				c.Spec.Vhosts.Sandbox = &resolved
+			} else {
+				c.Spec.Vhosts.Sandbox = nil
+			}
+		}
+		*cfg = c
+	case api.WebBrokerApi:
 		if c.Spec.Vhosts == nil {
 			main := routerCfg.VHosts.Main.Default
 			c.Spec.Vhosts = &struct {

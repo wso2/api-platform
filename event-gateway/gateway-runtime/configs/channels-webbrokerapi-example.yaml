@@ -1,0 +1,66 @@
+# Example WebBrokerApi Configuration for Protocol Mediation
+# This demonstrates bidirectional WebSocket ↔ Kafka streaming
+
+channels:
+  # WebBrokerApi example: WebSocket to Kafka protocol mediation
+  - kind: WebBrokerApi
+    apiId: websocket-kafka-api-v1-0
+    name: websocket-kafka-api
+    version: v1.0
+    context: /websocket-kafka
+    receiver:
+      type: websocket
+      properties: {}
+    broker-driver:
+      type: kafka
+      properties:
+        topic: repo-events
+        bootstrap.servers: localhost:9092
+        security.protocol: PLAINTEXT
+    allChannelPolicies:
+      on_connection_init:
+        request:
+          - name: api-key-auth
+            version: v1
+            params:
+              in: header
+              name: X-API-Key
+        response: []
+      on_produce:
+        - name: map-topics
+          version: v1
+          params:
+            extraction:
+              source: header
+              key: X-Client-Topic
+            mappings:
+              client-issues-topic: kafka-repo-issues
+              client-commits-topic: kafka-repo-commits
+              client-pr-topic: kafka-repo-pull-requests
+            defaultTopic: kafka-repo-events
+      on_consume: []
+
+  # WebSubApi example (for comparison)
+  - kind: WebSubApi
+    name: repo-watcher
+    version: v1
+    context: /repos
+    channels:
+      - name: issues
+      - name: pull-requests
+    receiver:
+      type: websub
+    broker-driver:
+      type: kafka
+      config:
+        brokers:
+          - kafka:29092
+    policies:
+      subscribe:
+        - name: basic-auth
+          version: v1
+          params:
+            username: "admin"
+            password: "admin"
+      inbound: []
+      outbound: []

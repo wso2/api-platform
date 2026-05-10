@@ -47,6 +47,12 @@ type MessageProcessor interface {
 	ProcessSubscribe(ctx context.Context, bindingName string, msg *Message) (*Message, bool, error)
 	ProcessInbound(ctx context.Context, bindingName string, msg *Message) (*Message, bool, error)
 	ProcessOutbound(ctx context.Context, bindingName string, msg *Message) (*Message, bool, error)
+
+	// Protocol mediation policy enforcement points (WebBrokerApi)
+	ProcessConnectionInitRequest(ctx context.Context, bindingName string, msg *Message) (*Message, bool, error)
+	ProcessConnectionInitResponse(ctx context.Context, bindingName string, msg *Message) (*Message, error)
+	ProcessProduce(ctx context.Context, bindingName string, msg *Message) (*Message, bool, error)
+	ProcessConsume(ctx context.Context, bindingName string, msg *Message) (*Message, bool, error)
 }
 
 // BrokerDriver manages connections to a backend event system (e.g. Kafka, NATS).
@@ -72,6 +78,7 @@ type ChannelInfo struct {
 	Ordering          string
 	Channels          map[string]string // channel-name → Kafka topic (WebSubApi only)
 	InternalSubTopic  string            // internal subscription sync topic (WebSubApi only)
+	Topics            []string          // topics to subscribe to (WebBrokerApi only)
 }
 
 // RouteMux is an HTTP request multiplexer that supports dynamic route registration.

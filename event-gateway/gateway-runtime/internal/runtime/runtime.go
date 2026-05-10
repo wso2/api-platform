@@ -58,16 +58,15 @@ type Runtime struct {
 	servers       []*managedServer // shared servers for port sharing
 
 	// Dynamic binding management (xDS mode)
-	mu                   sync.RWMutex
-	activeReceivers      map[string]connectors.Receiver
-	activeBrokerDrivers  map[string]connectors.BrokerDriver
-	bindingPaths         map[string][]string // name → registered mux paths
-	bindingTopics        map[string][]string // name → Kafka topics (data + internal sub)
-	websubMux            *DynamicMux
-	websubServer         *managedServer
-	webSubServersCreated bool // true if LoadChannels created WebSub servers
-	runCtx               context.Context
-	running              bool // true after Run() starts servers
+	mu                  sync.RWMutex
+	activeReceivers     map[string]connectors.Receiver
+	activeBrokerDrivers map[string]connectors.BrokerDriver
+	bindingPaths        map[string][]string // name → registered mux paths
+	bindingTopics       map[string][]string // name → Kafka topics (data + internal sub)
+	websubMux           *DynamicMux
+	wsMux               *http.ServeMux // WebSocket mux for dynamic WebBrokerApi bindings
+	runCtx              context.Context
+	running             bool // true after Run() starts servers
 }
 
 type managedServer struct {
@@ -106,6 +105,7 @@ func New(cfg *config.Config, rawConfig map[string]interface{}, registry *connect
 		bindingPaths:        make(map[string][]string),
 		bindingTopics:       make(map[string][]string),
 		websubMux:           NewDynamicMux(),
+		wsMux:               http.NewServeMux(),
 	}, nil
 }
 
@@ -130,6 +130,10 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 	// Create shared HTTP muxes for port sharing.
 	wsMux := http.NewServeMux()
 	websubMux := http.NewServeMux()
+
+	// Store wsMux for dynamic bindings
+	r.wsMux = wsMux
+
 	hasWS := false
 	hasWebSub := false
 
@@ -286,6 +290,98 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 		)
 	}
 
+	// Process WebBrokerApi bindings (protocol mediation).
+	for _, wbb := range parseResult.WebBrokerApiBindings {
+		vhost := defaultVhost(wbb.Vhost)
+
+		// Build policy chains for protocol mediation.
+		connInitReqKey, _, produceKey, consumeKey, err := r.buildWebBrokerApiPolicyChains(wbb, vhost)
+		if err != nil {
+			return fmt.Errorf("failed to build chains for WebBrokerApi %q: %w", wbb.Name, err)
+		}
+
+		// Extract topics from broker driver properties.
+		var topics []string
+		brokerDriverConfig := wbb.BrokerDriver.Config
+		if brokerDriverConfig == nil {
+			brokerDriverConfig = wbb.BrokerDriver.Properties
+		}
+
+		// Get default topic from BrokerDriver.Topic or properties
+		defaultTopic := wbb.BrokerDriver.Topic
+		if defaultTopic == "" {
+			if topicVal, ok := brokerDriverConfig["topic"]; ok {
+				if topicStr, ok := topicVal.(string); ok {
+					defaultTopic = topicStr
+				}
+			}
+		}
+		if defaultTopic != "" {
+			topics = append(topics, defaultTopic)
+		}
+
+		// Register binding in hub.
+		r.hub.RegisterBinding(hub.ChannelBinding{
+			APIID:             wbb.APIID,
+			Name:              wbb.Name,
+			Mode:              "protocol-mediation",
+			Context:           wbb.Context,
+			Version:           wbb.Version,
+			Vhost:             vhost,
+			SubscribeChainKey: connInitReqKey, // on_connection_init.request
+			InboundChainKey:   produceKey,     // on_produce
+			OutboundChainKey:  consumeKey,     // on_consume
+		})
+
+		// Create broker-driver.
+		brokerDriverType := wbb.BrokerDriver.Type
+		if brokerDriverType == "" {
+			brokerDriverType = "kafka"
+		}
+		brokerDriver, err := r.registry.CreateBrokerDriver(brokerDriverType, brokerDriverConfig)
+		if err != nil {
+			return fmt.Errorf("failed to create broker-driver for WebBrokerApi %q: %w", wbb.Name, err)
+		}
+		r.brokerDrivers = append(r.brokerDrivers, brokerDriver)
+
+		hasWS = true
+
+		ch := connectors.ChannelInfo{
+			Name:    wbb.Name,
+			Mode:    "protocol-mediation",
+			Context: wbb.Context,
+			Version: wbb.Version,
+			Vhost:   vhost,
+			Topics:  topics,
+		}
+
+		// Create WebBrokerApi receiver.
+		receiverType := wbb.Receiver.Type
+		if receiverType == "" {
+			receiverType = "websocket"
+		}
+
+		ep, err := r.registry.CreateReceiver(receiverType+"-broker-api", connectors.ReceiverConfig{
+			Channel:      ch,
+			Processor:    r.hub,
+			BrokerDriver: brokerDriver,
+			RuntimeID:    r.cfg.RuntimeID,
+			Mux:          wsMux,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create receiver for WebBrokerApi %q: %w", wbb.Name, err)
+		}
+		r.receivers = append(r.receivers, ep)
+
+		slog.Info("Registered WebBrokerApi binding",
+			"name", wbb.Name,
+			"context", wbb.Context,
+			"version", wbb.Version,
+			"receiver", receiverType,
+			"topics", topics,
+		)
+	}
+
 	// Create shared HTTP servers.
 	if hasWS {
 		wsServer, err := r.newManagedServer("WebSocket", r.cfg.Server.WebSocketPort, wsMux, false)
@@ -309,7 +405,6 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 			}
 			r.servers = append(r.servers, websubHTTPSServer)
 		}
-		r.webSubServersCreated = true // Mark that LoadChannels created WebSub servers
 	}
 
 	return nil
@@ -327,33 +422,48 @@ func (r *Runtime) Run(ctx context.Context) error {
 		}()
 	}
 
-	// If in xDS mode, ensure the websub server is started for dynamic bindings.
+	// If in xDS mode, ensure servers are started for dynamic bindings.
 	r.mu.Lock()
-	if !r.webSubServersCreated && r.websubServer == nil && r.cfg.ControlPlane.Enabled && r.cfg.Server.WebSubEnabled {
-		// Create and start HTTP server
-		websubHTTPServer, err := r.newManagedServer("WebSub-HTTP", r.cfg.Server.WebSubHTTPPort, r.websubMux, false)
+	if r.cfg.ControlPlane.Enabled {
+		// Create WebSocket server for dynamic WebBrokerApi bindings
+		slog.Info("Creating WebSocket server for dynamic WebBrokerApi bindings", "port", r.cfg.Server.WebSocketPort)
+		wsServer, err := r.newManagedServer("WebSocket", r.cfg.Server.WebSocketPort, r.wsMux, false)
 		if err != nil {
 			r.mu.Unlock()
-			return fmt.Errorf("failed to create WebSub HTTP server: %w", err)
+			return fmt.Errorf("failed to create WebSocket server: %w", err)
 		}
-		r.servers = append(r.servers, websubHTTPServer)
+		r.servers = append(r.servers, wsServer)
 		go func() {
-			r.runServer(websubHTTPServer)
+			r.runServer(wsServer)
 		}()
-		// Create and start HTTPS server if TLS is enabled
-		if r.cfg.Server.WebSubTLSEnabled {
-			websubHTTPSServer, err := r.newManagedServer("WebSub-HTTPS", r.cfg.Server.WebSubHTTPSPort, r.websubMux, true)
+
+		// Create WebSub servers for dynamic WebSubApi bindings
+		if r.cfg.Server.WebSubEnabled {
+			slog.Info("Creating WebSub HTTP server for dynamic WebSubApi bindings", "port", r.cfg.Server.WebSubHTTPPort)
+			websubHTTPServer, err := r.newManagedServer("WebSub-HTTP", r.cfg.Server.WebSubHTTPPort, r.websubMux, false)
 			if err != nil {
 				r.mu.Unlock()
-				return fmt.Errorf("failed to create WebSub HTTPS server: %w", err)
+				return fmt.Errorf("failed to create WebSub HTTP server: %w", err)
 			}
-			r.websubServer = websubHTTPSServer
+			r.servers = append(r.servers, websubHTTPServer)
 			go func() {
-				r.runServer(websubHTTPSServer)
+				r.runServer(websubHTTPServer)
 			}()
+
+			// Create HTTPS server if TLS is enabled
+			if r.cfg.Server.WebSubTLSEnabled {
+				slog.Info("Creating WebSub HTTPS server for dynamic WebSubApi bindings", "port", r.cfg.Server.WebSubHTTPSPort)
+				websubHTTPSServer, err := r.newManagedServer("WebSub-HTTPS", r.cfg.Server.WebSubHTTPSPort, r.websubMux, true)
+				if err != nil {
+					r.mu.Unlock()
+					return fmt.Errorf("failed to create WebSub HTTPS server: %w", err)
+				}
+				r.servers = append(r.servers, websubHTTPSServer)
+				go func() {
+					r.runServer(websubHTTPSServer)
+				}()
+			}
 		}
-		// Note: r.websubServer is only set when TLS is enabled; HTTP-only mode leaves it nil
-		// to avoid double-shutdown since the HTTP server is already in r.servers
 	}
 	r.runCtx = ctx
 	r.running = true
@@ -422,16 +532,6 @@ func (r *Runtime) Run(ctx context.Context) error {
 	for _, srv := range r.servers {
 		if err := srv.server.Shutdown(shutdownCtx); err != nil {
 			slog.Error("Failed to shutdown server", "name", srv.name, "addr", srv.server.Addr, "error", err)
-		}
-	}
-
-	// Shutdown xDS-mode websub server if created.
-	r.mu.RLock()
-	wsSrv := r.websubServer
-	r.mu.RUnlock()
-	if wsSrv != nil {
-		if err := wsSrv.server.Shutdown(shutdownCtx); err != nil {
-			slog.Error("Failed to shutdown WebSub server", "addr", wsSrv.server.Addr, "error", err)
 		}
 	}
 
@@ -617,6 +717,37 @@ func (r *Runtime) buildWebSubApiPolicyChains(wsb binding.WebSubApiBinding, vhost
 	}
 
 	return subscribeKey, inboundKey, outboundKey, channelChainKeys, nil
+}
+
+func (r *Runtime) buildWebBrokerApiPolicyChains(wbb binding.WebBrokerApiBinding, vhost string) (connInitReqKey, connInitRespKey, produceKey, consumeKey string, err error) {
+	basePath := wbb.Context
+	if wbb.Version != "" {
+		basePath = path.Join(wbb.Context, wbb.Version)
+	}
+
+	// Connection init request chain: on_connection_init.request policies.
+	connInitReqKey = binding.GenerateRouteKey("CONNECT_INIT", basePath, vhost)
+	// Connection init response chain: on_connection_init.response policies (optional).
+	connInitRespKey = binding.GenerateRouteKey("CONNECT_INIT_RESP", basePath, vhost)
+	// Produce chain: on_produce policies (client → broker).
+	produceKey = binding.GenerateRouteKey("PRODUCE", basePath, vhost)
+	// Consume chain: on_consume policies (broker → client).
+	consumeKey = binding.GenerateRouteKey("CONSUME", basePath, vhost)
+
+	if err = r.buildChain(connInitReqKey, wbb.Policies.OnConnectionInit.Request); err != nil {
+		return "", "", "", "", err
+	}
+	if err = r.buildChain(connInitRespKey, wbb.Policies.OnConnectionInit.Response); err != nil {
+		return "", "", "", "", err
+	}
+	if err = r.buildChain(produceKey, wbb.Policies.OnProduce); err != nil {
+		return "", "", "", "", err
+	}
+	if err = r.buildChain(consumeKey, wbb.Policies.OnConsume); err != nil {
+		return "", "", "", "", err
+	}
+
+	return connInitReqKey, connInitRespKey, produceKey, consumeKey, nil
 }
 
 func (r *Runtime) buildChain(routeKey string, policies []binding.PolicyRef) error {
@@ -832,6 +963,144 @@ func (r *Runtime) RemoveWebSubApiBinding(name string) error {
 	}
 
 	slog.Info("Dynamically removed WebSubApi binding", "name", name)
+	return nil
+}
+
+// AddWebBrokerApiBinding dynamically adds a WebBrokerApi binding at runtime.
+func (r *Runtime) AddWebBrokerApiBinding(wbb binding.WebBrokerApiBinding) error {
+	r.mu.Lock()
+
+	vhost := defaultVhost(wbb.Vhost)
+
+	// Build policy chains for the API.
+	connInitReqKey, _, produceKey, consumeKey, err := r.buildWebBrokerApiPolicyChains(wbb, vhost)
+	if err != nil {
+		r.mu.Unlock()
+		return fmt.Errorf("failed to build chains for WebBrokerApi %q: %w", wbb.Name, err)
+	}
+
+	// Extract broker-driver properties.
+	brokerProperties := wbb.BrokerDriver.Config
+	slog.Info("DEBUG: BrokerDriver config received", "config", brokerProperties, "channel", wbb.Name)
+	topics := []string{}
+	if topic, ok := brokerProperties["topic"].(string); ok && topic != "" {
+		topics = append(topics, topic)
+	}
+	slog.Info("DEBUG: Topics extracted", "topics", topics, "channel", wbb.Name)
+
+	r.hub.RegisterBinding(hub.ChannelBinding{
+		APIID:             wbb.APIID,
+		Name:              wbb.Name,
+		Mode:              "protocol-mediation",
+		Context:           wbb.Context,
+		Version:           wbb.Version,
+		Vhost:             vhost,
+		SubscribeChainKey: connInitReqKey,
+		InboundChainKey:   produceKey,
+		OutboundChainKey:  consumeKey,
+	})
+
+	// Create broker-driver.
+	brokerDriverType := "kafka"
+	if wbb.BrokerDriver.Type != "" {
+		brokerDriverType = wbb.BrokerDriver.Type
+	}
+	brokerDriver, err := r.registry.CreateBrokerDriver(brokerDriverType, wbb.BrokerDriver.Config)
+	if err != nil {
+		r.mu.Unlock()
+		return fmt.Errorf("failed to create broker-driver for WebBrokerApi %q: %w", wbb.Name, err)
+	}
+	r.activeBrokerDrivers[wbb.Name] = brokerDriver
+
+	ch := connectors.ChannelInfo{
+		Name:    wbb.Name,
+		Mode:    "protocol-mediation",
+		Context: wbb.Context,
+		Version: wbb.Version,
+		Vhost:   vhost,
+		Topics:  topics,
+	}
+
+	// Determine receiver type (websocket, sse, etc.)
+	receiverType := "websocket-broker-api"
+	if wbb.Receiver.Type != "" {
+		receiverType = wbb.Receiver.Type + "-broker-api"
+	}
+
+	receiver, err := r.registry.CreateReceiver(receiverType, connectors.ReceiverConfig{
+		Channel:      ch,
+		Processor:    r.hub,
+		BrokerDriver: brokerDriver,
+		RuntimeID:    r.cfg.RuntimeID,
+		Mux:          r.wsMux,
+	})
+	if err != nil {
+		r.mu.Unlock()
+		return fmt.Errorf("failed to create receiver for WebBrokerApi %q: %w", wbb.Name, err)
+	}
+	r.activeReceivers[wbb.Name] = receiver
+
+	startNow := r.running
+	startCtx := r.runCtx
+	r.mu.Unlock()
+
+	// If runtime is already running, start the receiver immediately.
+	if startNow {
+		if startCtx == nil {
+			startCtx = context.Background()
+		}
+		if err := r.startReceiverWithRetry(startCtx, wbb.Name, receiver); err != nil {
+			return fmt.Errorf("failed to start receiver for WebBrokerApi %q: %w", wbb.Name, err)
+		}
+	}
+
+	slog.Info("Dynamically added WebBrokerApi binding",
+		"name", wbb.Name,
+		"context", wbb.Context,
+		"version", wbb.Version,
+		"receiver_type", receiverType)
+
+	return nil
+}
+
+// RemoveWebBrokerApiBinding dynamically removes a WebBrokerApi binding at runtime.
+func (r *Runtime) RemoveWebBrokerApiBinding(name string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Stop and remove receiver.
+	if receiver, ok := r.activeReceivers[name]; ok {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := receiver.Stop(ctx); err != nil {
+			slog.Error("Failed to stop receiver during removal", "name", name, "error", err)
+		}
+		delete(r.activeReceivers, name)
+	}
+
+	// Close and remove broker driver.
+	if bd, ok := r.activeBrokerDrivers[name]; ok {
+		if err := bd.Close(); err != nil {
+			slog.Error("Failed to close broker-driver during removal", "name", name, "error", err)
+		}
+		delete(r.activeBrokerDrivers, name)
+	}
+
+	// Remove binding chains.
+	r.unregisterBindingChains(r.hub.GetBinding(name))
+
+	// Remove hub binding.
+	r.hub.RemoveBinding(name)
+
+	// Deregister HTTP routes from the mux.
+	if paths, ok := r.bindingPaths[name]; ok {
+		for _, p := range paths {
+			r.websubMux.Remove(p)
+		}
+		delete(r.bindingPaths, name)
+	}
+
+	slog.Info("Dynamically removed WebBrokerApi binding", "name", name)
 	return nil
 }
 

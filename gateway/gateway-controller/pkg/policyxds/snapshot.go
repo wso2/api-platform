@@ -151,6 +151,14 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 	if sm.configStore != nil {
 		eventChannelResources := sm.translator.TranslateWebSubApisToEventChannelConfigs(sm.configStore.GetAllByKind("WebSubApi"))
 
+		// Also translate WebBrokerApi configs
+		webBrokerResources := sm.translator.TranslateWebBrokerApisToEventChannelConfigs(sm.configStore.GetAllByKind("WebBrokerApi"))
+
+		// Merge both resource maps
+		for uuid, resource := range webBrokerResources {
+			eventChannelResources[uuid] = resource
+		}
+
 		// The go-control-plane LinearCache does not notify SotW wildcard watches
 		// when resources are only deleted (non-full-state custom type URL).
 		// Work around this by pushing a deletion marker via UpdateResource before

@@ -90,6 +90,13 @@ func (c *Consumer) consumeLoop(ctx context.Context) {
 		}
 
 		fetches.EachRecord(func(record *kgo.Record) {
+			// TODO: Change to debug level before production deployment
+			slog.Info("[7] Message read from Kafka",
+				"topic", record.Topic,
+				"partition", record.Partition,
+				"offset", record.Offset,
+				"size_bytes", len(record.Value))
+
 			msg := recordToMessage(record)
 			if err := c.handler(ctx, msg); err != nil {
 				slog.Error("Message handler error",

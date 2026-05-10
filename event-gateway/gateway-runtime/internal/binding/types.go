@@ -60,19 +60,49 @@ type ChannelDef struct {
 	Policies PolicyBindings `yaml:"policies"`
 }
 
+// WebBrokerApiBinding represents a WebBrokerApi for protocol mediation.
+// It provides bidirectional streaming between web-friendly protocols (WebSocket, SSE)
+// and message brokers (Kafka, MQTT) with per-connection isolation.
+type WebBrokerApiBinding struct {
+	Kind         string                    `yaml:"kind"` // "WebBrokerApi"
+	APIID        string                    `yaml:"apiId"`
+	Name         string                    `yaml:"name"`
+	Version      string                    `yaml:"version"`
+	Context      string                    `yaml:"context"`
+	Vhost        string                    `yaml:"vhost"`
+	Receiver     ReceiverSpec              `yaml:"receiver"`
+	BrokerDriver BrokerDriverSpec          `yaml:"broker-driver"`
+	Policies     ProtocolMediationPolicies `yaml:"allChannelPolicies"`
+}
+
+// ProtocolMediationPolicies defines policy enforcement points for protocol mediation.
+type ProtocolMediationPolicies struct {
+	OnConnectionInit ConnectionInitPolicies `yaml:"on_connection_init"`
+	OnProduce        []PolicyRef            `yaml:"on_produce"`
+	OnConsume        []PolicyRef            `yaml:"on_consume"`
+}
+
+// ConnectionInitPolicies defines policies for the connection handshake phase.
+type ConnectionInitPolicies struct {
+	Request  []PolicyRef `yaml:"request"`
+	Response []PolicyRef `yaml:"response"`
+}
+
 // ReceiverSpec defines the receiver connector type and configuration.
 type ReceiverSpec struct {
-	Type         string `yaml:"type"` // "websub" or "websocket"
-	Path         string `yaml:"path"`
-	Backpressure string `yaml:"backpressure"` // "drop-oldest", "block", "close"
+	Type         string                 `yaml:"type"` // "websub", "websocket", or "sse"
+	Path         string                 `yaml:"path"`
+	Backpressure string                 `yaml:"backpressure"` // "drop-oldest", "block", "close"
+	Properties   map[string]interface{} `yaml:"properties"`
 }
 
 // BrokerDriverSpec defines the broker-driver connector type and configuration.
 type BrokerDriverSpec struct {
-	Type     string                 `yaml:"type"` // "kafka"
-	Topic    string                 `yaml:"topic"`
-	Ordering string                 `yaml:"ordering"` // "ordered" or "unordered"
-	Config   map[string]interface{} `yaml:"config"`   // broker-driver-specific config (e.g. brokers, tls)
+	Type       string                 `yaml:"type"` // "kafka"
+	Topic      string                 `yaml:"topic"`
+	Ordering   string                 `yaml:"ordering"`   // "ordered" or "unordered"
+	Config     map[string]interface{} `yaml:"config"`     // broker-driver-specific config (e.g. brokers, tls)
+	Properties map[string]interface{} `yaml:"properties"` // Alternative config field for WebBrokerApi
 }
 
 // PolicyBindings holds subscribe, inbound, and outbound policy configurations.

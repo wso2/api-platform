@@ -34,10 +34,12 @@ import (
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/binding"
 )
 
-// BindingManager can add/remove WebSubApi bindings dynamically.
+// BindingManager can add/remove WebSubApi and WebBrokerApi bindings dynamically.
 type BindingManager interface {
 	AddWebSubApiBinding(wsb binding.WebSubApiBinding) error
 	RemoveWebSubApiBinding(name string) error
+	AddWebBrokerApiBinding(wbb binding.WebBrokerApiBinding) error
+	RemoveWebBrokerApiBinding(name string) error
 }
 
 // KafkaConfig holds local Kafka broker settings used as defaults.
@@ -47,16 +49,30 @@ type KafkaConfig struct {
 
 // EventChannelResource represents the decoded EventChannelConfig JSON payload.
 type EventChannelResource struct {
-	UUID         string            `json:"uuid"`
-	Name         string            `json:"name"`
-	Kind         string            `json:"kind"`
-	Context      string            `json:"context"`
-	Version      string            `json:"version"`
-	Deleted      bool              `json:"deleted,omitempty"`
-	Channels     []ChannelEntry    `json:"channels"`
-	Receiver     ReceiverEntry     `json:"receiver"`
-	BrokerDriver BrokerDriverEntry `json:"brokerDriver"`
-	Policies     PoliciesEntry     `json:"policies"`
+	UUID               string                     `json:"uuid"`
+	Name               string                     `json:"name"`
+	Kind               string                     `json:"kind"`
+	Context            string                     `json:"context"`
+	Version            string                     `json:"version"`
+	Deleted            bool                       `json:"deleted,omitempty"`
+	Channels           []ChannelEntry             `json:"channels"`
+	Receiver           ReceiverEntry              `json:"receiver"`
+	BrokerDriver       BrokerDriverEntry          `json:"broker-driver"`
+	Policies           PoliciesEntry              `json:"policies"`
+	AllChannelPolicies *ProtocolMediationPolicies `json:"allChannelPolicies,omitempty"`
+}
+
+// ProtocolMediationPolicies defines policies for WebBrokerApi
+type ProtocolMediationPolicies struct {
+	OnConnectionInit ConnectionInitPolicies `json:"on_connection_init"`
+	OnProduce        []PolicyEntry          `json:"on_produce"`
+	OnConsume        []PolicyEntry          `json:"on_consume"`
+}
+
+// ConnectionInitPolicies defines policies for connection initialization
+type ConnectionInitPolicies struct {
+	Request  []PolicyEntry `json:"request"`
+	Response []PolicyEntry `json:"response"`
 }
 
 // ChannelEntry represents one channel in the EventChannelConfig.
@@ -72,8 +88,8 @@ type ReceiverEntry struct {
 
 // BrokerDriverEntry specifies the broker driver configuration.
 type BrokerDriverEntry struct {
-	Type   string                 `json:"type"`
-	Config map[string]interface{} `json:"config"`
+	Type       string                 `json:"type"`
+	Properties map[string]interface{} `json:"properties"`
 }
 
 // PoliciesEntry holds the 3-phase policy references.
@@ -141,17 +157,19 @@ func (h *Handler) HandleResources(ctx context.Context, resources []*discoveryv3.
 			continue
 		}
 
+		slog.Info("DEBUG: Raw JSON from xDS", "json", string(data))
+
 		var ecr EventChannelResource
 		if err := json.Unmarshal(data, &ecr); err != nil {
 			slog.Error("Failed to decode EventChannelConfig", "error", err)
 			continue
 		}
 
-		if ecr.UUID == "" {
-			slog.Warn("EventChannelConfig resource missing UUID, skipping")
-			continue
-		}
-
+		slog.Info("DEBUG: Deserialized EventChannelResource",
+			"uuid", ecr.UUID,
+			"name", ecr.Name,
+			"kind", ecr.Kind,
+			"brokerDriver", ecr.BrokerDriver)
 		// Deletion markers are pushed by the controller to work around
 		// a go-control-plane LinearCache limitation for custom type URLs.
 		// Treat them as absent so the diff logic removes the binding.
@@ -166,9 +184,9 @@ func (h *Handler) HandleResources(ctx context.Context, resources []*discoveryv3.
 	// Compute diff: removals
 	for uuid, old := range h.current {
 		if _, exists := incoming[uuid]; !exists {
-			slog.Info("Removing binding via xDS", "name", old.Name, "uuid", uuid)
-			if err := h.manager.RemoveWebSubApiBinding(old.Name); err != nil {
-				slog.Error("Failed to remove binding", "name", old.Name, "error", err)
+			slog.Info("Removing binding via xDS", "name", old.Name, "uuid", uuid, "kind", old.Kind)
+			if err := h.removeBinding(old); err != nil {
+				slog.Error("Failed to remove binding", "name", old.Name, "kind", old.Kind, "error", err)
 			}
 		}
 	}
@@ -180,16 +198,15 @@ func (h *Handler) HandleResources(ctx context.Context, resources []*discoveryv3.
 				continue
 			}
 			// Update: remove then re-add
-			slog.Info("Updating binding via xDS", "name", ecr.Name, "uuid", uuid)
-			if err := h.manager.RemoveWebSubApiBinding(old.Name); err != nil {
-				slog.Error("Failed to remove binding for update", "name", old.Name, "error", err)
+			slog.Info("Updating binding via xDS", "name", ecr.Name, "uuid", uuid, "kind", ecr.Kind)
+			if err := h.removeBinding(old); err != nil {
+				slog.Error("Failed to remove binding for update", "name", old.Name, "kind", old.Kind, "error", err)
 			}
 		} else {
-			slog.Info("Adding binding via xDS", "name", ecr.Name, "uuid", uuid)
+			slog.Info("Adding binding via xDS", "name", ecr.Name, "uuid", uuid, "kind", ecr.Kind)
 		}
 
-		wsb := h.toWebSubApiBinding(ecr)
-		if err := h.manager.AddWebSubApiBinding(wsb); err != nil {
+		if err := h.addBinding(ecr); err != nil {
 			return fmt.Errorf("failed to add binding %q: %w", ecr.Name, err)
 		}
 	}
@@ -254,7 +271,7 @@ func (h *Handler) resolveBrokerDriver(bd BrokerDriverEntry) binding.BrokerDriver
 		driverType = "kafka"
 	}
 
-	cfg := bd.Config
+	cfg := bd.Properties
 	if len(cfg) == 0 {
 		// Use the event gateway's own Kafka brokers.
 		cfg = map[string]interface{}{
@@ -265,5 +282,63 @@ func (h *Handler) resolveBrokerDriver(bd BrokerDriverEntry) binding.BrokerDriver
 	return binding.BrokerDriverSpec{
 		Type:   driverType,
 		Config: cfg,
+	}
+}
+
+// addBinding routes to the appropriate manager method based on Kind.
+func (h *Handler) addBinding(ecr EventChannelResource) error {
+	switch ecr.Kind {
+	case "WebSubApi":
+		wsb := h.toWebSubApiBinding(ecr)
+		return h.manager.AddWebSubApiBinding(wsb)
+	case "WebBrokerApi":
+		wbb := h.toWebBrokerApiBinding(ecr)
+		return h.manager.AddWebBrokerApiBinding(wbb)
+	default:
+		return fmt.Errorf("unsupported kind: %s", ecr.Kind)
+	}
+}
+
+// removeBinding routes to the appropriate manager method based on Kind.
+func (h *Handler) removeBinding(ecr EventChannelResource) error {
+	switch ecr.Kind {
+	case "WebSubApi":
+		return h.manager.RemoveWebSubApiBinding(ecr.Name)
+	case "WebBrokerApi":
+		return h.manager.RemoveWebBrokerApiBinding(ecr.Name)
+	default:
+		return fmt.Errorf("unsupported kind: %s", ecr.Kind)
+	}
+}
+
+// toWebBrokerApiBinding converts EventChannelResource to WebBrokerApiBinding.
+func (h *Handler) toWebBrokerApiBinding(ecr EventChannelResource) binding.WebBrokerApiBinding {
+	var connInitReq, connInitResp, onProduce, onConsume []binding.PolicyRef
+
+	if ecr.AllChannelPolicies != nil {
+		connInitReq = mapPolicyEntries(ecr.AllChannelPolicies.OnConnectionInit.Request)
+		connInitResp = mapPolicyEntries(ecr.AllChannelPolicies.OnConnectionInit.Response)
+		onProduce = mapPolicyEntries(ecr.AllChannelPolicies.OnProduce)
+		onConsume = mapPolicyEntries(ecr.AllChannelPolicies.OnConsume)
+	}
+
+	return binding.WebBrokerApiBinding{
+		Kind:    "WebBrokerApi",
+		APIID:   ecr.UUID,
+		Name:    ecr.Name,
+		Version: ecr.Version,
+		Context: ecr.Context,
+		Receiver: binding.ReceiverSpec{
+			Type: ecr.Receiver.Type,
+		},
+		BrokerDriver: h.resolveBrokerDriver(ecr.BrokerDriver),
+		Policies: binding.ProtocolMediationPolicies{
+			OnConnectionInit: binding.ConnectionInitPolicies{
+				Request:  connInitReq,
+				Response: connInitResp,
+			},
+			OnProduce: onProduce,
+			OnConsume: onConsume,
+		},
 	}
 }
