@@ -464,7 +464,7 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 				DisplayName: "TestAPI",
 				Version:     "v1.0",
 				Context:     "/test",
-				ChannelPolicies: &map[string]api.WebSubChannelPolicies{
+				Channels: &map[string]api.WebSubChannel{
 					"/events": {},
 				},
 			},
@@ -479,9 +479,7 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 			}
 		}
 		assert.False(t, hasLabelError, "WebSubApi should accept valid labels")
-	})
-
-	// Test with invalid labels for both types
+	}) // Test with invalid labels for both types
 	invalidLabels := map[string]string{"Invalid Key": "value"}
 
 	t.Run("RestApi with invalid labels", func(t *testing.T) {
@@ -533,7 +531,7 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 				DisplayName: "TestAPI",
 				Version:     "v1.0",
 				Context:     "/test",
-				ChannelPolicies: &map[string]api.WebSubChannelPolicies{
+				Channels: &map[string]api.WebSubChannel{
 					"/events": {},
 				},
 			},

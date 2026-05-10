@@ -1790,7 +1790,7 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 					DisplayName: "WebSub Test API",
 					Version:     "v1.0",
 					Context:     "/webhook",
-					ChannelPolicies: &map[string]api.WebSubChannelPolicies{
+					Channels: &map[string]api.WebSubChannel{
 						"/topic1": {},
 						"topic2":  {},
 					},
@@ -1830,7 +1830,7 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 					DisplayName: "WebSub Invalid",
 					Version:     "v1.0",
 					Context:     "/webhook",
-					ChannelPolicies: &map[string]api.WebSubChannelPolicies{
+					Channels: &map[string]api.WebSubChannel{
 						"/test": {},
 					},
 				},
