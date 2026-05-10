@@ -3761,19 +3761,27 @@ components:
               description: Custom virtual host/domain for sandbox traffic
               pattern: '^[a-zA-Z0-9\.\-]+$'
               example: sandbox-api.example.com
-        allChannelPolicies:
+        policies:
           $ref: '#/components/schemas/WebSubAllChannelPolicies'
-        channelPolicies:
+        channels:
           type: object
-          description: Per-channel policy configuration keyed by channel name. Each key is a channel name and defines policies applied only to that channel.
+          description: Per-channel configuration keyed by channel name. Each key is a channel name and defines policies applied only to that channel.
           additionalProperties:
-            $ref: '#/components/schemas/WebSubChannelPolicies'
+            $ref: '#/components/schemas/WebSubChannel'
         deploymentState:
           type: string
           description: Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.
           enum: [deployed, undeployed]
           default: deployed
           example: deployed
+
+    # WebSubChannel defines a single channel entry with its per-channel policies.
+    WebSubChannel:
+      type: object
+      description: A single channel definition with optional per-channel policy overrides.
+      properties:
+        policies:
+          $ref: '#/components/schemas/WebSubChannelPolicies'
 
     # WebSubAllChannelPolicies defines policies applied to all channels for each event type.
     WebSubAllChannelPolicies:

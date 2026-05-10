@@ -456,22 +456,22 @@ func (v *APIValidator) validateAsyncData(spec *api.WebhookAPIData) []ValidationE
 	errors = append(errors, v.validateContext(spec.Context)...)
 
 	// Validate channel policies
-	var channelPolicies map[string]api.WebSubChannelPolicies
-	if spec.ChannelPolicies != nil {
-		channelPolicies = *spec.ChannelPolicies
+	var channels map[string]api.WebSubChannel
+	if spec.Channels != nil {
+		channels = *spec.Channels
 	}
-	errors = append(errors, v.validateChannelPolicies(channelPolicies)...)
+	errors = append(errors, v.validateChannelPolicies(channels)...)
 
 	return errors
 }
 
-// validateChannelPolicies validates the channelPolicies map configuration
-func (v *APIValidator) validateChannelPolicies(channelPolicies map[string]api.WebSubChannelPolicies) []ValidationError {
+// validateChannelPolicies validates the channels map configuration
+func (v *APIValidator) validateChannelPolicies(channelPolicies map[string]api.WebSubChannel) []ValidationError {
 	var errors []ValidationError
 
 	if len(channelPolicies) == 0 {
 		errors = append(errors, ValidationError{
-			Field:   "spec.channelPolicies",
+			Field:   "spec.channels",
 			Message: "At least one channel is required",
 		})
 		return errors
@@ -480,7 +480,7 @@ func (v *APIValidator) validateChannelPolicies(channelPolicies map[string]api.We
 	for chName := range channelPolicies {
 		if strings.TrimSpace(chName) == "" {
 			errors = append(errors, ValidationError{
-				Field:   "spec.channelPolicies",
+				Field:   "spec.channels",
 				Message: "Channel name (key) must not be empty",
 			})
 			continue
@@ -488,7 +488,7 @@ func (v *APIValidator) validateChannelPolicies(channelPolicies map[string]api.We
 
 		if !v.validatePathParametersForAsyncAPIs(chName) {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.channelPolicies.%s", chName),
+				Field:   fmt.Sprintf("spec.channels.%s", chName),
 				Message: "Channel name has {} in parameters",
 			})
 		}

@@ -63,18 +63,22 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 	switch cfgTyped := cfg.Configuration.(type) {
 	case api.WebSubAPI:
 		apiData := cfgTyped.Spec
-		var channelPolicies map[string]api.WebSubChannelPolicies
-		if apiData.ChannelPolicies != nil {
-			channelPolicies = *apiData.ChannelPolicies
+		var channels map[string]api.WebSubChannel
+		if apiData.Channels != nil {
+			channels = *apiData.Channels
 		}
-		for chName, chPolicies := range channelPolicies {
+		for chName, ch := range channels {
+			var chPolicies api.WebSubChannelPolicies
+			if ch.Policies != nil {
+				chPolicies = *ch.Policies
+			}
 			var finalPolicies []policyenginev1.PolicyInstance
 
-			// Policy execution order: AllChannelPolicies (on_subscription) -> per-channel policies
-			// Start with allChannelPolicies subscription-level policies
-			if apiData.AllChannelPolicies != nil && apiData.AllChannelPolicies.OnSubscription != nil {
-				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.AllChannelPolicies.OnSubscription))
-				for _, p := range *apiData.AllChannelPolicies.OnSubscription {
+			// Policy execution order: policies (on_subscription) -> per-channel policies
+			// Start with API-level subscription policies
+			if apiData.Policies != nil && apiData.Policies.OnSubscription != nil {
+				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.Policies.OnSubscription))
+				for _, p := range *apiData.Policies.OnSubscription {
 					resolved, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, p.Name, p.Version)
 					if err != nil {
 						slog.Error("Failed to resolve policy version for all-channel subscription policy", "policy_name", p.Name, "error", err)
@@ -107,9 +111,9 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 
 			// Build UNSUB (unsubscription) policy chain for this channel
 			var unsubPolicies []policyenginev1.PolicyInstance
-			if apiData.AllChannelPolicies != nil && apiData.AllChannelPolicies.OnUnsubscription != nil {
-				unsubPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.AllChannelPolicies.OnUnsubscription))
-				for _, p := range *apiData.AllChannelPolicies.OnUnsubscription {
+			if apiData.Policies != nil && apiData.Policies.OnUnsubscription != nil {
+				unsubPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.Policies.OnUnsubscription))
+				for _, p := range *apiData.Policies.OnUnsubscription {
 					resolved, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, p.Name, p.Version)
 					if err != nil {
 						slog.Error("Failed to resolve policy version for all-channel unsubscription policy", "policy_name", p.Name, "error", err)

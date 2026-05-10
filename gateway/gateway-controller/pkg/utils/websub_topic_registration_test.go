@@ -31,7 +31,7 @@ spec:
   version: v1
   vhosts:
     main: "*"
-  channelPolicies:
+  channels:
     /topic1: {}
     /topic2: {}
 `
@@ -82,7 +82,7 @@ spec:
   version: v1
   vhosts:
     main: "*"
-  channelPolicies:
+  channels:
     /topic1: {}
     /topic2: {}
 `
@@ -126,7 +126,7 @@ spec:
   version: v1
   vhosts:
     main: "*"
-  channelPolicies:
+  channels:
     /topic1: {}
 `
 
@@ -169,7 +169,7 @@ spec:
   version: v1
   vhosts:
     main: "*"
-  channelPolicies:
+  channels:
     /topic1: {}
     /topic2: {}`
 
@@ -183,7 +183,7 @@ spec:
   version: v1
   vhosts:
     main: "*"
-  channelPolicies:
+  channels:
     /topic3: {}
     /topic4: {}`
 
@@ -277,7 +277,7 @@ spec:
   version: v1
   vhosts:
     main: "*"
-  channelPolicies:
+  channels:
     /topic1: {}
     /topic2: {}`
 

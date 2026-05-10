@@ -68,19 +68,23 @@ func (t *Translator) TranslateWebSubApisToEventChannelConfigs(configs []*models.
 func (t *Translator) buildEventChannelResource(uuid string, webSubCfg *api.WebSubAPI) (types.Resource, error) {
 	spec := webSubCfg.Spec
 
-	// Build channels list from channelPolicies, including per-channel policies.
-	var channelPolicies map[string]api.WebSubChannelPolicies
-	if spec.ChannelPolicies != nil {
-		channelPolicies = *spec.ChannelPolicies
+	// Build channels list from channels, including per-channel policies.
+	var channels map[string]api.WebSubChannel
+	if spec.Channels != nil {
+		channels = *spec.Channels
 	}
-	channels := make([]map[string]interface{}, 0, len(channelPolicies))
-	sortedKeys := make([]string, 0, len(channelPolicies))
-	for chName := range channelPolicies {
+	channelEntries := make([]map[string]interface{}, 0, len(channels))
+	sortedKeys := make([]string, 0, len(channels))
+	for chName := range channels {
 		sortedKeys = append(sortedKeys, chName)
 	}
 	sort.Strings(sortedKeys)
 	for _, chName := range sortedKeys {
-		chPolicies := channelPolicies[chName]
+		ch := channels[chName]
+		var chPolicies api.WebSubChannelPolicies
+		if ch.Policies != nil {
+			chPolicies = *ch.Policies
+		}
 		chEntry := map[string]interface{}{
 			"name": chName,
 			"policies": map[string]interface{}{
@@ -90,19 +94,19 @@ func (t *Translator) buildEventChannelResource(uuid string, webSubCfg *api.WebSu
 				"outbound":    buildPolicyList(chPolicies.OnMessageDelivery),
 			},
 		}
-		channels = append(channels, chEntry)
+		channelEntries = append(channelEntries, chEntry)
 	}
 
-	// allChannelPolicies maps to API-level policy chains.
+	// policies maps to API-level policy chains.
 	subscribePolicies := []interface{}{}
 	unsubscribePolicies := []interface{}{}
 	inboundPolicies := []interface{}{}
 	outboundPolicies := []interface{}{}
-	if spec.AllChannelPolicies != nil {
-		subscribePolicies = buildPolicyList(spec.AllChannelPolicies.OnSubscription)
-		unsubscribePolicies = buildPolicyList(spec.AllChannelPolicies.OnUnsubscription)
-		inboundPolicies = buildPolicyList(spec.AllChannelPolicies.OnMessageReceived)
-		outboundPolicies = buildPolicyList(spec.AllChannelPolicies.OnMessageDelivery)
+	if spec.Policies != nil {
+		subscribePolicies = buildPolicyList(spec.Policies.OnSubscription)
+		unsubscribePolicies = buildPolicyList(spec.Policies.OnUnsubscription)
+		inboundPolicies = buildPolicyList(spec.Policies.OnMessageReceived)
+		outboundPolicies = buildPolicyList(spec.Policies.OnMessageDelivery)
 	}
 
 	data := map[string]interface{}{
@@ -111,7 +115,7 @@ func (t *Translator) buildEventChannelResource(uuid string, webSubCfg *api.WebSu
 		"kind":     "WebSubApi",
 		"context":  spec.Context,
 		"version":  spec.Version,
-		"channels": channels,
+		"channels": channelEntries,
 		"receiver": map[string]interface{}{
 			"type": "websub",
 		},

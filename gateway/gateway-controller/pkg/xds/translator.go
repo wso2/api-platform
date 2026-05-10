@@ -734,8 +734,8 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig, allConfig
 	}
 	apiProjectID := extractProjectIDFromConfig(cfg)
 
-	if apiData.ChannelPolicies != nil {
-		for chName := range *apiData.ChannelPolicies {
+	if apiData.Channels != nil {
+		for chName := range *apiData.Channels {
 			if !strings.HasPrefix(chName, "/") {
 				chName = "/" + chName
 			}
