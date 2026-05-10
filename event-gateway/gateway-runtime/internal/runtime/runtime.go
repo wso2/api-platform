@@ -928,6 +928,12 @@ func (r *Runtime) UpdateWebSubApiBinding(oldWSB, newWSB binding.WebSubApiBinding
 	oldBinding := r.hub.GetBinding(oldWSB.Name)
 	r.mu.Unlock()
 
+	vhost := defaultVhost(newWSB.Vhost)
+	subKey, inKey, outKey, chChainKeys, err := r.buildWebSubApiPolicyChains(newWSB, vhost)
+	if err != nil {
+		return fmt.Errorf("failed to build chains for updated WebSubApi %q: %w", newWSB.Name, err)
+	}
+
 	if len(addedChannels) > 0 {
 		topicsToEnsure := make([]string, 0, len(addedChannels))
 		for _, kafkaTopic := range addedChannels {
@@ -957,12 +963,6 @@ func (r *Runtime) UpdateWebSubApiBinding(oldWSB, newWSB binding.WebSubApiBinding
 				"error", err)
 		}
 		cancel()
-	}
-
-	vhost := defaultVhost(newWSB.Vhost)
-	subKey, inKey, outKey, chChainKeys, err := r.buildWebSubApiPolicyChains(newWSB, vhost)
-	if err != nil {
-		return fmt.Errorf("failed to build chains for updated WebSubApi %q: %w", newWSB.Name, err)
 	}
 
 	r.mu.Lock()
