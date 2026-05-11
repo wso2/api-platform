@@ -202,6 +202,7 @@ func (s *APIServer) UpdateWebSubAPI(c *gin.Context, id string) {
 				Status:  "error",
 				Message: fmt.Sprintf("WebSub API configuration with handle '%s' not found", handle),
 			})
+			return
 		} else if storage.IsConflictError(err) {
 			c.JSON(http.StatusConflict, api.ErrorResponse{
 				Status:  "error",
