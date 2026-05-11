@@ -40,11 +40,32 @@ type WebSubAPI struct {
 
 // WebSubAPIConfiguration holds the WebSub API configuration stored as JSON in the DB
 type WebSubAPIConfiguration struct {
-	Name              string         `json:"name,omitempty"`
-	Version           string         `json:"version,omitempty"`
-	Context           *string        `json:"context,omitempty"`
-	Channels          []Channel      `json:"channels,omitempty"`
-	Upstream          UpstreamConfig `json:"upstream,omitempty"`
-	Policies          []Policy       `json:"policies,omitempty"`
-	SubscriptionPlans []string       `json:"subscriptionPlans,omitempty"`
+	Name              string                    `json:"name,omitempty"`
+	Version           string                    `json:"version,omitempty"`
+	Context           *string                   `json:"context,omitempty"`
+	Channels          map[string]WebSubChannel  `json:"channels,omitempty"`
+	Upstream          UpstreamConfig            `json:"upstream,omitempty"`
+	Policies          *WebSubAllChannelPolicies `json:"policies,omitempty"`
+	SubscriptionPlans []string                  `json:"subscriptionPlans,omitempty"`
+}
+
+// WebSubAllChannelPolicies holds policies applied to all channels, organized by event type.
+type WebSubAllChannelPolicies struct {
+	OnSubscription    []Policy `json:"on_subscription,omitempty"`
+	OnUnsubscription  []Policy `json:"on_unsubscription,omitempty"`
+	OnMessageReceived []Policy `json:"on_message_received,omitempty"`
+	OnMessageDelivery []Policy `json:"on_message_delivery,omitempty"`
+}
+
+// WebSubChannelPolicies holds policies applied to a specific channel, organized by event type.
+type WebSubChannelPolicies struct {
+	OnSubscription    []Policy `json:"on_subscription,omitempty"`
+	OnUnsubscription  []Policy `json:"on_unsubscription,omitempty"`
+	OnMessageReceived []Policy `json:"on_message_received,omitempty"`
+	OnMessageDelivery []Policy `json:"on_message_delivery,omitempty"`
+}
+
+// WebSubChannel represents a single channel with optional per-channel policy overrides.
+type WebSubChannel struct {
+	Policies *WebSubChannelPolicies `json:"policies,omitempty"`
 }

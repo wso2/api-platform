@@ -121,13 +121,12 @@ type WebSubAPIDeploymentYAML struct {
 
 // WebSubAPIDeploymentSpec represents the spec section of the WebSub API deployment YAML
 type WebSubAPIDeploymentSpec struct {
-	DisplayName string                     `yaml:"displayName"`
-	Version     string                     `yaml:"version"`
-	Context     string                     `yaml:"context"`
-	Vhosts      *WebSubAPIDeploymentVhosts `yaml:"vhosts,omitempty"`
-	Hub         WebSubHub                  `json:"hub" yaml:"hub"`
-	Receiver    *WebSubReceiver            `json:"receiver,omitempty" yaml:"receiver,omitempty"`
-	Delivery    *WebSubDelivery            `json:"delivery,omitempty" yaml:"delivery,omitempty"`
+	DisplayName string                          `yaml:"displayName"`
+	Version     string                          `yaml:"version"`
+	Context     string                          `yaml:"context"`
+	Vhosts      *WebSubAPIDeploymentVhosts      `yaml:"vhosts,omitempty"`
+	Policies    *WebSubDeployAllChannelPolicies `yaml:"policies,omitempty"`
+	Channels    map[string]WebSubDeployChannel  `yaml:"channels,omitempty"`
 }
 
 // WebSubAPIDeploymentVhosts represents vhost configuration in the WebSub API deployment YAML
@@ -136,39 +135,23 @@ type WebSubAPIDeploymentVhosts struct {
 	Sandbox *string `yaml:"sandbox,omitempty"`
 }
 
-// WebSubAPIDeploymentChannel represents a channel in the WebSub API deployment YAML
-type WebSubAPIDeploymentChannel struct {
-	Name   string `yaml:"name"`
-	Method string `yaml:"method"`
+// WebSubDeployAllChannelPolicies represents policies for all channels in the deployment YAML, organized by event type.
+type WebSubDeployAllChannelPolicies struct {
+	OnSubscription    *[]Policy `yaml:"on_subscription,omitempty"`
+	OnUnsubscription  *[]Policy `yaml:"on_unsubscription,omitempty"`
+	OnMessageReceived *[]Policy `yaml:"on_message_received,omitempty"`
+	OnMessageDelivery *[]Policy `yaml:"on_message_delivery,omitempty"`
 }
 
-// WebSubDelivery Delivery configuration for the WebSub API - handles outbound event delivery to subscribers.
-type WebSubDelivery struct {
-	// Policies List of policies applied when delivering events to subscriber callback URLs (e.g., hmac-signature-validation)
-	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+// WebSubDeployChannelPolicies represents per-channel policies in the deployment YAML, organized by event type.
+type WebSubDeployChannelPolicies struct {
+	OnSubscription    *[]Policy `yaml:"on_subscription,omitempty"`
+	OnUnsubscription  *[]Policy `yaml:"on_unsubscription,omitempty"`
+	OnMessageReceived *[]Policy `yaml:"on_message_received,omitempty"`
+	OnMessageDelivery *[]Policy `yaml:"on_message_delivery,omitempty"`
 }
 
-// WebSubHub Hub configuration for the WebSub API - handles subscriber management and event fan-out.
-type WebSubHub struct {
-	// Channels List of topic channels available for subscription
-	Channels []HubChannel `json:"channels" yaml:"channels"`
-
-	// Policies List of policies applied at the hub level (e.g., api-key-auth for subscribers)
-	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
-}
-
-// HubChannel A subscribable topic channel within the WebSub hub.
-type HubChannel struct {
-	// Name Channel name or topic identifier relative to API context.
-	Name string `json:"name" yaml:"name"`
-	// Method The method by which the channel is identified (e.g., "SUB" for subscription-based, "PUB" for publish-only)
-	Method string `json:"method" yaml:"method"`
-	// Policies List of policies applied only to this channel (e.g., rbac)
-	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
-}
-
-// WebSubReceiver Receiver configuration for the WebSub API - handles inbound event publishing from publishers.
-type WebSubReceiver struct {
-	// Policies List of policies applied to inbound webhook requests (e.g., hmac-signature-validation)
-	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+// WebSubDeployChannel represents a single channel entry in the deployment YAML.
+type WebSubDeployChannel struct {
+	Policies *WebSubDeployChannelPolicies `yaml:"policies,omitempty"`
 }
