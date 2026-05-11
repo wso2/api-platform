@@ -947,7 +947,7 @@ func (r *Runtime) UpdateWebSubApiBinding(oldWSB, newWSB binding.WebSubApiBinding
 	r.mu.Unlock()
 
 	vhost := defaultVhost(newWSB.Vhost)
-	subKey, inKey, outKey, chChainKeys, err := r.buildWebSubApiPolicyChains(newWSB, vhost)
+	subKey, unsubKey, inKey, outKey, chChainKeys, err := r.buildWebSubApiPolicyChains(newWSB, vhost)
 	if err != nil {
 		return fmt.Errorf("failed to build chains for updated WebSubApi %q: %w", newWSB.Name, err)
 	}
@@ -1007,6 +1007,7 @@ func (r *Runtime) UpdateWebSubApiBinding(oldWSB, newWSB binding.WebSubApiBinding
 		Version:           newWSB.Version,
 		Vhost:             vhost,
 		SubscribeChainKey: subKey,
+		UnsubscribeChainKey: unsubKey,
 		InboundChainKey:   inKey,
 		OutboundChainKey:  outKey,
 		Channels:          newChannels,
