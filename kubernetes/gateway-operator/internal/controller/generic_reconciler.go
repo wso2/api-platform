@@ -60,6 +60,7 @@ type ResourceTrackingEntry struct {
 	Status        ResourceTrackingStatus
 	GatewayKey    string
 	Id            string
+	Fingerprint   string
 	RetryCount    int
 	LastRetryTime time.Time
 	NextRetryTime time.Time
@@ -116,6 +117,11 @@ func (t *ResourceTracker) Delete(key string) {
 type DeployResult struct {
 	// Id is the gateway-issued identifier, when applicable.
 	Id string
+	// Fingerprint is the external-dependency fingerprint captured at deploy time.
+	// When non-empty it is stored on the tracking entry and forwarded to
+	// onExternalDepsApplied so the annotation reflects the exact state deployed
+	// rather than a re-computed (potentially racy) value.
+	Fingerprint string
 }
 
 // ResourceAdapter abstracts the per-kind specifics for the generic
@@ -231,7 +237,10 @@ func (r *GenericReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 // "already deployed, skipping" short-circuit.
 type externalDepsDrifter interface {
 	needsRedeployForExternalDeps(ctx context.Context, c client.Client, obj client.Object) (bool, error)
-	onExternalDepsApplied(ctx context.Context, c client.Client, obj client.Object) error
+	// onExternalDepsApplied is called after a successful deployment. fingerprint
+	// is the value returned by Deploy so the annotation is set to the exact
+	// state that was deployed, avoiding a racy re-computation.
+	onExternalDepsApplied(ctx context.Context, c client.Client, obj client.Object, fingerprint string) error
 }
 
 func deploymentAlreadySyncedToGeneration(status *apiv1.ResourceStatus, generation int64) bool {
@@ -409,6 +418,10 @@ func (r *GenericReconciler) processDeployment(ctx context.Context, obj client.Ob
 		r.Tracker.Set(trackingKey, entry)
 	}
 
+	if result.Fingerprint != "" {
+		entry.Fingerprint = result.Fingerprint
+	}
+
 	entry.GatewayDeploySucceeded = true
 	r.Tracker.Set(trackingKey, entry)
 
@@ -487,7 +500,7 @@ func (r *GenericReconciler) handleDeploymentSuccess(ctx context.Context, obj cli
 	}
 
 	if deps, ok := r.Adapter.(externalDepsDrifter); ok {
-		if err := deps.onExternalDepsApplied(ctx, r.Client, obj); err != nil {
+		if err := deps.onExternalDepsApplied(ctx, r.Client, obj, entry.Fingerprint); err != nil {
 			return ctrl.Result{}, err
 		}
 	}

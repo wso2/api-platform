@@ -19,8 +19,11 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"go.uber.org/zap"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -71,6 +74,12 @@ func (r *LlmProviderReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			builder.WithPredicates(gatewayWatchPredicate())).
 		Watches(&apiv1.LlmProviderTemplate{},
 			handler.EnqueueRequestsFromMapFunc(enqueueLlmProvidersReferencingTemplate(r.Client))).
+		Watches(&corev1.Secret{},
+			handler.EnqueueRequestsFromMapFunc(enqueueLlmProvidersForSecret(r.Client)),
+			builder.WithPredicates(secretMutationPredicate())).
+		Watches(&corev1.ConfigMap{},
+			handler.EnqueueRequestsFromMapFunc(enqueueLlmProvidersForConfigMap(r.Client)),
+			builder.WithPredicates(configMapMutationPredicate())).
 		Complete(r)
 }
 
@@ -101,19 +110,69 @@ func (a *llmProviderAdapter) GatewaySelectionKey(obj client.Object) (string, map
 	return cr.Namespace, cr.Labels
 }
 
+func (a *llmProviderAdapter) needsRedeployForExternalDeps(ctx context.Context, c client.Client, obj client.Object) (bool, error) {
+	cr := obj.(*apiv1.LlmProvider)
+	fp, err := llmProviderExternalDepsFingerprint(ctx, c, cr)
+	if err != nil {
+		return false, err
+	}
+	if strings.TrimSpace(fp) == "" {
+		return false, nil
+	}
+	cur := ""
+	if obj.GetAnnotations() != nil {
+		cur = strings.TrimSpace(obj.GetAnnotations()[annLlmProviderPolicyValueFromFingerprint])
+	}
+	return cur != fp, nil
+}
+
+func (a *llmProviderAdapter) onExternalDepsApplied(ctx context.Context, c client.Client, obj client.Object, fingerprint string) error {
+	if strings.TrimSpace(fingerprint) == "" {
+		return nil
+	}
+	var latest apiv1.LlmProvider
+	if err := c.Get(ctx, types.NamespacedName{Namespace: obj.GetNamespace(), Name: obj.GetName()}, &latest); err != nil {
+		return err
+	}
+	base := latest.DeepCopy()
+	ann := latest.GetAnnotations()
+	if ann == nil {
+		ann = map[string]string{}
+	} else {
+		cp := make(map[string]string, len(ann)+1)
+		for k, v := range ann {
+			cp[k] = v
+		}
+		ann = cp
+	}
+	ann[annLlmProviderPolicyValueFromFingerprint] = fingerprint
+	latest.SetAnnotations(ann)
+	return c.Patch(ctx, &latest, client.MergeFrom(base))
+}
+
 func (a *llmProviderAdapter) Deploy(ctx context.Context, k8sClient client.Client, gatewayEndpoint string, obj client.Object, authFn gatewayclient.AuthHeaderFunc) (DeployResult, error) {
 	cr := obj.(*apiv1.LlmProvider)
 
-	specPayload := interface{}(cr.Spec)
-	if cr.Spec.Upstream.Auth != nil {
-		resolved, err := resolveLLMProviderUpstreamAuth(ctx, k8sClient, cr.Namespace, cr.Spec.Upstream.Auth, "spec.upstream.auth.value")
+	spec := cr.Spec.DeepCopy()
+	for i := range spec.Policies {
+		for j := range spec.Policies[i].Paths {
+			scope := fmt.Sprintf("policy %s %s path %s", spec.Policies[i].Name, spec.Policies[i].Version, spec.Policies[i].Paths[j].Path)
+			if err := resolveRawExtensionValueFrom(ctx, k8sClient, cr.Namespace, spec.Policies[i].Paths[j].Params, spec.Policies[i].Name, scope); err != nil {
+				return DeployResult{}, err
+			}
+		}
+	}
+
+	specPayload := interface{}(*spec)
+	if spec.Upstream.Auth != nil {
+		resolved, err := resolveLLMProviderUpstreamAuth(ctx, k8sClient, cr.Namespace, spec.Upstream.Auth, "spec.upstream.auth.value")
 		if err != nil {
 			return DeployResult{}, err
 		}
 		if resolved == nil {
 			return DeployResult{}, &gatewayclient.NonRetryableError{Err: fmt.Errorf("internal: upstream.auth resolution produced nil")}
 		}
-		m, err := specToJSONMap(cr.Spec)
+		m, err := specToJSONMap(*spec)
 		if err != nil {
 			return DeployResult{}, &gatewayclient.NonRetryableError{Err: err}
 		}
@@ -135,7 +194,13 @@ func (a *llmProviderAdapter) Deploy(ctx context.Context, k8sClient client.Client
 	if err := deployEnvelopeResource(ctx, gatewayEndpoint, gatewayclient.LLMProvidersPath(), cr.Name, body, authFn); err != nil {
 		return DeployResult{}, rewriteLLMDeployDependencyErrors(err)
 	}
-	return DeployResult{}, nil
+	// Compute the fingerprint of the deployed state so it can be written to the
+	// annotation by onExternalDepsApplied without a racy re-computation.
+	fp, err := llmProviderExternalDepsFingerprint(ctx, k8sClient, cr)
+	if err != nil {
+		return DeployResult{}, err
+	}
+	return DeployResult{Fingerprint: fp}, nil
 }
 
 func (a *llmProviderAdapter) Delete(ctx context.Context, gatewayEndpoint string, obj client.Object, authFn gatewayclient.AuthHeaderFunc) error {

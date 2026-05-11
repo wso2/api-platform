@@ -21,7 +21,9 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 
 	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
@@ -168,6 +170,23 @@ func (a *subscriptionAdapter) Deploy(ctx context.Context, k8sClient client.Clien
 		}
 		resp, err := gatewayclient.CreateSubscription(ctx, gatewayEndpoint, payload, authFn)
 		if err != nil {
+			var nr *gatewayclient.NonRetryableError
+			if errors.As(err, &nr) && nr.StatusCode == http.StatusConflict {
+				recoveredID, recErr := gatewayclient.FindSubscriptionIDByAPIAndApplication(ctx, gatewayEndpoint, cr.Spec.ApiId, cr.Spec.ApplicationId, authFn)
+				if recErr != nil {
+					return DeployResult{}, recErr
+				}
+				if recoveredID != "" {
+					if fp, fpErr := subscriptionCreateFingerprint(cr); fpErr == nil {
+						_ = setSubscriptionLastAppliedCreateFingerprint(ctx, k8sClient, cr, fp)
+					}
+					return DeployResult{Id: recoveredID}, nil
+				}
+				return DeployResult{}, &gatewayclient.RetryableError{
+					StatusCode: http.StatusConflict,
+					Err:        fmt.Errorf("subscription create conflicted but existing id is not yet discoverable; retrying: %w", err),
+				}
+			}
 			return DeployResult{}, err
 		}
 		// Persist a fingerprint of create-only fields so later reconciles can detect forbidden updates.
@@ -318,7 +337,7 @@ func (a *subscriptionAdapter) needsRedeployForExternalDeps(ctx context.Context, 
 	return cur != fp, nil
 }
 
-func (a *subscriptionAdapter) onExternalDepsApplied(ctx context.Context, c client.Client, obj client.Object) error {
+func (a *subscriptionAdapter) onExternalDepsApplied(ctx context.Context, c client.Client, obj client.Object, _ string) error {
 	var latest apiv1.Subscription
 	if err := c.Get(ctx, types.NamespacedName{Namespace: obj.GetNamespace(), Name: obj.GetName()}, &latest); err != nil {
 		return err

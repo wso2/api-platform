@@ -50,7 +50,11 @@ spec:
         - path: /chat/completions
           methods: [POST]
           params:
-            key: X-API-Key
+            key:
+              valueFrom:
+                secretKeyRef:
+                  name: demo-management-secrets
+                  key: apikey-header-name
             in: header
   upstream:
     url: http://mock-openapi:4010/openai/v1
@@ -58,7 +62,9 @@ spec:
       type: api-key
       header: Authorization
       value:
-        value: Bearer sk-test-key
+        valueFrom:
+          name: demo-management-secrets
+          key: llm-upstream-authorization
 ---
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProxy
@@ -78,7 +84,11 @@ spec:
         - path: /chat/completions
           methods: [POST]
           params:
-            key: X-API-Key
+            key:
+              valueFrom:
+                secretKeyRef:
+                  name: demo-management-secrets
+                  key: apikey-header-name
             in: header
   provider:
     id: demo-llm-provider-apikey

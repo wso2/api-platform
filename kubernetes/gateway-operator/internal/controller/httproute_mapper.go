@@ -19,6 +19,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -85,8 +86,11 @@ func IsInvalidHTTPRouteConfigError(err error) bool {
 	if err == nil {
 		return false
 	}
-	e, ok := err.(*HTTPRouteConfigError)
-	return ok && e.Kind == httpRouteConfigErrorInvalid
+	var e *HTTPRouteConfigError
+	if errors.As(err, &e) {
+		return e.Kind == httpRouteConfigErrorInvalid
+	}
+	return false
 }
 
 // IsTransientHTTPRouteConfigError reports errors that should be retried (e.g. missing ReferenceGrant, API lookup).
@@ -94,8 +98,11 @@ func IsTransientHTTPRouteConfigError(err error) bool {
 	if err == nil {
 		return false
 	}
-	e, ok := err.(*HTTPRouteConfigError)
-	return ok && e.Kind == httpRouteConfigErrorTransient
+	var e *HTTPRouteConfigError
+	if errors.As(err, &e) {
+		return e.Kind == httpRouteConfigErrorTransient
+	}
+	return false
 }
 
 // allRESTAPIOperationMethods returns every HTTP verb modeled by APIConfigData / RestApi operations
@@ -211,7 +218,7 @@ func BuildAPIConfigFromHTTPRoute(ctx context.Context, c client.Client, route *ga
 		Version:  version,
 		Policies: apiPolicies,
 	}
-	if err := resolveAPIConfigPolicyParamsValueFrom(ctx, c, route.Namespace, spec, log); err != nil {
+	if _, err := resolveAPIConfigPolicyParamsValueFrom(ctx, c, route.Namespace, spec, log); err != nil {
 		return nil, err
 	}
 	opsWithPol := 0

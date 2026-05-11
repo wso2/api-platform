@@ -1043,21 +1043,32 @@ jobs:
           set -euo pipefail
           DEMO="kubernetes/helm/resources/apigateway-restapi-operator-demo"
           kubectl apply -f "${DEMO}/00-namespace.yaml"
+          sleep 2
           kubectl apply -f "${DEMO}/03-backend.yaml"
+          sleep 2
           kubectl apply -f "${DEMO}/05a-management-prerequisites.yaml"
+          sleep 2
           kubectl apply -f "${DEMO}/05b0-mock-openapi-https.yaml"
+          sleep 2
           kubectl wait --for=condition=available deployment/hello-backend deployment/mock-openapi deployment/mock-openapi-https -n apigateway-demo --timeout=300s
 
           kubectl apply -f "${DEMO}/05c0-mcp-server-backend.yaml"
+          sleep 2
           kubectl wait --for=condition=available deployment/mcp-server-backend -n apigateway-demo --timeout=240s
 
           sed 's#url: http://mock-openapi:4010#url: http://mock-openapi.apigateway-demo.svc.cluster.local:4010#g' "${DEMO}/05b-llm-resources.yaml" | kubectl apply -f -
+          sleep 2
           sed 's#url: http://mock-openapi:4010#url: http://mock-openapi.apigateway-demo.svc.cluster.local:4010#g' "${DEMO}/05b-02-llm-resources-apikey.yaml" | kubectl apply -f -
+          sleep 2
           sed 's#url: http://mcp-server-backend:3001#url: http://mcp-server-backend.apigateway-demo.svc.cluster.local:3001#g' "${DEMO}/05c-mcp-resources.yaml" | kubectl apply -f -
+          sleep 2
 
           kubectl apply -f "${DEMO}/04-02-restapi.yaml"
+          sleep 2
           kubectl apply -f "${DEMO}/04-03-restapi.yaml"
+          sleep 2
           kubectl apply -f "${DEMO}/05f0-apikey-resources.yaml"
+          sleep 2
           kubectl apply -f - <<'EOF'
           apiVersion: gateway.api-platform.wso2.com/v1alpha1
           kind: SubscriptionPlan
@@ -1073,18 +1084,19 @@ jobs:
             throttleLimitCount: 1000
             throttleLimitUnit: Min
           EOF
+          sleep 2
 
-          kubectl wait --for=condition=Programmed managedsecret/demo-managed-secret -n apigateway-demo --timeout=500s
-          kubectl wait --for=condition=Programmed llmprovidertemplate/openai-test -n apigateway-demo --timeout=500s
-          kubectl wait --for=condition=Programmed llmprovider/demo-llm-provider -n apigateway-demo --timeout=500s
-          kubectl wait --for=condition=Programmed llmproxy/demo-llm-proxy -n apigateway-demo --timeout=500s
-          kubectl wait --for=condition=Programmed llmprovidertemplate/openai-test-apikey -n apigateway-demo --timeout=500s
-          kubectl wait --for=condition=Programmed llmprovider/demo-llm-provider-apikey -n apigateway-demo --timeout=500s
-          kubectl wait --for=condition=Programmed llmproxy/demo-llm-proxy-apikey -n apigateway-demo --timeout=500s
-          kubectl wait --for=condition=Programmed mcp/everything-mcp-v1.0 -n apigateway-demo --timeout=500s
-          kubectl wait --for=condition=Programmed restapi/hello-sub-api -n apigateway-demo --timeout=500s
-          kubectl wait --for=condition=Programmed restapi/hello-apikey-api -n apigateway-demo --timeout=500s
-          kubectl wait --for=condition=Programmed subscriptionplan/demo-plan -n apigateway-demo --timeout=500s
+          kubectl wait --for=condition=Programmed managedsecret/demo-managed-secret -n apigateway-demo --timeout=1000s
+          kubectl wait --for=condition=Programmed llmprovidertemplate/openai-test -n apigateway-demo --timeout=1000s
+          kubectl wait --for=condition=Programmed llmprovider/demo-llm-provider -n apigateway-demo --timeout=1000s
+          kubectl wait --for=condition=Programmed llmproxy/demo-llm-proxy -n apigateway-demo --timeout=1000s
+          kubectl wait --for=condition=Programmed llmprovidertemplate/openai-test-apikey -n apigateway-demo --timeout=1000s
+          kubectl wait --for=condition=Programmed llmprovider/demo-llm-provider-apikey -n apigateway-demo --timeout=1000s
+          kubectl wait --for=condition=Programmed llmproxy/demo-llm-proxy-apikey -n apigateway-demo --timeout=1000s
+          kubectl wait --for=condition=Programmed mcp/everything-mcp-v1.0 -n apigateway-demo --timeout=1000s
+          kubectl wait --for=condition=Programmed restapi/hello-sub-api -n apigateway-demo --timeout=1000s
+          kubectl wait --for=condition=Programmed restapi/hello-apikey-api -n apigateway-demo --timeout=1000s
+          kubectl wait --for=condition=Programmed subscriptionplan/demo-plan -n apigateway-demo --timeout=1000s
           echo "Waiting for subscriptionplan/demo-plan status.id..."
           for i in $(seq 1 60); do
             PLAN_ID=$(kubectl get subscriptionplan demo-plan -n apigateway-demo -o jsonpath='{.status.id}' || true)
@@ -1092,13 +1104,45 @@ jobs:
               echo "demo-plan status.id=${PLAN_ID}"
               break
             fi
-            sleep 2
+            sleep 3
           done
           if [ -z "${PLAN_ID:-}" ]; then
             echo "SubscriptionPlan demo-plan status.id is empty after wait"
             kubectl get subscriptionplan demo-plan -n apigateway-demo -o yaml || true
             exit 1
           fi
+
+          echo "Pre-check: waiting until management API can resolve rest-api handle hello-sub-api..."
+          kubectl port-forward svc/test-gateway-gateway-controller 9090:9090 >/tmp/subscription-precheck-port-forward.log 2>&1 &
+          PF_MGMT_PID=$!
+          trap 'kill "${PF_MGMT_PID}" >/dev/null 2>&1 || true' EXIT
+          sleep 5
+          API_READY=""
+          for i in $(seq 1 60); do
+            API_STATUS=$(curl -s -o /tmp/subscription-precheck-body.txt -w "%{http_code}" -u admin:admin \
+              "http://localhost:9090/api/management/v0.9/rest-apis/hello-sub-api" || true)
+            if [ "${API_STATUS}" = "200" ]; then
+              API_READY="yes"
+              echo "hello-sub-api is resolvable via management API"
+              break
+            fi
+            if [ $((i % 10)) -eq 0 ]; then
+              echo "Attempt ${i}: management API resolve status=${API_STATUS}"
+            fi
+            sleep 2
+          done
+          kill "${PF_MGMT_PID}" >/dev/null 2>&1 || true
+          trap - EXIT
+          if [ -z "${API_READY}" ]; then
+            echo "hello-sub-api is not resolvable in gateway management API before Subscription creation"
+            echo "Last management response body:"
+            cat /tmp/subscription-precheck-body.txt || true
+            kubectl get restapi hello-sub-api -n apigateway-demo -o yaml || true
+            kubectl logs -n default deployment/test-gateway-gateway-controller --tail=200 || true
+            kubectl logs -n operator deployment/gateway-operator --tail=200 || true
+            exit 1
+          fi
+
           kubectl apply -f - <<'EOF'
           apiVersion: gateway.api-platform.wso2.com/v1alpha1
           kind: Subscription
@@ -1116,10 +1160,24 @@ jobs:
                   name: demo-management-secrets
                   key: subscription-token
           EOF
-          kubectl wait --for=condition=Programmed subscription/demo-subscription -n apigateway-demo --timeout=500s
-          kubectl wait --for=condition=Programmed apikey/demo-restapi-apikey -n apigateway-demo --timeout=500s
-          kubectl wait --for=condition=Programmed apikey/demo-llmprovider-apikey -n apigateway-demo --timeout=500s
-          kubectl wait --for=condition=Programmed apikey/demo-llmproxy-apikey -n apigateway-demo --timeout=500s
+          sleep 2
+          if ! kubectl wait --for=condition=Programmed subscription/demo-subscription -n apigateway-demo --timeout=1000s; then
+            echo "Subscription demo-subscription did not reach Programmed=True"
+            kubectl get subscription demo-subscription -n apigateway-demo -o yaml || true
+            kubectl describe subscription demo-subscription -n apigateway-demo || true
+            kubectl get restapi hello-sub-api -n apigateway-demo -o yaml || true
+            kubectl get subscriptionplan demo-plan -n apigateway-demo -o yaml || true
+            kubectl get events -n apigateway-demo --sort-by=.lastTimestamp | tail -n 40 || true
+            kubectl logs -n operator deployment/gateway-operator --tail=300 || true
+            kubectl logs -n default deployment/test-gateway-gateway-controller --tail=300 || true
+            exit 1
+          fi
+          kubectl wait --for=condition=Programmed apikey/demo-restapi-apikey -n apigateway-demo --timeout=1000s
+          sleep 2
+          kubectl wait --for=condition=Programmed apikey/demo-llmprovider-apikey -n apigateway-demo --timeout=1000s
+          sleep 2
+          kubectl wait --for=condition=Programmed apikey/demo-llmproxy-apikey -n apigateway-demo --timeout=1000s
+          sleep 2
 
       - name: Test LLM MCP ApiKey Subscription invocations via gateway-runtime
         run: |

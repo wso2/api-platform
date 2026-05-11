@@ -6,6 +6,10 @@ metadata:
 type: Opaque
 stringData:
   provider-token: demo-provider-token
+  # Used by 05b-02-llm-resources-apikey.yaml for LlmProvider.spec.upstream.auth.value.
+  llm-upstream-authorization: Bearer sk-test-key
+  # Used by 05b-02-llm-resources-apikey.yaml for api-key-auth policy params.
+  apikey-header-name: X-API-Key
   managed-secret-value: demo-managed-secret-value
   cert.pem: |
     -----BEGIN CERTIFICATE-----
