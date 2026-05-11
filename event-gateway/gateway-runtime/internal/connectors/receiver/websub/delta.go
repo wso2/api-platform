@@ -20,6 +20,7 @@ package websub
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 )
@@ -27,12 +28,20 @@ import (
 // ApplyBindingDelta mutates the live receiver for channel add/remove changes
 // without recreating the receiver or the subscription sync topic.
 func (e *WebSubReceiver) ApplyBindingDelta(ctx context.Context, removedChannels map[string]string, addedChannels map[string]string) error {
+	var tombstoneErrs []error
+
 	for channelName := range removedChannels {
 		subscriptions := e.store.GetByTopic(channelName)
 		for _, sub := range subscriptions {
 			if e.syncProducer != nil {
 				if err := e.syncProducer.PublishTombstone(ctx, channelName, sub.CallbackURL); err != nil {
-					return fmt.Errorf("failed to tombstone subscription for removed channel %q: %w", channelName, err)
+					slog.Error("Failed to tombstone subscription for removed WebSub channel",
+						"api", e.channel.Name,
+						"channel", channelName,
+						"callback", sub.CallbackURL,
+						"error", err)
+					tombstoneErrs = append(tombstoneErrs,
+						fmt.Errorf("failed to tombstone subscription for removed channel %q callback %q: %w", channelName, sub.CallbackURL, err))
 				}
 			}
 		}
@@ -69,6 +78,10 @@ func (e *WebSubReceiver) ApplyBindingDelta(ctx context.Context, removedChannels 
 		e.channel.Channels[channelName] = kafkaTopic
 		e.channelMu.Unlock()
 		e.topics.Register(channelName)
+	}
+
+	if len(tombstoneErrs) > 0 {
+		return errors.Join(tombstoneErrs...)
 	}
 
 	return nil
