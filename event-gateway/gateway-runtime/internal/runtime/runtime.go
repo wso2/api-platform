@@ -27,6 +27,7 @@ import (
 	"os"
 	"path"
 	"reflect"
+	"sort"
 	"sync"
 	"time"
 
@@ -65,6 +66,8 @@ type Runtime struct {
 	activeBrokerDrivers  map[string]connectors.BrokerDriver
 	bindingPaths         map[string][]string // name → registered mux paths
 	bindingTopics        map[string][]string // name → Kafka topics (data + internal sub)
+	bindingMutationMu    sync.Mutex
+	bindingMutationLocks map[string]*sync.Mutex
 	websubMux            *DynamicMux
 	websubServer         *managedServer
 	webSubServersCreated bool // true if LoadChannels created WebSub servers
@@ -112,6 +115,7 @@ func New(cfg *config.Config, rawConfig map[string]interface{}, registry *connect
 		activeBrokerDrivers: make(map[string]connectors.BrokerDriver),
 		bindingPaths:        make(map[string][]string),
 		bindingTopics:       make(map[string][]string),
+		bindingMutationLocks: make(map[string]*sync.Mutex),
 		websubMux:           NewDynamicMux(),
 	}, nil
 }
@@ -831,8 +835,49 @@ func equalBrokerDriverSpec(oldSpec, newSpec binding.BrokerDriverSpec) bool {
 	return string(oldConfigJSON) == string(newConfigJSON)
 }
 
+func (r *Runtime) lockBindingMutations(names ...string) func() {
+	seen := make(map[string]bool, len(names))
+	ordered := make([]string, 0, len(names))
+	for _, name := range names {
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		ordered = append(ordered, name)
+	}
+	sort.Strings(ordered)
+
+	locks := make([]*sync.Mutex, 0, len(ordered))
+	r.bindingMutationMu.Lock()
+	for _, name := range ordered {
+		lock, ok := r.bindingMutationLocks[name]
+		if !ok {
+			lock = &sync.Mutex{}
+			r.bindingMutationLocks[name] = lock
+		}
+		locks = append(locks, lock)
+	}
+	r.bindingMutationMu.Unlock()
+
+	for _, lock := range locks {
+		lock.Lock()
+	}
+
+	return func() {
+		for i := len(locks) - 1; i >= 0; i-- {
+			locks[i].Unlock()
+		}
+	}
+}
+
 // AddWebSubApiBinding dynamically adds a WebSubApi binding at runtime (xDS mode).
 func (r *Runtime) AddWebSubApiBinding(wsb binding.WebSubApiBinding) error {
+	unlock := r.lockBindingMutations(wsb.Name)
+	defer unlock()
+	return r.addWebSubApiBindingLocked(wsb)
+}
+
+func (r *Runtime) addWebSubApiBindingLocked(wsb binding.WebSubApiBinding) error {
 	r.mu.Lock()
 
 	vhost := defaultVhost(wsb.Vhost)
@@ -935,11 +980,14 @@ func (r *Runtime) AddWebSubApiBinding(wsb binding.WebSubApiBinding) error {
 
 // UpdateWebSubApiBinding dynamically updates an existing WebSubApi binding at runtime (xDS mode).
 func (r *Runtime) UpdateWebSubApiBinding(oldWSB, newWSB binding.WebSubApiBinding) error {
+	unlock := r.lockBindingMutations(oldWSB.Name, newWSB.Name)
+	defer unlock()
+
 	if !canDeltaUpdateWebSubBinding(oldWSB, newWSB) {
-		if err := r.RemoveWebSubApiBinding(oldWSB.Name); err != nil {
+		if err := r.removeWebSubApiBindingLocked(oldWSB.Name); err != nil {
 			return err
 		}
-		return r.AddWebSubApiBinding(newWSB)
+		return r.addWebSubApiBindingLocked(newWSB)
 	}
 
 	r.mu.Lock()
@@ -1050,6 +1098,12 @@ func (r *Runtime) UpdateWebSubApiBinding(oldWSB, newWSB binding.WebSubApiBinding
 
 // RemoveWebSubApiBinding dynamically removes a WebSubApi binding at runtime (xDS mode).
 func (r *Runtime) RemoveWebSubApiBinding(name string) error {
+	unlock := r.lockBindingMutations(name)
+	defer unlock()
+	return r.removeWebSubApiBindingLocked(name)
+}
+
+func (r *Runtime) removeWebSubApiBindingLocked(name string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
