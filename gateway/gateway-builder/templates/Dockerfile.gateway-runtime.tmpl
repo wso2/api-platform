@@ -24,6 +24,10 @@ USER root
 COPY policy-engine /app/policy-engine
 RUN chmod +x /app/policy-engine
 
+# Replace python-executor with custom-compiled version containing user Python policies
+RUN rm -rf /app/python-executor
+COPY python-executor/ /app/python-executor/
+
 USER wso2
 
 # Metadata labels
