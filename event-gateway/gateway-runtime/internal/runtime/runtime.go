@@ -995,7 +995,7 @@ func (r *Runtime) UpdateWebSubApiBinding(oldWSB, newWSB binding.WebSubApiBinding
 		ChannelChainKeys:  chChainKeys,
 	})
 
-	internalSubTopic := binding.WebSubApiSubscriptionTopic(newWSB.Name, newWSB.Version)
+	internalSubTopic := r.webSubSubscriptionSyncTopic(newWSB.Name, newWSB.Version)
 	r.bindingTopics[newWSB.Name] = webSubTopicList(newChannels, internalSubTopic)
 
 	slog.Info("Dynamically updated WebSubApi binding",
