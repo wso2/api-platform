@@ -25,6 +25,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
@@ -41,6 +42,7 @@ type HubHandler struct {
 	brokerDriver connectors.BrokerDriver
 	bindingName  string
 	channels     map[string]string // channel-name → Kafka topic
+	channelMu    *sync.RWMutex
 	consumerMgr  *ConsumerManager
 	syncProducer *subscription.SyncProducer
 	defaultLease int
@@ -56,6 +58,7 @@ func NewHubHandler(
 	brokerDriver connectors.BrokerDriver,
 	bindingName string,
 	channels map[string]string,
+	channelMu *sync.RWMutex,
 	consumerMgr *ConsumerManager,
 	syncProducer *subscription.SyncProducer,
 ) *HubHandler {
@@ -67,6 +70,7 @@ func NewHubHandler(
 		brokerDriver: brokerDriver,
 		bindingName:  bindingName,
 		channels:     channels,
+		channelMu:    channelMu,
 		consumerMgr:  consumerMgr,
 		syncProducer: syncProducer,
 		defaultLease: defaultLease,
@@ -131,7 +135,9 @@ func (h *HubHandler) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Resolve the Kafka topic for this channel.
+	h.channelMu.RLock()
 	kafkaTopic, ok := h.channels[topic]
+	h.channelMu.RUnlock()
 	if !ok {
 		http.Error(w, fmt.Sprintf("no kafka topic for channel: %s", topic), http.StatusNotFound)
 		return
@@ -239,7 +245,9 @@ func (h *HubHandler) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Stop/update per-callback consumer.
+	h.channelMu.RLock()
 	kafkaTopic := h.channels[topic]
+	h.channelMu.RUnlock()
 	if kafkaTopic != "" {
 		if err := h.consumerMgr.RemoveSubscription(callback, kafkaTopic); err != nil {
 			slog.Error("Failed to update consumer on unsubscribe", "callback", callback, "error", err)
@@ -271,6 +279,7 @@ type WebhookReceiverHandler struct {
 	brokerDriver connectors.BrokerDriver
 	bindingName  string
 	channels     map[string]string // channel-name → Kafka topic
+	channelMu    *sync.RWMutex
 }
 
 // NewWebhookReceiverHandler creates a new webhook receiver handler.
@@ -280,6 +289,7 @@ func NewWebhookReceiverHandler(
 	brokerDriver connectors.BrokerDriver,
 	bindingName string,
 	channels map[string]string,
+	channelMu *sync.RWMutex,
 ) *WebhookReceiverHandler {
 	return &WebhookReceiverHandler{
 		topics:       topics,
@@ -287,6 +297,7 @@ func NewWebhookReceiverHandler(
 		brokerDriver: brokerDriver,
 		bindingName:  bindingName,
 		channels:     channels,
+		channelMu:    channelMu,
 	}
 }
 
@@ -309,7 +320,9 @@ func (h *WebhookReceiverHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	h.channelMu.RLock()
 	kafkaTopic, ok := h.channels[channelName]
+	h.channelMu.RUnlock()
 	if !ok {
 		http.Error(w, fmt.Sprintf("no kafka topic for channel: %s", channelName), http.StatusNotFound)
 		return

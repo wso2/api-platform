@@ -904,19 +904,21 @@ func (r *Runtime) UpdateWebSubApiBinding(oldWSB, newWSB binding.WebSubApiBinding
 	}
 
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	receiver, ok := r.activeReceivers[oldWSB.Name]
 	if !ok {
+		r.mu.Unlock()
 		return fmt.Errorf("active receiver not found for WebSubApi %q", oldWSB.Name)
 	}
 	updater, ok := receiver.(webSubBindingUpdater)
 	if !ok {
+		r.mu.Unlock()
 		return fmt.Errorf("receiver for WebSubApi %q does not support delta updates", oldWSB.Name)
 	}
 
 	brokerDriver, ok := r.activeBrokerDrivers[oldWSB.Name]
 	if !ok {
+		r.mu.Unlock()
 		return fmt.Errorf("active broker-driver not found for WebSubApi %q", oldWSB.Name)
 	}
 
@@ -924,6 +926,13 @@ func (r *Runtime) UpdateWebSubApiBinding(oldWSB, newWSB binding.WebSubApiBinding
 	newChannels := webSubChannelTopicMap(newWSB)
 	removedChannels, addedChannels := diffChannelTopics(oldChannels, newChannels)
 	oldBinding := r.hub.GetBinding(oldWSB.Name)
+	r.mu.Unlock()
+
+	vhost := defaultVhost(newWSB.Vhost)
+	subKey, inKey, outKey, chChainKeys, err := r.buildWebSubApiPolicyChains(newWSB, vhost)
+	if err != nil {
+		return fmt.Errorf("failed to build chains for updated WebSubApi %q: %w", newWSB.Name, err)
+	}
 
 	if len(addedChannels) > 0 {
 		topicsToEnsure := make([]string, 0, len(addedChannels))
@@ -956,10 +965,19 @@ func (r *Runtime) UpdateWebSubApiBinding(oldWSB, newWSB binding.WebSubApiBinding
 		cancel()
 	}
 
-	vhost := defaultVhost(newWSB.Vhost)
-	subKey, inKey, outKey, chChainKeys, err := r.buildWebSubApiPolicyChains(newWSB, vhost)
-	if err != nil {
-		return fmt.Errorf("failed to build chains for updated WebSubApi %q: %w", newWSB.Name, err)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	currentReceiver, ok := r.activeReceivers[oldWSB.Name]
+	if !ok || currentReceiver != receiver {
+		return fmt.Errorf("active receiver changed during WebSubApi update for %q", newWSB.Name)
+	}
+	currentBrokerDriver, ok := r.activeBrokerDrivers[oldWSB.Name]
+	if !ok || currentBrokerDriver != brokerDriver {
+		return fmt.Errorf("active broker-driver changed during WebSubApi update for %q", newWSB.Name)
+	}
+	if r.hub.GetBinding(oldWSB.Name) != oldBinding {
+		return fmt.Errorf("hub binding changed during WebSubApi update for %q", newWSB.Name)
 	}
 
 	r.unregisterStaleBindingChains(oldBinding, webSubActiveChainKeys(newWSB, vhost))
@@ -977,7 +995,7 @@ func (r *Runtime) UpdateWebSubApiBinding(oldWSB, newWSB binding.WebSubApiBinding
 		ChannelChainKeys:  chChainKeys,
 	})
 
-	internalSubTopic := binding.WebSubApiSubscriptionTopic(newWSB.Name, newWSB.Version)
+	internalSubTopic := r.webSubSubscriptionSyncTopic(newWSB.Name, newWSB.Version)
 	r.bindingTopics[newWSB.Name] = webSubTopicList(newChannels, internalSubTopic)
 
 	slog.Info("Dynamically updated WebSubApi binding",
