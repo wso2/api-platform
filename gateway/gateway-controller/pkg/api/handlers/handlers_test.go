@@ -3057,8 +3057,8 @@ func TestUpdateWebSubAPIUndeployUsesDedicatedServicePath(t *testing.T) {
 				DisplayName: "repo-watcher",
 				Version:     "v1.0",
 				Context:     "/repos",
-				Hub: api.WebSubHub{
-					Channels: []api.HubChannel{{Name: "issues"}},
+				Channels: &map[string]api.WebSubChannel{
+					"issues": {},
 				},
 			},
 		},
@@ -3078,7 +3078,7 @@ func TestUpdateWebSubAPIUndeployUsesDedicatedServicePath(t *testing.T) {
 			"version":"v1.0",
 			"context":"/repos",
 			"deploymentState":"undeployed",
-			"hub":{"channels":[{"name":"issues"}]}
+			"channels":{"issues":{}}
 		}
 	}`)
 
