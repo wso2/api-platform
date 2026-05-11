@@ -156,11 +156,12 @@ func (s *WebSubAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 	existing.Configuration = apiConfig
 	existing.SourceConfiguration = apiConfig
 
-	if err := templateengine.RenderSpec(existing, s.secretResolver, log); err != nil {
+	renderedExisting := *existing
+	if err := templateengine.RenderSpec(&renderedExisting, s.secretResolver, log); err != nil {
 		return nil, err
 	}
 
-	renderedConfig, ok := existing.Configuration.(api.WebSubAPI)
+	renderedConfig, ok := renderedExisting.Configuration.(api.WebSubAPI)
 	if !ok {
 		return nil, fmt.Errorf("failed to render websub api configuration")
 	}
