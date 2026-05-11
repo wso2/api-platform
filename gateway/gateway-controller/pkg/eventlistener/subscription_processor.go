@@ -20,10 +20,14 @@ package eventlistener
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
 // processSubscriptionEvent refreshes replica-local subscription xDS state after subscription changes.
@@ -50,19 +54,191 @@ func (l *EventListener) processSubscriptionPlanEvent(event eventhub.Event) {
 	}
 }
 
-// processApplicationEvent acknowledges application metadata changes. The canonical state is DB-backed only today.
+// processApplicationEvent synchronizes replica-local API key/application state from canonical DB state.
 func (l *EventListener) processApplicationEvent(event eventhub.Event) {
 	switch event.Action {
 	case "CREATE", "UPDATE", "DELETE":
-		l.logger.Info("Processed application replica sync event",
+		currentMappedKeys, err := l.loadApplicationAPIKeysFromDB(event.EntityID)
+		if err != nil {
+			l.logger.Error("Failed to load application API keys from database for replica sync",
+				slog.String("action", event.Action),
+				slog.String("application_uuid", event.EntityID),
+				slog.String("event_id", event.EventID),
+				slog.Any("error", err))
+			return
+		}
+
+		removedAPIKeyIDs, err := parseRemovedApplicationAPIKeyIDs(event.EventData)
+		if err != nil {
+			l.logger.Error("Failed to parse application event data for replica sync",
+				slog.String("action", event.Action),
+				slog.String("application_uuid", event.EntityID),
+				slog.String("event_id", event.EventID),
+				slog.Any("error", err))
+		}
+
+		affectedKeys, err := l.resolveAffectedApplicationAPIKeys(event.EntityID, currentMappedKeys, removedAPIKeyIDs)
+		if err != nil {
+			l.logger.Error("Failed to resolve affected API keys for application replica sync",
+				slog.String("action", event.Action),
+				slog.String("application_uuid", event.EntityID),
+				slog.String("event_id", event.EventID),
+				slog.Any("error", err))
+			return
+		}
+
+		for _, apiKey := range affectedKeys {
+			if err := l.store.StoreAPIKey(apiKey); err != nil {
+				l.logger.Error("Failed to store API key in memory during application replica sync",
+					slog.String("action", event.Action),
+					slog.String("application_uuid", event.EntityID),
+					slog.String("api_key_id", apiKey.UUID),
+					slog.String("api_id", apiKey.ArtifactUUID),
+					slog.String("event_id", event.EventID),
+					slog.Any("error", err))
+				continue
+			}
+
+			if l.apiKeyXDSManager == nil {
+				continue
+			}
+
+			cfg, err := l.syncAPIConfigForAPIKeyEvent(apiKey.ArtifactUUID)
+			if err != nil {
+				l.logger.Warn("Skipping API key xDS refresh during application replica sync due to missing API config",
+					slog.String("action", event.Action),
+					slog.String("application_uuid", event.EntityID),
+					slog.String("api_key_id", apiKey.UUID),
+					slog.String("artifact_uuid", apiKey.ArtifactUUID),
+					slog.String("event_id", event.EventID),
+					slog.Any("error", err))
+				continue
+			}
+
+			apiName, apiVersion := extractAPINameVersion(cfg)
+			if err := l.apiKeyXDSManager.StoreAPIKey(cfg.UUID, apiName, apiVersion, apiKey, event.EventID); err != nil {
+				l.logger.Error("Failed to refresh API key xDS state during application replica sync",
+					slog.String("action", event.Action),
+					slog.String("application_uuid", event.EntityID),
+					slog.String("api_key_id", apiKey.UUID),
+					slog.String("artifact_uuid", apiKey.ArtifactUUID),
+					slog.String("event_id", event.EventID),
+					slog.Any("error", err))
+			}
+		}
+
+		l.logger.Info("Successfully processed application replica sync event",
 			slog.String("action", event.Action),
-			slog.String("application_id", event.EntityID),
-			slog.String("event_id", event.EventID))
+			slog.String("application_uuid", event.EntityID),
+			slog.String("event_id", event.EventID),
+			slog.Int("affected_api_key_count", len(affectedKeys)))
 	default:
 		l.logger.Warn("Unknown application event action",
 			slog.String("action", event.Action),
 			slog.String("entity_id", event.EntityID))
 	}
+}
+
+func (l *EventListener) loadApplicationAPIKeysFromDB(applicationUUID string) (map[string]*models.APIKey, error) {
+	apiKeys, err := l.db.GetAPIKeysByApplicationUUID(applicationUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	currentMappedKeys := make(map[string]*models.APIKey, len(apiKeys))
+	for _, apiKey := range apiKeys {
+		if apiKey == nil || apiKey.UUID == "" {
+			continue
+		}
+		currentMappedKeys[apiKey.UUID] = apiKey
+	}
+
+	return currentMappedKeys, nil
+}
+
+func parseRemovedApplicationAPIKeyIDs(eventData string) ([]string, error) {
+	trimmedEventData := strings.TrimSpace(eventData)
+	if trimmedEventData == "" || trimmedEventData == eventhub.EmptyEventData {
+		return nil, nil
+	}
+
+	var payload models.ApplicationEventData
+	if err := json.Unmarshal([]byte(trimmedEventData), &payload); err != nil {
+		return nil, err
+	}
+
+	removedKeyIDs := make([]string, 0, len(payload.RemovedAPIKeyIDs))
+	seen := make(map[string]struct{}, len(payload.RemovedAPIKeyIDs))
+	for _, apiKeyID := range payload.RemovedAPIKeyIDs {
+		apiKeyID = strings.TrimSpace(apiKeyID)
+		if apiKeyID == "" {
+			continue
+		}
+		if _, exists := seen[apiKeyID]; exists {
+			continue
+		}
+		seen[apiKeyID] = struct{}{}
+		removedKeyIDs = append(removedKeyIDs, apiKeyID)
+	}
+
+	return removedKeyIDs, nil
+}
+
+func (l *EventListener) resolveAffectedApplicationAPIKeys(applicationUUID string, currentMappedKeys map[string]*models.APIKey, removedAPIKeyIDs []string) ([]*models.APIKey, error) {
+	affectedKeyIDs := make(map[string]struct{}, len(currentMappedKeys))
+	for apiKeyID := range currentMappedKeys {
+		affectedKeyIDs[apiKeyID] = struct{}{}
+	}
+
+	// Removed keys disappear from the DB-side application lookup after the writer
+	// replaces mappings, so replay merges the IDs carried in EventData back in.
+	for _, apiKeyID := range removedAPIKeyIDs {
+		if apiKeyID == "" {
+			continue
+		}
+		affectedKeyIDs[apiKeyID] = struct{}{}
+	}
+
+	for _, cfg := range l.store.GetAll() {
+		apiKeys, err := l.store.GetAPIKeysByAPI(cfg.UUID)
+		if err != nil {
+			return nil, err
+		}
+		for _, apiKey := range apiKeys {
+			if apiKey == nil || apiKey.UUID == "" {
+				continue
+			}
+			if apiKey.ApplicationID == applicationUUID {
+				affectedKeyIDs[apiKey.UUID] = struct{}{}
+			}
+		}
+	}
+
+	sortedKeyIDs := make([]string, 0, len(affectedKeyIDs))
+	for apiKeyID := range affectedKeyIDs {
+		sortedKeyIDs = append(sortedKeyIDs, apiKeyID)
+	}
+	sort.Strings(sortedKeyIDs)
+
+	affectedKeys := make([]*models.APIKey, 0, len(sortedKeyIDs))
+	for _, apiKeyID := range sortedKeyIDs {
+		if apiKey, ok := currentMappedKeys[apiKeyID]; ok {
+			affectedKeys = append(affectedKeys, apiKey)
+			continue
+		}
+
+		apiKey, err := l.db.GetAPIKeyByID(apiKeyID)
+		if err != nil {
+			l.logger.Error("Failed to reload API key from database during application replica sync",
+				slog.String("application_uuid", applicationUUID),
+				slog.String("api_key_id", apiKeyID),
+				slog.Any("error", err))
+			continue
+		}
+		affectedKeys = append(affectedKeys, apiKey)
+	}
+
+	return affectedKeys, nil
 }
 
 func (l *EventListener) refreshSubscriptionState(resource string, event eventhub.Event) {
