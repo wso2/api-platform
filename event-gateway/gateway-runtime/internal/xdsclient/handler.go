@@ -38,6 +38,7 @@ import (
 type BindingManager interface {
 	AddWebSubApiBinding(wsb binding.WebSubApiBinding) error
 	RemoveWebSubApiBinding(name string) error
+	UpdateWebSubApiBinding(oldWSB, newWSB binding.WebSubApiBinding) error
 }
 
 // KafkaConfig holds local Kafka broker settings used as defaults.
@@ -188,15 +189,14 @@ func (h *Handler) HandleResources(ctx context.Context, resources []*discoveryv3.
 			if reflect.DeepEqual(old, ecr) {
 				continue
 			}
-			// Update: remove then re-add
 			slog.Info("Updating binding via xDS", "name", ecr.Name, "uuid", uuid)
-			if err := h.manager.RemoveWebSubApiBinding(old.Name); err != nil {
-				slog.Error("Failed to remove binding for update", "name", old.Name, "error", err)
+			if err := h.manager.UpdateWebSubApiBinding(h.toWebSubApiBinding(old), h.toWebSubApiBinding(ecr)); err != nil {
+				return fmt.Errorf("failed to update binding %q: %w", ecr.Name, err)
 			}
-		} else {
-			slog.Info("Adding binding via xDS", "name", ecr.Name, "uuid", uuid)
+			continue
 		}
 
+		slog.Info("Adding binding via xDS", "name", ecr.Name, "uuid", uuid)
 		wsb := h.toWebSubApiBinding(ecr)
 		if err := h.manager.AddWebSubApiBinding(wsb); err != nil {
 			return fmt.Errorf("failed to add binding %q: %w", ecr.Name, err)
