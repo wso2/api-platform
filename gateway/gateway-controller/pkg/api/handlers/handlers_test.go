@@ -3034,21 +3034,6 @@ func TestUpdateWebSubAPIUndeployUsesDedicatedServicePath(t *testing.T) {
 		Handle:      "repo-watcher-v1-0",
 		DisplayName: "repo-watcher",
 		Version:     "v1.0",
-		SourceConfiguration: api.WebSubAPI{
-			ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
-			Kind:       api.WebSubAPIKindWebSubApi,
-			Metadata: api.Metadata{
-				Name: "repo-watcher-v1-0",
-			},
-			Spec: api.WebhookAPIData{
-				DisplayName: "repo-watcher",
-				Version:     "v1.0",
-				Context:     "/repos",
-				Hub: api.WebSubHub{
-					Channels: []api.HubChannel{{Name: "issues"}},
-				},
-			},
-		},
 		DesiredState: models.StateDeployed,
 		Origin:       models.OriginGatewayAPI,
 		CreatedAt:    time.Now(),
