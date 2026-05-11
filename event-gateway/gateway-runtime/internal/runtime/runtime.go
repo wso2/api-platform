@@ -742,6 +742,9 @@ func webSubActiveChainKeys(wsb binding.WebSubApiBinding, vhost string) map[strin
 	if len(wsb.Policies.Subscribe) > 0 {
 		active[binding.GenerateRouteKey("SUBSCRIBE", hubPath, vhost)] = true
 	}
+	if len(wsb.Policies.Unsubscribe) > 0 {
+		active[binding.GenerateRouteKey("UNSUBSCRIBE", hubPath, vhost)] = true
+	}
 	if len(wsb.Policies.Inbound) > 0 {
 		active[binding.GenerateRouteKey("SUB", basePath+"/webhook-receiver", vhost)] = true
 	}
@@ -753,6 +756,9 @@ func webSubActiveChainKeys(wsb binding.WebSubApiBinding, vhost string) map[strin
 		chPath := hubPath + "/" + ch.Name
 		if len(ch.Policies.Subscribe) > 0 {
 			active[binding.GenerateRouteKey("SUBSCRIBE", chPath, vhost)] = true
+		}
+		if len(ch.Policies.Unsubscribe) > 0 {
+			active[binding.GenerateRouteKey("UNSUBSCRIBE", chPath, vhost)] = true
 		}
 		if len(ch.Policies.Inbound) > 0 {
 			active[binding.GenerateRouteKey("SUB", chPath, vhost)] = true
@@ -769,7 +775,7 @@ func (r *Runtime) unregisterStaleBindingChains(b *hub.ChannelBinding, activeKeys
 	if b == nil {
 		return
 	}
-	keys := []string{b.SubscribeChainKey, b.InboundChainKey, b.OutboundChainKey}
+	keys := []string{b.SubscribeChainKey, b.UnsubscribeChainKey, b.InboundChainKey, b.OutboundChainKey}
 	for _, key := range keys {
 		if key == "" {
 			continue
@@ -779,7 +785,7 @@ func (r *Runtime) unregisterStaleBindingChains(b *hub.ChannelBinding, activeKeys
 		}
 	}
 	for _, chKeys := range b.ChannelChainKeys {
-		channelKeys := []string{chKeys.SubscribeChainKey, chKeys.InboundChainKey, chKeys.OutboundChainKey}
+		channelKeys := []string{chKeys.SubscribeChainKey, chKeys.UnsubscribeChainKey, chKeys.InboundChainKey, chKeys.OutboundChainKey}
 		for _, key := range channelKeys {
 			if key == "" {
 				continue
