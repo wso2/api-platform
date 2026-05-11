@@ -20,6 +20,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -810,10 +811,24 @@ func canDeltaUpdateWebSubBinding(oldWSB, newWSB binding.WebSubApiBinding) bool {
 	if !reflect.DeepEqual(oldWSB.Receiver, newWSB.Receiver) {
 		return false
 	}
-	if !reflect.DeepEqual(oldWSB.BrokerDriver, newWSB.BrokerDriver) {
+	if !equalBrokerDriverSpec(oldWSB.BrokerDriver, newWSB.BrokerDriver) {
 		return false
 	}
 	return true
+}
+
+func equalBrokerDriverSpec(oldSpec, newSpec binding.BrokerDriverSpec) bool {
+	if oldSpec.Type != newSpec.Type || oldSpec.Topic != newSpec.Topic || oldSpec.Ordering != newSpec.Ordering {
+		return false
+	}
+
+	oldConfigJSON, oldErr := json.Marshal(oldSpec.Config)
+	newConfigJSON, newErr := json.Marshal(newSpec.Config)
+	if oldErr != nil || newErr != nil {
+		return reflect.DeepEqual(oldSpec.Config, newSpec.Config)
+	}
+
+	return string(oldConfigJSON) == string(newConfigJSON)
 }
 
 // AddWebSubApiBinding dynamically adds a WebSubApi binding at runtime (xDS mode).
