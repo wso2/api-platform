@@ -1,6 +1,0 @@
-version: v1
-gateway:
-  version: 1.1.0 # This tells the CLI which WSO2 base version to download
-policies:
-  - name: transform-payload-case
-    filePath: policies/transform-payload-case # Points to the local folder we just created
