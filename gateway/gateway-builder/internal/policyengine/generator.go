@@ -373,7 +373,14 @@ func copyDir(src, dst string) error {
 		dstPath := filepath.Join(dst, relPath)
 
 		if info.IsDir() {
+			if info.Name() == ".venv" || info.Name() == "__pycache__" || info.Name() == ".git" {
+				return filepath.SkipDir
+			}
 			return os.MkdirAll(dstPath, info.Mode())
+		}
+
+		if !info.Mode().IsRegular() {
+			return nil
 		}
 
 		// Copy file
