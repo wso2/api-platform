@@ -22,6 +22,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 
@@ -34,29 +35,39 @@ import (
 
 // ConnectionConfig holds the Kafka connection settings used by the driver.
 type ConnectionConfig struct {
-	Brokers       []string
-	TLS           bool
-	TLSCAFile     string
-	TLSCertFile   string
-	TLSKeyFile    string
-	TLSServerName string
-	SASLMechanism string
-	SASLUsername  string
-	SASLPassword  string
+	Brokers                       []string
+	CompactTopicPartitions        int
+	CompactTopicReplicationFactor int
+	TLS                           bool
+	TLSCAFile                     string
+	TLSCertFile                   string
+	TLSKeyFile                    string
+	TLSServerName                 string
+	SASLMechanism                 string
+	SASLUsername                  string
+	SASLPassword                  string
 }
 
 // ResolveConnectionConfig merges global runtime config with per-binding overrides.
 func ResolveConnectionConfig(global config.KafkaConfig, overrides map[string]interface{}) (ConnectionConfig, error) {
 	cfg := ConnectionConfig{
-		Brokers:       append([]string(nil), global.Brokers...),
-		TLS:           global.TLS,
-		TLSCAFile:     global.TLSCAFile,
-		TLSCertFile:   global.TLSCertFile,
-		TLSKeyFile:    global.TLSKeyFile,
-		TLSServerName: global.TLSServerName,
-		SASLMechanism: global.SASLMechanism,
-		SASLUsername:  global.SASLUsername,
-		SASLPassword:  global.SASLPassword,
+		Brokers:                       append([]string(nil), global.Brokers...),
+		CompactTopicPartitions:        global.CompactTopicPartitions,
+		CompactTopicReplicationFactor: global.CompactTopicReplicationFactor,
+		TLS:                           global.TLS,
+		TLSCAFile:                     global.TLSCAFile,
+		TLSCertFile:                   global.TLSCertFile,
+		TLSKeyFile:                    global.TLSKeyFile,
+		TLSServerName:                 global.TLSServerName,
+		SASLMechanism:                 global.SASLMechanism,
+		SASLUsername:                  global.SASLUsername,
+		SASLPassword:                  global.SASLPassword,
+	}
+	if cfg.CompactTopicPartitions <= 0 {
+		return ConnectionConfig{}, fmt.Errorf("kafka.compact_topic_partitions must be a positive integer, got %d", cfg.CompactTopicPartitions)
+	}
+	if cfg.CompactTopicReplicationFactor <= 0 {
+		return ConnectionConfig{}, fmt.Errorf("kafka.compact_topic_replication_factor must be a positive integer, got %d", cfg.CompactTopicReplicationFactor)
 	}
 
 	if overrides != nil {
@@ -64,6 +75,16 @@ func ResolveConnectionConfig(global config.KafkaConfig, overrides map[string]int
 			return ConnectionConfig{}, err
 		} else if ok {
 			cfg.Brokers = brokers
+		}
+		if v, ok, err := intOverride(overrides["compact_topic_partitions"]); err != nil {
+			return ConnectionConfig{}, err
+		} else if ok {
+			cfg.CompactTopicPartitions = v
+		}
+		if v, ok, err := intOverride(overrides["compact_topic_replication_factor"]); err != nil {
+			return ConnectionConfig{}, err
+		} else if ok {
+			cfg.CompactTopicReplicationFactor = v
 		}
 		if v, ok, err := boolOverride(overrides["tls"]); err != nil {
 			return ConnectionConfig{}, err
@@ -134,6 +155,18 @@ func normalizeConnectionConfig(cfg *ConnectionConfig) {
 func validateConnectionConfig(cfg ConnectionConfig) error {
 	if len(cfg.Brokers) == 0 {
 		return fmt.Errorf("kafka brokers must not be empty")
+	}
+	if cfg.CompactTopicPartitions <= 0 {
+		return fmt.Errorf("kafka.compact_topic_partitions must be a positive integer, got %d", cfg.CompactTopicPartitions)
+	}
+	if cfg.CompactTopicPartitions > math.MaxInt32 {
+		return fmt.Errorf("kafka.compact_topic_partitions must be <= %d, got %d", math.MaxInt32, cfg.CompactTopicPartitions)
+	}
+	if cfg.CompactTopicReplicationFactor <= 0 {
+		return fmt.Errorf("kafka.compact_topic_replication_factor must be a positive integer, got %d", cfg.CompactTopicReplicationFactor)
+	}
+	if cfg.CompactTopicReplicationFactor > math.MaxInt16 {
+		return fmt.Errorf("kafka.compact_topic_replication_factor must be <= %d, got %d", math.MaxInt16, cfg.CompactTopicReplicationFactor)
 	}
 
 	if !cfg.TLS {
@@ -262,6 +295,29 @@ func boolOverride(value interface{}) (bool, bool, error) {
 		return false, false, fmt.Errorf("expected boolean Kafka config override, got %T", value)
 	}
 	return v, true, nil
+}
+
+func intOverride(value interface{}) (int, bool, error) {
+	if value == nil {
+		return 0, false, nil
+	}
+	switch v := value.(type) {
+	case int:
+		return v, true, nil
+	case float64:
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return 0, false, fmt.Errorf("expected integer Kafka config override, got non-finite float64 %v", v)
+		}
+		if v != math.Trunc(v) {
+			return 0, false, fmt.Errorf("expected integer Kafka config override, got non-integer float64 %v", v)
+		}
+		if v < math.MinInt32 || v > math.MaxInt32 {
+			return 0, false, fmt.Errorf("expected integer Kafka config override within [%d, %d], got float64 %v", math.MinInt32, math.MaxInt32, v)
+		}
+		return int(v), true, nil
+	default:
+		return 0, false, fmt.Errorf("expected int override, got %T", value)
+	}
 }
 
 func stringOverride(value interface{}) (string, bool, error) {
