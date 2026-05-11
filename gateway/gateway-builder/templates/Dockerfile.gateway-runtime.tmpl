@@ -28,8 +28,6 @@ RUN chmod +x /app/policy-engine
 RUN rm -rf /app/python-executor
 COPY python-executor/ /app/python-executor/
 
-<<<<<<< Updated upstream
-=======
 # Install python dependencies for custom policies
 RUN apt-get update && apt-get install -y --no-install-recommends python3-pip && \
     pip3 install --no-cache-dir --upgrade pip setuptools wheel && \
@@ -37,8 +35,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3-pip && 
     apt-get purge -y python3-pip && \
     apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/*
-
->>>>>>> Stashed changes
 USER wso2
 
 # Metadata labels
