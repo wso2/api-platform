@@ -6,6 +6,8 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/set-headers@v1.0.1
   - name: api-key-auth
     gomodule: github.com/wso2/gateway-controllers/policies/api-key-auth@v1.0.1
+  - name: map-topic
+    filePath: ./policies/map-topic
   - name: advanced-ratelimit
     gomodule: github.com/wso2/gateway-controllers/policies/advanced-ratelimit@v1
   - name: analytics-header-filter

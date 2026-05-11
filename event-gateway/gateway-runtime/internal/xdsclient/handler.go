@@ -49,17 +49,23 @@ type KafkaConfig struct {
 
 // EventChannelResource represents the decoded EventChannelConfig JSON payload.
 type EventChannelResource struct {
-	UUID               string                     `json:"uuid"`
-	Name               string                     `json:"name"`
-	Kind               string                     `json:"kind"`
-	Context            string                     `json:"context"`
-	Version            string                     `json:"version"`
-	Deleted            bool                       `json:"deleted,omitempty"`
-	Channels           []ChannelEntry             `json:"channels"`
-	Receiver           ReceiverEntry              `json:"receiver"`
-	BrokerDriver       BrokerDriverEntry          `json:"broker-driver"`
-	Policies           PoliciesEntry              `json:"policies"`
-	AllChannelPolicies *ProtocolMediationPolicies `json:"allChannelPolicies,omitempty"`
+	UUID         string            `json:"uuid"`
+	Name         string            `json:"name"`
+	Kind         string            `json:"kind"`
+	Context      string            `json:"context"`
+	Version      string            `json:"version"`
+	Deleted      bool              `json:"deleted,omitempty"`
+	Channels     interface{}       `json:"channels"`      // []ChannelEntry for WebSubApi, map[string]WebBrokerChannelEntry for WebBrokerApi
+	Receiver     ReceiverEntry     `json:"receiver"`      // For WebBrokerApi
+	BrokerDriver BrokerDriverEntry `json:"broker-driver"` // For WebBrokerApi
+	Policies     interface{}       `json:"policies"`      // PoliciesEntry for WebSubApi, ProtocolMediationPolicies for WebBrokerApi
+}
+
+// WebBrokerChannelEntry represents a WebBrokerApi channel with policies
+type WebBrokerChannelEntry struct {
+	OnConnectionInit ConnectionInitPolicies `json:"on_connection_init"`
+	OnProduce        []PolicyEntry          `json:"on_produce"`
+	OnConsume        []PolicyEntry          `json:"on_consume"`
 }
 
 // ProtocolMediationPolicies defines policies for WebBrokerApi
@@ -83,11 +89,13 @@ type ChannelEntry struct {
 
 // ReceiverEntry specifies the receiver type.
 type ReceiverEntry struct {
+	Name string `json:"name"`
 	Type string `json:"type"`
 }
 
 // BrokerDriverEntry specifies the broker driver configuration.
 type BrokerDriverEntry struct {
+	Name       string                 `json:"name"`
 	Type       string                 `json:"type"`
 	Properties map[string]interface{} `json:"properties"`
 }
@@ -216,8 +224,36 @@ func (h *Handler) HandleResources(ctx context.Context, resources []*discoveryv3.
 }
 
 func (h *Handler) toWebSubApiBinding(ecr EventChannelResource) binding.WebSubApiBinding {
-	channels := make([]binding.ChannelDef, len(ecr.Channels))
-	for i, ch := range ecr.Channels {
+	// For WebSubApi, Channels is []ChannelEntry
+	var channelEntries []ChannelEntry
+	if ecr.Channels != nil {
+		// Try to decode as []ChannelEntry (for WebSubApi)
+		if channelsSlice, ok := ecr.Channels.([]interface{}); ok {
+			for _, chIface := range channelsSlice {
+				if chMap, ok := chIface.(map[string]interface{}); ok {
+					var ch ChannelEntry
+					if name, ok := chMap["name"].(string); ok {
+						ch.Name = name
+					}
+					if policiesIface, ok := chMap["policies"].(map[string]interface{}); ok {
+						if subIface, ok := policiesIface["subscribe"].([]interface{}); ok {
+							ch.Policies.Subscribe = mapGenericPolicyEntryList(subIface)
+						}
+						if inIface, ok := policiesIface["inbound"].([]interface{}); ok {
+							ch.Policies.Inbound = mapGenericPolicyEntryList(inIface)
+						}
+						if outIface, ok := policiesIface["outbound"].([]interface{}); ok {
+							ch.Policies.Outbound = mapGenericPolicyEntryList(outIface)
+						}
+					}
+					channelEntries = append(channelEntries, ch)
+				}
+			}
+		}
+	}
+
+	channels := make([]binding.ChannelDef, len(channelEntries))
+	for i, ch := range channelEntries {
 		channels[i] = binding.ChannelDef{
 			Name: ch.Name,
 			Policies: binding.PolicyBindings{
@@ -228,9 +264,25 @@ func (h *Handler) toWebSubApiBinding(ecr EventChannelResource) binding.WebSubApi
 		}
 	}
 
-	subscribe := mapPolicyEntries(ecr.Policies.Subscribe)
-	inbound := mapPolicyEntries(ecr.Policies.Inbound)
-	outbound := mapPolicyEntries(ecr.Policies.Outbound)
+	// For WebSubApi, Policies is PoliciesEntry
+	var policies PoliciesEntry
+	if ecr.Policies != nil {
+		if policiesMap, ok := ecr.Policies.(map[string]interface{}); ok {
+			if subIface, ok := policiesMap["subscribe"].([]interface{}); ok {
+				policies.Subscribe = mapGenericPolicyEntryList(subIface)
+			}
+			if inIface, ok := policiesMap["inbound"].([]interface{}); ok {
+				policies.Inbound = mapGenericPolicyEntryList(inIface)
+			}
+			if outIface, ok := policiesMap["outbound"].([]interface{}); ok {
+				policies.Outbound = mapGenericPolicyEntryList(outIface)
+			}
+		}
+	}
+
+	subscribe := mapPolicyEntries(policies.Subscribe)
+	inbound := mapPolicyEntries(policies.Inbound)
+	outbound := mapPolicyEntries(policies.Outbound)
 
 	return binding.WebSubApiBinding{
 		Kind:     "WebSubApi",
@@ -249,6 +301,27 @@ func (h *Handler) toWebSubApiBinding(ecr EventChannelResource) binding.WebSubApi
 			Outbound:  outbound,
 		},
 	}
+}
+
+// mapGenericPolicyEntryList converts []interface{} to []PolicyEntry
+func mapGenericPolicyEntryList(policies []interface{}) []PolicyEntry {
+	result := make([]PolicyEntry, 0, len(policies))
+	for _, pIface := range policies {
+		if pMap, ok := pIface.(map[string]interface{}); ok {
+			policyEntry := PolicyEntry{}
+			if name, ok := pMap["name"].(string); ok {
+				policyEntry.Name = name
+			}
+			if version, ok := pMap["version"].(string); ok {
+				policyEntry.Version = version
+			}
+			if params, ok := pMap["params"].(map[string]interface{}); ok {
+				policyEntry.Params = params
+			}
+			result = append(result, policyEntry)
+		}
+	}
+	return result
 }
 
 // mapPolicyEntries converts a slice of PolicyEntry to binding.PolicyRef.
@@ -280,6 +353,7 @@ func (h *Handler) resolveBrokerDriver(bd BrokerDriverEntry) binding.BrokerDriver
 	}
 
 	return binding.BrokerDriverSpec{
+		Name:   bd.Name,
 		Type:   driverType,
 		Config: cfg,
 	}
@@ -313,13 +387,60 @@ func (h *Handler) removeBinding(ecr EventChannelResource) error {
 
 // toWebBrokerApiBinding converts EventChannelResource to WebBrokerApiBinding.
 func (h *Handler) toWebBrokerApiBinding(ecr EventChannelResource) binding.WebBrokerApiBinding {
-	var connInitReq, connInitResp, onProduce, onConsume []binding.PolicyRef
+	// Parse API-level policies from Policies field (interface{})
+	var apiPolicies binding.ProtocolMediationPolicies
+	if ecr.Policies != nil {
+		if policiesMap, ok := ecr.Policies.(map[string]interface{}); ok {
+			// Parse on_connection_init
+			if connInitIface, ok := policiesMap["on_connection_init"].(map[string]interface{}); ok {
+				if reqIface, ok := connInitIface["request"].([]interface{}); ok {
+					apiPolicies.OnConnectionInit.Request = mapGenericPolicyList(reqIface)
+				}
+				if respIface, ok := connInitIface["response"].([]interface{}); ok {
+					apiPolicies.OnConnectionInit.Response = mapGenericPolicyList(respIface)
+				}
+			}
+			// Parse on_produce
+			if produceIface, ok := policiesMap["on_produce"].([]interface{}); ok {
+				apiPolicies.OnProduce = mapGenericPolicyList(produceIface)
+			}
+			// Parse on_consume
+			if consumeIface, ok := policiesMap["on_consume"].([]interface{}); ok {
+				apiPolicies.OnConsume = mapGenericPolicyList(consumeIface)
+			}
+		}
+	}
 
-	if ecr.AllChannelPolicies != nil {
-		connInitReq = mapPolicyEntries(ecr.AllChannelPolicies.OnConnectionInit.Request)
-		connInitResp = mapPolicyEntries(ecr.AllChannelPolicies.OnConnectionInit.Response)
-		onProduce = mapPolicyEntries(ecr.AllChannelPolicies.OnProduce)
-		onConsume = mapPolicyEntries(ecr.AllChannelPolicies.OnConsume)
+	// Parse channels map from Channels field (interface{})
+	channels := make(map[string]binding.WebBrokerChannelDef)
+	if ecr.Channels != nil {
+		if channelsMap, ok := ecr.Channels.(map[string]interface{}); ok {
+			for channelName, channelIface := range channelsMap {
+				if channelData, ok := channelIface.(map[string]interface{}); ok {
+					var channelDef binding.WebBrokerChannelDef
+
+					// Parse channel on_connection_init
+					if connInitIface, ok := channelData["on_connection_init"].(map[string]interface{}); ok {
+						if reqIface, ok := connInitIface["request"].([]interface{}); ok {
+							channelDef.OnConnectionInit.Request = mapGenericPolicyList(reqIface)
+						}
+						if respIface, ok := connInitIface["response"].([]interface{}); ok {
+							channelDef.OnConnectionInit.Response = mapGenericPolicyList(respIface)
+						}
+					}
+					// Parse channel on_produce
+					if produceIface, ok := channelData["on_produce"].([]interface{}); ok {
+						channelDef.OnProduce = mapGenericPolicyList(produceIface)
+					}
+					// Parse channel on_consume
+					if consumeIface, ok := channelData["on_consume"].([]interface{}); ok {
+						channelDef.OnConsume = mapGenericPolicyList(consumeIface)
+					}
+
+					channels[channelName] = channelDef
+				}
+			}
+		}
 	}
 
 	return binding.WebBrokerApiBinding{
@@ -329,16 +450,32 @@ func (h *Handler) toWebBrokerApiBinding(ecr EventChannelResource) binding.WebBro
 		Version: ecr.Version,
 		Context: ecr.Context,
 		Receiver: binding.ReceiverSpec{
+			Name: ecr.Receiver.Name,
 			Type: ecr.Receiver.Type,
 		},
 		BrokerDriver: h.resolveBrokerDriver(ecr.BrokerDriver),
-		Policies: binding.ProtocolMediationPolicies{
-			OnConnectionInit: binding.ConnectionInitPolicies{
-				Request:  connInitReq,
-				Response: connInitResp,
-			},
-			OnProduce: onProduce,
-			OnConsume: onConsume,
-		},
+		Policies:     apiPolicies,
+		Channels:     channels,
 	}
+}
+
+// mapGenericPolicyList converts []interface{} to []binding.PolicyRef
+func mapGenericPolicyList(policies []interface{}) []binding.PolicyRef {
+	result := make([]binding.PolicyRef, 0, len(policies))
+	for _, pIface := range policies {
+		if pMap, ok := pIface.(map[string]interface{}); ok {
+			policyRef := binding.PolicyRef{}
+			if name, ok := pMap["name"].(string); ok {
+				policyRef.Name = name
+			}
+			if version, ok := pMap["version"].(string); ok {
+				policyRef.Version = version
+			}
+			if params, ok := pMap["params"].(map[string]interface{}); ok {
+				policyRef.Params = params
+			}
+			result = append(result, policyRef)
+		}
+	}
+	return result
 }

@@ -5,8 +5,9 @@ use (
 	./cli/src
 	./common
 	./event-gateway/gateway-builder
-	./event-gateway/webhook-listener
 	./event-gateway/gateway-runtime
+	./event-gateway/policies/map-topic
+	./event-gateway/webhook-listener
 	./gateway/gateway-builder
 	./gateway/gateway-controller
 	./gateway/gateway-runtime/policy-engine

@@ -167,6 +167,16 @@ func (m *recordingBindingManager) RemoveWebSubApiBinding(name string) error {
 	return nil
 }
 
+func (m *recordingBindingManager) AddWebBrokerApiBinding(wbb binding.WebBrokerApiBinding) error {
+	m.added = append(m.added, wbb.Name)
+	return nil
+}
+
+func (m *recordingBindingManager) RemoveWebBrokerApiBinding(name string) error {
+	m.removed = append(m.removed, name)
+	return nil
+}
+
 func (m *recordingBindingManager) addedNames() []string {
 	out := append([]string(nil), m.added...)
 	return out

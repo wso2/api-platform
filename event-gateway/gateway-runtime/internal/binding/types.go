@@ -64,15 +64,23 @@ type ChannelDef struct {
 // It provides bidirectional streaming between web-friendly protocols (WebSocket, SSE)
 // and message brokers (Kafka, MQTT) with per-connection isolation.
 type WebBrokerApiBinding struct {
-	Kind         string                    `yaml:"kind"` // "WebBrokerApi"
-	APIID        string                    `yaml:"apiId"`
-	Name         string                    `yaml:"name"`
-	Version      string                    `yaml:"version"`
-	Context      string                    `yaml:"context"`
-	Vhost        string                    `yaml:"vhost"`
-	Receiver     ReceiverSpec              `yaml:"receiver"`
-	BrokerDriver BrokerDriverSpec          `yaml:"broker-driver"`
-	Policies     ProtocolMediationPolicies `yaml:"allChannelPolicies"`
+	Kind         string                         `yaml:"kind"` // "WebBrokerApi"
+	APIID        string                         `yaml:"apiId"`
+	Name         string                         `yaml:"name"`
+	Version      string                         `yaml:"version"`
+	Context      string                         `yaml:"context"`
+	Vhost        string                         `yaml:"vhost"`
+	Receiver     ReceiverSpec                   `yaml:"receiver"`
+	BrokerDriver BrokerDriverSpec               `yaml:"broker-driver"`
+	Policies     ProtocolMediationPolicies      `yaml:"policies"`           // API-level policies
+	Channels     map[string]WebBrokerChannelDef `yaml:"channels,omitempty"` // Channel-specific policies
+}
+
+// WebBrokerChannelDef defines a single channel within a WebBrokerApi with its policies.
+type WebBrokerChannelDef struct {
+	OnConnectionInit ConnectionInitPolicies `yaml:"on_connection_init"`
+	OnProduce        []PolicyRef            `yaml:"on_produce"`
+	OnConsume        []PolicyRef            `yaml:"on_consume"`
 }
 
 // ProtocolMediationPolicies defines policy enforcement points for protocol mediation.
@@ -90,7 +98,8 @@ type ConnectionInitPolicies struct {
 
 // ReceiverSpec defines the receiver connector type and configuration.
 type ReceiverSpec struct {
-	Type         string                 `yaml:"type"` // "websub", "websocket", or "sse"
+	Name         string                 `yaml:"name,omitempty"` // Receiver instance name (for WebBrokerApi)
+	Type         string                 `yaml:"type"`           // "websub", "websocket", or "sse"
 	Path         string                 `yaml:"path"`
 	Backpressure string                 `yaml:"backpressure"` // "drop-oldest", "block", "close"
 	Properties   map[string]interface{} `yaml:"properties"`
@@ -98,7 +107,8 @@ type ReceiverSpec struct {
 
 // BrokerDriverSpec defines the broker-driver connector type and configuration.
 type BrokerDriverSpec struct {
-	Type       string                 `yaml:"type"` // "kafka"
+	Name       string                 `yaml:"name,omitempty"` // Broker driver instance name (for WebBrokerApi)
+	Type       string                 `yaml:"type"`           // "kafka"
 	Topic      string                 `yaml:"topic"`
 	Ordering   string                 `yaml:"ordering"`   // "ordered" or "unordered"
 	Config     map[string]interface{} `yaml:"config"`     // broker-driver-specific config (e.g. brokers, tls)

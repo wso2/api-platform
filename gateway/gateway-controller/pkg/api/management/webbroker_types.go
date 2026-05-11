@@ -72,8 +72,11 @@ type WebBrokerApiData struct {
 	// BrokerDriver Broker driver configuration - message broker adapter (Kafka, MQTT, AMQP)
 	BrokerDriver WebBrokerApiBrokerDriver `json:"brokerDriver" yaml:"brokerDriver"`
 
-	// AllChannelPolicies Protocol mediation policies applied to all channels
-	AllChannelPolicies *WebBrokerApiPolicies `json:"allChannelPolicies,omitempty" yaml:"allChannelPolicies,omitempty"`
+	// Policies API-level policies applied to all channels
+	Policies *WebBrokerApiPolicies `json:"policies,omitempty" yaml:"policies,omitempty"`
+
+	// Channels Channel-specific configurations with policies per channel
+	Channels map[string]WebBrokerApiChannel `json:"channels,omitempty" yaml:"channels,omitempty"`
 
 	// Version Semantic version of the API
 	Version string `json:"version" yaml:"version"`
@@ -93,6 +96,9 @@ type WebBrokerApiDataDeploymentState string
 
 // WebBrokerApiReceiver Receiver configuration for protocol adapter
 type WebBrokerApiReceiver struct {
+	// Name Receiver instance name
+	Name string `json:"name" yaml:"name"`
+
 	// Type Receiver type (websocket, sse)
 	Type string `json:"type" yaml:"type"`
 
@@ -102,10 +108,13 @@ type WebBrokerApiReceiver struct {
 
 // WebBrokerApiBrokerDriver Broker driver configuration
 type WebBrokerApiBrokerDriver struct {
+	// Name Broker driver instance name
+	Name string `json:"name" yaml:"name"`
+
 	// Type Broker driver type (kafka, mqtt, amqp)
 	Type string `json:"type" yaml:"type"`
 
-	// Properties Broker-specific configuration properties (topic, bootstrap.servers, etc.)
+	// Properties Broker-specific configuration properties (bootstrap.servers, etc.)
 	Properties map[string]interface{} `json:"properties" yaml:"properties"`
 }
 
@@ -128,4 +137,16 @@ type WebBrokerApiConnectionInitPolicies struct {
 
 	// Response Policies applied after WebSocket upgrade
 	Response *[]Policy `json:"response,omitempty" yaml:"response,omitempty"`
+}
+
+// WebBrokerApiChannel Channel-specific configuration with policies
+type WebBrokerApiChannel struct {
+	// OnConnectionInit Policies applied during WebSocket handshake for this channel
+	OnConnectionInit *WebBrokerApiConnectionInitPolicies `json:"on_connection_init,omitempty" yaml:"on_connection_init,omitempty"`
+
+	// OnProduce Policies applied when client sends message to broker on this channel
+	OnProduce *[]Policy `json:"on_produce,omitempty" yaml:"on_produce,omitempty"`
+
+	// OnConsume Policies applied when broker message delivered to client on this channel
+	OnConsume *[]Policy `json:"on_consume,omitempty" yaml:"on_consume,omitempty"`
 }

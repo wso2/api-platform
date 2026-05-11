@@ -89,6 +89,7 @@ build-docker: ## Build Docker image
 		--build-context policy-engine=../../gateway/gateway-runtime/policy-engine \
 		--build-context analytics=../../gateway/system-policies/analytics \
 		--build-context gateway-builder=../gateway-builder \
+		--build-context policies=../policies \
 		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
@@ -109,6 +110,7 @@ build-debug: ## Build Docker image with Delve remote debugger (port 2345)
 		--build-context policy-engine=../../gateway/gateway-runtime/policy-engine \
 		--build-context analytics=../../gateway/system-policies/analytics \
 		--build-context gateway-builder=../gateway-builder \
+		--build-context policies=../policies \
 		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
@@ -129,6 +131,7 @@ build-and-push-multiarch: ## Build and push Docker image for multiple architectu
 		--build-context policy-engine=../../gateway/gateway-runtime/policy-engine \
 		--build-context analytics=../../gateway/system-policies/analytics \
 		--build-context gateway-builder=../gateway-builder \
+		--build-context policies=../policies \
 		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \

@@ -15,6 +15,7 @@
   - [Option 2: Building from Source](#option-2-building-from-source)
   - [Option 3: Development Mode with Live Reload](#option-3-development-mode-with-live-reload)
 - [Testing with Policies](#testing-with-policies)
+- [End-to-End Testing with Kafka](#end-to-end-testing-with-kafka)
 - [Implementation Details](#implementation-details)
 - [Comparison: WebSubApi vs WebBrokerApi](#comparison-websubapi-vs-webbrokerapi)
 - [Consumer Group Strategy](#consumer-group-strategy)
@@ -77,17 +78,18 @@ version: v1.0
 context: /base-path
 
 receiver:
+  name: receiver-instance-name  # Instance identifier
   type: websocket  # or "sse" in the future
   properties: {}
 
 brokerDriver:
+  name: broker-instance-name  # Instance identifier
   type: kafka  # or "mqtt", "amqp" in the future
   properties:
-    topic: default-topic
     bootstrap.servers: localhost:9092
     security.protocol: PLAINTEXT
 
-allChannelPolicies:
+policies:  # API-level policies applied to all channels
   on_connection_init:
     request:
       - name: policy-name
@@ -99,11 +101,29 @@ allChannelPolicies:
       version: v1
       params: {}
   on_consume: []
+
+channels:  # Channel-specific configurations with per-channel policies
+  "/channel-name":
+    on_connection_init:
+      request: []
+      response: []
+    on_produce:
+      - name: map-topic
+        version: v1
+        params:
+          mode: produceTo
+          topic: kafka-topic-name
+    on_consume:
+      - name: map-topic
+        version: v1
+        params:
+          mode: consumeFrom
+          topic: kafka-topic-name
 ```
 
 ## Example Use Cases
 
-### 1. WebSocket to Kafka with Topic Mapping
+### 1. WebSocket to Kafka with Channel Routing
 
 ```yaml
 channels:
@@ -112,13 +132,14 @@ channels:
     version: v1.0
     context: /ws-kafka
     receiver:
+      name: ws-receiver
       type: websocket
     brokerDriver:
+      name: kafka-driver
       type: kafka
       properties:
-        topic: repo-events
         bootstrap.servers: localhost:9092
-    allChannelPolicies:
+    policies:  # API-level policies
       on_connection_init:
         request:
           - name: api-key-auth
@@ -126,28 +147,48 @@ channels:
             params:
               in: header
               name: X-API-Key
-      on_produce:
-        - name: map-topics
-          version: v1
-          params:
-            extraction:
-              source: header
-              key: X-Client-Topic
-            mappings:
-              client-issues: kafka-repo-issues
-              client-commits: kafka-repo-commits
-            defaultTopic: kafka-repo-events
+      on_produce: []
+      on_consume: []
+    channels:  # Per-channel configurations
+      "/issues":
+        on_produce:
+          - name: map-topic
+            version: v1
+            params:
+              mode: produceTo
+              topic: kafka-repo-issues
+        on_consume:
+          - name: map-topic
+            version: v1
+            params:
+              mode: consumeFrom
+              topic: kafka-repo-issues
+      "/commits":
+        on_produce:
+          - name: map-topic
+            version: v1
+            params:
+              mode: produceTo
+              topic: kafka-repo-commits
+        on_consume:
+          - name: map-topic
+            version: v1
+            params:
+              mode: consumeFrom
+              topic: kafka-repo-commits
 ```
 
 **Client Usage:**
 ```javascript
+// Connect with channel specified via X-topic header
 const ws = new WebSocket('ws://localhost:8080/ws-kafka', {
   headers: {
-    'X-API-Key': 'your-api-key'
+    'X-API-Key': 'your-api-key',
+    'X-topic': '/issues'  // Select channel
   }
 });
 
-// Produce to specific topic
+// Send message (will produce to kafka-repo-issues)
 ws.send(JSON.stringify({
   headers: {
     'X-Client-Topic': 'client-issues'
@@ -245,12 +286,14 @@ Each WebSocket connection gets a **unique consumer group** to ensure:
 
 Consumer group ID format: `{prefix}-ws-{uuid}`
 
-## Topic Subscription
+## Channel Routing and Topic Subscription
 
 For WebBrokerApi:
-- Consumer subscribes to **all topics** that might be used (from mappings + default)
-- Producer publishes to **dynamic topic** determined by policies
-- Policies can inspect message metadata to determine target topic
+- **Channel Selection**: Client specifies channel via `X-topic` header during WebSocket handshake (e.g., `X-topic: /issues`)
+- **Per-Channel Topics**: Each channel defines its own topics via `map-topic` policies with `mode: produceTo` and `mode: consumeFrom`
+- **Consumer Subscription**: Each WebSocket connection subscribes only to topics configured for the selected channel
+- **Producer Publishing**: Messages are published to the topic specified in the channel's `on_produce` policies
+- **Policy Cascade**: API-level policies execute first, followed by channel-specific policies
 
 ## Future Enhancements
 
@@ -325,23 +368,48 @@ curl --location 'http://localhost:9090/api/management/v0.9/webbroker-apis' \
       "version": "v1.0",
       "context": "/ws-kafka",
       "receiver": {
+        "name": "ws-receiver",
         "type": "websocket",
         "properties": {}
       },
       "brokerDriver": {
+        "name": "kafka-driver",
         "type": "kafka",
         "properties": {
-          "topic": "repo-events",
           "bootstrap.servers": "kafka:29092"
         }
       },
-      "allChannelPolicies": {
+      "policies": {
         "onConnectionInit": {
           "request": [],
           "response": []
         },
         "onProduce": [],
         "onConsume": []
+      },
+      "channels": {
+        "/issues": {
+          "on_produce": [
+            {
+              "name": "map-topic",
+              "version": "v1",
+              "params": {
+                "mode": "produceTo",
+                "topic": "repo-events"
+              }
+            }
+          ],
+          "on_consume": [
+            {
+              "name": "map-topic",
+              "version": "v1",
+              "params": {
+                "mode": "consumeFrom",
+                "topic": "repo-events"
+              }
+            }
+          ]
+        }
       },
       "deploymentState": "deployed"
     }
@@ -448,7 +516,11 @@ websocat ws://localhost:8081/ws-kafka
 // test-websocket.js
 const WebSocket = require('ws');
 
-const ws = new WebSocket('ws://localhost:8081/ws-kafka');
+const ws = new WebSocket('ws://localhost:8081/ws-kafka', {
+  headers: {
+    'X-topic': '/issues'
+  }
+});
 
 ws.on('open', () => {
   console.log('Connected to Event Gateway');
@@ -482,7 +554,9 @@ node test-websocket.js
 **Using Browser Console:**
 
 ```javascript
-const ws = new WebSocket('ws://localhost:8081/ws-kafka');
+// Note: Browser WebSocket API doesn't support custom headers in constructor
+// Use Sec-WebSocket-Protocol or URL query parameters as alternatives
+const ws = new WebSocket('ws://localhost:8081/ws-kafka?channel=/issues');
 
 ws.onopen = () => {
   console.log('Connected!');
@@ -555,18 +629,33 @@ channels:
     version: v1.0
     context: /ws-kafka
     receiver:
+      name: ws-receiver
       type: websocket
     broker-driver:
+      name: kafka-driver
       type: kafka
       properties:
-        topic: repo-events
         bootstrap.servers: localhost:9092
-    allChannelPolicies:
+    policies:
       on_connection_init:
         request: []
         response: []
       on_produce: []
       on_consume: []
+    channels:
+      "/issues":
+        on_produce:
+          - name: map-topic
+            version: v1
+            params:
+              mode: produceTo
+              topic: repo-events
+        on_consume:
+          - name: map-topic
+            version: v1
+            params:
+              mode: consumeFrom
+              topic: repo-events
 ```
 
 #### 4. Configure Gateway
@@ -612,7 +701,7 @@ go run ./cmd/event-gateway \
 You should see:
 ```
 INFO Event gateway is ready runtime_id=...
-INFO WebBrokerApi WebSocket receiver started channel=websocket-kafka-api context=/ws-kafka topics=[repo-events]
+INFO Registered WebBrokerApi binding name=websocket-kafka-api context=/ws-kafka channels=1 topics=[repo-events]
 ```
 
 #### 6. Test the Connection
@@ -620,7 +709,7 @@ INFO WebBrokerApi WebSocket receiver started channel=websocket-kafka-api context
 Open another terminal and test with websocat:
 
 ```bash
-websocat ws://localhost:8081/ws-kafka
+websocat --header "X-topic: /issues" ws://localhost:8081/ws-kafka
 ```
 
 Type messages and press Enter to send them to Kafka.
@@ -630,7 +719,7 @@ Type messages and press Enter to send them to Kafka.
 ```bash
 # View messages being published
 docker exec -it event-gateway-kafka-1 kafka-console-consumer \
-  --bootstrap-server localhost:9092 \
+  --bootstrap-server localhost:29092 \
   --topic repo-events \
   --from-beginning
 ```
@@ -683,13 +772,14 @@ channels:
     version: v1.0
     context: /secure-ws
     receiver:
+      name: ws-receiver
       type: websocket
     broker-driver:
+      name: kafka-driver
       type: kafka
       properties:
-        topic: secure-events
         bootstrap.servers: kafka:29092
-    allChannelPolicies:
+    policies:
       on_connection_init:
         request:
           - name: api-key-auth
@@ -699,48 +789,361 @@ channels:
               name: X-API-Key
       on_produce: []
       on_consume: []
+    channels:
+      "/secure-channel":
+        on_produce:
+          - name: map-topic
+            version: v1
+            params:
+              mode: produceTo
+              topic: secure-events
+        on_consume:
+          - name: map-topic
+            version: v1
+            params:
+              mode: consumeFrom
+              topic: secure-events
 ```
 
 Test with authentication:
 
 ```bash
 # Without API key (should fail)
-websocat ws://localhost:8081/secure-ws
+websocat --header "X-topic: /secure-channel" ws://localhost:8081/secure-ws
 # → Connection rejected
 
 # With API key (should succeed)
-websocat --header "X-API-Key: your-api-key" ws://localhost:8081/secure-ws
+websocat --header "X-API-Key: your-api-key" --header "X-topic: /secure-channel" ws://localhost:8081/secure-ws
 ```
 
-### Example: Topic Mapping
+### Example: Multiple Channels with Different Topics
 
 ```yaml
-allChannelPolicies:
-  on_produce:
-    - name: map-topics
-      version: v1
-      params:
-        extraction:
-          source: header
-          key: X-Target-Topic
-        mappings:
-          issues: kafka-repo-issues
-          commits: kafka-repo-commits
-          prs: kafka-repo-pull-requests
-        defaultTopic: kafka-repo-events
+channels:
+  "/issues":
+    on_produce:
+      - name: map-topic
+        version: v1
+        params:
+          mode: produceTo
+          topic: kafka-repo-issues
+    on_consume:
+      - name: map-topic
+        version: v1
+        params:
+          mode: consumeFrom
+          topic: kafka-repo-issues
+  "/commits":
+    on_produce:
+      - name: map-topic
+        version: v1
+        params:
+          mode: produceTo
+          topic: kafka-repo-commits
+    on_consume:
+      - name: map-topic
+        version: v1
+        params:
+          mode: consumeFrom
+          topic: kafka-repo-commits
 ```
 
-Send messages with topic headers:
+Connect to different channels:
 
 ```javascript
-// In WebSocket message, include metadata for topic routing
-ws.send(JSON.stringify({
-  headers: {
-    'X-Target-Topic': 'issues'
-  },
-  data: { issueId: 123, title: 'Bug fix' }
-}));
+// Connect to /issues channel
+const ws1 = new WebSocket('ws://localhost:8081/ws-kafka', {
+  headers: { 'X-topic': '/issues' }
+});
+
+// Connect to /commits channel
+const ws2 = new WebSocket('ws://localhost:8081/ws-kafka', {
+  headers: { 'X-topic': '/commits' }
+});
 ```
+
+## End-to-End Testing with Kafka
+
+This section demonstrates how to verify the complete WebSocket ↔ Kafka flow in both directions.
+
+### Prerequisites
+
+- Docker Compose services running (`docker compose up -d`)
+- WebBrokerApi created with separate produce and consume topics (recommended for testing)
+- `wscat` installed (`npm install -g wscat`)
+
+### Example API with Topic Separation
+
+For clear testing, configure a WebBrokerApi with **separate topics** for produce and consume:
+
+```bash
+curl --location 'http://localhost:9090/api/management/v0.9/webbroker-apis' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: Basic YWRtaW46YWRtaW4=' \
+--data '{
+    "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+    "kind": "WebBrokerApi",
+    "metadata": { "name": "websocket-kafka-api-v1-0" },
+    "spec": {
+      "displayName": "websocket-kafka-api",
+      "version": "v1.0",
+      "context": "/ws-kafka",
+      "receiver": {
+        "name": "ws-receiver",
+        "type": "websocket",
+        "properties": {}
+      },
+      "brokerDriver": {
+        "name": "kafka-driver",
+        "type": "kafka",
+        "properties": {
+          "bootstrap.servers": "kafka:29092"
+        }
+      },
+      "policies": {
+        "onConnectionInit": { "request": [], "response": [] },
+        "onProduce": [],
+        "onConsume": []
+      },
+      "channels": {
+        "/issues": {
+          "on_produce": [
+            {
+              "name": "map-topic",
+              "version": "v1",
+              "params": {
+                "mode": "produceTo",
+                "topic": "produce_issues"
+              }
+            }
+          ],
+          "on_consume": [
+            {
+              "name": "map-topic",
+              "version": "v1",
+              "params": {
+                "mode": "consumeFrom",
+                "topic": "consume_issues"
+              }
+            }
+          ]
+        }
+      },
+      "deploymentState": "deployed"
+    }
+  }'
+```
+
+**Key Points:**
+- `/issues` channel publishes to `produce_issues` topic (one-way)
+- `/issues` channel consumes from `consume_issues` topic (one-way)
+- **No echo/loopback**: Messages sent via WebSocket don't come back to the sender
+
+### Test Setup: 3 Terminals
+
+#### Terminal 1: Kafka Consumer (Monitor WebSocket → Kafka)
+
+This terminal monitors the `produce_issues` topic to verify messages from WebSocket clients arrive in Kafka:
+
+```bash
+docker exec -it event-gateway-kafka-1 /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic produce_issues \
+  --from-beginning
+```
+
+**Expected Output:** All messages sent via WebSocket will appear here.
+
+#### Terminal 2: WebSocket Client
+
+Connect to the `/issues` channel:
+
+```bash
+wscat -c ws://localhost:8081/ws-kafka --header "X-topic: /issues"
+```
+
+**Expected Output:**
+```
+Connected (press CTRL+C to quit)
+> 
+```
+
+#### Terminal 3: Kafka Producer (Send to WebSocket Clients)
+
+This terminal publishes to the `consume_issues` topic, which will be delivered to WebSocket clients:
+
+```bash
+docker exec -it event-gateway-kafka-1 /opt/kafka/bin/kafka-console-producer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic consume_issues
+```
+
+**Expected Output:**
+```
+>
+```
+
+### Test 1: WebSocket → Kafka (Produce Path)
+
+**Objective:** Verify messages sent from WebSocket client arrive in Kafka.
+
+**Steps:**
+
+1. In **Terminal 2** (WebSocket client), type a message and press Enter:
+   ```
+   > {"message": "Hello from WebSocket", "timestamp": "2026-05-11T12:00:00Z"}
+   ```
+
+2. In **Terminal 1** (Kafka consumer), verify the message appears:
+   ```
+   {"message": "Hello from WebSocket", "timestamp": "2026-05-11T12:00:00Z"}
+   ```
+
+3. Send multiple messages to test throughput:
+   ```
+   > {"event": "issue_created", "id": 1}
+   > {"event": "issue_updated", "id": 1, "status": "in-progress"}
+   > {"event": "issue_closed", "id": 1}
+   ```
+
+4. Verify all messages appear in **Terminal 1** in order.
+
+**✅ Success Criteria:**
+- All messages from WebSocket appear in the `produce_issues` Kafka topic
+- Messages maintain order
+- No messages echo back to WebSocket client (Terminal 2 shows only `>` prompt)
+
+### Test 2: Kafka → WebSocket (Consume Path)
+
+**Objective:** Verify messages published to Kafka are delivered to WebSocket clients.
+
+**Steps:**
+
+1. In **Terminal 3** (Kafka producer), type a message and press Enter:
+   ```
+   > {"message": "Hello from Kafka", "source": "external-service"}
+   ```
+
+2. In **Terminal 2** (WebSocket client), verify the message is received:
+   ```
+   < {"message": "Hello from Kafka", "source": "external-service"}
+   ```
+
+3. Send multiple messages from Kafka:
+   ```
+   > {"event": "notification", "type": "email", "status": "sent"}
+   > {"event": "notification", "type": "sms", "status": "delivered"}
+   ```
+
+4. Verify all messages appear in **Terminal 2** immediately.
+
+**✅ Success Criteria:**
+- All messages from `consume_issues` Kafka topic appear in WebSocket client
+- Messages are delivered in real-time (< 1 second delay)
+- Messages maintain order
+
+### Test 3: Multiple WebSocket Connections
+
+**Objective:** Verify each connection receives messages independently.
+
+**Steps:**
+
+1. Open **Terminal 4** with a second WebSocket client:
+   ```bash
+   wscat -c ws://localhost:8081/ws-kafka --header "X-topic: /issues"
+   ```
+
+2. In **Terminal 3** (Kafka producer), send a message:
+   ```
+   > {"broadcast": "message to all clients"}
+   ```
+
+3. Verify the message appears in **both Terminal 2 and Terminal 4**.
+
+4. In **Terminal 2**, send a message:
+   ```
+   > {"from": "client1"}
+   ```
+
+5. Verify in **Terminal 1** (Kafka consumer) that the message appears.
+
+6. Verify in **Terminal 2 and Terminal 4** that the message does NOT echo back.
+
+**✅ Success Criteria:**
+- Each WebSocket connection has its own unique consumer group
+- All connections receive broadcast messages from Kafka
+- Messages sent by one client don't echo to any WebSocket client
+- Each connection can produce independently
+
+### Test 4: Verify Topic Isolation
+
+**Objective:** Confirm produce and consume topics are completely isolated.
+
+**Steps:**
+
+1. List Kafka topics to verify both exist:
+   ```bash
+   docker exec -it event-gateway-kafka-1 /opt/kafka/bin/kafka-topics.sh \
+     --bootstrap-server localhost:9092 \
+     --list | grep issues
+   ```
+   
+   **Expected Output:**
+   ```
+   consume_issues
+   produce_issues
+   ```
+
+2. Check message count in `produce_issues`:
+   ```bash
+   docker exec -it event-gateway-kafka-1 /opt/kafka/bin/kafka-run-class.sh \
+     kafka.tools.GetOffsetShell \
+     --broker-list localhost:9092 \
+     --topic produce_issues
+   ```
+
+3. Check message count in `consume_issues`:
+   ```bash
+   docker exec -it event-gateway-kafka-1 /opt/kafka/bin/kafka-run-class.sh \
+     kafka.tools.GetOffsetShell \
+     --broker-list localhost:9092 \
+     --topic consume_issues
+   ```
+
+4. Verify counts match your test messages (produce_issues has WebSocket messages, consume_issues has Kafka messages).
+
+**✅ Success Criteria:**
+- Topics are independent with different message counts
+- No cross-contamination between produce and consume paths
+
+### Debugging Tips
+
+**Check Event Gateway Logs:**
+```bash
+docker compose logs -f event-gateway | grep -E "Map Topic|Publishing|received from WebSocket"
+```
+
+**Verify Channel Configuration:**
+```bash
+docker compose logs event-gateway | grep "Built policy chains for WebBrokerApi channel"
+```
+
+**Expected Log Output:**
+```
+level=INFO msg="Built policy chains for WebBrokerApi channel" api=websocket-kafka-api-v1-0 channel=/issues topics="[produce_issues consume_issues]"
+```
+
+**Check WebSocket Connection:**
+```bash
+docker compose logs event-gateway | grep "WebSocket handshake completed"
+```
+
+**Expected Log Output:**
+```
+level=INFO msg="[4] WebSocket handshake completed" connID=xxx api=websocket-kafka-api-v1-0 channel=/issues topics=[consume_issues]
+```
+
+Note the `topics=[consume_issues]` - this confirms the consumer only subscribes to the consume topic, not the produce topic.
 
 ## Troubleshooting
 
@@ -760,8 +1163,10 @@ ws.send(JSON.stringify({
 - In static file mode, verify `channels.yaml` has the WebBrokerApi entry and `controlplane.enabled = false`
 
 **Connection rejected during handshake:**
+- **Missing X-topic header**: Verify the `X-topic` header is included with a valid channel name (e.g., `X-topic: /issues`)
 - Check `on_connection_init.request` policies (e.g., API key validation)
 - Verify headers are correctly set in upgrade request
+- Check logs for: "Missing X-topic header" or "Unknown channel in X-topic header"
 
 **Messages not reaching Kafka:**
 - Check `on_produce` policies for short-circuit conditions
@@ -899,18 +1304,33 @@ channels:
     version: v1.0
     context: /simple
     receiver:
+      name: ws-receiver
       type: websocket
     broker-driver:
+      name: kafka-driver
       type: kafka
       properties:
-        topic: simple-events
         bootstrap.servers: kafka:29092
-    allChannelPolicies:
+    policies:
       on_connection_init:
         request: []
         response: []
       on_produce: []
       on_consume: []
+    channels:
+      "/default":
+        on_produce:
+          - name: map-topic
+            version: v1
+            params:
+              mode: produceTo
+              topic: simple-events
+        on_consume:
+          - name: map-topic
+            version: v1
+            params:
+              mode: consumeFrom
+              topic: simple-events
 ```
 
 **With Authentication:**
@@ -922,13 +1342,14 @@ channels:
     version: v1.0
     context: /secure
     receiver:
+      name: ws-receiver
       type: websocket
     broker-driver:
+      name: kafka-driver
       type: kafka
       properties:
-        topic: secure-events
         bootstrap.servers: kafka:29092
-    allChannelPolicies:
+    policies:
       on_connection_init:
         request:
           - name: api-key-auth
@@ -938,9 +1359,23 @@ channels:
               name: X-API-Key
       on_produce: []
       on_consume: []
+    channels:
+      "/secure-channel":
+        on_produce:
+          - name: map-topic
+            version: v1
+            params:
+              mode: produceTo
+              topic: secure-events
+        on_consume:
+          - name: map-topic
+            version: v1
+            params:
+              mode: consumeFrom
+              topic: secure-events
 ```
 
-**With Topic Mapping and Transformation:**
+**With Multiple Channels:**
 
 ```yaml
 channels:
@@ -949,29 +1384,19 @@ channels:
     version: v1.0
     context: /smart
     receiver:
+      name: ws-receiver
       type: websocket
     broker-driver:
+      name: kafka-driver
       type: kafka
       properties:
-        topic: default-events
         bootstrap.servers: kafka:29092
-    allChannelPolicies:
+    policies:
       on_connection_init:
         request:
           - name: api-key-auth
             version: v1
-      on_produce:
-        - name: map-topics
-          version: v1
-          params:
-            extraction:
-              source: header
-              key: X-Event-Type
-            mappings:
-              user.created: users-topic
-              user.updated: users-topic
-              order.created: orders-topic
-            defaultTopic: default-events
+      on_produce: []
       on_consume:
         - name: set-headers
           version: v1
@@ -979,6 +1404,33 @@ channels:
             headers:
               X-Gateway: event-gateway
               X-Timestamp: "${timestamp}"
+    channels:
+      "/users":
+        on_produce:
+          - name: map-topic
+            version: v1
+            params:
+              mode: produceTo
+              topic: users-topic
+        on_consume:
+          - name: map-topic
+            version: v1
+            params:
+              mode: consumeFrom
+              topic: users-topic
+      "/orders":
+        on_produce:
+          - name: map-topic
+            version: v1
+            params:
+              mode: produceTo
+              topic: orders-topic
+        on_consume:
+          - name: map-topic
+            version: v1
+            params:
+              mode: consumeFrom
+              topic: orders-topic
 ```
 
 ### Useful Tools
@@ -990,13 +1442,13 @@ brew install websocat  # macOS
 cargo install websocat  # Linux/Rust
 
 # Basic usage
-websocat ws://localhost:8081/ws-kafka
+websocat --header "X-topic: /channel-name" ws://localhost:8081/ws-kafka
 
 # With headers
-websocat --header "X-API-Key: test" ws://localhost:8081/secure
+websocat --header "X-API-Key: test" --header "X-topic: /secure-channel" ws://localhost:8081/secure
 
 # With text protocol
-websocat -t ws://localhost:8081/ws-kafka
+websocat -t --header "X-topic: /channel-name" ws://localhost:8081/ws-kafka
 ```
 
 **wscat** - Alternative WebSocket CLI:
@@ -1005,10 +1457,10 @@ websocat -t ws://localhost:8081/ws-kafka
 npm install -g wscat
 
 # Connect
-wscat -c ws://localhost:8081/ws-kafka
+wscat -c ws://localhost:8081/ws-kafka -H "X-topic: /channel-name"
 
 # With headers
-wscat -c ws://localhost:8081/secure -H "X-API-Key: test"
+wscat -c ws://localhost:8081/secure -H "X-API-Key: test" -H "X-topic: /secure-channel"
 ```
 
 **kcat (kafkacat)** - Kafka CLI tool:
@@ -1039,7 +1491,7 @@ echo "test message" | kcat -b localhost:9092 -t repo-events -P
         "context": "/websocket-kafka",
 
         "receiver": {
-            "name": "my-websocket-client",
+            "name": "my-websocket-receiver",
             "type": "websocket",
             "properties": {}
         },
@@ -1048,14 +1500,13 @@ echo "test message" | kcat -b localhost:9092 -t repo-events -P
             "name": "my-kafka-broker",
             "type": "kafka",
             "properties": {
-                "topic": "repo-events",
                 "bootstrap.servers": "localhost:9092",
                 "security.protocol": "PLAINTEXT"
             }
         },
 
-        "allChannelPolicies": {
-            "on_connection_init": {
+        "policies": {
+            "onConnectionInit": {
                 "request": [
                     {
                         "name": "api-key-auth",
@@ -1068,31 +1519,75 @@ echo "test message" | kcat -b localhost:9092 -t repo-events -P
                 ],
                 "response": []
             },
-            "on_produce": [
-                {
-                    "name": "map-topics",
-                    "version": "v1",
-                    "params": {
-                        "extraction": {
-                            "source": "header",
-                            "key": "X-Client-Topic"
-                        },
-                        "mappings": {
-                            "client-issues-topic": "kafka-repo-issues",
-                            "client-commits-topic": "kafka-repo-commits",
-                            "client-pr-topic": "kafka-repo-pull-requests"
-                        },
-                        "defaultTopic": "kafka-repo-events"
+            "onProduce": [],
+            "onConsume": []
+        },
+
+        "channels": {
+            "/issues": {
+                "on_connection_init": {
+                    "request": [],
+                    "response": []
+                },
+                "on_produce": [
+                    {
+                        "name": "map-topic",
+                        "version": "v1",
+                        "params": {
+                            "mode": "produceTo",
+                            "topic": "kafka-repo-issues"
+                        }
                     }
-                }                
-            ],
-            "on_consume": []
+                ],
+                "on_consume": [
+                    {
+                        "name": "map-topic",
+                        "version": "v1",
+                        "params": {
+                            "mode": "consumeFrom",
+                            "topic": "kafka-repo-issues"
+                        }
+                    }
+                ]
+            },
+            "/commits": {
+                "on_produce": [
+                    {
+                        "name": "map-topic",
+                        "version": "v1",
+                        "params": {
+                            "mode": "produceTo",
+                            "topic": "kafka-repo-commits"
+                        }
+                    }
+                ],
+                "on_consume": [
+                    {
+                        "name": "map-topic",
+                        "version": "v1",
+                        "params": {
+                            "mode": "consumeFrom",
+                            "topic": "kafka-repo-commits"
+                        }
+                    }
+                ]
+            }
         },
 
         "deploymentState": "deployed"
     }
 }
 ```
+
+### Key Changes in New Spec
+
+1. **Receiver and BrokerDriver Names**: Added `name` field to both `receiver` and `brokerDriver` for instance identification
+2. **API-Level Policies**: Renamed `allChannelPolicies` → `policies` for API-level policy enforcement
+3. **Channel-Specific Configs**: New `channels` map where each key is a channel name (e.g., `/issues`, `/commits`)
+4. **Per-Channel Policies**: Each channel has its own `on_connection_init`, `on_produce`, and `on_consume` policies
+5. **Topic Extraction**: Topics no longer in `brokerDriver.properties.topic`; instead extracted from `map-topic` policies with `mode: produceTo` and `mode: consumeFrom`
+6. **Channel Routing**: Client selects channel via `X-topic` header during WebSocket handshake
+7. **Policy Cascade**: API-level policies execute first, then channel-specific policies
 
 ## Next Steps
 

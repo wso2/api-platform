@@ -55,14 +55,17 @@ type WebBrokerApiReceiver struct {
 
 // brokerApiConnection represents a single WebSocket connection with bidirectional channels.
 type brokerApiConnection struct {
-	connID        string
-	ws            *websocket.Conn
-	inbound       chan *connectors.Message // client → broker
-	outbound      chan *connectors.Message // broker → client
-	kafkaConsumer connectors.Receiver
-	cancel        context.CancelFunc
-	closed        bool
-	mu            sync.Mutex
+	connID          string
+	ws              *websocket.Conn
+	inbound         chan *connectors.Message // client → broker
+	outbound        chan *connectors.Message // broker → client
+	kafkaConsumer   connectors.Receiver
+	cancel          context.CancelFunc
+	closed          bool
+	mu              sync.Mutex
+	channelName     string // Selected channel from X-topic header
+	produceChainKey string // Policy chain key for on_produce
+	consumeChainKey string // Policy chain key for on_consume
 }
 
 // NewBrokerApiReceiver creates a WebSocket receiver for WebBrokerApi protocol mediation.
@@ -135,17 +138,57 @@ func (e *WebBrokerApiReceiver) Stop(ctx context.Context) error {
 func (e *WebBrokerApiReceiver) handleUpgrade(w http.ResponseWriter, r *http.Request) {
 	// TODO: Change detailed flow logs ([1]-[8]) to debug level before production deployment
 	// These Info-level logs are useful for development/testing but should be Debug in production
+	// Extract channel name from X-topic header.
+	xTopicHeader := r.Header.Get("X-topic")
+	channelName := xTopicHeader
+	if channelName == "" {
+		slog.Error("Missing X-topic header in WebSocket connection", "api", e.channel.Name, "remote", r.RemoteAddr)
+		http.Error(w, "Missing X-topic header", http.StatusBadRequest)
+		return
+	}
+
+	// Validate channel exists in metadata.
+	channelNamesIface, ok := e.channel.Metadata["channelNames"]
+	if !ok {
+		slog.Error("Missing channelNames in metadata", "api", e.channel.Name, "remote", r.RemoteAddr)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	channelNames, ok := channelNamesIface.([]string)
+	if !ok {
+		slog.Error("Invalid channelNames metadata type", "api", e.channel.Name, "remote", r.RemoteAddr)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	channelExists := false
+	for _, ch := range channelNames {
+		if ch == channelName {
+			channelExists = true
+			break
+		}
+	}
+
+	if !channelExists {
+		slog.Error("Unknown channel in X-topic header", "api", e.channel.Name, "channel", channelName, "remote", r.RemoteAddr)
+		http.Error(w, fmt.Sprintf("Unknown channel: %s", channelName), http.StatusNotFound)
+		return
+	}
+
 	slog.Info("[1] WebSocket connection attempted",
-		"channel", e.channel.Name,
+		"api", e.channel.Name,
+		"channel", channelName,
 		"method", r.Method,
 		"path", r.URL.Path,
 		"remote_addr", r.RemoteAddr,
 		"upgrade_header", r.Header.Get("Upgrade"),
 		"connection_header", r.Header.Get("Connection"))
 
-	// Apply on_connection_init.request policies.
-	slog.Info("[2] Applying onConnectionInit.request policies",
-		"channel", e.channel.Name,
+	// Apply API-level on_connection_init.request policies.
+	slog.Info("[2] Applying API-level onConnectionInit.request policies",
+		"api", e.channel.Name,
+		"channel", channelName,
 		"remote_addr", r.RemoteAddr)
 
 	msg := &connectors.Message{
@@ -187,6 +230,10 @@ func (e *WebBrokerApiReceiver) handleUpgrade(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
+	// Apply channel-specific on_connection_init.request policies.
+	// TODO: Implement channel-specific policy application here.
+	// For now, only API-level policies are applied.
+
 	// Upgrade to WebSocket.
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -194,8 +241,8 @@ func (e *WebBrokerApiReceiver) handleUpgrade(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Apply on_connection_init.response policies (if needed).
-	slog.Info("[3] Applying onConnectionInit.response policies", "channel", e.channel.Name)
+	// Apply API-level on_connection_init.response policies.
+	slog.Info("[3] Applying API-level onConnectionInit.response policies", "api", e.channel.Name, "channel", channelName)
 
 	respMsg := &connectors.Message{
 		Headers: map[string][]string{},
@@ -206,21 +253,49 @@ func (e *WebBrokerApiReceiver) handleUpgrade(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Extract channel-specific policy chain keys from metadata.
+	var produceChainKey, consumeChainKey string
+	if channelChainsIface, ok := e.channel.Metadata["channelChains"]; ok {
+		// channelChains is stored as map[string]map[string]string
+		if channelChainsMap, ok := channelChainsIface.(map[string]map[string]string); ok {
+			if chainData, ok := channelChainsMap[channelName]; ok {
+				produceChainKey = chainData["ProduceKey"]
+				consumeChainKey = chainData["ConsumeKey"]
+			}
+		}
+	}
+
+	// Extract topics for this channel.
+	topicToChannelIface, _ := e.channel.Metadata["topicToChannel"]
+	topicToChannel, _ := topicToChannelIface.(map[string]string)
+	channelTopics := []string{}
+	for topic, ch := range topicToChannel {
+		if ch == channelName {
+			channelTopics = append(channelTopics, topic)
+		}
+	}
+	if len(channelTopics) == 0 {
+		slog.Warn("No topics found for channel", "api", e.channel.Name, "channel", channelName)
+	}
+
 	// Create per-connection resources.
 	connID := uuid.New().String()
 	ctx, cancel := context.WithCancel(e.ctx)
 
 	conn := &brokerApiConnection{
-		connID:   connID,
-		ws:       ws,
-		inbound:  make(chan *connectors.Message, 256),
-		outbound: make(chan *connectors.Message, 256),
-		cancel:   cancel,
+		connID:          connID,
+		ws:              ws,
+		inbound:         make(chan *connectors.Message, 256),
+		outbound:        make(chan *connectors.Message, 256),
+		cancel:          cancel,
+		channelName:     channelName,
+		produceChainKey: produceChainKey,
+		consumeChainKey: consumeChainKey,
 	}
 
 	// Create unique consumer group for this connection.
 	groupID := fmt.Sprintf("%s-ws-%s", e.opts.ConsumerGroupPrefix, connID)
-	consumer, err := e.brokerDriver.Subscribe(groupID, e.opts.Topics, func(ctx context.Context, msg *connectors.Message) error {
+	consumer, err := e.brokerDriver.Subscribe(groupID, channelTopics, func(ctx context.Context, msg *connectors.Message) error {
 		// Kafka message received → outbound channel.
 		select {
 		case conn.outbound <- msg:
@@ -252,7 +327,7 @@ func (e *WebBrokerApiReceiver) handleUpgrade(w http.ResponseWriter, r *http.Requ
 	e.connections[connID] = conn
 	e.mu.Unlock()
 
-	slog.Info("[4] WebSocket handshake completed", "connID", connID, "channel", e.channel.Name, "remote", ws.RemoteAddr(), "consumer_group", groupID)
+	slog.Info("[4] WebSocket handshake completed", "connID", connID, "api", e.channel.Name, "channel", channelName, "remote", ws.RemoteAddr(), "consumer_group", groupID, "topics", channelTopics)
 
 	// Start goroutines for bidirectional communication.
 	go e.inboundLoop(ctx, conn)
@@ -285,7 +360,8 @@ func (e *WebBrokerApiReceiver) readLoop(ctx context.Context, conn *brokerApiConn
 
 		slog.Info("[5] Message received from WebSocket client",
 			"connID", conn.connID,
-			"channel", e.channel.Name,
+			"api", e.channel.Name,
+			"channel", conn.channelName,
 			"size_bytes", len(data))
 
 		// Extract headers from WebSocket message (if any).
@@ -312,19 +388,22 @@ func (e *WebBrokerApiReceiver) inboundLoop(ctx context.Context, conn *brokerApiC
 		case <-ctx.Done():
 			return
 		case msg := <-conn.inbound:
-			// Apply on_produce policies.
-			slog.Info("[5] Applying onProduce policies",
+			// Apply channel-specific on_produce policies.
+			slog.Info("[5] Applying channel onProduce policies",
 				"connID", conn.connID,
-				"channel", e.channel.Name,
+				"api", e.channel.Name,
+				"channel", conn.channelName,
+				"chain_key", conn.produceChainKey,
 				"message_size", len(msg.Value))
 
-			processed, shortCircuited, err := e.processor.ProcessProduce(ctx, e.channel.Name, msg)
+			// Use channel-specific policy chain key via ProcessByChainKey
+			processed, shortCircuited, err := e.processor.ProcessByChainKey(ctx, e.channel.Name, conn.produceChainKey, msg)
 			if err != nil {
-				slog.Error("[5] onProduce policy failed", "connID", conn.connID, "channel", e.channel.Name, "error", err)
+				slog.Error("[5] onProduce policy failed", "connID", conn.connID, "api", e.channel.Name, "channel", conn.channelName, "error", err)
 				continue
 			}
 			if shortCircuited {
-				slog.Info("[5] Message dropped by onProduce policy", "connID", conn.connID, "channel", e.channel.Name)
+				slog.Info("[5] Message dropped by onProduce policy", "connID", conn.connID, "api", e.channel.Name, "channel", conn.channelName)
 				continue
 			}
 
@@ -344,7 +423,8 @@ func (e *WebBrokerApiReceiver) inboundLoop(ctx context.Context, conn *brokerApiC
 			// Publish to Kafka.
 			slog.Info("[6] Publishing message to Kafka",
 				"connID", conn.connID,
-				"channel", e.channel.Name,
+				"api", e.channel.Name,
+				"channel", conn.channelName,
 				"topic", targetTopic,
 				"message_size", len(processed.Value))
 
@@ -364,19 +444,21 @@ func (e *WebBrokerApiReceiver) outboundLoop(ctx context.Context, conn *brokerApi
 		case <-ctx.Done():
 			return
 		case msg := <-conn.outbound:
-			slog.Info("[7] Applying onConsume policies",
+			slog.Info("[7] Applying channel onConsume policies",
 				"connID", conn.connID,
-				"channel", e.channel.Name,
+				"api", e.channel.Name,
+				"channel", conn.channelName,
+				"chain_key", conn.consumeChainKey,
 				"message_size", len(msg.Value))
 
-			// Apply on_consume policies.
-			processed, shortCircuited, err := e.processor.ProcessConsume(ctx, e.channel.Name, msg)
+			// Use channel-specific policy chain key via ProcessByChainKey
+			processed, shortCircuited, err := e.processor.ProcessByChainKey(ctx, e.channel.Name, conn.consumeChainKey, msg)
 			if err != nil {
-				slog.Error("[7] onConsume policy failed", "connID", conn.connID, "channel", e.channel.Name, "error", err)
+				slog.Error("[7] onConsume policy failed", "connID", conn.connID, "api", e.channel.Name, "channel", conn.channelName, "error", err)
 				continue
 			}
 			if shortCircuited {
-				slog.Info("[7] Message dropped by onConsume policy", "connID", conn.connID, "channel", e.channel.Name)
+				slog.Info("[7] Message dropped by onConsume policy", "connID", conn.connID, "api", e.channel.Name, "channel", conn.channelName)
 				continue
 			}
 

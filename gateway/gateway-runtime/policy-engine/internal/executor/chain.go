@@ -22,10 +22,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/utils"
 	"log/slog"
 	"strings"
 	"time"
+
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/utils"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
@@ -213,8 +214,9 @@ type RequestPolicyResult struct {
 // RequestExecutionResult represents the result of executing all request policies in a chain
 type RequestExecutionResult struct {
 	Results            []RequestPolicyResult
-	ShortCircuited     bool                 // true if chain stopped early due to ImmediateResponse
-	FinalAction        policy.RequestAction // Final action to apply
+	ShortCircuited     bool                   // true if chain stopped early due to ImmediateResponse
+	FinalAction        policy.RequestAction   // Final action to apply
+	Metadata           map[string]interface{} // Metadata from SharedContext (for inter-policy communication)
 	TotalExecutionTime time.Duration
 }
 
@@ -361,6 +363,10 @@ func (c *ChainExecutor) ExecuteRequestPolicies(ctx context.Context, policyList [
 	}
 
 	result.TotalExecutionTime = time.Since(startTime)
+	// Capture metadata from SharedContext for inter-policy communication
+	if reqCtx != nil && reqCtx.SharedContext != nil {
+		result.Metadata = reqCtx.SharedContext.Metadata
+	}
 	return result, nil
 }
 

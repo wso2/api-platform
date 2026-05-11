@@ -159,6 +159,7 @@ func (t *Translator) buildEventChannelResourceForWebBroker(uuid string, webBroke
 
 	// Build receiver configuration
 	receiver := map[string]interface{}{
+		"name": spec.Receiver.Name,
 		"type": spec.Receiver.Type,
 	}
 	if spec.Receiver.Properties != nil {
@@ -167,34 +168,71 @@ func (t *Translator) buildEventChannelResourceForWebBroker(uuid string, webBroke
 
 	// Build broker-driver configuration
 	brokerDriver := map[string]interface{}{
+		"name":       spec.BrokerDriver.Name,
 		"type":       spec.BrokerDriver.Type,
 		"properties": spec.BrokerDriver.Properties,
 	}
 	slog.Info("DEBUG: Building EventChannelConfig for WebBrokerApi",
 		"name", webBrokerCfg.Metadata.Name,
-		"brokerDriverType", spec.BrokerDriver.Type,
-		"brokerDriverConfig", spec.BrokerDriver.Properties)
+		"receiverName", spec.Receiver.Name,
+		"brokerDriverName", spec.BrokerDriver.Name,
+		"brokerDriverType", spec.BrokerDriver.Type)
 
-	// Build protocol mediation policies
-	var onConnectionInitRequest []interface{}
-	var onConnectionInitResponse []interface{}
-	var onProduce []interface{}
-	var onConsume []interface{}
+	// Build API-level policies
+	var apiOnConnectionInitRequest []interface{}
+	var apiOnConnectionInitResponse []interface{}
+	var apiOnProduce []interface{}
+	var apiOnConsume []interface{}
 
-	if spec.AllChannelPolicies != nil {
-		if spec.AllChannelPolicies.OnConnectionInit != nil {
-			if spec.AllChannelPolicies.OnConnectionInit.Request != nil {
-				onConnectionInitRequest = buildPolicyList(spec.AllChannelPolicies.OnConnectionInit.Request)
+	if spec.Policies != nil {
+		if spec.Policies.OnConnectionInit != nil {
+			if spec.Policies.OnConnectionInit.Request != nil {
+				apiOnConnectionInitRequest = buildPolicyList(spec.Policies.OnConnectionInit.Request)
 			}
-			if spec.AllChannelPolicies.OnConnectionInit.Response != nil {
-				onConnectionInitResponse = buildPolicyList(spec.AllChannelPolicies.OnConnectionInit.Response)
+			if spec.Policies.OnConnectionInit.Response != nil {
+				apiOnConnectionInitResponse = buildPolicyList(spec.Policies.OnConnectionInit.Response)
 			}
 		}
-		if spec.AllChannelPolicies.OnProduce != nil {
-			onProduce = buildPolicyList(spec.AllChannelPolicies.OnProduce)
+		if spec.Policies.OnProduce != nil {
+			apiOnProduce = buildPolicyList(spec.Policies.OnProduce)
 		}
-		if spec.AllChannelPolicies.OnConsume != nil {
-			onConsume = buildPolicyList(spec.AllChannelPolicies.OnConsume)
+		if spec.Policies.OnConsume != nil {
+			apiOnConsume = buildPolicyList(spec.Policies.OnConsume)
+		}
+	}
+
+	// Build channels map with channel-specific policies
+	channels := make(map[string]interface{})
+	if spec.Channels != nil {
+		for channelName, channelConfig := range spec.Channels {
+			var channelOnConnectionInitRequest []interface{}
+			var channelOnConnectionInitResponse []interface{}
+			var channelOnProduce []interface{}
+			var channelOnConsume []interface{}
+
+			if channelConfig.OnConnectionInit != nil {
+				if channelConfig.OnConnectionInit.Request != nil {
+					channelOnConnectionInitRequest = buildPolicyList(channelConfig.OnConnectionInit.Request)
+				}
+				if channelConfig.OnConnectionInit.Response != nil {
+					channelOnConnectionInitResponse = buildPolicyList(channelConfig.OnConnectionInit.Response)
+				}
+			}
+			if channelConfig.OnProduce != nil {
+				channelOnProduce = buildPolicyList(channelConfig.OnProduce)
+			}
+			if channelConfig.OnConsume != nil {
+				channelOnConsume = buildPolicyList(channelConfig.OnConsume)
+			}
+
+			channels[channelName] = map[string]interface{}{
+				"on_connection_init": map[string]interface{}{
+					"request":  channelOnConnectionInitRequest,
+					"response": channelOnConnectionInitResponse,
+				},
+				"on_produce": channelOnProduce,
+				"on_consume": channelOnConsume,
+			}
 		}
 	}
 
@@ -206,14 +244,15 @@ func (t *Translator) buildEventChannelResourceForWebBroker(uuid string, webBroke
 		"version":       spec.Version,
 		"receiver":      receiver,
 		"broker-driver": brokerDriver,
-		"allChannelPolicies": map[string]interface{}{
+		"policies": map[string]interface{}{
 			"on_connection_init": map[string]interface{}{
-				"request":  onConnectionInitRequest,
-				"response": onConnectionInitResponse,
+				"request":  apiOnConnectionInitRequest,
+				"response": apiOnConnectionInitResponse,
 			},
-			"on_produce": onProduce,
-			"on_consume": onConsume,
+			"on_produce": apiOnProduce,
+			"on_consume": apiOnConsume,
 		},
+		"channels": channels,
 	}
 
 	return toAnyResource(data, EventChannelConfigTypeURL)

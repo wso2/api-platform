@@ -294,30 +294,39 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 	for _, wbb := range parseResult.WebBrokerApiBindings {
 		vhost := defaultVhost(wbb.Vhost)
 
-		// Build policy chains for protocol mediation.
-		connInitReqKey, _, produceKey, consumeKey, err := r.buildWebBrokerApiPolicyChains(wbb, vhost)
+		// Build API-level policy chains.
+		apiConnInitReqKey, _, _, _, err := r.buildWebBrokerApiPolicyChains(wbb, vhost, "")
 		if err != nil {
-			return fmt.Errorf("failed to build chains for WebBrokerApi %q: %w", wbb.Name, err)
+			return fmt.Errorf("failed to build API-level chains for WebBrokerApi %q: %w", wbb.Name, err)
 		}
 
-		// Extract topics from broker driver properties.
-		var topics []string
-		brokerDriverConfig := wbb.BrokerDriver.Config
-		if brokerDriverConfig == nil {
-			brokerDriverConfig = wbb.BrokerDriver.Properties
-		}
+		// Build per-channel policy chains and collect topics.
+		channelChains := make(map[string]ChannelPolicyChains)
+		allTopics := []string{}                   // All topics (produce + consume) for ensuring they exist
+		topicToChannel := make(map[string]string) // Only consume topics for subscription mapping
 
-		// Get default topic from BrokerDriver.Topic or properties
-		defaultTopic := wbb.BrokerDriver.Topic
-		if defaultTopic == "" {
-			if topicVal, ok := brokerDriverConfig["topic"]; ok {
-				if topicStr, ok := topicVal.(string); ok {
-					defaultTopic = topicStr
-				}
+		for channelName, channelDef := range wbb.Channels {
+			connInitReqKey, connInitRespKey, produceKey, consumeKey, err := r.buildWebBrokerApiPolicyChains(wbb, vhost, channelName)
+			if err != nil {
+				return fmt.Errorf("failed to build chains for channel %q in WebBrokerApi %q: %w", channelName, wbb.Name, err)
 			}
-		}
-		if defaultTopic != "" {
-			topics = append(topics, defaultTopic)
+
+			channelChains[channelName] = ChannelPolicyChains{
+				ConnInitReqKey:  connInitReqKey,
+				ConnInitRespKey: connInitRespKey,
+				ProduceKey:      produceKey,
+				ConsumeKey:      consumeKey,
+			}
+
+			// Extract ALL topics (produce + consume) to ensure they exist in Kafka
+			allChannelTopics := extractAllTopicsFromChannelPolicies(channelDef)
+			allTopics = append(allTopics, allChannelTopics...)
+
+			// Extract ONLY consume topics for subscription mapping
+			consumeTopics := extractTopicsFromChannelPolicies(channelDef)
+			for _, topic := range consumeTopics {
+				topicToChannel[topic] = channelName
+			}
 		}
 
 		// Register binding in hub.
@@ -328,15 +337,19 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 			Context:           wbb.Context,
 			Version:           wbb.Version,
 			Vhost:             vhost,
-			SubscribeChainKey: connInitReqKey, // on_connection_init.request
-			InboundChainKey:   produceKey,     // on_produce
-			OutboundChainKey:  consumeKey,     // on_consume
+			SubscribeChainKey: apiConnInitReqKey,
+			InboundChainKey:   "", // Determined per-channel
+			OutboundChainKey:  "", // Determined per-channel
 		})
 
 		// Create broker-driver.
 		brokerDriverType := wbb.BrokerDriver.Type
 		if brokerDriverType == "" {
 			brokerDriverType = "kafka"
+		}
+		brokerDriverConfig := wbb.BrokerDriver.Config
+		if brokerDriverConfig == nil {
+			brokerDriverConfig = wbb.BrokerDriver.Properties
 		}
 		brokerDriver, err := r.registry.CreateBrokerDriver(brokerDriverType, brokerDriverConfig)
 		if err != nil {
@@ -352,7 +365,12 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 			Context: wbb.Context,
 			Version: wbb.Version,
 			Vhost:   vhost,
-			Topics:  topics,
+			Topics:  allTopics,
+			Metadata: map[string]interface{}{
+				"channelChains":  channelChainsToMap(channelChains),
+				"topicToChannel": topicToChannel,
+				"channelNames":   getChannelNames(wbb.Channels),
+			},
 		}
 
 		// Create WebBrokerApi receiver.
@@ -378,7 +396,8 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 			"context", wbb.Context,
 			"version", wbb.Version,
 			"receiver", receiverType,
-			"topics", topics,
+			"topics", allTopics,
+			"channels", len(wbb.Channels),
 		)
 	}
 
@@ -719,35 +738,150 @@ func (r *Runtime) buildWebSubApiPolicyChains(wsb binding.WebSubApiBinding, vhost
 	return subscribeKey, inboundKey, outboundKey, channelChainKeys, nil
 }
 
-func (r *Runtime) buildWebBrokerApiPolicyChains(wbb binding.WebBrokerApiBinding, vhost string) (connInitReqKey, connInitRespKey, produceKey, consumeKey string, err error) {
+// ChannelPolicyChains holds policy chain keys for a single channel.
+type ChannelPolicyChains struct {
+	ConnInitReqKey  string
+	ConnInitRespKey string
+	ProduceKey      string
+	ConsumeKey      string
+}
+
+func (r *Runtime) buildWebBrokerApiPolicyChains(wbb binding.WebBrokerApiBinding, vhost string, channelName string) (connInitReqKey, connInitRespKey, produceKey, consumeKey string, err error) {
 	basePath := wbb.Context
 	if wbb.Version != "" {
 		basePath = path.Join(wbb.Context, wbb.Version)
 	}
 
-	// Connection init request chain: on_connection_init.request policies.
-	connInitReqKey = binding.GenerateRouteKey("CONNECT_INIT", basePath, vhost)
-	// Connection init response chain: on_connection_init.response policies (optional).
-	connInitRespKey = binding.GenerateRouteKey("CONNECT_INIT_RESP", basePath, vhost)
-	// Produce chain: on_produce policies (client → broker).
-	produceKey = binding.GenerateRouteKey("PRODUCE", basePath, vhost)
-	// Consume chain: on_consume policies (broker → client).
-	consumeKey = binding.GenerateRouteKey("CONSUME", basePath, vhost)
+	suffix := ""
+	if channelName != "" {
+		suffix = "_" + channelName
+	}
 
-	if err = r.buildChain(connInitReqKey, wbb.Policies.OnConnectionInit.Request); err != nil {
+	// Connection init request chain: on_connection_init.request policies.
+	connInitReqKey = binding.GenerateRouteKey("CONNECT_INIT"+suffix, basePath, vhost)
+	// Connection init response chain: on_connection_init.response policies (optional).
+	connInitRespKey = binding.GenerateRouteKey("CONNECT_INIT_RESP"+suffix, basePath, vhost)
+	// Produce chain: on_produce policies (client → broker).
+	produceKey = binding.GenerateRouteKey("PRODUCE"+suffix, basePath, vhost)
+	// Consume chain: on_consume policies (broker → client).
+	consumeKey = binding.GenerateRouteKey("CONSUME"+suffix, basePath, vhost)
+
+	var onConnInitReq, onConnInitResp, onProduce, onConsume []binding.PolicyRef
+
+	if channelName == "" {
+		// Build API-level policies
+		onConnInitReq = wbb.Policies.OnConnectionInit.Request
+		onConnInitResp = wbb.Policies.OnConnectionInit.Response
+		onProduce = wbb.Policies.OnProduce
+		onConsume = wbb.Policies.OnConsume
+	} else {
+		// Build channel-specific policies
+		if channelDef, ok := wbb.Channels[channelName]; ok {
+			onConnInitReq = channelDef.OnConnectionInit.Request
+			onConnInitResp = channelDef.OnConnectionInit.Response
+			onProduce = channelDef.OnProduce
+			onConsume = channelDef.OnConsume
+		}
+	}
+
+	if err = r.buildChain(connInitReqKey, onConnInitReq); err != nil {
 		return "", "", "", "", err
 	}
-	if err = r.buildChain(connInitRespKey, wbb.Policies.OnConnectionInit.Response); err != nil {
+	if err = r.buildChain(connInitRespKey, onConnInitResp); err != nil {
 		return "", "", "", "", err
 	}
-	if err = r.buildChain(produceKey, wbb.Policies.OnProduce); err != nil {
+	if err = r.buildChain(produceKey, onProduce); err != nil {
 		return "", "", "", "", err
 	}
-	if err = r.buildChain(consumeKey, wbb.Policies.OnConsume); err != nil {
+	if err = r.buildChain(consumeKey, onConsume); err != nil {
 		return "", "", "", "", err
 	}
 
 	return connInitReqKey, connInitRespKey, produceKey, consumeKey, nil
+}
+
+// extractTopicsFromChannelPolicies extracts Kafka topics to subscribe to from a channel's on_consume policies.
+// Only extracts topics from map-topic policies with mode="consumeFrom".
+// These topics are used for Kafka consumer subscription.
+func extractTopicsFromChannelPolicies(channelDef binding.WebBrokerChannelDef) []string {
+	topics := make(map[string]bool) // Use map to deduplicate
+
+	// ONLY check onConsume policies - these are the topics we subscribe to
+	for _, policy := range channelDef.OnConsume {
+		if policy.Name == "map-topic" && policy.Params != nil {
+			if mode, ok := policy.Params["mode"].(string); ok && mode == "consumeFrom" {
+				if topic, ok := policy.Params["topic"].(string); ok && topic != "" {
+					topics[topic] = true
+				}
+			}
+		}
+	}
+
+	// Convert map to slice
+	result := make([]string, 0, len(topics))
+	for topic := range topics {
+		result = append(result, topic)
+	}
+	return result
+}
+
+// extractAllTopicsFromChannelPolicies extracts ALL Kafka topics (both produce and consume) from a channel.
+// Used to ensure all necessary topics exist in Kafka before the API starts.
+func extractAllTopicsFromChannelPolicies(channelDef binding.WebBrokerChannelDef) []string {
+	topics := make(map[string]bool) // Use map to deduplicate
+
+	// Check onProduce policies for produceTo topics
+	for _, policy := range channelDef.OnProduce {
+		if policy.Name == "map-topic" && policy.Params != nil {
+			if mode, ok := policy.Params["mode"].(string); ok && mode == "produceTo" {
+				if topic, ok := policy.Params["topic"].(string); ok && topic != "" {
+					topics[topic] = true
+				}
+			}
+		}
+	}
+
+	// Check onConsume policies for consumeFrom topics
+	for _, policy := range channelDef.OnConsume {
+		if policy.Name == "map-topic" && policy.Params != nil {
+			if mode, ok := policy.Params["mode"].(string); ok && mode == "consumeFrom" {
+				if topic, ok := policy.Params["topic"].(string); ok && topic != "" {
+					topics[topic] = true
+				}
+			}
+		}
+	}
+
+	// Convert map to slice
+	result := make([]string, 0, len(topics))
+	for topic := range topics {
+		result = append(result, topic)
+	}
+	return result
+}
+
+// getChannelNames extracts channel names from the channels map.
+func getChannelNames(channels map[string]binding.WebBrokerChannelDef) []string {
+	names := make([]string, 0, len(channels))
+	for name := range channels {
+		names = append(names, name)
+	}
+	return names
+}
+
+// channelChainsToMap converts ChannelPolicyChains map to a map structure
+// that can be easily accessed from other packages without type dependencies.
+func channelChainsToMap(chains map[string]ChannelPolicyChains) map[string]map[string]string {
+	result := make(map[string]map[string]string, len(chains))
+	for channelName, chainKeys := range chains {
+		result[channelName] = map[string]string{
+			"ConnInitReqKey":  chainKeys.ConnInitReqKey,
+			"ConnInitRespKey": chainKeys.ConnInitRespKey,
+			"ProduceKey":      chainKeys.ProduceKey,
+			"ConsumeKey":      chainKeys.ConsumeKey,
+		}
+	}
+	return result
 }
 
 func (r *Runtime) buildChain(routeKey string, policies []binding.PolicyRef) error {
@@ -972,21 +1106,47 @@ func (r *Runtime) AddWebBrokerApiBinding(wbb binding.WebBrokerApiBinding) error 
 
 	vhost := defaultVhost(wbb.Vhost)
 
-	// Build policy chains for the API.
-	connInitReqKey, _, produceKey, consumeKey, err := r.buildWebBrokerApiPolicyChains(wbb, vhost)
+	// Build API-level policy chains.
+	apiConnInitReqKey, _, _, _, err := r.buildWebBrokerApiPolicyChains(wbb, vhost, "")
 	if err != nil {
 		r.mu.Unlock()
-		return fmt.Errorf("failed to build chains for WebBrokerApi %q: %w", wbb.Name, err)
+		return fmt.Errorf("failed to build API-level chains for WebBrokerApi %q: %w", wbb.Name, err)
 	}
 
-	// Extract broker-driver properties.
-	brokerProperties := wbb.BrokerDriver.Config
-	slog.Info("DEBUG: BrokerDriver config received", "config", brokerProperties, "channel", wbb.Name)
-	topics := []string{}
-	if topic, ok := brokerProperties["topic"].(string); ok && topic != "" {
-		topics = append(topics, topic)
+	// Build per-channel policy chains and collect topics.
+	channelChains := make(map[string]ChannelPolicyChains)
+	allTopics := []string{}                   // All topics (produce + consume) for ensuring they exist
+	topicToChannel := make(map[string]string) // Only consume topics for subscription mapping
+
+	for channelName, channelDef := range wbb.Channels {
+		connInitReqKey, connInitRespKey, produceKey, consumeKey, err := r.buildWebBrokerApiPolicyChains(wbb, vhost, channelName)
+		if err != nil {
+			r.mu.Unlock()
+			return fmt.Errorf("failed to build chains for channel %q in WebBrokerApi %q: %w", channelName, wbb.Name, err)
+		}
+
+		channelChains[channelName] = ChannelPolicyChains{
+			ConnInitReqKey:  connInitReqKey,
+			ConnInitRespKey: connInitRespKey,
+			ProduceKey:      produceKey,
+			ConsumeKey:      consumeKey,
+		}
+
+		// Extract ALL topics (produce + consume) to ensure they exist in Kafka
+		allChannelTopics := extractAllTopicsFromChannelPolicies(channelDef)
+		allTopics = append(allTopics, allChannelTopics...)
+
+		// Extract ONLY consume topics for subscription mapping
+		consumeTopics := extractTopicsFromChannelPolicies(channelDef)
+		for _, topic := range consumeTopics {
+			topicToChannel[topic] = channelName
+		}
+
+		slog.Info("Built policy chains for WebBrokerApi channel",
+			"api", wbb.Name,
+			"channel", channelName,
+			"topics", allChannelTopics)
 	}
-	slog.Info("DEBUG: Topics extracted", "topics", topics, "channel", wbb.Name)
 
 	r.hub.RegisterBinding(hub.ChannelBinding{
 		APIID:             wbb.APIID,
@@ -995,9 +1155,9 @@ func (r *Runtime) AddWebBrokerApiBinding(wbb binding.WebBrokerApiBinding) error 
 		Context:           wbb.Context,
 		Version:           wbb.Version,
 		Vhost:             vhost,
-		SubscribeChainKey: connInitReqKey,
-		InboundChainKey:   produceKey,
-		OutboundChainKey:  consumeKey,
+		SubscribeChainKey: apiConnInitReqKey,
+		InboundChainKey:   "", // Determined per-channel
+		OutboundChainKey:  "", // Determined per-channel
 	})
 
 	// Create broker-driver.
@@ -1018,7 +1178,12 @@ func (r *Runtime) AddWebBrokerApiBinding(wbb binding.WebBrokerApiBinding) error 
 		Context: wbb.Context,
 		Version: wbb.Version,
 		Vhost:   vhost,
-		Topics:  topics,
+		Topics:  allTopics,
+		Metadata: map[string]interface{}{
+			"channelChains":  channelChainsToMap(channelChains),
+			"topicToChannel": topicToChannel,
+			"channelNames":   getChannelNames(wbb.Channels),
+		},
 	}
 
 	// Determine receiver type (websocket, sse, etc.)
@@ -1058,7 +1223,9 @@ func (r *Runtime) AddWebBrokerApiBinding(wbb binding.WebBrokerApiBinding) error 
 		"name", wbb.Name,
 		"context", wbb.Context,
 		"version", wbb.Version,
-		"receiver_type", receiverType)
+		"receiver_type", receiverType,
+		"channels", len(wbb.Channels),
+		"topics", allTopics)
 
 	return nil
 }
