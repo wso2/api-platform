@@ -27,6 +27,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/binding"
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/connectors"
 )
 
@@ -396,6 +397,11 @@ func (e *WebBrokerApiReceiver) inboundLoop(ctx context.Context, conn *brokerApiC
 				"chain_key", conn.produceChainKey,
 				"message_size", len(msg.Value))
 
+			// Set default topic to normalized channel name (can be overridden by policies)
+			if msg.Topic == "" {
+				msg.Topic = binding.NormalizeTopicSegment(conn.channelName)
+			}
+
 			// Use channel-specific policy chain key via ProcessByChainKey
 			processed, shortCircuited, err := e.processor.ProcessByChainKey(ctx, e.channel.Name, conn.produceChainKey, msg)
 			if err != nil {
@@ -408,16 +414,15 @@ func (e *WebBrokerApiReceiver) inboundLoop(ctx context.Context, conn *brokerApiC
 			}
 
 			// Determine target topic from processed message.
-			// The topic should be set by policies (e.g., map-topics policy).
+			// The topic should be set by policies (e.g., map-topic policy) or defaults to normalized channel name.
 			targetTopic := processed.Topic
 			if targetTopic == "" {
-				// Fallback to default topic.
-				if len(e.opts.Topics) > 0 {
-					targetTopic = e.opts.Topics[0]
-				} else {
-					slog.Error("No target topic determined for message", "connID", conn.connID)
-					continue
-				}
+				// Fallback to normalized channel name if no policy set a topic
+				targetTopic = binding.NormalizeTopicSegment(conn.channelName)
+				slog.Warn("No target topic set by policies, using normalized channel name as default",
+					"connID", conn.connID,
+					"channel", conn.channelName,
+					"topic", targetTopic)
 			}
 
 			// Publish to Kafka.

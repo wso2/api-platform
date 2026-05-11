@@ -319,11 +319,11 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 			}
 
 			// Extract ALL topics (produce + consume) to ensure they exist in Kafka
-			allChannelTopics := extractAllTopicsFromChannelPolicies(channelDef)
+			allChannelTopics := extractAllTopicsFromChannelPolicies(channelName, channelDef)
 			allTopics = append(allTopics, allChannelTopics...)
 
 			// Extract ONLY consume topics for subscription mapping
-			consumeTopics := extractTopicsFromChannelPolicies(channelDef)
+			consumeTopics := extractTopicsFromChannelPolicies(channelName, channelDef)
 			for _, topic := range consumeTopics {
 				topicToChannel[topic] = channelName
 			}
@@ -802,8 +802,9 @@ func (r *Runtime) buildWebBrokerApiPolicyChains(wbb binding.WebBrokerApiBinding,
 
 // extractTopicsFromChannelPolicies extracts Kafka topics to subscribe to from a channel's on_consume policies.
 // Only extracts topics from map-topic policies with mode="consumeFrom".
+// If no policies specify topics, defaults to the channel name itself.
 // These topics are used for Kafka consumer subscription.
-func extractTopicsFromChannelPolicies(channelDef binding.WebBrokerChannelDef) []string {
+func extractTopicsFromChannelPolicies(channelName string, channelDef binding.WebBrokerChannelDef) []string {
 	topics := make(map[string]bool) // Use map to deduplicate
 
 	// ONLY check onConsume policies - these are the topics we subscribe to
@@ -817,6 +818,11 @@ func extractTopicsFromChannelPolicies(channelDef binding.WebBrokerChannelDef) []
 		}
 	}
 
+	// If no consumeFrom topics found, default to normalized channel name
+	if len(topics) == 0 {
+		topics[binding.NormalizeTopicSegment(channelName)] = true
+	}
+
 	// Convert map to slice
 	result := make([]string, 0, len(topics))
 	for topic := range topics {
@@ -826,9 +832,12 @@ func extractTopicsFromChannelPolicies(channelDef binding.WebBrokerChannelDef) []
 }
 
 // extractAllTopicsFromChannelPolicies extracts ALL Kafka topics (both produce and consume) from a channel.
+// If no policies specify topics, defaults to the channel name itself for both produce and consume.
 // Used to ensure all necessary topics exist in Kafka before the API starts.
-func extractAllTopicsFromChannelPolicies(channelDef binding.WebBrokerChannelDef) []string {
+func extractAllTopicsFromChannelPolicies(channelName string, channelDef binding.WebBrokerChannelDef) []string {
 	topics := make(map[string]bool) // Use map to deduplicate
+	hasProduceTopics := false
+	hasConsumeTopics := false
 
 	// Check onProduce policies for produceTo topics
 	for _, policy := range channelDef.OnProduce {
@@ -836,6 +845,7 @@ func extractAllTopicsFromChannelPolicies(channelDef binding.WebBrokerChannelDef)
 			if mode, ok := policy.Params["mode"].(string); ok && mode == "produceTo" {
 				if topic, ok := policy.Params["topic"].(string); ok && topic != "" {
 					topics[topic] = true
+					hasProduceTopics = true
 				}
 			}
 		}
@@ -847,9 +857,16 @@ func extractAllTopicsFromChannelPolicies(channelDef binding.WebBrokerChannelDef)
 			if mode, ok := policy.Params["mode"].(string); ok && mode == "consumeFrom" {
 				if topic, ok := policy.Params["topic"].(string); ok && topic != "" {
 					topics[topic] = true
+					hasConsumeTopics = true
 				}
 			}
 		}
+	}
+
+	// If no topics found from policies, default to normalized channel name
+	// This enables the channel name to be used directly as the Kafka topic
+	if !hasProduceTopics && !hasConsumeTopics {
+		topics[binding.NormalizeTopicSegment(channelName)] = true
 	}
 
 	// Convert map to slice
@@ -1133,11 +1150,11 @@ func (r *Runtime) AddWebBrokerApiBinding(wbb binding.WebBrokerApiBinding) error 
 		}
 
 		// Extract ALL topics (produce + consume) to ensure they exist in Kafka
-		allChannelTopics := extractAllTopicsFromChannelPolicies(channelDef)
+		allChannelTopics := extractAllTopicsFromChannelPolicies(channelName, channelDef)
 		allTopics = append(allTopics, allChannelTopics...)
 
 		// Extract ONLY consume topics for subscription mapping
-		consumeTopics := extractTopicsFromChannelPolicies(channelDef)
+		consumeTopics := extractTopicsFromChannelPolicies(channelName, channelDef)
 		for _, topic := range consumeTopics {
 			topicToChannel[topic] = channelName
 		}
