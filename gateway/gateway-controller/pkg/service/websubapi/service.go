@@ -149,6 +149,10 @@ func (s *WebSubAPIService) Update(params UpdateParams) (*UpdateResult, error) {
 		return &UpdateResult{Config: result.StoredConfig}, nil
 	}
 
+	if apiConfig.Metadata.Name == "" {
+		apiConfig.Metadata.Name = params.Handle
+	}
+
 	existing.Configuration = apiConfig
 	existing.SourceConfiguration = apiConfig
 
