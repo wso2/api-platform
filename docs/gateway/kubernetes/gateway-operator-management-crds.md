@@ -10,7 +10,7 @@ In addition to `RestApi`, the operator supports management-API-backed CRDs such 
 
 These resources use the same gateway selection model as `RestApi` (labels + `APIGateway.spec.apiSelector`).
 
-## Shared Prerequisites (Kubernetes Secret)
+## Shared Prerequisites
 
 Create a Kubernetes Secret containing credentials and tokens used by policy parameters and resource configurations:
 
@@ -37,7 +37,7 @@ kubectl get secret httproute-demo-policy-credentials
 
 **Note:** The operator uses Kubernetes-native `valueFrom.secretKeyRef` references in policy parameters and resource configurations, allowing dynamic secret resolution at reconciliation time. This approach provides better security and follows Kubernetes best practices for secret management.
 
-## Deploy LLM Backend Mock (Prerequisites for LLM Flow)
+### Deploy LLM Backend Mock (Prerequisites for LLM Flow)
 
 The LLM resources require a mock OpenAI-compatible backend (Prism + nginx HTTPS). The manifest deploys to `apigateway-demo` by default; override to `default` namespace with:
 
@@ -51,7 +51,7 @@ kubectl get deploy,svc -n default -l 'app.kubernetes.io/name in (mock-openapi,mo
 
 Wait for both Deployments to be `Ready` before proceeding.
 
-## Deploy ApiKey Resources (Prerequisites)
+### Deploy ApiKey Resources (Prerequisites)
 
 Apply `ApiKey` CRs up front. The LLM-parent ApiKeys (`demo-llmprovider-apikey`, `demo-llmproxy-apikey`) will retry reconciliation automatically once their parent `LlmProvider`/`LlmProxy` are created.
 
@@ -99,7 +99,7 @@ EOF
 kubectl get apikey
 ```
 
-## Deploy LLMProviderTemplate, LLMProvider, LLMProxy with valueFrom
+## Deploy LLMProviderTemplate, LLMProvider, LLMProxy
 
 ```sh
 kubectl apply -f - <<'EOF'
@@ -245,7 +245,9 @@ curl -sS -k \
   }'
 ```
 
-## Deploy MCP Backend (Prerequisites for MCP Flow)
+## Deploy MCP
+
+### Deploy MCP Backend (Prerequisites for MCP Flow)
 
 The MCP resources require the `mcp-server-backend` service. The manifest deploys to `apigateway-demo` by default; override to `default` namespace with:
 
@@ -259,7 +261,7 @@ kubectl get deploy,svc -n default -l app.kubernetes.io/name=mcp-server-backend
 
 Wait for the Deployment to be `Ready` before proceeding.
 
-## Deploy MCP
+### Deploy MCP CR
 
 ```sh
 kubectl apply -f - <<'EOF'
@@ -544,8 +546,8 @@ kubectl get restapi,subscriptionplan,subscription
 
 Sample verification curls:
 
-# No key should be rejected (403 depending on gateway response mapping)
 ```sh
+# Missing key should be rejected (403)
 curl --request GET \
   --url https://localhost:8443/hello-sub/new \
   --header 'Accept: application/json' \
