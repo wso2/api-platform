@@ -7,3 +7,6 @@ policies:
   # Transform payload case Policy
   - name: transform-payload-case
     filePath: ./transform-payload-case
+  # Slugify body Python Policy
+  - name: slugify-body
+    filePath: ./slugify-body
