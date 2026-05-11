@@ -1,0 +1,24 @@
+name: transform-payload-case
+version: v1.0.0
+displayName: Transform Payload Case
+description: |
+  Transforms the request body text to the specified case (uppercase or lowercase).
+  Useful for normalizing payload content before forwarding to backend services.
+
+parameters:
+  type: object
+  properties:
+    targetCase:
+      type: string
+      description: |
+        The target case transformation to apply to the request body.
+        Valid values: "uppercase" or "lowercase"
+      default: "uppercase"
+      enum:
+        - uppercase
+        - lowercase
+  required: []
+
+systemParameters:
+  type: object
+  properties: {}
