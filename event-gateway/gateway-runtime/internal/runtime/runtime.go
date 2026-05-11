@@ -1009,11 +1009,12 @@ func (r *Runtime) UpdateWebSubApiBinding(oldWSB, newWSB binding.WebSubApiBinding
 		return fmt.Errorf("active broker-driver not found for WebSubApi %q", oldWSB.Name)
 	}
 
-	oldChannels := webSubChannelTopicMap(oldWSB)
-	newChannels := webSubChannelTopicMap(newWSB)
-	removedChannels, addedChannels := diffChannelTopics(oldChannels, newChannels)
-	oldBinding := r.hub.GetBinding(oldWSB.Name)
-	r.mu.Unlock()
+		oldChannels := webSubChannelTopicMap(oldWSB)
+		newChannels := webSubChannelTopicMap(newWSB)
+		removedChannels, addedChannels := diffChannelTopics(oldChannels, newChannels)
+		oldBinding := r.hub.GetBinding(oldWSB.Name)
+		updateCtx := r.runCtx
+		r.mu.Unlock()
 
 	vhost := defaultVhost(newWSB.Vhost)
 	subKey, unsubKey, inKey, outKey, chChainKeys, err := r.buildWebSubApiPolicyChains(newWSB, vhost)
@@ -1034,9 +1035,12 @@ func (r *Runtime) UpdateWebSubApiBinding(oldWSB, newWSB binding.WebSubApiBinding
 		cancel()
 	}
 
-	if err := updater.ApplyBindingDelta(context.Background(), removedChannels, addedChannels); err != nil {
-		return fmt.Errorf("failed to apply WebSub delta update for %q: %w", newWSB.Name, err)
-	}
+		if updateCtx == nil {
+			updateCtx = context.Background()
+		}
+		if err := updater.ApplyBindingDelta(updateCtx, removedChannels, addedChannels); err != nil {
+			return fmt.Errorf("failed to apply WebSub delta update for %q: %w", newWSB.Name, err)
+		}
 
 	if len(removedChannels) > 0 {
 		topicsToDelete := make([]string, 0, len(removedChannels))
