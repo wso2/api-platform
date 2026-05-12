@@ -5,6 +5,9 @@
 # Go Dependencies - Require approval for any changes to Go module files
 # This ensures that dependency updates are reviewed for security, compatibility, and licensing concerns.
 
+# These owners will be the default owners for everything in the repo.
+*   @tharindu1st @malinthaprasan @AnuGayan @chamilaadhi @Arshardh @dushaniw @tgtshanika @tharikaGitHub @senthuran16 @hisanhunais @HiranyaKavishani @RakhithaRR @HeshanSudarshana @ashera96 @pubudu538 @Krishanx92 @PasanT9
+
 # Root level go.work files
 /go.work           @pubudu538 @malinthaprasan @Krishanx92
 /go.work.sum       @pubudu538 @malinthaprasan @Krishanx92
