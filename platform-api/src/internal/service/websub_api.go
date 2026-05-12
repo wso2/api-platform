@@ -69,15 +69,14 @@ func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI)
 	if req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Id == "" || req.Name == "" || req.Version == "" {
+	if utils.ValueOrEmpty(req.Id) == "" || req.Name == "" || req.Version == "" {
 		return nil, constants.ErrInvalidInput
 	}
 	if req.ProjectId == "" {
 		return nil, constants.ErrInvalidInput
 	}
-	if len(req.Channels) == 0 {
-		return nil, constants.ErrInvalidInput
-	}
+
+	handle := utils.ValueOrEmpty(req.Id)
 
 	// Validate project exists
 	if s.projectRepo != nil {
@@ -94,7 +93,7 @@ func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI)
 	}
 
 	// Check if already exists
-	exists, err := s.repo.Exists(req.Id, orgUUID)
+	exists, err := s.repo.Exists(handle, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check WebSub API exists: %w", err)
 	}
@@ -129,9 +128,8 @@ func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI)
 		subscriptionPlans = *req.SubscriptionPlans
 	}
 
-	channels := req.Channels
 	m := &model.WebSubAPI{
-		Handle:           req.Id,
+		Handle:           handle,
 		OrganizationUUID: orgUUID,
 		ProjectUUID:      req.ProjectId,
 		Name:             req.Name,
@@ -144,9 +142,9 @@ func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI)
 			Name:              req.Name,
 			Version:           req.Version,
 			Context:           req.Context,
-			Channels:          s.apiUtil.ChannelsAPIToModel(&channels),
+			Channels:          mapWebSubChannelsAPIToModel(req.Channels),
 			Upstream:          *mapUpstreamAPIToModel(req.Upstream),
-			Policies:          mapMCPPoliciesAPIToModel(req.Policies),
+			Policies:          mapWebSubAllChannelPoliciesAPIToModel(req.Policies),
 			SubscriptionPlans: subscriptionPlans,
 		},
 	}
@@ -158,7 +156,7 @@ func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI)
 		return nil, fmt.Errorf("failed to create WebSub API: %w", err)
 	}
 
-	return s.Get(orgUUID, req.Id)
+	return s.Get(orgUUID, handle)
 }
 
 // Get retrieves a WebSub API by its handle
@@ -217,16 +215,12 @@ func (s *WebSubAPIService) Update(orgUUID, handle string, req *api.WebSubAPI) (*
 	if handle == "" || req == nil {
 		return nil, constants.ErrInvalidInput
 	}
-	if req.Id != "" && req.Id != handle {
+	if req.Id != nil && *req.Id != "" && *req.Id != handle {
 		return nil, constants.ErrInvalidInput
 	}
 	if req.Name == "" || req.Version == "" {
 		return nil, constants.ErrInvalidInput
 	}
-	if len(req.Channels) == 0 {
-		return nil, constants.ErrInvalidInput
-	}
-
 	// Get existing
 	existing, err := s.repo.GetByHandle(handle, orgUUID)
 	if err != nil {
@@ -254,7 +248,6 @@ func (s *WebSubAPIService) Update(orgUUID, handle string, req *api.WebSubAPI) (*
 		subscriptionPlans = *req.SubscriptionPlans
 	}
 
-	channels := req.Channels
 	existing.Name = req.Name
 	existing.Version = req.Version
 	existing.Description = utils.ValueOrEmpty(req.Description)
@@ -264,9 +257,9 @@ func (s *WebSubAPIService) Update(orgUUID, handle string, req *api.WebSubAPI) (*
 		Name:              req.Name,
 		Version:           req.Version,
 		Context:           req.Context,
-		Channels:          s.apiUtil.ChannelsAPIToModel(&channels),
+		Channels:          mapWebSubChannelsAPIToModel(req.Channels),
 		Upstream:          *mapUpstreamAPIToModel(req.Upstream),
-		Policies:          mapMCPPoliciesAPIToModel(req.Policies),
+		Policies:          mapWebSubAllChannelPoliciesAPIToModel(req.Policies),
 		SubscriptionPlans: subscriptionPlans,
 	}
 
@@ -404,19 +397,13 @@ func mapWebSubAPIModelToAPI(m *model.WebSubAPI, apiUtil *utils.APIUtil) *api.Web
 		transport = &items
 	}
 
-	channels := apiUtil.ChannelsModelToAPI(m.Configuration.Channels)
-	var channelsSlice []api.Channel
-	if channels != nil {
-		channelsSlice = *channels
-	}
-
 	var subscriptionPlans *[]string
 	if len(m.Configuration.SubscriptionPlans) > 0 {
 		subscriptionPlans = &m.Configuration.SubscriptionPlans
 	}
 
 	result := &api.WebSubAPI{
-		Id:                m.Handle,
+		Id:                utils.StringPtrIfNotEmpty(m.Handle),
 		Name:              m.Name,
 		Version:           m.Version,
 		ProjectId:         m.ProjectUUID,
@@ -427,14 +414,138 @@ func mapWebSubAPIModelToAPI(m *model.WebSubAPI, apiUtil *utils.APIUtil) *api.Web
 		Transport:         transport,
 		Context:           m.Configuration.Context,
 		Upstream:          mapUpstreamModelToAPI(&m.Configuration.Upstream),
-		Channels:          channelsSlice,
-		Policies:          mapMCPPoliciesModelToAPI(m.Configuration.Policies),
+		Channels:          mapWebSubChannelsModelToAPI(m.Configuration.Channels),
+		Policies:          mapWebSubAllChannelPoliciesModelToAPI(m.Configuration.Policies),
 		SubscriptionPlans: subscriptionPlans,
 		CreatedAt:         utils.TimePtr(m.CreatedAt),
 		UpdatedAt:         utils.TimePtr(m.UpdatedAt),
 	}
 
 	return result
+}
+
+// mapWebSubChannelsAPIToModel converts the API channel map to the model channel map.
+func mapWebSubChannelsAPIToModel(in *map[string]api.WebSubChannel) map[string]model.WebSubChannel {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]model.WebSubChannel, len(*in))
+	for name, ch := range *in {
+		out[name] = model.WebSubChannel{
+			Policies: mapWebSubChannelPoliciesAPIToModel(ch.Policies),
+		}
+	}
+	return out
+}
+
+// mapWebSubChannelPoliciesAPIToModel converts API per-channel policies to model.
+func mapWebSubChannelPoliciesAPIToModel(in *api.WebSubChannelPolicies) *model.WebSubChannelPolicies {
+	if in == nil {
+		return nil
+	}
+	return &model.WebSubChannelPolicies{
+		OnSubscription:    mapAPIPolicySliceToModel(in.OnSubscription),
+		OnUnsubscription:  mapAPIPolicySliceToModel(in.OnUnsubscription),
+		OnMessageReceived: mapAPIPolicySliceToModel(in.OnMessageReceived),
+		OnMessageDelivery: mapAPIPolicySliceToModel(in.OnMessageDelivery),
+	}
+}
+
+// mapWebSubAllChannelPoliciesAPIToModel converts API all-channel policies to model.
+func mapWebSubAllChannelPoliciesAPIToModel(in *api.WebSubAllChannelPolicies) *model.WebSubAllChannelPolicies {
+	if in == nil {
+		return nil
+	}
+	return &model.WebSubAllChannelPolicies{
+		OnSubscription:    mapAPIPolicySliceToModel(in.OnSubscription),
+		OnUnsubscription:  mapAPIPolicySliceToModel(in.OnUnsubscription),
+		OnMessageReceived: mapAPIPolicySliceToModel(in.OnMessageReceived),
+		OnMessageDelivery: mapAPIPolicySliceToModel(in.OnMessageDelivery),
+	}
+}
+
+// mapWebSubChannelsModelToAPI converts the model channel map to the API channel map.
+func mapWebSubChannelsModelToAPI(in map[string]model.WebSubChannel) *map[string]api.WebSubChannel {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]api.WebSubChannel, len(in))
+	for name, ch := range in {
+		out[name] = api.WebSubChannel{
+			Policies: mapWebSubChannelPoliciesModelToAPI(ch.Policies),
+		}
+	}
+	return &out
+}
+
+// mapWebSubChannelPoliciesModelToAPI converts model per-channel policies to API.
+func mapWebSubChannelPoliciesModelToAPI(in *model.WebSubChannelPolicies) *api.WebSubChannelPolicies {
+	if in == nil {
+		return nil
+	}
+	return &api.WebSubChannelPolicies{
+		OnSubscription:    mapModelPolicySliceToAPI(in.OnSubscription),
+		OnUnsubscription:  mapModelPolicySliceToAPI(in.OnUnsubscription),
+		OnMessageReceived: mapModelPolicySliceToAPI(in.OnMessageReceived),
+		OnMessageDelivery: mapModelPolicySliceToAPI(in.OnMessageDelivery),
+	}
+}
+
+// mapWebSubAllChannelPoliciesModelToAPI converts model all-channel policies to API.
+func mapWebSubAllChannelPoliciesModelToAPI(in *model.WebSubAllChannelPolicies) *api.WebSubAllChannelPolicies {
+	if in == nil {
+		return nil
+	}
+	return &api.WebSubAllChannelPolicies{
+		OnSubscription:    mapModelPolicySliceToAPI(in.OnSubscription),
+		OnUnsubscription:  mapModelPolicySliceToAPI(in.OnUnsubscription),
+		OnMessageReceived: mapModelPolicySliceToAPI(in.OnMessageReceived),
+		OnMessageDelivery: mapModelPolicySliceToAPI(in.OnMessageDelivery),
+	}
+}
+
+// mapAPIPolicySliceToModel converts a pointer to API policy slice to a model policy slice.
+func mapAPIPolicySliceToModel(in *[]api.Policy) []model.Policy {
+	if in == nil {
+		return nil
+	}
+	out := make([]model.Policy, 0, len(*in))
+	for _, p := range *in {
+		policy := model.Policy{
+			Name:    p.Name,
+			Version: p.Version,
+		}
+		if p.ExecutionCondition != nil {
+			policy.ExecutionCondition = p.ExecutionCondition
+		}
+		if p.Params != nil {
+			policy.Params = p.Params
+		}
+		out = append(out, policy)
+	}
+	return out
+}
+
+// mapModelPolicySliceToAPI converts a model policy slice to a pointer to API policy slice.
+func mapModelPolicySliceToAPI(in []model.Policy) *[]api.Policy {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]api.Policy, 0, len(in))
+	for _, p := range in {
+		policy := api.Policy{
+			Name:    p.Name,
+			Version: p.Version,
+		}
+		if p.ExecutionCondition != nil {
+			policy.ExecutionCondition = p.ExecutionCondition
+		}
+		if p.Params != nil {
+			policy.Params = p.Params
+		}
+		out = append(out, policy)
+	}
+	return &out
 }
 
 // mapWebSubAPIModelToListItem converts a model.WebSubAPI to api.WebSubAPIListItem
