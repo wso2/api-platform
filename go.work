@@ -6,7 +6,7 @@ use (
 	./common
 	./event-gateway/gateway-builder
 	./event-gateway/gateway-runtime
-	./event-gateway/policies/map-topic
+	./event-gateway/sample-policies/map-topic
 	./event-gateway/webhook-listener
 	./gateway/gateway-builder
 	./gateway/gateway-controller
