@@ -327,6 +327,25 @@ The event gateway supports two configuration modes:
 - [Go 1.24+](https://go.dev/dl/) (for building from source)
 - [Kafka](https://kafka.apache.org/) (provided via Docker Compose)
 
+### Setup: Copy Shared Configuration
+
+The event-gateway reuses the gateway-controller configuration from the main gateway. Before starting, copy the shared config:
+
+```bash
+# From the api-platform root directory
+cp gateway/configs/config.toml event-gateway/configs/gateway-controller/config.toml
+```
+
+This config contains:
+- REST API authentication credentials (default: `admin:admin`)
+- Gateway identification and control plane settings
+- Logging configuration
+
+**Note:** Whenever you update credentials or settings in `gateway/configs/config.toml`, remember to sync it to the event-gateway:
+```bash
+cp gateway/configs/config.toml event-gateway/configs/gateway-controller/config.toml
+```
+
 ### Option 1: Using Docker Compose (Recommended)
 
 This is the easiest way to test protocol mediation with all dependencies.
@@ -1231,8 +1250,8 @@ Note the `topics=[consume_issues]` - this confirms the consumer only subscribes 
 - Check for policy errors during connection init
 
 **Gateway container exits with "config.toml is a directory" error:**
-- Ensure `configs/gateway-controller/config.toml` is a file, not a directory
-- If you accidentally created it as a directory: `rm -rf configs/gateway-controller/config.toml` and recreate as a file
+- The event-gateway reuses the main gateway config from `../gateway/configs/config.toml`
+- Ensure that file exists and is not a directory
 - Restart services: `docker compose up -d`
 
 **Event gateway exits with "TLS certificate file does not exist":**
@@ -1326,9 +1345,9 @@ docker exec -it event-gateway-kafka-1 kafka-console-producer \
 
 **Config File Locations:**
 
-- Gateway config: `gateway-runtime/configs/config.toml`
+- Runtime config: `gateway-runtime/configs/config.toml`
 - Channels config: `gateway-runtime/configs/channels.yaml`
-- Controller config: `configs/gateway-controller/config.toml`
+- Controller config: `../gateway/configs/config.toml` (shared with main gateway)
 
 ### Sample WebBrokerApi Configurations
 
