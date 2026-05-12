@@ -210,19 +210,21 @@ func (t *Translator) buildEventChannelResourceForWebBroker(uuid string, webBroke
 			var channelOnProduce []interface{}
 			var channelOnConsume []interface{}
 
-			if channelConfig.OnConnectionInit != nil {
-				if channelConfig.OnConnectionInit.Request != nil {
-					channelOnConnectionInitRequest = buildPolicyList(channelConfig.OnConnectionInit.Request)
+			if channelConfig.Policies != nil {
+				if channelConfig.Policies.OnConnectionInit != nil {
+					if channelConfig.Policies.OnConnectionInit.Request != nil {
+						channelOnConnectionInitRequest = buildPolicyList(channelConfig.Policies.OnConnectionInit.Request)
+					}
+					if channelConfig.Policies.OnConnectionInit.Response != nil {
+						channelOnConnectionInitResponse = buildPolicyList(channelConfig.Policies.OnConnectionInit.Response)
+					}
 				}
-				if channelConfig.OnConnectionInit.Response != nil {
-					channelOnConnectionInitResponse = buildPolicyList(channelConfig.OnConnectionInit.Response)
+				if channelConfig.Policies.OnProduce != nil {
+					channelOnProduce = buildPolicyList(channelConfig.Policies.OnProduce)
 				}
-			}
-			if channelConfig.OnProduce != nil {
-				channelOnProduce = buildPolicyList(channelConfig.OnProduce)
-			}
-			if channelConfig.OnConsume != nil {
-				channelOnConsume = buildPolicyList(channelConfig.OnConsume)
+				if channelConfig.Policies.OnConsume != nil {
+					channelOnConsume = buildPolicyList(channelConfig.Policies.OnConsume)
+				}
 			}
 
 			channels[channelName] = map[string]interface{}{

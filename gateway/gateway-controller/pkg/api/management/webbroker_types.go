@@ -141,8 +141,14 @@ type WebBrokerApiConnectionInitPolicies struct {
 
 // WebBrokerApiChannel Channel-specific configuration with policies
 type WebBrokerApiChannel struct {
+	// Policies Channel-specific policies
+	Policies *WebBrokerApiChannelPolicies `json:"policies,omitempty" yaml:"policies,omitempty"`
+}
+
+// WebBrokerApiChannelPolicies defines policies for a specific channel
+type WebBrokerApiChannelPolicies struct {
 	// OnConnectionInit Policies applied during WebSocket handshake for this channel
-	OnConnectionInit *WebBrokerApiConnectionInitPolicies `json:"on_connection_init,omitempty" yaml:"on_connection_init,omitempty"`
+	OnConnectionInit *WebBrokerApiConnectionInitPolicies `json:"onConnectionInit,omitempty" yaml:"onConnectionInit,omitempty"`
 
 	// OnProduce Policies applied when client sends message to broker on this channel
 	OnProduce *[]Policy `json:"on_produce,omitempty" yaml:"on_produce,omitempty"`

@@ -104,21 +104,22 @@ policies:  # API-level policies applied to all channels
 
 channels:  # Channel-specific configurations with per-channel policies
   "/channel-name":
-    on_connection_init:
-      request: []
-      response: []
-    on_produce:
-      - name: map-topic
-        version: v1
-        params:
-          mode: produceTo
-          topic: kafka-topic-name
-    on_consume:
-      - name: map-topic
-        version: v1
-        params:
-          mode: consumeFrom
-          topic: kafka-topic-name
+    policies:
+      onConnectionInit:
+        request: []
+        response: []
+      on_produce:
+        - name: map-topic
+          version: v1
+          params:
+            mode: produceTo
+            topic: kafka-topic-name
+      on_consume:
+        - name: map-topic
+          version: v1
+          params:
+            mode: consumeFrom
+            topic: kafka-topic-name
 ```
 
 ## Example Use Cases
@@ -151,23 +152,31 @@ channels:
       on_consume: []
     channels:  # Per-channel configurations
       "/issues":
-        on_produce:
-          - name: map-topic
-            version: v1
-            params:
-              mode: produceTo
-              topic: kafka-repo-issues
-        on_consume:
-          - name: map-topic
-            version: v1
-            params:
-              mode: consumeFrom
-              topic: kafka-repo-issues
+        policies:
+          onConnectionInit:
+            request: []
+            response: []
+          on_produce:
+            - name: map-topic
+              version: v1
+              params:
+                mode: produceTo
+                topic: kafka-repo-issues
+          on_consume:
+            - name: map-topic
+              version: v1
+              params:
+                mode: consumeFrom
+                topic: kafka-repo-issues
       "/commits":
-        on_produce:
-          - name: map-topic
-            version: v1
-            params:
+        policies:
+          onConnectionInit:
+            request: []
+            response: []
+          on_produce:
+            - name: map-topic
+              version: v1
+              params:
               mode: produceTo
               topic: kafka-repo-commits
         on_consume:
@@ -389,26 +398,32 @@ curl --location 'http://localhost:9090/api/management/v0.9/webbroker-apis' \
       },
       "channels": {
         "/issues": {
-          "on_produce": [
-            {
-              "name": "map-topic",
-              "version": "v1",
-              "params": {
-                "mode": "produceTo",
-                "topic": "repo-events"
+          "policies": {
+            "onConnectionInit": {
+              "request": [],
+              "response": []
+            },
+            "on_produce": [
+              {
+                "name": "map-topic",
+                "version": "v1",
+                "params": {
+                  "mode": "produceTo",
+                  "topic": "repo-events"
+                }
               }
-            }
-          ],
-          "on_consume": [
-            {
-              "name": "map-topic",
-              "version": "v1",
-              "params": {
-                "mode": "consumeFrom",
-                "topic": "repo-events"
+            ],
+            "on_consume": [
+              {
+                "name": "map-topic",
+                "version": "v1",
+                "params": {
+                  "mode": "consumeFrom",
+                  "topic": "repo-events"
+                }
               }
-            }
-          ]
+            ]
+          }
         }
       },
       "deploymentState": "deployed"
@@ -644,18 +659,22 @@ channels:
       on_consume: []
     channels:
       "/issues":
-        on_produce:
-          - name: map-topic
-            version: v1
-            params:
-              mode: produceTo
-              topic: repo-events
-        on_consume:
-          - name: map-topic
-            version: v1
-            params:
-              mode: consumeFrom
-              topic: repo-events
+        policies:
+          onConnectionInit:
+            request: []
+            response: []
+          on_produce:
+            - name: map-topic
+              version: v1
+              params:
+                mode: produceTo
+                topic: repo-events
+          on_consume:
+            - name: map-topic
+              version: v1
+              params:
+                mode: consumeFrom
+                topic: repo-events
 ```
 
 #### 4. Configure Gateway
@@ -791,18 +810,22 @@ channels:
       on_consume: []
     channels:
       "/secure-channel":
-        on_produce:
-          - name: map-topic
-            version: v1
-            params:
-              mode: produceTo
-              topic: secure-events
-        on_consume:
-          - name: map-topic
-            version: v1
-            params:
-              mode: consumeFrom
-              topic: secure-events
+        policies:
+          onConnectionInit:
+            request: []
+            response: []
+          on_produce:
+            - name: map-topic
+              version: v1
+              params:
+                mode: produceTo
+                topic: secure-events
+          on_consume:
+            - name: map-topic
+              version: v1
+              params:
+                mode: consumeFrom
+                topic: secure-events
 ```
 
 Test with authentication:
@@ -821,31 +844,39 @@ websocat --header "X-API-Key: your-api-key" --header "X-topic: /secure-channel" 
 ```yaml
 channels:
   "/issues":
-    on_produce:
-      - name: map-topic
-        version: v1
-        params:
-          mode: produceTo
-          topic: kafka-repo-issues
-    on_consume:
-      - name: map-topic
-        version: v1
-        params:
-          mode: consumeFrom
-          topic: kafka-repo-issues
+    policies:
+      onConnectionInit:
+        request: []
+        response: []
+      on_produce:
+        - name: map-topic
+          version: v1
+          params:
+            mode: produceTo
+            topic: kafka-repo-issues
+      on_consume:
+        - name: map-topic
+          version: v1
+          params:
+            mode: consumeFrom
+            topic: kafka-repo-issues
   "/commits":
-    on_produce:
-      - name: map-topic
-        version: v1
-        params:
-          mode: produceTo
-          topic: kafka-repo-commits
-    on_consume:
-      - name: map-topic
-        version: v1
-        params:
-          mode: consumeFrom
-          topic: kafka-repo-commits
+    policies:
+      onConnectionInit:
+        request: []
+        response: []
+      on_produce:
+        - name: map-topic
+          version: v1
+          params:
+            mode: produceTo
+            topic: kafka-repo-commits
+      on_consume:
+        - name: map-topic
+          version: v1
+          params:
+            mode: consumeFrom
+            topic: kafka-repo-commits
 ```
 
 Connect to different channels:
@@ -907,26 +938,32 @@ curl --location 'http://localhost:9090/api/management/v0.9/webbroker-apis' \
       },
       "channels": {
         "/issues": {
-          "on_produce": [
-            {
-              "name": "map-topic",
-              "version": "v1",
-              "params": {
-                "mode": "produceTo",
-                "topic": "produce_issues"
+          "policies": {
+            "onConnectionInit": {
+              "request": [],
+              "response": []
+            },
+            "on_produce": [
+              {
+                "name": "map-topic",
+                "version": "v1",
+                "params": {
+                  "mode": "produceTo",
+                  "topic": "produce_issues"
+                }
               }
-            }
-          ],
-          "on_consume": [
-            {
-              "name": "map-topic",
-              "version": "v1",
-              "params": {
-                "mode": "consumeFrom",
-                "topic": "consume_issues"
+            ],
+            "on_consume": [
+              {
+                "name": "map-topic",
+                "version": "v1",
+                "params": {
+                  "mode": "consumeFrom",
+                  "topic": "consume_issues"
+                }
               }
-            }
-          ]
+            ]
+          }
         }
       },
       "deploymentState": "deployed"
