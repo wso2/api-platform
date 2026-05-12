@@ -596,17 +596,6 @@ func main() {
 		BaseURL: managementAPIBasePath,
 	})
 
-	// Register WebBrokerApi routes (custom endpoints not yet in OpenAPI spec)
-	managementGroup := router.Group(managementAPIBasePath)
-	managementGroup.POST("/webbroker-apis", apiServer.CreateWebBrokerApi)
-	managementGroup.GET("/webbroker-apis", apiServer.ListWebBrokerApis)
-	managementGroup.GET("/webbroker-apis/:id", func(c *gin.Context) {
-		apiServer.GetWebBrokerApiById(c, c.Param("id"))
-	})
-	managementGroup.DELETE("/webbroker-apis/:id", func(c *gin.Context) {
-		apiServer.DeleteWebBrokerApiById(c, c.Param("id"))
-	})
-
 	// Also register the same routes on the legacy unprefixed paths for
 	// backwards compatibility. These are deprecated; responses include
 	// RFC 8594 `Deprecation: true` and a `Link` header pointing to the new

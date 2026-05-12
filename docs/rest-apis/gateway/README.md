@@ -102,9 +102,21 @@ Base URLs:
 
 - [Create a new WebSubAPI](websub-api-management.md#create-a-new-websubapi)
 - [List all WebSubAPIs](websub-api-management.md#list-all-websubapis)
+- [Create a new API key for a WebSub API](websub-api-management.md#create-a-new-api-key-for-a-websub-api)
+- [Get the list of API keys for a WebSub API](websub-api-management.md#get-the-list-of-api-keys-for-a-websub-api)
+- [Regenerate API key for a WebSub API](websub-api-management.md#regenerate-api-key-for-a-websub-api)
+- [Update an API key for a WebSub API](websub-api-management.md#update-an-api-key-for-a-websub-api)
+- [Revoke an API key for a WebSub API](websub-api-management.md#revoke-an-api-key-for-a-websub-api)
 - [Get WebSubAPI by id](websub-api-management.md#get-websubapi-by-id)
 - [Update an existing WebSubAPI](websub-api-management.md#update-an-existing-websubapi)
 - [Delete a WebSubAPI](websub-api-management.md#delete-a-websubapi)
+
+### [WebBroker API Management](webbroker-api-management.md)
+
+- [Create a new WebBrokerAPI](webbroker-api-management.md#create-a-new-webbrokerapi)
+- [List all WebBrokerAPIs](webbroker-api-management.md#list-all-webbrokerapis)
+- [Get WebBrokerAPI by id](webbroker-api-management.md#get-webbrokerapi-by-id)
+- [Delete a WebBrokerAPI](webbroker-api-management.md#delete-a-webbrokerapi)
 
 ### [Schemas](schemas.md)
 

@@ -201,7 +201,7 @@ func (t *Translator) buildEventChannelResourceForWebBroker(uuid string, webBroke
 		}
 	}
 
-	// Build channels map with channel-specific policies
+	// Build channels map with channel-specific policies and topic mappings
 	channels := make(map[string]interface{})
 	if spec.Channels != nil {
 		for channelName, channelConfig := range spec.Channels {
@@ -227,7 +227,25 @@ func (t *Translator) buildEventChannelResourceForWebBroker(uuid string, webBroke
 				}
 			}
 
-			channels[channelName] = map[string]interface{}{
+			// Build channel entry with policies nested inside "policies" field
+			channelEntry := map[string]interface{}{}
+
+			// Add produceTo topic mapping if specified
+			if channelConfig.ProduceTo != nil {
+				channelEntry["produce_to"] = map[string]interface{}{
+					"topic": channelConfig.ProduceTo.Topic,
+				}
+			}
+
+			// Add consumeFrom topic mapping if specified
+			if channelConfig.ConsumeFrom != nil {
+				channelEntry["consume_from"] = map[string]interface{}{
+					"topic": channelConfig.ConsumeFrom.Topic,
+				}
+			}
+
+			// Nest all policies inside a "policies" field
+			channelEntry["policies"] = map[string]interface{}{
 				"on_connection_init": map[string]interface{}{
 					"request":  channelOnConnectionInitRequest,
 					"response": channelOnConnectionInitResponse,
@@ -235,6 +253,8 @@ func (t *Translator) buildEventChannelResourceForWebBroker(uuid string, webBroke
 				"on_produce": channelOnProduce,
 				"on_consume": channelOnConsume,
 			}
+
+			channels[channelName] = channelEntry
 		}
 	}
 

@@ -1354,6 +1354,190 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /webbroker-apis:
+    post:
+      summary: Create a new WebBrokerAPI
+      description: Add a new WebBrokerAPI to the Gateway. WebBrokerAPI provides bidirectional streaming between WebSocket clients and Kafka brokers with per-connection isolation.
+      operationId: createWebBrokerApi
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebBroker API Management
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/WebBrokerApiRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebBrokerApiRequest"
+      responses:
+        "201":
+          description: WebBrokerAPI created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebBrokerApi"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - WebBroker API with same name and version already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    get:
+      summary: List all WebBrokerAPIs
+      description: List WebBrokerAPIs registered in the Gateway, optionally filtered by name, version, or status.
+      operationId: listWebBrokerApis
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebBroker API Management
+      parameters:
+        - name: displayName
+          in: query
+          required: false
+          description: Filter by WebBroker API display name
+          schema:
+            type: string
+          example: Stock Trading WebBroker API
+        - name: version
+          in: query
+          required: false
+          description: Filter by WebBroker API version
+          schema:
+            type: string
+          example: v1.0
+        - name: status
+          in: query
+          required: false
+          description: Filter by deployment status
+          schema:
+            type: string
+            enum: [ deployed, undeployed ]
+          example: deployed
+      responses:
+        "200":
+          description: List of WebBrokerAPIs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  count:
+                    type: integer
+                    example: 3
+                  apis:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WebBrokerApi"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /webbroker-apis/{id}:
+    get:
+      summary: Get WebBrokerAPI by id
+      description: Get a WebBrokerAPI by its ID.
+      operationId: getWebBrokerApiById
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebBroker API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier for the WebBroker API.
+          schema:
+            type: string
+          example: stock-trading-webbroker-api
+      responses:
+        "200":
+          description: WebBrokerAPI details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebBrokerApi"
+            application/yaml:
+              schema:
+                $ref: "#/components/schemas/WebBrokerApi"
+        "404":
+          description: WebBrokerAPI not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      summary: Delete a WebBrokerAPI
+      description: Delete a WebBrokerAPI from the Gateway.
+      operationId: deleteWebBrokerApiById
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebBroker API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the WebBroker API to delete.
+          schema:
+            type: string
+          example: stock-trading-webbroker-api
+      responses:
+        "200":
+          description: WebBrokerAPI deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: WebBrokerAPI deleted successfully
+                  id:
+                    type: string
+                    example: stock-trading-webbroker-api
+        "404":
+          description: WebBrokerAPI not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /certificates:
     get:
       summary: List all custom certificates
@@ -3901,6 +4085,301 @@ components:
         #   type: object
         #   description: Protocol-specific channel bindings (arbitrary key/value structure).
         #   additionalProperties: true
+
+    WebBrokerApiRequest:
+      type: object
+      required:
+        - apiVersion
+        - metadata
+        - kind
+        - spec
+      properties:
+        apiVersion:
+          type: string
+          description: API specification version
+          example: gateway.api-platform.wso2.com/v1alpha1
+          enum:
+            - gateway.api-platform.wso2.com/v1alpha1
+        kind:
+          type: string
+          description: API type
+          example: WebBrokerApi
+          enum:
+            - WebBrokerApi
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        spec:
+          $ref: '#/components/schemas/WebBrokerApiData'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: WebBrokerApi
+        metadata:
+          name: stock-trading-v1.0
+        spec:
+          displayName: Stock Trading WebBroker API
+          version: v1.0
+          context: /stock-trading/$version
+          receiver:
+            name: websocket-receiver
+            type: websocket
+          brokerDriver:
+            name: kafka-driver
+            type: kafka
+            properties:
+              bootstrapServers:
+                - kafka-broker-1:9092
+                - kafka-broker-2:9092
+          channels:
+            prices:
+              produceTo:
+                topic: stock.prices
+              consumeFrom:
+                topic: stock.prices
+              policies:
+                on_connection_init:
+                  request: []
+                  response: []
+                on_produce: []
+                on_consume: []
+
+    WebBrokerApi:
+      allOf:
+        - $ref: '#/components/schemas/WebBrokerApiRequest'
+        - type: object
+          properties:
+            status:
+              readOnly: true
+              description: Server-managed lifecycle fields. Populated on responses.
+              allOf:
+                - $ref: '#/components/schemas/ResourceStatus'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: WebBrokerApi
+        metadata:
+          name: stock-trading-v1.0
+        spec:
+          displayName: Stock Trading WebBroker API
+          version: v1.0
+          context: /stock-trading/$version
+          receiver:
+            name: websocket-receiver
+            type: websocket
+          brokerDriver:
+            name: kafka-driver
+            type: kafka
+            properties:
+              bootstrapServers:
+                - kafka-broker-1:9092
+                - kafka-broker-2:9092
+          channels:
+            prices:
+              produceTo:
+                topic: stock.prices
+              consumeFrom:
+                topic: stock.prices
+              policies:
+                on_connection_init:
+                  request: []
+                  response: []
+                on_produce: []
+                on_consume: []
+        status:
+          id: stock-trading-v1.0
+          state: deployed
+          createdAt: 2026-04-24T07:21:13Z
+          updatedAt: 2026-04-24T07:21:13Z
+          deployedAt: 2026-04-24T07:21:13Z
+
+    WebBrokerApiData:
+      type: object
+      required:
+        - displayName
+        - version
+        - context
+        - receiver
+        - brokerDriver
+        - channels
+      properties:
+        displayName:
+          type: string
+          description: Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: Stock Trading WebBroker API
+        version:
+          type: string
+          description: Semantic version of the API
+          pattern: '^v\d+\.\d+$'
+          example: v1.0
+        context:
+          type: string
+          description: Base path for all API routes (must start with /, no trailing slash)
+          pattern: '^\/[a-zA-Z0-9_\-\/]*[^\/]$'
+          minLength: 1
+          maxLength: 200
+          example: /stock-trading
+        receiver:
+          $ref: '#/components/schemas/WebBrokerApiReceiver'
+        brokerDriver:
+          $ref: '#/components/schemas/WebBrokerApiBrokerDriver'
+        policies:
+          $ref: '#/components/schemas/WebBrokerApiPolicies'
+        channels:
+          type: object
+          description: Map of WebSocket channels for bidirectional streaming with Kafka (key is channel name)
+          minProperties: 1
+          additionalProperties:
+            $ref: '#/components/schemas/WebBrokerApiChannel'
+        vhosts:
+          type: object
+          required:
+            - main
+          description: Custom virtual hosts/domains for the API
+          properties:
+            main:
+              type: string
+              description: Custom virtual host/domain for production traffic
+              pattern: '^[a-zA-Z0-9\.\-]+$'
+              example: api.example.com
+            sandbox:
+              type: string
+              description: Custom virtual host/domain for sandbox traffic
+              pattern: '^[a-zA-Z0-9\.\-]+$'
+              example: sandbox-api.example.com
+        deploymentState:
+          type: string
+          description: Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration and policies are preserved for potential redeployment.
+          enum: [deployed, undeployed]
+          default: deployed
+          example: deployed
+
+    WebBrokerApiReceiver:
+      type: object
+      description: WebSocket receiver configuration
+      required:
+        - name
+        - type
+      properties:
+        name:
+          type: string
+          description: Receiver name
+          example: websocket-receiver
+        type:
+          type: string
+          description: Receiver type
+          example: websocket
+        properties:
+          type: object
+          description: Additional receiver properties
+          additionalProperties: true
+
+    WebBrokerApiBrokerDriver:
+      type: object
+      description: Message broker driver configuration
+      required:
+        - name
+        - type
+        - properties
+      properties:
+        name:
+          type: string
+          description: Broker driver name
+          example: kafka-driver
+        type:
+          type: string
+          description: Broker driver type
+          example: kafka
+        properties:
+          type: object
+          description: Broker driver properties (e.g., bootstrap servers)
+          additionalProperties: true
+          example:
+            bootstrapServers:
+              - kafka-broker-1:9092
+              - kafka-broker-2:9092
+
+    WebBrokerApiPolicies:
+      type: object
+      description: Protocol mediation policies applied at API level
+      properties:
+        on_connection_init:
+          $ref: '#/components/schemas/WebBrokerApiConnectionInitPolicies'
+        on_produce:
+          type: array
+          description: Policies applied when client sends message to broker
+          items:
+            $ref: '#/components/schemas/Policy'
+        on_consume:
+          type: array
+          description: Policies applied when broker message delivered to client
+          items:
+            $ref: '#/components/schemas/Policy'
+
+    WebBrokerApiConnectionInitPolicies:
+      type: object
+      description: Connection initialization policies
+      properties:
+        request:
+          type: array
+          description: Policies applied before WebSocket upgrade
+          items:
+            $ref: '#/components/schemas/Policy'
+        response:
+          type: array
+          description: Policies applied after WebSocket upgrade
+          items:
+            $ref: '#/components/schemas/Policy'
+
+    WebBrokerApiChannel:
+      type: object
+      description: WebSocket channel configuration with Kafka topic mapping
+      properties:
+        produceTo:
+          $ref: '#/components/schemas/WebBrokerApiProduceConfig'
+        consumeFrom:
+          $ref: '#/components/schemas/WebBrokerApiConsumeConfig'
+        policies:
+          $ref: '#/components/schemas/WebBrokerApiChannelPolicies'
+
+    WebBrokerApiProduceConfig:
+      type: object
+      description: Configuration for producing messages from WebSocket to Kafka
+      required:
+        - topic
+      properties:
+        topic:
+          type: string
+          description: Kafka topic to produce messages to
+          example: stock.prices
+
+    WebBrokerApiConsumeConfig:
+      type: object
+      description: Configuration for consuming messages from Kafka to WebSocket
+      required:
+        - topic
+      properties:
+        topic:
+          type: string
+          description: Kafka topic to consume messages from
+          example: stock.prices
+
+    WebBrokerApiChannelPolicies:
+      type: object
+      description: Channel-specific policies (override API-level policies)
+      properties:
+        on_connection_init:
+          $ref: '#/components/schemas/WebBrokerApiConnectionInitPolicies'
+        on_produce:
+          type: array
+          description: Policies applied when client sends message to broker on this channel
+          items:
+            $ref: '#/components/schemas/Policy'
+        on_consume:
+          type: array
+          description: Policies applied when broker message delivered to client on this channel
+          items:
+            $ref: '#/components/schemas/Policy'
 
     APIKeyCreationRequest:
       type: object

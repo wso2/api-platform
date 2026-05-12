@@ -807,12 +807,17 @@ func (r *Runtime) buildWebBrokerApiPolicyChains(wbb binding.WebBrokerApiBinding,
 func extractTopicsFromChannelPolicies(channelName string, channelDef binding.WebBrokerChannelDef) []string {
 	topics := make(map[string]bool) // Use map to deduplicate
 
-	// ONLY check onConsume policies - these are the topics we subscribe to
-	for _, policy := range channelDef.OnConsume {
-		if policy.Name == "map-topic" && policy.Params != nil {
-			if mode, ok := policy.Params["mode"].(string); ok && mode == "consumeFrom" {
-				if topic, ok := policy.Params["topic"].(string); ok && topic != "" {
-					topics[topic] = true
+	// Check consumeFrom field first (new approach)
+	if channelDef.ConsumeFrom != nil && channelDef.ConsumeFrom.Topic != "" {
+		topics[channelDef.ConsumeFrom.Topic] = true
+	} else {
+		// Fallback: check onConsume policies for map-topic (legacy)
+		for _, policy := range channelDef.OnConsume {
+			if policy.Name == "map-topic" && policy.Params != nil {
+				if mode, ok := policy.Params["mode"].(string); ok && mode == "consumeFrom" {
+					if topic, ok := policy.Params["topic"].(string); ok && topic != "" {
+						topics[topic] = true
+					}
 				}
 			}
 		}
@@ -839,33 +844,48 @@ func extractAllTopicsFromChannelPolicies(channelName string, channelDef binding.
 	hasProduceTopics := false
 	hasConsumeTopics := false
 
-	// Check onProduce policies for produceTo topics
-	for _, policy := range channelDef.OnProduce {
-		if policy.Name == "map-topic" && policy.Params != nil {
-			if mode, ok := policy.Params["mode"].(string); ok && mode == "produceTo" {
-				if topic, ok := policy.Params["topic"].(string); ok && topic != "" {
-					topics[topic] = true
-					hasProduceTopics = true
+	// Check produceTo field first (new approach)
+	if channelDef.ProduceTo != nil && channelDef.ProduceTo.Topic != "" {
+		topics[channelDef.ProduceTo.Topic] = true
+		hasProduceTopics = true
+	} else {
+		// Fallback: check onProduce policies for map-topic (legacy)
+		for _, policy := range channelDef.OnProduce {
+			if policy.Name == "map-topic" && policy.Params != nil {
+				if mode, ok := policy.Params["mode"].(string); ok && mode == "produceTo" {
+					if topic, ok := policy.Params["topic"].(string); ok && topic != "" {
+						topics[topic] = true
+						hasProduceTopics = true
+					}
 				}
 			}
 		}
 	}
 
-	// Check onConsume policies for consumeFrom topics
-	for _, policy := range channelDef.OnConsume {
-		if policy.Name == "map-topic" && policy.Params != nil {
-			if mode, ok := policy.Params["mode"].(string); ok && mode == "consumeFrom" {
-				if topic, ok := policy.Params["topic"].(string); ok && topic != "" {
-					topics[topic] = true
-					hasConsumeTopics = true
+	// Check consumeFrom field first (new approach)
+	if channelDef.ConsumeFrom != nil && channelDef.ConsumeFrom.Topic != "" {
+		topics[channelDef.ConsumeFrom.Topic] = true
+		hasConsumeTopics = true
+	} else {
+		// Fallback: check onConsume policies for map-topic (legacy)
+		for _, policy := range channelDef.OnConsume {
+			if policy.Name == "map-topic" && policy.Params != nil {
+				if mode, ok := policy.Params["mode"].(string); ok && mode == "consumeFrom" {
+					if topic, ok := policy.Params["topic"].(string); ok && topic != "" {
+						topics[topic] = true
+						hasConsumeTopics = true
+					}
 				}
 			}
 		}
+		// If still no consume topics found, use normalized channel name as default
+		if !hasConsumeTopics {
+			topics[binding.NormalizeTopicSegment(channelName)] = true
+		}
 	}
 
-	// If no topics found from policies, default to normalized channel name
-	// This enables the channel name to be used directly as the Kafka topic
-	if !hasProduceTopics && !hasConsumeTopics {
+	// If no produce topics were found, also add normalized channel name for producing
+	if !hasProduceTopics {
 		topics[binding.NormalizeTopicSegment(channelName)] = true
 	}
 
@@ -1132,8 +1152,9 @@ func (r *Runtime) AddWebBrokerApiBinding(wbb binding.WebBrokerApiBinding) error 
 
 	// Build per-channel policy chains and collect topics.
 	channelChains := make(map[string]ChannelPolicyChains)
-	allTopics := []string{}                   // All topics (produce + consume) for ensuring they exist
-	topicToChannel := make(map[string]string) // Only consume topics for subscription mapping
+	allTopics := []string{}                             // All topics (produce + consume) for ensuring they exist
+	topicToChannel := make(map[string]string)           // Only consume topics for subscription mapping
+	channelTopics := make(map[string]map[string]string) // Channel-level topic mappings (produceTo, consumeFrom)
 
 	for channelName, channelDef := range wbb.Channels {
 		connInitReqKey, connInitRespKey, produceKey, consumeKey, err := r.buildWebBrokerApiPolicyChains(wbb, vhost, channelName)
@@ -1148,6 +1169,22 @@ func (r *Runtime) AddWebBrokerApiBinding(wbb binding.WebBrokerApiBinding) error 
 			ProduceKey:      produceKey,
 			ConsumeKey:      consumeKey,
 		}
+
+		// Store channel topic mappings (use defaults if not specified)
+		topicMapping := make(map[string]string)
+		if channelDef.ProduceTo != nil && channelDef.ProduceTo.Topic != "" {
+			topicMapping["produceTo"] = channelDef.ProduceTo.Topic
+		} else {
+			// Default: use normalized channel name for producing
+			topicMapping["produceTo"] = binding.NormalizeTopicSegment(channelName)
+		}
+		if channelDef.ConsumeFrom != nil && channelDef.ConsumeFrom.Topic != "" {
+			topicMapping["consumeFrom"] = channelDef.ConsumeFrom.Topic
+		} else {
+			// Default: use normalized channel name for consuming
+			topicMapping["consumeFrom"] = binding.NormalizeTopicSegment(channelName)
+		}
+		channelTopics[channelName] = topicMapping
 
 		// Extract ALL topics (produce + consume) to ensure they exist in Kafka
 		allChannelTopics := extractAllTopicsFromChannelPolicies(channelName, channelDef)
@@ -1200,6 +1237,7 @@ func (r *Runtime) AddWebBrokerApiBinding(wbb binding.WebBrokerApiBinding) error 
 			"channelChains":  channelChainsToMap(channelChains),
 			"topicToChannel": topicToChannel,
 			"channelNames":   getChannelNames(wbb.Channels),
+			"channelTopics":  channelTopics,
 		},
 	}
 

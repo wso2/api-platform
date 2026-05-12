@@ -63,9 +63,14 @@ type EventChannelResource struct {
 
 // WebBrokerChannelEntry represents a WebBrokerApi channel with policies
 type WebBrokerChannelEntry struct {
-	OnConnectionInit ConnectionInitPolicies `json:"on_connection_init"`
-	OnProduce        []PolicyEntry          `json:"on_produce"`
-	OnConsume        []PolicyEntry          `json:"on_consume"`
+	ProduceTo   *TopicMapping             `json:"produce_to,omitempty"`
+	ConsumeFrom *TopicMapping             `json:"consume_from,omitempty"`
+	Policies    ProtocolMediationPolicies `json:"policies"`
+}
+
+// TopicMapping defines a Kafka topic mapping
+type TopicMapping struct {
+	Topic string `json:"topic"`
 }
 
 // ProtocolMediationPolicies defines policies for WebBrokerApi
@@ -419,22 +424,39 @@ func (h *Handler) toWebBrokerApiBinding(ecr EventChannelResource) binding.WebBro
 				if channelData, ok := channelIface.(map[string]interface{}); ok {
 					var channelDef binding.WebBrokerChannelDef
 
-					// Parse channel on_connection_init
-					if connInitIface, ok := channelData["on_connection_init"].(map[string]interface{}); ok {
-						if reqIface, ok := connInitIface["request"].([]interface{}); ok {
-							channelDef.OnConnectionInit.Request = mapGenericPolicyList(reqIface)
-						}
-						if respIface, ok := connInitIface["response"].([]interface{}); ok {
-							channelDef.OnConnectionInit.Response = mapGenericPolicyList(respIface)
+					// Parse produce_to
+					if produceToIface, ok := channelData["produce_to"].(map[string]interface{}); ok {
+						if topic, ok := produceToIface["topic"].(string); ok && topic != "" {
+							channelDef.ProduceTo = &binding.TopicMapping{Topic: topic}
 						}
 					}
-					// Parse channel on_produce
-					if produceIface, ok := channelData["on_produce"].([]interface{}); ok {
-						channelDef.OnProduce = mapGenericPolicyList(produceIface)
+
+					// Parse consume_from
+					if consumeFromIface, ok := channelData["consume_from"].(map[string]interface{}); ok {
+						if topic, ok := consumeFromIface["topic"].(string); ok && topic != "" {
+							channelDef.ConsumeFrom = &binding.TopicMapping{Topic: topic}
+						}
 					}
-					// Parse channel on_consume
-					if consumeIface, ok := channelData["on_consume"].([]interface{}); ok {
-						channelDef.OnConsume = mapGenericPolicyList(consumeIface)
+
+					// Parse policies from nested "policies" field
+					if policiesIface, ok := channelData["policies"].(map[string]interface{}); ok {
+						// Parse channel on_connection_init
+						if connInitIface, ok := policiesIface["on_connection_init"].(map[string]interface{}); ok {
+							if reqIface, ok := connInitIface["request"].([]interface{}); ok {
+								channelDef.OnConnectionInit.Request = mapGenericPolicyList(reqIface)
+							}
+							if respIface, ok := connInitIface["response"].([]interface{}); ok {
+								channelDef.OnConnectionInit.Response = mapGenericPolicyList(respIface)
+							}
+						}
+						// Parse channel on_produce
+						if produceIface, ok := policiesIface["on_produce"].([]interface{}); ok {
+							channelDef.OnProduce = mapGenericPolicyList(produceIface)
+						}
+						// Parse channel on_consume
+						if consumeIface, ok := policiesIface["on_consume"].([]interface{}); ok {
+							channelDef.OnConsume = mapGenericPolicyList(consumeIface)
+						}
 					}
 
 					channels[channelName] = channelDef

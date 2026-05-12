@@ -90,7 +90,7 @@ func (s *APIServer) CreateWebBrokerApi(c *gin.Context) {
 }
 
 // ListWebBrokerApis handles GET /webbroker-apis
-func (s *APIServer) ListWebBrokerApis(c *gin.Context) {
+func (s *APIServer) ListWebBrokerApis(c *gin.Context, params api.ListWebBrokerApisParams) {
 	configs, err := s.db.GetAllConfigsByKind(string(models.KindWebBrokerApi))
 	if err != nil {
 		s.logger.Error("Failed to list WebBrokerApis", slog.Any("error", err))
@@ -101,6 +101,8 @@ func (s *APIServer) ListWebBrokerApis(c *gin.Context) {
 		return
 	}
 
+	// TODO: Implement query parameter filtering (displayName, version, status)
+	// For now, returning all WebBrokerApis without filtering
 	items := make([]any, 0, len(configs))
 	for _, cfg := range configs {
 		items = append(items, buildResourceResponseFromStored(cfg.SourceConfiguration, cfg))

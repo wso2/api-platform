@@ -78,9 +78,16 @@ type WebBrokerApiBinding struct {
 
 // WebBrokerChannelDef defines a single channel within a WebBrokerApi with its policies.
 type WebBrokerChannelDef struct {
+	ProduceTo        *TopicMapping          `yaml:"produce_to,omitempty"`
+	ConsumeFrom      *TopicMapping          `yaml:"consume_from,omitempty"`
 	OnConnectionInit ConnectionInitPolicies `yaml:"on_connection_init"`
 	OnProduce        []PolicyRef            `yaml:"on_produce"`
 	OnConsume        []PolicyRef            `yaml:"on_consume"`
+}
+
+// TopicMapping defines a Kafka topic mapping
+type TopicMapping struct {
+	Topic string `yaml:"topic"`
 }
 
 // ProtocolMediationPolicies defines policy enforcement points for protocol mediation.

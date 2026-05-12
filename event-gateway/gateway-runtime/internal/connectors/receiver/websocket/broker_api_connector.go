@@ -67,6 +67,8 @@ type brokerApiConnection struct {
 	channelName     string // Selected channel from X-topic header
 	produceChainKey string // Policy chain key for on_produce
 	consumeChainKey string // Policy chain key for on_consume
+	produceTopic    string // Target Kafka topic for producing messages
+	consumeTopic    string // Source Kafka topic for consuming messages
 }
 
 // NewBrokerApiReceiver creates a WebSocket receiver for WebBrokerApi protocol mediation.
@@ -256,6 +258,7 @@ func (e *WebBrokerApiReceiver) handleUpgrade(w http.ResponseWriter, r *http.Requ
 
 	// Extract channel-specific policy chain keys from metadata.
 	var produceChainKey, consumeChainKey string
+	var produceTopic, consumeTopic string
 	if channelChainsIface, ok := e.channel.Metadata["channelChains"]; ok {
 		// channelChains is stored as map[string]map[string]string
 		if channelChainsMap, ok := channelChainsIface.(map[string]map[string]string); ok {
@@ -266,13 +269,29 @@ func (e *WebBrokerApiReceiver) handleUpgrade(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	// Extract topics for this channel.
-	topicToChannelIface, _ := e.channel.Metadata["topicToChannel"]
-	topicToChannel, _ := topicToChannelIface.(map[string]string)
+	// Extract channel topic mappings (produceTo, consumeFrom)
+	if channelTopicsIface, ok := e.channel.Metadata["channelTopics"]; ok {
+		if channelTopicsMap, ok := channelTopicsIface.(map[string]map[string]string); ok {
+			if topicMapping, ok := channelTopicsMap[channelName]; ok {
+				produceTopic = topicMapping["produceTo"]
+				consumeTopic = topicMapping["consumeFrom"]
+			}
+		}
+	}
+
+	// Determine topics for this channel from metadata.
+	// Use the consumeTopic from channel config, fallback to topicToChannel mapping.
 	channelTopics := []string{}
-	for topic, ch := range topicToChannel {
-		if ch == channelName {
-			channelTopics = append(channelTopics, topic)
+	if consumeTopic != "" {
+		channelTopics = append(channelTopics, consumeTopic)
+	} else {
+		// Fallback: extract topics from topicToChannel mapping (legacy)
+		topicToChannelIface, _ := e.channel.Metadata["topicToChannel"]
+		topicToChannel, _ := topicToChannelIface.(map[string]string)
+		for topic, ch := range topicToChannel {
+			if ch == channelName {
+				channelTopics = append(channelTopics, topic)
+			}
 		}
 	}
 	if len(channelTopics) == 0 {
@@ -292,6 +311,8 @@ func (e *WebBrokerApiReceiver) handleUpgrade(w http.ResponseWriter, r *http.Requ
 		channelName:     channelName,
 		produceChainKey: produceChainKey,
 		consumeChainKey: consumeChainKey,
+		produceTopic:    produceTopic,
+		consumeTopic:    consumeTopic,
 	}
 
 	// Create unique consumer group for this connection.
@@ -413,13 +434,16 @@ func (e *WebBrokerApiReceiver) inboundLoop(ctx context.Context, conn *brokerApiC
 				continue
 			}
 
-			// Determine target topic from processed message.
-			// The topic should be set by policies (e.g., map-topic policy) or defaults to normalized channel name.
-			targetTopic := processed.Topic
+			// Determine target topic from channel config first, then fallback to policy-set topic.
+			targetTopic := conn.produceTopic
 			if targetTopic == "" {
-				// Fallback to normalized channel name if no policy set a topic
+				// Fallback: check if policy set a topic (legacy map-topic policy)
+				targetTopic = processed.Topic
+			}
+			if targetTopic == "" {
+				// Final fallback: normalized channel name
 				targetTopic = binding.NormalizeTopicSegment(conn.channelName)
-				slog.Warn("No target topic set by policies, using normalized channel name as default",
+				slog.Warn("No target topic set in config or by policies, using normalized channel name as default",
 					"connID", conn.connID,
 					"channel", conn.channelName,
 					"topic", targetTopic)

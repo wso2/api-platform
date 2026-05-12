@@ -648,28 +648,49 @@ xor
     "main": "api.example.com",
     "sandbox": "sandbox-api.example.com"
   },
-  "channels": [
-    {
-      "name": "issues",
-      "method": "SUB",
-      "policies": [
-        {
-          "name": "cors",
-          "version": "v1",
-          "executionCondition": "request.metadata[authenticated] != true",
-          "params": {}
-        }
-      ]
-    }
-  ],
-  "policies": [
-    {
-      "name": "cors",
-      "version": "v1",
-      "executionCondition": "request.metadata[authenticated] != true",
-      "params": {}
-    }
-  ],
+  "receiver": {
+    "policies": [
+      {
+        "name": "cors",
+        "version": "v1",
+        "executionCondition": "request.metadata[authenticated] != true",
+        "params": {}
+      }
+    ]
+  },
+  "hub": {
+    "policies": [
+      {
+        "name": "cors",
+        "version": "v1",
+        "executionCondition": "request.metadata[authenticated] != true",
+        "params": {}
+      }
+    ],
+    "channels": [
+      {
+        "name": "issues",
+        "policies": [
+          {
+            "name": "cors",
+            "version": "v1",
+            "executionCondition": "request.metadata[authenticated] != true",
+            "params": {}
+          }
+        ]
+      }
+    ]
+  },
+  "delivery": {
+    "policies": [
+      {
+        "name": "cors",
+        "version": "v1",
+        "executionCondition": "request.metadata[authenticated] != true",
+        "params": {}
+      }
+    ]
+  },
   "deploymentState": "deployed"
 }
 
@@ -685,8 +706,9 @@ xor
 |vhosts|object|false|none|Custom virtual hosts/domains for the API|
 |» main|string|true|none|Custom virtual host/domain for production traffic|
 |» sandbox|string|false|none|Custom virtual host/domain for sandbox traffic|
-|channels|[[Channel](#schemachannel)]|true|none|List of channels - Async operations(SUB) for WebSub APIs|
-|policies|[[Policy](#schemapolicy)]|false|none|List of API-level policies applied to all operations unless overridden|
+|receiver|[WebSubReceiver](#schemawebsubreceiver)|false|none|Receiver configuration for the WebSub API - handles inbound event publishing from publishers.|
+|hub|[WebSubHub](#schemawebsubhub)|true|none|Hub configuration for the WebSub API - handles subscriber management and event fan-out.|
+|delivery|[WebSubDelivery](#schemawebsubdelivery)|false|none|Delivery configuration for the WebSub API - handles outbound event delivery to subscribers.|
 |deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.|
 
 #### Enumerated Values
@@ -695,6 +717,138 @@ xor
 |---|---|
 |deploymentState|deployed|
 |deploymentState|undeployed|
+
+<h2 id="tocS_WebSubReceiver">WebSubReceiver</h2>
+
+<a id="schemawebsubreceiver"></a>
+<a id="schema_WebSubReceiver"></a>
+<a id="tocSwebsubreceiver"></a>
+<a id="tocswebsubreceiver"></a>
+
+```json
+{
+  "policies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ]
+}
+
+```
+
+Receiver configuration for the WebSub API - handles inbound event publishing from publishers.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|policies|[[Policy](#schemapolicy)]|false|none|List of policies applied to inbound webhook requests (e.g., hmac-signature-validation)|
+
+<h2 id="tocS_WebSubDelivery">WebSubDelivery</h2>
+
+<a id="schemawebsubdelivery"></a>
+<a id="schema_WebSubDelivery"></a>
+<a id="tocSwebsubdelivery"></a>
+<a id="tocswebsubdelivery"></a>
+
+```json
+{
+  "policies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ]
+}
+
+```
+
+Delivery configuration for the WebSub API - handles outbound event delivery to subscribers.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|policies|[[Policy](#schemapolicy)]|false|none|List of policies applied when delivering events to subscriber callback URLs (e.g., hmac-signature-validation)|
+
+<h2 id="tocS_WebSubHub">WebSubHub</h2>
+
+<a id="schemawebsubhub"></a>
+<a id="schema_WebSubHub"></a>
+<a id="tocSwebsubhub"></a>
+<a id="tocswebsubhub"></a>
+
+```json
+{
+  "policies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "channels": [
+    {
+      "name": "issues",
+      "policies": [
+        {
+          "name": "cors",
+          "version": "v1",
+          "executionCondition": "request.metadata[authenticated] != true",
+          "params": {}
+        }
+      ]
+    }
+  ]
+}
+
+```
+
+Hub configuration for the WebSub API - handles subscriber management and event fan-out.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|policies|[[Policy](#schemapolicy)]|false|none|List of policies applied at the hub level (e.g., api-key-auth for subscribers)|
+|channels|[[HubChannel](#schemahubchannel)]|true|none|List of topic channels available for subscription|
+
+<h2 id="tocS_HubChannel">HubChannel</h2>
+
+<a id="schemahubchannel"></a>
+<a id="schema_HubChannel"></a>
+<a id="tocShubchannel"></a>
+<a id="tocshubchannel"></a>
+
+```json
+{
+  "name": "issues",
+  "policies": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ]
+}
+
+```
+
+A subscribable topic channel within the WebSub hub.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|name|string|true|none|Channel name or topic identifier relative to API context.|
+|policies|[[Policy](#schemapolicy)]|false|none|List of policies applied only to this channel (e.g., rbac)|
 
 <h2 id="tocS_Channel">Channel</h2>
 
@@ -734,6 +888,658 @@ Channel (topic/event stream) definition for async APIs.
 |Property|Value|
 |---|---|
 |method|SUB|
+
+<h2 id="tocS_WebBrokerApiRequest">WebBrokerApiRequest</h2>
+
+<a id="schemawebbrokerapirequest"></a>
+<a id="schema_WebBrokerApiRequest"></a>
+<a id="tocSwebbrokerapirequest"></a>
+<a id="tocswebbrokerapirequest"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "WebBrokerApi",
+  "metadata": {
+    "name": "stock-trading-v1.0"
+  },
+  "spec": {
+    "displayName": "Stock Trading WebBroker API",
+    "version": "v1.0",
+    "context": "/stock-trading/$version",
+    "receiver": {
+      "name": "websocket-receiver",
+      "type": "websocket"
+    },
+    "brokerDriver": {
+      "name": "kafka-driver",
+      "type": "kafka",
+      "properties": {
+        "bootstrapServers": [
+          "kafka-broker-1:9092",
+          "kafka-broker-2:9092"
+        ]
+      }
+    },
+    "channels": {
+      "prices": {
+        "produceTo": {
+          "topic": "stock.prices"
+        },
+        "consumeFrom": {
+          "topic": "stock.prices"
+        },
+        "policies": {
+          "on_connection_init": {
+            "request": [],
+            "response": []
+          },
+          "on_produce": [],
+          "on_consume": []
+        }
+      }
+    }
+  }
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|apiVersion|string|true|none|API specification version|
+|kind|string|true|none|API type|
+|metadata|[Metadata](#schemametadata)|true|none|none|
+|spec|[WebBrokerApiData](#schemawebbrokerapidata)|true|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|apiVersion|gateway.api-platform.wso2.com/v1alpha1|
+|kind|WebBrokerApi|
+
+<h2 id="tocS_WebBrokerApi">WebBrokerApi</h2>
+
+<a id="schemawebbrokerapi"></a>
+<a id="schema_WebBrokerApi"></a>
+<a id="tocSwebbrokerapi"></a>
+<a id="tocswebbrokerapi"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "WebBrokerApi",
+  "metadata": {
+    "name": "stock-trading-v1.0"
+  },
+  "spec": {
+    "displayName": "Stock Trading WebBroker API",
+    "version": "v1.0",
+    "context": "/stock-trading/$version",
+    "receiver": {
+      "name": "websocket-receiver",
+      "type": "websocket"
+    },
+    "brokerDriver": {
+      "name": "kafka-driver",
+      "type": "kafka",
+      "properties": {
+        "bootstrapServers": [
+          "kafka-broker-1:9092",
+          "kafka-broker-2:9092"
+        ]
+      }
+    },
+    "channels": {
+      "prices": {
+        "produceTo": {
+          "topic": "stock.prices"
+        },
+        "consumeFrom": {
+          "topic": "stock.prices"
+        },
+        "policies": {
+          "on_connection_init": {
+            "request": [],
+            "response": []
+          },
+          "on_produce": [],
+          "on_consume": []
+        }
+      }
+    }
+  },
+  "status": {
+    "id": "stock-trading-v1.0",
+    "state": "deployed",
+    "createdAt": "2026-04-24T07:21:13Z",
+    "updatedAt": "2026-04-24T07:21:13Z",
+    "deployedAt": "2026-04-24T07:21:13Z"
+  }
+}
+
+```
+
+### Properties
+
+allOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[WebBrokerApiRequest](#schemawebbrokerapirequest)|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
+
+<h2 id="tocS_WebBrokerApiData">WebBrokerApiData</h2>
+
+<a id="schemawebbrokerapidata"></a>
+<a id="schema_WebBrokerApiData"></a>
+<a id="tocSwebbrokerapidata"></a>
+<a id="tocswebbrokerapidata"></a>
+
+```json
+{
+  "displayName": "Stock Trading WebBroker API",
+  "version": "v1.0",
+  "context": "/stock-trading",
+  "receiver": {
+    "name": "websocket-receiver",
+    "type": "websocket",
+    "properties": {}
+  },
+  "brokerDriver": {
+    "name": "kafka-driver",
+    "type": "kafka",
+    "properties": {
+      "bootstrapServers": [
+        "kafka-broker-1:9092",
+        "kafka-broker-2:9092"
+      ]
+    }
+  },
+  "policies": {
+    "on_connection_init": {
+      "request": [
+        {
+          "name": "cors",
+          "version": "v1",
+          "executionCondition": "request.metadata[authenticated] != true",
+          "params": {}
+        }
+      ],
+      "response": [
+        {
+          "name": "cors",
+          "version": "v1",
+          "executionCondition": "request.metadata[authenticated] != true",
+          "params": {}
+        }
+      ]
+    },
+    "on_produce": [
+      {
+        "name": "cors",
+        "version": "v1",
+        "executionCondition": "request.metadata[authenticated] != true",
+        "params": {}
+      }
+    ],
+    "on_consume": [
+      {
+        "name": "cors",
+        "version": "v1",
+        "executionCondition": "request.metadata[authenticated] != true",
+        "params": {}
+      }
+    ]
+  },
+  "channels": {
+    "property1": {
+      "produceTo": {
+        "topic": "stock.prices"
+      },
+      "consumeFrom": {
+        "topic": "stock.prices"
+      },
+      "policies": {
+        "on_connection_init": {
+          "request": [
+            {
+              "name": "cors",
+              "version": "v1",
+              "executionCondition": "request.metadata[authenticated] != true",
+              "params": {}
+            }
+          ],
+          "response": [
+            {
+              "name": "cors",
+              "version": "v1",
+              "executionCondition": "request.metadata[authenticated] != true",
+              "params": {}
+            }
+          ]
+        },
+        "on_produce": [
+          {
+            "name": "cors",
+            "version": "v1",
+            "executionCondition": "request.metadata[authenticated] != true",
+            "params": {}
+          }
+        ],
+        "on_consume": [
+          {
+            "name": "cors",
+            "version": "v1",
+            "executionCondition": "request.metadata[authenticated] != true",
+            "params": {}
+          }
+        ]
+      }
+    },
+    "property2": {
+      "produceTo": {
+        "topic": "stock.prices"
+      },
+      "consumeFrom": {
+        "topic": "stock.prices"
+      },
+      "policies": {
+        "on_connection_init": {
+          "request": [
+            {
+              "name": "cors",
+              "version": "v1",
+              "executionCondition": "request.metadata[authenticated] != true",
+              "params": {}
+            }
+          ],
+          "response": [
+            {
+              "name": "cors",
+              "version": "v1",
+              "executionCondition": "request.metadata[authenticated] != true",
+              "params": {}
+            }
+          ]
+        },
+        "on_produce": [
+          {
+            "name": "cors",
+            "version": "v1",
+            "executionCondition": "request.metadata[authenticated] != true",
+            "params": {}
+          }
+        ],
+        "on_consume": [
+          {
+            "name": "cors",
+            "version": "v1",
+            "executionCondition": "request.metadata[authenticated] != true",
+            "params": {}
+          }
+        ]
+      }
+    }
+  },
+  "vhosts": {
+    "main": "api.example.com",
+    "sandbox": "sandbox-api.example.com"
+  },
+  "deploymentState": "deployed"
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|displayName|string|true|none|Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)|
+|version|string|true|none|Semantic version of the API|
+|context|string|true|none|Base path for all API routes (must start with /, no trailing slash)|
+|receiver|[WebBrokerApiReceiver](#schemawebbrokerapireceiver)|true|none|WebSocket receiver configuration|
+|brokerDriver|[WebBrokerApiBrokerDriver](#schemawebbrokerapibrokerdriver)|true|none|Message broker driver configuration|
+|policies|[WebBrokerApiPolicies](#schemawebbrokerapipolicies)|false|none|Protocol mediation policies applied at API level|
+|channels|object|true|none|Map of WebSocket channels for bidirectional streaming with Kafka (key is channel name)|
+|» **additionalProperties**|[WebBrokerApiChannel](#schemawebbrokerapichannel)|false|none|WebSocket channel configuration with Kafka topic mapping|
+|vhosts|object|false|none|Custom virtual hosts/domains for the API|
+|» main|string|true|none|Custom virtual host/domain for production traffic|
+|» sandbox|string|false|none|Custom virtual host/domain for sandbox traffic|
+|deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration and policies are preserved for potential redeployment.|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|deploymentState|deployed|
+|deploymentState|undeployed|
+
+<h2 id="tocS_WebBrokerApiReceiver">WebBrokerApiReceiver</h2>
+
+<a id="schemawebbrokerapireceiver"></a>
+<a id="schema_WebBrokerApiReceiver"></a>
+<a id="tocSwebbrokerapireceiver"></a>
+<a id="tocswebbrokerapireceiver"></a>
+
+```json
+{
+  "name": "websocket-receiver",
+  "type": "websocket",
+  "properties": {}
+}
+
+```
+
+WebSocket receiver configuration
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|name|string|true|none|Receiver name|
+|type|string|true|none|Receiver type|
+|properties|object|false|none|Additional receiver properties|
+
+<h2 id="tocS_WebBrokerApiBrokerDriver">WebBrokerApiBrokerDriver</h2>
+
+<a id="schemawebbrokerapibrokerdriver"></a>
+<a id="schema_WebBrokerApiBrokerDriver"></a>
+<a id="tocSwebbrokerapibrokerdriver"></a>
+<a id="tocswebbrokerapibrokerdriver"></a>
+
+```json
+{
+  "name": "kafka-driver",
+  "type": "kafka",
+  "properties": {
+    "bootstrapServers": [
+      "kafka-broker-1:9092",
+      "kafka-broker-2:9092"
+    ]
+  }
+}
+
+```
+
+Message broker driver configuration
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|name|string|true|none|Broker driver name|
+|type|string|true|none|Broker driver type|
+|properties|object|true|none|Broker driver properties (e.g., bootstrap servers)|
+
+<h2 id="tocS_WebBrokerApiPolicies">WebBrokerApiPolicies</h2>
+
+<a id="schemawebbrokerapipolicies"></a>
+<a id="schema_WebBrokerApiPolicies"></a>
+<a id="tocSwebbrokerapipolicies"></a>
+<a id="tocswebbrokerapipolicies"></a>
+
+```json
+{
+  "on_connection_init": {
+    "request": [
+      {
+        "name": "cors",
+        "version": "v1",
+        "executionCondition": "request.metadata[authenticated] != true",
+        "params": {}
+      }
+    ],
+    "response": [
+      {
+        "name": "cors",
+        "version": "v1",
+        "executionCondition": "request.metadata[authenticated] != true",
+        "params": {}
+      }
+    ]
+  },
+  "on_produce": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "on_consume": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ]
+}
+
+```
+
+Protocol mediation policies applied at API level
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|on_connection_init|[WebBrokerApiConnectionInitPolicies](#schemawebbrokerapiconnectioninitpolicies)|false|none|Connection initialization policies|
+|on_produce|[[Policy](#schemapolicy)]|false|none|Policies applied when client sends message to broker|
+|on_consume|[[Policy](#schemapolicy)]|false|none|Policies applied when broker message delivered to client|
+
+<h2 id="tocS_WebBrokerApiConnectionInitPolicies">WebBrokerApiConnectionInitPolicies</h2>
+
+<a id="schemawebbrokerapiconnectioninitpolicies"></a>
+<a id="schema_WebBrokerApiConnectionInitPolicies"></a>
+<a id="tocSwebbrokerapiconnectioninitpolicies"></a>
+<a id="tocswebbrokerapiconnectioninitpolicies"></a>
+
+```json
+{
+  "request": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "response": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ]
+}
+
+```
+
+Connection initialization policies
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|request|[[Policy](#schemapolicy)]|false|none|Policies applied before WebSocket upgrade|
+|response|[[Policy](#schemapolicy)]|false|none|Policies applied after WebSocket upgrade|
+
+<h2 id="tocS_WebBrokerApiChannel">WebBrokerApiChannel</h2>
+
+<a id="schemawebbrokerapichannel"></a>
+<a id="schema_WebBrokerApiChannel"></a>
+<a id="tocSwebbrokerapichannel"></a>
+<a id="tocswebbrokerapichannel"></a>
+
+```json
+{
+  "produceTo": {
+    "topic": "stock.prices"
+  },
+  "consumeFrom": {
+    "topic": "stock.prices"
+  },
+  "policies": {
+    "on_connection_init": {
+      "request": [
+        {
+          "name": "cors",
+          "version": "v1",
+          "executionCondition": "request.metadata[authenticated] != true",
+          "params": {}
+        }
+      ],
+      "response": [
+        {
+          "name": "cors",
+          "version": "v1",
+          "executionCondition": "request.metadata[authenticated] != true",
+          "params": {}
+        }
+      ]
+    },
+    "on_produce": [
+      {
+        "name": "cors",
+        "version": "v1",
+        "executionCondition": "request.metadata[authenticated] != true",
+        "params": {}
+      }
+    ],
+    "on_consume": [
+      {
+        "name": "cors",
+        "version": "v1",
+        "executionCondition": "request.metadata[authenticated] != true",
+        "params": {}
+      }
+    ]
+  }
+}
+
+```
+
+WebSocket channel configuration with Kafka topic mapping
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|produceTo|[WebBrokerApiProduceConfig](#schemawebbrokerapiproduceconfig)|false|none|Configuration for producing messages from WebSocket to Kafka|
+|consumeFrom|[WebBrokerApiConsumeConfig](#schemawebbrokerapiconsumeconfig)|false|none|Configuration for consuming messages from Kafka to WebSocket|
+|policies|[WebBrokerApiChannelPolicies](#schemawebbrokerapichannelpolicies)|false|none|Channel-specific policies (override API-level policies)|
+
+<h2 id="tocS_WebBrokerApiProduceConfig">WebBrokerApiProduceConfig</h2>
+
+<a id="schemawebbrokerapiproduceconfig"></a>
+<a id="schema_WebBrokerApiProduceConfig"></a>
+<a id="tocSwebbrokerapiproduceconfig"></a>
+<a id="tocswebbrokerapiproduceconfig"></a>
+
+```json
+{
+  "topic": "stock.prices"
+}
+
+```
+
+Configuration for producing messages from WebSocket to Kafka
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|topic|string|true|none|Kafka topic to produce messages to|
+
+<h2 id="tocS_WebBrokerApiConsumeConfig">WebBrokerApiConsumeConfig</h2>
+
+<a id="schemawebbrokerapiconsumeconfig"></a>
+<a id="schema_WebBrokerApiConsumeConfig"></a>
+<a id="tocSwebbrokerapiconsumeconfig"></a>
+<a id="tocswebbrokerapiconsumeconfig"></a>
+
+```json
+{
+  "topic": "stock.prices"
+}
+
+```
+
+Configuration for consuming messages from Kafka to WebSocket
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|topic|string|true|none|Kafka topic to consume messages from|
+
+<h2 id="tocS_WebBrokerApiChannelPolicies">WebBrokerApiChannelPolicies</h2>
+
+<a id="schemawebbrokerapichannelpolicies"></a>
+<a id="schema_WebBrokerApiChannelPolicies"></a>
+<a id="tocSwebbrokerapichannelpolicies"></a>
+<a id="tocswebbrokerapichannelpolicies"></a>
+
+```json
+{
+  "on_connection_init": {
+    "request": [
+      {
+        "name": "cors",
+        "version": "v1",
+        "executionCondition": "request.metadata[authenticated] != true",
+        "params": {}
+      }
+    ],
+    "response": [
+      {
+        "name": "cors",
+        "version": "v1",
+        "executionCondition": "request.metadata[authenticated] != true",
+        "params": {}
+      }
+    ]
+  },
+  "on_produce": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ],
+  "on_consume": [
+    {
+      "name": "cors",
+      "version": "v1",
+      "executionCondition": "request.metadata[authenticated] != true",
+      "params": {}
+    }
+  ]
+}
+
+```
+
+Channel-specific policies (override API-level policies)
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|on_connection_init|[WebBrokerApiConnectionInitPolicies](#schemawebbrokerapiconnectioninitpolicies)|false|none|Connection initialization policies|
+|on_produce|[[Policy](#schemapolicy)]|false|none|Policies applied when client sends message to broker on this channel|
+|on_consume|[[Policy](#schemapolicy)]|false|none|Policies applied when broker message delivered to client on this channel|
 
 <h2 id="tocS_APIKeyCreationRequest">APIKeyCreationRequest</h2>
 
