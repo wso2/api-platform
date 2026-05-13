@@ -81,17 +81,26 @@ func (t *Translator) buildEventChannelResource(uuid string, webSubCfg *api.WebSu
 	sort.Strings(sortedKeys)
 	for _, chName := range sortedKeys {
 		ch := channels[chName]
-		var chPolicies api.WebSubChannelPolicies
-		if ch.Policies != nil {
-			chPolicies = *ch.Policies
+		var subPolicies, unsubPolicies, inboundPolicies, outboundPolicies []interface{}
+		if ch.OnSubscription != nil {
+			subPolicies = buildPolicyList(ch.OnSubscription.Policies)
+		}
+		if ch.OnUnsubscription != nil {
+			unsubPolicies = buildPolicyList(ch.OnUnsubscription.Policies)
+		}
+		if ch.OnMessageReceived != nil {
+			inboundPolicies = buildPolicyList(ch.OnMessageReceived.Policies)
+		}
+		if ch.OnMessageDelivery != nil {
+			outboundPolicies = buildPolicyList(ch.OnMessageDelivery.Policies)
 		}
 		chEntry := map[string]interface{}{
 			"name": chName,
 			"policies": map[string]interface{}{
-				"subscribe":   buildPolicyList(chPolicies.OnSubscription),
-				"unsubscribe": buildPolicyList(chPolicies.OnUnsubscription),
-				"inbound":     buildPolicyList(chPolicies.OnMessageReceived),
-				"outbound":    buildPolicyList(chPolicies.OnMessageDelivery),
+				"subscribe":   subPolicies,
+				"unsubscribe": unsubPolicies,
+				"inbound":     inboundPolicies,
+				"outbound":    outboundPolicies,
 			},
 		}
 		channelEntries = append(channelEntries, chEntry)
@@ -102,11 +111,19 @@ func (t *Translator) buildEventChannelResource(uuid string, webSubCfg *api.WebSu
 	unsubscribePolicies := []interface{}{}
 	inboundPolicies := []interface{}{}
 	outboundPolicies := []interface{}{}
-	if spec.Policies != nil {
-		subscribePolicies = buildPolicyList(spec.Policies.OnSubscription)
-		unsubscribePolicies = buildPolicyList(spec.Policies.OnUnsubscription)
-		inboundPolicies = buildPolicyList(spec.Policies.OnMessageReceived)
-		outboundPolicies = buildPolicyList(spec.Policies.OnMessageDelivery)
+	if spec.AllChannels != nil {
+		if spec.AllChannels.OnSubscription != nil {
+			subscribePolicies = buildPolicyList(spec.AllChannels.OnSubscription.Policies)
+		}
+		if spec.AllChannels.OnUnsubscription != nil {
+			unsubscribePolicies = buildPolicyList(spec.AllChannels.OnUnsubscription.Policies)
+		}
+		if spec.AllChannels.OnMessageReceived != nil {
+			inboundPolicies = buildPolicyList(spec.AllChannels.OnMessageReceived.Policies)
+		}
+		if spec.AllChannels.OnMessageDelivery != nil {
+			outboundPolicies = buildPolicyList(spec.AllChannels.OnMessageDelivery.Policies)
+		}
 	}
 
 	data := map[string]interface{}{

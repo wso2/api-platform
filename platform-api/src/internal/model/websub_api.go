@@ -23,18 +23,18 @@ import "time"
 
 // WebSubAPI represents a WebSub API entity in the platform
 type WebSubAPI struct {
-	UUID             string               `json:"uuid" db:"-"`
-	Handle           string               `json:"id" db:"-"`
-	OrganizationUUID string               `json:"organizationId" db:"-"`
-	ProjectUUID      string               `json:"projectId" db:"-"`
-	Name             string               `json:"name" db:"-"`
-	Description      string               `json:"description,omitempty" db:"-"`
-	CreatedBy        string               `json:"createdBy,omitempty" db:"-"`
-	Version          string               `json:"version" db:"-"`
-	LifeCycleStatus  string               `json:"lifeCycleStatus" db:"-"`
-	Transport        []string             `json:"transport,omitempty" db:"-"`
-	CreatedAt        time.Time            `json:"createdAt" db:"-"`
-	UpdatedAt        time.Time            `json:"updatedAt" db:"-"`
+	UUID             string                 `json:"uuid" db:"-"`
+	Handle           string                 `json:"id" db:"-"`
+	OrganizationUUID string                 `json:"organizationId" db:"-"`
+	ProjectUUID      string                 `json:"projectId" db:"-"`
+	Name             string                 `json:"name" db:"-"`
+	Description      string                 `json:"description,omitempty" db:"-"`
+	CreatedBy        string                 `json:"createdBy,omitempty" db:"-"`
+	Version          string                 `json:"version" db:"-"`
+	LifeCycleStatus  string                 `json:"lifeCycleStatus" db:"-"`
+	Transport        []string               `json:"transport,omitempty" db:"-"`
+	CreatedAt        time.Time              `json:"createdAt" db:"-"`
+	UpdatedAt        time.Time              `json:"updatedAt" db:"-"`
 	Configuration    WebSubAPIConfiguration `json:"configuration" db:"-"`
 }
 
@@ -45,27 +45,52 @@ type WebSubAPIConfiguration struct {
 	Context           *string                   `json:"context,omitempty"`
 	Channels          map[string]WebSubChannel  `json:"channels,omitempty"`
 	Upstream          UpstreamConfig            `json:"upstream,omitempty"`
-	Policies          *WebSubAllChannelPolicies `json:"policies,omitempty"`
+	AllChannels       *WebSubAllChannelPolicies `json:"allChannels,omitempty"`
 	SubscriptionPlans []string                  `json:"subscriptionPlans,omitempty"`
+}
+
+// WebSubEventPolicies holds policies for a single event type.
+type WebSubEventPolicies struct {
+	Policies []Policy `json:"policies,omitempty"`
 }
 
 // WebSubAllChannelPolicies holds policies applied to all channels, organized by event type.
 type WebSubAllChannelPolicies struct {
-	OnSubscription    []Policy `json:"on_subscription,omitempty"`
-	OnUnsubscription  []Policy `json:"on_unsubscription,omitempty"`
-	OnMessageReceived []Policy `json:"on_message_received,omitempty"`
-	OnMessageDelivery []Policy `json:"on_message_delivery,omitempty"`
+	OnSubscription    *WebSubEventPolicies `json:"on_subscription,omitempty"`
+	OnUnsubscription  *WebSubEventPolicies `json:"on_unsubscription,omitempty"`
+	OnMessageReceived *WebSubEventPolicies `json:"on_message_received,omitempty"`
+	OnMessageDelivery *WebSubEventPolicies `json:"on_message_delivery,omitempty"`
 }
 
 // WebSubChannelPolicies holds policies applied to a specific channel, organized by event type.
-type WebSubChannelPolicies struct {
-	OnSubscription    []Policy `json:"on_subscription,omitempty"`
-	OnUnsubscription  []Policy `json:"on_unsubscription,omitempty"`
-	OnMessageReceived []Policy `json:"on_message_received,omitempty"`
-	OnMessageDelivery []Policy `json:"on_message_delivery,omitempty"`
-}
+type WebSubChannelPolicies = WebSubAllChannelPolicies
 
 // WebSubChannel represents a single channel with optional per-channel policy overrides.
 type WebSubChannel struct {
-	Policies *WebSubChannelPolicies `json:"policies,omitempty"`
+	OnSubscription    *WebSubEventPolicies `json:"on_subscription,omitempty"`
+	OnUnsubscription  *WebSubEventPolicies `json:"on_unsubscription,omitempty"`
+	OnMessageReceived *WebSubEventPolicies `json:"on_message_received,omitempty"`
+	OnMessageDelivery *WebSubEventPolicies `json:"on_message_delivery,omitempty"`
+}
+
+// WebSubReceiver represents the receiver section of a WebSub API configuration.
+type WebSubReceiver struct {
+	Policies []Policy `json:"policies,omitempty"`
+}
+
+// WebSubHub represents the hub section of a WebSub API configuration.
+type WebSubHub struct {
+	Policies []Policy           `json:"policies,omitempty"`
+	Channels []WebSubHubChannel `json:"channels,omitempty"`
+}
+
+// WebSubHubChannel represents a channel entry under the hub section.
+type WebSubHubChannel struct {
+	Name     string   `json:"name"`
+	Policies []Policy `json:"policies,omitempty"`
+}
+
+// WebSubDelivery represents the delivery section of a WebSub API configuration.
+type WebSubDelivery struct {
+	Policies []Policy `json:"policies,omitempty"`
 }

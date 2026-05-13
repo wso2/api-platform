@@ -50,6 +50,7 @@ services:
         condition: service_healthy
 
   platform-api:
+    image: ghcr.io/wso2/api-platform/platform-api:latest 
     build:
       context: ../../platform-api
       dockerfile: Dockerfile

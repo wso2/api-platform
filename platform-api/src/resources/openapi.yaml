@@ -9045,7 +9045,7 @@ components:
         upstream:
           $ref: '#/components/schemas/Upstream'
         policies:
-          $ref: '#/components/schemas/WebSubAllChannelPolicies'
+          $ref: '#/components/schemas/WebSubChannelPolicies'
         channels:
           type: object
           description: Per-channel configuration keyed by channel name. Each key is a channel name and defines policies applied only to that channel.
@@ -9151,23 +9151,21 @@ components:
       description: Policies applied to all channels, organized by event type.
       properties:
         on_subscription:
-          type: array
-          description: Policies applied when a client subscribes to a channel (e.g., api-key-auth)
-          items:
-            $ref: '#/components/schemas/Policy'
+          $ref: '#/components/schemas/WebSubEventPolicies'
         on_unsubscription:
-          type: array
-          description: Policies applied when a client unsubscribes from a channel
-          items:
-            $ref: '#/components/schemas/Policy'
+          $ref: '#/components/schemas/WebSubEventPolicies'
         on_message_received:
-          type: array
-          description: Policies applied when a message is received from the publisher via webhook (e.g., hmac-signature-validation)
-          items:
-            $ref: '#/components/schemas/Policy'
+          $ref: '#/components/schemas/WebSubEventPolicies'
         on_message_delivery:
+          $ref: '#/components/schemas/WebSubEventPolicies'
+
+    WebSubEventPolicies:
+      type: object
+      description: Policies for a single event type.
+      properties:
+        policies:
           type: array
-          description: Policies applied when delivering a message to a subscriber callback URL (e.g., hmac-sign-messages)
+          description: List of policies applied for this event type.
           items:
             $ref: '#/components/schemas/Policy'
 
