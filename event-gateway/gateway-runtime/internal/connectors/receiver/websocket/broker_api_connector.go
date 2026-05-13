@@ -64,7 +64,7 @@ type brokerApiConnection struct {
 	cancel          context.CancelFunc
 	closed          bool
 	mu              sync.Mutex
-	channelName     string // Selected channel from X-topic header
+	channelName     string // Selected channel from X-channel header
 	produceChainKey string // Policy chain key for on_produce
 	consumeChainKey string // Policy chain key for on_consume
 	produceTopic    string // Target Kafka topic for producing messages
@@ -139,12 +139,12 @@ func (e *WebBrokerApiReceiver) Stop(ctx context.Context) error {
 
 // handleUpgrade handles WebSocket upgrade requests.
 func (e *WebBrokerApiReceiver) handleUpgrade(w http.ResponseWriter, r *http.Request) {
-	// Extract channel name from X-topic header.
-	xTopicHeader := r.Header.Get("X-topic")
-	channelName := xTopicHeader
+	// Extract channel name from X-channel header.
+	xChannelHeader := r.Header.Get("X-channel")
+	channelName := xChannelHeader
 	if channelName == "" {
-		slog.Error("Missing X-topic header in WebSocket connection", "api", e.channel.Name, "remote", r.RemoteAddr)
-		http.Error(w, "Missing X-topic header", http.StatusBadRequest)
+		slog.Error("Missing X-channel header in WebSocket connection", "api", e.channel.Name, "remote", r.RemoteAddr)
+		http.Error(w, "Missing X-channel header", http.StatusBadRequest)
 		return
 	}
 
@@ -172,7 +172,7 @@ func (e *WebBrokerApiReceiver) handleUpgrade(w http.ResponseWriter, r *http.Requ
 	}
 
 	if !channelExists {
-		slog.Error("Unknown channel in X-topic header", "api", e.channel.Name, "channel", channelName, "remote", r.RemoteAddr)
+		slog.Error("Unknown channel in X-channel header", "api", e.channel.Name, "channel", channelName, "remote", r.RemoteAddr)
 		http.Error(w, fmt.Sprintf("Unknown channel: %s", channelName), http.StatusNotFound)
 		return
 	}

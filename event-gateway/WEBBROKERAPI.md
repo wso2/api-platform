@@ -189,11 +189,11 @@ channels:
 
 **Client Usage:**
 ```javascript
-// Connect with channel specified via X-topic header
+// Connect with channel specified via X-channel header
 const ws = new WebSocket('ws://localhost:8080/ws-kafka', {
   headers: {
     'X-API-Key': 'your-api-key',
-    'X-topic': '/issues'  // Select channel
+    'X-channel': '/issues'  // Select channel
   }
 });
 
@@ -298,7 +298,7 @@ Consumer group ID format: `{prefix}-ws-{uuid}`
 ## Channel Routing and Topic Subscription
 
 For WebBrokerApi:
-- **Channel Selection**: Client specifies channel via `X-topic` header during WebSocket handshake (e.g., `X-topic: /issues`)
+- **Channel Selection**: Client specifies channel via `X-channel` header during WebSocket handshake (e.g., `X-channel: /issues`)
 - **Per-Channel Topics**: Each channel defines its own topics via `map-topic` policies with `mode: produceTo` and `mode: consumeFrom`
 - **Consumer Subscription**: Each WebSocket connection subscribes only to topics configured for the selected channel
 - **Producer Publishing**: Messages are published to the topic specified in the channel's `on_produce` policies
@@ -552,7 +552,7 @@ const WebSocket = require('ws');
 
 const ws = new WebSocket('ws://localhost:8081/ws-kafka', {
   headers: {
-    'X-topic': '/issues'
+    'X-channel': '/issues'
   }
 });
 
@@ -747,7 +747,7 @@ INFO Registered WebBrokerApi binding name=websocket-kafka-api context=/ws-kafka 
 Open another terminal and test with websocat:
 
 ```bash
-websocat --header "X-topic: /issues" ws://localhost:8081/ws-kafka
+websocat --header "X-channel: /issues" ws://localhost:8081/ws-kafka
 ```
 
 Type messages and press Enter to send them to Kafka.
@@ -851,11 +851,11 @@ Test with authentication:
 
 ```bash
 # Without API key (should fail)
-websocat --header "X-topic: /secure-channel" ws://localhost:8081/secure-ws
+websocat --header "X-channel: /secure-channel" ws://localhost:8081/secure-ws
 # → Connection rejected
 
 # With API key (should succeed)
-websocat --header "X-API-Key: your-api-key" --header "X-topic: /secure-channel" ws://localhost:8081/secure-ws
+websocat --header "X-API-Key: your-api-key" --header "X-channel: /secure-channel" ws://localhost:8081/secure-ws
 ```
 
 ### Example: Multiple Channels with Different Topics
@@ -903,12 +903,12 @@ Connect to different channels:
 ```javascript
 // Connect to /issues channel
 const ws1 = new WebSocket('ws://localhost:8081/ws-kafka', {
-  headers: { 'X-topic': '/issues' }
+  headers: { 'X-channel': '/issues' }
 });
 
 // Connect to /commits channel
 const ws2 = new WebSocket('ws://localhost:8081/ws-kafka', {
-  headers: { 'X-topic': '/commits' }
+  headers: { 'X-channel': '/commits' }
 });
 ```
 
@@ -1015,10 +1015,10 @@ docker exec -it event-gateway-kafka-1 /opt/kafka/bin/kafka-console-consumer.sh \
 Connect to the `/issues` channel:
 
 ```bash
-wscat -c ws://localhost:8081/ws-kafka --header "X-topic: /issues"
+wscat -c ws://localhost:8081/ws-kafka --header "X-channel: /issues"
 ```
 
-**Expected Output:**
+**Expected Output:****
 ```
 Connected (press CTRL+C to quit)
 > 
@@ -1106,7 +1106,7 @@ docker exec -it event-gateway-kafka-1 /opt/kafka/bin/kafka-console-producer.sh \
 
 1. Open **Terminal 4** with a second WebSocket client:
    ```bash
-   wscat -c ws://localhost:8081/ws-kafka --header "X-topic: /issues"
+   wscat -c ws://localhost:8081/ws-kafka --header "X-channel: /issues"
    ```
 
 2. In **Terminal 3** (Kafka producer), send a message:
@@ -1219,10 +1219,10 @@ Note the `topics=[consume_issues]` - this confirms the consumer only subscribes 
 - In static file mode, verify `channels.yaml` has the WebBrokerApi entry and `controlplane.enabled = false`
 
 **Connection rejected during handshake:**
-- **Missing X-topic header**: Verify the `X-topic` header is included with a valid channel name (e.g., `X-topic: /issues`)
+- **Missing X-channel header**: Verify the `X-channel` header is included with a valid channel name (e.g., `X-channel: /issues`)
 - Check `on_connection_init.request` policies (e.g., API key validation)
 - Verify headers are correctly set in upgrade request
-- Check logs for: "Missing X-topic header" or "Unknown channel in X-topic header"
+- Check logs for: "Missing X-channel header" or "Unknown channel in X-channel header"
 
 **Messages not reaching Kafka:**
 - Check `on_produce` policies for short-circuit conditions
@@ -1498,13 +1498,13 @@ brew install websocat  # macOS
 cargo install websocat  # Linux/Rust
 
 # Basic usage
-websocat --header "X-topic: /channel-name" ws://localhost:8081/ws-kafka
+websocat --header "X-channel: /channel-name" ws://localhost:8081/ws-kafka
 
 # With headers
-websocat --header "X-API-Key: test" --header "X-topic: /secure-channel" ws://localhost:8081/secure
+websocat --header "X-API-Key: test" --header "X-channel: /secure-channel" ws://localhost:8081/secure
 
 # With text protocol
-websocat -t --header "X-topic: /channel-name" ws://localhost:8081/ws-kafka
+websocat -t --header "X-channel: /channel-name" ws://localhost:8081/ws-kafka
 ```
 
 **wscat** - Alternative WebSocket CLI:
@@ -1513,10 +1513,10 @@ websocat -t --header "X-topic: /channel-name" ws://localhost:8081/ws-kafka
 npm install -g wscat
 
 # Connect
-wscat -c ws://localhost:8081/ws-kafka -H "X-topic: /channel-name"
+wscat -c ws://localhost:8081/ws-kafka -H "X-channel: /channel-name"
 
 # With headers
-wscat -c ws://localhost:8081/secure -H "X-API-Key: test" -H "X-topic: /secure-channel"
+wscat -c ws://localhost:8081/secure -H "X-API-Key: test" -H "X-channel: /secure-channel"
 ```
 
 **kcat (kafkacat)** - Kafka CLI tool:
@@ -1642,7 +1642,7 @@ echo "test message" | kcat -b localhost:9092 -t repo-events -P
 3. **Channel-Specific Configs**: New `channels` map where each key is a channel name (e.g., `/issues`, `/commits`)
 4. **Per-Channel Policies**: Each channel has its own `on_connection_init`, `on_produce`, and `on_consume` policies
 5. **Topic Extraction**: Topics no longer in `brokerDriver.properties.topic`; instead extracted from `map-topic` policies with `mode: produceTo` and `mode: consumeFrom`
-6. **Channel Routing**: Client selects channel via `X-topic` header during WebSocket handshake
+6. **Channel Routing**: Client selects channel via `X-channel` header during WebSocket handshake
 7. **Policy Cascade**: API-level policies execute first, then channel-specific policies
 
 ## Next Steps

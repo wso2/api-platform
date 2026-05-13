@@ -261,7 +261,7 @@ WebBrokerApiBinding {
 │ 3. Create WebSocket Receiver                │
 │    - HTTP handler on context path           │
 │    - Metadata: channelNames, chainKeys      │
-│    - Upgrade logic with X-topic validation  │
+│    - Upgrade logic with X-channel validation  │
 └─────────────────────────────────────────────┘
                     ↓
 ┌─────────────────────────────────────────────┐
@@ -336,11 +336,11 @@ WebBrokerApiBinding {
 │ WebSocket     │
 │ Client        │
 └───────┬───────┘
-        │ ws://gateway/api?X-topic=/issues
+        │ ws://gateway/api?X-channel=/issues
         ▼
 ┌──────────────────────────────────────────┐
 │ WebBrokerApiReceiver.handleUpgrade()     │
-│ 1. Validate X-topic header               │
+│ 1. Validate X-channel header               │
 │ 2. Apply onConnectionInit.request        │
 │ 3. Upgrade to WebSocket                  │
 │ 4. Apply onConnectionInit.response       │
@@ -659,7 +659,7 @@ spec:
 
 **WebSocket Connection:**
 ```bash
-websocat --header "X-API-Key: secret" --header "X-topic: /issues" ws://gateway:8081/ws/events/v1
+websocat --header "X-API-Key: secret" --header "X-channel: /issues" ws://gateway:8081/ws/events/v1
 ```
 
 ---
@@ -908,7 +908,7 @@ type Receiver interface {
   - Single topic per API
   - Uses `ProcessInbound()` policy enforcement only
 - `websocket-broker-api` - WebSocket receiver for multi-channel WebBrokerApi
-  - Supports multiple channels per API via `X-topic` header routing
+  - Supports multiple channels per API via `X-channel` header routing
   - Per-channel policy chains (onConnectionInit, onProduce, onConsume)
   - Separate produce/consume topics per channel
   - Designed for the WebBrokerApi specification
