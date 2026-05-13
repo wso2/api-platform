@@ -41,7 +41,7 @@ type RequestBodyResult struct {
 	HeadersToSet      map[string]string
 	HeadersToRemove   []string
 	Body              []byte
-	Topic             string // Kafka topic for publish (set by policies like map-topic)
+	Topic             string // Broker topic for publish (set by policies like map-topic)
 	ShortCircuited    bool
 	ImmediateResponse *ImmediateResponseResult
 	TotalDuration     time.Duration
@@ -137,7 +137,7 @@ func mapRequestBodyResult(r *executor.RequestExecutionResult) *RequestBodyResult
 
 	// Extract topic from metadata if set by policies (e.g., map-topic policy)
 	if r.Metadata != nil {
-		if topic, ok := r.Metadata["kafka.topic"].(string); ok && topic != "" {
+		if topic, ok := r.Metadata["topic"].(string); ok && topic != "" {
 			res.Topic = topic
 		}
 	}

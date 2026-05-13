@@ -359,7 +359,7 @@ WebBrokerApiBinding {
 │ Hub.ProcessByChainKey(produceChainKey)   │             │
 │ - API-level on_produce                   │             │
 │ - Channel-level on_produce (/issues)     │             │
-│ - map-topic policy sets kafka.topic      │             │
+│ - map-topic policy sets target topic     │             │
 └──────┬───────────────────────────────────┘             │
         │                                                 │
         ▼                                                 │
