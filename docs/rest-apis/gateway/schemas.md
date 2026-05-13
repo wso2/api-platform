@@ -648,68 +648,82 @@ xor
     "main": "api.example.com",
     "sandbox": "sandbox-api.example.com"
   },
-  "policies": {
-    "on_subscription": [
-      {
-        "name": "cors",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
-      }
-    ],
-    "on_unsubscription": [
-      {
-        "name": "cors",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
-      }
-    ],
-    "on_message_received": [
-      {
-        "name": "cors",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
-      }
-    ],
-    "on_message_delivery": [
-      {
-        "name": "cors",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
-      }
-    ]
+  "allChannels": {
+    "on_subscription": {
+      "policies": [
+        {
+          "name": "cors",
+          "version": "v1",
+          "executionCondition": "request.metadata[authenticated] != true",
+          "params": {}
+        }
+      ]
+    },
+    "on_unsubscription": {
+      "policies": [
+        {
+          "name": "cors",
+          "version": "v1",
+          "executionCondition": "request.metadata[authenticated] != true",
+          "params": {}
+        }
+      ]
+    },
+    "on_message_received": {
+      "policies": [
+        {
+          "name": "cors",
+          "version": "v1",
+          "executionCondition": "request.metadata[authenticated] != true",
+          "params": {}
+        }
+      ]
+    },
+    "on_message_delivery": {
+      "policies": [
+        {
+          "name": "cors",
+          "version": "v1",
+          "executionCondition": "request.metadata[authenticated] != true",
+          "params": {}
+        }
+      ]
+    }
   },
   "channels": {
     "property1": {
-      "policies": {
-        "on_subscription": [
+      "on_subscription": {
+        "policies": [
           {
             "name": "cors",
             "version": "v1",
             "executionCondition": "request.metadata[authenticated] != true",
             "params": {}
           }
-        ],
-        "on_unsubscription": [
+        ]
+      },
+      "on_unsubscription": {
+        "policies": [
           {
             "name": "cors",
             "version": "v1",
             "executionCondition": "request.metadata[authenticated] != true",
             "params": {}
           }
-        ],
-        "on_message_received": [
+        ]
+      },
+      "on_message_received": {
+        "policies": [
           {
             "name": "cors",
             "version": "v1",
             "executionCondition": "request.metadata[authenticated] != true",
             "params": {}
           }
-        ],
-        "on_message_delivery": [
+        ]
+      },
+      "on_message_delivery": {
+        "policies": [
           {
             "name": "cors",
             "version": "v1",
@@ -720,32 +734,38 @@ xor
       }
     },
     "property2": {
-      "policies": {
-        "on_subscription": [
+      "on_subscription": {
+        "policies": [
           {
             "name": "cors",
             "version": "v1",
             "executionCondition": "request.metadata[authenticated] != true",
             "params": {}
           }
-        ],
-        "on_unsubscription": [
+        ]
+      },
+      "on_unsubscription": {
+        "policies": [
           {
             "name": "cors",
             "version": "v1",
             "executionCondition": "request.metadata[authenticated] != true",
             "params": {}
           }
-        ],
-        "on_message_received": [
+        ]
+      },
+      "on_message_received": {
+        "policies": [
           {
             "name": "cors",
             "version": "v1",
             "executionCondition": "request.metadata[authenticated] != true",
             "params": {}
           }
-        ],
-        "on_message_delivery": [
+        ]
+      },
+      "on_message_delivery": {
+        "policies": [
           {
             "name": "cors",
             "version": "v1",
@@ -771,7 +791,7 @@ xor
 |vhosts|object|false|none|Custom virtual hosts/domains for the API|
 |» main|string|true|none|Custom virtual host/domain for production traffic|
 |» sandbox|string|false|none|Custom virtual host/domain for sandbox traffic|
-|policies|[WebSubAllChannelPolicies](#schemawebsuballchannelpolicies)|false|none|Policies applied to all channels, organized by event type.|
+|allChannels|[WebSubAllChannelPolicies](#schemawebsuballchannelpolicies)|false|none|Policies applied to all channels, organized by event type.|
 |channels|object|false|none|Per-channel configuration keyed by channel name. Each key is a channel name and defines policies applied only to that channel.|
 |» **additionalProperties**|[WebSubChannel](#schemawebsubchannel)|false|none|A single channel definition with optional per-channel policy overrides.|
 |deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.|
@@ -792,32 +812,38 @@ xor
 
 ```json
 {
-  "policies": {
-    "on_subscription": [
+  "on_subscription": {
+    "policies": [
       {
         "name": "cors",
         "version": "v1",
         "executionCondition": "request.metadata[authenticated] != true",
         "params": {}
       }
-    ],
-    "on_unsubscription": [
+    ]
+  },
+  "on_unsubscription": {
+    "policies": [
       {
         "name": "cors",
         "version": "v1",
         "executionCondition": "request.metadata[authenticated] != true",
         "params": {}
       }
-    ],
-    "on_message_received": [
+    ]
+  },
+  "on_message_received": {
+    "policies": [
       {
         "name": "cors",
         "version": "v1",
         "executionCondition": "request.metadata[authenticated] != true",
         "params": {}
       }
-    ],
-    "on_message_delivery": [
+    ]
+  },
+  "on_message_delivery": {
+    "policies": [
       {
         "name": "cors",
         "version": "v1",
@@ -836,42 +862,21 @@ A single channel definition with optional per-channel policy overrides.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|policies|[WebSubChannelPolicies](#schemawebsubchannelpolicies)|false|none|Policies applied to a specific channel, organized by event type.|
+|on_subscription|[WebSubEventPolicies](#schemawebsubeventpolicies)|false|none|Policies for a single event type.|
+|on_unsubscription|[WebSubEventPolicies](#schemawebsubeventpolicies)|false|none|Policies for a single event type.|
+|on_message_received|[WebSubEventPolicies](#schemawebsubeventpolicies)|false|none|Policies for a single event type.|
+|on_message_delivery|[WebSubEventPolicies](#schemawebsubeventpolicies)|false|none|Policies for a single event type.|
 
-<h2 id="tocS_WebSubAllChannelPolicies">WebSubAllChannelPolicies</h2>
+<h2 id="tocS_WebSubEventPolicies">WebSubEventPolicies</h2>
 
-<a id="schemawebsuballchannelpolicies"></a>
-<a id="schema_WebSubAllChannelPolicies"></a>
-<a id="tocSwebsuballchannelpolicies"></a>
-<a id="tocswebsuballchannelpolicies"></a>
+<a id="schemawebsubeventpolicies"></a>
+<a id="schema_WebSubEventPolicies"></a>
+<a id="tocSwebsubeventpolicies"></a>
+<a id="tocswebsubeventpolicies"></a>
 
 ```json
 {
-  "on_subscription": [
-    {
-      "name": "cors",
-      "version": "v1",
-      "executionCondition": "request.metadata[authenticated] != true",
-      "params": {}
-    }
-  ],
-  "on_unsubscription": [
-    {
-      "name": "cors",
-      "version": "v1",
-      "executionCondition": "request.metadata[authenticated] != true",
-      "params": {}
-    }
-  ],
-  "on_message_received": [
-    {
-      "name": "cors",
-      "version": "v1",
-      "executionCondition": "request.metadata[authenticated] != true",
-      "params": {}
-    }
-  ],
-  "on_message_delivery": [
+  "policies": [
     {
       "name": "cors",
       "version": "v1",
@@ -883,16 +888,77 @@ A single channel definition with optional per-channel policy overrides.
 
 ```
 
+Policies for a single event type.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|policies|[[Policy](#schemapolicy)]|false|none|List of policies applied for this event type.|
+
+<h2 id="tocS_WebSubAllChannelPolicies">WebSubAllChannelPolicies</h2>
+
+<a id="schemawebsuballchannelpolicies"></a>
+<a id="schema_WebSubAllChannelPolicies"></a>
+<a id="tocSwebsuballchannelpolicies"></a>
+<a id="tocswebsuballchannelpolicies"></a>
+
+```json
+{
+  "on_subscription": {
+    "policies": [
+      {
+        "name": "cors",
+        "version": "v1",
+        "executionCondition": "request.metadata[authenticated] != true",
+        "params": {}
+      }
+    ]
+  },
+  "on_unsubscription": {
+    "policies": [
+      {
+        "name": "cors",
+        "version": "v1",
+        "executionCondition": "request.metadata[authenticated] != true",
+        "params": {}
+      }
+    ]
+  },
+  "on_message_received": {
+    "policies": [
+      {
+        "name": "cors",
+        "version": "v1",
+        "executionCondition": "request.metadata[authenticated] != true",
+        "params": {}
+      }
+    ]
+  },
+  "on_message_delivery": {
+    "policies": [
+      {
+        "name": "cors",
+        "version": "v1",
+        "executionCondition": "request.metadata[authenticated] != true",
+        "params": {}
+      }
+    ]
+  }
+}
+
+```
+
 Policies applied to all channels, organized by event type.
 
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|on_subscription|[[Policy](#schemapolicy)]|false|none|Policies applied when a client subscribes to a channel (e.g., api-key-auth)|
-|on_unsubscription|[[Policy](#schemapolicy)]|false|none|Policies applied when a client unsubscribes from a channel (e.g., api-key-auth)|
-|on_message_received|[[Policy](#schemapolicy)]|false|none|Policies applied when a message is received from the publisher via webhook (e.g., hmac-signature-validation)|
-|on_message_delivery|[[Policy](#schemapolicy)]|false|none|Policies applied when delivering a message to a subscriber callback URL (e.g., hmac-sign-messages)|
+|on_subscription|[WebSubEventPolicies](#schemawebsubeventpolicies)|false|none|Policies for a single event type.|
+|on_unsubscription|[WebSubEventPolicies](#schemawebsubeventpolicies)|false|none|Policies for a single event type.|
+|on_message_received|[WebSubEventPolicies](#schemawebsubeventpolicies)|false|none|Policies for a single event type.|
+|on_message_delivery|[WebSubEventPolicies](#schemawebsubeventpolicies)|false|none|Policies for a single event type.|
 
 <h2 id="tocS_WebSubChannelPolicies">WebSubChannelPolicies</h2>
 

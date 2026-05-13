@@ -229,22 +229,22 @@ Status Code **200**
 |»»»» vhosts|object|false|none|Custom virtual hosts/domains for the API|
 |»»»»» main|string|true|none|Custom virtual host/domain for production traffic|
 |»»»»» sandbox|string|false|none|Custom virtual host/domain for sandbox traffic|
-|»»»» policies|[WebSubAllChannelPolicies](schemas.md#schemawebsuballchannelpolicies)|false|none|Policies applied to all channels, organized by event type.|
-|»»»»» on_subscription|[[Policy](schemas.md#schemapolicy)]|false|none|Policies applied when a client subscribes to a channel (e.g., api-key-auth)|
-|»»»»»» name|string|true|none|Name of the policy|
-|»»»»»» version|string|true|none|Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected. The Gateway Controller resolves the major version to the single matching full version installed in the gateway image.|
-|»»»»»» executionCondition|string|false|none|Expression controlling conditional execution of the policy|
-|»»»»»» params|object|false|none|Arbitrary parameters for the policy (free-form key/value structure)|
-|»»»»» on_unsubscription|[[Policy](schemas.md#schemapolicy)]|false|none|Policies applied when a client unsubscribes from a channel (e.g., api-key-auth)|
-|»»»»» on_message_received|[[Policy](schemas.md#schemapolicy)]|false|none|Policies applied when a message is received from the publisher via webhook (e.g., hmac-signature-validation)|
-|»»»»» on_message_delivery|[[Policy](schemas.md#schemapolicy)]|false|none|Policies applied when delivering a message to a subscriber callback URL (e.g., hmac-sign-messages)|
+|»»»» allChannels|[WebSubAllChannelPolicies](schemas.md#schemawebsuballchannelpolicies)|false|none|Policies applied to all channels, organized by event type.|
+|»»»»» on_subscription|[WebSubEventPolicies](schemas.md#schemawebsubeventpolicies)|false|none|Policies for a single event type.|
+|»»»»»» policies|[[Policy](schemas.md#schemapolicy)]|false|none|List of policies applied for this event type.|
+|»»»»»»» name|string|true|none|Name of the policy|
+|»»»»»»» version|string|true|none|Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected. The Gateway Controller resolves the major version to the single matching full version installed in the gateway image.|
+|»»»»»»» executionCondition|string|false|none|Expression controlling conditional execution of the policy|
+|»»»»»»» params|object|false|none|Arbitrary parameters for the policy (free-form key/value structure)|
+|»»»»» on_unsubscription|[WebSubEventPolicies](schemas.md#schemawebsubeventpolicies)|false|none|Policies for a single event type.|
+|»»»»» on_message_received|[WebSubEventPolicies](schemas.md#schemawebsubeventpolicies)|false|none|Policies for a single event type.|
+|»»»»» on_message_delivery|[WebSubEventPolicies](schemas.md#schemawebsubeventpolicies)|false|none|Policies for a single event type.|
 |»»»» channels|object|false|none|Per-channel configuration keyed by channel name. Each key is a channel name and defines policies applied only to that channel.|
 |»»»»» **additionalProperties**|[WebSubChannel](schemas.md#schemawebsubchannel)|false|none|A single channel definition with optional per-channel policy overrides.|
-|»»»»»» policies|[WebSubChannelPolicies](schemas.md#schemawebsubchannelpolicies)|false|none|Policies applied to a specific channel, organized by event type.|
-|»»»»»»» on_subscription|[[Policy](schemas.md#schemapolicy)]|false|none|Policies applied when a client subscribes to this channel (e.g., rbac)|
-|»»»»»»» on_unsubscription|[[Policy](schemas.md#schemapolicy)]|false|none|Policies applied when a client unsubscribes from this channel|
-|»»»»»»» on_message_received|[[Policy](schemas.md#schemapolicy)]|false|none|Policies applied when a message is received for this channel|
-|»»»»»»» on_message_delivery|[[Policy](schemas.md#schemapolicy)]|false|none|Policies applied when delivering a message for this channel|
+|»»»»»» on_subscription|[WebSubEventPolicies](schemas.md#schemawebsubeventpolicies)|false|none|Policies for a single event type.|
+|»»»»»» on_unsubscription|[WebSubEventPolicies](schemas.md#schemawebsubeventpolicies)|false|none|Policies for a single event type.|
+|»»»»»» on_message_received|[WebSubEventPolicies](schemas.md#schemawebsubeventpolicies)|false|none|Policies for a single event type.|
+|»»»»»» on_message_delivery|[WebSubEventPolicies](schemas.md#schemawebsubeventpolicies)|false|none|Policies for a single event type.|
 |»»»» deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.|
 
 *and*
