@@ -811,27 +811,15 @@ func (r *Runtime) buildWebBrokerApiPolicyChains(wbb binding.WebBrokerApiBinding,
 	return connInitReqKey, connInitRespKey, produceKey, consumeKey, nil
 }
 
-// extractTopicsFromChannelPolicies extracts Kafka topics to subscribe to from a channel's on_consume policies.
-// Only extracts topics from map-topic policies with mode="consumeFrom".
-// If no policies specify topics, defaults to the channel name itself.
+// extractTopicsFromChannelPolicies extracts Kafka topics to subscribe to from a channel's consumeFrom config.
+// If consumeFrom is not specified, defaults to the normalized channel name.
 // These topics are used for Kafka consumer subscription.
 func extractTopicsFromChannelPolicies(channelName string, channelDef binding.WebBrokerChannelDef) []string {
 	topics := make(map[string]bool) // Use map to deduplicate
 
-	// Check consumeFrom field first (new approach)
+	// Check consumeFrom field
 	if channelDef.ConsumeFrom != nil && channelDef.ConsumeFrom.Topic != "" {
 		topics[channelDef.ConsumeFrom.Topic] = true
-	} else {
-		// Fallback: check onConsume policies for map-topic (legacy)
-		for _, policy := range channelDef.OnConsume {
-			if policy.Name == "map-topic" && policy.Params != nil {
-				if mode, ok := policy.Params["mode"].(string); ok && mode == "consumeFrom" {
-					if topic, ok := policy.Params["topic"].(string); ok && topic != "" {
-						topics[topic] = true
-					}
-				}
-			}
-		}
 	}
 
 	// If no consumeFrom topics found, default to normalized channel name
@@ -847,52 +835,29 @@ func extractTopicsFromChannelPolicies(channelName string, channelDef binding.Web
 	return result
 }
 
-// extractAllTopicsFromChannelPolicies extracts ALL Kafka topics (both produce and consume) from a channel.
-// If no policies specify topics, defaults to the channel name itself for both produce and consume.
+// extractAllTopicsFromChannelPolicies extracts ALL Kafka topics (both produce and consume) from a channel's config.
+// If produceTo/consumeFrom are not specified, defaults to the normalized channel name.
 // Used to ensure all necessary topics exist in Kafka before the API starts.
 func extractAllTopicsFromChannelPolicies(channelName string, channelDef binding.WebBrokerChannelDef) []string {
 	topics := make(map[string]bool) // Use map to deduplicate
 	hasProduceTopics := false
 	hasConsumeTopics := false
 
-	// Check produceTo field first (new approach)
+	// Check produceTo field
 	if channelDef.ProduceTo != nil && channelDef.ProduceTo.Topic != "" {
 		topics[channelDef.ProduceTo.Topic] = true
 		hasProduceTopics = true
-	} else {
-		// Fallback: check onProduce policies for map-topic (legacy)
-		for _, policy := range channelDef.OnProduce {
-			if policy.Name == "map-topic" && policy.Params != nil {
-				if mode, ok := policy.Params["mode"].(string); ok && mode == "produceTo" {
-					if topic, ok := policy.Params["topic"].(string); ok && topic != "" {
-						topics[topic] = true
-						hasProduceTopics = true
-					}
-				}
-			}
-		}
 	}
 
-	// Check consumeFrom field first (new approach)
+	// Check consumeFrom field
 	if channelDef.ConsumeFrom != nil && channelDef.ConsumeFrom.Topic != "" {
 		topics[channelDef.ConsumeFrom.Topic] = true
 		hasConsumeTopics = true
-	} else {
-		// Fallback: check onConsume policies for map-topic (legacy)
-		for _, policy := range channelDef.OnConsume {
-			if policy.Name == "map-topic" && policy.Params != nil {
-				if mode, ok := policy.Params["mode"].(string); ok && mode == "consumeFrom" {
-					if topic, ok := policy.Params["topic"].(string); ok && topic != "" {
-						topics[topic] = true
-						hasConsumeTopics = true
-					}
-				}
-			}
-		}
-		// If still no consume topics found, use normalized channel name as default
-		if !hasConsumeTopics {
-			topics[binding.NormalizeTopicSegment(channelName)] = true
-		}
+	}
+
+	// If no consume topics found, use normalized channel name as default
+	if !hasConsumeTopics {
+		topics[binding.NormalizeTopicSegment(channelName)] = true
 	}
 
 	// If no produce topics were found, also add normalized channel name for producing

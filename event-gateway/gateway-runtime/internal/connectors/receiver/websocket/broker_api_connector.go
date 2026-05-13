@@ -434,12 +434,8 @@ func (e *WebBrokerApiReceiver) inboundLoop(ctx context.Context, conn *brokerApiC
 				continue
 			}
 
-			// Determine target topic from channel config first, then fallback to policy-set topic.
+			// Determine target topic from channel config
 			targetTopic := conn.produceTopic
-			if targetTopic == "" {
-				// Fallback: check if policy set a topic (legacy map-topic policy)
-				targetTopic = processed.Topic
-			}
 			if targetTopic == "" {
 				// Final fallback: normalized channel name
 				targetTopic = binding.NormalizeTopicSegment(conn.channelName)

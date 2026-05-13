@@ -14,31 +14,44 @@ channels:
     broker-driver:
       type: kafka
       properties:
-        topic: repo-events
         bootstrap.servers: localhost:9092
         security.protocol: PLAINTEXT
-    allChannelPolicies:
-      on_connection_init:
-        request:
-          - name: api-key-auth
-            version: v1
-            params:
-              in: header
-              name: X-API-Key
-        response: []
-      on_produce:
-        - name: map-topics
-          version: v1
-          params:
-            extraction:
-              source: header
-              key: X-Client-Topic
-            mappings:
-              client-issues-topic: kafka-repo-issues
-              client-commits-topic: kafka-repo-commits
-              client-pr-topic: kafka-repo-pull-requests
-            defaultTopic: kafka-repo-events
-      on_consume: []
+    # Channel definitions with topic mappings
+    channels:
+      issues:
+        produceTo:
+          topic: kafka-repo-issues
+        consumeFrom:
+          topic: kafka-repo-issues
+        policies:
+          on_connection_init:
+            request:
+              - name: api-key-auth
+                version: v1
+                params:
+                  in: header
+                  name: X-API-Key
+            response: []
+          on_produce: []
+          on_consume: []
+      commits:
+        produceTo:
+          topic: kafka-repo-commits
+        consumeFrom:
+          topic: kafka-repo-commits
+        policies:
+          on_connection_init: {}
+          on_produce: []
+          on_consume: []
+      pull-requests:
+        produceTo:
+          topic: kafka-repo-pull-requests
+        consumeFrom:
+          topic: kafka-repo-pull-requests
+        policies:
+          on_connection_init: {}
+          on_produce: []
+          on_consume: []
 
   # WebSubApi example (for comparison)
   - kind: WebSubApi
