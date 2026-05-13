@@ -229,19 +229,22 @@ Status Code **200**
 |»»»» vhosts|object|false|none|Custom virtual hosts/domains for the API|
 |»»»»» main|string|true|none|Custom virtual host/domain for production traffic|
 |»»»»» sandbox|string|false|none|Custom virtual host/domain for sandbox traffic|
-|»»»» receiver|[WebSubReceiver](schemas.md#schemawebsubreceiver)|false|none|Receiver configuration for the WebSub API - handles inbound event publishing from publishers.|
-|»»»»» policies|[[Policy](schemas.md#schemapolicy)]|false|none|List of policies applied to inbound webhook requests (e.g., hmac-signature-validation)|
+|»»»» policies|[WebSubAllChannelPolicies](schemas.md#schemawebsuballchannelpolicies)|false|none|Policies applied to all channels, organized by event type.|
+|»»»»» on_subscription|[[Policy](schemas.md#schemapolicy)]|false|none|Policies applied when a client subscribes to a channel (e.g., api-key-auth)|
 |»»»»»» name|string|true|none|Name of the policy|
 |»»»»»» version|string|true|none|Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected. The Gateway Controller resolves the major version to the single matching full version installed in the gateway image.|
 |»»»»»» executionCondition|string|false|none|Expression controlling conditional execution of the policy|
 |»»»»»» params|object|false|none|Arbitrary parameters for the policy (free-form key/value structure)|
-|»»»» hub|[WebSubHub](schemas.md#schemawebsubhub)|true|none|Hub configuration for the WebSub API - handles subscriber management and event fan-out.|
-|»»»»» policies|[[Policy](schemas.md#schemapolicy)]|false|none|List of policies applied at the hub level (e.g., api-key-auth for subscribers)|
-|»»»»» channels|[[HubChannel](schemas.md#schemahubchannel)]|true|none|List of topic channels available for subscription|
-|»»»»»» name|string|true|none|Channel name or topic identifier relative to API context.|
-|»»»»»» policies|[[Policy](schemas.md#schemapolicy)]|false|none|List of policies applied only to this channel (e.g., rbac)|
-|»»»» delivery|[WebSubDelivery](schemas.md#schemawebsubdelivery)|false|none|Delivery configuration for the WebSub API - handles outbound event delivery to subscribers.|
-|»»»»» policies|[[Policy](schemas.md#schemapolicy)]|false|none|List of policies applied when delivering events to subscriber callback URLs (e.g., hmac-signature-validation)|
+|»»»»» on_unsubscription|[[Policy](schemas.md#schemapolicy)]|false|none|Policies applied when a client unsubscribes from a channel (e.g., api-key-auth)|
+|»»»»» on_message_received|[[Policy](schemas.md#schemapolicy)]|false|none|Policies applied when a message is received from the publisher via webhook (e.g., hmac-signature-validation)|
+|»»»»» on_message_delivery|[[Policy](schemas.md#schemapolicy)]|false|none|Policies applied when delivering a message to a subscriber callback URL (e.g., hmac-sign-messages)|
+|»»»» channels|object|false|none|Per-channel configuration keyed by channel name. Each key is a channel name and defines policies applied only to that channel.|
+|»»»»» **additionalProperties**|[WebSubChannel](schemas.md#schemawebsubchannel)|false|none|A single channel definition with optional per-channel policy overrides.|
+|»»»»»» policies|[WebSubChannelPolicies](schemas.md#schemawebsubchannelpolicies)|false|none|Policies applied to a specific channel, organized by event type.|
+|»»»»»»» on_subscription|[[Policy](schemas.md#schemapolicy)]|false|none|Policies applied when a client subscribes to this channel (e.g., rbac)|
+|»»»»»»» on_unsubscription|[[Policy](schemas.md#schemapolicy)]|false|none|Policies applied when a client unsubscribes from this channel|
+|»»»»»»» on_message_received|[[Policy](schemas.md#schemapolicy)]|false|none|Policies applied when a message is received for this channel|
+|»»»»»»» on_message_delivery|[[Policy](schemas.md#schemapolicy)]|false|none|Policies applied when delivering a message for this channel|
 |»»»» deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.|
 
 *and*

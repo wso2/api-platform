@@ -4122,25 +4122,32 @@ components:
           receiver:
             name: websocket-receiver
             type: websocket
-          brokerDriver:
+          broker:
             name: kafka-driver
             type: kafka
             properties:
               bootstrapServers:
                 - kafka-broker-1:9092
                 - kafka-broker-2:9092
+          allChannels:
+            on_connection_init:
+              policies: []
+            on_produce:
+              policies: []
+            on_consume:
+              policies: []
           channels:
             prices:
               produceTo:
                 topic: stock.prices
               consumeFrom:
                 topic: stock.prices
-              policies:
-                on_connection_init:
-                  request: []
-                  response: []
-                on_produce: []
-                on_consume: []
+              on_connection_init:
+                policies: []
+              on_produce:
+                policies: []
+              on_consume:
+                policies: []
 
     WebBrokerApi:
       allOf:
@@ -4164,25 +4171,32 @@ components:
           receiver:
             name: websocket-receiver
             type: websocket
-          brokerDriver:
+          broker:
             name: kafka-driver
             type: kafka
             properties:
               bootstrapServers:
                 - kafka-broker-1:9092
                 - kafka-broker-2:9092
+          allChannels:
+            on_connection_init:
+              policies: []
+            on_produce:
+              policies: []
+            on_consume:
+              policies: []
           channels:
             prices:
               produceTo:
                 topic: stock.prices
               consumeFrom:
                 topic: stock.prices
-              policies:
-                on_connection_init:
-                  request: []
-                  response: []
-                on_produce: []
-                on_consume: []
+              on_connection_init:
+                policies: []
+              on_produce:
+                policies: []
+              on_consume:
+                policies: []
         status:
           id: stock-trading-v1.0
           state: deployed
@@ -4197,7 +4211,7 @@ components:
         - version
         - context
         - receiver
-        - brokerDriver
+        - broker
         - channels
       properties:
         displayName:
@@ -4221,10 +4235,10 @@ components:
           example: /stock-trading
         receiver:
           $ref: '#/components/schemas/WebBrokerApiReceiver'
-        brokerDriver:
-          $ref: '#/components/schemas/WebBrokerApiBrokerDriver'
-        policies:
-          $ref: '#/components/schemas/WebBrokerApiPolicies'
+        broker:
+          $ref: '#/components/schemas/WebBrokerApiBroker'
+        allChannels:
+          $ref: '#/components/schemas/WebBrokerApiAllChannelPolicies'
         channels:
           type: object
           description: Map of WebSocket channels for bidirectional streaming with Kafka (key is channel name)
@@ -4274,7 +4288,7 @@ components:
           description: Additional receiver properties
           additionalProperties: true
 
-    WebBrokerApiBrokerDriver:
+    WebBrokerApiBroker:
       type: object
       description: Message broker driver configuration
       required:
@@ -4299,35 +4313,24 @@ components:
               - kafka-broker-1:9092
               - kafka-broker-2:9092
 
-    WebBrokerApiPolicies:
+    WebBrokerApiAllChannelPolicies:
       type: object
-      description: Protocol mediation policies applied at API level
+      description: Protocol mediation policies applied to all channels
       properties:
         on_connection_init:
-          $ref: '#/components/schemas/WebBrokerApiConnectionInitPolicies'
+          $ref: '#/components/schemas/WebBrokerApiPolicyGroup'
         on_produce:
-          type: array
-          description: Policies applied when client sends message to broker
-          items:
-            $ref: '#/components/schemas/Policy'
+          $ref: '#/components/schemas/WebBrokerApiPolicyGroup'
         on_consume:
-          type: array
-          description: Policies applied when broker message delivered to client
-          items:
-            $ref: '#/components/schemas/Policy'
+          $ref: '#/components/schemas/WebBrokerApiPolicyGroup'
 
-    WebBrokerApiConnectionInitPolicies:
+    WebBrokerApiPolicyGroup:
       type: object
-      description: Connection initialization policies
+      description: Group of policies
       properties:
-        request:
+        policies:
           type: array
-          description: Policies applied before WebSocket upgrade
-          items:
-            $ref: '#/components/schemas/Policy'
-        response:
-          type: array
-          description: Policies applied after WebSocket upgrade
+          description: List of policies to apply
           items:
             $ref: '#/components/schemas/Policy'
 
@@ -4339,8 +4342,12 @@ components:
           $ref: '#/components/schemas/WebBrokerApiProduceConfig'
         consumeFrom:
           $ref: '#/components/schemas/WebBrokerApiConsumeConfig'
-        policies:
-          $ref: '#/components/schemas/WebBrokerApiChannelPolicies'
+        on_connection_init:
+          $ref: '#/components/schemas/WebBrokerApiPolicyGroup'
+        on_produce:
+          $ref: '#/components/schemas/WebBrokerApiPolicyGroup'
+        on_consume:
+          $ref: '#/components/schemas/WebBrokerApiPolicyGroup'
 
     WebBrokerApiProduceConfig:
       type: object
@@ -4364,22 +4371,7 @@ components:
           description: Kafka topic to consume messages from
           example: stock.prices
 
-    WebBrokerApiChannelPolicies:
-      type: object
-      description: Channel-specific policies (override API-level policies)
-      properties:
-        on_connection_init:
-          $ref: '#/components/schemas/WebBrokerApiConnectionInitPolicies'
-        on_produce:
-          type: array
-          description: Policies applied when client sends message to broker on this channel
-          items:
-            $ref: '#/components/schemas/Policy'
-        on_consume:
-          type: array
-          description: Policies applied when broker message delivered to client on this channel
-          items:
-            $ref: '#/components/schemas/Policy'
+
 
     APIKeyCreationRequest:
       type: object

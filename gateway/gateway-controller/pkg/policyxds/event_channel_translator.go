@@ -182,36 +182,30 @@ func (t *Translator) buildEventChannelResourceForWebBroker(uuid string, webBroke
 
 	// Build broker-driver configuration
 	brokerDriver := map[string]interface{}{
-		"name":       spec.BrokerDriver.Name,
-		"type":       spec.BrokerDriver.Type,
-		"properties": spec.BrokerDriver.Properties,
+		"name":       spec.Broker.Name,
+		"type":       spec.Broker.Type,
+		"properties": spec.Broker.Properties,
 	}
 	slog.Info("DEBUG: Building EventChannelConfig for WebBrokerApi",
 		"name", webBrokerCfg.Metadata.Name,
 		"receiverName", spec.Receiver.Name,
-		"brokerDriverName", spec.BrokerDriver.Name,
-		"brokerDriverType", spec.BrokerDriver.Type)
+		"brokerDriverName", spec.Broker.Name,
+		"brokerDriverType", spec.Broker.Type)
 
-	// Build API-level policies
-	var apiOnConnectionInitRequest []interface{}
-	var apiOnConnectionInitResponse []interface{}
+	// Build API-level policies from AllChannels
+	var apiOnConnectionInit []interface{}
 	var apiOnProduce []interface{}
 	var apiOnConsume []interface{}
 
-	if spec.Policies != nil {
-		if spec.Policies.OnConnectionInit != nil {
-			if spec.Policies.OnConnectionInit.Request != nil {
-				apiOnConnectionInitRequest = buildPolicyList(spec.Policies.OnConnectionInit.Request)
-			}
-			if spec.Policies.OnConnectionInit.Response != nil {
-				apiOnConnectionInitResponse = buildPolicyList(spec.Policies.OnConnectionInit.Response)
-			}
+	if spec.AllChannels != nil {
+		if spec.AllChannels.OnConnectionInit != nil && spec.AllChannels.OnConnectionInit.Policies != nil {
+			apiOnConnectionInit = buildPolicyList(spec.AllChannels.OnConnectionInit.Policies)
 		}
-		if spec.Policies.OnProduce != nil {
-			apiOnProduce = buildPolicyList(spec.Policies.OnProduce)
+		if spec.AllChannels.OnProduce != nil && spec.AllChannels.OnProduce.Policies != nil {
+			apiOnProduce = buildPolicyList(spec.AllChannels.OnProduce.Policies)
 		}
-		if spec.Policies.OnConsume != nil {
-			apiOnConsume = buildPolicyList(spec.Policies.OnConsume)
+		if spec.AllChannels.OnConsume != nil && spec.AllChannels.OnConsume.Policies != nil {
+			apiOnConsume = buildPolicyList(spec.AllChannels.OnConsume.Policies)
 		}
 	}
 
@@ -219,26 +213,19 @@ func (t *Translator) buildEventChannelResourceForWebBroker(uuid string, webBroke
 	channels := make(map[string]interface{})
 	if spec.Channels != nil {
 		for channelName, channelConfig := range spec.Channels {
-			var channelOnConnectionInitRequest []interface{}
-			var channelOnConnectionInitResponse []interface{}
+			var channelOnConnectionInit []interface{}
 			var channelOnProduce []interface{}
 			var channelOnConsume []interface{}
 
-			if channelConfig.Policies != nil {
-				if channelConfig.Policies.OnConnectionInit != nil {
-					if channelConfig.Policies.OnConnectionInit.Request != nil {
-						channelOnConnectionInitRequest = buildPolicyList(channelConfig.Policies.OnConnectionInit.Request)
-					}
-					if channelConfig.Policies.OnConnectionInit.Response != nil {
-						channelOnConnectionInitResponse = buildPolicyList(channelConfig.Policies.OnConnectionInit.Response)
-					}
-				}
-				if channelConfig.Policies.OnProduce != nil {
-					channelOnProduce = buildPolicyList(channelConfig.Policies.OnProduce)
-				}
-				if channelConfig.Policies.OnConsume != nil {
-					channelOnConsume = buildPolicyList(channelConfig.Policies.OnConsume)
-				}
+			// Extract policies from channel-level policy groups
+			if channelConfig.OnConnectionInit != nil && channelConfig.OnConnectionInit.Policies != nil {
+				channelOnConnectionInit = buildPolicyList(channelConfig.OnConnectionInit.Policies)
+			}
+			if channelConfig.OnProduce != nil && channelConfig.OnProduce.Policies != nil {
+				channelOnProduce = buildPolicyList(channelConfig.OnProduce.Policies)
+			}
+			if channelConfig.OnConsume != nil && channelConfig.OnConsume.Policies != nil {
+				channelOnConsume = buildPolicyList(channelConfig.OnConsume.Policies)
 			}
 
 			// Build channel entry with policies nested inside "policies" field
@@ -258,14 +245,11 @@ func (t *Translator) buildEventChannelResourceForWebBroker(uuid string, webBroke
 				}
 			}
 
-			// Nest all policies inside a "policies" field
+			// Nest all policies inside a "policies" field (flattened structure)
 			channelEntry["policies"] = map[string]interface{}{
-				"on_connection_init": map[string]interface{}{
-					"request":  channelOnConnectionInitRequest,
-					"response": channelOnConnectionInitResponse,
-				},
-				"on_produce": channelOnProduce,
-				"on_consume": channelOnConsume,
+				"on_connection_init": channelOnConnectionInit,
+				"on_produce":         channelOnProduce,
+				"on_consume":         channelOnConsume,
 			}
 
 			channels[channelName] = channelEntry
@@ -281,12 +265,9 @@ func (t *Translator) buildEventChannelResourceForWebBroker(uuid string, webBroke
 		"receiver":      receiver,
 		"broker-driver": brokerDriver,
 		"policies": map[string]interface{}{
-			"on_connection_init": map[string]interface{}{
-				"request":  apiOnConnectionInitRequest,
-				"response": apiOnConnectionInitResponse,
-			},
-			"on_produce": apiOnProduce,
-			"on_consume": apiOnConsume,
+			"on_connection_init": apiOnConnectionInit,
+			"on_produce":         apiOnProduce,
+			"on_consume":         apiOnConsume,
 		},
 		"channels": channels,
 	}

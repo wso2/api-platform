@@ -422,14 +422,10 @@ func (h *Handler) toWebBrokerApiBinding(ecr EventChannelResource) binding.WebBro
 	var apiPolicies binding.ProtocolMediationPolicies
 	if ecr.Policies != nil {
 		if policiesMap, ok := ecr.Policies.(map[string]interface{}); ok {
-			// Parse on_connection_init
-			if connInitIface, ok := policiesMap["on_connection_init"].(map[string]interface{}); ok {
-				if reqIface, ok := connInitIface["request"].([]interface{}); ok {
-					apiPolicies.OnConnectionInit.Request = mapGenericPolicyList(reqIface)
-				}
-				if respIface, ok := connInitIface["response"].([]interface{}); ok {
-					apiPolicies.OnConnectionInit.Response = mapGenericPolicyList(respIface)
-				}
+			// Parse on_connection_init (now a flat array)
+			if connInitIface, ok := policiesMap["on_connection_init"].([]interface{}); ok {
+				// Put all policies in Request for backward compatibility with execution logic
+				apiPolicies.OnConnectionInit.Request = mapGenericPolicyList(connInitIface)
 			}
 			// Parse on_produce
 			if produceIface, ok := policiesMap["on_produce"].([]interface{}); ok {
@@ -466,14 +462,10 @@ func (h *Handler) toWebBrokerApiBinding(ecr EventChannelResource) binding.WebBro
 
 					// Parse policies from nested "policies" field
 					if policiesIface, ok := channelData["policies"].(map[string]interface{}); ok {
-						// Parse channel on_connection_init
-						if connInitIface, ok := policiesIface["on_connection_init"].(map[string]interface{}); ok {
-							if reqIface, ok := connInitIface["request"].([]interface{}); ok {
-								channelDef.OnConnectionInit.Request = mapGenericPolicyList(reqIface)
-							}
-							if respIface, ok := connInitIface["response"].([]interface{}); ok {
-								channelDef.OnConnectionInit.Response = mapGenericPolicyList(respIface)
-							}
+						// Parse channel on_connection_init (now a flat array)
+						if connInitIface, ok := policiesIface["on_connection_init"].([]interface{}); ok {
+							// Put all policies in Request for backward compatibility with execution logic
+							channelDef.OnConnectionInit.Request = mapGenericPolicyList(connInitIface)
 						}
 						// Parse channel on_produce
 						if produceIface, ok := policiesIface["on_produce"].([]interface{}); ok {

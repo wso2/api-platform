@@ -37,7 +37,7 @@ Add a new WebBrokerAPI to the Gateway. WebBrokerAPI provides bidirectional strea
       "name": "websocket-receiver",
       "type": "websocket"
     },
-    "brokerDriver": {
+    "broker": {
       "name": "kafka-driver",
       "type": "kafka",
       "properties": {
@@ -45,6 +45,17 @@ Add a new WebBrokerAPI to the Gateway. WebBrokerAPI provides bidirectional strea
           "kafka-broker-1:9092",
           "kafka-broker-2:9092"
         ]
+      }
+    },
+    "allChannels": {
+      "on_connection_init": {
+        "policies": []
+      },
+      "on_produce": {
+        "policies": []
+      },
+      "on_consume": {
+        "policies": []
       }
     },
     "channels": {
@@ -55,13 +66,14 @@ Add a new WebBrokerAPI to the Gateway. WebBrokerAPI provides bidirectional strea
         "consumeFrom": {
           "topic": "stock.prices"
         },
-        "policies": {
-          "on_connection_init": {
-            "request": [],
-            "response": []
-          },
-          "on_produce": [],
-          "on_consume": []
+        "on_connection_init": {
+          "policies": []
+        },
+        "on_produce": {
+          "policies": []
+        },
+        "on_consume": {
+          "policies": []
         }
       }
     }
@@ -103,7 +115,7 @@ Required roles: `admin`, `developer`
       "name": "websocket-receiver",
       "type": "websocket"
     },
-    "brokerDriver": {
+    "broker": {
       "name": "kafka-driver",
       "type": "kafka",
       "properties": {
@@ -111,6 +123,17 @@ Required roles: `admin`, `developer`
           "kafka-broker-1:9092",
           "kafka-broker-2:9092"
         ]
+      }
+    },
+    "allChannels": {
+      "on_connection_init": {
+        "policies": []
+      },
+      "on_produce": {
+        "policies": []
+      },
+      "on_consume": {
+        "policies": []
       }
     },
     "channels": {
@@ -121,13 +144,14 @@ Required roles: `admin`, `developer`
         "consumeFrom": {
           "topic": "stock.prices"
         },
-        "policies": {
-          "on_connection_init": {
-            "request": [],
-            "response": []
-          },
-          "on_produce": [],
-          "on_consume": []
+        "on_connection_init": {
+          "policies": []
+        },
+        "on_produce": {
+          "policies": []
+        },
+        "on_consume": {
+          "policies": []
         }
       }
     }
@@ -216,7 +240,7 @@ Required roles: `admin`, `developer`
           "name": "websocket-receiver",
           "type": "websocket"
         },
-        "brokerDriver": {
+        "broker": {
           "name": "kafka-driver",
           "type": "kafka",
           "properties": {
@@ -224,6 +248,17 @@ Required roles: `admin`, `developer`
               "kafka-broker-1:9092",
               "kafka-broker-2:9092"
             ]
+          }
+        },
+        "allChannels": {
+          "on_connection_init": {
+            "policies": []
+          },
+          "on_produce": {
+            "policies": []
+          },
+          "on_consume": {
+            "policies": []
           }
         },
         "channels": {
@@ -234,13 +269,14 @@ Required roles: `admin`, `developer`
             "consumeFrom": {
               "topic": "stock.prices"
             },
-            "policies": {
-              "on_connection_init": {
-                "request": [],
-                "response": []
-              },
-              "on_produce": [],
-              "on_consume": []
+            "on_connection_init": {
+              "policies": []
+            },
+            "on_produce": {
+              "policies": []
+            },
+            "on_consume": {
+              "policies": []
             }
           }
         }
@@ -295,30 +331,28 @@ Status Code **200**
 |»»»»» name|string|true|none|Receiver name|
 |»»»»» type|string|true|none|Receiver type|
 |»»»»» properties|object|false|none|Additional receiver properties|
-|»»»» brokerDriver|[WebBrokerApiBrokerDriver](schemas.md#schemawebbrokerapibrokerdriver)|true|none|Message broker driver configuration|
+|»»»» broker|[WebBrokerApiBroker](schemas.md#schemawebbrokerapibroker)|true|none|Message broker driver configuration|
 |»»»»» name|string|true|none|Broker driver name|
 |»»»»» type|string|true|none|Broker driver type|
 |»»»»» properties|object|true|none|Broker driver properties (e.g., bootstrap servers)|
-|»»»» policies|[WebBrokerApiPolicies](schemas.md#schemawebbrokerapipolicies)|false|none|Protocol mediation policies applied at API level|
-|»»»»» on_connection_init|[WebBrokerApiConnectionInitPolicies](schemas.md#schemawebbrokerapiconnectioninitpolicies)|false|none|Connection initialization policies|
-|»»»»»» request|[[Policy](schemas.md#schemapolicy)]|false|none|Policies applied before WebSocket upgrade|
+|»»»» allChannels|[WebBrokerApiAllChannelPolicies](schemas.md#schemawebbrokerapiallchannelpolicies)|false|none|Protocol mediation policies applied to all channels|
+|»»»»» on_connection_init|[WebBrokerApiPolicyGroup](schemas.md#schemawebbrokerapipolicygroup)|false|none|Group of policies|
+|»»»»»» policies|[[Policy](schemas.md#schemapolicy)]|false|none|List of policies to apply|
 |»»»»»»» name|string|true|none|Name of the policy|
 |»»»»»»» version|string|true|none|Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected. The Gateway Controller resolves the major version to the single matching full version installed in the gateway image.|
 |»»»»»»» executionCondition|string|false|none|Expression controlling conditional execution of the policy|
 |»»»»»»» params|object|false|none|Arbitrary parameters for the policy (free-form key/value structure)|
-|»»»»»» response|[[Policy](schemas.md#schemapolicy)]|false|none|Policies applied after WebSocket upgrade|
-|»»»»» on_produce|[[Policy](schemas.md#schemapolicy)]|false|none|Policies applied when client sends message to broker|
-|»»»»» on_consume|[[Policy](schemas.md#schemapolicy)]|false|none|Policies applied when broker message delivered to client|
+|»»»»» on_produce|[WebBrokerApiPolicyGroup](schemas.md#schemawebbrokerapipolicygroup)|false|none|Group of policies|
+|»»»»» on_consume|[WebBrokerApiPolicyGroup](schemas.md#schemawebbrokerapipolicygroup)|false|none|Group of policies|
 |»»»» channels|object|true|none|Map of WebSocket channels for bidirectional streaming with Kafka (key is channel name)|
 |»»»»» **additionalProperties**|[WebBrokerApiChannel](schemas.md#schemawebbrokerapichannel)|false|none|WebSocket channel configuration with Kafka topic mapping|
 |»»»»»» produceTo|[WebBrokerApiProduceConfig](schemas.md#schemawebbrokerapiproduceconfig)|false|none|Configuration for producing messages from WebSocket to Kafka|
 |»»»»»»» topic|string|true|none|Kafka topic to produce messages to|
 |»»»»»» consumeFrom|[WebBrokerApiConsumeConfig](schemas.md#schemawebbrokerapiconsumeconfig)|false|none|Configuration for consuming messages from Kafka to WebSocket|
 |»»»»»»» topic|string|true|none|Kafka topic to consume messages from|
-|»»»»»» policies|[WebBrokerApiChannelPolicies](schemas.md#schemawebbrokerapichannelpolicies)|false|none|Channel-specific policies (override API-level policies)|
-|»»»»»»» on_connection_init|[WebBrokerApiConnectionInitPolicies](schemas.md#schemawebbrokerapiconnectioninitpolicies)|false|none|Connection initialization policies|
-|»»»»»»» on_produce|[[Policy](schemas.md#schemapolicy)]|false|none|Policies applied when client sends message to broker on this channel|
-|»»»»»»» on_consume|[[Policy](schemas.md#schemapolicy)]|false|none|Policies applied when broker message delivered to client on this channel|
+|»»»»»» on_connection_init|[WebBrokerApiPolicyGroup](schemas.md#schemawebbrokerapipolicygroup)|false|none|Group of policies|
+|»»»»»» on_produce|[WebBrokerApiPolicyGroup](schemas.md#schemawebbrokerapipolicygroup)|false|none|Group of policies|
+|»»»»»» on_consume|[WebBrokerApiPolicyGroup](schemas.md#schemawebbrokerapipolicygroup)|false|none|Group of policies|
 |»»»» vhosts|object|false|none|Custom virtual hosts/domains for the API|
 |»»»»» main|string|true|none|Custom virtual host/domain for production traffic|
 |»»»»» sandbox|string|false|none|Custom virtual host/domain for sandbox traffic|
@@ -403,7 +437,7 @@ Required roles: `admin`, `developer`
       "name": "websocket-receiver",
       "type": "websocket"
     },
-    "brokerDriver": {
+    "broker": {
       "name": "kafka-driver",
       "type": "kafka",
       "properties": {
@@ -411,6 +445,17 @@ Required roles: `admin`, `developer`
           "kafka-broker-1:9092",
           "kafka-broker-2:9092"
         ]
+      }
+    },
+    "allChannels": {
+      "on_connection_init": {
+        "policies": []
+      },
+      "on_produce": {
+        "policies": []
+      },
+      "on_consume": {
+        "policies": []
       }
     },
     "channels": {
@@ -421,13 +466,14 @@ Required roles: `admin`, `developer`
         "consumeFrom": {
           "topic": "stock.prices"
         },
-        "policies": {
-          "on_connection_init": {
-            "request": [],
-            "response": []
-          },
-          "on_produce": [],
-          "on_consume": []
+        "on_connection_init": {
+          "policies": []
+        },
+        "on_produce": {
+          "policies": []
+        },
+        "on_consume": {
+          "policies": []
         }
       }
     }
