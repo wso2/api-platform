@@ -734,15 +734,20 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig, allConfig
 	}
 	apiProjectID := extractProjectIDFromConfig(cfg)
 
-	for _, ch := range apiData.Hub.Channels {
-		chName := ch.Name
-		if !strings.HasPrefix(chName, "/") {
-			chName = "/" + chName
+	if apiData.Channels != nil {
+		for chName := range *apiData.Channels {
+			if !strings.HasPrefix(chName, "/") {
+				chName = "/" + chName
+			}
+			// WebSub hub channels are always SUB; use mainClusterName by default
+			r := t.createRoutePerTopic(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, "SUB", chName,
+				mainClusterName, effectiveMainVHost, cfg.Kind, apiProjectID)
+			mainRoutesList = append(mainRoutesList, r)
+			// Also create UNSUB route for unsubscription policies
+			rUnsub := t.createRoutePerTopic(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, "UNSUB", chName,
+				mainClusterName, effectiveMainVHost, cfg.Kind, apiProjectID)
+			mainRoutesList = append(mainRoutesList, rUnsub)
 		}
-		// WebSub hub channels are always SUB; use mainClusterName by default
-		r := t.createRoutePerTopic(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, "SUB", chName,
-			mainClusterName, effectiveMainVHost, cfg.Kind, apiProjectID)
-		mainRoutesList = append(mainRoutesList, r)
 	}
 	// Extract template handle and provider name for LLM provider/proxy scenarios
 	templateHandle := t.extractTemplateHandle(cfg, allConfigs)

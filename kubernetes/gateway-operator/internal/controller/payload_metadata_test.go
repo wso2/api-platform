@@ -13,7 +13,7 @@ func TestPayloadMetadataForHTTPRoute_CopiesAllAnnotations(t *testing.T) {
 	route := &gatewayv1.HTTPRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Annotations: map[string]string{
-				AnnProjectID:                         "1234567890",
+				AnnProjectID:                          "1234567890",
 				"gateway.api-platform.wso2.com/extra": "keep-me",
 			},
 		},
@@ -32,7 +32,7 @@ func TestPayloadMetadataForRestAPI_CopiesAllAnnotationsAndLabels(t *testing.T) {
 				"k": "v",
 			},
 			Annotations: map[string]string{
-				AnnProjectID:                         "proj-1",
+				AnnProjectID:                          "proj-1",
 				"gateway.api-platform.wso2.com/extra": "x",
 			},
 		},

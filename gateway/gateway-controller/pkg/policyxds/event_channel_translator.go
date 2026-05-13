@@ -20,6 +20,7 @@ package policyxds
 
 import (
 	"log/slog"
+	"sort"
 
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
@@ -105,33 +106,45 @@ func (t *Translator) TranslateWebBrokerApisToEventChannelConfigs(configs []*mode
 func (t *Translator) buildEventChannelResourceForWebSub(uuid string, webSubCfg *api.WebSubAPI) (types.Resource, error) {
 	spec := webSubCfg.Spec
 
-	// Build channels list from hub channels, including per-channel subscribe policies.
-	channels := make([]map[string]interface{}, 0, len(spec.Hub.Channels))
-	for _, ch := range spec.Hub.Channels {
+	// Build channels list from channels, including per-channel policies.
+	var channels map[string]api.WebSubChannel
+	if spec.Channels != nil {
+		channels = *spec.Channels
+	}
+	channelEntries := make([]map[string]interface{}, 0, len(channels))
+	sortedKeys := make([]string, 0, len(channels))
+	for chName := range channels {
+		sortedKeys = append(sortedKeys, chName)
+	}
+	sort.Strings(sortedKeys)
+	for _, chName := range sortedKeys {
+		ch := channels[chName]
+		var chPolicies api.WebSubChannelPolicies
+		if ch.Policies != nil {
+			chPolicies = *ch.Policies
+		}
 		chEntry := map[string]interface{}{
-			"name": ch.Name,
+			"name": chName,
 			"policies": map[string]interface{}{
-				"subscribe": buildPolicyList(ch.Policies),
-				"inbound":   []interface{}{},
-				"outbound":  []interface{}{},
+				"subscribe":   buildPolicyList(chPolicies.OnSubscription),
+				"unsubscribe": buildPolicyList(chPolicies.OnUnsubscription),
+				"inbound":     buildPolicyList(chPolicies.OnMessageReceived),
+				"outbound":    buildPolicyList(chPolicies.OnMessageDelivery),
 			},
 		}
-		channels = append(channels, chEntry)
+		channelEntries = append(channelEntries, chEntry)
 	}
 
-	// Hub-level policies apply to the subscribe phase only (authenticating subscribers).
-	subscribePolicies := buildPolicyList(spec.Hub.Policies)
-
-	// Receiver-level policies apply to the inbound phase only (validating publisher webhook requests).
+	// policies maps to API-level policy chains.
+	subscribePolicies := []interface{}{}
+	unsubscribePolicies := []interface{}{}
 	inboundPolicies := []interface{}{}
-	if spec.Receiver != nil {
-		inboundPolicies = buildPolicyList(spec.Receiver.Policies)
-	}
-
-	// Delivery-level policies apply to the outbound phase only (signing/transforming delivery to subscriber callbacks).
 	outboundPolicies := []interface{}{}
-	if spec.Delivery != nil {
-		outboundPolicies = buildPolicyList(spec.Delivery.Policies)
+	if spec.Policies != nil {
+		subscribePolicies = buildPolicyList(spec.Policies.OnSubscription)
+		unsubscribePolicies = buildPolicyList(spec.Policies.OnUnsubscription)
+		inboundPolicies = buildPolicyList(spec.Policies.OnMessageReceived)
+		outboundPolicies = buildPolicyList(spec.Policies.OnMessageDelivery)
 	}
 
 	data := map[string]interface{}{
@@ -140,14 +153,15 @@ func (t *Translator) buildEventChannelResourceForWebSub(uuid string, webSubCfg *
 		"kind":     "WebSubApi",
 		"context":  spec.Context,
 		"version":  spec.Version,
-		"channels": channels,
+		"channels": channelEntries,
 		"receiver": map[string]interface{}{
 			"type": "websub",
 		},
 		"policies": map[string]interface{}{
-			"subscribe": subscribePolicies,
-			"inbound":   inboundPolicies,
-			"outbound":  outboundPolicies,
+			"subscribe":   subscribePolicies,
+			"unsubscribe": unsubscribePolicies,
+			"inbound":     inboundPolicies,
+			"outbound":    outboundPolicies,
 		},
 	}
 

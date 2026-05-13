@@ -524,46 +524,38 @@ func TestAPIValidator_ValidateChannels(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		channels  []api.HubChannel
+		channels  map[string]api.WebSubChannel
 		wantError bool
 		errField  string
 	}{
 		{
 			name: "Valid channels",
-			channels: []api.HubChannel{
-				{Name: "channel1"},
-				{Name: "channel2"},
+			channels: map[string]api.WebSubChannel{
+				"channel1": {},
+				"channel2": {},
 			},
 			wantError: false,
 		},
 		{
 			name:      "Empty channels",
-			channels:  []api.HubChannel{},
+			channels:  map[string]api.WebSubChannel{},
 			wantError: true,
-			errField:  "spec.hub.channels",
-		},
-		{
-			name: "Missing channel name",
-			channels: []api.HubChannel{
-				{Name: ""},
-			},
-			wantError: true,
-			errField:  "spec.hub.channels[0].name",
+			errField:  "spec.channels",
 		},
 		{
 			name: "Channel with braces (invalid)",
-			channels: []api.HubChannel{
-				{Name: "channel/{id}"},
+			channels: map[string]api.WebSubChannel{
+				"channel/{id}": {},
 			},
 			wantError: true,
-			errField:  "spec.hub.channels[0].name",
+			errField:  "spec.channels.channel/{id}",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := createValidWebSubAPIConfig()
-			config.Spec.Hub.Channels = tt.channels
+			config.Spec.Channels = &tt.channels
 
 			errors := v.Validate(config)
 			hasExpectedError := false
@@ -706,10 +698,8 @@ func createValidWebSubAPIConfig() *api.WebSubAPI {
 			DisplayName: "Test WebSub",
 			Version:     "v1.0",
 			Context:     "/websub",
-			Hub: api.WebSubHub{
-				Channels: []api.HubChannel{
-					{Name: "channel1"},
-				},
+			Channels: &map[string]api.WebSubChannel{
+				"channel1": {},
 			},
 		},
 	}

@@ -227,23 +227,24 @@ func (r *Runtime) LoadChannels(channelsPath string) error {
 		internalSubTopic := r.webSubSubscriptionSyncTopic(wsb.Name, wsb.Version)
 
 		// Build policy chains for the API.
-		subKey, inKey, outKey, chChainKeys, err := r.buildWebSubApiPolicyChains(wsb, vhost)
+		subKey, unsubKey, inKey, outKey, chChainKeys, err := r.buildWebSubApiPolicyChains(wsb, vhost)
 		if err != nil {
 			return fmt.Errorf("failed to build chains for WebSubApi %q: %w", wsb.Name, err)
 		}
 
 		r.hub.RegisterBinding(hub.ChannelBinding{
-			APIID:             wsb.APIID,
-			Name:              wsb.Name,
-			Mode:              "websub",
-			Context:           wsb.Context,
-			Version:           wsb.Version,
-			Vhost:             vhost,
-			SubscribeChainKey: subKey,
-			InboundChainKey:   inKey,
-			OutboundChainKey:  outKey,
-			Channels:          channels,
-			ChannelChainKeys:  chChainKeys,
+			APIID:               wsb.APIID,
+			Name:                wsb.Name,
+			Mode:                "websub",
+			Context:             wsb.Context,
+			Version:             wsb.Version,
+			Vhost:               vhost,
+			SubscribeChainKey:   subKey,
+			UnsubscribeChainKey: unsubKey,
+			InboundChainKey:     inKey,
+			OutboundChainKey:    outKey,
+			Channels:            channels,
+			ChannelChainKeys:    chChainKeys,
 		})
 
 		// Create broker-driver.
@@ -688,54 +689,64 @@ func (r *Runtime) buildPolicyChains(b binding.Binding) (subscribeKey, inboundKey
 	return subscribeKey, inboundKey, outboundKey, nil
 }
 
-func (r *Runtime) buildWebSubApiPolicyChains(wsb binding.WebSubApiBinding, vhost string) (subscribeKey, inboundKey, outboundKey string, channelChainKeys map[string]hub.ChannelChainKeySet, err error) {
+func (r *Runtime) buildWebSubApiPolicyChains(wsb binding.WebSubApiBinding, vhost string) (subscribeKey, unsubscribeKey, inboundKey, outboundKey string, channelChainKeys map[string]hub.ChannelChainKeySet, err error) {
 	basePath := binding.WebSubApiBasePath(wsb.Context, wsb.Version)
 	hubPath := basePath + "/hub"
 
-	// Subscribe chain: hub path (subscribe/unsubscribe requests).
+	// Subscribe chain: hub path (subscribe requests).
 	subscribeKey = binding.GenerateRouteKey("SUBSCRIBE", hubPath, vhost)
-	// Inbound chain: webhook-receiver path (data ingress).
+	// Unsubscribe chain: hub path (unsubscribe requests).
+	unsubscribeKey = binding.GenerateRouteKey("UNSUBSCRIBE", hubPath, vhost)
+	// Inbound chain: webhook-receiver path (data ingress / on_message_received).
 	inboundKey = binding.GenerateRouteKey("SUB", basePath+"/webhook-receiver", vhost)
-	// Outbound chain: delivery path (data delivery to subscribers).
+	// Outbound chain: delivery path (data delivery to subscribers / on_message_delivery).
 	outboundKey = binding.GenerateRouteKey("DELIVER", hubPath, vhost)
 
 	if err = r.buildChain(subscribeKey, wsb.Policies.Subscribe); err != nil {
-		return "", "", "", nil, err
+		return "", "", "", "", nil, err
+	}
+	if err = r.buildChain(unsubscribeKey, wsb.Policies.Unsubscribe); err != nil {
+		return "", "", "", "", nil, err
 	}
 	if err = r.buildChain(inboundKey, wsb.Policies.Inbound); err != nil {
-		return "", "", "", nil, err
+		return "", "", "", "", nil, err
 	}
 	if err = r.buildChain(outboundKey, wsb.Policies.Outbound); err != nil {
-		return "", "", "", nil, err
+		return "", "", "", "", nil, err
 	}
 
 	// Build per-channel policy chains.
 	channelChainKeys = make(map[string]hub.ChannelChainKeySet, len(wsb.Channels))
 	for _, ch := range wsb.Channels {
-		if len(ch.Policies.Subscribe) == 0 && len(ch.Policies.Inbound) == 0 && len(ch.Policies.Outbound) == 0 {
+		if len(ch.Policies.Subscribe) == 0 && len(ch.Policies.Unsubscribe) == 0 && len(ch.Policies.Inbound) == 0 && len(ch.Policies.Outbound) == 0 {
 			continue
 		}
 		chChannelPath := hubPath + "/" + ch.Name
 		chSubKey := binding.GenerateRouteKey("SUBSCRIBE", chChannelPath, vhost)
+		chUnsubKey := binding.GenerateRouteKey("UNSUBSCRIBE", chChannelPath, vhost)
 		chInKey := binding.GenerateRouteKey("SUB", chChannelPath, vhost)
 		chOutKey := binding.GenerateRouteKey("DELIVER", chChannelPath, vhost)
 		if err = r.buildChain(chSubKey, ch.Policies.Subscribe); err != nil {
-			return "", "", "", nil, err
+			return "", "", "", "", nil, err
+		}
+		if err = r.buildChain(chUnsubKey, ch.Policies.Unsubscribe); err != nil {
+			return "", "", "", "", nil, err
 		}
 		if err = r.buildChain(chInKey, ch.Policies.Inbound); err != nil {
-			return "", "", "", nil, err
+			return "", "", "", "", nil, err
 		}
 		if err = r.buildChain(chOutKey, ch.Policies.Outbound); err != nil {
-			return "", "", "", nil, err
+			return "", "", "", "", nil, err
 		}
 		channelChainKeys[ch.Name] = hub.ChannelChainKeySet{
-			SubscribeChainKey: chSubKey,
-			InboundChainKey:   chInKey,
-			OutboundChainKey:  chOutKey,
+			SubscribeChainKey:   chSubKey,
+			UnsubscribeChainKey: chUnsubKey,
+			InboundChainKey:     chInKey,
+			OutboundChainKey:    chOutKey,
 		}
 	}
 
-	return subscribeKey, inboundKey, outboundKey, channelChainKeys, nil
+	return subscribeKey, unsubscribeKey, inboundKey, outboundKey, channelChainKeys, nil
 }
 
 // ChannelPolicyChains holds policy chain keys for a single channel.
@@ -957,6 +968,9 @@ func (r *Runtime) unregisterBindingChains(b *hub.ChannelBinding) {
 	if b.SubscribeChainKey != "" {
 		r.engine.UnregisterChain(b.SubscribeChainKey)
 	}
+	if b.UnsubscribeChainKey != "" {
+		r.engine.UnregisterChain(b.UnsubscribeChainKey)
+	}
 	if b.InboundChainKey != "" {
 		r.engine.UnregisterChain(b.InboundChainKey)
 	}
@@ -966,6 +980,9 @@ func (r *Runtime) unregisterBindingChains(b *hub.ChannelBinding) {
 	for _, chKeys := range b.ChannelChainKeys {
 		if chKeys.SubscribeChainKey != "" {
 			r.engine.UnregisterChain(chKeys.SubscribeChainKey)
+		}
+		if chKeys.UnsubscribeChainKey != "" {
+			r.engine.UnregisterChain(chKeys.UnsubscribeChainKey)
 		}
 		if chKeys.InboundChainKey != "" {
 			r.engine.UnregisterChain(chKeys.InboundChainKey)
@@ -991,24 +1008,25 @@ func (r *Runtime) AddWebSubApiBinding(wsb binding.WebSubApiBinding) error {
 	internalSubTopic := r.webSubSubscriptionSyncTopic(wsb.Name, wsb.Version)
 
 	// Build policy chains for the API.
-	subKey, inKey, outKey, chChainKeys, err := r.buildWebSubApiPolicyChains(wsb, vhost)
+	subKey, unsubKey, inKey, outKey, chChainKeys, err := r.buildWebSubApiPolicyChains(wsb, vhost)
 	if err != nil {
 		r.mu.Unlock()
 		return fmt.Errorf("failed to build chains for WebSubApi %q: %w", wsb.Name, err)
 	}
 
 	r.hub.RegisterBinding(hub.ChannelBinding{
-		APIID:             wsb.APIID,
-		Name:              wsb.Name,
-		Mode:              "websub",
-		Context:           wsb.Context,
-		Version:           wsb.Version,
-		Vhost:             vhost,
-		SubscribeChainKey: subKey,
-		InboundChainKey:   inKey,
-		OutboundChainKey:  outKey,
-		Channels:          channels,
-		ChannelChainKeys:  chChainKeys,
+		APIID:               wsb.APIID,
+		Name:                wsb.Name,
+		Mode:                "websub",
+		Context:             wsb.Context,
+		Version:             wsb.Version,
+		Vhost:               vhost,
+		SubscribeChainKey:   subKey,
+		UnsubscribeChainKey: unsubKey,
+		InboundChainKey:     inKey,
+		OutboundChainKey:    outKey,
+		Channels:            channels,
+		ChannelChainKeys:    chChainKeys,
 	})
 
 	// Create broker-driver.

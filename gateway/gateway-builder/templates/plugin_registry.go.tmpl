@@ -73,7 +73,6 @@ func init() {
 		}{{ else }}nil{{ end }},
 	}
 	bridgeFactory_{{ .ImportAlias }} := &pythonbridge.BridgeFactory{
-		StreamManager: pythonbridge.GetStreamManager(),
 		PolicyName:    "{{ .Name }}",
 		PolicyVersion: "{{ .Version }}",
 	}

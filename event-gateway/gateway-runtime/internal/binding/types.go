@@ -122,10 +122,11 @@ type BrokerDriverSpec struct {
 	Properties map[string]interface{} `yaml:"properties"` // Alternative config field for WebBrokerApi
 }
 
-// PolicyBindings holds subscribe, inbound, and outbound policy configurations.
-//   - Subscribe: applied when a client subscribes or unsubscribes at the hub.
-//   - Inbound:   applied when an event is published via the webhook receiver (data ingress).
-//   - Outbound:  applied when an event is delivered to a subscriber callback (data delivery).
+// PolicyBindings holds subscribe, unsubscribe, inbound, and outbound policy configurations.
+//   - Subscribe:   applied when a client subscribes at the hub (on_subscription).
+//   - Unsubscribe: applied when a client unsubscribes at the hub (on_unsubscription).
+//   - Inbound:     applied when an event is published via the webhook receiver (on_message_received).
+//   - Outbound:    applied when an event is delivered to a subscriber callback (on_message_delivery).
 type PolicyBindings struct {
 	Subscribe   []PolicyRef `yaml:"subscribe"`
 	Unsubscribe []PolicyRef `yaml:"unsubscribe"`

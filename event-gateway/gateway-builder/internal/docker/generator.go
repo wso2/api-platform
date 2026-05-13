@@ -102,13 +102,18 @@ func (g *DockerfileGenerator) Generate() (*GenerateResult, error) {
 }
 
 func copyFile(src, dst string) error {
+	srcInfo, err := os.Stat(src) //nolint:gosec
+	if err != nil {
+		return err
+	}
+
 	in, err := os.Open(src) //nolint:gosec
 	if err != nil {
 		return err
 	}
 	defer in.Close()
 
-	out, err := os.Create(dst) //nolint:gosec
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, srcInfo.Mode()) //nolint:gosec
 	if err != nil {
 		return err
 	}

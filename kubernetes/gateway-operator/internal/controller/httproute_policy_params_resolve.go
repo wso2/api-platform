@@ -53,21 +53,25 @@ const (
 // resolveAPIConfigPolicyParamsValueFrom replaces policy params `valueFrom` objects with
 // string values read from either a Secret or a ConfigMap, so gateway-controller receives
 // the same JSON shape as inline RestApi policies.
-func resolveAPIConfigPolicyParamsValueFrom(ctx context.Context, c client.Client, routeNS string, spec *apiv1.APIConfigData, log *zap.Logger) error {
+func resolveAPIConfigPolicyParamsValueFrom(ctx context.Context, c client.Client, routeNS string, spec *apiv1.APIConfigData, log *zap.Logger) (string, error) {
+	fp, err := computeRestApiPolicyValueFromFingerprint(ctx, c, routeNS, spec)
+	if err != nil {
+		return "", err
+	}
 	for i := range spec.Policies {
 		if err := resolvePolicyParamsValueFrom(ctx, c, routeNS, &spec.Policies[i], "api-level", log); err != nil {
-			return err
+			return "", err
 		}
 	}
 	for i := range spec.Operations {
 		for j := range spec.Operations[i].Policies {
 			scope := string(spec.Operations[i].Method) + " " + spec.Operations[i].Path
 			if err := resolvePolicyParamsValueFrom(ctx, c, routeNS, &spec.Operations[i].Policies[j], scope, log); err != nil {
-				return err
+				return "", err
 			}
 		}
 	}
-	return nil
+	return fp, nil
 }
 
 func resolvePolicyParamsValueFrom(ctx context.Context, c client.Client, defaultNS string, p *apiv1.Policy, scope string, log *zap.Logger) error {

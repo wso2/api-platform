@@ -713,15 +713,6 @@ type ExtractionIdentifier struct {
 // ExtractionIdentifierLocation Where to find the token information
 type ExtractionIdentifierLocation string
 
-// HubChannel A subscribable topic channel within the WebSub hub.
-type HubChannel struct {
-	// Name Channel name or topic identifier relative to API context.
-	Name string `json:"name" yaml:"name"`
-
-	// Policies List of policies applied only to this channel (e.g., rbac)
-	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
-}
-
 // LLMAccessControl defines model for LLMAccessControl.
 type LLMAccessControl struct {
 	// Exceptions Path exceptions to the access control mode
@@ -1780,34 +1771,49 @@ type WebSubAPIRequestApiVersion string
 // WebSubAPIRequestKind API type
 type WebSubAPIRequestKind string
 
-// WebSubDelivery Delivery configuration for the WebSub API - handles outbound event delivery to subscribers.
-type WebSubDelivery struct {
-	// Policies List of policies applied when delivering events to subscriber callback URLs (e.g., hmac-signature-validation)
-	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+// WebSubAllChannelPolicies Policies applied to all channels, organized by event type.
+type WebSubAllChannelPolicies struct {
+	// OnMessageDelivery Policies applied when delivering a message to a subscriber callback URL (e.g., hmac-sign-messages)
+	OnMessageDelivery *[]Policy `json:"on_message_delivery,omitempty" yaml:"on_message_delivery,omitempty"`
+
+	// OnMessageReceived Policies applied when a message is received from the publisher via webhook (e.g., hmac-signature-validation)
+	OnMessageReceived *[]Policy `json:"on_message_received,omitempty" yaml:"on_message_received,omitempty"`
+
+	// OnSubscription Policies applied when a client subscribes to a channel (e.g., api-key-auth)
+	OnSubscription *[]Policy `json:"on_subscription,omitempty" yaml:"on_subscription,omitempty"`
+
+	// OnUnsubscription Policies applied when a client unsubscribes from a channel (e.g., api-key-auth)
+	OnUnsubscription *[]Policy `json:"on_unsubscription,omitempty" yaml:"on_unsubscription,omitempty"`
 }
 
-// WebSubHub Hub configuration for the WebSub API - handles subscriber management and event fan-out.
-type WebSubHub struct {
-	// Channels List of topic channels available for subscription
-	Channels []HubChannel `json:"channels" yaml:"channels"`
-
-	// Policies List of policies applied at the hub level (e.g., api-key-auth for subscribers)
-	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+// WebSubChannel A single channel definition with optional per-channel policy overrides.
+type WebSubChannel struct {
+	// Policies Policies applied to a specific channel, organized by event type.
+	Policies *WebSubChannelPolicies `json:"policies,omitempty" yaml:"policies,omitempty"`
 }
 
-// WebSubReceiver Receiver configuration for the WebSub API - handles inbound event publishing from publishers.
-type WebSubReceiver struct {
-	// Policies List of policies applied to inbound webhook requests (e.g., hmac-signature-validation)
-	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+// WebSubChannelPolicies Policies applied to a specific channel, organized by event type.
+type WebSubChannelPolicies struct {
+	// OnMessageDelivery Policies applied when delivering a message for this channel
+	OnMessageDelivery *[]Policy `json:"on_message_delivery,omitempty" yaml:"on_message_delivery,omitempty"`
+
+	// OnMessageReceived Policies applied when a message is received for this channel
+	OnMessageReceived *[]Policy `json:"on_message_received,omitempty" yaml:"on_message_received,omitempty"`
+
+	// OnSubscription Policies applied when a client subscribes to this channel (e.g., rbac)
+	OnSubscription *[]Policy `json:"on_subscription,omitempty" yaml:"on_subscription,omitempty"`
+
+	// OnUnsubscription Policies applied when a client unsubscribes from this channel
+	OnUnsubscription *[]Policy `json:"on_unsubscription,omitempty" yaml:"on_unsubscription,omitempty"`
 }
 
 // WebhookAPIData defines model for WebhookAPIData.
 type WebhookAPIData struct {
+	// Channels Per-channel configuration keyed by channel name. Each key is a channel name and defines policies applied only to that channel.
+	Channels *map[string]WebSubChannel `json:"channels,omitempty" yaml:"channels,omitempty"`
+
 	// Context Base path for all API routes (must start with /, no trailing slash)
 	Context string `json:"context" yaml:"context"`
-
-	// Delivery Delivery configuration for the WebSub API - handles outbound event delivery to subscribers.
-	Delivery *WebSubDelivery `json:"delivery,omitempty" yaml:"delivery,omitempty"`
 
 	// DeploymentState Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.
 	DeploymentState *WebhookAPIDataDeploymentState `json:"deploymentState,omitempty" yaml:"deploymentState,omitempty"`
@@ -1815,11 +1821,8 @@ type WebhookAPIData struct {
 	// DisplayName Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
 	DisplayName string `json:"displayName" yaml:"displayName"`
 
-	// Hub Hub configuration for the WebSub API - handles subscriber management and event fan-out.
-	Hub WebSubHub `json:"hub" yaml:"hub"`
-
-	// Receiver Receiver configuration for the WebSub API - handles inbound event publishing from publishers.
-	Receiver *WebSubReceiver `json:"receiver,omitempty" yaml:"receiver,omitempty"`
+	// Policies Policies applied to all channels, organized by event type.
+	Policies *WebSubAllChannelPolicies `json:"policies,omitempty" yaml:"policies,omitempty"`
 
 	// Version Semantic version of the API
 	Version string `json:"version" yaml:"version"`

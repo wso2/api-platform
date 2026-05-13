@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: demo-management-secrets-apim
+  namespace: apigateway-demo-apim
+type: Opaque
+stringData:
+  provider-token: demo-provider-token-apim
+  managed-secret-value: demo-managed-secret-value-apim
+  cert.pem: |
+    -----BEGIN CERTIFICATE-----
+    MIIBszCCAVmgAwIBAgIUTk9ULVJFQUwtQ0VSVC1GT1ItREVNTy1PTkxZMAoGCCqGSM49BAMC
+    MBMxETAPBgNVBAMMCGRlbW8tY2VydDAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBa
+    MBMxETAPBgNVBAMMCGRlbW8tY2VydDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABDemoapim
+    KcG9N4j7r5hP1h3uQhK6B0fVQjvYq1tV8u0sQY4z6Xv5xX8b4n5kL7u2m9vH0r6mQ8t33N5R8
+    tP9e0qjUzBRMB0GA1UdDgQWBBQdemoapimonlydemoapimonlydemoapimonlydemooajAf
+    BgNVHSMEGDAWgBQdemoapimonlydemoapimonlydemoapimonlydemooaMA8GA1UdEwEB/wQF
+    MAMBAf8wCgYIKoZIzj0EAwIDSAAwRQIhANOTREALCERTFORDEMOONLYNOTFORPRODUCTION
+    AiA5NOTREALCERTFORDEMOONLYNOTFORPRODUCTION=
+    -----END CERTIFICATE-----
+  subscription-token: demo-apim-subscription-token-1234567890
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: ManagedSecret
+metadata:
+  name: demo-managed-secret-apim
+  namespace: apigateway-demo-apim
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd-apim
+spec:
+  displayName: demo-managed-secret-apim
+  description: demo managed secret for APIM CRD flow
+  value:
+    valueFrom:
+        name: demo-management-secrets-apim
+        key: managed-secret-value

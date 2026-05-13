@@ -160,6 +160,9 @@ func (m *testMockDB) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 }
 func (m *testMockDB) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) { return nil, nil }
 func (m *testMockDB) GetAllAPIKeys() ([]*models.APIKey, error)               { return nil, nil }
+func (m *testMockDB) GetAPIKeysByApplicationUUID(applicationUUID string) ([]*models.APIKey, error) {
+	return nil, nil
+}
 func (m *testMockDB) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey, error) {
 	return nil, storage.ErrNotFound
 }
@@ -197,8 +200,8 @@ func (m *testMockDB) ListActiveSubscriptions() ([]*models.Subscription, error)  
 func (m *testMockDB) UpdateSubscription(sub *models.Subscription) error               { return nil }
 func (m *testMockDB) DeleteSubscription(id, gatewayID string) error                   { return nil }
 func (m *testMockDB) DeleteSubscriptionsForAPINotIn(apiID string, ids []string) error { return nil }
-func (m *testMockDB) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) error {
-	return nil
+func (m *testMockDB) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) ([]string, error) {
+	return nil, nil
 }
 
 func (m *testMockDB) SaveCertificate(cert *models.StoredCertificate) error { return nil }

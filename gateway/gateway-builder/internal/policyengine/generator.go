@@ -362,6 +362,14 @@ func copyDir(src, dst string) error {
 			return err
 		}
 
+		// Skip common virtual environment and cache directories
+		if info.IsDir() && path != src {
+			name := info.Name()
+			if name == ".venv" || name == "venv" || name == "env" || name == "__pycache__" || name == ".git" {
+				return filepath.SkipDir
+			}
+		}
+
 		dstPath := filepath.Join(dst, relPath)
 
 		if info.IsDir() {

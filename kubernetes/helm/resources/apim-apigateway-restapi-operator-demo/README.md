@@ -36,6 +36,34 @@ kubectl apply -f 03-backend.yaml
 kubectl apply -f 04-restapi.yaml
 ```
 
+To execute management flows separately, apply split manifests instead:
+
+```bash
+# Shared prerequisites (Secret + ManagedSecret)
+kubectl apply -f 05a-management-prerequisites.yaml
+
+# Prism + nginx HTTPS mock for LLM upstream (see "LLM upstream mock" in Verification)
+kubectl apply -f 05b0-mock-openapi-https.yaml
+
+# LLM flow
+kubectl apply -f 05b-llm-resources.yaml
+
+# MCP backend service (required by MCP flow; IT parity URL http://mcp-server-backend:3001)
+kubectl apply -f 05c0-mcp-server-backend.yaml
+
+# MCP flow
+kubectl apply -f 05c-mcp-resources.yaml
+
+# Certificate flow
+kubectl apply -f 05e-certificate-resources.yaml
+
+# ApiKey flow
+kubectl apply -f 05f0-apikey-resources.yaml
+
+# SubscriptionPlan + Subscription flow
+kubectl apply -f 05f-subscription-resources.yaml
+```
+
 ## Verification
 
 1. Check the `APIGateway` status:
@@ -57,7 +85,26 @@ kubectl get deploy,svc,pods -n apigateway-demo-apim
 kubectl get restapi hello-normal-api-apim -n apigateway-demo-apim -o yaml
 ```
 
-4. Invoke via gateway-runtime Service (HTTPS may be enabled in your gateway values; use `-k` if needed):
+4. Check management-resource CR status:
+
+```bash
+kubectl get llmprovidertemplate,llmprovider,llmproxy,mcp,managedsecret,certificate,apikey,subscriptionplan,subscription -n apigateway-demo-apim
+```
+
+### LLM upstream mock (integration-test parity)
+
+Integration tests define **`http://mock-openapi:4010/openai/v1`** in **`gateway/it/docker-compose.test.yaml`** as **`mock-openapi`** (Prism + `gateway/it/mock-api` on **4010**) fronted by **`mock-openapi-https`** (nginx TLS on **9443**→**8443**, see `gateway/it/mock-api/nginx.conf`).
+
+Apply **`05b0-mock-openapi-https.yaml`** in **`apigateway-demo-apim`** before **`05b-llm-resources.yaml`**. The mock **Service** uses port **9449** (nginx still listens on container **8443**) to avoid clashes with Rancher on **9443**. The companion standard demo uses the same manifest shape under **`apigateway-demo`**; optional full OpenAPI tree image: **`kubernetes/helm/resources/apigateway-restapi-operator-demo/llm-mock-openapi-it/Dockerfile`**.
+
+```bash
+kubectl run -n apigateway-demo-apim curl-mock --rm -it --restart=Never --image=curlimages/curl:8.5.0 -- \
+  curl -sk https://mock-openapi-https:9449/health
+```
+
+**`05b-llm-resources.yaml`** uses **`openai-test`**, **`http://mock-openapi:4010/openai/v1`**, and **`Bearer sk-test-key`** aligned with **`llm-provider.feature`** / **`llm-proxies.feature`** (port differs from compose IT **9443**). The operator retries when the template or provider is not yet on the gateway and re-queues dependents when templates or providers change, so one **`kubectl apply -f 05b-llm-resources.yaml`** is enough.
+
+5. Invoke via gateway-runtime Service (HTTPS may be enabled in your gateway values; use `-k` if needed):
 
 ```bash
 curl --request GET \

@@ -40,7 +40,6 @@ type Options struct {
 	DeliveryConcurrency        int
 	RuntimeID                  string
 	ConsumerGroupPrefix        string
-	Brokers                    []string
 }
 
 // WebSubReceiver is a multi-channel WebSub receiver.
@@ -84,7 +83,7 @@ func NewReceiver(cfg connectors.ReceiverConfig, opts Options) (connectors.Receiv
 
 	// Create consumer manager for per-callback consumers.
 	consumerMgr := NewConsumerManager(
-		opts.Brokers,
+		cfg.BrokerDriver,
 		opts.ConsumerGroupPrefix,
 		cfg.Processor,
 		cfg.Channel.Name,
@@ -93,12 +92,8 @@ func NewReceiver(cfg connectors.ReceiverConfig, opts Options) (connectors.Receiv
 
 	// Create sync producer for subscription state.
 	var syncProducer *subscription.SyncProducer
-	if len(opts.Brokers) > 0 && cfg.Channel.InternalSubTopic != "" {
-		var err error
-		syncProducer, err = subscription.NewSyncProducer(opts.Brokers, opts.RuntimeID, cfg.Channel.InternalSubTopic)
-		if err != nil {
-			slog.Warn("Failed to create sync producer, subscription sync disabled", "error", err)
-		}
+	if cfg.Channel.InternalSubTopic != "" {
+		syncProducer = subscription.NewSyncProducer(cfg.BrokerDriver, opts.RuntimeID, cfg.Channel.InternalSubTopic)
 	}
 
 	verificationTimeout := time.Duration(opts.VerificationTimeoutSeconds) * time.Second
@@ -142,9 +137,6 @@ func (e *WebSubReceiver) Start(ctx context.Context) error {
 	var topicsToEnsure []string
 	for _, kafkaTopic := range e.channel.Channels {
 		topicsToEnsure = append(topicsToEnsure, kafkaTopic)
-	}
-	if e.channel.InternalSubTopic != "" {
-		topicsToEnsure = append(topicsToEnsure, e.channel.InternalSubTopic)
 	}
 
 	if len(topicsToEnsure) > 0 {
@@ -190,11 +182,11 @@ func (e *WebSubReceiver) Stop(ctx context.Context) error {
 // reconcileSubscriptions replays subscriptions from the Kafka sync topic and
 // restores any active subscriptions whose channel names belong to this receiver.
 func (e *WebSubReceiver) reconcileSubscriptions(ctx context.Context) {
-	if len(e.opts.Brokers) == 0 {
+	if e.channel.InternalSubTopic == "" {
 		return
 	}
 
-	reconciler := subscription.NewReconciler(e.opts.Brokers, e.store, e.opts.RuntimeID, e.channel.InternalSubTopic)
+	reconciler := subscription.NewReconciler(e.brokerDriver, e.store, e.opts.RuntimeID, e.channel.InternalSubTopic)
 
 	// Build a set of channel names this receiver owns.
 	ownedChannels := make(map[string]bool, len(e.channel.Channels))

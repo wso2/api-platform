@@ -81,6 +81,7 @@ type PolicyEngine struct {
 	XDS        XDSConfig        `koanf:"xds"`
 	FileConfig FileConfigConfig `koanf:"file_config"`
 	Logging    LoggingConfig    `koanf:"logging"`
+	PythonExecutor PythonExecutorConfig `koanf:"python_executor"`
 	// Tracing holds OpenTelemetry exporter configuration
 	TracingServiceName string `koanf:"tracing_service_name"`
 
@@ -133,6 +134,28 @@ type ServerConfig struct {
 
 	// ExtProcPort is the port for the ext_proc gRPC server (TCP mode only)
 	ExtProcPort int `koanf:"extproc_port"`
+}
+
+// PythonExecutorConfig holds configuration for the Python executor bridge.
+// The Policy Engine uses this to connect to the Python executor process.
+type PythonExecutorConfig struct {
+	Server  PythonExecutorServerConfig `koanf:"server"`
+	Timeout time.Duration              `koanf:"timeout"`
+}
+
+// PythonExecutorServerConfig holds Python executor connection configuration
+type PythonExecutorServerConfig struct {
+	// Mode is the connection mode: "uds" (default) or "tcp"
+	Mode string `koanf:"mode"`
+
+	// Port is the TCP port for the Python executor gRPC server (TCP mode only)
+	Port int `koanf:"port"`
+
+	// Host is the TCP host for the Python executor (TCP mode only, default: "localhost")
+	Host string `koanf:"host"`
+
+	// Path is the Unix Domain Socket path (UDS mode only)
+	Path string `koanf:"path"`
 }
 
 // AdminConfig holds admin HTTP server configuration
@@ -278,7 +301,7 @@ func defaultConfig() *Config {
 	return &Config{
 		PolicyEngine: PolicyEngine{
 			Server: ServerConfig{
-				Mode:        "", // Empty defaults to "uds"
+				Mode:        "",
 				ExtProcPort: 9001,
 			},
 			Admin: AdminConfig{
@@ -309,6 +332,14 @@ func defaultConfig() *Config {
 				Level:  "info",
 				Format: "text",
 			},
+			PythonExecutor: PythonExecutorConfig{
+				Server: PythonExecutorServerConfig{
+					Mode: "",
+					Port: 9010,
+					Host: "localhost",
+				},
+				Timeout: 30 * time.Second,
+			},
 			TracingServiceName: "policy-engine",
 		},
 		Analytics: AnalyticsConfig{
@@ -331,7 +362,7 @@ func defaultConfig() *Config {
 				"grpc_request_timeout":  20000000000,
 			},
 			AccessLogsServiceCfg: AccessLogsServiceConfig{
-				Mode:                  "", // Empty defaults to "uds"
+				Mode:                  "",
 				ServerPort:            18090,
 				ShutdownTimeout:       600 * time.Second,
 				PublicKeyPath:         "",
@@ -356,17 +387,32 @@ func defaultConfig() *Config {
 
 // Validate validates the configuration
 func (c *Config) Validate() error {
-	// Validate connection mode (same pattern as gateway-controller)
+	// Validate policy engine connection mode
 	switch c.PolicyEngine.Server.Mode {
 	case "uds", "":
-		// UDS mode (default) - socket path is a constant, no additional validation needed
 	case "tcp":
-		// TCP mode - validate port
 		if c.PolicyEngine.Server.ExtProcPort <= 0 || c.PolicyEngine.Server.ExtProcPort > 65535 {
 			return fmt.Errorf("invalid extproc_port: %d (must be 1-65535)", c.PolicyEngine.Server.ExtProcPort)
 		}
 	default:
 		return fmt.Errorf("server.mode must be 'uds' or 'tcp', got: %s", c.PolicyEngine.Server.Mode)
+	}
+
+	// Validate python executor config
+	switch c.PolicyEngine.PythonExecutor.Server.Mode {
+	case "uds", "":
+	case "tcp":
+		if c.PolicyEngine.PythonExecutor.Server.Host == "" {
+			return fmt.Errorf("invalid policy_engine.python_executor.server.host: must be non-empty when mode = 'tcp'")
+		}
+		if c.PolicyEngine.PythonExecutor.Server.Port <= 0 || c.PolicyEngine.PythonExecutor.Server.Port > 65535 {
+			return fmt.Errorf("invalid policy_engine.python_executor.server.port: %d (must be 1-65535)", c.PolicyEngine.PythonExecutor.Server.Port)
+		}
+	default:
+		return fmt.Errorf("policy_engine.python_executor.server.mode must be 'uds' or 'tcp', got: %s", c.PolicyEngine.PythonExecutor.Server.Mode)
+	}
+	if c.PolicyEngine.PythonExecutor.Timeout <= 0 {
+		return fmt.Errorf("policy_engine.python_executor.timeout must be positive")
 	}
 
 	// Validate admin config

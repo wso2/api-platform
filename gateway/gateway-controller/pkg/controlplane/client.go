@@ -369,12 +369,19 @@ func (c *Client) Connect() error {
 				slog.Int("status_code", resp.StatusCode),
 			)
 
-			// Handle authentication failures
+			// Handle authentication failures with extra troubleshooting hint.
 			if resp.StatusCode == http.StatusUnauthorized {
 				c.logger.Error("Authentication failed - invalid or revoked token",
 					slog.String("troubleshooting", "Check GATEWAY_REGISTRATION_TOKEN environment variable"),
 				)
-				return fmt.Errorf("authentication failed: %w", err)
+			}
+
+			// Permanent (non-retryable) failures: bad credentials, wrong gateway
+			// identity, or version mismatch. Surface via wrapped sentinel so the
+			// connection loop can exit instead of looping forever.
+			if isPermanentControlPlaneStatus(resp.StatusCode) {
+				return fmt.Errorf("%w: websocket dial returned %d: %v",
+					errPermanentControlPlaneFailure, resp.StatusCode, err)
 			}
 		} else {
 			c.logger.Error("WebSocket connection failed",
@@ -1103,6 +1110,10 @@ func (c *Client) connectionLoop() {
 		// Attempt connection
 		err := c.Connect()
 		if err != nil {
+			if errors.Is(err, errPermanentControlPlaneFailure) {
+				c.exitOnPermanentFailure("websocket connect rejected by control plane", err)
+			}
+
 			c.logger.Warn("Connection failed, will retry",
 				slog.Any("error", err),
 				slog.Duration("retry_delay", c.state.NextRetryDelay),
@@ -3406,26 +3417,6 @@ func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
 		slog.String("application_type", evt.Payload.ApplicationType),
 	)
 
-	affectedAPIKeyUUIDs := make(map[string]struct{})
-	apiKeysByUUID := make(map[string]*models.APIKey)
-	if c.apiKeyXDSManager != nil {
-		apiKeys, err := c.db.GetAllAPIKeys()
-		if err != nil {
-			logger.Error("Failed to load API keys for xDS refresh after application mapping update", slog.Any("error", err))
-		} else {
-			for _, apiKey := range apiKeys {
-				if apiKey == nil || apiKey.UUID == "" {
-					continue
-				}
-
-				apiKeysByUUID[apiKey.UUID] = apiKey
-				if apiKey.ApplicationID == evt.Payload.ApplicationUuid {
-					affectedAPIKeyUUIDs[apiKey.UUID] = struct{}{}
-				}
-			}
-		}
-	}
-
 	resolvedMappings := make([]*models.ApplicationAPIKeyMapping, 0, len(evt.Payload.Mappings))
 
 	for _, mapping := range evt.Payload.Mappings {
@@ -3456,7 +3447,6 @@ func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
 			ApplicationUUID: evt.Payload.ApplicationUuid,
 			APIKeyID:        apiKey.UUID,
 		})
-		affectedAPIKeyUUIDs[apiKey.UUID] = struct{}{}
 	}
 
 	application := &models.StoredApplication{
@@ -3469,52 +3459,6 @@ func (c *Client) handleApplicationUpdatedEvent(event map[string]interface{}) {
 	if err := resourceService.ReplaceApplicationAPIKeyMappings(application, resolvedMappings, evt.CorrelationID, logger); err != nil {
 		logger.Error("Failed to persist application key mappings", slog.Any("error", err))
 		return
-	}
-
-	if c.apiKeyXDSManager != nil {
-		cfgByArtifactUUID := make(map[string]*models.StoredConfig)
-		missingCfgArtifactUUIDs := make(map[string]error)
-
-		for apiKeyUUID := range affectedAPIKeyUUIDs {
-			apiKey := apiKeysByUUID[apiKeyUUID]
-			if apiKey == nil {
-				continue
-			}
-
-			cfg := cfgByArtifactUUID[apiKey.ArtifactUUID]
-			if cfg == nil {
-				if cfgErr, missing := missingCfgArtifactUUIDs[apiKey.ArtifactUUID]; missing {
-					logger.Debug("Skipping API key xDS refresh due to missing API config",
-						slog.String("api_key_uuid", apiKey.UUID),
-						slog.String("artifact_uuid", apiKey.ArtifactUUID),
-						slog.Any("error", cfgErr),
-					)
-					continue
-				}
-
-				cfgLoaded, cfgErr := c.db.GetConfig(apiKey.ArtifactUUID)
-				if cfgErr != nil {
-					missingCfgArtifactUUIDs[apiKey.ArtifactUUID] = cfgErr
-					logger.Debug("Skipping API key xDS refresh due to missing API config",
-						slog.String("api_key_uuid", apiKey.UUID),
-						slog.String("artifact_uuid", apiKey.ArtifactUUID),
-						slog.Any("error", cfgErr),
-					)
-					continue
-				}
-
-				cfg = cfgLoaded
-				cfgByArtifactUUID[apiKey.ArtifactUUID] = cfgLoaded
-			}
-
-			if err := c.apiKeyXDSManager.StoreAPIKey(apiKey.ArtifactUUID, cfg.DisplayName, cfg.Version, apiKey, evt.CorrelationID); err != nil {
-				logger.Error("Failed to refresh API key xDS state after application mapping update",
-					slog.String("api_key_uuid", apiKey.UUID),
-					slog.String("artifact_uuid", apiKey.ArtifactUUID),
-					slog.Any("error", err),
-				)
-			}
-		}
 	}
 
 	logger.Info("Successfully processed application updated event", slog.Int("mapping_count", len(resolvedMappings)))
@@ -3932,9 +3876,10 @@ func (c *Client) pushGatewayManifest(gatewayID string, policies []models.PolicyD
 	url := c.getRestAPIBaseURL() + "/gateways/" + gatewayID + "/manifest"
 
 	body := struct {
-		Version  string                    `json:"version,omitempty"`
-		Policies []models.PolicyDefinition `json:"policies"`
-	}{Version: version.Version, Policies: policies}
+		Version           string                    `json:"version,omitempty"`
+		FunctionalityType string                    `json:"functionalityType,omitempty"`
+		Policies          []models.PolicyDefinition `json:"policies"`
+	}{Version: version.Version, FunctionalityType: version.FunctionalityType, Policies: policies}
 
 	jsonData, err := json.Marshal(body)
 	if err != nil {
@@ -3965,6 +3910,10 @@ func (c *Client) pushGatewayManifest(gatewayID string, policies []models.PolicyD
 
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
+		if isPermanentControlPlaneStatus(resp.StatusCode) {
+			return fmt.Errorf("%w: gateway manifest push returned %d: %s",
+				errPermanentControlPlaneFailure, resp.StatusCode, string(bodyBytes))
+		}
 		return fmt.Errorf("gateway manifest push failed with status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 	return nil
@@ -4000,6 +3949,11 @@ func (c *Client) pushGatewayManifestOnConnect(gatewayID string) {
 		pushErr = c.pushGatewayManifest(gatewayID, policies)
 		if pushErr == nil {
 			break
+		}
+		// Permanent failures (e.g. 409 version mismatch) cannot be retried away —
+		// exit so the misconfiguration is surfaced via the container restart status.
+		if errors.Is(pushErr, errPermanentControlPlaneFailure) {
+			c.exitOnPermanentFailure("gateway manifest rejected by control plane", pushErr)
 		}
 		c.logger.Warn("Failed to push gateway manifest, retrying",
 			slog.String("gateway_id", gatewayID),

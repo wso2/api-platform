@@ -1,0 +1,47 @@
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: ApiKey
+metadata:
+  name: demo-restapi-apikey-apim
+  namespace: apigateway-demo-apim
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd-apim
+spec:
+  parentRef:
+    kind: RestApi
+    name: hello-normal-api-apim
+  displayName: demo key for apim rest api parent
+  expiresIn:
+    duration: 30
+    unit: days
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: ApiKey
+metadata:
+  name: demo-llmprovider-apikey-apim
+  namespace: apigateway-demo-apim
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd-apim
+spec:
+  parentRef:
+    kind: LlmProvider
+    name: demo-llm-provider-apim
+  displayName: demo key for apim llm provider parent
+  expiresIn:
+    duration: 30
+    unit: days
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: ApiKey
+metadata:
+  name: demo-llmproxy-apikey-apim
+  namespace: apigateway-demo-apim
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd-apim
+spec:
+  parentRef:
+    kind: LlmProxy
+    name: demo-llm-proxy-apim
+  displayName: demo key for apim llm proxy parent
+  expiresIn:
+    duration: 30
+    unit: days

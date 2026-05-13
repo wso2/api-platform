@@ -1,0 +1,366 @@
+# --------------------------------------------------------------------
+# OpenAI-compatible HTTP mock + HTTPS terminator (composition matches
+# gateway/it/docker-compose.test.yaml: prism `mock-openapi` + nginx
+# `mock-openapi-https`). Prism serves /health and /openai/v1/chat/completions on
+# :4010 using a bundled spec aligned with gateway/it/mock-api/paths/openai/chat.yaml.
+# Nginx listens on 8443; Service exposes port 9449 (avoids clashes with Rancher on 9443).
+# LlmProvider URL:
+#   https://mock-openapi-https:9449/openai/v1
+#
+# Integration tests compose file: gateway/it/docker-compose.test.yaml — services
+# `mock-openapi` (Stoplight Prism on :4010 + ./mock-api) and `mock-openapi-https`
+# (nginx:1.25 TLS; IT compose publishes host 9443→8443 — this demo uses Service 9449→8443).
+#
+# This manifest is Kubernetes-native Prism + nginx with a bundled OpenAPI and a
+# small demo TLS Secret (SANs include both demo namespaces).
+#
+# Deploy in the same namespace as gateway workloads (typically apigateway-demo).
+# Apply before 05b-llm-resources.yaml. See README "LLM upstream mock".
+# --------------------------------------------------------------------
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mock-openapi-https-tls
+  namespace: apigateway-demo
+  labels:
+    app.kubernetes.io/name: mock-openapi-https
+type: kubernetes.io/tls
+stringData:
+  tls.crt: |
+    -----BEGIN CERTIFICATE-----
+    MIIECjCCAvKgAwIBAgIUGCH+aywaI2afToRcEzQs8wNN91kwDQYJKoZIhvcNAQEL
+    BQAwHTEbMBkGA1UEAwwSbW9jay1vcGVuYXBpLWh0dHBzMB4XDTI2MDQzMDA1MDY1
+    OFoXDTM2MDQyNzA1MDY1OFowHTEbMBkGA1UEAwwSbW9jay1vcGVuYXBpLWh0dHBz
+    MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsCZJgXAJ7npBgXYMZARB
+    QLhj8fD9TrjRKZ2YhbF2etIO8Q2//wrWauxeZNB2H+2XgVdQf816u/mwBSWlSJCY
+    r4PIiJN6FvMjUFobtJuglYwiNYSx5JsOjPzAP1ZOjPlQH0UAppAaewBUInupWr03
+    OS1I1+V05hvtaCBeLLmCWO9nf4UVCDHMbtxgKyobjul3+dPhrhh7swufEncGytuH
+    y1fCdxBo69Zxv1OqpCmibsTHrOOMugoR5Ka+iSogjKRN26f6XpDcm8lqjp6FNhc9
+    JEbOqSF91dGe65ARMY3TABYDXY8P2rH/MsaR9utPp0sydALazVLnIWfxSqcdhudY
+    cQIDAQABo4IBQDCCATwwHQYDVR0OBBYEFEL7Iqyezesz6PVZX8e3FyxmHaYHMB8G
+    A1UdIwQYMBaAFEL7Iqyezesz6PVZX8e3FyxmHaYHMA8GA1UdEwEB/wQFMAMBAf8w
+    gegGA1UdEQSB4DCB3YISbW9jay1vcGVuYXBpLWh0dHBzgiJtb2NrLW9wZW5hcGkt
+    aHR0cHMuYXBpZ2F0ZXdheS1kZW1vgjRtb2NrLW9wZW5hcGktaHR0cHMuYXBpZ2F0
+    ZXdheS1kZW1vLnN2Yy5jbHVzdGVyLmxvY2Fsgidtb2NrLW9wZW5hcGktaHR0cHMu
+    YXBpZ2F0ZXdheS1kZW1vLWFwaW2COW1vY2stb3BlbmFwaS1odHRwcy5hcGlnYXRl
+    d2F5LWRlbW8tYXBpbS5zdmMuY2x1c3Rlci5sb2NhbIIJbG9jYWxob3N0MA0GCSqG
+    SIb3DQEBCwUAA4IBAQCCIgIt2Wbp2vi5qMNfFy0wP95KqMjF6JtDO/96tl2voQj0
+    ScQ2UIC5O9Uu0Ado2FT5888IT2XHY7pk9BK1OCuVchQ23Copq1z03FL3I3eSZu0P
+    PWLlpK4vz52lfLGTvy3XC5kRY3d9y6zgYSxnc9FPTDN14F4jnaqxDNH8TlGGuhPR
+    nxaTa7vHXZG/DtRSblspUQj351rhkz1HjmUSbjqnQOeMh8FlwIEc9qcrr/IK7xjl
+    lXpggGSgLLgwoXs4hXFKiROb4pPlrBMEM5sQLPoI00BRUDXHxLdZNFD2qpEpuezG
+    s6iuc9KpaPvM2jr0QBASZc8urd3asYgi/ckuWjty
+    -----END CERTIFICATE-----
+  tls.key: |
+    -----BEGIN PRIVATE KEY-----
+    MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCwJkmBcAnuekGB
+    dgxkBEFAuGPx8P1OuNEpnZiFsXZ60g7xDb//CtZq7F5k0HYf7ZeBV1B/zXq7+bAF
+    JaVIkJivg8iIk3oW8yNQWhu0m6CVjCI1hLHkmw6M/MA/Vk6M+VAfRQCmkBp7AFQi
+    e6lavTc5LUjX5XTmG+1oIF4suYJY72d/hRUIMcxu3GArKhuO6Xf50+GuGHuzC58S
+    dwbK24fLV8J3EGjr1nG/U6qkKaJuxMes44y6ChHkpr6JKiCMpE3bp/pekNybyWqO
+    noU2Fz0kRs6pIX3V0Z7rkBExjdMAFgNdjw/asf8yxpH260+nSzJ0AtrNUuchZ/FK
+    px2G51hxAgMBAAECggEABN72KuRifev3CkGtq4lblZLTvrG7i3T8YbJ4MIA9Br3u
+    yFcpPz/5OGkzXgXOsmjTRvIXaYVQ1shbh/TnymcnNblG7xHm7yIHkLYBLKAeE2yV
+    2JWEBs6L2zW1CjtUfjz5rHevwitbdBnI+dAiGX6Ae64HJOM1NZTBnp7Ag+uYUWW3
+    hREubx77gN0P4k1pxXy8Fbn2A/jk9EoNl1DfHfUVP+Kin1m6ICfVmm1gYP6NglBy
+    8mF1jR1RE6srqMt2Zve4jx57rdnys/8vSZwRnauETrE/XVYq4swnb5ek6glsYnhj
+    2W8DI53GvXc12SNGffzczaiAQI84/VtP1Gl+pnbGvQKBgQDy1hCMdOQfGdacEyyJ
+    JJLbn8KUoyv0pdOjFiN9nGsULpu7q88ifFt4z332JsNEXDx34wcvwNM4g98OEcgX
+    gBjZ0rsHeoFviR0FTJT56vwx+zkZ7zPq2ff6+nydAVW3QkYvobcUnSg+WNaNeqNO
+    ByQleMqi0X2t8g8fVEAw9ApWPQKBgQC5sskK6p1LmfLWXu6fiAmdBz82PQyIlF51
+    oTfkvhvOn8Cm2DOcjPBb43EnmbJvm4avhE2X53gnvpzpXTJ5JjygPJ8AVYKUz3L3
+    2FvwHrIXCDPfqF8v5OzImXKXlX2nte7b/LOz0JpEDGj2jrLH/UOUYH73vJ9KRCz3
+    t9ko9/IiRQKBgC4v2uvsG6tyraf32aOoCiqto0PEGUsp8yv0vQFaK9+l0ccLMZV8
+    k6VRycJ0svUgmfuveaFyinoYUueJKEaX/aIIe7w7Z70AFj34x+kU8azL/JtbLMPB
+    e3IIDIWMSHJXr6PFnV3VWl8pZH16Uu83Wn+qDtiTAdWA0bGCw8bL0999AoGAClec
+    vtDmRcmjLrFG1Pe8oVQ//wNTaV/qCt8Zv9GettlK33/3D+cBk/yM1snGmFSvIaNa
+    tvUbSgthrdWU9A5fHgWCTYB1r1gGbStNo4fyHzpDuVclRgOX9GwnZ63Zu7d0QChI
+    0eDyVoviZKj56A2A8AiXybBlprs5TeqdW5zDjYkCgYBtRRAWB6Nj1V1w0ok8yrYW
+    CnJQHFuTsyQXEmbCPA9GWnLOYT8KBBPxDdBek4s1e5HtP9zrj+Z0owtz8p09Byd7
+    gYtBDBWEU8p20Qrd37sF9JudRl8BytOe+Ht2Fv2gMPJNYLN+rZrqlpqo2aW1NKbX
+    +0cF+MAY/mrkyzWdRFVy1A==
+    -----END PRIVATE KEY-----
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mock-openapi-prism-openapi-yaml
+  namespace: apigateway-demo
+  labels:
+    app.kubernetes.io/name: mock-openapi
+data:
+  openapi.yaml: |
+    openapi: 3.0.3
+    info:
+      title: Demo LLM Mock (gateway/it/mock-api parity — OpenAI chat)
+      version: 1.0.0
+    paths:
+      /health:
+        get:
+          summary: Health check
+          responses:
+            "200":
+              description: Service is healthy
+      /openai/v1/chat/completions:
+        post:
+          summary: Create chat completion
+          operationId: createChatCompletion
+          requestBody:
+            required: true
+            content:
+              application/json:
+                schema:
+                  type: object
+                  required:
+                    - model
+                    - messages
+                  properties:
+                    model:
+                      type: string
+                    messages:
+                      type: array
+                      items:
+                        type: object
+                        required:
+                          - role
+                          - content
+                        properties:
+                          role:
+                            type: string
+                            enum:
+                              - system
+                              - user
+                              - assistant
+                          content:
+                            type: string
+          responses:
+            "200":
+              description: Successful response
+              content:
+                application/json:
+                  example:
+                    id: chatcmpl-B9MBs8CjcvOU2jLn4n570S5qMJKcT
+                    object: chat.completion
+                    created: 1741569952
+                    model: gpt-4.1-2025-04-14
+                    choices:
+                      - index: 0
+                        message:
+                          role: assistant
+                          content: "Hello! How can I assist you today?"
+                          refusal: null
+                          annotations: []
+                        logprobs: null
+                        finish_reason: stop
+                    usage:
+                      prompt_tokens: 19
+                      completion_tokens: 10
+                      total_tokens: 29
+                      prompt_tokens_details:
+                        cached_tokens: 0
+                        audio_tokens: 0
+                      completion_tokens_details:
+                        reasoning_tokens: 0
+                        audio_tokens: 0
+                        accepted_prediction_tokens: 0
+                        rejected_prediction_tokens: 0
+                    service_tier: default
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mock-openapi-https-nginx-conf
+  namespace: apigateway-demo
+  labels:
+    app.kubernetes.io/name: mock-openapi-https
+data:
+  nginx.conf: |
+    events {}
+    http {
+      server {
+        listen 8443 ssl;
+        server_name mock-openapi-https;
+        ssl_certificate     /etc/nginx/certs/tls.crt;
+        ssl_certificate_key /etc/nginx/certs/tls.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        location / {
+          proxy_pass http://mock-openapi:4010;
+          proxy_http_version 1.1;
+          proxy_set_header Host $host;
+          proxy_set_header X-Forwarded-Proto https;
+          proxy_set_header Connection "";
+        }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-openapi
+  namespace: apigateway-demo
+  labels:
+    app.kubernetes.io/name: mock-openapi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mock-openapi
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mock-openapi
+    spec:
+      containers:
+        - name: prism
+          image: stoplight/prism:5.14.3
+          args:
+            - mock
+            - /api/openapi.yaml
+            - --host
+            - "0.0.0.0"
+            - --errors
+            - --verboseLevel
+            - info
+          env:
+            - name: TMPDIR
+              value: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+          ports:
+            - name: http
+              containerPort: 4010
+          volumeMounts:
+            - name: openapi
+              mountPath: /api/openapi.yaml
+              subPath: openapi.yaml
+              readOnly: true
+            - name: prism-tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4010
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4010
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: openapi
+          configMap:
+            name: mock-openapi-prism-openapi-yaml
+        - name: prism-tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-openapi
+  namespace: apigateway-demo
+  labels:
+    app.kubernetes.io/name: mock-openapi
+spec:
+  selector:
+    app.kubernetes.io/name: mock-openapi
+  ports:
+    - name: http
+      port: 4010
+      targetPort: 4010
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-openapi-https
+  namespace: apigateway-demo
+  labels:
+    app.kubernetes.io/name: mock-openapi-https
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mock-openapi-https
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mock-openapi-https
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.25-alpine
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 101
+            runAsGroup: 101
+          ports:
+            - name: https
+              containerPort: 8443
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+            - name: tls
+              mountPath: /etc/nginx/certs
+              readOnly: true
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+            - name: nginx-tmp
+              mountPath: /tmp
+            - name: nginx-logs
+              mountPath: /var/log/nginx
+          readinessProbe:
+            tcpSocket:
+              port: 8443
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 8443
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: nginx-conf
+          configMap:
+            name: mock-openapi-https-nginx-conf
+        - name: tls
+          secret:
+            secretName: mock-openapi-https-tls
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
+        - name: nginx-tmp
+          emptyDir: {}
+        - name: nginx-logs
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-openapi-https
+  namespace: apigateway-demo
+  labels:
+    app.kubernetes.io/name: mock-openapi-https
+spec:
+  selector:
+    app.kubernetes.io/name: mock-openapi-https
+  ports:
+    - name: https
+      port: 9449
+      targetPort: 8443

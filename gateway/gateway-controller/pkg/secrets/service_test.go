@@ -155,18 +155,18 @@ type minimalStorage struct {
 }
 
 // Implement remaining required interface methods as no-ops
-func (m *minimalStorage) SaveConfig(cfg *models.StoredConfig) error              { return nil }
-func (m *minimalStorage) UpdateConfig(cfg *models.StoredConfig) error            { return nil }
-func (m *minimalStorage) UpsertConfig(cfg *models.StoredConfig) (bool, error)    { return false, nil }
-func (m *minimalStorage) DeleteConfig(id string) error                           { return nil }
-func (m *minimalStorage) GetConfig(id string) (*models.StoredConfig, error)      { return nil, nil }
+func (m *minimalStorage) SaveConfig(cfg *models.StoredConfig) error           { return nil }
+func (m *minimalStorage) UpdateConfig(cfg *models.StoredConfig) error         { return nil }
+func (m *minimalStorage) UpsertConfig(cfg *models.StoredConfig) (bool, error) { return false, nil }
+func (m *minimalStorage) DeleteConfig(id string) error                        { return nil }
+func (m *minimalStorage) GetConfig(id string) (*models.StoredConfig, error)   { return nil, nil }
 func (m *minimalStorage) GetConfigByKindAndHandle(kind, handle string) (*models.StoredConfig, error) {
 	return nil, nil
 }
 func (m *minimalStorage) GetConfigByKindNameAndVersion(kind, displayName, version string) (*models.StoredConfig, error) {
 	return nil, nil
 }
-func (m *minimalStorage) GetAllConfigs() ([]*models.StoredConfig, error)           { return nil, nil }
+func (m *minimalStorage) GetAllConfigs() ([]*models.StoredConfig, error) { return nil, nil }
 func (m *minimalStorage) GetAllConfigsByKind(kind string) ([]*models.StoredConfig, error) {
 	return nil, nil
 }
@@ -189,15 +189,18 @@ func (m *minimalStorage) GetAllLLMProviderTemplates() ([]*models.StoredLLMProvid
 func (m *minimalStorage) GetLLMProviderTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
 	return nil, nil
 }
-func (m *minimalStorage) SaveAPIKey(apiKey *models.APIKey) error            { return nil }
-func (m *minimalStorage) UpsertAPIKey(apiKey *models.APIKey) error          { return nil }
-func (m *minimalStorage) GetAPIKeyByID(id string) (*models.APIKey, error)   { return nil, nil }
+func (m *minimalStorage) SaveAPIKey(apiKey *models.APIKey) error              { return nil }
+func (m *minimalStorage) UpsertAPIKey(apiKey *models.APIKey) error            { return nil }
+func (m *minimalStorage) GetAPIKeyByID(id string) (*models.APIKey, error)     { return nil, nil }
 func (m *minimalStorage) GetAPIKeyByUUID(uuid string) (*models.APIKey, error) { return nil, nil }
-func (m *minimalStorage) GetAPIKeyByKey(key string) (*models.APIKey, error) { return nil, nil }
+func (m *minimalStorage) GetAPIKeyByKey(key string) (*models.APIKey, error)   { return nil, nil }
 func (m *minimalStorage) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) {
 	return nil, nil
 }
 func (m *minimalStorage) GetAllAPIKeys() ([]*models.APIKey, error) { return nil, nil }
+func (m *minimalStorage) GetAPIKeysByApplicationUUID(applicationUUID string) ([]*models.APIKey, error) {
+	return nil, nil
+}
 func (m *minimalStorage) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey, error) {
 	return nil, nil
 }
@@ -241,8 +244,8 @@ func (m *minimalStorage) DeleteSubscription(id, gatewayID string) error     { re
 func (m *minimalStorage) DeleteSubscriptionsForAPINotIn(apiID string, ids []string) error {
 	return nil
 }
-func (m *minimalStorage) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) error {
-	return nil
+func (m *minimalStorage) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) ([]string, error) {
+	return nil, nil
 }
 func (m *minimalStorage) SaveCertificate(cert *models.StoredCertificate) error { return nil }
 func (m *minimalStorage) GetCertificate(id string) (*models.StoredCertificate, error) {

@@ -314,6 +314,8 @@ func TestHandleEvent_AcceptsKnownTypesAndUnknown(t *testing.T) {
 	var logBuf bytes.Buffer
 	listener := &EventListener{
 		logger: slog.New(slog.NewTextHandler(&logBuf, nil)),
+		store:  storage.NewConfigStore(),
+		db:     setupSQLiteDBForEventListenerTests(t),
 	}
 
 	listener.handleEvent(eventhub.Event{
@@ -328,6 +330,7 @@ func TestHandleEvent_AcceptsKnownTypesAndUnknown(t *testing.T) {
 		EventType: eventhub.EventTypeApplication,
 		Action:    "UPDATE",
 		EntityID:  "app-1",
+		EventID:   "corr-app-1",
 	})
 	listener.handleEvent(eventhub.Event{
 		EventType: eventhub.EventType("UNKNOWN"),
@@ -336,7 +339,7 @@ func TestHandleEvent_AcceptsKnownTypesAndUnknown(t *testing.T) {
 
 	logs := logBuf.String()
 	assert.Contains(t, logs, "Certificate event received")
-	assert.Contains(t, logs, "Processed application replica sync event")
+	assert.Contains(t, logs, "Successfully processed application replica sync event")
 	assert.Contains(t, logs, "Unknown LLM template event action")
 	assert.Contains(t, logs, "Unknown event type received")
 }

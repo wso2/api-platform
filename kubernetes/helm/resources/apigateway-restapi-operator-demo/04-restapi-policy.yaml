@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: httproute-demo-policy-credentials
+  namespace: apigateway-demo
+  labels:
+    app.kubernetes.io/part-of: gateway-api-httproute-policies-demo
+type: Opaque
+stringData:
+  subscriptionKey: My-Key
+  subscriptionKeyResource: My-Key-Resource
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: hello-normal-api-policy
+  namespace: apigateway-demo
+  labels:
+    # Must match APIGateway.spec.apiSelector.matchLabels (registry binds RestApi → gateway).
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+  annotations:
+    gateway.api-platform.wso2.com/project-id: "1234567890"
+spec:
+  displayName: hello-normal-api-policy
+  version: v1.0
+  context: /hello-normal-policy
+  upstream:
+    main:
+      url: http://hello-backend.apigateway-demo.svc.cluster.local:9080
+  policies:
+    - name: subscription-validation
+      version: v1
+      params:
+        subscriptionKeyHeader:
+          valueFrom:
+            secretKeyRef:
+              name: httproute-demo-policy-credentials
+              key: subscriptionKey
+    - name: set-headers
+      version: v1
+      params:
+        request:
+          headers:
+            - name: X-Client-Version
+              value: "1.2.3" 
+  operations:
+    - method: GET
+      path: /test-policy
+    - method: GET
+      path: /test-policy-resource
+      policies:
+        - name: subscription-validation
+          version: v1
+          params:
+            subscriptionKeyHeader:
+              valueFrom:
+                secretKeyRef:
+                  name: httproute-demo-policy-credentials
+                  key: subscriptionKeyResource
+

@@ -508,12 +508,16 @@ func (s *APIDeploymentService) GetTopicsForUpdate(apiConfig models.StoredConfig)
 	}
 	asyncData := webSubCfg.Spec
 
-	for _, topic := range asyncData.Hub.Channels {
+	var channels map[string]api.WebSubChannel
+	if asyncData.Channels != nil {
+		channels = *asyncData.Channels
+	}
+	for chName := range channels {
 		// Remove leading '/' from name, context, version and topic path if present
 		contextWithVersion := strings.ReplaceAll(asyncData.Context, "$version", asyncData.Version)
 		contextWithVersion = strings.TrimPrefix(contextWithVersion, "/")
 		contextWithVersion = strings.ReplaceAll(contextWithVersion, "/", "_")
-		name := strings.TrimPrefix(topic.Name, "/")
+		name := strings.TrimPrefix(chName, "/")
 		modifiedTopic := fmt.Sprintf("%s_%s", contextWithVersion, name)
 		apiTopicsPerRevision[modifiedTopic] = true
 	}

@@ -4,6 +4,7 @@ FROM --platform=$BUILDPLATFORM golang:1.26.2-bookworm AS builder
 ARG TARGETARCH
 ARG VERSION=0.0.1-SNAPSHOT
 ARG GIT_COMMIT=unknown
+ARG FUNCTIONALITY_TYPE=regular
 
 # Coverage build argument - set to "true" for coverage-instrumented builds
 ARG ENABLE_COVERAGE=false
@@ -60,7 +61,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     export GOARCH=${TARGETARCH} && \
     BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) && \
     VERSION_PKG=github.com/wso2/api-platform/gateway/gateway-controller/pkg/version && \
-    LDFLAGS="-X ${VERSION_PKG}.Version=${VERSION} -X ${VERSION_PKG}.GitCommit=${GIT_COMMIT} -X ${VERSION_PKG}.BuildDate=${BUILD_DATE}" && \
+    LDFLAGS="-X ${VERSION_PKG}.Version=${VERSION} -X ${VERSION_PKG}.FunctionalityType=${FUNCTIONALITY_TYPE} -X ${VERSION_PKG}.GitCommit=${GIT_COMMIT} -X ${VERSION_PKG}.BuildDate=${BUILD_DATE}" && \
     if [ "$ENABLE_DEBUG" = "true" ]; then \
         go build $COVER_FLAG \
         -gcflags "all=-N -l" \
