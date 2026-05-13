@@ -125,7 +125,7 @@ type WebSubAPIDeploymentSpec struct {
 	Version         string                          `yaml:"version"`
 	Context         string                          `yaml:"context"`
 	Vhosts          *WebSubAPIDeploymentVhosts      `yaml:"vhosts,omitempty"`
-	AllChannels     *WebSubDeployAllChannelPolicies `json:"allChannels,omitempty"`
+	AllChannels     *WebSubDeployAllChannelPolicies `yaml:"allChannels,omitempty"`
 	Receiver        *WebSubDeployReceiver           `yaml:"receiver,omitempty"`
 	Hub             *WebSubDeployHub                `yaml:"hub,omitempty"`
 	Delivery        *WebSubDeployDelivery           `yaml:"delivery,omitempty"`
@@ -153,17 +153,13 @@ type WebSubDeployAllChannelPolicies struct {
 	OnMessageDelivery *WebSubDeployEventPolicies `yaml:"on_message_delivery,omitempty"`
 }
 
-// WebSubDeployChannelPolicies represents per-channel policies in the deployment YAML, organized by event type.
-type WebSubDeployChannelPolicies struct {
+// WebSubDeployChannel represents a single channel entry in the deployment YAML.
+// Event policies are at the top level to match the gateway-controller's WebSubChannel schema.
+type WebSubDeployChannel struct {
 	OnSubscription    *WebSubDeployEventPolicies `yaml:"on_subscription,omitempty"`
 	OnUnsubscription  *WebSubDeployEventPolicies `yaml:"on_unsubscription,omitempty"`
 	OnMessageReceived *WebSubDeployEventPolicies `yaml:"on_message_received,omitempty"`
 	OnMessageDelivery *WebSubDeployEventPolicies `yaml:"on_message_delivery,omitempty"`
-}
-
-// WebSubDeployChannel represents a single channel entry in the deployment YAML.
-type WebSubDeployChannel struct {
-	Policies *WebSubDeployChannelPolicies `yaml:"policies,omitempty"`
 }
 
 // WebSubDeployReceiver represents the receiver section in the deployment YAML.

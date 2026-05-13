@@ -637,23 +637,13 @@ func buildWebSubDeployChannels(channels map[string]model.WebSubChannel) map[stri
 	result := make(map[string]model.WebSubDeployChannel, len(channels))
 	for name, ch := range channels {
 		result[name] = model.WebSubDeployChannel{
-			Policies: buildWebSubDeployChannelPoliciesFromChannel(ch),
+			OnSubscription:    generateEventPolicyList(ch.OnSubscription),
+			OnUnsubscription:  generateEventPolicyList(ch.OnUnsubscription),
+			OnMessageReceived: generateEventPolicyList(ch.OnMessageReceived),
+			OnMessageDelivery: generateEventPolicyList(ch.OnMessageDelivery),
 		}
 	}
 	return result
-}
-
-// buildWebSubDeployChannelPoliciesFromChannel converts a model channel to deployment channel policies.
-func buildWebSubDeployChannelPoliciesFromChannel(ch model.WebSubChannel) *model.WebSubDeployChannelPolicies {
-	if ch.OnSubscription == nil && ch.OnUnsubscription == nil && ch.OnMessageReceived == nil && ch.OnMessageDelivery == nil {
-		return nil
-	}
-	return &model.WebSubDeployChannelPolicies{
-		OnSubscription:    generateEventPolicyList(ch.OnSubscription),
-		OnUnsubscription:  generateEventPolicyList(ch.OnUnsubscription),
-		OnMessageReceived: generateEventPolicyList(ch.OnMessageReceived),
-		OnMessageDelivery: generateEventPolicyList(ch.OnMessageDelivery),
-	}
 }
 
 func generateEventPolicyList(ep *model.WebSubEventPolicies) *model.WebSubDeployEventPolicies {

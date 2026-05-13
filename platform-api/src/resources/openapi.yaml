@@ -9044,8 +9044,8 @@ components:
           example: /my-websub-api
         upstream:
           $ref: '#/components/schemas/Upstream'
-        allChannels:
-          $ref: '#/components/schemas/WebSubAllChannelPolicies'
+        policies:
+          $ref: '#/components/schemas/WebSubChannelPolicies'
         channels:
           type: object
           description: Per-channel configuration keyed by channel name. Each key is a channel name and defines policies applied only to that channel.
@@ -9198,14 +9198,8 @@ components:
       type: object
       description: A single channel definition with optional per-channel policy overrides.
       properties:
-        on_subscription:
-          $ref: '#/components/schemas/WebSubEventPolicies'
-        on_unsubscription:
-          $ref: '#/components/schemas/WebSubEventPolicies'
-        on_message_received:
-          $ref: '#/components/schemas/WebSubEventPolicies'
-        on_message_delivery:
-          $ref: '#/components/schemas/WebSubEventPolicies'
+        policies:
+          $ref: '#/components/schemas/WebSubChannelPolicies'
 
   responses:
     Unauthorized:
