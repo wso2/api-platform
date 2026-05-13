@@ -14,8 +14,13 @@ channels:
     broker-driver:
       type: kafka
       properties:
-        bootstrap.servers: localhost:9092
-        security.protocol: PLAINTEXT
+        brokers:
+          - localhost:9092
+        # Other optional properties:
+        # tls: false
+        # sasl_mechanism: plain
+        # sasl_username: user
+        # sasl_password: pass
     # Channel definitions with topic mappings
     channels:
       issues:

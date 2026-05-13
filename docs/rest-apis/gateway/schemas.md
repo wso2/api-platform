@@ -1015,7 +1015,7 @@ Channel (topic/event stream) definition for async APIs.
       "name": "kafka-driver",
       "type": "kafka",
       "properties": {
-        "bootstrapServers": [
+        "brokers": [
           "kafka-broker-1:9092",
           "kafka-broker-2:9092"
         ]
@@ -1098,7 +1098,7 @@ Channel (topic/event stream) definition for async APIs.
       "name": "kafka-driver",
       "type": "kafka",
       "properties": {
-        "bootstrapServers": [
+        "brokers": [
           "kafka-broker-1:9092",
           "kafka-broker-2:9092"
         ]
@@ -1182,7 +1182,7 @@ and
     "name": "kafka-driver",
     "type": "kafka",
     "properties": {
-      "bootstrapServers": [
+      "brokers": [
         "kafka-broker-1:9092",
         "kafka-broker-2:9092"
       ]
@@ -1369,7 +1369,7 @@ WebSocket receiver configuration
   "name": "kafka-driver",
   "type": "kafka",
   "properties": {
-    "bootstrapServers": [
+    "brokers": [
       "kafka-broker-1:9092",
       "kafka-broker-2:9092"
     ]

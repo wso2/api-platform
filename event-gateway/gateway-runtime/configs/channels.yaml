@@ -32,7 +32,8 @@ channels:
       type: kafka
       properties:
         topic: repo-events
-        bootstrap.servers: kafka:29092
+        brokers:
+          - kafka:29092
     allChannelPolicies:
       on_connection_init:
         request: []

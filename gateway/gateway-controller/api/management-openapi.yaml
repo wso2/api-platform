@@ -4126,7 +4126,7 @@ components:
             name: kafka-driver
             type: kafka
             properties:
-              bootstrapServers:
+              brokers:
                 - kafka-broker-1:9092
                 - kafka-broker-2:9092
           allChannels:
@@ -4175,7 +4175,7 @@ components:
             name: kafka-driver
             type: kafka
             properties:
-              bootstrapServers:
+              brokers:
                 - kafka-broker-1:9092
                 - kafka-broker-2:9092
           allChannels:
@@ -4309,9 +4309,9 @@ components:
           description: Broker driver properties (e.g., bootstrap servers)
           additionalProperties: true
           example:
-            bootstrapServers:
-              - kafka-broker-1:9092
-              - kafka-broker-2:9092
+              brokers:
+                - kafka-broker-1:9092
+                - kafka-broker-2:9092
 
     WebBrokerApiAllChannelPolicies:
       type: object

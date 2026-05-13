@@ -41,7 +41,7 @@ Add a new WebBrokerAPI to the Gateway. WebBrokerAPI provides bidirectional strea
       "name": "kafka-driver",
       "type": "kafka",
       "properties": {
-        "bootstrapServers": [
+        "brokers": [
           "kafka-broker-1:9092",
           "kafka-broker-2:9092"
         ]
@@ -119,7 +119,7 @@ Required roles: `admin`, `developer`
       "name": "kafka-driver",
       "type": "kafka",
       "properties": {
-        "bootstrapServers": [
+        "brokers": [
           "kafka-broker-1:9092",
           "kafka-broker-2:9092"
         ]
@@ -244,7 +244,7 @@ Required roles: `admin`, `developer`
           "name": "kafka-driver",
           "type": "kafka",
           "properties": {
-            "bootstrapServers": [
+            "brokers": [
               "kafka-broker-1:9092",
               "kafka-broker-2:9092"
             ]
@@ -441,7 +441,7 @@ Required roles: `admin`, `developer`
       "name": "kafka-driver",
       "type": "kafka",
       "properties": {
-        "bootstrapServers": [
+        "brokers": [
           "kafka-broker-1:9092",
           "kafka-broker-2:9092"
         ]
