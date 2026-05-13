@@ -19,6 +19,10 @@
 # Gateway Runtime Dockerfile
 # Combines Envoy Router and Policy Engine into a single container
 
+# Envoy base image version — referenced by all stages that derive from envoyproxy/envoy.
+# Update here to bump Envoy across python-deps, debug, and production stages.
+ARG ENVOY_VERSION=v1.38.0
+
 # Stage 1: Builder Base
 FROM --platform=$BUILDPLATFORM golang:1.26.2-bookworm AS builder-base
 ARG BUILDARCH
@@ -132,7 +136,7 @@ COPY --from=policy-compiler /api-platform/output/gateway-controller/policies /
 # Uses the same base image as the production stage so that C extensions
 # (e.g. grpcio) are compiled against the identical Python version and glibc.
 # pip, venv, and git are installed here only — they are NOT copied to production.
-FROM envoyproxy/envoy:v1.37.1 AS python-deps
+FROM envoyproxy/envoy:${ENVOY_VERSION} AS python-deps
 
 ARG PYTHON_SDK_SOURCE=pypi
 
@@ -180,7 +184,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go install github.com/go-delve/delve/cmd/dlv@v1.26.0
 
 # Stage 3c: Debug Runtime (policy-engine wrapped in dlv, port 2346)
-FROM envoyproxy/envoy:v1.37.1 AS debug
+FROM envoyproxy/envoy:${ENVOY_VERSION} AS debug
 
 USER root
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -218,7 +222,7 @@ EXPOSE 2346 8080 8443 9901 9002 9003
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 
 # Stage 4: Runtime (production — must remain last so default builds are unaffected)
-FROM envoyproxy/envoy:v1.37.1 AS production
+FROM envoyproxy/envoy:${ENVOY_VERSION} AS production
 
 ARG VERSION=unknown
 ARG ENABLE_COVERAGE=false
