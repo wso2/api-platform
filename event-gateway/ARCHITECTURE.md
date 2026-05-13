@@ -395,6 +395,295 @@ WebBrokerApiBinding {
 - **Consumer Group:** `{prefix}-ws-{uuid}` ensures per-connection isolation
 - **Bidirectional Channels:** Inbound (client→Kafka) and Outbound (Kafka→client) Go channels
 
+### WebBrokerApi Connection Architecture (Detailed)
+
+#### Per-Connection Resources
+
+Each WebSocket connection creates the following dedicated resources:
+
+**File:** `event-gateway/gateway-runtime/internal/connectors/receiver/websocket/broker_api_connector.go`
+
+```go
+type brokerApiConnection struct {
+    connID          string                      // UUID for this connection
+    ws              *websocket.Conn             // WebSocket connection
+    inbound         chan *connectors.Message    // client → broker (256 buffer)
+    outbound        chan *connectors.Message    // broker → client (256 buffer)
+    kafkaConsumer   connectors.Receiver         // Dedicated Kafka consumer
+    cancel          context.CancelFunc          // Cancel function for cleanup
+    channelName     string                      // Selected channel from X-channel header
+    produceChainKey string                      // Policy chain key for on_produce
+    consumeChainKey string                      // Policy chain key for on_consume
+    produceTopic    string                      // Target Kafka topic for producing
+    consumeTopic    string                      // Source Kafka topic for consuming
+}
+```
+
+**Created during WebSocket handshake at lines 299-311:**
+
+```go
+connID := uuid.New().String()
+conn := &brokerApiConnection{
+    connID:          connID,
+    ws:              ws,
+    inbound:         make(chan *connectors.Message, 256),  // ← PRODUCE Go channel
+    outbound:        make(chan *connectors.Message, 256), // ← CONSUME Go channel
+    channelName:     channelName,                         // From X-channel header
+    produceChainKey: produceChainKey,                     // From channel config
+    consumeChainKey: consumeChainKey,                     // From channel config
+    produceTopic:    produceTopic,                        // From channel config
+    consumeTopic:    consumeTopic,                        // From channel config
+}
+```
+
+#### Kafka Resource Naming
+
+**Consumer Group Naming (Per-Connection):**
+
+```go
+// Line 318
+groupID := fmt.Sprintf("%s-ws-%s", e.opts.ConsumerGroupPrefix, connID)
+// Example: "event-gateway-ws-a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+```
+
+**Format:** `{prefix}-ws-{uuid}`
+- `prefix` - Configured consumer group prefix (e.g., `event-gateway`)
+- `ws` - Indicates WebSocket receiver type
+- `uuid` - Unique connection ID
+
+**Producer (Shared Globally):**
+- **One shared Publisher** instance for ALL WebSocket connections
+- Created at gateway startup via `NewBrokerDriver()`
+- No per-connection naming—all connections use the same producer via `e.brokerDriver.Publish()`
+
+#### Why Shared Producer vs. Per-Connection Consumer?
+
+**Consumers MUST be per-connection (stateful):**
+- Each consumer maintains unique consumer group membership
+- Each tracks its own offset position in topics independently
+- Each receives ALL messages from subscribed topics (not distributed)
+- Required for per-connection message isolation
+
+**Producers SHOULD be shared (stateless):**
+- Topic specified per `Publish()` call—no per-connection state
+- franz-go's `kgo.Client` is thread-safe for concurrent use
+- Internal batching: messages from multiple connections batched into single network requests
+- Resource efficiency: 1 producer = 3 TCP connections; 1000 producers = 3000+ TCP connections
+- Memory efficiency: single set of send buffers (~100KB) vs. per-connection buffers
+- Reduced broker load: Kafka handles 1 producer instead of 1000
+
+#### Goroutine Architecture
+
+Each WebSocket connection spawns **three goroutines** (line 350-352):
+
+```go
+go e.readLoop(ctx, conn)      // WebSocket → inbound channel
+go e.inboundLoop(ctx, conn)   // inbound channel → Kafka
+go e.outboundLoop(ctx, conn)  // outbound channel → WebSocket
+```
+
+**Plus one additional thread:**
+- **Kafka consumer goroutine** (internal to franz-go library) that reads from Kafka and calls the callback
+
+**Total per connection:** 3 goroutines + 1 Kafka consumer thread
+
+#### Complete Handshake Sequence
+
+**1. Extract & Validate X-channel Header (lines 143-183)**
+```go
+xChannelHeader := r.Header.Get("X-channel")
+// Validate channel exists in API definition
+```
+
+**2. Apply onConnectionInit.request Policies (lines 203-230)**
+```go
+processed, shortCircuited, err := e.processor.ProcessConnectionInitRequest(...)
+if shortCircuited {
+    http.Error(w, "connection rejected", http.StatusForbidden)
+    return
+}
+```
+
+**3. Upgrade HTTP → WebSocket (lines 232-240)**
+```go
+ws, err := upgrader.Upgrade(w, r, nil)
+```
+
+**4. Apply onConnectionInit.response Policies (lines 244-252)**
+```go
+e.processor.ProcessConnectionInitResponse(...)
+```
+
+**5. Extract Channel Configuration (lines 254-282)**
+```go
+// Get policy chain keys for this channel
+produceChainKey = channelChainsMap[channelName]["ProduceKey"]
+consumeChainKey = channelChainsMap[channelName]["ConsumeKey"]
+
+// Get topic mappings
+produceTopic = channelTopicsMap[channelName]["produceTo"]
+consumeTopic = channelTopicsMap[channelName]["consumeFrom"]
+```
+
+**6. Create Per-Connection Resources (lines 299-311)**
+```go
+conn := &brokerApiConnection{
+    inbound:  make(chan *connectors.Message, 256),
+    outbound: make(chan *connectors.Message, 256),
+    // ... other fields
+}
+```
+
+**7. Create & Start Kafka Consumer (lines 318-335)**
+```go
+consumer, err := e.brokerDriver.Subscribe(groupID, channelTopics, func(ctx context.Context, msg *connectors.Message) error {
+    // Kafka message → outbound Go channel
+    conn.outbound <- msg
+    return nil
+})
+consumer.Start(ctx)
+```
+
+**8. Start Goroutines (lines 350-352)**
+```go
+go e.readLoop(ctx, conn)
+go e.inboundLoop(ctx, conn)
+go e.outboundLoop(ctx, conn)
+```
+
+#### Message Production Flow (Client → Kafka)
+
+**Path:** `WebSocket client` → `readLoop` → `inbound channel` → `inboundLoop` → `Kafka`
+
+**Step 1: Read from WebSocket (readLoop, lines 356-394)**
+```go
+msgType, data, err := conn.ws.ReadMessage()
+msg := &connectors.Message{Value: data}
+conn.inbound <- msg  // Push to inbound Go channel
+```
+
+**Step 2: Apply onProduce Policies (inboundLoop, lines 403-425)**
+```go
+processed, shortCircuited, err := e.processor.ProcessByChainKey(
+    ctx, 
+    e.channel.Name, 
+    conn.produceChainKey,  // Channel-specific policy chain
+    msg
+)
+```
+
+**Step 3: Publish to Kafka (inboundLoop, lines 427-449)**
+```go
+targetTopic := conn.produceTopic  // From channel config
+e.brokerDriver.Publish(ctx, targetTopic, processed)
+```
+
+#### Message Consumption Flow (Kafka → Client)
+
+**Path:** `Kafka` → `consumer callback` → `outbound channel` → `outboundLoop` → `WebSocket client`
+
+**Step 1: Kafka Consumer Callback (lines 319-331)**
+```go
+// Runs in Kafka consumer goroutine (franz-go)
+consumer, err := e.brokerDriver.Subscribe(groupID, channelTopics, func(ctx context.Context, msg *connectors.Message) error {
+    conn.outbound <- msg  // Push to outbound Go channel
+    return nil
+})
+```
+
+**Step 2: Apply onConsume Policies (outboundLoop, lines 461-479)**
+```go
+msg := <-conn.outbound  // Read from outbound Go channel
+processed, shortCircuited, err := e.processor.ProcessByChainKey(
+    ctx,
+    e.channel.Name,
+    conn.consumeChainKey,  // Channel-specific policy chain
+    msg
+)
+```
+
+**Step 3: Write to WebSocket (outboundLoop, lines 487-492)**
+```go
+conn.ws.WriteMessage(websocket.BinaryMessage, processed.Value)
+```
+
+#### Connection Teardown
+
+**Triggered by:**
+- Client disconnects
+- WebSocket read/write error
+- Context cancellation
+
+**Cleanup sequence (closeConnection, lines 502-528):**
+1. Cancel context → stops all goroutines
+2. Stop Kafka consumer: `conn.kafkaConsumer.Stop()`
+3. Close Go channels: `close(conn.inbound)`, `close(conn.outbound)`
+4. Close WebSocket: `conn.ws.Close()`
+5. Deregister connection: `delete(e.connections, conn.connID)`
+
+#### Architecture Diagram
+
+```
+┌──────────────────┐
+│ WebSocket Client │
+└────────┬─────────┘
+         │ X-channel: prices
+         │ Handshake
+    ┌────▼────────────────────────────────────────────────────────┐
+    │            WebBrokerApiReceiver.handleUpgrade()            │
+    │  1. Validate X-channel  2. Auth policies  3. Upgrade       │
+    └────────────────────────┬───────────────────────────────────┘
+                             │ Create brokerApiConnection
+    ┌────────────────────────▼───────────────────────────────────┐
+    │                 brokerApiConnection                         │
+    │  • connID: "uuid"                                           │
+    │  • ws: *websocket.Conn                                      │
+    │  • inbound:  chan *Message (256)   ← Client messages       │
+    │  • outbound: chan *Message (256)   ← Kafka messages        │
+    │  • kafkaConsumer: group="egw-ws-uuid"                       │
+    │  • channelName: "prices"                                    │
+    │  • produceTopic: "stock.prices"                             │
+    │  • consumeTopic: "dummy.prices"                             │
+    └─────────────────────────┬──────────────────────────────────┘
+                              │
+         ┌────────────────────┼────────────────────┐
+         │                    │                    │
+    ┌────▼──────┐    ┌────────▼───────┐    ┌──────▼─────────┐
+    │ readLoop  │    │  inboundLoop   │    │ outboundLoop   │
+    │ goroutine │    │   goroutine    │    │   goroutine    │
+    └─────┬─────┘    └────────┬───────┘    └──────┬─────────┘
+          │                   │                    │
+          │ ws.ReadMessage()  │                    │ ws.WriteMessage()
+          │                   │                    │
+          ▼                   ▼                    ▲
+       inbound ──────────→ Policies ──→ Kafka     │
+        channel           onProduce    Publish    │
+                                         │         │
+                                         │         │
+                                      Kafka        │
+                                    Consumer   Policies
+                                    (franz-go) onConsume
+                                    callback      │
+                                         │         │
+                                         └─────→ outbound
+                                                  channel
+
+    ┌─────────────────────────────────────────────────────────────┐
+    │                   Shared Resources                          │
+    │  • KafkaBrokerDriver (one instance globally)                │
+    │    - Publisher: shared by ALL connections                   │
+    │    - Admin client: topic management                         │
+    └─────────────────────────────────────────────────────────────┘
+```
+
+**Key Takeaways:**
+- ✅ **2 Go channels** per connection (256-message buffers each)
+- ✅ **3 goroutines** per connection (readLoop, inboundLoop, outboundLoop)
+- ✅ **1 dedicated Kafka consumer** per connection (unique consumer group)
+- ✅ **1 shared Kafka producer** for all connections (global)
+- ✅ **Per-channel policy chains** (produceChainKey, consumeChainKey)
+- ✅ **Automatic cleanup** on connection close (goroutines, consumer, channels)
+
 ---
 
 ## 6. Policy Engine Integration
