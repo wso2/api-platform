@@ -105,11 +105,12 @@ type BrokerDriverEntry struct {
 	Properties map[string]interface{} `json:"properties"`
 }
 
-// PoliciesEntry holds the 3-phase policy references.
+// PoliciesEntry holds the 4-phase policy references.
 type PoliciesEntry struct {
-	Subscribe []PolicyEntry `json:"subscribe"`
-	Inbound   []PolicyEntry `json:"inbound"`
-	Outbound  []PolicyEntry `json:"outbound"`
+	Subscribe   []PolicyEntry `json:"subscribe"`
+	Unsubscribe []PolicyEntry `json:"unsubscribe"`
+	Inbound     []PolicyEntry `json:"inbound"`
+	Outbound    []PolicyEntry `json:"outbound"`
 }
 
 // PolicyEntry represents one policy reference.
@@ -244,6 +245,9 @@ func (h *Handler) toWebSubApiBinding(ecr EventChannelResource) binding.WebSubApi
 						if subIface, ok := policiesIface["subscribe"].([]interface{}); ok {
 							ch.Policies.Subscribe = mapGenericPolicyEntryList(subIface)
 						}
+						if unsubIface, ok := policiesIface["unsubscribe"].([]interface{}); ok {
+							ch.Policies.Unsubscribe = mapGenericPolicyEntryList(unsubIface)
+						}
 						if inIface, ok := policiesIface["inbound"].([]interface{}); ok {
 							ch.Policies.Inbound = mapGenericPolicyEntryList(inIface)
 						}
@@ -262,9 +266,10 @@ func (h *Handler) toWebSubApiBinding(ecr EventChannelResource) binding.WebSubApi
 		channels[i] = binding.ChannelDef{
 			Name: ch.Name,
 			Policies: binding.PolicyBindings{
-				Subscribe: mapPolicyEntries(ch.Policies.Subscribe),
-				Inbound:   mapPolicyEntries(ch.Policies.Inbound),
-				Outbound:  mapPolicyEntries(ch.Policies.Outbound),
+				Subscribe:   mapPolicyEntries(ch.Policies.Subscribe),
+				Unsubscribe: mapPolicyEntries(ch.Policies.Unsubscribe),
+				Inbound:     mapPolicyEntries(ch.Policies.Inbound),
+				Outbound:    mapPolicyEntries(ch.Policies.Outbound),
 			},
 		}
 	}
@@ -276,6 +281,9 @@ func (h *Handler) toWebSubApiBinding(ecr EventChannelResource) binding.WebSubApi
 			if subIface, ok := policiesMap["subscribe"].([]interface{}); ok {
 				policies.Subscribe = mapGenericPolicyEntryList(subIface)
 			}
+			if unsubIface, ok := policiesMap["unsubscribe"].([]interface{}); ok {
+				policies.Unsubscribe = mapGenericPolicyEntryList(unsubIface)
+			}
 			if inIface, ok := policiesMap["inbound"].([]interface{}); ok {
 				policies.Inbound = mapGenericPolicyEntryList(inIface)
 			}
@@ -286,6 +294,7 @@ func (h *Handler) toWebSubApiBinding(ecr EventChannelResource) binding.WebSubApi
 	}
 
 	subscribe := mapPolicyEntries(policies.Subscribe)
+	unsubscribe := mapPolicyEntries(policies.Unsubscribe)
 	inbound := mapPolicyEntries(policies.Inbound)
 	outbound := mapPolicyEntries(policies.Outbound)
 
@@ -301,9 +310,10 @@ func (h *Handler) toWebSubApiBinding(ecr EventChannelResource) binding.WebSubApi
 		},
 		BrokerDriver: h.resolveBrokerDriver(ecr.BrokerDriver),
 		Policies: binding.PolicyBindings{
-			Subscribe: subscribe,
-			Inbound:   inbound,
-			Outbound:  outbound,
+			Subscribe:   subscribe,
+			Unsubscribe: unsubscribe,
+			Inbound:     inbound,
+			Outbound:    outbound,
 		},
 	}
 }

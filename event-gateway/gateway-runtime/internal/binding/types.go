@@ -127,9 +127,10 @@ type BrokerDriverSpec struct {
 //   - Inbound:   applied when an event is published via the webhook receiver (data ingress).
 //   - Outbound:  applied when an event is delivered to a subscriber callback (data delivery).
 type PolicyBindings struct {
-	Subscribe []PolicyRef `yaml:"subscribe"`
-	Inbound   []PolicyRef `yaml:"inbound"`
-	Outbound  []PolicyRef `yaml:"outbound"`
+	Subscribe   []PolicyRef `yaml:"subscribe"`
+	Unsubscribe []PolicyRef `yaml:"unsubscribe"`
+	Inbound     []PolicyRef `yaml:"inbound"`
+	Outbound    []PolicyRef `yaml:"outbound"`
 }
 
 // PolicyRef references a policy to include in a chain.
