@@ -1,0 +1,66 @@
+# Same as apigateway-restapi-operator-demo/05b — IT-shaped `openai-test` template,
+# provider, and proxy; namespaces/labels match the APIM demo. Operator retries
+# ordering races against the gateway.
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProviderTemplate
+metadata:
+  name: openai-test
+  namespace: apigateway-demo-apim
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd-apim
+spec:
+  displayName: OpenAI
+  promptTokens:
+    location: payload
+    identifier: $.usage.prompt_tokens
+  completionTokens:
+    location: payload
+    identifier: $.usage.completion_tokens
+  totalTokens:
+    location: payload
+    identifier: $.usage.total_tokens
+  remainingTokens:
+    location: header
+    identifier: x-ratelimit-remaining-tokens
+  requestModel:
+    location: payload
+    identifier: $.model
+  responseModel:
+    location: payload
+    identifier: $.model
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProvider
+metadata:
+  name: demo-llm-provider-apim
+  namespace: apigateway-demo-apim
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd-apim
+spec:
+  displayName: OpenAI Provider
+  version: v1.0
+  template: openai-test
+  context: /llm-invoke-context
+  accessControl:
+    mode: allow_all
+  upstream:
+    url: http://mock-openapi:4010/openai/v1
+    auth:
+      type: api-key
+      header: Authorization
+      value:
+        value: Bearer sk-test-key
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProxy
+metadata:
+  name: demo-llm-proxy-apim
+  namespace: apigateway-demo-apim
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd-apim
+spec:
+  displayName: Lifecycle LLM Proxy
+  version: v1.0
+  context: /proxy-invoke-test
+  provider:
+    id: demo-llm-provider-apim

@@ -112,6 +112,23 @@
             },
         },
         {
+            "name": "Python Executor",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "main",
+            "console": "internalConsole",
+            "cwd": "${workspaceFolder}/gateway/gateway-runtime/python-executor",
+            "python": "${workspaceFolder}/gateway/gateway-runtime/python-executor/.venv/bin/python3",
+            "args": [
+                "--listen", "localhost:9010",
+                "--log-level", "debug"
+            ],
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/gateway/gateway-runtime/python-executor"
+            },
+            "justMyCode": false
+        },
+        {
             "name": "Integration Tests",
             "type": "go",
             "request": "launch",

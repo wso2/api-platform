@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: demo-management-secrets
+  namespace: apigateway-demo
+type: Opaque
+stringData:
+  provider-token: demo-provider-token
+  # Used by 05b-02-llm-resources-apikey.yaml for LlmProvider.spec.upstream.auth.value.
+  llm-upstream-authorization: Bearer sk-test-key
+  # Used by 05b-02-llm-resources-apikey.yaml for api-key-auth policy params.
+  apikey-header-name: X-API-Key
+  managed-secret-value: demo-managed-secret-value
+  cert.pem: |
+    -----BEGIN CERTIFICATE-----
+    MIIDFzCCAf+gAwIBAgIUL48DfJCqujcVQApH1Nury6LaLogwDQYJKoZIhvcNAQEL
+    BQAwGzEZMBcGA1UEAwwQZGVtby1jZXJ0aWZpY2F0ZTAeFw0yNjA0MzAwNzMxMjha
+    Fw0zNjA0MjcwNzMxMjhaMBsxGTAXBgNVBAMMEGRlbW8tY2VydGlmaWNhdGUwggEi
+    MA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCb2M6hlYYLt5A8/qp0svHfhNmL
+    lFIxKsGPwljGfv2o/SNwdRV0VpqEDNI0PAePsFIvdrloR4fHigpc4D+XYqQ03fAg
+    agcKKOvNu5mRwYAqwD1Mken4xR3/LWD70fPpUbdpPzYvUclwVC/4HU4uFszajrqW
+    k+oFxXzzEHnJHU0pmw/++eiZQcgTB81PIXg4gCShoq023wVzLtcZXvsJ3pnCkhlJ
+    YRTP9Pjv7HwX7vr6zgLsDskUZrPhzUvu0I7ka4eAduFfO4u/ALrnAU3JXjN5Bkyj
+    tEvZAO9GTXIlEFey9oMCkv+8NBn9r5nJ8MmKCj30iUouZwfPtKGNkag/MuMfAgMB
+    AAGjUzBRMB0GA1UdDgQWBBQsFaQGEqr5MzcOvhtafDjAcd4EejAfBgNVHSMEGDAW
+    gBQsFaQGEqr5MzcOvhtafDjAcd4EejAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3
+    DQEBCwUAA4IBAQCY8zLrqKtQZpLmxl2pyCWS4cBEPtbvM1z46mFStDJuYpF0EBKK
+    enRtzgD3mJQIAjuGGEXB5aDoJg3DEVZyWAW7gZXsQMO87k05PKONJqFzSyYIVv1v
+    4ddHfS4DiDaMsu8ZDisfNxsohQQoWTCApt81EakexeJ4pteInGe2bM0YCixwGVYx
+    Y/RHsI2HJ3/UHtMBF9AsPfiypjUAbojK453G1CJeRoqpvSe5lOzvgsvXqef5eB3t
+    kXGxy9TzYIXD3xditQ2r2sft0yE+W7xzU73DTJ2xXs8jl7TJynbEipa2T8JEtYDC
+    4dHt0OrMSR0ypABBrZe30H3w1BnFzin9JU0e
+    -----END CERTIFICATE-----
+  subscription-token: demo-subscription-token-1234567890-abcdef
+  apikey-restapi-value: demo-restapi-apikey-value-1234567890-abcdef
+  apikey-llmprovider-value: demo-llmprovider-apikey-value-1234567890-abcdef
+  apikey-llmproxy-value: demo-llmproxy-apikey-value-1234567890-abcdef
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: ManagedSecret
+metadata:
+  name: demo-managed-secret
+  namespace: apigateway-demo
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  displayName: demo-managed-secret
+  description: demo managed secret for CRD flow
+  value:
+    valueFrom:
+        name: demo-management-secrets
+        key: managed-secret-value

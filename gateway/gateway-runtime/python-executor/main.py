@@ -15,8 +15,9 @@
 
 """Python Executor entry point.
 
-Starts the gRPC server on UDS, loads all registered Python policies,
-and serves ExecuteStream RPCs from the Go Policy Engine.
+Starts the gRPC server on a Unix domain socket (default) or TCP port,
+loads all registered Python policies, and serves ExecuteStream RPCs
+from the Go Policy Engine.
 """
 
 import argparse
@@ -29,7 +30,7 @@ import sys
 from executor.server import PythonExecutorServer
 
 
-PYTHON_EXECUTOR_SOCKET = "/var/run/api-platform/python-executor.sock"
+DEFAULT_LISTEN_ADDRESS = "/var/run/api-platform/python-executor.sock"
 
 
 def positive_int(value):
@@ -69,6 +70,11 @@ def _parse_args():
             return fallback
 
     parser = argparse.ArgumentParser(description="Python Executor gRPC server")
+    parser.add_argument(
+        "--listen",
+        default=os.environ.get("PYTHON_EXECUTOR_LISTEN", DEFAULT_LISTEN_ADDRESS),
+        help="Listen address — UDS path or host:port for TCP (env: PYTHON_EXECUTOR_LISTEN, default: %(default)s)",
+    )
     parser.add_argument(
         "--workers",
         default=os.environ.get("PYTHON_POLICY_WORKERS"),
@@ -141,14 +147,18 @@ async def main():
     setup_logging()
     logger = logging.getLogger(__name__)
 
-    socket_path = PYTHON_EXECUTOR_SOCKET
+    listen_address = args.listen
     worker_count = args.workers
     max_concurrent = args.max_concurrent
     timeout = args.timeout
 
-    logger.info(f"Python Executor starting (workers={worker_count}, max_concurrent={max_concurrent}, timeout={timeout}s, log_level={LOG_LEVEL})")
+    logger.info(
+        "Python Executor starting (listen=%s, workers=%s, "
+        "max_concurrent=%s, timeout=%ss, log_level=%s)",
+        listen_address, worker_count, max_concurrent, timeout, LOG_LEVEL,
+    )
 
-    server = PythonExecutorServer(socket_path, worker_count, max_concurrent, timeout)
+    server = PythonExecutorServer(listen_address, worker_count, max_concurrent, timeout)
 
     # Graceful shutdown on SIGTERM/SIGINT
     loop = asyncio.get_event_loop()

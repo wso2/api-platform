@@ -60,6 +60,10 @@ type KafkaConfig struct {
 	Brokers             []string `koanf:"brokers"`
 	ConsumerGroupPrefix string   `koanf:"consumer_group_prefix"`
 	TLS                 bool     `koanf:"tls"`
+	TLSCAFile           string   `koanf:"tls_ca_file"`
+	TLSCertFile         string   `koanf:"tls_cert_file"`
+	TLSKeyFile          string   `koanf:"tls_key_file"`
+	TLSServerName       string   `koanf:"tls_server_name"`
 	SASLMechanism       string   `koanf:"sasl_mechanism"`
 	SASLUsername        string   `koanf:"sasl_username"`
 	SASLPassword        string   `koanf:"sasl_password"`
@@ -278,6 +282,57 @@ func validate(cfg *Config) error {
 	case "", "text", "json":
 	default:
 		return fmt.Errorf("logging.format must be one of text, json")
+	}
+
+	if err := validateKafkaConfig(cfg.Kafka); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateKafkaConfig(kafkaCfg KafkaConfig) error {
+	if len(kafkaCfg.Brokers) == 0 {
+		return fmt.Errorf("kafka.brokers must contain at least one broker")
+	}
+
+	if kafkaCfg.TLS {
+		if strings.TrimSpace(kafkaCfg.TLSCAFile) != "" {
+			if err := validateReadableFile(kafkaCfg.TLSCAFile, "kafka.tls_ca_file"); err != nil {
+				return err
+			}
+		}
+		certFile := strings.TrimSpace(kafkaCfg.TLSCertFile)
+		keyFile := strings.TrimSpace(kafkaCfg.TLSKeyFile)
+		if certFile != "" || keyFile != "" {
+			if certFile == "" || keyFile == "" {
+				return fmt.Errorf("kafka.tls_cert_file and kafka.tls_key_file must be configured together")
+			}
+			if err := validateReadableFile(certFile, "kafka.tls_cert_file"); err != nil {
+				return err
+			}
+			if err := validateReadableFile(keyFile, "kafka.tls_key_file"); err != nil {
+				return err
+			}
+		}
+	} else if strings.TrimSpace(kafkaCfg.TLSCAFile) != "" || strings.TrimSpace(kafkaCfg.TLSCertFile) != "" || strings.TrimSpace(kafkaCfg.TLSKeyFile) != "" || strings.TrimSpace(kafkaCfg.TLSServerName) != "" {
+		return fmt.Errorf("kafka TLS files or server name require kafka.tls=true")
+	}
+
+	mechanism := strings.ToLower(strings.TrimSpace(kafkaCfg.SASLMechanism))
+	switch mechanism {
+	case "", "plain", "scram-sha-256", "scram-sha-512":
+	default:
+		return fmt.Errorf("kafka.sasl_mechanism must be one of plain, scram-sha-256, scram-sha-512")
+	}
+
+	if mechanism != "" {
+		if kafkaCfg.SASLUsername == "" {
+			return fmt.Errorf("kafka.sasl_username is required when kafka.sasl_mechanism is set")
+		}
+		if kafkaCfg.SASLPassword == "" {
+			return fmt.Errorf("kafka.sasl_password is required when kafka.sasl_mechanism is set")
+		}
 	}
 
 	return nil

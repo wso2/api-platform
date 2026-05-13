@@ -25,7 +25,18 @@ The Event Gateway is a lightweight, extensible runtime for managing event-driven
 
 - **WebSubApi** — Multi-channel pub/sub API. Publishers send events via a webhook receiver; subscribers register callbacks at a hub endpoint. Each channel maps to a Kafka topic.
 - **Protocol Mediation** — Bridges WebSocket clients to Kafka topics (1:1 passthrough).
-- **Policies** — Pluggable enforcement at three points: `subscribe` (hub requests), `inbound` (event ingress), `outbound` (event delivery).
+- **Policies** — Pluggable enforcement at four points per channel:
+
+| Policy point | YAML key | Triggered when |
+|---|---|---|
+| `on_subscription` | `subscribe` | A client subscribes at the hub |
+| `on_unsubscription` | `unsubscribe` | A client unsubscribes at the hub |
+| `on_message_received` | `inbound` | An event is published via the webhook receiver |
+| `on_message_delivery` | `outbound` | An event is delivered to a subscriber callback |
+
+Policies can be applied at two scopes:
+- **`policies`** — applied uniformly to every channel in the API (e.g., authentication)
+- **`channels.<name>`** — applied only to a specific named channel (e.g., RBAC per topic)
 
 ## Prerequisites
 
@@ -103,7 +114,12 @@ Two Postman collections are provided in [`spec/postman/`](spec/postman/):
 
 #### Step 1: Create a WebSub API (Control Plane collection)
 
-Use the **"Create Repo Watcher"** request. This registers a WebSub API with three channels (`issues`, `pull-requests`, `commits`) via the gateway controller, which pushes the configuration to the event gateway over xDS.
+Use the **"Create Repo Watcher"** request. This registers a WebSub API with two channels (`issues`, `pull-requests`) via the gateway controller, which pushes the configuration to the event gateway over xDS.
+
+The spec uses two policy scopes:
+
+- **`policies`** — API-wide policies applied to every channel (e.g., authentication on every subscribe/unsubscribe)
+- **`channels`** — Per-channel policies applied only to the named channel (e.g., RBAC per topic)
 
 ```
 POST http://localhost:9090/api/management/v0.9/websub-apis
@@ -120,23 +136,39 @@ Content-Type: application/json
     "displayName": "repo-watcher",
     "version": "v1.0",
     "context": "/repos",
-    "hub": {
-      "channels": [
-        { "name": "issues" },
-        { "name": "pull-requests" },
-        { "name": "commits" }
-      ],
-      "policies": [
-        {
-          "name": "basic-auth",
-          "version": "v1",
-          "params": {
-            "username": "admin",
-            "password": "admin"
-          }
-        }
-      ]
+
+    "policies": {
+      "on_subscription": [],
+      "on_unsubscription": [],
+      "on_message_received": [],
+      "on_message_delivery": []
     },
+
+    "channels": {
+      "issues": {
+        "policies": {
+          "on_subscription": [
+            {
+              "name": "rbac",
+              "version": "v1",
+              "params": { "allowedRoles": ["admin", "issue-manager"] }
+            }
+          ]
+        }
+      },
+      "pull-requests": {
+        "policies": {
+          "on_subscription": [
+            {
+              "name": "rbac",
+              "version": "v1",
+              "params": { "allowedRoles": ["admin", "developer"] }
+            }
+          ]
+        }
+      }
+    },
+
     "deploymentState": "deployed"
   }
 }
@@ -148,14 +180,10 @@ Use the **"Subscribe"** request. This registers a callback URL to receive events
 
 ```
 POST http://localhost:8080/repos/v1.0/hub
-Authorization: Basic admin:admin
+X-API-Key: <your-api-key>
 Content-Type: application/x-www-form-urlencoded
 
-hub.mode=subscribe
-hub.topic=issues
-hub.callback=http://wh-listener:8090/
-hub.secret=mysecret
-hub.lease_seconds=3600
+hub.mode=subscribe&hub.topic=issues&hub.callback=http://wh-listener:8090/&hub.secret=mysecret&hub.lease_seconds=3600
 ```
 
 #### Step 3: Publish an Event (WebSub collection)
@@ -165,11 +193,22 @@ Use the **"Ingress"** request. This publishes an event to the `issues` channel. 
 ```
 POST http://localhost:8080/repos/v1.0/webhook-receiver?topic=issues
 Content-Type: text/plain
+X-Hub-Signature-256: sha256=<hmac-of-body>
 
 issue0
 ```
 
-#### Step 4: Verify Delivery
+#### Step 4: Unsubscribe from a Topic (WebSub collection)
+
+```
+POST http://localhost:8080/repos/v1.0/hub
+X-API-Key: <your-api-key>
+Content-Type: application/x-www-form-urlencoded
+
+hub.mode=unsubscribe&hub.topic=issues&hub.callback=http://wh-listener:8090/
+```
+
+#### Step 5: Verify Delivery
 
 Check the webhook listener logs to confirm the event was delivered:
 
@@ -207,16 +246,20 @@ curl -X POST http://localhost:9090/api/management/v0.9/websub-apis \
       "displayName": "repo-watcher",
       "version": "v1.0",
       "context": "/repos",
-      "hub": {
-        "channels": [
-          { "name": "issues" },
-          { "name": "pull-requests" },
-          { "name": "commits" }
+      "policies": {
+        "on_subscription": [
+          { "name": "api-key-auth", "version": "v1", "params": { "in": "header", "name": "X-API-Key" } }
         ],
-        "policies": [{
-          "name": "basic-auth", "version": "v1",
-          "params": { "username": "admin", "password": "admin" }
-        }]
+        "on_unsubscription": [
+          { "name": "api-key-auth", "version": "v1", "params": { "in": "header", "name": "X-API-Key" } }
+        ],
+        "on_message_received": [],
+        "on_message_delivery": []
+      },
+      "channels": {
+        "issues": {},
+        "pull-requests": {},
+        "commits": {}
       },
       "deploymentState": "deployed"
     }
@@ -224,7 +267,7 @@ curl -X POST http://localhost:9090/api/management/v0.9/websub-apis \
 
 # 2. Subscribe to the "issues" topic
 curl -X POST http://localhost:8080/repos/v1.0/hub \
-  -u admin:admin \
+  -H "X-API-Key: <your-api-key>" \
   -d "hub.mode=subscribe&hub.topic=issues&hub.callback=http://wh-listener:8090/&hub.secret=mysecret&hub.lease_seconds=3600"
 
 # 3. Publish an event
@@ -232,9 +275,53 @@ curl -X POST "http://localhost:8080/repos/v1.0/webhook-receiver?topic=issues" \
   -H "Content-Type: text/plain" \
   -d "issue0"
 
-# 4. Check delivery
+# 4. Unsubscribe
+curl -X POST http://localhost:8080/repos/v1.0/hub \
+  -H "X-API-Key: <your-api-key>" \
+  -d "hub.mode=unsubscribe&hub.topic=issues&hub.callback=http://wh-listener:8090/"
+
+# 5. Check delivery
 docker compose logs wh-listener
 ```
+
+## WebSubApi Spec Reference
+
+The `WebSubApi` kind is configured via `policies` and `channels`. Both are optional; omitting a policy point leaves it open (no enforcement).
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "WebSubApi",
+  "metadata": { "name": "my-api" },
+  "spec": {
+    "displayName": "My API",
+    "version": "v1.0",
+    "context": "/my-api",
+
+    "policies": {
+      "on_subscription":    [ /* policies applied to every subscribe request   */ ],
+      "on_unsubscription":  [ /* policies applied to every unsubscribe request */ ],
+      "on_message_received":[ /* policies applied to every inbound event       */ ],
+      "on_message_delivery":[ /* policies applied to every outbound delivery   */ ]
+    },
+
+    "channels": {
+      "<channel-name>": {
+        "policies": {
+          "on_subscription":    [ /* channel-specific subscribe policies    */ ],
+          "on_unsubscription":  [ /* channel-specific unsubscribe policies  */ ],
+          "on_message_received":[ /* channel-specific inbound policies      */ ],
+          "on_message_delivery":[ /* channel-specific outbound policies     */ ]
+        }
+      }
+    },
+
+    "deploymentState": "deployed"
+  }
+}
+```
+
+**Policy execution order:** `policies` policies run first, followed by the matching `channels` entry for that channel. Each policy object requires `name` and `version`; `params` is policy-specific.
 
 ## Configuration
 
@@ -276,7 +363,7 @@ When `websub_tls_enabled=true`, the event gateway serves `https://` on `websub_p
 
 When the control plane is disabled, channels are loaded statically from [`gateway-runtime/configs/channels.yaml`](gateway-runtime/configs/channels.yaml). Two binding kinds are supported:
 
-**WebSubApi** — Multi-channel API:
+**WebSubApi** — Multi-channel API. The `policies` block at root level maps to `policies`; each channel's `policies` block maps to its `channels` entry:
 
 ```yaml
 channels:
@@ -286,20 +373,42 @@ channels:
     context: /repos
     channels:
       - name: issues
+        policies:
+          subscribe:            # → on_subscription (channel-level)
+            - name: rbac
+              version: v1
+              params:
+                allowedRoles: ["admin", "issue-manager"]
+          unsubscribe: []       # → on_unsubscription (channel-level)
+          inbound: []           # → on_message_received (channel-level)
+          outbound: []          # → on_message_delivery (channel-level)
       - name: pull-requests
+        policies:
+          subscribe:
+            - name: rbac
+              version: v1
+              params:
+                allowedRoles: ["admin", "developer"]
+          unsubscribe: []
+          inbound: []
+          outbound: []
     receiver:
       type: websub
     broker-driver:
       type: kafka
       config:
         brokers: ["kafka:29092"]
-    policies:
-      subscribe:
-        - name: basic-auth
+    policies:                   # → policies
+      subscribe:                # → on_subscription
+        - name: api-key-auth
           version: v1
-          params: { username: "admin", password: "admin" }
-      inbound: []
-      outbound: []
+          params: { in: header, name: X-API-Key }
+      unsubscribe:              # → on_unsubscription
+        - name: api-key-auth
+          version: v1
+          params: { in: header, name: X-API-Key }
+      inbound: []               # → on_message_received
+      outbound: []              # → on_message_delivery
 ```
 
 **Flat binding** — Protocol mediation (WebSocket → Kafka):
@@ -320,9 +429,19 @@ channels:
         brokers: ["kafka:29092"]
     policies:
       subscribe: []
+      unsubscribe: []
       inbound: []
       outbound: []
 ```
+
+The four `policies` keys map directly to the control-plane spec fields:
+
+| `channels.yaml` key | Control plane field | Triggered when |
+|---|---|---|
+| `subscribe` | `on_subscription` | Client subscribes at the hub |
+| `unsubscribe` | `on_unsubscription` | Client unsubscribes at the hub |
+| `inbound` | `on_message_received` | Event published via webhook receiver |
+| `outbound` | `on_message_delivery` | Event delivered to subscriber callback |
 
 ## Building from Source
 
@@ -338,6 +457,34 @@ make test
 # Build the Docker image
 docker compose build event-gateway
 ```
+
+## Running Integration Tests
+
+The integration tests exercise the full stack (controller → event gateway → Kafka → delivery).
+
+### Prerequisites
+
+Make sure all services are running:
+
+```bash
+cd event-gateway && docker compose up -d
+```
+
+### Run the Tests
+
+```bash
+cd event-gateway/gateway-runtime
+make test
+```
+
+The integration test suite:
+
+1. Creates a `WebSubApi` with `policies` and `channels` via the control plane REST API.
+2. Verifies the xDS snapshot is pushed to the event gateway.
+3. Subscribes a callback URL to each channel — `on_subscription` policies are enforced.
+4. Publishes events and asserts delivery to the callback — `on_message_received` and `on_message_delivery` policies are enforced.
+5. Unsubscribes and asserts `on_unsubscription` policies are enforced and no further delivery occurs.
+6. Deletes the API and asserts cleanup.
 
 ## Useful Endpoints
 
@@ -376,7 +523,7 @@ event-gateway/
 │   ├── cmd/event-gateway/       # Entry point and plugin registration
 │   ├── configs/
 │   │   ├── config.toml          # Runtime configuration
-│   │   └── channels.yaml        # Static channel bindings
+│   │   └── channels.yaml        # Static channel bindings (used when control plane is disabled)
 │   └── internal/
 │       ├── admin/               # Health/readiness endpoints
 │       ├── binding/             # Channel binding parser

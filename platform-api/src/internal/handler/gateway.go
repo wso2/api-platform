@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
+	"regexp"
 	"strings"
 
 	"platform-api/src/internal/middleware"
@@ -32,6 +33,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+// gatewayVersionPattern accepts two shapes for the registration version field:
+//   - `major.minor`                          (e.g. "1.0")
+//   - `major.minor.patch-preview-<numbers>`  (e.g. "1.1.0-preview-202603",
+//     "1.1.0-preview-202603.1")
+var gatewayVersionPattern = regexp.MustCompile(`^[0-9]{1,6}\.[0-9]{1,6}(\.[0-9]{1,6}-preview-[0-9]+(\.[0-9]+)*)?$`)
 
 // GatewayHandler handles HTTP requests for gateway operations
 type GatewayHandler struct {
@@ -86,8 +93,19 @@ func (h *GatewayHandler) CreateGateway(c *gin.Context) {
 		properties = *req.Properties
 	}
 
+	// TODO: make `version` required when registering a gateway. For now it is optional and defaults to "1.0".
+	var version string
+	if req.Version != nil {
+		version = strings.TrimSpace(*req.Version)
+	}
+	if version != "" && !gatewayVersionPattern.MatchString(version) {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"version must be in 'major.minor' format (e.g. '1.0') or 'major.minor.patch-preview-<build>' format (e.g. '1.1.0-preview-202603' or '1.1.0-preview-202603.1')"))
+		return
+	}
+
 	gateway, err := h.gatewayService.RegisterGateway(orgId, req.Name, req.DisplayName, description, req.Vhost,
-		isCritical, functionalityType, properties)
+		isCritical, functionalityType, version, properties)
 	if err != nil {
 		errMsg := err.Error()
 

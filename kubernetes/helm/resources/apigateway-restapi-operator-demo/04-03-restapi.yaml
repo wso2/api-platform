@@ -1,0 +1,27 @@
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: hello-apikey-api
+  namespace: apigateway-demo
+  labels:
+    # Must match APIGateway.spec.apiSelector.matchLabels (registry binds RestApi → gateway).
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+  annotations:
+    gateway.api-platform.wso2.com/project-id: "1234567890"
+spec:
+  displayName: hello-apikey-api
+  version: v1.0
+  context: /hello-apikey
+  upstream:
+    main:
+      url: http://hello-backend.apigateway-demo.svc.cluster.local:9080
+  policies:
+    - name: api-key-auth
+      version: v1
+      params:
+        key: X-API-Key
+        in: header
+  operations:
+    - method: GET
+      path: /test
+

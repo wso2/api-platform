@@ -1,0 +1,102 @@
+# LLM flow with API-key-protected invoke paths.
+# This is intentionally separate from 05b-llm-resources.yaml so both flows can
+# coexist in the same namespace.
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProviderTemplate
+metadata:
+  name: openai-test-apikey
+  namespace: apigateway-demo
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  displayName: OpenAI APIKey
+  promptTokens:
+    location: payload
+    identifier: $.usage.prompt_tokens
+  completionTokens:
+    location: payload
+    identifier: $.usage.completion_tokens
+  totalTokens:
+    location: payload
+    identifier: $.usage.total_tokens
+  remainingTokens:
+    location: header
+    identifier: x-ratelimit-remaining-tokens
+  requestModel:
+    location: payload
+    identifier: $.model
+  responseModel:
+    location: payload
+    identifier: $.model
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProvider
+metadata:
+  name: demo-llm-provider-apikey
+  namespace: apigateway-demo
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  displayName: OpenAI Provider APIKey
+  version: v1.0
+  template: openai-test-apikey
+  context: /llm-invoke-context-apikey
+  accessControl:
+    mode: allow_all
+  policies:
+    - name: api-key-auth
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            key:
+              valueFrom:
+                secretKeyRef:
+                  name: demo-management-secrets
+                  key: apikey-header-name
+            in: header
+  upstream:
+    url: http://mock-openapi:4010/openai/v1
+    auth:
+      type: api-key
+      header: Authorization
+      value:
+        valueFrom:
+          name: demo-management-secrets
+          key: llm-upstream-authorization
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProxy
+metadata:
+  name: demo-llm-proxy-apikey
+  namespace: apigateway-demo
+  labels:
+    gateway.api-platform.wso2.com/restapi-target: wso2-crd
+spec:
+  displayName: Lifecycle LLM Proxy APIKey
+  version: v1.0
+  context: /proxy-invoke-test-apikey
+  policies:
+    - name: api-key-auth
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            key:
+              valueFrom:
+                secretKeyRef:
+                  name: demo-management-secrets
+                  key: apikey-header-name
+            in: header
+  provider:
+    id: demo-llm-provider-apikey
+    auth:
+      type: api-key
+      header: X-API-Key
+      value:
+        valueFrom:
+            name: demo-management-secrets
+            key: apikey-llmprovider-value
+        

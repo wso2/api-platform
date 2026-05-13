@@ -101,6 +101,7 @@ func TestRegisterGatewayProperties(t *testing.T) {
 		"api.example.com",
 		true,
 		constants.GatewayFunctionalityTypeRegular,
+		"1.0",
 		properties,
 	)
 	if err != nil {

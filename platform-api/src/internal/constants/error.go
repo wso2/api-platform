@@ -70,10 +70,12 @@ var (
 )
 
 var (
-	ErrGatewayNotFound          = errors.New("gateway not found")
-	ErrGatewayAlreadyAssociated = errors.New("gateway already associated with API")
-	ErrGatewayHasAssociatedAPIs = errors.New("cannot delete gateway: it has associated APIs. Please remove all API associations before deleting the gateway")
-	ErrGatewayHasDeployments    = errors.New("cannot delete gateway: it has active API deployments. Please undeploy all APIs before deleting the gateway")
+	ErrGatewayNotFound                  = errors.New("gateway not found")
+	ErrGatewayAlreadyAssociated         = errors.New("gateway already associated with API")
+	ErrGatewayHasAssociatedAPIs         = errors.New("cannot delete gateway: it has associated APIs. Please remove all API associations before deleting the gateway")
+	ErrGatewayHasDeployments            = errors.New("cannot delete gateway: it has active API deployments. Please undeploy all APIs before deleting the gateway")
+	ErrGatewayVersionMismatch           = errors.New("gateway version mismatch")
+	ErrGatewayFunctionalityTypeMismatch = errors.New("gateway functionality type mismatch")
 )
 
 var (
@@ -83,19 +85,19 @@ var (
 )
 
 var (
-	ErrDeploymentNotFound          = errors.New("deployment not found")
-	ErrDeploymentNotActive         = errors.New("no active deployment found for this API on the gateway")
-	ErrDeploymentIsDeployed        = errors.New("cannot delete an active deployment - undeploy it first")
-	ErrDeploymentAlreadyActive     = errors.New("deployment is already active")
-	ErrBaseDeploymentNotFound      = errors.New("base deployment not found")
-	ErrInvalidDeploymentStatus     = errors.New("invalid deployment status")
-	ErrDeploymentNameRequired      = errors.New("deployment name is required")
-	ErrDeploymentBaseRequired      = errors.New("base is required")
-	ErrDeploymentGatewayIDRequired = errors.New("gatewayId is required")
-	ErrAPINoBackendServices        = errors.New("API must have at least one backend service attached before deployment")
-	ErrDeploymentAlreadyDeployed        = errors.New("cannot restore to the currently deployed deployment")
-	ErrInvalidDeploymentRestoreState    = errors.New("deployment cannot be restored: only ARCHIVED or UNDEPLOYED deployments are eligible")
-	ErrGatewayIDMismatch           = errors.New("gateway ID mismatch: deployment is bound to a different gateway")
+	ErrDeploymentNotFound            = errors.New("deployment not found")
+	ErrDeploymentNotActive           = errors.New("no active deployment found for this API on the gateway")
+	ErrDeploymentIsDeployed          = errors.New("cannot delete an active deployment - undeploy it first")
+	ErrDeploymentAlreadyActive       = errors.New("deployment is already active")
+	ErrBaseDeploymentNotFound        = errors.New("base deployment not found")
+	ErrInvalidDeploymentStatus       = errors.New("invalid deployment status")
+	ErrDeploymentNameRequired        = errors.New("deployment name is required")
+	ErrDeploymentBaseRequired        = errors.New("base is required")
+	ErrDeploymentGatewayIDRequired   = errors.New("gatewayId is required")
+	ErrAPINoBackendServices          = errors.New("API must have at least one backend service attached before deployment")
+	ErrDeploymentAlreadyDeployed     = errors.New("cannot restore to the currently deployed deployment")
+	ErrInvalidDeploymentRestoreState = errors.New("deployment cannot be restored: only ARCHIVED or UNDEPLOYED deployments are eligible")
+	ErrGatewayIDMismatch             = errors.New("gateway ID mismatch: deployment is bound to a different gateway")
 )
 
 var (
@@ -163,10 +165,10 @@ var (
 )
 
 var (
-	ErrWebSubAPIExists                    = errors.New("websub api already exists")
-	ErrWebSubAPINotFound                  = errors.New("websub api not found")
-	ErrWebSubAPILimitReached              = errors.New("websub api limit reached for organization")
-	ErrProjectHasAssociatedWebSubAPIs     = errors.New("project has associated WebSub APIs")
+	ErrWebSubAPIExists                = errors.New("websub api already exists")
+	ErrWebSubAPINotFound              = errors.New("websub api not found")
+	ErrWebSubAPILimitReached          = errors.New("websub api limit reached for organization")
+	ErrProjectHasAssociatedWebSubAPIs = errors.New("project has associated WebSub APIs")
 )
 
 var (

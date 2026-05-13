@@ -37,8 +37,9 @@ type policyCapabilities struct {
 }
 
 // BridgeFactory creates Python bridge instances and validates the executor contract.
+// The factory resolves the global StreamManager singleton at GetPolicy call time,
+// which is guaranteed to be configured after pythonbridge.Init(cfg) runs in main().
 type BridgeFactory struct {
-	StreamManager *StreamManager
 	PolicyName    string
 	PolicyVersion string
 }
@@ -73,7 +74,8 @@ func (f *BridgeFactory) GetPolicy(metadata policy.PolicyMetadata, params map[str
 	ctx, cancel := context.WithTimeout(context.Background(), getTimeout())
 	defer cancel()
 
-	resp, err := f.StreamManager.InitPolicy(ctx, req)
+	sm := GetStreamManager()
+	resp, err := sm.InitPolicy(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("InitPolicy RPC failed for %s:%s: %w", f.PolicyName, f.PolicyVersion, err)
 	}
@@ -102,7 +104,7 @@ func (f *BridgeFactory) GetPolicy(metadata policy.PolicyMetadata, params map[str
 		policyVersion: f.PolicyVersion,
 		mode:          mode,
 		metadata:      metadata,
-		streamManager: f.StreamManager,
+		streamManager: sm,
 		translator:    NewTranslator(),
 		slogger:       slogger,
 		instanceID:    resp.GetInstanceId(),

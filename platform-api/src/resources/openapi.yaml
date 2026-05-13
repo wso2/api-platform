@@ -6138,6 +6138,12 @@ components:
           additionalProperties: true
           description: Custom key-value properties for the gateway
           example: {"region": "us-west", "tier": "premium"}
+        version:
+          type: string
+          pattern: '^[0-9]{1,6}\.[0-9]{1,6}(\.[0-9]{1,6}-preview-[0-9]+(\.[0-9]+)*)?$'
+          description: Gateway version in `major.minor` format (e.g. `1.0`) or `major.minor.patch-preview-<build>` format (e.g. `1.1.0-preview-202603` or `1.1.0-preview-202603.1`). Defaults to `1.0` if not provided.
+          default: "1.0"
+          example: "1.0"
     CustomPolicyResponse:
       type: object
       description: A custom policy stored in the platform's custom policy registry.
@@ -6268,6 +6274,10 @@ components:
           enum: [regular, ai, event]
           description: Type of gateway functionality
           example: "regular"
+        version:
+          type: string
+          description: Gateway version in `major.minor` format (e.g. `1.0`) or `major.minor.patch-preview-<build>` format (e.g. `1.1.0-preview-202603` or `1.1.0-preview-202603.1`)
+          example: "1.0"
         isActive:
           type: boolean
           description: Indicates if the gateway is currently connected to the platform via WebSocket
@@ -9034,11 +9044,13 @@ components:
           example: /my-websub-api
         upstream:
           $ref: '#/components/schemas/Upstream'
+        policies:
+          $ref: '#/components/schemas/WebSubAllChannelPolicies'
         channels:
-          type: array
-          description: List of channels for this WebSub API
-          items:
-            $ref: '#/components/schemas/Channel'
+          type: object
+          description: Per-channel configuration keyed by channel name. Each key is a channel name and defines policies applied only to that channel.
+          additionalProperties:
+            $ref: '#/components/schemas/WebSubChannel'
         transport:
           type: array
           description: Supported transport protocols
@@ -9050,11 +9062,6 @@ components:
           example:
             - http
             - https
-        policies:
-          type: array
-          description: List of policies to be applied
-          items:
-            $ref: '#/components/schemas/Policy'
         lifeCycleStatus:
           type: string
           description: Lifecycle status of the WebSub API
@@ -9138,6 +9145,63 @@ components:
             $ref: '#/components/schemas/WebSubAPIListItem'
         pagination:
           $ref: '#/components/schemas/Pagination'
+
+    WebSubAllChannelPolicies:
+      type: object
+      description: Policies applied to all channels, organized by event type.
+      properties:
+        on_subscription:
+          type: array
+          description: Policies applied when a client subscribes to a channel (e.g., api-key-auth)
+          items:
+            $ref: '#/components/schemas/Policy'
+        on_unsubscription:
+          type: array
+          description: Policies applied when a client unsubscribes from a channel
+          items:
+            $ref: '#/components/schemas/Policy'
+        on_message_received:
+          type: array
+          description: Policies applied when a message is received from the publisher via webhook (e.g., hmac-signature-validation)
+          items:
+            $ref: '#/components/schemas/Policy'
+        on_message_delivery:
+          type: array
+          description: Policies applied when delivering a message to a subscriber callback URL (e.g., hmac-sign-messages)
+          items:
+            $ref: '#/components/schemas/Policy'
+
+    WebSubChannelPolicies:
+      type: object
+      description: Policies applied to a specific channel, organized by event type.
+      properties:
+        on_subscription:
+          type: array
+          description: Policies applied when a client subscribes to this channel (e.g., rbac)
+          items:
+            $ref: '#/components/schemas/Policy'
+        on_unsubscription:
+          type: array
+          description: Policies applied when a client unsubscribes from this channel
+          items:
+            $ref: '#/components/schemas/Policy'
+        on_message_received:
+          type: array
+          description: Policies applied when a message is received for this channel
+          items:
+            $ref: '#/components/schemas/Policy'
+        on_message_delivery:
+          type: array
+          description: Policies applied when delivering a message for this channel
+          items:
+            $ref: '#/components/schemas/Policy'
+
+    WebSubChannel:
+      type: object
+      description: A single channel definition with optional per-channel policy overrides.
+      properties:
+        policies:
+          $ref: '#/components/schemas/WebSubChannelPolicies'
 
   responses:
     Unauthorized:

@@ -1,6 +1,6 @@
 # Gateway API feature — implementation notes
 
-This document is a **short maintainer index** for where code and behaviour live. The **single self-contained** write-up (problem statement, configuration, reconcilers, annotations, RBAC, demo, troubleshooting—intended for GitHub Discussions without depending on other repo docs) is **GITHUB_DISCUSSION_GATEWAY_API.md** in this folder.
+This document is a **short maintainer index** for where code and behaviour live. The **single self-contained** write-up (problem statement, configuration, reconcilers, annotations, RBAC, demo, troubleshooting—intended for GitHub Discussions without depending on other repo docs) is **GITHUB_DISCUSSION_GATEWAY_API.md** in this folder. For the **WSO2 `APIGateway` + gateway-controller REST** additions beyond **`RestApi`** (LLM, MCP, subscriptions, …), see **FEATURE_MANAGEMENT_RESOURCES_CRDs.md** and the Discussion-style draft **GITHUB_DISCUSSION_MANAGEMENT_RESOURCES_CRDs.md**. Management OpenAPI also lists **`/websub-apis`**, but the operator does not reconcile a **`WebSubApi`** CRD because WebSub is not fully supported on the gateway; see the feature doc for the explicit boundary.
 
 ## Goals
 

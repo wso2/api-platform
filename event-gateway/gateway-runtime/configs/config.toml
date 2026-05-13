@@ -27,6 +27,18 @@ metrics_port = 9003
 # Default Kafka brokers. Channels can override with broker-driver.config.brokers.
 brokers = ["localhost:9092"]
 consumer_group_prefix = "event-gateway"
+tls = false
+# Optional PEM CA file for self-signed or private Kafka CAs.
+# tls_ca_file = "/etc/event-gateway/kafka/ca.crt"
+# Optional client certificate and key for Kafka mTLS.
+# tls_cert_file = "/etc/event-gateway/kafka/client.crt"
+# tls_key_file = "/etc/event-gateway/kafka/client.key"
+# Optional TLS server name override.
+# tls_server_name = "kafka"
+# Optional SASL settings. Supported mechanisms: plain, scram-sha-256, scram-sha-512.
+# sasl_mechanism = "plain"
+# sasl_username = "egw"
+# sasl_password = "egw-pass"
 
 [websub]
 verification_timeout_seconds = 10
@@ -59,4 +71,3 @@ allow_payloads = false
 enabled = true
 xds_address = "localhost:18001"
 # node_id = ""
-

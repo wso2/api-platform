@@ -31,6 +31,7 @@ import (
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/selector"
 	"go.uber.org/zap"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -63,6 +64,7 @@ type APITrackingEntry struct {
 	Generation    int64
 	Status        APITrackingStatus
 	GatewayKey    string
+	Fingerprint   string
 	RetryCount    int
 	LastRetryTime time.Time
 	NextRetryTime time.Time
@@ -117,26 +119,33 @@ const (
 // RestApiReconciler reconciles a RestApi object
 type RestApiReconciler struct {
 	client.Client
-	Scheme     *runtime.Scheme
-	Config     *config.OperatorConfig
-	apiTracker *APITracker
-	Logger     *zap.Logger
+	Scheme              *runtime.Scheme
+	Config              *config.OperatorConfig
+	apiTracker          *APITracker
+	valueFromRefIndexMu sync.RWMutex
+	valueFromRefIndex   map[string]map[types.NamespacedName]struct{}
+	restAPIValueFromRef map[types.NamespacedName]map[string]struct{}
+	Logger              *zap.Logger
 }
 
 // NewRestApiReconciler creates a new RestApiReconciler
 func NewRestApiReconciler(client client.Client, scheme *runtime.Scheme, cfg *config.OperatorConfig, logger *zap.Logger) *RestApiReconciler {
 	return &RestApiReconciler{
-		Client:     client,
-		Scheme:     scheme,
-		Config:     cfg,
-		apiTracker: NewAPITracker(),
-		Logger:     logger,
+		Client:              client,
+		Scheme:              scheme,
+		Config:              cfg,
+		apiTracker:          NewAPITracker(),
+		valueFromRefIndex:   make(map[string]map[types.NamespacedName]struct{}),
+		restAPIValueFromRef: make(map[types.NamespacedName]map[string]struct{}),
+		Logger:              logger,
 	}
 }
 
 //+kubebuilder:rbac:groups=gateway.api-platform.wso2.com,resources=restapis,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=gateway.api-platform.wso2.com,resources=restapis/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=gateway.api-platform.wso2.com,resources=restapis/finalizers,verbs=update
+//+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+//+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop
 func (r *RestApiReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -148,11 +157,13 @@ func (r *RestApiReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		if apierrors.IsNotFound(err) {
 			// CR deleted, clean up tracker
 			r.apiTracker.Delete(req.String())
+			r.removeRestAPIFromValueFromIndex(req.NamespacedName)
 			return ctrl.Result{}, nil
 		}
 		log.Error("unable to fetch RestApi", zap.Error(err))
 		return ctrl.Result{}, err
 	}
+	r.upsertRestAPIValueFromIndex(apiConfig)
 
 	log.Info("Reconciling RestApi",
 		zap.String("name", apiConfig.Name),
@@ -204,17 +215,44 @@ func (r *RestApiReconciler) decideAndProcess(
 	log := r.Logger.With(zap.String("controller", "RestApi"), zap.String("name", apiConfig.Name))
 
 	// Case 1: CR generation == status observed generation
-	// This means the API is already deployed (or controller restarted after successful deploy)
-	if crGeneration == statusObservedGen && programmedCond != nil && programmedCond.Status == metav1.ConditionTrue {
+	if crGeneration == statusObservedGen {
+		fp, err := computeRestApiPolicyValueFromFingerprint(ctx, r.Client, apiConfig.Namespace, &apiConfig.Spec)
+		if err != nil {
+			entry := &APITrackingEntry{Generation: crGeneration, Status: TrackingStatusProcessing}
+			if trackingEntry != nil {
+				entry.RetryCount = trackingEntry.RetryCount
+				entry.GatewayKey = trackingEntry.GatewayKey
+				entry.NextRetryTime = trackingEntry.NextRetryTime
+			}
+			return r.handleDeploymentError(ctx, apiConfig, trackingKey, entry, err)
+		}
+		if fp != restApiPolicyValueFromAnnotation(apiConfig) {
+			log.Info("RestApi policy valueFrom backing fingerprint changed; redeploying",
+				zap.String("name", apiConfig.Name),
+				zap.Int64("generation", crGeneration))
+			rc := 0
+			if trackingEntry != nil {
+				rc = trackingEntry.RetryCount
+			}
+			r.apiTracker.Set(trackingKey, &APITrackingEntry{
+				Generation: crGeneration,
+				Status:     TrackingStatusRetrying,
+				RetryCount: rc,
+			})
+			return r.processDeployment(ctx, apiConfig, trackingKey, crGeneration)
+		}
+
 		// Already deployed - update tracker and skip
-		r.apiTracker.Set(trackingKey, &APITrackingEntry{
-			Generation: crGeneration,
-			Status:     TrackingStatusDeployed,
-		})
-		log.Debug("API already deployed, skipping",
-			zap.String("name", apiConfig.Name),
-			zap.Int64("generation", crGeneration))
-		return ctrl.Result{}, nil
+		if programmedCond != nil && programmedCond.Status == metav1.ConditionTrue {
+			r.apiTracker.Set(trackingKey, &APITrackingEntry{
+				Generation: crGeneration,
+				Status:     TrackingStatusDeployed,
+			})
+			log.Debug("API already deployed, skipping",
+				zap.String("name", apiConfig.Name),
+				zap.Int64("generation", crGeneration))
+			return ctrl.Result{}, nil
+		}
 	}
 
 	// Case 2: CR generation > status observed generation
@@ -314,18 +352,19 @@ func (r *RestApiReconciler) processDeployment(
 	}
 	r.apiTracker.Set(trackingKey, entry)
 
-	// Set initial conditions (only on first attempt, not retries)
-	if retryCount == 0 {
+	// Set initial conditions (only on first attempt, not retries, and unless already programmed for this gen)
+	if retryCount == 0 && !programmedTrueForGeneration(apiConfig, generation) {
 		if err := r.setInitialConditions(ctx, apiConfig, generation); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
 	// Execute deployment (executeDeployment will check existence and decide POST vs PUT)
-	err := r.executeDeployment(ctx, apiConfig, gateway)
+	fp, err := r.executeDeployment(ctx, apiConfig, gateway)
 	if err != nil {
 		return r.handleDeploymentError(ctx, apiConfig, trackingKey, entry, err)
 	}
+	entry.Fingerprint = fp
 
 	// Success
 	return r.handleDeploymentSuccess(ctx, apiConfig, trackingKey, entry, gatewayKey)
@@ -363,17 +402,23 @@ func (r *RestApiReconciler) setInitialConditions(ctx context.Context, apiConfig 
 }
 
 // executeDeployment performs the actual HTTP request to the gateway
-func (r *RestApiReconciler) executeDeployment(ctx context.Context, apiConfig *apiv1.RestApi, gateway *registry.GatewayInfo) error {
+func (r *RestApiReconciler) executeDeployment(ctx context.Context, apiConfig *apiv1.RestApi, gateway *registry.GatewayInfo) (string, error) {
 	log := r.Logger.With(zap.String("controller", "RestApi"), zap.String("name", apiConfig.Name))
+
+	spec := apiConfig.Spec.DeepCopy()
+	fp, err := resolveAPIConfigPolicyParamsValueFrom(ctx, r.Client, apiConfig.Namespace, spec, log)
+	if err != nil {
+		return "", fmt.Errorf("resolve RestApi policy params valueFrom: %w", err)
+	}
 
 	apiYAML, err := gatewayclient.BuildRestAPIYAML(
 		apiConfig.APIVersion,
 		apiConfig.Kind,
 		payloadMetadataForRestAPI(apiConfig),
-		apiConfig.Spec,
+		*spec,
 	)
 	if err != nil {
-		return fmt.Errorf("build REST API YAML: %w", err)
+		return "", fmt.Errorf("build REST API YAML: %w", err)
 	}
 
 	handle := apiConfig.Name
@@ -387,11 +432,14 @@ func (r *RestApiReconciler) executeDeployment(ctx context.Context, apiConfig *ap
 	ep := gateway.GetGatewayServiceEndpoint()
 	exists, err := gatewayclient.RestAPIExists(ctx, ep, handle, auth)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	log.Info("Deploying API to gateway", zap.String("api", apiConfig.Name), zap.Bool("exists", exists))
-	return gatewayclient.DeployRestAPI(ctx, ep, handle, apiYAML, exists, auth)
+	if err := gatewayclient.DeployRestAPI(ctx, ep, handle, apiYAML, exists, auth); err != nil {
+		return "", err
+	}
+	return fp, nil
 }
 
 // handleDeploymentSuccess handles successful deployment
@@ -421,6 +469,15 @@ func (r *RestApiReconciler) handleDeploymentSuccess(
 		return ctrl.Result{}, err
 	}
 
+	if err := patchRestApiPolicyValueFromFingerprintAnnotation(
+		ctx, r.Client,
+		types.NamespacedName{Namespace: apiConfig.Namespace, Name: apiConfig.Name},
+		entry.Fingerprint,
+	); err != nil {
+		log.Error("patch policy valueFrom fingerprint annotation failed", zap.Error(err))
+		return ctrl.Result{}, err
+	}
+
 	return ctrl.Result{}, nil
 }
 
@@ -438,6 +495,12 @@ func (r *RestApiReconciler) handleDeploymentError(
 	case *gatewayclient.NonRetryableError:
 		return r.handleNonRetryableError(ctx, apiConfig, trackingKey, entry, e)
 	default:
+		if IsInvalidHTTPRouteConfigError(err) {
+			return r.handleNonRetryableError(ctx, apiConfig, trackingKey, entry, &gatewayclient.NonRetryableError{
+				Err:        err,
+				StatusCode: http.StatusBadRequest,
+			})
+		}
 		return r.handleRetryableError(ctx, apiConfig, trackingKey, entry, &gatewayclient.RetryableError{Err: err})
 	}
 }
@@ -654,6 +717,7 @@ func (r *RestApiReconciler) reconcileAPIDeletion(ctx context.Context, apiConfig 
 	// Remove from tracker
 	trackingKey := types.NamespacedName{Namespace: apiConfig.Namespace, Name: apiConfig.Name}.String()
 	r.apiTracker.Delete(trackingKey)
+	r.removeRestAPIFromValueFromIndex(types.NamespacedName{Namespace: apiConfig.Namespace, Name: apiConfig.Name})
 
 	// Remove finalizer
 	controllerutil.RemoveFinalizer(apiConfig, apiFinalizerName)
@@ -843,5 +907,11 @@ func (r *RestApiReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&apiv1.APIGateway{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueAPIsForGateway),
 			builder.WithPredicates(gatewayPred)).
+		Watches(&corev1.Secret{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueRestApisForSecret),
+			builder.WithPredicates(secretMutationPredicate())).
+		Watches(&corev1.ConfigMap{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueRestApisForConfigMap),
+			builder.WithPredicates(configMapMutationPredicate())).
 		Complete(r)
 }

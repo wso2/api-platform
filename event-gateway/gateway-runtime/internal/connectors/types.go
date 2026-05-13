@@ -45,6 +45,7 @@ type Receiver interface {
 // Implemented by the hub; consumed by receivers via dependency injection.
 type MessageProcessor interface {
 	ProcessSubscribe(ctx context.Context, bindingName string, msg *Message) (*Message, bool, error)
+	ProcessUnsubscribe(ctx context.Context, bindingName string, msg *Message) (*Message, bool, error)
 	ProcessInbound(ctx context.Context, bindingName string, msg *Message) (*Message, bool, error)
 	ProcessOutbound(ctx context.Context, bindingName string, msg *Message) (*Message, bool, error)
 
@@ -62,8 +63,11 @@ type MessageProcessor interface {
 type BrokerDriver interface {
 	Publish(ctx context.Context, topic string, msg *Message) error
 	Subscribe(groupID string, topics []string, handler MessageHandler) (Receiver, error)
+	SubscribeManual(groupID string, topics []string, handler MessageHandler) (Receiver, error)
+	Replay(ctx context.Context, topic string, handler MessageHandler) error
 	TopicExists(ctx context.Context, topic string) (bool, error)
 	EnsureTopics(ctx context.Context, topics []string) error
+	EnsureCompactedTopic(ctx context.Context, topic string) error
 	DeleteTopics(ctx context.Context, topics []string) error
 	Close() error
 }

@@ -71,16 +71,17 @@ func TestRemoveWebSubApiBinding_ClearsStalePolicyChains(t *testing.T) {
 		},
 	}
 
-	subKey, inKey, outKey, _, err := rt.buildWebSubApiPolicyChains(oldBinding, defaultVhost(""))
+	subKey, unsubKey, inKey, outKey, _, err := rt.buildWebSubApiPolicyChains(oldBinding, defaultVhost(""))
 	if err != nil {
 		t.Fatalf("failed to build initial policy chains: %v", err)
 	}
 
 	rt.hub.RegisterBinding(hub.ChannelBinding{
-		Name:              oldBinding.Name,
-		SubscribeChainKey: subKey,
-		InboundChainKey:   inKey,
-		OutboundChainKey:  outKey,
+		Name:                oldBinding.Name,
+		SubscribeChainKey:   subKey,
+		UnsubscribeChainKey: unsubKey,
+		InboundChainKey:     inKey,
+		OutboundChainKey:    outKey,
 	})
 
 	if got := eng.GetChain(subKey); got == nil {
@@ -110,7 +111,7 @@ func TestRemoveWebSubApiBinding_ClearsStalePolicyChains(t *testing.T) {
 	updatedBinding := oldBinding
 	updatedBinding.Policies = binding.PolicyBindings{}
 
-	newSubKey, newInKey, newOutKey, _, err := rt.buildWebSubApiPolicyChains(updatedBinding, defaultVhost(""))
+	newSubKey, _, newInKey, newOutKey, _, err := rt.buildWebSubApiPolicyChains(updatedBinding, defaultVhost(""))
 	if err != nil {
 		t.Fatalf("failed to build updated policy chains: %v", err)
 	}

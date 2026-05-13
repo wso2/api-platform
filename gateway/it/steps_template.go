@@ -45,7 +45,17 @@ func RegisterTemplateSteps(ctx *godog.ScenarioContext, state *TestState, httpSte
 	t := NewTemplateSteps(state, httpSteps)
 
 	ctx.Step(`^the response body should contain template literal:$`, t.responseBodyShouldContainLiteral)
-	ctx.Step(`^the stored RestApi configuration for "([^"]*)" should contain:$`, t.storedRestAPIShouldContain)
+	ctx.Step(`^the stored (RestApi|LlmProvider|LlmProxy|Mcp) configuration for "([^"]*)" should contain:$`, t.storedConfigurationShouldContain)
+}
+
+// kindTables maps the Gherkin-facing artifact kind to the per-kind storage
+// table. The values mirror the schemas in
+// gateway-controller/pkg/storage/gateway-controller-db.sql.
+var kindTables = map[string]string{
+	"RestApi":     "rest_apis",
+	"LlmProvider": "llm_providers",
+	"LlmProxy":    "llm_proxies",
+	"Mcp":         "mcp_proxies",
 }
 
 // responseBodyShouldContainLiteral checks that the last response body contains
@@ -77,25 +87,31 @@ func containsLiteralOrJSONEscaped(haystack, needle string) bool {
 	return jsonEscaped != needle && strings.Contains(haystack, jsonEscaped)
 }
 
-// storedRestAPIShouldContain queries the controller's SQLite DB via the
-// it-db-reader sidecar and asserts the unrendered SourceConfiguration blob for
-// the given RestApi handle contains the supplied literal. Used to verify that
-// the persisted configuration retains template expressions verbatim.
-func (t *TemplateSteps) storedRestAPIShouldContain(handle string, literal *godog.DocString) error {
+// storedConfigurationShouldContain queries the controller's DB via the
+// reader sidecar and asserts the unrendered configuration blob persisted for
+// the given artifact kind/handle contains the supplied literal. Used to verify
+// that the persisted configuration retains template expressions verbatim
+// across all kinds that the renderer touches (RestApi, LlmProvider, LlmProxy,
+// Mcp).
+func (t *TemplateSteps) storedConfigurationShouldContain(kind, handle string, literal *godog.DocString) error {
 	expected := strings.TrimSpace(literal.Content)
 	if expected == "" {
 		return fmt.Errorf("expected literal is empty")
+	}
+	table, ok := kindTables[kind]
+	if !ok {
+		return fmt.Errorf("unknown artifact kind %q (supported: RestApi, LlmProvider, LlmProxy, Mcp)", kind)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), defaultDBQueryTimeout)
 	defer cancel()
 
-	row, err := GetStoredRestAPISourceConfigurationWithRetry(ctx, handle)
+	row, err := GetStoredSourceConfigurationWithRetry(ctx, kind, table, handle)
 	if err != nil {
-		return fmt.Errorf("failed to read stored configuration for %q: %w", handle, err)
+		return fmt.Errorf("failed to read stored %s configuration for %q: %w", kind, handle, err)
 	}
 	if !containsLiteralOrJSONEscaped(row, expected) {
-		return fmt.Errorf("stored configuration for %q does not contain expected template literal\nexpected substring: %q\nstored row: %s", handle, expected, row)
+		return fmt.Errorf("stored %s configuration for %q does not contain expected template literal\nexpected substring: %q\nstored row: %s", kind, handle, expected, row)
 	}
 	return nil
 }

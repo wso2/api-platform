@@ -40,6 +40,7 @@ const (
 	wsPath           = "/api/internal/v1/ws/gateways/connect"
 	injectPath       = "/inject-subscription"
 	subscriptionPath = "/api/internal/v1/subscription-plans"
+	manifestPath     = "POST /api/internal/v1/gateways/{gatewayId}/manifest"
 )
 
 var (
@@ -78,6 +79,7 @@ func main() {
 	mux.HandleFunc(injectPath, injectHandler)
 	mux.HandleFunc(subscriptionPath, syncHandler)
 	mux.HandleFunc("/api/internal/v1/apis/", subscriptionsSyncHandler)
+	mux.HandleFunc(manifestPath, manifestHandler)
 
 	// HTTP server for IT inject endpoint (port 9244)
 	go func() {
@@ -274,4 +276,10 @@ func syncHandler(w http.ResponseWriter, r *http.Request) {
 // subscriptionsSyncHandler returns 500 for GET /api/internal/v1/apis/{id}/subscriptions
 func subscriptionsSyncHandler(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "mock: sync not implemented", http.StatusInternalServerError)
+}
+
+// manifestHandler accepts the gateway manifest push and mirrors the real
+// platform-api response: 204 No Content with an empty body.
+func manifestHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNoContent)
 }

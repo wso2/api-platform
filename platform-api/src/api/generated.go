@@ -837,6 +837,9 @@ type CreateGatewayRequest struct {
 	// Properties Custom key-value properties for the gateway
 	Properties *map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
 
+	// Version Gateway version in `major.minor` format (e.g. `1.0`) or `major.minor.patch-preview-<build>` format (e.g. `1.1.0-preview-202603` or `1.1.0-preview-202603.1`). Defaults to `1.0` if not provided.
+	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
+
 	// Vhost Virtual host (domain name) for the gateway
 	Vhost string `binding:"required" json:"vhost" yaml:"vhost"`
 }
@@ -1322,6 +1325,9 @@ type GatewayResponse struct {
 
 	// UpdatedAt Timestamp when gateway was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// Version Gateway version in `major.minor` format (e.g. `1.0`) or `major.minor.patch-preview-<build>` format (e.g. `1.1.0-preview-202603` or `1.1.0-preview-202603.1`)
+	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
 
 	// Vhost Virtual host (domain name) for the gateway
 	Vhost *string `json:"vhost,omitempty" yaml:"vhost,omitempty"`
@@ -2464,6 +2470,9 @@ type RESTAPIGatewayResponse struct {
 	// UpdatedAt Timestamp when gateway was last updated
 	UpdatedAt *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
+	// Version Gateway version in `major.minor` format (e.g. `1.0`) or `major.minor.patch-preview-<build>` format (e.g. `1.1.0-preview-202603` or `1.1.0-preview-202603.1`)
+	Version *string `json:"version,omitempty" yaml:"version,omitempty"`
+
 	// Vhost Virtual host (domain name) for the gateway
 	Vhost *string `json:"vhost,omitempty" yaml:"vhost,omitempty"`
 }
@@ -3052,8 +3061,8 @@ type ValidateOpenAPIRequest1 = interface{}
 
 // WebSubAPI defines model for WebSubAPI.
 type WebSubAPI struct {
-	// Channels List of channels for this async API
-	Channels []Channel `binding:"required" json:"channels" yaml:"channels"`
+	// Channels Per-channel configuration keyed by channel name. Each key is a channel name and defines policies applied only to that channel.
+	Channels *map[string]WebSubChannel `json:"channels,omitempty" yaml:"channels,omitempty"`
 
 	// Context Base path for the API (must start with /)
 	Context   *string    `json:"context,omitempty" yaml:"context,omitempty"`
@@ -3063,20 +3072,20 @@ type WebSubAPI struct {
 	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// Id Unique handle for the async API
-	Id string `binding:"required" json:"id" yaml:"id"`
+	// Id Unique handle for the WebSub API
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
-	// Kind Kind of the async API
+	// Kind Kind of the WebSub API
 	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
 
-	// LifeCycleStatus Lifecycle status of the async API
+	// LifeCycleStatus Lifecycle status of the WebSub API
 	LifeCycleStatus *WebSubAPILifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
 
-	// Name Human-readable name for the async API
+	// Name Human-readable name for the WebSub API
 	Name string `binding:"required" json:"name" yaml:"name"`
 
-	// Policies List of policies to be applied
-	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+	// Policies Policies applied to all channels, organized by event type.
+	Policies *WebSubAllChannelPolicies `json:"policies,omitempty" yaml:"policies,omitempty"`
 
 	// ProjectId UUID of the project this API belongs to
 	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
@@ -3091,11 +3100,11 @@ type WebSubAPI struct {
 	// Upstream Upstream backend configuration with main and sandbox endpoints
 	Upstream Upstream `json:"upstream" yaml:"upstream"`
 
-	// Version Semantic version of the async API
+	// Version Semantic version of the WebSub API
 	Version string `binding:"required" json:"version" yaml:"version"`
 }
 
-// WebSubAPILifeCycleStatus Lifecycle status of the async API
+// WebSubAPILifeCycleStatus Lifecycle status of the WebSub API
 type WebSubAPILifeCycleStatus string
 
 // WebSubAPITransport defines model for WebSubAPI.Transport.
@@ -3121,6 +3130,42 @@ type WebSubAPIListResponse struct {
 	Count      int                 `binding:"required" json:"count" yaml:"count"`
 	List       []WebSubAPIListItem `binding:"required" json:"list" yaml:"list"`
 	Pagination Pagination          `json:"pagination" yaml:"pagination"`
+}
+
+// WebSubAllChannelPolicies Policies applied to all channels, organized by event type.
+type WebSubAllChannelPolicies struct {
+	// OnMessageDelivery Policies applied when delivering a message to a subscriber callback URL (e.g., hmac-sign-messages)
+	OnMessageDelivery *[]Policy `json:"on_message_delivery,omitempty" yaml:"on_message_delivery,omitempty"`
+
+	// OnMessageReceived Policies applied when a message is received from the publisher via webhook (e.g., hmac-signature-validation)
+	OnMessageReceived *[]Policy `json:"on_message_received,omitempty" yaml:"on_message_received,omitempty"`
+
+	// OnSubscription Policies applied when a client subscribes to a channel (e.g., api-key-auth)
+	OnSubscription *[]Policy `json:"on_subscription,omitempty" yaml:"on_subscription,omitempty"`
+
+	// OnUnsubscription Policies applied when a client unsubscribes from a channel
+	OnUnsubscription *[]Policy `json:"on_unsubscription,omitempty" yaml:"on_unsubscription,omitempty"`
+}
+
+// WebSubChannel A single channel definition with optional per-channel policy overrides.
+type WebSubChannel struct {
+	// Policies Policies applied to a specific channel, organized by event type.
+	Policies *WebSubChannelPolicies `json:"policies,omitempty" yaml:"policies,omitempty"`
+}
+
+// WebSubChannelPolicies Policies applied to a specific channel, organized by event type.
+type WebSubChannelPolicies struct {
+	// OnMessageDelivery Policies applied when delivering a message for this channel
+	OnMessageDelivery *[]Policy `json:"on_message_delivery,omitempty" yaml:"on_message_delivery,omitempty"`
+
+	// OnMessageReceived Policies applied when a message is received for this channel
+	OnMessageReceived *[]Policy `json:"on_message_received,omitempty" yaml:"on_message_received,omitempty"`
+
+	// OnSubscription Policies applied when a client subscribes to this channel (e.g., rbac)
+	OnSubscription *[]Policy `json:"on_subscription,omitempty" yaml:"on_subscription,omitempty"`
+
+	// OnUnsubscription Policies applied when a client unsubscribes from this channel
+	OnUnsubscription *[]Policy `json:"on_unsubscription,omitempty" yaml:"on_unsubscription,omitempty"`
 }
 
 // ArtifactTypeQ defines model for ArtifactType-Q.
@@ -3704,6 +3749,9 @@ type UpdateWebSubAPIJSONRequestBody = WebSubAPI
 
 // CreateWebSubAPIKeyJSONRequestBody defines body for CreateWebSubAPIKey for application/json ContentType.
 type CreateWebSubAPIKeyJSONRequestBody = CreateAPIKeyRequest
+
+// UpdateWebSubAPIKeyJSONRequestBody defines body for UpdateWebSubAPIKey for application/json ContentType.
+type UpdateWebSubAPIKeyJSONRequestBody = UpdateAPIKeyRequest
 
 // DeployWebSubAPIJSONRequestBody defines body for DeployWebSubAPI for application/json ContentType.
 type DeployWebSubAPIJSONRequestBody = DeployRequest

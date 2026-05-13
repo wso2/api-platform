@@ -401,6 +401,19 @@ func (m *MockStorage) GetAllAPIKeys() ([]*models.APIKey, error) {
 	return result, nil
 }
 
+func (m *MockStorage) GetAPIKeysByApplicationUUID(applicationUUID string) ([]*models.APIKey, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	result := make([]*models.APIKey, 0)
+	for _, key := range m.apiKeys {
+		if key.ApplicationID == applicationUUID && key.Status == models.APIKeyStatusActive {
+			result = append(result, cloneAPIKey(key))
+		}
+	}
+	return result, nil
+}
+
 func (m *MockStorage) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey, error) {
 	if m.getErr != nil {
 		return nil, m.getErr
@@ -708,11 +721,11 @@ func (m *MockStorage) DeleteSubscriptionsForAPINotIn(apiID string, ids []string)
 	return nil
 }
 
-func (m *MockStorage) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) error {
+func (m *MockStorage) ReplaceApplicationAPIKeyMappings(application *models.StoredApplication, mappings []*models.ApplicationAPIKeyMapping) ([]string, error) {
 	if m.updateErr != nil {
-		return m.updateErr
+		return nil, m.updateErr
 	}
-	return nil
+	return nil, nil
 }
 
 func (m *MockStorage) SaveCertificate(cert *models.StoredCertificate) error {
