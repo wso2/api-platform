@@ -68,17 +68,13 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 			channels = *apiData.Channels
 		}
 		for chName, ch := range channels {
-			var chPolicies api.WebSubChannelPolicies
-			if ch.Policies != nil {
-				chPolicies = *ch.Policies
-			}
 			var finalPolicies []policyenginev1.PolicyInstance
 
-			// Policy execution order: policies (on_subscription) -> per-channel policies
+			// Policy execution order: allChannels (on_subscription) -> per-channel policies
 			// Start with API-level subscription policies
-			if apiData.Policies != nil && apiData.Policies.OnSubscription != nil {
-				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.Policies.OnSubscription))
-				for _, p := range *apiData.Policies.OnSubscription {
+			if apiData.AllChannels != nil && apiData.AllChannels.OnSubscription != nil && apiData.AllChannels.OnSubscription.Policies != nil {
+				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.AllChannels.OnSubscription.Policies))
+				for _, p := range *apiData.AllChannels.OnSubscription.Policies {
 					resolved, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, p.Name, p.Version)
 					if err != nil {
 						slog.Error("Failed to resolve policy version for all-channel subscription policy", "policy_name", p.Name, "error", err)
@@ -89,8 +85,8 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 			}
 
 			// Append channel-level on_subscription policies
-			if chPolicies.OnSubscription != nil && len(*chPolicies.OnSubscription) > 0 {
-				for _, opPolicy := range *chPolicies.OnSubscription {
+			if ch.OnSubscription != nil && ch.OnSubscription.Policies != nil && len(*ch.OnSubscription.Policies) > 0 {
+				for _, opPolicy := range *ch.OnSubscription.Policies {
 					resolved, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, opPolicy.Name, opPolicy.Version)
 					if err != nil {
 						slog.Error("Failed to resolve policy version for channel-level policy", "policy_name", opPolicy.Name, "channel_name", chName, "error", err)
@@ -111,9 +107,9 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 
 			// Build UNSUB (unsubscription) policy chain for this channel
 			var unsubPolicies []policyenginev1.PolicyInstance
-			if apiData.Policies != nil && apiData.Policies.OnUnsubscription != nil {
-				unsubPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.Policies.OnUnsubscription))
-				for _, p := range *apiData.Policies.OnUnsubscription {
+			if apiData.AllChannels != nil && apiData.AllChannels.OnUnsubscription != nil && apiData.AllChannels.OnUnsubscription.Policies != nil {
+				unsubPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.AllChannels.OnUnsubscription.Policies))
+				for _, p := range *apiData.AllChannels.OnUnsubscription.Policies {
 					resolved, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, p.Name, p.Version)
 					if err != nil {
 						slog.Error("Failed to resolve policy version for all-channel unsubscription policy", "policy_name", p.Name, "error", err)
@@ -122,8 +118,8 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 					unsubPolicies = append(unsubPolicies, ConvertAPIPolicyToModel(p, policyv1alpha.LevelAPI, versionutil.MajorVersion(resolved)))
 				}
 			}
-			if chPolicies.OnUnsubscription != nil && len(*chPolicies.OnUnsubscription) > 0 {
-				for _, opPolicy := range *chPolicies.OnUnsubscription {
+			if ch.OnUnsubscription != nil && ch.OnUnsubscription.Policies != nil && len(*ch.OnUnsubscription.Policies) > 0 {
+				for _, opPolicy := range *ch.OnUnsubscription.Policies {
 					resolved, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, opPolicy.Name, opPolicy.Version)
 					if err != nil {
 						slog.Error("Failed to resolve policy version for channel-level unsubscription policy", "policy_name", opPolicy.Name, "channel_name", chName, "error", err)

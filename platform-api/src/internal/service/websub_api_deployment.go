@@ -598,8 +598,12 @@ func buildWebSubAPIDeploymentYAML(websubAPI *model.WebSubAPI) *model.WebSubAPIDe
 			Vhosts: &model.WebSubAPIDeploymentVhosts{
 				Main: constants.VhostGatewayDefault,
 			},
-			Policies: buildWebSubAllChannelPolicies(websubAPI.Configuration.Policies),
-			Channels: buildWebSubDeployChannels(websubAPI.Configuration.Channels),
+			AllChannels:     buildWebSubAllChannelPolicies(websubAPI.Configuration.AllChannels),
+			Receiver:        buildWebSubDeployReceiver(websubAPI.Configuration.AllChannels),
+			Hub:             buildWebSubDeployHub(websubAPI.Configuration.AllChannels, &websubAPI.Configuration.Channels),
+			Delivery:        buildWebSubDeployDelivery(websubAPI.Configuration.AllChannels),
+			Channels:        buildWebSubDeployChannels(websubAPI.Configuration.Channels),
+			DeploymentState: "deployed",
 		},
 	}
 
@@ -618,10 +622,10 @@ func buildWebSubAllChannelPolicies(p *model.WebSubAllChannelPolicies) *model.Web
 		return nil
 	}
 	return &model.WebSubDeployAllChannelPolicies{
-		OnSubscription:    generatePolicyList(p.OnSubscription),
-		OnUnsubscription:  generatePolicyList(p.OnUnsubscription),
-		OnMessageReceived: generatePolicyList(p.OnMessageReceived),
-		OnMessageDelivery: generatePolicyList(p.OnMessageDelivery),
+		OnSubscription:    generateEventPolicyList(p.OnSubscription),
+		OnUnsubscription:  generateEventPolicyList(p.OnUnsubscription),
+		OnMessageReceived: generateEventPolicyList(p.OnMessageReceived),
+		OnMessageDelivery: generateEventPolicyList(p.OnMessageDelivery),
 	}
 }
 
@@ -633,23 +637,24 @@ func buildWebSubDeployChannels(channels map[string]model.WebSubChannel) map[stri
 	result := make(map[string]model.WebSubDeployChannel, len(channels))
 	for name, ch := range channels {
 		result[name] = model.WebSubDeployChannel{
-			Policies: buildWebSubDeployChannelPolicies(ch.Policies),
+			OnSubscription:    generateEventPolicyList(ch.OnSubscription),
+			OnUnsubscription:  generateEventPolicyList(ch.OnUnsubscription),
+			OnMessageReceived: generateEventPolicyList(ch.OnMessageReceived),
+			OnMessageDelivery: generateEventPolicyList(ch.OnMessageDelivery),
 		}
 	}
 	return result
 }
 
-// buildWebSubDeployChannelPolicies converts model channel policies to deployment channel policies.
-func buildWebSubDeployChannelPolicies(p *model.WebSubChannelPolicies) *model.WebSubDeployChannelPolicies {
-	if p == nil {
+func generateEventPolicyList(ep *model.WebSubEventPolicies) *model.WebSubDeployEventPolicies {
+	if ep == nil {
 		return nil
 	}
-	return &model.WebSubDeployChannelPolicies{
-		OnSubscription:    generatePolicyList(p.OnSubscription),
-		OnUnsubscription:  generatePolicyList(p.OnUnsubscription),
-		OnMessageReceived: generatePolicyList(p.OnMessageReceived),
-		OnMessageDelivery: generatePolicyList(p.OnMessageDelivery),
+	policies := generatePolicyList(ep.Policies)
+	if policies == nil {
+		return &model.WebSubDeployEventPolicies{Policies: &[]model.Policy{}}
 	}
+	return &model.WebSubDeployEventPolicies{Policies: policies}
 }
 
 func generatePolicyList(policyConfigs []model.Policy) *[]model.Policy {
@@ -665,4 +670,49 @@ func generatePolicyList(policyConfigs []model.Policy) *[]model.Policy {
 		})
 	}
 	return &policies
+}
+
+// buildWebSubDeployReceiver builds the receiver section for the deployment YAML.
+func buildWebSubDeployReceiver(p *model.WebSubAllChannelPolicies) *model.WebSubDeployReceiver {
+	policies := []model.Policy{}
+	if p != nil && p.OnMessageReceived != nil && len(p.OnMessageReceived.Policies) > 0 {
+		policies = append(policies, p.OnMessageReceived.Policies...)
+	}
+	return &model.WebSubDeployReceiver{Policies: policies}
+}
+
+// buildWebSubDeployHub builds the hub section for the deployment YAML.
+func buildWebSubDeployHub(policies *model.WebSubAllChannelPolicies, channels *map[string]model.WebSubChannel) *model.WebSubDeployHub {
+	hub := &model.WebSubDeployHub{
+		Policies: []model.Policy{},
+	}
+	allPolicies := []model.Policy{}
+	if policies != nil && policies.OnSubscription != nil && len(policies.OnSubscription.Policies) > 0 {
+		allPolicies = append(allPolicies, policies.OnSubscription.Policies...)
+	}
+	if channels != nil && len(*channels) > 0 {
+		channelPolicies := []model.WebSubDeployHubChannel{}
+		for name, ch := range *channels {
+			chPolicy := []model.Policy{}
+			if ch.OnSubscription != nil && len(ch.OnSubscription.Policies) > 0 {
+				chPolicy = append(chPolicy, ch.OnSubscription.Policies...)
+			}
+			channelPolicies = append(channelPolicies, model.WebSubDeployHubChannel{
+				Name:     name,
+				Policies: chPolicy,
+			})
+		}
+		hub.Channels = channelPolicies
+	}
+	hub.Policies = allPolicies
+	return hub
+}
+
+// buildWebSubDeployDelivery builds the delivery section for the deployment YAML.
+func buildWebSubDeployDelivery(d *model.WebSubAllChannelPolicies) *model.WebSubDeployDelivery {
+	policies := []model.Policy{}
+	if d != nil && d.OnMessageDelivery != nil && len(d.OnMessageDelivery.Policies) > 0 {
+		policies = d.OnMessageDelivery.Policies
+	}
+	return &model.WebSubDeployDelivery{Policies: policies}
 }

@@ -3084,8 +3084,8 @@ type WebSubAPI struct {
 	// Name Human-readable name for the WebSub API
 	Name string `binding:"required" json:"name" yaml:"name"`
 
-	// Policies Policies applied to all channels, organized by event type.
-	Policies *WebSubAllChannelPolicies `json:"policies,omitempty" yaml:"policies,omitempty"`
+	// Policies Policies applied to all channels, organized by event type (flat arrays).
+	Policies *WebSubChannelPolicies `json:"policies,omitempty" yaml:"policies,omitempty"`
 
 	// ProjectId UUID of the project this API belongs to
 	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
@@ -3132,28 +3132,34 @@ type WebSubAPIListResponse struct {
 	Pagination Pagination          `json:"pagination" yaml:"pagination"`
 }
 
+// WebSubEventPolicies Policies for a single event type.
+type WebSubEventPolicies struct {
+	// Policies List of policies applied for this event type.
+	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+}
+
 // WebSubAllChannelPolicies Policies applied to all channels, organized by event type.
 type WebSubAllChannelPolicies struct {
 	// OnMessageDelivery Policies applied when delivering a message to a subscriber callback URL (e.g., hmac-sign-messages)
-	OnMessageDelivery *[]Policy `json:"on_message_delivery,omitempty" yaml:"on_message_delivery,omitempty"`
+	OnMessageDelivery *WebSubEventPolicies `json:"on_message_delivery,omitempty" yaml:"on_message_delivery,omitempty"`
 
 	// OnMessageReceived Policies applied when a message is received from the publisher via webhook (e.g., hmac-signature-validation)
-	OnMessageReceived *[]Policy `json:"on_message_received,omitempty" yaml:"on_message_received,omitempty"`
+	OnMessageReceived *WebSubEventPolicies `json:"on_message_received,omitempty" yaml:"on_message_received,omitempty"`
 
 	// OnSubscription Policies applied when a client subscribes to a channel (e.g., api-key-auth)
-	OnSubscription *[]Policy `json:"on_subscription,omitempty" yaml:"on_subscription,omitempty"`
+	OnSubscription *WebSubEventPolicies `json:"on_subscription,omitempty" yaml:"on_subscription,omitempty"`
 
 	// OnUnsubscription Policies applied when a client unsubscribes from a channel
-	OnUnsubscription *[]Policy `json:"on_unsubscription,omitempty" yaml:"on_unsubscription,omitempty"`
+	OnUnsubscription *WebSubEventPolicies `json:"on_unsubscription,omitempty" yaml:"on_unsubscription,omitempty"`
 }
 
 // WebSubChannel A single channel definition with optional per-channel policy overrides.
 type WebSubChannel struct {
-	// Policies Policies applied to a specific channel, organized by event type.
+	// Policies Per-channel policy overrides organized by event type.
 	Policies *WebSubChannelPolicies `json:"policies,omitempty" yaml:"policies,omitempty"`
 }
 
-// WebSubChannelPolicies Policies applied to a specific channel, organized by event type.
+// WebSubChannelPolicies Policies applied to a specific channel, organized by event type (flat arrays).
 type WebSubChannelPolicies struct {
 	// OnMessageDelivery Policies applied when delivering a message for this channel
 	OnMessageDelivery *[]Policy `json:"on_message_delivery,omitempty" yaml:"on_message_delivery,omitempty"`
@@ -3161,10 +3167,10 @@ type WebSubChannelPolicies struct {
 	// OnMessageReceived Policies applied when a message is received for this channel
 	OnMessageReceived *[]Policy `json:"on_message_received,omitempty" yaml:"on_message_received,omitempty"`
 
-	// OnSubscription Policies applied when a client subscribes to this channel (e.g., rbac)
+	// OnSubscription Policies applied when a client subscribes to a channel
 	OnSubscription *[]Policy `json:"on_subscription,omitempty" yaml:"on_subscription,omitempty"`
 
-	// OnUnsubscription Policies applied when a client unsubscribes from this channel
+	// OnUnsubscription Policies applied when a client unsubscribes from a channel
 	OnUnsubscription *[]Policy `json:"on_unsubscription,omitempty" yaml:"on_unsubscription,omitempty"`
 }
 
