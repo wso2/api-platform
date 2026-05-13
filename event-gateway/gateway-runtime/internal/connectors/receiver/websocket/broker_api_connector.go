@@ -139,8 +139,6 @@ func (e *WebBrokerApiReceiver) Stop(ctx context.Context) error {
 
 // handleUpgrade handles WebSocket upgrade requests.
 func (e *WebBrokerApiReceiver) handleUpgrade(w http.ResponseWriter, r *http.Request) {
-	// TODO: Change detailed flow logs ([1]-[8]) to debug level before production deployment
-	// These Info-level logs are useful for development/testing but should be Debug in production
 	// Extract channel name from X-topic header.
 	xTopicHeader := r.Header.Get("X-topic")
 	channelName := xTopicHeader
@@ -179,7 +177,7 @@ func (e *WebBrokerApiReceiver) handleUpgrade(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	slog.Info("[1] WebSocket connection attempted",
+	slog.Debug("[1] WebSocket connection attempted",
 		"api", e.channel.Name,
 		"channel", channelName,
 		"method", r.Method,
@@ -189,7 +187,7 @@ func (e *WebBrokerApiReceiver) handleUpgrade(w http.ResponseWriter, r *http.Requ
 		"connection_header", r.Header.Get("Connection"))
 
 	// Apply API-level on_connection_init.request policies.
-	slog.Info("[2] Applying API-level onConnectionInit.request policies",
+	slog.Debug("[2] Applying API-level onConnectionInit.request policies",
 		"api", e.channel.Name,
 		"channel", channelName,
 		"remote_addr", r.RemoteAddr)
@@ -233,10 +231,6 @@ func (e *WebBrokerApiReceiver) handleUpgrade(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	// Apply channel-specific on_connection_init.request policies.
-	// TODO: Implement channel-specific policy application here.
-	// For now, only API-level policies are applied.
-
 	// Upgrade to WebSocket.
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -245,7 +239,7 @@ func (e *WebBrokerApiReceiver) handleUpgrade(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Apply API-level on_connection_init.response policies.
-	slog.Info("[3] Applying API-level onConnectionInit.response policies", "api", e.channel.Name, "channel", channelName)
+	slog.Debug("[3] Applying API-level onConnectionInit.response policies", "api", e.channel.Name, "channel", channelName)
 
 	respMsg := &connectors.Message{
 		Headers: map[string][]string{},
@@ -349,7 +343,7 @@ func (e *WebBrokerApiReceiver) handleUpgrade(w http.ResponseWriter, r *http.Requ
 	e.connections[connID] = conn
 	e.mu.Unlock()
 
-	slog.Info("[4] WebSocket handshake completed", "connID", connID, "api", e.channel.Name, "channel", channelName, "remote", ws.RemoteAddr(), "consumer_group", groupID, "topics", channelTopics)
+	slog.Debug("[4] WebSocket handshake completed", "connID", connID, "api", e.channel.Name, "channel", channelName, "remote", ws.RemoteAddr(), "consumer_group", groupID, "topics", channelTopics)
 
 	// Start goroutines for bidirectional communication.
 	go e.inboundLoop(ctx, conn)
@@ -380,7 +374,7 @@ func (e *WebBrokerApiReceiver) readLoop(ctx context.Context, conn *brokerApiConn
 			continue
 		}
 
-		slog.Info("[5] Message received from WebSocket client",
+		slog.Debug("[5] Message received from WebSocket client",
 			"connID", conn.connID,
 			"api", e.channel.Name,
 			"channel", conn.channelName,
@@ -411,7 +405,7 @@ func (e *WebBrokerApiReceiver) inboundLoop(ctx context.Context, conn *brokerApiC
 			return
 		case msg := <-conn.inbound:
 			// Apply channel-specific on_produce policies.
-			slog.Info("[5] Applying channel onProduce policies",
+			slog.Debug("[5] Applying channel onProduce policies",
 				"connID", conn.connID,
 				"api", e.channel.Name,
 				"channel", conn.channelName,
@@ -446,7 +440,7 @@ func (e *WebBrokerApiReceiver) inboundLoop(ctx context.Context, conn *brokerApiC
 			}
 
 			// Publish to Kafka.
-			slog.Info("[6] Publishing message to Kafka",
+			slog.Debug("[6] Publishing message to Kafka",
 				"connID", conn.connID,
 				"api", e.channel.Name,
 				"channel", conn.channelName,
@@ -469,7 +463,7 @@ func (e *WebBrokerApiReceiver) outboundLoop(ctx context.Context, conn *brokerApi
 		case <-ctx.Done():
 			return
 		case msg := <-conn.outbound:
-			slog.Info("[7] Applying channel onConsume policies",
+			slog.Debug("[7] Applying channel onConsume policies",
 				"connID", conn.connID,
 				"api", e.channel.Name,
 				"channel", conn.channelName,
@@ -487,7 +481,7 @@ func (e *WebBrokerApiReceiver) outboundLoop(ctx context.Context, conn *brokerApi
 				continue
 			}
 
-			slog.Info("[8] Sending message to WebSocket client",
+			slog.Debug("[8] Sending message to WebSocket client",
 				"connID", conn.connID,
 				"channel", e.channel.Name,
 				"message_size", len(processed.Value))
