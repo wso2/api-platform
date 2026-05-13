@@ -450,7 +450,7 @@ func (e *WebBrokerApiReceiver) inboundLoop(ctx context.Context, conn *brokerApiC
 			if err := e.brokerDriver.Publish(ctx, targetTopic, processed); err != nil {
 				slog.Error("[6] Failed to publish to Kafka", "connID", conn.connID, "topic", targetTopic, "error", err)
 			} else {
-				slog.Info("[6] Message successfully published to Kafka", "connID", conn.connID, "topic", targetTopic)
+				slog.Debug("[6] Message successfully published to Kafka", "connID", conn.connID, "topic", targetTopic)
 			}
 		}
 	}

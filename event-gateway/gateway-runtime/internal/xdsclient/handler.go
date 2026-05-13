@@ -179,19 +179,16 @@ func (h *Handler) HandleResources(ctx context.Context, resources []*discoveryv3.
 			continue
 		}
 
-		slog.Info("DEBUG: Raw JSON from xDS", "json", string(data))
-
 		var ecr EventChannelResource
 		if err := json.Unmarshal(data, &ecr); err != nil {
 			slog.Error("Failed to decode EventChannelConfig", "error", err)
 			continue
 		}
 
-		slog.Info("DEBUG: Deserialized EventChannelResource",
-			"uuid", ecr.UUID,
-			"name", ecr.Name,
-			"kind", ecr.Kind,
-			"brokerDriver", ecr.BrokerDriver)
+		if ecr.UUID == "" {
+			slog.Warn("EventChannelConfig resource missing UUID, skipping")
+			continue
+		}
 		// Deletion markers are pushed by the controller to work around
 		// a go-control-plane LinearCache limitation for custom type URLs.
 		// Treat them as absent so the diff logic removes the binding.

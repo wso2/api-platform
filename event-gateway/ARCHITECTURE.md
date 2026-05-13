@@ -329,7 +329,7 @@ WebBrokerApiBinding {
 
 ### WebBrokerApi Flow (Bidirectional WebSocket ↔ Kafka)
 
-**Note:** This diagram shows WebSocket + Kafka as an example. The architecture supports any receiver type (eg: SSE) with any broker driver (eg: MQTT, RabbitMQ) through the plugin system (see [Extensibility](#11-extensibility--plugin-architecture)).
+**Note:** This diagram shows WebSocket + Kafka as an example. The architecture supports any receiver type (eg: SSE) with any broker driver (eg: MQTT, RabbitMQ) through the plugin system (see [Extensibility](#12-extensibility--plugin-architecture)).
 
 ```
 ┌───────────────┐
