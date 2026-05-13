@@ -57,7 +57,7 @@ services:
       - APIP_EGW_SERVER_WEBSUB_ENABLED=true
       - APIP_EGW_SERVER_WEBSUB_HTTP_PORT=8080
       - APIP_EGW_SERVER_WEBSUB_HTTPS_PORT=8443
-      - APIP_EGW_SERVER_WEBSUB_TLS_ENABLED=false # TODO TEST WITH TLS
+      - APIP_EGW_SERVER_WEBSUB_TLS_ENABLED=true
       - APIP_EGW_SERVER_WEBSUB_TLS_CERT_FILE=/etc/event-gateway/tls/default-listener.crt
       - APIP_EGW_SERVER_WEBSUB_TLS_KEY_FILE=/etc/event-gateway/tls/default-listener.key
       - APIP_EGW_SERVER_WEBSOCKET_PORT=8081
@@ -69,8 +69,8 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./listener-certs:/etc/event-gateway/tls:ro
-      - ./gateway-runtime/configs/config.toml:/etc/event-gateway/config.toml:ro
-      - ./gateway-runtime/configs/channels.yaml:/etc/event-gateway/channels.yaml:ro
+      - ./configs/event-gateway/config.toml:/etc/event-gateway/config.toml:ro
+      - ./configs/event-gateway/channels.yaml:/etc/event-gateway/channels.yaml:ro
     depends_on:
       gateway-controller:
         condition: service_started

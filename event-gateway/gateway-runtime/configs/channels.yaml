@@ -20,23 +20,66 @@
 #   outbound:  Applied when an event is delivered to a subscriber callback (data delivery).
 
 channels:
-  - kind: WebBrokerApi
-    apiId: websocket-kafka-api-v1-0
-    name: websocket-kafka-api
-    version: v1.0
-    context: /ws-kafka
+  # WebSubApi example: repo-watcher with multiple channels
+  - kind: WebSubApi
+    name: repo-watcher
+    version: v1
+    context: /repos
+    channels:
+      - name: issues
+      - name: pull-requests
+      - name: commits
     receiver:
-      type: websocket
-      properties: {}
+      type: websub
     broker-driver:
       type: kafka
-      properties:
-        topic: repo-events
+      config:
         brokers:
           - kafka:29092
-    allChannelPolicies:
-      on_connection_init:
-        request: []
-        response: []
-      on_produce: []
-      on_consume: []
+    policies:
+      subscribe:
+        - name: basic-auth
+          version: v1
+          params:
+            username: "admin"
+            password: "admin"
+      inbound: []
+      outbound: []
+
+  # Protocol Mediation example (WS → Kafka, 1:1 passthrough)
+  - name: live-prices
+    mode: protocol-mediation
+    context: /prices
+    version: v1
+    receiver:
+      type: websocket
+      path: /stream
+    broker-driver:
+      type: kafka
+      topic: price-updates
+      config:
+        brokers:
+          - kafka:29092
+    policies:
+      subscribe: []
+      inbound: []
+      outbound: []
+
+  # WebSubApi with single channel
+  # - kind: WebSubApi
+  #   name: order-events
+  #   version: v1
+  #   context: /orders
+  #   channels:
+  #     - name: orders
+  #   receiver:
+  #     type: websub
+  #   broker-driver:
+  #     type: kafka
+  #     config:
+  #       brokers:
+  #         - kafka:29092
+  #   policies:
+  #     subscribe: []
+  #     inbound: []
+  #     outbound: []
