@@ -121,12 +121,16 @@ type WebSubAPIDeploymentYAML struct {
 
 // WebSubAPIDeploymentSpec represents the spec section of the WebSub API deployment YAML
 type WebSubAPIDeploymentSpec struct {
-	DisplayName string                          `yaml:"displayName"`
-	Version     string                          `yaml:"version"`
-	Context     string                          `yaml:"context"`
-	Vhosts      *WebSubAPIDeploymentVhosts      `yaml:"vhosts,omitempty"`
-	Policies    *WebSubDeployAllChannelPolicies `yaml:"policies,omitempty"`
-	Channels    map[string]WebSubDeployChannel  `yaml:"channels,omitempty"`
+	DisplayName     string                          `yaml:"displayName"`
+	Version         string                          `yaml:"version"`
+	Context         string                          `yaml:"context"`
+	Vhosts          *WebSubAPIDeploymentVhosts      `yaml:"vhosts,omitempty"`
+	AllChannels     *WebSubDeployAllChannelPolicies `json:"allChannels,omitempty"`
+	Receiver        *WebSubDeployReceiver           `yaml:"receiver,omitempty"`
+	Hub             *WebSubDeployHub                `yaml:"hub,omitempty"`
+	Delivery        *WebSubDeployDelivery           `yaml:"delivery,omitempty"`
+	Channels        map[string]WebSubDeployChannel  `yaml:"channels,omitempty"`
+	DeploymentState string                          `yaml:"deploymentState,omitempty"`
 }
 
 // WebSubAPIDeploymentVhosts represents vhost configuration in the WebSub API deployment YAML
@@ -135,23 +139,51 @@ type WebSubAPIDeploymentVhosts struct {
 	Sandbox *string `yaml:"sandbox,omitempty"`
 }
 
+// WebSubDeployEventPolicies wraps a list of policies for a single event type,
+// matching the gateway controller's WebSubEventPolicies schema.
+type WebSubDeployEventPolicies struct {
+	Policies *[]Policy `yaml:"policies,omitempty"`
+}
+
 // WebSubDeployAllChannelPolicies represents policies for all channels in the deployment YAML, organized by event type.
 type WebSubDeployAllChannelPolicies struct {
-	OnSubscription    *[]Policy `yaml:"on_subscription,omitempty"`
-	OnUnsubscription  *[]Policy `yaml:"on_unsubscription,omitempty"`
-	OnMessageReceived *[]Policy `yaml:"on_message_received,omitempty"`
-	OnMessageDelivery *[]Policy `yaml:"on_message_delivery,omitempty"`
+	OnSubscription    *WebSubDeployEventPolicies `yaml:"on_subscription,omitempty"`
+	OnUnsubscription  *WebSubDeployEventPolicies `yaml:"on_unsubscription,omitempty"`
+	OnMessageReceived *WebSubDeployEventPolicies `yaml:"on_message_received,omitempty"`
+	OnMessageDelivery *WebSubDeployEventPolicies `yaml:"on_message_delivery,omitempty"`
 }
 
 // WebSubDeployChannelPolicies represents per-channel policies in the deployment YAML, organized by event type.
 type WebSubDeployChannelPolicies struct {
-	OnSubscription    *[]Policy `yaml:"on_subscription,omitempty"`
-	OnUnsubscription  *[]Policy `yaml:"on_unsubscription,omitempty"`
-	OnMessageReceived *[]Policy `yaml:"on_message_received,omitempty"`
-	OnMessageDelivery *[]Policy `yaml:"on_message_delivery,omitempty"`
+	OnSubscription    *WebSubDeployEventPolicies `yaml:"on_subscription,omitempty"`
+	OnUnsubscription  *WebSubDeployEventPolicies `yaml:"on_unsubscription,omitempty"`
+	OnMessageReceived *WebSubDeployEventPolicies `yaml:"on_message_received,omitempty"`
+	OnMessageDelivery *WebSubDeployEventPolicies `yaml:"on_message_delivery,omitempty"`
 }
 
 // WebSubDeployChannel represents a single channel entry in the deployment YAML.
 type WebSubDeployChannel struct {
 	Policies *WebSubDeployChannelPolicies `yaml:"policies,omitempty"`
+}
+
+// WebSubDeployReceiver represents the receiver section in the deployment YAML.
+type WebSubDeployReceiver struct {
+	Policies []Policy `yaml:"policies"`
+}
+
+// WebSubDeployHub represents the hub section in the deployment YAML.
+type WebSubDeployHub struct {
+	Policies []Policy                 `yaml:"policies"`
+	Channels []WebSubDeployHubChannel `yaml:"channels,omitempty"`
+}
+
+// WebSubDeployHubChannel represents a channel entry under the hub section in the deployment YAML.
+type WebSubDeployHubChannel struct {
+	Name     string   `yaml:"name"`
+	Policies []Policy `yaml:"policies"`
+}
+
+// WebSubDeployDelivery represents the delivery section in the deployment YAML.
+type WebSubDeployDelivery struct {
+	Policies []Policy `yaml:"policies"`
 }
