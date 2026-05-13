@@ -20,6 +20,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -32,9 +33,12 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/websubapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
+
+//TODO: Refactor to move business logic to service layer and keep handlers thin, focusing on request parsing, response formatting, and error handling.
 
 // CreateWebSubAPI implements ServerInterface.CreateWebSubAPI
 // (POST /websub-apis)
@@ -182,31 +186,24 @@ func (s *APIServer) UpdateWebSubAPI(c *gin.Context, id string) {
 		return
 	}
 
-	existing, err := s.db.GetConfigByKindAndHandle(models.KindWebSubApi, handle)
-	if err != nil {
-		log.Warn("WebSub API configuration not found",
-			slog.String("handle", handle))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("WebSub API configuration with handle '%s' not found", handle),
-		})
-		return
-	}
-
 	correlationID := middleware.GetCorrelationID(c)
 
-	result, err := s.deploymentService.DeployAPIConfiguration(utils.APIDeploymentParams{
-		Data:          body,
+	result, err := s.webSubAPIService.Update(websubapi.UpdateParams{
+		Handle:        handle,
+		Body:          body,
 		ContentType:   c.GetHeader("Content-Type"),
-		Kind:          "WebSubApi",
-		APIID:         existing.UUID,
-		Origin:        models.OriginGatewayAPI,
 		CorrelationID: correlationID,
 		Logger:        log,
 	})
 	if err != nil {
 		log.Error("Failed to update WebSub API configuration", slog.Any("error", err))
-		if storage.IsConflictError(err) {
+		if errors.Is(err, websubapi.ErrNotFound) {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("WebSub API configuration with handle '%s' not found", handle),
+			})
+			return
+		} else if storage.IsConflictError(err) {
 			c.JSON(http.StatusConflict, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
@@ -223,7 +220,7 @@ func (s *APIServer) UpdateWebSubAPI(c *gin.Context, id string) {
 		return
 	}
 
-	updated := result.StoredConfig
+	updated := result.Config
 
 	log.Info("WebSub API configuration updated",
 		slog.String("id", updated.UUID),

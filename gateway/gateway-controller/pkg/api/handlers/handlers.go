@@ -46,6 +46,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/websubapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
@@ -56,6 +57,7 @@ type APIServer struct {
 	*RestAPIHandler // embedded — promotes CreateRestAPI, ListRestAPIs, GetRestAPIById, UpdateRestAPI, DeleteRestAPI
 
 	restAPIService              *restapi.RestAPIService
+	webSubAPIService            *websubapi.WebSubAPIService
 	store                       *storage.ConfigStore
 	db                          storage.Storage
 	snapshotManager             *xds.SnapshotManager
@@ -151,6 +153,17 @@ func NewAPIServer(
 		subscriptionResourceService: subscriptionResourceService,
 	}
 	server.restAPIService = restAPIService
+	server.webSubAPIService = websubapi.NewWebSubAPIService(
+		db,
+		deploymentService,
+		controlPlaneClient,
+		systemConfig,
+		parser,
+		validator,
+		logger,
+		eventHub,
+		secretService,
+	)
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
 
 	// Register status update callback

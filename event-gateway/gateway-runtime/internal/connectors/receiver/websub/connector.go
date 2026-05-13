@@ -22,6 +22,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/binding"
@@ -55,6 +56,7 @@ type WebSubReceiver struct {
 	syncProducer   *subscription.SyncProducer
 	brokerDriver   connectors.BrokerDriver
 	channel        connectors.ChannelInfo
+	channelMu      sync.RWMutex
 	opts           Options
 }
 
@@ -98,17 +100,28 @@ func NewReceiver(cfg connectors.ReceiverConfig, opts Options) (connectors.Receiv
 
 	verificationTimeout := time.Duration(opts.VerificationTimeoutSeconds) * time.Second
 
+	receiver := &WebSubReceiver{
+		deliverer:    deliverer,
+		topics:       topics,
+		store:        store,
+		consumerMgr:  consumerMgr,
+		syncProducer: syncProducer,
+		brokerDriver: cfg.BrokerDriver,
+		channel:      cfg.Channel,
+		opts:         opts,
+	}
+
 	// Create HubHandler for subscribe/unsubscribe on {context}/{version}/hub.
 	hubHandler := NewHubHandler(
 		topics, store, verificationTimeout, opts.DefaultLeaseSeconds,
 		cfg.Processor, cfg.BrokerDriver, cfg.Channel.Name,
-		cfg.Channel.Channels, consumerMgr, syncProducer,
+		cfg.Channel.Channels, &receiver.channelMu, consumerMgr, syncProducer,
 	)
 
 	// Create WebhookReceiverHandler for ingress on {context}/{version}/webhook-receiver.
 	webhookHandler := NewWebhookReceiverHandler(
 		topics, cfg.Processor, cfg.BrokerDriver,
-		cfg.Channel.Name, cfg.Channel.Channels,
+		cfg.Channel.Name, cfg.Channel.Channels, &receiver.channelMu,
 	)
 
 	// Register handlers on shared mux.
@@ -116,18 +129,10 @@ func NewReceiver(cfg connectors.ReceiverConfig, opts Options) (connectors.Receiv
 	cfg.Mux.Handle(basePath+"/hub", hubHandler)
 	cfg.Mux.Handle(basePath+"/webhook-receiver", webhookHandler)
 
-	return &WebSubReceiver{
-		hubHandler:     hubHandler,
-		webhookHandler: webhookHandler,
-		deliverer:      deliverer,
-		topics:         topics,
-		store:          store,
-		consumerMgr:    consumerMgr,
-		syncProducer:   syncProducer,
-		brokerDriver:   cfg.BrokerDriver,
-		channel:        cfg.Channel,
-		opts:           opts,
-	}, nil
+	receiver.hubHandler = hubHandler
+	receiver.webhookHandler = webhookHandler
+
+	return receiver, nil
 }
 
 // Start ensures Kafka topics exist and sets up the consumer manager context.

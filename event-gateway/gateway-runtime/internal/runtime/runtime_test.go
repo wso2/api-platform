@@ -164,6 +164,116 @@ func TestWebSubSubscriptionSyncTopic_FallsBackToDerivedTopic(t *testing.T) {
 	}
 }
 
+func TestWebSubActiveChainKeys_IncludesUnsubscribeKeys(t *testing.T) {
+	wsb := binding.WebSubApiBinding{
+		Context: "/repos",
+		Version: "v1.0",
+		Policies: binding.PolicyBindings{
+			Subscribe:   []binding.PolicyRef{{Name: "sub", Version: "v1.0.0"}},
+			Unsubscribe: []binding.PolicyRef{{Name: "unsub", Version: "v1.0.0"}},
+		},
+		Channels: []binding.ChannelDef{
+			{
+				Name: "issues",
+				Policies: binding.PolicyBindings{
+					Subscribe:   []binding.PolicyRef{{Name: "sub", Version: "v1.0.0"}},
+					Unsubscribe: []binding.PolicyRef{{Name: "unsub", Version: "v1.0.0"}},
+				},
+			},
+		},
+	}
+
+	vhost := defaultVhost("")
+	basePath := binding.WebSubApiBasePath(wsb.Context, wsb.Version)
+	hubPath := basePath + "/hub"
+	channelPath := hubPath + "/issues"
+
+	active := webSubActiveChainKeys(wsb, vhost)
+
+	if !active[binding.GenerateRouteKey("SUBSCRIBE", hubPath, vhost)] {
+		t.Fatal("expected hub-level subscribe key to be active")
+	}
+	if !active[binding.GenerateRouteKey("UNSUBSCRIBE", hubPath, vhost)] {
+		t.Fatal("expected hub-level unsubscribe key to be active")
+	}
+	if !active[binding.GenerateRouteKey("SUBSCRIBE", channelPath, vhost)] {
+		t.Fatal("expected channel-level subscribe key to be active")
+	}
+	if !active[binding.GenerateRouteKey("UNSUBSCRIBE", channelPath, vhost)] {
+		t.Fatal("expected channel-level unsubscribe key to be active")
+	}
+}
+
+func TestUnregisterStaleBindingChains_RemovesStaleUnsubscribeKeys(t *testing.T) {
+	eng, err := enginepkg.New(nil)
+	if err != nil {
+		t.Fatalf("failed to create engine: %v", err)
+	}
+	if err := eng.RegisterPolicy(&policy.PolicyDefinition{
+		Name:    "test-noop",
+		Version: "v1.0.0",
+	}, newTestNoopPolicy); err != nil {
+		t.Fatalf("failed to register test policy: %v", err)
+	}
+
+	registerChain := func(routeKey string) {
+		chain, err := eng.BuildChain(routeKey, []enginepkg.PolicySpec{{
+			Name:    "test-noop",
+			Version: "v1",
+			Enabled: true,
+		}})
+		if err != nil {
+			t.Fatalf("failed to build chain %q: %v", routeKey, err)
+		}
+		eng.RegisterChain(routeKey, chain)
+	}
+
+	bindingState := &hub.ChannelBinding{
+		SubscribeChainKey:   "hub-sub",
+		UnsubscribeChainKey: "hub-unsub",
+		InboundChainKey:     "hub-in",
+		OutboundChainKey:    "hub-out",
+		ChannelChainKeys: map[string]hub.ChannelChainKeySet{
+			"issues": {
+				SubscribeChainKey:   "ch-sub",
+				UnsubscribeChainKey: "ch-unsub",
+				InboundChainKey:     "ch-in",
+				OutboundChainKey:    "ch-out",
+			},
+		},
+	}
+
+	for _, key := range []string{
+		bindingState.SubscribeChainKey,
+		bindingState.UnsubscribeChainKey,
+		bindingState.InboundChainKey,
+		bindingState.OutboundChainKey,
+		"ch-sub", "ch-unsub", "ch-in", "ch-out",
+	} {
+		registerChain(key)
+	}
+
+	rt := &Runtime{engine: eng}
+	rt.unregisterStaleBindingChains(bindingState, map[string]bool{
+		"hub-sub": true,
+		"hub-in":  true,
+		"hub-out": true,
+		"ch-sub":  true,
+		"ch-in":   true,
+		"ch-out":  true,
+	})
+
+	if eng.GetChain("hub-unsub") != nil {
+		t.Fatal("expected stale hub unsubscribe chain to be removed")
+	}
+	if eng.GetChain("ch-unsub") != nil {
+		t.Fatal("expected stale channel unsubscribe chain to be removed")
+	}
+	if eng.GetChain("hub-sub") == nil || eng.GetChain("ch-sub") == nil {
+		t.Fatal("expected active subscribe chains to remain registered")
+	}
+}
+
 func TestStartReceiverWithRetry_RetriesUntilSuccess(t *testing.T) {
 	previousInitial := initialReceiverStartBackoff
 	previousMax := maxReceiverStartBackoff

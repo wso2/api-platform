@@ -49,6 +49,7 @@ import (
 	policybuilder "github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/websubapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
@@ -1032,6 +1033,17 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 		httpClient, parser, validator, logger, hub, nil,
 	)
 	server.restAPIService = restAPIService
+	server.webSubAPIService = websubapi.NewWebSubAPIService(
+		db,
+		deploymentService,
+		nil,
+		systemCfg,
+		parser,
+		validator,
+		logger,
+		hub,
+		nil,
+	)
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
 
 	return server
@@ -1251,6 +1263,17 @@ func attachTestEventHub(server *APIServer, hub eventhub.EventHub, gatewayID stri
 		server.restAPIService = restAPIService
 		server.RestAPIHandler = NewRestAPIHandler(restAPIService, server.logger)
 	}
+	server.webSubAPIService = websubapi.NewWebSubAPIService(
+		server.db,
+		server.deploymentService,
+		nil,
+		server.systemConfig,
+		server.parser,
+		server.validator,
+		server.logger,
+		hub,
+		nil,
+	)
 }
 
 func seedAPIForAPIKeyHandlerTests(t *testing.T, server *APIServer, handle string) *models.StoredConfig {
@@ -3010,6 +3033,69 @@ func TestGetLLMProxyByIdWithDeployedAt(t *testing.T) {
 	server.GetLLMProxyById(c, "test-llm-proxy-handle")
 
 	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestUpdateWebSubAPIUndeployUsesDedicatedServicePath(t *testing.T) {
+	server := createTestAPIServer()
+	mockDB := server.db.(*MockStorage)
+	mockHub := &mockEventHub{}
+	attachTestEventHub(server, mockHub, "test-gateway")
+
+	cfg := &models.StoredConfig{
+		UUID:        "0000-websub-id-0000-000000000000",
+		Kind:        string(api.WebSubAPIKindWebSubApi),
+		Handle:      "repo-watcher-v1-0",
+		DisplayName: "repo-watcher",
+		Version:     "v1.0",
+		SourceConfiguration: api.WebSubAPI{
+			ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.WebSubAPIKindWebSubApi,
+			Metadata: api.Metadata{
+				Name: "repo-watcher-v1-0",
+			},
+			Spec: api.WebhookAPIData{
+				DisplayName: "repo-watcher",
+				Version:     "v1.0",
+				Context:     "/repos",
+				Channels: &map[string]api.WebSubChannel{
+					"issues": {},
+				},
+			},
+		},
+		DesiredState: models.StateDeployed,
+		Origin:       models.OriginGatewayAPI,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	require.NoError(t, mockDB.SaveConfig(cfg))
+
+	body := []byte(`{
+		"apiVersion":"gateway.api-platform.wso2.com/v1alpha1",
+		"kind":"WebSubApi",
+		"metadata":{"name":"repo-watcher-v1-0"},
+		"spec":{
+			"displayName":"repo-watcher",
+			"version":"v1.0",
+			"context":"/repos",
+			"deploymentState":"undeployed",
+			"channels":{"issues":{}}
+		}
+	}`)
+
+	c, w := createTestContext("PUT", "/websub-apis/repo-watcher-v1-0", body)
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	server.UpdateWebSubAPI(c, "repo-watcher-v1-0")
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	updatedCfg, err := mockDB.GetConfig("0000-websub-id-0000-000000000000")
+	require.NoError(t, err)
+	assert.Equal(t, models.StateUndeployed, updatedCfg.DesiredState)
+	require.Len(t, mockHub.publishedEvents, 1)
+	assert.Equal(t, "UPDATE", mockHub.publishedEvents[0].event.Action)
+	assert.Equal(t, eventhub.EventTypeAPI, mockHub.publishedEvents[0].event.EventType)
+	assert.Equal(t, "0000-websub-id-0000-000000000000", mockHub.publishedEvents[0].event.EntityID)
 }
 
 // TestHandleStatusUpdateStoreError tests handleStatusUpdate with store error

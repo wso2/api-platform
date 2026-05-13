@@ -20,11 +20,14 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"path"
+	"reflect"
+	"sort"
 	"sync"
 	"time"
 
@@ -63,6 +66,8 @@ type Runtime struct {
 	activeBrokerDrivers  map[string]connectors.BrokerDriver
 	bindingPaths         map[string][]string // name → registered mux paths
 	bindingTopics        map[string][]string // name → Kafka topics (data + internal sub)
+	bindingMutationMu    sync.Mutex
+	bindingMutationLocks map[string]*sync.Mutex
 	websubMux            *DynamicMux
 	websubServer         *managedServer
 	webSubServersCreated bool // true if LoadChannels created WebSub servers
@@ -76,6 +81,11 @@ type managedServer struct {
 	tls      bool
 	certFile string
 	keyFile  string
+}
+
+type webSubBindingUpdater interface {
+	connectors.Receiver
+	ApplyBindingDelta(ctx context.Context, removedChannels map[string]string, addedChannels map[string]string) error
 }
 
 // New creates a new Runtime. After creation:
@@ -105,6 +115,7 @@ func New(cfg *config.Config, rawConfig map[string]interface{}, registry *connect
 		activeBrokerDrivers: make(map[string]connectors.BrokerDriver),
 		bindingPaths:        make(map[string][]string),
 		bindingTopics:       make(map[string][]string),
+		bindingMutationLocks: make(map[string]*sync.Mutex),
 		websubMux:           NewDynamicMux(),
 	}, nil
 }
@@ -691,8 +702,182 @@ func (r *Runtime) unregisterBindingChains(b *hub.ChannelBinding) {
 	}
 }
 
+func webSubChannelTopicMap(wsb binding.WebSubApiBinding) map[string]string {
+	channels := make(map[string]string, len(wsb.Channels))
+	for _, ch := range wsb.Channels {
+		channels[ch.Name] = binding.WebSubApiTopicName(wsb.Name, wsb.Version, ch.Name)
+	}
+	return channels
+}
+
+func webSubTopicList(channels map[string]string, subscriptionTopic string) []string {
+	topics := make([]string, 0, len(channels)+1)
+	for _, kafkaTopic := range channels {
+		topics = append(topics, kafkaTopic)
+	}
+	if subscriptionTopic != "" {
+		topics = append(topics, subscriptionTopic)
+	}
+	return topics
+}
+
+func diffChannelTopics(oldChannels, newChannels map[string]string) (map[string]string, map[string]string) {
+	removed := make(map[string]string)
+	added := make(map[string]string)
+
+	for channelName, kafkaTopic := range oldChannels {
+		if _, exists := newChannels[channelName]; !exists {
+			removed[channelName] = kafkaTopic
+		}
+	}
+	for channelName, kafkaTopic := range newChannels {
+		if _, exists := oldChannels[channelName]; !exists {
+			added[channelName] = kafkaTopic
+		}
+	}
+
+	return removed, added
+}
+
+func webSubActiveChainKeys(wsb binding.WebSubApiBinding, vhost string) map[string]bool {
+	active := make(map[string]bool)
+	basePath := binding.WebSubApiBasePath(wsb.Context, wsb.Version)
+	hubPath := basePath + "/hub"
+
+	if len(wsb.Policies.Subscribe) > 0 {
+		active[binding.GenerateRouteKey("SUBSCRIBE", hubPath, vhost)] = true
+	}
+	if len(wsb.Policies.Unsubscribe) > 0 {
+		active[binding.GenerateRouteKey("UNSUBSCRIBE", hubPath, vhost)] = true
+	}
+	if len(wsb.Policies.Inbound) > 0 {
+		active[binding.GenerateRouteKey("SUB", basePath+"/webhook-receiver", vhost)] = true
+	}
+	if len(wsb.Policies.Outbound) > 0 {
+		active[binding.GenerateRouteKey("DELIVER", hubPath, vhost)] = true
+	}
+
+	for _, ch := range wsb.Channels {
+		chPath := hubPath + "/" + ch.Name
+		if len(ch.Policies.Subscribe) > 0 {
+			active[binding.GenerateRouteKey("SUBSCRIBE", chPath, vhost)] = true
+		}
+		if len(ch.Policies.Unsubscribe) > 0 {
+			active[binding.GenerateRouteKey("UNSUBSCRIBE", chPath, vhost)] = true
+		}
+		if len(ch.Policies.Inbound) > 0 {
+			active[binding.GenerateRouteKey("SUB", chPath, vhost)] = true
+		}
+		if len(ch.Policies.Outbound) > 0 {
+			active[binding.GenerateRouteKey("DELIVER", chPath, vhost)] = true
+		}
+	}
+
+	return active
+}
+
+func (r *Runtime) unregisterStaleBindingChains(b *hub.ChannelBinding, activeKeys map[string]bool) {
+	if b == nil {
+		return
+	}
+	keys := []string{b.SubscribeChainKey, b.UnsubscribeChainKey, b.InboundChainKey, b.OutboundChainKey}
+	for _, key := range keys {
+		if key == "" {
+			continue
+		}
+		if !activeKeys[key] {
+			r.engine.UnregisterChain(key)
+		}
+	}
+	for _, chKeys := range b.ChannelChainKeys {
+		channelKeys := []string{chKeys.SubscribeChainKey, chKeys.UnsubscribeChainKey, chKeys.InboundChainKey, chKeys.OutboundChainKey}
+		for _, key := range channelKeys {
+			if key == "" {
+				continue
+			}
+			if !activeKeys[key] {
+				r.engine.UnregisterChain(key)
+			}
+		}
+	}
+}
+
+func canDeltaUpdateWebSubBinding(oldWSB, newWSB binding.WebSubApiBinding) bool {
+	if oldWSB.Name != newWSB.Name {
+		return false
+	}
+	if oldWSB.Context != newWSB.Context {
+		return false
+	}
+	if oldWSB.Version != newWSB.Version {
+		return false
+	}
+	if !reflect.DeepEqual(oldWSB.Receiver, newWSB.Receiver) {
+		return false
+	}
+	if !equalBrokerDriverSpec(oldWSB.BrokerDriver, newWSB.BrokerDriver) {
+		return false
+	}
+	return true
+}
+
+func equalBrokerDriverSpec(oldSpec, newSpec binding.BrokerDriverSpec) bool {
+	if oldSpec.Type != newSpec.Type || oldSpec.Topic != newSpec.Topic || oldSpec.Ordering != newSpec.Ordering {
+		return false
+	}
+
+	oldConfigJSON, oldErr := json.Marshal(oldSpec.Config)
+	newConfigJSON, newErr := json.Marshal(newSpec.Config)
+	if oldErr != nil || newErr != nil {
+		return reflect.DeepEqual(oldSpec.Config, newSpec.Config)
+	}
+
+	return string(oldConfigJSON) == string(newConfigJSON)
+}
+
+func (r *Runtime) lockBindingMutations(names ...string) func() {
+	seen := make(map[string]bool, len(names))
+	ordered := make([]string, 0, len(names))
+	for _, name := range names {
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		ordered = append(ordered, name)
+	}
+	sort.Strings(ordered)
+
+	locks := make([]*sync.Mutex, 0, len(ordered))
+	r.bindingMutationMu.Lock()
+	for _, name := range ordered {
+		lock, ok := r.bindingMutationLocks[name]
+		if !ok {
+			lock = &sync.Mutex{}
+			r.bindingMutationLocks[name] = lock
+		}
+		locks = append(locks, lock)
+	}
+	r.bindingMutationMu.Unlock()
+
+	for _, lock := range locks {
+		lock.Lock()
+	}
+
+	return func() {
+		for i := len(locks) - 1; i >= 0; i-- {
+			locks[i].Unlock()
+		}
+	}
+}
+
 // AddWebSubApiBinding dynamically adds a WebSubApi binding at runtime (xDS mode).
 func (r *Runtime) AddWebSubApiBinding(wsb binding.WebSubApiBinding) error {
+	unlock := r.lockBindingMutations(wsb.Name)
+	defer unlock()
+	return r.addWebSubApiBindingLocked(wsb)
+}
+
+func (r *Runtime) addWebSubApiBindingLocked(wsb binding.WebSubApiBinding) error {
 	r.mu.Lock()
 
 	vhost := defaultVhost(wsb.Vhost)
@@ -744,12 +929,7 @@ func (r *Runtime) AddWebSubApiBinding(wsb binding.WebSubApiBinding) error {
 	r.bindingPaths[wsb.Name] = []string{basePath + "/hub", basePath + "/webhook-receiver"}
 
 	// Track all Kafka topics for cleanup on removal.
-	allTopics := make([]string, 0, len(channels)+1)
-	for _, kafkaTopic := range channels {
-		allTopics = append(allTopics, kafkaTopic)
-	}
-	allTopics = append(allTopics, internalSubTopic)
-	r.bindingTopics[wsb.Name] = allTopics
+	r.bindingTopics[wsb.Name] = webSubTopicList(channels, internalSubTopic)
 
 	ch := connectors.ChannelInfo{
 		Name:             wsb.Name,
@@ -798,8 +978,136 @@ func (r *Runtime) AddWebSubApiBinding(wsb binding.WebSubApiBinding) error {
 	return nil
 }
 
+// UpdateWebSubApiBinding dynamically updates an existing WebSubApi binding at runtime (xDS mode).
+func (r *Runtime) UpdateWebSubApiBinding(oldWSB, newWSB binding.WebSubApiBinding) error {
+	unlock := r.lockBindingMutations(oldWSB.Name, newWSB.Name)
+	defer unlock()
+
+	if !canDeltaUpdateWebSubBinding(oldWSB, newWSB) {
+		if err := r.removeWebSubApiBindingLocked(oldWSB.Name); err != nil {
+			return err
+		}
+		return r.addWebSubApiBindingLocked(newWSB)
+	}
+
+	r.mu.Lock()
+
+	receiver, ok := r.activeReceivers[oldWSB.Name]
+	if !ok {
+		r.mu.Unlock()
+		return fmt.Errorf("active receiver not found for WebSubApi %q", oldWSB.Name)
+	}
+	updater, ok := receiver.(webSubBindingUpdater)
+	if !ok {
+		r.mu.Unlock()
+		return fmt.Errorf("receiver for WebSubApi %q does not support delta updates", oldWSB.Name)
+	}
+
+	brokerDriver, ok := r.activeBrokerDrivers[oldWSB.Name]
+	if !ok {
+		r.mu.Unlock()
+		return fmt.Errorf("active broker-driver not found for WebSubApi %q", oldWSB.Name)
+	}
+
+		oldChannels := webSubChannelTopicMap(oldWSB)
+		newChannels := webSubChannelTopicMap(newWSB)
+		removedChannels, addedChannels := diffChannelTopics(oldChannels, newChannels)
+		oldBinding := r.hub.GetBinding(oldWSB.Name)
+		updateCtx := r.runCtx
+		r.mu.Unlock()
+
+	vhost := defaultVhost(newWSB.Vhost)
+	subKey, unsubKey, inKey, outKey, chChainKeys, err := r.buildWebSubApiPolicyChains(newWSB, vhost)
+	if err != nil {
+		return fmt.Errorf("failed to build chains for updated WebSubApi %q: %w", newWSB.Name, err)
+	}
+
+	if len(addedChannels) > 0 {
+		topicsToEnsure := make([]string, 0, len(addedChannels))
+		for _, kafkaTopic := range addedChannels {
+			topicsToEnsure = append(topicsToEnsure, kafkaTopic)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := brokerDriver.EnsureTopics(ctx, topicsToEnsure); err != nil {
+			cancel()
+			return fmt.Errorf("failed to ensure broker-driver topics during update for WebSubApi %q: %w", newWSB.Name, err)
+		}
+		cancel()
+	}
+
+		if updateCtx == nil {
+			updateCtx = context.Background()
+		}
+		if err := updater.ApplyBindingDelta(updateCtx, removedChannels, addedChannels); err != nil {
+			return fmt.Errorf("failed to apply WebSub delta update for %q: %w", newWSB.Name, err)
+		}
+
+	if len(removedChannels) > 0 {
+		topicsToDelete := make([]string, 0, len(removedChannels))
+		for _, kafkaTopic := range removedChannels {
+			topicsToDelete = append(topicsToDelete, kafkaTopic)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := brokerDriver.DeleteTopics(ctx, topicsToDelete); err != nil {
+			slog.Error("Failed to delete broker-driver topics during delta update",
+				"name", newWSB.Name,
+				"error", err)
+		}
+		cancel()
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	currentReceiver, ok := r.activeReceivers[oldWSB.Name]
+	if !ok || currentReceiver != receiver {
+		return fmt.Errorf("active receiver changed during WebSubApi update for %q", newWSB.Name)
+	}
+	currentBrokerDriver, ok := r.activeBrokerDrivers[oldWSB.Name]
+	if !ok || currentBrokerDriver != brokerDriver {
+		return fmt.Errorf("active broker-driver changed during WebSubApi update for %q", newWSB.Name)
+	}
+	if r.hub.GetBinding(oldWSB.Name) != oldBinding {
+		return fmt.Errorf("hub binding changed during WebSubApi update for %q", newWSB.Name)
+	}
+
+	r.unregisterStaleBindingChains(oldBinding, webSubActiveChainKeys(newWSB, vhost))
+	r.hub.RegisterBinding(hub.ChannelBinding{
+		APIID:             newWSB.APIID,
+		Name:              newWSB.Name,
+		Mode:              "websub",
+		Context:           newWSB.Context,
+		Version:           newWSB.Version,
+		Vhost:             vhost,
+		SubscribeChainKey: subKey,
+		UnsubscribeChainKey: unsubKey,
+		InboundChainKey:   inKey,
+		OutboundChainKey:  outKey,
+		Channels:          newChannels,
+		ChannelChainKeys:  chChainKeys,
+	})
+
+	internalSubTopic := r.webSubSubscriptionSyncTopic(newWSB.Name, newWSB.Version)
+	r.bindingTopics[newWSB.Name] = webSubTopicList(newChannels, internalSubTopic)
+
+	slog.Info("Dynamically updated WebSubApi binding",
+		"name", newWSB.Name,
+		"added_channels", len(addedChannels),
+		"removed_channels", len(removedChannels),
+		"channels", len(newWSB.Channels),
+	)
+
+	return nil
+}
+
 // RemoveWebSubApiBinding dynamically removes a WebSubApi binding at runtime (xDS mode).
 func (r *Runtime) RemoveWebSubApiBinding(name string) error {
+	unlock := r.lockBindingMutations(name)
+	defer unlock()
+	return r.removeWebSubApiBindingLocked(name)
+}
+
+func (r *Runtime) removeWebSubApiBindingLocked(name string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
