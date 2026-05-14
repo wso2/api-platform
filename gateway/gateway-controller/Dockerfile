@@ -88,6 +88,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 COPY --from=builder /build/controller .
 COPY --from=build-manifest build-manifest.yaml /app/build-manifest.yaml
 COPY --from=policies . /app/default-policies
+COPY --from=target LICENSE /app/LICENSE
 COPY lua /app/lua
 COPY default-llm-provider-templates /app/default-llm-provider-templates
 
@@ -117,11 +118,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-# Copy build manifest 
+# Copy build manifest
 COPY --from=build-manifest build-manifest.yaml /app/build-manifest.yaml
 
 COPY --from=builder /build/controller .
 COPY --from=policies . /app/default-policies
+COPY --from=target LICENSE /app/LICENSE
 COPY lua /app/lua
 COPY default-llm-provider-templates /app/default-llm-provider-templates
 

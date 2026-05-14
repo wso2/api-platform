@@ -141,6 +141,8 @@ platform-api/src/resources/openapi_with_binding.yaml
 
 # Gateway
 gateway/gateway-runtime/target
+gateway/gateway-controller/target/
+event-gateway/gateway-runtime/target/
 dev-policies/
 
 # Copilot Prompts

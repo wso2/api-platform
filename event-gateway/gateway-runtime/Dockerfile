@@ -111,6 +111,7 @@ RUN apk add --no-cache ca-certificates bash tini && \
 WORKDIR /app
 
 COPY --from=policy-compiler /api-platform/output/event-gateway/event-gateway /app/event-gateway
+COPY --from=target LICENSE /app/LICENSE
 COPY configs/config.toml /etc/event-gateway/config.toml
 COPY configs/channels.yaml /etc/event-gateway/channels.yaml
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh

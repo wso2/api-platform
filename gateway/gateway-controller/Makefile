@@ -74,12 +74,15 @@ test: ## Run unit and integration tests
 
 build: generate-server-code test ## Build Docker image using buildx
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
+	@mkdir -p target
+	@cp ../../LICENSE target/
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-context build-manifest=.. \
 		--build-context policies=$(POLICIES_BUILD_CONTEXT) \
+		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg FUNCTIONALITY_TYPE=$(FUNCTIONALITY_TYPE) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
@@ -88,6 +91,7 @@ build: generate-server-code test ## Build Docker image using buildx
 		-t $(IMAGE_NAME):latest \
 		--load \
 		.
+	@rm -rf target
 	@echo "Docker image ($(IMAGE_NAME):$(VERSION)) built successfully."
 
 push: ## Push Docker image to registry
@@ -97,12 +101,15 @@ push: ## Push Docker image to registry
 
 build-and-push-multiarch: ## Build and push multi-architecture Docker image (linux/amd64, linux/arm64)
 	@echo "Building and pushing multi-arch Docker image: $(IMAGE_NAME):$(VERSION)"
+	@mkdir -p target
+	@cp ../../LICENSE target/
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-context build-manifest=.. \
 		--build-context policies=$(POLICIES_BUILD_CONTEXT) \
+		--build-context target=target \
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg FUNCTIONALITY_TYPE=$(FUNCTIONALITY_TYPE) \
@@ -112,14 +119,18 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 		-t $(IMAGE_NAME):latest \
 		--push \
 		.
+	@rm -rf target
 
 build-coverage-image: test ## Build coverage-instrumented gateway-controller image
+	@mkdir -p target
+	@cp ../../LICENSE target/
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-context build-manifest=.. \
 		--build-context policies=$(POLICIES_BUILD_CONTEXT) \
+		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg FUNCTIONALITY_TYPE=$(FUNCTIONALITY_TYPE) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
@@ -128,14 +139,18 @@ build-coverage-image: test ## Build coverage-instrumented gateway-controller ima
 		-t $(IMAGE_NAME)-coverage:$(VERSION) \
 		--load \
 		.
+	@rm -rf target
 
 build-debug: ## Build debug image for remote debugging with dlv (VS Code attach on port 2345)
+	@mkdir -p target
+	@cp ../../LICENSE target/
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
 		--build-context sdk-core=../../sdk/core \
 		--build-context common=../../common \
 		--build-context build-manifest=.. \
 		--build-context policies=$(POLICIES_BUILD_CONTEXT) \
+		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg FUNCTIONALITY_TYPE=$(FUNCTIONALITY_TYPE) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
@@ -145,6 +160,7 @@ build-debug: ## Build debug image for remote debugging with dlv (VS Code attach 
 		-t $(IMAGE_NAME)-debug:latest \
 		--load \
 		.
+	@rm -rf target
 
 generate-listener-certs: ## Generate listener certificates
 	@echo "Generating listener certificates..."

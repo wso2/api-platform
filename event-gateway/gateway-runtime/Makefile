@@ -80,7 +80,9 @@ debug-local: generate ## Build locally with debug symbols and launch Delve on :2
 .PHONY: build-docker
 build-docker: ## Build Docker image
 	@echo "Building event-gateway-runtime Docker image ($(VERSION))..."
-	@mkdir -p target && cp ../build.yaml target/
+	@mkdir -p target
+	@cp ../build.yaml target/
+	@cp ../../LICENSE target/
 	docker buildx build \
 		--load \
 		--platform linux/$(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
@@ -100,7 +102,9 @@ build-docker: ## Build Docker image
 .PHONY: build-debug
 build-debug: ## Build Docker image with Delve remote debugger (port 2345)
 	@echo "Building event-gateway-runtime debug Docker image ($(VERSION))..."
-	@mkdir -p target && cp ../build.yaml target/
+	@mkdir -p target
+	@cp ../build.yaml target/
+	@cp ../../LICENSE target/
 	docker buildx build \
 		--load \
 		--platform linux/$(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
@@ -120,7 +124,9 @@ build-debug: ## Build Docker image with Delve remote debugger (port 2345)
 .PHONY: build-and-push-multiarch
 build-and-push-multiarch: ## Build and push Docker image for multiple architectures
 	@echo "Building and pushing multi-arch event-gateway-runtime Docker image ($(VERSION))..."
-	@mkdir -p target && cp ../build.yaml target/
+	@mkdir -p target
+	@cp ../build.yaml target/
+	@cp ../../LICENSE target/
 	docker buildx build \
 		--push \
 		--platform linux/amd64,linux/arm64 \
