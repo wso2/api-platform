@@ -82,6 +82,18 @@ parameters:
         false, the header is stripped before the request is proxied.
       default: true
 
+    forwardedTokenHeader:
+      type: string
+      x-wso2-policy-advanced-param: true
+      minLength: 1
+      pattern: "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"
+      description: >-
+        The header name used to forward the JWT to the upstream service when
+        `forwardToken` is true. If this differs from `headerName`, the original
+        header is removed and the token is forwarded under this name instead.
+        Has no effect when `forwardToken` is false.
+      default: x-forwarded-authorization
+
 systemParameters:          
   type: object
   additionalProperties: false
