@@ -110,7 +110,7 @@ Two Postman collections are provided in [`spec/postman/`](spec/postman/):
    - **Control Plane**: `localhost:9090`
    - **WebSub**: `localhost:8080`
 
-### End-to-End Walkthrough
+### WebSub API Walkthrough
 
 #### Step 1: Create a WebSub API (Control Plane collection)
 
@@ -218,9 +218,9 @@ docker compose logs wh-listener
 
 You should see the event body and headers printed by the listener.
 
-### WebBrokerApi Walkthrough
+### WebBroker API Walkthrough
 
-The WebBrokerApi enables bidirectional WebSocket ↔ Kafka protocol mediation. This walkthrough demonstrates creating a stock trading API where clients can produce messages to Kafka and consume messages in real-time over WebSocket.
+The WebBroker API enables bidirectional WebSocket ↔ Kafka protocol mediation. This walkthrough demonstrates creating a stock trading API where clients can produce messages to Kafka and consume messages in real-time over WebSocket.
 
 #### Step 1: Create a WebBroker API
 
