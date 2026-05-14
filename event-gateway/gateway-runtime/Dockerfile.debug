@@ -115,6 +115,7 @@ RUN go install github.com/go-delve/delve/cmd/dlv@latest
 WORKDIR /app
 
 COPY --from=policy-compiler /api-platform/output/event-gateway/event-gateway /app/event-gateway
+COPY --from=target LICENSE /app/LICENSE
 COPY configs/config.toml /etc/event-gateway/config.toml
 COPY configs/channels.yaml /etc/event-gateway/channels.yaml
 

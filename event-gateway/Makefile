@@ -73,6 +73,8 @@ build: build-event-gateway-controller build-gateway-runtime build-webhook-listen
 # once gateway-builder is integrated into the event-gateway build pipeline.
 build-event-gateway-controller: ## Build event-gateway-controller Docker image
 	@echo "Building event-gateway-controller Docker image ($(VERSION))..."
+	@mkdir -p ../gateway/gateway-controller/target
+	@cp ../LICENSE ../gateway/gateway-controller/target/
 	@cd ../gateway/gateway-controller && \
 		docker buildx build -f Dockerfile \
 			--build-context sdk=../../sdk \
@@ -80,6 +82,7 @@ build-event-gateway-controller: ## Build event-gateway-controller Docker image
 			--build-context common=../../common \
 			--build-context build-manifest=.. \
 			--build-context policies=../../event-gateway/default-policies \
+			--build-context target=target \
 			--build-arg VERSION=$(VERSION) \
 			--build-arg FUNCTIONALITY_TYPE=event \
 			--build-arg GIT_COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo "unknown") \
@@ -87,6 +90,7 @@ build-event-gateway-controller: ## Build event-gateway-controller Docker image
 			-t $(EVENT_GATEWAY_CONTROLLER_IMAGE):$(VERSION) \
 			--load \
 			.
+	@rm -rf ../gateway/gateway-controller/target
 
 .PHONY: build-gateway-runtime
 build-gateway-runtime: ## Build event-gateway-runtime Docker image
@@ -107,6 +111,8 @@ build-and-push-multiarch: build-and-push-multiarch-event-gateway-controller buil
 # once gateway-builder is integrated into the event-gateway build pipeline.
 build-and-push-multiarch-event-gateway-controller: ## Build and push event-gateway-controller Docker image for multiple architectures
 	@echo "Building and pushing multi-arch event-gateway-controller Docker image ($(VERSION))..."
+	@mkdir -p ../gateway/gateway-controller/target
+	@cp ../LICENSE ../gateway/gateway-controller/target/
 	@cd ../gateway/gateway-controller && \
 		docker buildx build -f Dockerfile \
 			--build-context sdk=../../sdk \
@@ -114,6 +120,7 @@ build-and-push-multiarch-event-gateway-controller: ## Build and push event-gatew
 			--build-context common=../../common \
 			--build-context build-manifest=.. \
 			--build-context policies=../../event-gateway/default-policies \
+			--build-context target=target \
 			--platform linux/amd64,linux/arm64 \
 			--build-arg VERSION=$(VERSION) \
 			--build-arg FUNCTIONALITY_TYPE=event \
@@ -122,6 +129,7 @@ build-and-push-multiarch-event-gateway-controller: ## Build and push event-gatew
 			-t $(EVENT_GATEWAY_CONTROLLER_IMAGE):$(VERSION) \
 			--push \
 			.
+	@rm -rf ../gateway/gateway-controller/target
 
 .PHONY: build-and-push-multiarch-gateway-runtime
 build-and-push-multiarch-gateway-runtime: ## Build and push event-gateway-runtime Docker image for multiple architectures

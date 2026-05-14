@@ -210,6 +210,7 @@ COPY router/config/config-override.yaml /etc/envoy/config-override.yaml
 COPY docker-entrypoint-debug.sh /usr/local/bin/docker-entrypoint.sh
 COPY health-check.sh /usr/local/bin/health-check.sh
 COPY --from=target configs/llm-pricing/ /home/wso2/conf/llm-pricing/
+COPY --from=target LICENSE /app/LICENSE
 
 RUN chmod +x /app/policy-engine /usr/local/bin/dlv /usr/local/bin/docker-entrypoint.sh /usr/local/bin/health-check.sh
 
@@ -263,6 +264,7 @@ COPY router/config/config-override.yaml /etc/envoy/config-override.yaml
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY health-check.sh /usr/local/bin/health-check.sh
 COPY --from=target configs/llm-pricing/ /home/wso2/conf/llm-pricing/
+COPY --from=target LICENSE /app/LICENSE
 
 RUN chmod +x /app/policy-engine /usr/local/bin/docker-entrypoint.sh /usr/local/bin/health-check.sh
 
