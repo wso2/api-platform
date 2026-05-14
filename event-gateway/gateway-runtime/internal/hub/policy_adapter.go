@@ -216,6 +216,9 @@ func ApplyRequestBodyResult(result *engine.RequestBodyResult, msg *connectors.Me
 	if result.Body != nil {
 		msg.Value = result.Body
 	}
+	if result.Topic != "" {
+		msg.Topic = result.Topic
+	}
 
 	return nil
 }

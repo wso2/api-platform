@@ -107,8 +107,10 @@ func (l *EventListener) handleAPICreateOrUpdate(event eventhub.Event) {
 		}
 	}
 
-	// Update xDS snapshot
-	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after replica sync")
+	// Update xDS snapshot for REST APIs only (WebSubApi and WebBrokerApi use Policy xDS)
+	if storedConfig.Kind != models.KindWebSubApi && storedConfig.Kind != models.KindWebBrokerApi {
+		l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after replica sync")
+	}
 
 	// Update policies
 	l.updatePoliciesForAPI(storedConfig, event.EventID)
@@ -184,16 +186,19 @@ func (l *EventListener) handleAPIDelete(event eventhub.Event) {
 		}
 	}
 
-	// Update xDS snapshot
-	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after API deletion")
+	// Update xDS snapshot for REST APIs only (WebSubApi and WebBrokerApi use Policy xDS)
+	if existingConfig == nil || (existingConfig.Kind != models.KindWebSubApi && existingConfig.Kind != models.KindWebBrokerApi) {
+		l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after API deletion")
+	}
 
 	// Remove runtime config for the deleted API
 	if l.policyManager != nil && existingConfig != nil {
-		if existingConfig.Kind == models.KindWebSubApi {
-			// WebSubApi: refresh event channel cache (config already removed from ConfigStore)
+		if existingConfig.Kind == models.KindWebSubApi || existingConfig.Kind == models.KindWebBrokerApi {
+			// WebSubApi/WebBrokerApi: refresh event channel cache (config already removed from ConfigStore)
 			if err := l.policyManager.UpdateEventChannelSnapshot(); err != nil {
-				l.logger.Warn("Failed to update event channel snapshot after WebSubApi deletion",
+				l.logger.Warn("Failed to update event channel snapshot after event API deletion",
 					slog.String("api_id", entityID),
+					slog.String("kind", string(existingConfig.Kind)),
 					slog.Any("error", err))
 			}
 		} else if err := l.policyManager.DeleteAPIConfig(existingConfig.Kind, existingConfig.Handle); err != nil {
@@ -214,8 +219,8 @@ func (l *EventListener) updatePoliciesForAPI(cfg *models.StoredConfig, correlati
 		return
 	}
 
-	if cfg.Kind == models.KindWebSubApi {
-		// WebSubApi doesn't need RuntimeDeployConfig transformation.
+	if cfg.Kind == models.KindWebSubApi || cfg.Kind == models.KindWebBrokerApi {
+		// WebSubApi and WebBrokerApi don't need RuntimeDeployConfig transformation.
 		// Just refresh the event channel config cache.
 		if err := l.policyManager.UpdateEventChannelSnapshot(); err != nil {
 			l.logger.Error("Failed to update event channel snapshot",

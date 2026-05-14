@@ -60,4 +60,12 @@ func registerConnectors(registry *connectors.Registry, cfg *config.Config) {
 			ConsumerGroupPrefix: cfg.Kafka.ConsumerGroupPrefix,
 		})
 	})
+
+	registry.RegisterReceiver("websocket-broker-api", func(ecfg connectors.ReceiverConfig) (connectors.Receiver, error) {
+		return websocket.NewBrokerApiReceiver(ecfg, websocket.BrokerApiOptions{
+			Port:                cfg.Server.WebSocketPort,
+			ConsumerGroupPrefix: cfg.Kafka.ConsumerGroupPrefix,
+			Topics:              ecfg.Channel.Topics,
+		})
+	})
 }
