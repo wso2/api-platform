@@ -41,6 +41,7 @@ type RequestBodyResult struct {
 	HeadersToSet      map[string]string
 	HeadersToRemove   []string
 	Body              []byte
+	Topic             string // Broker topic for publish (set by policies like map-topic)
 	ShortCircuited    bool
 	ImmediateResponse *ImmediateResponseResult
 	TotalDuration     time.Duration
@@ -132,6 +133,13 @@ func mapRequestBodyResult(r *executor.RequestExecutionResult) *RequestBodyResult
 	res := &RequestBodyResult{
 		ShortCircuited: r.ShortCircuited,
 		TotalDuration:  r.TotalExecutionTime,
+	}
+
+	// Extract topic from metadata if set by policies (e.g., map-topic policy)
+	if r.Metadata != nil {
+		if topic, ok := r.Metadata["topic"].(string); ok && topic != "" {
+			res.Topic = topic
+		}
 	}
 
 	if r.FinalAction != nil {

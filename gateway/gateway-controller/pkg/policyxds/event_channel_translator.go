@@ -47,7 +47,7 @@ func (t *Translator) TranslateWebSubApisToEventChannelConfigs(configs []*models.
 			continue
 		}
 
-		resource, err := t.buildEventChannelResource(cfg.UUID, &webSubCfg)
+		resource, err := t.buildEventChannelResourceForWebSub(cfg.UUID, &webSubCfg)
 		if err != nil {
 			t.logger.Error("Failed to build EventChannelConfig resource",
 				slog.String("uuid", cfg.UUID),
@@ -65,7 +65,45 @@ func (t *Translator) TranslateWebSubApisToEventChannelConfigs(configs []*models.
 	return resources
 }
 
-func (t *Translator) buildEventChannelResource(uuid string, webSubCfg *api.WebSubAPI) (types.Resource, error) {
+// TranslateWebBrokerApisToEventChannelConfigs translates WebBrokerApi StoredConfigs into
+// EventChannelConfig xDS resources for the event gateway runtime.
+func (t *Translator) TranslateWebBrokerApisToEventChannelConfigs(configs []*models.StoredConfig) map[string]types.Resource {
+	resources := make(map[string]types.Resource)
+
+	for _, cfg := range configs {
+		if cfg.Kind != models.KindWebBrokerApi {
+			continue
+		}
+		if cfg.DesiredState != models.StateDeployed {
+			continue
+		}
+
+		webBrokerCfg, ok := cfg.Configuration.(api.WebBrokerApi)
+		if !ok {
+			t.logger.Warn("Failed to type-assert WebBrokerApi configuration",
+				slog.String("uuid", cfg.UUID))
+			continue
+		}
+
+		resource, err := t.buildEventChannelResourceForWebBroker(cfg.UUID, &webBrokerCfg)
+		if err != nil {
+			t.logger.Error("Failed to build EventChannelConfig resource for WebBrokerApi",
+				slog.String("uuid", cfg.UUID),
+				slog.Any("error", err))
+			continue
+		}
+
+		resources[cfg.UUID] = resource
+	}
+
+	t.logger.Info("Translated WebBrokerApis to EventChannelConfig resources",
+		slog.Int("input_configs", len(configs)),
+		slog.Int("output_resources", len(resources)))
+
+	return resources
+}
+
+func (t *Translator) buildEventChannelResourceForWebSub(uuid string, webSubCfg *api.WebSubAPI) (types.Resource, error) {
 	spec := webSubCfg.Spec
 
 	// Build channels list from channels, including per-channel policies.
@@ -142,6 +180,113 @@ func (t *Translator) buildEventChannelResource(uuid string, webSubCfg *api.WebSu
 			"inbound":     inboundPolicies,
 			"outbound":    outboundPolicies,
 		},
+	}
+
+	return toAnyResource(data, EventChannelConfigTypeURL)
+}
+
+func (t *Translator) buildEventChannelResourceForWebBroker(uuid string, webBrokerCfg *api.WebBrokerApi) (types.Resource, error) {
+	spec := webBrokerCfg.Spec
+
+	// Build receiver configuration
+	receiver := map[string]interface{}{
+		"name": spec.Receiver.Name,
+		"type": spec.Receiver.Type,
+	}
+	if spec.Receiver.Properties != nil {
+		receiver["properties"] = *spec.Receiver.Properties
+	}
+
+	// Build broker-driver configuration
+	brokerDriver := map[string]interface{}{
+		"name":       spec.Broker.Name,
+		"type":       spec.Broker.Type,
+		"properties": spec.Broker.Properties,
+	}
+	slog.Info("DEBUG: Building EventChannelConfig for WebBrokerApi",
+		"name", webBrokerCfg.Metadata.Name,
+		"receiverName", spec.Receiver.Name,
+		"brokerDriverName", spec.Broker.Name,
+		"brokerDriverType", spec.Broker.Type)
+
+	// Build API-level policies from AllChannels
+	var apiOnConnectionInit []interface{}
+	var apiOnProduce []interface{}
+	var apiOnConsume []interface{}
+
+	if spec.AllChannels != nil {
+		if spec.AllChannels.OnConnectionInit != nil && spec.AllChannels.OnConnectionInit.Policies != nil {
+			apiOnConnectionInit = buildPolicyList(spec.AllChannels.OnConnectionInit.Policies)
+		}
+		if spec.AllChannels.OnProduce != nil && spec.AllChannels.OnProduce.Policies != nil {
+			apiOnProduce = buildPolicyList(spec.AllChannels.OnProduce.Policies)
+		}
+		if spec.AllChannels.OnConsume != nil && spec.AllChannels.OnConsume.Policies != nil {
+			apiOnConsume = buildPolicyList(spec.AllChannels.OnConsume.Policies)
+		}
+	}
+
+	// Build channels map with channel-specific policies and topic mappings
+	channels := make(map[string]interface{})
+	if spec.Channels != nil {
+		for channelName, channelConfig := range spec.Channels {
+			var channelOnConnectionInit []interface{}
+			var channelOnProduce []interface{}
+			var channelOnConsume []interface{}
+
+			// Extract policies from channel-level policy groups
+			if channelConfig.OnConnectionInit != nil && channelConfig.OnConnectionInit.Policies != nil {
+				channelOnConnectionInit = buildPolicyList(channelConfig.OnConnectionInit.Policies)
+			}
+			if channelConfig.OnProduce != nil && channelConfig.OnProduce.Policies != nil {
+				channelOnProduce = buildPolicyList(channelConfig.OnProduce.Policies)
+			}
+			if channelConfig.OnConsume != nil && channelConfig.OnConsume.Policies != nil {
+				channelOnConsume = buildPolicyList(channelConfig.OnConsume.Policies)
+			}
+
+			// Build channel entry with policies nested inside "policies" field
+			channelEntry := map[string]interface{}{}
+
+			// Add produceTo topic mapping if specified
+			if channelConfig.ProduceTo != nil {
+				channelEntry["produce_to"] = map[string]interface{}{
+					"topic": channelConfig.ProduceTo.Topic,
+				}
+			}
+
+			// Add consumeFrom topic mapping if specified
+			if channelConfig.ConsumeFrom != nil {
+				channelEntry["consume_from"] = map[string]interface{}{
+					"topic": channelConfig.ConsumeFrom.Topic,
+				}
+			}
+
+			// Nest all policies inside a "policies" field (flattened structure)
+			channelEntry["policies"] = map[string]interface{}{
+				"on_connection_init": channelOnConnectionInit,
+				"on_produce":         channelOnProduce,
+				"on_consume":         channelOnConsume,
+			}
+
+			channels[channelName] = channelEntry
+		}
+	}
+
+	data := map[string]interface{}{
+		"uuid":          uuid,
+		"name":          string(webBrokerCfg.Metadata.Name),
+		"kind":          "WebBrokerApi",
+		"context":       spec.Context,
+		"version":       spec.Version,
+		"receiver":      receiver,
+		"broker-driver": brokerDriver,
+		"policies": map[string]interface{}{
+			"on_connection_init": apiOnConnectionInit,
+			"on_produce":         apiOnProduce,
+			"on_consume":         apiOnConsume,
+		},
+		"channels": channels,
 	}
 
 	return toAnyResource(data, EventChannelConfigTypeURL)

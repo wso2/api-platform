@@ -760,6 +760,11 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		"PUT /websub-apis/:id":    {"admin", "developer"},
 		"DELETE /websub-apis/:id": {"admin", "developer"},
 
+		"POST /webbroker-apis":       {"admin", "developer"},
+		"GET /webbroker-apis":        {"admin", "developer"},
+		"GET /webbroker-apis/:id":    {"admin", "developer"},
+		"DELETE /webbroker-apis/:id": {"admin", "developer"},
+
 		"GET /certificates":         {"admin", "developer"},
 		"POST /certificates":        {"admin", "developer"},
 		"DELETE /certificates/:id":  {"admin"},

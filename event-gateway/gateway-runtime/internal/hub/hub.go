@@ -529,3 +529,132 @@ func summarizeImmediateResponseBody(body []byte) string {
 	}
 	return text
 }
+
+// ProcessConnectionInitRequest applies on_connection_init.request policies during connection handshake.
+// Used by protocol mediation (WebBrokerApi) for WebSocket upgrade or SSE connection initialization.
+// Returns the (possibly mutated) message and whether it was short-circuited.
+func (h *Hub) ProcessConnectionInitRequest(ctx context.Context, bindingName string, msg *connectors.Message) (*connectors.Message, bool, error) {
+	binding := h.GetBinding(bindingName)
+	if binding == nil {
+		return nil, false, fmt.Errorf("binding not found: %s", bindingName)
+	}
+
+	// Apply connection_init request policies if present.
+	if binding.SubscribeChainKey != "" { // Reuse SubscribeChainKey for on_connection_init.request
+		chain := h.engine.GetChain(binding.SubscribeChainKey)
+		if chain != nil {
+			reqHeaderCtx := MessageToRequestHeaderContext(msg, binding)
+			result, err := h.engine.ExecuteRequestHeaderPolicies(ctx, binding.SubscribeChainKey, reqHeaderCtx.SharedContext, reqHeaderCtx)
+			if err != nil {
+				return nil, false, fmt.Errorf("connection_init request policy execution failed: %w", err)
+			}
+			if result.ShortCircuited {
+				logShortCircuit("Connection init request short-circuited", bindingName, binding.SubscribeChainKey, result.ImmediateResponse)
+				return immediateResponseToMessage(result.ImmediateResponse), true, nil
+			}
+			if err := ApplyRequestHeaderResult(result, msg); err != nil {
+				return nil, false, fmt.Errorf("failed to apply connection_init request result: %w", err)
+			}
+		}
+	}
+
+	return msg, false, nil
+}
+
+// ProcessConnectionInitResponse applies on_connection_init.response policies during connection handshake.
+// Used by protocol mediation (WebBrokerApi) for response customization during handshake.
+// Returns the (possibly mutated) message.
+func (h *Hub) ProcessConnectionInitResponse(ctx context.Context, bindingName string, msg *connectors.Message) (*connectors.Message, error) {
+	binding := h.GetBinding(bindingName)
+	if binding == nil {
+		return nil, fmt.Errorf("binding not found: %s", bindingName)
+	}
+
+	// Apply connection_init response policies if present.
+	// Currently using OutboundChainKey for on_connection_init.response
+	// In the future, we could add a dedicated field to ChannelBinding if needed.
+	if binding.OutboundChainKey != "" {
+		chain := h.engine.GetChain(binding.OutboundChainKey)
+		if chain != nil {
+			reqHeaderCtx := MessageToRequestHeaderContext(msg, binding)
+			result, err := h.engine.ExecuteRequestHeaderPolicies(ctx, binding.OutboundChainKey, reqHeaderCtx.SharedContext, reqHeaderCtx)
+			if err != nil {
+				return nil, fmt.Errorf("connection_init response policy execution failed: %w", err)
+			}
+			if err := ApplyRequestHeaderResult(result, msg); err != nil {
+				return nil, fmt.Errorf("failed to apply connection_init response result: %w", err)
+			}
+		}
+	}
+
+	return msg, nil
+}
+
+// ProcessProduce applies on_produce policies when client sends messages to broker.
+// Used by protocol mediation (WebBrokerApi) for the produce path (client → broker).
+// Returns the (possibly mutated) message and whether it was short-circuited.
+func (h *Hub) ProcessProduce(ctx context.Context, bindingName string, msg *connectors.Message) (*connectors.Message, bool, error) {
+	// Reuse ProcessInbound for on_produce policies
+	return h.ProcessInbound(ctx, bindingName, msg)
+}
+
+// ProcessConsume applies on_consume policies when broker messages are delivered to client.
+// Used by protocol mediation (WebBrokerApi) for the consume path (broker → client).
+// Returns the (possibly mutated) message and whether it was short-circuited.
+func (h *Hub) ProcessConsume(ctx context.Context, bindingName string, msg *connectors.Message) (*connectors.Message, bool, error) {
+	// Reuse ProcessOutbound for on_consume policies
+	return h.ProcessOutbound(ctx, bindingName, msg)
+}
+
+// ProcessByChainKey executes policies using a specific chain key directly.
+// This is used for WebBrokerApi channel-specific policies where we know the exact chain key to use.
+// Returns the (possibly mutated) message and whether it was short-circuited.
+func (h *Hub) ProcessByChainKey(ctx context.Context, bindingName string, chainKey string, msg *connectors.Message) (*connectors.Message, bool, error) {
+	if chainKey == "" {
+		// No chain to execute
+		return msg, false, nil
+	}
+
+	// Get binding for metadata (API context, version, etc.)
+	binding := h.GetBinding(bindingName)
+	if binding == nil {
+		return nil, false, fmt.Errorf("binding not found: %s", bindingName)
+	}
+
+	chain := h.engine.GetChain(chainKey)
+	if chain == nil {
+		// Chain key not found - this might be OK if the chain has no policies
+		return msg, false, nil
+	}
+
+	// Execute header policies
+	reqHeaderCtx := MessageToRequestHeaderContext(msg, binding)
+	result, err := h.engine.ExecuteRequestHeaderPolicies(ctx, chainKey, reqHeaderCtx.SharedContext, reqHeaderCtx)
+	if err != nil {
+		return nil, false, fmt.Errorf("policy header execution failed: %w", err)
+	}
+	if result.ShortCircuited {
+		logShortCircuit("Message short-circuited by policy", bindingName, chainKey, result.ImmediateResponse)
+		return immediateResponseToMessage(result.ImmediateResponse), true, nil
+	}
+	if err := ApplyRequestHeaderResult(result, msg); err != nil {
+		return nil, false, fmt.Errorf("failed to apply header result: %w", err)
+	}
+
+	// Execute body policies if chain requires them
+	if chain.RequiresRequestBody {
+		reqCtx := MessageToRequestContext(msg, binding)
+		bodyResult, err := h.engine.ExecuteRequestBodyPolicies(ctx, chainKey, reqCtx.SharedContext, reqCtx)
+		if err != nil {
+			return nil, false, fmt.Errorf("policy body execution failed: %w", err)
+		}
+		if bodyResult.ShortCircuited {
+			return immediateResponseToMessage(bodyResult.ImmediateResponse), true, nil
+		}
+		if err := ApplyRequestBodyResult(bodyResult, msg); err != nil {
+			return nil, false, fmt.Errorf("failed to apply body result: %w", err)
+		}
+	}
+
+	return msg, false, nil
+}

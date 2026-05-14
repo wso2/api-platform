@@ -1,0 +1,84 @@
+# Example WebBrokerApi Configuration for Protocol Mediation
+# This demonstrates bidirectional WebSocket ↔ Kafka streaming
+
+channels:
+  # WebBrokerApi example: WebSocket to Kafka protocol mediation
+  - kind: WebBrokerApi
+    apiId: websocket-kafka-api-v1-0
+    name: websocket-kafka-api
+    version: v1.0
+    context: /websocket-kafka
+    receiver:
+      type: websocket
+      properties: {}
+    broker-driver:
+      type: kafka
+      properties:
+        brokers:
+          - localhost:9092
+        # Other optional properties:
+        # tls: false
+        # sasl_mechanism: plain
+        # sasl_username: user
+        # sasl_password: pass
+    # Channel definitions with topic mappings
+    channels:
+      issues:
+        produceTo:
+          topic: kafka-repo-issues
+        consumeFrom:
+          topic: kafka-repo-issues
+        policies:
+          on_connection_init:
+            request:
+              - name: api-key-auth
+                version: v1
+                params:
+                  in: header
+                  name: X-API-Key
+            response: []
+          on_produce: []
+          on_consume: []
+      commits:
+        produceTo:
+          topic: kafka-repo-commits
+        consumeFrom:
+          topic: kafka-repo-commits
+        policies:
+          on_connection_init: {}
+          on_produce: []
+          on_consume: []
+      pull-requests:
+        produceTo:
+          topic: kafka-repo-pull-requests
+        consumeFrom:
+          topic: kafka-repo-pull-requests
+        policies:
+          on_connection_init: {}
+          on_produce: []
+          on_consume: []
+
+  # WebSubApi example (for comparison)
+  - kind: WebSubApi
+    name: repo-watcher
+    version: v1
+    context: /repos
+    channels:
+      - name: issues
+      - name: pull-requests
+    receiver:
+      type: websub
+    broker-driver:
+      type: kafka
+      config:
+        brokers:
+          - kafka:29092
+    policies:
+      subscribe:
+        - name: basic-auth
+          version: v1
+          params:
+            username: "admin"
+            password: "admin"
+      inbound: []
+      outbound: []

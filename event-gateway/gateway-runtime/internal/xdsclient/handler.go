@@ -34,10 +34,12 @@ import (
 	"github.com/wso2/api-platform/event-gateway/gateway-runtime/internal/binding"
 )
 
-// BindingManager can add/remove WebSubApi bindings dynamically.
+// BindingManager can add/remove WebSubApi and WebBrokerApi bindings dynamically.
 type BindingManager interface {
 	AddWebSubApiBinding(wsb binding.WebSubApiBinding) error
 	RemoveWebSubApiBinding(name string) error
+	AddWebBrokerApiBinding(wbb binding.WebBrokerApiBinding) error
+	RemoveWebBrokerApiBinding(name string) error
 }
 
 // KafkaConfig holds local Kafka broker settings used as defaults.
@@ -61,10 +63,35 @@ type EventChannelResource struct {
 	Context      string            `json:"context"`
 	Version      string            `json:"version"`
 	Deleted      bool              `json:"deleted,omitempty"`
-	Channels     []ChannelEntry    `json:"channels"`
-	Receiver     ReceiverEntry     `json:"receiver"`
-	BrokerDriver BrokerDriverEntry `json:"brokerDriver"`
-	Policies     PoliciesEntry     `json:"policies"`
+	Channels     interface{}       `json:"channels"`      // []ChannelEntry for WebSubApi, map[string]WebBrokerChannelEntry for WebBrokerApi
+	Receiver     ReceiverEntry     `json:"receiver"`      // For WebBrokerApi
+	BrokerDriver BrokerDriverEntry `json:"broker-driver"` // For WebBrokerApi
+	Policies     interface{}       `json:"policies"`      // PoliciesEntry for WebSubApi, ProtocolMediationPolicies for WebBrokerApi
+}
+
+// WebBrokerChannelEntry represents a WebBrokerApi channel with policies
+type WebBrokerChannelEntry struct {
+	ProduceTo   *TopicMapping             `json:"produce_to,omitempty"`
+	ConsumeFrom *TopicMapping             `json:"consume_from,omitempty"`
+	Policies    ProtocolMediationPolicies `json:"policies"`
+}
+
+// TopicMapping defines a Kafka topic mapping
+type TopicMapping struct {
+	Topic string `json:"topic"`
+}
+
+// ProtocolMediationPolicies defines policies for WebBrokerApi
+type ProtocolMediationPolicies struct {
+	OnConnectionInit ConnectionInitPolicies `json:"on_connection_init"`
+	OnProduce        []PolicyEntry          `json:"on_produce"`
+	OnConsume        []PolicyEntry          `json:"on_consume"`
+}
+
+// ConnectionInitPolicies defines policies for connection initialization
+type ConnectionInitPolicies struct {
+	Request  []PolicyEntry `json:"request"`
+	Response []PolicyEntry `json:"response"`
 }
 
 // ChannelEntry represents one channel in the EventChannelConfig.
@@ -75,13 +102,15 @@ type ChannelEntry struct {
 
 // ReceiverEntry specifies the receiver type.
 type ReceiverEntry struct {
+	Name string `json:"name"`
 	Type string `json:"type"`
 }
 
 // BrokerDriverEntry specifies the broker driver configuration.
 type BrokerDriverEntry struct {
-	Type   string                 `json:"type"`
-	Config map[string]interface{} `json:"config"`
+	Name       string                 `json:"name"`
+	Type       string                 `json:"type"`
+	Properties map[string]interface{} `json:"properties"`
 }
 
 // PoliciesEntry holds the 4-phase policy references.
@@ -160,7 +189,6 @@ func (h *Handler) HandleResources(ctx context.Context, resources []*discoveryv3.
 			slog.Warn("EventChannelConfig resource missing UUID, skipping")
 			continue
 		}
-
 		// Deletion markers are pushed by the controller to work around
 		// a go-control-plane LinearCache limitation for custom type URLs.
 		// Treat them as absent so the diff logic removes the binding.
@@ -175,9 +203,9 @@ func (h *Handler) HandleResources(ctx context.Context, resources []*discoveryv3.
 	// Compute diff: removals
 	for uuid, old := range h.current {
 		if _, exists := incoming[uuid]; !exists {
-			slog.Info("Removing binding via xDS", "name", old.Name, "uuid", uuid)
-			if err := h.manager.RemoveWebSubApiBinding(old.Name); err != nil {
-				slog.Error("Failed to remove binding", "name", old.Name, "error", err)
+			slog.Info("Removing binding via xDS", "name", old.Name, "uuid", uuid, "kind", old.Kind)
+			if err := h.removeBinding(old); err != nil {
+				slog.Error("Failed to remove binding", "name", old.Name, "kind", old.Kind, "error", err)
 			}
 		}
 	}
@@ -189,16 +217,15 @@ func (h *Handler) HandleResources(ctx context.Context, resources []*discoveryv3.
 				continue
 			}
 			// Update: remove then re-add
-			slog.Info("Updating binding via xDS", "name", ecr.Name, "uuid", uuid)
-			if err := h.manager.RemoveWebSubApiBinding(old.Name); err != nil {
-				slog.Error("Failed to remove binding for update", "name", old.Name, "error", err)
+			slog.Info("Updating binding via xDS", "name", ecr.Name, "uuid", uuid, "kind", ecr.Kind)
+			if err := h.removeBinding(old); err != nil {
+				slog.Error("Failed to remove binding for update", "name", old.Name, "kind", old.Kind, "error", err)
 			}
 		} else {
-			slog.Info("Adding binding via xDS", "name", ecr.Name, "uuid", uuid)
+			slog.Info("Adding binding via xDS", "name", ecr.Name, "uuid", uuid, "kind", ecr.Kind)
 		}
 
-		wsb := h.toWebSubApiBinding(ecr)
-		if err := h.manager.AddWebSubApiBinding(wsb); err != nil {
+		if err := h.addBinding(ecr); err != nil {
 			return fmt.Errorf("failed to add binding %q: %w", ecr.Name, err)
 		}
 	}
@@ -208,8 +235,39 @@ func (h *Handler) HandleResources(ctx context.Context, resources []*discoveryv3.
 }
 
 func (h *Handler) toWebSubApiBinding(ecr EventChannelResource) binding.WebSubApiBinding {
-	channels := make([]binding.ChannelDef, len(ecr.Channels))
-	for i, ch := range ecr.Channels {
+	// For WebSubApi, Channels is []ChannelEntry
+	var channelEntries []ChannelEntry
+	if ecr.Channels != nil {
+		// Try to decode as []ChannelEntry (for WebSubApi)
+		if channelsSlice, ok := ecr.Channels.([]interface{}); ok {
+			for _, chIface := range channelsSlice {
+				if chMap, ok := chIface.(map[string]interface{}); ok {
+					var ch ChannelEntry
+					if name, ok := chMap["name"].(string); ok {
+						ch.Name = name
+					}
+					if policiesIface, ok := chMap["policies"].(map[string]interface{}); ok {
+						if subIface, ok := policiesIface["subscribe"].([]interface{}); ok {
+							ch.Policies.Subscribe = mapGenericPolicyEntryList(subIface)
+						}
+						if unsubIface, ok := policiesIface["unsubscribe"].([]interface{}); ok {
+							ch.Policies.Unsubscribe = mapGenericPolicyEntryList(unsubIface)
+						}
+						if inIface, ok := policiesIface["inbound"].([]interface{}); ok {
+							ch.Policies.Inbound = mapGenericPolicyEntryList(inIface)
+						}
+						if outIface, ok := policiesIface["outbound"].([]interface{}); ok {
+							ch.Policies.Outbound = mapGenericPolicyEntryList(outIface)
+						}
+					}
+					channelEntries = append(channelEntries, ch)
+				}
+			}
+		}
+	}
+
+	channels := make([]binding.ChannelDef, len(channelEntries))
+	for i, ch := range channelEntries {
 		channels[i] = binding.ChannelDef{
 			Name: ch.Name,
 			Policies: binding.PolicyBindings{
@@ -221,10 +279,29 @@ func (h *Handler) toWebSubApiBinding(ecr EventChannelResource) binding.WebSubApi
 		}
 	}
 
-	subscribe := mapPolicyEntries(ecr.Policies.Subscribe)
-	unsubscribe := mapPolicyEntries(ecr.Policies.Unsubscribe)
-	inbound := mapPolicyEntries(ecr.Policies.Inbound)
-	outbound := mapPolicyEntries(ecr.Policies.Outbound)
+	// For WebSubApi, Policies is PoliciesEntry
+	var policies PoliciesEntry
+	if ecr.Policies != nil {
+		if policiesMap, ok := ecr.Policies.(map[string]interface{}); ok {
+			if subIface, ok := policiesMap["subscribe"].([]interface{}); ok {
+				policies.Subscribe = mapGenericPolicyEntryList(subIface)
+			}
+			if unsubIface, ok := policiesMap["unsubscribe"].([]interface{}); ok {
+				policies.Unsubscribe = mapGenericPolicyEntryList(unsubIface)
+			}
+			if inIface, ok := policiesMap["inbound"].([]interface{}); ok {
+				policies.Inbound = mapGenericPolicyEntryList(inIface)
+			}
+			if outIface, ok := policiesMap["outbound"].([]interface{}); ok {
+				policies.Outbound = mapGenericPolicyEntryList(outIface)
+			}
+		}
+	}
+
+	subscribe := mapPolicyEntries(policies.Subscribe)
+	unsubscribe := mapPolicyEntries(policies.Unsubscribe)
+	inbound := mapPolicyEntries(policies.Inbound)
+	outbound := mapPolicyEntries(policies.Outbound)
 
 	return binding.WebSubApiBinding{
 		Kind:     "WebSubApi",
@@ -244,6 +321,27 @@ func (h *Handler) toWebSubApiBinding(ecr EventChannelResource) binding.WebSubApi
 			Outbound:    outbound,
 		},
 	}
+}
+
+// mapGenericPolicyEntryList converts []interface{} to []PolicyEntry
+func mapGenericPolicyEntryList(policies []interface{}) []PolicyEntry {
+	result := make([]PolicyEntry, 0, len(policies))
+	for _, pIface := range policies {
+		if pMap, ok := pIface.(map[string]interface{}); ok {
+			policyEntry := PolicyEntry{}
+			if name, ok := pMap["name"].(string); ok {
+				policyEntry.Name = name
+			}
+			if version, ok := pMap["version"].(string); ok {
+				policyEntry.Version = version
+			}
+			if params, ok := pMap["params"].(map[string]interface{}); ok {
+				policyEntry.Params = params
+			}
+			result = append(result, policyEntry)
+		}
+	}
+	return result
 }
 
 // mapPolicyEntries converts a slice of PolicyEntry to binding.PolicyRef.
@@ -266,7 +364,7 @@ func (h *Handler) resolveBrokerDriver(bd BrokerDriverEntry) binding.BrokerDriver
 		driverType = "kafka"
 	}
 
-	cfg := bd.Config
+	cfg := bd.Properties
 	if len(cfg) == 0 {
 		// Use the event gateway's own Kafka brokers.
 		cfg = map[string]interface{}{
@@ -283,7 +381,138 @@ func (h *Handler) resolveBrokerDriver(bd BrokerDriverEntry) binding.BrokerDriver
 	}
 
 	return binding.BrokerDriverSpec{
+		Name:   bd.Name,
 		Type:   driverType,
 		Config: cfg,
 	}
+}
+
+// addBinding routes to the appropriate manager method based on Kind.
+func (h *Handler) addBinding(ecr EventChannelResource) error {
+	switch ecr.Kind {
+	case "WebSubApi":
+		wsb := h.toWebSubApiBinding(ecr)
+		return h.manager.AddWebSubApiBinding(wsb)
+	case "WebBrokerApi":
+		wbb := h.toWebBrokerApiBinding(ecr)
+		return h.manager.AddWebBrokerApiBinding(wbb)
+	default:
+		return fmt.Errorf("unsupported kind: %s", ecr.Kind)
+	}
+}
+
+// removeBinding routes to the appropriate manager method based on Kind.
+func (h *Handler) removeBinding(ecr EventChannelResource) error {
+	switch ecr.Kind {
+	case "WebSubApi":
+		return h.manager.RemoveWebSubApiBinding(ecr.Name)
+	case "WebBrokerApi":
+		return h.manager.RemoveWebBrokerApiBinding(ecr.Name)
+	default:
+		return fmt.Errorf("unsupported kind: %s", ecr.Kind)
+	}
+}
+
+// toWebBrokerApiBinding converts EventChannelResource to WebBrokerApiBinding.
+func (h *Handler) toWebBrokerApiBinding(ecr EventChannelResource) binding.WebBrokerApiBinding {
+	// Parse API-level policies from Policies field (interface{})
+	var apiPolicies binding.ProtocolMediationPolicies
+	if ecr.Policies != nil {
+		if policiesMap, ok := ecr.Policies.(map[string]interface{}); ok {
+			// Parse on_connection_init (now a flat array)
+			if connInitIface, ok := policiesMap["on_connection_init"].([]interface{}); ok {
+				// Put all policies in Request for backward compatibility with execution logic
+				apiPolicies.OnConnectionInit.Request = mapGenericPolicyList(connInitIface)
+			}
+			// Parse on_produce
+			if produceIface, ok := policiesMap["on_produce"].([]interface{}); ok {
+				apiPolicies.OnProduce = mapGenericPolicyList(produceIface)
+			}
+			// Parse on_consume
+			if consumeIface, ok := policiesMap["on_consume"].([]interface{}); ok {
+				apiPolicies.OnConsume = mapGenericPolicyList(consumeIface)
+			}
+		}
+	}
+
+	// Parse channels map from Channels field (interface{})
+	channels := make(map[string]binding.WebBrokerChannelDef)
+	if ecr.Channels != nil {
+		if channelsMap, ok := ecr.Channels.(map[string]interface{}); ok {
+			for channelName, channelIface := range channelsMap {
+				if channelData, ok := channelIface.(map[string]interface{}); ok {
+					var channelDef binding.WebBrokerChannelDef
+
+					// Parse produce_to
+					if produceToIface, ok := channelData["produce_to"].(map[string]interface{}); ok {
+						if topic, ok := produceToIface["topic"].(string); ok && topic != "" {
+							channelDef.ProduceTo = &binding.TopicMapping{Topic: topic}
+						}
+					}
+
+					// Parse consume_from
+					if consumeFromIface, ok := channelData["consume_from"].(map[string]interface{}); ok {
+						if topic, ok := consumeFromIface["topic"].(string); ok && topic != "" {
+							channelDef.ConsumeFrom = &binding.TopicMapping{Topic: topic}
+						}
+					}
+
+					// Parse policies from nested "policies" field
+					if policiesIface, ok := channelData["policies"].(map[string]interface{}); ok {
+						// Parse channel on_connection_init (now a flat array)
+						if connInitIface, ok := policiesIface["on_connection_init"].([]interface{}); ok {
+							// Put all policies in Request for backward compatibility with execution logic
+							channelDef.OnConnectionInit.Request = mapGenericPolicyList(connInitIface)
+						}
+						// Parse channel on_produce
+						if produceIface, ok := policiesIface["on_produce"].([]interface{}); ok {
+							channelDef.OnProduce = mapGenericPolicyList(produceIface)
+						}
+						// Parse channel on_consume
+						if consumeIface, ok := policiesIface["on_consume"].([]interface{}); ok {
+							channelDef.OnConsume = mapGenericPolicyList(consumeIface)
+						}
+					}
+
+					channels[channelName] = channelDef
+				}
+			}
+		}
+	}
+
+	return binding.WebBrokerApiBinding{
+		Kind:    "WebBrokerApi",
+		APIID:   ecr.UUID,
+		Name:    ecr.Name,
+		Version: ecr.Version,
+		Context: ecr.Context,
+		Receiver: binding.ReceiverSpec{
+			Name: ecr.Receiver.Name,
+			Type: ecr.Receiver.Type,
+		},
+		BrokerDriver: h.resolveBrokerDriver(ecr.BrokerDriver),
+		Policies:     apiPolicies,
+		Channels:     channels,
+	}
+}
+
+// mapGenericPolicyList converts []interface{} to []binding.PolicyRef
+func mapGenericPolicyList(policies []interface{}) []binding.PolicyRef {
+	result := make([]binding.PolicyRef, 0, len(policies))
+	for _, pIface := range policies {
+		if pMap, ok := pIface.(map[string]interface{}); ok {
+			policyRef := binding.PolicyRef{}
+			if name, ok := pMap["name"].(string); ok {
+				policyRef.Name = name
+			}
+			if version, ok := pMap["version"].(string); ok {
+				policyRef.Version = version
+			}
+			if params, ok := pMap["params"].(map[string]interface{}); ok {
+				policyRef.Params = params
+			}
+			result = append(result, policyRef)
+		}
+	}
+	return result
 }

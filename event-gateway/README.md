@@ -218,6 +218,147 @@ docker compose logs wh-listener
 
 You should see the event body and headers printed by the listener.
 
+### WebBrokerApi Walkthrough
+
+The WebBrokerApi enables bidirectional WebSocket ↔ Kafka protocol mediation. This walkthrough demonstrates creating a stock trading API where clients can produce messages to Kafka and consume messages in real-time over WebSocket.
+
+#### Step 1: Create a WebBroker API
+
+Use the following curl command to create a WebBrokerApi with a `prices` channel that maps to Kafka topics:
+
+```bash
+curl --location 'http://localhost:9090/api/management/v0.9/webbroker-apis' \
+--header 'Content-Type: application/json' \
+--header 'Accept: application/json' \
+--header 'Authorization: Basic YWRtaW46YWRtaW4=' \
+--data '{
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "WebBrokerApi",
+  "metadata": {
+    "name": "stock-trading-v1.0"
+  },
+  "spec": {
+    "displayName": "Stock Trading WebBroker API",
+    "version": "v1.0",
+    "context": "/stock-trading/v1.0",
+    "receiver": {
+      "name": "websocket-receiver",
+      "type": "websocket"
+    },
+    "broker": {
+      "name": "kafka-driver",
+      "type": "kafka",
+      "properties": {
+        "brokers": [
+          "kafka:29092"
+        ]
+      }
+    },
+    "allChannels": {
+      "on_connection_init": {
+        "policies": []
+      },
+      "on_produce": {
+        "policies": []
+      },
+      "on_consume": {
+        "policies": []
+      }
+    },
+    "channels": {
+      "prices": {
+        "produceTo": {
+          "topic": "stock.prices"
+        },
+        "consumeFrom": {
+          "topic": "dummy.prices"
+        },
+        "on_connection_init": {
+          "policies": []
+        },
+        "on_produce": {
+          "policies": []
+        },
+        "on_consume": {
+          "policies": []
+        }
+      }
+    }
+  }
+}'
+```
+
+This creates a WebBrokerApi where:
+- Client messages are published to the `stock.prices` Kafka topic
+- Messages from the `dummy.prices` Kafka topic are delivered to the WebSocket client
+
+#### Step 2: Connect via WebSocket
+
+Install `wscat` if you haven't already:
+
+```bash
+npm install -g wscat
+```
+
+Connect to the WebBroker API and select the `prices` channel using the `X-channel` header:
+
+```bash
+wscat -c ws://localhost:8081/stock-trading/v1.0 -H "X-channel: prices"
+```
+
+Once connected, you'll see:
+```
+Connected (press CTRL+C to quit)
+> 
+```
+
+#### Step 3: Monitor Messages Published to Kafka
+
+In a new terminal, start a Kafka consumer to monitor messages that clients send via WebSocket:
+
+```bash
+docker exec -it event-gateway-kafka-1 /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic stock.prices \
+  --from-beginning
+```
+
+Now, type a message in your WebSocket terminal (Step 2) and press Enter:
+
+```
+> {"symbol": "AAPL", "price": 150.25, "timestamp": "2026-05-13T10:30:00Z"}
+```
+
+The message should appear in the Kafka consumer terminal immediately.
+
+#### Step 4: Publish Messages from Kafka to WebSocket
+
+In another terminal, start a Kafka producer to send messages that will be delivered to WebSocket clients:
+
+```bash
+docker exec -it event-gateway-kafka-1 /opt/kafka/bin/kafka-console-producer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic dummy.prices
+```
+
+Type a message in the Kafka producer terminal and press Enter:
+
+```
+> {"symbol": "GOOGL", "price": 2750.50, "timestamp": "2026-05-13T10:31:00Z"}
+```
+
+The message should appear in your WebSocket terminal (Step 2):
+
+```
+< {"symbol": "GOOGL", "price": 2750.50, "timestamp": "2026-05-13T10:31:00Z"}
+```
+
+**Key Points:**
+- WebSocket → Kafka: Messages typed in wscat are published to `stock.prices`
+- Kafka → WebSocket: Messages published to `dummy.prices` are delivered to the WebSocket client
+- Bidirectional: Both directions work simultaneously over the same WebSocket connection
+- Per-Connection Isolation: Each WebSocket connection gets its own Kafka consumer group
+
 ### Other Control Plane Operations
 
 | Request | Method | URL |
