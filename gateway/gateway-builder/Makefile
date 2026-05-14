@@ -56,6 +56,8 @@ help: ## Show this help message
 .PHONY: build
 build: ## Build Docker image using buildx
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
+	@mkdir -p target
+	@cp ../../LICENSE target/
 	@docker buildx build -f Dockerfile \
 		--build-context policy-engine=../gateway-runtime/policy-engine \
 		--build-context python-executor=../gateway-runtime/python-executor \
@@ -64,6 +66,7 @@ build: ## Build Docker image using buildx
 		--build-context sdk-core=../../sdk/core \
 		--build-context sdk-python=../../sdk-python \
 		--build-context common=../../common \
+		--build-context target=target \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(IMAGE_NAME):$(VERSION) \
@@ -81,6 +84,8 @@ push: ## Push Docker image to registry
 .PHONY: build-and-push-multiarch
 build-and-push-multiarch: ## Build and push multi-architecture Docker image (linux/amd64, linux/arm64)
 	@echo "Building and pushing multi-arch Docker image: $(IMAGE_NAME):$(VERSION)"
+	@mkdir -p target
+	@cp ../../LICENSE target/
 	docker buildx build -f Dockerfile \
 		--build-context policy-engine=../gateway-runtime/policy-engine \
 		--build-context python-executor=../gateway-runtime/python-executor \
@@ -89,6 +94,7 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 		--build-context sdk-core=../../sdk/core \
 		--build-context sdk-python=../../sdk-python \
 		--build-context common=../../common \
+		--build-context target=target \
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \

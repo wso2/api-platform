@@ -97,6 +97,7 @@ COPY --from=system-policies . /api-platform/gateway/system-policies
 COPY --from=common . /api-platform/common
 COPY --from=sdk-core . /api-platform/sdk/core
 COPY --from=sdk-python . /api-platform/sdk-python
+COPY --from=target LICENSE /app/LICENSE
 
 # Set working directory
 WORKDIR /workspace
