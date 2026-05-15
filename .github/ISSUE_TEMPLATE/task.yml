@@ -16,6 +16,7 @@ body:
         - Area/APIDesigner (API Designer VSCode extension)
         - Area/DeveloperPortal (Developer Portal API, Developer Portal UI)
         - Area/AIGateway (AI Gateway runtime/control plane)
+        - Area/EventGateway (Event Gateway runtime/control plane)
         - Area/AIPolicies (AI Gateway Policies, Guardrails)
         - Area/Operator (Kubernetes operator for AI Gateway or Regular Gateway)
         - Area/Other (Anything else which does not match above categories)
