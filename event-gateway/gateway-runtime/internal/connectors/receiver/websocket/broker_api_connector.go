@@ -403,7 +403,11 @@ func (e *WebBrokerApiReceiver) inboundLoop(ctx context.Context, conn *brokerApiC
 		select {
 		case <-ctx.Done():
 			return
-		case msg := <-conn.inbound:
+		case msg, ok := <-conn.inbound:
+			if !ok || msg == nil {
+				return
+			}
+
 			// Apply channel-specific on_produce policies.
 			slog.Debug("[5] Applying channel onProduce policies",
 				"connID", conn.connID,
@@ -462,7 +466,11 @@ func (e *WebBrokerApiReceiver) outboundLoop(ctx context.Context, conn *brokerApi
 		select {
 		case <-ctx.Done():
 			return
-		case msg := <-conn.outbound:
+		case msg, ok := <-conn.outbound:
+			if !ok || msg == nil {
+				return
+			}
+
 			slog.Debug("[7] Applying channel onConsume policies",
 				"connID", conn.connID,
 				"api", e.channel.Name,
