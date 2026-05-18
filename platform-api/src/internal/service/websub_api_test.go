@@ -80,8 +80,16 @@ func (m *mockWebSubAPIRepository) List(_, _ string, _, _ int) ([]*model.WebSubAP
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-func policySlice(name, version string) *[]api.Policy {
-	return &[]api.Policy{{Name: name, Version: version}}
+func eventPolicies(name, version string) *api.WebSubEventPolicies {
+	return &api.WebSubEventPolicies{
+		Policies: &[]api.Policy{{Name: name, Version: version}},
+	}
+}
+
+func emptyEventPolicies() *api.WebSubEventPolicies {
+	return &api.WebSubEventPolicies{
+		Policies: &[]api.Policy{},
+	}
 }
 
 func buildCreateRequest() *api.WebSubAPI {
@@ -94,20 +102,18 @@ func buildCreateRequest() *api.WebSubAPI {
 		ProjectId: "project-uuid",
 		Context:   &ctx,
 		Upstream:  api.Upstream{},
-		Policies: &api.WebSubChannelPolicies{
-			OnSubscription:    policySlice("api-key-auth", "v1"),
-			OnUnsubscription:  &[]api.Policy{},
-			OnMessageReceived: policySlice("websub-hmac-auth", "v1"),
-			OnMessageDelivery: &[]api.Policy{},
+		AllChannels: &api.WebSubAllChannelPolicies{
+			OnSubscription:    eventPolicies("api-key-auth", "v1"),
+			OnUnsubscription:  emptyEventPolicies(),
+			OnMessageReceived: eventPolicies("websub-hmac-auth", "v1"),
+			OnMessageDelivery: emptyEventPolicies(),
 		},
 		Channels: &map[string]api.WebSubChannel{
 			"issues": {
-				Policies: &api.WebSubChannelPolicies{
-					OnSubscription:    &[]api.Policy{},
-					OnUnsubscription:  &[]api.Policy{},
-					OnMessageReceived: &[]api.Policy{},
-					OnMessageDelivery: &[]api.Policy{},
-				},
+				OnSubscription:    emptyEventPolicies(),
+				OnUnsubscription:  emptyEventPolicies(),
+				OnMessageReceived: emptyEventPolicies(),
+				OnMessageDelivery: emptyEventPolicies(),
 			},
 		},
 	}
@@ -122,9 +128,9 @@ func buildService(repo *mockWebSubAPIRepository) *WebSubAPIService {
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-// TestWebSubAPI_PoliciesStoredAsAllChannels verifies that the flat "policies"
-// sent by the client are converted to AllChannels in the stored model.
-func TestWebSubAPI_PoliciesStoredAsAllChannels(t *testing.T) {
+// TestWebSubAPI_AllChannelsStoredCorrectly verifies that AllChannels
+// sent by the client are stored correctly in the model.
+func TestWebSubAPI_AllChannelsStoredCorrectly(t *testing.T) {
 	repo := newMockWebSubAPIRepository()
 	svc := buildService(repo)
 
@@ -140,7 +146,7 @@ func TestWebSubAPI_PoliciesStoredAsAllChannels(t *testing.T) {
 	}
 
 	if stored.Configuration.AllChannels == nil {
-		t.Fatal("AllChannels should not be nil after storing flat policies")
+		t.Fatal("AllChannels should not be nil after storing")
 	}
 
 	ac := stored.Configuration.AllChannels
@@ -158,9 +164,9 @@ func TestWebSubAPI_PoliciesStoredAsAllChannels(t *testing.T) {
 	}
 }
 
-// TestWebSubAPI_GetReturnsFlatPolicies verifies that the stored AllChannels
-// is returned as flat "policies" in the API response.
-func TestWebSubAPI_GetReturnsFlatPolicies(t *testing.T) {
+// TestWebSubAPI_GetReturnsAllChannels verifies that the stored AllChannels
+// is returned as AllChannels in the API response.
+func TestWebSubAPI_GetReturnsAllChannels(t *testing.T) {
 	repo := newMockWebSubAPIRepository()
 	svc := buildService(repo)
 
@@ -174,22 +180,22 @@ func TestWebSubAPI_GetReturnsFlatPolicies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get failed: %v", err)
 	}
-	if resp.Policies == nil {
-		t.Fatal("Get response should have Policies (not AllChannels)")
+	if resp.AllChannels == nil {
+		t.Fatal("Get response should have AllChannels")
 	}
 
-	p := resp.Policies
-	if p.OnSubscription == nil || len(*p.OnSubscription) != 1 {
-		t.Errorf("expected 1 OnSubscription policy in response, got %v", p.OnSubscription)
+	ac := resp.AllChannels
+	if ac.OnSubscription == nil || ac.OnSubscription.Policies == nil || len(*ac.OnSubscription.Policies) != 1 {
+		t.Errorf("expected 1 OnSubscription policy in response, got %v", ac.OnSubscription)
 	}
-	if (*p.OnSubscription)[0].Name != "api-key-auth" {
-		t.Errorf("expected policy name 'api-key-auth', got %q", (*p.OnSubscription)[0].Name)
+	if (*ac.OnSubscription.Policies)[0].Name != "api-key-auth" {
+		t.Errorf("expected policy name 'api-key-auth', got %q", (*ac.OnSubscription.Policies)[0].Name)
 	}
-	if p.OnMessageReceived == nil || len(*p.OnMessageReceived) != 1 {
-		t.Errorf("expected 1 OnMessageReceived policy in response, got %v", p.OnMessageReceived)
+	if ac.OnMessageReceived == nil || ac.OnMessageReceived.Policies == nil || len(*ac.OnMessageReceived.Policies) != 1 {
+		t.Errorf("expected 1 OnMessageReceived policy in response, got %v", ac.OnMessageReceived)
 	}
-	if (*p.OnMessageReceived)[0].Name != "websub-hmac-auth" {
-		t.Errorf("expected policy name 'websub-hmac-auth', got %q", (*p.OnMessageReceived)[0].Name)
+	if (*ac.OnMessageReceived.Policies)[0].Name != "websub-hmac-auth" {
+		t.Errorf("expected policy name 'websub-hmac-auth', got %q", (*ac.OnMessageReceived.Policies)[0].Name)
 	}
 }
 
@@ -214,8 +220,7 @@ func TestWebSubAPI_ChannelPoliciesStoredAndReturned(t *testing.T) {
 	if !ok {
 		t.Fatal("'issues' channel not found in stored model")
 	}
-	// Empty slices (&[]api.Policy{}) are non-nil, so policySlicePtrToEventPolicies
-	// returns a non-nil *WebSubEventPolicies with an empty Policies slice.
+	// Empty policy slices result in non-nil *WebSubEventPolicies with empty Policies slice.
 	if ch.OnSubscription == nil || len(ch.OnSubscription.Policies) != 0 {
 		t.Errorf("expected ch.OnSubscription non-nil with empty policies, got %v", ch.OnSubscription)
 	}
@@ -243,9 +248,9 @@ func TestWebSubAPI_ChannelPoliciesStoredAndReturned(t *testing.T) {
 	}
 }
 
-// TestWebSubAPI_UpdatePolicies verifies that updating the API replaces AllChannels
-// with new values from the incoming flat policies.
-func TestWebSubAPI_UpdatePolicies(t *testing.T) {
+// TestWebSubAPI_UpdateAllChannels verifies that updating the API replaces AllChannels
+// with new values.
+func TestWebSubAPI_UpdateAllChannels(t *testing.T) {
 	repo := newMockWebSubAPIRepository()
 	svc := buildService(repo)
 
@@ -257,8 +262,8 @@ func TestWebSubAPI_UpdatePolicies(t *testing.T) {
 
 	// Update with different policies
 	updateReq := buildCreateRequest()
-	updateReq.Policies = &api.WebSubChannelPolicies{
-		OnSubscription:    policySlice("jwt-auth", "v1"),
+	updateReq.AllChannels = &api.WebSubAllChannelPolicies{
+		OnSubscription:    eventPolicies("jwt-auth", "v1"),
 		OnUnsubscription:  nil,
 		OnMessageReceived: nil,
 		OnMessageDelivery: nil,
@@ -273,17 +278,18 @@ func TestWebSubAPI_UpdatePolicies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get after Update failed: %v", err)
 	}
-	if resp.Policies == nil {
-		t.Fatal("Policies should not be nil after update")
+	if resp.AllChannels == nil {
+		t.Fatal("AllChannels should not be nil after update")
 	}
-	if resp.Policies.OnSubscription == nil || len(*resp.Policies.OnSubscription) != 1 {
-		t.Errorf("expected 1 OnSubscription policy after update, got %v", resp.Policies.OnSubscription)
+	ac := resp.AllChannels
+	if ac.OnSubscription == nil || ac.OnSubscription.Policies == nil || len(*ac.OnSubscription.Policies) != 1 {
+		t.Errorf("expected 1 OnSubscription policy after update, got %v", ac.OnSubscription)
 	}
-	if (*resp.Policies.OnSubscription)[0].Name != "jwt-auth" {
-		t.Errorf("expected updated policy name 'jwt-auth', got %q", (*resp.Policies.OnSubscription)[0].Name)
+	if (*ac.OnSubscription.Policies)[0].Name != "jwt-auth" {
+		t.Errorf("expected updated policy name 'jwt-auth', got %q", (*ac.OnSubscription.Policies)[0].Name)
 	}
-	if resp.Policies.OnMessageReceived != nil {
-		t.Errorf("expected OnMessageReceived to be nil after update, got %v", resp.Policies.OnMessageReceived)
+	if ac.OnMessageReceived != nil {
+		t.Errorf("expected OnMessageReceived to be nil after update, got %v", ac.OnMessageReceived)
 	}
 }
 
@@ -328,13 +334,13 @@ func TestWebSubAPI_List(t *testing.T) {
 	}
 }
 
-// TestWebSubAPI_MapPoliciesAPIToAllChannels tests the low-level mapping helper.
-func TestWebSubAPI_MapPoliciesAPIToAllChannels(t *testing.T) {
-	in := &api.WebSubChannelPolicies{
-		OnSubscription:    policySlice("api-key-auth", "v1"),
-		OnMessageReceived: policySlice("websub-hmac-auth", "v1"),
+// TestWebSubAPI_MapAllChannelPoliciesAPIToModel tests the low-level mapping helper.
+func TestWebSubAPI_MapAllChannelPoliciesAPIToModel(t *testing.T) {
+	in := &api.WebSubAllChannelPolicies{
+		OnSubscription:    eventPolicies("api-key-auth", "v1"),
+		OnMessageReceived: eventPolicies("websub-hmac-auth", "v1"),
 	}
-	out := mapWebSubPoliciesAPIToAllChannels(in)
+	out := mapWebSubAllChannelPoliciesAPIToModel(in)
 	if out == nil {
 		t.Fatal("expected non-nil AllChannels")
 	}
@@ -349,8 +355,8 @@ func TestWebSubAPI_MapPoliciesAPIToAllChannels(t *testing.T) {
 	}
 }
 
-// TestWebSubAPI_MapAllChannelsModelToWebSubPolicies tests the reverse mapping helper.
-func TestWebSubAPI_MapAllChannelsModelToWebSubPolicies(t *testing.T) {
+// TestWebSubAPI_MapAllChannelPoliciesModelToAPI tests the reverse mapping helper.
+func TestWebSubAPI_MapAllChannelPoliciesModelToAPI(t *testing.T) {
 	in := &model.WebSubAllChannelPolicies{
 		OnSubscription: &model.WebSubEventPolicies{
 			Policies: []model.Policy{{Name: "api-key-auth", Version: "v1"}},
@@ -359,17 +365,17 @@ func TestWebSubAPI_MapAllChannelsModelToWebSubPolicies(t *testing.T) {
 			Policies: []model.Policy{{Name: "websub-hmac-auth", Version: "v1"}},
 		},
 	}
-	out := mapAllChannelsModelToWebSubPolicies(in)
+	out := mapWebSubAllChannelPoliciesModelToAPI(in)
 	if out == nil {
-		t.Fatal("expected non-nil WebSubChannelPolicies")
+		t.Fatal("expected non-nil WebSubAllChannelPolicies")
 	}
-	if out.OnSubscription == nil || len(*out.OnSubscription) != 1 {
+	if out.OnSubscription == nil || out.OnSubscription.Policies == nil || len(*out.OnSubscription.Policies) != 1 {
 		t.Errorf("expected 1 OnSubscription policy, got %v", out.OnSubscription)
 	}
-	if (*out.OnSubscription)[0].Name != "api-key-auth" {
-		t.Errorf("expected 'api-key-auth', got %q", (*out.OnSubscription)[0].Name)
+	if (*out.OnSubscription.Policies)[0].Name != "api-key-auth" {
+		t.Errorf("expected 'api-key-auth', got %q", (*out.OnSubscription.Policies)[0].Name)
 	}
-	if out.OnMessageReceived == nil || len(*out.OnMessageReceived) != 1 {
+	if out.OnMessageReceived == nil || out.OnMessageReceived.Policies == nil || len(*out.OnMessageReceived.Policies) != 1 {
 		t.Errorf("expected 1 OnMessageReceived policy, got %v", out.OnMessageReceived)
 	}
 	if out.OnUnsubscription != nil {
@@ -379,10 +385,10 @@ func TestWebSubAPI_MapAllChannelsModelToWebSubPolicies(t *testing.T) {
 
 // TestWebSubAPI_NilPoliciesHandled ensures nil policies are handled gracefully.
 func TestWebSubAPI_NilPoliciesHandled(t *testing.T) {
-	if got := mapWebSubPoliciesAPIToAllChannels(nil); got != nil {
+	if got := mapWebSubAllChannelPoliciesAPIToModel(nil); got != nil {
 		t.Errorf("expected nil for nil input, got %v", got)
 	}
-	if got := mapAllChannelsModelToWebSubPolicies(nil); got != nil {
+	if got := mapWebSubAllChannelPoliciesModelToAPI(nil); got != nil {
 		t.Errorf("expected nil for nil input, got %v", got)
 	}
 }

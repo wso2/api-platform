@@ -144,7 +144,7 @@ func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI)
 			Context:           req.Context,
 			Channels:          mapWebSubChannelsAPIToModel(req.Channels),
 			Upstream:          *mapUpstreamAPIToModel(req.Upstream),
-			AllChannels:       mapWebSubPoliciesAPIToAllChannels(req.Policies),
+			AllChannels:       mapWebSubAllChannelPoliciesAPIToModel(req.AllChannels),
 			SubscriptionPlans: subscriptionPlans,
 		},
 	}
@@ -259,7 +259,7 @@ func (s *WebSubAPIService) Update(orgUUID, handle string, req *api.WebSubAPI) (*
 		Context:           req.Context,
 		Channels:          mapWebSubChannelsAPIToModel(req.Channels),
 		Upstream:          *mapUpstreamAPIToModel(req.Upstream),
-		AllChannels:       mapWebSubPoliciesAPIToAllChannels(req.Policies),
+		AllChannels:       mapWebSubAllChannelPoliciesAPIToModel(req.AllChannels),
 		SubscriptionPlans: subscriptionPlans,
 	}
 
@@ -415,7 +415,7 @@ func mapWebSubAPIModelToAPI(m *model.WebSubAPI, apiUtil *utils.APIUtil) *api.Web
 		Context:           m.Configuration.Context,
 		Upstream:          mapUpstreamModelToAPI(&m.Configuration.Upstream),
 		Channels:          mapWebSubChannelsModelToAPI(m.Configuration.Channels),
-		Policies:          mapAllChannelsModelToWebSubPolicies(m.Configuration.AllChannels),
+		AllChannels:       mapWebSubAllChannelPoliciesModelToAPI(m.Configuration.AllChannels),
 		SubscriptionPlans: subscriptionPlans,
 		CreatedAt:         utils.TimePtr(m.CreatedAt),
 		UpdatedAt:         utils.TimePtr(m.UpdatedAt),
@@ -431,15 +431,11 @@ func mapWebSubChannelsAPIToModel(in *map[string]api.WebSubChannel) map[string]mo
 	}
 	out := make(map[string]model.WebSubChannel, len(*in))
 	for name, ch := range *in {
-		var p *api.WebSubChannelPolicies
-		if ch.Policies != nil {
-			p = ch.Policies
-		}
 		out[name] = model.WebSubChannel{
-			OnSubscription:    policySlicePtrToEventPolicies(policySlicePtrFromChannelPolicies(p, "on_subscription")),
-			OnUnsubscription:  policySlicePtrToEventPolicies(policySlicePtrFromChannelPolicies(p, "on_unsubscription")),
-			OnMessageReceived: policySlicePtrToEventPolicies(policySlicePtrFromChannelPolicies(p, "on_message_received")),
-			OnMessageDelivery: policySlicePtrToEventPolicies(policySlicePtrFromChannelPolicies(p, "on_message_delivery")),
+			OnSubscription:    mapEventPoliciesAPIToModel(ch.OnSubscription),
+			OnUnsubscription:  mapEventPoliciesAPIToModel(ch.OnUnsubscription),
+			OnMessageReceived: mapEventPoliciesAPIToModel(ch.OnMessageReceived),
+			OnMessageDelivery: mapEventPoliciesAPIToModel(ch.OnMessageDelivery),
 		}
 	}
 	return out
@@ -452,19 +448,6 @@ func mapEventPoliciesAPIToModel(in *api.WebSubEventPolicies) *model.WebSubEventP
 	}
 	return &model.WebSubEventPolicies{
 		Policies: mapAPIPolicySliceToModel(in.Policies),
-	}
-}
-
-// mapWebSubChannelPoliciesAPIToModel is kept for compatibility.
-func mapWebSubChannelPoliciesAPIToModel(in *api.WebSubChannelPolicies) *model.WebSubChannelPolicies {
-	if in == nil {
-		return nil
-	}
-	return &model.WebSubChannelPolicies{
-		OnSubscription:    policySlicePtrToEventPolicies(in.OnSubscription),
-		OnUnsubscription:  policySlicePtrToEventPolicies(in.OnUnsubscription),
-		OnMessageReceived: policySlicePtrToEventPolicies(in.OnMessageReceived),
-		OnMessageDelivery: policySlicePtrToEventPolicies(in.OnMessageDelivery),
 	}
 }
 
@@ -481,80 +464,6 @@ func mapWebSubAllChannelPoliciesAPIToModel(in *api.WebSubAllChannelPolicies) *mo
 	}
 }
 
-// mapWebSubPoliciesAPIToAllChannels converts flat WebSubChannelPolicies (from API) to model.WebSubAllChannelPolicies (for storage).
-func mapWebSubPoliciesAPIToAllChannels(in *api.WebSubChannelPolicies) *model.WebSubAllChannelPolicies {
-	if in == nil {
-		return nil
-	}
-	return &model.WebSubAllChannelPolicies{
-		OnSubscription:    policySlicePtrToEventPolicies(in.OnSubscription),
-		OnUnsubscription:  policySlicePtrToEventPolicies(in.OnUnsubscription),
-		OnMessageReceived: policySlicePtrToEventPolicies(in.OnMessageReceived),
-		OnMessageDelivery: policySlicePtrToEventPolicies(in.OnMessageDelivery),
-	}
-}
-
-// mapAllChannelsModelToWebSubPolicies converts stored model.WebSubAllChannelPolicies to flat WebSubChannelPolicies (for API response).
-func mapAllChannelsModelToWebSubPolicies(in *model.WebSubAllChannelPolicies) *api.WebSubChannelPolicies {
-	if in == nil {
-		return nil
-	}
-	return &api.WebSubChannelPolicies{
-		OnSubscription:    eventPoliciesToPolicySlicePtr(in.OnSubscription),
-		OnUnsubscription:  eventPoliciesToPolicySlicePtr(in.OnUnsubscription),
-		OnMessageReceived: eventPoliciesToPolicySlicePtr(in.OnMessageReceived),
-		OnMessageDelivery: eventPoliciesToPolicySlicePtr(in.OnMessageDelivery),
-	}
-}
-
-// policySlicePtrToEventPolicies wraps a flat policy slice pointer into a model.WebSubEventPolicies.
-func policySlicePtrToEventPolicies(in *[]api.Policy) *model.WebSubEventPolicies {
-	if in == nil {
-		return nil
-	}
-	policies := make([]model.Policy, 0, len(*in))
-	for _, p := range *in {
-		policy := model.Policy{
-			Name:    p.Name,
-			Version: p.Version,
-		}
-		if p.ExecutionCondition != nil {
-			policy.ExecutionCondition = p.ExecutionCondition
-		}
-		if p.Params != nil {
-			policy.Params = p.Params
-		}
-		policies = append(policies, policy)
-	}
-	return &model.WebSubEventPolicies{Policies: policies}
-}
-
-// eventPoliciesToPolicySlicePtr converts a model.WebSubEventPolicies to a flat policy slice pointer.
-func eventPoliciesToPolicySlicePtr(in *model.WebSubEventPolicies) *[]api.Policy {
-	if in == nil || len(in.Policies) == 0 {
-		return nil
-	}
-	return mapModelPolicySliceToAPI(in.Policies)
-}
-
-// policySlicePtrFromChannelPolicies extracts the policy slice for a given event type from WebSubChannelPolicies.
-func policySlicePtrFromChannelPolicies(p *api.WebSubChannelPolicies, event string) *[]api.Policy {
-	if p == nil {
-		return nil
-	}
-	switch event {
-	case "on_subscription":
-		return p.OnSubscription
-	case "on_unsubscription":
-		return p.OnUnsubscription
-	case "on_message_received":
-		return p.OnMessageReceived
-	case "on_message_delivery":
-		return p.OnMessageDelivery
-	}
-	return nil
-}
-
 // mapWebSubChannelsModelToAPI converts the model channel map to the API channel map.
 func mapWebSubChannelsModelToAPI(in map[string]model.WebSubChannel) *map[string]api.WebSubChannel {
 	if len(in) == 0 {
@@ -563,12 +472,10 @@ func mapWebSubChannelsModelToAPI(in map[string]model.WebSubChannel) *map[string]
 	out := make(map[string]api.WebSubChannel, len(in))
 	for name, ch := range in {
 		out[name] = api.WebSubChannel{
-			Policies: &api.WebSubChannelPolicies{
-				OnSubscription:    eventPoliciesToPolicySlicePtr(ch.OnSubscription),
-				OnUnsubscription:  eventPoliciesToPolicySlicePtr(ch.OnUnsubscription),
-				OnMessageReceived: eventPoliciesToPolicySlicePtr(ch.OnMessageReceived),
-				OnMessageDelivery: eventPoliciesToPolicySlicePtr(ch.OnMessageDelivery),
-			},
+			OnSubscription:    mapEventPoliciesModelToAPI(ch.OnSubscription),
+			OnUnsubscription:  mapEventPoliciesModelToAPI(ch.OnUnsubscription),
+			OnMessageReceived: mapEventPoliciesModelToAPI(ch.OnMessageReceived),
+			OnMessageDelivery: mapEventPoliciesModelToAPI(ch.OnMessageDelivery),
 		}
 	}
 	return &out
@@ -581,19 +488,6 @@ func mapEventPoliciesModelToAPI(in *model.WebSubEventPolicies) *api.WebSubEventP
 	}
 	return &api.WebSubEventPolicies{
 		Policies: mapModelPolicySliceToAPI(in.Policies),
-	}
-}
-
-// mapWebSubChannelPoliciesModelToAPI is kept for compatibility.
-func mapWebSubChannelPoliciesModelToAPI(in *model.WebSubChannelPolicies) *api.WebSubChannelPolicies {
-	if in == nil {
-		return nil
-	}
-	return &api.WebSubChannelPolicies{
-		OnSubscription:    eventPoliciesToPolicySlicePtr(in.OnSubscription),
-		OnUnsubscription:  eventPoliciesToPolicySlicePtr(in.OnUnsubscription),
-		OnMessageReceived: eventPoliciesToPolicySlicePtr(in.OnMessageReceived),
-		OnMessageDelivery: eventPoliciesToPolicySlicePtr(in.OnMessageDelivery),
 	}
 }
 
