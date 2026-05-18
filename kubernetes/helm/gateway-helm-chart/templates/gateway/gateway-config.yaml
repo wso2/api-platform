@@ -2,6 +2,7 @@
 {{- $gc := .Values.gateway.config.controller -}}
 {{- $router := .Values.gateway.config.router -}}
 {{- $pe := .Values.gateway.config.policy_engine -}}
+{{- $pg := $gc.storage.postgres -}}
 {{- $controllerHost := printf "%s-controller" (include "gateway-operator.fullname" .) -}}
 apiVersion: v1
 kind: ConfigMap
@@ -37,6 +38,25 @@ data:
 
     [controller.storage.sqlite]
     path = {{ $gc.storage.sqlite.path | quote }}
+
+    {{- if eq $gc.storage.type "postgres" }}
+    [controller.storage.postgres]
+    {{- if $pg.dsn }}
+    dsn = {{ $pg.dsn | quote }}
+    {{- else }}
+    host = {{ required "gateway.config.controller.storage.postgres.host is required when storage.type is \"postgres\" and dsn is unset" $pg.host | quote }}
+    port = {{ $pg.port | int }}
+    database = {{ required "gateway.config.controller.storage.postgres.database is required when storage.type is \"postgres\" and dsn is unset" $pg.database | quote }}
+    user = {{ required "gateway.config.controller.storage.postgres.user is required when storage.type is \"postgres\" and dsn is unset" $pg.user | quote }}
+    sslmode = {{ $pg.sslmode | default "require" | quote }}
+    connect_timeout = {{ $pg.connect_timeout | default "5s" | quote }}
+    max_open_conns = {{ $pg.max_open_conns | default 25 | int }}
+    max_idle_conns = {{ $pg.max_idle_conns | default 5 | int }}
+    conn_max_lifetime = {{ $pg.conn_max_lifetime | default "30m" | quote }}
+    conn_max_idle_time = {{ $pg.conn_max_idle_time | default "5m" | quote }}
+    application_name = {{ $pg.application_name | default "gateway-controller" | quote }}
+    {{- end }}
+    {{- end }}
 
     [controller.policies]
     definitions_path = {{ $gc.policies.definitions_path | quote }}

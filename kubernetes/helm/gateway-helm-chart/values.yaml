@@ -74,15 +74,38 @@ gateway:
 
       # Storage configuration
       storage:
-        # Storage type: "sqlite", "postgres" (future), or "memory"
-        # - sqlite: Use SQLite embedded database for persistence
-        # - postgres: Use PostgreSQL database for persistence (future support)
-        # - memory: No persistent storage, all configs lost on restart (useful for testing)
+        # Storage type: "sqlite", "postgres", or "memory"
+        # - sqlite: Single-instance embedded database backed by a PersistentVolumeClaim
+        # - postgres: External PostgreSQL database; enables multi-replica controller deployments
+        # - memory: No persistence; all state is lost on restart (useful for testing only)
         type: sqlite
 
         # SQLite configuration (used when type=sqlite)
         sqlite:
           path: ./data/gateway.db
+
+        # PostgreSQL configuration (used when type=postgres)
+        # Password is injected separately via gateway.controller.postgres.passwordSecretRef
+        postgres:
+          # Full DSN takes precedence over individual fields when set.
+          # Example: "postgres://user:password@host:5432/dbname?sslmode=require"
+          dsn: ""
+
+          host: ""
+          port: 5432
+          database: ""
+          user: ""
+
+          # SSL mode: disable, allow, prefer, require, verify-ca, verify-full
+          # Use "require" or stronger in production.
+          sslmode: require
+
+          connect_timeout: 5s
+          max_open_conns: 25
+          max_idle_conns: 5
+          conn_max_lifetime: 30m
+          conn_max_idle_time: 5m
+          application_name: gateway-controller
 
       # Policy configuration
       policies:
@@ -438,6 +461,13 @@ gateway:
     storage:
       type: sqlite
       sqlitePath: ./data/gateway.db
+    # PostgreSQL password secret reference (used when gateway.config.controller.storage.type=postgres).
+    # The password is injected as an env var from a Kubernetes secret rather than stored in the ConfigMap.
+    # Create with: kubectl create secret generic <name> --from-literal=password='<db-password>'
+    postgres:
+      passwordSecretRef:
+        name: ""
+        key: password
     metrics:
       port: 9091
     persistence:
