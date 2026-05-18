@@ -106,7 +106,7 @@ spec:
             - name: APIP_GW_DEVELOPMENT_MODE
               value: {{ .Values.gateway.developmentMode | toString | quote }}
             {{- if and (eq .Values.gateway.config.controller.storage.type "postgres") $controller.postgres.passwordSecretRef.name }}
-            - name: APIP_GW_GATEWAY__CONTROLLER_STORAGE_POSTGRES_PASSWORD
+            - name: APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ $controller.postgres.passwordSecretRef.name }}

@@ -2,6 +2,7 @@
 {{- $gc := .Values.gateway.config.controller -}}
 {{- $router := .Values.gateway.config.router -}}
 {{- $pe := .Values.gateway.config.policy_engine -}}
+{{- $pg := $gc.storage.postgres -}}
 {{- $controllerHost := printf "%s-controller" (include "gateway-operator.fullname" .) -}}
 apiVersion: v1
 kind: ConfigMap
@@ -39,15 +40,14 @@ data:
     path = {{ $gc.storage.sqlite.path | quote }}
 
     {{- if eq $gc.storage.type "postgres" }}
-    {{- $pg := $gc.storage.postgres }}
     [controller.storage.postgres]
     {{- if $pg.dsn }}
     dsn = {{ $pg.dsn | quote }}
     {{- else }}
-    host = {{ $pg.host | quote }}
+    host = {{ required "gateway.config.controller.storage.postgres.host is required when storage.type is \"postgres\" and dsn is unset" $pg.host | quote }}
     port = {{ $pg.port | int }}
-    database = {{ $pg.database | quote }}
-    user = {{ $pg.user | quote }}
+    database = {{ required "gateway.config.controller.storage.postgres.database is required when storage.type is \"postgres\" and dsn is unset" $pg.database | quote }}
+    user = {{ required "gateway.config.controller.storage.postgres.user is required when storage.type is \"postgres\" and dsn is unset" $pg.user | quote }}
     sslmode = {{ $pg.sslmode | default "require" | quote }}
     connect_timeout = {{ $pg.connect_timeout | default "5s" | quote }}
     max_open_conns = {{ $pg.max_open_conns | default 25 | int }}
