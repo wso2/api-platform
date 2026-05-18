@@ -187,7 +187,7 @@ func (e *WebBrokerApiReceiver) handleUpgrade(w http.ResponseWriter, r *http.Requ
 		"connection_header", r.Header.Get("Connection"))
 
 	// Apply API-level on_connection_init.request policies.
-	slog.Debug("[2] Applying API-level onConnectionInit.request policies",
+	slog.Debug("[2] Applying API-level on_connection_init policies",
 		"api", e.channel.Name,
 		"channel", channelName,
 		"remote_addr", r.RemoteAddr)
@@ -200,14 +200,14 @@ func (e *WebBrokerApiReceiver) handleUpgrade(w http.ResponseWriter, r *http.Requ
 		},
 	}
 
-	processed, shortCircuited, err := e.processor.ProcessConnectionInitRequest(r.Context(), e.channel.Name, msg)
+	processed, shortCircuited, err := e.processor.ProcessConnectionInit(r.Context(), e.channel.Name, msg)
 	if err != nil {
-		slog.Error("[2] onConnectionInit.request policy failed", "channel", e.channel.Name, "error", err)
+		slog.Error("[2] on_connection_init policy failed", "channel", e.channel.Name, "error", err)
 		http.Error(w, "connection init failed", http.StatusForbidden)
 		return
 	}
 	if shortCircuited {
-		slog.Warn("[2] Connection rejected by onConnectionInit.request policy", "channel", e.channel.Name)
+		slog.Warn("[2] Connection rejected by on_connection_init policy", "channel", e.channel.Name)
 		// Policy rejected the connection.
 		statusCode := http.StatusForbidden
 		if sc, ok := processed.Metadata["status_code"].(int); ok {
@@ -238,28 +238,44 @@ func (e *WebBrokerApiReceiver) handleUpgrade(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Apply API-level on_connection_init.response policies.
-	slog.Debug("[3] Applying API-level onConnectionInit.response policies", "api", e.channel.Name, "channel", channelName)
-
-	respMsg := &connectors.Message{
-		Headers: map[string][]string{},
-	}
-	if _, err := e.processor.ProcessConnectionInitResponse(r.Context(), e.channel.Name, respMsg); err != nil {
-		slog.Error("[3] onConnectionInit.response policy failed", "channel", e.channel.Name, "error", err)
-		ws.Close()
-		return
-	}
-
 	// Extract channel-specific policy chain keys from metadata.
-	var produceChainKey, consumeChainKey string
+	var connInitChainKey, produceChainKey, consumeChainKey string
 	var produceTopic, consumeTopic string
 	if channelChainsIface, ok := e.channel.Metadata["channelChains"]; ok {
 		// channelChains is stored as map[string]map[string]string
 		if channelChainsMap, ok := channelChainsIface.(map[string]map[string]string); ok {
 			if chainData, ok := channelChainsMap[channelName]; ok {
+				connInitChainKey = chainData["ConnInitKey"]
 				produceChainKey = chainData["ProduceKey"]
 				consumeChainKey = chainData["ConsumeKey"]
 			}
+		}
+	}
+
+	// Apply channel-specific on_connection_init policies.
+	if connInitChainKey != "" {
+		slog.Debug("[3] Applying channel-specific on_connection_init policies",
+			"api", e.channel.Name,
+			"channel", channelName,
+			"chain_key", connInitChainKey)
+
+		channelInitMsg := &connectors.Message{
+			Headers: r.Header,
+			Metadata: map[string]interface{}{
+				"method": r.Method,
+				"path":   r.URL.Path,
+			},
+		}
+		_, shortCircuited, err := e.processor.ProcessByChainKey(r.Context(), e.channel.Name, connInitChainKey, channelInitMsg)
+		if err != nil {
+			slog.Error("[3] channel on_connection_init policy failed", "api", e.channel.Name, "channel", channelName, "error", err)
+			ws.Close()
+			return
+		}
+		if shortCircuited {
+			slog.Warn("[3] Connection rejected by channel on_connection_init policy", "api", e.channel.Name, "channel", channelName)
+			ws.Close()
+			return
 		}
 	}
 

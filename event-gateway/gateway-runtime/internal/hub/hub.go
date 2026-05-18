@@ -530,10 +530,10 @@ func summarizeImmediateResponseBody(body []byte) string {
 	return text
 }
 
-// ProcessConnectionInitRequest applies on_connection_init.request policies during connection handshake.
+// ProcessConnectionInit applies on_connection_init policies during connection handshake.
 // Used by protocol mediation (WebBrokerApi) for WebSocket upgrade or SSE connection initialization.
 // Returns the (possibly mutated) message and whether it was short-circuited.
-func (h *Hub) ProcessConnectionInitRequest(ctx context.Context, bindingName string, msg *connectors.Message) (*connectors.Message, bool, error) {
+func (h *Hub) ProcessConnectionInit(ctx context.Context, bindingName string, msg *connectors.Message) (*connectors.Message, bool, error) {
 	binding := h.GetBinding(bindingName)
 	if binding == nil {
 		return nil, false, fmt.Errorf("binding not found: %s", bindingName)
@@ -559,35 +559,6 @@ func (h *Hub) ProcessConnectionInitRequest(ctx context.Context, bindingName stri
 	}
 
 	return msg, false, nil
-}
-
-// ProcessConnectionInitResponse applies on_connection_init.response policies during connection handshake.
-// Used by protocol mediation (WebBrokerApi) for response customization during handshake.
-// Returns the (possibly mutated) message.
-func (h *Hub) ProcessConnectionInitResponse(ctx context.Context, bindingName string, msg *connectors.Message) (*connectors.Message, error) {
-	binding := h.GetBinding(bindingName)
-	if binding == nil {
-		return nil, fmt.Errorf("binding not found: %s", bindingName)
-	}
-
-	// Apply connection_init response policies if present.
-	// Currently using OutboundChainKey for on_connection_init.response
-	// In the future, we could add a dedicated field to ChannelBinding if needed.
-	if binding.OutboundChainKey != "" {
-		chain := h.engine.GetChain(binding.OutboundChainKey)
-		if chain != nil {
-			reqHeaderCtx := MessageToRequestHeaderContext(msg, binding)
-			result, err := h.engine.ExecuteRequestHeaderPolicies(ctx, binding.OutboundChainKey, reqHeaderCtx.SharedContext, reqHeaderCtx)
-			if err != nil {
-				return nil, fmt.Errorf("connection_init response policy execution failed: %w", err)
-			}
-			if err := ApplyRequestHeaderResult(result, msg); err != nil {
-				return nil, fmt.Errorf("failed to apply connection_init response result: %w", err)
-			}
-		}
-	}
-
-	return msg, nil
 }
 
 // ProcessProduce applies on_produce policies when client sends messages to broker.
