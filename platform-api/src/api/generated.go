@@ -3084,8 +3084,8 @@ type WebSubAPI struct {
 	// Name Human-readable name for the WebSub API
 	Name string `binding:"required" json:"name" yaml:"name"`
 
-	// Policies Policies applied to all channels, organized by event type (flat arrays).
-	Policies *WebSubChannelPolicies `json:"policies,omitempty" yaml:"policies,omitempty"`
+	// AllChannels Policies applied to all channels, organized by event type.
+	AllChannels *WebSubAllChannelPolicies `json:"allChannels,omitempty" yaml:"allChannels,omitempty"`
 
 	// ProjectId UUID of the project this API belongs to
 	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
@@ -3155,23 +3155,17 @@ type WebSubAllChannelPolicies struct {
 
 // WebSubChannel A single channel definition with optional per-channel policy overrides.
 type WebSubChannel struct {
-	// Policies Per-channel policy overrides organized by event type.
-	Policies *WebSubChannelPolicies `json:"policies,omitempty" yaml:"policies,omitempty"`
-}
+	// OnMessageDelivery Policies for a single event type.
+	OnMessageDelivery *WebSubEventPolicies `json:"on_message_delivery,omitempty" yaml:"on_message_delivery,omitempty"`
 
-// WebSubChannelPolicies Policies applied to a specific channel, organized by event type (flat arrays).
-type WebSubChannelPolicies struct {
-	// OnMessageDelivery Policies applied when delivering a message for this channel
-	OnMessageDelivery *[]Policy `json:"on_message_delivery,omitempty" yaml:"on_message_delivery,omitempty"`
+	// OnMessageReceived Policies for a single event type.
+	OnMessageReceived *WebSubEventPolicies `json:"on_message_received,omitempty" yaml:"on_message_received,omitempty"`
 
-	// OnMessageReceived Policies applied when a message is received for this channel
-	OnMessageReceived *[]Policy `json:"on_message_received,omitempty" yaml:"on_message_received,omitempty"`
+	// OnSubscription Policies for a single event type.
+	OnSubscription *WebSubEventPolicies `json:"on_subscription,omitempty" yaml:"on_subscription,omitempty"`
 
-	// OnSubscription Policies applied when a client subscribes to a channel
-	OnSubscription *[]Policy `json:"on_subscription,omitempty" yaml:"on_subscription,omitempty"`
-
-	// OnUnsubscription Policies applied when a client unsubscribes from a channel
-	OnUnsubscription *[]Policy `json:"on_unsubscription,omitempty" yaml:"on_unsubscription,omitempty"`
+	// OnUnsubscription Policies for a single event type.
+	OnUnsubscription *WebSubEventPolicies `json:"on_unsubscription,omitempty" yaml:"on_unsubscription,omitempty"`
 }
 
 // ArtifactTypeQ defines model for ArtifactType-Q.

@@ -9044,8 +9044,8 @@ components:
           example: /my-websub-api
         upstream:
           $ref: '#/components/schemas/Upstream'
-        policies:
-          $ref: '#/components/schemas/WebSubChannelPolicies'
+        allChannels:
+          $ref: '#/components/schemas/WebSubAllChannelPolicies'
         channels:
           type: object
           description: Per-channel configuration keyed by channel name. Each key is a channel name and defines policies applied only to that channel.
@@ -9169,37 +9169,19 @@ components:
           items:
             $ref: '#/components/schemas/Policy'
 
-    WebSubChannelPolicies:
-      type: object
-      description: Policies applied to a specific channel, organized by event type.
-      properties:
-        on_subscription:
-          type: array
-          description: Policies applied when a client subscribes to this channel (e.g., rbac)
-          items:
-            $ref: '#/components/schemas/Policy'
-        on_unsubscription:
-          type: array
-          description: Policies applied when a client unsubscribes from this channel
-          items:
-            $ref: '#/components/schemas/Policy'
-        on_message_received:
-          type: array
-          description: Policies applied when a message is received for this channel
-          items:
-            $ref: '#/components/schemas/Policy'
-        on_message_delivery:
-          type: array
-          description: Policies applied when delivering a message for this channel
-          items:
-            $ref: '#/components/schemas/Policy'
 
     WebSubChannel:
       type: object
       description: A single channel definition with optional per-channel policy overrides.
       properties:
-        policies:
-          $ref: '#/components/schemas/WebSubChannelPolicies'
+        on_subscription:
+          $ref: '#/components/schemas/WebSubEventPolicies'
+        on_unsubscription:
+          $ref: '#/components/schemas/WebSubEventPolicies'
+        on_message_received:
+          $ref: '#/components/schemas/WebSubEventPolicies'
+        on_message_delivery:
+          $ref: '#/components/schemas/WebSubEventPolicies'
 
   responses:
     Unauthorized:
