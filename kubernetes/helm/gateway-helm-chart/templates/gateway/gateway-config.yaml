@@ -38,6 +38,26 @@ data:
     [controller.storage.sqlite]
     path = {{ $gc.storage.sqlite.path | quote }}
 
+    {{- if eq $gc.storage.type "postgres" }}
+    {{- $pg := $gc.storage.postgres }}
+    [controller.storage.postgres]
+    {{- if $pg.dsn }}
+    dsn = {{ $pg.dsn | quote }}
+    {{- else }}
+    host = {{ $pg.host | quote }}
+    port = {{ $pg.port | int }}
+    database = {{ $pg.database | quote }}
+    user = {{ $pg.user | quote }}
+    sslmode = {{ $pg.sslmode | default "require" | quote }}
+    connect_timeout = {{ $pg.connect_timeout | default "5s" | quote }}
+    max_open_conns = {{ $pg.max_open_conns | default 25 | int }}
+    max_idle_conns = {{ $pg.max_idle_conns | default 5 | int }}
+    conn_max_lifetime = {{ $pg.conn_max_lifetime | default "30m" | quote }}
+    conn_max_idle_time = {{ $pg.conn_max_idle_time | default "5m" | quote }}
+    application_name = {{ $pg.application_name | default "gateway-controller" | quote }}
+    {{- end }}
+    {{- end }}
+
     [controller.policies]
     definitions_path = {{ $gc.policies.definitions_path | quote }}
 

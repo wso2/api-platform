@@ -105,6 +105,13 @@ spec:
               value: {{ printf "%d" (int $controller.metrics.port) | quote }}
             - name: APIP_GW_DEVELOPMENT_MODE
               value: {{ .Values.gateway.developmentMode | toString | quote }}
+            {{- if and (eq .Values.gateway.config.controller.storage.type "postgres") $controller.postgres.passwordSecretRef.name }}
+            - name: APIP_GW_GATEWAY__CONTROLLER_STORAGE_POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $controller.postgres.passwordSecretRef.name }}
+                  key: {{ $controller.postgres.passwordSecretRef.key | default "password" }}
+            {{- end }}
             {{- range $deployment.extraEnv }}
             - {{- toYaml . | nindent 14 }}
             {{- end }}
