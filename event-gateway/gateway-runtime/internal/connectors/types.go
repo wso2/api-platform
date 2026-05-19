@@ -50,8 +50,7 @@ type MessageProcessor interface {
 	ProcessOutbound(ctx context.Context, bindingName string, msg *Message) (*Message, bool, error)
 
 	// Protocol mediation policy enforcement points (WebBrokerApi)
-	ProcessConnectionInitRequest(ctx context.Context, bindingName string, msg *Message) (*Message, bool, error)
-	ProcessConnectionInitResponse(ctx context.Context, bindingName string, msg *Message) (*Message, error)
+	ProcessConnectionInit(ctx context.Context, bindingName string, msg *Message) (*Message, bool, error)
 	ProcessProduce(ctx context.Context, bindingName string, msg *Message) (*Message, bool, error)
 	ProcessConsume(ctx context.Context, bindingName string, msg *Message) (*Message, bool, error)
 

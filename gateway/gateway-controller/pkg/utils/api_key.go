@@ -385,6 +385,12 @@ func extractConfigDisplayNameVersion(kind string, configuration any) (string, st
 			return "", "", fmt.Errorf("configuration is not a WebSubAPI (kind: %s)", kind)
 		}
 		return webSubCfg.Spec.DisplayName, webSubCfg.Spec.Version, nil
+	case models.KindWebBrokerApi:
+		webBrokerCfg, ok := configuration.(api.WebBrokerApi)
+		if !ok {
+			return "", "", fmt.Errorf("configuration is not a WebBrokerApi (kind: %s)", kind)
+		}
+		return webBrokerCfg.Spec.DisplayName, webBrokerCfg.Spec.Version, nil
 	default:
 		return "", "", fmt.Errorf("unsupported kind for API key operation: '%s'", kind)
 	}

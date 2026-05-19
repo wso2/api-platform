@@ -562,3 +562,354 @@ Status Code **200**
 |» status|string|false|none|none|
 |» message|string|false|none|none|
 |» id|string|false|none|none|
+
+## Create a new API key for a WebBroker API
+
+<a id="opIdcreateWebBrokerAPIKey"></a>
+
+`POST /webbroker-apis/{id}/api-keys`
+
+> Code samples
+
+```shell
+
+curl -X POST http://localhost:9090/api/management/v0.9/webbroker-apis/{id}/api-keys \
+  -u {username}:{password} \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -d @payload.json
+
+```
+
+Generate a new API key for a WebBroker API in the Gateway. The key is a 32-byte random value encoded in hexadecimal, prefixed with `apip_`. Use the API Key policy on the API to validate incoming requests with this key.
+
+> Payload
+
+```json
+{
+  "name": "my-production-key"
+}
+```
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `consumer`
+
+</aside>
+
+<h3 id="create-a-new-api-key-for-a-webbroker-api-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|id|path|string|true|Unique public identifier of the WebBroker API to generate the key for|
+|body|body|[APIKeyCreationRequest](schemas.md#schemaapikeycreationrequest)|true|none|
+
+> Example responses
+
+> 201 Response
+
+```json
+{
+  "status": "success",
+  "message": "API key generated successfully",
+  "remainingApiKeyQuota": 9,
+  "apiKey": {
+    "name": "my-production-key",
+    "displayName": "My Production Key",
+    "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+    "apiId": "reading-list-api-v1.0",
+    "status": "active",
+    "createdAt": "2026-04-01T10:30:00Z",
+    "createdBy": "admin",
+    "expiresAt": null,
+    "source": "local"
+  }
+}
+```
+
+<h3 id="create-a-new-api-key-for-a-webbroker-api-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|API key created successfully|[APIKeyCreationResponse](schemas.md#schemaapikeycreationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|WebBroker API not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict (duplicate key or conflicting update)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+## Get the list of API keys for a WebBroker API
+
+<a id="opIdlistWebBrokerAPIKeys"></a>
+
+`GET /webbroker-apis/{id}/api-keys`
+
+> Code samples
+
+```shell
+
+curl -X GET http://localhost:9090/api/management/v0.9/webbroker-apis/{id}/api-keys \
+  -u {username}:{password} \
+  -H 'Accept: application/json'
+
+```
+
+List all API keys for a WebBroker API in the Gateway.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `consumer`
+
+</aside>
+
+<h3 id="get-the-list-of-api-keys-for-a-webbroker-api-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|id|path|string|true|Unique public identifier of the WebBroker API to retrieve the keys for|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "apiKeys": [
+    {
+      "name": "my-production-key",
+      "displayName": "My Production Key",
+      "apiKey": "***abcdef",
+      "apiId": "reading-list-api-v1.0",
+      "status": "active",
+      "createdAt": "2026-04-01T10:30:00Z",
+      "createdBy": "admin",
+      "expiresAt": null,
+      "source": "local"
+    }
+  ],
+  "totalCount": 3,
+  "status": "success"
+}
+```
+
+<h3 id="get-the-list-of-api-keys-for-a-webbroker-api-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of API keys|[APIKeyListResponse](schemas.md#schemaapikeylistresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|WebBroker API not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+## Regenerate API key for a WebBroker API
+
+<a id="opIdregenerateWebBrokerAPIKey"></a>
+
+`POST /webbroker-apis/{id}/api-keys/{apiKeyName}/regenerate`
+
+> Code samples
+
+```shell
+
+curl -X POST http://localhost:9090/api/management/v0.9/webbroker-apis/{id}/api-keys/{apiKeyName}/regenerate \
+  -u {username}:{password} \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -d @payload.json
+
+```
+
+Regenerate an existing API key for a WebBroker API in the Gateway. The previous key is revoked and replaced with a new 32-byte random value encoded in hexadecimal, prefixed with `apip_`.
+
+> Payload
+
+```json
+{}
+```
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `consumer`
+
+</aside>
+
+<h3 id="regenerate-api-key-for-a-webbroker-api-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|id|path|string|true|Unique public identifier of the WebBroker API|
+|apiKeyName|path|string|true|Name of the API key to regenerate|
+|body|body|[APIKeyRegenerationRequest](schemas.md#schemaapikeyregenerationrequest)|true|none|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "status": "success",
+  "message": "API key generated successfully",
+  "remainingApiKeyQuota": 9,
+  "apiKey": {
+    "name": "my-production-key",
+    "displayName": "My Production Key",
+    "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+    "apiId": "reading-list-api-v1.0",
+    "status": "active",
+    "createdAt": "2026-04-01T10:30:00Z",
+    "createdBy": "admin",
+    "expiresAt": null,
+    "source": "local"
+  }
+}
+```
+
+<h3 id="regenerate-api-key-for-a-webbroker-api-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key rotated successfully|[APIKeyCreationResponse](schemas.md#schemaapikeycreationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|WebBroker API or API key not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+## Update an API key for a WebBroker API
+
+<a id="opIdupdateWebBrokerAPIKey"></a>
+
+`PUT /webbroker-apis/{id}/api-keys/{apiKeyName}`
+
+> Code samples
+
+```shell
+
+curl -X PUT http://localhost:9090/api/management/v0.9/webbroker-apis/{id}/api-keys/{apiKeyName} \
+  -u {username}:{password} \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -d @payload.json
+
+```
+
+Update an API key with a custom value instead of auto-generating one.
+
+> Payload
+
+```json
+{
+  "displayName": "Updated",
+  "apiKey": "custom-key-999",
+  "issuer": "portal"
+}
+```
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `consumer`
+
+</aside>
+
+<h3 id="update-an-api-key-for-a-webbroker-api-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|id|path|string|true|Unique public identifier of the WebBroker API|
+|apiKeyName|path|string|true|Name of the API key to update|
+|body|body|[APIKeyUpdateRequest](schemas.md#schemaapikeyupdaterequest)|true|none|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "status": "success",
+  "message": "API key generated successfully",
+  "remainingApiKeyQuota": 9,
+  "apiKey": {
+    "name": "my-production-key",
+    "displayName": "My Production Key",
+    "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+    "apiId": "reading-list-api-v1.0",
+    "status": "active",
+    "createdAt": "2026-04-01T10:30:00Z",
+    "createdBy": "admin",
+    "expiresAt": null,
+    "source": "local"
+  }
+}
+```
+
+<h3 id="update-an-api-key-for-a-webbroker-api-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key updated successfully|[APIKeyCreationResponse](schemas.md#schemaapikeycreationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid request (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|WebBroker API or API key not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Conflict (duplicate key or conflicting update)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+## Revoke an API key for a WebBroker API
+
+<a id="opIdrevokeWebBrokerAPIKey"></a>
+
+`DELETE /webbroker-apis/{id}/api-keys/{apiKeyName}`
+
+> Code samples
+
+```shell
+
+curl -X DELETE http://localhost:9090/api/management/v0.9/webbroker-apis/{id}/api-keys/{apiKeyName} \
+  -u {username}:{password} \
+  -H 'Accept: application/json'
+
+```
+
+Revoke an API key. Once revoked, it can no longer be used to authenticate requests.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+Required roles: `admin`, `consumer`
+
+</aside>
+
+<h3 id="revoke-an-api-key-for-a-webbroker-api-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|id|path|string|true|Unique public identifier of the WebBroker API|
+|apiKeyName|path|string|true|Name of the API key to revoke|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "status": "success",
+  "message": "API key revoked successfully"
+}
+```
+
+<h3 id="revoke-an-api-key-for-a-webbroker-api-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key revoked successfully|[APIKeyRevocationResponse](schemas.md#schemaapikeyrevocationresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|WebBroker API not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|

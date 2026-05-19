@@ -820,6 +820,12 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		"POST /websub-apis/:id/api-keys/:apiKeyName/regenerate": {"admin", "consumer"},
 		"DELETE /websub-apis/:id/api-keys/:apiKeyName":          {"admin", "consumer"},
 
+		"POST /webbroker-apis/:id/api-keys":                        {"admin", "consumer"},
+		"GET /webbroker-apis/:id/api-keys":                         {"admin", "consumer"},
+		"PUT /webbroker-apis/:id/api-keys/:apiKeyName":             {"admin", "consumer"},
+		"POST /webbroker-apis/:id/api-keys/:apiKeyName/regenerate": {"admin", "consumer"},
+		"DELETE /webbroker-apis/:id/api-keys/:apiKeyName":          {"admin", "consumer"},
+
 		// Root-level subscription endpoints
 		"POST /subscriptions":                   {"admin", "developer"},
 		"GET /subscriptions":                    {"admin", "developer"},

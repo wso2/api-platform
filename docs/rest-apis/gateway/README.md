@@ -117,6 +117,11 @@ Base URLs:
 - [List all WebBrokerAPIs](webbroker-api-management.md#list-all-webbrokerapis)
 - [Get WebBrokerAPI by id](webbroker-api-management.md#get-webbrokerapi-by-id)
 - [Delete a WebBrokerAPI](webbroker-api-management.md#delete-a-webbrokerapi)
+- [Create a new API key for a WebBroker API](webbroker-api-management.md#create-a-new-api-key-for-a-webbroker-api)
+- [Get the list of API keys for a WebBroker API](webbroker-api-management.md#get-the-list-of-api-keys-for-a-webbroker-api)
+- [Regenerate API key for a WebBroker API](webbroker-api-management.md#regenerate-api-key-for-a-webbroker-api)
+- [Update an API key for a WebBroker API](webbroker-api-management.md#update-an-api-key-for-a-webbroker-api)
+- [Revoke an API key for a WebBroker API](webbroker-api-management.md#revoke-an-api-key-for-a-webbroker-api)
 
 ### [Schemas](schemas.md)
 
