@@ -683,7 +683,7 @@ Required roles: `admin`, `consumer`
     {
       "name": "my-production-key",
       "displayName": "My Production Key",
-      "apiKey": "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+      "apiKey": "***abcdef",
       "apiId": "reading-list-api-v1.0",
       "status": "active",
       "createdAt": "2026-04-01T10:30:00Z",
@@ -804,7 +804,9 @@ Update an API key with a custom value instead of auto-generating one.
 
 ```json
 {
-  "name": "my-production-key"
+  "displayName": "Updated",
+  "apiKey": "custom-key-999",
+  "issuer": "portal"
 }
 ```
 
@@ -909,5 +911,5 @@ Required roles: `admin`, `consumer`
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API key revoked successfully|[APIKeyRevocationResponse](schemas.md#schemaapikeyrevocationresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid configuration (validation failed)|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|WebBroker API or API key not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|WebBroker API not found|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error|[ErrorResponse](schemas.md#schemaerrorresponse)|
