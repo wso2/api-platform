@@ -141,8 +141,9 @@ func (r *WebSubAPIRepo) List(orgUUID, projectUUID string, limit, offset int) ([]
 			FROM artifacts a
 			JOIN websub_apis p ON a.uuid = p.uuid
 			WHERE a.organization_uuid = ? AND a.kind = ? AND p.project_uuid = ?
-			ORDER BY a.created_at DESC`
-		args = []interface{}{orgUUID, constants.WebSubApi, projectUUID}
+			ORDER BY a.created_at DESC
+			LIMIT ? OFFSET ?`
+		args = []interface{}{orgUUID, constants.WebSubApi, projectUUID, limit, offset}
 	} else {
 		query = `
 			SELECT
@@ -151,8 +152,9 @@ func (r *WebSubAPIRepo) List(orgUUID, projectUUID string, limit, offset int) ([]
 			FROM artifacts a
 			JOIN websub_apis p ON a.uuid = p.uuid
 			WHERE a.organization_uuid = ? AND a.kind = ?
-			ORDER BY a.created_at DESC`
-		args = []interface{}{orgUUID, constants.WebSubApi}
+			ORDER BY a.created_at DESC
+			LIMIT ? OFFSET ?`
+		args = []interface{}{orgUUID, constants.WebSubApi, limit, offset}
 	}
 
 	rows, err := r.db.Query(r.db.Rebind(query), args...)

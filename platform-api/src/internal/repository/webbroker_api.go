@@ -141,8 +141,9 @@ func (r *WebBrokerAPIRepo) List(orgUUID, projectUUID string, limit, offset int) 
 			FROM artifacts a
 			JOIN webbroker_apis p ON a.uuid = p.uuid
 			WHERE a.organization_uuid = ? AND a.kind = ? AND p.project_uuid = ?
-			ORDER BY a.created_at DESC`
-		args = []interface{}{orgUUID, constants.WebBrokerApi, projectUUID}
+			ORDER BY a.created_at DESC
+			LIMIT ? OFFSET ?`
+		args = []interface{}{orgUUID, constants.WebBrokerApi, projectUUID, limit, offset}
 	} else {
 		query = `
 			SELECT
@@ -151,8 +152,9 @@ func (r *WebBrokerAPIRepo) List(orgUUID, projectUUID string, limit, offset int) 
 			FROM artifacts a
 			JOIN webbroker_apis p ON a.uuid = p.uuid
 			WHERE a.organization_uuid = ? AND a.kind = ?
-			ORDER BY a.created_at DESC`
-		args = []interface{}{orgUUID, constants.WebBrokerApi}
+			ORDER BY a.created_at DESC
+			LIMIT ? OFFSET ?`
+		args = []interface{}{orgUUID, constants.WebBrokerApi, limit, offset}
 	}
 
 	rows, err := r.db.Query(r.db.Rebind(query), args...)
@@ -317,7 +319,9 @@ func (r *WebBrokerAPIRepo) scanWebBrokerAPI(row *sql.Row) (*model.WebBrokerAPI, 
 		return nil, err
 	}
 	if transportJSON.Valid && transportJSON.String != "" {
-		json.Unmarshal([]byte(transportJSON.String), &a.Transport)
+		if err := json.Unmarshal([]byte(transportJSON.String), &a.Transport); err != nil {
+			return nil, fmt.Errorf("unmarshal transport for WebBroker API %s: %w", a.Handle, err)
+		}
 	}
 	if configurationJSON.Valid && configurationJSON.String != "" {
 		if config, err := deserializeWebBrokerAPIConfiguration(configurationJSON); err != nil {
@@ -341,7 +345,9 @@ func (r *WebBrokerAPIRepo) scanWebBrokerAPIFromRows(rows *sql.Rows) (*model.WebB
 		return nil, err
 	}
 	if transportJSON.Valid && transportJSON.String != "" {
-		json.Unmarshal([]byte(transportJSON.String), &a.Transport)
+		if err := json.Unmarshal([]byte(transportJSON.String), &a.Transport); err != nil {
+			return nil, fmt.Errorf("unmarshal transport for WebBroker API %s: %w", a.Handle, err)
+		}
 	}
 	if configurationJSON.Valid && configurationJSON.String != "" {
 		if config, err := deserializeWebBrokerAPIConfiguration(configurationJSON); err != nil {

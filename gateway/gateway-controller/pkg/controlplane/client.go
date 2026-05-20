@@ -2944,9 +2944,10 @@ func (c *Client) handleWebBrokerAPIDeletedEvent(event map[string]any) {
 	apiConfig, err := c.findAPIConfig(apiID)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			c.logger.Warn("WebBroker API configuration not found for deletion",
+			c.logger.Warn("WebBroker API configuration not found for deletion; running orphan cleanup",
 				slog.String("api_id", apiID),
 			)
+			c.cleanupOrphanedResources(apiID, deletedEvent.CorrelationID)
 			return
 		}
 		c.logger.Error("Failed to fetch WebBroker API configuration for deletion",

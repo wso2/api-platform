@@ -20,6 +20,7 @@
 package service
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -77,12 +78,22 @@ func (m *mockWebBrokerAPIRepository) CountByProject(_, _ string) (int, error) {
 	return m.count, nil
 }
 
-func (m *mockWebBrokerAPIRepository) List(_, _ string, _, _ int) ([]*model.WebBrokerAPI, error) {
-	result := make([]*model.WebBrokerAPI, 0, len(m.store))
+func (m *mockWebBrokerAPIRepository) List(_, _ string, limit, offset int) ([]*model.WebBrokerAPI, error) {
+	// Collect all items
+	all := make([]*model.WebBrokerAPI, 0, len(m.store))
 	for _, v := range m.store {
-		result = append(result, v)
+		all = append(all, v)
 	}
-	return result, nil
+
+	// Apply pagination
+	if offset >= len(all) {
+		return []*model.WebBrokerAPI{}, nil
+	}
+	end := offset + limit
+	if end > len(all) {
+		end = len(all)
+	}
+	return all[offset:end], nil
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -276,6 +287,94 @@ func TestWebBrokerAPI_List(t *testing.T) {
 	if listResp.Count != 1 {
 		t.Errorf("expected 1 item in list, got %d", listResp.Count)
 	}
+}
+
+// TestWebBrokerAPI_ListPagination verifies List pagination with limit and offset
+func TestWebBrokerAPI_ListPagination(t *testing.T) {
+	repo := newMockWebBrokerAPIRepository()
+	svc := buildWebBrokerService(repo)
+
+	// Create 5 APIs
+	for i := 1; i <= 5; i++ {
+		req := buildWebBrokerCreateRequest()
+		name := fmt.Sprintf("api-%d", i)
+		req.Name = name
+		handle := fmt.Sprintf("api-%d-v1-0", i)
+		req.Id = &handle
+		_, err := svc.Create("org-uuid", "alice", req)
+		if err != nil {
+			t.Fatalf("Create API %d failed: %v", i, err)
+		}
+	}
+
+	t.Run("limit smaller than total returns correct count", func(t *testing.T) {
+		listResp, err := svc.List("org-uuid", "project-uuid", 2, 0)
+		if err != nil {
+			t.Fatalf("List failed: %v", err)
+		}
+		if listResp.Count != 2 {
+			t.Errorf("expected 2 items with limit=2, got %d", listResp.Count)
+		}
+		if len(listResp.List) != 2 {
+			t.Errorf("expected 2 items in list array, got %d", len(listResp.List))
+		}
+	})
+
+	t.Run("offset skips items correctly", func(t *testing.T) {
+		listResp, err := svc.List("org-uuid", "project-uuid", 2, 2)
+		if err != nil {
+			t.Fatalf("List failed: %v", err)
+		}
+		if listResp.Count != 2 {
+			t.Errorf("expected 2 items with limit=2, offset=2, got %d", listResp.Count)
+		}
+	})
+
+	t.Run("offset beyond total returns empty", func(t *testing.T) {
+		listResp, err := svc.List("org-uuid", "project-uuid", 10, 10)
+		if err != nil {
+			t.Fatalf("List failed: %v", err)
+		}
+		if listResp.Count != 0 {
+			t.Errorf("expected 0 items with offset=10, got %d", listResp.Count)
+		}
+		if len(listResp.List) != 0 {
+			t.Errorf("expected empty list array, got %d items", len(listResp.List))
+		}
+	})
+
+	t.Run("limit larger than remaining returns all remaining", func(t *testing.T) {
+		listResp, err := svc.List("org-uuid", "project-uuid", 10, 3)
+		if err != nil {
+			t.Fatalf("List failed: %v", err)
+		}
+		if listResp.Count != 2 {
+			t.Errorf("expected 2 remaining items (5 total - 3 offset), got %d", listResp.Count)
+		}
+	})
+
+	t.Run("all items retrieved with correct pagination", func(t *testing.T) {
+		// Get first page
+		page1, err := svc.List("org-uuid", "project-uuid", 2, 0)
+		if err != nil {
+			t.Fatalf("List page 1 failed: %v", err)
+		}
+		// Get second page
+		page2, err := svc.List("org-uuid", "project-uuid", 2, 2)
+		if err != nil {
+			t.Fatalf("List page 2 failed: %v", err)
+		}
+		// Get third page
+		page3, err := svc.List("org-uuid", "project-uuid", 2, 4)
+		if err != nil {
+			t.Fatalf("List page 3 failed: %v", err)
+		}
+
+		total := page1.Count + page2.Count + page3.Count
+		if total != 5 {
+			t.Errorf("expected 5 total items across all pages, got %d", total)
+		}
+	})
 }
 
 // TestWebBrokerAPI_BrokerConfigStoredCorrectly verifies broker config is stored correctly
