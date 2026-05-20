@@ -1,6 +1,12 @@
 {{- $controller := .Values.gateway.controller -}}
 {{- $pdb := $controller.podDisruptionBudget -}}
 {{- if and $controller.deployment.enabled $pdb.enabled }}
+{{- if and $pdb.minAvailable $pdb.maxUnavailable }}
+{{- fail "gateway.controller.podDisruptionBudget: only one of minAvailable or maxUnavailable may be set" }}
+{{- end }}
+{{- if not (or $pdb.minAvailable $pdb.maxUnavailable) }}
+{{- fail "gateway.controller.podDisruptionBudget: one of minAvailable or maxUnavailable must be set" }}
+{{- end }}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
