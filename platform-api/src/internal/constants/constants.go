@@ -67,11 +67,12 @@ const DefaultGatewayFunctionalityType = GatewayFunctionalityTypeRegular
 
 // Kinds of artifacts
 const (
-	RestApi     = "RestApi"
-	WebSubApi   = "WebSubApi"
-	LLMProvider = "LlmProvider"
-	LLMProxy    = "LlmProxy"
-	MCPProxy    = "Mcp"
+	RestApi      = "RestApi"
+	WebSubApi    = "WebSubApi"
+	WebBrokerApi = "WebBrokerApi"
+	LLMProvider  = "LlmProvider"
+	LLMProxy     = "LlmProxy"
+	MCPProxy     = "Mcp"
 )
 
 // API Type Constants
@@ -135,6 +136,8 @@ const (
 	MaxMCPProxiesPerOrganization = 5
 	// MaxWebSubAPIsPerOrganization is the maximum number of WebSub APIs allowed per organization.
 	MaxWebSubAPIsPerOrganization = 5
+	// MaxWebBrokerAPIsPerOrganization is the maximum number of WebBroker APIs allowed per organization.
+	MaxWebBrokerAPIsPerOrganization = 5
 )
 
 const GatewayApiVersion = "gateway.api-platform.wso2.com/v1alpha1"

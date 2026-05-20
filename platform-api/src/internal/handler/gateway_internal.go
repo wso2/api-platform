@@ -585,6 +585,58 @@ func (h *GatewayInternalAPIHandler) GetWebSubAPI(c *gin.Context) {
 	c.Data(http.StatusOK, "application/zip", zipData)
 }
 
+// GetWebBrokerAPI handles GET /api/internal/v1/webbroker-apis/:apiId
+func (h *GatewayInternalAPIHandler) GetWebBrokerAPI(c *gin.Context) {
+	orgID, gatewayID, ok := h.authenticateRequest(c)
+	if !ok {
+		return
+	}
+
+	apiID := c.Param("apiId")
+	if apiID == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API ID is required"))
+		return
+	}
+
+	api, err := h.gatewayInternalService.GetActiveWebBrokerAPIDeploymentByGateway(apiID, orgID, gatewayID)
+	if err != nil {
+		if errors.Is(err, constants.ErrDeploymentNotActive) {
+			h.slogger.Error("No active deployment found for WebBroker API", "clientIP", c.ClientIP(), "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"No active deployment found for this WebBroker API on this gateway"))
+			return
+		}
+		if errors.Is(err, constants.ErrWebBrokerAPINotFound) {
+			h.slogger.Error("WebBroker API not found", "clientIP", c.ClientIP(), "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"WebBroker API not found"))
+			return
+		}
+		h.slogger.Error("Failed to get WebBroker API", "clientIP", c.ClientIP(), "apiID", apiID, "orgID", orgID, "gatewayID", gatewayID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get WebBroker API"))
+		return
+	}
+
+	// Create ZIP file from WebBroker API YAML file
+	zipData, err := utils.CreateWebBrokerAPIYamlZip(api)
+	if err != nil {
+		h.slogger.Error("Failed to create ZIP file", "apiID", apiID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to create WebBroker API package"))
+		return
+	}
+
+	// Set headers for ZIP file download
+	c.Header("Content-Type", "application/zip")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"webbroker-api-%s.zip\"", apiID))
+	c.Header("Content-Length", fmt.Sprintf("%d", len(zipData)))
+
+	// Return ZIP file
+	c.Data(http.StatusOK, "application/zip", zipData)
+}
+
 // ReceiveGatewayManifest handles POST /api/internal/v1/gateways/:gatewayId/manifest
 // Called by the gateway controller to post back its installed custom policy manifest.
 func (h *GatewayInternalAPIHandler) ReceiveGatewayManifest(c *gin.Context) {
@@ -669,6 +721,38 @@ func (h *GatewayInternalAPIHandler) GetLLMProxyAPIKeys(c *gin.Context) {
 	keys, err := h.gatewayInternalService.GetAPIKeysByKind(gatewayID, orgID, constants.LLMProxy, issuer)
 	if err != nil {
 		h.slogger.Error("Failed to get API keys for LLM proxies", "gatewayID", gatewayID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get API keys"))
+		return
+	}
+	c.JSON(http.StatusOK, keys)
+}
+
+// GetWebSubAPIAPIKeys handles GET /api/internal/v1/websub-apis/api-keys
+func (h *GatewayInternalAPIHandler) GetWebSubAPIAPIKeys(c *gin.Context) {
+	orgID, gatewayID, ok := h.authenticateRequest(c)
+	if !ok {
+		return
+	}
+	issuer := c.Query("issuer")
+	keys, err := h.gatewayInternalService.GetAPIKeysByKind(gatewayID, orgID, constants.WebSubApi, issuer)
+	if err != nil {
+		h.slogger.Error("Failed to get API keys for WebSub APIs", "gatewayID", gatewayID, "error", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get API keys"))
+		return
+	}
+	c.JSON(http.StatusOK, keys)
+}
+
+// GetWebBrokerAPIAPIKeys handles GET /api/internal/v1/webbroker-apis/api-keys
+func (h *GatewayInternalAPIHandler) GetWebBrokerAPIAPIKeys(c *gin.Context) {
+	orgID, gatewayID, ok := h.authenticateRequest(c)
+	if !ok {
+		return
+	}
+	issuer := c.Query("issuer")
+	keys, err := h.gatewayInternalService.GetAPIKeysByKind(gatewayID, orgID, constants.WebBrokerApi, issuer)
+	if err != nil {
+		h.slogger.Error("Failed to get API keys for WebBroker APIs", "gatewayID", gatewayID, "error", err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get API keys"))
 		return
 	}
@@ -760,8 +844,16 @@ func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 
 	websubAPIGroup := r.Group("/api/internal/v1/websub-apis")
 	{
+		websubAPIGroup.GET("/api-keys", h.GetWebSubAPIAPIKeys)
 		websubAPIGroup.GET("/:apiId", h.GetWebSubAPI)
 	}
+
+	webbrokerAPIGroup := r.Group("/api/internal/v1/webbroker-apis")
+	{
+		webbrokerAPIGroup.GET("/api-keys", h.GetWebBrokerAPIAPIKeys)
+		webbrokerAPIGroup.GET("/:apiId", h.GetWebBrokerAPI)
+	}
+
 	gatewayGroup := r.Group("/api/internal/v1/gateways")
 	{
 		gatewayGroup.POST("/:gatewayId/manifest", h.ReceiveGatewayManifest)

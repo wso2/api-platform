@@ -195,6 +195,25 @@ func CreateWebSubAPIYamlZip(apiYamlMap map[string]string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// CreateWebBrokerAPIYamlZip creates a ZIP file containing WebBroker API YAML files
+func CreateWebBrokerAPIYamlZip(apiYamlMap map[string]string) ([]byte, error) {
+	var buf bytes.Buffer
+	zipWriter := zip.NewWriter(&buf)
+
+	for apiID, yamlContent := range apiYamlMap {
+		fileName := fmt.Sprintf("webbroker-api-%s.yaml", apiID)
+		if err := addFileToZip(zipWriter, fileName, []byte(yamlContent)); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := zipWriter.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close zip writer: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
 // CreateMCPProxyYamlZip creates a ZIP file containing MCP proxy YAML files
 func CreateMCPProxyYamlZip(proxyYamlMap map[string]string) ([]byte, error) {
 	var buf bytes.Buffer

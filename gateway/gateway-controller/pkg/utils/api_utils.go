@@ -326,7 +326,7 @@ type controlPlaneAPIKey struct {
 }
 
 // FetchAPIKeysByKind fetches all API keys for the given artifact kind from the control plane.
-// Supported kinds: KindLlmProvider, KindLlmProxy, KindRestApi, KindWebSubApi.
+// Supported kinds: KindLlmProvider, KindLlmProxy, KindRestApi, KindWebSubApi, KindWebBrokerApi.
 // When issuer is non-empty it is appended as a query parameter so the server returns
 // only keys matching that issuer; an empty issuer fetches all keys for the kind.
 // Only active keys that carry a sha256 hash are returned; others are skipped.
@@ -342,6 +342,8 @@ func (s *APIUtilsService) FetchAPIKeysByKind(artifactKind, issuer string) ([]mod
 		path = "/apis/api-keys"
 	case models.KindWebSubApi:
 		path = "/websub-apis/api-keys"
+	case models.KindWebBrokerApi:
+		path = "/webbroker-apis/api-keys"
 	default:
 		return nil, fmt.Errorf("unsupported artifact kind for API key fetch: %s", artifactKind)
 	}
@@ -668,6 +670,47 @@ func (s *APIUtilsService) FetchWebSubAPIDefinition(apiID string) ([]byte, error)
 	}
 
 	s.logger.Debug("Successfully fetched WebSub API definition",
+		slog.String("api_id", apiID),
+		slog.Int("size_bytes", len(bodyBytes)),
+	)
+
+	return bodyBytes, nil
+}
+
+// FetchWebBrokerAPIDefinition downloads the WebBroker API definition as a zip file from the control plane
+func (s *APIUtilsService) FetchWebBrokerAPIDefinition(apiID string) ([]byte, error) {
+	apiURL := s.getBaseURL() + "/webbroker-apis/" + apiID
+
+	s.logger.Debug("Fetching WebBroker API definition",
+		slog.String("api_id", apiID),
+		slog.String("url", apiURL),
+	)
+
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Add("api-key", s.config.Token)
+	req.Header.Add("Accept", "application/zip")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch WebBroker API definition: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("WebBroker API request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	s.logger.Debug("Successfully fetched WebBroker API definition",
 		slog.String("api_id", apiID),
 		slog.Int("size_bytes", len(bodyBytes)),
 	)

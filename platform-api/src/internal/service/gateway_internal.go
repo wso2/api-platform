@@ -42,6 +42,7 @@ type GatewayInternalAPIService struct {
 	proxyRepo            repository.LLMProxyRepository
 	mcpProxyRepo         repository.MCPProxyRepository
 	websubAPIRepo        repository.WebSubAPIRepository
+	webbrokerAPIRepo     repository.WebBrokerAPIRepository
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	orgRepo              repository.OrganizationRepository
@@ -57,7 +58,7 @@ type GatewayInternalAPIService struct {
 func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscriptionRepo repository.SubscriptionRepository,
 	subscriptionPlanRepo repository.SubscriptionPlanRepository, providerRepo repository.LLMProviderRepository,
 	proxyRepo repository.LLMProxyRepository, mcpProxyRepo repository.MCPProxyRepository, websubAPIRepo repository.WebSubAPIRepository,
-	deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
+	webbrokerAPIRepo repository.WebBrokerAPIRepository, deploymentRepo repository.DeploymentRepository, gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository, projectRepo repository.ProjectRepository, apiKeyRepo repository.APIKeyRepository,
 	artifactRepo repository.ArtifactRepository, cfg *config.Server, slogger *slog.Logger) *GatewayInternalAPIService {
 	return &GatewayInternalAPIService{
@@ -68,6 +69,7 @@ func NewGatewayInternalAPIService(apiRepo repository.APIRepository, subscription
 		proxyRepo:            proxyRepo,
 		mcpProxyRepo:         mcpProxyRepo,
 		websubAPIRepo:        websubAPIRepo,
+		webbrokerAPIRepo:     webbrokerAPIRepo,
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,
@@ -329,6 +331,31 @@ func (s *GatewayInternalAPIService) GetActiveWebSubAPIDeploymentByGateway(apiID,
 	return apiYamlMap, nil
 }
 
+// GetActiveWebBrokerAPIDeploymentByGateway retrieves the currently deployed WebBroker API artifact for a specific gateway
+func (s *GatewayInternalAPIService) GetActiveWebBrokerAPIDeploymentByGateway(apiID, orgID, gatewayID string) (map[string]string, error) {
+	webbrokerAPI, err := s.webbrokerAPIRepo.GetByUUID(apiID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get WebBroker API: %w", err)
+	}
+	if webbrokerAPI == nil {
+		return nil, constants.ErrWebBrokerAPINotFound
+	}
+
+	deployment, err := s.deploymentRepo.GetCurrentByGateway(webbrokerAPI.UUID, gatewayID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deployment: %w", err)
+	}
+	if deployment == nil {
+		return nil, constants.ErrDeploymentNotActive
+	}
+
+	apiYaml := string(deployment.Content)
+	apiYamlMap := map[string]string{
+		apiID: apiYaml,
+	}
+	return apiYamlMap, nil
+}
+
 // CreateGatewayDeployment handles the registration of an API deployment from a gateway
 func (s *GatewayInternalAPIService) CreateGatewayDeployment(apiHandle, orgID, gatewayID string,
 	notification dto.DeploymentNotification, deploymentID *string) (*dto.GatewayDeploymentResponse, error) {
@@ -573,7 +600,7 @@ func (s *GatewayInternalAPIService) GetAPIKeysByKind(gatewayID, orgID, kind, iss
 			}
 		}
 		items = append(items, model.InternalAPIKeyItem{
-			ETag: utils.APIKeyETag(k.ArtifactUUID, k.Name, k.UpdatedAt),
+			ETag:          utils.APIKeyETag(k.ArtifactUUID, k.Name, k.UpdatedAt),
 			UUID:          k.UUID,
 			Name:          k.Name,
 			MaskedAPIKey:  k.MaskedAPIKey,

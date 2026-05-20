@@ -207,6 +207,39 @@ type WebSubAPIDeletionEvent struct {
 	ApiId string `json:"apiId"`
 }
 
+// WebBrokerAPIDeploymentEvent contains payload data for "webbroker.deployed" event type.
+// This event is sent when a WebBroker API is successfully deployed to a gateway.
+type WebBrokerAPIDeploymentEvent struct {
+	// ApiId identifies the deployed WebBroker API (UUID)
+	ApiId string `json:"apiId"`
+
+	// DeploymentID identifies the specific deployment artifact
+	DeploymentID string `json:"deploymentId"`
+
+	// PerformedAt is the timestamp when the deployment was initiated (concurrency token)
+	PerformedAt time.Time `json:"performedAt"`
+}
+
+// WebBrokerAPIUndeploymentEvent contains payload data for "webbroker.undeployed" event type.
+// This event is sent when a WebBroker API is undeployed from a gateway.
+type WebBrokerAPIUndeploymentEvent struct {
+	// ApiId identifies the undeployed WebBroker API (UUID)
+	ApiId string `json:"apiId"`
+
+	// DeploymentID identifies the specific deployment being undeployed
+	DeploymentID string `json:"deploymentId"`
+
+	// PerformedAt is the timestamp when the undeployment was initiated (concurrency token)
+	PerformedAt time.Time `json:"performedAt"`
+}
+
+// WebBrokerAPIDeletionEvent contains payload data for "webbroker.deleted" event type.
+// This event is sent when a WebBroker API is permanently deleted from the platform.
+type WebBrokerAPIDeletionEvent struct {
+	// ApiId identifies the deleted WebBroker API (UUID)
+	ApiId string `json:"apiId"`
+}
+
 // LLMProviderDeletionEvent contains payload data for "llmprovider.deleted" event type.
 // This event is sent when an LLM provider is permanently deleted from the platform.
 type LLMProviderDeletionEvent struct {

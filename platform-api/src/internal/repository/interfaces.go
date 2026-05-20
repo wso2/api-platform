@@ -298,6 +298,19 @@ type WebSubAPIRepository interface {
 	Exists(handle, orgUUID string) (bool, error)
 }
 
+// WebBrokerAPIRepository defines the interface for WebBroker API persistence
+type WebBrokerAPIRepository interface {
+	Create(api *model.WebBrokerAPI) error
+	GetByHandle(handle, orgUUID string) (*model.WebBrokerAPI, error)
+	GetByUUID(uuid, orgUUID string) (*model.WebBrokerAPI, error)
+	List(orgUUID, projectUUID string, limit, offset int) ([]*model.WebBrokerAPI, error)
+	Count(orgUUID string) (int, error)
+	CountByProject(orgUUID, projectUUID string) (int, error)
+	Update(api *model.WebBrokerAPI) error
+	Delete(handle, orgUUID string) error
+	Exists(handle, orgUUID string) (bool, error)
+}
+
 // CustomPolicyRepository defines the interface for custom policy persistence
 type CustomPolicyRepository interface {
 	InsertCustomPolicy(policy *model.CustomPolicy) error

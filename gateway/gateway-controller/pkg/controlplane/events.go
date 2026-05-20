@@ -253,10 +253,10 @@ type LLMProviderDeletedEventPayload struct {
 
 // LLMProviderDeletedEvent represents the complete LLM provider deletion event
 type LLMProviderDeletedEvent struct {
-	Type          string                          `json:"type"`
-	Payload       LLMProviderDeletedEventPayload  `json:"payload"`
-	Timestamp     string                          `json:"timestamp"`
-	CorrelationID string                          `json:"correlationId"`
+	Type          string                         `json:"type"`
+	Payload       LLMProviderDeletedEventPayload `json:"payload"`
+	Timestamp     string                         `json:"timestamp"`
+	CorrelationID string                         `json:"correlationId"`
 }
 
 // LLMProxyDeletedEventPayload represents the payload of an LLM proxy deletion event
@@ -266,10 +266,10 @@ type LLMProxyDeletedEventPayload struct {
 
 // LLMProxyDeletedEvent represents the complete LLM proxy deletion event
 type LLMProxyDeletedEvent struct {
-	Type          string                       `json:"type"`
-	Payload       LLMProxyDeletedEventPayload  `json:"payload"`
-	Timestamp     string                       `json:"timestamp"`
-	CorrelationID string                       `json:"correlationId"`
+	Type          string                      `json:"type"`
+	Payload       LLMProxyDeletedEventPayload `json:"payload"`
+	Timestamp     string                      `json:"timestamp"`
+	CorrelationID string                      `json:"correlationId"`
 }
 
 // MCPProxyDeletedEventPayload represents the payload of an MCP proxy deletion event
@@ -294,10 +294,10 @@ type WebSubAPIDeployedEventPayload struct {
 
 // WebSubAPIDeployedEvent represents the complete WebSub API deployment event
 type WebSubAPIDeployedEvent struct {
-	Type          string                      `json:"type"`
+	Type          string                        `json:"type"`
 	Payload       WebSubAPIDeployedEventPayload `json:"payload"`
-	Timestamp     string                      `json:"timestamp"`
-	CorrelationID string                      `json:"correlationId"`
+	Timestamp     string                        `json:"timestamp"`
+	CorrelationID string                        `json:"correlationId"`
 }
 
 // WebSubAPIUndeployedEventPayload represents the payload of a WebSub API undeployment event
@@ -309,10 +309,10 @@ type WebSubAPIUndeployedEventPayload struct {
 
 // WebSubAPIUndeployedEvent represents the complete WebSub API undeployment event
 type WebSubAPIUndeployedEvent struct {
-	Type          string                        `json:"type"`
+	Type          string                          `json:"type"`
 	Payload       WebSubAPIUndeployedEventPayload `json:"payload"`
-	Timestamp     string                        `json:"timestamp"`
-	CorrelationID string                        `json:"correlationId"`
+	Timestamp     string                          `json:"timestamp"`
+	CorrelationID string                          `json:"correlationId"`
 }
 
 // WebSubAPIDeletedEventPayload represents the payload of a WebSub API deletion event
@@ -322,21 +322,64 @@ type WebSubAPIDeletedEventPayload struct {
 
 // WebSubAPIDeletedEvent represents the complete WebSub API deletion event
 type WebSubAPIDeletedEvent struct {
-	Type          string                      `json:"type"`
+	Type          string                       `json:"type"`
 	Payload       WebSubAPIDeletedEventPayload `json:"payload"`
-	Timestamp     string                      `json:"timestamp"`
-	CorrelationID string                      `json:"correlationId"`
+	Timestamp     string                       `json:"timestamp"`
+	CorrelationID string                       `json:"correlationId"`
+}
+
+// WebBrokerAPIDeployedEventPayload represents the payload of a WebBroker API deployment event
+type WebBrokerAPIDeployedEventPayload struct {
+	APIID        string    `json:"apiId"`
+	DeploymentID string    `json:"deploymentId"`
+	PerformedAt  time.Time `json:"performedAt"`
+}
+
+// WebBrokerAPIDeployedEvent represents the complete WebBroker API deployment event
+type WebBrokerAPIDeployedEvent struct {
+	Type          string                           `json:"type"`
+	Payload       WebBrokerAPIDeployedEventPayload `json:"payload"`
+	Timestamp     string                           `json:"timestamp"`
+	CorrelationID string                           `json:"correlationId"`
+}
+
+// WebBrokerAPIUndeployedEventPayload represents the payload of a WebBroker API undeployment event
+type WebBrokerAPIUndeployedEventPayload struct {
+	APIID        string    `json:"apiId"`
+	DeploymentID string    `json:"deploymentId"`
+	PerformedAt  time.Time `json:"performedAt"`
+}
+
+// WebBrokerAPIUndeployedEvent represents the complete WebBroker API undeployment event
+type WebBrokerAPIUndeployedEvent struct {
+	Type          string                             `json:"type"`
+	Payload       WebBrokerAPIUndeployedEventPayload `json:"payload"`
+	Timestamp     string                             `json:"timestamp"`
+	CorrelationID string                             `json:"correlationId"`
+}
+
+// WebBrokerAPIDeletedEventPayload represents the payload of a WebBroker API deletion event
+type WebBrokerAPIDeletedEventPayload struct {
+	APIID string `json:"apiId"`
+}
+
+// WebBrokerAPIDeletedEvent represents the complete WebBroker API deletion event
+type WebBrokerAPIDeletedEvent struct {
+	Type          string                          `json:"type"`
+	Payload       WebBrokerAPIDeletedEventPayload `json:"payload"`
+	Timestamp     string                          `json:"timestamp"`
+	CorrelationID string                          `json:"correlationId"`
 }
 
 // SubscriptionCreatedEventPayload represents the payload of a subscription created event.
 type SubscriptionCreatedEventPayload struct {
-	APIID              	  string `json:"apiId"`
-	SubscriptionID     	  string `json:"subscriptionId"`
-	ApplicationID      	  string `json:"applicationId,omitempty"`
-	SubscriptionToken  	  string `json:"subscriptionToken"`
-	SubscriptionPlanId 	  string `json:"subscriptionPlanId,omitempty"`
-	Status             	  string `json:"status"`
-	BillingCustomerID 	  string `json:"billingCustomerId,omitempty"`
+	APIID                 string `json:"apiId"`
+	SubscriptionID        string `json:"subscriptionId"`
+	ApplicationID         string `json:"applicationId,omitempty"`
+	SubscriptionToken     string `json:"subscriptionToken"`
+	SubscriptionPlanId    string `json:"subscriptionPlanId,omitempty"`
+	Status                string `json:"status"`
+	BillingCustomerID     string `json:"billingCustomerId,omitempty"`
 	BillingSubscriptionID string `json:"billingSubscriptionId,omitempty"`
 }
 

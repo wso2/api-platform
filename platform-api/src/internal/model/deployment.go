@@ -183,3 +183,72 @@ type WebSubDeployHubChannel struct {
 type WebSubDeployDelivery struct {
 	Policies []Policy `yaml:"policies"`
 }
+
+// WebBrokerAPIDeploymentYAML represents the structure of the YAML used for deploying a WebBroker API
+type WebBrokerAPIDeploymentYAML struct {
+	ApiVersion string                     `yaml:"apiVersion"`
+	Kind       string                     `yaml:"kind"`
+	Metadata   DeploymentMetadata         `yaml:"metadata"`
+	Spec       WebBrokerAPIDeploymentSpec `yaml:"spec"`
+}
+
+// WebBrokerAPIDeploymentSpec represents the spec section of the WebBroker API deployment YAML
+type WebBrokerAPIDeploymentSpec struct {
+	DisplayName     string                             `yaml:"displayName"`
+	Version         string                             `yaml:"version"`
+	Context         string                             `yaml:"context"`
+	Vhosts          *WebBrokerAPIDeploymentVhosts      `yaml:"vhosts,omitempty"`
+	AllChannels     *WebBrokerDeployAllChannelPolicies `yaml:"allChannels,omitempty"`
+	Receiver        *WebBrokerDeployReceiver           `yaml:"receiver,omitempty"`
+	Broker          *WebBrokerDeployBroker             `yaml:"broker,omitempty"`
+	Channels        map[string]WebBrokerDeployChannel  `yaml:"channels,omitempty"`
+	DeploymentState string                             `yaml:"deploymentState,omitempty"`
+}
+
+// WebBrokerAPIDeploymentVhosts represents vhost configuration in the WebBroker API deployment YAML
+type WebBrokerAPIDeploymentVhosts struct {
+	Main    string  `yaml:"main"`
+	Sandbox *string `yaml:"sandbox,omitempty"`
+}
+
+// WebBrokerDeployEventPolicies wraps a list of policies for a single event type,
+// matching the gateway controller's WebBrokerEventPolicies schema.
+type WebBrokerDeployEventPolicies struct {
+	Policies *[]Policy `yaml:"policies,omitempty"`
+}
+
+// WebBrokerDeployAllChannelPolicies represents policies for all channels in the deployment YAML, organized by event type.
+type WebBrokerDeployAllChannelPolicies struct {
+	OnConnectionInit *WebBrokerDeployEventPolicies `yaml:"on_connection_init,omitempty"`
+	OnProduce        *WebBrokerDeployEventPolicies `yaml:"on_produce,omitempty"`
+	OnConsume        *WebBrokerDeployEventPolicies `yaml:"on_consume,omitempty"`
+}
+
+// WebBrokerDeployChannel represents a single channel entry in the deployment YAML.
+type WebBrokerDeployChannel struct {
+	ProduceTo        *WebBrokerDeployTopic         `yaml:"produceTo,omitempty"`
+	ConsumeFrom      *WebBrokerDeployTopic         `yaml:"consumeFrom,omitempty"`
+	OnConnectionInit *WebBrokerDeployEventPolicies `yaml:"on_connection_init,omitempty"`
+	OnProduce        *WebBrokerDeployEventPolicies `yaml:"on_produce,omitempty"`
+	OnConsume        *WebBrokerDeployEventPolicies `yaml:"on_consume,omitempty"`
+}
+
+// WebBrokerDeployTopic represents a topic configuration in the deployment YAML
+type WebBrokerDeployTopic struct {
+	Topic string `yaml:"topic"`
+}
+
+// WebBrokerDeployReceiver represents the receiver section in the deployment YAML.
+type WebBrokerDeployReceiver struct {
+	Name     string   `yaml:"name"`
+	Type     string   `yaml:"type"`
+	Policies []Policy `yaml:"policies,omitempty"`
+}
+
+// WebBrokerDeployBroker represents the broker section in the deployment YAML.
+type WebBrokerDeployBroker struct {
+	Name       string                 `yaml:"name"`
+	Type       string                 `yaml:"type"`
+	Properties map[string]interface{} `yaml:"properties,omitempty"`
+	Policies   []Policy               `yaml:"policies,omitempty"`
+}

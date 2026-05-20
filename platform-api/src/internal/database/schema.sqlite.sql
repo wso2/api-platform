@@ -366,6 +366,20 @@ CREATE TABLE IF NOT EXISTS websub_apis (
 );
 CREATE INDEX IF NOT EXISTS idx_websub_apis_project ON websub_apis(project_uuid);
 
+-- WEBBROKER APIs table
+CREATE TABLE IF NOT EXISTS webbroker_apis (
+    uuid VARCHAR(40) PRIMARY KEY,
+    project_uuid VARCHAR(40) NOT NULL,
+    description VARCHAR(1023),
+    created_by VARCHAR(255),
+    lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
+    transport VARCHAR(255),
+    configuration TEXT NOT NULL,
+    FOREIGN KEY (uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_webbroker_apis_project ON webbroker_apis(project_uuid);
+
 -- API Keys table (stores API keys for artifacts with hashes as JSON string)
 CREATE TABLE IF NOT EXISTS api_keys (
     uuid VARCHAR(40) PRIMARY KEY,
