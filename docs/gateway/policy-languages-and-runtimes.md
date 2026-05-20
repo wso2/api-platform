@@ -130,6 +130,8 @@ The **Gateway Builder** resolves these modules, compiles them into the Policy En
 
 Python policy support extends the gateway's capabilities into domains where Python's ecosystem is unmatched — particularly **AI/ML, natural language processing, and complex data transformations**.
 
+> **Ready to write a custom Python policy?** See the step-by-step guide: [Writing Custom Python Policies](policies/writing-custom-python-policies.md).
+
 ### Why Python?
 
 - **AI/ML ecosystem:** Direct access to libraries like `transformers`, `tiktoken`, `scikit-learn`, and custom compression engines.
@@ -188,3 +190,8 @@ Use this decision guide when planning a new policy:
 | **Team expertise** | Go-proficient team | Python-proficient team |
 
 Start with Go unless your policy specifically requires Python libraries or Python-native capabilities. The majority of gateway policies are written in Go.
+
+## Next Steps
+
+- [Writing Custom Python Policies](policies/writing-custom-python-policies.md) — Step-by-step guide to creating, building, and deploying custom Python policies
+- [Customizing the Gateway by Adding and Removing Policies](../cli/customizing-gateway-policies.md) — `ap gateway image build` CLI reference and `build.yaml` format
