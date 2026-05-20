@@ -1,0 +1,25 @@
+{{- $runtime := .Values.gateway.gatewayRuntime -}}
+{{- $pdb := $runtime.podDisruptionBudget -}}
+{{- if and $runtime.deployment.enabled $pdb.enabled }}
+{{- if and $pdb.minAvailable $pdb.maxUnavailable }}
+{{- fail "gateway.gatewayRuntime.podDisruptionBudget: only one of minAvailable or maxUnavailable may be set" }}
+{{- end }}
+{{- if not (or $pdb.minAvailable $pdb.maxUnavailable) }}
+{{- fail "gateway.gatewayRuntime.podDisruptionBudget: one of minAvailable or maxUnavailable must be set" }}
+{{- end }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "gateway-operator.fullname" . }}-gateway-runtime
+  labels:
+    {{- include "gateway-operator.componentLabels" (list . "gateway-runtime" dict) | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "gateway-operator.componentSelectorLabels" (list . "gateway-runtime") | nindent 6 }}
+  {{- if $pdb.minAvailable }}
+  minAvailable: {{ $pdb.minAvailable }}
+  {{- else if $pdb.maxUnavailable }}
+  maxUnavailable: {{ $pdb.maxUnavailable }}
+  {{- end }}
+{{- end }}

@@ -18,7 +18,9 @@ metadata:
     {{- toYaml $annotations | nindent 4 }}
   {{- end }}
 spec:
+  {{- if not $controller.hpa.enabled }}
   replicas: {{ $deployment.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "gateway-operator.componentSelectorLabels" (list . "controller") | nindent 6 }}

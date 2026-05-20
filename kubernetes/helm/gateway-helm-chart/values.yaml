@@ -526,6 +526,31 @@ gateway:
       nodeSelector: {}
       tolerations: []
       affinity: {}
+    # Horizontal Pod Autoscaler for the controller.
+    # Requires gateway.config.controller.storage.type=postgres — SQLite does not support multiple replicas.
+    # When enabled, replicaCount is managed by HPA and the Deployment's replicas field is omitted.
+    hpa:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 3
+      # Target average CPU utilization (percentage). Unset or 0 to disable.
+      targetCPUUtilizationPercentage: 80
+      # Target average memory utilization (percentage). Unset or 0 to disable.
+      targetMemoryUtilizationPercentage: ""
+      # Additional custom metrics (autoscaling/v2 MetricSpec objects).
+      customMetrics: []
+      # Scale-up / scale-down behavior tuning (autoscaling/v2 HorizontalPodAutoscalerBehavior).
+      behavior: {}
+    # Pod Disruption Budget for the controller.
+    # minAvailable and maxUnavailable are mutually exclusive; set only one.
+    podDisruptionBudget:
+      enabled: false
+      # Minimum number of pods that must remain available during a disruption.
+      # Accepts an integer or a percentage string (e.g. "50%").
+      minAvailable: 1
+      # Maximum number of pods that may be unavailable during a disruption.
+      # Accepts an integer or a percentage string (e.g. "25%").
+      maxUnavailable: ""
 
   # Gateway Runtime - Router (Envoy) and Policy Engine in a single container,
   # communicating via Unix domain socket (UDS)
@@ -604,3 +629,27 @@ gateway:
       nodeSelector: {}
       tolerations: []
       affinity: {}
+    # Horizontal Pod Autoscaler for the gateway runtime.
+    # When enabled, replicaCount is managed by HPA and the Deployment's replicas field is omitted.
+    hpa:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 5
+      # Target average CPU utilization (percentage). Unset or 0 to disable.
+      targetCPUUtilizationPercentage: 70
+      # Target average memory utilization (percentage). Unset or 0 to disable.
+      targetMemoryUtilizationPercentage: ""
+      # Additional custom metrics (autoscaling/v2 MetricSpec objects).
+      customMetrics: []
+      # Scale-up / scale-down behavior tuning (autoscaling/v2 HorizontalPodAutoscalerBehavior).
+      behavior: {}
+    # Pod Disruption Budget for the gateway runtime.
+    # minAvailable and maxUnavailable are mutually exclusive; set only one.
+    podDisruptionBudget:
+      enabled: false
+      # Minimum number of pods that must remain available during a disruption.
+      # Accepts an integer or a percentage string (e.g. "50%").
+      minAvailable: 1
+      # Maximum number of pods that may be unavailable during a disruption.
+      # Accepts an integer or a percentage string (e.g. "25%").
+      maxUnavailable: ""

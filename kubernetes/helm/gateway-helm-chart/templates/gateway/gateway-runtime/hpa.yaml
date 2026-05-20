@@ -1,0 +1,43 @@
+{{- $runtime := .Values.gateway.gatewayRuntime -}}
+{{- $hpa := $runtime.hpa -}}
+{{- if and $runtime.deployment.enabled $hpa.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "gateway-operator.fullname" . }}-gateway-runtime
+  labels:
+    {{- include "gateway-operator.componentLabels" (list . "gateway-runtime" dict) | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "gateway-operator.fullname" . }}-gateway-runtime
+  minReplicas: {{ $hpa.minReplicas }}
+  maxReplicas: {{ $hpa.maxReplicas }}
+  {{- if or $hpa.targetCPUUtilizationPercentage $hpa.targetMemoryUtilizationPercentage $hpa.customMetrics }}
+  metrics:
+    {{- if $hpa.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $hpa.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if $hpa.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ $hpa.targetMemoryUtilizationPercentage }}
+    {{- end }}
+    {{- with $hpa.customMetrics }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+  {{- with $hpa.behavior }}
+  behavior:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

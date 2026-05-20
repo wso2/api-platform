@@ -1,0 +1,25 @@
+{{- $controller := .Values.gateway.controller -}}
+{{- $pdb := $controller.podDisruptionBudget -}}
+{{- if and $controller.deployment.enabled $pdb.enabled }}
+{{- if and $pdb.minAvailable $pdb.maxUnavailable }}
+{{- fail "gateway.controller.podDisruptionBudget: only one of minAvailable or maxUnavailable may be set" }}
+{{- end }}
+{{- if not (or $pdb.minAvailable $pdb.maxUnavailable) }}
+{{- fail "gateway.controller.podDisruptionBudget: one of minAvailable or maxUnavailable must be set" }}
+{{- end }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "gateway-operator.fullname" . }}-controller
+  labels:
+    {{- include "gateway-operator.componentLabels" (list . "controller" dict) | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "gateway-operator.componentSelectorLabels" (list . "controller") | nindent 6 }}
+  {{- if $pdb.minAvailable }}
+  minAvailable: {{ $pdb.minAvailable }}
+  {{- else if $pdb.maxUnavailable }}
+  maxUnavailable: {{ $pdb.maxUnavailable }}
+  {{- end }}
+{{- end }}
