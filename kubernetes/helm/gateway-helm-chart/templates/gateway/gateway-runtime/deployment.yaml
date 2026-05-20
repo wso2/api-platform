@@ -15,7 +15,9 @@ metadata:
     {{- toYaml $annotations | nindent 4 }}
   {{- end }}
 spec:
+  {{- if not $unified.hpa.enabled }}
   replicas: {{ $deployment.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "gateway-operator.componentSelectorLabels" (list . "gateway-runtime") | nindent 6 }}
