@@ -108,7 +108,7 @@ func buildCreateRequest() *api.WebSubAPI {
 			OnMessageReceived: eventPolicies("websub-hmac-auth", "v1"),
 			OnMessageDelivery: emptyEventPolicies(),
 		},
-		Channels: &map[string]api.WebSubChannel{
+		Channels: map[string]api.WebSubChannel{
 			"issues": {
 				OnSubscription:    emptyEventPolicies(),
 				OnUnsubscription:  emptyEventPolicies(),
@@ -242,7 +242,7 @@ func TestWebSubAPI_ChannelPoliciesStoredAndReturned(t *testing.T) {
 	if resp.Channels == nil {
 		t.Fatal("response Channels should not be nil")
 	}
-	_, ok = (*resp.Channels)["issues"]
+	_, ok = resp.Channels["issues"]
 	if !ok {
 		t.Fatal("'issues' channel not found in response")
 	}
