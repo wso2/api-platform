@@ -133,14 +133,22 @@ func NewReceiver(cfg connectors.ReceiverConfig, opts Options) (connectors.Receiv
 // Start ensures Kafka topics exist and sets up the consumer manager context.
 // The HTTP server is managed by the runtime.
 func (e *WebSubReceiver) Start(ctx context.Context) error {
-	// Collect all Kafka topics to ensure.
+	// Collect all Kafka topics to ensure and build metadata for WebSubAPI topics.
 	var topicsToEnsure []string
-	for _, kafkaTopic := range e.channel.Channels {
+	topicMetadata := make(map[string]map[string]string)
+
+	for channelName, kafkaTopic := range e.channel.Channels {
 		topicsToEnsure = append(topicsToEnsure, kafkaTopic)
+		// Add metadata for WebSubAPI topics
+		topicMetadata[kafkaTopic] = map[string]string{
+			"apiName":     e.channel.Name,
+			"apiVersion":  e.channel.Version,
+			"channelName": channelName,
+		}
 	}
 
 	if len(topicsToEnsure) > 0 {
-		if err := e.brokerDriver.EnsureTopics(ctx, topicsToEnsure); err != nil {
+		if err := e.brokerDriver.EnsureTopics(ctx, topicsToEnsure, topicMetadata); err != nil {
 			return fmt.Errorf("failed to ensure kafka topics: %w", err)
 		}
 	}

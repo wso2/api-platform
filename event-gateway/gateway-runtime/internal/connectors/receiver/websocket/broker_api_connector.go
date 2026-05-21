@@ -102,7 +102,7 @@ func (e *WebBrokerApiReceiver) Start(ctx context.Context) error {
 		slog.Info("Ensuring Kafka topics exist",
 			"channel", e.channel.Name,
 			"topics", e.opts.Topics)
-		if err := e.brokerDriver.EnsureTopics(ctx, e.opts.Topics); err != nil {
+		if err := e.brokerDriver.EnsureTopics(ctx, e.opts.Topics, nil); err != nil {
 			return fmt.Errorf("failed to ensure kafka topics: %w", err)
 		}
 		slog.Info("Kafka topics verified",

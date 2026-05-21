@@ -100,22 +100,36 @@ func (e *KafkaBrokerDriver) TopicExists(ctx context.Context, topic string) (bool
 }
 
 // EnsureTopics creates topics if they don't already exist (idempotent).
-func (e *KafkaBrokerDriver) EnsureTopics(ctx context.Context, topics []string) error {
-	resp, err := e.admin.CreateTopics(ctx, 1, 1, nil, topics...)
-	if err != nil {
-		return fmt.Errorf("failed to create topics: %w", err)
-	}
-
-	for _, t := range resp.Sorted() {
-		if t.Err != nil {
-			// "TOPIC_ALREADY_EXISTS" is not a real failure for idempotent creates.
-			if isTopicAlreadyExistsErr(t.Err) {
-				slog.Debug("Topic already exists", "topic", t.Topic)
-				continue
-			}
-			return fmt.Errorf("failed to create topic %s: %w", t.Topic, t.Err)
+// metadata is an optional map of topic name -> key-value pairs for logging/tracking purposes.
+// For WebSubAPI topics, metadata typically includes: apiName, apiVersion, channelName.
+// Note: metadata is logged but not stored in Kafka (Kafka only accepts specific configuration keys).
+func (e *KafkaBrokerDriver) EnsureTopics(ctx context.Context, topics []string, metadata map[string]map[string]string) error {
+	// Create topics one by one to allow logging metadata per topic
+	for _, topic := range topics {
+		resp, err := e.admin.CreateTopics(ctx, 1, 1, nil, topic)
+		if err != nil {
+			return fmt.Errorf("failed to create topic %s: %w", topic, err)
 		}
-		slog.Info("Created topic", "topic", t.Topic)
+
+		for _, t := range resp.Sorted() {
+			if t.Err != nil {
+				// "TOPIC_ALREADY_EXISTS" is not a real failure for idempotent creates.
+				if isTopicAlreadyExistsErr(t.Err) {
+					slog.Debug("Topic already exists", "topic", t.Topic)
+					continue
+				}
+				return fmt.Errorf("failed to create topic %s: %w", t.Topic, t.Err)
+			}
+			slog.Info("Created topic", "topic", t.Topic)
+			// Log metadata for debugging/tracking purposes
+			if metadata != nil && metadata[t.Topic] != nil {
+				slog.Info("Topic metadata",
+					"topic_hash", t.Topic,
+					"apiName", metadata[t.Topic]["apiName"],
+					"apiVersion", metadata[t.Topic]["apiVersion"],
+					"channelName", metadata[t.Topic]["channelName"])
+			}
+		}
 	}
 
 	return nil

@@ -132,7 +132,7 @@ func TestRemoveWebSubApiBinding_ClearsStalePolicyChains(t *testing.T) {
 
 func TestJoinNormalizedTopic_NormalizesUnsupportedCharacters(t *testing.T) {
 	got := binding.JoinNormalizedTopic("/orders/eu", "v1/test", "order_events")
-	want := "_2f_orders_2f_eu_v1_2f_test_order__events"
+	want := "ecc4531260bf8164380296afed77e0b7d4e24e29ff148327f841f0ae4776d81e"
 	if got != want {
 		t.Fatalf("JoinNormalizedTopic() = %q, want %q", got, want)
 	}
