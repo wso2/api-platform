@@ -414,7 +414,7 @@ func mapWebSubAPIModelToAPI(m *model.WebSubAPI, apiUtil *utils.APIUtil) *api.Web
 		Transport:         transport,
 		Context:           m.Configuration.Context,
 		Upstream:          mapUpstreamModelToAPI(&m.Configuration.Upstream),
-		Channels:          *mapWebSubChannelsModelToAPI(m.Configuration.Channels),
+		Channels:          mapWebSubChannelsModelToAPI(m.Configuration.Channels),
 		AllChannels:       mapWebSubAllChannelPoliciesModelToAPI(m.Configuration.AllChannels),
 		SubscriptionPlans: subscriptionPlans,
 		CreatedAt:         utils.TimePtr(m.CreatedAt),
@@ -465,10 +465,10 @@ func mapWebSubAllChannelPoliciesAPIToModel(in *api.WebSubAllChannelPolicies) *mo
 }
 
 // mapWebSubChannelsModelToAPI converts the model channel map to the API channel map.
-func mapWebSubChannelsModelToAPI(in map[string]model.WebSubChannel) *map[string]api.WebSubChannel {
-	if len(in) == 0 {
-		return nil
-	}
+// It always returns a non-nil map so callers that embed the result by value
+// (api.WebSubAPI.Channels is a value-type map) do not panic when the input is
+// empty or nil.
+func mapWebSubChannelsModelToAPI(in map[string]model.WebSubChannel) map[string]api.WebSubChannel {
 	out := make(map[string]api.WebSubChannel, len(in))
 	for name, ch := range in {
 		out[name] = api.WebSubChannel{
@@ -478,7 +478,7 @@ func mapWebSubChannelsModelToAPI(in map[string]model.WebSubChannel) *map[string]
 			OnMessageDelivery: mapEventPoliciesModelToAPI(ch.OnMessageDelivery),
 		}
 	}
-	return &out
+	return out
 }
 
 // mapEventPoliciesModelToAPI converts model event policies to API.
