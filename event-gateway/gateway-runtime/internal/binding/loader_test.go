@@ -187,11 +187,11 @@ func TestWebSubApiTopicName(t *testing.T) {
 		channelName string
 		expected    string
 	}{
-		{"repo-watcher", "v1", "issues", "repo-watcher_v1_issues"},
-		{"repo-watcher", "v1", "pull-requests", "repo-watcher_v1_pull-requests"},
-		{"order-api", "v2", "orders", "order-api_v2_orders"},
-		{"repo/watcher", "v1", "/api/er3", "repo_2f_watcher_v1__2f_api_2f_er3"},
-		{"repo_watcher", "v1/test", "pull_requests", "repo__watcher_v1_2f_test_pull__requests"},
+		{"repo-watcher", "v1", "issues", "6a72e9e6ebbde08da54961b430989a7b8ac451a384ab36665543fc548563e199"},
+		{"repo-watcher", "v1", "pull-requests", "b4b6bfa33cf4697e35c7fa322f03faacedc69a2647cd595d591d465bf717b3aa"},
+		{"order-api", "v2", "orders", "9951c9bf27fa5944a610477cec7be45248147a8751108ef307317f2fb7ab0511"},
+		{"repo/watcher", "v1", "/api/er3", "43a2f2a18018d0010b084f602b32b8f2989957f381aa3154711fdb3171ee2509"},
+		{"repo_watcher", "v1/test", "pull_requests", "297f30b5b806966ab875d35a30472308e606c4c72c0198b2bc5f1fef302b0a85"},
 	}
 
 	for _, tt := range tests {
@@ -209,8 +209,8 @@ func TestWebSubApiSubscriptionTopic(t *testing.T) {
 		version  string
 		expected string
 	}{
-		{"repo-watcher", "v1", "repo-watcher_v1_____subscriptions"},
-		{"repo/watcher", "v1/test", "repo_2f_watcher_v1_2f_test_____subscriptions"},
+		{"repo-watcher", "v1", "9b20e5d2847060d60712b7e8858cb7a8c3fa638fa4fc443cccb8d6cc1daaef99"},
+		{"repo/watcher", "v1/test", "1c45f90f00ebdbfe43419f76e0d468b200e4f26db9587d6ea7cbc87b5aaa8d23"},
 	}
 
 	for _, tt := range tests {
