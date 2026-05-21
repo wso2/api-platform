@@ -19,6 +19,7 @@
 package binding
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"path"
 	"strings"
@@ -140,18 +141,22 @@ type ChannelsConfig struct {
 	Channels []Binding `yaml:"channels"`
 }
 
-// JoinNormalizedTopic derives a Kafka topic name by normalizing each logical
-// segment and joining them with underscores.
+// JoinNormalizedTopic derives a Kafka topic name by hashing the parts joined with underscores.
+// Each part is written as `<length>:<value>|` to ensure uniqueness and prevent collisions.
+// eg: "my-api", "v1", "/orders" -> "6:my-api|2:v1|7:/orders|" -> SHA-256 hash of that string.
+// Returns the SHA-256 hash of the joined string.
 func JoinNormalizedTopic(parts ...string) string {
 	if len(parts) == 0 {
 		return ""
 	}
-
-	normalizedParts := make([]string, 0, len(parts))
+	var joined strings.Builder
 	for _, part := range parts {
-		normalizedParts = append(normalizedParts, NormalizeTopicSegment(part))
+		fmt.Fprintf(&joined, "%d:%s|", len(part), part)
 	}
-	return strings.Join(normalizedParts, "_")
+	// Calculate SHA-256 hash
+	hash := sha256.Sum256([]byte(joined.String()))
+	// Return hex-encoded hash
+	return fmt.Sprintf("%x", hash)
 }
 
 // WebSubApiTopicName derives a Kafka topic name for a WebSubApi channel.
