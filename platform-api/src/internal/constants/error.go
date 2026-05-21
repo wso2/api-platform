@@ -172,6 +172,13 @@ var (
 )
 
 var (
+	ErrWebBrokerAPIExists                = errors.New("webbroker api already exists")
+	ErrWebBrokerAPINotFound              = errors.New("webbroker api not found")
+	ErrWebBrokerAPILimitReached          = errors.New("webbroker api limit reached for organization")
+	ErrProjectHasAssociatedWebBrokerAPIs = errors.New("project has associated WebBroker APIs")
+)
+
+var (
 	// API Key errors
 	ErrAPIKeyNotFound      = errors.New("api key not found")
 	ErrAPIKeyAlreadyExists = errors.New("api key already exists")

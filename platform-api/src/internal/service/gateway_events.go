@@ -55,6 +55,10 @@ const (
 	EventTypeWebSubAPIUndeployed = "websub.undeployed"
 	EventTypeWebSubAPIDeleted    = "websub.deleted"
 
+	EventTypeWebBrokerAPIDeployed   = "webbroker.deployed"
+	EventTypeWebBrokerAPIUndeployed = "webbroker.undeployed"
+	EventTypeWebBrokerAPIDeleted    = "webbroker.deleted"
+
 	EventTypeAPIKeyCreated = "apikey.created"
 	EventTypeAPIKeyRevoked = "apikey.revoked"
 	EventTypeAPIKeyUpdated = "apikey.updated"
@@ -145,6 +149,21 @@ func (s *GatewayEventsService) BroadcastWebSubAPIUndeploymentEvent(gatewayID str
 // BroadcastWebSubAPIDeletionEvent sends a WebSub API deletion event to target gateway.
 func (s *GatewayEventsService) BroadcastWebSubAPIDeletionEvent(gatewayID string, deletion *model.WebSubAPIDeletionEvent) error {
 	return s.broadcastEvent(gatewayID, EventTypeWebSubAPIDeleted, deletion)
+}
+
+// BroadcastWebBrokerAPIDeploymentEvent sends a WebBroker API deployment event to target gateway.
+func (s *GatewayEventsService) BroadcastWebBrokerAPIDeploymentEvent(gatewayID string, deployment *model.WebBrokerAPIDeploymentEvent) error {
+	return s.broadcastEvent(gatewayID, EventTypeWebBrokerAPIDeployed, deployment)
+}
+
+// BroadcastWebBrokerAPIUndeploymentEvent sends a WebBroker API undeployment event to target gateway.
+func (s *GatewayEventsService) BroadcastWebBrokerAPIUndeploymentEvent(gatewayID string, undeployment *model.WebBrokerAPIUndeploymentEvent) error {
+	return s.broadcastEvent(gatewayID, EventTypeWebBrokerAPIUndeployed, undeployment)
+}
+
+// BroadcastWebBrokerAPIDeletionEvent sends a WebBroker API deletion event to target gateway.
+func (s *GatewayEventsService) BroadcastWebBrokerAPIDeletionEvent(gatewayID string, deletion *model.WebBrokerAPIDeletionEvent) error {
+	return s.broadcastEvent(gatewayID, EventTypeWebBrokerAPIDeleted, deletion)
 }
 
 // BroadcastLLMProviderDeletionEvent sends an LLM provider deletion event to target gateway.

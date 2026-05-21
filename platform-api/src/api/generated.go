@@ -411,6 +411,38 @@ const (
 	ValidateAPIProjectRequestProviderGitlab    ValidateAPIProjectRequestProvider = "gitlab"
 )
 
+// Defines values for WebBrokerAPIBrokerType.
+const (
+	Kafka WebBrokerAPIBrokerType = "kafka"
+)
+
+// Defines values for WebBrokerAPILifeCycleStatus.
+const (
+	WebBrokerAPILifeCycleStatusCREATED    WebBrokerAPILifeCycleStatus = "CREATED"
+	WebBrokerAPILifeCycleStatusDEPRECATED WebBrokerAPILifeCycleStatus = "DEPRECATED"
+	WebBrokerAPILifeCycleStatusPUBLISHED  WebBrokerAPILifeCycleStatus = "PUBLISHED"
+	WebBrokerAPILifeCycleStatusRETIRED    WebBrokerAPILifeCycleStatus = "RETIRED"
+)
+
+// Defines values for WebBrokerAPIReceiverType.
+const (
+	Websocket WebBrokerAPIReceiverType = "websocket"
+)
+
+// Defines values for WebBrokerAPITransport.
+const (
+	WebBrokerAPITransportHttp  WebBrokerAPITransport = "http"
+	WebBrokerAPITransportHttps WebBrokerAPITransport = "https"
+)
+
+// Defines values for WebBrokerAPIListItemLifeCycleStatus.
+const (
+	WebBrokerAPIListItemLifeCycleStatusCREATED    WebBrokerAPIListItemLifeCycleStatus = "CREATED"
+	WebBrokerAPIListItemLifeCycleStatusDEPRECATED WebBrokerAPIListItemLifeCycleStatus = "DEPRECATED"
+	WebBrokerAPIListItemLifeCycleStatusPUBLISHED  WebBrokerAPIListItemLifeCycleStatus = "PUBLISHED"
+	WebBrokerAPIListItemLifeCycleStatusRETIRED    WebBrokerAPIListItemLifeCycleStatus = "RETIRED"
+)
+
 // Defines values for WebSubAPILifeCycleStatus.
 const (
 	WebSubAPILifeCycleStatusCREATED    WebSubAPILifeCycleStatus = "CREATED"
@@ -421,8 +453,8 @@ const (
 
 // Defines values for WebSubAPITransport.
 const (
-	Http  WebSubAPITransport = "http"
-	Https WebSubAPITransport = "https"
+	WebSubAPITransportHttp  WebSubAPITransport = "http"
+	WebSubAPITransportHttps WebSubAPITransport = "https"
 )
 
 // Defines values for WebSubAPIListItemLifeCycleStatus.
@@ -3059,10 +3091,142 @@ type ValidateOpenAPIRequest0 = interface{}
 // ValidateOpenAPIRequest1 defines model for .
 type ValidateOpenAPIRequest1 = interface{}
 
+// WebBrokerAPI defines model for WebBrokerAPI.
+type WebBrokerAPI struct {
+	// AllChannels Policies applied to all channels, organized by event type.
+	AllChannels *WebBrokerAllChannelPolicies `json:"allChannels,omitempty" yaml:"allChannels,omitempty"`
+
+	// Broker Message broker configuration
+	Broker struct {
+		Name       string                  `json:"name" yaml:"name"`
+		Properties *map[string]interface{} `json:"properties,omitempty" yaml:"properties,omitempty"`
+		Type       WebBrokerAPIBrokerType  `json:"type" yaml:"type"`
+	} `binding:"required" json:"broker" yaml:"broker"`
+
+	// Channels Per-channel configuration keyed by channel name. Each key is a channel name and defines policies and topics for that channel.
+	Channels map[string]WebBrokerChannel `binding:"required" json:"channels" yaml:"channels"`
+
+	// Context Base path for the API (must start with /)
+	Context   *string    `json:"context,omitempty" yaml:"context,omitempty"`
+	CreatedAt *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+
+	// CreatedBy Username of the creator
+	CreatedBy   *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+
+	// Id Unique handle for the WebBroker API
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// Kind Kind of the WebBroker API
+	Kind *string `json:"kind,omitempty" yaml:"kind,omitempty"`
+
+	// LifeCycleStatus Lifecycle status of the WebBroker API
+	LifeCycleStatus *WebBrokerAPILifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
+
+	// Name Human-readable name for the WebBroker API
+	Name string `binding:"required" json:"name" yaml:"name"`
+
+	// ProjectId UUID of the project this API belongs to
+	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
+
+	// Receiver WebSocket receiver configuration
+	Receiver struct {
+		Name string                   `json:"name" yaml:"name"`
+		Type WebBrokerAPIReceiverType `json:"type" yaml:"type"`
+	} `binding:"required" json:"receiver" yaml:"receiver"`
+
+	// SubscriptionPlans List of subscription plan IDs
+	SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+
+	// Transport Supported transport protocols
+	Transport *[]WebBrokerAPITransport `json:"transport,omitempty" yaml:"transport,omitempty"`
+	UpdatedAt *time.Time               `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// Version Semantic version of the WebBroker API
+	Version string `binding:"required" json:"version" yaml:"version"`
+}
+
+// WebBrokerAPIBrokerType defines model for WebBrokerAPI.Broker.Type.
+type WebBrokerAPIBrokerType string
+
+// WebBrokerAPILifeCycleStatus Lifecycle status of the WebBroker API
+type WebBrokerAPILifeCycleStatus string
+
+// WebBrokerAPIReceiverType defines model for WebBrokerAPI.Receiver.Type.
+type WebBrokerAPIReceiverType string
+
+// WebBrokerAPITransport defines model for WebBrokerAPI.Transport.
+type WebBrokerAPITransport string
+
+// WebBrokerAPIListItem defines model for WebBrokerAPIListItem.
+type WebBrokerAPIListItem struct {
+	Context         *string                              `json:"context,omitempty" yaml:"context,omitempty"`
+	CreatedAt       *time.Time                           `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	Id              *string                              `json:"id,omitempty" yaml:"id,omitempty"`
+	LifeCycleStatus *WebBrokerAPIListItemLifeCycleStatus `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
+	Name            *string                              `json:"name,omitempty" yaml:"name,omitempty"`
+	ProjectId       *string                              `json:"projectId,omitempty" yaml:"projectId,omitempty"`
+	UpdatedAt       *time.Time                           `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	Version         *string                              `json:"version,omitempty" yaml:"version,omitempty"`
+}
+
+// WebBrokerAPIListItemLifeCycleStatus defines model for WebBrokerAPIListItem.LifeCycleStatus.
+type WebBrokerAPIListItemLifeCycleStatus string
+
+// WebBrokerAPIListResponse defines model for WebBrokerAPIListResponse.
+type WebBrokerAPIListResponse struct {
+	Count      int                    `binding:"required" json:"count" yaml:"count"`
+	List       []WebBrokerAPIListItem `binding:"required" json:"list" yaml:"list"`
+	Pagination Pagination             `json:"pagination" yaml:"pagination"`
+}
+
+// WebBrokerAllChannelPolicies Policies applied to all channels, organized by event type.
+type WebBrokerAllChannelPolicies struct {
+	// OnConnectionInit Policies for a single event type.
+	OnConnectionInit *WebBrokerEventPolicies `json:"on_connection_init,omitempty" yaml:"on_connection_init,omitempty"`
+
+	// OnConsume Policies for a single event type.
+	OnConsume *WebBrokerEventPolicies `json:"on_consume,omitempty" yaml:"on_consume,omitempty"`
+
+	// OnProduce Policies for a single event type.
+	OnProduce *WebBrokerEventPolicies `json:"on_produce,omitempty" yaml:"on_produce,omitempty"`
+}
+
+// WebBrokerChannel A single channel definition with topic mappings and optional per-channel policy overrides.
+type WebBrokerChannel struct {
+	// ConsumeFrom Kafka topic to consume messages from
+	ConsumeFrom *struct {
+		Topic *string `json:"topic,omitempty" yaml:"topic,omitempty"`
+	} `json:"consumeFrom,omitempty" yaml:"consumeFrom,omitempty"`
+
+	// OnConnectionInit Policies for a single event type.
+	OnConnectionInit *WebBrokerEventPolicies `json:"on_connection_init,omitempty" yaml:"on_connection_init,omitempty"`
+
+	// OnConsume Policies for a single event type.
+	OnConsume *WebBrokerEventPolicies `json:"on_consume,omitempty" yaml:"on_consume,omitempty"`
+
+	// OnProduce Policies for a single event type.
+	OnProduce *WebBrokerEventPolicies `json:"on_produce,omitempty" yaml:"on_produce,omitempty"`
+
+	// ProduceTo Kafka topic to produce messages to
+	ProduceTo *struct {
+		Topic *string `json:"topic,omitempty" yaml:"topic,omitempty"`
+	} `json:"produceTo,omitempty" yaml:"produceTo,omitempty"`
+}
+
+// WebBrokerEventPolicies Policies for a single event type.
+type WebBrokerEventPolicies struct {
+	// Policies List of policies applied for this event type.
+	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+}
+
 // WebSubAPI defines model for WebSubAPI.
 type WebSubAPI struct {
+	// AllChannels Policies applied to all channels, organized by event type.
+	AllChannels *WebSubAllChannelPolicies `json:"allChannels,omitempty" yaml:"allChannels,omitempty"`
+
 	// Channels Per-channel configuration keyed by channel name. Each key is a channel name and defines policies applied only to that channel.
-	Channels *map[string]WebSubChannel `json:"channels,omitempty" yaml:"channels,omitempty"`
+	Channels map[string]WebSubChannel `binding:"required" json:"channels" yaml:"channels"`
 
 	// Context Base path for the API (must start with /)
 	Context   *string    `json:"context,omitempty" yaml:"context,omitempty"`
@@ -3083,9 +3247,6 @@ type WebSubAPI struct {
 
 	// Name Human-readable name for the WebSub API
 	Name string `binding:"required" json:"name" yaml:"name"`
-
-	// AllChannels Policies applied to all channels, organized by event type.
-	AllChannels *WebSubAllChannelPolicies `json:"allChannels,omitempty" yaml:"allChannels,omitempty"`
 
 	// ProjectId UUID of the project this API belongs to
 	ProjectId string `binding:"required" json:"projectId" yaml:"projectId"`
@@ -3132,24 +3293,18 @@ type WebSubAPIListResponse struct {
 	Pagination Pagination          `json:"pagination" yaml:"pagination"`
 }
 
-// WebSubEventPolicies Policies for a single event type.
-type WebSubEventPolicies struct {
-	// Policies List of policies applied for this event type.
-	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
-}
-
 // WebSubAllChannelPolicies Policies applied to all channels, organized by event type.
 type WebSubAllChannelPolicies struct {
-	// OnMessageDelivery Policies applied when delivering a message to a subscriber callback URL (e.g., hmac-sign-messages)
+	// OnMessageDelivery Policies for a single event type.
 	OnMessageDelivery *WebSubEventPolicies `json:"on_message_delivery,omitempty" yaml:"on_message_delivery,omitempty"`
 
-	// OnMessageReceived Policies applied when a message is received from the publisher via webhook (e.g., hmac-signature-validation)
+	// OnMessageReceived Policies for a single event type.
 	OnMessageReceived *WebSubEventPolicies `json:"on_message_received,omitempty" yaml:"on_message_received,omitempty"`
 
-	// OnSubscription Policies applied when a client subscribes to a channel (e.g., api-key-auth)
+	// OnSubscription Policies for a single event type.
 	OnSubscription *WebSubEventPolicies `json:"on_subscription,omitempty" yaml:"on_subscription,omitempty"`
 
-	// OnUnsubscription Policies applied when a client unsubscribes from a channel
+	// OnUnsubscription Policies for a single event type.
 	OnUnsubscription *WebSubEventPolicies `json:"on_unsubscription,omitempty" yaml:"on_unsubscription,omitempty"`
 }
 
@@ -3166,6 +3321,12 @@ type WebSubChannel struct {
 
 	// OnUnsubscription Policies for a single event type.
 	OnUnsubscription *WebSubEventPolicies `json:"on_unsubscription,omitempty" yaml:"on_unsubscription,omitempty"`
+}
+
+// WebSubEventPolicies Policies for a single event type.
+type WebSubEventPolicies struct {
+	// Policies List of policies applied for this event type.
+	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 }
 
 // ArtifactTypeQ defines model for ArtifactType-Q.
@@ -3587,6 +3748,31 @@ type UpdateSubscriptionParams struct {
 	SubscriberId string `form:"subscriberId" json:"subscriberId" yaml:"subscriberId"`
 }
 
+// ListWebBrokerAPIsParams defines parameters for ListWebBrokerAPIs.
+type ListWebBrokerAPIsParams struct {
+	ProjectId string `form:"projectId" json:"projectId" yaml:"projectId"`
+	Limit     *int   `form:"limit,omitempty" json:"limit,omitempty" yaml:"limit,omitempty"`
+	Offset    *int   `form:"offset,omitempty" json:"offset,omitempty" yaml:"offset,omitempty"`
+}
+
+// GetWebBrokerAPIDeploymentsParams defines parameters for GetWebBrokerAPIDeployments.
+type GetWebBrokerAPIDeploymentsParams struct {
+	GatewayId *openapi_types.UUID `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
+	Status    *string             `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+// RestoreWebBrokerAPIDeploymentParams defines parameters for RestoreWebBrokerAPIDeployment.
+type RestoreWebBrokerAPIDeploymentParams struct {
+	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
+	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+}
+
+// UndeployWebBrokerAPIParams defines parameters for UndeployWebBrokerAPI.
+type UndeployWebBrokerAPIParams struct {
+	DeploymentId string `form:"deploymentId" json:"deploymentId" yaml:"deploymentId"`
+	GatewayId    string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+}
+
 // ListWebSubAPIsParams defines parameters for ListWebSubAPIs.
 type ListWebSubAPIsParams struct {
 	ProjectId string `form:"projectId" json:"projectId" yaml:"projectId"`
@@ -3740,6 +3926,27 @@ type ValidateAPIProjectJSONRequestBody = ValidateAPIProjectRequest
 
 // ValidateOpenAPIMultipartRequestBody defines body for ValidateOpenAPI for multipart/form-data ContentType.
 type ValidateOpenAPIMultipartRequestBody = ValidateOpenAPIRequest
+
+// CreateWebBrokerAPIJSONRequestBody defines body for CreateWebBrokerAPI for application/json ContentType.
+type CreateWebBrokerAPIJSONRequestBody = WebBrokerAPI
+
+// UpdateWebBrokerAPIJSONRequestBody defines body for UpdateWebBrokerAPI for application/json ContentType.
+type UpdateWebBrokerAPIJSONRequestBody = WebBrokerAPI
+
+// CreateWebBrokerAPIKeyJSONRequestBody defines body for CreateWebBrokerAPIKey for application/json ContentType.
+type CreateWebBrokerAPIKeyJSONRequestBody = CreateAPIKeyRequest
+
+// UpdateWebBrokerAPIKeyJSONRequestBody defines body for UpdateWebBrokerAPIKey for application/json ContentType.
+type UpdateWebBrokerAPIKeyJSONRequestBody = UpdateAPIKeyRequest
+
+// DeployWebBrokerAPIJSONRequestBody defines body for DeployWebBrokerAPI for application/json ContentType.
+type DeployWebBrokerAPIJSONRequestBody = DeployRequest
+
+// PublishWebBrokerAPIToDevPortalJSONRequestBody defines body for PublishWebBrokerAPIToDevPortal for application/json ContentType.
+type PublishWebBrokerAPIToDevPortalJSONRequestBody = PublishToDevPortalRequest
+
+// UnpublishWebBrokerAPIFromDevPortalJSONRequestBody defines body for UnpublishWebBrokerAPIFromDevPortal for application/json ContentType.
+type UnpublishWebBrokerAPIFromDevPortalJSONRequestBody = UnpublishFromDevPortalRequest
 
 // CreateWebSubAPIJSONRequestBody defines body for CreateWebSubAPI for application/json ContentType.
 type CreateWebSubAPIJSONRequestBody = WebSubAPI

@@ -5147,6 +5147,520 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /webbroker-apis:
+    post:
+      summary: Create a new WebBroker API
+      operationId: createWebBrokerAPI
+      tags:
+        - WebBrokerAPIs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebBrokerAPI'
+      responses:
+        '201':
+          description: WebBroker API created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebBrokerAPI'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      summary: List WebBroker APIs
+      operationId: listWebBrokerAPIs
+      tags:
+        - WebBrokerAPIs
+      parameters:
+        - name: projectId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of WebBroker APIs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebBrokerAPIListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /webbroker-apis/{apiId}:
+    get:
+      summary: Get WebBroker API by ID
+      operationId: getWebBrokerAPI
+      tags:
+        - WebBrokerAPIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: WebBroker API details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebBrokerAPI'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      summary: Update WebBroker API
+      operationId: updateWebBrokerAPI
+      tags:
+        - WebBrokerAPIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebBrokerAPI'
+      responses:
+        '200':
+          description: WebBroker API updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebBrokerAPI'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete WebBroker API
+      operationId: deleteWebBrokerAPI
+      tags:
+        - WebBrokerAPIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: WebBroker API deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /webbroker-apis/{apiId}/api-keys:
+    post:
+      summary: Create an API key for WebBroker API
+      operationId: createWebBrokerAPIKey
+      tags:
+        - WebBrokerAPIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAPIKeyRequest'
+      responses:
+        '201':
+          description: API key created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateAPIKeyResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /webbroker-apis/{apiId}/api-keys/{keyName}:
+    put:
+      summary: Update an API key for WebBroker API
+      description: |
+        Updates an existing API key for the specified WebBroker API. The new API key value will
+        be hashed before storage and broadcasted to all gateways where the API is deployed.
+        This endpoint allows external platforms to rotate API keys on hybrid gateways.
+      operationId: updateWebBrokerAPIKey
+      tags:
+        - WebBrokerAPIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: keyName
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAPIKeyRequest'
+      responses:
+        '200':
+          description: API key updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateAPIKeyResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: Service Unavailable - No gateway connections available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete an API key for WebBroker API
+      operationId: deleteWebBrokerAPIKey
+      tags:
+        - WebBrokerAPIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: keyName
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: API key deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /webbroker-apis/{apiId}/devportals/publish:
+    post:
+      summary: Publish WebBroker API to DevPortal
+      operationId: publishWebBrokerAPIToDevPortal
+      tags:
+        - WebBrokerAPIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishToDevPortalRequest'
+      responses:
+        '200':
+          description: Published successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /webbroker-apis/{apiId}/devportals/unpublish:
+    post:
+      summary: Unpublish WebBroker API from DevPortal
+      operationId: unpublishWebBrokerAPIFromDevPortal
+      tags:
+        - WebBrokerAPIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnpublishFromDevPortalRequest'
+      responses:
+        '200':
+          description: Unpublished successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /webbroker-apis/{apiId}/deployments:
+    post:
+      summary: Deploy WebBroker API to a gateway
+      operationId: deployWebBrokerAPI
+      tags:
+        - WebBrokerAPI Deployments
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeployRequest'
+      responses:
+        '201':
+          description: Deployment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      summary: Get WebBroker API deployments
+      operationId: getWebBrokerAPIDeployments
+      tags:
+        - WebBrokerAPI Deployments
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: gatewayId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Deployments retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /webbroker-apis/{apiId}/deployments/{deploymentId}:
+    get:
+      summary: Get WebBroker API deployment by ID
+      operationId: getWebBrokerAPIDeployment
+      tags:
+        - WebBrokerAPI Deployments
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: deploymentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Deployment details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      summary: Delete WebBroker API deployment
+      operationId: deleteWebBrokerAPIDeployment
+      tags:
+        - WebBrokerAPI Deployments
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: deploymentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Deployment deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /webbroker-apis/{apiId}/deployments/undeploy:
+    post:
+      summary: Undeploy WebBroker API from gateway
+      operationId: undeployWebBrokerAPI
+      tags:
+        - WebBrokerAPI Deployments
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: deploymentId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Undeployed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /webbroker-apis/{apiId}/deployments/restore:
+    post:
+      summary: Restore a previous WebBroker API deployment
+      operationId: restoreWebBrokerAPIDeployment
+      tags:
+        - WebBrokerAPI Deployments
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: deploymentId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Deployment restored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -9182,6 +9696,225 @@ components:
           $ref: '#/components/schemas/WebSubEventPolicies'
         on_message_delivery:
           $ref: '#/components/schemas/WebSubEventPolicies'
+
+    WebBrokerAPI:
+      type: object
+      required:
+        - name
+        - version
+        - projectId
+        - receiver
+        - broker
+        - channels
+      properties:
+        id:
+          type: string
+          description: Unique handle for the WebBroker API
+          example: my-webbroker-api
+        name:
+          type: string
+          description: Human-readable name for the WebBroker API
+          minLength: 1
+          maxLength: 253
+          example: My WebBroker API
+        description:
+          type: string
+          maxLength: 1023
+          example: A WebBroker API for real-time messaging
+        version:
+          type: string
+          description: Semantic version of the WebBroker API
+          pattern: '^v\d+\.\d+$'
+          example: v1.0
+        projectId:
+          type: string
+          description: UUID of the project this API belongs to
+          example: 550e8400-e29b-41d4-a716-446655440000
+        context:
+          type: string
+          description: Base path for the API (must start with /)
+          pattern: '^\/([a-zA-Z0-9_\-.\/]*[^\/])?$'
+          example: /my-webbroker-api
+        receiver:
+          type: object
+          description: WebSocket receiver configuration
+          required:
+            - name
+            - type
+          properties:
+            name:
+              type: string
+              example: websocket-receiver
+            type:
+              type: string
+              enum:
+                - websocket
+              example: websocket
+        broker:
+          type: object
+          description: Message broker configuration
+          required:
+            - name
+            - type
+          properties:
+            name:
+              type: string
+              example: kafka-driver
+            type:
+              type: string
+              enum:
+                - kafka
+              example: kafka
+            properties:
+              type: object
+              additionalProperties: true
+        allChannels:
+          $ref: '#/components/schemas/WebBrokerAllChannelPolicies'
+        channels:
+          type: object
+          description: Per-channel configuration keyed by channel name. Each key is a channel name and defines policies and topics for that channel.
+          additionalProperties:
+            $ref: '#/components/schemas/WebBrokerChannel'
+        transport:
+          type: array
+          description: Supported transport protocols
+          items:
+            type: string
+            enum:
+              - http
+              - https
+          example:
+            - http
+            - https
+        lifeCycleStatus:
+          type: string
+          description: Lifecycle status of the WebBroker API
+          enum:
+            - CREATED
+            - PUBLISHED
+            - DEPRECATED
+            - RETIRED
+          example: CREATED
+        subscriptionPlans:
+          type: array
+          description: List of subscription plan IDs
+          items:
+            type: string
+        kind:
+          type: string
+          description: Kind of the WebBroker API
+          readOnly: true
+          default: WebBrokerApi
+          example: WebBrokerApi
+        createdBy:
+          type: string
+          description: Username of the creator
+          readOnly: true
+          example: jane.doe
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+
+    WebBrokerAPIListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          example: my-webbroker-api
+        name:
+          type: string
+          example: My WebBroker API
+        version:
+          type: string
+          example: v1.0
+        projectId:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+        context:
+          type: string
+          example: /my-webbroker-api
+        lifeCycleStatus:
+          type: string
+          enum:
+            - CREATED
+            - PUBLISHED
+            - DEPRECATED
+            - RETIRED
+          example: CREATED
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    WebBrokerAPIListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebBrokerAPIListItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    WebBrokerAllChannelPolicies:
+      type: object
+      description: Policies applied to all channels, organized by event type.
+      properties:
+        on_connection_init:
+          $ref: '#/components/schemas/WebBrokerEventPolicies'
+        on_produce:
+          $ref: '#/components/schemas/WebBrokerEventPolicies'
+        on_consume:
+          $ref: '#/components/schemas/WebBrokerEventPolicies'
+
+    WebBrokerEventPolicies:
+      type: object
+      description: Policies for a single event type.
+      properties:
+        policies:
+          type: array
+          description: List of policies applied for this event type.
+          items:
+            $ref: '#/components/schemas/Policy'
+
+    WebBrokerChannel:
+      type: object
+      description: A single channel definition with topic mappings and optional per-channel policy overrides.
+      properties:
+        produceTo:
+          type: object
+          description: Kafka topic to produce messages to
+          properties:
+            topic:
+              type: string
+              example: stock.prices
+        consumeFrom:
+          type: object
+          description: Kafka topic to consume messages from
+          properties:
+            topic:
+              type: string
+              example: stock.prices.response
+        on_connection_init:
+          $ref: '#/components/schemas/WebBrokerEventPolicies'
+        on_produce:
+          $ref: '#/components/schemas/WebBrokerEventPolicies'
+        on_consume:
+          $ref: '#/components/schemas/WebBrokerEventPolicies'
 
   responses:
     Unauthorized:
