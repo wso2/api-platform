@@ -455,7 +455,7 @@ type RouteMetadata struct {
 	ProjectID               string
 	DefaultUpstreamCluster  string            // Default cluster for dynamic cluster routing
 	UpstreamBasePath        string            // Base path for the upstream (e.g., /anything)
-	UpstreamDefinitionPaths map[string]string // Maps upstream definition names to their URL paths
+	UpstreamDefinitionPaths map[string]string // Maps upstream definition names to their URL base paths
 }
 
 // generateRequestID generates a unique request identifier

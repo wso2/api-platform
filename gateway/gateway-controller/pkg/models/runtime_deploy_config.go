@@ -88,6 +88,7 @@ type Policy struct {
 
 // UpstreamCluster represents an Envoy cluster with its endpoints.
 type UpstreamCluster struct {
+	Name      string // upstream definition name; "" for the main/sandbox slot clusters
 	BasePath  string
 	Endpoints []Endpoint
 	TLS       *UpstreamTLS
