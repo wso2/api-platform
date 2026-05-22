@@ -199,6 +199,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 				basePath = "/"
 			}
 			rdc.UpstreamClusters[defClusterKey] = &models.UpstreamCluster{
+				Name:     def.Name,
 				BasePath: basePath,
 				Endpoints: []models.Endpoint{{
 					Host: parsedURL.Hostname(),

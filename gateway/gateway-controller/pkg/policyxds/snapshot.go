@@ -232,10 +232,13 @@ func (t *Translator) TranslateRuntimeConfigs(rdcs []*models.RuntimeDeployConfig)
 				upstreamBasePath = uc.BasePath
 			}
 
-			// Build upstream definition paths
+			// Build upstream definition paths, keyed by definition name so the
+			// policy engine can resolve them from a policy's targetUpstream value.
 			upstreamDefPaths := make(map[string]string)
-			for clusterKey, uc := range rdc.UpstreamClusters {
-				upstreamDefPaths[clusterKey] = uc.BasePath
+			for _, uc := range rdc.UpstreamClusters {
+				if uc.Name != "" {
+					upstreamDefPaths[uc.Name] = uc.BasePath
+				}
 			}
 
 			resource, err := t.createRouteConfigResource(routeKey, rdc, upstreamBasePath, upstreamDefPaths)

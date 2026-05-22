@@ -462,7 +462,7 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 		if execCtx.upstreamDefinitionPaths != nil {
 			if targetUpstreamPath, ok := execCtx.upstreamDefinitionPaths[*targetUpstreamName]; ok {
 				if mutations.Path == nil {
-					computedPath := strings.TrimSuffix(targetUpstreamPath, "/") + execCtx.requestBodyCtx.Path
+					computedPath := computeUpstreamPath(execCtx.requestBodyCtx.Path, execCtx.apiContext, targetUpstreamPath)
 					mutations.Path = &computedPath
 					dynamicMetadata[extProcNS]["request_transformation.target_path"] = computedPath
 					execCtx.dynamicMetadata[extProcNS]["request_transformation.target_path"] = computedPath
@@ -686,7 +686,7 @@ func TranslateRequestHeaderActionsWithBodyMerge(
 		if execCtx.upstreamDefinitionPaths != nil {
 			if targetUpstreamPath, ok := execCtx.upstreamDefinitionPaths[*targetUpstreamName]; ok {
 				if mutations.Path == nil {
-					computedPath := strings.TrimSuffix(targetUpstreamPath, "/") + execCtx.requestBodyCtx.Path
+					computedPath := computeUpstreamPath(execCtx.requestBodyCtx.Path, execCtx.apiContext, targetUpstreamPath)
 					mutations.Path = &computedPath
 					dynamicMetadata[extProcNS]["request_transformation.target_path"] = computedPath
 					execCtx.dynamicMetadata[extProcNS]["request_transformation.target_path"] = computedPath
