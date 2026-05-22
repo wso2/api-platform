@@ -101,6 +101,9 @@ Feature: Dynamic Endpoint policy
           - name: bar-upstream
             upstreams:
               - url: http://sample-backend:9080/bar
+          - name: root-upstream
+            upstreams:
+              - url: http://sample-backend:9080
         upstream:
           main:
             url: http://sample-backend:9080
@@ -119,6 +122,13 @@ Feature: Dynamic Endpoint policy
                 version: v1
                 params:
                   targetUpstream: bar-upstream
+          - method: GET
+            path: /extras
+            policies:
+              - name: dynamic-endpoint
+                version: v1
+                params:
+                  targetUpstream: root-upstream
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/dynamic-endpoint-routes/v1.0/items" to be ready
@@ -136,6 +146,13 @@ Feature: Dynamic Endpoint policy
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "path" should be "/bar/records"
+
+    # Routed to root-upstream: empty base path, so only the operation path reaches the backend.
+    When I clear all headers
+    And I send a GET request to "http://localhost:8080/dynamic-endpoint-routes/v1.0/extras"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/extras"
 
     Given I authenticate using basic auth as "admin"
     When I delete the API "dynamic-endpoint-routes-v1.0"
