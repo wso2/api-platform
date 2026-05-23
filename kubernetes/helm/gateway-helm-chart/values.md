@@ -117,7 +117,6 @@ All configurable parameters for the `gateway` Helm chart.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `gateway.config.router.gateway_host` | string | `"*"` | Virtual host domain for the router listener. Use `*` to match all incoming hosts, or a specific FQDN. |
-gatewayRuntime.service.ports.http`. |
 | `gateway.config.router.https_enabled` | bool | `true` | Enable the HTTPS listener. Requires `downstream_tls` configuration. |
 | `gateway.config.router.tracing_service_name` | string | `"router"` | Service name reported in distributed tracing spans emitted by the router. |
 
@@ -241,7 +240,7 @@ gatewayRuntime.service.ports.http`. |
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `gateway.controller.tls.secret.name` | string | `"gateway-tls"` | Name of the Kubernetes Secret containing the TLS certificate and key. Used when `certificateProvider` is `existing-secret`, or as the target secret name when using cert-manager. |
+| `gateway.controller.tls.secret.name` | string | `"gateway-tls"` | Name of the Kubernetes Secret containing the TLS certificate and key. Used when `certificateProvider` is `secret`, or as the target secret name when using cert-manager. |
 | `gateway.controller.tls.secret.certKey` | string | `"tls.crt"` | Key within the TLS secret that holds the certificate data. |
 | `gateway.controller.tls.secret.keyKey` | string | `"tls.key"` | Key within the TLS secret that holds the private key data. |
 
