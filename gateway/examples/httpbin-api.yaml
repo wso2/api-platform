@@ -1,0 +1,48 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+
+# HTTPBin echo API — debug aid.
+#
+# httpbin.org/anything echoes the full request back as JSON: url, method,
+# headers, body, query params. That makes it ideal for verifying exactly
+# what the gateway forwards upstream — header injections, host rewrites,
+# path stripping, body transforms — without running a local backend.
+#
+# Used by the `gateway-debug` agent skill to reproduce issues with
+# minimal moving parts.
+
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: httpbin-echo-v1
+spec:
+  displayName: HTTPBin Echo
+  version: v1
+  context: /httpbin
+  upstream:
+    main:
+      url: https://httpbin.org
+  policies:
+    - name: set-headers
+      version: v1
+      params:
+        request:
+          headers:
+            - name: X-Gateway-Marker
+              value: "ap-gateway"
+  operations:
+    - method: GET
+      path: /anything
+    - method: POST
+      path: /anything
+    - method: PUT
+      path: /anything
+    - method: DELETE
+      path: /anything
