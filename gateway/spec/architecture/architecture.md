@@ -405,6 +405,12 @@ A `401 Unauthorized` from either channel is treated as a **permanent failure** �
 
 The platform may reject the manifest if version or policy set is incompatible — also treated as a permanent failure.
 
+#### Custom Policy Sync
+
+The manifest push carries every policy installed in the gateway, each entry tagged with a `managedBy` field — `"wso2"` for built-in policies and `"customer"` for policies added via `ap gateway image build`. System policies (those whose name is prefixed `wso2_apip_sys_`) are filtered out at the gateway before the manifest is sent; they are an internal concern of the data plane and the Platform API has no need to know about them. Customer-managed entries include the policy's full `parameters` and `systemParameters` JSON-Schema blocks; for WSO2-managed entries those are dropped on the platform side because the schema is already known centrally.
+
+The Platform API persists the manifest into a `gateways.manifest` column on receipt, but does **not** automatically promote customer-managed policies into the catalogue the Console uses for attachment. That step is **Console-triggered** — the Console calls `POST /api/v1/gateway-custom-policies/sync` with the gateway, policy name, and version. The service looks up the stored manifest, verifies the entry's `managedBy == "customer"`, and writes the extracted definition into the org-scoped `gateway_custom_policies` table. Only after this Console sync is a custom policy attachable to APIs through the Console UI.
+
 #### Deployment Acknowledgement
 
 Deployments pushed from the Platform API are not fire-and-forget. After the gateway applies (or fails to apply) a deployment or undeployment, it sends an acknowledgement back over the same WebSocket carrying the originating deployment ID, the action, and a terminal status (`success`/`failed` with an optional error code). Acknowledgements are sent for every WebSocket-pushed resource type — REST APIs, LLM providers, LLM proxies, MCP proxies, and WebSub APIs.
@@ -552,6 +558,6 @@ graph TB
 ## Document Status
 
 - **Document Version**: 2.0
-- **Last Updated**: 2026-05-13
+- **Last Updated**: 2026-05-20
 - **Applies To**: Gateway `1.2.0-SNAPSHOT`
 - **Status**: Active
