@@ -35,10 +35,11 @@ import (
 )
 
 // gatewayVersionPattern accepts two shapes for the registration version field:
-//   - `major.minor`                          (e.g. "1.0")
-//   - `major.minor.patch-preview-<numbers>`  (e.g. "1.1.0-preview-202603",
-//     "1.1.0-preview-202603.1")
-var gatewayVersionPattern = regexp.MustCompile(`^[0-9]{1,6}\.[0-9]{1,6}(\.[0-9]{1,6}-preview-[0-9]+(\.[0-9]+)*)?$`)
+//   - `major.minor`     (e.g. "1.0", "1.1") — LTS-style stable releases
+//   - `YYYY.MM.DD`      (e.g. "2026.05.13") — CalVer stable releases; the
+//     leading segment must be 4 digits to distinguish a calendar year from a
+//     `major.minor` value.
+var gatewayVersionPattern = regexp.MustCompile(`^([0-9]{1,6}\.[0-9]{1,6}|[0-9]{4}\.[0-9]{1,2}\.[0-9]{1,2})$`)
 
 // GatewayHandler handles HTTP requests for gateway operations
 type GatewayHandler struct {
@@ -100,7 +101,7 @@ func (h *GatewayHandler) CreateGateway(c *gin.Context) {
 	}
 	if version != "" && !gatewayVersionPattern.MatchString(version) {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"version must be in 'major.minor' format (e.g. '1.0') or 'major.minor.patch-preview-<build>' format (e.g. '1.1.0-preview-202603' or '1.1.0-preview-202603.1')"))
+			"version must be in 'major.minor' format (e.g. '1.0') or CalVer 'YYYY.MM.DD' format (e.g. '2026.05.13')"))
 		return
 	}
 
