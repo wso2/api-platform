@@ -133,6 +133,13 @@ cli/src/tests/target/
 # /.claude/agents/gateway-operator-expert.md
 /.claude/agents/gateway-operator-expert.md
 .claude/
+# …but DO commit the Claude Code skills wiring. Skills live in
+# `.agents/skills/` (cross-vendor convention used by Codex, Gemini CLI,
+# Cursor, OpenCode, GitHub Copilot). Claude Code reads from
+# `.claude/skills/`, which we expose as a symlink to `../.agents/skills`.
+!.claude/
+.claude/*
+!.claude/skills
 
 # Component specific patterns
 # Platform API
