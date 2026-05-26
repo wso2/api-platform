@@ -65,8 +65,11 @@ func NewComposeManager(composeFile string) (*ComposeManager, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve compose file path: %w", err)
 	}
-	if _, err := os.Stat(absPath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("compose file not found: %s", absPath)
+	if _, err := os.Stat(absPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("compose file not found: %s", absPath)
+		}
+		return nil, fmt.Errorf("failed to stat compose file %s: %w", absPath, err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -138,7 +141,7 @@ func (cm *ComposeManager) WaitForHealthy(ctx context.Context) error {
 		name     string
 		endpoint string
 	}{
-		{"event-gateway", fmt.Sprintf("http://localhost:%s/health", EventGatewayAdminPort)},
+		{"event-gateway", fmt.Sprintf("http://localhost:%s/ready", EventGatewayAdminPort)},
 	}
 
 	client := &http.Client{Timeout: 5 * time.Second}
@@ -164,7 +167,7 @@ func (cm *ComposeManager) WaitForHealthy(ctx context.Context) error {
 					allHealthy = false
 					continue
 				}
-				log.Printf("Service %s is healthy", svc.name)
+				log.Printf("Service %s is ready", svc.name)
 			}
 			if allHealthy {
 				return nil
