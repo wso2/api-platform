@@ -42,14 +42,8 @@ spec:
         {{- end }}
     spec:
       serviceAccountName: {{ include "gateway-operator.serviceAccountName" . }}
-      {{- $globalPullSecrets := default (list) .Values.imagePullSecrets }}
-      {{- $componentPullSecrets := default (list) $controller.imagePullSecrets }}
-      {{- $pullSecrets := concat $globalPullSecrets $componentPullSecrets }}
-      {{- if $pullSecrets }}
-      imagePullSecrets:
-        {{- range $pullSecrets }}
-        - name: {{ . }}
-        {{- end }}
+      {{- with (include "gateway-operator.componentImagePullSecretsBlock" (dict "root" . "componentPullSecrets" $controller.imagePullSecrets)) }}
+      {{- . | nindent 6 }}
       {{- end }}
       {{- with $deployment.podSecurityContext }}
       securityContext:
@@ -72,7 +66,7 @@ spec:
       {{- end }}
       containers:
         - name: gateway-controller
-          image: "{{ $controller.image.repository }}:{{ $controller.image.tag }}"
+          image: {{ include "gateway-operator.componentImage" (dict "root" . "repository" $controller.image.repository "defaultRepository" "ghcr.io/wso2/api-platform/gateway-controller" "tag" $controller.image.tag) | quote }}
           imagePullPolicy: {{ $controller.image.pullPolicy }}
           {{- with $deployment.securityContext }}
           securityContext:

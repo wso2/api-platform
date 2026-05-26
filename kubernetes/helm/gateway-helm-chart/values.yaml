@@ -6,6 +6,24 @@ fullnameOverride: ""
 
 imagePullSecrets: []
 
+# WSO2 Subscription parameters (https://wso2.com/subscription/)
+wso2:
+  subscription:
+    # Name of a docker-registry Secret (in the release namespace) holding credentials
+    # for registry.wso2.com. Setting this enables WSO2 subscription mode:
+    #   1. The secret is added to every component's imagePullSecrets.
+    #   2. Default `ghcr.io/wso2/api-platform/*` image repositories are rewritten to
+    #      `registry.wso2.com/wso2-api-platform/*`, so the released WSO2 images at
+    #      https://docker.wso2.com/ are pulled instead.
+    # Explicit image.repository overrides are preserved as-is.
+    #
+    # Create the secret with:
+    #   kubectl create secret docker-registry wso2-subscription-creds \
+    #     --docker-server=registry.wso2.com \
+    #     --docker-username=<wso2-email> \
+    #     --docker-password=<wso2-password-or-token>
+    imagePullSecret: ""
+
 commonLabels: {}
 commonAnnotations: {}
 
