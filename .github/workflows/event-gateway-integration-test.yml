@@ -60,6 +60,9 @@ jobs:
       - name: Build event-gateway-runtime image
         run: make -C event-gateway build-gateway-runtime VERSION=${{ steps.version.outputs.version }}
 
+      - name: Build webhook-listener image
+        run: docker build -t event-gateway/webhook-listener:local event-gateway/webhook-listener
+
       - name: Run integration tests
         run: make -C event-gateway/it test
 
