@@ -63,7 +63,7 @@ spec:
       {{- end }}
       containers:
         - name: gateway-runtime
-          image: {{ include "gateway-operator.componentImage" (dict "root" . "repository" $unified.image.repository "tag" $unified.image.tag) | quote }}
+          image: {{ include "gateway-operator.componentImage" (dict "root" . "repository" $unified.image.repository "defaultRepository" "ghcr.io/wso2/api-platform/gateway-runtime" "tag" $unified.image.tag) | quote }}
           imagePullPolicy: {{ $unified.image.pullPolicy }}
           args: ["--pol.config", "/etc/policy-engine/config.toml"]
           {{- with $deployment.securityContext }}
