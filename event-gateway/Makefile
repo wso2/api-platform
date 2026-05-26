@@ -88,6 +88,7 @@ build-event-gateway-controller: ## Build event-gateway-controller Docker image
 			--build-arg GIT_COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo "unknown") \
 			--target production \
 			-t $(EVENT_GATEWAY_CONTROLLER_IMAGE):$(VERSION) \
+			-t $(EVENT_GATEWAY_CONTROLLER_IMAGE):latest \
 			--load \
 			.
 	@rm -rf ../gateway/gateway-controller/target
@@ -127,6 +128,7 @@ build-and-push-multiarch-event-gateway-controller: ## Build and push event-gatew
 			--build-arg GIT_COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo "unknown") \
 			--target production \
 			-t $(EVENT_GATEWAY_CONTROLLER_IMAGE):$(VERSION) \
+			-t $(EVENT_GATEWAY_CONTROLLER_IMAGE):latest \
 			--push \
 			.
 	@rm -rf ../gateway/gateway-controller/target

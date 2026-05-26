@@ -124,7 +124,7 @@ Feature: WebSub End-to-End Flow
 
   # ==================== PUBLISH ====================
 
-  Scenario: Publish an event to a known topic returns 200
+  Scenario: Publish an event to a known topic returns 202
     Given I authenticate using basic auth as "admin"
     When I create a WebSub API with the following configuration:
       """

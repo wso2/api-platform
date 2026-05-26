@@ -28,10 +28,16 @@ const (
 )
 
 type listenerHandler struct {
-	logMu sync.Mutex
+	logMu          sync.Mutex
+	receivedMu     sync.RWMutex
+	receivedBodies []string
 }
 
 func (h *listenerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/received-events" {
+		h.handleReceivedEvents(w, r)
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		h.handleGet(w, r)
@@ -67,11 +73,32 @@ func (h *listenerHandler) handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.receivedMu.Lock()
+	h.receivedBodies = append(h.receivedBodies, string(body))
+	h.receivedMu.Unlock()
+
 	h.logRequest("New Webhook Received", r, body)
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("Webhook received successfully!\n"))
+}
+
+// handleReceivedEvents returns all event bodies received via POST as a JSON array.
+// This test-only admin endpoint lets integration tests assert actual delivery.
+func (h *listenerHandler) handleReceivedEvents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		http.Error(w, "Method not allowed.\n", http.StatusMethodNotAllowed)
+		return
+	}
+	h.receivedMu.RLock()
+	bodies := make([]string, len(h.receivedBodies))
+	copy(bodies, h.receivedBodies)
+	h.receivedMu.RUnlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(bodies)
 }
 
 func (h *listenerHandler) logRequest(title string, r *http.Request, body []byte) {

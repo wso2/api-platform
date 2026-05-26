@@ -64,7 +64,7 @@ type Config struct {
 }
 
 // DefaultConfig returns the default test configuration assuming services are
-// mapped to localhost ports via docker-compose.test.yaml.
+// mapped to localhost ports via docker-compose.dev.yaml.
 func DefaultConfig() *Config {
 	return &Config{
 		GatewayControllerURL: fmt.Sprintf("http://localhost:%s%s", GatewayControllerPort, GatewayManagementAPIBasePath),

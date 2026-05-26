@@ -21,6 +21,7 @@ package it
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -251,7 +252,10 @@ func RegisterWebSubSteps(ctx *godog.ScenarioContext, state *TestState) {
 				return fmt.Errorf("subscribe request failed: %w", err)
 			}
 			defer resp.Body.Close()
-			bodyBytes, _ := io.ReadAll(resp.Body)
+			bodyBytes, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return fmt.Errorf("failed to read response body: %w", err)
+			}
 			state.lastResponse = resp
 			state.lastBody = bodyBytes
 			return nil
@@ -283,7 +287,10 @@ func RegisterWebSubSteps(ctx *godog.ScenarioContext, state *TestState) {
 				return fmt.Errorf("unsubscribe request failed: %w", err)
 			}
 			defer resp.Body.Close()
-			bodyBytes, _ := io.ReadAll(resp.Body)
+			bodyBytes, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return fmt.Errorf("failed to read response body: %w", err)
+			}
 			state.lastResponse = resp
 			state.lastBody = bodyBytes
 			return nil
@@ -311,7 +318,10 @@ func RegisterWebSubSteps(ctx *godog.ScenarioContext, state *TestState) {
 				return fmt.Errorf("publish request failed: %w", err)
 			}
 			defer resp.Body.Close()
-			bodyBytes, _ := io.ReadAll(resp.Body)
+			bodyBytes, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return fmt.Errorf("failed to read response body: %w", err)
+			}
 			state.lastResponse = resp
 			state.lastBody = bodyBytes
 			return nil
@@ -323,15 +333,61 @@ func RegisterWebSubSteps(ctx *godog.ScenarioContext, state *TestState) {
 	})
 
 	ctx.Step(`^the webhook listener should have received the event "([^"]*)"$`, func(payload string) error {
-		// Poll the wh-listener logs endpoint (admin) if available, otherwise just check
-		// that publish returned a 2xx (delivery is async so we can only verify acceptance).
-		// The wh-listener doesn't expose a query API, so we validate via publish status.
-		if state.lastResponse == nil {
-			return fmt.Errorf("no response from publish step")
+		err := checkListenerReceivedEvent(state, payload, 10*time.Second)
+		if errors.Is(err, errListenerUnavailable) {
+			// /received-events endpoint not present; fall back to verifying publish acceptance.
+			if state.lastResponse == nil {
+				return fmt.Errorf("no response from publish step")
+			}
+			if state.lastResponse.StatusCode < 200 || state.lastResponse.StatusCode >= 300 {
+				return fmt.Errorf("event publish was not accepted: HTTP %d", state.lastResponse.StatusCode)
+			}
+			return nil
 		}
-		if state.lastResponse.StatusCode < 200 || state.lastResponse.StatusCode >= 300 {
-			return fmt.Errorf("event publish was not accepted: HTTP %d", state.lastResponse.StatusCode)
-		}
-		return nil
+		return err
 	})
+}
+
+// errListenerUnavailable is returned by checkListenerReceivedEvent when the
+// wh-listener /received-events endpoint is not reachable.
+var errListenerUnavailable = errors.New("listener /received-events endpoint unavailable")
+
+// checkListenerReceivedEvent polls GET /received-events on the wh-listener admin
+// interface every 500 ms until a body containing payload is found or timeout expires.
+// Returns errListenerUnavailable if the endpoint is not reachable on the first attempt.
+func checkListenerReceivedEvent(state *TestState, payload string, timeout time.Duration) error {
+	endpoint := state.Config.WebhookListenerURL + "/received-events"
+	deadline := time.Now().Add(timeout)
+	firstAttempt := true
+
+	for time.Now().Before(deadline) {
+		resp, err := state.HTTPClient.Get(endpoint)
+		if err != nil {
+			if firstAttempt {
+				return errListenerUnavailable
+			}
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+		if firstAttempt && resp.StatusCode == http.StatusNotFound {
+			resp.Body.Close()
+			return errListenerUnavailable
+		}
+		firstAttempt = false
+
+		var bodies []string
+		if err := json.NewDecoder(resp.Body).Decode(&bodies); err != nil {
+			resp.Body.Close()
+			return err
+		}
+		resp.Body.Close()
+
+		for _, b := range bodies {
+			if strings.Contains(b, payload) {
+				return nil
+			}
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return fmt.Errorf("webhook listener did not receive event containing %q within %s", payload, timeout)
 }
