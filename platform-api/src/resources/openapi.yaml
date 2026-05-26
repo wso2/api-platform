@@ -57,18 +57,7 @@ info:
     | WebSub/WebBroker Keys | `admin`, `developer` | `admin`, `developer` |
     | WebSub/WebBroker Deployments | any authenticated | `admin`, `developer` |
     | Git operations | — | `admin`, `developer` |
-
-    ### IDP Configuration Example (Keycloak)
-
     ```
-    IDP_ENABLED=true
-    IDP_JWKS_URL=https://keycloak.example.com/realms/myrealm/protocol/openid-connect/certs
-    IDP_ISSUER=https://keycloak.example.com/realms/myrealm
-    IDP_AUDIENCE=platform-api
-    IDP_ROLES_CLAIM_PATH=realm_access.roles
-    IDP_ROLE_MAPPINGS=platform-admin=admin,platform-dev=developer,platform-viewer=viewer
-    ```
-
   version: 1.0.0
   contact:
     name: WSO2 API Platform Team
