@@ -1,0 +1,233 @@
+/**
+ * Copyright (c) 2025, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+/* Billing Page Styles */
+
+/* Smooth scrolling for navigation links */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Container header matching applications page */
+.container-fluid .container-header {
+  color: var(--primary-main-color);
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+/* Billing Tabs */
+.billing-tabs {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  border-bottom: 2px solid #e9ecef;
+}
+
+.billing-tabs .nav-item {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+}
+
+.billing-tabs .nav-link {
+  color: #6c757d;
+  font-weight: 500;
+  border: none;
+  border-bottom: 3px solid transparent;
+  padding: 12px 24px;
+  transition: all 0.3s ease;
+  background: transparent;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  border-radius: 0;
+}
+
+.billing-tabs .nav-link i {
+  font-size: 16px;
+}
+
+.billing-tabs .nav-link:hover {
+  color: #0d6efd;
+  border-bottom-color: #0d6efd;
+  background-color: transparent;
+}
+
+.billing-tabs .nav-link.active {
+  color: #0d6efd;
+  background: transparent;
+  border-bottom-color: #0d6efd;
+  font-weight: 600;
+}
+
+/* Ensure tab content visibility is controlled properly */
+.tab-content > .tab-pane {
+  display: none;
+}
+
+.tab-content > .active {
+  display: block;
+}
+
+.stat-cards-row {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.stat-card {
+  display: flex;
+  align-items: center;
+  padding: 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s ease;
+  height: 100%;
+  min-height: 100px;
+}
+
+.stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.stat-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 16px;
+  font-size: 24px;
+  color: white;
+}
+
+.stat-icon.bg-primary { 
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+}
+
+.stat-icon.bg-success { 
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
+}
+
+.stat-icon.bg-warning { 
+  background: linear-gradient(135deg, #ffeaa7 0%, #fdcb6e 100%); 
+}
+
+.stat-icon.bg-info { 
+  background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); 
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #2c3e50;
+  margin: 0;
+}
+
+.stat-label {
+  font-size: 14px;
+  color: #6c757d;
+  margin: 0;
+}
+
+.badge-status {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.badge-paid {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.badge-pending {
+  background-color: #fff3cd;
+  color: #856404;
+}
+
+.badge-failed {
+  background-color: #f8d7da;
+  color: #721c24;
+}
+
+.payment-method-card {
+  border: 2px solid #e9ecef;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  transition: all 0.2s ease;
+}
+
+.payment-method-card:hover {
+  border-color: #0d6efd;
+  box-shadow: 0 2px 8px rgba(13, 110, 253, 0.1);
+}
+
+.payment-method-card.default {
+  border-color: #0d6efd;
+  background-color: #f8f9ff;
+}
+
+/* Responsive adjustments */
+@media (min-width: 992px) {
+  .stat-cards-row > div {
+    flex: 0 0 25%;
+    max-width: 25%;
+  }
+}
+
+@media (max-width: 991px) and (min-width: 768px) {
+  .stat-cards-row > div {
+    flex: 0 0 50%;
+    max-width: 50%;
+  }
+}
+
+@media (max-width: 767px) {
+  .stat-card {
+    margin-bottom: 16px;
+  }
+  
+  .stat-cards-row {
+    gap: 12px;
+  }
+}
+
+@media (max-width: 768px) {
+  .stat-card {
+    margin-bottom: 16px;
+  }
+}
+
+/* Subscription section highlight when navigated to */
+#subscriptions-section {
+  scroll-margin-top: 20px;
+}
+
+#subscriptions-section:target .card {
+  animation: highlightPulse 1.5s ease-in-out;
+}
+
+@keyframes highlightPulse {
+  0% { box-shadow: 0 0 0 0 rgba(13, 110, 253, 0.4); }
+  50% { box-shadow: 0 0 0 15px rgba(13, 110, 253, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(13, 110, 253, 0); }
+}

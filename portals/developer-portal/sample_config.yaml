@@ -1,0 +1,251 @@
+# Developer Portal Configuration
+#
+# Copy this file to config.yaml and adjust the values for your setup.
+# Every setting here can also be overridden via a DP_* environment variable:
+#
+#   Convention: DP_<LEVEL1>_<LEVEL2>_...
+#   - Each underscore-separated token maps to one config level (case-insensitive)
+#   - Double underscores (__) represent a literal underscore within a key name
+#
+#   Examples:
+#     DP_DB_HOST=myhost          → db.host
+#     DP_IDENTITYPROVIDER_CLIENTID=abc → identityProvider.clientId
+#     DP_SECRETS_DBSECRET=pass   → secrets.dbSecret
+#     DP_ADVANCED_HTTP=true      → advanced.http
+#
+# You can place env var overrides in a .env file at the project root.
+
+# ─── Server ────────────────────────────────────────────────────────────────────
+
+baseUrl: "http://localhost:3000"
+defaultPort: 3000
+readOnlyMode: false
+mode: "production"        # "production" or "development" (dev mode uses pathToContent)
+disableTLS: true
+pathToContent: "./resources/default-layout/"
+pathToDBCert: "./resources/security/ca.pem"
+
+# ─── Logging ───────────────────────────────────────────────────────────────────
+
+logging:
+  consoleOnly: false      # Set to true (or DP_LOGGING_CONSOLEONLY=true) for Docker/cloud
+
+# ─── Database (PostgreSQL) ─────────────────────────────────────────────────────
+
+db:
+  host: "localhost"
+  port: 5432
+  database: "devportal"
+  username: "postgres"
+  password: ""            # Prefer secrets.dbSecret — this field is ignored when secrets.dbSecret is set
+  dialect: "postgres"
+
+# ─── Advanced ──────────────────────────────────────────────────────────────────
+
+advanced:
+  http: true              # Use plain HTTP (no TLS). Set to false to require serverCerts below
+  dbSslDialectOption: false
+  resourceLoadFromBaseUrl: false
+  disabledRoleValidation: true
+  disableOrgCallback: true
+  disableScopeValidation: true
+  disableSilentSSO: false
+  apiKey:
+    enabled: true
+    keyType: "x-wso2-api-key"
+    keyValue: "x-wso2-api-key"
+  tokenExchanger:
+    enabled: false
+  # Mount the OpenAPI-spec-driven /devportal router (request validation + fine-grained
+  # OAuth2 scope enforcement, dispatching by operationId to src/openapi/handlers).
+  # When false, the legacy src/routes/devportalRoute.js is mounted instead.
+  openApiValidator:
+    enabled: true          # Set to false to disable the OpenAPI validator and use legacy routing
+    # Response validation strategy. Off by default in production.
+    #   off      — disabled
+    #   strict     — strict; responses that don't match the spec become 500s
+    #   'log-only' — log drift via warn-level logs but send the response anyway
+    # When unset, enabled only if mode == "development".
+    validateResponses: off 
+
+# ─── TLS Certificates (only needed when advanced.http is false) ────────────────
+
+serverCerts:
+  pathToCert: "./resources/security/client-truststore.pem"
+  pathToPK: "./resources/security/private-key.pem"
+  pathToCA: "./resources/security/client-truststore.pem"
+
+# ─── Identity Provider (OAuth2 / OIDC) ────────────────────────────────────────
+# Leave these values as placeholders when using local auth (defaultAuth below).
+
+identityProvider:
+  name: "IS"
+  issuer: "https://localhost:9443/oauth2/token"
+  authorizationURL: "https://localhost:9443/oauth2/authorize"
+  tokenURL: "https://localhost:9443/oauth2/token"
+  userInfoURL: "https://localhost:9443/oauth2/userinfo"
+  clientId: ""
+  callbackURL: "http://localhost:3000/ACME/callback"
+  scope: "openid profile"
+  signUpURL: ""
+  logoutURL: "https://localhost:9443/oidc/logout"
+  logoutRedirectURI: "http://localhost:3000/ACME"
+  certificate: ""
+  jwksURL: "https://localhost:9443/oauth2/jwks"
+  tokenRefreshTimeoutMs: 10000
+
+# ─── Local / Default Auth ──────────────────────────────────────────────────────
+# Built-in local users for first-time exploration. Disable in production by
+# removing or emptying the users list.
+
+defaultAuth:
+  users:
+    - username: "admin"
+      password: "admin"
+      firstName: "Admin"
+      lastName: "User"
+      email: "admin@example.com"
+      roles:
+        - "admin"
+      orgClaimName: "ACME"
+      organizationIdentifier: "ACME"
+    - username: "developer"
+      password: "developer"
+      firstName: "Developer"
+      lastName: "User"
+      email: "developer@example.com"
+      roles:
+        - "Internal/subscriber"
+      orgClaimName: "ACME"
+      organizationIdentifier: "ACME"
+
+# ─── Role & Claim Mapping ──────────────────────────────────────────────────────
+
+roleClaim: "roles"
+orgIDClaim: "organization.uuid"
+groupsClaim: "groups"
+adminRole: "admin"
+subscriberRole: "Internal/subscriber"
+superAdminRole: "superAdmin"
+tokenExchange: true
+
+# ─── Federated IdP Hints ──────────────────────────────────────────────────────
+
+fidp:
+  google: "google"
+  github: "github"
+  microsoft: "microsoft"
+  enterprise: "EnterpriseIDP"
+  email: "LOCAL"
+
+# ─── Page Access Rules ─────────────────────────────────────────────────────────
+
+authenticatedPages:
+  - "/portal/*/edit"
+  - "/portal"
+  - "/*/configure"
+  - "**/applications"
+  - "**/applications/**"
+  - "**/myapis"
+  - "**/myapis/**"
+  - "**/myapis?**"
+
+authorizedPages:
+  - "**/applications"
+  - "**/applications/**"
+  - "/*/configure"
+  - "/portal/*/edit"
+  - "/portal"
+  - "**/myapis"
+  - "**/myapis/**"
+  - "**/myapis?**"
+
+# ─── Control Plane ─────────────────────────────────────────────────────────────
+
+controlPlane:
+  enabled: false          # Set to true to connect to a WSO2 API Manager control plane
+  url: "https://localhost:9443/api/am/devportal/v2"
+  graphqlURL: "https://localhost:9443/graphql"
+  disableCertValidation: true
+  pathToCertificate: "./resources/security/client-truststore.pem"
+
+# ─── Provider URLs ─────────────────────────────────────────────────────────────
+
+providerURL:
+  AWS: "https://aws.amazon.com"
+
+# ─── Portal UI Config ──────────────────────────────────────────────────────────
+
+portalConfigs:
+  showMaintenanceBanner: false
+  maintenanceBannerText: ""
+
+# ─── Telemetry ─────────────────────────────────────────────────────────────────
+
+telemetry: false
+
+# ─── Billing ───────────────────────────────────────────────────────────────────
+# Billing (Stripe integration) requires secrets.billingKeyEncryptionKey to be set.
+# If the key is absent the portal starts normally but billing endpoints are disabled.
+billing:
+  enabled: false
+
+# ─── Subscription Policies ─────────────────────────────────────────────────────
+# When true, Bronze/Silver/Gold/Unlimited/AsyncUnlimited plans are auto-created
+# for every new organization.
+
+generateDefaultSubPolicies: true
+
+# ─────────────────────────────────────────────────────────
+# Outbound webhooks (gateway event delivery)
+# ─────────────────────────────────────────────────────────
+# When a user generates an API key, subscribes, etc., the devportal fires signed
+# HTTP POST events to every matching subscriber below.  Gateways implement their
+# own handler and never need a reverse connection into the devportal.
+#
+# Per-subscriber secrets / public keys can also be supplied via env vars:
+#   DP_WEBHOOK_SECRET_<ID_UPPERCASED>   — HMAC signing secret
+#   DP_WEBHOOK_PUBKEY_<ID_UPPERCASED>   — RSA public key (PEM) for key encryption
+# where the ID is the subscriber `id` with non-alphanumeric chars replaced by _.
+#
+webhooks:
+  subscribers: []
+  # Example subscriber:
+  #
+  # subscribers:
+  #   - id: my-gateway                         # stable identifier, used in DB + logs
+  #     gatewayType: "my-gateway-type"          # matches API.GATEWAY_TYPE; use "*" for all
+  #     url: "https://gateway.example.com/devportal/events"
+  #     secret: "change-me-32-chars-minimum"   # env: DP_WEBHOOK_SECRET_MY_GATEWAY
+  #     publicKey: |                            # RSA-2048+ PEM; encrypts apikey.* payloads
+  #       -----BEGIN PUBLIC KEY-----
+  #       ...
+  #       -----END PUBLIC KEY-----
+  #     events:                                 # allowlist — omit to receive all event types
+  #       - apikey.*
+  #       - subscription.*
+  #     timeoutMs: 5000
+
+  delivery:
+    maxAttempts: 8
+    # Retry delays in seconds: 1 min, 5 min, 15 min, 30 min, 1 h, 2 h, 4 h, 8 h
+    backoff: [60, 300, 900, 1800, 3600, 7200, 14400, 28800]
+    pollIntervalMs: 2000
+    batchSize: 50
+    signatureToleranceSec: 300
+
+# ─── Default Data Seeding ──────────────────────────────────────────────────────
+# When true, the app seeds default theme assets into the database on first boot
+# if the ACME org has no assets yet. Set to false in production.
+
+seedDefaults: false
+
+# ─── Secrets ───────────────────────────────────────────────────────────────────
+# Sensitive values. In production, inject these as DP_SECRETS_* environment
+# variables rather than storing them in this file.
+
+secrets:
+  dbSecret: ""                          # Database password
+  apiKeySecret: ""                      # API key secret
+  billingKeyEncryptionKey: ""           # 64-char hex key for AES-256-GCM billing encryption
+  azureInsightsConnectionString: ""     # Azure Application Insights connection string

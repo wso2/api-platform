@@ -66,10 +66,10 @@
                {{#if apiInfo.apiImageMetadata.api-icon}}
                   <img src="{{apiInfo.apiImageMetadata.api-icon}}" class="api-card-img" alt="..." />
                 {{else}}
-                  <div class="image-icon">{{firstTwoLetters apiInfo.apiName}}</div>
+                  <div class="image-icon">{{firstTwoLetters (or apiInfo.apiTitle apiInfo.apiName)}}</div>
                 {{/if}}
             <div class="flex-grow-1">
-              <h5 class="api-card-title mb-0">{{apiInfo.apiName}}</h5>
+              <h5 class="api-card-title mb-0">{{or apiInfo.apiTitle apiInfo.apiName}}</h5>
               <div class="d-flex align-items-center gap-2">
                 <p class="mb-0 mt-1" style="font-size: 16px;">{{apiInfo.apiVersion}}</p>
                   <div class="type-badge badge-custom2" style="display: flex; flex-direction: row; align-items: center;">
@@ -106,49 +106,7 @@
               <div id="subscriptionBox" class="subscription-container w-100">
                 {{> subscription-plans apiInfo=apiInfo apiName=apiInfo.apiName}}
                 {{#if subscriptionPolicies.length}}
-
-                <p class="subscription-box-label">Application: </p>
-                <div class="custom-dropdown">
-                  <input type="hidden" id="selectedAppId-{{apiID}}" value="" />
-                  <div class="custom-select-container">
-                    <div class="select-selected" role="combobox" aria-expanded="false" aria-haspopup="listbox">
-                      <span class="selected-text small">Create an app</span>
-                      <span class="select-arrow"></span>
-                    </div>
-                    <div class="select-items" role="listbox">
-                      <div class="select-search-container">
-                        <input type="text" class="select-search-input {{#if @root.isReadOnlyMode}}d-none{{/if}}" placeholder="Find or create an application..."
-                          aria-label="Search applications">
-                      </div>
-                      <div class="select-items-container">
-                        {{#each applications}}
-
-                        <div class="select-item {{#if subscribed}}disabled{{/if}}" role="button" data-value="{{id}}"
-                          data-app-name="{{name}}">
-                          <span>{{name}}</span>
-                          <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/success-rounded.svg"
-                            alt="Subscribed" class="subscription-icon" style="display: {{#if subscribed}}inline-block{{else}}none{{/if}};" />
-                        </div>
-
-                        {{/each}}
-                      </div>
-                      <div class="create-app-container" style="display: none;">
-                        <div class="create-app-option" role="button">
-                          Create application "<span class="search-term"></span>"
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {{#if (eq subscriptionPolicies.length 1)}}
-                 <a type="button" class="common-btn-primary {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                   onclick="showSubscribeButtonLoading(this); subscribe('{{../orgID}}', '', '{{apiID}}', '{{apiReferenceID}}', '{{lookup (lookup subscriptionPolicyDetails 0) "policyID"}}', '{{lookup (lookup subscriptionPolicyDetails 0) "policyName"}}')"
-                   disabled>Subscribe</a>
-                 {{else}}
-                 <a type="button" class="common-btn-primary" onclick="loadModal('planModal-{{apiID}}')" disabled>Subscribe</a>
-                 {{/if}}
-
+                  <button type="button" class="common-btn-primary w-100" onclick="loadModal('planModal-{{apiID}}')" {{#if @root.isReadOnlyMode}}disabled aria-disabled="true"{{/if}}>Subscribe</button>
                 {{/if}}
               </div>
               {{/if}}

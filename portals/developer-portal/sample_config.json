@@ -6,7 +6,7 @@
     "consoleOnly": false
   },
   "advanced": {
-    "http": false,
+    "http": true,
     "dbSslDialectOption": false,
     "resourceLoadFromBaseUrl": false,
     "apiKey": {
@@ -16,7 +16,8 @@
     },
     "disabledRoleValidation": true,
     "disableOrgCallback": true,
-    "disableScopeValidation": true
+    "disableScopeValidation": true,
+    "disableSilentSSO": false
   },
   "pathToContent": "./resources/default-layout/",
   "pathToDBCert": "./resources/security/ca.pem",
@@ -27,13 +28,6 @@
     "graphqlURL": "https://app.preview-dv.choreo.dev/graphql",
     "disableCertValidation": true,
     "pathToCertificate": "./resources/security/client-truststore.pem"
-  },
-  "aiSDKService": {
-    "url": "http://localhost:5001",
-    "endpoints": {
-      "mergeSpecs": "/merge-openapi-specs",
-      "generateApp": "/generate-application-code"
-    }
   },
   "serverCerts": {
     "pathToCert": "./resources/security/client-truststore.pem",
@@ -56,8 +50,23 @@
       {
         "username": "admin",
         "password": "admin",
+        "firstName": "Admin",
+        "lastName": "User",
+        "email": "admin@example.com",
         "roles": [
           "admin"
+        ],
+        "orgClaimName": "ACME",
+        "organizationIdentifier": "ACME"
+      },
+      {
+        "username": "developer",
+        "password": "developer",
+        "firstName": "Developer",
+        "lastName": "User",
+        "email": "developer@example.com",
+        "roles": [
+          "Internal/subscriber"
         ],
         "orgClaimName": "ACME",
         "organizationIdentifier": "ACME"
@@ -70,7 +79,7 @@
     "authorizationURL": "https://localhost:9443/oauth2/authorize",
     "tokenURL": "https://localhost:9443/oauth2/token",
     "userInfoURL": "https://localhost:9443/oauth2/userinfo",
-    "clientId": "",
+    "clientId": "<CLIENT_ID>",
     "callbackURL": "https://localhost:3000/ACME/callback",
     "scope": "openid profile",
     "signUpURL": "",
@@ -108,11 +117,6 @@
     "**/myapis/**",
     "**/myapis?**"
   ],
-  "features": {
-    "sdkGeneration": {
-      "enabled": true
-    }
-  },
   "portalConfigs": {
     "showMaintenanceBanner": true,
     "maintenanceBannerText": "This portal is under maintenance today from 10 PM to 12 AM."
@@ -125,25 +129,5 @@
     "microsoft": "microsoft",
     "enterprise": "EnterpriseIDP",
     "email": "LOCAL"
-  },
-  "redis": {
-    "host": "redis.f.bijira.com",
-    "port": 6379,
-    "db": 0,
-    "enabled": true,
-    "tls": {
-      "enabled": true,
-      "rejectUnauthorized": false
-    },
-    "configs": {
-      "ttl": 600,
-      "maxFileSize": 52428800,
-      "maxReconnectAttempts": 3,
-      "sseConnectionTimeout": 120000, 
-      "commandTimeout": 20000, 
-      "connectionTimeout": 8000,
-      "pipelineTimeout": 30000,
-      "retryDelayOnFailover": 1000
-    }
   }
 }

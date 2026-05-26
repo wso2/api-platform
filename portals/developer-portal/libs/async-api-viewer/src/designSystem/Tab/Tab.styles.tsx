@@ -25,6 +25,7 @@ const useStyles = makeStyles((theme: Theme) =>
     },
     tabHeading: {
       borderBottom: `1px solid ${theme.palette.grey[100]}`,
+      paddingLeft: theme.spacing(2),
     },
     tabBody: {
       flexGrow: 1,
@@ -118,10 +119,13 @@ const useStyles = makeStyles((theme: Theme) =>
     },
     tabPanel: {
       paddingTop: theme.spacing(2),
-      overflow: 'hidden',
+      paddingLeft: theme.spacing(2),
+      paddingRight: theme.spacing(2),
+      overflow: 'visible',
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
+      boxSizing: 'border-box',
     },
     tabPanelHide: {
       display: 'none',

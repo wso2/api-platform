@@ -16,8 +16,13 @@
  * under the License.
  */
  -->
+<head>
+    <link rel="stylesheet" href="/technical-styles/agent-prompt.css">
+    <script type="application/json" id="homeDiscoverData">{"baseUrl":"{{baseUrl}}"}</script>
+    <script src="/technical-scripts/home-discover.js" defer></script>
+</head>
 <main>
-    {{> header profile=profile baseUrl=baseUrl devportalMode=devportalMode }}
-    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode}}
-    {{> home}}
+    {{> header profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav }}
+    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav}}
+    {{> home showApiWorkflowsNav=showApiWorkflowsNav}}
 </main>

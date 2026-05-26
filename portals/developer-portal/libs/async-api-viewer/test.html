@@ -29,11 +29,14 @@
         }
     };
     let serverUrl = 'wss://echo.websocket.org';
+    let sandboxUrl = 'wss://echo.websocket.org';
     const rootElement = document.getElementById('root');
     ReactDOM.render(React.createElement(WebSocketViewer.default, {
+        asyncApiType: 'WEBSUB',
         apiEndpoint: serverUrl,
         token: 'token',
         asyncapi: swaggerData,
+        isDevportal: true,
     }), rootElement);
 </script>
 </body>

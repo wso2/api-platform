@@ -1,7 +1,6 @@
 // process.env.APPLICATIONINSIGHTS_LOGGING_LEVEL = 'verbose';
 const appInsights = require('applicationinsights');
-const secret = require(process.cwd() + '/secret.json');
-const config = require(process.cwd() + '/config.json');
+const { config, secrets: secret } = require('../config/configLoader');
 
 let telemetryClient = null;
 

@@ -11,37 +11,42 @@
                             for your AI agents
                         </h1>
                         <p class="hero-description">
-                            Use our MCP Servers to deploy and manage tools for your AI agents. Browse the MCP Server catalog, 
+                            Use our MCP Servers to deploy and manage tools for your AI agents. Browse the MCP Server catalog,
                             configure tools, & get started instantly.
                         </p>
                         {{/if}}
                         {{#if (eq devportalMode "APISONLY")}}
                         <h1 class="hero-title">
-                            Empower your development with our <span class="span-highlight"> APIs </span>
-                            to craft intuitive and robust applications
+                            <span class="span-highlight"> APIs & Workflows</span> 
+                            - Ready for AI Agents and Developers
                         </h1>
                         <p class="hero-description">
-                            Use our APIs to build amazing enterprise and consumer applications. Browse our API catalog,
-                            subscribe, and get going in minutes.
+                            Discover, connect, and orchestrate APIs and workflows to build applications, AI agents, and automations.
+                            Browse our catalogs, subscribe and get going in minutes.
                         </p>
                         {{/if}}
                         {{#if (eq devportalMode "DEFAULT")}}
                         <h1 class="hero-title">
-                            Empower your development with our <span class="span-highlight"> APIs & MCP Servers </span>
-                            to craft intuitive and robust experience
+                            <span class="span-highlight"> APIs, MCP Servers, & Workflows </span>
+                            - Ready for AI Agents and Developers
                         </h1>
                         <p class="hero-description">
-                            Use our APIs & MCP Servers to build amazing enterprise and consumer applications. Browse our catalog,
-                            subscribe, and get going in minutes.
+                            Discover, connect, and orchestrate APIs, MCP tools, and workflows to build applications, AI agents and automations.
+                            Browse our catalogs, subscribe and get going in minutes.
                         </p>
                         {{/if}}
-                        <div class="hero-buttons d-flex gap-3">
+                        <div class="hero-buttons" role="group" aria-label="Hero actions">
                             {{#in devportalMode values="DEFAULT,APISONLY"}}
                             <a href="{{baseUrl}}/apis" class="common-btn-primary common-btn-secondary">Browse our APIs →</a>
                             {{/in}}
                             {{#in devportalMode values="DEFAULT,MCPSERVERSONLY"}}
                             <a href="{{baseUrl}}/mcps" class="common-btn-primary common-btn-secondary">Browse our MCP Servers →</a>
                             {{/in}}
+                            {{#if showApiWorkflowsNav}}
+                            <button type="button" class="common-btn-primary discover-ai-btn" data-bs-toggle="modal" data-bs-target="#discoverAiModal">
+                                <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/ai-stars-icon.svg" width="16" height="16" aria-hidden="true" alt="" style="margin-right:6px;vertical-align:middle;">Discover with AI
+                            </button>
+                            {{/if}}
                         </div>
                     </div>
                 </div>
@@ -59,10 +64,6 @@
 </section>
 <section class="section">
     <div class="container mw-100">
-        <div class="common-header">
-            <h2 style="text-align: center; font-family: var(--font-family-sans);">Empowering Developers to Build
-                Applications</h2>
-        </div>
         <div class="row justify-content-center g-5 pb-5">
             <div class="col-12 col-sm-6 col-md-6 col-lg-4">
                 <div class="card advantage-card">
@@ -111,7 +112,7 @@
                         <h5>Developing Applications</h5>
                         <ul class="fw-light">
                             <li>Generate application keys</li>
-                            <li>Utilise SDKs to generate application code</li>
+                            <li>Manage application access credentials</li>
                             <li>Connect to the Sandbox endpoint for testing</li>
                         </ul>
                     </div>
@@ -141,3 +142,39 @@
         </div>
     </div>
 </section>
+
+{{#if showApiWorkflowsNav}}
+<div class="modal fade" id="discoverAiModal" tabindex="-1" aria-labelledby="discoverAiModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="d-flex align-items-center gap-2">
+                    <h5 class="modal-title mb-0" id="discoverAiModalLabel">Discover with AI Agents</h5>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="api-flow-prompt-toolbar">
+                    <span class="small text-muted">Use this prompt to let your AI agent explore and discover what's available in this portal</span>
+                    <div class="prompt-modal-toolbar">
+                        <button type="button" class="btn-run-prompt" id="discoverBtnRunClaude">
+                            <i class="bi bi-play-fill"></i> Run in Claude
+                        </button>
+                    </div>
+                </div>
+                <div class="api-flow-prompt-pre-wrapper">
+                    <div class="prompt-pre-actions">
+                        <button type="button" class="prompt-tool-btn" id="discoverBtnDownloadPrompt" title="Download as .txt">
+                            <i class="bi bi-download"></i>
+                        </button>
+                        <button type="button" class="prompt-tool-btn" id="discoverBtnCopyPrompt" title="Copy prompt">
+                            <i class="bi bi-copy"></i>
+                        </button>
+                    </div>
+                    <pre id="discoverPromptText" class="api-flow-prompt-pre"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{{/if}}

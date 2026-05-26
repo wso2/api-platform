@@ -18,11 +18,14 @@
  -->
 <head>
   <script src='/technical-scripts/add-application-form.js' defer></script>
+  <script src='/technical-scripts/platform-subscription.js' defer></script>
+  <script src='/technical-scripts/subscription-modal.js' defer></script>
 </head>
 <main>
-    {{> header profile=profile baseUrl=baseUrl devportalMode=devportalMode }}
-    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode }}
+    {{> header profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav }}
+    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav }}
     {{> api-listing }}
     {{> create-app }}
+    {{> warning modalTitle="Confirm" modalMessage="" modalFunction="" }}
     {{> alert }}
 </main>

@@ -200,7 +200,7 @@
     overflow: hidden;
     width: 0;
     font-weight: normal; 
-    color: white;
+    color: var(--light-text-color);
     font-size: smaller;
 }
 
@@ -279,4 +279,54 @@
 .sidebar.collapsed .submenu-icon {
     display: block;
     margin: 0;
+}
+
+.nav-section-divider {
+    height: 1px;
+    background-color: rgba(255, 255, 255, 0.15);
+    margin: 0.5rem 1rem;
+}
+
+.nav-section-label {
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.45);
+    padding: 0 1.5rem;
+    display: none;
+}
+
+.sidebar:hover:not(.force-collapse) .nav-section-label,
+.sidebar.expanded .nav-section-label {
+    display: block;
+}
+
+
+.nav-new-badge {
+    opacity: 0;
+    visibility: hidden;
+    width: 0;
+    overflow: hidden;
+    font-size: 0.55rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background-color: var(--secondary-light-color);
+    color: #fff;
+    border-radius: 999px;
+    padding: 0;
+    white-space: nowrap;
+    line-height: 1.2;
+    align-self: center;
+    transition: opacity 0.2s ease, visibility 0.2s ease, padding 0.2s ease, width 0.2s ease;
+}
+
+.sidebar:hover:not(.force-collapse) .nav-new-badge,
+.sidebar.expanded .nav-new-badge {
+    opacity: 1;
+    visibility: visible;
+    width: auto;
+    padding: 0.2rem 0.45rem;
+    margin-left: 0.5rem;
 }

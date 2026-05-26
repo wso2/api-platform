@@ -119,7 +119,7 @@ const SubscriptionMapping = sequelize.define('DP_API_SUBSCRIPTION', {
     },
     APP_ID: {
         type: DataTypes.UUID,
-        allowNull: false,
+        allowNull: true,
         references: {
             model: Application,
             key: 'APP_ID',
@@ -135,7 +135,7 @@ const SubscriptionMapping = sequelize.define('DP_API_SUBSCRIPTION', {
     },
     POLICY_ID: {
         type: DataTypes.STRING,
-        allowNull: false,
+        allowNull: true,
         references: {
             model: SubscriptionPolicy,
             key: 'POLICY_ID',
@@ -144,7 +144,14 @@ const SubscriptionMapping = sequelize.define('DP_API_SUBSCRIPTION', {
     ORG_ID: {
         type: DataTypes.UUID,
         allowNull: false
-    }
+    },
+    BILLING_CUSTOMER_ID: { type: DataTypes.STRING, allowNull: true },
+    BILLING_SUBSCRIPTION_ID: { type: DataTypes.STRING, allowNull: true },
+    PAYMENT_PROVIDER: { type: DataTypes.STRING, allowNull: true },
+    PAYMENT_STATUS: { type: DataTypes.STRING, allowNull: true },
+    CHECKOUT_SESSION_ID: { type: DataTypes.STRING, allowNull: true },
+    SUB_TOKEN: { type: DataTypes.STRING(512), allowNull: true, unique: true },
+    STATUS:     { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'ACTIVE' },
 }, {
     timestamps: false,
     tableName: 'DP_API_SUBSCRIPTION',
@@ -180,6 +187,9 @@ SubscriptionPolicy.belongsToMany(APIMetadata, {
     foreignKey: "POLICY_ID",
     otherKey: "API_ID",
 });
+
+SubscriptionMapping.belongsTo(APIMetadata, { foreignKey: 'API_ID', as: 'DP_API_METADATA' });
+SubscriptionMapping.belongsTo(SubscriptionPolicy, { foreignKey: 'POLICY_ID', as: 'DP_SUBSCRIPTION_POLICY' });
 
 Application.belongsTo(Organization, {
     foreignKey: 'ORG_ID'

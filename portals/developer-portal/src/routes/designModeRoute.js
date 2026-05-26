@@ -40,9 +40,10 @@ router.get('/views/:viewName/api/:apiHandle/docs/:docType/:docName', registerPar
 
 
 router.get('/views/:viewName/applications', registerPartials, applicationController.loadApplications);
-router.get('/views/:viewName/applications/:applicationid', registerPartials, applicationController.loadApplication);
+router.get('/views/:viewName/applications/:applicationId', registerPartials, applicationController.loadApplication);
+router.get('/views/:viewName/applications/:applicationId/manage-keys', registerPartials, applicationController.loadApplicationKeys);
 
-router.get('/configure', registerPartials, settingsController.loadSettingPage);
+router.get('/configure', registerPartials, settingsController.loadOrgSettingsPage);
 
 router.get('/login', registerPartials, authController.login);
 router.get('/callback', registerPartials, authController.handleCallback);

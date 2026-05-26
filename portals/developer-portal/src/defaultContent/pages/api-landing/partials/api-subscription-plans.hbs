@@ -1,69 +1,339 @@
 <section class="section mt-0 mb-6" id="subscriptionPlans">
     <div class="container-fluid text-center">
-        {{#if subscriptionPlans.length}}
-        <div class="container-header mb-4">Subscription Plans</div>
-        {{/if}}
-        <div class="row row-gap-4 justify-content-center">
-            {{#each subscriptionPlans}}
-            <div class="col-xl-3 col-lg-4 col-md-6 col-12" id="subscriptionCard-{{policyID}}">
-                <div class="card dev-card subscription-card">
-                    <div class="card-body align-items-center text-center p-0">
-                        <span class="subscription-plans-card-title">{{displayName}}</span>
-                        <h1 class="subscription-plans-request-count">{{requestCount}}</h1>
-                        <p class="subscription-plans-card-subtitle pt-0">requests per minute</p>
+        {{#if (eq apiMetadata.apiInfo.gatewayType "wso2/api-platform")}}
+            {{#if subscriptionPlans.length}}
+            <!-- ===== TOKEN-BASED SUBSCRIPTION UI ===== -->
+
+            <!-- Existing platform subscriptions for this API -->
+            {{#if platformSubscriptions.length}}
+            <div class="existing-subscriptions mb-4">
+                <div class="container-header mb-4">Subscriptions</div>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Plan</th>
+                            <th>Status</th>
+                            <th>Subscription Token</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{#each platformSubscriptions}}
+                {{#if @first}}
+                <script id="token-map-data" type="application/json">{{{jsonSafePlatformSubscriptions ../platformSubscriptions}}}</script>
+                <script>
+                    (function() {
+                        var data = JSON.parse(document.getElementById('token-map-data').textContent || '[]');
+                        window.__tokenMeta = window.__tokenMeta || {};
+                        data.forEach(function(sub) {
+                            // store only non-sensitive metadata and masked token
+                            window.__tokenMeta[sub.subscriptionId] = {
+                                maskedToken: sub.maskedToken,
+                                customerName: sub.customerName,
+                                subscriptionPlanName: sub.subscriptionPlanName,
+                                status: sub.status
+                            };
+                        });
+                        // expose orgID for on-demand fetches
+                        window.__subscriptionOrgID = "{{@root.orgID}}";
+                    })();
+                </script>
+                {{/if}}
+                        <tr>
+                            <td>{{this.subscriptionPlanName}}</td>
+                            <td>
+                                <span class="badge {{#if (eq this.status 'ACTIVE')}}bg-success{{else}}bg-secondary{{/if}}">
+                                    {{this.status}}
+                                </span>
+                            </td>
+                            <td>
+                                <div class="token-display">
+                                    <code class="masked-token" id="token-{{this.subscriptionId}}" data-revealed="false">****</code>
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="toggleTokenVisibility('{{this.subscriptionId}}')" title="Reveal token">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="copySubscriptionToken('{{this.subscriptionId}}')" title="Copy token">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-warning {{#if @root.isReadOnlyMode}}disabled{{/if}}" title="{{#if (eq this.status 'ACTIVE')}}Deactivate{{else}}Activate{{/if}}"
+                                    {{#unless @root.isReadOnlyMode}}onclick="togglePlatformSubscriptionStatus('{{@root.orgID}}', '{{this.subscriptionId}}', '{{#if (eq this.status "ACTIVE")}}INACTIVE{{else}}ACTIVE{{/if}}')"{{/unless}}
+                                    {{#if @root.isReadOnlyMode}}disabled{{/if}}>
+                                    {{#if (eq this.status 'ACTIVE')}}<i class="bi bi-pause-circle"></i>{{else}}<i class="bi bi-play-circle"></i>{{/if}}
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger {{#if @root.isReadOnlyMode}}disabled{{/if}}" title="Delete"
+                                    {{#unless @root.isReadOnlyMode}}onclick="confirmDeletePlatformSubscription('{{@root.orgID}}', '{{this.subscriptionId}}')"{{/unless}}
+                                    {{#if @root.isReadOnlyMode}}disabled{{/if}}>
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {{/each}}
+                    </tbody>
+                </table>
+            </div>
+            {{/if}}
+
+            <!-- Subscribe to new plan (token-based, no mandatory app) -->
+            {{#if subscriptionPlans.length}}
+            <div class="container-header mb-4">Subscription Plans</div>
+            {{/if}}
+            <div class="row row-gap-4 justify-content-center align-items-start">
+                {{#each subscriptionPlans}}
+                <div class="col-lg-4 col-md-6 col-12" id="subscriptionCard-{{policyID}}">
+                    <div class="card dev-card subscription-card">
+                        <div class="card-body align-items-center text-center p-0">
+                            <span class="subscription-plans-card-title">{{displayName}}</span>
+                            <h1 class="subscription-plans-request-count">{{requestCount}}</h1>
+                            <p class="subscription-plans-card-subtitle pt-0">requests per minute</p>
+                        </div>
+                        <div class="position-relative">
+                            {{#if ../isAuthenticated}}
+                            {{#if (isCurrentPlan policyName @root.platformSubscriptions)}}
+                            <button type="button"
+                                class="common-btn-primary subscribe-btn w-100 disabled current-plan-btn"
+                                data-org-id="{{@root.orgID}}"
+                                data-api-id="{{../apiMetadata.apiID}}"
+                                data-policy-name="{{policyName}}"
+                                data-display-name="{{displayName}}"
+                                disabled>Current Plan</button>
+                            {{else}}
+                            <button id="subscribe-btn-{{policyID}}" type="button"
+                                class="common-btn-primary subscribe-btn w-100 {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+                                data-org-id="{{@root.orgID}}"
+                                data-api-id="{{../apiMetadata.apiID}}"
+                                data-policy-id="{{policyID}}"
+                                data-policy-name="{{policyName}}"
+                                data-display-name="{{displayName}}"
+                                onclick="handlePlanSubscription(this)"
+                                >Subscribe</button>
+                            {{/if}}
+                            {{else}}
+                            <a type="button" class="common-btn-primary disabled w-100 subscription-plan-subscribe-btn"
+                                disabled>Subscribe</a>
+                            {{/if}}
+                            <div class="message-overlay hidden">
+                                <div class="message-content">
+                                    <i class="bi message-icon"></i>
+                                    <p class="message-text"></p>
+                                </div>
+                                <button type="button" class="close-message" aria-label="Close">&times;</button>
+                            </div>
+                        </div>
                     </div>
-                    <div class="position-relative">
-                        {{#if ../isAuthenticated}}
-                        <div id="subscriptionBox" class="subscription-container">
-                            <div class="custom-dropdown show" id="customDropdown-{{policyID}}">
-                                <input type="hidden" id="selectedAppId-{{policyID}}" value="" />
-                                <div class="custom-select-container">
-                                    <div class="select-selected" aria-expanded="false">
-                                        <span class="selected-text">Create an app</span>
-                                        <span class="select-arrow"></span>
+                </div>
+                {{/each}}
+            </div>
+
+            <script id="existing-subs-data" type="application/json">{{{json platformSubscriptions}}}</script>
+            <script>
+                (function() {
+                    window.__subscriptionOrgID = window.__subscriptionOrgID || "{{@root.orgID}}";
+                    var raw = document.getElementById('existing-subs-data').textContent || '[]';
+                    try {
+                        var parsed = JSON.parse(raw);
+                        window.existingPlatformSubscriptions = parsed.map(function(sub) {
+                            return { subscriptionId: sub.subscriptionId, subscriptionPlanName: sub.subscriptionPlanName, status: sub.status };
+                        });
+                    } catch (e) {
+                        window.existingPlatformSubscriptions = [];
+                    }
+                })();
+            </script>
+            {{else}}
+            {{!-- Platform API without subscription plans: no subscription needed --}}
+            {{/if}}
+        {{else}}
+            <!-- ===== STANDARD APP-BASED SUBSCRIPTION UI ===== -->
+            {{#if subscriptionPlans.length}}
+            <div class="container-header mb-4">Subscription Plans</div>
+            {{/if}}
+            <div class="row row-gap-4 justify-content-center align-items-start">
+                {{#each subscriptionPlans}}
+                <div class="col-lg-4 col-md-6 col-12" id="subscriptionCard-{{policyID}}">
+                    <div class="card dev-card subscription-card">
+                        <div class="card-body align-items-center text-center p-4">
+                            <span class="subscription-plans-card-title d-block mb-3">{{displayName}}</span>
+                            {{#if description}}
+                            <p class="text-muted small mb-3" style="font-size: 12px; line-height: 1.5;">{{description}}</p>
+                            {{/if}}
+                            <div class="plan-kpis">
+
+                                <div class="plan-kpi-row">
+                                    <div class="plan-kpi-label">Price</div>
+                                    <div class="plan-kpi-valueTop">
+                                        {{#if pricingModel}}
+                                            {{#compare pricingModel "===" "FLAT"}}
+                                                {{#if flatAmount}}
+                                                    <span class="plan-kpi-amount">{{currency}} {{formatPrice flatAmount}}</span>
+                                                    <span class="plan-kpi-unit">/{{formatBillingPeriod billingPeriod}}</span>
+                                                {{else}}
+                                                    <span class="plan-kpi-free">Free</span>
+                                                {{/if}}
+                                            {{else}}
+                                                {{#if (eq pricingModel "VOLUME_TIERS")}}
+                                                    <details class="subscription-tier-details plan-kpi-tier-details">
+                                                        <summary><span class="tier-chevron" style="font-size: 10px;">&#9654;</span> Tier-based pricing</summary>
+                                                    </details>
+                                                {{else if (eq pricingModel "GRADUATED_TIERS")}}
+                                                    <details class="subscription-tier-details plan-kpi-tier-details">
+                                                        <summary><span class="tier-chevron" style="font-size: 10px;">&#9654;</span> Tier-based pricing</summary>
+                                                    </details>
+                                                {{else}}
+                                                    {{#if unitAmount}}
+                                                        <span class="plan-kpi-amount">{{currency}} {{formatPrice unitAmount}}</span>
+                                                        <span class="plan-kpi-unit">/req</span>
+                                                    {{else}}
+                                                        <span class="plan-kpi-free">Free</span>
+                                                    {{/if}}
+                                                {{/if}}
+                                            {{/compare}}
+                                        {{else}}
+                                            <span class="plan-kpi-free">Free</span>
+                                        {{/if}}
                                     </div>
-                                    <div class="select-items" role="listbox">
-                                        <div class="select-search-container">
-                                            <input type="text" class="select-search-input {{#if @root.isReadOnlyMode}}d-none{{/if}}" placeholder="Find or create an application..."
-                                                aria-label="Search applications">
+                                    <div class="plan-kpi-labelSub"></div>
+                                    <div class="plan-kpi-valueSub">
+                                        {{#if billingPeriod}}
+                                            <span class="plan-kpi-badge">Billed {{formatBillingPeriod billingPeriod}}</span>
+                                        {{else}}
+                                            <span class="plan-kpi-badge-placeholder">&nbsp;</span>
+                                        {{/if}}
+                                    </div>
+                                    {{#if (eq pricingModel "VOLUME_TIERS")}}
+                                    <div class="plan-kpi-tier-table-row">
+                                        <table class="table table-sm mt-2 mb-0" style="font-size: 11px;">
+                                            <thead><tr>
+                                                <th style="color: #64748b; font-weight: 600; text-align: center; vertical-align: middle;">Total Request<br>Volume</th>
+                                                <th style="color: #64748b; font-weight: 600; text-align: center; vertical-align: middle;">Price</th>
+                                            </tr></thead>
+                                            <tbody>
+                                                {{#each pricingMetadata.tiers}}
+                                                <tr>
+                                                    <td style="text-align: center; vertical-align: middle;">{{formatTierRange startUnit endUnit}}</td>
+                                                    <td style="text-align: center; vertical-align: middle;">{{../currency}} {{formatPrice flatPrice}} <span style="color: #94a3b8;">+</span> {{../currency}} {{formatPrice unitPrice}}/req</td>
+                                                </tr>
+                                                {{/each}}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    {{else if (eq pricingModel "GRADUATED_TIERS")}}
+                                    <div class="plan-kpi-tier-table-row">
+                                        <table class="table table-sm mt-2 mb-0" style="font-size: 11px;">
+                                            <thead><tr>
+                                                <th style="color: #64748b; font-weight: 600; text-align: center; vertical-align: middle;">Request<br>Range</th>
+                                                <th style="color: #64748b; font-weight: 600; text-align: center; vertical-align: middle;">Price</th>
+                                            </tr></thead>
+                                            <tbody>
+                                                {{#each pricingMetadata.tiers}}
+                                                <tr>
+                                                    <td style="text-align: center; vertical-align: middle;">{{formatTierRange startUnit endUnit}}</td>
+                                                    <td style="text-align: center; vertical-align: middle;">{{../currency}} {{formatPrice flatPrice}} <span style="color: #94a3b8;">+</span> {{../currency}} {{formatPrice unitPrice}}/req</td>
+                                                </tr>
+                                                {{/each}}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    {{/if}}
+                                </div>
+
+                                <div class="plan-kpi-divider"></div>
+
+                                <div class="plan-kpi-row">
+                                    <div class="plan-kpi-label">Rate limit</div>
+                                    <div class="plan-kpi-valueTop">
+                                        <span class="plan-kpi-amount">{{requestCount}}</span>
+                                        <span class="plan-kpi-unit">req/min</span>
+                                    </div>
+                                    <div class="plan-kpi-labelSub"></div>
+                                    <div class="plan-kpi-valueSub">
+                                        <span class="plan-kpi-badge-placeholder">&nbsp;</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="position-relative">
+                            {{#if ../isAuthenticated}}
+                            <div id="subscriptionBox" class="subscription-container">
+                                <div class="custom-dropdown show" id="landing-customDropdown-{{policyID}}">
+                                    <input type="hidden" id="landing-selectedAppId-{{policyID}}" value="" />
+                                    <div class="custom-select-container">
+                                        <div class="select-selected" aria-expanded="false">
+                                            <span class="selected-text">Create an app</span>
+                                            <span class="select-arrow"></span>
                                         </div>
-                                        <div class="select-items-container">
-                                            {{#each ../applications}}
-                                            <div class="select-item {{#if subscribed}}disabled{{/if}}" role="button" data-value="{{id}}" data-app-name="{{name}}">
-                                                <span>{{name}}</span>
-                                                <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/success-rounded.svg"
-                                                    alt="Subscribed" class="subscription-icon" style="display: {{#if subscribed}}inline-block{{else}}none{{/if}};" />
+                                        <div class="select-items" role="listbox">
+                                            <div class="select-search-container">
+                                                <input type="text" class="select-search-input {{#if @root.isReadOnlyMode}}d-none{{/if}}" placeholder="Find or create an application..."
+                                                    aria-label="Search applications">
                                             </div>
-                                            {{/each}}
-                                        </div>
-                                        <div class="create-app-container" style="display: none;">
-                                            <div class="create-app-option" role="button">
-                                                Create application "<span class="search-term"></span>"
+                                            <div class="select-items-container">
+                                                {{#each ../applications}}
+                                                <div class="select-item {{#if subscribed}}disabled{{/if}}" role="button" data-value="{{id}}" data-app-name="{{name}}">
+                                                    <div class="d-flex flex-column flex-grow-1">
+                                                        <span class="fw-semibold">{{name}}</span>
+                                                        {{#if subscriptionPolicy}}
+                                                        <small style="font-size: 11px; margin-top: 3px;">
+                                                            <span class="badge" style="background-color: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 10px; font-weight: 600; font-size: 10px;">
+                                                                {{subscriptionPolicy.policyName}}
+                                                            </span>
+                                                        </small>
+                                                        {{/if}}
+                                                    </div>
+                                                    {{#if subscribed}}
+                                                    <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/success-rounded.svg"
+                                                        alt="Subscribed" class="subscription-icon" style="width: 18px; height: 18px; flex-shrink: 0;" />
+                                                    {{/if}}
+                                                </div>
+                                                {{/each}}
+                                            </div>
+                                            <div class="create-app-container" style="display: none;">
+                                                <div class="create-app-option" role="button">
+                                                    Create application "<span class="search-term"></span>"
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
+
+                                <a
+                                    id="landing-subscribe-btn-{{policyID}}"
+                                    type="button"
+                                    class="common-btn-primary subscribe-btn {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+                                    data-policy-id="{{policyID}}"
+                                    data-policy-name="{{policyName}}"
+                                    data-external-price-id="{{pricingMetadata.external.priceId}}"
+                                    data-is-paid="{{#if pricingMetadata.external.priceId}}true{{else}}false{{/if}}"
+                                    onclick="handleLandingPlanSubscription('{{@root.orgID}}', '{{../apiMetadata.apiID}}', '{{../apiMetadata.apiReferenceID}}', '{{policyID}}', '{{policyName}}', this)"
+                                >
+                                    Subscribe
+                                </a>
                             </div>
-                            <a id="subscribe-btn-{{policyID}}" type="button"
-                                 class="common-btn-primary subscribe-btn {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                                 onclick="showSubscribeButtonLoading(this); subscribe('{{@root.orgID}}', '', '{{../apiMetadata.apiID}}', '{{../apiMetadata.apiReferenceID}}', '{{policyID}}', '{{policyName}}')"
-                                 disabled>Subscribe</a>
-                        </div>
-                        {{else}}
-                        <a type="button" class="common-btn-primary disabled w-100 subscription-plan-subscribe-btn"
-                            disabled>Subscribe</a>
-                        {{/if}}
-                        
-                        <div class="message-overlay hidden">
-                            <div class="message-content">
-                                <i class="bi message-icon"></i>
-                                <p class="message-text"></p>
+                            {{else}}
+                            <a type="button" class="common-btn-primary disabled w-100 subscription-plan-subscribe-btn"
+                                disabled>Subscribe</a>
+                            {{/if}}
+
+                            <div class="message-overlay hidden">
+                                <div class="message-content">
+                                    <i class="bi message-icon"></i>
+                                    <p class="message-text"></p>
+                                </div>
+                                <button type="button" class="close-message" aria-label="Close message">&times;</button>
                             </div>
-                            <button type="button" class="close-message" aria-label="Close message">&times;</button>
+
+                            {{!-- Stripe embedded checkout container (hidden by default) --}}
+                            <div id="landing-stripeCheckoutModal-{{policyID}}" class="stripe-checkout-modal" style="display:none;">
+                                <div id="landing-stripe-checkout-{{policyID}}"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
+                {{/each}}
             </div>
-            {{/each}}
-        </div>
+        {{/if}}
+    </div>
 </section>

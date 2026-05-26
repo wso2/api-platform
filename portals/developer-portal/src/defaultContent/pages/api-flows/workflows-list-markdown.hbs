@@ -1,0 +1,9 @@
+# API Workflows
+
+{{#if flows.length}}
+{{#each flows}}
+- [{{this.name}}]({{../baseUrl}}/api-workflows/{{this.handle}}.md)
+{{/each}}
+{{else}}
+No published workflows found.
+{{/if}}

@@ -17,29 +17,41 @@
  */
 const express = require('express');
 const router = express.Router();
+const os = require('os');
+const path = require('path');
+const fs = require('fs').promises;
 const devportalService = require('../services/devportalService');
 const apiMetadataService = require('../services/apiMetadataService');
 const adminService = require('../services/adminService');
 const devportalController = require('../controllers/devportalController');
-const sdkJobService = require('../services/sdkJobService');
+const billingController = require("../controllers/billingController");
+const usageController = require("../controllers/usageController");
+const invoiceController = require("../controllers/invoiceController");
+const { ensureBillingAuth, verifyRequestOrigin } = require("../middlewares/billingAuth");
 const multer = require('multer');
 const storage = multer.memoryStorage()
 const multipartHandler = multer({storage: storage})
-const { ensureAuthenticated, validateAuthentication, enforceSecuirty } = require('../middlewares/ensureAuthenticated');
+const { enforceSecuirty } = require('../middlewares/ensureAuthenticated');
+const { requireCsrfForMutatingApi } = require('../middlewares/csrfProtection');
 const constants = require('../utils/constants');
+const { config } = require('../config/configLoader');
+const platformSubscriptionService = require('../services/platformSubscriptionService');
+const apiKeyController = require('../controllers/apiKeyController');
+const apiFlowService = require('../services/apiFlowService');
+const webhookAdminController = require('../controllers/webhookAdminController');
 
-router.post('/organizations', enforceSecuirty(constants.SCOPES.ADMIN), adminService.createOrganization);
+router.post('/organizations', enforceSecuirty(constants.SCOPES.ADMIN), multipartHandler.fields([{ name: 'organization', maxCount: 1 }]), adminService.createOrganization);
 router.get('/organizations', enforceSecuirty(constants.SCOPES.ADMIN), adminService.getOrganizations);
-router.put('/organizations/:orgId', enforceSecuirty(constants.SCOPES.ADMIN), adminService.updateOrganization);
+router.put('/organizations/:orgId', enforceSecuirty(constants.SCOPES.ADMIN), multipartHandler.fields([{ name: 'organization', maxCount: 1 }]), adminService.updateOrganization);
 router.get('/organizations/:orgId', enforceSecuirty(constants.SCOPES.ADMIN), devportalService.getOrganization); // S2S Applied 
 router.delete('/organizations/:orgId', enforceSecuirty(constants.SCOPES.ADMIN), adminService.deleteOrganization);
 
-router.post('/organizations/:orgId/identityProvider', enforceSecuirty(constants.SCOPES.ADMIN), adminService.createIdentityProvider);
-router.put('/organizations/:orgId/identityProvider', enforceSecuirty(constants.SCOPES.ADMIN), adminService.updateIdentityProvider);
+router.post('/organizations/:orgId/identityProvider', enforceSecuirty(constants.SCOPES.ADMIN), multipartHandler.fields([{ name: 'identityProvider', maxCount: 1 }]), adminService.createIdentityProvider);
+router.put('/organizations/:orgId/identityProvider', enforceSecuirty(constants.SCOPES.ADMIN), multipartHandler.fields([{ name: 'identityProvider', maxCount: 1 }]), adminService.updateIdentityProvider);
 router.get('/organizations/:orgId/identityProvider', enforceSecuirty(constants.SCOPES.ADMIN), adminService.getIdentityProvider);
 router.delete('/organizations/:orgId/identityProvider', enforceSecuirty(constants.SCOPES.ADMIN), adminService.deleteIdentityProvider);
 
-const upload = multer({ dest: '../.tmp/' });
+const upload = multer({ dest: os.tmpdir() });
 router.post('/organizations/:orgId/views/:name/layout', enforceSecuirty(constants.SCOPES.ADMIN), upload.single('file'), adminService.createOrgContent);
 router.put('/organizations/:orgId/views/:name/layout', enforceSecuirty(constants.SCOPES.ADMIN), upload.single('file'), adminService.updateOrgContent);
 router.get('/organizations/:orgId/views/:name/layout', devportalService.getOrgContent);
@@ -55,7 +67,9 @@ router.post(
     '/organizations/:orgId/apis',
     enforceSecuirty(constants.SCOPES.DEVELOPER),
     multipartHandler.fields([
+        {name: 'api', maxCount: 1},
         {name: 'apiDefinition', maxCount: 1},
+        {name: 'artifact', maxCount: 1},
         {name: 'schemaDefinition', maxCount: 1},
     ]),
     apiMetadataService.createAPIMetadata);
@@ -65,18 +79,26 @@ router.put(
     '/organizations/:orgId/apis/:apiId',
     enforceSecuirty(constants.SCOPES.DEVELOPER),
     multipartHandler.fields([
+        {name: 'api', maxCount: 1},
         {name: 'apiDefinition', maxCount: 1},
+        {name: 'artifact', maxCount: 1},
         {name: 'schemaDefinition', maxCount: 1},
     ]),
     apiMetadataService.updateAPIMetadata);
 router.delete('/organizations/:orgId/apis/:apiId', enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.deleteAPIMetadata);
 
-router.post('/organizations/:orgId/subscription-policies', enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.addSubscriptionPolicies);
+router.post('/organizations/:orgId/subscription-policies', enforceSecuirty(constants.SCOPES.DEVELOPER), multipartHandler.fields([{ name: 'subscriptionPolicy', maxCount: 1 }]), apiMetadataService.addSubscriptionPolicies);
 router.get('/organizations/:orgId/subscription-policies/:policyID', enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.getSubscriptionPolicy);
-router.put('/organizations/:orgId/subscription-policies', enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.putSubscriptionPolicies);
+router.put('/organizations/:orgId/subscription-policies', enforceSecuirty(constants.SCOPES.DEVELOPER), multipartHandler.fields([{ name: 'subscriptionPolicy', maxCount: 1 }]), apiMetadataService.putSubscriptionPolicies);
 router.delete('/organizations/:orgId/subscription-policies/:policyName', enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.deleteSubscriptionPolicy);
 
 const apiZip = multer({ dest: '/tmp' });
+// New /content routes (ZIP structure: web/ + docs/)
+router.post('/organizations/:orgId/apis/:apiId/content', enforceSecuirty(constants.SCOPES.DEVELOPER), apiZip.single('apiContent'), apiMetadataService.createAPIContent);
+router.put('/organizations/:orgId/apis/:apiId/content', enforceSecuirty(constants.SCOPES.DEVELOPER), apiZip.single('apiContent'), apiMetadataService.updateAPIContent);
+router.get('/organizations/:orgId/apis/:apiId/content', apiMetadataService.getAPIFile);
+router.delete('/organizations/:orgId/apis/:apiId/content', enforceSecuirty(constants.SCOPES.DEVELOPER), apiMetadataService.deleteAPIFile);
+// Legacy /template routes (ZIP structure: {name}/content/ + images/ + documents/)
 router.post('/organizations/:orgId/apis/:apiId/template', enforceSecuirty(constants.SCOPES.DEVELOPER), apiZip.single('apiContent'), apiMetadataService.createAPITemplate);
 router.put('/organizations/:orgId/apis/:apiId/template', enforceSecuirty(constants.SCOPES.DEVELOPER), apiZip.single('apiContent'), apiMetadataService.updateAPITemplate);
 router.get('/organizations/:orgId/apis/:apiId/template', apiMetadataService.getAPIFile);
@@ -87,7 +109,9 @@ router.post(
     '/apis',
     enforceSecuirty(constants.SCOPES.DEVELOPER),
     multipartHandler.fields([
+        {name: 'api', maxCount: 1},
         {name: 'apiDefinition', maxCount: 1},
+        {name: 'artifact', maxCount: 1},
         {name: 'schemaDefinition', maxCount: 1},
     ]),
     apiMetadataService.createAPIMetadata); // s2s applied
@@ -96,7 +120,9 @@ router.put(
     '/apis/:apiId',
     enforceSecuirty(constants.SCOPES.DEVELOPER),
     multipartHandler.fields([
+        {name: 'api', maxCount: 1},
         {name: 'apiDefinition', maxCount: 1},
+        {name: 'artifact', maxCount: 1},
         {name: 'schemaDefinition', maxCount: 1},
     ]),
     apiMetadataService.updateAPIMetadata); // s2s applied
@@ -107,11 +133,37 @@ router.put('/organizations/:orgId/labels', enforceSecuirty(constants.SCOPES.ADMI
 router.get('/organizations/:orgId/labels', enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.retrieveLabels);
 router.delete('/organizations/:orgId/labels', enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.deleteLabels);
 
-router.post('/organizations/:orgId/applications', enforceSecuirty(constants.SCOPES.DEVELOPER), adminService.createDevPortalApplication);
-router.put('/organizations/:orgId/applications/:appId', enforceSecuirty(constants.SCOPES.DEVELOPER), adminService.updateDevPortalApplication);
+router.post('/organizations/:orgId/applications', enforceSecuirty(constants.SCOPES.DEVELOPER),
+    multipartHandler.fields([{name: 'application', maxCount: 1}]),
+    adminService.createDevPortalApplication);
+router.put('/organizations/:orgId/applications/:appId', enforceSecuirty(constants.SCOPES.DEVELOPER),
+    multipartHandler.fields([{name: 'application', maxCount: 1}]),
+    adminService.updateDevPortalApplication);
 router.get('/organizations/:orgId/applications/:appId', enforceSecuirty(constants.SCOPES.DEVELOPER), adminService.getDevPortalApplicationDetails);
 router.get('/organizations/:orgId/applications', enforceSecuirty(constants.SCOPES.DEVELOPER), adminService.getDevPortalApplications);
 router.delete('/organizations/:orgId/applications/:appId', enforceSecuirty(constants.SCOPES.DEVELOPER), adminService.deleteDevPortalApplication);
+
+// Platform Gateway Subscriptions (must be before :subscriptionId routes)
+router.post('/organizations/:orgId/api-platform-subscriptions',
+    enforceSecuirty(constants.SCOPES.DEVELOPER), platformSubscriptionService.createPlatformGatewaySubscription);
+router.get('/organizations/:orgId/api-platform-subscriptions',
+    enforceSecuirty(constants.SCOPES.DEVELOPER), platformSubscriptionService.listPlatformGatewaySubscriptions);
+router.get('/organizations/:orgId/api-platform-subscriptions/:subscriptionId',
+    enforceSecuirty(constants.SCOPES.DEVELOPER), platformSubscriptionService.getPlatformGatewaySubscription);
+router.put('/organizations/:orgId/api-platform-subscriptions/:subscriptionId',
+    enforceSecuirty(constants.SCOPES.DEVELOPER), platformSubscriptionService.updatePlatformGatewaySubscription);
+router.delete('/organizations/:orgId/api-platform-subscriptions/:subscriptionId',
+    enforceSecuirty(constants.SCOPES.DEVELOPER), platformSubscriptionService.deletePlatformGatewaySubscription);
+
+// API keys — devportal is source of truth; gateway notified via webhook event
+router.post('/organizations/:orgId/platform-api-keys/generate',
+    enforceSecuirty(constants.SCOPES.DEVELOPER), requireCsrfForMutatingApi, apiKeyController.generateApiKey);
+router.get('/organizations/:orgId/platform-api-keys',
+    enforceSecuirty(constants.SCOPES.DEVELOPER), apiKeyController.listApiKeys);
+router.post('/organizations/:orgId/platform-api-keys/:apiKeyId/regenerate',
+    enforceSecuirty(constants.SCOPES.DEVELOPER), requireCsrfForMutatingApi, apiKeyController.regenerateApiKey);
+router.post('/organizations/:orgId/platform-api-keys/:apiKeyId/revoke',
+    enforceSecuirty(constants.SCOPES.DEVELOPER), requireCsrfForMutatingApi, apiKeyController.revokeApiKey);
 
 //store API subscription
 router.post('/organizations/:orgId/subscriptions', enforceSecuirty(constants.SCOPES.DEVELOPER), adminService.createSubscription);
@@ -132,8 +184,12 @@ router.get('/organizations/:orgId/views/:name', enforceSecuirty(constants.SCOPES
 router.get('/organizations/:orgId/views', enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.getAllViews);
 router.delete('/organizations/:orgId/views/:name', enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.deleteView);
 
-router.post('/applications', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.saveApplication);
-router.put('/applications/:applicationId', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.updateApplication);
+router.post('/applications', enforceSecuirty(constants.SCOPES.DEVELOPER),
+    multipartHandler.fields([{name: 'application', maxCount: 1}]),
+    devportalController.saveApplication);
+router.put('/applications/:applicationId', enforceSecuirty(constants.SCOPES.DEVELOPER),
+    multipartHandler.fields([{name: 'application', maxCount: 1}]),
+    devportalController.updateApplication);
 router.delete('/applications/:applicationId', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.deleteApplication);
 router.post('/applications/:applicationId/reset-throttle-policy', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.resetThrottlingPolicy);
 router.post('/applications/:applicationId/api-keys/generate', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.generateAPIKeys);
@@ -148,11 +204,72 @@ router.post('/api-keys/generate', enforceSecuirty(constants.SCOPES.DEVELOPER), d
 router.post('/api-keys/:apiKeyID/revoke', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.revokeAPIKeys);
 router.post('/api-keys/:apiKeyID/regenerate', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.regenerateAPIKeys);
 
-// SDK Generation Routes
-router.post('/applications/:applicationId/generate-sdk', enforceSecuirty(constants.SCOPES.DEVELOPER), sdkJobService.generateSDK);
-router.get('/applications/:applicationId/sdk/job-progress/:jobId', enforceSecuirty(constants.SCOPES.DEVELOPER),sdkJobService.streamSDKProgress);
-router.post('/applications/:applicationId/sdk/cancel/:jobId', enforceSecuirty(constants.SCOPES.DEVELOPER), sdkJobService.cancelSDK);
-router.get('/sdk/download/:filename', enforceSecuirty(constants.SCOPES.DEVELOPER),sdkJobService.downloadSDK);
+// Billing / Stripe
+router.get("/organizations/:orgId/billing/usage-data", ensureBillingAuth, billingController.getUsageData);
+router.get("/organizations/:orgId/billing/payment-methods", ensureBillingAuth, billingController.getPaymentMethods);
+
+// Billing Engine Keys CRUD
+router.post("/organizations/:orgId/billing-engine-keys", verifyRequestOrigin, enforceSecuirty(constants.SCOPES.ADMIN), billingController.addBillingEngineKeys);
+router.put("/organizations/:orgId/billing-engine-keys", verifyRequestOrigin, enforceSecuirty(constants.SCOPES.ADMIN), billingController.updateBillingEngineKeys);
+router.delete("/organizations/:orgId/billing-engine-keys", verifyRequestOrigin, enforceSecuirty(constants.SCOPES.ADMIN), billingController.deleteBillingEngineKeys);
+router.get("/organizations/:orgId/billing-engine-keys", enforceSecuirty(constants.SCOPES.ADMIN), billingController.getBillingEngineKeys);
+router.get("/organizations/:orgId/billing/info", ensureBillingAuth, billingController.getBillingInfo);
+router.get("/organizations/:orgId/billing/subscriptions", ensureBillingAuth, billingController.getActiveSubscriptions);
+router.post("/organizations/:orgId/monetization/checkout", verifyRequestOrigin, ensureBillingAuth, billingController.createCheckoutSessionForSubscription);
+router.post("/organizations/:orgId/monetization/stripe/register/:checkoutSessionId", verifyRequestOrigin, ensureBillingAuth, billingController.registerStripeCheckoutSession);
+router.post("/organizations/:orgId/subscriptions/:subId/cancel", verifyRequestOrigin, ensureBillingAuth, billingController.cancelSubscription);
+router.get("/organizations/:orgId/subscriptions/:subId/billing-status", ensureBillingAuth, billingController.getSubscriptionBillingStatus);
+router.post("/organizations/:orgId/billing-portal", verifyRequestOrigin, ensureBillingAuth, billingController.createBillingPortalByOrg);
+router.post("/organizations/:orgId/subscriptions/:subId/billing-portal", verifyRequestOrigin, ensureBillingAuth, billingController.createBillingPortal);
+
+// Usage
+router.get("/organizations/:orgId/subscriptions/:subId/usage", ensureBillingAuth, usageController.getSubscriptionUsage);
+
+// Invoices
+router.get("/organizations/:orgId/invoices", ensureBillingAuth, invoiceController.listInvoices);
+router.get("/organizations/:orgId/invoices/:invoiceId", ensureBillingAuth, invoiceController.getInvoice);
+router.get("/organizations/:orgId/subscriptions/:subId/invoices", ensureBillingAuth, invoiceController.listInvoicesBySubscription);
+router.get("/organizations/:orgId/invoices/:invoiceId/pdf", ensureBillingAuth, invoiceController.getInvoicePdfLink);
+router.get("/organizations/:orgId/invoices/:invoiceId/hosted", ensureBillingAuth, invoiceController.redirectHostedInvoice);
+
+// API Flows (admin)
+router.post('/organizations/:orgId/views/:viewName/api-flows', enforceSecuirty(constants.SCOPES.ADMIN), requireCsrfForMutatingApi, apiFlowService.createAPIFlow);
+router.get('/organizations/:orgId/views/:viewName/api-flows', enforceSecuirty(constants.SCOPES.ADMIN), apiFlowService.getAllAPIFlows);
+router.get('/organizations/:orgId/views/:viewName/api-flows/:apiFlowId', enforceSecuirty(constants.SCOPES.ADMIN), apiFlowService.getAPIFlow);
+router.put('/organizations/:orgId/views/:viewName/api-flows/:apiFlowId', enforceSecuirty(constants.SCOPES.ADMIN), requireCsrfForMutatingApi, apiFlowService.updateAPIFlow);
+router.delete('/organizations/:orgId/views/:viewName/api-flows/:apiFlowId', enforceSecuirty(constants.SCOPES.ADMIN), requireCsrfForMutatingApi, apiFlowService.deleteAPIFlow);
+router.post('/organizations/:orgId/views/:viewName/api-flows/generate-prompt', enforceSecuirty(constants.SCOPES.ADMIN), requireCsrfForMutatingApi, apiFlowService.generatePrompt);
+
+// Writes Arazzo YAML to a unique temp file so the "Open in VS Code" button can launch it via vscode://file/<path>
+router.post('/temp-arazzo-file', enforceSecuirty(constants.SCOPES.ADMIN), requireCsrfForMutatingApi, async (req, res, next) => {
+    const { content, filename } = req.body;
+    if (!content || typeof content !== 'string') {
+        return res.status(400).json({ error: 'content is required' });
+    }
+    const safeName = (filename || 'workflow.arazzo.yaml')
+        .replace(/[^a-zA-Z0-9._-]/g, '-')
+        .replace(/\.\.+/g, '.')
+        .substring(0, 120);
+    try {
+        const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'arazzo-'));
+        const tmpPath = path.join(tmpDir, safeName);
+        await fs.writeFile(tmpPath, content, 'utf8');
+        res.json({ path: tmpPath });
+    } catch (err) {
+        next(err);
+    }
+});
 
 router.post('/login', devportalController.login);
+
+// Import Application with API Subscriptions
+if (config.features?.importApplication?.enabled) {
+    router.post('/organizations/:orgId/applications/import', enforceSecuirty(constants.SCOPES.ADMIN),multipartHandler.single('file'), devportalController.importApplications);
+}
+
+// Webhook event admin (admin-only)
+router.get('/organizations/:orgId/events', enforceSecuirty(constants.SCOPES.ADMIN), webhookAdminController.listEvents);
+router.get('/organizations/:orgId/events/:eventId', enforceSecuirty(constants.SCOPES.ADMIN), webhookAdminController.getEvent);
+router.post('/organizations/:orgId/deliveries/:deliveryId/retry', enforceSecuirty(constants.SCOPES.ADMIN), requireCsrfForMutatingApi, webhookAdminController.retryDelivery);
+
 module.exports = router;

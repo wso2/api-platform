@@ -33,37 +33,38 @@
                     <div class="container">
                         {{#each keyManagersMetadata}}
                         {{#if enabled}}
-                        {{#let "keys" (conditionalIf ../isProduction productionKeys sandboxKeys)}}
-                        <div id="consumerKeys_{{../name}}" style="{{#unless keys.consumerKey}}display: none;{{/unless}}">
+                        {{#each applicationKeys}}
+                        {{#let "keys" keys}}
+                        <div id="consumerKeys_{{../name}}-{{keyType}}" style="{{#unless keys.consumerKey}}display: none;{{/unless}}">
                             <h3 class='h6'> Key and Secret </h3>
                             <div class="row mb-3">
                                 <div class="col-md-6">
                                     <label
-                                        for='consumer-key-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'
+                                        for='consumer-key-{{../id}}-{{keyType}}'
                                         class='form-label'>
                                         Consumer Key
                                     </label>
                                     <input type='text'
-                                        id='consumer-key-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'
+                                        id='consumer-key-{{../id}}-{{keyType}}'
                                         class='form-control' name="consumerKey" value='{{keys.consumerKey}}' readonly disabled />
                                 </div>
                                 <div class="col-md-6">
                                     <label
-                                        for='consumer-secret-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'
+                                        for='consumer-secret-{{../id}}-{{keyType}}'
                                         class='form-label'>
                                         Consumer Secret
                                     </label>
                                     <div class="password-toggle-container">
                                         <input type='password'
-                                            id='consumer-secret-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'
+                                            id='consumer-secret-{{../id}}-{{keyType}}'
                                             class='form-control' name="consumerSecret" value='{{keys.consumerSecret}}'
                                             readonly disabled />
                                         <button type="button" class="password-toggle-btn" 
-                                            onclick="togglePasswordVisibility('consumer-secret-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}')">
+                                            onclick="togglePasswordVisibility('consumer-secret-{{../id}}-{{keyType}}')">
                                             <i class="bi bi-eye"></i>
                                         </button>
                                         <button type="button" class="password-copy-btn" 
-                                            onclick="copyConsumerSecret('consumer-secret-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}')">
+                                            onclick="copyConsumerSecret('consumer-secret-{{../id}}-{{keyType}}')">
                                             <i class="bi bi-clipboard"></i>
                                         </button>
                                     </div>
@@ -71,17 +72,17 @@
                             </div>
                         </div>
 
-                        <div id="tokenGenerationButtons_{{../name}}" class="d-flex mb-4" style="{{#unless (contains keys.supportedGrantTypes 'client_credentials')}} display: none !important;{{/unless}}">
+                        <div id="tokenGenerationButtons_{{../name}}-{{keyType}}" class="d-flex mb-4" style="{{#unless (contains keys.supportedGrantTypes 'client_credentials')}} display: none !important;{{/unless}}">
                             <div class="row">
                                 <div class="d-flex gap-2 mb-3">
                                     <button class='common-btn-primary'
-                                        id='apiKeyGenerateButton-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'
+                                        id='apiKeyGenerateButton-{{keyType}}'
                                         name='http-values' type='button'
-                                        onClick="generateOauthKey('applicationKeyGenerateForm-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}', '{{keys.appRefID}}', '{{keys.keyMappingId}}', '{{../name}}', '{{keys.clientName}}', '{{keys.consumerSecret}}')">
+                                        onClick="generateOauthKey('applicationKeyGenerateForm-{{../id}}-{{keyType}}', '{{keys.appRefID}}', '{{keys.keyMappingId}}', '{{../name}}', '{{keys.clientName}}', '{{keys.consumerSecret}}', '{{json @root.subAPIs}}', '{{keyType}}')">
                                         Generate Token
                                     </button>
                                     <button class='common-btn-primary'
-                                        id='curl-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'
+                                        id='curl-{{keyType}}'
                                         name='http-values' type='button'
                                         onClick="generateCurl('{{../name}}', '{{../tokenEndpoint}}')">
                                         cURL
@@ -108,10 +109,10 @@
                                     </div>
 
                                     <div class="token-card">
-                                        <pre id="token_{{../name}}" class="token-text"
+                                        <pre id="token_{{../name}}_{{keyType}}" class="token-text"
                                             style="max-height: 4.5em; overflow-y: auto; overflow-x: auto; line-height: 1.5em;"></pre>
-                                        <button id="copyButton_{{../name}}" class="copy-button" aria-label="Copy token"
-                                            type="button" onclick="copyToken('{{../name}}')">
+                                        <button id="copyButton_{{../name}}_{{keyType}}" class="copy-button" aria-label="Copy token"
+                                            type="button" onclick="copyToken('{{../name}}_{{keyType}}')">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"
                                                 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                                 stroke-linecap="round" stroke-linejoin="round">
@@ -121,7 +122,7 @@
                                         </button>
                                     </div>
                                 </div>
-                                <div id="curlDisplay_{{../name}}" class="mt-3" style="display: none;">
+                                <div id="curlDisplay_{{../name}}_{{keyType}}" class="mt-3" style="display: none;">
                                     <div>cURL to Generate Access Token</div>
                                     <p class="curl-description">
                                         The following cURL command allows you to generate an access token using the
@@ -144,7 +145,7 @@
                             </div>
                         </div>
 
-                        <div id="KMURl_{{../name}}" style="{{#unless keys.consumerKey}}display: none;{{/unless}}">
+                        <div id="KMURl_{{../name}}-{{keyType}}" style="{{#unless keys.consumerKey}}display: none;{{/unless}}">
                             <div id="header">
                                 <h2>Identity Provider Connection Data</h2>
                             </div>
@@ -152,23 +153,23 @@
                                 {{!-- Token Endpoint --}}
                                 <div class='mb-3'>
                                     <label
-                                        for='token-endpoint-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'
+                                        for='token-endpoint-{{../id}}-{{keyType}}'
                                         class='form-label'>
                                         Token Endpoint
                                     </label>
                                     <input type='url' name="tokenURL"
-                                        id='token-endpoint-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'
+                                        id='token-endpoint-{{../id}}-{{keyType}}'
                                         class='form-control' value='{{../tokenEndpoint}}' readonly disabled />
                                 </div>
                                 {{!-- Revoke Endpoint --}}
                                 <div class='mb-3'>
                                     <label
-                                        for='revoke-endpoint-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'
+                                        for='revoke-endpoint-{{../id}}-{{keyType}}'
                                         class='form-label'>
                                         Revoke Endpoint
                                     </label>
                                     <input type='url' name="revokeURL"
-                                        id='revoke-endpoint-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'
+                                        id='revoke-endpoint-{{../id}}-{{keyType}}'
                                         class='form-control' value='{{../revokeEndpoint}}' readonly disabled />
                                 </div>
                             </div>
@@ -178,7 +179,7 @@
                             style="{{#unless keys.consumerKey}}display: none !important;{{/unless}}">
                             <div id="additionalPropsHeader" class="collapsible-header"
                                 style="font-weight: 500; color: var(--dp-main-text-color);"
-                                onclick="showAdvanced('KMData_{{../name}}')">Advanced Configuration
+                                onclick="showAdvanced('KMData_{{../name}}_{{keyType}}')">Advanced Configuration
                                 <svg class="arrow-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
                                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                     <polyline points="6 9 12 15 18 9"></polyline>
@@ -188,9 +189,9 @@
 
                         {{#if keys.consumerKey}}
                         {{!-- Advanced configurations section --}}
-                        <div class="container KMConfig mt-4" id="KMData_{{../name}}" style="display: none;">
+                        <div class="container KMConfig mt-4" id="KMData_{{../name}}_{{keyType}}" style="display: none;">
                             <form
-                                id='applicationKeyGenerateForm-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'>
+                                id='applicationKeyGenerateForm-{{../id}}-{{keyType}}'>
                                 <div>
                                     <div class="row mb-2">
                                         <div class="col-md-4">
@@ -204,12 +205,12 @@
                                                     <div class="keygen-checkbox-group" id="grant-types">
                                                         <label class="keygen-checkbox-container">
                                                             <input type="checkbox"
-                                                                id="grant-type-{{name}}-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}"
+                                                                id="grant-type-{{name}}-{{../id}}-{{keyType}}"
                                                                 name="grantTypes" value="{{name}}" {{#if (contains
                                                                 ../supportedGrantTypes name)}}checked{{/if}} {{#if (eq
                                                                 name "client_credentials" )}}checked{{/if}} />
                                                             <label class="form-check-label fw-light ms-0"
-                                                                for="grant-type-{{name}}-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}">
+                                                                for="grant-type-{{name}}-{{../id}}-{{keyType}}">
                                                                 {{label}}
                                                             </label>
                                                         </label>
@@ -237,7 +238,7 @@
                                     <div id="additionalProps{{../name}}">
                                         {{#let "additionalProperties" (conditionalIf keys.additionalProperties
                                         keys.additionalProperties [])}}
-                                        {{#each ../../applicationConfiguration}}
+                                        {{#each @root.applicationConfiguration}}
                                         {{#let "propValue" (conditionalIf (getValue ../additionalProperties name)
                                         (getValue ../additionalProperties name) default)}}
                                         <div class="row mb-2">
@@ -246,7 +247,7 @@
                                                 {{#if (eq ../type 'checkbox')}}
                                                 {{else}}
                                                 <label
-                                                    for="{{../name}}-{{../../../../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}"
+                                                    for="{{../name}}-{{../../../../id}}-{{keyType}}"
                                                     class="form-label">
                                                     {{../label}}
                                                     {{#if required}}<span class="text-danger">*</span>{{/if}}
@@ -258,21 +259,21 @@
                                             <div class="col-md-8">
                                                 {{#if (eq ../type 'input')}}
                                                 <input type="text" name="additionalProperties.{{{../name}}}"
-                                                    id="{{../name}}-{{../../../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}"
+                                                    id="{{../name}}-{{../../../id}}-{{keyType}}"
                                                     class="form-control" value="{{propValue}}" {{#if
                                                     required}}required{{/if}} />
                                                 {{/if}}
 
                                                 {{#if (eq ../type 'text')}}
                                                 <input type="text" name="additionalProperties.{{../name}}"
-                                                    id="{{../name}}-{{../../../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}"
+                                                    id="{{../name}}-{{../../../id}}-{{keyType}}"
                                                     class="form-control" value="{{propValue}}" {{#if
                                                     required}}required{{/if}} />
                                                 {{/if}}
 
                                                 {{#and (eq ../type 'select') (eq ../multiple false)}}
                                                 <select
-                                                    id="{{../name}}-{{../../../../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}"
+                                                    id="{{../name}}-{{../../../../id}}-{{keyType}}"
                                                     class="form-control" {{#if required}}required{{/if}}
                                                     name="additionalProperties.{{../name}}">
                                                     {{#each ../values}}
@@ -285,7 +286,7 @@
 
                                                 {{#and (eq ../type 'select') (eq ../multiple true)}}
                                                 <select
-                                                    id="{{../name}}-{{../../../../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}"
+                                                    id="{{../name}}-{{../../../../id}}-{{keyType}}"
                                                     class="form-control" name="additionalProperties.{{../name}}"
                                                     multiple>
                                                     {{#each ../values}}
@@ -298,10 +299,10 @@
                                                 {{#if (eq ../type 'checkbox')}}
                                                 <div class="form-check ps-0">
                                                     <input type="checkbox" name="additionalProperties.{{../name}}"
-                                                        id="{{../name}}-{{../../../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}"
+                                                        id="{{../name}}-{{../../../id}}-{{keyType}}"
                                                         value="true" {{#if (eq propValue true)}} checked{{/if}} />
                                                     <label class="form-check-label"
-                                                        for="{{../name}}-{{../../../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}">
+                                                        for="{{../name}}-{{../../../id}}-{{keyType}}">
                                                         {{../label}}
                                                     </label>
                                                 </div>
@@ -317,11 +318,11 @@
                                 </div>
                             </form>
                             <!-- Add Update configuration button when consumer key exists -->
-                            <div class="d-flex mt-4 mb-3" id="applicationKeyUpdateButtonContainer"
+                            <div class="d-flex mt-4 mb-3" id="applicationKeyUpdateButtonContainer-{{keyType}}"
                                 style="{{#unless keys.consumerKey}}display: none !important;{{/unless}}">
-                                <button class="common-btn-primary" id="applicationKeyUpdateButton" name="http-values"
-                                    type="button" onClick="updateApplicationKey('applicationKeyGenerateForm-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}',
-                                   '{{json ../../applicationMetadata.appMap}}', {{#if ../../isProduction}}'PRODUCTION'{{else}}'SANDBOX'{{/if}}, '{{../name}}',
+                                <button class="common-btn-primary" id="applicationKeyUpdateButton-{{keyType}}" name="http-values"
+                                    type="button" onClick="updateApplicationKey('applicationKeyGenerateForm-{{../id}}-{{keyType}}',
+                                   '{{json @root.applicationMetadata.appMap}}', '{{keyType}}', '{{../name}}',
                                    '{{keys.keyMappingId}}', '{{keys.clientName}}')">
                                     Update
                                 </button>
@@ -333,7 +334,8 @@
                                 <div class="d-flex gap-3" id="generate-keys-btn-container">
                                     <button class="common-btn-primary" id="applicationKeyGenerateButton" name="http-values"
                                         type="button"
-                                        onClick="generateApplicationKey('applicationKeyGenerateForm-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}', '{{../../applicationMetadata.id}}', {{#if ../../isProduction}}'PRODUCTION'{{else}}'SANDBOX'{{/if}}, '{{../name}}', '{{../../applicationMetadata/name}}', '{{ json ../../subAPIs}}', '{{../../orgID}}', 'consumer-key-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}', 'consumer-secret-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}')">
+                                        data-subscriptions="{{ json ../../subAPIs }}"
+                                        onClick="generateApplicationKey('applicationKeyGenerateForm-{{../id}}-{{keyType}}', '{{../../applicationMetadata.id}}', '{{keyType}}', '{{../name}}', '{{../../applicationMetadata/name}}', this.getAttribute('data-subscriptions'), '{{@root.orgID}}', 'consumer-key-{{../id}}-{{keyType}}', 'consumer-secret-{{../id}}-{{keyType}}')">
                                         Generate Credentials
                                     </button>
                                 </div>
@@ -350,7 +352,7 @@
                             {{!-- Advanced configurations section --}}
                             <div class="container KMConfig mt-4" id="KMData_{{../name}}" style="display: none;">
                                 <form
-                                    id='applicationKeyGenerateForm-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'>
+                                    id='applicationKeyGenerateForm-{{../id}}-{{keyType}}'>
                                     <div>
                                         <div class="row mb-2">
                                             <div class="col-md-4">
@@ -364,12 +366,12 @@
                                                         <div class="keygen-checkbox-group" id="grant-types">
                                                             <label class="keygen-checkbox-container">
                                                                 <input type="checkbox"
-                                                                    id="grant-type-{{name}}-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}"
+                                                                    id="grant-type-{{name}}-{{../id}}-{{keyType}}"
                                                                     name="grantTypes" value="{{name}}" {{#if (contains
                                                                     ../supportedGrantTypes name)}}checked{{/if}} {{#if (eq
                                                                     name "client_credentials" )}}checked{{/if}} />
                                                                 <label class="form-check-label fw-light ms-0"
-                                                                    for="grant-type-{{name}}-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}">
+                                                                    for="grant-type-{{name}}-{{../id}}-{{keyType}}">
                                                                     {{label}}
                                                                 </label>
                                                             </label>
@@ -406,7 +408,7 @@
                                                     {{#if (eq ../type 'checkbox')}}
                                                     {{else}}
                                                     <label
-                                                        for="{{../name}}-{{../../../../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}"
+                                                        for="{{../name}}-{{../../../../id}}-{{keyType}}"
                                                         class="form-label">
                                                         {{../label}}
                                                         {{#if required}}<span class="text-danger">*</span>{{/if}}
@@ -418,21 +420,21 @@
                                                 <div class="col-md-8">
                                                     {{#if (eq ../type 'input')}}
                                                     <input type="text" name="additionalProperties.{{{../name}}}"
-                                                        id="{{../name}}-{{../../../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}"
+                                                        id="{{../name}}-{{../../../id}}-{{keyType}}"
                                                         class="form-control" value="{{propValue}}" {{#if
                                                         required}}required{{/if}} />
                                                     {{/if}}
 
                                                     {{#if (eq ../type 'text')}}
                                                     <input type="text" name="additionalProperties.{{../name}}"
-                                                        id="{{../name}}-{{../../../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}"
+                                                        id="{{../name}}-{{../../../id}}-{{keyType}}"
                                                         class="form-control" value="{{propValue}}" {{#if
                                                         required}}required{{/if}} />
                                                     {{/if}}
 
                                                     {{#and (eq ../type 'select') (eq ../multiple false)}}
                                                     <select
-                                                        id="{{../name}}-{{../../../../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}"
+                                                        id="{{../name}}-{{../../../../id}}-{{keyType}}"
                                                         class="form-control" {{#if required}}required{{/if}}
                                                         name="additionalProperties.{{../name}}">
                                                         {{#each ../values}}
@@ -446,7 +448,7 @@
 
                                                     {{#and (eq ../type 'select') (eq ../multiple true)}}
                                                     <select
-                                                        id="{{../name}}-{{../../../../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}"
+                                                        id="{{../name}}-{{../../../../id}}-{{keyType}}"
                                                         class="form-control" name="additionalProperties.{{../name}}"
                                                         multiple>
                                                         {{#each ../values}}
@@ -459,10 +461,10 @@
                                                     {{#if (eq ../type 'checkbox')}}
                                                     <div class="form-check ps-0">
                                                         <input type="checkbox" name="additionalProperties.{{../name}}"
-                                                            id="{{../name}}-{{../../../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}"
+                                                            id="{{../name}}-{{../../../id}}-{{keyType}}"
                                                             value="true" {{#if (eq propValue true)}} checked{{/if}} />
                                                         <label class="form-check-label"
-                                                            for="{{../name}}-{{../../../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}">
+                                                            for="{{../name}}-{{../../../id}}-{{keyType}}">
                                                             {{../label}}
                                                         </label>
                                                     </div>
@@ -479,11 +481,11 @@
                                 </form>
 
                                 <!-- Add Update button at the bottom only when consumer key exists -->
-                                <div class="d-flex mt-4 mb-3" id="applicationKeyUpdateButtonContainer"
+                                <div class="d-flex mt-4 mb-3" id="applicationKeyUpdateButtonContainer-{{keyType}}"
                                     style="{{#unless keys.consumerKey}}display: none !important;{{/unless}}">
-                                    <button class="common-btn-primary" id="applicationKeyUpdateButton" name="http-values"
-                                        type="button" onClick="updateApplicationKey('applicationKeyGenerateForm-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}',
-                                   '{{json ../../applicationMetadata.appMap}}', {{#if ../../isProduction}}'PRODUCTION'{{else}}'SANDBOX'{{/if}}, '{{../name}}',
+                                    <button class="common-btn-primary" id="applicationKeyUpdateButton-{{keyType}}" name="http-values"
+                                        type="button" onClick="updateApplicationKey('applicationKeyGenerateForm-{{../id}}-{{keyType}}',
+                                   '{{json ../../applicationMetadata.appMap}}', '{{keyType}}', '{{../name}}',
                                    '{{keys.keyMappingId}}', '{{keys.clientName}}')">
                                         Update
                                     </button>

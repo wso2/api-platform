@@ -1,0 +1,91 @@
+# Developer Portal — Docker Compose
+#
+# Quick start:
+#   cp sample_config.yaml config.yaml   # only needed once
+#   docker compose up
+#   Then open https://localhost:3000/ACME/views/default  (accept the self-signed cert warning)
+#   Login: admin / admin  (or developer / developer)
+#
+# TLS:
+#   A self-signed certificate is generated automatically on first start and stored
+#   in the certs_data volume. Your browser will show a security warning — click
+#   "Proceed" (or "Advanced → Proceed") to continue.
+#   To use your own certificate, replace the certs_data volume with a bind-mount:
+#     - ./my-certs:/app/certs:ro
+#   and ensure it contains server.crt and server.key.
+#
+# Configuration:
+#   Every config value can be overridden with a DP_* env var.
+#   Create a .env file at the project root for persistent overrides.
+#   See sample_config.yaml for the full list of settings.
+#
+# To use a pre-built image instead of building from source, replace:
+#   build: .
+# with:
+#   image: ghcr.io/wso2/api-developer-portal-core:latest
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: devportal
+      POSTGRES_PASSWORD: devportal
+      POSTGRES_DB: devportal
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # SQL files in this directory run automatically on first DB start
+      - ./artifacts/docker-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devportal -d devportal"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  devportal:
+    build: .
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      # Mount your config.yaml from the project root into the container.
+      # Copy sample_config.yaml to config.yaml first: cp sample_config.yaml config.yaml
+      - ./config.yaml:/app/config.yaml:ro
+      # Persist the auto-generated TLS certificate across container restarts.
+      # To use your own cert, replace with: - ./my-certs:/app/certs:ro
+      - certs_data:/app/certs
+    environment:
+      # Database — point to the postgres service above
+      DP_DB_HOST: postgres
+      DP_DB_PORT: 5432
+      DP_DB_DIALECT: postgres
+      DP_DB_USERNAME: devportal
+      DP_DB_PASSWORD: devportal
+      DP_DB_DATABASE: devportal
+      DP_SECRETS_DBSECRET: devportal
+
+      # HTTPS — a self-signed cert is generated automatically on first start.
+      # To switch back to plain HTTP, set DP_ADVANCED_HTTP=true and DP_BASEURL=http://localhost:3000.
+      DP_ADVANCED_HTTP: "false"
+      DP_BASEURL: "https://localhost:3000"
+      DP_SERVERCERTS_PATHTOCERT: "/app/certs/server.crt"
+      DP_SERVERCERTS_PATHTOPK: "/app/certs/server.key"
+      DP_SERVERCERTS_PATHTOCA: "/app/certs/server.crt"
+
+      # Seed default theme assets on first boot if the ACME org has no assets yet
+      DP_SEEDDEFAULTS: "true"
+
+      # Auto-generate default subscription plans for every new org
+      DP_GENERATEDEFAULTSUBPOLICIES: "true"
+
+      # Log to console only (no rotating log files)
+      DP_LOGGING_CONSOLEONLY: "true"
+    env_file:
+      - path: .env
+        required: false   # Optional — create a .env file to add your own overrides
+
+volumes:
+  postgres_data:
+  certs_data:

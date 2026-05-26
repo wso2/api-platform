@@ -1,0 +1,37 @@
+apiVersion: devportal.api-platform.wso2.com/v1
+kind: RestApi
+
+metadata:
+  name: ping-api-v1.0
+
+spec:
+  type: REST
+  displayName: Ping API
+  version: v1.0
+  description: Sample HTTP echo/probe API. Requires API key authentication. No subscription plans.
+  provider: WSO2
+  status: PUBLISHED
+  gatewayType: wso2/api-platform
+  referenceID: ping-api-v1.0
+
+  tags:
+    - ping
+    - api-key
+
+  labels:
+    - default
+
+  subscriptionPolicies: []
+
+  visibility: PUBLIC
+  visibleGroups: []
+
+  businessInformation:
+    businessOwner: Platform Owner
+    businessOwnerEmail: support@example.com
+    technicalOwner: API Team
+    technicalOwnerEmail: architecture@example.com
+
+  endpoints:
+    sandboxUrl: http://localhost:8080/ping
+    productionUrl: http://localhost:8080/ping

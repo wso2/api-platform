@@ -1,0 +1,100 @@
+# {{apiMetadata.apiInfo.apiName}} {{apiMetadata.apiInfo.apiVersion}}
+
+> {{apiMetadata.apiInfo.apiDescription}}
+
+- **Version:** {{apiMetadata.apiInfo.apiVersion}}
+- **Type:** {{apiMetadata.apiInfo.apiType}}
+{{#if apiMetadata.endPoints.productionURL}}- **Production Endpoint:** {{apiMetadata.endPoints.productionURL}}
+{{/if}}{{#if apiMetadata.endPoints.sandboxURL}}- **Sandbox Endpoint:** {{apiMetadata.endPoints.sandboxURL}}
+{{/if}}{{#if apiMetadata.apiInfo.tags}}- **Tags:** {{#each apiMetadata.apiInfo.tags}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}
+{{/if}}{{#if apiMetadata.apiInfo.labels}}- **Labels:** {{#each apiMetadata.apiInfo.labels}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}
+{{/if}}
+{{#if subscriptionPlans.length}}
+## Subscription Plans
+
+| Plan | Request Quota | Description |
+|------|--------------|-------------|
+{{#each subscriptionPlans}}| {{displayName}} | {{requestCount}} | {{description}} |
+{{/each}}
+{{/if}}
+## Authentication
+
+{{#if showOAuth2}}
+### OAuth2
+
+To call this API, obtain an OAuth2 access token from the token endpoint:
+
+{{#if subscriptionPlans.length}}
+1. Register or use an existing application in the developer portal.
+2. Subscribe to this API under your application.
+3. Generate OAuth2 keys (client credentials) for your application.
+4. Exchange your client credentials for an access token:
+   ```
+   POST {{#if tokenEndpoint}}{{tokenEndpoint}}{{else}}<tokenEndpoint>{{/if}}
+   Content-Type: application/x-www-form-urlencoded
+   grant_type=client_credentials&client_id=<clientId>&client_secret=<clientSecret>
+   ```
+5. Include the token in the Authorization header:
+   ```
+   Authorization: Bearer <access_token>
+   ```
+{{else}}
+1. Register or use an existing application in the developer portal.
+2. Generate OAuth2 keys (client credentials) for your application.
+3. Exchange your client credentials for an access token:
+   ```
+   POST {{#if tokenEndpoint}}{{tokenEndpoint}}{{else}}<tokenEndpoint>{{/if}}
+   Content-Type: application/x-www-form-urlencoded
+   grant_type=client_credentials&client_id=<clientId>&client_secret=<clientSecret>
+   ```
+4. Include the token in the Authorization header:
+   ```
+   Authorization: Bearer <access_token>
+   ```
+{{/if}}
+
+{{/if}}
+{{#if showApiKey}}
+### API Key
+
+To call this API using an API key:
+
+{{#if subscriptionPlans.length}}
+1. Register or use an existing application in the developer portal.
+2. Subscribe to this API under your application.
+3. Generate an API key for your application.
+4. Include the key in the request header:
+   ```
+   api-key: <your-api-key>
+   ```
+{{else}}
+1. Register or use an existing application in the developer portal.
+2. Generate an API key for your application.
+3. Include the key in the request header:
+   ```
+   api-key: <your-api-key>
+   ```
+{{/if}}
+
+{{/if}}
+{{#if noAuth}}
+This API does not require authentication.
+
+{{/if}}
+
+{{#if docs}}
+## Documentation
+
+{{#each docs}}- [{{name}}]({{url}})
+{{/each}}
+{{/if}}
+
+{{#if apiDefinition}}
+## {{specHeading}}
+
+[{{specHeading}}]({{specUrl}})
+
+``````
+{{{apiDefinition}}}
+``````
+{{/if}}

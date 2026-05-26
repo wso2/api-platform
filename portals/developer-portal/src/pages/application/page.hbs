@@ -1,33 +1,30 @@
 <head>
   <link rel='stylesheet' href='/technical-styles/application.css' />
-  <link rel='stylesheet' href='/technical-styles/sdk-drawer.css' />
+  <script src='/technical-scripts/delete-confirmation-modal.js' defer></script>
   <script src='/technical-scripts/subscription.js' defer></script>
   <script src='/technical-scripts/application-dashboard.js' defer></script>
   <link rel="stylesheet" href="/technical-styles/oauth2-key-generation.css" />
   <script src="/technical-scripts/oauth2-key-generation.js" defer></script>
   <script src="/technical-scripts/edit-application-form.js" defer></script>
   <script src="/technical-scripts/api-key-generation.js" defer></script>
+  <script src="/technical-scripts/platform-subscription.js" defer></script>
+  <script src="/technical-scripts/subscription-modal.js" defer></script>
+  <link rel="stylesheet" href="/technical-styles/subscriptions.css" />
 </head>
 <main>
-    {{> header profile=profile baseUrl=baseUrl devportalMode=devportalMode }}
-    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode }}
+    {{> header profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav }}
+    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav }}
     {{> overview }}
     {{> apis }}
     {{> application-modal }}
-    {{> sdk-drawer }}
 
-    {{!-- Modals for oauth2 buttons --}}
+    {{!-- Keys modals now served from manage-keys page --}}
     {{> keys-view }}
-    {{> keys-modify }}
-    {{> keys-token }}
-    {{!-- {{> keys-generate }} --}}
-    {{> keys-instructions }}
     
     {{> alert }}
     {{!-- {{> oauth2-key-generation}} --}}
     {{!-- {{> alert }}
     {{> throttling-reset-modal}}
     {{> api-key-modal}}
-    {{> delete-confirmation modalTitle="Do you really want to remove keys?" modalMessage="This will remove the key entries stored in devportal, 
-    gateway as well as in the service provider." modalFunction="removeApplicationKey()" }} --}}
+    {{> delete-confirmation modalTitle="Do you really want to remove keys?" modalMessage="This will remove the key entries stored in devportal, gateway as well as in the service provider." }} --}}
 </main>

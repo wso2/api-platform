@@ -1,0 +1,37 @@
+# {{flow.name}}
+
+**Status:** {{flow.status}}
+
+**Description:** {{flow.description}}
+
+{{#if sources}}
+## Sources
+
+{{#each sources}}
+- **{{this.name}}**{{#if this.url}} — {{#if this.isDevportalApi}}[API Documentation]({{this.url}}){{else}}[OpenAPI Spec]({{this.url}}){{/if}}{{/if}}
+{{/each}}
+
+> Refer to each source for base URLs, endpoints, security schemes, and any additional documentation needed to execute this workflow.
+
+## Authentication
+
+To determine the authentication method required for each source:
+
+- **API Documentation sources**: Check the source's documentation page for an **API Key** section (if API key auth is required) or an **OAuth2** section (if OAuth2 is required).
+- **OpenAPI Spec sources**: Read the `securitySchemes` section of the spec to determine the authentication method.
+
+Once the method is identified, follow the appropriate steps below:
+
+- **OAuth2**: Request the user's `client_id` and `client_secret`, then obtain an access token from the `tokenUrl` specified in the spec using the client credentials grant (`grant_type=client_credentials`). Use the token as a Bearer token in the `Authorization` header.
+- **API Key**: Request the API key for each source separately and pass it in the header or query parameter as specified in that source's documentation or spec.
+
+Never hardcode or log credentials. Store them only for the duration of the workflow execution.
+
+{{/if}}
+## API Flow Specification
+
+[arazzo.json]({{baseUrl}}/api-workflows/{{flow.handle}}/arazzo.json)
+
+``````
+{{{arazoJson}}}
+``````

@@ -10,12 +10,23 @@
     <link href="https://getbootstrap.com/docs/5.3/assets/css/docs.css" rel="stylesheet">
     <link rel="stylesheet" href="/technical-styles/main.css">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    {{!-- Stripe.js for embedded checkout --}}
+    <script src="https://js.stripe.com/v3/"></script>
 </head>
 
 <body>
-    {{> header }}
+    {{> header profile=profile showApiWorkflowsNav=showApiWorkflowsNav }}
     {{{ body }}}
     {{> footer }}
+
+    {{!-- Global Stripe Checkout Modal --}}
+    <div id="stripeCheckoutModal" class="modal hidden" style="display: none; position: fixed; z-index: 9999; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6);">
+        <div class="modal-content" style="background-color: #fefefe; margin: 40px auto; padding: 30px 20px 20px 20px; border: none; width: 90%; max-width: 600px; border-radius: 12px; position: relative; box-shadow: 0 4px 20px rgba(0,0,0,0.15); max-height: 90vh; overflow-y: auto;">
+            <button onclick="closeStripeCheckoutModal()" style="position: absolute; right: 15px; top: 15px; font-size: 24px; font-weight: bold; color: #999; background: none; border: none; cursor: pointer; z-index: 10; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: background-color 0.2s;" onmouseover="this.style.backgroundColor='#f0f0f0'" onmouseout="this.style.backgroundColor='transparent'">&times;</button>
+            <h2 style="margin-top: 0; margin-bottom: 20px; padding-right: 40px; color: #333; font-size: 22px; font-weight: 600;">Add Payment Details</h2>
+            <div id="stripe-embedded-checkout" style="min-height: 400px;"></div>
+        </div>
+    </div>
 </body>
 
 </html>

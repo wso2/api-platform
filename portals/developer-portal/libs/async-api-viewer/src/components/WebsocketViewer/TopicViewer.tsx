@@ -19,6 +19,9 @@ import React, {
   SetStateAction,
   useMemo,
 } from 'react';
+import * as ReactDOM from 'react-dom';
+// flushSync is in React 18 runtime but not in @types/react-dom@17
+const flushSync: (fn: () => void) => void = (ReactDOM as any).flushSync;
 import LogLine from '../../components/InfiniteLogsPanel/LogLine';
 import OutputConsole from './OutputConsole';
 import { PayloadEditor } from './PayloadEditor';
@@ -34,21 +37,24 @@ import {
   Button,
   Chip,
 } from '../../designSystem';
-import { Box, CircularProgress, Tooltip, Typography } from '@material-ui/core';
+import { Box, CircularProgress, Tooltip, Typography, Select, MenuItem, FormControl, Grid } from '@material-ui/core';
 import { PlayArrow, Send } from '@material-ui/icons';
+import { APITypeEnum } from './WebsocketViewer';
 
 export const INTERNAL_KEY_HEADER_NAME = 'choreo-test-key';
 export const DEVPORTAL_TOKEN_HEADER_NAME = 'choreo-oauth2-token';
 
 interface TopicViewerProps {
+  asyncType: APITypeEnum | undefined;
   token: string;
   apiEndpoint: string;
+  sandboxEndpoint: string;
   topic: string;
   publish: boolean;
   subscribe: boolean;
   parameters?: object;
-  payload?: string;
   isDevportal?: boolean;
+  payload?: string;
 }
 
 export interface CollectedLogLineWithKey {
@@ -59,32 +65,63 @@ export interface CollectedLogLineWithKey {
 }
 
 const TopicViewer = (props: TopicViewerProps) => {
-  const { token, apiEndpoint, topic, publish, subscribe, parameters, payload, isDevportal } =
+  const { token, apiEndpoint, sandboxEndpoint, topic, publish, subscribe, parameters, isDevportal, asyncType, payload } =
     props;
   const classes = useStyles();
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [messages, setMessages] = useState<Record<string, any>[]>([]);
   const [input, setInput] = useState(payload || '');
   const [endpoint, setEndpoint] = useState<string>(apiEndpoint);
+  const [selectedEndpointType, setSelectedEndpointType] = useState<string>('production');
   const [pathParams, setPathParams] = useState<{ [key: string]: string }>({});
   const [connect, setConnect] = useState(false);
   const [connectButtonText, setConnectButtonText] = useState('Connect');
   const [selectedTab, setSelectedTab] = useState(0);
   const [apiToken, setApiToken] = useState(token);
+  const [webSubHeader, setWebSubHeader] = useState('<your-header-here>');
+  const [webSubHeaderValue, setWebSubHeaderValue] = useState('<your-header-value-here>');
+  const [callbackURL, setCallbackURL] = useState('http://example.com/callback');
+  const [leaseSeconds, setLeaseSeconds] = useState('864000');
+  const [secret, setSecret] = useState('xxxxxxxxx');
 
   const handleTabChange = (event: any, newValue: SetStateAction<number>) => {
     setSelectedTab(newValue);
   };
 
+  function generateCurlCommand() {
+    const mode = selectedTab === 0 ? 'subscribe' : selectedTab === 1 ? 'unsubscribe' : 'subscribe';
+    let curlCmd = `curl -X POST ${endpoint}`;
+    curlCmd += ` -H 'Content-Type: application/x-www-form-urlencoded'`;
+    curlCmd += ` --data-urlencode 'hub.topic=${topic}'`;
+    curlCmd += ` --data-urlencode 'hub.callback=${callbackURL}'`;
+    
+    curlCmd += ` --data-urlencode 'hub.mode=${mode}'`;
+    
+    if (mode === 'subscribe') {
+      if (leaseSeconds && leaseSeconds.trim()) {
+        curlCmd += ` --data-urlencode 'hub.lease_seconds=${leaseSeconds}'`;
+      }
+    }
+    
+    if (webSubHeader && webSubHeader.trim() && webSubHeaderValue && webSubHeaderValue.trim()) {
+      curlCmd += ` -H '${webSubHeader}: ${webSubHeaderValue}'`;
+    }
+    
+    return curlCmd;
+  }
+
   useEffect(() => {
-    if (topic !== '/*') {
-      const formattedTopic =
-        topic.startsWith('/') || apiEndpoint.endsWith('/')
-          ? topic === '/'
-            ? ''
-            : topic
-          : `/${topic}`;
-      setEndpoint(`${apiEndpoint}${formattedTopic}`);
+    const baseEndpoint = selectedEndpointType === 'production' ? apiEndpoint : sandboxEndpoint;
+    const normalizedBase = baseEndpoint.endsWith('/') ? baseEndpoint.slice(0, -1) : baseEndpoint;
+    if (asyncType === APITypeEnum.WEBSUB) {
+      setEndpoint(`${normalizedBase}/hub`);
+    } else if (topic === '/*') {
+      setEndpoint(`${normalizedBase}/`);
+    } else if (topic === '/' || topic === '') {
+      setEndpoint(normalizedBase);
+    } else {
+      const formattedTopic = topic.startsWith('/') ? topic : `/${topic}`;
+      setEndpoint(`${normalizedBase}${formattedTopic}`);
     }
     if (parameters != null) {
       setPathParams(
@@ -94,9 +131,24 @@ const TopicViewer = (props: TopicViewerProps) => {
         }, {} as { [key: string]: string })
       );
     }
-  }, [apiEndpoint, topic]);
+  }, [apiEndpoint, sandboxEndpoint, selectedEndpointType, topic]);
+
+  const handleEndpointTypeChange = (event: any) => {
+    const newValue = event.target.value as 'production' | 'sandbox';
+    
+    // Prevent switching to sandbox if sandboxEndpoint is not available
+    if (newValue === 'sandbox' && (!sandboxEndpoint || sandboxEndpoint === '')) {
+      setSelectedEndpointType('production');
+      return;
+    }
+    
+    setSelectedEndpointType(newValue);
+  };
 
   const sendMessage = () => {
+    if (asyncType === APITypeEnum.WEBSUB) {
+      return;
+    }
     if (socket && input && socket.readyState === socket.OPEN) {
       socket.send(input);
       setMessages((prev) => [
@@ -104,19 +156,10 @@ const TopicViewer = (props: TopicViewerProps) => {
         {
           message: `Sent: ${input}`,
           timestamp: new Date().toString(),
-          randomKey: messages.length,
+          randomKey: prev.length,
         },
       ]);
       setInput('');
-      socket.onmessage = (event) =>
-        setMessages((prev) => [
-          ...prev,
-          {
-            message: `Received: ${event.data}`,
-            timestamp: new Date().toString(),
-            randomKey: messages.length,
-          },
-        ]);
     }
   };
 
@@ -146,10 +189,23 @@ const TopicViewer = (props: TopicViewerProps) => {
         {
           message: `Connected to ${updatedEndpoint}`,
           timestamp: new Date().toString(),
-          randomKey: messages.length,
+          randomKey: prev.length,
         },
       ]);
       setConnectButtonText('Disconnect');
+    };
+
+    ws.onmessage = (event) => {
+      flushSync(() => {
+        setMessages((prev) => [
+          ...prev,
+          {
+            message: `Received: ${event.data}`,
+            timestamp: new Date().toString(),
+            randomKey: prev.length,
+          },
+        ]);
+      });
     };
 
     ws.onerror = () => {
@@ -159,7 +215,7 @@ const TopicViewer = (props: TopicViewerProps) => {
         {
           message: `Error while connecting to the server. Please check the endpoint and try again.`,
           timestamp: new Date().toString(),
-          randomKey: messages.length,
+          randomKey: prev.length,
         },
       ]);
       setConnectButtonText('Connect');
@@ -259,7 +315,272 @@ const TopicViewer = (props: TopicViewerProps) => {
 
   const tabItems = [{ name: 'Parameters' }, { name: 'Payload' }, { name: 'Headers' }];
   const tabItemsWithoutParams = [{ name: 'Payload' }, { name: 'Headers' }];
+  const tabItemsForWebSub = [{ name: 'Subscribe' }, { name: 'Unsubscribe' }];
 
+  if (asyncType === APITypeEnum.WEBSUB) {
+    return (
+      <Box className={classes.topicContainer}>
+        <Accordion square testId="topic-accordion" bordered>
+          <AccordionSummary
+            aria-controls="panel1a-content"
+            testId="topic-accordion-summary"
+          >
+            <Box className={classes.topicTypeContainer}>
+              <Box className={classes.typeChipContainer}>
+                <Chip
+                  label="SUB"
+                  testId="default"
+                  variant="contained"
+                  color="success"
+                  size="medium"
+                  disabled={!subscribe}
+                />
+              </Box>
+              <Box className={classes.typeChipContainer}>
+                <Typography variant="body2">{topic}</Typography>
+              </Box>
+            </Box>
+          </AccordionSummary>
+          <AccordionDetails testId="topic-accordion-details">
+            <Box width="100%" style={{ maxWidth: '100%', boxSizing: 'border-box', overflow: 'hidden' }}>
+              {topic && (
+                <Suspense
+                  fallback={
+                    <Box
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="center"
+                    >
+                      <CircularProgress size={25} />
+                    </Box>
+                  }
+                >
+                  <Box className={classes.endpointContainer}>
+                    <FormControl 
+                      size="small" 
+                      variant="outlined" 
+                      style={{ 
+                        width: 150, 
+                        flexShrink: 0,
+                        height: 40,
+                      }}
+                    >
+                      <Select
+                        value={selectedEndpointType}
+                        onChange={handleEndpointTypeChange}
+                        disabled={connect}
+                        data-testid="endpoint-type-select"
+                        inputProps={{ 'aria-label': 'Endpoint type' }}
+                        style={{
+                          height: 40,
+                          borderRadius: 4,
+                          backgroundColor: '#ffffff',
+                          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)',
+                        }}
+                      >
+                        <MenuItem value="production">Production</MenuItem>
+                        <MenuItem value="sandbox" disabled={!sandboxEndpoint || sandboxEndpoint === ''}>Sandbox</MenuItem>
+                      </Select>
+                    </FormControl>
+                    <Box className={classes.textInput}>
+                      <CopyToClipboard
+                        value={endpoint}
+                        size="small"
+                        testId="endpoint-url"
+                      />
+                    </Box>
+                    {asyncType !== APITypeEnum.WEBSUB && (
+                      <Button
+                        color={connect ? "secondary" : "primary"}
+                        variant="contained"
+                        pill={false}
+                        size="small"
+                        disabled={asyncType === APITypeEnum.WEBSUB}
+                        testId="disconnect"
+                        style={{ 
+                          flexShrink: 0, 
+                          height: 40, 
+                          minWidth: 120,
+                          fontWeight: 500,
+                          fontSize: 14,
+                          textTransform: 'none',
+                          borderRadius: 4,
+                        }}
+                        onClick={() =>
+                          connect ? disconnectWebsocket() : connectWebsocket()
+                        }
+                      >
+                        {getButtonText(connectButtonText)}
+                      </Button>                      
+                    )}
+                  </Box>
+                  <Box style={{ width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}>
+                    <Box className={classes.tabs}>
+                      <Box className={classes.tabPanelContent}>
+                        <Typography
+                          data-testid="token-heading"
+                          variant="body1"
+                          className={classes.label}
+                          display="block"
+                        >
+                          Token
+                        </Typography>
+                        <Box className={classes.parameterContainerWrapper} style={{ height: 'auto', overflow: 'visible' }}>
+                          <Box
+                            key={"api-token"}
+                            className={classes.parameterContainer}
+                            style={{ height: 'auto', overflow: 'visible' }}
+                          >
+                            <TextInput
+                              testId={`input-headers`}
+                              className={classes.callbackURLTextInput}
+                              type="text"
+                              placeholder="Header"
+                              label="Header"
+                              value={webSubHeader}
+                              onChange={(e) => {
+                                setWebSubHeader(e.target.value);
+                              }}
+                              error={webSubHeader === ""}
+                              helperText="Enter Header"
+                            />
+                            <TextInput
+                              testId={`input-header-value`}
+                              className={classes.callbackURLTextInput}
+                              type="text"
+                              placeholder="Value"
+                              label="Value"
+                              value={webSubHeaderValue}
+                              onChange={(e) => {
+                                setWebSubHeaderValue(e.target.value);
+                              }}
+                              error={webSubHeaderValue === ""}
+                              helperText="Enter Value"
+                            />
+                          </Box>
+                        </Box>
+                      </Box>
+                    </Box>
+                  </Box>
+                  <Box style={{ width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}>
+                    <TabCard
+                      className={classes.tabs}
+                      tabItems={tabItemsForWebSub}
+                      handleChange={handleTabChange}
+                      value={selectedTab}
+                      testId="env-tab-card"
+                      fullHeight
+                    >
+                      {/* Tab 0: Subscribe Payload */}
+                      <TabPanel
+                        value={selectedTab}
+                        index={0}
+                      >
+                        <Box className={classes.tabPanelContent}>
+                          <Box className={classes.parameterContainerWrapper}>
+                            <Box className={classes.parameterContainer}>
+                              <TextInput
+                                testId={`input-callbackurl`}
+                                className={classes.callbackURLTextInput}
+                                type="text"
+                                placeholder="Callback URL"
+                                label="Callback URL"
+                                value={callbackURL}
+                                onChange={(e) => {
+                                  const newCallbackURL = e.target.value;
+                                  setCallbackURL(newCallbackURL);
+                                }}
+                                helperText="Enter Callback URL"
+                              />
+                              <TextInput
+                                testId={`input-leaseseconds`}
+                                className={classes.callbackURLTextInput}
+                                type="text"
+                                placeholder="Lease Seconds"
+                                label="Lease Seconds"
+                                value={leaseSeconds}
+                                onChange={(e) => {
+                                  const newLeaseSeconds = e.target.value;
+                                  setLeaseSeconds(newLeaseSeconds);
+                                }}
+                                helperText="Enter Lease Seconds"
+                              />
+                              
+                            </Box>
+                          </Box>
+                        <Grid>
+                          <Typography
+                            data-testid="curl-command-txt"
+                            variant="body1"
+                            className={classes.label}
+                            display="block"
+                          >
+                            Command
+                          </Typography>
+                          <Box className={classes.payloadContainer}>
+                          <CopyToClipboard
+                            value={generateCurlCommand()}
+                            size="small"
+                            testId="curl-command"
+                            isMultiline={true}
+                          />
+                          </Box>
+                        </Grid>
+                        </Box>
+                      </TabPanel>
+                      {/* Tab 1: Unsubscribe Payload */}
+                      <TabPanel
+                        value={selectedTab}
+                        index={1}
+                      >
+                        <Box className={classes.tabPanelContent}>
+                          <Box className={classes.parameterContainerWrapper}>
+                            <Box className={classes.parameterContainer}>
+                              <TextInput
+                                testId={`input-callbackurl`}
+                                className={classes.callbackURLTextInput}
+                                type="text"
+                                placeholder="Callback URL"
+                                label="Callback URL"
+                                value={callbackURL}
+                                onChange={(e) => {
+                                  const newCallbackURL = e.target.value;
+                                  setCallbackURL(newCallbackURL);
+                                }}
+                                helperText="Enter Callback URL"
+                              />
+                            </Box>
+                          </Box>
+                        <Grid>
+                          <Typography
+                            data-testid="curl-command-txt"
+                            variant="body1"
+                            className={classes.label}
+                            display="block"
+                          >
+                            Command
+                          </Typography>
+                          <Box className={classes.payloadContainer}>
+                          <CopyToClipboard
+                            value={generateCurlCommand()}
+                            size="small"
+                            testId="curl-command"
+                            isMultiline={true}
+                          />
+                          </Box>
+                        </Grid>
+                        </Box>
+                      </TabPanel>
+                    </TabCard>
+                  </Box>
+                </Suspense>
+              )}
+            </Box>
+          </AccordionDetails>
+        </Accordion>
+      </Box>
+    );
+  }
   return (
     <Box className={classes.topicContainer}>
       <Accordion square testId="topic-accordion" bordered>
@@ -268,16 +589,18 @@ const TopicViewer = (props: TopicViewerProps) => {
           testId="topic-accordion-summary"
         >
           <Box className={classes.topicTypeContainer}>
-            <Box className={classes.typeChipContainer}>
-              <Chip
-                label="PUB"
-                testId="default"
-                variant="contained"
-                color="info"
-                size="medium"
-                disabled={!publish}
-              />
-            </Box>
+            {asyncType === APITypeEnum.WS && (
+              <Box className={classes.typeChipContainer}>
+                <Chip
+                  label="PUB"
+                  testId="default"
+                  variant="contained"
+                  color="info"
+                  size="medium"
+                  disabled={!publish}
+                />
+              </Box>
+            )}
             <Box className={classes.typeChipContainer}>
               <Chip
                 label="SUB"
@@ -294,7 +617,7 @@ const TopicViewer = (props: TopicViewerProps) => {
           </Box>
         </AccordionSummary>
         <AccordionDetails testId="topic-accordion-details">
-          <Box width="100%">
+          <Box width="100%" style={{ maxWidth: '100%', boxSizing: 'border-box', overflow: 'hidden' }}>
             {topic && (
               <Suspense
                 fallback={
@@ -307,28 +630,65 @@ const TopicViewer = (props: TopicViewerProps) => {
                   </Box>
                 }
               >
-                <Box className={classes.endpointContainer}>
-                  <Box className={classes.textInput}>
-                    <CopyToClipboard
-                      value={endpoint}
+                {asyncType === APITypeEnum.WS && (
+                  <Box className={classes.endpointContainer}>
+                    <FormControl 
+                      size="small" 
+                      variant="outlined" 
+                      style={{ 
+                        width: 150, 
+                        flexShrink: 0,
+                        height: 40,
+                      }}
+                    >
+                      <Select
+                        value={selectedEndpointType}
+                        onChange={handleEndpointTypeChange}
+                        disabled={connect}
+                        data-testid="endpoint-type-select"
+                        inputProps={{ 'aria-label': 'Endpoint type' }}
+                        style={{
+                          height: 40,
+                          borderRadius: 4,
+                          backgroundColor: '#ffffff',
+                          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.08)',
+                        }}
+                      >
+                        <MenuItem value="production">Production</MenuItem>
+                        <MenuItem value="sandbox" disabled={!sandboxEndpoint || sandboxEndpoint === ''}>Sandbox</MenuItem>
+                      </Select>
+                    </FormControl>
+                    <Box className={classes.textInput}>
+                      <CopyToClipboard
+                        value={endpoint}
+                        size="small"
+                        testId="endpoint-url"
+                      />
+                    </Box>
+                    <Button
+                      color={connect ? "secondary" : "primary"}
+                      variant="contained"
+                      pill={false}
                       size="small"
-                      testId="endpoint-url"
-                    />
+                      testId="disconnect"
+                      style={{ 
+                        flexShrink: 0, 
+                        height: 40, 
+                        minWidth: 120,
+                        fontWeight: 500,
+                        fontSize: 14,
+                        textTransform: 'none',
+                        borderRadius: 4,
+                      }}
+                      onClick={() =>
+                        connect ? disconnectWebsocket() : connectWebsocket()
+                      }
+                    >
+                      {getButtonText(connectButtonText)}
+                    </Button>
                   </Box>
-                  <Button
-                    color={connect ? 'secondary' : 'primary'}
-                    variant="contained"
-                    pill={false}
-                    size="small"
-                    testId="disconnect"
-                    onClick={() =>
-                      connect ? disconnectWebsocket() : connectWebsocket()
-                    }
-                  >
-                    {getButtonText(connectButtonText)}
-                  </Button>
-                </Box>
-                <Box>
+                )}
+                <Box style={{ width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}>
                   <TabCard
                     className={classes.tabs}
                     tabItems={
@@ -343,43 +703,45 @@ const TopicViewer = (props: TopicViewerProps) => {
                   >
                     {Object.keys(pathParams).length !== 0 && (
                       <TabPanel value={selectedTab} index={0}>
-                        <Box className={classes.parameterContainerWrapper}>
-                          <Box className={classes.parameterContainer}>
-                            {Object.keys(pathParams).map((param) => (
-                              <Box key={param}>
-                                <TextInput
-                                  testId={`input-${param}`}
-                                  className={classes.paramTextInput}
-                                  type="text"
-                                  placeholder={param}
-                                  label={param}
-                                  value={pathParams[param]}
-                                  onChange={(e) => {
-                                    const newParams = {
-                                      ...pathParams,
-                                      [param]: e.target.value,
-                                    };
-                                    setPathParams(newParams);
-                                  }}
-                                  error={pathParams[param] === ''}
-                                  helperText="Enter parameter value"
-                                />
-                              </Box>
-                            ))}
-                          </Box>
-                          <Box className={classes.executeButton}>
-                            <Button
-                              testId="execute"
-                              disabled={connect}
-                              variant="outlined"
-                              onClick={connectWebsocket}
-                              startIcon={<PlayArrow />}
-                              size="small"
-                            >
-                              <Typography variant="body1" align="center">
-                                Execute
-                              </Typography>
-                            </Button>
+                        <Box className={classes.tabPanelContent}>
+                          <Box className={classes.parameterContainerWrapper}>
+                            <Box className={classes.parameterContainer}>
+                              {Object.keys(pathParams).map((param) => (
+                                <Box key={param}>
+                                  <TextInput
+                                    testId={`input-${param}`}
+                                    className={classes.paramTextInput}
+                                    type="text"
+                                    placeholder={param}
+                                    label={param}
+                                    value={pathParams[param]}
+                                    onChange={(e) => {
+                                      const newParams = {
+                                        ...pathParams,
+                                        [param]: e.target.value,
+                                      };
+                                      setPathParams(newParams);
+                                    }}
+                                    error={pathParams[param] === ""}
+                                    helperText="Enter parameter value"
+                                  />
+                                </Box>
+                              ))}
+                            </Box>
+                            <Box className={classes.executeButton}>
+                              <Button
+                                testId="execute"
+                                disabled={connect}
+                                variant="outlined"
+                                onClick={connectWebsocket}
+                                startIcon={<PlayArrow />}
+                                size="small"
+                              >
+                                <Typography variant="body1" align="center">
+                                  Execute
+                                </Typography>
+                              </Button>
+                            </Box>
                           </Box>
                         </Box>
                       </TabPanel>
@@ -388,54 +750,64 @@ const TopicViewer = (props: TopicViewerProps) => {
                       value={selectedTab}
                       index={Object.keys(pathParams).length === 0 ? 0 : 1}
                     >
-                      <Box className={classes.payloadContainer}>
-                        <PayloadEditor
-                          fileContent={input}
-                          language="json"
-                          height="170px"
-                          width="1104px"
-                          setFileContent={setInput}
-                        />
-                      </Box>
-                      <Box mt={5}>
-                        <Tooltip title={tooltipText} placement="top-start">
-                          <Box className={classes.sendIcon}>
-                            <Button
-                              testId="payload-send"
-                              disabled={input.length === 0 || !connect}
-                              variant="outlined"
-                              startIcon={<Send />}
-                              onClick={sendMessage}
-                              size="small"
-                            >
-                              <Typography variant="body1" align="center">
-                                Send
-                              </Typography>
-                            </Button>
-                          </Box>
-                        </Tooltip>
+                      <Box className={classes.tabPanelContent}>
+                        <Box className={classes.payloadContainer}>
+                          <PayloadEditor
+                            fileContent={input}
+                            language="json"
+                            height="170px"
+                            width="100%"
+                            setFileContent={setInput}
+                          />
+                        </Box>
+                        <Box mt={5}>
+                          <Tooltip title={tooltipText} placement="top-start">
+                            <Box className={classes.sendIcon}>
+                              <Button
+                                testId="payload-send"
+                                disabled={input.length === 0 || !connect}
+                                variant="outlined"
+                                startIcon={<Send />}
+                                onClick={sendMessage}
+                                size="small"
+                              >
+                                <Typography variant="body1" align="center">
+                                  Send
+                                </Typography>
+                              </Button>
+                            </Box>
+                          </Tooltip>
+                        </Box>
                       </Box>
                     </TabPanel>
-                    <TabPanel value={selectedTab} index={Object.keys(pathParams).length === 0 ? 1 : 2}>
+                    <TabPanel
+                      value={selectedTab}
+                      index={Object.keys(pathParams).length === 0 ? 1 : 2}
+                    >
+                      <Box className={classes.tabPanelContent}>
                         <Box className={classes.parameterContainerWrapper}>
-                          <Box key={'api-token'} className={classes.parameterContainer}>
-                              <TextInput
-                                testId={`input-headers`}
-                                className={classes.apiTokenTextInput}
-                                type="text"
-                                placeholder="API Token"
-                                label="API Token"
-                                value={apiToken}
-                                onChange={(e) => {
-                                  const newToken = e.target.value;
-                                  setApiToken(newToken);
-                                }}
-                                error={apiToken === ''}
-                                helperText="Enter API Token"
-                              />
-                            </Box>
+                          <Box
+                            key={"api-token"}
+                            className={classes.parameterContainer}
+                          >
+                            <TextInput
+                              testId={`input-headers`}
+                              className={classes.apiTokenTextInput}
+                              type="text"
+                              placeholder="API Token"
+                              label="API Token"
+                              value={apiToken}
+                              onChange={(e) => {
+                                const newToken = e.target.value;
+                                setApiToken(newToken);
+                              }}
+                              error={apiToken === ""}
+                              helperText="Enter API Token"
+                            />
                           </Box>
-                      </TabPanel>
+                        </Box>
+                      </Box>
+                    </TabPanel>
                   </TabCard>
                   <OutputConsole
                     messages={messages}
@@ -446,8 +818,8 @@ const TopicViewer = (props: TopicViewerProps) => {
                     <Box className={classes.outputContainer}>
                       {messages.map((msg, index) =>
                         renderItem({
-                          timestamp: messages[index]['timestamp'],
-                          message: messages[index]['message'],
+                          timestamp: messages[index]["timestamp"],
+                          message: messages[index]["message"],
                           randomKey: index,
                           isNewLog: false,
                         })

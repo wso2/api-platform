@@ -108,7 +108,7 @@
               <div class="application-card-footer">
                 <div class="application-card-actions">
                   <button type="button" class="btn application-btn-icon delete-button {{#if @root.isReadOnlyMode}}disabled{{/if}}" title="Delete"
-                      id="trash-btn-{{id}}" onclick="event.stopPropagation(); openWarningModal('{{id}}', '')">
+                      id="trash-btn-{{id}}" onclick="event.stopPropagation(); openWarningModal('deleteApplication', '{{id}}')">
                     <i class="bi bi-trash"></i>
                   </button>
                 </div>

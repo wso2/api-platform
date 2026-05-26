@@ -20,6 +20,13 @@ router.get('/:orgName/views/:viewName/applications/:applicationId', (req, res, n
     next();
 }, registerPartials, ensureAuthenticated, applicationsController.loadApplication);
 
+router.get('/:orgName/views/:viewName/applications/:applicationId/manage-keys', (req, res, next) => {
+    if (req.params.orgName === 'favicon.ico') {
+        return res.status(404).send('Not Found');
+    }
+    next();
+}, registerPartials, ensureAuthenticated, applicationsController.loadApplicationKeys);
+
 
 
 module.exports = router;
