@@ -224,7 +224,7 @@ func TestNewManagedServerRejectsMissingTLSFiles(t *testing.T) {
 		},
 	}
 
-	_, err := rt.newManagedServer("WebSub-HTTPS", 8443, http.NewServeMux(), true)
+	_, err := rt.newManagedServer("WebSub-HTTPS", 8443, http.NewServeMux(), rt.cfg.Server.WebSubTLSCertFile, rt.cfg.Server.WebSubTLSKeyFile)
 	if err == nil {
 		t.Fatal("expected newManagedServer to fail when TLS files are missing")
 	}
@@ -254,7 +254,63 @@ func TestNewManagedServerAcceptsReadableTLSFiles(t *testing.T) {
 		},
 	}
 
-	server, err := rt.newManagedServer("WebSub-HTTPS", 8443, http.NewServeMux(), true)
+	server, err := rt.newManagedServer("WebSub-HTTPS", 8443, http.NewServeMux(), certPath, keyPath)
+	if err != nil {
+		t.Fatalf("expected newManagedServer to succeed, got %v", err)
+	}
+	if !server.tls {
+		t.Fatal("expected TLS to be enabled on the managed server")
+	}
+	if server.certFile != certPath {
+		t.Fatalf("expected cert path %q, got %q", certPath, server.certFile)
+	}
+	if server.keyFile != keyPath {
+		t.Fatalf("expected key path %q, got %q", keyPath, server.keyFile)
+	}
+}
+
+func TestNewManagedServerWebSocketRejectsMissingTLSFiles(t *testing.T) {
+	rt := &Runtime{
+		cfg: &config.Config{
+			Server: config.ServerConfig{
+				WebSocketTLSEnabled:  true,
+				WebSocketTLSCertFile: filepath.Join(t.TempDir(), "missing.crt"),
+				WebSocketTLSKeyFile:  filepath.Join(t.TempDir(), "missing.key"),
+			},
+		},
+	}
+
+	_, err := rt.newManagedServer("WebSocket-HTTPS", 8444, http.NewServeMux(), rt.cfg.Server.WebSocketTLSCertFile, rt.cfg.Server.WebSocketTLSKeyFile)
+	if err == nil {
+		t.Fatal("expected newManagedServer to fail when TLS files are missing")
+	}
+	if !strings.Contains(err.Error(), "invalid TLS configuration for WebSocket-HTTPS server") {
+		t.Fatalf("expected wrapped TLS configuration error, got %q", err.Error())
+	}
+}
+
+func TestNewManagedServerWebSocketAcceptsReadableTLSFiles(t *testing.T) {
+	tempDir := t.TempDir()
+	certPath := filepath.Join(tempDir, "tls.crt")
+	keyPath := filepath.Join(tempDir, "tls.key")
+	if err := os.WriteFile(certPath, []byte("cert"), 0o644); err != nil {
+		t.Fatalf("write cert: %v", err)
+	}
+	if err := os.WriteFile(keyPath, []byte("key"), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+
+	rt := &Runtime{
+		cfg: &config.Config{
+			Server: config.ServerConfig{
+				WebSocketTLSEnabled:  true,
+				WebSocketTLSCertFile: certPath,
+				WebSocketTLSKeyFile:  keyPath,
+			},
+		},
+	}
+
+	server, err := rt.newManagedServer("WebSocket-HTTPS", 8444, http.NewServeMux(), certPath, keyPath)
 	if err != nil {
 		t.Fatalf("expected newManagedServer to succeed, got %v", err)
 	}
