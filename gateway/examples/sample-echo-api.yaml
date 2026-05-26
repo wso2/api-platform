@@ -8,12 +8,14 @@
 # http://www.apache.org/licenses/LICENSE-2.0
 # --------------------------------------------------------------------
 
-# HTTPBin echo API — debug aid.
+# Sample echo API — debug aid.
 #
-# httpbin.org/anything echoes the full request back as JSON: url, method,
-# headers, body, query params. That makes it ideal for verifying exactly
-# what the gateway forwards upstream — header injections, host rewrites,
-# path stripping, body transforms — without running a local backend.
+# Targets the `sample-backend` service from gateway/docker-compose.yaml
+# (ghcr.io/wso2/api-platform/sample-service), which echoes the full
+# request back as JSON: method, path, query, headers, body. That makes
+# it ideal for verifying exactly what the gateway forwards upstream —
+# header injections, path stripping, body transforms — without leaving
+# the local docker network.
 #
 # Used by the `gateway-debug` agent skill to reproduce issues with
 # minimal moving parts.
@@ -21,15 +23,20 @@
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: RestApi
 metadata:
-  name: httpbin-echo-v1
+  name: sample-echo-v1
 spec:
-  displayName: HTTPBin Echo
+  displayName: Sample Echo
   version: v1
-  context: /httpbin
+  context: /echo
   upstream:
     main:
-      url: https://httpbin.org
+      url: http://sample-backend:5000
   policies:
+    - name: api-key-auth
+      version: v1
+      params:
+        key: X-API-Key
+        in: header
     - name: set-headers
       version: v1
       params:

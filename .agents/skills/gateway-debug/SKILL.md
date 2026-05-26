@@ -2,9 +2,6 @@
 name: gateway-debug
 description: Debug or fix an issue in the WSO2 API Platform gateway. Use when the user asks to debug the gateway, debug the gateway-controller or policy-engine, step through gateway source code, set a breakpoint in the controller or policy-engine, or investigate why a deployed REST API or routed request misbehaves at the source level; or to fix a gateway bug end-to-end.
 allowed-tools: Bash, Read, Edit, Grep, Glob
-metadata:
-  author: renuka-fernando
-  version: "0.2.0"
 ---
 
 # Gateway Debug
@@ -62,7 +59,7 @@ investigate / explain it.
 - Python executor: `<REPO_ROOT>/gateway/gateway-runtime/python-executor/main.py`
 - Builder output (required by PE): `<REPO_ROOT>/gateway/gateway-builder/target/output/`
 - VS Code launch envs (use these for local processes too): `<REPO_ROOT>/.vscode/launch.json`
-- Example API/secret/key YAMLs: `<REPO_ROOT>/gateway/examples/` — including `httpbin-api.yaml` (debug-friendly echo upstream)
+- Example API/secret/key YAMLs: `<REPO_ROOT>/gateway/examples/` — including `sample-echo-api.yaml` (debug-friendly echo upstream wired to the in-compose `sample-backend`)
 - Management REST API spec: `<REPO_ROOT>/gateway/gateway-controller/api/management-openapi.yaml`
 - Admin REST API spec (config_dump etc.): `<REPO_ROOT>/gateway/gateway-controller/api/admin-openapi.yaml`
 - Controller config: `<REPO_ROOT>/gateway/configs/config.toml`
@@ -362,7 +359,7 @@ The management API runs on `http://localhost:9090/api/management/v0.9`
 
 | Resource | Method + path | Example YAML / response |
 |---|---|---|
-| Deploy / replace a REST API | `POST /rest-apis` (`Content-Type: application/yaml`) | `<REPO_ROOT>/gateway/examples/petstore-api.yaml` · `<REPO_ROOT>/gateway/examples/httpbin-api.yaml` |
+| Deploy / replace a REST API | `POST /rest-apis` (`Content-Type: application/yaml`) | `<REPO_ROOT>/gateway/examples/petstore-api.yaml` · `<REPO_ROOT>/gateway/examples/sample-echo-api.yaml` |
 | Get / delete a REST API | `GET /rest-apis/{id}` · `DELETE /rest-apis/{id}` | — |
 | Generate API key for a REST API | `POST /rest-apis/{id}/api-keys` (JSON `{"name":"..."}`) | response: `{"status":"success","apiKey":{"name":"...","apiKey":"apip_<hex>..."}}` — note the `apip_` prefix |
 | List / regenerate / revoke API key | `GET … /api-keys` · `POST … /api-keys/{name}/regenerate` · `DELETE … /api-keys/{name}` | — |
@@ -370,15 +367,23 @@ The management API runs on `http://localhost:9090/api/management/v0.9`
 | MCP proxy | `POST /mcp-proxies` · `DELETE /mcp-proxies/{id}` | `<REPO_ROOT>/gateway/examples/mcp-proxy.yaml` |
 | LLM provider / proxy | `POST /llm-providers` · `POST /llm-proxies` · `…/api-keys` | `<REPO_ROOT>/gateway/examples/llm-*.yaml` |
 
-### Recommended reproducer: `httpbin-api.yaml`
+### Recommended reproducer: `sample-echo-api.yaml`
 
-`https://httpbin.org/anything` echoes the entire request (URL, headers, body,
-query) back as JSON. That means you can confirm exactly what the gateway
-forwarded — header injections, host rewrites, path stripping, body transforms —
-**without running a local backend**. The shipped `<REPO_ROOT>/gateway/examples/httpbin-api.yaml`
+The `sample-backend` service in `<REPO_ROOT>/gateway/docker-compose.yaml`
+(`ghcr.io/wso2/api-platform/sample-service`) echoes the full request back as
+JSON: `method`, `path`, `query`, `headers`, `body`. That means you can confirm
+exactly what the gateway forwarded — header injections, path stripping, body
+transforms — without leaving the local docker network. Sample-service also
+supports a `?statusCode=<n>` query param so you can drive any upstream status
+on demand. The shipped `<REPO_ROOT>/gateway/examples/sample-echo-api.yaml`
 combines `api-key-auth` + `set-headers` + the `/anything` operations to make
 this a one-liner. Use it as the default reproducer unless the bug requires a
 specific upstream.
+
+> The shipped YAML targets `http://sample-backend:5000` — the port from the
+> standalone dev compose. For the **IT handoff** compose target the IT
+> sample-backend listens on `:9080`; either edit the `upstream.main.url` to
+> `http://sample-backend:9080` or use the scenario's own deploy YAML.
 
 ```bash
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -386,40 +391,42 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 # 1) Deploy
 curl -s -u admin:admin -X POST 'http://localhost:9090/api/management/v0.9/rest-apis' \
   -H 'Content-Type: application/yaml' \
-  --data-binary @"$REPO_ROOT/gateway/examples/httpbin-api.yaml" \
+  --data-binary @"$REPO_ROOT/gateway/examples/sample-echo-api.yaml" \
   | jq '{deployed: .status.state, id: .status.id}'
 
 # 2) Generate an API key (keys returned as "apip_<hex>")
 KEY=$(curl -s -u admin:admin -X POST \
-  'http://localhost:9090/api/management/v0.9/rest-apis/httpbin-echo-v1/api-keys' \
+  'http://localhost:9090/api/management/v0.9/rest-apis/sample-echo-v1/api-keys' \
   -H 'Content-Type: application/json' -d '{"name":"repro-key"}' \
   | jq -r '.apiKey.apiKey')
 echo "key: ${KEY:0:24}..."
 
 # 3a) Without the key → 401 (proves api-key-auth fires)
-curl -s -o /dev/null -w "no-key:  HTTP %{http_code}\n" http://localhost:8080/httpbin/anything
+curl -s -o /dev/null -w "no-key:  HTTP %{http_code}\n" http://localhost:8080/echo/anything
 
-# 3b) With the key → 200 + httpbin echo
-curl -s -H "X-API-Key: $KEY" http://localhost:8080/httpbin/anything \
-  | jq '{url, gatewayMarker: .headers["X-Gateway-Marker"], hostSeenByUpstream: .headers.Host}'
+# 3b) With the key → 200 + sample-backend echo
+curl -s -H "X-API-Key: $KEY" http://localhost:8080/echo/anything \
+  | jq '{method, path, gatewayMarker: .headers["X-Gateway-Marker"]}'
 
 # 4) Tear down when done with this reproducer
 curl -s -u admin:admin -X DELETE \
-  'http://localhost:9090/api/management/v0.9/rest-apis/httpbin-echo-v1' | jq .
+  'http://localhost:9090/api/management/v0.9/rest-apis/sample-echo-v1' | jq .
 ```
 
 A clean run shows:
 ```json
-{ "url": "https://httpbin.org/anything",
-  "gatewayMarker": "ap-gateway",
-  "hostSeenByUpstream": "httpbin.org" }
+{ "method": "GET",
+  "path": "/anything",
+  "gatewayMarker": ["ap-gateway"] }
 ```
-If any of those is wrong, that's your bug. The shape of httpbin's echo
-(`.url`, `.headers`, `.method`, `.json`, `.args`) gives you a precise lens on
-what each policy did to the request.
+If any of those is wrong, that's your bug. The shape of sample-service's echo
+(`.method`, `.path`, `.query`, `.headers`, `.body`) gives you a precise lens on
+what each policy did to the request. To drive an arbitrary upstream status add
+`?statusCode=503` (or any code) to the request URL — useful for triaging how
+the gateway handles non-2xx upstream responses.
 
 For non-echo bugs (subscription, LLM, MCP, certificate management…) swap
-`httpbin-api.yaml` for the matching example under `<REPO_ROOT>/gateway/examples/`.
+`sample-echo-api.yaml` for the matching example under `<REPO_ROOT>/gateway/examples/`.
 
 ## Step 5: Triage from logs + config dumps (before touching the debugger)
 
@@ -447,14 +454,14 @@ one request end-to-end across handler → service → xDS push:
 
 ```
 msg="HTTP request" correlation_id=2ab42e… method=POST path=/api/.../api-keys status=201 latency=1.2ms
-msg="Storing API key with state-of-the-world update" api_name="HTTPBin Echo" api_key_name=log-eval-key correlation_id=2ab42e…
+msg="Storing API key with state-of-the-world update" api_name="Sample Echo" api_key_name=log-eval-key correlation_id=2ab42e…
 msg="Successfully stored API key and updated policy engine state" correlation_id=2ab42e…
 ```
 
 **Policy-engine log lines** trace xDS receipt + policy chain compilation:
 
 ```
-msg="Parsed StoredPolicyConfig" api_name="HTTPBin Echo" routes=1
+msg="Parsed StoredPolicyConfig" api_name="Sample Echo" routes=1
 msg="Policy chain update completed successfully" version=2 total_routes=4
 msg="Successfully processed and ACKed discovery response" type_url=...PolicyChainConfig version=2 num_resources=4
 ```
@@ -464,13 +471,13 @@ msg="Successfully processed and ACKed discovery response" type_url=...PolicyChai
 Real examples from the same reproducer:
 
 ```
-[rtr] [...Z] "GET /httpbin/anything HTTP/1.1" /anything HTTP/1.1 503 - via_upstream 0 162 1085 767 1 0 1083 "-" "curl/8.7.1" "<x-req-id>" "httpbin.org" "44.215.205.77:443"
-[rtr] [...Z] "GET /httpbin/anything HTTP/1.1" /httpbin/anything - 401 -  - 0 59 1 - - 0 - "-" "curl/8.7.1" "<x-req-id>" "localhost:8080" "-"
+[rtr] [...Z] "GET /echo/anything?statusCode=503 HTTP/1.1" /anything?statusCode=503 HTTP/1.1 503 - via_upstream 0 162 1085 12 1 0 11 "-" "curl/8.7.1" "<x-req-id>" "sample-backend:5000" "172.18.0.4:5000"
+[rtr] [...Z] "GET /echo/anything HTTP/1.1" /echo/anything - 401 -  - 0 59 1 - - 0 - "-" "curl/8.7.1" "<x-req-id>" "localhost:8080" "-"
 [rtr] [...Z] "GET /this/does/not/exist HTTP/1.1" /this/does/not/exist - 404 - direct_response 0 21 0 - - 0 - "-" "curl/8.7.1" "<x-req-id>" "localhost:8080" "-"
 ```
 
 Read those three at a glance:
-- `503` + `via_upstream` + concrete upstream address → request reached upstream, **upstream returned 503** (httpbin cold-start / 5xx). Bug is upstream-side or upstream-config; not the gateway logic.
+- `503` + `via_upstream` + concrete upstream address → request reached upstream, **upstream returned 503** (here driven by `?statusCode=503` on the sample backend; in real traffic, an actual upstream 5xx). Bug is upstream-side or upstream-config; not the gateway logic.
 - `401` + **no `response_code_details`** + `"-"` upstream → request was **rejected by a policy** (here `api-key-auth`) before any upstream selection. Bug is in policy config / api-key store.
 - `404` + `direct_response` → **route not matched** by Envoy at all. Bug is route config from controller (missing/wrong `context`/`operations`).
 
@@ -577,7 +584,7 @@ inspects, then `continue`s again to release the request:
 # Trigger 4 s after dlv connects, in the background
 ( sleep 4
   curl -s -u admin:admin -X POST \
-    'http://localhost:9090/api/management/v0.9/rest-apis/httpbin-echo-v1/api-keys' \
+    'http://localhost:9090/api/management/v0.9/rest-apis/sample-echo-v1/api-keys' \
     -H 'Content-Type: application/json' -d '{"name":"bp-key"}'
 ) &
 
@@ -615,7 +622,7 @@ require restarting the debugged process. Loop:
    This kills the `dlv` parent, which signals the debugged binary.
 3. Re-launch from the same Step 3 block (dlv recompiles with your fix).
 4. Re-run the Step 4 reproducer and confirm behaviour now matches expectations.
-   With `httpbin-api.yaml` the assertion is straightforward — the echoed JSON
+   With `sample-echo-api.yaml` the assertion is straightforward — the echoed JSON
    either matches or it doesn't.
 5. If wrong again → reattach, refine breakpoints, iterate.
 

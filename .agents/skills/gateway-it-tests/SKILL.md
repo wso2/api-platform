@@ -3,9 +3,6 @@ name: gateway-it-tests
 description: Run or debug WSO2 API Platform gateway integration tests. Use when the user asks to run gateway IT tests, BDD tests, godog tests, or a specific `.feature` file; verify a feature file passes; or debug why a gateway integration test is failing.
 compatibility: Requires docker (with compose plugin), make, Go 1.23+. Optional: delve (`dlv`) for step-level debugging.
 allowed-tools: Bash Read Edit Grep Glob
-metadata:
-  author: renuka-fernando
-  version: "0.1.0"
 ---
 
 # Gateway Integration Tests
