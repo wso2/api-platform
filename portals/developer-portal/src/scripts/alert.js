@@ -1,15 +1,14 @@
 function showAlert(message, type) {
     return new Promise((resolve) => {
-        const modalElement = document.getElementById('alertModal');
-        const modalMessage = modalElement.querySelector('.modal-message');
-        const modalBody = modalElement.querySelector('.modal-body');
-        const alertIcon = modalElement.querySelector('.alert-icon');
+        const alertElement = document.getElementById('alertToast');
+        const alertMessage = alertElement.querySelector('.alert-toast-message');
+        const alertIcon = alertElement.querySelector('.alert-icon');
 
-        modalMessage.textContent = message;
+        alertMessage.textContent = message;
 
-        modalBody.classList.remove('success', 'error');
-        modalBody.classList.add(type);
-        
+        alertElement.classList.remove('success', 'error');
+        alertElement.classList.add(type);
+
         // Set appropriate icon based on alert type
         alertIcon.className = 'alert-icon bi';
         if (type === 'success') {
@@ -18,16 +17,17 @@ function showAlert(message, type) {
             alertIcon.classList.add('bi-exclamation-circle-fill');
         }
 
-        const bootstrapModal = new bootstrap.Modal(modalElement, { backdrop: false });
-        bootstrapModal.show();
+        // Show the toast
+        alertElement.classList.remove('alert-toast-hidden');
+        alertElement.classList.add('alert-toast-visible');
 
         setTimeout(() => {
-            modalElement.classList.add('fade-out');
+            alertElement.classList.add('alert-toast-fade-out');
             setTimeout(() => {
-                bootstrapModal.hide();
-                modalElement.classList.remove('fade-out');
-                resolve(); 
-            }, 500); 
+                alertElement.classList.remove('alert-toast-visible', 'alert-toast-fade-out');
+                alertElement.classList.add('alert-toast-hidden');
+                resolve();
+            }, 500);
         }, 2300);
     });
 }
