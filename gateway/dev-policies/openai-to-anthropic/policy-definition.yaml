@@ -1,0 +1,44 @@
+name: openai-to-anthropic
+version: v1.0.0
+description: |
+  Translates OpenAI Chat Completions requests to Anthropic Messages format and
+  rewrites non-streaming Anthropic responses back to the OpenAI response shape.
+  Supports routed and unconditional execution modes.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    model:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Anthropic model name used in the translated request (for example
+        claude-sonnet-4-20250514). Overrides the OpenAI "model" field.
+      minLength: 1
+    id:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Provider this translator targets. Used as the upstream cluster name
+        (matching an id/as in the LlmProxy additionalProviders list) and, in
+        multi-provider mode, as the key matched (case-insensitive) against
+        SharedContext.Metadata["selected_provider"]. When no provider has been
+        selected upstream (single-provider proxy), the translator always runs;
+        when a provider has been selected, it runs only if the selection
+        matches this id. When omitted, routing is left to the route's default
+        upstream.
+      minLength: 1
+    anthropicVersion:
+      type: string
+      x-wso2-policy-advanced-param: true
+      description: |
+        Value of the anthropic-version request header sent upstream.
+      default: "2023-06-01"
+      minLength: 1
+  required:
+    - model
+
+systemParameters:
+  type: object
+  properties: {}

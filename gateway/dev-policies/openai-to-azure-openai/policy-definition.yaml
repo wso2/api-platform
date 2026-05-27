@@ -1,0 +1,53 @@
+name: openai-to-azure-openai
+version: v1.0.0
+description: |
+  Routes OpenAI Chat Completions requests to an Azure OpenAI upstream by
+  rewriting the request path with deployment and API version details. The body
+  passes through unchanged.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    apiVersion:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Azure OpenAI api-version query-string value (for example
+        2024-02-15-preview). Required because Azure rejects requests
+        without it.
+      minLength: 1
+    model:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Azure deployment id used in the rewritten path. When omitted, the
+        request body's "model" field is used as the deployment id.
+      minLength: 1
+    id:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Provider this translator targets. Used as the upstream cluster name
+        (matching an id/as in the LlmProxy additionalProviders list) and, in
+        multi-provider mode, as the key matched (case-insensitive) against
+        SharedContext.Metadata["selected_provider"]. When no provider has been
+        selected upstream (single-provider proxy), the translator always runs;
+        when a provider has been selected, it runs only if the selection
+        matches this id. When omitted, routing is left to the route's default
+        upstream.
+      minLength: 1
+    pathSuffix:
+      type: string
+      x-wso2-policy-advanced-param: true
+      description: |
+        Endpoint suffix appended after the deployment segment in the
+        rewritten path. Defaults to /chat/completions.
+      default: /chat/completions
+      minLength: 1
+  required:
+    - apiVersion
+
+systemParameters:
+  type: object
+  properties: {}

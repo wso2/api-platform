@@ -1,0 +1,37 @@
+name: openai-to-mistral
+version: v1.0.0
+description: |
+  Adapts OpenAI Chat Completions requests for Mistral-compatible upstreams by
+  pinning the model, stripping unsupported fields, and rewriting the request
+  path. Mistral-compatible responses are passed back in OpenAI shape.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    model:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Mistral model name used in the translated request (for example
+        mistral-large-latest). Overrides the OpenAI "model" field.
+      minLength: 1
+    id:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Provider this translator targets. Used as the upstream cluster name
+        (matching an id/as in the LlmProxy additionalProviders list) and, in
+        multi-provider mode, as the key matched (case-insensitive) against
+        SharedContext.Metadata["selected_provider"]. When no provider has been
+        selected upstream (single-provider proxy), the translator always runs;
+        when a provider has been selected, it runs only if the selection
+        matches this id. When omitted, routing is left to the route's default
+        upstream.
+      minLength: 1
+  required:
+    - model
+
+systemParameters:
+  type: object
+  properties: {}
