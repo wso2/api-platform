@@ -43,8 +43,8 @@
 set -e
 
 THUNDER_URL="${THUNDER_URL:-https://localhost:8090}"
-CLIENT_ID="${THUNDER_CLIENT_ID:-api-platform-system-client}" # yq9TyDfqn-8C3beXEF09GQ
-CLIENT_SECRET="${THUNDER_CLIENT_SECRET:-api-platform-system-client-secret}" # uX9he-XZQP13Z7QA1fJTbPhd0YFgE_XkhNOHgSWbVDw
+CLIENT_ID="${THUNDER_CLIENT_ID:-api-platform-system-client}"
+CLIENT_SECRET="${THUNDER_CLIENT_SECRET:-api-platform-system-client-secret}"
 RS_IDENTIFIER="${RS_IDENTIFIER:-https://localhost:9243}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
