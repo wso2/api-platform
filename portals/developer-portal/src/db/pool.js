@@ -17,13 +17,13 @@
  */
 
 const { Pool } = require('pg');
-const { config, secrets: secretConf } = require('../config/configLoader');
+const { config } = require('../config/configLoader');
 
 const poolConfig = {
     user: config.db.username,
     host: config.db.host,
     database: config.db.database,
-    password: secretConf.dbSecret,
+    password: config.db.password,
     port: config.db.port,
     ...(config.advanced.dbSslDialectOption && { ssl: { require: true, rejectUnauthorized: false } }),
 };

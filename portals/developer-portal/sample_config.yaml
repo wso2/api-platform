@@ -8,10 +8,12 @@
 #   - Double underscores (__) represent a literal underscore within a key name
 #
 #   Examples:
-#     DP_DB_HOST=myhost          → db.host
-#     DP_IDENTITYPROVIDER_CLIENTID=abc → identityProvider.clientId
-#     DP_SECRETS_DBSECRET=pass   → secrets.dbSecret
-#     DP_ADVANCED_HTTP=true      → advanced.http
+#     DP_DB_HOST=myhost                    → db.host
+#     DP_DB_PASSWORD=pass                  → db.password
+#     DP_IDENTITYPROVIDER_CLIENTID=abc     → identityProvider.clientId
+#     DP_ADVANCED_APIKEY_KEYVALUE=secret   → advanced.apiKey.keyValue
+#     DP_BILLING_ENCRYPTIONKEY=hexkey      → billing.encryptionKey
+#     DP_TELEMETRY_CONNECTIONSTRING=...    → telemetry.connectionString
 #
 # You can place env var overrides in a .env file at the project root.
 
@@ -37,7 +39,7 @@ db:
   port: 5432
   database: "devportal"
   username: "postgres"
-  password: ""            # Prefer secrets.dbSecret — this field is ignored when secrets.dbSecret is set
+  password: ""            # Set via DP_DB_PASSWORD in production
   dialect: "postgres"
 
 # ─── Advanced ──────────────────────────────────────────────────────────────────
@@ -53,7 +55,7 @@ advanced:
   apiKey:
     enabled: true
     keyType: "x-wso2-api-key"
-    keyValue: "x-wso2-api-key"
+    keyValue: ""              # Secret key value — set via DP_ADVANCED_APIKEY_KEYVALUE in production
   tokenExchanger:
     enabled: false
   # Mount the OpenAPI-spec-driven /devportal router (request validation + fine-grained
@@ -182,13 +184,16 @@ portalConfigs:
 
 # ─── Telemetry ─────────────────────────────────────────────────────────────────
 
-telemetry: false
+telemetry:
+  enabled: false
+  azureInsightsConnectionString: ""   # Azure Application Insights — set via DP_TELEMETRY_AZUREINSIGHTSCONNECTIONSTRING
 
 # ─── Billing ───────────────────────────────────────────────────────────────────
-# Billing (Stripe integration) requires secrets.billingKeyEncryptionKey to be set.
+# Billing (Stripe integration) requires billing.encryptionKey to be set.
 # If the key is absent the portal starts normally but billing endpoints are disabled.
 billing:
   enabled: false
+  billingKeyEncryptionKey: ""   # 64-char hex key for AES-256-GCM — set via DP_BILLING_BILLINGKEYENCRYPTIONKEY
 
 # ─── Subscription Policies ─────────────────────────────────────────────────────
 # When true, Bronze/Silver/Gold/Unlimited/AsyncUnlimited plans are auto-created
@@ -239,13 +244,3 @@ webhooks:
 # if the ACME org has no assets yet. Set to false in production.
 
 seedDefaults: false
-
-# ─── Secrets ───────────────────────────────────────────────────────────────────
-# Sensitive values. In production, inject these as DP_SECRETS_* environment
-# variables rather than storing them in this file.
-
-secrets:
-  dbSecret: ""                          # Database password
-  apiKeySecret: ""                      # API key secret
-  billingKeyEncryptionKey: ""           # 64-char hex key for AES-256-GCM billing encryption
-  azureInsightsConnectionString: ""     # Azure Application Insights connection string

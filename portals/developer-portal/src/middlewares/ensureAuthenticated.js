@@ -19,7 +19,6 @@
 const minimatch = require('minimatch');
 const constants = require('../utils/constants');
 const { config } = require('../config/configLoader');
-const { secrets: secret } = require('../config/configLoader');
 const adminDao = require('../dao/admin');
 const { validationResult } = require('express-validator');
 const { jwtVerify, createRemoteJWKSet, importX509 } = require('jose');
@@ -470,13 +469,13 @@ const enforceMTLS = (req, res, next) => {
 const enforceAPIKey = (req, res, next) => {
     const keyType = config.advanced?.apiKey?.keyType;
 
-    if (!keyType || !secret.apiKeySecret) {
+    if (!keyType || !config.advanced?.apiKey?.keyValue) {
         return res.status(500).json({ error: "Server configuration error" });
     }
 
     const apiKey = req.headers[keyType.toLowerCase()];
 
-    if (!apiKey || apiKey !== secret.apiKeySecret) {
+    if (!apiKey || apiKey !== config.advanced?.apiKey?.keyValue) {
         return res.status(401).json({ error: "Unauthorized: API key is invalid or not found" });
     }
     return next();

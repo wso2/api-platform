@@ -94,7 +94,7 @@ function convertKeysToSnakeCase(obj) {
  * @param {Object} req - Express request object containing user session and context
  */
 function trackEventWithDefaults(event, req) {
-    if (!config.telemetry) {
+    if (!config.telemetry?.enabled) {
         return;
     }
     

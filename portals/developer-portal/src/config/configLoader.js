@@ -96,7 +96,10 @@ function coerceValue(value) {
  * Examples:
  *   DP_DB_HOST             → config.db.host
  *   DP_IDENTITYPROVIDER_CLIENTID → config.identityProvider.clientId
- *   DP_SECRETS_DBSECRET    → config.secrets.dbSecret
+ *   DP_DB_PASSWORD                      → config.db.password
+ *   DP_ADVANCED_APIKEY_KEYVALUE         → config.advanced.apiKey.keyValue
+ *   DP_BILLING_BILLINGKEYENCRYPTIONKEY   → config.billing.billingKeyEncryptionKey
+ *   DP_TELEMETRY_AZUREINSIGHTSCONNECTIONSTRING → config.telemetry.azureInsightsConnectionString
  */
 function applyEnvOverrides(config) {
     const PLACEHOLDER = '\x00';
@@ -138,8 +141,4 @@ if (Array.isArray(webhookSubscribers)) {
     }
 }
 
-if (!config.secrets) {
-    config.secrets = {};
-}
-
-module.exports = { config, secrets: config.secrets };
+module.exports = { config };

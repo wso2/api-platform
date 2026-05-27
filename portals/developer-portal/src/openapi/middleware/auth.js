@@ -34,7 +34,7 @@ const qs = require('qs');
 const jwt = require('jsonwebtoken');
 const { jwtVerify, createRemoteJWKSet, importX509 } = require('jose');
 
-const { config, secrets } = require('../../config/configLoader');
+const { config } = require('../../config/configLoader');
 const constants = require('../../utils/constants');
 const adminDao = require('../../dao/admin');
 const IdentityProviderDTO = require('../../dto/identityProvider');
@@ -224,9 +224,9 @@ async function authResolver(req, res, next) {
         // 4. API key
         if (config.advanced?.apiKey?.enabled) {
             const keyType = config.advanced.apiKey.keyType;
-            if (keyType && secrets.apiKeySecret) {
+            if (keyType && config.advanced?.apiKey?.keyValue) {
                 const apiKey = req.headers[keyType.toLowerCase()];
-                if (apiKey && apiKey === secrets.apiKeySecret) {
+                if (apiKey && apiKey === config.advanced?.apiKey?.keyValue) {
                     if (req.headers.organization && req.params && !req.params.orgId) {
                         req.params.orgId = req.headers.organization;
                     }
