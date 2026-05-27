@@ -1,0 +1,63 @@
+# --------------------------------------------------------------------
+# Mistral LLM Provider Configuration
+#
+# Uses the built-in `mistralai` template and points to the public
+# Mistral API endpoint. Replace the placeholder with a real Mistral key.
+#
+# The openai-to-mistral policy on the proxy layer translates
+# OpenAI-format requests into Mistral's wire format (path
+# /v1/chat/completions, model override, drop unsupported fields).
+#
+# Auth: upstream.auth is the gateway -> Mistral vendor auth. Proxies in
+# front of this provider inherit this vendor auth automatically.
+# --------------------------------------------------------------------
+
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProvider
+metadata:
+  name: mistral-provider
+spec:
+  displayName: Mistral Provider
+  version: v1.0
+  template: mistralai
+  upstream:
+    url: https://api.mistral.ai
+    auth:
+      type: api-key
+      header: Authorization
+      value: $dxxxd
+  policies:
+    - name: api-key-auth
+      version: v1
+      paths:
+        - path: /v1/chat/completions
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
+  accessControl:
+    mode: deny_all
+    exceptions:
+      - path: /v1/chat/completions
+        methods: [POST]
+      - path: /v1/embeddings
+        methods: [POST]
+      - path: /v1/models
+        methods: [GET]
+
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: ApiKey
+metadata:
+  name: mistral-provider-loopback-key
+spec:
+  parentRef:
+    kind: LlmProvider
+    name: mistral-provider
+  displayName: Mistral provider loopback key
+  apiKey:
+    value: mistral_provider_loopback_key_1234567890abcdef
+  maskedApiKey: mistral_provider_loopback_key_1234********cdef
+  expiresIn:
+    duration: 30
+    unit: days

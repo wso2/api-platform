@@ -917,8 +917,21 @@ type LLMProviderTemplateResourceMappings struct {
 	Resources *[]LLMProviderTemplateResourceMapping `json:"resources,omitempty" yaml:"resources,omitempty"`
 }
 
+// LLMProxyAdditionalProvider Additional LLM provider attached to this proxy as a selectable upstream. Policies route to it by referring to the `as` name (defaults to `id`). Optional auth config is used by the proxy when calling a protected LlmProvider over the internal loopback route.
+type LLMProxyAdditionalProvider struct {
+	// As Logical upstream name used by policies to select this provider. Must be unique within the proxy. Defaults to `id` when omitted.
+	As   *string          `json:"as,omitempty" yaml:"as,omitempty"`
+	Auth *LLMUpstreamAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
+
+	// Id Unique id of a deployed llm provider
+	Id string `json:"id" yaml:"id"`
+}
+
 // LLMProxyConfigData defines model for LLMProxyConfigData.
 type LLMProxyConfigData struct {
+	// AdditionalProviders Optional list of additional LLM providers attached to this proxy as selectable upstreams. Policies (e.g. an OpenAI translator) can route requests to any of these by setting the upstream name. The primary `provider` field above remains the default upstream and the FK target.
+	AdditionalProviders *[]LLMProxyAdditionalProvider `json:"additionalProviders,omitempty" yaml:"additionalProviders,omitempty"`
+
 	// Context Base path for all API routes (must start with /, no trailing slash)
 	Context *string `json:"context,omitempty" yaml:"context,omitempty"`
 

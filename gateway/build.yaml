@@ -86,3 +86,13 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/url-guardrail@v1
   - name: word-count-guardrail
     gomodule: github.com/wso2/gateway-controllers/policies/word-count-guardrail@v1
+  - name: openai-to-azure-openai
+    filePath: ./dev-policies/openai-to-azure-openai
+  - name: openai-to-anthropic
+    filePath: ./dev-policies/openai-to-anthropic
+  - name: openai-to-mistral
+    filePath: ./dev-policies/openai-to-mistral
+  - name: openai-to-gemini
+    filePath: ./dev-policies/openai-to-gemini
+  - name: openai-header-router
+    filePath: ./dev-policies/openai-header-router

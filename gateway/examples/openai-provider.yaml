@@ -1,0 +1,67 @@
+# --------------------------------------------------------------------
+# OpenAI LLM Provider Configuration
+#
+# Uses the built-in `openai` template and points to the OpenAI public
+# endpoint. The auth value below is a SAMPLE / placeholder token --
+# replace it with a real OpenAI API key (Bearer sk-...) before deploying.
+#
+# Auth: upstream.auth is the gateway -> OpenAI vendor auth. This is the
+# only auth this provider needs; proxies in front of it route freely and
+# inherit this vendor auth automatically.
+# --------------------------------------------------------------------
+
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProvider
+metadata:
+  name: openai-provider
+spec:
+  displayName: OpenAI Provider
+  version: v1.0
+  template: openai
+  upstream:
+    url: https://api.openai.com/v1
+    auth:
+      type: api-key
+      header: Authorization
+      # OpenAI expects:  Authorization: Bearer <key>  -- sent verbatim, so the
+      # "Bearer " prefix MUST be included here.
+      value: Bearer sk-REPLACE_WITH_OPENAI_KEY
+  policies:
+    - name: api-key-auth
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
+  accessControl:
+    mode: deny_all
+    exceptions:
+      - path: /chat/completions
+        methods: [POST]
+      - path: /completions
+        methods: [POST]
+      - path: /embeddings
+        methods: [POST]
+      - path: /models
+        methods: [GET]
+      - path: /models/{modelId}
+        methods: [GET]
+
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: ApiKey
+metadata:
+  name: openai-provider-loopback-key
+spec:
+  parentRef:
+    kind: LlmProvider
+    name: openai-provider
+  displayName: OpenAI provider loopback key
+  apiKey:
+    value: openai_provider_loopback_key_1234567890abcdef
+  maskedApiKey: openai_provider_loopback_key_1234********cdef
+  expiresIn:
+    duration: 30
+    unit: days

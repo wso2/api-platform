@@ -207,14 +207,24 @@ type LLMProxy struct {
 }
 
 type LLMProxyConfig struct {
-	Name         string          `json:"name,omitempty" db:"-"`
-	Version      string          `json:"version,omitempty" db:"-"`
-	Context      *string         `json:"context,omitempty" db:"-"`
-	Vhost        *string         `json:"vhost,omitempty" db:"-"`
-	Provider     string          `json:"provider,omitempty" db:"-"`
-	UpstreamAuth *UpstreamAuth   `json:"upstreamAuth,omitempty" db:"-"`
-	Policies     []LLMPolicy     `json:"policies,omitempty" db:"-"`
-	Security     *SecurityConfig `json:"security,omitempty" db:"-"`
+	Name                string                       `json:"name,omitempty" db:"-"`
+	Version             string                       `json:"version,omitempty" db:"-"`
+	Context             *string                      `json:"context,omitempty" db:"-"`
+	Vhost               *string                      `json:"vhost,omitempty" db:"-"`
+	Provider            string                       `json:"provider,omitempty" db:"-"`
+	UpstreamAuth        *UpstreamAuth                `json:"upstreamAuth,omitempty" db:"-"`
+	AdditionalProviders []LLMProxyAdditionalProvider `json:"additionalProviders,omitempty" db:"-"`
+	Policies            []LLMPolicy                  `json:"policies,omitempty" db:"-"`
+	Security            *SecurityConfig              `json:"security,omitempty" db:"-"`
+}
+
+// LLMProxyAdditionalProvider is an additional LLM provider attached to a proxy
+// as a selectable upstream. Policies route to it by the `As` name (which
+// defaults to `ID` when empty). Provider upstream auth is taken from the
+// referenced LlmProvider's own configuration.
+type LLMProxyAdditionalProvider struct {
+	ID string `json:"id" db:"-"`
+	As string `json:"as,omitempty" db:"-"`
 }
 
 type SecurityConfig struct {

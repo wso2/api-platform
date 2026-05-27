@@ -31,6 +31,25 @@ spec:
       type: api-key
       header: Authorization
       value: api_key_abc123
+  policies:
+    - name: api-key-auth
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
+        - path: /models
+          methods: [GET]
+          params:
+            key: X-API-Key
+            in: header
+        - path: /models/{modelId}
+          methods: [GET]
+          params:
+            key: X-API-Key
+            in: header
   accessControl:
     mode: deny_all
     exceptions:
@@ -40,3 +59,22 @@ spec:
         methods: [GET]
       - path: /models/{modelId}
         methods: [GET]
+
+---
+# Provider API key used by clients or by an LlmProxy provider.auth block.
+# In production, prefer apiKey.valueFrom with a Kubernetes Secret.
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: ApiKey
+metadata:
+  name: my-llm-provider-key
+spec:
+  parentRef:
+    kind: LlmProvider
+    name: my-llm-provider
+  displayName: My LLM provider key
+  apiKey:
+    value: provider_loopback_key_1234567890abcdef1234567890
+  maskedApiKey: provider_loopback_key_1234********7890
+  expiresIn:
+    duration: 30
+    unit: days

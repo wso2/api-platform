@@ -10266,6 +10266,15 @@ components:
           example: "api.openai"
         provider:
           $ref: '#/components/schemas/LLMProxyProvider'
+        additionalProviders:
+          type: array
+          description: >
+            Optional list of additional LLM providers attached to this proxy as
+            selectable upstreams. Policies route requests to any of these by
+            setting the upstream name. The primary `provider` field above
+            remains the default upstream and the FK target.
+          items:
+            $ref: '#/components/schemas/LLMProxyAdditionalProvider'
         openapi:
           type: string
           description: OpenAPI specification (JSON or YAML) for the proxy endpoint
@@ -10369,6 +10378,28 @@ components:
           example: wso2-openai-provider
         auth:
           $ref: '#/components/schemas/UpstreamAuth'
+
+    LLMProxyAdditionalProvider:
+      type: object
+      required:
+        - id
+      description: >
+        Additional LLM provider attached to this proxy as a selectable upstream.
+        Policies route to it by referring to the `as` name (defaults to `id`).
+      properties:
+        id:
+          type: string
+          description: Unique id of a deployed llm provider
+          example: anthropic-provider
+        as:
+          type: string
+          description: >
+            Logical upstream name used by policies to select this provider. Must
+            be unique within the proxy. Defaults to `id` when omitted.
+          pattern: '^[a-zA-Z0-9\-_]+$'
+          minLength: 1
+          maxLength: 100
+          example: anthropic-upstream
 
     CreateLLMProviderAPIKeyRequest:
       type: object

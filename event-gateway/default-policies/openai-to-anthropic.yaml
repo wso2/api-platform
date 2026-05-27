@@ -1,0 +1,84 @@
+name: openai-to-anthropic
+version: v1.0.0
+description: |
+  Translates an incoming OpenAI Chat Completions request into the Anthropic
+  Messages API format and forwards it to an Anthropic-compatible upstream.
+
+  Request transformations:
+  - system/developer messages are lifted into the top-level "system" field.
+  - messages[] is converted to Anthropic role/content blocks.
+  - assistant tool_calls become tool_use content blocks; tool-role messages
+    are grouped into a single user message of tool_result blocks.
+  - tools[] / tool_choice are converted to the Anthropic equivalents.
+  - stop is mapped to stop_sequences; image_url parts to image blocks.
+  - The request path is rewritten to /v1/messages and the anthropic-version
+    header is set.
+
+  Response transformations:
+  - The Anthropic Messages response body is rewritten into the OpenAI
+    ChatCompletion shape (id, object, created, model, choices, usage).
+  - text content blocks become choice.message.content; tool_use blocks
+    become choice.message.tool_calls; stop_reason is mapped to
+    finish_reason; cache token counts are carried in usage
+    .prompt_tokens_details.
+  - Anthropic error envelopes are rewritten into OpenAI error envelopes
+    so clients see consistent error shapes regardless of provider.
+  - Streaming (Server-Sent Events) responses are passed through
+    untouched in this policy version; clients that need true streaming
+    should request non-streaming (omit "stream": true) until a streaming
+    variant ships.
+
+  Execution modes:
+
+  1. Routed (multi-provider proxies): set the "provider" parameter to the
+     provider id this translator is bound to. The policy only runs when an
+     upstream setter (e.g. openai-header-router) publishes the same id into
+     SharedContext.Metadata["selected_provider"]. Non-matching requests pass
+     through untouched.
+
+  2. Unconditional (single-provider proxies): omit "provider". The
+     translator runs on every request.
+
+  The upstream host and Anthropic API key must be configured on the
+  upstream LlmProvider — this policy does not inject credentials.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    provider:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Provider id this translator is bound to. When set, the policy runs
+        only if SharedContext.Metadata["selected_provider"] equals this
+        value. Omit for single-provider proxies.
+      minLength: 1
+    model:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Anthropic model name used in the translated request (for example
+        claude-sonnet-4-20250514). Overrides the OpenAI "model" field.
+      minLength: 1
+    upstreamName:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Name of the upstream cluster declared in the LlmProxy
+        additionalProviders list. When omitted, routing is left to whatever
+        the route's default upstream resolves to.
+      minLength: 1
+    anthropicVersion:
+      type: string
+      x-wso2-policy-advanced-param: true
+      description: |
+        Value of the anthropic-version request header sent upstream.
+      default: "2023-06-01"
+      minLength: 1
+  required:
+    - model
+
+systemParameters:
+  type: object
+  properties: {}

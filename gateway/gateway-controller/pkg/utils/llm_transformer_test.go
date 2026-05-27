@@ -200,6 +200,119 @@ func TestLLMProviderTransformer_TransformProxy_ReadsProviderAndTemplateFromDB(t 
 	assert.Equal(t, "http://127.0.0.1:8080/db-provider", *result.Spec.Upstream.Main.Url)
 }
 
+func TestLLMProviderTransformer_TransformProxy_AdditionalProviderAuthIsConditional(t *testing.T) {
+	store := storage.NewConfigStore()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db := newTestSQLiteStorage(t, logger)
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-db-template-id-0000-000000000002",
+		Configuration: api.LLMProviderTemplate{
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
+			Metadata:   api.Metadata{Name: "openai"},
+			Spec:       api.LLMProviderTemplateData{DisplayName: "openai"},
+		},
+	}
+	require.NoError(t, db.SaveLLMProviderTemplate(template))
+
+	saveProvider := func(name, context string) {
+		providerSourceConfig := api.LLMProviderConfiguration{
+			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.LLMProviderConfigurationKindLlmProvider,
+			Metadata:   api.Metadata{Name: name},
+			Spec: api.LLMProviderConfigData{
+				DisplayName:   name,
+				Version:       "v1.0",
+				Context:       stringPtr(context),
+				Template:      "openai",
+				Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://example.com")},
+				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			},
+		}
+		require.NoError(t, db.SaveConfig(&models.StoredConfig{
+			UUID:                name + "-uuid",
+			Kind:                string(api.LLMProviderConfigurationKindLlmProvider),
+			Handle:              name,
+			DisplayName:         name,
+			Version:             "v1.0",
+			SourceConfiguration: providerSourceConfig,
+			DesiredState:        models.StateDeployed,
+		}))
+	}
+	saveProvider("openai-provider", "/openai-provider")
+	saveProvider("anthropic-provider", "/anthropic-provider")
+
+	transformer := NewLLMProviderTransformer(store, db, &config.RouterConfig{ListenerPort: 8080}, newTestPolicyVersionResolver())
+
+	proxy := &api.LLMProxyConfiguration{
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       api.LLMProxyConfigurationKindLlmProxy,
+		Metadata:   api.Metadata{Name: "openai-multi"},
+		Spec: api.LLMProxyConfigData{
+			DisplayName: "openai-multi",
+			Version:     "v1.0",
+			Provider: api.LLMProxyProvider{
+				Id: "openai-provider",
+				Auth: &api.LLMUpstreamAuth{
+					Type:   api.LLMUpstreamAuthTypeApiKey,
+					Header: stringPtr("Authorization"),
+					Value:  stringPtr("Bearer primary"),
+				},
+			},
+			AdditionalProviders: &[]api.LLMProxyAdditionalProvider{{
+				Id: "anthropic-provider",
+				Auth: &api.LLMUpstreamAuth{
+					Type:   api.LLMUpstreamAuthTypeApiKey,
+					Header: stringPtr("X-Provider-Key"),
+					Value:  stringPtr("anthropic-loopback"),
+				},
+			}},
+			Policies: &[]api.LLMPolicy{{
+				Name:    "openai-header-router",
+				Version: "v1",
+				Paths: []api.LLMPolicyPath{{
+					Path:    "/chat/completions",
+					Methods: []api.LLMPolicyPathMethods{"POST"},
+					Params: map[string]interface{}{
+						"defaultProvider": "openai-provider",
+					},
+				}},
+			}},
+		},
+	}
+
+	result, err := transformer.Transform(proxy, &api.RestAPI{})
+	require.NoError(t, err)
+	require.NotNil(t, result.Spec.UpstreamDefinitions)
+	require.Len(t, *result.Spec.UpstreamDefinitions, 1)
+	assert.Equal(t, "anthropic-provider", (*result.Spec.UpstreamDefinitions)[0].Name)
+
+	var chatOp *api.Operation
+	for i := range result.Spec.Operations {
+		if result.Spec.Operations[i].Path == "/chat/completions" && result.Spec.Operations[i].Method == "POST" {
+			chatOp = &result.Spec.Operations[i]
+			break
+		}
+	}
+	require.NotNil(t, chatOp)
+	require.NotNil(t, chatOp.Policies)
+
+	var authPolicies []api.Policy
+	for _, pol := range *chatOp.Policies {
+		if pol.Name == constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME {
+			authPolicies = append(authPolicies, pol)
+		}
+	}
+	require.Len(t, authPolicies, 2)
+	require.NotNil(t, authPolicies[0].ExecutionCondition)
+	require.NotNil(t, authPolicies[1].ExecutionCondition)
+	assert.Contains(t, *authPolicies[0].ExecutionCondition, "openai-provider")
+	assert.Contains(t, *authPolicies[1].ExecutionCondition, "anthropic-provider")
+	assert.Equal(t, "Bearer primary", firstRequestHeaderValue(t, authPolicies[0].Params))
+	assert.Equal(t, "anthropic-loopback", firstRequestHeaderValue(t, authPolicies[1].Params))
+}
+
 func TestGetUpstreamAuthApikeyPolicyParams_Extended(t *testing.T) {
 	t.Run("Valid parameters", func(t *testing.T) {
 		params, err := GetUpstreamAuthApikeyPolicyParams("Authorization", "Bearer token123")
@@ -213,6 +326,21 @@ func TestGetUpstreamAuthApikeyPolicyParams_Extended(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, params)
 	})
+}
+
+func firstRequestHeaderValue(t *testing.T, params *map[string]interface{}) string {
+	t.Helper()
+	require.NotNil(t, params)
+	request, ok := (*params)["request"].(map[string]interface{})
+	require.True(t, ok)
+	headers, ok := request["headers"].([]interface{})
+	require.True(t, ok)
+	require.NotEmpty(t, headers)
+	header, ok := headers[0].(map[string]interface{})
+	require.True(t, ok)
+	value, ok := header["value"].(string)
+	require.True(t, ok)
+	return value
 }
 
 func TestGetHostAdditionPolicyParams(t *testing.T) {

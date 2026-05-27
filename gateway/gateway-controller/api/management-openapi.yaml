@@ -5826,6 +5826,32 @@ components:
         auth:
           $ref: '#/components/schemas/LLMUpstreamAuth'
 
+    LLMProxyAdditionalProvider:
+      type: object
+      required:
+        - id
+      description: >
+        Additional LLM provider attached to this proxy as a selectable upstream.
+        Policies route to it by referring to the `as` name (defaults to `id`).
+        Optional auth config is used by the proxy when calling a protected
+        LlmProvider over the internal loopback route.
+      properties:
+        id:
+          type: string
+          description: Unique id of a deployed llm provider
+          example: anthropic-provider
+        as:
+          type: string
+          description: >
+            Logical upstream name used by policies to select this provider. Must
+            be unique within the proxy. Defaults to `id` when omitted.
+          pattern: '^[a-zA-Z0-9\-_]+$'
+          minLength: 1
+          maxLength: 100
+          example: anthropic-upstream
+        auth:
+          $ref: '#/components/schemas/LLMUpstreamAuth'
+
     LLMAccessControl:
       type: object
       required:
@@ -6009,6 +6035,15 @@ components:
           example: "api.openai.com"
         provider:
           $ref: '#/components/schemas/LLMProxyProvider'
+        additionalProviders:
+          type: array
+          description: >
+            Optional list of additional LLM providers attached to this proxy as
+            selectable upstreams. Policies (e.g. an OpenAI translator) can route
+            requests to any of these by setting the upstream name. The primary
+            `provider` field above remains the default upstream and the FK target.
+          items:
+            $ref: '#/components/schemas/LLMProxyAdditionalProvider'
         policies:
           type: array
           description: List of policies applied only to this operation (overrides or adds to API-level policies)

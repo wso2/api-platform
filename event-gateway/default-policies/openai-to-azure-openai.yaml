@@ -1,0 +1,78 @@
+name: openai-to-azure-openai
+version: v1.0.0
+description: |
+  Translates an incoming OpenAI Chat Completions request into the Azure
+  OpenAI request shape and forwards it to an Azure-OpenAI-compatible
+  upstream.
+
+  Transformation:
+  - The request path is rewritten to
+    /openai/deployments/{deployment}/{pathSuffix}?api-version=<apiVersion>.
+  - The body passes through unchanged — Azure OpenAI accepts the OpenAI
+    request shape directly.
+  - The deployment id is taken from the "model" parameter when set,
+    otherwise from the request body's "model" field.
+
+  Execution modes:
+
+  1. Routed (multi-provider proxies): set the "provider" parameter to the
+     provider id this translator is bound to. The policy only runs when an
+     upstream setter (e.g. openai-header-router) publishes the same id into
+     SharedContext.Metadata["selected_provider"]. Non-matching requests
+     pass through untouched.
+
+  2. Unconditional (single-provider proxies): omit "provider". The
+     translator runs on every request.
+
+  The upstream host and Azure api-key must be configured on the upstream
+  LlmProvider — this policy does not inject credentials.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    provider:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Provider id this translator is bound to. When set, the policy runs
+        only if SharedContext.Metadata["selected_provider"] equals this
+        value. Omit for single-provider proxies.
+      minLength: 1
+    apiVersion:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Azure OpenAI api-version query-string value (for example
+        2024-02-15-preview). Required because Azure rejects requests
+        without it.
+      minLength: 1
+    model:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Azure deployment id used in the rewritten path. When omitted, the
+        request body's "model" field is used as the deployment id.
+      minLength: 1
+    upstreamName:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Name of the upstream cluster declared in the LlmProxy
+        additionalProviders list. When omitted, routing is left to whatever
+        the route's default upstream resolves to.
+      minLength: 1
+    pathSuffix:
+      type: string
+      x-wso2-policy-advanced-param: true
+      description: |
+        Endpoint suffix appended after the deployment segment in the
+        rewritten path. Defaults to /chat/completions.
+      default: /chat/completions
+      minLength: 1
+  required:
+    - apiVersion
+
+systemParameters:
+  type: object
+  properties: {}
