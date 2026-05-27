@@ -44,15 +44,19 @@ type Config struct {
 
 // ServerConfig holds HTTP/WS server settings.
 type ServerConfig struct {
-	WebSubEnabled     bool   `koanf:"websub_enabled"`
-	WebSubHTTPPort    int    `koanf:"websub_http_port"`
-	WebSubHTTPSPort   int    `koanf:"websub_https_port"`
-	WebSubTLSEnabled  bool   `koanf:"websub_tls_enabled"`
-	WebSubTLSCertFile string `koanf:"websub_tls_cert_file"`
-	WebSubTLSKeyFile  string `koanf:"websub_tls_key_file"`
-	WebSocketPort     int    `koanf:"websocket_port"`
-	AdminPort         int    `koanf:"admin_port"`
-	MetricsPort       int    `koanf:"metrics_port"`
+	WebSubEnabled        bool   `koanf:"websub_enabled"`
+	WebSubHTTPPort       int    `koanf:"websub_http_port"`
+	WebSubHTTPSPort      int    `koanf:"websub_https_port"`
+	WebSubTLSEnabled     bool   `koanf:"websub_tls_enabled"`
+	WebSubTLSCertFile    string `koanf:"websub_tls_cert_file"`
+	WebSubTLSKeyFile     string `koanf:"websub_tls_key_file"`
+	WebSocketPort        int    `koanf:"websocket_port"`
+	WebSocketHTTPSPort   int    `koanf:"websocket_https_port"`
+	WebSocketTLSEnabled  bool   `koanf:"websocket_tls_enabled"`
+	WebSocketTLSCertFile string `koanf:"websocket_tls_cert_file"`
+	WebSocketTLSKeyFile  string `koanf:"websocket_tls_key_file"`
+	AdminPort            int    `koanf:"admin_port"`
+	MetricsPort          int    `koanf:"metrics_port"`
 }
 
 // KafkaConfig holds Kafka connection settings.
@@ -103,12 +107,13 @@ type LoggingConfig struct {
 func DefaultConfig() *Config {
 	return &Config{
 		Server: ServerConfig{
-			WebSubEnabled:   true,
-			WebSubHTTPPort:  8080,
-			WebSubHTTPSPort: 8443,
-			WebSocketPort:   8081,
-			AdminPort:       9002,
-			MetricsPort:     9003,
+			WebSubEnabled:      true,
+			WebSubHTTPPort:     8080,
+			WebSubHTTPSPort:    8443,
+			WebSocketPort:      8081,
+			WebSocketHTTPSPort: 8444,
+			AdminPort:          9002,
+			MetricsPort:        9003,
 		},
 		Kafka: KafkaConfig{
 			Brokers:             []string{"localhost:9092"},
@@ -176,6 +181,7 @@ func Load(path string) (*Config, map[string]interface{}, error) {
 		"websub_https_port", cfg.Server.WebSubHTTPSPort,
 		"websub_tls_enabled", cfg.Server.WebSubTLSEnabled,
 		"websocket_port", cfg.Server.WebSocketPort,
+		"websocket_tls_enabled", cfg.Server.WebSocketTLSEnabled,
 		"admin_port", cfg.Server.AdminPort,
 		"kafka_brokers", cfg.Kafka.Brokers,
 		"log_level", cfg.Logging.Level,
@@ -221,6 +227,7 @@ func mapEnvValue(path, value string) interface{} {
 	case "server.websub_http_port",
 		"server.websub_https_port",
 		"server.websocket_port",
+		"server.websocket_https_port",
 		"server.admin_port",
 		"server.metrics_port",
 		"websub.verification_timeout_seconds",
@@ -232,7 +239,7 @@ func mapEnvValue(path, value string) interface{} {
 		if n, err := strconv.Atoi(value); err == nil {
 			return n
 		}
-	case "kafka.tls", "controlplane.enabled", "server.websub_enabled", "server.websub_tls_enabled":
+	case "kafka.tls", "controlplane.enabled", "server.websub_enabled", "server.websub_tls_enabled", "server.websocket_tls_enabled":
 		if b, err := strconv.ParseBool(value); err == nil {
 			return b
 		}
@@ -264,10 +271,19 @@ func validate(cfg *Config) error {
 	}
 
 	if cfg.Server.WebSubTLSEnabled {
-		if err := validateReadableFile(cfg.Server.WebSubTLSCertFile, "server.websub_tls_cert_file"); err != nil {
+		if err := validateReadableFile(cfg.Server.WebSubTLSCertFile, "server.websub_tls_cert_file", "server.websub_tls_enabled"); err != nil {
 			return err
 		}
-		if err := validateReadableFile(cfg.Server.WebSubTLSKeyFile, "server.websub_tls_key_file"); err != nil {
+		if err := validateReadableFile(cfg.Server.WebSubTLSKeyFile, "server.websub_tls_key_file", "server.websub_tls_enabled"); err != nil {
+			return err
+		}
+	}
+
+	if cfg.Server.WebSocketTLSEnabled {
+		if err := validateReadableFile(cfg.Server.WebSocketTLSCertFile, "server.websocket_tls_cert_file", "server.websocket_tls_enabled"); err != nil {
+			return err
+		}
+		if err := validateReadableFile(cfg.Server.WebSocketTLSKeyFile, "server.websocket_tls_key_file", "server.websocket_tls_enabled"); err != nil {
 			return err
 		}
 	}
@@ -298,7 +314,7 @@ func validateKafkaConfig(kafkaCfg KafkaConfig) error {
 
 	if kafkaCfg.TLS {
 		if strings.TrimSpace(kafkaCfg.TLSCAFile) != "" {
-			if err := validateReadableFile(kafkaCfg.TLSCAFile, "kafka.tls_ca_file"); err != nil {
+			if err := validateReadableFile(kafkaCfg.TLSCAFile, "kafka.tls_ca_file", "kafka.tls"); err != nil {
 				return err
 			}
 		}
@@ -308,10 +324,10 @@ func validateKafkaConfig(kafkaCfg KafkaConfig) error {
 			if certFile == "" || keyFile == "" {
 				return fmt.Errorf("kafka.tls_cert_file and kafka.tls_key_file must be configured together")
 			}
-			if err := validateReadableFile(certFile, "kafka.tls_cert_file"); err != nil {
+			if err := validateReadableFile(certFile, "kafka.tls_cert_file", "kafka.tls"); err != nil {
 				return err
 			}
-			if err := validateReadableFile(keyFile, "kafka.tls_key_file"); err != nil {
+			if err := validateReadableFile(keyFile, "kafka.tls_key_file", "kafka.tls"); err != nil {
 				return err
 			}
 		}
@@ -346,6 +362,7 @@ func validateServerPorts(serverCfg ServerConfig) error {
 		{name: "server.websub_http_port", value: serverCfg.WebSubHTTPPort},
 		{name: "server.websub_https_port", value: serverCfg.WebSubHTTPSPort},
 		{name: "server.websocket_port", value: serverCfg.WebSocketPort},
+		{name: "server.websocket_https_port", value: serverCfg.WebSocketHTTPSPort},
 		{name: "server.admin_port", value: serverCfg.AdminPort},
 		{name: "server.metrics_port", value: serverCfg.MetricsPort},
 	}
@@ -364,10 +381,10 @@ func validateServerPorts(serverCfg ServerConfig) error {
 	return nil
 }
 
-func validateReadableFile(filePath, fieldName string) error {
+func validateReadableFile(filePath, fieldName, enabledFieldName string) error {
 	trimmedPath := strings.TrimSpace(filePath)
 	if trimmedPath == "" {
-		return fmt.Errorf("%s is required when server.websub_tls_enabled is true", fieldName)
+		return fmt.Errorf("%s is required when %s is true", fieldName, enabledFieldName)
 	}
 
 	info, err := os.Stat(trimmedPath)

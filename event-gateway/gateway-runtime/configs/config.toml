@@ -19,6 +19,12 @@ websub_tls_enabled = true
 websub_tls_cert_file = "/etc/event-gateway/tls/default-listener.crt"
 websub_tls_key_file = "/etc/event-gateway/tls/default-listener.key"
 websocket_port = 8081
+# HTTPS port for WebSocket server (used when TLS is enabled for WebBrokerApi)
+websocket_https_port = 8444
+# Set to true to serve WebBrokerApi WebSocket connections over WSS (TLS).
+websocket_tls_enabled = true
+websocket_tls_cert_file = "/etc/event-gateway/tls/default-listener.crt"
+websocket_tls_key_file = "/etc/event-gateway/tls/default-listener.key"
 admin_port = 9002
 metrics_port = 9003
 
