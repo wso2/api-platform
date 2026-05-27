@@ -505,13 +505,23 @@ const updateOAuthKeys = async (req, res) => {
             }
             const kmRecord = await kmDao.getKeyManager(keyMapping.KM_ID);
             const adapter = getKeyManagerAdapter(kmRecord);
-            await adapter.updateOAuthClient(
+            const updatedGrantTypes = tokenDetails.supportedGrantTypes || tokenDetails.grantTypesToBeSupported;
+            const result = await adapter.updateOAuthClient(
                 keyMapping.AS_CLIENT_ID,
-                tokenDetails.supportedGrantTypes || tokenDetails.grantTypesToBeSupported,
+                updatedGrantTypes,
                 tokenDetails.callbackUrl ? [tokenDetails.callbackUrl] : [],
                 tokenDetails.scopes,
                 tokenDetails.additionalProperties
             );
+
+            // Persist the AS-returned config so the modify modal shows current values
+            if (result?.additionalProperties) {
+                await ApplicationKeyMapping.update(
+                    { ADDITIONAL_PROPERTIES: result.additionalProperties },
+                    { where: { MAPPING_ID: keyMappingId } }
+                );
+            }
+
             res.status(200).json({ message: 'OAuth client updated successfully' });
         }
     } catch (error) {

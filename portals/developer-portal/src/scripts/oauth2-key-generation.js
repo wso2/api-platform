@@ -146,11 +146,11 @@ async function generateApplicationKey(formId, appId, keyType, keyManager, client
 
                 const consumerKeyContainer = document.getElementById("consumerKeyContainer-" + keyType);
                 const consumerKeyContainerView = document.getElementById("consumerKey-" + keyType + "-view");
-                const consumerSecretContainerView = document.getElementById("consumerSecret-" + keyType + "-view");
 
                 const curlDisplay = document.getElementById("curlDisplay_" + keyManager + "_" + keyType);
                 const kmData = document.getElementById("KMData_" + keyManager + "_" + keyType);
 
+                // Update consumer key in view modal
                 if (consumerKeyEl) {
                     consumerKeyEl.removeAttribute("class");
                     if (consumerKeyEl.hasAttribute("style")) {
@@ -162,10 +162,8 @@ async function generateApplicationKey(formId, appId, keyType, keyManager, client
                 if (consumerKeyContainerView && consumerKeyContainerView.hasAttribute("style")) {
                     consumerKeyContainerView.removeAttribute("style");
                 }
-                if (consumerSecretContainerView && consumerSecretContainerView.hasAttribute("style")) {
-                    consumerSecretContainerView.removeAttribute("style");
-                }
 
+                // Show consumer secret only in the view modal, not on the main page
                 if (consumerSecretEl) {
                     consumerSecretEl.value = consumerSecret || '';
                     if (consumerSecretEl.hasAttribute("style")) {
@@ -184,22 +182,38 @@ async function generateApplicationKey(formId, appId, keyType, keyManager, client
                 if (kmData && kmData.hasAttribute("style")) {
                     kmData.removeAttribute("style");
                 }
+
+                // Show one-time secret warning banners
+                const secretWarning = document.getElementById("secretWarning-" + keyType);
+                if (secretWarning) {
+                    secretWarning.style.display = "flex";
+                }
+                const secretWarningView = document.getElementById("secretWarningView-" + keyType);
+                if (secretWarningView) {
+                    secretWarningView.style.display = "flex";
+                }
+
+                // Hide the "secret not available" info messages
+                const secretNotAvailable = document.getElementById("secretNotAvailable-" + keyType);
+                if (secretNotAvailable) {
+                    secretNotAvailable.style.display = "none";
+                }
+                const secretUnavailable = document.getElementById("secretUnavailable-" + keyType);
+                if (secretUnavailable) {
+                    secretUnavailable.style.display = "none";
+                }
             }
 
             // Show containers after key generation (regardless of whether consumerSecret exists)
             const consumerKeyContainerEl = document.getElementById("consumerKeyContainer-" + keyType);
             const consumerKeyViewEl = document.getElementById("consumerKey-" + keyType + "-view");
-            const consumerSecretViewEl = document.getElementById("consumerSecret-" + keyType + "-view");
             const keyActionsContainerEl = document.getElementById("keyActionsContainer-" + keyType);
-            
+
             if (consumerKeyContainerEl) {
                 consumerKeyContainerEl.style.display = "block";
             }
             if (consumerKeyViewEl) {
                 consumerKeyViewEl.style.display = "block";
-            }
-            if (consumerSecretViewEl && consumerSecret) {
-                consumerSecretViewEl.style.display = "block";
             }
             if (keyActionsContainerEl) {
                 keyActionsContainerEl.style.display = "flex";
@@ -428,7 +442,7 @@ function getFormData(formData, keyManager, clientName, appID) {
 };
 
 
-async function updateApplicationKey(formId, appMap, keyType, keyManager, keyManagerId, clientName) {
+async function updateApplicationKey(formId, appId, keyType, keyManager, keyManagerId, clientName) {
     // Get the update button and set loading state
     console.log("Updating application key with formId:", formId);
     const updateBtn = document.getElementById('applicationKeyUpdateButton' + '-' + keyType);
@@ -449,13 +463,10 @@ async function updateApplicationKey(formId, appMap, keyType, keyManager, keyMana
 
     const form = document.getElementById(formId);
     const formData = new FormData(form);
-    const jsonAppdata = appMap ? JSON.parse(appMap) : null;
-    //TODO: Handle multiple CP applications
     const appKeyManagerId = formId.replace("applicationKeyGenerateForm-", "").replace(/-(SANDBOX|PRODUCTION)$/, "");
     const envSuffix = keyType;
-    const appId = jsonAppdata ? jsonAppdata[0].appRefID : document.getElementById("app-ref-" + appKeyManagerId + "-" + envSuffix)?.value;
     const keyMappingId = keyManagerId ? keyManagerId : document.getElementById("key-map-" + appKeyManagerId + "-" + envSuffix)?.value;
-    const jsonObject = getFormData(formData, keyManager, clientName, keyManagerId);
+    const jsonObject = getFormData(formData, keyManager, clientName, appKeyManagerId);
     const validationResponse = validateOauthUpdate(jsonObject);
     if (!validationResponse.valid) {
         errorContainer.textContent = validationResponse.message;
@@ -905,6 +916,53 @@ function loadKeyGenModal() {
             originalContainer.appendChild(generateKeysBtn);
         }
     }
+}
+
+function closeKeysViewModal(keyType) {
+    const modal = document.getElementById('keysViewModal-' + keyType);
+    if (modal) {
+        // Clear consumer secret from the modal
+        const secretInput = modal.querySelector('input[name="consumerSecret"]');
+        if (secretInput) {
+            secretInput.value = '';
+        }
+        // Hide the secret field and warning in the modal
+        const secretContainer = document.getElementById('consumerSecret-' + keyType);
+        if (secretContainer) {
+            secretContainer.style.display = 'none';
+        }
+        const secretWarning = document.getElementById('secretWarningView-' + keyType);
+        if (secretWarning) {
+            secretWarning.style.display = 'none';
+        }
+        // Make consumer key full width since secret is gone
+        const consumerKeyDiv = document.getElementById('consumerKey-' + keyType);
+        if (consumerKeyDiv) {
+            consumerKeyDiv.classList.remove('col-md-6');
+            consumerKeyDiv.classList.add('col-md-12');
+        }
+        // Show the "secret unavailable" info if not already present
+        let unavailableEl = document.getElementById('secretUnavailable-' + keyType);
+        if (!unavailableEl) {
+            unavailableEl = document.createElement('div');
+            unavailableEl.id = 'secretUnavailable-' + keyType;
+            unavailableEl.className = 'alert alert-info d-flex align-items-center mb-3';
+            unavailableEl.setAttribute('role', 'alert');
+            unavailableEl.innerHTML = '<i class="bi bi-info-circle-fill me-2"></i>' +
+                '<div>The consumer secret is only displayed once at the time of generation and is not stored. ' +
+                'If you need a new secret, please regenerate the credentials.</div>';
+            const keysContainer = modal.querySelector('[id^="consumerKeys_"]');
+            if (keysContainer) {
+                keysContainer.insertBefore(unavailableEl, keysContainer.querySelector('.row'));
+            }
+        }
+        unavailableEl.style.display = 'flex';
+    }
+    // Clear consumer secret from hidden main page input
+    const mainPageSecretInputs = document.querySelectorAll('input[id$="-' + keyType + '-view"][name^="consumerSecret"]');
+    mainPageSecretInputs.forEach(input => { input.value = ''; });
+
+    closeModal('keysViewModal-' + keyType);
 }
 
 function loadKeysViewModal(keyType) {

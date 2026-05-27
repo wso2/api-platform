@@ -70,7 +70,8 @@ class BaseKeyManagerAdapter {
      * @param {string[]} redirectUris   - Redirect URIs (may be empty for client_credentials).
      * @param {string[]} scopes         - Requested scopes.
      * @param {object}   additionalProps - AS-specific extra properties.
-     * @returns {Promise<{ clientId: string, clientSecret: string }>}
+     * @returns {Promise<{ clientId: string, clientSecret: string, additionalProperties: object }>}
+     *          additionalProperties contains the full AS response (minus client_secret).
      */
     async createOAuthClient(_name, _grantTypes, _redirectUris, _scopes, _additionalProps) {
         throw new Error('createOAuthClient() must be implemented by the adapter');
@@ -84,7 +85,8 @@ class BaseKeyManagerAdapter {
      * @param {string[]} redirectUris   - Updated redirect URIs.
      * @param {string[]} scopes         - Updated scopes.
      * @param {object}   additionalProps - AS-specific extra properties.
-     * @returns {Promise<void>}
+     * @returns {Promise<{ additionalProperties: object }>}
+     *          additionalProperties contains the full AS response (minus client_secret).
      */
     async updateOAuthClient(_clientId, _grantTypes, _redirectUris, _scopes, _additionalProps) {
         throw new Error('updateOAuthClient() must be implemented by the adapter');

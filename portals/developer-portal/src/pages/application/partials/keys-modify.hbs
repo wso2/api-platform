@@ -18,7 +18,7 @@
                         <form
                             id='applicationKeyGenerateForm-{{../id}}-{{keyType}}'
                             onsubmit="event.preventDefault(); updateApplicationKey(this.id,
-                                '{{json ../../applicationMetadata.appMap}}', '{{keyType}}', '{{../name}}',
+                                '{{../../applicationMetadata.id}}', '{{keyType}}', '{{../name}}',
                                 '{{keys.keyMappingId}}', '{{keys.clientName}}');">
                             <div>
                                 <div class="row mb-2">
@@ -131,7 +131,7 @@
                                             {{#if (eq ../type 'checkbox')}}
                                             <div class="form-check ps-0">
                                                 <input type="checkbox" name="additionalProperties.{{../name}}"
-                                                    id="additionalProperties-{{../name}}-{{../../../../id}}-{{keyType}}"
+                                                    id="additionalProperties-{{../name}}-{{../../../id}}-{{keyType}}"
                                                     value="true" {{#if (eq propValue true)}} checked{{/if}} />
                                             </div>
                                             {{/if}}

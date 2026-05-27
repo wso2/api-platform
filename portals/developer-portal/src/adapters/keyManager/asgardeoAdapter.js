@@ -97,13 +97,15 @@ class AsgardeoAdapter extends BaseKeyManagerAdapter {
                 },
             });
 
+            const { client_secret, ...additionalProperties } = response.data;
             return {
                 clientId: response.data.client_id,
-                clientSecret: response.data.client_secret,
+                clientSecret: client_secret,
+                additionalProperties,
             };
         } catch (error) {
-            logger.error('Asgardeo createOAuthClient failed', { error });
-            throw new Error(`Failed to create OAuth client in Asgardeo: ${error.message}`);
+            logger.error('Asgardeo createOAuthClient failed', { error, responseData: error.response?.data });
+            throw new Error(`Failed to create OAuth client in Asgardeo: ${error.response?.data?.error_description || error.message}`);
         }
     }
 
@@ -119,13 +121,25 @@ class AsgardeoAdapter extends BaseKeyManagerAdapter {
             payload.redirect_uris = redirectUris;
         }
 
+        // Merge editable additional properties (ext_* fields) into the payload
+        if (additionalProps && typeof additionalProps === 'object') {
+            for (const [key, value] of Object.entries(additionalProps)) {
+                // Only include ext_* fields and skip fields already handled above
+                if (key.startsWith('ext_') || key === 'token_type_extension') {
+                    payload[key] = value;
+                }
+            }
+        }
+
         try {
-            await axios.put(`${this.clientRegEndpoint}/${clientId}`, payload, {
+            const response = await axios.put(`${this.clientRegEndpoint}/${clientId}`, payload, {
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${adminToken}`,
                 },
             });
+            const { client_secret, ...additionalProperties } = response.data;
+            return { additionalProperties };
         } catch (error) {
             logger.error('Asgardeo updateOAuthClient failed', { error });
             throw new Error(`Failed to update OAuth client in Asgardeo: ${error.message}`);

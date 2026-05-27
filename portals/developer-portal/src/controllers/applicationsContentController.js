@@ -178,15 +178,16 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
                 for (const mapping of localMappings) {
                     if (mapping.AS_CLIENT_ID && mapping.KM_ID) {
                         const km = await kmDao.getKeyManager(mapping.KM_ID);
+                        const storedProps = mapping.ADDITIONAL_PROPERTIES || {};
                         keyList.push({
                             keyManager: km.NAME,
                             consumerKey: mapping.AS_CLIENT_ID,
                             consumerSecret: '',
                             keyMappingId: mapping.MAPPING_ID,
                             keyType: mapping.KEY_TYPE || constants.KEY_TYPE.PRODUCTION,
-                            supportedGrantTypes: km.SUPPORTED_GRANT_TYPES || ['client_credentials'],
-                            additionalProperties: {},
-                            callbackUrl: '',
+                            supportedGrantTypes: storedProps.grant_types || km.SUPPORTED_GRANT_TYPES || ['client_credentials'],
+                            additionalProperties: storedProps,
+                            callbackUrl: storedProps.redirect_uris?.[0] || '',
                         });
                     }
                 }
@@ -195,7 +196,7 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
                 }
             } catch (keyError) {
                 logger.warn('Failed to build application keys from local DB', {
-                    error: keyError.message
+                    error: keyError.message, stack: keyError.stack
                 });
             }
         }

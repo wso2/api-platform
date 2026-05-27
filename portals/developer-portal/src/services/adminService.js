@@ -1618,6 +1618,7 @@ async function _createAppKeyMappingDecoupled(req, orgID, userID) {
             consumerKey: clientID,
             consumerSecret: null,
             keyManager: kmName,
+            additionalProperties: tokenDetails.additionalProperties || {},
         };
     } else {
         // Create a new OAuth client in the AS
@@ -1628,7 +1629,7 @@ async function _createAppKeyMappingDecoupled(req, orgID, userID) {
 
         const sanitize = (s) => String(s).replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
         const keyType = (tokenDetails.keyType || 'PRODUCTION').toUpperCase();
-        const clientName = `${sanitize(userID)}_${sanitize(applicationName)}_${keyType}`;
+        const clientName = `${sanitize(userID)}_${sanitize(appID)}_${keyType}`;
 
         const oauthClient = await adapter.createOAuthClient(
             clientName,
@@ -1644,21 +1645,18 @@ async function _createAppKeyMappingDecoupled(req, orgID, userID) {
             keyManager: kmName,
             tokenEndpoint: kmRecord.TOKEN_ENDPOINT,
             supportedGrantTypes: kmRecord.SUPPORTED_GRANT_TYPES,
+            additionalProperties: oauthClient.additionalProperties,
         };
     }
 
-    // Store key mapping in devportal DB
+    // Store key mapping in devportal DB with the full AS-returned config
     const appKeyMapping = {
         orgID: orgID,
         appID: appID,
-        cpAppRef: responseData.consumerKey, // Use clientId as the CP ref in non-CP mode
-        apiRefID: null,
-        subscriptionRefID: null,
-        sharedToken: true,
-        tokenType: constants.TOKEN_TYPES.OAUTH,
         kmID: kmRecord.KM_ID,
         asClientID: responseData.consumerKey,
         keyType: tokenDetails.keyType || 'PRODUCTION',
+        additionalProperties: responseData.additionalProperties || {},
     };
     await adminDao.createApplicationKeyMapping(appKeyMapping);
 

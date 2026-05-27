@@ -29,8 +29,26 @@
                     {{#let "keys" keys}}
                     <div id="consumerKeys_{{../name}}-{{keyType}}" style="{{#unless keys.consumerKey}}display: none;{{/unless}}">
                         <h3 class='h6'> Key and Secret  </h3>
+                        {{!-- One-time secret warning (shown after generation via JS) --}}
+                        <div id="secretWarning-{{keyType}}" class="alert alert-warning align-items-center mb-3" role="alert" style="display: none;">
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                            <div>
+                                <strong>Important:</strong> Please copy the consumer secret now. For security reasons, it will not be displayed again after you leave this page.
+                            </div>
+                        </div>
+                        {{!-- Secret not available info (shown on reload when secret is gone) --}}
+                        {{#if keys.consumerKey}}
+                        {{#unless keys.consumerSecret}}
+                        <div id="secretNotAvailable-{{keyType}}" class="alert alert-info d-flex align-items-center mb-3" role="alert">
+                            <i class="bi bi-info-circle-fill me-2"></i>
+                            <div>
+                                The consumer secret is only displayed once at the time of generation and is not stored. If you need a new secret, please regenerate the credentials.
+                            </div>
+                        </div>
+                        {{/unless}}
+                        {{/if}}
                         <div class="row mb-3">
-                            <div class="col-md-6">
+                            <div class="{{#if keys.consumerSecret}}col-md-6{{else}}col-md-12{{/if}}">
                                 <label
                                     for='consumer-key-{{../id}}-{{keyType}}'
                                     class='form-label'>
@@ -40,7 +58,7 @@
                                     id='consumer-key-{{../id}}-{{keyType}}'
                                     class='form-control' name="consumerKey" value='{{keys.consumerKey}}' readonly disabled />
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-6" id="consumerSecretContainer-{{keyType}}" style="{{#unless keys.consumerSecret}}display: none;{{/unless}}">
                                 <label
                                     for='consumer-secret-{{../id}}-{{keyType}}'
                                     class='form-label'>
@@ -51,11 +69,11 @@
                                         id='consumer-secret-{{../id}}-{{keyType}}'
                                         class='form-control' name="consumerSecret" value='{{keys.consumerSecret}}'
                                         readonly disabled />
-                                    <button type="button" class="password-toggle-btn" 
+                                    <button type="button" class="password-toggle-btn"
                                         onclick="togglePasswordVisibility('consumer-secret-{{../id}}-{{keyType}}')">
                                         <i class="bi bi-eye"></i>
                                     </button>
-                                    <button type="button" class="password-copy-btn" 
+                                    <button type="button" class="password-copy-btn"
                                         onclick="copyConsumerSecret('consumer-secret-{{../id}}-{{keyType}}')">
                                         <i class="bi bi-clipboard"></i>
                                     </button>
@@ -313,7 +331,7 @@
                             style="{{#unless keys.consumerKey}}display: none !important;{{/unless}}">
                             <button class="common-btn-primary" id="applicationKeyUpdateButton-{{keyType}}" name="http-values"
                                 type="button" onClick="updateApplicationKey('applicationKeyGenerateForm-{{../id}}-{{keyType}}',
-                                '{{json @root.applicationMetadata.appMap}}', '{{keyType}}', '{{../name}}',
+                                '{{@root.applicationMetadata.id}}', '{{keyType}}', '{{../name}}',
                                 '{{keys.keyMappingId}}', '{{keys.clientName}}')">
                                 Update
                             </button>
@@ -475,7 +493,7 @@
                                 style="{{#unless keys.consumerKey}}display: none !important;{{/unless}}">
                                 <button class="common-btn-primary" id="applicationKeyUpdateButtonAdv-{{keyType}}" name="http-values"
                                     type="button" onClick="updateApplicationKey('applicationKeyGenerateForm-{{../id}}-{{keyType}}',
-                                '{{json @root.applicationMetadata.appMap}}', '{{keyType}}', '{{../name}}',
+                                '{{@root.applicationMetadata.id}}', '{{keyType}}', '{{../name}}',
                                 '{{keys.keyMappingId}}', '{{keys.clientName}}')">
                                     Update
                                 </button>
