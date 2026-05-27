@@ -5788,11 +5788,18 @@ components:
         - `organization` — UUID of the caller's organization (configurable via `IDP_ORGANIZATION_CLAIM_NAME`)
         - `sub` — user identifier
 
-        **Role resolution:**
-        Platform roles (`admin`, `developer`, `viewer`) are resolved from the token using the
-        claim path configured in `IDP_ROLES_CLAIM_PATH` (e.g. `realm_access.roles` for Keycloak,
-        `roles` for Azure AD, `scope` for WSO2 IS). IDP-specific role values are mapped to
-        platform roles via `IDP_ROLE_MAPPINGS`.
+        **Authorization:**
+        Permissions are enforced in two stages:
+
+        1. **Scope-based (Thunder):** If the token's `scope` claim contains a fine-grained scope
+           such as `api-platform:gateway:create`, that is accepted directly — no further role
+           lookup is performed. Thunder STS embeds these scopes when issuing tokens.
+
+        2. **Role-based fallback (external IDP):** When fine-grained scopes are absent, platform
+           roles (`admin`, `developer`, `viewer`) are resolved from the token using the claim path
+           configured in `IDP_ROLES_CLAIM_PATH` (e.g. `realm_access.roles` for Keycloak, `roles`
+           for Azure AD). IDP-specific role values are mapped to platform roles via
+           `IDP_ROLE_MAPPINGS`. Each endpoint's required roles are listed in `x-required-roles`.
 
         **Supported algorithms:** RS256, RS384, RS512, ES256, ES384, ES512
 
