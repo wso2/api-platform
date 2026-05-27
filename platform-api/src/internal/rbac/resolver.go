@@ -17,7 +17,28 @@
 
 package rbac
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+type contextKey int
+
+const rolesKey contextKey = iota
+
+// WithRoles returns a copy of ctx with roles stored under the rbac roles key.
+// The auth middleware should call this when attaching resolved platform roles
+// to the request context so that ClaimsResolver.HasPermission can read them.
+func WithRoles(ctx context.Context, roles []string) context.Context {
+	return context.WithValue(ctx, rolesKey, roles)
+}
+
+// RolesFromContext returns the platform roles stored by WithRoles, and whether
+// the key was present.
+func RolesFromContext(ctx context.Context) ([]string, bool) {
+	roles, ok := ctx.Value(rolesKey).([]string)
+	return roles, ok
+}
 
 // PermissionResolver resolves whether a user holds a given permission.
 // Implementations may query an identity service (Thunder) or derive
@@ -37,11 +58,16 @@ type ClaimsResolver struct{}
 
 func NewClaimsResolver() *ClaimsResolver { return &ClaimsResolver{} }
 
-func (r *ClaimsResolver) HasPermission(_ context.Context, _, _, _ string, perm Permission) (bool, error) {
-	// Roles are not passed here directly; callers must use HasPermissionForRoles.
-	// This method exists to satisfy the interface when called from middleware that
-	// already attached the resolved permission set to the request context.
-	return false, nil
+// HasPermission extracts the resolved platform roles from ctx (stored by
+// WithRoles) and delegates to HasPermissionForRoles. It returns an error when
+// no roles are found in the context, which indicates the caller omitted the
+// WithRoles step.
+func (r *ClaimsResolver) HasPermission(ctx context.Context, _, _, _ string, perm Permission) (bool, error) {
+	roles, ok := RolesFromContext(ctx)
+	if !ok {
+		return false, errors.New("rbac: HasPermission called without resolved roles in context; ensure WithRoles is called before invoking ClaimsResolver")
+	}
+	return HasPermissionForRoles(roles, perm), nil
 }
 
 // HasPermissionForRoles is the claims-mode helper: it checks whether any of
