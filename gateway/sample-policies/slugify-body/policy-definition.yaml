@@ -27,22 +27,9 @@ name: slugify-body
 version: v1.0.0
 displayName: Slugify Body
 description: |
-  Extracts a string value from the JSON request body at the configured JSONPath,
-  converts it into a URL-friendly slug using the `python-slugify` library, and
-  writes the slug back into the payload before forwarding to the upstream
-  service.
-
-  Typical use cases include:
-    - Generating URL slugs from user-supplied titles or names.
-    - Normalising free-text identifiers into safe, lowercase, ASCII strings.
-    - Cleaning up input data at the gateway layer before it reaches backends.
-
-  This is a **sample policy** that demonstrates:
-    1. Using a third-party PyPI dependency (`python-slugify`).
-    2. Reading and modifying JSON request bodies (buffered mode).
-    3. Declaring configurable parameters with JSON Schema validation.
-    4. Returning modified request bodies via `UpstreamRequestModifications`.
-    5. Returning early error responses via `ImmediateResponse`.
+  Extracts a string from the JSON request body, converts it into a URL-friendly
+  slug, and writes the slug back before forwarding upstream. Demonstrates a
+  Python policy with third-party dependencies and JSON Schema parameters.
 
 # --- User-configurable parameters --------------------------------------------
 # The `parameters` section is a full JSON Schema object. Every key under

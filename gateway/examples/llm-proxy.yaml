@@ -26,6 +26,10 @@ spec:
   context: /assistant
   provider: 
     id: my-llm-provider
+    auth:
+      type: api-key
+      header: X-API-Key
+      value: provider_loopback_key_1234567890abcdef1234567890
   policies:
     - name: semanticPromptGuard
       version: v1

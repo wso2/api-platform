@@ -1681,7 +1681,8 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (string, error) {
 			Provider: dto.LLMProxyDeploymentProvider{
 				ID: proxy.Configuration.Provider,
 			},
-			Policies: policies,
+			AdditionalProviders: mapAdditionalProvidersModelToDeployment(proxy.Configuration.AdditionalProviders),
+			Policies:            policies,
 		},
 	}
 
@@ -1717,6 +1718,20 @@ func mapModelAuthToAPI(auth *model.UpstreamAuth) *api.UpstreamAuth {
 // mapModelUpstreamAuthToAPI converts model.UpstreamAuth to api.UpstreamAuth (alias for mapModelAuthToAPI)
 func mapModelUpstreamAuthToAPI(auth *model.UpstreamAuth) *api.UpstreamAuth {
 	return mapModelAuthToAPI(auth)
+}
+
+func mapAdditionalProvidersModelToDeployment(in []model.LLMProxyAdditionalProvider) []dto.LLMProxyDeploymentAdditionalProvider {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]dto.LLMProxyDeploymentAdditionalProvider, 0, len(in))
+	for _, p := range in {
+		out = append(out, dto.LLMProxyDeploymentAdditionalProvider{
+			ID: p.ID,
+			As: p.As,
+		})
+	}
+	return out
 }
 
 // orderLLMPolicies ensures llm-cost-based-ratelimit always precedes llm-cost in the policy list.

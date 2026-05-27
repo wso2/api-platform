@@ -1,10 +1,9 @@
 name: wso2_apip_sys_analytics
 version: v1.0.0
 description: |
-  Collects analytics data from request and response flows. This gets attached even
-  without any policies in the chain. Inspects headers and, optionally, bodies to
-  populate analytics metadata that is emitted via Envoy dynamic metadata and consumed
-  by the policy engine analytics pipeline and publishers.
+  Collects request and response analytics metadata from gateway traffic,
+  including optional payload capture, for the policy engine analytics pipeline
+  and publishers.
 
 parameters:
   type: object

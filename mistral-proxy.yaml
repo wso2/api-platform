@@ -1,0 +1,246 @@
+# ====================================================================
+# Mistral — Provider + Single Proxy + Consumer Key   (docs 1-4)
+# Plus a MULTI-PROVIDER proxy sample at the bottom    (docs 5-6)
+#
+# THREE auth hops exist — keep them straight:
+#   (A) provider.upstream.auth  -> provider  -> Mistral   (the Mistral key)
+#   (B) proxy api-key-auth       -> client    -> proxy     (consumer key)
+#   (C) proxy.provider.auth      -> proxy     -> provider  (loopback, optional)
+#
+# For every auth block: type MUST be "api-key" (never "x-api-key");
+# "x-api-key" is only ever a HEADER NAME, never a type. value non-empty.
+# ====================================================================
+
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProvider
+metadata:
+  name: mistral-provider
+spec:
+  displayName: Mistral Provider
+  version: v1.0
+  template: mistralai
+  upstream:
+    url: https://api.mistral.ai
+    auth:
+      type: api-key                       # (A) only valid type for an LlmProvider
+      header: Authorization               #     Mistral expects: Authorization: Bearer <key>
+      value: Bearer <mistral-api-key>     #     <-- put your real Mistral key here
+  policies:
+    - name: api-key-auth
+      version: v1
+      paths:
+        - path: /v1/chat/completions
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
+  accessControl:
+    mode: deny_all
+    exceptions:
+      - path: /v1/chat/completions
+        methods: [POST]
+      - path: /v1/embeddings
+        methods: [POST]
+      - path: /v1/models
+        methods: [GET]
+
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: ApiKey
+metadata:
+  name: mistral-provider-loopback-key
+spec:
+  parentRef:
+    kind: LlmProvider
+    name: mistral-provider
+  displayName: Mistral provider loopback key
+  apiKey:
+    value: mistral_provider_loopback_key_1234567890abcdef
+  maskedApiKey: mistral_provider_loopback_key_1234********cdef
+  expiresIn:
+    duration: 30
+    unit: days
+
+---
+# Second provider used only by the MULTI-PROVIDER sample below.
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProvider
+metadata:
+  name: anthropic-provider
+spec:
+  displayName: Anthropic Provider
+  version: v1.0
+  template: anthropic
+  upstream:
+    url: https://api.anthropic.com
+    auth:
+      type: api-key                       # type is still "api-key"...
+      header: x-api-key                   # ...but Anthropic's HEADER is x-api-key (no Bearer)
+      value: <anthropic-api-key>
+  policies:
+    - name: api-key-auth
+      version: v1
+      paths:
+        - path: /v1/messages
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
+  accessControl:
+    mode: deny_all
+    exceptions:
+      - path: /v1/messages
+        methods: [POST]
+
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: ApiKey
+metadata:
+  name: anthropic-provider-loopback-key
+spec:
+  parentRef:
+    kind: LlmProvider
+    name: anthropic-provider
+  displayName: Anthropic provider loopback key
+  apiKey:
+    value: anthropic_provider_loopback_key_1234567890abcdef
+  maskedApiKey: anthropic_provider_loopback_key_1234********cdef
+  expiresIn:
+    duration: 30
+    unit: days
+
+---
+# ----- SINGLE-provider proxy -----------------------------------------
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProxy
+metadata:
+  name: openai-to-mistral
+spec:
+  displayName: OpenAI to Mistral Proxy
+  version: v1.0
+  context: /openai-mistral
+  provider:
+    id: mistral-provider
+    # (C) OPTIONAL proxy->provider loopback auth. A SEPARATE hop, NOT the
+    #     Mistral key. Only needed if the provider API itself is secured.
+    #     Corrected form: type "api-key" (NOT "x-api-key"), value non-empty.
+    auth:
+      type: api-key
+      header: X-API-Key
+      value: mistral_provider_loopback_key_1234567890abcdef
+  policies:
+    - name: api-key-auth                  # (B) client -> proxy consumer key
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
+    - name: openai-to-mistral
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            model: mistral-large-latest
+
+---
+# Consumer key for the single proxy. spec.apiKey omitted -> gateway generates it.
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: ApiKey
+metadata:
+  name: mistral-consumer-key
+spec:
+  parentRef:
+    kind: LlmProxy
+    name: openai-to-mistral
+  displayName: Mistral proxy consumer key
+  expiresIn:
+    duration: 30
+    unit: days
+
+---
+# ----- MULTI-provider proxy sample -----------------------------------
+# One OpenAI-shaped endpoint that fans out to Mistral OR Anthropic based
+# on the `x-provider` request header (read by the openai-header-router
+# policy). Each provider has its own LlmProvider ApiKey above; the proxy
+# sends those loopback keys via provider.auth/additionalProviders[].auth.
+#
+# Routing: header x-provider: mistral   -> mistral-provider
+#          header x-provider: anthropic -> anthropic-provider
+#          (absent/unmatched)           -> defaultProvider (mistral)
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProxy
+metadata:
+  name: openai-multi
+spec:
+  displayName: OpenAI Multi-Provider Proxy
+  version: v1.0
+  context: /openai-multi
+  provider:
+    id: mistral-provider                  # primary/default provider
+    auth:
+      type: api-key
+      header: X-API-Key
+      value: mistral_provider_loopback_key_1234567890abcdef
+  additionalProviders:
+    - id: anthropic-provider
+      auth:
+        type: api-key
+        header: X-API-Key
+        value: anthropic_provider_loopback_key_1234567890abcdef
+  policies:
+    - name: api-key-auth
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
+    # 1) Selector: reads x-provider header, picks the provider.
+    - name: openai-header-router
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            headerName: x-provider
+            defaultProvider: mistral-provider
+            mappings:
+              - headerValue: mistral
+                provider: mistral-provider
+              - headerValue: anthropic
+                provider: anthropic-provider
+    # 2) Per-provider translators. Each runs only when its id is selected.
+    - name: openai-to-mistral
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            model: mistral-large-latest
+            id: mistral-provider
+    - name: openai-to-anthropic
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            model: claude-sonnet-4-5-20250929
+            id: anthropic-provider
+
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: ApiKey
+metadata:
+  name: openai-multi-consumer-key
+spec:
+  parentRef:
+    kind: LlmProxy
+    name: openai-multi
+  displayName: OpenAI multi-proxy consumer key
+  expiresIn:
+    duration: 30
+    unit: days

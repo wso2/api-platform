@@ -218,6 +218,14 @@ func llmProxyReferencesSecret(cr *apiv1.LlmProxy, secretNS, secretName string) b
 			return true
 		}
 	}
+	for i := range cr.Spec.AdditionalProviders {
+		auth := cr.Spec.AdditionalProviders[i].Auth
+		if auth != nil && auth.Value.ValueFrom != nil {
+			if cr.Namespace == secretNS && strings.TrimSpace(auth.Value.ValueFrom.Name) == secretName {
+				return true
+			}
+		}
+	}
 	return llmProxyReferencesValueFromKind(cr, secretKeyRefKey, secretNS, secretName)
 }
 
@@ -240,4 +248,3 @@ func llmProxyReferencesValueFromKind(cr *apiv1.LlmProxy, kind, targetNS, targetN
 	}
 	return false
 }
-

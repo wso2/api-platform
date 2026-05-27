@@ -123,3 +123,18 @@ policies:
     - name: word-count-guardrail
       version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/word-count-guardrail@v1
+    - name: openai-to-azure-openai
+      version: v1.0.0
+      filePath: ./dev-policies/openai-to-azure-openai
+    - name: openai-to-anthropic
+      version: v1.0.0
+      filePath: ./dev-policies/openai-to-anthropic
+    - name: openai-to-mistral
+      version: v1.0.0
+      filePath: ./dev-policies/openai-to-mistral
+    - name: openai-to-gemini
+      version: v1.0.0
+      filePath: ./dev-policies/openai-to-gemini
+    - name: openai-header-router
+      version: v1.0.0
+      filePath: ./dev-policies/openai-header-router

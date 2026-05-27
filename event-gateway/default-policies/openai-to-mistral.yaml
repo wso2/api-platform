@@ -1,0 +1,61 @@
+name: openai-to-mistral
+version: v1.0.0
+description: |
+  Translates an incoming OpenAI Chat Completions request into the format
+  expected by Mistral AI's chat completions endpoint and forwards it to a
+  Mistral-compatible upstream.
+
+  Mistral's chat completions API is largely OpenAI-compatible, so the
+  translation is small in scope:
+  - The "model" field is overridden with the configured Mistral model.
+  - OpenAI request fields that Mistral does not accept (logprobs, n,
+    service_tier, store, metadata, user, etc.) are stripped.
+  - The request path is rewritten to /v1/chat/completions.
+
+  Execution modes:
+
+  1. Routed (multi-provider proxies): set the "provider" parameter to the
+     provider id this translator is bound to. The policy only runs when an
+     upstream setter (e.g. openai-header-router) publishes the same id into
+     SharedContext.Metadata["selected_provider"]. Non-matching requests
+     pass through untouched.
+
+  2. Unconditional (single-provider proxies): omit "provider". The
+     translator runs on every request.
+
+  The upstream host and Mistral API key must be configured on the upstream
+  LlmProvider — this policy does not inject credentials.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    provider:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Provider id this translator is bound to. When set, the policy runs
+        only if SharedContext.Metadata["selected_provider"] equals this
+        value. Omit for single-provider proxies.
+      minLength: 1
+    model:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Mistral model name used in the translated request (for example
+        mistral-large-latest). Overrides the OpenAI "model" field.
+      minLength: 1
+    upstreamName:
+      type: string
+      x-wso2-policy-advanced-param: false
+      description: |
+        Name of the upstream cluster declared in the LlmProxy
+        additionalProviders list. When omitted, routing is left to whatever
+        the route's default upstream resolves to.
+      minLength: 1
+  required:
+    - model
+
+systemParameters:
+  type: object
+  properties: {}

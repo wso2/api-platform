@@ -32,6 +32,23 @@ type LLMProxyProvider struct {
 	Auth *LLMUpstreamAuth `json:"auth,omitempty"`
 }
 
+// LLMProxyAdditionalProvider references an additional LlmProvider that this
+// proxy can route to by policy-selected upstream name.
+type LLMProxyAdditionalProvider struct {
+	// Id is the LlmProvider handle (metadata.name).
+	// +kubebuilder:validation:Required
+	Id string `json:"id"`
+
+	// As is the logical upstream name used by policies. Defaults to Id.
+	// +optional
+	As *string `json:"as,omitempty"`
+
+	// Auth optionally configures credentials for proxy-to-provider loopback
+	// calls when the referenced provider is protected by an auth policy.
+	// +optional
+	Auth *LLMUpstreamAuth `json:"auth,omitempty"`
+}
+
 // LLMProxyConfigData mirrors the management-API LLMProxyConfigData payload.
 type LLMProxyConfigData struct {
 	// DisplayName is a human-readable LLM proxy name.
@@ -46,6 +63,11 @@ type LLMProxyConfigData struct {
 	// Provider references the deployed LLM provider this proxy fronts.
 	// +kubebuilder:validation:Required
 	Provider LLMProxyProvider `json:"provider"`
+
+	// AdditionalProviders are extra LLM providers attached as selectable
+	// upstreams for multi-provider routing.
+	// +optional
+	AdditionalProviders []LLMProxyAdditionalProvider `json:"additionalProviders,omitempty"`
 
 	// Context is the base path for routes (must start with /).
 	// +optional

@@ -55,6 +55,85 @@ spec:
               displayName:
                 description: DisplayName is a human-readable LLM proxy name.
                 type: string
+              additionalProviders:
+                description: |-
+                  AdditionalProviders are extra LLM providers attached as selectable
+                  upstreams for multi-provider routing.
+                items:
+                  description: |-
+                    LLMProxyAdditionalProvider references an additional LlmProvider that this
+                    proxy can route to by policy-selected upstream name.
+                  properties:
+                    as:
+                      description: As is the logical upstream name used by policies.
+                        Defaults to Id.
+                      type: string
+                    auth:
+                      description: |-
+                        Auth optionally configures credentials for proxy-to-provider loopback
+                        calls when the referenced provider is protected by an auth policy.
+                      properties:
+                        header:
+                          description: |-
+                            Header is the HTTP header to set on outbound requests when the auth
+                            type uses headers (e.g. api-key).
+                          type: string
+                        type:
+                          description: Type identifies the auth scheme. Only api-key
+                            is currently supported.
+                          enum:
+                          - api-key
+                          type: string
+                        value:
+                          description: |-
+                            Value sources the credential. Exactly one of value or valueFrom must
+                            be set.
+                          properties:
+                            value:
+                              description: |-
+                                Value is the inline plaintext value. Avoid for production use; prefer
+                                valueFrom.
+                              type: string
+                            valueFrom:
+                              description: ValueFrom references a Kubernetes Secret key.
+                              properties:
+                                key:
+                                  description: The key of the secret to select from.  Must
+                                    be a valid secret key.
+                                  type: string
+                                name:
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  type: string
+                                optional:
+                                  description: Specify whether the Secret or its key
+                                    must be defined
+                                  type: boolean
+                              required:
+                              - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                          type: object
+                          x-kubernetes-validations:
+                          - message: exactly one of value or valueFrom must be
+                              set
+                            rule: has(self.value) != has(self.valueFrom)
+                      required:
+                      - type
+                      - value
+                      type: object
+                    id:
+                      description: Id is the LlmProvider handle (metadata.name).
+                      type: string
+                  required:
+                  - id
+                  type: object
+                type: array
               policies:
                 description: Policies is the list of policies applied to this LLM
                   proxy.

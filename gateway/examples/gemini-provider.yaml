@@ -1,0 +1,58 @@
+# --------------------------------------------------------------------
+# Gemini LLM Provider Configuration
+#
+# Uses the built-in `gemini` template and points to Google's Gemini API.
+# The openai-to-gemini policy on the proxy layer translates OpenAI-format
+# requests into Gemini's generateContent API format.
+#
+# Auth: upstream.auth is the gateway -> Gemini vendor auth
+# (header: x-goog-api-key). Proxies inherit this vendor auth automatically.
+# --------------------------------------------------------------------
+
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProvider
+metadata:
+  name: gemini-provider
+spec:
+  displayName: Gemini Provider
+  version: v1.0
+  template: gemini
+  upstream:
+    url: https://generativelanguage.googleapis.com
+    auth:
+      type: api-key
+      header: x-goog-api-key
+      value: REPLACE_WITH_GEMINI_API_KEY
+  policies:
+    - name: api-key-auth
+      version: v1
+      paths:
+        - path: /v1beta/models/{model}:generateContent
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
+  accessControl:
+    mode: deny_all
+    exceptions:
+      - path: /v1beta/models/{model}:generateContent
+        methods: [POST]
+      - path: /v1beta/models/{model}:streamGenerateContent
+        methods: [POST]
+
+---
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: ApiKey
+metadata:
+  name: gemini-provider-loopback-key
+spec:
+  parentRef:
+    kind: LlmProvider
+    name: gemini-provider
+  displayName: Gemini provider loopback key
+  apiKey:
+    value: gemini_provider_loopback_key_1234567890abcdef
+  maskedApiKey: gemini_provider_loopback_key_1234********cdef
+  expiresIn:
+    duration: 30
+    unit: days
