@@ -99,8 +99,8 @@ ENTRYPOINT ["/go/bin/dlv", "exec", "/app/controller", \
             "--listen=:2345", "--headless=true", \
             "--api-version=2", "--accept-multiclient", "--"]
 
-# Stage 2: Runtime image (Ubuntu LTS for glibc compatibility and newer runtime packages)
-FROM ubuntu:24.04 AS production
+# Stage 2: Runtime image (Hardened Debian base for enhanced security)
+FROM dhi/debian-base:bookworm AS production
 
 # Re-declare ARGs after FROM to use them in this stage
 ARG VERSION=0.0.1-SNAPSHOT
