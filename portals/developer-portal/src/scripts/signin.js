@@ -16,8 +16,34 @@
  * under the License.
  */
 document.addEventListener('DOMContentLoaded', function () {
+    const localLoginForm = document.getElementById('local-login-form');
+    if (localLoginForm) {
+        const baseUrl = localLoginForm.getAttribute('data-base-url');
+        localLoginForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            const params = new URLSearchParams();
+            params.append('username', document.getElementById('username').value);
+            params.append('password', document.getElementById('password').value);
+            fetch(`${baseUrl}/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: params.toString(),
+                redirect: 'follow',
+            }).then(res => {
+                window.location.href = res.url;
+            }).catch(() => {
+                window.location.href = `${baseUrl}/login?error=Login+failed%2C+please+try+again`;
+            });
+        });
+        return;
+    }
+
     const signinCard = document.getElementById('signin-card');
     const enterpriseCard = document.getElementById('enterprise-card');
+
+    // Config-auth mode: IDP elements are not rendered — nothing to wire up
+    if (!enterpriseCard) return;
+
     const baseUrl = enterpriseCard.getAttribute('data-base-url');
 
     const showEnterpriseBtn = document.getElementById('show-enterprise');

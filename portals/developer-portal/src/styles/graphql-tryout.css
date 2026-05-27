@@ -1,0 +1,194 @@
+.graphql-tryout-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100vh;
+  font-family: 'Montserrat', sans-serif;
+}
+
+.graphql-controls {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid #d0d7de;
+  border-radius: 12px;
+  background: #f6f8fa;
+}
+
+.graphql-control {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.graphql-control.graphql-control-row {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 12px;
+  max-height: 160px;
+}
+
+.graphql-endpoint-type-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+  min-width: 140px;
+}
+
+.graphql-endpoint-input-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.graphql-control label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #57606a;
+}
+
+.graphql-control input,
+.graphql-control select {
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  color: #1f2328;
+  background: #fff;
+  height: 40px;
+  box-sizing: border-box;
+}
+
+.graphql-control select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2357606a' d='M2.5 4.5L6 8l3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+}
+
+.graphql-control select:hover {
+  border-color: #3498DB;
+}
+
+.graphql-control select:focus {
+  outline: none;
+  border-color: #3498DB;
+  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+
+.graphql-control .control-hint {
+  font-size: 12px;
+  color: #57606a;
+}
+
+.graphql-control .control-hint strong {
+  color: #1f2328;
+}
+
+.graphiql-container .graphiql-logo {
+  display: none !important;
+}
+
+.graphiql-container .graphiql-session {
+  height: 100% !important;
+}
+
+.graphiql-container .graphiql-sidebar .graphiql-sidebar-section:last-of-type button {
+  display: none !important;
+}
+
+.graphiql-container .graphiql-execute-button,
+.graphiql-container button.graphiql-execute-button,
+.graphiql-container .graphiql-execute-button-wrapper button {
+  background-color: #3498DB !important;
+  border-color: #3498DB !important;
+  color: #ffffff !important;
+}
+
+.graphiql-container .graphiql-execute-button:hover,
+.graphiql-container button.graphiql-execute-button:hover,
+.graphiql-container .graphiql-execute-button-wrapper button:hover {
+  background-color: #5DADE2 !important;
+  border-color: #5DADE2 !important;
+}
+
+.graphiql-container .graphiql-execute-button:active,
+.graphiql-container button.graphiql-execute-button:active,
+.graphiql-container .graphiql-execute-button-wrapper button:active {
+  background-color: #2980B9 !important;
+  border-color: #2980B9 !important;
+}
+
+.graphiql-container {
+  --primary-400: #3498DB !important;
+  --primary-500: #5DADE2 !important;
+  --primary-600: #2980B9 !important;
+}
+
+.graphql-auth-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.graphql-auth-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid #d0d7de;
+  margin-bottom: 8px;
+}
+
+.graphql-auth-tab {
+  padding: 6px 16px;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #57606a;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+
+.graphql-auth-tab:hover {
+  color: #1f2328;
+}
+
+.graphql-auth-tab.active {
+  color: #3498DB;
+  border-bottom-color: #3498DB;
+}
+
+.graphql-control select option:disabled {
+  color: #adb5bd;
+}
+
+@media (max-width: 640px) {
+  .graphql-control input,
+  .graphql-control select {
+    font-size: 12px;
+  }
+
+  .graphql-control.graphql-control-row {
+    flex-direction: column;
+    max-height: none;
+  }
+
+  .graphql-endpoint-type-wrapper {
+    min-width: 100%;
+  }
+}
+

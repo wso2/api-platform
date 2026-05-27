@@ -358,7 +358,7 @@ h6 {
 .custom-modal-content {
   display: flex;
   flex-direction: column;
-  max-height: 700px;
+  max-height: 85vh;
   overflow: hidden;
   padding: 0;
   width: 100%;
@@ -405,6 +405,69 @@ h6 {
 
 .custom-modal-body::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
+}
+
+/* Modal-scoped API banner overrides */
+.custom-modal .api-banner-content {
+  padding: 1.5rem 2rem;
+  min-height: auto;
+}
+
+.custom-modal .api-title h4 {
+  font-size: 1.35rem;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  word-break: break-word;
+}
+
+.custom-modal .api-title .api-description {
+  font-size: 0.875rem;
+}
+
+/* Modal-scoped token and table overrides */
+.custom-modal .masked-token {
+  max-width: 100%;
+  white-space: normal;
+  word-break: break-all;
+  overflow: visible;
+  text-overflow: unset;
+}
+
+.custom-modal .token-display {
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.custom-modal .platform-subscription-content .table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.custom-modal .platform-subscription-content .table th:nth-child(1),
+.custom-modal .platform-subscription-content .table td:nth-child(1) {
+  width: 15%;
+}
+
+.custom-modal .platform-subscription-content .table th:nth-child(2),
+.custom-modal .platform-subscription-content .table td:nth-child(2) {
+  width: 12%;
+}
+
+.custom-modal .platform-subscription-content .table th:nth-child(3),
+.custom-modal .platform-subscription-content .table td:nth-child(3) {
+  width: 53%;
+  word-break: break-all;
+}
+
+.custom-modal .platform-subscription-content .table th:nth-child(4),
+.custom-modal .platform-subscription-content .table td:nth-child(4) {
+  width: 20%;
+}
+
+.custom-modal .api-image-small {
+  max-width: 70px;
+  max-height: 70px;
 }
 
 .span-highlight {

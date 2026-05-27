@@ -41,7 +41,7 @@
     - Each api folder contains the api definition file, the api metadata and the content to be included in the api landing page (either md or hbs).
     - mock/apiMetadata.json Includes the metadata of the mock APIs to be displayed in the api listing page.
     - mock/auth.json Includes details about the Identity provider to be used when logging in to the dev-portal in development mode.
-  **config.json**
+  **config.yaml**
   Configuration file for the developer portal.
   **artifacts**
   Contains the sql file to create database tables.

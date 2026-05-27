@@ -45,6 +45,34 @@ const SubscriptionPolicy = sequelize.define('DP_SUBSCRIPTION_POLICY', {
     REQUEST_COUNT: {
         type: DataTypes.STRING,
         allowNull: true
+    },
+    REF_ID: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    PRICING_MODEL: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    CURRENCY: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    BILLING_PERIOD: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    FLAT_AMOUNT: {
+        type: DataTypes.DECIMAL,
+        allowNull: true
+    },
+    UNIT_AMOUNT: {
+        type: DataTypes.DECIMAL,
+        allowNull: true
+    },
+    PRICING_METADATA: {
+        type: DataTypes.JSONB,
+        allowNull: true
     }
 }, {
     timestamps: false,

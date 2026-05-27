@@ -680,3 +680,95 @@ hr {
     word-break: break-word; 
   }
 }
+
+.plans-summary-card{
+  padding:10px 12px;
+  border:1px solid #e2e8f0;
+  border-radius:12px;
+  background:#f8fafc;
+}
+.plans-summary-card__row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.plans-summary-card__left{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+}
+.plans-summary-card__label{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  font-size:12px;
+  font-weight:800;
+  color:#475569;
+  white-space:nowrap;
+}
+.plans-summary-card__count{ color:#64748b; font-weight:800; }
+
+.plans-summary-card__pill{
+  font-size:11px;
+  font-weight:800;
+  padding:3px 8px;
+  border-radius:999px;
+  border:1px solid #e2e8f0;
+  background:#fff;
+  color:#334155;
+}
+.plans-summary-card__pill--free{
+  border-color:#bbf7d0;
+  background:#ecfdf5;
+  color:#047857;
+}
+
+.plans-summary-card__link{
+  font-size:12px;
+  font-weight:800;
+  color:#2563eb;
+  text-decoration:none;
+  white-space:nowrap;
+}
+.plans-summary-card__link:hover{ text-decoration:underline; }
+
+/* ── AI Agent Status Chip ────────────────────────────────── */
+
+.api-card-chips {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.api-agent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.22em 0.75em;
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  border-radius: 999px;
+  white-space: nowrap;
+  cursor: default;
+  border: none;
+  text-transform: uppercase;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.api-agent-chip:hover {
+  transform: translateY(-1px);
+}
+
+.api-agent-chip--ready {
+  background: color-mix(in srgb, var(--success-color) 15%, white);
+  color: var(--white-text-color);
+}
+
+.api-agent-chip--hidden {
+  background-color: color-mix(in srgb, var(--warning-color) 15%, white);
+  color: color-mix(in srgb, var(--warning-color) 80%, black);
+}

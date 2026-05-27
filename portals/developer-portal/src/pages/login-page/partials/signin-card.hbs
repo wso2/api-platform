@@ -16,6 +16,49 @@
  * under the License.
  */
  -->
+{{#if localAuthEnabled}}
+<div class="container">
+    <h2 class="fw-bold">Sign in to continue</h2>
+
+    {{#if loginError}}
+    <div class="alert alert-danger" role="alert" style="margin-bottom: 12px; font-size: 14px; color: #842029; background-color: #f8d7da; border: 1px solid #f5c2c7; border-radius: 4px; padding: 8px 12px;">
+        {{loginError}}
+    </div>
+    {{/if}}
+
+    <form id="local-login-form" method="POST" data-base-url="{{baseUrl}}">
+        <div class="mb-3" style="text-align: left; margin-bottom: 16px;">
+            <label for="username" class="form-label" style="font-size: 14px; display: block; margin-bottom: 4px;">Username</label>
+            <input
+                type="text"
+                class="form-control"
+                id="username"
+                name="username"
+                placeholder="Enter username"
+                required
+                autocomplete="username"
+                style="width: 100%; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px;"
+            />
+        </div>
+        <div class="mb-3" style="text-align: left; margin-bottom: 16px;">
+            <label for="password" class="form-label" style="font-size: 14px; display: block; margin-bottom: 4px;">Password</label>
+            <input
+                type="password"
+                class="form-control"
+                id="password"
+                name="password"
+                placeholder="Enter password"
+                required
+                autocomplete="current-password"
+                style="width: 100%; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px;"
+            />
+        </div>
+        <button type="submit" class="btn w-100" style="background-color: #0d6efd; color: white; border: none; padding: 10px; border-radius: 4px; font-size: 14px; cursor: pointer; width: 100%; margin-top: 4px;">
+            Sign In
+        </button>
+    </form>
+</div>
+{{else}}
 <div class="container">
     <h2 class="fw-bold">Sign in to continue</h2>
     <button class="btn" id="login-google">
@@ -43,6 +86,7 @@
     </button>
 
     {{!-- <div class="signup">
-        Don’t have an account? <a>Sign Up</a>
+        Don't have an account? <a>Sign Up</a>
     </div> --}}
 </div>
+{{/if}}

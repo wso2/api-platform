@@ -1,0 +1,264 @@
+<!--
+ * Copyright (c) 2025, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+ -->
+<section class="section mt-0 mb-6">
+  <div class="container-fluid">
+    <!-- Page Header -->
+    <div class="container-header mb-4">
+      <span>Billing & Usage</span>
+    </div>
+
+    <!-- Tabs Navigation -->
+    <ul class="nav nav-tabs billing-tabs mb-4" id="billingTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="billing-usage-tab" data-bs-toggle="tab" data-bs-target="#billing-usage" type="button" role="tab" aria-controls="billing-usage" aria-selected="true">
+          <i class="fas fa-chart-line me-2"></i>Usage Summary
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="billing-invoices-tab" data-bs-toggle="tab" data-bs-target="#billing-invoices" type="button" role="tab" aria-controls="billing-invoices" aria-selected="false">
+          <i class="fas fa-file-invoice me-2"></i>Invoices
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="billing-subscriptions-tab" data-bs-toggle="tab" data-bs-target="#billing-subscriptions" type="button" role="tab" aria-controls="billing-subscriptions" aria-selected="false">
+          <i class="fas fa-layer-group me-2"></i>Billed Subscriptions
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="billing-payment-tab" data-bs-toggle="tab" data-bs-target="#billing-payment" type="button" role="tab" aria-controls="billing-payment" aria-selected="false">
+          <i class="fas fa-credit-card me-2"></i>Payment Details
+        </button>
+      </li>
+    </ul>
+
+    <!-- Tab Content -->
+    <div class="tab-content" id="billingTabContent">
+      
+      <!-- Usage Summary Tab -->
+      <div class="tab-pane fade show active" id="billing-usage" role="tabpanel" aria-labelledby="billing-usage-tab">
+        <div class="card dev-card">
+          <div class="card-body p-4">
+            <h5 class="card-title mb-4">API Usage Overview</h5>
+            
+            <!-- Usage Period Selector -->
+            <div class="row mb-4">
+              <div class="col-md-4">
+                <label class="form-label">Period</label>
+                <select class="form-select" id="usagePeriod" onchange="loadUsageData()">
+                  <option value="current">Current Month</option>
+                  <option value="last30">Last 30 Days</option>
+                  <option value="last90">Last 90 Days</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Usage Statistics Cards -->
+            <div class="row g-3 mb-4 stat-cards-row">
+              <div class="col-xl-3 col-lg-3 col-md-6 col-sm-6">
+                <div class="stat-card">
+                  <div class="stat-icon bg-primary">
+                    <i class="fas fa-exchange-alt"></i>
+                  </div>
+                  <div class="stat-content">
+                    <h3 id="totalRequests" class="stat-value">--</h3>
+                    <p class="stat-label">Total Billed API Calls</p>
+                  </div>
+                </div>
+              </div>
+              <div class="col-xl-3 col-lg-3 col-md-6 col-sm-6">
+                <div class="stat-card">
+                  <div class="stat-icon bg-success">
+                    <i class="fas fa-layer-group"></i>
+                  </div>
+                  <div class="stat-content">
+                    <h3 id="activeSubscriptions" class="stat-value">--</h3>
+                    <p class="stat-label">Active Subscriptions</p>
+                  </div>
+                </div>
+              </div>
+              <div class="col-xl-3 col-lg-3 col-md-6 col-sm-6">
+                <div class="stat-card">
+                  <div class="stat-icon bg-warning">
+                    <i class="fas fa-dollar-sign"></i>
+                  </div>
+                  <div class="stat-content">
+                    <h3 id="estimatedCost" class="stat-value">--</h3>
+                    <p class="stat-label">Estimated Cost</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Usage by Subscription Table -->
+            <div class="table-responsive">
+              <table class="table table-hover">
+                <thead>
+                  <tr>
+                    <th>API</th>
+                    <th>Application</th>
+                    <th>Plan</th>
+                    <th>Requests</th>
+                    <th>Billing Type</th>
+                    <th>Cost</th>
+                  </tr>
+                </thead>
+                <tbody id="usageTableBody">
+                  <tr>
+                    <td colspan="6" class="text-center py-4">
+                      <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                      Loading usage data...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Invoices Tab -->
+          <div class="tab-pane fade" id="billing-invoices" role="tabpanel" aria-labelledby="billing-invoices-tab">
+            <div class="card dev-card">
+              <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                  <h5 class="card-title mb-0">Invoice History</h5>
+                  <button class="common-btn-outlined" onclick="downloadAllInvoices()">
+                    <i class="fas fa-download me-2"></i>Download All
+                  </button>
+                </div>
+
+                <div class="table-responsive">
+                  <table class="table table-hover">
+                    <thead>
+                      <tr>
+                        <th>Invoice Number</th>
+                        <th>Date</th>
+                        <th>Period</th>
+                        <th>Amount</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="invoicesTableBody">
+                      <tr>
+                        <td colspan="6" class="text-center py-4">
+                          <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                          Loading invoices...
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <!-- Empty State -->
+                <div id="noInvoices" class="text-center py-5" style="display: none;">
+                  <i class="fas fa-file-invoice fa-3x text-muted mb-3"></i>
+                  <p class="text-muted">No invoices found</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+      <!-- Billed Subscriptions Tab -->
+      <div class="tab-pane fade" id="billing-subscriptions" role="tabpanel" aria-labelledby="billing-subscriptions-tab">
+        <div class="card dev-card">
+          <div class="card-body p-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h5 class="card-title mb-0">Billed Subscriptions</h5>
+              <div id="subscriptionsFilterContainer">
+                <!-- Filter dropdown will be dynamically inserted by billing.js -->
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-hover">
+                <thead>
+                  <tr>
+                    <th>API</th>
+                    <th>Application</th>
+                    <th>Plan</th>
+                    <th>Billing Cycle</th>
+                    <th>Amount</th>
+                    <th>Next Billing Date</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="subscriptionsTableBody">
+                  <tr>
+                    <td colspan="8" class="text-center py-4">
+                      <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                      Loading subscriptions...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Payment Details Tab -->
+      <div class="tab-pane fade" id="billing-payment" role="tabpanel" aria-labelledby="billing-payment-tab">
+        <div class="row g-4">
+          
+          <!-- Payment Methods Card -->
+          <div class="col-md-6">
+            <div class="card dev-card">
+              <div class="card-body p-4">
+                <div class="mb-4">
+                  <h5 class="card-title mb-1">Payment Methods</h5>
+                  <p class="text-muted small mb-0">Manage your payment methods through Stripe</p>
+                </div>
+
+                <div id="paymentMethodsList">
+                  <div class="text-center py-4">
+                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                    Loading payment methods...
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Billing Information Card -->
+          <div class="col-md-6">
+            <div class="card dev-card">
+              <div class="card-body p-4">
+                <div class="mb-4">
+                  <h5 class="card-title mb-1">Billing Information</h5>
+                  <p class="text-muted small mb-0">Customer details from Stripe</p>
+                </div>
+
+                <div id="billingInfoContent">
+                  <div class="text-center py-4">
+                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                    Loading billing information...
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+        </div>
+    </div>
+  </div>
+</section>

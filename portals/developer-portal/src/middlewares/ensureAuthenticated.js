@@ -18,8 +18,7 @@
  */
 const minimatch = require('minimatch');
 const constants = require('../utils/constants');
-const config = require(process.cwd() + '/config.json');
-const secret = require(process.cwd() + '/secret.json');
+const { config } = require('../config/configLoader');
 const adminDao = require('../dao/admin');
 const { validationResult } = require('express-validator');
 const { jwtVerify, createRemoteJWKSet, importX509 } = require('jose');
@@ -34,12 +33,6 @@ const qs = require('qs');
 function enforceSecuirty(scope) {
     return async function (req, res, next) {
         try {
-            // Check if identity provider is disabled - allow anonymous access
-            if (config.identityProvider && config.identityProvider.enabled === false) {
-                logger.debug("Identity provider disabled - allowing anonymous access for API calls");
-                return next();
-            }
-
             const rules = util.validateRequestParameters();
             for (let validation of rules) {
                 await validation.run(req);
@@ -48,7 +41,13 @@ function enforceSecuirty(scope) {
             if (!errors.isEmpty()) {
                 return res.status(400).json(util.getErrors(errors));
             }
+            // Config-auth users: authenticated with no token — allow through directly
+            if (req.isAuthenticated() && req.user && req.user.isLocalAuth && !config.identityProvider?.clientId) {
+                return next();
+            }
             const token = accessTokenPresent(req);
+            const hasBasicAuth = !token && !config.identityProvider?.clientId &&
+                req.headers.authorization?.toLowerCase().startsWith('basic ');
             if (token) {
                 //check user belongs to organization
                 if (req.user && req.user[constants.ROLES.ORGANIZATION_CLAIM] !== req.user[constants.ORG_IDENTIFIER]) {
@@ -66,6 +65,8 @@ function enforceSecuirty(scope) {
                 //set user ID
                 const decodedAccessToken = jwt.decode(token);
                 req[constants.USER_ID] = decodedAccessToken[constants.USER_ID];
+            } else if (hasBasicAuth) {
+                validateAuthentication(scope)(req, res, next);
             } else if (config.advanced.apiKey.enabled) {
                 // Communcation with API KEY
                 if (req.headers.organization) {
@@ -94,8 +95,9 @@ function accessTokenPresent(req) {
     if (req.user) {
         return req.user[constants.ACCESS_TOKEN];
     }
-    if (req.headers.authorization) {
-        return req.headers.authorization.split(' ')[1];
+    const auth = req.headers.authorization;
+    if (auth && auth.toLowerCase().startsWith('bearer ')) {
+        return auth.split(' ')[1];
     }
     return null;
 }
@@ -106,7 +108,7 @@ const ensurePermission = (currentPage, role, req) => {
         adminRole = req.user[constants.ROLES.ADMIN];
         superAdminRole = req.user[constants.ROLES.SUPER_ADMIN];
         subscriberRole = req.user[constants.ROLES.SUBSCRIBER];
-        if (minimatch.minimatch(currentPage, constants.ROUTE.DEVPORTAL_CONFIGURE)) {
+        if (constants.ROUTE.DEVPORTAL_CONFIGURE.some(pattern => minimatch.minimatch(currentPage, pattern))) {
             return role.includes(superAdminRole) || role.includes(adminRole);
         } else if (constants.ROUTE.DEVPORTAL_ROOT.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
             return role.includes(superAdminRole);
@@ -118,12 +120,6 @@ const ensurePermission = (currentPage, role, req) => {
 }
 
 const ensureAuthenticated = async (req, res, next) => {
-    // Check if identity provider is disabled - allow anonymous access
-    if (config.identityProvider && config.identityProvider.enabled === false) {
-        logger.debug("Identity provider disabled - allowing anonymous access");
-        return next();
-    }
-
     let adminRole = config.adminRole;
     let superAdminRole = config.superAdminRole;
     let subscriberRole = config.subscriberRole;
@@ -160,6 +156,30 @@ const ensureAuthenticated = async (req, res, next) => {
         let role;
         logger.debug("Request authentication status", { isAuthenticated: req.isAuthenticated() });
         if (req.isAuthenticated()) {
+            // Config-auth: skip all token/exchange checks; roles already in session
+            if (req.user && req.user.isLocalAuth && !config.identityProvider?.clientId) {
+                req[constants.USER_ID] = req.user[constants.USER_ID];
+                if (config.authorizedPages.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
+                    if (req.user) {
+                        req.user[constants.ROLES.ADMIN] = adminRole;
+                        req.user[constants.ROLES.SUPER_ADMIN] = superAdminRole;
+                        req.user[constants.ROLES.SUBSCRIBER] = subscriberRole;
+                        if (orgDetails) {
+                            req.user[constants.ORG_ID] = orgDetails.ORG_ID;
+                            req.user[constants.ORG_IDENTIFIER] = orgDetails.ORGANIZATION_IDENTIFIER;
+                        }
+                    }
+                    if (!config.advanced.disabledRoleValidation) {
+                        role = req.user[constants.ROLES.ROLE_CLAIM];
+                        if (ensurePermission(req.originalUrl, role, req)) {
+                            return next();
+                        } else {
+                            return res.status(403).send("User unauthorized");
+                        }
+                    }
+                }
+                return next();
+            }
             const token = accessTokenPresent(req);
             if (token) {
                 const decodedAccessToken = jwt.decode(token);
@@ -198,6 +218,13 @@ const ensureAuthenticated = async (req, res, next) => {
                                     req.user['userOrg'] = userOrg;
                                     req.user[constants.ROLES.ORGANIZATION_CLAIM] = userOrg;
                                     req.user[constants.ORG_IDENTIFIER] = userOrg;
+
+                                    // Re-derive isAdmin from the freshly exchanged token's scope
+                                    // OR with the existing role-based admin check to preserve fallback
+                                    const freshScopes = (decodedExchangedToken?.scope || '').split(' ');
+                                    const freshScopeHasAdmin = freshScopes.includes(config.advanced.tokenExchanger.admin_scope || "apim:admin");
+                                    const roleBasedAdmin = role && (role.includes(adminRole) || role.includes(superAdminRole));
+                                    req.user.isAdmin = freshScopeHasAdmin || roleBasedAdmin;
                                 } catch (error) {
                                     logger.error("Error during token exchange", { error: error.message, stack: error.stack, operation: "tokenExchange" });
                                     const err = new Error('Authentication required');
@@ -260,9 +287,13 @@ function validateAuthentication(scope) {
         if (!errors.isEmpty()) {
             return res.status(400).json(util.getErrors(errors));
         }
+        // Config-auth users have no JWT to validate — allow through
+        if (req.isAuthenticated() && req.user && req.user.isLocalAuth && !config.identityProvider?.clientId) {
+            return next();
+        }
         let IDP, valid, scopes, orgId, response;
         if (req.params.orgName) {
-            orgId = await adminDao.getOrgId(orgName);
+            orgId = await adminDao.getOrgId(req.params.orgName);
         } else {
             orgId = req.params.orgId;
         }
@@ -272,10 +303,10 @@ function validateAuthentication(scope) {
                 //login from super IDP
                 IDP = new IdentityProviderDTO(response[0].dataValues);
             } else {
-                IDP = config.identityProvider;
+                IDP = config.identityProvider || {};
             }
         } else {
-            IDP = config.identityProvider;
+            IDP = config.identityProvider || {};
         }
 
         let accessToken, basicHeader;
@@ -404,7 +435,7 @@ const validateBasicAuth = async (basicHeader) => {
     let valid = false;
     const base64Decoded = Buffer.from(basicHeader, 'base64').toString('utf-8');
     const [username, password] = base64Decoded.split(':');
-    const users = config.defaultAuth.users;
+    const users = config.defaultAuth?.users || [];
     for (let user of users) {
         if (username === user.username && password === user.password) {
             valid = true;
@@ -438,13 +469,13 @@ const enforceMTLS = (req, res, next) => {
 const enforceAPIKey = (req, res, next) => {
     const keyType = config.advanced?.apiKey?.keyType;
 
-    if (!keyType || !secret.apiKeySecret) {
+    if (!keyType || !config.advanced?.apiKey?.keyValue) {
         return res.status(500).json({ error: "Server configuration error" });
     }
 
     const apiKey = req.headers[keyType.toLowerCase()];
 
-    if (!apiKey || apiKey !== secret.apiKeySecret) {
+    if (!apiKey || apiKey !== config.advanced?.apiKey?.keyValue) {
         return res.status(401).json({ error: "Unauthorized: API key is invalid or not found" });
     }
     return next();

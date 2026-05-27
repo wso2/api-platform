@@ -1,23 +1,23 @@
-<div class="modal custom-modal" id='keysTokenModal'>
+{{#each keyManagersMetadata}}
+{{#if enabled}}
+{{#each applicationKeys}}
+<div class="modal custom-modal" id='keysTokenModal-{{keyType}}'>
     <div class="modal-dialog modal-xl" role="document">
         <div class="modal-content custom-modal-content">
             <div class="custom-modal-header">
-                <h2 class="custom-modal-title m-0">Access Token</h2>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" data-cyid="keysTokenModal-close"  aria-label="Close"
-                    onclick="closeModal('keysTokenModal')"></button>
+                <h2 class="custom-modal-title m-0">Access Token ({{keyType}})</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-cyid="keysTokenModal-{{keyType}}-close"
+                    aria-label="Close" onclick="closeModal('keysTokenModal-{{keyType}}')"></button>
             </div>
             <div class="custom-modal-body">
                 <div class="container">
-                    {{#each keyManagersMetadata}}
-                    {{#if enabled}}
-                    {{#let "keys" (conditionalIf ../isProduction productionKeys sandboxKeys)}}
-                    <div id="regenerateKeyBtn" class="d-flex">
+                    <div id="regenerateKeyBtn-{{keyType}}" class="d-flex">
                         <div class="row">
-                            <div id="tokenDisplay_{{../name}}" style="display: none;">
+                            <div id="tokenDisplay_{{../name}}_{{keyType}}" style="display: none;">
                                 <div class="info-title pb-2">Request Permissions (Scopes)</div>
-                                <div class="input-scopes" id="scopeContainer-{{@root.applicationMetadata.id}}"
+                                <div class="input-scopes" id="scopeContainer-{{@root.applicationMetadata.id}}-{{keyType}}"
                                     data-scopes="{{json @root.subscriptionScopes}}">
-                                    <input type="text" class="text-input" id="scope-{{@root.applicationMetadata.id}}"
+                                    <input type="text" class="text-input" id="scope-{{@root.applicationMetadata.id}}-{{keyType}}"
                                         placeholder="Type scope and press Enter...">
                                 </div>
                                 <div class="info-box mt-5">
@@ -33,23 +33,28 @@
                                     </div>
                                 </div>
                                 <div class="token-card">
-                                    <pre id="token_{{../name}}" class="token-text"></pre>
-                                    <button id="copyButton_{{../name}}" class="copy-button" aria-label="Copy token"
-                                        type="button" onclick="copyToken('{{../name}}')">
+                                    <pre id="token_{{../name}}_{{keyType}}" class="token-text"></pre>
+                                    <button id="copyButton_{{../name}}_{{keyType}}" class="copy-button" aria-label="Copy token"
+                                        type="button" onclick="copyToken('{{../name}}_{{keyType}}')">
                                         <i class="bi bi-copy"></i>
                                     </button>
                                 </div>
-                                <div class="info-title pt-2 pb-2" id="resScopeTitle">Response Permisssions (Scopes)</div>
-                                <div id="responseScopeContainer-{{@root.applicationMetadata.id}}" data-response-scopes="">
+                                <div class="info-title pt-2 pb-2" id="resScopeTitle-{{keyType}}">Response Permissions (Scopes)
+                                </div>
+                                <div id="responseScopeContainer-{{@root.applicationMetadata.id}}-{{keyType}}"
+                                    data-response-scopes="">
                                 </div>
                                 <div class="d-flex justify-content-end mt-4 mb-3"
-                                    id="applicationKeyUpdateButtonContainer">
+                                    id="applicationKeyUpdateButtonContainer-{{keyType}}">
                                     <button class="common-btn-outlined pr-3 me-3" type="button"
-                                        onClick="closeModal('keysTokenModal')">
+                                        onClick="closeModal('keysTokenModal-{{keyType}}')">
                                         Cancel
                                     </button>
-                                    <button class="common-btn-primary btn-sm me-1 {{#if @root.isReadOnlyMode}}disabled{{/if}}" id="regenerateButton_{{../name}}"
-                                        onclick="generateOauthKey('applicationKeyGenerateForm-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}', '{{keys.appRefID}}', '{{keys.keyMappingId}}', '{{../name}}', '{{../../applicationMetadata/name}}', '{{keys.consumerSecret}}')">
+                                    <button
+                                        class="common-btn-primary btn-sm me-1 {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+                                        id="regenerateButton_{{../name}}_{{keyType}}"
+                                        style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
+                                        onclick="generateOauthKey('applicationKeyGenerateForm-{{../id}}-{{keyType}}', '{{keys.appRefID}}', '{{keys.keyMappingId}}', '{{../name}}', '{{@root.applicationMetadata/name}}', '{{keys.consumerSecret}}', '{{json @root.subscriptionScopes}}', '{{keyType}}')">
                                         <span class="button-normal-state">
                                             <i class="bi bi-arrow-clockwise"></i> Regenerate
                                         </span>
@@ -62,11 +67,11 @@
                             </div>
                         </div>
                     </div>
-                    {{/let}}
-                    {{/if}}
-                    {{/each}}
                 </div>
             </div>
         </div>
     </div>
 </div>
+{{/each}}
+{{/if}}
+{{/each}}

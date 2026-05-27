@@ -1,0 +1,47 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "CountriesAPI",
+    "version": "v1.0",
+    "description": "GraphQL endpoint for retrieving information about countries, their capitals, population, and other geographical data."
+  },
+  "paths": {
+    "/graphql": {
+      "post": {
+        "summary": "GraphQL endpoint",
+        "description": "Send GraphQL queries to the CountriesAPI endpoint.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": { "type": "string" },
+                  "variables": { "type": "object" },
+                  "operationName": { "type": "string" }
+                },
+                "required": ["query"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "GraphQL response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+

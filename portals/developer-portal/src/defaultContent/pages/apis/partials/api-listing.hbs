@@ -61,8 +61,8 @@
       {{#unless (eq apiInfo.apiType "MCP")}}
       <div class="col-lg-4 col-md-6 col-sm-12" id="apiCard-{{apiID}}">
         <div class="card api-card d-flex flex-column">
-          <div class="api-card-header d-flex align-items-center gap-3 position-relative overflow-hidden" 
-               onclick="window.location.href='{{../baseUrl}}/api/{{apiHandle}}'" style="cursor: pointer;">
+          <div class="api-card-header d-flex align-items-center gap-3 position-relative overflow-hidden"
+            data-href="{{../baseUrl}}/api/{{apiHandle}}" style="cursor: pointer;">
                {{#if apiInfo.apiImageMetadata.api-icon}}
                   <img src="{{apiInfo.apiImageMetadata.api-icon}}" class="api-card-img" alt="..." />
                 {{else}}
@@ -71,7 +71,7 @@
             <div class="flex-grow-1">
               <h5 class="api-card-title mb-0">{{apiInfo.apiName}}</h5>
               <div class="d-flex align-items-center gap-2">
-                <p class="mb-0 mt-1" style="font-size: 16px;">{{apiInfo.apiVersion}}</p>                         
+                <p class="mb-0 mt-1" style="font-size: 16px;">{{apiInfo.apiVersion}}</p>
                 <div class="type-badge badge-custom2" style="display: flex; flex-direction: row; align-items: center;">
                   <div style="margin-right: 8px; display: flex;">
                     {{#if (eq apiInfo.apiType "WS")}}
@@ -79,6 +79,16 @@
                       src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/WebSocket.svg"
                       style=" height: 16px; object-fit: contain;"
                     />
+                    {{else if (eq apiInfo.apiType "GRAPHQL")}}
+                    <img
+                      src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/graphql.svg"
+                      style="height: 16px; object-fit: contain;"
+                     />
+                    {{else if (eq apiInfo.apiType "WEBSUB")}}
+                    <img
+                      src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/webhook.svg"
+                      style="height: 16px; object-fit: contain;"
+                     />
                     {{else}}
                     <img
                       src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/REST.svg"
@@ -88,18 +98,60 @@
                   </div>
                   {{#if (eq apiInfo.apiType "WS")}}
                   <span>WebSocket</span>
+                  {{else if (eq apiInfo.apiType "WEBSUB")}}
+                  <span>WebSub</span>
                   {{else}}
                   <span>{{apiInfo.apiType}}</span>
                   {{/if}}
                 </div>
               </div>
+              <div class="api-card-chips mt-2">
+                {{#if ../showApiWorkflowsNav}}
+                {{#unless (eq apiInfo.agentVisibility "HIDDEN")}}
+                <span class="api-agent-chip api-agent-chip--ready"
+                    title="AI agents can discover and use this API">
+                    <span class="api-agent-chip__dot"></span>
+                    <i class="bi bi-robot"></i> AI Ready
+                </span>
+                {{/unless}}
+                {{/if}}
+              </div>
             </div>
             {{#if ../isAuthenticated}}
+            {{#if (eq apiInfo.gatewayType "wso2/api-platform")}}
+            <div class="subscription-flag fw-bold" style="display: {{#if hasPlatformSubscription}}block{{else}}none{{/if}};">Subscribed</div>
+            {{else}}
             <div class="subscription-flag fw-bold" style="display: {{#if (some applications "subscribed")}}block{{else}}none{{/if}};">Subscribed</div>
             {{/if}}
+            {{/if}}
           </div>
-          <div class="api-card-body flex-grow-1" onclick="window.location.href='{{../baseUrl}}/api/{{apiHandle}}'" style="cursor: pointer;">
+          <div class="api-card-body flex-grow-1" data-href="{{../baseUrl}}/api/{{apiHandle}}" style="cursor: pointer;">
             <div class="truncate-text fw-light apilisting-api-description small mb-3">{{apiInfo.apiDescription}}</div>
+            
+            {{#if ../isAuthenticated}}
+              {{#if subscriptionPolicies}}
+                <div class="plans-summary-card">
+                  <div class="plans-summary-card__row">
+                    <div class="plans-summary-card__left">
+                      <span class="plans-summary-card__label">
+                        <i class="fas fa-tags" aria-hidden="true"></i>
+                        Plans
+                        <span class="plans-summary-card__count">({{subscriptionPolicies.length}})</span>
+                      </span>
+
+                      {{!-- optional: show “Free available” if any plan is free --}}
+                      {{#if (some subscriptionPolicies "isFreePlan")}}
+                        <span class="plans-summary-card__pill plans-summary-card__pill--free">Free available</span>
+                      {{/if}}
+                    </div>
+
+                    <a class="plans-summary-card__link" href="{{../baseUrl}}/api/{{apiHandle}}#subscriptionPlans">
+                      View plans
+                    </a>
+                  </div>
+                </div>
+              {{/if}}
+            {{/if}}
             <div class="row">
               <div class="apilisting-tags">
                 {{#apiInfo.tags}}
@@ -109,57 +161,33 @@
             </div>
           </div>
           {{#if ../isAuthenticated}}
+          {{#if (eq apiInfo.gatewayType "wso2/api-platform")}}
+            {{#if subscriptionPolicies.length}}
           <hr class="card-separator" />
+            {{/if}}
+          {{else if subscriptionPolicies.length}}
+          <hr class="card-separator" />
+          {{/if}}
           {{/if}}
           <div class="api-card-footer">
             <div id="btnSection" class="d-flex align-items-center gap-2 w-100">
               {{#if ../isAuthenticated}}
               <div id="subscriptionBox" class="subscription-container w-100">
+                {{#if (eq apiInfo.gatewayType "wso2/api-platform")}}
+                  {{#if subscriptionPolicies.length}}
+                  {{> subscription-modal apiID=apiID apiInfo=apiInfo apiReferenceID=apiReferenceID}}
+                  <a type="button" class="common-btn-primary w-100 open-modal-btn {{#if @root.isReadOnlyMode}}is-readonly{{/if}}"
+                    {{#unless @root.isReadOnlyMode}}data-modal="planModal-{{apiID}}"{{/unless}}
+                    {{#if @root.isReadOnlyMode}}aria-disabled="true"{{/if}}>Subscribe</a>
+                  {{/if}}
+                {{else}}
                 {{> subscription-plans apiInfo=apiInfo apiName=apiInfo.apiName}}
                 {{#if subscriptionPolicies.length}}
-
-                <p class="subscription-box-label">Application: </p>
-                <div class="custom-dropdown">
-                  <input type="hidden" id="selectedAppId-{{apiID}}" value="" />
-                  <div class="custom-select-container">
-                    <div class="select-selected" role="combobox" aria-expanded="false" aria-haspopup="listbox">
-                      <span class="selected-text small">Create an app</span>
-                      <span class="select-arrow"></span>
-                    </div>
-                    <div class="select-items" role="listbox">
-                      <div class="select-search-container">
-                        <input type="text" class="select-search-input {{#if @root.isReadOnlyMode}}d-none{{/if}}" placeholder="Find or create an application..."
-                          aria-label="Search applications">
-                      </div>
-                      <div class="select-items-container">
-                        {{#each applications}}
-
-                        <div class="select-item {{#if subscribed}}disabled{{/if}}" role="button" data-value="{{id}}"
-                          data-app-name="{{name}}">
-                          <span>{{name}}</span>
-                          <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/success-rounded.svg"
-                            alt="Subscribed" class="subscription-icon" style="display: {{#if subscribed}}inline-block{{else}}none{{/if}};" />
-                        </div>
-
-                        {{/each}}
-                      </div>
-                      <div class="create-app-container" style="display: none;">
-                        <div class="create-app-option" role="button">
-                          Create application "<span class="search-term"></span>"
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {{#if (eq subscriptionPolicies.length 1)}}
-                 <a type="button" class="common-btn-primary {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                   onclick="showSubscribeButtonLoading(this); subscribe('{{../orgID}}', '', '{{apiID}}', '{{apiReferenceID}}', '{{lookup (lookup subscriptionPolicyDetails 0) "policyID"}}', '{{lookup (lookup subscriptionPolicyDetails 0) "policyName"}}')"
-                   disabled>Subscribe</a>
-                 {{else}}
-                 <a type="button" class="common-btn-primary" onclick="loadModal('planModal-{{apiID}}')" disabled>Subscribe</a>
-                 {{/if}}
-
+                  {{!-- Application selection moved into the subscription modal. --}}
+                  <a type="button" class="common-btn-primary w-100 open-modal-btn {{#if @root.isReadOnlyMode}}is-readonly{{/if}}"
+                    {{#unless @root.isReadOnlyMode}}data-modal="planModal-{{apiID}}"{{/unless}}
+                    {{#if @root.isReadOnlyMode}}aria-disabled="true"{{/if}}>Subscribe</a>
+                {{/if}}
                 {{/if}}
               </div>
               {{/if}}
@@ -179,4 +207,45 @@
       {{/apiMetadata}}
     </div>
   </div>
+  <script>
+    (function(){
+      function findClosest(el, selector){
+        while(el && el !== document){
+          if(el.matches && el.matches(selector)) return el;
+          el = el.parentNode;
+        }
+        return null;
+      }
+
+      document.addEventListener('click', function(e){
+        var modalTrigger = findClosest(e.target, '[data-modal]');
+        if(modalTrigger){
+          e.preventDefault();
+          if(modalTrigger.classList.contains('is-readonly') || modalTrigger.getAttribute('aria-disabled') === 'true'){
+            return;
+          }
+          if(typeof loadModal === 'function'){
+            loadModal(modalTrigger.getAttribute('data-modal'));
+          } else {
+            var id = modalTrigger.getAttribute('data-modal');
+            var el = document.getElementById(id);
+            if(el) {
+              el.style.display = 'flex';
+              document.body.classList.add('modal-open');
+              if(typeof prepareSubscriptionModal === 'function') {
+                try { prepareSubscriptionModal(id); } catch(err) { /* noop */ }
+              }
+            }
+          }
+          return;
+        }
+
+        var nav = findClosest(e.target, '[data-href]');
+        if(nav){
+          var href = nav.getAttribute('data-href');
+          if(href){ window.location.href = href; }
+        }
+      }, false);
+    })();
+  </script>
 </section>

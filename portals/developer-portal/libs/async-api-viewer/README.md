@@ -49,11 +49,15 @@ The component is distributed via a CDN and can be integrated into your applicati
         }
     };
     let serverUrl = 'wss://echo.websocket.org';
+    let sandboxUrl = 'wss://echo.websocket.org';
     const rootElement = document.getElementById('root');
     ReactDOM.render(React.createElement(WebSocketViewer.default, {
         apiEndpoint: serverUrl,
+        sandboxEndpoint: sandboxUrl,
         token: 'token',
         asyncapi: asyncapi,
+        isDevportal: true,
+        asyncApiType: 'WS'
     }), rootElement);
 </script>
 </body>

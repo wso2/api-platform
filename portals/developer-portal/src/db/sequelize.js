@@ -20,8 +20,7 @@ const { Sequelize } = require('sequelize');
 const path = require('path');
 const fs = require('fs');
 
-const config = require(process.cwd() + '/config.json');
-const secret = require(process.cwd() + '/secret.json');
+const { config } = require('../config/configLoader');
 
 const filePrefix = config.pathToDBCert;
 const dbCAPath = path.join(process.cwd(), filePrefix);
@@ -56,7 +55,7 @@ if (config.advanced.dbSslDialectOption) {
 const sequelize = new Sequelize(
     config.db.database,
     config.db.username,
-    secret.dbSecret,
+    config.db.password,
     sequelizeOptions
 );
 

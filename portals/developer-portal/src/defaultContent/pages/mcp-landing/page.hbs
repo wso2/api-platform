@@ -22,8 +22,8 @@
   <script src="/technical-scripts/oauth2-key-generation.js" defer></script>
 </head>
 <main>
-    {{> header profile=profile baseUrl=baseUrl devportalMode=devportalMode }}
-    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode }}
+    {{> header profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav }}
+    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode showPlatformApiKeysNav=showPlatformApiKeysNav showApiWorkflowsNav=showApiWorkflowsNav }}
     {{> mcp-detail-banner }}
     {{#if loadDefault}}
     {{> mcp-default}}

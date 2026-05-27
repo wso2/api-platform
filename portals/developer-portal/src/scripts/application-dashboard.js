@@ -38,6 +38,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const userNameError = document.getElementById('userNameError');
   const resetButton = document.getElementById('resetButton');
 
+  if (!userName || !userNameError || !resetButton) return;
+
   const validateForm = () => {
     let hasError = false;
     if (!userName.value.trim()) {

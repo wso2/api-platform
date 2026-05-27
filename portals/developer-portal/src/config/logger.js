@@ -24,13 +24,9 @@ const fs = require('fs');
 // Try to load configuration
 let config = {};
 try {
-    const configPath = path.join(process.cwd(), 'config.json');
-    if (fs.existsSync(configPath)) {
-        config = require(configPath);
-    }
+    config = require('./configLoader').config;
 } catch (error) {
-    // If config file doesn't exist or can't be loaded, use defaults
-    console.warn('Could not load config.json, using default logging configuration');
+    console.warn('Could not load config, using default logging configuration');
 }
 
 // Define log levels

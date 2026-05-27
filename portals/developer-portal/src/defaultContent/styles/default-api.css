@@ -120,6 +120,11 @@
   border: 1px solid #50e3c2;
 }
 
+.defaultapi-resource-item-OPTIONS {
+  background-color: #0d5aa71a;
+  border: 1px solid #0d5aa7;
+}
+
 .defaultapi-resources-channel {
   display: flex;
   flex-direction: row;
@@ -168,7 +173,7 @@
   color: var(--light-text-color);
   font-weight: 500;
   font-size: 14px;
-  width: 80px;
+  min-width: 80px;
   text-align: center;
   margin-right: 20px;
 }
@@ -191,6 +196,11 @@
 
 .defaultapi-http-method-PATCH {
   background-color: #50e3c2;
+}
+
+.defaultapi-http-method-OPTIONS {
+  background-color: #0d5aa7;
+  border-color: #0d5aa7;
 }
 
 .defaultapi-resource-path {

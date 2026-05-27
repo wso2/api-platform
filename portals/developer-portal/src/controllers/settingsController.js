@@ -23,7 +23,7 @@ const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
 const adminDao = require('../dao/admin');
 const IdentityProviderDTO = require("../dto/identityProvider");
-const config = require(process.cwd() + '/config.json');
+const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const adminService = require('../services/adminService');
 const apiMetadataService = require('../services/apiMetadataService');
@@ -32,16 +32,16 @@ const devPortalService = require('../services/devportalService');
 const filePrefix = config.pathToContent;
 
 
-const loadSettingPage = async (req, res) => {
+const loadOrgSettingsPage = async (req, res) => {
 
     let orgID;
     const completeTemplatePath = path.join(require.main.filename, '..', 'pages', 'configure', 'page.hbs');
     const layoutPath = path.join(require.main.filename, '..', 'pages', 'layout', 'main.hbs');
 
     let templateContent = {
-        baseUrl: req.params.orgName+'/views/default',
-        orgContent: true
-    }
+        baseUrl: req.params.orgName,
+        orgContent: true,
+    };
     let layoutResponse = "";
     let views;
     try {
@@ -50,8 +50,8 @@ const loadSettingPage = async (req, res) => {
             templateContent.idp = retrievedIDP;
             views = [{
                 'name': 'Default'
-            }]
-            templateContent.createIDP = true
+            }];
+            templateContent.createIDP = true;
             templateContent.content = true;
             templateContent.orgContent = true;
             templateContent.views = views;
@@ -59,16 +59,11 @@ const loadSettingPage = async (req, res) => {
         } else {
             let orgName = req.params.orgName;
             templateContent.loggedOrg = orgName;
-            //retrieve orgID from the user object
-            if (req.user) {
-                orgID = req.user[constants.ORG_ID];
-            } else {
-                orgID = await adminDao.getOrgId(orgName);
-            }
+            orgID = await adminDao.getOrgId(orgName);
             templateContent.orgID = orgID;
+
             const organizations = await adminService.getAllOrganizations();
-            let orgs = organizations.length;
-            if (orgs !== 0) {
+            if (organizations.length > 0) {
                 templateContent.organizations = organizations;
             }
             const retrievedIDP = await adminDao.getIdentityProvider(orgID);
@@ -87,23 +82,26 @@ const loadSettingPage = async (req, res) => {
             }
             const orgLabels = await apiMetadataService.getOrgLabels(orgID);
             templateContent.orgLabels = orgLabels;
-            //get api providers
             const apiProviders = await getAPIProviders(orgID);
             if (apiProviders.length > 0) {
                 templateContent.apiProviders = apiProviders;
             }
+
+            templateContent.profile = req.user;
         }
         layoutResponse = fs.readFileSync(layoutPath, constants.CHARSET_UTF8);
         const templateResponse = fs.readFileSync(completeTemplatePath, constants.CHARSET_UTF8);
         let html = await renderGivenTemplate(templateResponse, layoutResponse, templateContent);
         res.send(html);
     } catch (error) {
-        logger.error(`Error while loading content from DB`, {
+        logger.error(`Error while loading org settings page`, {
             error: error.message,
             stack: error.stack
         });
+        res.status(500).send('Error loading configuration page');
     }
 }
+
 
 async function getMockAPIProviders() {
 
@@ -224,7 +222,7 @@ async function getMockOrganizations() {
 }
 
 module.exports = {
-    loadSettingPage,
+    loadOrgSettingsPage,
     loadPortalPage,
     loadEditOrganizationPage,
     loadCreateOrganizationPage

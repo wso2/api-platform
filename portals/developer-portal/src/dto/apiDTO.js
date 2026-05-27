@@ -26,6 +26,12 @@ class APIDTO {
         this.dataSource = api.DATA_SOURCE;
         this.apiInfo = new APIInfo(api);
         this.endPoints = new Endpoints(api);
+        
+        // Monetization info - use database value
+        this.monetizationInfo = {
+            enabled: api.MONETIZATION_ENABLED || false
+        };
+        
         if (api.DP_SUBSCRIPTION_POLICies) {
             this.subscriptionPolicies = api.DP_SUBSCRIPTION_POLICies.map(policy => new APISubscriptionPolicy(policy));
         }
@@ -46,10 +52,16 @@ class APIDTO {
 class APIInfo {
     constructor(apiInfo) {
         this.apiName = apiInfo.API_NAME;
+        this.apiTitle = apiInfo.METADATA_SEARCH?.apiInfo?.apiTitle || null;
+        this.remotes = apiInfo.METADATA_SEARCH?.apiInfo?.remotes || [];
         this.apiVersion = apiInfo.API_VERSION;
         this.apiDescription = apiInfo.API_DESCRIPTION;
         this.apiType = apiInfo.API_TYPE;
+        this.apiStatus = apiInfo.STATUS;
         this.visibility = apiInfo.VISIBILITY;
+        this.agentVisibility = apiInfo.AGENT_VISIBILITY || 'VISIBLE';
+        this.gatewayVendor = apiInfo.METADATA_SEARCH?.apiInfo?.gatewayVendor || 'wso2';
+        this.gatewayType = apiInfo.GATEWAY_TYPE || null;
         if (apiInfo.addedLabels) {
             this.addedLabels = apiInfo.addedLabels;
         }
@@ -83,6 +95,16 @@ class APISubscriptionPolicy {
         this.displayName = apiSubscriptionPolicy.DISPLAY_NAME;
         this.requestCount = apiSubscriptionPolicy.REQUEST_COUNT;
         this.policyID = apiSubscriptionPolicy.POLICY_ID;
+        this.description = apiSubscriptionPolicy.DESCRIPTION;
+        this.billingPlan = apiSubscriptionPolicy.BILLING_PLAN;
+        
+        // Pricing fields
+        this.pricingModel = apiSubscriptionPolicy.PRICING_MODEL;
+        this.currency = apiSubscriptionPolicy.CURRENCY;
+        this.billingPeriod = apiSubscriptionPolicy.BILLING_PERIOD;
+        this.flatAmount = apiSubscriptionPolicy.FLAT_AMOUNT;
+        this.unitAmount = apiSubscriptionPolicy.UNIT_AMOUNT;
+        this.pricingMetadata = apiSubscriptionPolicy.PRICING_METADATA;
     }
 }
 

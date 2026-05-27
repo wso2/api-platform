@@ -1,0 +1,50 @@
+<!--
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ -->
+
+<head>
+  <link rel='stylesheet' href='/technical-styles/subscriptions.css' />
+  <link rel='stylesheet' href='/technical-styles/platform-api-keys.css' />
+  <script src='/technical-scripts/platform-api-keys-page.js' defer></script>
+</head>
+<main>
+    {{> header profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav }}
+    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode showPlatformApiKeysNav=showPlatformApiKeysNav showApiWorkflowsNav=showApiWorkflowsNav }}
+    <div class="content">
+        <div class="container-fluid subscriptions-container platform-api-keys-page">
+            <div class="container-header mb-4 d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <span>API Keys</span>
+                {{#unless isReadOnlyMode}}
+                {{#unless platformApiKeysLoadError}}
+                <button type="button" class="common-btn-primary btn-sm" id="btn-open-generate-api-key" data-bs-toggle="modal" data-bs-target="#generatePlatformApiKeyModal">
+                    Generate API Key
+                </button>
+                {{/unless}}
+                {{/unless}}
+            </div>
+            <div id="platform-api-keys-config" class="d-none"
+                data-org-id="{{orgID}}"
+                data-api-id="{{apiMetadata.apiID}}"
+                data-read-only="{{#if isReadOnlyMode}}true{{else}}false{{/if}}"
+                data-load-error="{{#if platformApiKeysLoadError}}true{{else}}false{{/if}}"
+                data-csrf-token="{{csrfToken}}">
+            </div>
+            {{> platform-api-key-list }}
+        </div>
+    </div>
+    {{> alert }}
+</main>

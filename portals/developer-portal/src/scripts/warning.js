@@ -1,37 +1,141 @@
-function openWarningModal(param1, param2, param3, param4, param5) {
+function openWarningModal(param1, param2, param3, param4, param5, param6, param7) {
     const modal = document.getElementById('warningModal');
-    modal.dataset.param1 = param1;
-    modal.dataset.param2 = param2;
-    modal.dataset.param3 = param3;
-    modal.dataset.param4 = param4;
-    modal.dataset.param5 = param5;
-    const bootstrapModal = new bootstrap.Modal(modal);
-    bootstrapModal.show();
+    if (!modal) {
+        console.error('openWarningModal: Warning modal not found');
+        return;
+    }
+
+    // Sanitize parameters to prevent XSS
+    const sanitizeParam = (param) => {
+        if (param === null || param === undefined) return '';
+        return String(param).replace(/['"<>]/g, '');
+    };
+
+    const sanitizedParam1 = sanitizeParam(param1);
+    const sanitizedParam2 = sanitizeParam(param2);
+    const sanitizedParam3 = sanitizeParam(param3);
+    const sanitizedParam4 = sanitizeParam(param4);
+    const sanitizedParam5 = sanitizeParam(param5);
+    const sanitizedParam6 = sanitizeParam(param6);
+    const sanitizedParam7 = sanitizeParam(param7);
+
+
+    modal.dataset.param1 = sanitizedParam1;
+    modal.dataset.param2 = sanitizedParam2;
+    modal.dataset.param3 = sanitizedParam3;
+    modal.dataset.param4 = sanitizedParam4;
+    modal.dataset.param5 = sanitizedParam5;
+    modal.dataset.param6 = sanitizedParam6;
+    modal.dataset.param7 = sanitizedParam7;
+
+    try {
+        const bootstrapModal = new bootstrap.Modal(modal);
+        bootstrapModal.show();
+    } catch (error) {
+        console.error('openWarningModal: Failed to show modal', error);
+        return;
+    }
+
+    const modalTitle = document.getElementById('modalTitle');
+    const modalMessage = document.getElementById('modalMessage');
+    const modalFunction = document.getElementById('modalFunction');
+
+    if (!modalTitle || !modalMessage || !modalFunction) {
+        console.error('openWarningModal: Required modal elements not found');
+        return;
+    }
 
     if (param1 === 'regenerate') {
-        document.getElementById('modalTitle').innerText = "Regenerate API Key";
-        document.getElementById('modalMessage').innerText = "Regenerating the API key will impact applications using the current key. \nThe current key will expire in 1 hour. To avoid service disruptions, copy the new key and update it in your applications immediately.";
-        const regenerateBtn = document.getElementById('modalFunction');
-        regenerateBtn.innerText = "Regenerate";
-        regenerateBtn.setAttribute('onclick', `regenerateAPIKey(${param2}, '${param3}')`);
+        modalTitle.innerText = "Regenerate API Key";
+        modalMessage.innerText = "Your current key will be revoked immediately. Update your applications with the new key to avoid disruptions.";
+        modalFunction.innerText = "Regenerate";
+        // Use data attributes and event listeners instead of inline onclick to prevent XSS
+        modalFunction.onclick = function() {
+            if (typeof regenerateAPIKey === 'function') {
+                regenerateAPIKey(sanitizedParam2, sanitizedParam3, sanitizedParam6);
+            }
+        };
     } else if (param1 === 'revoke') {
-        document.getElementById('modalTitle').innerText = "Revoke API Key";
-        document.getElementById('modalMessage').innerText = "Revoking the API key will impact applications using the current key. Are you sure you want to proceed? This action cannot be undone.";
-        const revokeBtn = document.getElementById('modalFunction');
-        revokeBtn.innerText = "Revoke";
-        revokeBtn.setAttribute('onclick', `revokeAPIKey(${param2}, '${param3}', '${param4}', '${param5}')`);
+        modalTitle.innerText = "Revoke API Key";
+        modalMessage.innerText = "Revoking the API key will impact applications using the current key. Are you sure you want to proceed? This action cannot be undone.";
+        modalFunction.innerText = "Revoke";
+        modalFunction.onclick = function() {
+            if (typeof revokeAPIKey === 'function') {
+                revokeAPIKey(sanitizedParam2, sanitizedParam3, sanitizedParam4, sanitizedParam5, sanitizedParam6);
+            }
+        };
     } else if (param1 === 'Unsubscribe') {
-        document.getElementById('modalTitle').innerText = "Do you really want to remove the subscription?";
-        document.getElementById('modalMessage').innerText = "This will remove the subscription entry stored in the devportal.";
-        const unsubscribeBtn = document.getElementById('modalFunction');
-        unsubscribeBtn.innerText = "Confirm";
-        unsubscribeBtn.setAttribute('onclick', `removeSubscription('${param2}', '${param3}', '${param4}', '${param5}')`);
+        modalTitle.innerText = "Do you really want to remove the subscription?";
+        modalMessage.innerText = "This will remove the subscription entry stored in the devportal.";
+        modalFunction.innerText = "Confirm";
+        modalFunction.onclick = function() {
+            if (typeof removeSubscription === 'function') {
+                removeSubscription(sanitizedParam2, sanitizedParam3, sanitizedParam4, sanitizedParam5);
+            }
+        };
+    } else if (param1 === 'DeletePlatformSubscription') {
+        modalTitle.innerText = 'Delete subscription?';
+        modalMessage.innerText =
+            'The subscription token will be immediately invalidated and any API calls using it will fail.';
+        modalFunction.innerText = 'Delete';
+        modalFunction.onclick = function() {
+            if (typeof executeDeletePlatformSubscription === 'function') {
+                executeDeletePlatformSubscription(sanitizedParam2, sanitizedParam3);
+            }
+        };
+    } else if (param1 === 'DeleteTokenBasedSubscription') {
+        modalTitle.innerText = 'Delete subscription?';
+        modalMessage.innerText =
+            'The subscription token will be immediately invalidated and any API calls using it will fail.';
+        modalFunction.innerText = 'Delete';
+        modalFunction.onclick = function() {
+            if (typeof executeDeleteSubscription === 'function') {
+                executeDeleteSubscription();
+            }
+        };
+    } else if (param1 === 'DeleteAppBasedSubscription') {
+        modalTitle.innerText = 'Unsubscribe from this API?';
+        modalMessage.innerText =
+            'This will remove the subscription entry stored in the devportal. Are you sure you want to unsubscribe from this API?';
+        modalFunction.innerText = 'Confirm';
+        modalFunction.onclick = function() {
+            if (typeof executeDeleteSubscription === 'function') {
+                executeDeleteSubscription();
+            }
+        };
+    } else if (param1 === 'deleteApplication') {
+        modalTitle.innerText = 'Delete Application';
+        modalMessage.innerText = 'Are you sure you want to delete this application? This action cannot be undone and will revoke all associated access tokens and subscriptions.';
+        modalFunction.innerText = 'Delete';
+        modalFunction.onclick = function() {
+            deleteApplication();
+        };
+    } else if (param1 === 'SwitchPlatformSubscriptionPlan') {
+        modalTitle.innerText = 'Switch subscription plan?';
+        modalMessage.innerText =
+            'You are currently subscribed to the "' +
+            sanitizedParam7 +
+            '" plan. Switching to "' +
+            sanitizedParam5 +
+            '" will delete your existing subscription and generate a new token. Do you want to proceed?';
+        modalFunction.innerText = 'Confirm';
+        modalFunction.onclick = function() {
+            if (typeof runPendingPlatformPlanSwitch === 'function') {
+                runPendingPlatformPlanSwitch(
+                    sanitizedParam2,
+                    sanitizedParam3,
+                    sanitizedParam4,
+                    sanitizedParam5,
+                    sanitizedParam6
+                );
+            }
+        };
     }
 }
 
 async function deleteApplication() {
     const modal = document.getElementById('warningModal');
-    const applicationId = modal.dataset.param1;
+    const applicationId = modal.dataset.param2;
     const messageOverlay = document.getElementById(`message-overlay-${applicationId}`);
     const trashButton = document.getElementById(`trash-btn-${applicationId}`);
 

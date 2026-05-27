@@ -26,6 +26,22 @@
           />
           <span class="nav-text">Documentation</span>
         </a>
+        <a href="#" class="nav-link submenu-link fw-light" id="api-subscriptions">
+          <img
+            src="/images/subscriptions-icon.svg"
+            class="submenu-icon"
+          />
+          <span class="nav-text">Subscriptions</span>
+        </a>
+        {{#if showPlatformApiKeysNav}}
+        <a href="#" class="nav-link submenu-link fw-light" id="api-platform-keys">
+          <img
+            src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/manage-keys.svg"
+            class="submenu-icon"
+          />
+          <span class="nav-text">API Keys</span>
+        </a>
+        {{/if}}
       </div>
       {{/in}}
       {{#in devportalMode values="DEFAULT,MCPSERVERSONLY"}}
@@ -50,14 +66,47 @@
         </a>
       </div>
       {{/in}}
-    <a href="{{baseUrl}}/applications" class="nav-link" id="applications">
-      <img
-        src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/applications-icon.svg"
-      />
-      <span class="nav-text">Applications</span>
-    </a>
+      {{#if showApiWorkflowsNav}}
+      <a href="{{baseUrl}}/api-workflows" class="nav-link" id="api-workflows">
+        <img src="/images/api-workflows-icon.svg" />
+        <span class="nav-text">API Workflows</span>
+      </a>
+      {{/if}}
+      <a href="{{baseUrl}}/applications" class="nav-link" id="applications">
+        <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/applications-icon.svg" />
+        <span class="nav-text">Applications</span>
+      </a>
+      <div class="submenu applications-submenu" id="applications-submenu">
+        <a href="#" class="nav-link submenu-link fw-light" id="applications-overview">
+          <img
+            src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/MenuOverview.svg"
+            class="submenu-icon"
+          />
+          <span class="nav-text">Overview</span>
+        </a>
+        <a href="#" class="nav-link submenu-link fw-light" id="applications-keys">
+          <img
+            src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/manage-keys.svg"
+            class="submenu-icon"
+          />
+          <span class="nav-text">Manage Keys</span>
+        </a>
+      </div>
+      <a href="{{baseUrl}}/subscriptions" class="nav-link" id="subscriptions">
+        <img src="/images/subscriptions-icon.svg" />
+        <span class="nav-text">Subscriptions</span>
+      </a>
   </nav>
 
+  {{#if showApiWorkflowsNav}}
+  {{#if profile.isAdmin}}
+  <a href="{{baseUrl}}/configure" class="nav-link" id="ai-settings">
+    <img src="/images/settings-icon.svg" />
+    <span class="nav-text">Settings</span>
+  </a>
+  {{/if}}
+  {{/if}}
+  <div class="nav-section-divider"></div>
   <button class="collapse-btn" id="collapseBtn">
     <i class="bi bi-chevron-right"></i>
     <span class="collapse-text">Expand</span>

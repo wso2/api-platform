@@ -1,0 +1,42 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "LeisureActivitiesAPI",
+    "version": "v1.0",
+    "description": "SOAP API for retrieving information about leisure activities and managing reservations."
+  },
+  "paths": {
+    "/soap": {
+      "post": {
+        "summary": "SOAP endpoint",
+        "description": "SOAP endpoint that accepts a SOAP envelope (WSDL available via download).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "text/xml": {
+              "schema": {
+                "type": "string",
+                "description": "SOAP Envelope XML"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SOAP response",
+            "content": {
+              "text/xml": {
+                "schema": {
+                  "type": "string",
+                  "description": "SOAP Envelope XML"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+

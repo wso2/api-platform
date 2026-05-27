@@ -54,24 +54,24 @@
                                 <div class="row mb-4">
                                     <div class="col-md-6">
                                         <label
-                                            for='consumer-key-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'
+                                            for='consumer-key-{{../id}}-{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}'
                                             class='form-label'>
                                             Consumer Key
                                             <span class='text-danger'>*</span>
                                         </label>
                                         <input type='text'
-                                            id='consumer-key-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'
+                                            id='consumer-key-{{../id}}-{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}'
                                             class='form-control' name="consumerKey" value='{{keys.consumerKey}}' readonly />
                                     </div>
                                     <div class="col-md-6">
                                         <label
-                                            for='consumer-key-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'
+                                            for='consumer-key-{{../id}}-{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}'
                                             class='form-label'>
                                             Consumer Secret
                                             <span class='text-danger'>*</span>
                                         </label>
                                         <input type='text'
-                                            id='consumer-key-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'
+                                            id='consumer-key-{{../id}}-{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}'
                                             class='form-control' name="consumerSecret" value='{{keys.consumerSecret}}'
                                             readonly />
                                     </div>
@@ -81,9 +81,9 @@
                                     {{#if (contains keys.supportedGrantTypes 'client_credentials')}}
                                     <div>
                                         <button class='common-btn-primary me-3'
-                                            id='apiKeyGenerateButton-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'
+                                            id='apiKeyGenerateButton-{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}'
                                             name='http-values' type='button'
-                                            onClick="generateOauthKey('applicationKeyGenerateForm-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}', '{{../../applicationMetadata.applicationId}}', '{{keys.keyMappingId}}', '{{../name}}', '{{keys.clientName}}')">
+                                            onClick="generateOauthKey('applicationKeyGenerateForm-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}', '{{../../applicationMetadata.applicationId}}', '{{keys.keyMappingId}}', '{{../name}}', '{{keys.clientName}}', '{{json ../../subAPIs}}', '{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}')">
                                             Generate Token
                                         </button>
                                     </div>
@@ -91,7 +91,7 @@
                                     <div class="d-flex flex-column">
                                         <div class="d-flex mb-2">
                                             <button class='common-btn-primary me-3'
-                                                    id='curl-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'
+                                                    id='curl-{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}'
                                                     name='http-values' type='button'
                                                     onClick="generateCurl('applicationKeyGenerateForm-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}')">
                                                     CURL To Generate Access Token
@@ -102,7 +102,7 @@
                                     {{/if}}
                                     <div class="mb-4 ms-auto">
                                         <button class='common-btn-outlined '
-                                            id='apiKeyRevokeButton-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'
+                                            id='apiKeyRevokeButton-{{../id}}-{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}'
                                             name='http-values' type='button'
                                             onClick="openDeleteModal('{{../../applicationMetadata.applicationId}}', '{{keys.keyMappingId}}')">
                                             Revoke Key
@@ -118,33 +118,33 @@
                                 {{!-- Token Endpoint --}}
                                 <div class='mb-3'>
                                     <label
-                                        for='token-endpoint-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'
+                                        for='token-endpoint-{{../id}}-{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}'
                                         class='form-label'>
                                         Token Endpoint
                                         <span class='text-danger'>*</span>
                                     </label>
                                     <input type='url' name="tokenURL"
-                                        id='token-endpoint-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'
+                                        id='token-endpoint-{{../id}}-{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}'
                                         class='form-control' value='{{../tokenEndpoint}}' readonly />
                                 </div>
                             
                                 {{!-- Revoke Endpoint --}}
                                 <div class='mb-3'>
                                     <label
-                                        for='revoke-endpoint-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'
+                                        for='revoke-endpoint-{{../id}}-{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}'
                                         class='form-label'>
                                         Revoke Endpoint
                                         <span class='text-danger'>*</span>
                                     </label>
                                     <input type='url' name="revokeURL"
-                                        id='revoke-endpoint-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'
+                                        id='revoke-endpoint-{{../id}}-{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}'
                                         class='form-control' value='{{../revokeEndpoint}}' readonly />
                                 </div>
 
                                 {{!-- Grant Types --}}
                                 <div class="mb-3">
                                     <label
-                                        for="available-grant-types-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}"
+                                        for="available-grant-types-{{../id}}-{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}"
                                         class="form-label">
                                         Available Grant Types
                                         <span class="text-danger">*</span>
@@ -155,10 +155,10 @@
                                         <div class="col-md-4 mb-2">
                                             <div class="form-check">
                                                 <input type="checkbox" class="form-check-input"
-                                                    id="grant-type-{{this}}-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}" name="grantTypes"
+                                                    id="grant-type-{{this}}-{{../id}}-{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}" name="grantTypes"
                                                     value="{{this}}" {{#if (contains ../supportedGrantTypes this)}}checked{{/if}} />
                                                 <label class="form-check-label"
-                                                    for="grant-type-{{this}}-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}">
+                                                    for="grant-type-{{this}}-{{../id}}-{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}">
                                                     {{this}}
                                                 </label>
                                             </div>
@@ -170,13 +170,13 @@
 
                                 {{!-- Callback URL --}}
                                 <div class='mb-3'>
-                                    <label for='callback-url-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'
+                                    <label for='callback-url-{{../id}}-{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}'
                                         class='form-label'>
                                         Callback URL
                                         <span class='text-danger'>*</span>
                                     </label>
                                     <input type='url' name="callbackURL"
-                                        id='callback-url-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}'
+                                        id='callback-url-{{../id}}-{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}'
                                         class='form-control' value='http://sample.com/callback/url' readonly />
                                 </div>
 
@@ -188,7 +188,7 @@
                                 <div class="mb-3">
                                     {{#if (eq ../type 'checkbox')}}
                                     {{else}}
-                                    <label for="{{../name}}-{{../../../../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}"
+                                    <label for="{{../name}}-{{../../../../id}}-{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}"
                                         class="form-label">
                                         {{../label}}
                                         {{#if required}}<span class="text-danger">*</span>{{/if}}
@@ -197,18 +197,18 @@
 
                                     {{#if (eq ../type 'input')}}
                                     <input type="text" name="additionalProperties.{{{../name}}}"
-                                        id="{{../name}}-{{../../../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}"
+                                        id="{{../name}}-{{../../../id}}-{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}"
                                         class="form-control" value="{{propValue}}" {{#if required}}required{{/if}} />
                                     {{/if}}
 
                                     {{#if (eq ../type 'text')}}
                                     <input type="text" name="additionalProperties.{{../name}}"
-                                        id="{{../name}}-{{../../../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}"
+                                        id="{{../name}}-{{../../../id}}-{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}"
                                         class="form-control" value="{{propValue}}" {{#if required}}required{{/if}} />
                                     {{/if}}
 
                                     {{#and (eq ../type 'select') (eq ../multiple false)}}
-                                    <select id="{{../name}}-{{../../../../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}"
+                                    <select id="{{../name}}-{{../../../../id}}-{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}"
                                         class="form-control" {{#if required}}required{{/if}}
                                         name="additionalProperties.{{../name}}" >
                                         {{#each ../values}}
@@ -219,7 +219,7 @@
                                     {{/and}}
 
                                     {{#and (eq ../type 'select') (eq ../multiple true)}}    
-                                    <select id="{{../name}}-{{../../../../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}"
+                                    <select id="{{../name}}-{{../../../../id}}-{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}"
                                             class="form-control" 
                                             name="additionalProperties.{{../name}}"
                                             multiple>
@@ -234,10 +234,10 @@
                                     <div class="col-md-4 mb-2">
                                         <div class="form-check">
                                             <input type="checkbox" name="additionalProperties.{{../name}}"
-                                                id="{{../name}}-{{../../../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}"
+                                                id="{{../name}}-{{../../../id}}-{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}"
                                                 class="form-check-input" value="true"{{#if (eq propValue true)}} checked{{/if}} />
                                             <label class="form-check-label"
-                                                for="{{../name}}-{{../../../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}">
+                                                for="{{../name}}-{{../../../id}}-{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}">
                                                 {{../label}}
                                             </label>
                                         </div>
@@ -251,7 +251,7 @@
                                 {{/let}}
                                 {{#if keys.consumerKey}}
                                 <div class="d-flex gap-3">
-                                    <button class="common-btn-primary" id="applicationKeyUpdateButton" name="http-values" type="button"
+                                    <button class="common-btn-primary" id="applicationKeyUpdateButton-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}" name="http-values" type="button"
                                         onClick="updateApplicationKey('applicationKeyGenerateForm-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}', 
                                         '{{../../applicationMetadata.applicationId}}', {{#if ../../isProduction}}'PRODUCTION'{{else}}'SANDBOX'{{/if}}, '{{../name}}', 
                                         '{{keys.keyMappingId}}', '{{keys.clientName}}')">
@@ -261,7 +261,7 @@
                                 {{else}}
                                 <div class="d-flex gap-3">
                                     <button class="common-btn-primary" id="applicationKeyGenerateButton" name="http-values" type="button"
-                                        onClick="generateApplicationKey('applicationKeyGenerateForm-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}', 
+                                        onClick="generateApplicationKey('applicationKeyGenerateForm-{{../id}}-{{#if ../../isProduction}}PRODUCTION{{else}}SANDBOX{{/if}}', 
                                         '{{../../applicationMetadata.applicationId}}', {{#if ../../isProduction}}'PRODUCTION'{{else}}'SANDBOX'{{/if}}, '{{../name}}', 
                                         '{{keys.clientName}}')">
                                         Generate Keys
