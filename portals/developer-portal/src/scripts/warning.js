@@ -103,6 +103,15 @@ function openWarningModal(param1, param2, param3, param4, param5, param6, param7
                 executeDeleteSubscription();
             }
         };
+    } else if (param1 === 'removeKeys') {
+        modalTitle.innerText = 'Remove Application Keys';
+        modalMessage.innerText = 'Are you sure you want to remove the application keys? This will revoke the OAuth credentials and cannot be undone.';
+        modalFunction.innerText = 'Remove';
+        modalFunction.onclick = function() {
+            if (typeof removeApplicationKeys === 'function') {
+                removeApplicationKeys(sanitizedParam2, sanitizedParam3, sanitizedParam4);
+            }
+        };
     } else if (param1 === 'deleteApplication') {
         modalTitle.innerText = 'Delete Application';
         modalMessage.innerText = 'Are you sure you want to delete this application? This action cannot be undone and will revoke all associated access tokens and subscriptions.';

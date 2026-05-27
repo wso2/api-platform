@@ -20,16 +20,10 @@
                                     <input type="text" class="text-input" id="scope-{{@root.applicationMetadata.id}}-{{keyType}}"
                                         placeholder="Type scope and press Enter...">
                                 </div>
-                                <div class="info-box mt-5">
-                                    <div class="info-content">
-                                        <div class="info-title">Copy the access token</div>
-                                        <p class="info-text">
-                                            Please copy this generated access token as it will not be visible in the UI
-                                            again.
-                                        </p>
-                                    </div>
-                                    <div class="info-icon">
-                                        <i class="bi bi-info-circle"></i>
+                                <div class="alert alert-warning d-flex align-items-center mt-4" role="alert">
+                                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                                    <div>
+                                        <strong>Important:</strong> This access token is displayed only once and cannot be retrieved later. Please copy and store it securely before closing this dialog.
                                     </div>
                                 </div>
                                 <div class="token-card">

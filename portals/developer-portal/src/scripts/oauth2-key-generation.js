@@ -559,8 +559,18 @@ async function removeApplicationKey() {
     const modal = document.getElementById('deleteConfirmation');
     const applicationId = modal.dataset.applicationId;
     const keyMappingId = modal.dataset.param2;
+    await removeApplicationKeys(applicationId, keyMappingId);
+}
 
-
+async function removeApplicationKeys(applicationId, keyMappingId, keyType) {
+    if (!keyMappingId && keyType) {
+        const tokenBtn = document.getElementById('tokenKeyBtn-' + keyType);
+        keyMappingId = tokenBtn?.dataset?.keymappingid;
+    }
+    if (!applicationId || !keyMappingId) {
+        await showAlert('Unable to remove keys. Please reload the page and try again.', 'error');
+        return;
+    }
     try {
         const response = await fetch(`/devportal/applications/${applicationId}/oauth-keys/${keyMappingId}`, {
             method: 'DELETE',
@@ -569,15 +579,14 @@ async function removeApplicationKey() {
             },
         });
 
-
         const responseData = await response.json();
         if (response.ok) {
             await showAlert('Application keys removed successfully!', 'success');
             const url = new URL(window.location.origin + window.location.pathname);
             window.location.href = url.toString();
         } else {
-            console.error('Failed to removed keys:', responseData);
-            await showAlert(`Failed to removed application keys. Please try again.\n${responseData.description}`, 'error');
+            console.error('Failed to remove keys:', responseData);
+            await showAlert(`Failed to remove application keys. Please try again.\n${responseData.description}`, 'error');
         }
     } catch (error) {
         console.error('Error:', error);
@@ -618,9 +627,14 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
             if (existingScopes.length > 0) {
                 subscribedScopes = existingScopes;
             }
-        } else { 
-            scopeContainer.setAttribute('data-scopes', subscribedScopes);
-            subscribedScopes = JSON.parse(subscribedScopes);
+        } else {
+            try {
+                const parsed = JSON.parse(subscribedScopes);
+                scopeContainer.setAttribute('data-scopes', subscribedScopes);
+                subscribedScopes = parsed;
+            } catch (e) {
+                subscribedScopes = [];
+            }
         }
         tokenBtn = document.getElementById('tokenKeyBtn-' + keyType);
         regenerateBtn = document.getElementById('regenerateButton_' + keyManager + '_' + keyType);
@@ -628,13 +642,15 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
 
     const scopesData = scopeContainer?.dataset?.scopes;
     if (scopesData) {
-        // Clear existing scopes
         scopeContainer.querySelectorAll('.span-tag').forEach(el => el.remove());
-        const scopes = JSON.parse(scopesData);
-
-        scopes.forEach(scope => {
-            addScope(scope);
-        });
+        try {
+            const scopes = JSON.parse(scopesData);
+            scopes.forEach(scope => {
+                addScope(scope);
+            });
+        } catch (e) {
+            // Scopes data is not valid JSON; skip rendering
+        }
     }
 
     scopeContainer?.addEventListener('keypress', function (event) {
@@ -1344,6 +1360,19 @@ let _pendingGenerateTokenParams = null;
  * Called by all "Generate" token buttons instead of generateOauthKey directly.
  */
 function openGenerateTokenModal(formId, appId, keyMappingId, keyManager, clientName, subscribedScopes, keyType) {
+    const tokenBtn = document.getElementById('tokenKeyBtn-' + keyType);
+    if ((!appId || appId === 'undefined') && tokenBtn?.dataset?.appRefId) {
+        appId = tokenBtn.dataset.appRefId;
+    }
+    if ((!keyMappingId || keyMappingId === 'undefined') && tokenBtn?.dataset?.keymappingid) {
+        keyMappingId = tokenBtn.dataset.keymappingid;
+    }
+    if (!subscribedScopes || subscribedScopes === 'undefined') {
+        subscribedScopes = tokenBtn?.dataset?.scopes || '[]';
+    }
+
+    closeModal('keysTokenModal-' + keyType);
+
     _pendingGenerateTokenParams = { formId, appId, keyMappingId, keyManager, clientName, subscribedScopes, keyType };
     const input = document.getElementById('generateTokenPromptSecretInput');
     const errorEl = document.getElementById('generateTokenPromptError');

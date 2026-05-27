@@ -24,7 +24,7 @@
                             <div id="secretWarningView-{{keyType}}" class="alert alert-warning align-items-center mb-3" role="alert" style="display: none;">
                                 <i class="bi bi-exclamation-triangle-fill me-2"></i>
                                 <div>
-                                    <strong>Important:</strong> Please copy the consumer secret now. For security reasons, it will not be displayed again after you leave this page.
+                                    <strong>Important:</strong> This consumer secret is displayed only once and cannot be retrieved later. Please copy and store it securely before closing this dialog.
                                 </div>
                             </div>
                             {{!-- Secret not available info (shown on reload when secret is gone) --}}
@@ -33,7 +33,7 @@
                             <div id="secretUnavailable-{{keyType}}" class="alert alert-info d-flex align-items-center mb-3" role="alert">
                                 <i class="bi bi-info-circle-fill me-2"></i>
                                 <div>
-                                    The consumer secret is only displayed once at the time of generation and is not stored. If you need a new secret, please regenerate the credentials.
+                                    The consumer secret was displayed only once at the time of generation and is not stored. If you need a new secret, please regenerate the credentials.
                                 </div>
                             </div>
                             {{/unless}}
