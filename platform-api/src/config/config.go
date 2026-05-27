@@ -122,6 +122,8 @@ type Thunder struct {
 	Issuer string `envconfig:"ISSUER" default:"thunder"`
 
 	// OrganizationClaimName is the JWT claim that holds the organization/tenant ID.
+	// Only used when IDP_ENABLED=true and IDP_TYPE=thunder.
+	// When IDP_ENABLED=false, the org claim name is always "organization" (hardcoded default).
 	// Override when Thunder uses a non-standard claim name (e.g. "ouId").
 	// Env: THUNDER_ORGANIZATION_CLAIM_NAME (default: "organization")
 	OrganizationClaimName string `envconfig:"ORGANIZATION_CLAIM_NAME" default:"organization"`

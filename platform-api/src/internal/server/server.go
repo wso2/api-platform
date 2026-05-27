@@ -336,11 +336,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		// Simple JWT mode: parse the token and require the org claim.
 		// Signature verification is skipped when JWT_SKIP_VALIDATION=true (default).
 		router.Use(middleware.ThunderAuthMiddleware(middleware.AuthConfig{
-			SecretKey:             cfg.JWT.SecretKey,
-			TokenIssuer:           cfg.Thunder.Issuer,
-			SkipPaths:             cfg.JWT.SkipPaths,
-			SkipValidation:        cfg.JWT.SkipValidation,
-			OrganizationClaimName: cfg.Thunder.OrganizationClaimName,
+			SecretKey:      cfg.JWT.SecretKey,
+			TokenIssuer:    cfg.Thunder.Issuer,
+			SkipPaths:      cfg.JWT.SkipPaths,
+			SkipValidation: cfg.JWT.SkipValidation,
 		}))
 		if cfg.JWT.SkipValidation {
 			slogger.Warn("Simple JWT mode: signature validation disabled (JWT_SKIP_VALIDATION=true)")
