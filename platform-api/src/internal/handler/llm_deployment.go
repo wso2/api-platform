@@ -25,6 +25,7 @@ import (
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
+	"platform-api/src/internal/rbac"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
@@ -403,12 +404,12 @@ func (h *LLMProviderDeploymentHandler) GetLLMProviderDeployments(c *gin.Context)
 func (h *LLMProviderDeploymentHandler) RegisterRoutes(r *gin.Engine) {
 	providerGroup := r.Group("/api/v1/llm-providers/:id")
 	{
-		providerGroup.POST("/deployments", h.DeployLLMProvider)
-		providerGroup.POST("/deployments/undeploy", h.UndeployLLMProviderDeployment)
-		providerGroup.POST("/deployments/restore", h.RestoreLLMProviderDeployment)
+		providerGroup.POST("/deployments", middleware.RequirePermission(rbac.LLMProviderDeploy), h.DeployLLMProvider)
+		providerGroup.POST("/deployments/undeploy", middleware.RequirePermission(rbac.LLMProviderDeploy), h.UndeployLLMProviderDeployment)
+		providerGroup.POST("/deployments/restore", middleware.RequirePermission(rbac.LLMProviderDeploy), h.RestoreLLMProviderDeployment)
 		providerGroup.GET("/deployments", h.GetLLMProviderDeployments)
 		providerGroup.GET("/deployments/:deploymentId", h.GetLLMProviderDeployment)
-		providerGroup.DELETE("/deployments/:deploymentId", h.DeleteLLMProviderDeployment)
+		providerGroup.DELETE("/deployments/:deploymentId", middleware.RequirePermission(rbac.LLMProviderDeploy), h.DeleteLLMProviderDeployment)
 	}
 }
 
@@ -757,11 +758,11 @@ func (h *LLMProxyDeploymentHandler) GetLLMProxyDeployments(c *gin.Context) {
 func (h *LLMProxyDeploymentHandler) RegisterRoutes(r *gin.Engine) {
 	proxyGroup := r.Group("/api/v1/llm-proxies/:id")
 	{
-		proxyGroup.POST("/deployments", h.DeployLLMProxy)
-		proxyGroup.POST("/deployments/undeploy", h.UndeployLLMProxyDeployment)
-		proxyGroup.POST("/deployments/restore", h.RestoreLLMProxyDeployment)
+		proxyGroup.POST("/deployments", middleware.RequirePermission(rbac.LLMProxyDeploy), h.DeployLLMProxy)
+		proxyGroup.POST("/deployments/undeploy", middleware.RequirePermission(rbac.LLMProxyDeploy), h.UndeployLLMProxyDeployment)
+		proxyGroup.POST("/deployments/restore", middleware.RequirePermission(rbac.LLMProxyDeploy), h.RestoreLLMProxyDeployment)
 		proxyGroup.GET("/deployments", h.GetLLMProxyDeployments)
 		proxyGroup.GET("/deployments/:deploymentId", h.GetLLMProxyDeployment)
-		proxyGroup.DELETE("/deployments/:deploymentId", h.DeleteLLMProxyDeployment)
+		proxyGroup.DELETE("/deployments/:deploymentId", middleware.RequirePermission(rbac.LLMProxyDeploy), h.DeleteLLMProxyDeployment)
 	}
 }

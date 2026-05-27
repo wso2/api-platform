@@ -26,6 +26,7 @@ import (
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
+	"platform-api/src/internal/rbac"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 	"strings"
@@ -992,27 +993,27 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	// API routes
 	apiGroup := r.Group("/api/v1/rest-apis")
 	{
-		apiGroup.POST("", h.CreateAPI)
+		apiGroup.POST("", middleware.RequirePermission(rbac.APICreate), h.CreateAPI)
 		apiGroup.GET("", h.ListAPIs)
 		apiGroup.GET("/:apiId", h.GetAPI)
-		apiGroup.PUT("/:apiId", h.UpdateAPI)
-		apiGroup.DELETE("/:apiId", h.DeleteAPI)
+		apiGroup.PUT("/:apiId", middleware.RequirePermission(rbac.APIUpdate), h.UpdateAPI)
+		apiGroup.DELETE("/:apiId", middleware.RequirePermission(rbac.APIDelete), h.DeleteAPI)
 		apiGroup.GET("/validate", h.ValidateAPI)
 		apiGroup.GET("/:apiId/gateways", h.GetAPIGateways)
-		apiGroup.POST("/:apiId/gateways", h.AddGatewaysToAPI)
-		apiGroup.POST("/:apiId/devportals/publish", h.PublishToDevPortal)
-		apiGroup.POST("/:apiId/devportals/unpublish", h.UnpublishFromDevPortal)
+		apiGroup.POST("/:apiId/gateways", middleware.RequirePermission(rbac.APIDeploy), h.AddGatewaysToAPI)
+		apiGroup.POST("/:apiId/devportals/publish", middleware.RequirePermission(rbac.APIPublish), h.PublishToDevPortal)
+		apiGroup.POST("/:apiId/devportals/unpublish", middleware.RequirePermission(rbac.APIPublish), h.UnpublishFromDevPortal)
 		apiGroup.GET("/:apiId/publications", h.GetAPIPublications)
 	}
 	importGroup := r.Group("/api/v1/import")
 	{
-		importGroup.POST("/api-project", h.ImportAPIProject)
-		importGroup.POST("/openapi", h.ImportOpenAPI)
+		importGroup.POST("/api-project", middleware.RequirePermission(rbac.APIImport), h.ImportAPIProject)
+		importGroup.POST("/openapi", middleware.RequirePermission(rbac.APIImport), h.ImportOpenAPI)
 	}
 	validateGroup := r.Group("/api/v1/validate")
 	{
-		validateGroup.POST("/api-project", h.ValidateAPIProject)
-		validateGroup.POST("/openapi", h.ValidateOpenAPI)
+		validateGroup.POST("/api-project", middleware.RequirePermission(rbac.APIImport), h.ValidateAPIProject)
+		validateGroup.POST("/openapi", middleware.RequirePermission(rbac.APIImport), h.ValidateOpenAPI)
 	}
 }
 

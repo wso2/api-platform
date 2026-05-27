@@ -27,6 +27,7 @@ import (
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
+	"platform-api/src/internal/rbac"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
@@ -52,12 +53,12 @@ func NewWebSubAPIDeploymentHandler(websubAPIDeploymentService *service.WebSubAPI
 func (h *WebSubAPIDeploymentHandler) RegisterRoutes(r *gin.Engine) {
 	g := r.Group("/api/v1/websub-apis/:apiId")
 	{
-		g.POST("/deployments", h.DeployWebSubAPI)
-		g.POST("/deployments/undeploy", h.UndeployDeployment)
-		g.POST("/deployments/restore", h.RestoreDeployment)
+		g.POST("/deployments", middleware.RequirePermission(rbac.WebSubAPIDeploy), h.DeployWebSubAPI)
+		g.POST("/deployments/undeploy", middleware.RequirePermission(rbac.WebSubAPIDeploy), h.UndeployDeployment)
+		g.POST("/deployments/restore", middleware.RequirePermission(rbac.WebSubAPIDeploy), h.RestoreDeployment)
 		g.GET("/deployments", h.GetDeployments)
 		g.GET("/deployments/:deploymentId", h.GetDeployment)
-		g.DELETE("/deployments/:deploymentId", h.DeleteDeployment)
+		g.DELETE("/deployments/:deploymentId", middleware.RequirePermission(rbac.WebSubAPIDeploy), h.DeleteDeployment)
 	}
 }
 

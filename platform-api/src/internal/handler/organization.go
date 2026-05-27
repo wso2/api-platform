@@ -201,10 +201,15 @@ func (h *OrganizationHandler) GetOrganizationSubscription(c *gin.Context) {
 	c.JSON(http.StatusOK, subscription)
 }
 
+// RegisterPublicRoutes registers routes that do not require authentication.
+// Must be called before auth middleware is applied to the engine.
+func (h *OrganizationHandler) RegisterPublicRoutes(r *gin.Engine) {
+	r.POST("/api/v1/organizations", h.RegisterOrganization)
+}
+
 func (h *OrganizationHandler) RegisterRoutes(r *gin.Engine) {
 	orgGroup := r.Group("/api/v1/organizations")
 	{
-		orgGroup.POST("", h.RegisterOrganization)
 		orgGroup.GET("", h.GetOrganization)
 		orgGroup.HEAD("/:organizationId", h.HeadOrganizationByUuid)
 		orgGroup.GET("/:organizationId/subscription", h.GetOrganizationSubscription)

@@ -27,6 +27,7 @@ import (
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/model"
+	"platform-api/src/internal/rbac"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
@@ -332,11 +333,11 @@ func requireSubscriptionSubscriberQuery(c *gin.Context) (string, bool) {
 func (h *SubscriptionHandler) RegisterRoutes(r *gin.Engine) {
 	subGroup := r.Group("/api/v1/subscriptions")
 	{
-		subGroup.POST("", h.CreateSubscription)
+		subGroup.POST("", middleware.RequirePermission(rbac.SubscriptionCreate), h.CreateSubscription)
 		subGroup.GET("", h.ListSubscriptions)
 		subGroup.GET("/:subscriptionId", h.GetSubscription)
-		subGroup.PUT("/:subscriptionId", h.UpdateSubscription)
-		subGroup.DELETE("/:subscriptionId", h.DeleteSubscription)
+		subGroup.PUT("/:subscriptionId", middleware.RequirePermission(rbac.SubscriptionUpdate), h.UpdateSubscription)
+		subGroup.DELETE("/:subscriptionId", middleware.RequirePermission(rbac.SubscriptionDelete), h.DeleteSubscription)
 	}
 }
 

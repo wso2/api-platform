@@ -193,6 +193,182 @@ The connected gateway will receive a deployment event via WebSocket:
 < {"type":"api.deployed","payload":{"apiId":"54588845-c860-4a56-8802-c06b03028543","revisionId":"90d10e1c-8560-5c36-9d5a-124ecaa17485","vhost":"mg.wso2.com","environment":"production"},"timestamp":"2025-10-21T16:15:18+05:30","correlationId":"ae7488ec-9559-4a81-bddd-b85e1391d2c0"}
 ```
 
+## Configuration
+
+All configuration is supplied via environment variables. The sections below cover authentication, RBAC, and other key settings.
+
+### Authentication Modes
+
+Authentication mode is controlled by `IDP_ENABLED` and `IDP_TYPE`:
+
+```
+IDP_ENABLED=false (default)  →  Simple JWT (parse token, check org claim)
+IDP_ENABLED=true
+  IDP_TYPE=thunder            →  Thunder JWKS validation
+  IDP_TYPE=external           →  External IDP JWKS validation (Asgardeo, Keycloak, …)
+```
+
+#### Simple JWT — default
+
+`IDP_ENABLED` is `false` by default. The token is parsed and the organization claim is checked, but no JWKS endpoint is contacted. Signature verification is controlled by `JWT_SKIP_VALIDATION`.
+
+| Variable | Default | Description |
+|---|---|---|
+| `IDP_ENABLED` | `false` | Keep `false` (or omit) to use this mode |
+| `JWT_SKIP_VALIDATION` | `true` | Skip signature verification. Set to `false` to verify HMAC signatures using `JWT_SECRET_KEY` |
+| `JWT_SECRET_KEY` | `your-secret-key-change-in-production` | HMAC key used when `JWT_SKIP_VALIDATION=false` |
+| `THUNDER_ORGANIZATION_CLAIM_NAME` | `organization` | JWT claim that must be present and non-empty |
+
+No changes needed for local development — the defaults work out of the box:
+```bash
+go run ./cmd/main.go
+```
+
+---
+
+#### IDP_TYPE=thunder
+
+Tokens are validated against Thunder's JWKS endpoint. Requires `IDP_ENABLED=true` and `IDP_TYPE=thunder`.
+
+| Variable | Default | Description |
+|---|---|---|
+| `IDP_ENABLED` | `false` | Set to `true` |
+| `IDP_TYPE` | _(empty)_ | Set to `thunder` |
+| `THUNDER_JWKS_URL` | _(required)_ | Thunder's JWKS endpoint (e.g. `https://thunder.example.com/oauth2/jwks`) |
+| `THUNDER_ISSUER` | `thunder` | Expected `iss` claim value in incoming JWTs |
+| `THUNDER_BASE_URL` | `http://localhost:8090` | Root URL of the Thunder service |
+| `THUNDER_CLIENT_ID` | _(empty)_ | OAuth2 client ID for system-level token requests (client_credentials grant) |
+| `THUNDER_CLIENT_SECRET` | _(empty)_ | OAuth2 client secret paired with `THUNDER_CLIENT_ID` |
+| `THUNDER_ORGANIZATION_CLAIM_NAME` | `organization` | JWT claim that holds the organization/tenant ID |
+
+```bash
+export IDP_ENABLED=true
+export IDP_TYPE=thunder
+export THUNDER_JWKS_URL=https://thunder.example.com/oauth2/jwks
+export THUNDER_ISSUER=https://thunder.example.com/oauth2/token
+export THUNDER_CLIENT_ID=platform-api-client
+export THUNDER_CLIENT_SECRET=<secret>
+```
+
+---
+
+#### IDP_TYPE=external
+
+Tokens are validated against a third-party IDP's JWKS endpoint. Requires `IDP_ENABLED=true` and `IDP_TYPE=external`.
+
+| Variable | Default | Description |
+|---|---|---|
+| `IDP_ENABLED` | `false` | Set to `true` |
+| `IDP_TYPE` | _(empty)_ | Set to `external` |
+| `EXTERNAL_IDP_JWKS_URL` | _(required)_ | IDP's JWKS endpoint for public key retrieval |
+| `EXTERNAL_IDP_ISSUER` | _(required)_ | Comma-separated list of accepted JWT issuers |
+| `EXTERNAL_IDP_AUDIENCE` | _(empty)_ | Comma-separated accepted audiences. Entries ending with `*` are treated as prefixes |
+| `EXTERNAL_IDP_ORGANIZATION_CLAIM_NAME` | `organization` | JWT claim holding the org/tenant ID |
+| `EXTERNAL_IDP_USER_ID_CLAIM_NAME` | `sub` | JWT claim used as the user identifier |
+| `EXTERNAL_IDP_USERNAME_CLAIM_NAME` | `username` | JWT claim for the username |
+| `EXTERNAL_IDP_EMAIL_CLAIM_NAME` | `email` | JWT claim for the user's email |
+| `EXTERNAL_IDP_SCOPE_CLAIM_NAME` | `scope` | JWT claim for granted scopes |
+| `EXTERNAL_IDP_ROLES_CLAIM_PATH` | `roles` | Dot-notation path to the roles claim (e.g. `realm_access.roles` for Keycloak) |
+| `EXTERNAL_IDP_ROLE_MAPPINGS` | _(empty)_ | Comma-separated `idp-value=platform-role` pairs (see RBAC section below) |
+
+**Example — Asgardeo:**
+```bash
+export IDP_ENABLED=true
+export IDP_TYPE=external
+export EXTERNAL_IDP_JWKS_URL=https://api.asgardeo.io/t/<org>/oauth2/jwks
+export EXTERNAL_IDP_ISSUER=https://api.asgardeo.io/t/<org>/oauth2/token
+export EXTERNAL_IDP_AUDIENCE=<client-id>
+export EXTERNAL_IDP_ORGANIZATION_CLAIM_NAME=organizationId
+export EXTERNAL_IDP_ROLES_CLAIM_PATH=roles
+export EXTERNAL_IDP_ROLE_MAPPINGS=platform-admin=admin,platform-dev=developer,platform-viewer=viewer
+```
+
+**Example — Keycloak:**
+```bash
+export IDP_ENABLED=true
+export IDP_TYPE=external
+export EXTERNAL_IDP_JWKS_URL=https://keycloak.example.com/realms/<realm>/protocol/openid-connect/certs
+export EXTERNAL_IDP_ISSUER=https://keycloak.example.com/realms/<realm>
+export EXTERNAL_IDP_ROLES_CLAIM_PATH=realm_access.roles
+export EXTERNAL_IDP_ROLE_MAPPINGS=platform-admin=admin,platform-developer=developer
+```
+
+---
+
+### Role-Based Access Control (RBAC)
+
+RBAC enforces per-route permission checks on all authenticated requests. Three built-in roles exist:
+
+| Role | Access level |
+|---|---|
+| `admin` | Full access to all resources and operations |
+| `developer` | CRUD and deploy on APIs, projects, applications, and AI/integration resources; no gateway admin or subscription plan management |
+| `viewer` | Read-only access to all resources |
+
+#### Enabling and disabling RBAC
+
+| Variable | Default | Description |
+|---|---|---|
+| `RBAC_ENABLED` | `true` | Set to `false` to disable all permission checks (all authenticated requests are allowed) |
+
+**Disable RBAC** (e.g. for initial deployment or local development without roles configured):
+```bash
+export RBAC_ENABLED=false
+```
+
+**Enable RBAC** (default — no action needed):
+```bash
+export RBAC_ENABLED=true
+```
+
+> **Note:** In simple JWT mode and Thunder IDP mode, role resolution uses the `scope` claim from the JWT directly. In external IDP mode, roles are resolved from `EXTERNAL_IDP_ROLES_CLAIM_PATH` and mapped to platform roles via `EXTERNAL_IDP_ROLE_MAPPINGS`.
+
+---
+
+### JWT Skip Paths
+
+Paths listed here bypass JWT authentication entirely (used for internal/gateway traffic):
+
+| Variable | Default |
+|---|---|
+| `JWT_SKIP_PATHS` | `/health,/metrics,/api/internal/v1/ws/gateways/connect,...` |
+
+To add extra paths:
+```bash
+export JWT_SKIP_PATHS="/health,/metrics,/api/internal/v1/ws/gateways/connect,/my-custom-path"
+```
+
+---
+
+### Database
+
+| Variable | Default | Description |
+|---|---|---|
+| `DATABASE_DRIVER` | `sqlite3` | `sqlite3` or `postgres` |
+| `DATABASE_DB_PATH` | `./data/api_platform.db` | SQLite file path (ignored for Postgres) |
+| `DATABASE_HOST` | `localhost` | Postgres host |
+| `DATABASE_PORT` | `5432` | Postgres port |
+| `DATABASE_NAME` | `platform_api` | Postgres database name |
+| `DATABASE_USER` | _(empty)_ | Postgres username |
+| `DATABASE_PASSWORD` | _(empty)_ | Postgres password |
+| `DATABASE_SSL_MODE` | `disable` | Postgres SSL mode (`disable`, `require`, `verify-full`) |
+| `DATABASE_EXECUTE_SCHEMA_DDL` | `true` | Set to `false` when the DB user lacks DDL privileges |
+| `DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY` | _(empty)_ | 32-byte key (64 hex or 44 base64 chars) for AES-256-GCM token encryption. Falls back to `JWT_SECRET_KEY` when empty |
+
+---
+
+### Other Settings
+
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `9243` | HTTP/HTTPS server port |
+| `LOG_LEVEL` | `DEBUG` | Log verbosity (`DEBUG`, `INFO`, `WARN`, `ERROR`) |
+| `TLS_CERT_DIR` | `./data/certs` | Directory for TLS certificates |
+| `DEPLOYMENTS_MAX_PER_API_GATEWAY` | `20` | Maximum deployments per API per gateway |
+| `DEPLOYMENTS_TRANSITIONAL_STATUS_ENABLED` | `false` | Show `DEPLOYING`/`UNDEPLOYING` status before gateway ack |
+| `GATEWAY_ENABLE_VERSION_VERIFICATION` | `false` | Reject gateway connections with mismatched versions |
+| `API_KEY_HASHING_ALGORITHMS` | `sha256` | Comma-separated hash algorithms for API key storage |
+
 ## Documentation
 
 See [spec/](spec/) for product, architecture, design, and implementation documentation.

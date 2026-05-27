@@ -29,6 +29,7 @@ import (
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
+	"platform-api/src/internal/rbac"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
@@ -53,13 +54,13 @@ func NewWebSubAPIHandler(websubAPIService *service.WebSubAPIService, slogger *sl
 func (h *WebSubAPIHandler) RegisterRoutes(r *gin.Engine) {
 	v1 := r.Group("/api/v1")
 	{
-		v1.POST("/websub-apis", h.CreateWebSubAPI)
+		v1.POST("/websub-apis", middleware.RequirePermission(rbac.WebSubAPICreate), h.CreateWebSubAPI)
 		v1.GET("/websub-apis", h.ListWebSubAPIs)
 		v1.GET("/websub-apis/:apiId", h.GetWebSubAPI)
-		v1.PUT("/websub-apis/:apiId", h.UpdateWebSubAPI)
-		v1.DELETE("/websub-apis/:apiId", h.DeleteWebSubAPI)
-		v1.POST("/websub-apis/:apiId/devportals/publish", h.PublishToDevPortal)
-		v1.POST("/websub-apis/:apiId/devportals/unpublish", h.UnpublishFromDevPortal)
+		v1.PUT("/websub-apis/:apiId", middleware.RequirePermission(rbac.WebSubAPIUpdate), h.UpdateWebSubAPI)
+		v1.DELETE("/websub-apis/:apiId", middleware.RequirePermission(rbac.WebSubAPIDelete), h.DeleteWebSubAPI)
+		v1.POST("/websub-apis/:apiId/devportals/publish", middleware.RequirePermission(rbac.WebSubAPIPublish), h.PublishToDevPortal)
+		v1.POST("/websub-apis/:apiId/devportals/unpublish", middleware.RequirePermission(rbac.WebSubAPIPublish), h.UnpublishFromDevPortal)
 	}
 }
 

@@ -24,6 +24,7 @@ import (
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
+	"platform-api/src/internal/rbac"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
@@ -250,9 +251,9 @@ func (h *ProjectHandler) RegisterRoutes(r *gin.Engine) {
 	projectGroup := r.Group("/api/v1/projects")
 	{
 		projectGroup.GET("", h.ListProjects)
-		projectGroup.POST("", h.CreateProject)
+		projectGroup.POST("", middleware.RequirePermission(rbac.ProjectCreate), h.CreateProject)
 		projectGroup.GET("/:projectId", h.GetProject)
-		projectGroup.PUT("/:projectId", h.UpdateProject)
-		projectGroup.DELETE("/:projectId", h.DeleteProject)
+		projectGroup.PUT("/:projectId", middleware.RequirePermission(rbac.ProjectUpdate), h.UpdateProject)
+		projectGroup.DELETE("/:projectId", middleware.RequirePermission(rbac.ProjectDelete), h.DeleteProject)
 	}
 }

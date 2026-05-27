@@ -25,6 +25,7 @@ import (
 
 	"platform-api/src/api"
 	"platform-api/src/internal/middleware"
+	"platform-api/src/internal/rbac"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
@@ -379,16 +380,16 @@ func (h *DevPortalHandler) RegisterRoutes(r *gin.Engine) {
 	v1 := r.Group("/api/v1")
 	{
 		// DevPortal CRUD operations
-		v1.POST("/devportals", h.CreateDevPortal)
+		v1.POST("/devportals", middleware.RequirePermission(rbac.DevPortalCreate), h.CreateDevPortal)
 		v1.GET("/devportals", h.ListDevPortals)
 		v1.GET("/devportals/default", h.GetDefaultDevPortal)
 		v1.GET("/devportals/:devportalId", h.GetDevPortal)
-		v1.PUT("/devportals/:devportalId", h.UpdateDevPortal)
-		v1.DELETE("/devportals/:devportalId", h.DeleteDevPortal)
+		v1.PUT("/devportals/:devportalId", middleware.RequirePermission(rbac.DevPortalUpdate), h.UpdateDevPortal)
+		v1.DELETE("/devportals/:devportalId", middleware.RequirePermission(rbac.DevPortalDelete), h.DeleteDevPortal)
 
 		// DevPortal actions
-		v1.POST("/devportals/:devportalId/activate", h.ActivateDevPortal)
-		v1.POST("/devportals/:devportalId/deactivate", h.DeactivateDevPortal)
-		v1.POST("/devportals/:devportalId/set-default", h.SetAsDefault)
+		v1.POST("/devportals/:devportalId/activate", middleware.RequirePermission(rbac.DevPortalManage), h.ActivateDevPortal)
+		v1.POST("/devportals/:devportalId/deactivate", middleware.RequirePermission(rbac.DevPortalManage), h.DeactivateDevPortal)
+		v1.POST("/devportals/:devportalId/set-default", middleware.RequirePermission(rbac.DevPortalManage), h.SetAsDefault)
 	}
 }

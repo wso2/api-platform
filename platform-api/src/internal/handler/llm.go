@@ -27,6 +27,7 @@ import (
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
+	"platform-api/src/internal/rbac"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
@@ -53,26 +54,26 @@ func (h *LLMHandler) RegisterRoutes(r *gin.Engine) {
 	v1 := r.Group("/api/v1")
 	{
 		// LLM Provider Templates
-		v1.POST("/llm-provider-templates", h.CreateLLMProviderTemplate)
+		v1.POST("/llm-provider-templates", middleware.RequirePermission(rbac.LLMTemplateCreate), h.CreateLLMProviderTemplate)
 		v1.GET("/llm-provider-templates", h.ListLLMProviderTemplates)
 		v1.GET("/llm-provider-templates/:id", h.GetLLMProviderTemplate)
-		v1.PUT("/llm-provider-templates/:id", h.UpdateLLMProviderTemplate)
-		v1.DELETE("/llm-provider-templates/:id", h.DeleteLLMProviderTemplate)
+		v1.PUT("/llm-provider-templates/:id", middleware.RequirePermission(rbac.LLMTemplateUpdate), h.UpdateLLMProviderTemplate)
+		v1.DELETE("/llm-provider-templates/:id", middleware.RequirePermission(rbac.LLMTemplateDelete), h.DeleteLLMProviderTemplate)
 
 		// LLM Providers
-		v1.POST("/llm-providers", h.CreateLLMProvider)
+		v1.POST("/llm-providers", middleware.RequirePermission(rbac.LLMProviderCreate), h.CreateLLMProvider)
 		v1.GET("/llm-providers", h.ListLLMProviders)
 		v1.GET("/llm-providers/:id", h.GetLLMProvider)
 		v1.GET("/llm-providers/:id/llm-proxies", h.ListLLMProxiesByProvider)
-		v1.PUT("/llm-providers/:id", h.UpdateLLMProvider)
-		v1.DELETE("/llm-providers/:id", h.DeleteLLMProvider)
+		v1.PUT("/llm-providers/:id", middleware.RequirePermission(rbac.LLMProviderUpdate), h.UpdateLLMProvider)
+		v1.DELETE("/llm-providers/:id", middleware.RequirePermission(rbac.LLMProviderDelete), h.DeleteLLMProvider)
 
 		// LLM Proxies
-		v1.POST("/llm-proxies", h.CreateLLMProxy)
+		v1.POST("/llm-proxies", middleware.RequirePermission(rbac.LLMProxyCreate), h.CreateLLMProxy)
 		v1.GET("/llm-proxies", h.ListLLMProxies)
 		v1.GET("/llm-proxies/:id", h.GetLLMProxy)
-		v1.PUT("/llm-proxies/:id", h.UpdateLLMProxy)
-		v1.DELETE("/llm-proxies/:id", h.DeleteLLMProxy)
+		v1.PUT("/llm-proxies/:id", middleware.RequirePermission(rbac.LLMProxyUpdate), h.UpdateLLMProxy)
+		v1.DELETE("/llm-proxies/:id", middleware.RequirePermission(rbac.LLMProxyDelete), h.DeleteLLMProxy)
 	}
 }
 

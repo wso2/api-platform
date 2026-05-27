@@ -25,6 +25,7 @@ import (
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
+	"platform-api/src/internal/rbac"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
@@ -421,11 +422,11 @@ func (h *DeploymentHandler) RegisterRoutes(r *gin.Engine) {
 	h.slogger.Debug("Registering deployment routes")
 	apiGroup := r.Group("/api/v1/rest-apis/:apiId")
 	{
-		apiGroup.POST("/deployments", h.DeployAPI)
-		apiGroup.POST("/deployments/undeploy", h.UndeployDeployment)
-		apiGroup.POST("/deployments/restore", h.RestoreDeployment)
+		apiGroup.POST("/deployments", middleware.RequirePermission(rbac.APIDeploy), h.DeployAPI)
+		apiGroup.POST("/deployments/undeploy", middleware.RequirePermission(rbac.APIDeploy), h.UndeployDeployment)
+		apiGroup.POST("/deployments/restore", middleware.RequirePermission(rbac.APIDeploy), h.RestoreDeployment)
 		apiGroup.GET("/deployments", h.GetDeployments)
 		apiGroup.GET("/deployments/:deploymentId", h.GetDeployment)
-		apiGroup.DELETE("/deployments/:deploymentId", h.DeleteDeployment)
+		apiGroup.DELETE("/deployments/:deploymentId", middleware.RequirePermission(rbac.APIDeploy), h.DeleteDeployment)
 	}
 }

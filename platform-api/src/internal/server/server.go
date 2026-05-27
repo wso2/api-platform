@@ -48,6 +48,8 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/wso2/api-platform/common/authenticators"
+	commonmodels "github.com/wso2/api-platform/common/models"
 )
 
 type Server struct {
@@ -311,14 +313,98 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	corsConfig.AllowCredentials = true
 	router.Use(cors.New(corsConfig))
 
-	// Configure and apply JWT authentication middleware
-	authConfig := middleware.AuthConfig{
-		SecretKey:      cfg.JWT.SecretKey,
-		TokenIssuer:    cfg.JWT.Issuer,
-		SkipPaths:      cfg.JWT.SkipPaths,
-		SkipValidation: cfg.JWT.SkipValidation,
+	// Initialize the authorization resolver.
+	middleware.SetRBACEnabled(cfg.RBAC.Enabled)
+	if !cfg.RBAC.Enabled {
+		slogger.Warn("RBAC is disabled — all authenticated requests will be allowed regardless of scope")
+	} else if cfg.IDP.Enabled && cfg.IDP.Type == "external" {
+		middleware.InitClaimsAuthz()
+		slogger.Info("Authorization mode: claims-based (external IDP)")
+	} else {
+		middleware.InitScopeAuthz()
+		slogger.Info("Authorization mode: scope-based")
 	}
-	router.Use(middleware.AuthMiddleware(authConfig))
+
+	// Register public routes before auth middleware so they bypass authentication.
+	orgHandler.RegisterPublicRoutes(router)
+
+	// Configure and apply JWT authentication middleware.
+	// IDP_ENABLED=false (default): simple JWT parsing — checks org claim, optional HMAC signature verify.
+	// IDP_ENABLED=true, IDP_TYPE=thunder:   JWKS validation against Thunder.
+	// IDP_ENABLED=true, IDP_TYPE=external:  JWKS validation against the external IDP.
+	if !cfg.IDP.Enabled {
+		// Simple JWT mode: parse the token and require the org claim.
+		// Signature verification is skipped when JWT_SKIP_VALIDATION=true (default).
+		router.Use(middleware.ThunderAuthMiddleware(middleware.AuthConfig{
+			SecretKey:             cfg.JWT.SecretKey,
+			TokenIssuer:           cfg.Thunder.Issuer,
+			SkipPaths:             cfg.JWT.SkipPaths,
+			SkipValidation:        cfg.JWT.SkipValidation,
+			OrganizationClaimName: cfg.Thunder.OrganizationClaimName,
+		}))
+		if cfg.JWT.SkipValidation {
+			slogger.Warn("Simple JWT mode: signature validation disabled (JWT_SKIP_VALIDATION=true)")
+		} else {
+			slogger.Info("Simple JWT mode: HMAC signature validation enabled")
+		}
+	} else if cfg.IDP.Type == "thunder" {
+		thunderIDPCfg := commonmodels.IDPConfig{
+			Enabled:    true,
+			IssuerURL:  cfg.Thunder.Issuer,
+			JWKSUrl:    cfg.Thunder.JWKSUrl,
+			ScopeClaim: "scope",
+		}
+		thunderAuthCfg := commonmodels.AuthConfig{
+			JWTConfig: &thunderIDPCfg,
+			SkipPaths: cfg.JWT.SkipPaths,
+		}
+		authMiddleware, err := authenticators.AuthMiddleware(thunderAuthCfg, slogger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize Thunder IDP auth middleware: %w", err)
+		}
+		router.Use(authMiddleware)
+		router.Use(middleware.PlatformClaimsMiddleware(middleware.PlatformClaimNames{
+			OrganizationClaim: cfg.Thunder.OrganizationClaimName,
+			UsernameClaim:     "username",
+			EmailClaim:        "email",
+			ScopeClaim:        "scope",
+		}))
+		slogger.Info("Thunder IDP authentication enabled", slog.String("jwksUrl", cfg.Thunder.JWKSUrl))
+	} else {
+		// IDP_TYPE=external
+		issuerURL := ""
+		if len(cfg.ExternalIDP.Issuer) > 0 {
+			issuerURL = cfg.ExternalIDP.Issuer[0]
+		}
+		idpCfg := commonmodels.IDPConfig{
+			Enabled:    true,
+			IssuerURL:  issuerURL,
+			JWKSUrl:    cfg.ExternalIDP.JWKSUrl,
+			ScopeClaim: cfg.ExternalIDP.ScopeClaimName,
+		}
+		authCfg := commonmodels.AuthConfig{
+			JWTConfig: &idpCfg,
+			SkipPaths: cfg.JWT.SkipPaths,
+		}
+		authMiddleware, err := authenticators.AuthMiddleware(authCfg, slogger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize external IDP auth middleware: %w", err)
+		}
+		router.Use(authMiddleware)
+		router.Use(middleware.PlatformClaimsMiddleware(middleware.PlatformClaimNames{
+			OrganizationClaim: cfg.ExternalIDP.OrganizationClaimName,
+			UserIDClaim:       cfg.ExternalIDP.UserIDClaimName,
+			UsernameClaim:     cfg.ExternalIDP.UsernameClaimName,
+			EmailClaim:        cfg.ExternalIDP.EmailClaimName,
+			ScopeClaim:        cfg.ExternalIDP.ScopeClaimName,
+			RolesClaimPath:    cfg.ExternalIDP.RolesClaimPath,
+			RoleMappings:      cfg.ExternalIDP.RoleMappings,
+		}))
+		slogger.Info("External IDP authentication enabled",
+			slog.String("jwksUrl", cfg.ExternalIDP.JWKSUrl),
+			slog.Any("issuers", cfg.ExternalIDP.Issuer),
+		)
+	}
 
 	// Register routes
 	orgHandler.RegisterRoutes(router)

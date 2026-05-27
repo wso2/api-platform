@@ -25,6 +25,7 @@ import (
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
+	"platform-api/src/internal/rbac"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
@@ -194,8 +195,8 @@ func (h *LLMProviderAPIKeyHandler) CreateAPIKey(c *gin.Context) {
 func (h *LLMProviderAPIKeyHandler) RegisterRoutes(r *gin.Engine) {
 	apiKeyGroup := r.Group("/api/v1/llm-providers/:id/api-keys")
 	{
-		apiKeyGroup.POST("", h.CreateAPIKey)
-		apiKeyGroup.GET("", h.ListAPIKeys)
-		apiKeyGroup.DELETE("/:keyName", h.DeleteAPIKey)
+		apiKeyGroup.POST("", middleware.RequirePermission(rbac.LLMProviderKeyManage), h.CreateAPIKey)
+		apiKeyGroup.GET("", middleware.RequirePermission(rbac.LLMProviderKeyManage), h.ListAPIKeys)
+		apiKeyGroup.DELETE("/:keyName", middleware.RequirePermission(rbac.LLMProviderKeyManage), h.DeleteAPIKey)
 	}
 }
