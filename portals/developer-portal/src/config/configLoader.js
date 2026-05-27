@@ -28,19 +28,15 @@ try {
 } catch (_) {}
 
 /**
- * Load the base config from config.yaml (preferred) or config.json (fallback).
- * Returns an empty object if neither file exists, so env vars alone can drive the app.
+ * Load the base config from config.yaml.
+ * Returns an empty object if the file does not exist, so env vars alone can drive the app.
  */
 function loadBaseConfig() {
     const yamlPath = path.join(process.cwd(), 'config.yaml');
-    const jsonPath = path.join(process.cwd(), 'config.json');
 
     if (fs.existsSync(yamlPath)) {
         const raw = fs.readFileSync(yamlPath, 'utf8');
         return yaml.load(raw) || {};
-    }
-    if (fs.existsSync(jsonPath)) {
-        return JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
     }
     return {};
 }
@@ -139,22 +135,6 @@ if (Array.isArray(webhookSubscribers)) {
         } catch (err) {
             throw new Error(`[configLoader] Failed to read webhook public key for subscriber '${sub.id}' from '${sub.publicKeyPath}': ${err.message}`);
         }
-    }
-}
-
-// Convenience: merge old secret.json (if present and no config.yaml) for backward compat
-if (!fs.existsSync(path.join(process.cwd(), 'config.yaml'))) {
-    const secretPath = path.join(process.cwd(), 'secret.json');
-    if (fs.existsSync(secretPath) && !config.secrets) {
-        try {
-            const rawSecret = JSON.parse(fs.readFileSync(secretPath, 'utf8'));
-            config.secrets = {
-                dbSecret: rawSecret.dbSecret || '',
-                apiKeySecret: rawSecret.apiKeySecret || '',
-                billingKeyEncryptionKey: rawSecret.billingKeyEncryptionKey || '',
-                azureInsightsConnectionString: rawSecret.azureInsightsConnectionString || '',
-            };
-        } catch (_) {}
     }
 }
 
