@@ -102,6 +102,19 @@ const ApplicationKeyMapping = sequelize.define('DP_APP_KEY_MAPPING', {
         type: DataTypes.ENUM,
         values: [constants.TOKEN_TYPES.API_KEY, constants.TOKEN_TYPES.OAUTH, constants.TOKEN_TYPES.BASIC],
         allowNull: false
+    },
+    KM_ID: {
+        type: DataTypes.UUID,
+        allowNull: true
+    },
+    AS_CLIENT_ID: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    KEY_TYPE: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        defaultValue: 'PRODUCTION'
     }
 }, {
     timestamps: false,

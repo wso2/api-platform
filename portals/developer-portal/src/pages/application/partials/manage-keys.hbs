@@ -107,7 +107,7 @@
                                                     class="common-btn-outlined btn-sm flex-grow-1 {{#if @root.isReadOnlyMode}}disabled{{/if}}"
                                                     data-app-id="{{@root.applicationMetadata.id}}"
                                                     style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
-                                                    onclick="generateOauthKey('applicationKeyGenerateForm-{{../id}}-PRODUCTION', '{{keys.appRefID}}', '{{keys.keyMappingId}}', '{{../name}}', '{{../../applicationMetadata/name}}', '{{keys.consumerSecret}}', '{{json @root.subscriptionScopes}}', 'PRODUCTION')">
+                                                    onclick="openGenerateTokenModal('applicationKeyGenerateForm-{{../id}}-PRODUCTION', '{{keys.appRefID}}', '{{keys.keyMappingId}}', '{{../name}}', '{{../../applicationMetadata/name}}', '{{json @root.subscriptionScopes}}', 'PRODUCTION')">
                                                     <span class="button-normal-state">
                                                         <i class="bi bi-key-fill"></i> Generate
                                                     </span>
@@ -163,40 +163,34 @@
                                 {{#if enabled}}
                                 {{#let "keys" productionKeys}}
                                 <div class="accordion-body-content">
-                                    <div id="generateKeyContainer-PRODUCTION"
-                                        class="d-flex align-items-center edit-container mb-2 {{#if keys.consumerKey}}d-none{{/if}}"
+                                    <div id="generateKeyContainer-PRODUCTION" class="{{#unless keys.consumerKey}}d-flex{{/unless}}"
                                         style="{{#if keys.consumerKey}}display: none;{{/if}}">
-                                        <div class="d-flex align-items-center">
-                                            <button
-                                                class="btn btn-sm common-btn-link p-0 {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                                                id="addClientID-PRODUCTION" title="Add Client ID">
-                                                <i class="bi bi-plus"></i> Add Client ID
-                                            </button>
-                                            <input type="text" class="form-control form-control-sm"
-                                                id="clientIDInput-PRODUCTION" data-key-manager="{{name}}"
-                                                data-app-ref-id="{{@root.applicationMetadata.id}}"
-                                                placeholder="Enter Client ID"
-                                                style="display: none; width: 250px; margin-right: 8px; padding: 8px;">
-                                        </div>
-                                        <div class="edit-actions ms-0" id="clientIDEditActions-PRODUCTION"
-                                            style="display: none; gap: 8px;">
-                                            <button class="btn btn-sm common-btn-primary save-btn"
-                                                id="generateKeyBtn-PRODUCTION"
+                                        <div class="d-flex align-items-left flex-column">
+                                            <div class="info-box mt-0">
+                                                <div class="info-content">
+                                                    <div class="info-title">
+                                                        Application keys have not been generated yet. Click the button
+                                                        below to create
+                                                        credentials
+                                                        that will be shared across all APIs. </div>
+                                                </div>
+                                            </div>
+                                            <button data-cyid="generateKey-PRODUCTION" id="generateKeyBtn-PRODUCTION"
+                                                class="common-btn-primary btn-sm {{#if @root.isReadOnlyMode}}disabled{{/if}} col-md-3"
+                                                style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
                                                 data-subscriptions="{{ json ../../subAPIs }}"
-                                                onclick="generateApplicationKey('keysview-{{../id}}-PRODUCTION', '{{../../applicationMetadata.id}}', 'PRODUCTION', '{{../name}}', '{{../../applicationMetadata/name}}', this.getAttribute('data-subscriptions'), '{{../../orgID}}', 'consumer-key-{{../id}}-PRODUCTION', 'consumer-secret-{{../id}}-PRODUCTION')"
-                                                title="Save">
-                                                <span class="button-normal-state"><i class="bi bi-check"></i></span>
+                                                onclick="generateApplicationKey('keysview-{{../id}}-PRODUCTION', '{{../../applicationMetadata.id}}', 'PRODUCTION', '{{../name}}', '{{../../applicationMetadata/name}}', this.getAttribute('data-subscriptions'), '{{../../orgID}}', 'consumer-key-{{../id}}-PRODUCTION', 'consumer-secret-{{../id}}-PRODUCTION')">
+                                                <span class="button-normal-state">
+                                                    <i class="bi bi-key me-1"></i> Generate Key
+                                                </span>
                                                 <span class="button-loading-state" style="display: none;">
-                                                    <span class="spinner-border spinner-border-sm" role="status"></span>
+                                                    <span class="spinner-border spinner-border-sm me-1"
+                                                        role="status"></span>
+                                                    Generating...
                                                 </span>
                                             </button>
-                                            <button class="btn btn-sm common-btn-outlined cancel-btn"
-                                                id="cancelClientIDBtn-PRODUCTION" title="Cancel"><i
-                                                    class="bi bi-x"></i></button>
                                         </div>
                                     </div>
-                                    <button id="clientIDSaveError-PRODUCTION" class="edit-error-message"
-                                        style="display: none;"></button>
                                     <div class="mb-4" id="consumerKeyContainer-PRODUCTION"
                                         style="{{#unless keys.consumerKey}}display: none;{{/unless}}">
                                         <div id="consumerKey-PRODUCTION-view" class="col-md-6"
@@ -245,6 +239,25 @@
                                                 <button id="viewKeyBtn-PRODUCTION" class="common-btn-outlined btn-sm"
                                                     onclick="loadKeysViewModal('PRODUCTION')">
                                                     <i class="bi bi-eye"></i> View
+                                                </button>
+                                                <button id="modifyKeyBtn-PRODUCTION"
+                                                    class="common-btn-outlined btn-sm {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+                                                    style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
+                                                    onclick="loadKeysModifyModal('PRODUCTION')">
+                                                    <i class="bi bi-pencil-square"></i> Modify
+                                                </button>
+                                                <button id="tokenKeyBtn-PRODUCTION"
+                                                    class="common-btn-outlined btn-sm {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+                                                    data-app-id="{{@root.applicationMetadata.id}}"
+                                                    style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
+                                                    onclick="openGenerateTokenModal('applicationKeyGenerateForm-{{../id}}-PRODUCTION', '{{keys.appRefID}}', '{{keys.keyMappingId}}', '{{../name}}', '{{../../applicationMetadata/name}}', '{{json @root.subscriptionScopes}}', 'PRODUCTION')">
+                                                    <span class="button-normal-state">
+                                                        <i class="bi bi-key-fill"></i> Generate
+                                                    </span>
+                                                    <span class="button-loading-state" style="display: none;">
+                                                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                                        Generating...
+                                                    </span>
                                                 </button>
                                                 <button id="tokenInstructionsBtn-PRODUCTION"
                                                     class="common-btn-outlined btn-sm"
@@ -675,7 +688,7 @@
                                                         class="common-btn-outlined btn-sm flex-grow-1 {{#if @root.isReadOnlyMode}}disabled{{/if}}"
                                                         data-app-id="{{@root.applicationMetadata.id}}"
                                                         style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
-                                                        onclick="generateOauthKey('applicationKeyGenerateForm-{{../id}}-SANDBOX', '{{keys.appRefID}}', '{{keys.keyMappingId}}', '{{../name}}', '{{../../applicationMetadata/name}}', '{{keys.consumerSecret}}', '{{json @root.subscriptionScopes}}', 'SANDBOX')">
+                                                        onclick="openGenerateTokenModal('applicationKeyGenerateForm-{{../id}}-SANDBOX', '{{keys.appRefID}}', '{{keys.keyMappingId}}', '{{../name}}', '{{../../applicationMetadata/name}}', '{{json @root.subscriptionScopes}}', 'SANDBOX')">
                                                         <span class="button-normal-state">
                                                             <i class="bi bi-key-fill"></i> Generate
                                                         </span>
@@ -731,41 +744,35 @@
                                     {{#if enabled}}
                                     {{#let "keys" sandboxKeys}}
                                     <div class="accordion-body-content">
-                                        <div id="generateKeyContainer-SANDBOX"
-                                            class="d-flex align-items-center edit-container mb-2 {{#if keys.consumerKey}}d-none{{/if}}"
+                                        <div id="generateKeyContainer-SANDBOX" class="{{#unless keys.consumerKey}}d-flex{{/unless}}"
                                             style="{{#if keys.consumerKey}}display: none;{{/if}}">
-                                            <div class="d-flex align-items-center">
-                                                <button
-                                                    class="btn btn-sm common-btn-link p-0 {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                                                    id="addClientID-SANDBOX" title="Add Client ID">
-                                                    <i class="bi bi-plus"></i> Add Client ID
-                                                </button>
-                                                <input type="text" class="form-control form-control-sm"
-                                                    id="clientIDInput-SANDBOX" data-key-manager="{{name}}"
-                                                    data-app-ref-id="{{@root.applicationMetadata.id}}"
-                                                    placeholder="Enter Client ID"
-                                                    style="display: none; width: 250px; margin-right: 8px; padding: 8px;">
-                                            </div>
-                                            <div class="edit-actions ms-0" id="clientIDEditActions-SANDBOX"
-                                                style="display: none; gap: 8px;">
-                                                <button class="btn btn-sm common-btn-primary save-btn"
-                                                    id="generateKeyBtn-SANDBOX"
+                                            <div class="d-flex align-items-left flex-column">
+                                                <div class="info-box mt-0">
+                                                    <div class="info-content">
+                                                        <div class="info-title">
+                                                            Application keys have not been generated yet. Click the
+                                                            button
+                                                            below to create credentials that will be shared across all
+                                                            APIs.
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <button data-cyid="generateKey-SANDBOX" id="generateKeyBtn-SANDBOX"
+                                                    class="common-btn-primary btn-sm {{#if @root.isReadOnlyMode}}disabled{{/if}} col-md-3"
+                                                    style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
                                                     data-subscriptions="{{ json ../../subAPIs }}"
-                                                    onclick="generateApplicationKey('keysview-{{../id}}-SANDBOX', '{{../../applicationMetadata.id}}', 'SANDBOX', '{{../name}}', '{{../../applicationMetadata/name}}', this.getAttribute('data-subscriptions'), '{{../../orgID}}', 'consumer-key-{{../id}}-SANDBOX', 'consumer-secret-{{../id}}-SANDBOX')"
-                                                    title="Save">
-                                                    <span class="button-normal-state"><i class="bi bi-check"></i></span>
+                                                    onclick="generateApplicationKey('keysview-{{../id}}-SANDBOX', '{{../../applicationMetadata.id}}', 'SANDBOX', '{{../name}}', '{{../../applicationMetadata/name}}', this.getAttribute('data-subscriptions'), '{{../../orgID}}', 'consumer-key-{{../id}}-SANDBOX', 'consumer-secret-{{../id}}-SANDBOX')">
+                                                    <span class="button-normal-state">
+                                                        <i class="bi bi-key me-1"></i> Generate Key
+                                                    </span>
                                                     <span class="button-loading-state" style="display: none;">
-                                                        <span class="spinner-border spinner-border-sm"
+                                                        <span class="spinner-border spinner-border-sm me-1"
                                                             role="status"></span>
+                                                        Generating...
                                                     </span>
                                                 </button>
-                                                <button class="btn btn-sm common-btn-outlined cancel-btn"
-                                                    id="cancelClientIDBtn-SANDBOX" title="Cancel"><i
-                                                        class="bi bi-x"></i></button>
                                             </div>
                                         </div>
-                                        <button id="clientIDSaveError-SANDBOX" class="edit-error-message"
-                                            style="display: none;"></button>
                                         <div class="mb-4" id="consumerKeyContainer-SANDBOX"
                                             style="{{#unless keys.consumerKey}}display: none;{{/unless}}">
                                             <div id="consumerKey-SANDBOX-view" class="col-md-6"
@@ -814,6 +821,25 @@
                                                     <button id="viewKeyBtn-SANDBOX" class="common-btn-outlined btn-sm"
                                                         onclick="loadKeysViewModal('SANDBOX')">
                                                         <i class="bi bi-eye"></i> View
+                                                    </button>
+                                                    <button id="modifyKeyBtn-SANDBOX"
+                                                        class="common-btn-outlined btn-sm {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+                                                        style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
+                                                        onclick="loadKeysModifyModal('SANDBOX')">
+                                                        <i class="bi bi-pencil-square"></i> Modify
+                                                    </button>
+                                                    <button id="tokenKeyBtn-SANDBOX"
+                                                        class="common-btn-outlined btn-sm {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+                                                        data-app-id="{{@root.applicationMetadata.id}}"
+                                                        style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
+                                                        onclick="openGenerateTokenModal('applicationKeyGenerateForm-{{../id}}-SANDBOX', '{{keys.appRefID}}', '{{keys.keyMappingId}}', '{{../name}}', '{{../../applicationMetadata/name}}', '{{json @root.subscriptionScopes}}', 'SANDBOX')">
+                                                        <span class="button-normal-state">
+                                                            <i class="bi bi-key-fill"></i> Generate
+                                                        </span>
+                                                        <span class="button-loading-state" style="display: none;">
+                                                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                                            Generating...
+                                                        </span>
                                                     </button>
                                                     <button id="tokenInstructionsBtn-SANDBOX"
                                                         class="common-btn-outlined btn-sm"

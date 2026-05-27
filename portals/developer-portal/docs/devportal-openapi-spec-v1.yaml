@@ -58,6 +58,7 @@ tags:
   - name: API Flows
   - name: Utilities
   - name: Authentication
+  - name: Key Managers
   - name: Webhook Events
 paths:
   /organizations:
@@ -1495,10 +1496,11 @@ paths:
       operationId: createAppKeyMapping
       summary: Create application key mapping
       description: >-
-        Creates or reuses a control-plane application for the Developer Portal application, synchronizes
-        existing API subscriptions into the control plane, and generates or maps credentials through the
-        selected key manager. Internal, resident, and STS key managers generate OAuth keys; external key
-        managers map the supplied `clientID` and require `tokenDetails.keyType`.
+        Creates or reuses an application and generates or maps OAuth credentials through the selected
+        key manager. In control-plane mode the portal creates a CP application and synchronizes
+        subscriptions. In decoupled mode the portal calls the Authorization Server DCR endpoint directly
+        using the configured key manager adapter. Supply `clientID` to map an existing AS client instead
+        of creating one; `tokenDetails.keyType` is required in both cases.
       requestBody:
         $ref: "#/components/requestBodies/AppKeyMappingBody"
       responses:
@@ -1719,8 +1721,9 @@ paths:
       operationId: generateOAuthKeys
       summary: Generate an OAuth access token
       description: >-
-        Proxies an access-token generation request for an existing application OAuth key mapping to the
-        control plane.
+        Generates an access token for an existing application OAuth key mapping. In control-plane mode the
+        request is proxied to the control plane. In decoupled mode the portal calls the Authorization
+        Server token endpoint directly using the client credentials supplied in `consumerSecret`.
       requestBody:
         $ref: "#/components/requestBodies/OAuthGenerateTokenBody"
       responses:
@@ -2542,6 +2545,133 @@ paths:
         - OAuth2Security:
             - dp:utility_write
             - dp:utility_manage
+  /organizations/{orgId}/key-managers:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    post:
+      tags:
+        - Key Managers
+      summary: Create a key manager
+      description: >-
+        Creates a key manager configuration for the organization. Accepts either a `application/json`
+        body or a `multipart/form-data` upload with a `keymanager` field containing the KeyManager
+        YAML file. The `adminClientId` and `adminClientSecret` are encrypted at rest using AES-256-GCM.
+      operationId: createKeyManager
+      requestBody:
+        $ref: "#/components/requestBodies/KeyManagerBody"
+      responses:
+        "201":
+          $ref: "#/components/responses/KeyManagerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:km_write
+            - dp:km_manage
+    get:
+      tags:
+        - Key Managers
+      summary: List key managers
+      description: Returns all key manager configurations for the organization. Admin credentials are never included in the response.
+      operationId: getKeyManagers
+      responses:
+        "200":
+          $ref: "#/components/responses/KeyManagerListResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:km_read
+            - dp:km_manage
+  /organizations/{orgId}/key-managers/discover:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+    get:
+      tags:
+        - Key Managers
+      summary: List available key managers for developers
+      description: >-
+        Returns the minimal public view of enabled key managers. This is the developer-facing
+        endpoint used when generating application keys — no admin credentials or internal endpoints
+        are exposed.
+      operationId: getAvailableKeyManagers
+      responses:
+        "200":
+          $ref: "#/components/responses/KeyManagerPublicListResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:km_read
+            - dp:km_manage
+  /organizations/{orgId}/key-managers/{kmId}:
+    parameters:
+      - $ref: "#/components/parameters/OrgId"
+      - $ref: "#/components/parameters/KmId"
+    get:
+      tags:
+        - Key Managers
+      summary: Get a key manager
+      description: Retrieves a single key manager configuration by ID.
+      operationId: getKeyManager
+      responses:
+        "200":
+          $ref: "#/components/responses/KeyManagerResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:km_read
+            - dp:km_manage
+    put:
+      tags:
+        - Key Managers
+      summary: Update a key manager
+      description: >-
+        Updates an existing key manager configuration. Accepts either a `application/json` body or a
+        `multipart/form-data` upload with a `keymanager` YAML file. Only supplied fields are updated;
+        omitted fields retain their stored values.
+      operationId: updateKeyManager
+      requestBody:
+        $ref: "#/components/requestBodies/KeyManagerBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/KeyManagerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:km_write
+            - dp:km_manage
+    delete:
+      tags:
+        - Key Managers
+      summary: Delete a key manager
+      description: Deletes a key manager configuration by ID.
+      operationId: deleteKeyManager
+      responses:
+        "204":
+          description: Key manager deleted successfully.
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:km_delete
+            - dp:km_manage
   /login:
     post:
       tags:
@@ -2745,6 +2875,10 @@ components:
             dp:delivery_manage: Retry failed webhook deliveries.
             dp:utility_write: Create temporary utility files.
             dp:utility_manage: Manage utility operations.
+            dp:km_read: Read key manager configurations.
+            dp:km_write: Create or update key manager configurations.
+            dp:km_delete: Delete key manager configurations.
+            dp:km_manage: Manage key manager configurations (including creating, updating, and deleting).
     apiKeyAuth:
       type: apiKey
       in: header
@@ -2836,6 +2970,14 @@ components:
       required: true
       schema:
         type: string
+    KmId:
+      name: kmId
+      in: path
+      required: true
+      schema:
+        type: string
+        example: km-uuid-12345
+      description: Key manager ID (UUID).
     ApiKeyID:
       name: apiKeyID
       in: path
@@ -3512,6 +3654,43 @@ components:
           example:
             keyType: PRODUCTION
             keyManager: Resident Key Manager
+    KeyManagerBody:
+      description: >-
+        Key manager configuration payload. Submit as `application/json` or as `multipart/form-data`
+        with a `keymanager` field containing a KeyManager YAML file.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/KeyManagerRequest"
+          example:
+            name: Asgardeo
+            type: ASGARDEO
+            enabled: true
+            tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
+            clientRegistrationEndpoint: https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register
+            issuer: https://api.asgardeo.io/t/myorg/oauth2/token
+            jwksURL: https://api.asgardeo.io/t/myorg/oauth2/jwks
+            adminClientId: "<client-id>"
+            adminClientSecret: "<client-secret>"
+            supportedGrantTypes:
+              - client_credentials
+              - authorization_code
+              - refresh_token
+            supportedScopes:
+              - openid
+              - profile
+            additionalProperties:
+              authorizeEndpoint: https://api.asgardeo.io/t/myorg/oauth2/authorize
+              revokeEndpoint: https://api.asgardeo.io/t/myorg/oauth2/revoke
+              logoutEndpoint: https://api.asgardeo.io/t/myorg/oidc/logout
+        multipart/form-data:
+          schema:
+            type: object
+            properties:
+              keymanager:
+                type: string
+                format: binary
+                description: KeyManager YAML file.
     BillingEngineKeysBody:
       required: true
       description: Billing engine credentials to encrypt and store for the organization.
@@ -4352,6 +4531,28 @@ components:
                 SUBSCRIPTION_REF_ID: cp-sub-12345
                 SHARED_TOKEN: true
                 TOKEN_TYPE: OAUTH
+    KeyManagerResponse:
+      description: Key manager configuration response.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/KeyManagerResponseSchema"
+    KeyManagerListResponse:
+      description: List of key manager configurations.
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: "#/components/schemas/KeyManagerResponseSchema"
+    KeyManagerPublicListResponse:
+      description: List of enabled key managers (developer-facing, minimal view).
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: "#/components/schemas/KeyManagerPublicResponseSchema"
     ApplicationApiKeyGenerateResponse:
       description: API key generation or regeneration response returned by the control plane.
       content:
@@ -5686,6 +5887,195 @@ components:
           description: Developer Portal subscription policy ID.
           example: policy-gold
       additionalProperties: false
+    KeyManagerRequest:
+      type: object
+      required:
+        - name
+        - type
+        - tokenEndpoint
+        - clientRegistrationEndpoint
+        - adminClientId
+        - adminClientSecret
+      properties:
+        name:
+          type: string
+          description: Unique name within the organization.
+          example: Asgardeo
+        type:
+          type: string
+          enum:
+            - ASGARDEO
+            - WSO2IS
+            - KEYCLOAK
+            - GENERIC_OIDC
+          example: ASGARDEO
+        enabled:
+          type: boolean
+          default: true
+          example: true
+        tokenEndpoint:
+          type: string
+          format: uri
+          description: OAuth2 token endpoint. Used to obtain admin tokens and proxy developer token requests.
+          example: https://api.asgardeo.io/t/myorg/oauth2/token
+        clientRegistrationEndpoint:
+          type: string
+          format: uri
+          description: DCR endpoint used to create, update, and delete OAuth clients on behalf of developers.
+          example: https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register
+        issuer:
+          type: string
+          format: uri
+          description: >-
+            Issuer identifier. Used as a string to validate the `iss` claim in tokens issued by this KM.
+            For Asgardeo and WSO2 IS this is the same URL as `tokenEndpoint`.
+          example: https://api.asgardeo.io/t/myorg/oauth2/token
+        jwksURL:
+          type: string
+          format: uri
+          description: JWKS endpoint. Consumers and gateways fetch public keys from here to verify token signatures.
+          example: https://api.asgardeo.io/t/myorg/oauth2/jwks
+        adminClientId:
+          type: string
+          description: Client ID of the admin application used for DCR operations. Stored encrypted.
+          example: "<client-id>"
+        adminClientSecret:
+          type: string
+          description: Client secret of the admin application. Stored encrypted; never returned in responses.
+          example: "<client-secret>"
+        supportedGrantTypes:
+          type: array
+          items:
+            type: string
+          default:
+            - client_credentials
+          example:
+            - client_credentials
+            - authorization_code
+            - refresh_token
+        supportedScopes:
+          type: array
+          items:
+            type: string
+          default:
+            - openid
+          example:
+            - openid
+            - profile
+        additionalProperties:
+          type: object
+          additionalProperties: true
+          description: >-
+            AS-specific extra configuration. For Asgardeo: `authorizeEndpoint`, `revokeEndpoint`,
+            `logoutEndpoint`. For Keycloak: `realm`, `revokeEndpoint`, `logoutEndpoint`.
+          example:
+            authorizeEndpoint: https://api.asgardeo.io/t/myorg/oauth2/authorize
+            revokeEndpoint: https://api.asgardeo.io/t/myorg/oauth2/revoke
+            logoutEndpoint: https://api.asgardeo.io/t/myorg/oidc/logout
+      additionalProperties: false
+    KeyManagerResponseSchema:
+      type: object
+      description: Key manager configuration. Admin credentials are never included.
+      properties:
+        id:
+          type: string
+          description: Key manager UUID.
+          example: km-uuid-12345
+        orgId:
+          type: string
+          example: org-12345
+        name:
+          type: string
+          example: Asgardeo
+        type:
+          type: string
+          enum:
+            - ASGARDEO
+            - WSO2IS
+            - KEYCLOAK
+            - GENERIC_OIDC
+          example: ASGARDEO
+        enabled:
+          type: boolean
+          example: true
+        tokenEndpoint:
+          type: string
+          format: uri
+          example: https://api.asgardeo.io/t/myorg/oauth2/token
+        clientRegistrationEndpoint:
+          type: string
+          format: uri
+          example: https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register
+        issuer:
+          type: string
+          format: uri
+          nullable: true
+          example: https://api.asgardeo.io/t/myorg/oauth2/token
+        jwksURL:
+          type: string
+          format: uri
+          nullable: true
+          example: https://api.asgardeo.io/t/myorg/oauth2/jwks
+        supportedGrantTypes:
+          type: array
+          items:
+            type: string
+          example:
+            - client_credentials
+            - authorization_code
+            - refresh_token
+        supportedScopes:
+          type: array
+          items:
+            type: string
+          example:
+            - openid
+            - profile
+        additionalProperties:
+          type: object
+          additionalProperties: true
+          example:
+            authorizeEndpoint: https://api.asgardeo.io/t/myorg/oauth2/authorize
+            revokeEndpoint: https://api.asgardeo.io/t/myorg/oauth2/revoke
+            logoutEndpoint: https://api.asgardeo.io/t/myorg/oidc/logout
+      additionalProperties: false
+    KeyManagerPublicResponseSchema:
+      type: object
+      description: Minimal developer-facing key manager view. No admin credentials or DCR endpoints.
+      properties:
+        id:
+          type: string
+          example: km-uuid-12345
+        name:
+          type: string
+          example: Asgardeo
+        type:
+          type: string
+          enum:
+            - ASGARDEO
+            - WSO2IS
+            - KEYCLOAK
+            - GENERIC_OIDC
+          example: ASGARDEO
+        tokenEndpoint:
+          type: string
+          format: uri
+          example: https://api.asgardeo.io/t/myorg/oauth2/token
+        supportedGrantTypes:
+          type: array
+          items:
+            type: string
+          example:
+            - client_credentials
+            - authorization_code
+        supportedScopes:
+          type: array
+          items:
+            type: string
+          example:
+            - openid
+            - profile
+      additionalProperties: false
     AppKeyMappingRequest:
       type: object
       required:
@@ -5779,6 +6169,11 @@ components:
           example:
             - client_credentials
             - refresh_token
+        tokenEndpoint:
+          type: string
+          format: uri
+          description: Token endpoint of the key manager. Populated in decoupled mode.
+          example: https://api.asgardeo.io/t/myorg/oauth2/token
         appRefId:
           type: string
           description: Control-plane application reference ID.
@@ -5855,6 +6250,20 @@ components:
             - OAUTH
             - BASIC
           example: OAUTH
+        AS_CLIENT_ID:
+          type: string
+          nullable: true
+          description: >-
+            Authorization Server client ID registered via DCR. Populated in decoupled mode;
+            null in control-plane mode.
+          example: asgardeo-client-abc123
+        KEY_TYPE:
+          type: string
+          enum:
+            - PRODUCTION
+            - SANDBOX
+          description: Key type for this mapping. Used to separate production and sandbox keys in the UI.
+          example: PRODUCTION
       additionalProperties: true
     ViewCreateRequest:
       type: object
@@ -5970,8 +6379,17 @@ components:
       additionalProperties: true
     OAuthGenerateTokenRequest:
       type: object
-      description: OAuth access token generation payload accepted by the control plane.
+      description: >-
+        OAuth access token generation payload. In decoupled mode `consumerSecret` is required —
+        the portal uses it to call the AS token endpoint directly. In control-plane mode the body
+        is proxied as-is.
       properties:
+        consumerSecret:
+          type: string
+          description: >-
+            Client secret for the OAuth application. Required in decoupled (non-control-plane) mode.
+            Not stored by the portal — the caller must supply it on each token generation request.
+          example: my-consumer-secret
         scopes:
           type: array
           items:

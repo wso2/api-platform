@@ -33,6 +33,7 @@ const filePrefix = config.pathToContent;
 const controlPlaneUrl = config.controlPlane.url;
 const { ApplicationDTO } = require('../dto/application');
 const APIDTO = require('../dto/apiDTO');
+const kmDao = require('../dao/keyManager');
 const adminService = require('../services/adminService');
 const baseURLDev = config.baseUrl + constants.ROUTE.VIEWS_PATH;
 
@@ -156,14 +157,47 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
 
     let applicationReference = "";
     let applicationKeyList;
-    if (applicationList.appMap && config.controlPlane?.enabled !== false) {
+    if (applicationList.appMap) {
         applicationReference = applicationList.appMap[0].appRefID;
-        try {
-            applicationKeyList = await getApplicationKeys(applicationList.appMap, req);
-        } catch (keyError) {
-            logger.warn('Failed to fetch application keys from CP', {
-                appRefID: applicationReference, error: keyError.message
-            });
+        if (config.controlPlane?.enabled !== false) {
+            try {
+                applicationKeyList = await getApplicationKeys(applicationList.appMap, req);
+            } catch (keyError) {
+                logger.warn('Failed to fetch application keys from CP', {
+                    appRefID: applicationReference, error: keyError.message
+                });
+            }
+        } else {
+            // Decoupled path: build applicationKeyList from local key mappings
+            try {
+                const { ApplicationKeyMapping } = require('../models/application');
+                const localMappings = await ApplicationKeyMapping.findAll({
+                    where: { APP_ID: applicationId, ORG_ID: orgID }
+                });
+                const keyList = [];
+                for (const mapping of localMappings) {
+                    if (mapping.AS_CLIENT_ID && mapping.KM_ID) {
+                        const km = await kmDao.getKeyManager(mapping.KM_ID);
+                        keyList.push({
+                            keyManager: km.NAME,
+                            consumerKey: mapping.AS_CLIENT_ID,
+                            consumerSecret: '',
+                            keyMappingId: mapping.MAPPING_ID,
+                            keyType: mapping.KEY_TYPE || constants.KEY_TYPE.PRODUCTION,
+                            supportedGrantTypes: km.SUPPORTED_GRANT_TYPES || ['client_credentials'],
+                            additionalProperties: {},
+                            callbackUrl: '',
+                        });
+                    }
+                }
+                if (keyList.length) {
+                    applicationKeyList = { list: keyList };
+                }
+            } catch (keyError) {
+                logger.warn('Failed to build application keys from local DB', {
+                    error: keyError.message
+                });
+            }
         }
     }
 
@@ -261,39 +295,63 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
 
     let kMmetaData = [];
     if (config.controlPlane?.enabled !== false) {
+        // ── Control Plane path: fetch key managers from CP ──
         try {
             kMmetaData = await getAPIMKeyManagers(req);
         } catch (kmError) {
             logger.warn('Failed to fetch key managers from CP', { error: kmError.message });
         }
-    }
 
-    // Ensure kMmetaData is an array before filtering
-    if (!Array.isArray(kMmetaData)) {
-        kMmetaData = [];
-    }
-
-    kMmetaData = kMmetaData.filter(keyManager => keyManager.enabled);
-
-    // TODO: Instead of using priority-based filtering, we should identify the key manager
-    // configured for the production environment from the Bijira console configuration.
-    // This temporary priority-based approach should be replaced with a proper configuration-based selection.
-    if (Array.isArray(kMmetaData) && kMmetaData.length > 1) {
-        kMmetaData = kMmetaData.filter(keyManager =>
-            keyManager.name.includes("_internal_key_manager_") ||
-            (!kMmetaData.some(km => km.name.includes("_internal_key_manager_")) && keyManager.name.includes("Resident Key Manager")) ||
-            (!kMmetaData.some(km => km.name.includes("_internal_key_manager_") || km.name.includes("Resident Key Manager")) && keyManager.name.includes("_appdev_sts_key_manager_") && keyManager.name.endsWith("_prod"))
-        );
-    }
-
-    for (const keyManager of kMmetaData) {
-        if (keyManager.name === 'Resident Key Manager') {
-            keyManager.tokenEndpoint = 'https://sts.choreo.dev/oauth2/token';
-            keyManager.authorizeEndpoint = 'https://sts.choreo.dev/oauth2/authorize';
-            keyManager.revokeEndpoint = 'https://sts.choreo.dev/oauth2/revoke';
+        // Ensure kMmetaData is an array before filtering
+        if (!Array.isArray(kMmetaData)) {
+            kMmetaData = [];
         }
-        keyManager.availableGrantTypes = await mapGrants(keyManager.availableGrantTypes);
-        keyManager.applicationConfiguration = await mapDefaultValues(keyManager.applicationConfiguration);
+
+        kMmetaData = kMmetaData.filter(keyManager => keyManager.enabled);
+
+        // TODO: Instead of using priority-based filtering, we should identify the key manager
+        // configured for the production environment from the Bijira console configuration.
+        // This temporary priority-based approach should be replaced with a proper configuration-based selection.
+        if (Array.isArray(kMmetaData) && kMmetaData.length > 1) {
+            kMmetaData = kMmetaData.filter(keyManager =>
+                keyManager.name.includes("_internal_key_manager_") ||
+                (!kMmetaData.some(km => km.name.includes("_internal_key_manager_")) && keyManager.name.includes("Resident Key Manager")) ||
+                (!kMmetaData.some(km => km.name.includes("_internal_key_manager_") || km.name.includes("Resident Key Manager")) && keyManager.name.includes("_appdev_sts_key_manager_") && keyManager.name.endsWith("_prod"))
+            );
+        }
+
+        for (const keyManager of kMmetaData) {
+            if (keyManager.name === 'Resident Key Manager') {
+                keyManager.tokenEndpoint = 'https://sts.choreo.dev/oauth2/token';
+                keyManager.authorizeEndpoint = 'https://sts.choreo.dev/oauth2/authorize';
+                keyManager.revokeEndpoint = 'https://sts.choreo.dev/oauth2/revoke';
+            }
+            keyManager.availableGrantTypes = await mapGrants(keyManager.availableGrantTypes);
+            keyManager.applicationConfiguration = await mapDefaultValues(keyManager.applicationConfiguration);
+        }
+    } else {
+        // ── Decoupled path: fetch key managers from devportal DB ──
+        try {
+            const dbKeyManagers = await kmDao.getEnabledKeyManagers(orgID);
+            for (const km of dbKeyManagers) {
+                const grantTypes = km.SUPPORTED_GRANT_TYPES || ['client_credentials'];
+                kMmetaData.push({
+                    id: km.KM_ID,
+                    name: km.NAME,
+                    type: km.TYPE,
+                    enabled: true,
+                    tokenEndpoint: km.TOKEN_ENDPOINT,
+                    authorizeEndpoint: km.ADDITIONAL_PROPERTIES?.authorizeEndpoint || '',
+                    revokeEndpoint: km.ADDITIONAL_PROPERTIES?.revokeEndpoint || '',
+                    availableGrantTypes: await mapGrants(grantTypes),
+                    applicationConfiguration: await mapDefaultValues(
+                        km.ADDITIONAL_PROPERTIES?.applicationConfiguration || []
+                    ),
+                });
+            }
+        } catch (kmError) {
+            logger.warn('Failed to fetch key managers from DB', { error: kmError.message });
+        }
     }
 
     let productionKeys = [];

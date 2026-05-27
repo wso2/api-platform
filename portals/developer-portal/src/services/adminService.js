@@ -36,6 +36,8 @@ const { invokeApiRequest } = require('../utils/util');
 const yaml = require('js-yaml');
 const { Sequelize } = require("sequelize");
 const { trackGenerateCredentials, trackSubscribeApi, trackUnsubscribeApi } = require('../utils/telemetry');
+const kmDao = require('../dao/keyManager');
+const { getKeyManagerAdapter } = require('../adapters/keyManager');
 
 function mapYamlToOrganization(parsed) {
     const { metadata = {}, spec = {} } = parsed;
@@ -1422,7 +1424,7 @@ const deleteSubscription = async (req, res) => {
 
 const createAppKeyMapping = async (req, res) => {
     const orgID = req.params.orgId;
-    const userID = req[constants.USER_ID];
+    const userID = req[constants.USER_ID] || req.user?.sub;
     logger.info('Initiate create application key mapping...', {
         orgId: orgID,
         ...req.body
@@ -1430,6 +1432,19 @@ const createAppKeyMapping = async (req, res) => {
     let cpAppID = "";
     try {
         let responseData;
+
+        if (!config.controlPlane.enabled) {
+            // ── Decoupled path: create OAuth client directly in the AS ──
+            responseData = await _createAppKeyMappingDecoupled(req, orgID, userID);
+            trackGenerateCredentials({
+                orgId: orgID,
+                appName: req.body.applicationName,
+                idpId: req.isAuthenticated() ? (req[constants.USER_ID] || req.user.sub) : undefined
+            }, req);
+            return res.status(200).json(responseData);
+        }
+
+        // ── Existing control plane path ──
         await sequelize.transaction({
             timeout: 60000,
         }, async (t) => {
@@ -1493,7 +1508,7 @@ const createAppKeyMapping = async (req, res) => {
                 apiSubscriptions.push(cpSubscribeResponse);
             }
             //create app key mapping
-            //TODO: only oauth key shared scenario is considered, need to handle other token types 
+            //TODO: only oauth key shared scenario is considered, need to handle other token types
             for (const apiSubscription of apiSubscriptions) {
                 const appKeyMappping = {
                     orgID: orgID,
@@ -1569,12 +1584,85 @@ const createAppKeyMapping = async (req, res) => {
             orgId: req.params?.orgId
         });
         //delete control plane application
-        if (cpAppID) {
+        if (cpAppID && config.controlPlane.enabled) {
             await invokeApiRequest(req, 'DELETE', `${controlPlaneUrl}/applications/${cpAppID}`, {}, {});
             await adminDao.deleteAppMappings(orgID, cpAppID);
         }
         return util.handleError(res, error);
     }
+}
+
+/**
+ * Decoupled (non-CP) path for creating an application key mapping.
+ * Creates the OAuth client directly in the Authorization Server via the key manager adapter.
+ */
+async function _createAppKeyMappingDecoupled(req, orgID, userID) {
+    const { applicationName, tokenDetails, clientID } = req.body;
+
+    const appIDResponse = await adminDao.getApplicationID(orgID, userID, applicationName);
+    if (!appIDResponse) {
+        throw new CustomError(404, constants.ERROR_CODE[404], "Application not found");
+    }
+    const appID = appIDResponse.dataValues.APP_ID;
+
+    // Resolve the key manager by name within the org
+    const kmName = tokenDetails.keyManager;
+    const kmRecord = await kmDao.getKeyManagerByName(orgID, kmName);
+    const adapter = getKeyManagerAdapter(kmRecord);
+
+    let responseData;
+
+    if (clientID) {
+        // Map existing client credentials (no new OAuth client creation)
+        responseData = {
+            consumerKey: clientID,
+            consumerSecret: null,
+            keyManager: kmName,
+        };
+    } else {
+        // Create a new OAuth client in the AS
+        const grantTypes = tokenDetails.grantTypesToBeSupported || ['client_credentials'];
+        const redirectUris = tokenDetails.callbackUrl ? [tokenDetails.callbackUrl] : [];
+        const scopes = tokenDetails.scopes || ['default'];
+        const additionalProps = tokenDetails.additionalProperties || {};
+
+        const sanitize = (s) => String(s).replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+        const keyType = (tokenDetails.keyType || 'PRODUCTION').toUpperCase();
+        const clientName = `${sanitize(userID)}_${sanitize(applicationName)}_${keyType}`;
+
+        const oauthClient = await adapter.createOAuthClient(
+            clientName,
+            grantTypes,
+            redirectUris,
+            scopes,
+            additionalProps,
+        );
+
+        responseData = {
+            consumerKey: oauthClient.clientId,
+            consumerSecret: oauthClient.clientSecret,
+            keyManager: kmName,
+            tokenEndpoint: kmRecord.TOKEN_ENDPOINT,
+            supportedGrantTypes: kmRecord.SUPPORTED_GRANT_TYPES,
+        };
+    }
+
+    // Store key mapping in devportal DB
+    const appKeyMapping = {
+        orgID: orgID,
+        appID: appID,
+        cpAppRef: responseData.consumerKey, // Use clientId as the CP ref in non-CP mode
+        apiRefID: null,
+        subscriptionRefID: null,
+        sharedToken: true,
+        tokenType: constants.TOKEN_TYPES.OAUTH,
+        kmID: kmRecord.KM_ID,
+        asClientID: responseData.consumerKey,
+        keyType: tokenDetails.keyType || 'PRODUCTION',
+    };
+    await adminDao.createApplicationKeyMapping(appKeyMapping);
+
+    return responseData;
 }
 
 async function mapKeys(req, clientID, keyManager, applicationId, keyType) {

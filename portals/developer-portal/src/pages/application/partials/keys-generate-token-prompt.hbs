@@ -1,0 +1,50 @@
+{{!--
+  Shared modal that prompts the user for their Consumer Secret before generating
+  an access token. A single instance is reused for all key managers / key types.
+--}}
+<div class="modal custom-modal" id="generateTokenPromptModal">
+    <div class="modal-dialog" role="document" style="max-width: 480px;">
+        <div class="modal-content custom-modal-content">
+            <div class="custom-modal-header">
+                <h2 class="custom-modal-title m-0">Generate Access Token</h2>
+                <button type="button" class="btn-close" aria-label="Close"
+                    onclick="closeModal('generateTokenPromptModal')"></button>
+            </div>
+            <div class="custom-modal-body">
+                <div class="info-box mb-3">
+                    <div class="info-content">
+                        <div class="info-title">
+                            <i class="bi bi-info-circle-fill me-2"></i>
+                            The Consumer Secret is not stored by the portal. Please enter it below to generate a token.
+                        </div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="generateTokenPromptSecretInput" class="form-label">Consumer Secret</label>
+                    <div class="password-toggle-container">
+                        <input type="password" id="generateTokenPromptSecretInput" class="form-control"
+                            placeholder="Enter your consumer secret" autocomplete="off" />
+                        <button type="button" class="password-toggle-btn"
+                            onclick="togglePasswordVisibility('generateTokenPromptSecretInput')">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                    </div>
+                    <div id="generateTokenPromptError" class="mt-1 text-danger"
+                        style="display: none; font-size: 0.75rem;">
+                        Consumer Secret is required.
+                    </div>
+                </div>
+            </div>
+            <div class="d-flex justify-content-end gap-2 p-3">
+                <button class="common-btn-outlined btn-sm" type="button"
+                    onclick="closeModal('generateTokenPromptModal')">
+                    Cancel
+                </button>
+                <button class="common-btn-primary btn-sm" type="button" id="generateTokenPromptConfirmBtn"
+                    onclick="confirmGenerateTokenPrompt()">
+                    Generate Token
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

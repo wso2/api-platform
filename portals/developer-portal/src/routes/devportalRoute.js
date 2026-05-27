@@ -51,6 +51,16 @@ router.put('/organizations/:orgId/identityProvider', enforceSecuirty(constants.S
 router.get('/organizations/:orgId/identityProvider', enforceSecuirty(constants.SCOPES.ADMIN), adminService.getIdentityProvider);
 router.delete('/organizations/:orgId/identityProvider', enforceSecuirty(constants.SCOPES.ADMIN), adminService.deleteIdentityProvider);
 
+// Key Manager routes (admin — JSON body OR YAML file upload on POST/PUT)
+const keyManagerService = require('../services/keyManagerService');
+router.post('/organizations/:orgId/key-managers', enforceSecuirty(constants.SCOPES.ADMIN), multipartHandler.fields([{name: 'keymanager', maxCount: 1}]), keyManagerService.createKeyManager);
+router.get('/organizations/:orgId/key-managers', enforceSecuirty(constants.SCOPES.ADMIN), keyManagerService.getKeyManagers);
+router.get('/organizations/:orgId/key-managers/:kmId', enforceSecuirty(constants.SCOPES.ADMIN), keyManagerService.getKeyManager);
+router.put('/organizations/:orgId/key-managers/:kmId', enforceSecuirty(constants.SCOPES.ADMIN), multipartHandler.fields([{name: 'keymanager', maxCount: 1}]), keyManagerService.updateKeyManager);
+router.delete('/organizations/:orgId/key-managers/:kmId', enforceSecuirty(constants.SCOPES.ADMIN), keyManagerService.deleteKeyManager);
+// Key Manager routes (developer-facing)
+router.get('/organizations/:orgId/key-managers/discover', enforceSecuirty(constants.SCOPES.DEVELOPER), keyManagerService.getAvailableKeyManagers);
+
 const upload = multer({ dest: os.tmpdir() });
 router.post('/organizations/:orgId/views/:name/layout', enforceSecuirty(constants.SCOPES.ADMIN), upload.single('file'), adminService.createOrgContent);
 router.put('/organizations/:orgId/views/:name/layout', enforceSecuirty(constants.SCOPES.ADMIN), upload.single('file'), adminService.updateOrgContent);

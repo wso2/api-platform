@@ -963,7 +963,10 @@ const createApplicationKeyMapping = async (mappingData, t) => {
             API_REF_ID: mappingData.apiRefID,
             SUBSCRIPTION_REF_ID: mappingData.subscriptionRefID,
             SHARED_TOKEN: mappingData.sharedToken,
-            TOKEN_TYPE: mappingData.tokenType
+            TOKEN_TYPE: mappingData.tokenType,
+            ...(mappingData.kmID && { KM_ID: mappingData.kmID }),
+            ...(mappingData.asClientID && { AS_CLIENT_ID: mappingData.asClientID }),
+            ...(mappingData.keyType && { KEY_TYPE: mappingData.keyType }),
         }, { transaction: t });
         return appKeyMapping;
     } catch (error) {

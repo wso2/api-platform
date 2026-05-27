@@ -1201,22 +1201,18 @@ async function copyConsumerKey(inputId) {
 }
 
 async function copyRealCurl(button) {
-    console.log("Copying cURL command...", button);
     const keyManagerId = button.id.replace("curl-copy-", "");
-    console.log("Key Manager ID:", keyManagerId);
     const tokenEndpoint = button.getAttribute('data-endpoint');
-    const consumerKey = document.getElementById("consumer-key-" + keyManagerId).value;
-    const consumerSecret = document.getElementById("consumer-secret-" + keyManagerId).value;
+    const consumerKeyEl = document.getElementById("consumer-key-" + keyManagerId);
+    const consumerKey = consumerKeyEl ? consumerKeyEl.value : '';
 
-    if (!consumerKey || !consumerSecret) {
-        await showAlert('Consumer key or secret not available. Please generate keys first.', 'warning');
+    if (!consumerKey) {
+        await showAlert('Consumer key not available. Please generate keys first.', 'warning');
         return;
     }
 
     try {
-        const credentials = `${consumerKey}:${consumerSecret}`;
-        const encodedCredentials = btoa(credentials);
-        const curlCommand = `curl -k -X POST ${tokenEndpoint} -d "grant_type=client_credentials" -H "Authorization: Basic ${encodedCredentials}"`;
+        const curlCommand = `curl -k -X POST ${tokenEndpoint} -d "grant_type=client_credentials" -H "Authorization: Basic $(echo -n '${consumerKey}:<your_consumer_secret>' | base64)"`;
 
         // Copy to clipboard
         await navigator.clipboard.writeText(curlCommand);
@@ -1276,6 +1272,50 @@ async function copyOauthURLs(inputId) {
 function loadModal(modalID) {
     const modal = document.getElementById(modalID);
     modal.style.display = 'flex';
+}
+
+// ---------------------------------------------------------------------------
+// Generate-token secret prompt
+// ---------------------------------------------------------------------------
+
+/** Pending params captured when the user clicks a Generate token button. */
+let _pendingGenerateTokenParams = null;
+
+/**
+ * Open the consumer-secret prompt modal before generating a token.
+ * Called by all "Generate" token buttons instead of generateOauthKey directly.
+ */
+function openGenerateTokenModal(formId, appId, keyMappingId, keyManager, clientName, subscribedScopes, keyType) {
+    _pendingGenerateTokenParams = { formId, appId, keyMappingId, keyManager, clientName, subscribedScopes, keyType };
+    const input = document.getElementById('generateTokenPromptSecretInput');
+    const errorEl = document.getElementById('generateTokenPromptError');
+    if (input) input.value = '';
+    if (errorEl) errorEl.style.display = 'none';
+    const modal = document.getElementById('generateTokenPromptModal');
+    if (modal) modal.style.display = 'flex';
+}
+
+/**
+ * Confirm button handler inside the prompt modal.
+ * Validates the entered secret then delegates to generateOauthKey.
+ */
+function confirmGenerateTokenPrompt() {
+    const input = document.getElementById('generateTokenPromptSecretInput');
+    const errorEl = document.getElementById('generateTokenPromptError');
+    const secret = input ? input.value.trim() : '';
+
+    if (!secret) {
+        if (errorEl) errorEl.style.display = 'block';
+        return;
+    }
+    if (errorEl) errorEl.style.display = 'none';
+    closeModal('generateTokenPromptModal');
+
+    if (_pendingGenerateTokenParams) {
+        const { formId, appId, keyMappingId, keyManager, clientName, subscribedScopes, keyType } = _pendingGenerateTokenParams;
+        _pendingGenerateTokenParams = null;
+        generateOauthKey(formId, appId, keyMappingId, keyManager, clientName, secret, subscribedScopes, keyType);
+    }
 }
 
 
