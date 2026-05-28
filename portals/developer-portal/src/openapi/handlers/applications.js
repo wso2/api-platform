@@ -21,11 +21,13 @@
  * Tag: Applications
  */
 const devportalController = require('../../controllers/devportalController');
+const { compose } = require('./_compose');
+const { adaptMultipart } = require('./_multipart');
 
 module.exports = {
-    importApplications: devportalController.importApplications,
-    saveApplication: devportalController.saveApplication,
-    updateApplication: devportalController.updateApplication,
+    importApplications: compose(adaptMultipart, devportalController.importApplications),
+    saveApplication: compose(adaptMultipart, devportalController.saveApplication),
+    updateApplication: compose(adaptMultipart, devportalController.updateApplication),
     deleteApplication: devportalController.deleteApplication,
     resetThrottlingPolicy: devportalController.resetThrottlingPolicy,
 };

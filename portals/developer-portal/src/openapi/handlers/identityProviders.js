@@ -21,10 +21,12 @@
  * OpenAPI operation handlers for the Identity Providers tag.
  */
 const adminService = require('../../services/adminService');
+const { compose } = require('./_compose');
+const { adaptMultipart } = require('./_multipart');
 
 module.exports = {
-    createIdentityProvider: adminService.createIdentityProvider,
-    updateIdentityProvider: adminService.updateIdentityProvider,
+    createIdentityProvider: compose(adaptMultipart, adminService.createIdentityProvider),
+    updateIdentityProvider: compose(adaptMultipart, adminService.updateIdentityProvider),
     getIdentityProvider: adminService.getIdentityProvider,
     deleteIdentityProvider: adminService.deleteIdentityProvider,
 };

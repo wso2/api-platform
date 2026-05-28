@@ -21,10 +21,13 @@
  * Tag: Subscription Policies
  */
 const apiMetadataService = require('../../services/apiMetadataService');
+const { requireCsrfForMutatingApi } = require('../../middlewares/csrfProtection')
+const { compose } = require('./_compose');
+const { adaptMultipart } = require('./_multipart');
 
 module.exports = {
-    addSubscriptionPolicies: apiMetadataService.addSubscriptionPolicies,
-    putSubscriptionPolicies: apiMetadataService.putSubscriptionPolicies,
+    addSubscriptionPolicies: compose(adaptMultipart, apiMetadataService.addSubscriptionPolicies),
+    putSubscriptionPolicies: compose(adaptMultipart, apiMetadataService.putSubscriptionPolicies),
     getSubscriptionPolicy: apiMetadataService.getSubscriptionPolicy,
     deleteSubscriptionPolicy: apiMetadataService.deleteSubscriptionPolicy,
 };

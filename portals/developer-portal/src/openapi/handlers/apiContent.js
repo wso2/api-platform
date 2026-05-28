@@ -21,10 +21,12 @@
  * Tag: API Content
  */
 const apiMetadataService = require('../../services/apiMetadataService');
+const { compose } = require('./_compose');
+const { adaptMultipart } = require('./_multipart');
 
 module.exports = {
-    createAPIContent: apiMetadataService.createAPIContent,
-    updateAPIContent: apiMetadataService.updateAPIContent,
+    createAPIContent: compose(adaptMultipart, apiMetadataService.createAPIContent),
+    updateAPIContent: compose(adaptMultipart, apiMetadataService.updateAPIContent),
     getAPIContentFile: apiMetadataService.getAPIFile,
     deleteAPIContentFile: apiMetadataService.deleteAPIFile,
 };

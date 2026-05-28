@@ -24,10 +24,11 @@ const adminService = require('../../services/adminService');
 const devportalService = require('../../services/devportalService');
 const { requireCsrfForMutatingApi } = require('../../middlewares/csrfProtection')
 const { compose } = require('./_compose');
+const { adaptMultipart } = require('./_multipart');
 
 module.exports = {
-    createOrgContent: compose(requireCsrfForMutatingApi, adminService.createOrgContent),
-    updateOrgContent: compose(requireCsrfForMutatingApi, adminService.updateOrgContent),
+    createOrgContent: compose(requireCsrfForMutatingApi, adaptMultipart, adminService.createOrgContent),
+    updateOrgContent: compose(requireCsrfForMutatingApi, adaptMultipart, adminService.updateOrgContent),
     getOrgLayoutContent: devportalService.getOrgContent,
     getOrgLayoutContentByFileType: devportalService.getOrgContent,
     deleteOrgContent: compose(requireCsrfForMutatingApi, adminService.deleteOrgContent)

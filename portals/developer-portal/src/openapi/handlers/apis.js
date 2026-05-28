@@ -21,11 +21,13 @@
  * Tag: APIs
  */
 const apiMetadataService = require('../../services/apiMetadataService');
+const { compose } = require('./_compose');
+const { adaptMultipart } = require('./_multipart');
 
 module.exports = {
-    createAPIMetadata: apiMetadataService.createAPIMetadata,
+    createAPIMetadata: compose(adaptMultipart, apiMetadataService.createAPIMetadata),
     getAPIMetadata: apiMetadataService.getAPIMetadata,
     getAllAPIMetadataForOrganization: apiMetadataService.getAllAPIMetadata,
-    updateAPIMetadata: apiMetadataService.updateAPIMetadata,
+    updateAPIMetadata: compose(adaptMultipart, apiMetadataService.updateAPIMetadata),
     deleteAPIMetadata: apiMetadataService.deleteAPIMetadata,
 };
