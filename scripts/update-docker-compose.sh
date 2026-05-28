@@ -36,13 +36,32 @@ COMPOSE_FILE="gateway/docker-compose.yaml"
 DIST_COMPOSE_FILE="gateway/distribution/docker-compose.yaml"
 IT_COMPOSE_FILE="gateway/it/docker-compose.test.yaml"
 EVENT_GATEWAY_COMPOSE_FILE="event-gateway/docker-compose.yaml"
+DEVPORTAL_COMPOSE_FILE="portals/developer-portal/docker-compose.yml"
+DEVPORTAL_DIST_COMPOSE_FILE="portals/developer-portal/distribution/docker-compose.yaml"
 
-if [ ! -f "$COMPOSE_FILE" ] && [ "$COMPONENT" != "event-gateway" ]; then
+if [ ! -f "$COMPOSE_FILE" ] && [ "$COMPONENT" != "event-gateway" ] && [ "$COMPONENT" != "developer-portal" ]; then
     echo "Warning: docker-compose.yaml not found at $COMPOSE_FILE"
     exit 0
 fi
 
-if [ "$COMPONENT" = "gateway" ]; then
+if [ "$COMPONENT" = "developer-portal" ]; then
+    # Update developer-portal image in main docker-compose.yml
+    if [ -f "$DEVPORTAL_COMPOSE_FILE" ]; then
+        sed -i.bak \
+            -e "s|image: .*/developer-portal:.*|image: ${DOCKER_REGISTRY}/developer-portal:$VERSION|" \
+            "$DEVPORTAL_COMPOSE_FILE"
+        rm -f "$DEVPORTAL_COMPOSE_FILE.bak"
+        echo "Updated $DEVPORTAL_COMPOSE_FILE with developer-portal version $VERSION"
+    fi
+    # Mirror the same image-tag rewrite in the distribution compose template
+    if [ -f "$DEVPORTAL_DIST_COMPOSE_FILE" ]; then
+        sed -i.bak \
+            -e "s|image: .*/developer-portal:.*|image: ${DOCKER_REGISTRY}/developer-portal:$VERSION|" \
+            "$DEVPORTAL_DIST_COMPOSE_FILE"
+        rm -f "$DEVPORTAL_DIST_COMPOSE_FILE.bak"
+        echo "Updated $DEVPORTAL_DIST_COMPOSE_FILE with developer-portal version $VERSION"
+    fi
+elif [ "$COMPONENT" = "gateway" ]; then
     # Update all gateway component images in main docker-compose.yaml
     sed -i.bak \
         -e "s|image: .*/gateway-controller:.*|image: ${DOCKER_REGISTRY}/gateway-controller:$VERSION|" \

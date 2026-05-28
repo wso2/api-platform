@@ -1,0 +1,145 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# Developer Portal Makefile
+
+SHELL := /bin/bash
+
+# Read shared version from VERSION file
+VERSION := $(shell cat VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
+
+# Docker registry configuration
+DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
+
+# Image name
+DEVPORTAL_IMAGE := $(DOCKER_REGISTRY)/developer-portal
+
+.DEFAULT_GOAL := help
+
+.PHONY: help
+help: ## Show this help message
+	@echo 'Developer Portal Build System (Version: $(VERSION))'
+	@echo ''
+	@echo 'Build Targets:'
+	@echo '  make build                      - Build developer-portal Docker image (buildx)'
+	@echo '  make build-and-push-multiarch   - Build and push multi-arch image to GHCR'
+	@echo ''
+	@echo 'Distribution Targets:'
+	@echo '  make dist                        - Build standalone distribution zip (target/wso2apip-developer-portal-<VERSION>.zip)'
+	@echo '  make clean-dist                  - Remove distribution staging dir and zip'
+	@echo ''
+	@echo 'Version Management:'
+	@echo '  make version-set VERSION=X       - Set developer portal version and update artifacts'
+	@echo '  make version-bump-patch          - Bump patch version'
+	@echo '  make version-bump-minor          - Bump minor version'
+	@echo '  make version-bump-major          - Bump major version'
+	@echo '  make version-bump-next-dev       - Bump to next minor dev version with SNAPSHOT'
+	@echo '  make version-get-release         - Get release version (strips SNAPSHOT suffix)'
+	@echo ''
+	@echo 'Clean Targets:'
+	@echo '  make clean                       - Clean all build artifacts'
+
+# Build Targets
+
+.PHONY: build
+build: ## Build developer-portal Docker image
+	@echo "Building developer-portal Docker image ($(VERSION))..."
+	docker buildx build \
+		--tag $(DEVPORTAL_IMAGE):$(VERSION) \
+		--load \
+		.
+
+.PHONY: build-and-push-multiarch
+build-and-push-multiarch: ## Build and push multi-arch developer-portal image to GHCR
+	@echo "Building and pushing multi-arch developer-portal Docker image ($(VERSION))..."
+	docker buildx build \
+		--platform linux/amd64,linux/arm64 \
+		--tag $(DEVPORTAL_IMAGE):$(VERSION) \
+		--push \
+		.
+
+# Version Management Targets
+
+.PHONY: version-set
+version-set: ## Set developer portal version and update artifacts
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Error: VERSION required"; \
+		echo "Usage: make version-set VERSION=1.0.0"; \
+		exit 1; \
+	fi
+	@echo "$(VERSION)" > VERSION
+	@sed -i.bak 's/"version": ".*"/"version": "$(VERSION)"/' package.json && rm -f package.json.bak
+	@(cd ../.. && bash scripts/update-docker-compose.sh developer-portal $(VERSION))
+	@echo "✓ Set developer portal version to $(VERSION)"
+
+.PHONY: version-bump-patch
+version-bump-patch: ## Bump patch version
+	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh patch portals/developer-portal)
+
+.PHONY: version-bump-minor
+version-bump-minor: ## Bump minor version
+	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh minor portals/developer-portal)
+
+.PHONY: version-bump-major
+version-bump-major: ## Bump major version
+	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh major portals/developer-portal)
+
+.PHONY: version-bump-next-dev
+version-bump-next-dev: ## Bump to next minor dev version with SNAPSHOT suffix
+	@$(MAKE) version-set VERSION=$$(cd ../.. && bash scripts/next-version.sh next-dev portals/developer-portal)
+
+.PHONY: version-get-release
+version-get-release: ## Get release version (strips SNAPSHOT suffix)
+	@VERSION=$$(cat VERSION 2>/dev/null | tr -d '[:space:]' | sed 's/-SNAPSHOT//'); \
+	if [ -z "$$VERSION" ]; then \
+		echo "Error: VERSION is empty or contains only whitespace. Check portals/developer-portal/VERSION file." >&2; \
+		exit 1; \
+	fi; \
+	echo "$$VERSION"
+
+# Distribution Targets
+
+DIST_VERSION := $(shell echo "$(VERSION)" | sed 's/-SNAPSHOT//')
+DIST_NAME    := wso2apip-developer-portal-$(DIST_VERSION)
+DIST_DIR     := target/$(DIST_NAME)
+DIST_ZIP     := target/$(DIST_NAME).zip
+
+.PHONY: dist
+dist: clean-dist ## Build standalone developer portal distribution zip
+	@echo "Building distribution $(DIST_NAME)..."
+	@mkdir -p $(DIST_DIR)/configs $(DIST_DIR)/artifacts
+	@cp -R artifacts/docker-init $(DIST_DIR)/artifacts/
+	@cp configs/config.yaml $(DIST_DIR)/configs/config.yaml
+	@cp distribution/docker-compose.yaml $(DIST_DIR)/docker-compose.yaml
+	@sed -i.bak \
+	    -e 's|image: .*/developer-portal:[^[:space:]]*|image: $(DEVPORTAL_IMAGE):$(DIST_VERSION)|g' \
+	    $(DIST_DIR)/docker-compose.yaml
+	@rm -f $(DIST_DIR)/docker-compose.yaml.bak
+	@cd target && zip -rq $(DIST_NAME).zip $(DIST_NAME)
+	@rm -rf $(DIST_DIR)
+	@echo "✓ Built $(DIST_ZIP)"
+
+.PHONY: clean-dist
+clean-dist: ## Remove distribution staging dir and zip
+	@rm -rf target/wso2apip-developer-portal-*
+
+# Clean Targets
+
+.PHONY: clean
+clean: clean-dist ## Clean all build artifacts
+	@echo "Cleaned developer portal build artifacts"
