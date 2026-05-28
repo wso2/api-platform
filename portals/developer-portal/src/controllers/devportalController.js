@@ -157,13 +157,6 @@ const deleteApplication = async (req, res) => {
                 throw stripeErr;
             }
 
-            //delete the CP application
-            //TODO: handle non-shared scenarios
-            const app = await adminDao.getApplicationKeyMapping(orgID, applicationId, true);
-            if (app.length > 0) {
-                cpAppID = app[0].dataValues.CP_APP_REF;
-                await invokeApiRequest(req, 'DELETE', `${controlPlaneUrl}/applications/${cpAppID}`, {}, {});
-            }
             const appDeleteResponse = await adminDao.deleteApplication(orgID, applicationId, req.user.sub);
             if (appDeleteResponse === 0) {
                 throw new Sequelize.EmptyResultError("Resource not found to delete");

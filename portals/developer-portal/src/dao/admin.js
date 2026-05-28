@@ -784,26 +784,6 @@ const deleteSubscription = async (orgID, subID, t) => {
     }
 }
 
-const deleteAppKeyMapping = async (orgID, appID, apiID, t) => {
-    try {
-        const deletedRowsCount = await ApplicationKeyMapping.destroy({
-            where: {
-                ORG_ID: orgID,
-                APP_ID: appID,
-                API_REF_ID: apiID
-            }, transaction: t
-        });
-        if (deletedRowsCount < 1 && apiID !== null) {
-            throw Object.assign(new Sequelize.EmptyResultError('Application Key Mapping not found'));
-        }
-        return deletedRowsCount;
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
 
 const deleteAppMappings = async (orgID, appID, t) => {
     try {
@@ -830,25 +810,6 @@ const deleteAppMappings = async (orgID, appID, t) => {
     }
 }
 
-const getAPISubscriptionReference = async (orgID, appID, apiID, t) => {
-    try {
-        const subscriptionReference = await ApplicationKeyMapping.findAll(
-            {
-                attributes: ['SUBSCRIPTION_REF_ID'],
-                where: {
-                    ORG_ID: orgID,
-                    APP_ID: appID,
-                    API_REF_ID: apiID
-                }
-            }, { transaction: t });
-        return subscriptionReference;
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
 
 const createAppKeyMapping = async (appKeyMap, t) => {
     try {
@@ -918,16 +879,11 @@ const getSubscribedAPIs = async (orgID, appID) => {
     }
 }
 
-const getApplicationKeyMapping = async (orgID, appID, isSharedToken) => {
+const getApplicationKeyMapping = async (orgID, appID) => {
     try {
-        return await ApplicationKeyMapping.findAll(
-            {
-                where: {
-                    ORG_ID: orgID,
-                    APP_ID: appID,
-                    SHARED_TOKEN: isSharedToken
-                }
-            });
+        return await ApplicationKeyMapping.findAll({
+            where: { ORG_ID: orgID, APP_ID: appID }
+        });
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
@@ -936,25 +892,6 @@ const getApplicationKeyMapping = async (orgID, appID, isSharedToken) => {
     }
 }
 
-const getApplicationAPIMapping = async (orgID, appID, apiID, appRefID, isSharedToken) => {
-    try {
-        return await ApplicationKeyMapping.findAll(
-            {
-                where: {
-                    ORG_ID: orgID,
-                    APP_ID: appID,
-                    API_REF_ID: apiID,
-                    CP_APP_REF: appRefID,
-                    SHARED_TOKEN: isSharedToken
-                }
-            });
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
 
 const createApplicationKeyMapping = async (mappingData, t) => {
     try {
@@ -1009,32 +946,6 @@ const upsertApplicationKeyMapping = async (mappingData, t) => {
     }
 };
 
-const updateApplicationKeyMapping = async (apiID, mappingData, t) => {
-    try {
-        const [updatedRowsCount, appContent] = await ApplicationKeyMapping.update({
-            API_REF_ID: mappingData.apiRefID,
-            CP_APP_REF: mappingData.cpAppRef,
-            SUBSCRIPTION_REF_ID: mappingData.subscriptionRefID,
-            SHARED_TOKEN: mappingData.sharedToken,
-            TOKEN_TYPE: mappingData.tokenType
-        },
-            {
-                where: {
-                    ORG_ID: mappingData.orgID,
-                    APP_ID: mappingData.appID,
-                    API_REF_ID: apiID
-                },
-                transaction: t
-            });
-
-        return [updatedRowsCount, appContent];
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
 
 /**
  * Update billing-related fields for a subscription (for monetization)
@@ -1365,8 +1276,6 @@ module.exports = {
     getSubscription,
     getSubscriptions,
     deleteSubscription,
-    deleteAppKeyMapping,
-    getAPISubscriptionReference,
     getApplicationID,
     createAppKeyMapping,
     getKeyMapping,
@@ -1375,8 +1284,6 @@ module.exports = {
     getApplicationKeyMapping,
     createApplicationKeyMapping,
     upsertApplicationKeyMapping,
-    updateApplicationKeyMapping,
-    getApplicationAPIMapping,
     deleteAppMappings,
     updateBillingFields,
     findSubscriptionByUniqueKey,
