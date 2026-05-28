@@ -29,6 +29,12 @@ DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 # Image name
 DEVPORTAL_IMAGE := $(DOCKER_REGISTRY)/developer-portal
 
+# API docs tooling
+REPO_ROOT         := $(shell git rev-parse --show-toplevel)
+APIDOCS_TOOLS_DIR := $(REPO_ROOT)/tools/apidocs
+DOCS_OUT_DIR      := $(REPO_ROOT)/docs/rest-apis/devportal
+OPENAPI_SPEC      := docs/devportal-openapi-spec-v1.yaml
+
 .DEFAULT_GOAL := help
 
 .PHONY: help
@@ -50,6 +56,9 @@ help: ## Show this help message
 	@echo '  make version-bump-major          - Bump major version'
 	@echo '  make version-bump-next-dev       - Bump to next minor dev version with SNAPSHOT'
 	@echo '  make version-get-release         - Get release version (strips SNAPSHOT suffix)'
+	@echo ''
+	@echo 'Docs Targets:'
+	@echo '  make generate-apidocs            - Generate REST API docs from OpenAPI spec'
 	@echo ''
 	@echo 'Clean Targets:'
 	@echo '  make clean                       - Clean all build artifacts'
@@ -143,3 +152,14 @@ clean-dist: ## Remove distribution staging dir and zip
 .PHONY: clean
 clean: clean-dist ## Clean all build artifacts
 	@echo "Cleaned developer portal build artifacts"
+
+# Docs Targets
+
+.PHONY: generate-apidocs
+generate-apidocs: ## Generate REST API docs from devportal OpenAPI spec
+	@command -v widdershins >/dev/null 2>&1 || { echo "widdershins not found, installing..."; npm install -g widdershins; }
+	@widdershins $(OPENAPI_SPEC) -o /tmp/dp-openapi.md \
+		--omitHeader --summary --language_tabs 'shell:Shell:curl' \
+		--user_templates $(APIDOCS_TOOLS_DIR)/widdershins_templates/
+	@bash $(APIDOCS_TOOLS_DIR)/split-openapi.sh /tmp/dp-openapi.md $(DOCS_OUT_DIR)
+	@echo "REST API docs generated at $(DOCS_OUT_DIR)"
