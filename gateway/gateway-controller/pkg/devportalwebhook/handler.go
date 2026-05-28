@@ -359,27 +359,30 @@ func (h *Handler) handleSubscriptionDeleted(ctx context.Context, env *EventEnvel
 // --- helpers ---
 
 // resolveAPI maps a devportal APIRef to the gateway-internal UUID + display name + version.
-// Lookup order: CPArtifactID (ref_id) → name+version scan over all configs.
+//
+// Lookup order:
+//  1. handle (ref_id) — exact match across all artifact kinds; handle is only unique
+//     per (gateway, kind) in the DB schema, so we scan all configs and pick the first hit.
+//  2. name+version — case-insensitive display name + version scan, used when ref_id is empty.
 func (h *Handler) resolveAPI(ctx context.Context, ref APIRef) (apiID, apiName, apiVersion string, err error) {
+	all, err := h.db.GetAllConfigs()
+	if err != nil {
+		return "", "", "", fmt.Errorf("loading configs for API lookup: %w", err)
+	}
+
 	if ref.RefID != "" {
-		cfg, lookupErr := h.db.GetConfigByCPArtifactID(ref.RefID)
-		if lookupErr == nil {
-			return cfg.UUID, cfg.DisplayName, cfg.Version, nil
+		for _, cfg := range all {
+			if cfg.Handle == ref.RefID {
+				return cfg.UUID, cfg.DisplayName, cfg.Version, nil
+			}
 		}
-		if !storage.IsNotFoundError(lookupErr) {
-			return "", "", "", fmt.Errorf("looking up API by ref_id %q: %w", ref.RefID, lookupErr)
-		}
-		// Not found by ref_id — fall through to name+version scan.
+		// No match by handle — fall through to name+version if provided.
 	}
 
 	if ref.Name == "" {
-		return "", "", "", fmt.Errorf("cannot resolve API: ref_id is empty and api.name is missing")
+		return "", "", "", fmt.Errorf("cannot resolve API: ref_id %q not found and api.name is missing", ref.RefID)
 	}
 
-	all, err := h.db.GetAllConfigs()
-	if err != nil {
-		return "", "", "", fmt.Errorf("loading configs for API name lookup: %w", err)
-	}
 	for _, cfg := range all {
 		if strings.EqualFold(cfg.DisplayName, ref.Name) && strings.EqualFold(cfg.Version, ref.Version) {
 			return cfg.UUID, cfg.DisplayName, cfg.Version, nil
