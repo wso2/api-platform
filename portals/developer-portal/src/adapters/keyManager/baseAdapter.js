@@ -54,10 +54,16 @@ class BaseKeyManagerAdapter {
                     password: this.adminClientSecret,
                 },
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                timeout: 5000,
             });
             return response.data.access_token;
         } catch (error) {
-            logger.error('Failed to acquire admin token', { error, tokenEndpoint: this.tokenEndpoint });
+            logger.error('Failed to acquire admin token', {
+                errorMessage: error.message,
+                errorCode: error.code || null,
+                status: error.response?.status || null,
+                tokenEndpoint: this.tokenEndpoint,
+            });
             throw new Error(`Failed to acquire admin token: ${error.message}`);
         }
     }
@@ -130,6 +136,7 @@ class BaseKeyManagerAdapter {
                     password: clientSecret,
                 },
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                timeout: 5000,
             });
             return {
                 accessToken: response.data.access_token,
@@ -138,7 +145,12 @@ class BaseKeyManagerAdapter {
                 scope: response.data.scope || '',
             };
         } catch (error) {
-            logger.error('Failed to generate token', { error, tokenEndpoint: this.tokenEndpoint });
+            logger.error('Failed to generate token', {
+                errorMessage: error.message,
+                errorCode: error.code || null,
+                status: error.response?.status || null,
+                tokenEndpoint: this.tokenEndpoint,
+            });
             throw new Error(`Token generation failed: ${error.message}`);
         }
     }

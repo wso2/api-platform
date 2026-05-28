@@ -53,10 +53,14 @@ function mapYamlToKeyManager(yamlDoc) {
 function parseKeyManagerFromYamlFile(buffer) {
     const yamlDoc = yaml.load(buffer.toString('utf8'));
     if (!yamlDoc) {
-        throw new Error('Empty YAML file');
+        const err = new Error('Empty YAML file');
+        err.name = 'ValidationError';
+        throw err;
     }
     if (yamlDoc.kind !== 'KeyManager') {
-        throw new Error(`Unexpected YAML kind: ${yamlDoc.kind}. Expected "KeyManager".`);
+        const err = new Error(`Unexpected YAML kind: ${yamlDoc.kind}. Expected "KeyManager".`);
+        err.name = 'ValidationError';
+        throw err;
     }
     return mapYamlToKeyManager(yamlDoc);
 }
@@ -125,6 +129,9 @@ const createKeyManager = async (req, res) => {
                 error: `A key manager with name "${req.body?.name}" already exists in this organization.`
             });
         }
+        if (error.name === 'YAMLException' || error.name === 'ValidationError') {
+            return res.status(400).json({ error: error.message });
+        }
         logger.error(constants.ERROR_MESSAGE.KEY_MANAGER_CREATE_ERROR, { error });
         return res.status(500).json({ error: constants.ERROR_MESSAGE.KEY_MANAGER_CREATE_ERROR });
     }
@@ -152,6 +159,9 @@ const updateKeyManager = async (req, res) => {
             return res.status(409).json({
                 error: `A key manager with that name already exists in this organization.`
             });
+        }
+        if (error.name === 'YAMLException' || error.name === 'ValidationError') {
+            return res.status(400).json({ error: error.message });
         }
         logger.error(constants.ERROR_MESSAGE.KEY_MANAGER_UPDATE_ERROR, { error });
         return res.status(500).json({ error: constants.ERROR_MESSAGE.KEY_MANAGER_UPDATE_ERROR });

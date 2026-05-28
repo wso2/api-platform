@@ -975,6 +975,40 @@ const createApplicationKeyMapping = async (mappingData, t) => {
     }
 }
 
+const upsertApplicationKeyMapping = async (mappingData, t) => {
+    try {
+        const existing = await ApplicationKeyMapping.findOne({
+            where: {
+                ORG_ID: mappingData.orgID,
+                APP_ID: mappingData.appID,
+                KM_ID: mappingData.kmID,
+                KEY_TYPE: mappingData.keyType,
+            },
+            ...(t && { transaction: t }),
+        });
+        if (existing) {
+            await existing.update({
+                AS_CLIENT_ID: mappingData.asClientID,
+                ADDITIONAL_PROPERTIES: mappingData.additionalProperties,
+            }, { transaction: t });
+            return existing;
+        }
+        return await ApplicationKeyMapping.create({
+            ORG_ID: mappingData.orgID,
+            APP_ID: mappingData.appID,
+            ...(mappingData.kmID && { KM_ID: mappingData.kmID }),
+            AS_CLIENT_ID: mappingData.asClientID,
+            KEY_TYPE: mappingData.keyType,
+            ADDITIONAL_PROPERTIES: mappingData.additionalProperties,
+        }, { transaction: t });
+    } catch (error) {
+        if (error instanceof Sequelize.UniqueConstraintError) {
+            throw error;
+        }
+        throw new Sequelize.DatabaseError(error);
+    }
+};
+
 const updateApplicationKeyMapping = async (apiID, mappingData, t) => {
     try {
         const [updatedRowsCount, appContent] = await ApplicationKeyMapping.update({
@@ -1340,6 +1374,7 @@ module.exports = {
     getSubscribedAPIs,
     getApplicationKeyMapping,
     createApplicationKeyMapping,
+    upsertApplicationKeyMapping,
     updateApplicationKeyMapping,
     getApplicationAPIMapping,
     deleteAppMappings,

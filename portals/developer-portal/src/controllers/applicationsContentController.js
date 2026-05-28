@@ -157,7 +157,7 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
 
     let applicationReference = "";
     let applicationKeyList;
-    if (applicationList.appMap) {
+    if (Array.isArray(applicationList.appMap) && applicationList.appMap.length > 0) {
         applicationReference = applicationList.appMap[0].appRefID;
         if (config.controlPlane?.enabled !== false) {
             try {

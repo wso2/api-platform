@@ -1611,6 +1611,7 @@ async function _createAppKeyMappingDecoupled(req, orgID, userID) {
     const adapter = getKeyManagerAdapter(kmRecord);
 
     let responseData;
+    let oauthClient;
 
     if (clientID) {
         // Map existing client credentials (no new OAuth client creation)
@@ -1631,7 +1632,7 @@ async function _createAppKeyMappingDecoupled(req, orgID, userID) {
         const keyType = (tokenDetails.keyType || 'PRODUCTION').toUpperCase();
         const clientName = `${sanitize(userID)}_${sanitize(appID)}_${keyType}`;
 
-        const oauthClient = await adapter.createOAuthClient(
+        oauthClient = await adapter.createOAuthClient(
             clientName,
             grantTypes,
             redirectUris,
@@ -1649,7 +1650,7 @@ async function _createAppKeyMappingDecoupled(req, orgID, userID) {
         };
     }
 
-    // Store key mapping in devportal DB with the full AS-returned config
+    // Persist key mapping idempotently — update if (org, app, km, keyType) already exists
     const appKeyMapping = {
         orgID: orgID,
         appID: appID,
@@ -1658,7 +1659,20 @@ async function _createAppKeyMappingDecoupled(req, orgID, userID) {
         keyType: tokenDetails.keyType || 'PRODUCTION',
         additionalProperties: responseData.additionalProperties || {},
     };
-    await adminDao.createApplicationKeyMapping(appKeyMapping);
+    try {
+        await adminDao.upsertApplicationKeyMapping(appKeyMapping);
+    } catch (dbError) {
+        // Roll back the newly created remote OAuth client to avoid orphaned AS registrations
+        if (oauthClient) {
+            await adapter.deleteOAuthClient(oauthClient.clientId).catch((cleanupErr) => {
+                logger.warn('Failed to roll back OAuth client after DB error', {
+                    clientId: oauthClient.clientId,
+                    errorMessage: cleanupErr.message,
+                });
+            });
+        }
+        throw dbError;
+    }
 
     return responseData;
 }

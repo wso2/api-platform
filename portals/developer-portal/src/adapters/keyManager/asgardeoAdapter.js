@@ -63,6 +63,7 @@ class AsgardeoAdapter extends BaseKeyManagerAdapter {
                     password: this.adminClientSecret,
                 },
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                timeout: 5000,
             });
             const expiresIn = response.data.expires_in || 3600;
             this._adminTokenCache = {
@@ -71,7 +72,12 @@ class AsgardeoAdapter extends BaseKeyManagerAdapter {
             };
             return this._adminTokenCache.accessToken;
         } catch (error) {
-            logger.error('Failed to acquire Asgardeo admin token', { error, tokenEndpoint: this.tokenEndpoint });
+            logger.error('Failed to acquire Asgardeo admin token', {
+                errorMessage: error.message,
+                errorCode: error.code || null,
+                status: error.response?.status || null,
+                tokenEndpoint: this.tokenEndpoint,
+            });
             throw new Error(`Failed to acquire Asgardeo admin token: ${error.message}`);
         }
     }
@@ -95,6 +101,7 @@ class AsgardeoAdapter extends BaseKeyManagerAdapter {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${adminToken}`,
                 },
+                timeout: 5000,
             });
 
             const { client_secret, ...additionalProperties } = response.data;
@@ -104,7 +111,11 @@ class AsgardeoAdapter extends BaseKeyManagerAdapter {
                 additionalProperties,
             };
         } catch (error) {
-            logger.error('Asgardeo createOAuthClient failed', { error, responseData: error.response?.data });
+            logger.error('Asgardeo createOAuthClient failed', {
+                errorMessage: error.message,
+                errorCode: error.code || null,
+                status: error.response?.status || null,
+            });
             throw new Error(`Failed to create OAuth client in Asgardeo: ${error.response?.data?.error_description || error.message}`);
         }
     }
@@ -137,11 +148,16 @@ class AsgardeoAdapter extends BaseKeyManagerAdapter {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${adminToken}`,
                 },
+                timeout: 5000,
             });
             const { client_secret, ...additionalProperties } = response.data;
             return { additionalProperties };
         } catch (error) {
-            logger.error('Asgardeo updateOAuthClient failed', { error });
+            logger.error('Asgardeo updateOAuthClient failed', {
+                errorMessage: error.message,
+                errorCode: error.code || null,
+                status: error.response?.status || null,
+            });
             throw new Error(`Failed to update OAuth client in Asgardeo: ${error.message}`);
         }
     }
@@ -154,9 +170,14 @@ class AsgardeoAdapter extends BaseKeyManagerAdapter {
                 headers: {
                     'Authorization': `Bearer ${adminToken}`,
                 },
+                timeout: 5000,
             });
         } catch (error) {
-            logger.error('Asgardeo deleteOAuthClient failed', { error });
+            logger.error('Asgardeo deleteOAuthClient failed', {
+                errorMessage: error.message,
+                errorCode: error.code || null,
+                status: error.response?.status || null,
+            });
             throw new Error(`Failed to delete OAuth client in Asgardeo: ${error.message}`);
         }
     }
