@@ -98,6 +98,12 @@ func (p *SyncProducer) PublishTombstone(_ context.Context, topic, callbackURL st
 // returns true only if the latest record for that key is a non-tombstone value.
 // Used to validate cross-instance unsubscribe requests.
 func (p *SyncProducer) ExistsInKafka(ctx context.Context, topic, callbackURL string) (bool, error) {
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+	}
+
 	key := syncKey(topic, callbackURL)
 	found := false
 	err := p.driver.Replay(ctx, p.syncTopic, func(_ context.Context, msg *connectors.Message) error {

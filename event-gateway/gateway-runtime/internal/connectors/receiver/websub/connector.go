@@ -181,15 +181,15 @@ func (e *WebSubReceiver) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop stops all per-callback consumers, the sync watcher, and the sync producer.
+// Stop stops the sync watcher first, then all per-callback consumers, then the sync producer.
 func (e *WebSubReceiver) Stop(ctx context.Context) error {
-	e.consumerMgr.StopAll(ctx)
-
 	if e.syncWatcherReceiver != nil {
 		if err := e.syncWatcherReceiver.Stop(ctx); err != nil {
 			slog.Error("Failed to stop sync watcher", "api", e.channel.Name, "error", err)
 		}
 	}
+
+	e.consumerMgr.StopAll(ctx)
 
 	if e.syncProducer != nil {
 		e.syncProducer.Close()
@@ -205,7 +205,11 @@ func (e *WebSubReceiver) startSyncWatcher(ctx context.Context) {
 		return
 	}
 
-	apiID := binding.JoinNormalizedTopic(e.channel.Context, e.channel.Version)[:12]
+	normalized := binding.JoinNormalizedTopic(e.channel.Context, e.channel.Version)
+	apiID := normalized
+	if len(normalized) > 12 {
+		apiID = normalized[:12]
+	}
 	slog.Info("Subscription sync watcher API mapping",
 		"api", e.channel.Name,
 		"context", e.channel.Context,
