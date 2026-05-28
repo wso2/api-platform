@@ -23,13 +23,9 @@
 const devportalController = require('../../controllers/devportalController');
 
 module.exports = {
-    generateApplicationAPIKeys: devportalController.generateAPIKeys,
     generateApplicationKeys: devportalController.generateApplicationKeys,
     generateOAuthKeys: devportalController.generateOAuthKeys,
     revokeOAuthKeys: devportalController.revokeOAuthKeys,
     updateOAuthKeys: devportalController.updateOAuthKeys,
     cleanUpOAuthKeys: devportalController.cleanUp,
-    generateAPIKeys: devportalController.generateAPIKeys,
-    revokeAPIKeys: devportalController.revokeAPIKeys,
-    regenerateAPIKeys: devportalController.regenerateAPIKeys,
 };

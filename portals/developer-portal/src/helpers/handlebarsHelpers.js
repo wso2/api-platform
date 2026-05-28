@@ -47,7 +47,7 @@ const helpers = {
     // JSON helpers
     json: (context) => JSON.stringify(context ?? null),
     jsonBeautify: (context) => typeof context === 'string' ? context : JSON.stringify(context ?? {}, null, 2),
-    jsonSafePlatformSubscriptions: function (context) {
+    jsonSafeSubscriptions: function (context) {
         try {
             if (!Array.isArray(context)) return JSON.stringify([]);
             const maskToken = (t) => (!t || String(t).length <= 4) ? '****' : '****' + String(t).slice(-4);

@@ -73,14 +73,14 @@ function openWarningModal(param1, param2, param3, param4, param5, param6, param7
                 removeSubscription(sanitizedParam2, sanitizedParam3, sanitizedParam4, sanitizedParam5);
             }
         };
-    } else if (param1 === 'DeletePlatformSubscription') {
+    } else if (param1 === 'DeleteSubscription') {
         modalTitle.innerText = 'Delete subscription?';
         modalMessage.innerText =
             'The subscription token will be immediately invalidated and any API calls using it will fail.';
         modalFunction.innerText = 'Delete';
         modalFunction.onclick = function() {
-            if (typeof executeDeletePlatformSubscription === 'function') {
-                executeDeletePlatformSubscription(sanitizedParam2, sanitizedParam3);
+            if (typeof executeDeleteSubscription === 'function') {
+                executeDeleteSubscription(sanitizedParam2, sanitizedParam3);
             }
         };
     } else if (param1 === 'DeleteTokenBasedSubscription') {
@@ -119,7 +119,7 @@ function openWarningModal(param1, param2, param3, param4, param5, param6, param7
         modalFunction.onclick = function() {
             deleteApplication();
         };
-    } else if (param1 === 'SwitchPlatformSubscriptionPlan') {
+    } else if (param1 === 'SwitchSubscriptionPlan') {
         modalTitle.innerText = 'Switch subscription plan?';
         modalMessage.innerText =
             'You are currently subscribed to the "' +
@@ -129,8 +129,8 @@ function openWarningModal(param1, param2, param3, param4, param5, param6, param7
             '" will delete your existing subscription and generate a new token. Do you want to proceed?';
         modalFunction.innerText = 'Confirm';
         modalFunction.onclick = function() {
-            if (typeof runPendingPlatformPlanSwitch === 'function') {
-                runPendingPlatformPlanSwitch(
+            if (typeof runPendingPlanSwitch === 'function') {
+                runPendingPlanSwitch(
                     sanitizedParam2,
                     sanitizedParam3,
                     sanitizedParam4,

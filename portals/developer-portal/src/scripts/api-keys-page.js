@@ -17,7 +17,7 @@
  */
 
 (function () {
-    const cfg = document.getElementById('platform-api-keys-config');
+    const cfg = document.getElementById('api-keys-config');
     if (!cfg) {
         return;
     }
@@ -50,8 +50,8 @@
     }
 
     function showSecretModal(value, reloadOnClose) {
-        const input = document.getElementById('platform-api-key-secret-value');
-        const modalEl = document.getElementById('showPlatformApiKeySecretModal');
+        const input = document.getElementById('api-key-secret-value');
+        const modalEl = document.getElementById('showApiKeySecretModal');
         if (!input || !modalEl || typeof bootstrap === 'undefined') {
             if (typeof showAlert === 'function') {
                 showAlert('API key: ' + value, 'success');
@@ -71,7 +71,7 @@
         }
         const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
         modal.show();
-        const copyBtn = document.getElementById('btn-copy-platform-api-key-secret');
+        const copyBtn = document.getElementById('btn-copy-api-key-secret');
         if (copyBtn) {
             copyBtn.onclick = function () {
                 input.select();
@@ -85,7 +85,7 @@
 
     async function postGenerate(body) {
         const response = await fetch(
-            '/devportal/organizations/' + encodeURIComponent(orgId) + '/platform-api-keys/generate',
+            '/devportal/organizations/' + encodeURIComponent(orgId) + '/api-keys/generate',
             {
                 method: 'POST',
                 credentials: 'same-origin',
@@ -103,7 +103,7 @@
 
     async function postRegenerate(keyId, body) {
         const response = await fetch(
-            '/devportal/organizations/' + encodeURIComponent(orgId) + '/platform-api-keys/' + encodeURIComponent(keyId) + '/regenerate',
+            '/devportal/organizations/' + encodeURIComponent(orgId) + '/api-keys/' + encodeURIComponent(keyId) + '/regenerate',
             {
                 method: 'POST',
                 credentials: 'same-origin',
@@ -120,7 +120,7 @@
     }
 
     async function postRevoke(keyId) {
-        const url = '/devportal/organizations/' + encodeURIComponent(orgId) + '/platform-api-keys/' + encodeURIComponent(keyId) + '/revoke?apiId=' + encodeURIComponent(apiId);
+        const url = '/devportal/organizations/' + encodeURIComponent(orgId) + '/api-keys/' + encodeURIComponent(keyId) + '/revoke?apiId=' + encodeURIComponent(apiId);
         const response = await fetch(url, {
             method: 'POST',
             credentials: 'same-origin',
@@ -135,10 +135,10 @@
 
     const namePattern = /^[a-z0-9][a-z0-9_-]{0,127}$/;
 
-    document.getElementById('btn-submit-generate-platform-api-key')?.addEventListener('click', async function () {
-        const submitBtn = document.getElementById('btn-submit-generate-platform-api-key');
-        const nameInput = document.getElementById('platform-api-key-name');
-        const expInput = document.getElementById('platform-api-key-expires');
+    document.getElementById('btn-submit-generate-api-key')?.addEventListener('click', async function () {
+        const submitBtn = document.getElementById('btn-submit-generate-api-key');
+        const nameInput = document.getElementById('api-key-name');
+        const expInput = document.getElementById('api-key-expires');
         const name = (nameInput && nameInput.value) ? nameInput.value.trim() : '';
         if (!namePattern.test(name)) {
             if (typeof showAlert === 'function') {
@@ -161,7 +161,7 @@
         }
         try {
             data = await postGenerate(body);
-            const modalEl = document.getElementById('generatePlatformApiKeyModal');
+            const modalEl = document.getElementById('generateApiKeyModal');
             if (modalEl && typeof bootstrap !== 'undefined') {
                 const m = bootstrap.Modal.getInstance(modalEl);
                 if (m) {
@@ -198,16 +198,16 @@
             }
             const keyId = btn.getAttribute('data-key-id') || '';
             const keyName = btn.getAttribute('data-key-name') || keyId;
-            document.getElementById('regenerate-platform-key-id').value = keyId;
-            const nameField = document.getElementById('regenerate-platform-api-key-name');
+            document.getElementById('regenerate-key-id').value = keyId;
+            const nameField = document.getElementById('regenerate-api-key-name');
             if (nameField) {
                 nameField.value = keyName;
             }
-            const expField = document.getElementById('regenerate-platform-api-key-expires');
+            const expField = document.getElementById('regenerate-api-key-expires');
             if (expField) {
                 expField.value = '';
             }
-            const modalEl = document.getElementById('regeneratePlatformApiKeyModal');
+            const modalEl = document.getElementById('regenerateApiKeyModal');
             if (modalEl && typeof bootstrap !== 'undefined') {
                 btn.dataset.loading = 'true';
                 btn.disabled = true;
@@ -228,11 +228,11 @@
         });
     });
 
-    document.getElementById('btn-submit-regenerate-platform-api-key')?.addEventListener('click', async function () {
-        const submitBtn = document.getElementById('btn-submit-regenerate-platform-api-key');
-        const keyId = document.getElementById('regenerate-platform-key-id')?.value || '';
-        const nameField = document.getElementById('regenerate-platform-api-key-name');
-        const expField = document.getElementById('regenerate-platform-api-key-expires');
+    document.getElementById('btn-submit-regenerate-api-key')?.addEventListener('click', async function () {
+        const submitBtn = document.getElementById('btn-submit-regenerate-api-key');
+        const keyId = document.getElementById('regenerate-key-id')?.value || '';
+        const nameField = document.getElementById('regenerate-api-key-name');
+        const expField = document.getElementById('regenerate-api-key-expires');
         const name = (nameField && nameField.value) ? nameField.value.trim() : '';
         if (!namePattern.test(name)) {
             if (typeof showAlert === 'function') {
@@ -255,7 +255,7 @@
         }
         try {
             data = await postRegenerate(keyId, body);
-            const modalEl = document.getElementById('regeneratePlatformApiKeyModal');
+            const modalEl = document.getElementById('regenerateApiKeyModal');
             if (modalEl && typeof bootstrap !== 'undefined') {
                 const m = bootstrap.Modal.getInstance(modalEl);
                 if (m) {

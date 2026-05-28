@@ -173,9 +173,19 @@ const SAMPLES = [
     ['updateProvider', 200, { orgId: 'org-1', name: 'WSO2', providerURL: 'https://wso2.com' }],
     ['getProviders', 200, [{ name: 'WSO2', providerURL: 'https://wso2.com' }]],
 
-    // Subscriptions — adminService.createSubscription L954 emits {message}
-    ['createSubscription', 200, { message: 'Subscribed successfully' }],
-    ['updateSubscription', 201, { message: 'Updated subscription successfully' }],
+    // Subscriptions — subscriptionService.formatSubscriptionResponse shape
+    ['createSubscription', 201, {
+        subscriptionId: 'sub-12345', subscriptionToken: 'tok-abc123',
+        status: 'ACTIVE', gatewayType: 'wso2/api-platform',
+        apiId: 'api-7f4c2a6b', subscriptionPlanName: 'Gold',
+        createdAt: '2026-05-07T08:30:00.000Z',
+    }],
+    ['updateSubscription', 200, {
+        subscriptionId: 'sub-12345', subscriptionToken: 'tok-abc123',
+        status: 'INACTIVE', gatewayType: 'wso2/api-platform',
+        apiId: 'api-7f4c2a6b', subscriptionPlanName: 'Gold',
+        createdAt: '2026-05-07T08:30:00.000Z',
+    }],
 
     // Labels — service emits LabelDTO[] = [{name, displayName}]
     ['retrieveLabels', 200, [
@@ -213,20 +223,20 @@ const SAMPLES = [
     ['updateBillingEngineKeys', 200, { message: 'Billing engine keys updated' }],
     ['deleteBillingEngineKeys', 200, { message: 'Billing engine keys deleted' }],
 
-    // Platform API Keys — apiKeyController (devportal source of truth, no CP lookup)
+    // API Keys — apiKeyController (devportal source of truth, no CP lookup)
     // generateApiKey res.status(201).json({ keyId, name, key, expiresAt, status })
-    ['generatePlatformApiKey', 201, {
+    ['generateApiKey', 201, {
         keyId: 'key-12345', name: 'weather_prod_key',
         key: 'ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ',
         expiresAt: '2026-12-31T23:59:59.000Z', status: 'ACTIVE',
     }],
     // listApiKeys res.status(200).json(keys.map(k => ({ keyId, name, status, expiresAt, createdAt, revokedAt?, apiId })))
-    ['listPlatformApiKeys', 200, [{
+    ['listApiKeys', 200, [{
         keyId: 'key-12345', name: 'weather_prod_key', status: 'ACTIVE',
         expiresAt: null, createdAt: '2026-05-07T08:30:00.000Z', apiId: 'api-7f4c2a6b',
     }]],
     // regenerateApiKey res.status(200).json({ keyId, name, key, expiresAt, status })
-    ['regeneratePlatformApiKey', 200, {
+    ['regenerateApiKey', 200, {
         keyId: 'key-12345', name: 'weather_prod_key',
         key: 'ak_bmV3a2V5Zm9yZGVtb25zdHJhdGlvbg',
         expiresAt: null, status: 'ACTIVE',

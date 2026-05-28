@@ -22,10 +22,9 @@ const logger = require('../config/logger');
 const constants = require('../utils/constants');
 const adminDao = require('../dao/admin');
 const apiDao = require('../dao/apiMetadata');
-const platformSubDao = require('../dao/platformSubscription');
-const APIDTO = require('../dto/apiDTO');
+const subDao = require('../dao/subscription');
 const apiMetadataService = require('../services/apiMetadataService');
-const { shouldShowPlatformApiKeysNav } = require('../services/platformApiKeysNavService');
+const { shouldShowApiKeysNav } = require('../services/apiKeysNavService');
 
 
 const loadSubscriptions = async (req, res) => {
@@ -42,14 +41,12 @@ const loadSubscriptions = async (req, res) => {
         if (!req.user) {
             return res.redirect(`/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}/login`);
         }
-        const userID = req.user.sub;
         const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
 
-        // 1. Load TOKEN-BASED subscriptions from local DB (all user subscriptions, no apiId filter)
-        let tokenBasedSubscriptions = [];
+        let allSubscriptions = [];
         try {
-            const localSubs = await platformSubDao.listPlatformSubscriptions(orgID);
-            tokenBasedSubscriptions = localSubs.map(sub => ({
+            const localSubs = await subDao.listSubscriptions(orgID);
+            allSubscriptions = localSubs.map(sub => ({
                 id: sub.SUB_ID,
                 type: 'TOKEN_BASED',
                 apiName: sub.DP_API_METADATA?.API_NAME || '',
@@ -63,55 +60,10 @@ const loadSubscriptions = async (req, res) => {
                 createdAt: null,
             }));
         } catch (err) {
-            logger.warn('Failed to load platform subscriptions', {
+            logger.warn('Failed to load subscriptions', {
                 error: err.message, orgID
             });
         }
-
-        // 2. Load APP-BASED subscriptions
-        const applications = await adminDao.getApplications(orgID, userID);
-        const appBasedSubscriptions = [];
-        for (const app of applications) {
-            const subscribedAPIs = await adminDao.getSubscribedAPIs(orgID, app.APP_ID);
-            for (const sub of subscribedAPIs) {
-                const api = new APIDTO(sub);
-                const subMapping = sub.dataValues.DP_APPLICATIONs[0].dataValues.DP_API_SUBSCRIPTION.dataValues;
-
-                const paymentStatus = subMapping.PAYMENT_STATUS;
-                if (paymentStatus && paymentStatus !== 'ACTIVE') {
-                    continue;
-                }
-
-                const subPolicy = await apiDao.getSubscriptionPolicy(subMapping.POLICY_ID, orgID);
-                appBasedSubscriptions.push({
-                    id: subMapping.SUB_ID,
-                    type: 'APP_BASED',
-                    apiName: api.apiInfo.apiName,
-                    apiVersion: api.apiInfo.apiVersion,
-                    apiHandle: api.apiHandle,
-                    apiRefId: api.apiReferenceID,
-                    planName: subPolicy ? subPolicy.dataValues.POLICY_NAME : '',
-                    applicationName: app.NAME,
-                    appId: app.APP_ID,
-                    // App-based subscriptions have no STATUS column in the local DB schema
-                    // (DP_API_SUBSCRIPTION). Unlike token-based subscriptions whose status
-                    // is managed by the control plane (ACTIVE/INACTIVE), app-based
-                    // subscriptions are always considered active while they exist and are
-                    // removed entirely when unsubscribed. This is an intentional limitation.
-                    status: 'ACTIVE',
-                    subscriptionToken: null,
-                    createdAt: subMapping.createdAt || null,
-                });
-            }
-        }
-
-        // 3. Merge and sort (newest first)
-        const allSubscriptions = [...tokenBasedSubscriptions, ...appBasedSubscriptions]
-            .sort((a, b) => {
-                const dateA = a.createdAt ? new Date(a.createdAt) : new Date(0);
-                const dateB = b.createdAt ? new Date(b.createdAt) : new Date(0);
-                return dateB - dateA;
-            });
 
         const profile = {
             firstName: req.user.firstName,
@@ -163,7 +115,6 @@ const loadAPISubscriptions = async (req, res) => {
         if (!req.user) {
             return res.redirect(`/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}/login`);
         }
-        const userID = req.user.sub;
         const devportalMode = orgDetails.ORG_CONFIG?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
 
         const apiID = await apiDao.getAPIId(orgID, apiHandle);
@@ -189,11 +140,10 @@ const loadAPISubscriptions = async (req, res) => {
         } else {
             metaData = null;
         }
-        // 1. Load TOKEN-BASED subscriptions filtered by this API
-        let tokenBasedSubscriptions = [];
+        let allSubscriptions = [];
         try {
-            const localSubs = await platformSubDao.listPlatformSubscriptions(orgID, { apiId: apiID });
-            tokenBasedSubscriptions = localSubs.map(sub => ({
+            const localSubs = await subDao.listSubscriptions(orgID, { apiId: apiID });
+            allSubscriptions = localSubs.map(sub => ({
                 id: sub.SUB_ID,
                 type: 'TOKEN_BASED',
                 apiName: sub.DP_API_METADATA?.API_NAME || metaData?.apiInfo?.apiName || '',
@@ -208,55 +158,10 @@ const loadAPISubscriptions = async (req, res) => {
                 createdAt: null,
             }));
         } catch (err) {
-            logger.warn('Failed to load platform subscriptions for API', {
+            logger.warn('Failed to load subscriptions for API', {
                 error: err.message, orgID, apiHandle
             });
         }
-
-        // 2. Load APP-BASED subscriptions filtered by this API
-        const applications = await adminDao.getApplications(orgID, userID);
-        const appBasedSubscriptions = [];
-        for (const app of applications) {
-            const subscribedAPIs = await adminDao.getSubscribedAPIs(orgID, app.APP_ID);
-            for (const sub of subscribedAPIs) {
-                const api = new APIDTO(sub);
-                if (api.apiID !== apiID) {
-                    continue;
-                }
-                const subMapping = sub.dataValues.DP_APPLICATIONs[0].dataValues.DP_API_SUBSCRIPTION.dataValues;
-
-                // Hide paid subscriptions that haven't completed payment yet.
-                // Free plans have null PAYMENT_STATUS and are always shown.
-                const paymentStatus = subMapping.PAYMENT_STATUS;
-                if (paymentStatus && paymentStatus !== 'ACTIVE') {
-                    continue;
-                }
-
-                const subPolicy = await apiDao.getSubscriptionPolicy(subMapping.POLICY_ID, orgID);
-                appBasedSubscriptions.push({
-                    id: subMapping.SUB_ID,
-                    type: 'APP_BASED',
-                    apiName: api.apiInfo.apiName,
-                    apiVersion: api.apiInfo.apiVersion,
-                    apiHandle: api.apiHandle,
-                    apiRefId: api.apiReferenceID,
-                    planName: subPolicy ? subPolicy.dataValues.POLICY_NAME : '',
-                    applicationName: app.NAME,
-                    appId: app.APP_ID,
-                    status: 'ACTIVE',
-                    subscriptionToken: null,
-                    createdAt: subMapping.createdAt || null,
-                });
-            }
-        }
-
-        // 3. Merge and sort (newest first)
-        const allSubscriptions = [...tokenBasedSubscriptions, ...appBasedSubscriptions]
-            .sort((a, b) => {
-                const dateA = a.createdAt ? new Date(a.createdAt) : new Date(0);
-                const dateB = b.createdAt ? new Date(b.createdAt) : new Date(0);
-                return dateB - dateA;
-            });
 
         const profile = {
             firstName: req.user.firstName,
@@ -272,7 +177,7 @@ const loadAPISubscriptions = async (req, res) => {
                 const apiFile = await apiDao.getAPIDoc(constants.DOC_TYPES.API_DEFINITION, orgID, apiID);
                 apiDefinitionForNav = apiFile?.API_FILE?.toString(constants.CHARSET_UTF8) || null;
             } catch (definitionErr) {
-                logger.debug('Could not load API definition for platform API keys nav check', {
+                logger.debug('Could not load API definition for API keys nav check', {
                     orgID,
                     apiID,
                     error: definitionErr.message
@@ -289,7 +194,7 @@ const loadAPISubscriptions = async (req, res) => {
             apiMetadata: metaData,
             apiHandle: apiHandle,
             isReadOnlyMode: config.readOnlyMode,
-            showPlatformApiKeysNav: await shouldShowPlatformApiKeysNav(req, metaData, null, apiDefinitionForNav),
+            showApiKeysNav: await shouldShowApiKeysNav(req, metaData, null, apiDefinitionForNav),
         };
 
         html = await renderTemplateFromAPI(templateContent, orgID, orgName, 'pages/api-subscriptions', viewName);

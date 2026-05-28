@@ -152,8 +152,8 @@
             </div>
         </div>
         <div class="row row-gap-4" style="margin-bottom: 64px;">
-            {{#if platformSubscriptions.length}}
-            <script id="token-map-data" type="application/json">{{{jsonSafePlatformSubscriptions platformSubscriptions}}}</script>
+            {{#if subscriptions.length}}
+            <script id="token-map-data" type="application/json">{{{jsonSafeSubscriptions subscriptions}}}</script>
             <script>
                 (function() {
                     var data = JSON.parse(document.getElementById('token-map-data').textContent || '[]');
@@ -169,8 +169,8 @@
                     window.__subscriptionOrgID = "{{@root.orgID}}";
                 })();
             </script>
-            <div class="app-table-container" id="app-table-container-platform">
-                <table class="app-table" id="app-table-platform">
+            <div class="app-table-container" id="app-table-container-subscriptions">
+                <table class="app-table" id="app-table-subscriptions">
                     <thead>
                         <tr>
                             <th class="app-th" style="width: 15%;">API Name</th>
@@ -182,7 +182,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {{#each platformSubscriptions}}
+                        {{#each subscriptions}}
                         <tr class="data-row">
                             <td class="app-td" style="width: 15%;">
                                 <span onclick="window.location.href='{{@root.baseUrl}}/api/{{this.apiHandle}}'" class="text-truncate d-block" style="cursor: pointer;">{{this.apiName}}</span>
@@ -216,7 +216,7 @@
                 </table>
             </div>
             {{else}}
-            <div class="ps-3" id="no-platform-subscription">
+            <div class="ps-3" id="no-subscription">
                 <div class="info-box">
                     <div class="info-content">
                         <div class="info-title">

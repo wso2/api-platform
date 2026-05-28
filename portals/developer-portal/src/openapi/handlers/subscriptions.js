@@ -20,13 +20,14 @@
 /*
  * Tag: Subscriptions
  */
-const adminService = require('../../services/adminService');
+const subscriptionService = require('../../services/subscriptionService');
+const { requireCsrfForMutatingApi } = require('../../middlewares/csrfProtection');
+const { compose } = require('./_compose');
 
 module.exports = {
-    createSubscription: adminService.createSubscription,
-    updateSubscription: adminService.updateSubscription,
-    getSubscription: adminService.getSubscription,
-    getAllSubscriptions: adminService.getAllSubscriptions,
-    deleteSubscription: adminService.deleteSubscription,
-    unsubscribeAPI: adminService.unsubscribeAPI,
+    createSubscription: compose(requireCsrfForMutatingApi, subscriptionService.createSubscription),
+    listSubscriptions: subscriptionService.listSubscriptions,
+    getSubscription: subscriptionService.getSubscription,
+    updateSubscription: compose(requireCsrfForMutatingApi, subscriptionService.updateSubscription),
+    deleteSubscription: compose(requireCsrfForMutatingApi, subscriptionService.deleteSubscription),
 };

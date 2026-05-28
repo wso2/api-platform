@@ -39,7 +39,7 @@ function generateSubToken() {
     return crypto.randomBytes(32).toString('hex');
 }
 
-async function createPlatformSubscription(orgId, apiId, policyId, transaction) {
+async function createSubscription(orgId, apiId, policyId, transaction) {
     for (let attempt = 0; attempt < 3; attempt++) {
         const subToken = generateSubToken();
         try {
@@ -66,7 +66,7 @@ async function createPlatformSubscription(orgId, apiId, policyId, transaction) {
     }
 }
 
-async function listPlatformSubscriptions(orgId, { apiId } = {}) {
+async function listSubscriptions(orgId, { apiId } = {}) {
     const where = { ORG_ID: orgId, APP_ID: null };
     if (apiId) where.API_ID = apiId;
     return SubscriptionMapping.findAll({
@@ -76,14 +76,14 @@ async function listPlatformSubscriptions(orgId, { apiId } = {}) {
     });
 }
 
-async function getPlatformSubscription(orgId, subId) {
+async function getSubscription(orgId, subId) {
     return SubscriptionMapping.findOne({
         where: { SUB_ID: subId, ORG_ID: orgId, APP_ID: null },
         include: INCLUDE_API_AND_POLICY,
     });
 }
 
-async function updatePlatformSubscriptionStatus(orgId, subId, status, transaction) {
+async function updateSubscriptionStatus(orgId, subId, status, transaction) {
     const [count] = await SubscriptionMapping.update(
         { STATUS: status },
         { where: { SUB_ID: subId, ORG_ID: orgId, APP_ID: null }, transaction }
@@ -91,7 +91,7 @@ async function updatePlatformSubscriptionStatus(orgId, subId, status, transactio
     return count > 0;
 }
 
-async function deletePlatformSubscription(orgId, subId, transaction) {
+async function deleteSubscription(orgId, subId, transaction) {
     const count = await SubscriptionMapping.destroy({
         where: { SUB_ID: subId, ORG_ID: orgId, APP_ID: null },
         transaction,
@@ -107,10 +107,10 @@ async function getSubscriptionById(orgId, subId) {
 }
 
 module.exports = {
-    createPlatformSubscription,
-    listPlatformSubscriptions,
-    getPlatformSubscription,
+    createSubscription,
+    listSubscriptions,
+    getSubscription,
     getSubscriptionById,
-    updatePlatformSubscriptionStatus,
-    deletePlatformSubscription,
+    updateSubscriptionStatus,
+    deleteSubscription,
 };

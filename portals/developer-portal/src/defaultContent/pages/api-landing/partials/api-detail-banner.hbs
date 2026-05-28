@@ -31,7 +31,7 @@
           {{!-- Subscribe --}}
           {{#if (eq apiMetadata.apiInfo.gatewayType "wso2/api-platform")}}
             {{#if subscriptionPlans.length}}
-              {{#unless platformSubscriptions.length}}
+              {{#unless subscriptions.length}}
           <a type="button" class="common-btn-primary" href="#subscriptionPlans">Subscribe</a>
               {{/unless}}
             {{/if}}
@@ -52,7 +52,7 @@
           {{else}}
           <a type="button" class="common-btn-outlined" href="{{baseUrl}}/api/{{apiMetadata.apiHandle}}/subscriptions">Subscriptions</a>
           {{/if}}
-          {{#if showPlatformApiKeysNav}}
+          {{#if showApiKeysNav}}
           <a type="button" class="common-btn-outlined" href="{{baseUrl}}/api/{{apiMetadata.apiHandle}}/api-keys">API Keys</a>
           {{/if}}
         </div>

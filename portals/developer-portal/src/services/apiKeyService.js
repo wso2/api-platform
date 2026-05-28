@@ -20,7 +20,7 @@ const sequelize = require('../db/sequelize');
 const apiKeyDao = require('../dao/apiKey');
 const apiMetadataDao = require('../dao/apiMetadata');
 const { publish } = require('./webhooks/eventPublisher');
-const platformSubDao = require('../dao/platformSubscription');
+const subDao = require('../dao/subscription');
 const logger = require('../config/logger');
 const { config } = require('../config/configLoader');
 
@@ -95,7 +95,7 @@ async function resolveApiDirect(orgId, apiId) {
 
 async function resolveSubscription(orgId, subscriptionId) {
     if (!subscriptionId) return null;
-    const sub = await platformSubDao.getSubscriptionById(orgId, subscriptionId);
+    const sub = await subDao.getSubscriptionById(orgId, subscriptionId);
     if (!sub) return null;
     const policy = sub.DP_SUBSCRIPTION_POLICY;
     return {

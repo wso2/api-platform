@@ -16,7 +16,7 @@
  * under the License.
  */
 const apiDao = require('../dao/apiMetadata');
-const platformSubDao = require('../dao/platformSubscription');
+const subDao = require('../dao/subscription');
 const sequelize = require('../db/sequelize');
 const { publish: publishWebhookEvent } = require('./webhooks/eventPublisher');
 const util = require('../utils/util');
@@ -26,7 +26,7 @@ async function safePublish(eventType, payload, opts) {
     try {
         await publishWebhookEvent(eventType, payload, opts);
     } catch (err) {
-        logger.warn('[platformSubscriptionService] webhook publish failed (non-fatal)', {
+        logger.warn('[subscriptionService] webhook publish failed (non-fatal)', {
             eventType, error: err.message,
         });
     }
@@ -62,7 +62,7 @@ function formatSubscriptionResponse(sub) {
     };
 }
 
-const createPlatformGatewaySubscription = async (req, res) => {
+const createSubscription = async (req, res) => {
     const orgID = req.params.orgId;
     const { apiId, subscriptionPlanName } = req.body;
 
@@ -85,7 +85,7 @@ const createPlatformGatewaySubscription = async (req, res) => {
         if (apiMetadata.GATEWAY_TYPE !== 'wso2/api-platform') {
             return res.status(400).json({
                 code: '400', message: 'Bad Request',
-                description: 'This API does not support platform subscriptions',
+                description: 'This API does not support subscriptions',
             });
         }
 
@@ -93,7 +93,7 @@ const createPlatformGatewaySubscription = async (req, res) => {
         if (plans.length === 0) {
             return res.status(400).json({
                 code: '400', message: 'Bad Request',
-                description: 'This API does not support platform subscriptions',
+                description: 'This API does not support subscriptions',
             });
         }
 
@@ -114,7 +114,7 @@ const createPlatformGatewaySubscription = async (req, res) => {
 
         let newSub;
         await sequelize.transaction(async (t) => {
-            newSub = await platformSubDao.createPlatformSubscription(
+            newSub = await subDao.createSubscription(
                 orgID, apiId, policyId, t
             );
             await safePublish('subscription.created', buildWebhookPayload(newSub, apiMetadata, matchedPlan), {
@@ -126,23 +126,23 @@ const createPlatformGatewaySubscription = async (req, res) => {
             });
         });
 
-        const created = await platformSubDao.getPlatformSubscription(orgID, newSub.SUB_ID);
+        const created = await subDao.getSubscription(orgID, newSub.SUB_ID);
         return res.status(201).json(formatSubscriptionResponse(created));
     } catch (error) {
         if (error.name === 'SequelizeUniqueConstraintError') {
             return res.status(409).json({
                 code: '409', message: 'Conflict',
-                description: 'A platform subscription for this API already exists',
+                description: 'A subscription for this API already exists',
             });
         }
-        logger.error('Error creating platform gateway subscription', {
+        logger.error('Error creating subscription', {
             error: error.message, orgID, apiId,
         });
         util.handleError(res, error);
     }
 };
 
-const listPlatformGatewaySubscriptions = async (req, res) => {
+const listSubscriptions = async (req, res) => {
     const orgID = req.params.orgId;
     const apiId = req.query.apiId;
 
@@ -156,22 +156,22 @@ const listPlatformGatewaySubscriptions = async (req, res) => {
             }
         }
 
-        const subs = await platformSubDao.listPlatformSubscriptions(orgID, { apiId });
+        const subs = await subDao.listSubscriptions(orgID, { apiId });
         return res.status(200).json({ count: subs.length, list: subs.map(formatSubscriptionResponse) });
     } catch (error) {
-        logger.error('Error listing platform gateway subscriptions', {
+        logger.error('Error listing subscriptions', {
             error: error.message, orgID,
         });
         util.handleError(res, error);
     }
 };
 
-const getPlatformGatewaySubscription = async (req, res) => {
+const getSubscription = async (req, res) => {
     const orgID = req.params.orgId;
     const subscriptionId = req.params.subscriptionId;
 
     try {
-        const sub = await platformSubDao.getPlatformSubscription(orgID, subscriptionId);
+        const sub = await subDao.getSubscription(orgID, subscriptionId);
         if (!sub) {
             return res.status(404).json({
                 code: '404', message: 'Not Found', description: 'Subscription not found',
@@ -179,14 +179,14 @@ const getPlatformGatewaySubscription = async (req, res) => {
         }
         return res.status(200).json(formatSubscriptionResponse(sub));
     } catch (error) {
-        logger.error('Error getting platform gateway subscription', {
+        logger.error('Error getting subscription', {
             error: error.message, subscriptionId,
         });
         util.handleError(res, error);
     }
 };
 
-const updatePlatformGatewaySubscription = async (req, res) => {
+const updateSubscription = async (req, res) => {
     const orgID = req.params.orgId;
     const subscriptionId = req.params.subscriptionId;
     const { status } = req.body;
@@ -199,7 +199,7 @@ const updatePlatformGatewaySubscription = async (req, res) => {
     }
 
     try {
-        const updated = await platformSubDao.updatePlatformSubscriptionStatus(
+        const updated = await subDao.updateSubscriptionStatus(
             orgID, subscriptionId, status
         );
         if (!updated) {
@@ -207,22 +207,22 @@ const updatePlatformGatewaySubscription = async (req, res) => {
                 code: '404', message: 'Not Found', description: 'Subscription not found',
             });
         }
-        const sub = await platformSubDao.getPlatformSubscription(orgID, subscriptionId);
+        const sub = await subDao.getSubscription(orgID, subscriptionId);
         return res.status(200).json(formatSubscriptionResponse(sub));
     } catch (error) {
-        logger.error('Error updating platform gateway subscription', {
+        logger.error('Error updating subscription', {
             error: error.message, subscriptionId, status,
         });
         util.handleError(res, error);
     }
 };
 
-const deletePlatformGatewaySubscription = async (req, res) => {
+const deleteSubscription = async (req, res) => {
     const orgID = req.params.orgId;
     const subscriptionId = req.params.subscriptionId;
 
     try {
-        const existing = await platformSubDao.getPlatformSubscription(orgID, subscriptionId);
+        const existing = await subDao.getSubscription(orgID, subscriptionId);
         if (!existing) {
             return res.status(404).json({
                 code: '404', message: 'Not Found', description: 'Subscription not found',
@@ -233,7 +233,7 @@ const deletePlatformGatewaySubscription = async (req, res) => {
         const policy = existing.DP_SUBSCRIPTION_POLICY;
 
         await sequelize.transaction(async (t) => {
-            const deleted = await platformSubDao.deletePlatformSubscription(orgID, subscriptionId, t);
+            const deleted = await subDao.deleteSubscription(orgID, subscriptionId, t);
             if (!deleted) throw Object.assign(new Error('Not found'), { statusCode: 404 });
             await safePublish('subscription.deleted', buildWebhookPayload(existing, apiMetadata, policy), {
                 transaction: t,
@@ -251,7 +251,7 @@ const deletePlatformGatewaySubscription = async (req, res) => {
                 code: '404', message: 'Not Found', description: 'Subscription not found',
             });
         }
-        logger.error('Error deleting platform gateway subscription', {
+        logger.error('Error deleting subscription', {
             error: error.message, subscriptionId,
         });
         util.handleError(res, error);
@@ -259,9 +259,9 @@ const deletePlatformGatewaySubscription = async (req, res) => {
 };
 
 module.exports = {
-    createPlatformGatewaySubscription,
-    listPlatformGatewaySubscriptions,
-    getPlatformGatewaySubscription,
-    updatePlatformGatewaySubscription,
-    deletePlatformGatewaySubscription,
+    createSubscription,
+    listSubscriptions,
+    getSubscription,
+    updateSubscription,
+    deleteSubscription,
 };

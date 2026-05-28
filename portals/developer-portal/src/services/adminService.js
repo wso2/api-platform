@@ -1053,375 +1053,6 @@ const deleteDevPortalApplication = async (req, res) => {
     }
 }
 
-const createSubscription = async (req, res) => {
-    const orgID = req.params.orgId;
-    logger.info('Initiate create subscription...', {
-        orgId: orgID,
-        ...req.body
-    });
-    try {
-        let isShared;
-        let sharedApp = [];
-        let nonSharedApp = [];
-        await sequelize.transaction({
-            timeout: 60000,
-        }, async (t) => {
-            try {
-                sharedApp = await adminDao.getApplicationKeyMapping(orgID, req.body.applicationID, true);
-                nonSharedApp = await adminDao.getApplicationKeyMapping(orgID, req.body.applicationID, false);
-
-                const billingMetadata = await (async () => {
-                    const subscription = await adminDao.getAppApiSubscription(
-                        orgID,
-                        req.body.applicationID,
-                        req.body.apiId,
-                    );
-                    return subscription?.length > 0 &&
-                        (subscription[0].BILLING_CUSTOMER_ID ||
-                            subscription[0].BILLING_SUBSCRIPTION_ID)
-                            ? {
-                                billingCustomerId: subscription[0].BILLING_CUSTOMER_ID,
-                                billingSubscriptionId:
-                                    subscription[0].BILLING_SUBSCRIPTION_ID,
-                            }
-                            : null;
-                })();
-
-                if (sharedApp.length > 0) {
-                    isShared = true;
-                    const response = await invokeApiRequest(req, 'POST', `${controlPlaneUrl}/subscriptions`, {}, {
-                        apiId: req.body.apiReferenceID,
-                        applicationId: sharedApp[0].dataValues.CP_APP_REF,
-                        throttlingPolicy: req.body.policyName,
-                        ...(billingMetadata ? { billingMetadata } : {}),
-                    });
-                    await handleSubscribe(orgID, req.body.applicationID, sharedApp[0].dataValues.API_REF_ID, sharedApp[0].dataValues.SUBSCRIPTION_REF_ID, response, isShared, t);
-                } else if (nonSharedApp.length > 0) {
-                    isShared = false;
-                    const response = await invokeApiRequest(req, 'POST', `${controlPlaneUrl}/subscriptions`, {}, {
-                        apiId: req.body.apiReferenceID,
-                        applicationId: nonSharedApp[0].dataValues.CP_APP_REF,
-                        throttlingPolicy: req.body.policyName,
-                        ...(billingMetadata ? { billingMetadata } : {}),
-                    });
-                    await handleSubscribe(orgID, req.body.applicationID, nonSharedApp[0].dataValues.API_REF_ID, nonSharedApp[0].dataValues.SUBSCRIPTION_REF_ID, response, isShared, t);
-                }
-                // No key mapping exists: skip CP call entirely.
-                // CP communication happens later when keys are generated (same for all plan types).
-                const existingSubscription = await adminDao.findSubscriptionByUniqueKey(
-                    orgID,
-                    req.body.applicationID,
-                    req.body.apiId,
-                    req.body.policyId,
-                    t,
-                );
-                if (!existingSubscription || existingSubscription.PAYMENT_STATUS !== "ACTIVE") {
-                    await adminDao.createSubscription(orgID, req.body, t);
-                }
-                trackSubscribeApi({
-                    orgId: orgID,
-                    appId: req.body.applicationID,
-                    apiId: req.body.apiId,
-                    idpId: req.isAuthenticated() ? (req[constants.USER_ID] || req.user.sub) : undefined
-                }, req);
-                return res.status(200).json({ message: 'Subscribed successfully' });
-
-            } catch (error) {
-                try {
-                    if (error.statusCode && error.statusCode === 409) {
-                        const appRef = sharedApp.length > 0 ? sharedApp[0] : nonSharedApp[0];
-                        const response = await invokeApiRequest(req, 'GET', `${controlPlaneUrl}/subscriptions?applicationId=${appRef.dataValues.CP_APP_REF}`, {}, {});
-                        /** Handle both scenario where a reference application in cp is created but no subscriptions avaiable 
-                         * (update existing row) & a reference application in cp is created & a subscriptions for a different 
-                         * API already exisits (create new row) **/
-                        for (const subscription of response.list) {
-                            if (subscription.apiId === req.body.apiReferenceID) {
-                                logger.info('Subscription already exists in control plane, updating database', {
-                                    orgId: req.params?.orgId,
-                                    apiId: req.params?.apiId,
-                                    applicationId: req.params?.applicationId
-                                });
-                                await handleSubscribe(orgID, req.body.applicationID, appRef.dataValues.API_REF_ID, appRef.dataValues.SUBSCRIPTION_REF_ID, subscription, sharedApp.length > 0 ? true : false, t);
-                                const existingSubAfterConflict = await adminDao.findSubscriptionByUniqueKey(
-                                    orgID,
-                                    req.body.applicationID,
-                                    req.body.apiId,
-                                    req.body.policyId,
-                                    t,
-                                );
-                                if (!existingSubAfterConflict || existingSubAfterConflict.PAYMENT_STATUS !== "ACTIVE") {
-                                    await adminDao.createSubscription(orgID, req.body, t);
-                                }
-                                return res.status(200).json({ message: 'Subscribed successfully' });
-                            }
-                        }
-                    }
-                } catch (error) {
-                    logger.error('Error occurred while retrieving API subscription', {
-                        error: error.message,
-                        orgId: req.params?.orgId,
-                        apiId: req.params?.apiId,
-                        applicationId: req.params?.applicationId
-                    });
-                    return util.handleError(res, error);
-                }
-
-                logger.error('Error occurred while subscribing to API', {
-                    error: error.message,
-                    orgId: req.params?.orgId,
-                    apiId: req.params?.apiId,
-                    applicationId: req.params?.applicationId
-                });
-                return util.handleError(res, error);
-            }
-        });
-    } catch (error) {
-        logger.error('Error occurred while subscribing to API', {
-            error: error.message,
-            orgId: req.params?.orgId,
-            apiId: req.params?.apiId,
-            applicationId: req.params?.applicationId
-        });
-        return util.handleError(res, error);
-    }
-}
-
-const updateSubscription = async (req, res) => {
-    const orgID = req.params.orgId;
-    logger.info('Initiate update subscription...', {
-        orgId: orgID,
-        ...req.body
-    });
-    try {
-        await sequelize.transaction({
-            timeout: 60000,
-        }, async (t) => {
-            try {
-                let app = await adminDao.getApplicationKeyMapping(orgID, req.body.applicationID, true);
-                let status = "UNBLOCKED";
-                if (app.length === 0) {
-                    app = await adminDao.getApplicationKeyMapping(orgID, req.body.applicationID, false);
-                }
-                if (app.length > 0) {
-                    const cpAppRef = app[0].dataValues.CP_APP_REF;
-                    let appAPIMapping;
-                    appAPIMapping = await adminDao.getApplicationAPIMapping(orgID, req.body.applicationID, req.body.apiReferenceID, cpAppRef, true);
-                    if (!appAPIMapping.length > 0) {
-                        appAPIMapping = await adminDao.getApplicationAPIMapping(orgID, req.body.applicationID, req.body.apiReferenceID, cpAppRef, false);
-                    }
-                    if (appAPIMapping.length > 0) {
-                        let throttlingPolicy = "";
-                        const subscruibedPolicy = await apiDao.getSubscriptionPolicy(req.body.policyId, orgID);
-                        if (subscruibedPolicy) {
-                            throttlingPolicy = subscruibedPolicy.dataValues.POLICY_NAME;
-                        }
-                        const subscriptionRefID = appAPIMapping[0].dataValues.SUBSCRIPTION_REF_ID;
-
-                        const subscription = await adminDao.getAppApiSubscription(
-                            orgID,
-                            req.body.applicationID,
-                            req.body.apiId,
-                        );
-                        const billingMetadata =
-                            subscription?.length > 0 &&
-                            (subscription[0].BILLING_CUSTOMER_ID ||
-                                subscription[0].BILLING_SUBSCRIPTION_ID)
-                                ? {
-                                    billingCustomerId: subscription[0].BILLING_CUSTOMER_ID,
-                                    billingSubscriptionId:
-                                        subscription[0].BILLING_SUBSCRIPTION_ID,
-                                }
-                                : null;
-
-                        const paymentStatus =
-                            subscription?.length > 0 && subscription[0].PAYMENT_STATUS;
-                        if (paymentStatus === "CANCELED") {
-                            status = "BLOCKED";
-                        }
-
-                        const response = await invokeApiRequest(req, 'PUT', `${controlPlaneUrl}/subscriptions/${subscriptionRefID}`, {}, {
-                            apiId: req.body.apiReferenceID,
-                            applicationId: cpAppRef,
-                            requestedThrottlingPolicy: req.body.policyName,
-                            subscriptionId: subscriptionRefID,
-                            status: status,
-                            throttlingPolicy: throttlingPolicy,
-                            ...(billingMetadata ? { billingMetadata } : {}),
-                        });
-                    }
-                }
-                await adminDao.updateSubscription(orgID, req.body, t);
-                return res.status(201).json({ message: 'Updated subscription successfully' });
-            } catch (error) {
-                logger.error('Error occurred while subscribing to API', {
-                    error: error.message,
-                    orgId: req.params?.orgId,
-                    apiId: req.params?.apiId,
-                    applicationId: req.params?.applicationId
-                });
-                return util.handleError(res, error);
-            }
-        });
-    } catch (error) {
-        logger.error('Error occurred while subscribing to API', {
-            error: error.message,
-            orgId: req.params?.orgId,
-            apiId: req.params?.apiId,
-            applicationId: req.params?.applicationId
-        });
-        return util.handleError(res, error);
-    }
-}
-
-async function handleSubscribe(orgID, applicationID, apiRefID, subRefID, response, isShared, t) {
-    if (apiRefID && subRefID) {
-        await adminDao.createApplicationKeyMapping({
-            orgID: orgID,
-            appID: applicationID,
-            cpAppRef: response.applicationId,
-            apiRefID: response.apiId,
-            subscriptionRefID: response.subscriptionId,
-            sharedToken: isShared,
-            tokenType: isShared ? constants.TOKEN_TYPES.OAUTH : constants.TOKEN_TYPES.API_KEY
-        }, t);
-    } else {
-        await adminDao.updateApplicationKeyMapping(null, {
-            orgID: orgID,
-            appID: applicationID,
-            cpAppRef: response.applicationId,
-            apiRefID: response.apiId,
-            subscriptionRefID: response.subscriptionId,
-            sharedToken: isShared,
-            tokenType: isShared ? constants.TOKEN_TYPES.OAUTH : constants.TOKEN_TYPES.API_KEY
-        }, t);
-
-    }
-}
-
-const getSubscription = async (req, res) => {
-
-    const orgID = req.params.orgId;
-    const subID = req.params.subscriptionId;
-    try {
-        const subscription = await adminDao.getSubscription(orgID, subID);
-        // Create response object
-        if (subscription) {
-            res.status(200).send(new SubscriptionDTO(subscription.dataValues));
-        } else {
-            throw new CustomError(404, "Records Not Found", 'Subscriptions not found');
-        }
-    } catch (error) {
-        logger.error('Subscription retrieval failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId: orgID,
-            subId: subID
-        });
-        util.handleError(res, error);
-    }
-}
-
-const getAllSubscriptions = async (req, res) => {
-
-    const orgID = req.params.orgId;
-    const appID = req.query.appId ? req.query.appId : "";
-    const apiID = req.query.apiId ? req.query.apiId : "";
-    try {
-        const subscriptions = await adminDao.getSubscriptions(orgID, appID, apiID);
-        let subList = [];
-        // Create response object
-        if (subscriptions.length > 0) {
-            subList = subscriptions
-                .filter((sub) => {
-                    const ps = sub.PAYMENT_STATUS;
-                    return !ps || ps === 'ACTIVE';
-                })
-                .map((sub) => new SubscriptionDTO(sub));
-        }
-        res.status(200).send(subList);
-    } catch (error) {
-        logger.error('Subscription retrieval failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId: orgID,
-            appId: appID,
-            apiId: apiID
-        });
-        util.handleError(res, error);
-    }
-}
-
-const deleteSubscription = async (req, res) => {
-    const orgID = req.params.orgId;
-    const subID = req.params.subscriptionId;
-    logger.info('Initiate delete subscription...', {
-        orgId: orgID,
-        subId: subID
-    });
-    try {
-        const subscriptionPreTx = await adminDao.getSubscription(orgID, subID);
-
-        await sequelize.transaction({
-            timeout: 60000,
-        }, async (t) => {
-            const subscription = await adminDao.getSubscription(orgID, subID, t);
-
-            const subDeleteResponse = await adminDao.deleteSubscription(orgID, subID, t);
-            if (subDeleteResponse === 0) {
-                throw new Sequelize.EmptyResultError("Resource not found to delete");
-            } else {
-                //get subscription reference for control plane
-                const subIDList = await adminDao.getAPISubscriptionReference(orgID, subscription.dataValues.APP_ID, subscription.dataValues.REFERENCE_ID, t);
-                //delete subscription from control plane
-                for (const subscription of subIDList) {
-                    const subscriptionID = subscription.dataValues?.SUBSCRIPTION_REF_ID;
-                    await invokeApiRequest(req, 'DELETE', `${controlPlaneUrl}/subscriptions/${subscriptionID}`, {}, {})
-                    await adminDao.deleteAppKeyMapping(orgID, subDeleteResponse.APP_ID, subscriptionID, t);
-                }
-                res.status(200).send("Resouce Deleted Successfully");
-            }
-        });
-
-        if (
-            subscriptionPreTx &&
-            subscriptionPreTx.BILLING_SUBSCRIPTION_ID &&
-            subscriptionPreTx.PAYMENT_PROVIDER === "STRIPE" &&
-            subscriptionPreTx.PAYMENT_STATUS !== "CANCELED"
-        ) {
-            try {
-                logger.info("Canceling Stripe subscription after DP delete", {
-                    subId: subID,
-                    billingSubscriptionId: subscriptionPreTx.BILLING_SUBSCRIPTION_ID,
-                });
-                const monetizationService = require("./monetizationService");
-                await monetizationService.cancelStripeByBillingId(
-                    orgID,
-                    subscriptionPreTx.BILLING_SUBSCRIPTION_ID,
-                );
-                logger.info("Stripe subscription canceled successfully", {
-                    subId: subID,
-                });
-            } catch (stripeErr) {
-                logger.warn(
-                    "Failed to cancel Stripe subscription (continuing after delete)",
-                    {
-                        subId: subID,
-                        error: stripeErr.message,
-                    },
-                );
-            }
-        }
-    } catch (error) {
-        logger.error('Subscription deletion failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId: req.params?.orgId,
-            subscriptionId: req.params?.subscriptionId
-        });
-        util.handleError(res, error);
-    }
-}
-
 const createAppKeyMapping = async (req, res) => {
     const orgID = req.params.orgId;
     const userID = req[constants.USER_ID] || req.user?.sub;
@@ -1430,72 +1061,72 @@ const createAppKeyMapping = async (req, res) => {
         ...req.body
     });
     try {
-    const { applicationName, tokenDetails, clientID } = req.body;
+        const { applicationName, tokenDetails, clientID } = req.body;
 
-    const appIDResponse = await adminDao.getApplicationID(orgID, userID, applicationName);
-    if (!appIDResponse) {
+        const appIDResponse = await adminDao.getApplicationID(orgID, userID, applicationName);
+        if (!appIDResponse) {
             return util.handleError(res, new CustomError(404, constants.ERROR_CODE[404], "Application not found"));
-    }
-    const appID = appIDResponse.dataValues.APP_ID;
+        }
+        const appID = appIDResponse.dataValues.APP_ID;
 
-    const kmName = tokenDetails.keyManager;
-    const kmRecord = await kmDao.getKeyManagerByName(orgID, kmName);
-    const adapter = getKeyManagerAdapter(kmRecord);
+        const kmName = tokenDetails.keyManager;
+        const kmRecord = await kmDao.getKeyManagerByName(orgID, kmName);
+        const adapter = getKeyManagerAdapter(kmRecord);
 
-    let responseData;
-    let oauthClient;
+        let responseData;
+        let oauthClient;
 
-    if (clientID) {
-        responseData = {
-            consumerKey: clientID,
-            consumerSecret: null,
-            keyManager: kmName,
-            additionalProperties: tokenDetails.additionalProperties || {},
-        };
-    } else {
-        const grantTypes = tokenDetails.grantTypesToBeSupported || ['client_credentials'];
-        const redirectUris = tokenDetails.callbackUrl ? [tokenDetails.callbackUrl] : [];
-        const scopes = tokenDetails.scopes || ['default'];
-        const additionalProps = tokenDetails.additionalProperties || {};
+        if (clientID) {
+            responseData = {
+                consumerKey: clientID,
+                consumerSecret: null,
+                keyManager: kmName,
+                additionalProperties: tokenDetails.additionalProperties || {},
+            };
+        } else {
+            const grantTypes = tokenDetails.grantTypesToBeSupported || ['client_credentials'];
+            const redirectUris = tokenDetails.callbackUrl ? [tokenDetails.callbackUrl] : [];
+            const scopes = tokenDetails.scopes || ['default'];
+            const additionalProps = tokenDetails.additionalProperties || {};
 
-        const sanitize = (s) => String(s).replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
-        const keyType = (tokenDetails.keyType || 'PRODUCTION').toUpperCase();
-        const clientName = `${sanitize(userID)}_${sanitize(appID)}_${keyType}`;
+            const sanitize = (s) => String(s).replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+            const keyType = (tokenDetails.keyType || 'PRODUCTION').toUpperCase();
+            const clientName = `${sanitize(userID)}_${sanitize(appID)}_${keyType}`;
 
             oauthClient = await adapter.createOAuthClient(clientName, grantTypes, redirectUris, scopes, additionalProps);
 
-        responseData = {
-            consumerKey: oauthClient.clientId,
-            consumerSecret: oauthClient.clientSecret,
-            keyManager: kmName,
-            tokenEndpoint: kmRecord.TOKEN_ENDPOINT,
-            supportedGrantTypes: kmRecord.SUPPORTED_GRANT_TYPES,
-            additionalProperties: oauthClient.additionalProperties,
-        };
-    }
+            responseData = {
+                consumerKey: oauthClient.clientId,
+                consumerSecret: oauthClient.clientSecret,
+                keyManager: kmName,
+                tokenEndpoint: kmRecord.TOKEN_ENDPOINT,
+                supportedGrantTypes: kmRecord.SUPPORTED_GRANT_TYPES,
+                additionalProperties: oauthClient.additionalProperties,
+            };
+        }
 
-    const appKeyMapping = {
+        const appKeyMapping = {
             orgID,
             appID,
-        kmID: kmRecord.KM_ID,
-        asClientID: responseData.consumerKey,
-        keyType: tokenDetails.keyType || 'PRODUCTION',
-        additionalProperties: responseData.additionalProperties || {},
-    };
+            kmID: kmRecord.KM_ID,
+            asClientID: responseData.consumerKey,
+            keyType: tokenDetails.keyType || 'PRODUCTION',
+            additionalProperties: responseData.additionalProperties || {},
+        };
         let keyMappingRecord;
-    try {
+        try {
             keyMappingRecord = await adminDao.upsertApplicationKeyMapping(appKeyMapping);
-    } catch (dbError) {
-        if (oauthClient) {
-            await adapter.deleteOAuthClient(oauthClient.clientId).catch((cleanupErr) => {
-                logger.warn('Failed to roll back OAuth client after DB error', {
-                    clientId: oauthClient.clientId,
-                    errorMessage: cleanupErr.message,
+        } catch (dbError) {
+            if (oauthClient) {
+                await adapter.deleteOAuthClient(oauthClient.clientId).catch((cleanupErr) => {
+                    logger.warn('Failed to roll back OAuth client after DB error', {
+                        clientId: oauthClient.clientId,
+                        errorMessage: cleanupErr.message,
+                    });
                 });
-            });
+            }
+            throw dbError;
         }
-        throw dbError;
-    }
 
         responseData.keyMappingId = keyMappingRecord?.dataValues?.MAPPING_ID;
 
@@ -1799,178 +1430,6 @@ const getApplicationKeyMap = async (orgId, appId, userId) => {
 
 }
 
-const unsubscribeAPI = async (req, res) => {
-    const orgID = req.params.orgId;
-    logger.info('Initiate unsubscribe from API...', {
-        orgId: orgID,
-        ...req.query
-    });
-    try {
-        const { appID, apiReferenceID, subscriptionID } = req.query;
-
-        // Capture billing IDs before the transaction so we can cancel externally afterwards
-        const subscriptionPreTx = await adminDao.getSubscription(orgID, subscriptionID);
-
-        await sequelize.transaction({
-            timeout: 60000,
-        }, async (t) => {
-            const sharedToken = await adminDao.getApplicationKeyMapping(orgID, appID, true);
-            const nonSharedToken = await adminDao.getApplicationKeyMapping(orgID, appID, false);
-            logger.info('Unsubscribing from API', {
-                apiReferenceID,
-                subscriptionId: req.params?.subscriptionId
-            });
-            try {
-                if (nonSharedToken.length > 0) {
-                    logger.info('Deleting non-shared app key mapping entries', {
-                        apiReferenceID,
-                        subscriptionId: req.params?.subscriptionId
-                    });
-                    for (const dataValues of nonSharedToken) {
-                        if (dataValues.API_REF_ID === apiReferenceID) {
-                            await invokeApiRequest(req, 'DELETE', `${controlPlaneUrl}/subscriptions/${dataValues.SUBSCRIPTION_REF_ID}`, {}, {})
-                            await handleUnsubscribe(nonSharedToken, sharedToken, orgID, appID, apiReferenceID, t);
-                        }
-                    }
-                }
-                if (sharedToken.length > 0) {
-                    logger.info('Deleting shared app key mapping entries', {
-                        apiReferenceID,
-                        subscriptionId: req.params?.subscriptionId
-                    });
-                    for (const dataValues of sharedToken) {
-                        if (dataValues.API_REF_ID === apiReferenceID) {
-                            await invokeApiRequest(req, 'DELETE', `${controlPlaneUrl}/subscriptions/${dataValues.SUBSCRIPTION_REF_ID}`, {}, {})
-                            await handleUnsubscribe(nonSharedToken, sharedToken, orgID, appID, apiReferenceID, t);
-                        }
-                    };
-                }
-                await adminDao.deleteSubscription(orgID, subscriptionID, t);
-                trackUnsubscribeApi({
-                    orgId: orgID,
-                    appId: appID,
-                    apiRefId: apiReferenceID,
-                    idpId: req.isAuthenticated() ? (req[constants.USER_ID] || req.user.sub) : undefined
-                }, req);
-                return res.status(204).send();
-            } catch (error) {
-                try {
-                    if (error.statusCode && error.statusCode === 404) {
-                        logger.info('Subscription not found in control plane, deleting from database', {
-                            subscriptionId: req.params?.subscriptionId
-                        });
-                        await handleUnsubscribe(nonSharedToken, sharedToken, orgID, appID, apiReferenceID, t);
-                        await adminDao.deleteSubscription(orgID, subscriptionID, t);
-                        trackUnsubscribeApi({
-                            orgId: orgID,
-                            appId: appID,
-                            apiRefId: apiReferenceID,
-                            idpId: req.isAuthenticated() ? (req[constants.USER_ID] || req.user.sub) : undefined
-                        }, req);
-                        return res.status(204).send();
-                    }
-                } catch (error) {
-                    logger.error('Error occurred while deleting subscription', {
-                        error: error.message,
-                        subscriptionId: req.params?.subscriptionId
-                    });
-                    return util.handleError(res, error);
-                }
-                logger.error('Error occurred while unsubscribing from API', {
-                    error: error.message,
-                    subscriptionId: req.params?.subscriptionId
-                });
-                return util.handleError(res, error);
-            }
-        });
-
-        // Cancel external Stripe subscription only after the unsubscribe transaction succeeds
-        if (
-            subscriptionPreTx &&
-            subscriptionPreTx.BILLING_SUBSCRIPTION_ID &&
-            subscriptionPreTx.PAYMENT_PROVIDER === 'STRIPE' &&
-            subscriptionPreTx.PAYMENT_STATUS !== 'CANCELED'
-        ) {
-            try {
-                logger.info("Canceling Stripe subscription after unsubscribe", {
-                    subscriptionID,
-                    billingSubscriptionId: subscriptionPreTx.BILLING_SUBSCRIPTION_ID,
-                });
-                const monetizationService = require("./monetizationService");
-                await monetizationService.cancelStripeByBillingId(
-                    orgID,
-                    subscriptionPreTx.BILLING_SUBSCRIPTION_ID,
-                );
-                logger.info("Stripe subscription canceled successfully", {
-                    subscriptionID,
-                });
-            } catch (stripeErr) {
-                logger.warn(
-                    "Failed to cancel Stripe subscription (continuing after unsubscribe)",
-                    {
-                        subscriptionID,
-                        error: stripeErr.message,
-                    },
-                );
-            }
-        }
-    } catch (error) {
-        logger.error('Error occurred while unsubscribing from API', {
-            error: error.message,
-            subscriptionId: req.params?.subscriptionId
-        });
-        return util.handleError(res, error);
-    }
-}
-
-async function handleUnsubscribe(nonSharedToken, sharedToken, orgID, appID, apiRefID, t) {
-    try {
-        if (sharedToken.length === 1 && nonSharedToken.length === 0) {
-            logger.info('Updating shared app key mapping entries', {
-                orgID,
-                appID,
-                apiRefID
-            });
-            await adminDao.updateApplicationKeyMapping(apiRefID, {
-                orgID: sharedToken[0].dataValues.ORG_ID,
-                appID: sharedToken[0].dataValues.APP_ID,
-                cpAppRef: sharedToken[0].dataValues.CP_APP_REF,
-                apiRefID: null,
-                subscriptionRefID: null,
-                sharedToken: true,
-                tokenType: constants.TOKEN_TYPES.OAUTH
-            }, t);
-        } else if (nonSharedToken.length === 1 && sharedToken.length === 0) {
-            logger.info('Updating non-shared app key mapping entries', {
-                orgID,
-                appID,
-                apiRefID
-            });
-            await adminDao.updateApplicationKeyMapping(apiRefID, {
-                orgID: nonSharedToken[0].dataValues.ORG_ID,
-                appID: nonSharedToken[0].dataValues.APP_ID,
-                cpAppRef: nonSharedToken[0].dataValues.CP_APP_REF,
-                apiRefID: null,
-                subscriptionRefID: null,
-                sharedToken: false,
-                tokenType: constants.TOKEN_TYPES.API_KEY
-            }, t);
-        } else {
-            if (sharedToken.length > 0 || nonSharedToken.length > 0) {
-                await adminDao.deleteAppKeyMapping(orgID, appID, apiRefID, t);
-            }
-        }
-    } catch (error) {
-        logger.error('Transaction failed during unsubscribing', {
-            error: error.message,
-            orgID,
-            appID,
-            apiRefID
-        });
-        throw error;
-    }
-}
-
 function parseApplicationDataFromRequest(req) {
     const file = req.files?.application?.[0];
     if (file?.buffer) {
@@ -2027,12 +1486,6 @@ module.exports = {
     getDevPortalApplicationDetails,
     deleteDevPortalApplication,
     getAllApplications,
-    createSubscription,
-    updateSubscription,
-    getSubscription,
-    getAllSubscriptions,
-    deleteSubscription,
-    unsubscribeAPI,
     createAppKeyMapping,
     retriveAppKeyMappings,
     getApplicationKeyMap,

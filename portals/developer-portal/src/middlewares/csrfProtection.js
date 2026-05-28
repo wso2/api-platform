@@ -19,7 +19,7 @@
 const crypto = require('crypto');
 const { config } = require('../config/configLoader');
 
-const CSRF_HMAC_LABEL = 'devportal-platform-api-keys-csrf';
+const CSRF_HMAC_LABEL = 'devportal-api-keys-csrf';
 
 function ensureCsrfSecret(req) {
     if (!req.session) {

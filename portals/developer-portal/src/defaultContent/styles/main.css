@@ -439,29 +439,29 @@ h6 {
   gap: 0.35rem;
 }
 
-.custom-modal .platform-subscription-content .table {
+.custom-modal .subscription-content .table {
   table-layout: fixed;
   width: 100%;
 }
 
-.custom-modal .platform-subscription-content .table th:nth-child(1),
-.custom-modal .platform-subscription-content .table td:nth-child(1) {
+.custom-modal .subscription-content .table th:nth-child(1),
+.custom-modal .subscription-content .table td:nth-child(1) {
   width: 15%;
 }
 
-.custom-modal .platform-subscription-content .table th:nth-child(2),
-.custom-modal .platform-subscription-content .table td:nth-child(2) {
+.custom-modal .subscription-content .table th:nth-child(2),
+.custom-modal .subscription-content .table td:nth-child(2) {
   width: 12%;
 }
 
-.custom-modal .platform-subscription-content .table th:nth-child(3),
-.custom-modal .platform-subscription-content .table td:nth-child(3) {
+.custom-modal .subscription-content .table th:nth-child(3),
+.custom-modal .subscription-content .table td:nth-child(3) {
   width: 53%;
   word-break: break-all;
 }
 
-.custom-modal .platform-subscription-content .table th:nth-child(4),
-.custom-modal .platform-subscription-content .table td:nth-child(4) {
+.custom-modal .subscription-content .table th:nth-child(4),
+.custom-modal .subscription-content .table td:nth-child(4) {
   width: 20%;
 }
 

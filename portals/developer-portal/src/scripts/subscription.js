@@ -1,1297 +1,550 @@
-document.addEventListener("DOMContentLoaded", () => {
-  checkQueryParamsAndLoadModal();
-  wireStripeReturnIfPresent();
-
-  // Set up the delete subscription handler
-  setDeleteConfirmationHandler('removeSubscription', function(data) {
-    removeSubscription(data.orgID, data.appID, data.apiRefID, data.subID);
-  });
-
-  // Set up event listeners for unsubscribe buttons
-  document.addEventListener('click', function(e) {
-    const btn = e.target.closest('[data-unsubscribe-id]');
-    if (btn) {
-      const subID = btn.getAttribute('data-unsubscribe-id');
-      const orgID = btn.getAttribute('data-org-id');
-      const appID = btn.getAttribute('data-app-id');
-      const apiRefID = btn.getAttribute('data-api-ref-id');
-      openDeleteModal(subID, orgID, appID, apiRefID);
-    }
-  });
-
-  // Show subscription success message if redirected after payment or free flow
-  const urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.get('subscription') === 'success') {
-    // Try to find the message overlay and card for UI update
-    const messageOverlay = document.getElementById('subscription-message-overlay') || null;
-    showSubscriptionMessage(messageOverlay, "Successfully subscribed", "success");
-    // Optionally, mark the UI as subscribed if you can get the card and applicationID
-    // Example: markSubscribedUI(card, applicationID); // You may need to adapt this line
-    // Clean up the query param so the message doesn't show again on reload
-    urlParams.delete('subscription');
-    const url = new URL(window.location.href);
-    url.searchParams.delete('subscription');
-    window.history.replaceState({}, document.title, url.toString());
-  }
-});
-
-// backend endpoints (keep your existing base)
-const DEVPORTAL_BASE = "/devportal";
-
-// UI behavior
-const POLL_AFTER_PAYMENT_MS = 2500;
-const POLL_MAX_ATTEMPTS = 20;
-
-// Store the Stripe checkout instance globally so we can destroy it
-let currentStripeCheckout = null;
-
-// Flag to prevent duplicate payment processing
-let isProcessingPayment = false;
-
-// If you render these into the template, use them.
-// Example in HBS:
-// <script>
-//   window.__API_META__ = {{{json apiMetadata}}};
-// </script>
-function getApiMeta() {
-  return window.__API_META__ || null;
-}
-
-function isMonetizationEnabled() {
-  const meta = getApiMeta();
-  return !!meta?.monetizationInfo?.enabled;
-}
-
-function getBillingEngine() {
-  const meta = getApiMeta();
-  return (meta?.monetizationInfo?.billingEngine || "").toUpperCase();
-}
-
-/**
- * Each plan card should provide whether it's paid.
- * Recommended: pass isPaid + priceId from backend and render them as data attributes.
- * For example in HBS:
- *   <a ... data-is-paid="{{isPaid}}" data-price-id="{{priceId}}" ...>
+/*
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
-function isPaidPlan(policyId) {
-  const el = document.getElementById(`subscribe-btn-${policyId}`);
-  if (!el) return false;
-  const val = el.getAttribute("data-is-paid");
-  return val === "true" || val === "1";
-}
 
-function getPriceId(policyId) {
-  const el = document.getElementById(`subscribe-btn-${policyId}`);
-  if (!el) return null;
-  return el.getAttribute("data-external-price-id") || null;
-}
-
-/**
- * Strong sanitization for IDs used in requests.
- */
-function safeId(input) {
-  if (!input) return "";
-  return String(input).replace(/[^a-zA-Z0-9\s-_.:]/g, "");
-}
-
-function safeText(input) {
-  if (!input) return "";
-  // allow hyphen/dot/space
-  return String(input).replace(/[^a-zA-Z0-9\s-_.]/g, "");
-}
-
-function checkQueryParamsAndLoadModal() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const subPlan = urlParams.get('policyName');
-    const apiName = urlParams.get('apiName');
-    const apiVersion = urlParams.get('apiVersion');
-
-    if (subPlan && apiName && apiVersion) {
-        const modal = document.getElementById('planModal');
-        modal.style.display = 'block';
-
-        const planName = document.getElementById('planName');
-        planName.innerText = subPlan;
-    }
-}
-
-async function unsubscribe(subscriptionId) {
+async function subscribe(orgID, apiId, planName, applicationId) {
     try {
-        const response = await fetch(`/devportal/subscriptions/${subscriptionId}`, {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+        const body = { apiId, subscriptionPlanName: planName };
+        if (applicationId) {
+            body.applicationId = applicationId;
+        }
+
+        const response = await fetch(`/devportal/organizations/${encodeURIComponent(orgID)}/subscriptions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
         });
+
+        const responseData = await response.json();
 
         if (response.ok) {
-            await showAlert(`Unsubscribed successfully!`, 'success');
-            const url = new URL(window.location.origin + window.location.pathname);
-            window.location.href = url.toString();
-        } else {
-            const responseData = await response.json();
-            console.error('Failed to unsubscribe:', responseData);
-            await showAlert(`Failed to unsubscribe.\n${responseData.description}`, 'error');
-        }
-    } catch (error) {
-        console.error('Error:', error);
-        await showAlert(`An error occurred.\n${error.message}`, 'error');
-    }
-}
-
-function hideElementById(elementId) {
-    const element = document.getElementById(elementId);
-    if (element) {
-        element.style.display = 'none';
-    }
-}
-
-function closeModal(elementId) {
-    hideElementById(elementId);
-
-    // Reset any subscribe buttons left in loading state
-    var modalEl = elementId ? document.getElementById(elementId) : null;
-    if (modalEl) {
-        modalEl.querySelectorAll('.subscription-plan-subscribe-btn, .subscribe-btn').forEach(function(btn) {
-            if (btn.dataset.originalText) {
-                btn.innerHTML = btn.dataset.originalText;
-                btn.disabled = false;
-                delete btn.dataset.originalText;
-            } else if ((btn.textContent || '').trim() === 'Subscribing...') {
-                btn.textContent = 'Subscribe';
-                btn.disabled = false;
-            }
-        });
-    }
-
-    // Scope form reset to within the modal, not document-wide
-    var form = modalEl ? modalEl.querySelector('form') : null;
-    if (form) form.reset();
-
-    if (elementId) {
-        // Clear inline token display so it's fresh next time the modal opens
-        var apiId = elementId.replace('planModal-', '');
-        var tokenArea = document.getElementById('subscriptionTokenArea-' + apiId);
-        if (tokenArea) { tokenArea.innerHTML = ''; tokenArea.style.display = 'none'; }
-
-        if (window.__platformSubscriptionChanged) {
-            window.__platformSubscriptionChanged = false;
-            var apiCard = document.getElementById('apiCard-' + apiId);
-            if (apiCard) {
-                var flag = apiCard.querySelector('.subscription-flag');
-                if (flag) {
-                    var hasActiveSubs = (window.existingPlatformSubscriptions || []).some(function(s) {
-                        return s.status === 'ACTIVE';
-                    });
-                    flag.style.display = hasActiveSubs ? 'block' : 'none';
+            window.__subscriptionChanged = true;
+            window.existingSubscriptions = window.existingSubscriptions || [];
+            window.existingSubscriptions.push({
+                subscriptionId: responseData.subscriptionId,
+                subscriptionPlanName: planName,
+                status: 'ACTIVE'
+            });
+            const modalId = 'planModal-' + apiId;
+            const modalEl = document.getElementById(modalId);
+            const isTokenBased = modalEl && modalEl.dataset.hasSubscriptionToken === 'true';
+            if (isTokenBased) {
+                const token = responseData.subscriptionToken;
+                if (modalEl && modalEl.style.display && modalEl.style.display !== 'none') {
+                    try {
+                        showSubscriptionTokenInModal(apiId, token, planName);
+                    } catch (e) {
+                        await showSubscriptionTokenModal(token, planName);
+                    }
+                } else {
+                    await showSubscriptionTokenModal(token, planName);
                 }
+            } else {
+                await refreshLandingPageSubscriptions();
             }
-        }
-    }
-}
-
-window.onclick = function (event) {
-    const modal = document.getElementById('planModal');
-    if (event.target === modal) {
-        closeModal();
-    }
-};
-
-// Function to show the application creation form
-function showApplicationForm() {
-    const creationForm = document.getElementById('applicationFormCreation');
-    creationForm.style.display = 'block';
-
-    hideElementById('applicationFormSection');
-
-    const subButton = document.getElementById('createSubButton');
-    subButton.style.display = 'block';
-}
-
-// Function to handle application creation
-async function handleCreateSubscribe() {
-    const urlParams = new URLSearchParams(window.location.search);
-    try {
-        // Sanitize the application name
-        const appName = document.getElementById('appName').value.trim().replace(/[^a-zA-Z0-9\s]/g, '');
-        if (!appName) {
-            await showAlert('Application name cannot be empty.', 'error');
-            return;
-        }
-
-        const response = await fetch(`/devportal/applications`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ name: sanitize(appName) }),
-        });
-
-        const responseData = await response.json();
-
-        if (response.ok) {
-            handleSubscribe(responseData.applicationId);
         } else {
-            console.error('Failed to create application:', responseData);
-            await showAlert(`Failed to create application. Please try again.\n${responseData.description}`, 'error');
+            await showAlert(`Failed to subscribe: ${responseData.description || 'Unknown error'}`, 'error');
         }
     } catch (error) {
-        console.error('Error:', error);
-        await showAlert(`An error occurred while subscribing: \n${error.message}`, 'error');
+        await showAlert(`Error while subscribing: ${error.message}`, 'error');
     }
 }
 
-function sanitize(input) {
-    const div = document.createElement('div');
-    div.appendChild(document.createTextNode(input));
-    return div.innerHTML;
-}
+async function handlePlanSubscription(btnElement) {
+    const orgID = btnElement.dataset.orgId;
+    const apiId = btnElement.dataset.apiId;
+    const planName = btnElement.dataset.policyName;
+    const displayName = btnElement.dataset.displayName;
 
-async function handleSubscribe(appId, apiName, apiVersion, apiRefId) {
-    const applicationSelect = document.getElementById('applicationSelect');
-    let policyName;
-
-    const applicationId = appId !== null
-        ? appId
-        : (applicationSelect ? applicationSelect.value : window.location.pathname.split('/').pop());
-
-
-    if (!applicationId) {
-        await showAlert('Please select an application.', 'error');
-        return;
-    }
-
-    try {
-        const urlParams = new URLSearchParams(window.location.search);
-
-        if (urlParams.has('apiName') && urlParams.has('policyName')) {
-            apiName = urlParams.get('apiName');
-            apiVersion = urlParams.get('apiVersion');
-            policyName = urlParams.get('policyName');
-        } else {
-            policyName = document.getElementById('subscriptionPlan').value;
-        }
-
-        const response = await fetch(`/devportal/subscriptions`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                applicationId: applicationId.replace(/[^a-zA-Z0-9\s-]/g, ''),
-                apiName: apiName.replace(/[^a-zA-Z0-9\s-]/g, ''),
-                apiVersion: apiVersion.replace(/[^a-zA-Z0-9\s-.]/g, ''),
-                throttlingPolicy: policyName.replace(/[^a-zA-Z0-9\s-]/g, ''),
-                apiRefId: apiRefId,
-            }),
-        });
-
-        const responseData = await response.json();
-        if (response.ok) {
-            await showAlert('Subscribed successfully!', 'success');
-            const url = new URL(window.location.origin + window.location.pathname);
-            window.location.href = url.toString();
-        } else {
-            console.error('Failed to subscribe:', responseData);
-            await showAlert(`Failed to subscribe. Please try again.\n${responseData.description}`, 'error');
-        }
-    } catch (error) {
-        console.error('Error:', error);
-        await showAlert(`An error occurred while subscribing: \n${error.message}`, 'error');
-    }
-}
-
-function loadModal(modalID) {
-    const modal = document.getElementById(modalID);
-    modal.style.display = 'flex';
-
-    if (typeof prepareSubscriptionModal === 'function') {
-        try { prepareSubscriptionModal(modalID); } catch (e) { /* noop */ }
-    }
-}
-
-function handleAppBasedSubscription(btnElement) {
-    // If a plan modal exists for this API, open the modal to let the user choose/create app and confirm.
-    const { orgId, apiId, apiReferenceId, policyId, policyName } = btnElement.dataset;
+    // If a modal exists for this API and the button is NOT inside it, open the modal.
+    // If the button IS inside the modal, proceed directly to subscribe.
     const modalId = 'planModal-' + apiId;
-    if (document.getElementById(modalId)) {
+    const modalEl = document.getElementById(modalId);
+    if (modalEl && !btnElement.closest('#' + modalId)) {
         loadModal(modalId);
         return;
     }
 
-    showSubscribeButtonLoading(btnElement);
-    subscribe(orgId, '', apiId, apiReferenceId, policyId, policyName);
-}
+    const existingSubs = window.existingSubscriptions || [];
 
-async function subscribe(orgID, applicationID, apiId, apiReferenceID, policyId, policyName, buttonElement) {
-  const card = (buttonElement && buttonElement.closest('.subscription-card'))
-    ? buttonElement.closest('.subscription-card')
-    : getSubscriptionCard(apiId, policyId);
-  const subscribeButton = card ? card.querySelector(".common-btn-primary") : null;
-  const messageOverlay = card ? card.querySelector(".message-overlay") : null;
-
-  try {
-    if (!applicationID) {
-      const policyField = card
-        ? card.querySelector('input[type="hidden"][id^="selectedAppId-"]')
-        : document.getElementById('selectedAppId-' + policyId);
-      if (policyField?.value) {
-        applicationID = policyField.value;
-      } else if (card) {
-        const hiddenField = card.querySelector('input[type="hidden"]');
-        if (hiddenField?.value) applicationID = hiddenField.value;
-      }
-    }
-
-    if (!applicationID) {
-      const modal = card ? card.closest('.subscription-plan-modal') : document.getElementById('planModal-' + apiId);
-      const isPlatformGateway = modal && modal.dataset.gatewayType === 'wso2/api-platform';
-      if (!isPlatformGateway) {
-        showSubscriptionMessage(messageOverlay, "Please select an application.", "error");
+    if (existingSubs.length === 0) {
+        showSubscribeButtonLoading(btnElement);
+        await subscribe(orgID, apiId, planName);
         return;
-      }
     }
 
-    const paid = isPaidPlan(policyId);
+    const currentSub = existingSubs[0];
+    const currentPlan = currentSub.subscriptionPlanName || 'current plan';
 
-    // Always reset UI button state safely on exit paths
-    const resetUi = () => {
-      const planButton = document.getElementById("subscribe-btn-" + policyId);
-      if (planButton) resetSubscribeButtonState(planButton);
-      resetSubscribeButtonState(subscribeButton);
-    };
-
-    // ✅ FREE FLOW: create DP subscription immediately (existing behavior)
-    if (!paid) {
-      const response = await fetch(`${DEVPORTAL_BASE}/organizations/${safeId(orgID)}/subscriptions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          applicationID: safeId(applicationID),
-          apiId: safeId(apiId),
-          apiReferenceID: safeId(apiReferenceID),
-          policyId: safeId(policyId),
-          policyName: safeText(policyName),
-        }),
-      });
-
-      const responseData = await response.json().catch(() => ({}));
-      resetUi();
-
-      if (response.ok) {
-        showSubscriptionMessage(messageOverlay, "Successfully subscribed", "success");
-        closeModal('planModal-' + apiId);
-        markSubscribedUI(card, applicationID, apiId);
-      } else {
-        console.error("Failed to create subscription:", responseData);
-        const errMsg = responseData.message || responseData.description || responseData.error || "Subscription failed. Please try again.";
-        showSubscriptionMessage(messageOverlay, errMsg, "error");
-      }
-      return;
+    if (typeof openWarningModal !== 'function') {
+        await showAlert('Confirmation dialog is not available. Please refresh the page.', 'error');
+        return;
     }
-
-    // ✅ PAID FLOW: start Stripe embedded checkout first
-    const priceId = getPriceId(policyId);
-    if (!priceId) {
-      resetUi();
-      showSubscriptionMessage(messageOverlay, "Paid plan misconfigured (missing priceId).", "error");
-      return;
-    }
-
-    // Call backend to create embedded checkout session
-    const checkoutRes = await fetch(`${DEVPORTAL_BASE}/organizations/${safeId(orgID)}/monetization/checkout`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        applicationID: safeId(applicationID),
-        apiId: safeId(apiId),
-        apiReferenceID: safeId(apiReferenceID),
-        policyId: safeId(policyId),
-        policyName: safeText(policyName),
-        priceId: safeId(priceId),
-        sourcePage: window.location.pathname,
-      }),
-    });
-
-    const checkoutData = await checkoutRes.json().catch(() => ({}));
-    resetUi();
-
-    if (!checkoutRes.ok) {
-      console.error("Checkout creation failed:", checkoutData);
-      const errMsg = checkoutData.message || checkoutData.error || checkoutData.description || "Failed to start checkout. Please try again.";
-      // Treat an "already active" conflict as success info
-      if (checkoutRes.status === 409) {
-        showSubscriptionMessage(messageOverlay, errMsg, "info");
-      } else {
-        showSubscriptionMessage(messageOverlay, errMsg, "error");
-      }
-      return;
-    }
-
-    // Expect backend returns:
-    // { clientSecret, publishableKey, checkoutContextId, returnUrl }
-    const { clientSecret, publishableKey, checkoutContextId, returnUrl } = checkoutData;
-
-    if (!clientSecret || !publishableKey) {
-      showSubscriptionMessage(messageOverlay, "Checkout session response missing clientSecret/publishableKey.", "error");
-      return;
-    }
-
-    // Open embedded checkout UI (modal)
-    await openStripeEmbeddedCheckout({
-      publishableKey,
-      clientSecret,
-      orgID,
-      checkoutContextId,
-      returnUrl,
-    });
-
-    // After checkout completes, user will be redirected or we can poll (see wireStripeReturnIfPresent)
-  } catch (error) {
-    console.error("Error:", error);
-    showSubscriptionMessage(messageOverlay, `Error while subscribing: ${error.message}`, "error");
-  }
+    window.__pendingPlanSwitchBtn = btnElement;
+    openWarningModal(
+        'SwitchSubscriptionPlan',
+        orgID,
+        apiId,
+        planName,
+        displayName,
+        currentSub.subscriptionId,
+        currentPlan
+    );
 }
 
-/**
- * =========================
- *  Stripe Embedded Checkout (UI)
- * =========================
- * Requires you to include Stripe JS in layout:
- * <script src="https://js.stripe.com/v3/"></script>
- *
- * And create a modal container in your HBS layout:
- *  <div id="stripeCheckoutModal" class="modal hidden">
- *     <div class="modal-content">
- *        <button onclick="closeStripeCheckoutModal()">×</button>
- *        <div id="stripe-embedded-checkout"></div>
- *     </div>
- *  </div>
- */
-async function openStripeEmbeddedCheckout({ publishableKey, clientSecret, returnUrl }) {
-  if (typeof publishableKey !== 'string' || publishableKey.length < 10) {
-    console.warn("publishableKey seems too short or invalid");
-  }
-  if (typeof clientSecret !== 'string' || clientSecret.length < 10) {
-    console.warn("clientSecret seems too short or invalid");
-  }
-  
-  // Validate inputs
-  if (!publishableKey) {
-    await showAlert("Stripe publishable key is missing.", "error");
-    return;
-  }
-  if (!clientSecret) {
-    await showAlert("Stripe client secret is missing.", "error");
-    return;
-  }
-  
-  // If your UX is: redirect to a dedicated page, you can do:
-  // window.location.href = returnUrl;
-  // But since you want embedded, do in a modal.
-
-  if (!window.Stripe) {
-    await showAlert("Stripe.js not loaded. Add https://js.stripe.com/v3/ to layout.", "error");
-    return;
-  }
-  const stripe = window.Stripe(publishableKey);
-  const modal = document.getElementById("stripeCheckoutModal");
-  const mountPoint = document.getElementById("stripe-embedded-checkout");
-  if (!modal || !mountPoint) {
-    await showAlert("Stripe checkout modal container is missing in template.", "error");
-    return;
-  }
-
-  // Destroy previous checkout instance if it exists
-  if (currentStripeCheckout) {
+async function toggleSubscriptionStatus(orgID, subscriptionId, newStatus) {
     try {
-      currentStripeCheckout.destroy();
-    } catch (e) {
-      console.warn("Error destroying previous checkout:", e);
-    }
-    currentStripeCheckout = null;
-  }
-
-  // clear previous mount
-  mountPoint.innerHTML = "";
-
-  modal.classList.remove("hidden");
-  modal.style.display = "flex";
-
-  try {
-    const checkout = await stripe.initEmbeddedCheckout({ clientSecret });
-
-    // Store the checkout instance globally
-    currentStripeCheckout = checkout;
-    checkout.mount("#stripe-embedded-checkout");
-  } catch (e) {
-    console.error("Failed to init embedded checkout - Full error:", {
-      name: e.name,
-      message: e.message,
-      type: e.type,
-      code: e.code,
-      decline_code: e.decline_code,
-      param: e.param,
-      stack: e.stack
-    });
-
-    let errorMessage = "Failed to load checkout UI";
-    if (e.message) {
-      errorMessage += ": " + e.message;
-    }
-    if (e.type === 'invalid_request_error') {
-      errorMessage = "Invalid checkout session. Please try again.";
-    }
-
-    await showAlert(errorMessage, "error");
-    closeStripeCheckoutModal();
-  }
-}
-
-function closeStripeCheckoutModal() {  
-  // Destroy the checkout instance when closing
-  if (currentStripeCheckout) {
-    try {
-      currentStripeCheckout.destroy();
-    } catch (e) {
-      console.warn("Error destroying checkout:", e);
-    }
-    currentStripeCheckout = null;
-  }
-  
-  const modal = document.getElementById("stripeCheckoutModal");
-  if (modal) {
-    modal.classList.add("hidden");
-    modal.style.display = "none";
-  }
-  
-  // Clear the mount point
-  const mountPoint = document.getElementById("stripe-embedded-checkout");
-  if (mountPoint) {
-    mountPoint.innerHTML = "";
-  }
-
-  document.querySelectorAll('.subscription-plan-subscribe-btn, .subscribe-btn, [id^="landing-subscribe-btn-"], [id^="subscribe-btn-"]').forEach(function(btn) {
-    if (btn.dataset.originalText) {
-      btn.innerHTML = btn.dataset.originalText;
-      btn.disabled = false;
-      delete btn.dataset.originalText;
-    }
-  });
-}
-
-/**
- * =========================
- *  After Return: confirm checkout + refresh UI
- * =========================
- * Called when Stripe redirects back after payment completion.
- * This finalizes the subscription by calling the register endpoint.
- */
-async function wireStripeReturnIfPresent() {
-  const params = new URLSearchParams(window.location.search);
-  const sessionId = params.get("session_id");
-  const dpSubId = params.get("dp_sub_id");
-  const orgId = params.get("org_id");
-  
-  if (!sessionId) return;
-
-  // Prevent duplicate processing
-  if (isProcessingPayment) {
-    return;
-  }
-
-  isProcessingPayment = true;
-
-  if (!orgId) {
-    console.error("❌ Missing org_id in URL parameters");
-    await showAlert("Missing organization ID. Cannot complete subscription.", "error");
-    isProcessingPayment = false;
-    return;
-  }
-
-  // Show a loading indicator
-  showAlert("Processing your payment...", "info");
-
-  const sourcePage = params.get("sourcePage");
-  let redirectTarget = null;
-  if (sourcePage) {
-    try {
-      const parsed = new URL(sourcePage, window.location.origin);
-      if (parsed.origin === window.location.origin) {
-        redirectTarget = parsed.pathname + parsed.search;
-      }
-    } catch (_) {
-      // handle exception
-    }
-  }
-
-  function buildCleanRedirectUrl() {
-    if (redirectTarget) return redirectTarget;
-    const url = new URL(window.location.href);
-    url.searchParams.delete("session_id");
-    url.searchParams.delete("dp_sub_id");
-    url.searchParams.delete("org_id");
-    url.searchParams.delete("sourcePage");
-    return url.toString();
-  }
-
-  try {
-    // Call register endpoint to finalize the subscription
-    const response = await fetch(`${DEVPORTAL_BASE}/organizations/${safeId(orgId)}/monetization/stripe/register/${encodeURIComponent(sessionId)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
-
-    if (response.ok) {
-      const result = await response.json();
-      await showAlert("Payment successful! Your subscription is now active.", "success");
-      
-      // Wait a moment before redirecting
-      await new Promise(r => setTimeout(r, 2000));
-      
-      // Redirect to source page
-      window.location.href = buildCleanRedirectUrl();
-    } else {
-      const errorData = await response.json().catch(() => ({}));
-      const errMsg = errorData.message || errorData.error || "An error occurred while activating your subscription.";
-      // If already active (conflict), treat as success
-      if (response.status === 409 && errMsg.toLowerCase().includes("active")) {
-        await showAlert("Subscription already active.", "success");
-        await new Promise(r => setTimeout(r, 1500));
-        // Terminal outcome — redirect to source page
-        window.location.href = buildCleanRedirectUrl();
-      } else {
-        // Non-terminal error — keep checkout params so user can retry
-        await showAlert("Unable to complete payment", "error");
-      }
-      isProcessingPayment = false;
-    }
-  } catch (error) {
-    await showAlert("Error processing payment", "error");
-    isProcessingPayment = false;
-  }
-}
-
-async function updateSubscription(orgID, applicationID, apiId, apiReferenceID, policyId, policyName, oldPolicyName, subID) {
-
-    // Find the related card and button elements
-    const card = getSubscriptionCard(apiId, policyId);
-    const subscribeButton = card ? card.querySelector(".common-btn-primary") : null;
-    const messageOverlay = card ? card.querySelector(".message-overlay") : null;
-
-    try {
-        // Get application ID from hidden field if not provided
-        if (!applicationID && card) {
-            const hiddenField = card.querySelector('input[type="hidden"]');
-            if (hiddenField && hiddenField.value) {
-                applicationID = hiddenField.value;
-            }
-        }
-
-        // Make the API request
-        const response = await fetch(`/devportal/organizations/${orgID}/subscriptions`, {
+        const response = await fetch(`/devportal/organizations/${encodeURIComponent(orgID)}/subscriptions/${encodeURIComponent(subscriptionId)}`, {
             method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ applicationID, apiId, apiReferenceID, policyId, policyName }),
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus }),
         });
 
-        const responseData = await response.json();
-
-        // Always reset button state and close modal
-        const updatedButton = document.getElementById('subscribe-btn-' + policyId);
-        if (updatedButton) {
-            resetSubscribeButtonState(updatedButton);
-        }
-        // closeModal('planModal-' + apiId);
-        resetSubscribeButtonState(subscribeButton);
-
         if (response.ok) {
-
-            // Show success notification — api-card elements exist on the API listing page only
-            const updatedPlanCard = document.getElementById('api-card-' + apiId + "-" + policyName);
-            if (updatedPlanCard) {
-                updatedPlanCard.style.borderColor = 'var(--primary-main-color)';
-            }
-
-            if (updatedButton) {
-                updatedButton.setAttribute('disabled', 'disabled');
-                updatedButton.classList.add('disabled');
-                updatedButton.style.setProperty('pointer-events', 'none', 'important');
-                updatedButton.textContent = 'Updated';
-            }
-
-            const apiCards = document.querySelectorAll(`[id^="api-card-${apiId}-"]`);
-            apiCards.forEach(card => {
-                if (card.id !== `api-card-${apiId}-${policyName}`) {
-                    card.style.borderColor = '';
-                    const cardButton = card.querySelector('a[type="button"]');
-                    if (cardButton) {
-                        cardButton.style.pointerEvents = 'auto';
-                        cardButton.removeAttribute('disabled');
-                        cardButton.classList.remove('disabled');
-                    }
-                }
-            });
-            const policyCell = document.getElementById('policy_' + subID);
-            if (policyCell) {
-                policyCell.textContent = policyName;
-            }
-            showSubscriptionMessage(messageOverlay, 'Successfully updated API subscription', 'success');
-        } else {
-            // Handle API error
-            console.error('Failed to create subscription:', responseData);
-            const errorMessage = `Failed to subscribe: ${responseData.description || 'Unknown error'}`;
-            showSubscriptionMessage(messageOverlay, errorMessage, 'error');
-        }
-    } catch (error) {
-        // Handle exceptions
-        console.error('Error:', error);
-
-        // Always reset button state and close modal
-        const planButton = document.getElementById('subscribe-btn-' + policyId);
-        if (planButton) {
-            resetSubscribeButtonState(planButton);
-        }
-        closeModal('planModal-' + apiId);
-        resetSubscribeButtonState(subscribeButton);
-
-        const errorMessage = `Error while updating subscription: ${error.message}`;
-        showSubscriptionMessage(messageOverlay, errorMessage, 'error');
-    }
-}
-
-// Helper functions for the subscribe function
-function getSubscriptionCard(apiId, policyId) {
-    return document.getElementById('subscriptionCard-' + policyId) ||
-        document.getElementById('apiCard-' + apiId) ||
-        null;
-}
-
-function resetSubscribeButtonState(button) {
-    if (button && typeof window.resetSubscribeButtonState === 'function') {
-        window.resetSubscribeButtonState(button);
-    }
-}
-
-function showSubscriptionMessage(messageOverlay, message, type) {
-    if (messageOverlay && typeof window.showApiMessage === 'function') {
-        window.showApiMessage(messageOverlay, message, type);
-    } else {
-        showAlert(message, type);
-    }
-}
-
-function addAPISubscription(selectElement) {
-    const selectedOption = selectElement.options[selectElement.selectedIndex];
-    const subscriptionPolicies = JSON.parse(selectedOption.getAttribute("data-policies") || "[]");
-    const planSelect = document.getElementById("planSelect");
-
-    planSelect.innerHTML = '<option value="" disabled selected>Select a Plan</option>';
-
-    subscriptionPolicies.forEach(policy => {
-        const option = document.createElement("option");
-        option.value = policy.policyID;
-        option.textContent = policy.displayName;
-        option.setAttribute("data-policyName", policy.policyName);
-        planSelect.appendChild(option);
-    });
-
-}
-
-async function removeSubscription(orgID, appID, apiRefID, subID) {
-
-    try {
-        const response = await fetch(`/devportal/organizations/${orgID}/subscriptions?appID=${appID}&apiReferenceID=${apiRefID}&subscriptionID=${subID}`, {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        });
-        if (response.ok) {
-            await showAlert(`Unsubscribed successfully!`, 'success');
-            document.getElementById(`data-row-${subID}`)?.remove();
-            const rowCount = document.getElementById(`app-table-${appID}`).rows.length;
-            if (rowCount === 1) {
-                document.getElementById(`app-table-${appID}`).remove();
-                document.getElementById('no-subscription').style.display = 'block';
-            }
-            const mcpTable = document.getElementById(`app-table-mcp-${appID}`);
-            if (mcpTable && mcpTable.rows.length === 1) {
-                mcpTable.remove();
-                document.getElementById('no-subscription-mcp').style.display = 'block';
-            }
+            window.__subscriptionChanged = true;
+            await showAlert(`Subscription ${newStatus === 'ACTIVE' ? 'activated' : 'deactivated'} successfully!`, 'success');
+            refreshModalOrReload(orgID);
         } else {
             const responseData = await response.json();
-            console.error('Failed to unsubscribe:', responseData);
-            await showAlert(`Failed to unsubscribe.\n${responseData.description}`, 'error');
+            await showAlert(`Failed to update subscription: ${responseData.description || 'Unknown error'}`, 'error');
         }
     } catch (error) {
-        console.error('Error:', error);
-        await showAlert(`An error occurred.\n${error.message}`, 'error');
+        await showAlert(`Error: ${error.message}`, 'error');
     }
 }
 
-/**
- * Open the delete confirmation modal for removing a subscription
- * @param {string} subID - Subscription ID
- * @param {string} orgID - Organization ID
- * @param {string} appID - Application ID
- * @param {string} apiRefID - API Reference ID
- */
-function openDeleteModal(subID, orgID, appID, apiRefID) {
-    const modal = document.getElementById('deleteConfirmation');
-    if (!modal) {
-        console.error('openDeleteModal: Modal not found');
+function confirmDeleteSubscription(orgID, subscriptionId) {
+    if (typeof openWarningModal !== 'function') {
+        showAlert('Confirmation dialog is not available. Please refresh the page.', 'error');
         return;
     }
-
-    const titleEl = modal.querySelector('.modal-title');
-    const messageEl = modal.querySelector('.modal-message');
-    if (titleEl) titleEl.textContent = 'Do you really want to remove the subscription?';
-    if (messageEl) messageEl.textContent = 'This will remove the subscription entry stored in the devportal.';
-
-    setDeleteConfirmationAction('removeSubscription', {
-        subID: subID,
-        orgID: orgID,
-        appID: appID,
-        apiRefID: apiRefID
-    });
-
-    const bootstrapModal = new bootstrap.Modal(modal);
-    bootstrapModal.show();
+    openWarningModal('DeleteSubscription', orgID, subscriptionId, '', '', '', '');
 }
 
-function markSubscribedUI(card, applicationID, apiId) {
-  if (!card) return;
+async function executeDeleteSubscription(orgID, subscriptionId) {
+    try {
+        const response = await fetch(`/devportal/organizations/${encodeURIComponent(orgID)}/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+        });
 
-  const subscriptionFlag = card.querySelector(".subscription-flag");
-  if (subscriptionFlag) subscriptionFlag.style.display = "block";
-
-  if (apiId) {
-    const apiCard = document.getElementById('apiCard-' + apiId);
-    if (apiCard) {
-      const listingFlag = apiCard.querySelector('.subscription-flag');
-      if (listingFlag) listingFlag.style.display = 'block';
+        if (response.ok) {
+            window.__subscriptionChanged = true;
+            await showAlert('Subscription deleted successfully!', 'success');
+            refreshModalOrReload(orgID);
+        } else {
+            const responseData = await response.json().catch(() => ({}));
+            await showAlert(`Failed to delete subscription: ${responseData.description || 'Unknown error'}`, 'error');
+        }
+    } catch (error) {
+        await showAlert(`Error: ${error.message}`, 'error');
     }
-  }
-
-  // Scope dropdown marking to both modal and card containers (like upstream)
-  var apiContainer = apiId
-    ? (document.getElementById('planModal-' + apiId) || document.getElementById('apiCard-' + apiId))
-    : null;
-  var allDropdowns = apiContainer
-    ? apiContainer.querySelectorAll('.custom-dropdown')
-    : card.querySelectorAll('.custom-dropdown');
-
-  allDropdowns.forEach(function(dropdown) {
-    const appOption = dropdown.querySelector('.select-item[data-value="' + applicationID + '"]');
-    if (appOption) {
-      let subscriptionIcon = appOption.querySelector(".subscription-icon");
-      if (subscriptionIcon) {
-        subscriptionIcon.style.display = "inline-block";
-      } else {
-        const subscriptionIconHtml = '<img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/success-rounded.svg"'
-          + ' alt="Subscribed" class="subscription-icon" style="display: inline-block;" />';
-        const tempDiv = document.createElement("div");
-        tempDiv.innerHTML = subscriptionIconHtml;
-        subscriptionIcon = tempDiv.firstElementChild;
-        appOption.appendChild(subscriptionIcon);
-      }
-      appOption.classList.add("disabled");
-    }
-  });
-
-  const btn = card.querySelector(".common-btn-primary");
-  if (btn) btn.setAttribute("disabled", "disabled");
 }
 
-/**
- * =========================
- *  Handler for Plan Selection Modal
- *  - Called from subscription-plans.hbs modal
- * =========================
- */
-function handlePlanSubscription(buttonElement) {
+async function runPendingPlanSwitch(orgID, apiId, planName, displayName, subscriptionId) {
+    const btnElement = window.__pendingPlanSwitchBtn;
+    window.__pendingPlanSwitchBtn = null;
 
-  const orgID = buttonElement.dataset.orgId;
-  const apiID = buttonElement.dataset.apiId;
-  const policyID = buttonElement.dataset.policyId;
-  const policyName = buttonElement.dataset.policyName;
-  const isPaid = buttonElement.dataset.isPaid === 'true';
-
-  // Resolve apiReferenceID from the parent modal's data attribute
-  const modal = buttonElement.closest('.subscription-plan-modal');
-  const apiReferenceID = (modal && modal.dataset.apiRefid) || apiID;
-
-  const card = buttonElement.closest('.subscription-card');
-  const perPlanField = card
-    ? card.querySelector(`input[type="hidden"][id^="selectedAppId-"]`)
-    : document.getElementById(`selectedAppId-${policyID}`);
-  const modalAppField = document.getElementById(`modal-selected-app-${apiID}`);
-
-  const applicationID = (perPlanField && perPlanField.value) ? perPlanField.value
-    : (modalAppField ? modalAppField.value : '');
-
-  if (!applicationID && !isPaid) {
-    // Platform flows don't use an app selector; app-based free plans require one.
-    const isPlatformGateway = modal && modal.dataset.gatewayType === 'wso2/api-platform';
-    if (!isPlatformGateway) {
-      showAlert('Please select an application first.', 'error');
-      return;
+    if (btnElement && typeof showSubscribeButtonLoading === 'function') {
+        showSubscribeButtonLoading(btnElement);
     }
-  }
 
-  if (isPaid) {
-    subscribeAndCheckout(orgID, apiID, apiReferenceID, policyID, policyName, applicationID);
-  } else {
-    // Free plan - direct subscription
-    subscribe(orgID, applicationID, apiID, apiReferenceID, policyID, policyName);
-  }
+    try {
+        const deleteResponse = await fetch(`/devportal/organizations/${encodeURIComponent(orgID)}/subscriptions/${encodeURIComponent(subscriptionId)}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (!deleteResponse.ok) {
+            const errorData = await deleteResponse.json().catch(() => ({}));
+            await showAlert(`Failed to remove existing subscription: ${errorData.description || 'Unknown error'}`, 'error');
+            return;
+        }
+
+        await subscribe(orgID, apiId, planName);
+    } catch (error) {
+        await showAlert(`Error during plan change: ${error.message}`, 'error');
+    }
 }
 
-/**
- * =========================
- *  Handler for API Landing Page (single plan or paid plan)
- *  - Called from api-subscription-plans.hbs
- * =========================
- */
-function handleSubscribeWithPayment(orgID, apiID, apiReferenceID, policyID, policyName, buttonElement) {
-  const isPaid = buttonElement.dataset.isPaid === 'true';
-  
-  if (isPaid) {
-    // Paid plan - trigger Stripe checkout flow
-    subscribeAndCheckout(orgID, apiID, apiReferenceID, policyID, policyName);
-  } else {
-    // Free plan - direct subscription
-    const applicationID = ''; // Will be extracted from hidden field in subscribe()
-    subscribe(orgID, applicationID, apiID, apiReferenceID, policyID, policyName);
-  }
-}
-
-/**
- * =========================
- *  Landing Page Subscribe (Free plans)
- *  - Uses landing-prefixed element IDs
- * =========================
- */
-function landingSubscribe(orgID, apiID, apiReferenceID, policyID, policyName) {
-  // Get application ID from landing page hidden field
-  const hiddenField = document.getElementById(`landing-selectedAppId-${policyID}`);
-  const applicationID = hiddenField?.value || '';
-  
-  if (!applicationID) {
-    showAlert("Please select an application.", "error");
-    // Reset button state
-    const btn = document.getElementById(`landing-subscribe-btn-${policyID}`);
-    if (btn) {
-      btn.innerHTML = 'Subscribe';
-      btn.disabled = false;
-    }
-    return;
-  }
-  
-  // Call the main subscribe function
-  subscribe(orgID, applicationID, apiID, apiReferenceID, policyID, policyName);
-}
-
-/**
- * =========================
- *  Handler for API Landing Page Plan Subscription
- *  - Similar to handlePlanSubscription but uses landing-prefixed IDs
- * =========================
- */
-function handleLandingPlanSubscription(orgID, apiID, apiReferenceID, policyID, policyName, buttonElement) {
-  if (buttonElement && buttonElement.dataset.originalText) return;
-
-  showSubscribeButtonLoading(buttonElement);
-
-  const isPaid = buttonElement.dataset.isPaid === 'true';  
-  // Get application ID from landing page hidden field
-  const hiddenField = document.getElementById(`landing-selectedAppId-${policyID}`);
-  const applicationID = hiddenField?.value || '';
-
-  if (!applicationID) {
-    showAlert('Please select an application first.', 'error');
-    resetSubscribeButtonState(buttonElement);
-    return;
-  }
-
-  if (isPaid) {
-    landingSubscribeAndCheckout(orgID, apiID, apiReferenceID, policyID, policyName, buttonElement);
-  } else {
-    subscribe(orgID, applicationID, apiID, apiReferenceID, policyID, policyName);
-  }
-}
-
-/**
- * =========================
- *  Landing Page Stripe Checkout Flow
- *  - Uses landing-prefixed element IDs
- * =========================
- */
-async function landingSubscribeAndCheckout(orgID, apiID, apiReferenceID, policyID, policyName, buttonElement) {
-
-  const card = document.getElementById(`subscriptionCard-${policyID}`);
-  const subscribeButton = buttonElement || (card ? card.querySelector(".common-btn-primary") : null);
-  const messageOverlay = card ? card.querySelector(".message-overlay") : null;
-
-  try {
-    // Get application ID from landing page hidden field
-    const hiddenField = document.getElementById(`landing-selectedAppId-${policyID}`);
-    const applicationID = hiddenField?.value || '';
-    if (!applicationID) {
-      showAlert("Please select an application.", "error");
-      resetSubscribeButtonState(subscribeButton);
-      return;
-    }
-
-    // Get price ID from button data attribute
-    const priceId = document.getElementById(`landing-subscribe-btn-${policyID}`)?.getAttribute('data-external-price-id');
-    
-    if (!priceId) {
-      showAlert("Paid plan misconfigured (missing priceId).", "error");
-      resetSubscribeButtonState(subscribeButton);
-      return;
-    }
-
-    // Show loading state (only if not already set by caller)
-    if (subscribeButton && !subscribeButton.dataset.originalText) {
-      showSubscribeButtonLoading(subscribeButton);
-    }
-
-    // Get policy name from button data attribute
-    const policyNameAttr = document.getElementById(`landing-subscribe-btn-${policyID}`)?.getAttribute('data-policy-name');
-
-    // Create Stripe checkout session
-    const response = await fetch(`${DEVPORTAL_BASE}/organizations/${safeId(orgID)}/monetization/checkout`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        applicationID: safeId(applicationID),
-        apiId: safeId(apiID),
-        apiReferenceID: safeId(apiReferenceID),
-        policyId: safeId(policyID),
-        policyName: safeText(policyNameAttr || policyName),
-        priceId: safeId(priceId),
-        sourcePage: window.location.pathname
-      })
-    });
-
-    const result = await response.json();
-    if (!response.ok) {
-      const errMsg = result.message || result.error || "Failed to start checkout. Please try again.";
-      if (response.status === 409) {
-        showAlert(errMsg, "info");
-        resetSubscribeButtonState(subscribeButton);
+function refreshModalOrReload(orgID) {
+    // If inside a visible modal, re-render its content instead of reloading the page
+    var visibleModal = document.querySelector('.modal.custom-modal[style*="flex"]');
+    if (visibleModal && visibleModal.id && typeof prepareSubscriptionModal === 'function') {
+        prepareSubscriptionModal(visibleModal.id);
         return;
-      }
-      throw new Error(errMsg);
+    }
+    // On the landing page, refresh inline without full reload
+    if (document.getElementById('subscriptionPlans')) {
+        refreshLandingPageSubscriptions();
+        return;
+    }
+    window.location.reload();
+}
+
+async function refreshLandingPageSubscriptions() {
+    var planBtn = document.querySelector('#subscriptionPlans [data-api-id]');
+    var orgID = window.__subscriptionOrgID || (planBtn && planBtn.dataset.orgId);
+    if (!orgID) { window.location.reload(); return; }
+
+    var apiId = planBtn ? planBtn.dataset.apiId : null;
+    if (!apiId) { window.location.reload(); return; }
+
+    try {
+        var resp = await fetch('/devportal/organizations/' + encodeURIComponent(orgID) + '/subscriptions?apiId=' + encodeURIComponent(apiId), { headers: { 'Content-Type': 'application/json' } });
+        if (!resp.ok) { window.location.reload(); return; }
+        var data = await resp.json();
+        var existing = data.list || data || [];
+
+        // Update window state
+        window.existingSubscriptions = existing.map(function(s) {
+            return { subscriptionId: s.subscriptionId, subscriptionPlanName: s.subscriptionPlanName, status: s.status };
+        });
+        window.__tokenMeta = window.__tokenMeta || {};
+        existing.forEach(function(sub) {
+            window.__tokenMeta[sub.subscriptionId] = { maskedToken: sub.maskedToken, subscriptionPlanName: sub.subscriptionPlanName, status: sub.status };
+        });
+
+        // Re-render existing subscriptions table
+        var existingSection = document.querySelector('#subscriptionPlans .existing-subscriptions');
+        if (existing.length > 0) {
+            if (!existingSection) {
+                existingSection = document.createElement('div');
+                existingSection.className = 'existing-subscriptions mb-4';
+                var plansHeader = document.querySelector('#subscriptionPlans .container-header');
+                if (plansHeader) {
+                    plansHeader.parentNode.insertBefore(existingSection, plansHeader);
+                } else {
+                    document.querySelector('#subscriptionPlans .container-fluid').prepend(existingSection);
+                }
+            }
+            var modalEl = document.getElementById('planModal-' + apiId);
+            var isTokenBased = modalEl && modalEl.dataset.hasSubscriptionToken === 'true';
+
+            existingSection.innerHTML = '<div class="container-header mb-4">Subscriptions</div>';
+            var table = document.createElement('table');
+            table.className = 'table';
+            var headerHtml = '<thead><tr><th>Plan</th><th>Status</th>';
+            if (isTokenBased) headerHtml += '<th>Subscription Token</th>';
+            headerHtml += '<th>Actions</th></tr></thead><tbody></tbody>';
+            table.innerHTML = headerHtml;
+            var tbody = table.querySelector('tbody');
+            existing.forEach(function(sub) {
+                var tr = document.createElement('tr');
+
+                // Plan name cell
+                var tdPlan = document.createElement('td');
+                tdPlan.textContent = sub.subscriptionPlanName || '';
+                tr.appendChild(tdPlan);
+
+                // Status cell
+                var tdStatus = document.createElement('td');
+                var badge = document.createElement('span');
+                badge.className = 'badge ' + (sub.status === 'ACTIVE' ? 'bg-success' : 'bg-secondary');
+                badge.textContent = sub.status || '';
+                tdStatus.appendChild(badge);
+                tr.appendChild(tdStatus);
+
+                // Token cell — only for token-based subscription APIs
+                if (isTokenBased) {
+                    var tdToken = document.createElement('td');
+                    var tokenDisplay = document.createElement('div');
+                    tokenDisplay.className = 'token-display';
+                    var code = document.createElement('code');
+                    code.className = 'masked-token';
+                    code.id = 'token-' + sub.subscriptionId;
+                    code.dataset.revealed = 'false';
+                    code.textContent = '****';
+                    var revealBtn = document.createElement('button');
+                    revealBtn.className = 'btn btn-sm btn-outline-secondary';
+                    revealBtn.title = 'Reveal token';
+                    revealBtn.innerHTML = '<i class="bi bi-eye"></i>';
+                    revealBtn.dataset.subscriptionId = sub.subscriptionId;
+                    revealBtn.addEventListener('click', function() { toggleTokenVisibility(this.dataset.subscriptionId); });
+                    var copyBtn = document.createElement('button');
+                    copyBtn.className = 'btn btn-sm btn-outline-secondary';
+                    copyBtn.title = 'Copy token';
+                    copyBtn.innerHTML = '<i class="bi bi-clipboard"></i>';
+                    copyBtn.dataset.subscriptionId = sub.subscriptionId;
+                    copyBtn.addEventListener('click', function() { copySubscriptionToken(this.dataset.subscriptionId); });
+                    tokenDisplay.appendChild(code);
+                    tokenDisplay.appendChild(revealBtn);
+                    tokenDisplay.appendChild(copyBtn);
+                    tdToken.appendChild(tokenDisplay);
+                    tr.appendChild(tdToken);
+                }
+
+                // Actions cell
+                var tdActions = document.createElement('td');
+                var newStatus = sub.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+                var toggleBtn = document.createElement('button');
+                toggleBtn.className = 'btn btn-sm btn-outline-warning';
+                toggleBtn.innerHTML = sub.status === 'ACTIVE' ? '<i class="bi bi-pause-circle"></i>' : '<i class="bi bi-play-circle"></i>';
+                toggleBtn.dataset.orgId = orgID;
+                toggleBtn.dataset.subscriptionId = sub.subscriptionId;
+                toggleBtn.dataset.newStatus = newStatus;
+                toggleBtn.addEventListener('click', function() {
+                    toggleSubscriptionStatus(this.dataset.orgId, this.dataset.subscriptionId, this.dataset.newStatus);
+                });
+                var deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn btn-sm btn-outline-danger';
+                deleteBtn.innerHTML = '<i class="bi bi-trash"></i>';
+                deleteBtn.dataset.orgId = orgID;
+                deleteBtn.dataset.subscriptionId = sub.subscriptionId;
+                deleteBtn.addEventListener('click', function() {
+                    confirmDeleteSubscription(this.dataset.orgId, this.dataset.subscriptionId);
+                });
+                tdActions.appendChild(toggleBtn);
+                tdActions.appendChild(deleteBtn);
+                tr.appendChild(tdActions);
+
+                tbody.appendChild(tr);
+            });
+            existingSection.appendChild(table);
+        } else if (existingSection) {
+            existingSection.remove();
+        }
+
+        // Update plan card buttons: mark current plan or reset to Subscribe
+        var activePlanNames = existing
+            .filter(function(s) { return s.status === 'ACTIVE'; })
+            .map(function(s) { return (s.subscriptionPlanName || '').toLowerCase(); });
+
+        var planCards = document.querySelectorAll('#subscriptionPlans .subscription-card');
+        planCards.forEach(function(card) {
+            var btn = card.querySelector('.subscription-plan-subscribe-btn, .subscribe-btn, .current-plan-btn');
+            if (!btn) return;
+            var policyName = (btn.dataset.policyName || '').toLowerCase();
+            if (activePlanNames.indexOf(policyName) !== -1) {
+                btn.textContent = 'Current Plan';
+                btn.disabled = true;
+                btn.classList.add('disabled', 'current-plan-btn');
+                btn.removeAttribute('onclick');
+            } else {
+                btn.textContent = 'Subscribe';
+                btn.disabled = false;
+                btn.classList.remove('disabled', 'current-plan-btn');
+                btn.setAttribute('onclick', 'handlePlanSubscription(this)');
+            }
+        });
+    } catch (e) {
+        window.location.reload();
+    }
+}
+
+function copySubscriptionToken(subscriptionId) {
+    (async function() {
+        try {
+            const token = await fetchTokenIfNeeded(subscriptionId);
+            if (!token) return;
+            navigator.clipboard.writeText(token).then(() => {
+                showAlert('Subscription token copied to clipboard!', 'success');
+            }).catch(() => {
+                const textArea = document.createElement('textarea');
+                textArea.value = token;
+                textArea.style.position = 'fixed';
+                textArea.style.opacity = '0';
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                showAlert('Subscription token copied to clipboard!', 'success');
+            });
+        } catch (e) {
+            // noop
+        }
+    })();
+}
+
+function toggleTokenVisibility(subscriptionId) {
+    (async function() {
+        const tokenEl = document.getElementById('token-' + subscriptionId);
+        if (!tokenEl) return;
+        if (tokenEl.dataset.revealed === 'true') {
+            // hide and show masked value from token meta if available
+            const meta = (window.__tokenMeta || {})[subscriptionId];
+            tokenEl.textContent = meta && meta.maskedToken ? meta.maskedToken : '****';
+            tokenEl.dataset.revealed = 'false';
+            return;
+        }
+
+        try {
+            const fullToken = await fetchTokenIfNeeded(subscriptionId);
+            if (!fullToken) return;
+            tokenEl.textContent = fullToken;
+            tokenEl.dataset.revealed = 'true';
+        } catch (e) {
+            // noop
+        }
+    })();
+}
+
+const _tokenCache = {};
+
+async function fetchTokenIfNeeded(subscriptionId) {
+    if (_tokenCache[subscriptionId]) return _tokenCache[subscriptionId];
+    const existing = (window.__tokenMap || {})[subscriptionId];
+    if (existing && typeof existing === 'string' && !existing.startsWith('****')) {
+        _tokenCache[subscriptionId] = existing;
+        return existing;
+    }
+    const orgID = window.__subscriptionOrgID;
+    if (!orgID) return null;
+    try {
+        const resp = await fetch(`/devportal/organizations/${encodeURIComponent(orgID)}/subscriptions/${encodeURIComponent(subscriptionId)}`, { headers: { 'Content-Type': 'application/json' } });
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        const token = data.subscriptionToken;
+        if (!token) return null;
+        _tokenCache[subscriptionId] = token;
+        window.__tokenMap = window.__tokenMap || {};
+        window.__tokenMap[subscriptionId] = token;
+        return token;
+    } catch (e) {
+        return null;
+    }
+}
+
+function showSubscriptionTokenModal(token, planName) {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal custom-modal';
+        overlay.style.display = 'flex';
+
+        const safeplanName = document.createElement('span');
+        safeplanName.textContent = planName;
+
+        const safeToken = document.createElement('code');
+        safeToken.textContent = token;
+        safeToken.className = 'flex-grow-1 p-2 bg-light border rounded';
+        safeToken.style.wordBreak = 'break-all';
+
+        overlay.innerHTML = `
+            <div class="modal-dialog" role="document">
+                <div class="modal-content custom-modal-content">
+                    <div class="custom-modal-header">
+                        <h2 class="custom-modal-title m-0">Subscription Created</h2>
+                        <button type="button" class="btn-close" id="closeTokenModal"></button>
+                    </div>
+                    <div class="custom-modal-body">
+                        <p>Your subscription to the <strong id="planNameDisplay"></strong> plan has been created successfully.</p>
+                        <p class="mb-2"><strong>Subscription Token:</strong></p>
+                        <div class="d-flex align-items-center gap-2 mb-3" id="tokenContainer"></div>
+                        <div class="alert alert-warning mb-0">
+                            <i class="bi bi-exclamation-triangle"></i>
+                            Use this token as the <code>Subscription-Key</code> header when invoking the API.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        overlay.querySelector('#planNameDisplay').textContent = planName;
+
+        const tokenContainer = overlay.querySelector('#tokenContainer');
+        tokenContainer.appendChild(safeToken);
+
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'btn btn-sm btn-outline-secondary';
+        copyBtn.innerHTML = '<i class="bi bi-clipboard"></i> Copy';
+        copyBtn.addEventListener('click', () => {
+            // copy raw token string directly (token is available in this scope)
+            navigator.clipboard.writeText(token).then(() => {
+                showAlert('Subscription token copied to clipboard!', 'success');
+            }).catch(() => {
+                const textArea = document.createElement('textarea');
+                textArea.value = token;
+                textArea.style.position = 'fixed';
+                textArea.style.opacity = '0';
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                showAlert('Subscription token copied to clipboard!', 'success');
+            });
+        });
+        tokenContainer.appendChild(copyBtn);
+
+        overlay.querySelector('#closeTokenModal').addEventListener('click', () => {
+            overlay.remove();
+            if (window.__subscriptionChanged) {
+                window.__subscriptionChanged = false;
+                if (document.getElementById('subscriptionPlans')) {
+                    refreshLandingPageSubscriptions();
+                } else {
+                    window.location.reload();
+                }
+            }
+            resolve();
+        });
+    });
+}
+
+function showSubscriptionTokenInModal(apiId, token, planName) {
+    const area = document.getElementById('subscriptionTokenArea-' + apiId);
+    if (!area) {
+        return showSubscriptionTokenModal(token, planName);
     }
 
-    // Use embedded checkout (same as subscribeAndCheckout)
-    const { clientSecret, publishableKey, checkoutContextId, returnUrl } = result;
+    area.innerHTML = '';
+    const wrapper = document.createElement('div');
+    wrapper.className = 'p-3 mb-3 border rounded bg-light';
 
-    if (!clientSecret || !publishableKey) {
-      throw new Error("Checkout session response missing clientSecret/publishableKey.");
-    }
+    const title = document.createElement('div');
+    title.innerHTML = `<strong>Subscription Created</strong> — ${escapeHtml(planName)}`;
 
-    // Reset button state before opening modal
-    resetSubscribeButtonState(subscribeButton);
+    const tokenBlock = document.createElement('div');
+    tokenBlock.className = 'd-flex gap-2 align-items-center mt-2';
+    const code = document.createElement('code');
+    code.textContent = token;
+    code.style.wordBreak = 'break-all';
+    code.className = 'p-2 bg-white border rounded flex-grow-1';
 
-    // Open Stripe embedded checkout modal
-    await openStripeEmbeddedCheckout({
-      publishableKey,
-      clientSecret,
-      orgID,
-      checkoutContextId,
-      returnUrl,
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'btn btn-sm btn-outline-secondary';
+    copyBtn.innerHTML = '<i class="bi bi-clipboard"></i> Copy';
+    copyBtn.addEventListener('click', function() {
+        navigator.clipboard.writeText(token).then(() => showAlert('Subscription token copied to clipboard!', 'success'))
+            .catch(() => showAlert('Could not copy token', 'error'));
     });
 
-  } catch (error) {
-    showAlert(error.message || "Failed to initiate checkout", "error");
-    resetSubscribeButtonState(subscribeButton);
-  }
+    tokenBlock.appendChild(code);
+    tokenBlock.appendChild(copyBtn);
+    wrapper.appendChild(title);
+    wrapper.appendChild(tokenBlock);
+
+    const info = document.createElement('div');
+    info.className = 'alert alert-warning mt-2 mb-0';
+    info.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Use this token as the <code>Subscription-Key</code> header when invoking the API.';
+    wrapper.appendChild(info);
+
+    area.appendChild(wrapper);
+    area.style.display = 'block';
+
+    // Refresh the subscriptions/plans below the token with updated data
+    const modalEl = area.closest('.modal');
+    if (modalEl && modalEl.id && typeof prepareSubscriptionModal === 'function') {
+        window.__preserveTokenArea = true;
+        prepareSubscriptionModal(modalEl.id);
+    }
 }
 
-/**
- * =========================
- *  Stripe Checkout Flow (for paid plans)
- * =========================
- */
-async function subscribeAndCheckout(orgID, apiID, apiReferenceID, policyID, policyName, applicationID = '') {
-  const card = getSubscriptionCard(apiID, policyID);
-  const subscribeButton = card ? card.querySelector(".common-btn-primary") : null;
-  const messageOverlay = card ? card.querySelector(".message-overlay") : null;
-
-  try {
-    if (!applicationID) {
-      const perPlanField = card
-        ? card.querySelector('input[type="hidden"][id^="selectedAppId-"]')
-        : document.getElementById(`selectedAppId-${policyID}`);
-      if (perPlanField?.value) applicationID = perPlanField.value;
-    }
-
-    if (!applicationID) {
-      const modalAppField = document.getElementById(`modal-selected-app-${apiID}`);
-      if (modalAppField?.value) applicationID = modalAppField.value;
-    }
-
-    // Fall back to card hidden field (for landing page)
-    if (!applicationID && card) {
-      const hiddenField = card.querySelector('input[type="hidden"]');
-      if (hiddenField?.value) applicationID = hiddenField.value;
-    }
-
-    if (!applicationID) {
-      showAlert("Please select an application.", "error");
-      return;
-    }
-
-    // Get price ID from button data attribute
-    const priceId = document.getElementById(`subscribe-btn-${policyID}`)?.getAttribute('data-external-price-id');
-    
-    if (!priceId) {
-      console.error("❌ No priceId found");
-      showAlert("Paid plan misconfigured (missing priceId).", "error");
-      return;
-    }
-
-    // Call backend to create Stripe checkout session
-    const requestBody = {
-      applicationID: safeId(applicationID),
-      apiId: safeId(apiID),
-      apiReferenceID: safeId(apiReferenceID),
-      policyId: safeId(policyID),
-      policyName: safeText(policyName),
-      priceId: safeId(priceId), // <-- ensure priceId is sent
-      sourcePage: window.location.pathname, // Store current page to redirect back after payment
-    };
-    
-    const checkoutRes = await fetch(`${DEVPORTAL_BASE}/organizations/${safeId(orgID)}/monetization/checkout`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestBody),
-    });
-
-    const checkoutData = await checkoutRes.json().catch(() => ({}));
-    
-    if (!checkoutRes.ok) {
-      console.error("❌ Checkout creation failed:", checkoutData);
-      const errorMsg = checkoutData.message || checkoutData.error || checkoutData.description || "Failed to start checkout. Please try again.";
-      if (checkoutRes.status === 409) {
-        showSubscriptionMessage(messageOverlay, errorMsg, "info");
-      } else {
-        showSubscriptionMessage(messageOverlay, errorMsg, "error");
-      }
-      return;
-    }
-
-    // Expect backend returns: { clientSecret, publishableKey, checkoutContextId, returnUrl }
-    const { clientSecret, publishableKey, checkoutContextId, returnUrl } = checkoutData;
-
-    if (!clientSecret || !publishableKey) {
-      showSubscriptionMessage(messageOverlay, "Checkout session response missing clientSecret/publishableKey.", "error");
-      return;
-    }
-
-    // Close the plan selection modal if open (ID is planModal-{apiID})
-    closeModal(`planModal-${apiID}`);
-
-    // Open Stripe embedded checkout modal
-    await openStripeEmbeddedCheckout({
-      publishableKey,
-      clientSecret,
-      orgID,
-      checkoutContextId,
-      returnUrl,
-    });
-
-  } catch (error) {
-    console.error("Error during paid subscription:", error);
-    showSubscriptionMessage(messageOverlay, `Error: ${error.message}`, "error");
-  }
+function escapeHtml(unsafe) {
+    return String(unsafe).replace(/[&<>"'`]/g, function (m) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;","`":"&#96;"})[m]; });
 }
-
-/**
- * =========================
- *  Open modal and pass selected application ID
- * =========================
- */
-function openModalWithApp(modalId, appIdFieldId) {
-  const appIdField = document.getElementById(appIdFieldId);
-  if (!appIdField || !appIdField.value) {
-    showAlert('Please select an application first.', 'error');
-    return;
-  }
-  
-  const selectedAppId = appIdField.value;
-  
-  // Extract API ID from modal ID (e.g., "planModal-api123" -> "api123")
-  const apiId = modalId.replace('planModal-', '');
-  
-  // Store the selected app ID in the modal's hidden field
-  const modalAppField = document.getElementById(`modal-selected-app-${apiId}`);
-  if (modalAppField) {
-    modalAppField.value = selectedAppId;
-  }
-  
-  // Open the modal
-  loadModal(modalId);
-}
-
-/**
- * =========================
- *  Handler for single plan subscription from listing page
- *  - Handles both paid and free plans
- * =========================
- */
-function handleListingSubscribe(orgID, apiID, apiReferenceID, policyID, policyName, appIdFieldId, buttonElement) {
-  
-  const isPaid = buttonElement.dataset.isPaid === 'true';
-
-  // Get selected application ID
-  const appIdField = document.getElementById(appIdFieldId);
-  const applicationID = appIdField ? appIdField.value : '';  
-  if (!applicationID) {
-    showAlert('Please select an application first.', 'error');
-    return;
-  }
-  
-  // Store app ID in the hidden field that subscribeAndCheckout looks for
-  const modalAppField = document.getElementById(`modal-selected-app-${apiID}`);
-  if (modalAppField) {
-    modalAppField.value = applicationID;
-  }
-  
-  if (isPaid) {
-        // Paid plan - trigger Stripe checkout
-    subscribeAndCheckout(orgID, apiID, apiReferenceID, policyID, policyName, applicationID);
-  } else {
-    // Free plan - direct subscription
-    subscribe(orgID, applicationID, apiID, apiReferenceID, policyID, policyName);
-  }
-}
-
-/**
- * =========================
- *  Export to window (important for inline onclick in HBS)
- * =========================
- */
-window.subscribe = subscribe;
-window.unsubscribe = unsubscribe;
-window.updateSubscription = updateSubscription;
-window.removeSubscription = removeSubscription;
-window.openDeleteModal = openDeleteModal;
-window.handleCreateSubscribe = handleCreateSubscribe;
-window.showApplicationForm = showApplicationForm;
-window.closeStripeCheckoutModal = closeStripeCheckoutModal;
-window.handlePlanSubscription = handlePlanSubscription;
-window.handleSubscribeWithPayment = handleSubscribeWithPayment;
-window.subscribeAndCheckout = subscribeAndCheckout;
-window.openModalWithApp = openModalWithApp;
-window.handleListingSubscribe = handleListingSubscribe;
-window.landingSubscribe = landingSubscribe;
-window.handleLandingPlanSubscription = handleLandingPlanSubscription;
-window.landingSubscribeAndCheckout = landingSubscribeAndCheckout;

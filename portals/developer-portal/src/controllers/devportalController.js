@@ -220,145 +220,6 @@ const resetThrottlingPolicy = async (req, res) => {
     }
 };
 
-// ***** Generate API Keys *****
-
-const generateAPIKeys = async (req, res) => {
-    try {
-        const requestBody = req.body;
-        const apiID = requestBody.apiId;
-        const orgID = await adminDao.getOrgId(req.user[constants.ORG_IDENTIFIER]);
-        let cpAppID = requestBody.applicationId;
-
-        const nonSharedKeyMapping = await adminDao.getApplicationAPIMapping(orgID, requestBody.devportalAppId, apiID, cpAppID, false);
-        const sharedKeyMapping = await adminDao.getApplicationAPIMapping(orgID, requestBody.devportalAppId, apiID, cpAppID, true);
-
-        const dpApiId = await apiDao.getApiIdByReferenceId(orgID, apiID);
-        // Look up existing DP subscription billing data (set during Stripe checkout activation)
-        const dpSubscription = dpApiId ? await adminDao.getAppApiSubscription(orgID, requestBody.devportalAppId, dpApiId) : null;
-        const dpSub = dpSubscription?.length > 0 ? dpSubscription[0] : null;
-        const billingData =
-            dpSub &&
-            dpSub.PAYMENT_PROVIDER === 'STRIPE' &&
-            dpSub.PAYMENT_STATUS === 'ACTIVE' &&
-            dpSub.BILLING_CUSTOMER_ID &&
-            dpSub.BILLING_SUBSCRIPTION_ID
-                ? { customerId: dpSub.BILLING_CUSTOMER_ID, subscriptionId: dpSub.BILLING_SUBSCRIPTION_ID, email: req.user?.email }
-                : null;
-        if (!(nonSharedKeyMapping.length > 0 || sharedKeyMapping.length > 0)) {
-            const cpApp = await adminService.createCPApplication(req, requestBody.devportalAppId);
-            cpAppID = cpApp.applicationId;
-
-            const apiSubscription = await adminService.createCPSubscription(req, apiID, cpAppID, requestBody.subscriptionPlan, billingData);
-
-            const appKeyMappping = {
-                orgID: orgID,
-                appID: requestBody.devportalAppId,
-                cpAppRef: cpAppID,
-                apiRefID: apiSubscription.apiId,
-                subscriptionRefID: apiSubscription.subscriptionId,
-                sharedToken: false,
-                tokenType: constants.TOKEN_TYPES.API_KEY
-            }
-            let applicationKeyMappingPortal = await sequelize.transaction({ timeout: 60000 }, async (t) => {
-                return await adminDao.createApplicationKeyMapping(appKeyMappping, t);
-            });
-
-        } else if (!(nonSharedKeyMapping[0]?.dataValues.SUBSCRIPTION_REF_ID || sharedKeyMapping[0]?.dataValues.SUBSCRIPTION_REF_ID)) {
-            const apiSubscription = await adminService.createCPSubscription(req, apiID, cpAppID, requestBody.subscriptionPlan, billingData);
-            const appKeyMappping = {
-                orgID: orgID,
-                appID: requestBody.devportalAppId,
-                cpAppRef: cpAppID,
-                apiRefID: apiSubscription.apiId,
-                subscriptionRefID: apiSubscription.subscriptionId,
-                sharedToken: false,
-                tokenType: constants.TOKEN_TYPES.API_KEY
-            }
-            await adminDao.updateApplicationKeyMapping(apiSubscription.apiId, appKeyMappping);
-        }
-
-        const query = `
-        query ($orgUuid: String!, $projectId: String!) {
-          environments(orgUuid: $orgUuid, projectId: $projectId) {
-            name
-            templateId
-          }
-        }
-      `;
-
-        const variables = {
-            orgUuid: req.user[constants.ORG_IDENTIFIER],
-            projectId: requestBody.projectID
-        };
-
-        const orgDetails = await invokeGraphQLRequest(req, `${controlPlaneGraphqlUrl}`, query, variables, {});
-        const environments = orgDetails?.data?.environments || [];
-        const apiHandle = await apiDao.getAPIHandle(orgID, req.body.apiId);
-
-        if (!requestBody.keyType || ![constants.KEY_TYPE.PRODUCTION, constants.KEY_TYPE.SANDBOX].includes(requestBody.keyType)) {
-            throw new Error('Invalid or missing keyType. Expected ' + constants.KEY_TYPE.PRODUCTION + ' or ' + constants.KEY_TYPE.SANDBOX + '.');
-        }
-        // If the client didn't provide a name, fall back to the existing auto-generated convention
-        if (!requestBody.name) {
-            requestBody.name = apiHandle + "-" + cpAppID + "-" + requestBody.keyType;
-        }
-        requestBody.environmentTemplateId = environments.find(env => env.name === 'Production').templateId;
-        requestBody.applicationId = cpAppID;
-        delete requestBody.projectID;
-        delete requestBody.devportalAppId;
-
-        if (billingData) {
-            requestBody.billingCustomerId = billingData.customerId;
-            requestBody.billingSubscriptionId = billingData.subscriptionId;
-        }
-
-        const responseData = await invokeApiRequest(req, 'POST', `${controlPlaneUrl}/api-keys/generate`, {
-            'Content-Type': 'application/json'
-        }, requestBody);
-        responseData.appRefId = cpAppID;
-        res.status(200).json(responseData);
-    } catch (error) {
-        logger.error('Error occurred while generating API keys', {
-            apiId: req.body.apiId,
-            appId: req.body.devportalAppId,
-            error: error.message,
-            stack: error.stack
-        });
-        util.handleError(res, error);
-    }
-};
-
-const revokeAPIKeys = async (req, res) => {
-    const apiKeyID = req.params.apiKeyID;
-    try {
-        const responseData = await invokeApiRequest(req, 'POST', `${controlPlaneUrl}/api-keys/${apiKeyID}/revoke`, {}, {});
-        // await adminDao.deleteAppKeyMapping(await adminDao.getOrgId((req.user[constants.ORG_IDENTIFIER])), req.body.applicationId, req.body.apiRefID);
-        res.status(200).json(responseData);
-    } catch (error) {
-        logger.error("Error occurred while revoking the API key", {
-            apiKeyID,
-            error: error.message,
-            stack: error.stack
-        });
-        util.handleError(res, error);
-    }
-}
-
-const regenerateAPIKeys = async (req, res) => {
-    const apiKeyID = req.params.apiKeyID;
-    try {
-        const responseData = await invokeApiRequest(req, 'POST', `${controlPlaneUrl}/api-keys/${apiKeyID}/regenerate`, { 'x-source-portal': 'bijira-devportal' }, {});
-        res.status(200).json(responseData);
-    } catch (error) {
-        logger.error("Error occurred while regenerating the API key", {
-            apiKeyID,
-            error: error.message,
-            stack: error.stack
-        });
-        util.handleError(res, error);
-    }
-}
-
 const generateApplicationKeys = async (req, res) => {
     try {
         const applicationId = req.params.applicationId;
@@ -855,14 +716,11 @@ module.exports = {
     updateApplication,
     deleteApplication,
     resetThrottlingPolicy,
-    generateAPIKeys,
     generateApplicationKeys,
     generateOAuthKeys,
     revokeOAuthKeys,
     updateOAuthKeys,
     cleanUp,
     login,
-    revokeAPIKeys,
-    regenerateAPIKeys,
     importApplications
 };

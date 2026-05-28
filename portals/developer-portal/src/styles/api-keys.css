@@ -18,35 +18,35 @@
 
 /* Align with Manage Keys > Application-bound API Keys (manage-keys.css / application.css) */
 
-.platform-api-keys-page .container-header {
+.api-keys-page .container-header {
     display: flex;
     color: var(--primary-main-color);
     font-size: 1.5rem;
     font-weight: 600;
 }
 
-.platform-api-keys-page .app-table {
+.api-keys-page .app-table {
     border-collapse: separate;
     border-spacing: 0;
     width: 100%;
 }
 
-.platform-api-keys-page .app-table-container {
+.api-keys-page .app-table-container {
     border-radius: 8px;
     overflow: hidden;
     border: 1px solid var(--bs-gray-300);
     background: var(--secondary-bg-color, #f8f9fa);
 }
 
-.platform-api-keys-page .app-table thead {
+.api-keys-page .app-table thead {
     background-color: var(--primary-lightest-color, #e8e8f4);
 }
 
-.platform-api-keys-page .app-table thead tr {
+.api-keys-page .app-table thead tr {
     background-color: var(--primary-lightest-color, #e8e8f4);
 }
 
-.platform-api-keys-page .app-table .app-th {
+.api-keys-page .app-table .app-th {
     background-color: var(--primary-lightest-color, #e8e8f4);
     font-weight: 600;
     color: var(--main-text-color);
@@ -55,12 +55,12 @@
     border-bottom: 1px solid var(--bs-gray-300);
 }
 
-.platform-api-keys-page .app-table .app-th:first-child,
-.platform-api-keys-page .app-table .app-td:first-child {
+.api-keys-page .app-table .app-th:first-child,
+.api-keys-page .app-table .app-td:first-child {
     padding-left: 1rem;
 }
 
-.platform-api-keys-page .app-table .app-td {
+.api-keys-page .app-table .app-td {
     vertical-align: middle;
     padding: 0.75rem 0.5rem;
     background-color: var(--main-bg-color, #fff);
@@ -68,15 +68,15 @@
     border-bottom: 1px solid var(--bs-gray-200);
 }
 
-.platform-api-keys-page .app-table tbody tr:last-child .app-td {
+.api-keys-page .app-table tbody tr:last-child .app-td {
     border-bottom: none;
 }
 
-.platform-api-keys-page .app-table tbody tr:hover .app-td {
+.api-keys-page .app-table tbody tr:hover .app-td {
     background-color: var(--secondary-bg-color, #f8f9fa);
 }
 
-.platform-api-keys-page .masked-api-key {
+.api-keys-page .masked-api-key {
     font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
     font-size: 0.8125rem;
     background-color: var(--bs-light, #f8f9fa);
@@ -85,14 +85,14 @@
 }
 
 /* Key action buttons — same pattern as .keys-section .api-key-actions */
-.platform-api-keys-page .api-key-actions {
+.api-keys-page .api-key-actions {
     display: flex;
     gap: 0.5rem;
     flex-wrap: wrap;
     align-items: center;
 }
 
-.platform-api-keys-page .api-key-actions .common-btn-outlined {
+.api-keys-page .api-key-actions .common-btn-outlined {
     box-sizing: border-box;
     box-shadow: inset 0 0 0 1px var(--primary-main-color);
     border: none;
@@ -107,28 +107,28 @@
     line-height: 1.5;
 }
 
-.platform-api-keys-page .api-key-actions .common-btn-outlined.btn-sm {
+.api-keys-page .api-key-actions .common-btn-outlined.btn-sm {
     padding: 0.5rem 0.75rem;
     font-size: 0.75rem;
     border-radius: 0.25rem;
 }
 
-.platform-api-keys-page .api-key-actions .common-btn-outlined .bi {
+.api-keys-page .api-key-actions .common-btn-outlined .bi {
     vertical-align: middle;
     margin-right: 0.25rem;
 }
 
-.platform-api-keys-page .api-key-actions .api-key-revoke {
+.api-keys-page .api-key-actions .api-key-revoke {
     box-shadow: inset 0 0 0 1px #dc3545;
     color: #dc3545;
 }
 
-.platform-api-keys-page .api-key-actions .api-key-revoke:hover {
+.api-keys-page .api-key-actions .api-key-revoke:hover {
     background-color: rgba(220, 53, 69, 0.1);
     color: #dc3545;
 }
 
-.platform-api-keys-page .common-btn-primary.btn-sm {
+.api-keys-page .common-btn-primary.btn-sm {
     padding: 0.5rem 1rem;
     font-size: 0.875rem;
 }

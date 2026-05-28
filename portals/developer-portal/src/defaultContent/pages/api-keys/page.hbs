@@ -18,32 +18,32 @@
 
 <head>
   <link rel='stylesheet' href='/technical-styles/subscriptions.css' />
-  <link rel='stylesheet' href='/technical-styles/platform-api-keys.css' />
-  <script src='/technical-scripts/platform-api-keys-page.js' defer></script>
+  <link rel='stylesheet' href='/technical-styles/api-keys.css' />
+  <script src='/technical-scripts/api-keys-page.js' defer></script>
 </head>
 <main>
     {{> header profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav }}
-    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode showPlatformApiKeysNav=showPlatformApiKeysNav showApiWorkflowsNav=showApiWorkflowsNav }}
+    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiKeysNav=showApiKeysNav showApiWorkflowsNav=showApiWorkflowsNav }}
     <div class="content">
-        <div class="container-fluid subscriptions-container platform-api-keys-page">
+        <div class="container-fluid subscriptions-container api-keys-page">
             <div class="container-header mb-4 d-flex flex-wrap align-items-center justify-content-between gap-2">
                 <span>API Keys</span>
                 {{#unless isReadOnlyMode}}
-                {{#unless platformApiKeysLoadError}}
-                <button type="button" class="common-btn-primary btn-sm" id="btn-open-generate-api-key" data-bs-toggle="modal" data-bs-target="#generatePlatformApiKeyModal">
+                {{#unless apiKeysLoadError}}
+                <button type="button" class="common-btn-primary btn-sm" id="btn-open-generate-api-key" data-bs-toggle="modal" data-bs-target="#generateApiKeyModal">
                     Generate API Key
                 </button>
                 {{/unless}}
                 {{/unless}}
             </div>
-            <div id="platform-api-keys-config" class="d-none"
+            <div id="api-keys-config" class="d-none"
                 data-org-id="{{orgID}}"
                 data-api-id="{{apiMetadata.apiID}}"
                 data-read-only="{{#if isReadOnlyMode}}true{{else}}false{{/if}}"
-                data-load-error="{{#if platformApiKeysLoadError}}true{{else}}false{{/if}}"
+                data-load-error="{{#if apiKeysLoadError}}true{{else}}false{{/if}}"
                 data-csrf-token="{{csrfToken}}">
             </div>
-            {{> platform-api-key-list }}
+            {{> api-key-list }}
         </div>
     </div>
     {{> alert }}

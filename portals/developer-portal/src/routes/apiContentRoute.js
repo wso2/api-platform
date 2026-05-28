@@ -19,7 +19,7 @@ const express = require('express');
 const router = express.Router();
 const apiController = require('../controllers/apiContentController');
 const subscriptionsController = require('../controllers/subscriptionsContentController');
-const platformApiKeysContentController = require('../controllers/platformApiKeysContentController');
+const apiKeysContentController = require('../controllers/apiKeysContentController');
 const registerPartials = require('../middlewares/registerPartials');
 const { ensureAuthenticated } = require('../middlewares/ensureAuthenticated');
 const authController = require('../controllers/authController');
@@ -100,7 +100,7 @@ router.get('/:orgName/views/:viewName/api/:apiHandle/api-keys', (req, res, next)
         return res.status(404).send('Not Found');
     }
     next();
-}, authController.handleSilentSSO, registerPartials, util.enforcePortalMode, ensureAuthenticated, platformApiKeysContentController.loadAPIPlatformApiKeys);
+}, authController.handleSilentSSO, registerPartials, util.enforcePortalMode, ensureAuthenticated, apiKeysContentController.loadAPIApiKeys);
 
 router.get('/:orgName/views/:viewName/:apiType(api|mcp)/:apiHandle/docs/specification.:format(json|graphql|xml)', (req, res, next) => {
     if (req.params.orgName === 'favicon.ico') {

@@ -4,8 +4,8 @@
             {{#if subscriptionPlans.length}}
             <!-- ===== TOKEN-BASED SUBSCRIPTION UI ===== -->
 
-            <!-- Existing platform subscriptions for this API -->
-            {{#if platformSubscriptions.length}}
+            <!-- Existing subscriptions for this API -->
+            {{#if subscriptions.length}}
             <div class="existing-subscriptions mb-4">
                 <div class="container-header mb-4">Subscriptions</div>
                 <table class="table">
@@ -18,9 +18,9 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {{#each platformSubscriptions}}
+                        {{#each subscriptions}}
                 {{#if @first}}
-                <script id="token-map-data" type="application/json">{{{jsonSafePlatformSubscriptions ../platformSubscriptions}}}</script>
+                <script id="token-map-data" type="application/json">{{{jsonSafeSubscriptions ../subscriptions}}}</script>
                 <script>
                     (function() {
                         var data = JSON.parse(document.getElementById('token-map-data').textContent || '[]');
@@ -59,12 +59,12 @@
                             </td>
                             <td>
                                 <button class="btn btn-sm btn-outline-warning {{#if @root.isReadOnlyMode}}disabled{{/if}}" title="{{#if (eq this.status 'ACTIVE')}}Deactivate{{else}}Activate{{/if}}"
-                                    {{#unless @root.isReadOnlyMode}}onclick="togglePlatformSubscriptionStatus('{{@root.orgID}}', '{{this.subscriptionId}}', '{{#if (eq this.status "ACTIVE")}}INACTIVE{{else}}ACTIVE{{/if}}')"{{/unless}}
+                                    {{#unless @root.isReadOnlyMode}}onclick="toggleSubscriptionStatus('{{@root.orgID}}', '{{this.subscriptionId}}', '{{#if (eq this.status "ACTIVE")}}INACTIVE{{else}}ACTIVE{{/if}}')"{{/unless}}
                                     {{#if @root.isReadOnlyMode}}disabled{{/if}}>
                                     {{#if (eq this.status 'ACTIVE')}}<i class="bi bi-pause-circle"></i>{{else}}<i class="bi bi-play-circle"></i>{{/if}}
                                 </button>
                                 <button class="btn btn-sm btn-outline-danger {{#if @root.isReadOnlyMode}}disabled{{/if}}" title="Delete"
-                                    {{#unless @root.isReadOnlyMode}}onclick="confirmDeletePlatformSubscription('{{@root.orgID}}', '{{this.subscriptionId}}')"{{/unless}}
+                                    {{#unless @root.isReadOnlyMode}}onclick="confirmDeleteSubscription('{{@root.orgID}}', '{{this.subscriptionId}}')"{{/unless}}
                                     {{#if @root.isReadOnlyMode}}disabled{{/if}}>
                                     <i class="bi bi-trash"></i>
                                 </button>
@@ -91,7 +91,7 @@
                         </div>
                         <div class="position-relative">
                             {{#if ../isAuthenticated}}
-                            {{#if (isCurrentPlan policyName @root.platformSubscriptions)}}
+                            {{#if (isCurrentPlan policyName @root.subscriptions)}}
                             <button type="button"
                                 class="common-btn-primary subscribe-btn w-100 disabled current-plan-btn"
                                 data-org-id="{{@root.orgID}}"
@@ -127,23 +127,23 @@
                 {{/each}}
             </div>
 
-            <script id="existing-subs-data" type="application/json">{{{json platformSubscriptions}}}</script>
+            <script id="existing-subs-data" type="application/json">{{{json subscriptions}}}</script>
             <script>
                 (function() {
                     window.__subscriptionOrgID = window.__subscriptionOrgID || "{{@root.orgID}}";
                     var raw = document.getElementById('existing-subs-data').textContent || '[]';
                     try {
                         var parsed = JSON.parse(raw);
-                        window.existingPlatformSubscriptions = parsed.map(function(sub) {
+                        window.existingSubscriptions = parsed.map(function(sub) {
                             return { subscriptionId: sub.subscriptionId, subscriptionPlanName: sub.subscriptionPlanName, status: sub.status };
                         });
                     } catch (e) {
-                        window.existingPlatformSubscriptions = [];
+                        window.existingSubscriptions = [];
                     }
                 })();
             </script>
             {{else}}
-            {{!-- Platform API without subscription plans: no subscription needed --}}
+            {{!-- API without subscription plans: no subscription needed --}}
             {{/if}}
         {{else}}
             <!-- ===== STANDARD APP-BASED SUBSCRIPTION UI ===== -->

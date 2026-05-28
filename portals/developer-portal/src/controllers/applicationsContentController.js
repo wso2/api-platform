@@ -26,7 +26,7 @@ const fs = require('fs');
 const adminDao = require('../dao/admin');
 const apiMetadata = require('../dao/apiMetadata');
 const apiKeyDao = require('../dao/apiKey');
-const platformSubDao = require('../dao/platformSubscription');
+const subDao = require('../dao/subscription');
 const util = require('../utils/util');
 const yaml = require('js-yaml');
 const filePrefix = config.pathToContent;
@@ -92,7 +92,7 @@ const loadApiDefinitionFromDb = async (orgID, apiID) => {
     }
 };
 
-const buildPlatformApiKeyPayload = (keyRow) => {
+const buildApiKeyPayload = (keyRow) => {
     if (!keyRow) {
         return {};
     }
@@ -423,12 +423,12 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
         }
     }
 
-    // Load TOKEN-BASED (platform) subscriptions from local DB
-    let platformSubscriptions = [];
+    // Load TOKEN-BASED subscriptions from local DB
+    let subscriptions = [];
     if (req.user) {
         try {
-            const localSubs = await platformSubDao.listPlatformSubscriptions(orgID);
-            platformSubscriptions = await Promise.all(localSubs.map(async (sub) => {
+            const localSubs = await subDao.listSubscriptions(orgID);
+            subscriptions = await Promise.all(localSubs.map(async (sub) => {
                 const apiRefId = sub.DP_API_METADATA?.REFERENCE_ID;
                 const apiDefinition = await loadApiDefinitionFromDb(orgID, sub.API_ID);
                 const security = apiDefinitionHasApiKeySecurity(apiDefinition) ? ['api_key'] : [];
@@ -441,9 +441,9 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
                         subscriptionId: sub.SUB_ID,
                         status: 'ACTIVE'
                     });
-                    productionApiKeys = buildPlatformApiKeyPayload(keys?.[0]);
+                    productionApiKeys = buildApiKeyPayload(keys?.[0]);
                 } catch (keyError) {
-                    logger.warn('Failed to fetch platform subscription API keys from DB', {
+                    logger.warn('Failed to fetch subscription API keys from DB', {
                         apiId: sub.API_ID, error: keyError.message
                     });
                 }
@@ -469,18 +469,18 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
                         sandbox: sandboxApiKeys
                     },
                     scopes: [],
-                    isPlatformSubscription: true,
+                    isSubscription: true,
                 };
             }));
         } catch (err) {
-            logger.warn('Failed to load platform subscriptions for application overview', {
+            logger.warn('Failed to load subscriptions for application overview', {
                 error: err.message
             });
         }
     }
 
     // Load platform APIs that don't require subscription (gatewayType=wso2/api-platform, no subscription plans)
-    let noSubPlatformAPIs = [];
+    let noSubAPIs = [];
     try {
         const noSubApis = await apiMetadata.getAPIMetadataByCondition({
             ORG_ID: orgID,
@@ -494,7 +494,7 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
         });
 
         if (filteredNoSubApis.length > 0) {
-            noSubPlatformAPIs = await Promise.all(filteredNoSubApis.map(async (api) => {
+            noSubAPIs = await Promise.all(filteredNoSubApis.map(async (api) => {
                 const apiDTO = new APIDTO(api);
                 const refID = apiDTO.apiReferenceID;
 
@@ -509,9 +509,9 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
                         subscriptionId: null,
                         status: 'ACTIVE'
                     });
-                    productionApiKeys = buildPlatformApiKeyPayload(keys?.[0]);
+                    productionApiKeys = buildApiKeyPayload(keys?.[0]);
                 } catch (keyError) {
-                    logger.warn('Failed to fetch no-sub platform API keys.', {
+                    logger.warn('Failed to fetch no-sub API keys.', {
                         apiReferenceID: refID, error: keyError.message
                     });
                 }
@@ -531,12 +531,12 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
                         sandbox: sandboxApiKeys
                     },
                     scopes: [],
-                    isNoSubPlatformAPI: true,
+                    isNoSubAPI: true,
                 };
             }));
         }
     } catch (err) {
-        logger.warn('Failed to load no-subscription platform APIs', { error: err.message });
+        logger.warn('Failed to load no-subscription APIs', { error: err.message });
     }
 
     const profile = buildProfile(req);
@@ -547,8 +547,8 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
         keyManagersMetadata: kMmetaData,
         subAPIs: subList,
         subAPIsForApplicationKeys,
-        platformSubscriptionsForApplicationKeys: [],
-        noSubPlatformAPIsForApplicationKeys: [],
+        subscriptionsForApplicationKeys: [],
+        noSubAPIsForApplicationKeys: [],
         nonSubAPIs: nonSubscribedAPIs,
         productionKeys,
         sandboxKeys,
@@ -557,8 +557,8 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
         mcpAPICount,
         apiKeyEnabledAPICount,
         isApiKey,
-        platformSubscriptions,
-        noSubPlatformAPIs,
+        subscriptions,
+        noSubAPIs,
         profile
     };
 };
@@ -698,8 +698,8 @@ const loadApplication = async (req, res) => {
                 otherAPICount: data.otherAPICount,
                 mcpAPICount: data.mcpAPICount,
                 apiKeyEnabledAPICount: data.apiKeyEnabledAPICount,
-                platformSubscriptions: data.platformSubscriptions,
-                noSubPlatformAPIs: data.noSubPlatformAPIs,
+                subscriptions: data.subscriptions,
+                noSubAPIs: data.noSubAPIs,
                 profile: req.isAuthenticated() ? data.profile : null,
                 devportalMode: devportalMode,
                 isReadOnlyMode: config.readOnlyMode
@@ -757,8 +757,8 @@ const loadApplicationKeys = async (req, res) => {
                 subscriptionScopes: [],
                 isApiKey: false,
                 subAPIsForApplicationKeys: [],
-                platformSubscriptionsForApplicationKeys: [],
-                noSubPlatformAPIsForApplicationKeys: [],
+                subscriptionsForApplicationKeys: [],
+                noSubAPIsForApplicationKeys: [],
                 isReadOnlyMode: config.readOnlyMode
             }
             html = renderTemplate('../pages/manage-keys/page.hbs', filePrefix + 'layout/main.hbs', templateContent, true);
@@ -791,10 +791,10 @@ const loadApplicationKeys = async (req, res) => {
                 ],
                 isApiKey: data.isApiKey,
                 subAPIsForApplicationKeys: data.subAPIsForApplicationKeys,
-                platformSubscriptions: data.platformSubscriptions,
-                platformSubscriptionsForApplicationKeys: data.platformSubscriptionsForApplicationKeys,
-                noSubPlatformAPIs: data.noSubPlatformAPIs,
-                noSubPlatformAPIsForApplicationKeys: data.noSubPlatformAPIsForApplicationKeys,
+                subscriptions: data.subscriptions,
+                subscriptionsForApplicationKeys: data.subscriptionsForApplicationKeys,
+                noSubAPIs: data.noSubAPIs,
+                noSubAPIsForApplicationKeys: data.noSubAPIsForApplicationKeys,
                 subscriptionScopes: data.subscriptionScopes,
                 otherAPICount: data.otherAPICount,
                 mcpAPICount: data.mcpAPICount,
