@@ -235,9 +235,9 @@ async function generateApplicationKey(formId, appId, keyType, keyManager, client
             // });
             const tokenbtn = document.getElementById('tokenKeyBtn-' + keyType);
             if (tokenbtn) {
-                tokenbtn.setAttribute("data-keyMappingId", responseData.keyMappingId);
+                if (responseData.keyMappingId) tokenbtn.setAttribute("data-keymappingid", responseData.keyMappingId);
                 tokenbtn.setAttribute("data-consumerSecretID", consumerSecretID);
-                tokenbtn.setAttribute("data-app-ref-id", responseData.appRefId);
+                if (responseData.appRefId) tokenbtn.setAttribute("data-app-ref-id", responseData.appRefId);
             }
             subList.forEach(subscription => {
                 document.getElementById("generateApiKey_" + subscription.subID)?.setAttribute('data-app-ref-id', `${responseData.appRefId}`);
@@ -725,10 +725,12 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
 
     if (!keyMappingId) {
         const tokenbtn = document.getElementById('tokenKeyBtn-' + keyType);
-        let clientSecretID = tokenbtn.getAttribute("data-consumerSecretID");
-        clientSecret = document.getElementById(clientSecretID).value;
-        keyMappingId = tokenbtn.getAttribute("data-keyMappingId");
-        appId = tokenbtn.getAttribute("data-app-ref-id");
+        keyMappingId = tokenbtn?.getAttribute("data-keymappingid") || tokenbtn?.getAttribute("data-keyMappingId");
+        if (!appId) appId = tokenbtn?.getAttribute("data-app-id");
+        if (!clientSecret) {
+            const clientSecretID = tokenbtn?.getAttribute("data-consumerSecretID");
+            if (clientSecretID) clientSecret = document.getElementById(clientSecretID)?.value;
+        }
     }
     const jsonObject = getFormData(formData, keyManager, clientName);
 
@@ -1348,6 +1350,11 @@ function loadModal(modalID) {
     modal.style.display = 'flex';
 }
 
+function closeModal(modalID) {
+    const modal = document.getElementById(modalID);
+    if (modal) modal.style.display = 'none';
+}
+
 // ---------------------------------------------------------------------------
 // Generate-token secret prompt
 // ---------------------------------------------------------------------------
@@ -1361,8 +1368,8 @@ let _pendingGenerateTokenParams = null;
  */
 function openGenerateTokenModal(formId, appId, keyMappingId, keyManager, clientName, subscribedScopes, keyType) {
     const tokenBtn = document.getElementById('tokenKeyBtn-' + keyType);
-    if ((!appId || appId === 'undefined') && tokenBtn?.dataset?.appRefId) {
-        appId = tokenBtn.dataset.appRefId;
+    if ((!appId || appId === 'undefined') && tokenBtn?.dataset?.appId) {
+        appId = tokenBtn.dataset.appId;
     }
     if ((!keyMappingId || keyMappingId === 'undefined') && tokenBtn?.dataset?.keymappingid) {
         keyMappingId = tokenBtn.dataset.keymappingid;

@@ -107,8 +107,9 @@
                                                 <button id="tokenKeyBtn-PRODUCTION"
                                                     class="common-btn-outlined btn-sm flex-grow-1 {{#if @root.isReadOnlyMode}}disabled{{/if}}"
                                                     data-app-id="{{@root.applicationMetadata.id}}"
+                                                    data-keymappingid="{{keys.keyMappingId}}"
                                                     style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
-                                                    onclick="openGenerateTokenModal('applicationKeyGenerateForm-{{../id}}-PRODUCTION', '{{keys.appRefID}}', '{{keys.keyMappingId}}', '{{../name}}', '{{../../applicationMetadata/name}}', '{{json @root.subscriptionScopes}}', 'PRODUCTION')">
+                                                    onclick="openGenerateTokenModal('applicationKeyGenerateForm-{{../id}}-PRODUCTION', '{{@root.applicationMetadata.id}}', '{{keys.keyMappingId}}', '{{../name}}', '{{../../applicationMetadata/name}}', '{{json @root.subscriptionScopes}}', 'PRODUCTION')">
                                                     <span class="button-normal-state">
                                                         <i class="bi bi-key-fill"></i> Generate
                                                     </span>
@@ -251,7 +252,7 @@
                                                     class="common-btn-outlined btn-sm {{#if @root.isReadOnlyMode}}disabled{{/if}}"
                                                     data-app-id="{{@root.applicationMetadata.id}}"
                                                     style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
-                                                    onclick="openGenerateTokenModal('applicationKeyGenerateForm-{{../id}}-PRODUCTION', '{{keys.appRefID}}', '{{keys.keyMappingId}}', '{{../name}}', '{{../../applicationMetadata/name}}', '{{json @root.subscriptionScopes}}', 'PRODUCTION')">
+                                                    onclick="openGenerateTokenModal('applicationKeyGenerateForm-{{../id}}-PRODUCTION', '{{@root.applicationMetadata.id}}', '{{keys.keyMappingId}}', '{{../name}}', '{{../../applicationMetadata/name}}', '{{json @root.subscriptionScopes}}', 'PRODUCTION')">
                                                     <span class="button-normal-state">
                                                         <i class="bi bi-key-fill"></i> Generate
                                                     </span>
@@ -378,8 +379,9 @@
                                                     <button id="tokenKeyBtn-SANDBOX"
                                                         class="common-btn-outlined btn-sm flex-grow-1 {{#if @root.isReadOnlyMode}}disabled{{/if}}"
                                                         data-app-id="{{@root.applicationMetadata.id}}"
+                                                        data-keymappingid="{{keys.keyMappingId}}"
                                                         style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
-                                                        onclick="openGenerateTokenModal('applicationKeyGenerateForm-{{../id}}-SANDBOX', '{{keys.appRefID}}', '{{keys.keyMappingId}}', '{{../name}}', '{{../../applicationMetadata/name}}', '{{json @root.subscriptionScopes}}', 'SANDBOX')">
+                                                        onclick="openGenerateTokenModal('applicationKeyGenerateForm-{{../id}}-SANDBOX', '{{@root.applicationMetadata.id}}', '{{keys.keyMappingId}}', '{{../name}}', '{{../../applicationMetadata/name}}', '{{json @root.subscriptionScopes}}', 'SANDBOX')">
                                                         <span class="button-normal-state">
                                                             <i class="bi bi-key-fill"></i> Generate
                                                         </span>
@@ -523,7 +525,7 @@
                                                         class="common-btn-outlined btn-sm {{#if @root.isReadOnlyMode}}disabled{{/if}}"
                                                         data-app-id="{{@root.applicationMetadata.id}}"
                                                         style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
-                                                        onclick="openGenerateTokenModal('applicationKeyGenerateForm-{{../id}}-SANDBOX', '{{keys.appRefID}}', '{{keys.keyMappingId}}', '{{../name}}', '{{../../applicationMetadata/name}}', '{{json @root.subscriptionScopes}}', 'SANDBOX')">
+                                                        onclick="openGenerateTokenModal('applicationKeyGenerateForm-{{../id}}-SANDBOX', '{{@root.applicationMetadata.id}}', '{{keys.keyMappingId}}', '{{../name}}', '{{../../applicationMetadata/name}}', '{{json @root.subscriptionScopes}}', 'SANDBOX')">
                                                         <span class="button-normal-state">
                                                             <i class="bi bi-key-fill"></i> Generate
                                                         </span>

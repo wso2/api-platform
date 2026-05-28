@@ -1429,183 +1429,15 @@ const createAppKeyMapping = async (req, res) => {
         orgId: orgID,
         ...req.body
     });
-    let cpAppID = "";
     try {
-        let responseData;
-
-        if (!config.controlPlane.enabled) {
-            // ── Decoupled path: create OAuth client directly in the AS ──
-            responseData = await _createAppKeyMappingDecoupled(req, orgID, userID);
-            trackGenerateCredentials({
-                orgId: orgID,
-                appName: req.body.applicationName,
-                idpId: req.isAuthenticated() ? (req[constants.USER_ID] || req.user.sub) : undefined
-            }, req);
-            return res.status(200).json(responseData);
-        }
-
-        // ── Existing control plane path ──
-        await sequelize.transaction({
-            timeout: 60000,
-        }, async (t) => {
-            const { applicationName, apis, tokenType, tokenDetails, provider, clientID } = req.body;
-            const appIDResponse = await adminDao.getApplicationID(orgID, userID, applicationName);
-            let appID;
-            if (appIDResponse) {
-                appID = appIDResponse.dataValues.APP_ID;
-            } else {
-                return util.handleError(res, new CustomError(404, constants.ERROR_CODE[404], "Application not found"));
-            }
-            let cpApplicationName;
-            //all token types bound to one app if shared
-
-            //unique app name for control plane application
-            cpApplicationName = `${appID}`;
-            //TODO - handel non-shared token types scenarios
-            //create control plane application
-            const sharedToken = await adminDao.getApplicationKeyMapping(orgID, appID, true);
-            const nonSharedToken = await adminDao.getApplicationKeyMapping(orgID, appID, false);
-
-            if (sharedToken.length !== 0) {
-                cpAppID = sharedToken[0].dataValues.CP_APP_REF;
-            } else if (nonSharedToken.length !== 0) {
-                cpAppID = nonSharedToken[0].dataValues.CP_APP_REF;
-            } else {
-                const cpAppCreationResponse = await createCPApplication(req, cpApplicationName);
-                cpAppID = cpAppCreationResponse.applicationId;
-                //create application mapping entry
-                const appKeyMappping = {
-                    orgID: orgID,
-                    appID: appID,
-                    cpAppRef: cpAppCreationResponse.applicationId,
-                    apiRefID: null,
-                    subscriptionRefID: null,
-                    sharedToken: true,
-                    tokenType: constants.TOKEN_TYPES.OAUTH
-                }
-                if (sharedToken.length === 0 && nonSharedToken.length === 0) {
-                    await adminDao.createApplicationKeyMapping(appKeyMappping, t);
-                }
-            }
-            // add subscription to control plane for each api
-            const apiSubscriptions = [];
-            const subAPIs = await adminDao.getSubscribedAPIs(orgID, appID);
-            for (const sub of subAPIs) {
-                const api = new APIDTO(sub);
-                const policyDetails = await apiDao.getSubscriptionPolicy(api.policyID, orgID, t);
-
-                const subJunction = sub.DP_APPLICATIONs?.[0]?.DP_API_SUBSCRIPTION?.dataValues;
-                let billingData = null;
-                if (subJunction?.BILLING_CUSTOMER_ID && subJunction?.BILLING_SUBSCRIPTION_ID) {
-                    billingData = {
-                        customerId: subJunction.BILLING_CUSTOMER_ID,
-                        subscriptionId: subJunction.BILLING_SUBSCRIPTION_ID,
-                        email: req.user?.email,
-                    };
-                }
-
-                const cpSubscribeResponse = await createCPSubscription(req, api.apiReferenceID, cpAppID, policyDetails, billingData);
-                apiSubscriptions.push(cpSubscribeResponse);
-            }
-            //create app key mapping
-            //TODO: only oauth key shared scenario is considered, need to handle other token types
-            for (const apiSubscription of apiSubscriptions) {
-                const appKeyMappping = {
-                    orgID: orgID,
-                    appID: appID,
-                    cpAppRef: cpAppID,
-                    apiRefID: apiSubscription.apiId,
-                    subscriptionRefID: apiSubscription.subscriptionId,
-                    sharedToken: true,
-                    tokenType: constants.TOKEN_TYPES.OAUTH
-                }
-                //check whether key mapping exists
-                const sharedKeyMapping = await adminDao.getApplicationAPIMapping(orgID, appID, apiSubscription.apiId, cpAppID, true, t);
-                const nonSharedKeyMapping = await adminDao.getApplicationAPIMapping(orgID, appID, apiSubscription.apiId, cpAppID, false, t);
-
-                if (sharedKeyMapping.length === 0 && nonSharedKeyMapping.length === 0) {
-                    await adminDao.createApplicationKeyMapping(appKeyMappping, t);
-                } else if (apiSubscription.subscriptionId) {
-                    // Update existing mapping with subscription ref id if it is missing
-                    const existingMapping = sharedKeyMapping[0] || nonSharedKeyMapping[0];
-                    if (!existingMapping.dataValues.SUBSCRIPTION_REF_ID) {
-                        await adminDao.updateApplicationKeyMapping(
-                            apiSubscription.apiId,
-                            appKeyMappping,
-                            t,
-                        );
-                    }
-                }
-            }
-
-            //delete app key mapping entries with no api id ref
-            if (apiSubscriptions.length > 0) {
-                logger.info('Deleting app key mapping entries with no API ID reference', {
-                    orgId: req.params?.orgId,
-                    applicationId: req.params?.applicationId
-                });
-                await adminDao.deleteAppKeyMapping(orgID, appID, null, t);
-            }
-
-            tokenDetails.additionalProperties = checkAdditionalValues(tokenDetails.additionalProperties);
-
-            if (tokenDetails.keyManager.startsWith(constants.KEY_MANAGERS.INTERNAL_KEY_MANAGER) || tokenDetails.keyManager.startsWith(constants.KEY_MANAGERS.RESIDENT_KEY_MANAGER) || tokenDetails.keyManager.startsWith(constants.KEY_MANAGERS.APP_DEV_STS_KEY_MANAGER)) {
-                //generate oauth key
-                responseData = await generateOAuthKey(req, cpAppID, tokenDetails);
-            } else {
-                if (!tokenDetails.keyType) {
-                    return util.handleError(res, new CustomError(400, constants.ERROR_CODE[400], "keyType is required in tokenDetails"));
-                }
-                responseData = await mapKeys(req, clientID, tokenDetails.keyManager, cpAppID, tokenDetails.keyType);
-            }
-            // Add the appRefId to the response data
-            responseData.appRefId = cpAppID;
-            const cpApp = await invokeApiRequest(req, 'GET', `${controlPlaneUrl}/applications/${cpAppID}`, {}, {});
-            responseData.subscriptionScopes = cpApp.subscriptionScopes;
-
-            let subscriptionScopes = [];
-            if (Array.isArray(cpApp?.subscriptionScopes)) {
-                for (const scope of cpApp?.subscriptionScopes) {
-                    subscriptionScopes.push(scope.key);
-                }
-            }
-            responseData.subscriptionScopes = subscriptionScopes;
-        });
-        trackGenerateCredentials({
-            orgId: orgID,
-            appName: req.body.applicationName,
-            idpId: req.isAuthenticated() ? (req[constants.USER_ID] || req.user.sub) : undefined
-        }, req);
-        return res.status(200).json(responseData);
-    } catch (error) {
-        logger.error('key mapping create error failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId: req.params?.orgId
-        });
-        //delete control plane application
-        if (cpAppID && config.controlPlane.enabled) {
-            await invokeApiRequest(req, 'DELETE', `${controlPlaneUrl}/applications/${cpAppID}`, {}, {});
-            await adminDao.deleteAppMappings(orgID, cpAppID);
-        }
-        return util.handleError(res, error);
-    }
-}
-
-/**
- * Decoupled (non-CP) path for creating an application key mapping.
- * Creates the OAuth client directly in the Authorization Server via the key manager adapter.
- */
-async function _createAppKeyMappingDecoupled(req, orgID, userID) {
     const { applicationName, tokenDetails, clientID } = req.body;
 
     const appIDResponse = await adminDao.getApplicationID(orgID, userID, applicationName);
     if (!appIDResponse) {
-        throw new CustomError(404, constants.ERROR_CODE[404], "Application not found");
+            return util.handleError(res, new CustomError(404, constants.ERROR_CODE[404], "Application not found"));
     }
     const appID = appIDResponse.dataValues.APP_ID;
 
-    // Resolve the key manager by name within the org
     const kmName = tokenDetails.keyManager;
     const kmRecord = await kmDao.getKeyManagerByName(orgID, kmName);
     const adapter = getKeyManagerAdapter(kmRecord);
@@ -1614,7 +1446,6 @@ async function _createAppKeyMappingDecoupled(req, orgID, userID) {
     let oauthClient;
 
     if (clientID) {
-        // Map existing client credentials (no new OAuth client creation)
         responseData = {
             consumerKey: clientID,
             consumerSecret: null,
@@ -1622,7 +1453,6 @@ async function _createAppKeyMappingDecoupled(req, orgID, userID) {
             additionalProperties: tokenDetails.additionalProperties || {},
         };
     } else {
-        // Create a new OAuth client in the AS
         const grantTypes = tokenDetails.grantTypesToBeSupported || ['client_credentials'];
         const redirectUris = tokenDetails.callbackUrl ? [tokenDetails.callbackUrl] : [];
         const scopes = tokenDetails.scopes || ['default'];
@@ -1632,13 +1462,7 @@ async function _createAppKeyMappingDecoupled(req, orgID, userID) {
         const keyType = (tokenDetails.keyType || 'PRODUCTION').toUpperCase();
         const clientName = `${sanitize(userID)}_${sanitize(appID)}_${keyType}`;
 
-        oauthClient = await adapter.createOAuthClient(
-            clientName,
-            grantTypes,
-            redirectUris,
-            scopes,
-            additionalProps,
-        );
+            oauthClient = await adapter.createOAuthClient(clientName, grantTypes, redirectUris, scopes, additionalProps);
 
         responseData = {
             consumerKey: oauthClient.clientId,
@@ -1650,19 +1474,18 @@ async function _createAppKeyMappingDecoupled(req, orgID, userID) {
         };
     }
 
-    // Persist key mapping idempotently — update if (org, app, km, keyType) already exists
     const appKeyMapping = {
-        orgID: orgID,
-        appID: appID,
+            orgID,
+            appID,
         kmID: kmRecord.KM_ID,
         asClientID: responseData.consumerKey,
         keyType: tokenDetails.keyType || 'PRODUCTION',
         additionalProperties: responseData.additionalProperties || {},
     };
+        let keyMappingRecord;
     try {
-        await adminDao.upsertApplicationKeyMapping(appKeyMapping);
+            keyMappingRecord = await adminDao.upsertApplicationKeyMapping(appKeyMapping);
     } catch (dbError) {
-        // Roll back the newly created remote OAuth client to avoid orphaned AS registrations
         if (oauthClient) {
             await adapter.deleteOAuthClient(oauthClient.clientId).catch((cleanupErr) => {
                 logger.warn('Failed to roll back OAuth client after DB error', {
@@ -1674,55 +1497,24 @@ async function _createAppKeyMappingDecoupled(req, orgID, userID) {
         throw dbError;
     }
 
-    return responseData;
-}
+        responseData.keyMappingId = keyMappingRecord?.dataValues?.MAPPING_ID;
 
-async function mapKeys(req, clientID, keyManager, applicationId, keyType) {
-    logger.info('Mapping existing client ID with application', {
-        applicationId
-    });
-    const body = {
-        "consumerKey": clientID,
-        "keyManager": keyManager,
-        "keyType": keyType,
-    };
-    try {
-        return await invokeApiRequest(req, 'POST', `${controlPlaneUrl}/applications/${applicationId}/map-keys`, {}, body);
+        trackGenerateCredentials({
+            orgId: orgID,
+            appName: applicationName,
+            idpId: req.isAuthenticated() ? (req[constants.USER_ID] || req.user.sub) : undefined
+        }, req);
+        return res.status(200).json(responseData);
     } catch (error) {
-        logger.error('Error occurred while mapping keys', {
+        logger.error('key mapping create error failed', {
             error: error.message,
-            applicationId
+            stack: error.stack,
+            orgId: req.params?.orgId
         });
-        throw error;
-    }
-};
-
-async function generateOAuthKey(req, cpAppID, tokenDetails) {
-    logger.info('Generating OAuth key for application', {
-        cpAppID
-    });
-    try {
-        return await invokeApiRequest(req, 'POST', `${controlPlaneUrl}/applications/${cpAppID}/generate-keys`, {}, tokenDetails);
-    } catch (error) {
-        try {
-            if (error.statusCode && error.statusCode === 409) {
-                logger.info('OAuth key already exists in control plane, retrieving existing key', {
-                    cpAppID
-                });
-                const response = await invokeApiRequest(req, 'GET', `${controlPlaneUrl}/applications/${cpAppID}/keys`, {});
-                return response.list[0];
-            } else {
-                throw error;
-            }
-        } catch (error) {
-            logger.error('Error occurred while generating API key', {
-                error: error.message,
-                cpAppID
-            });
-            throw error;
-        }
+        return util.handleError(res, error);
     }
 }
+
 
 function checkAdditionalValues(additionalValues) {
 
