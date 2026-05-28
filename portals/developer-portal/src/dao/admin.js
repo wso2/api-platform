@@ -864,7 +864,7 @@ const createAppKeyMapping = async (appKeyMap, t) => {
 
 const getKeyMapping = async (orgID, appID, t) => {
     try {
-        return await Application.findOne(
+        const result = await Application.findOne(
             {
                 where: {
                     ORG_ID: orgID,
@@ -877,8 +877,10 @@ const getKeyMapping = async (orgID, appID, t) => {
                             APP_ID: appID
                         }
                     }
-                ]
-            }, { transaction: t });
+                ],
+                ...(t && { transaction: t })
+            });
+        return result;
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
@@ -959,11 +961,10 @@ const createApplicationKeyMapping = async (mappingData, t) => {
         const appKeyMapping = await ApplicationKeyMapping.create({
             ORG_ID: mappingData.orgID,
             APP_ID: mappingData.appID,
-            CP_APP_REF: mappingData.cpAppRef,
-            API_REF_ID: mappingData.apiRefID,
-            SUBSCRIPTION_REF_ID: mappingData.subscriptionRefID,
-            SHARED_TOKEN: mappingData.sharedToken,
-            TOKEN_TYPE: mappingData.tokenType
+            ...(mappingData.kmID && { KM_ID: mappingData.kmID }),
+            ...(mappingData.asClientID && { AS_CLIENT_ID: mappingData.asClientID }),
+            ...(mappingData.keyType && { KEY_TYPE: mappingData.keyType }),
+            ...(mappingData.additionalProperties && { ADDITIONAL_PROPERTIES: mappingData.additionalProperties }),
         }, { transaction: t });
         return appKeyMapping;
     } catch (error) {
@@ -973,6 +974,40 @@ const createApplicationKeyMapping = async (mappingData, t) => {
         throw new Sequelize.DatabaseError(error);
     }
 }
+
+const upsertApplicationKeyMapping = async (mappingData, t) => {
+    try {
+        const existing = await ApplicationKeyMapping.findOne({
+            where: {
+                ORG_ID: mappingData.orgID,
+                APP_ID: mappingData.appID,
+                ...(mappingData.kmID && { KM_ID: mappingData.kmID }),
+                KEY_TYPE: mappingData.keyType,
+            },
+            ...(t && { transaction: t }),
+        });
+        if (existing) {
+            await existing.update({
+                AS_CLIENT_ID: mappingData.asClientID,
+                ADDITIONAL_PROPERTIES: mappingData.additionalProperties,
+            }, { transaction: t });
+            return existing;
+        }
+        return await ApplicationKeyMapping.create({
+            ORG_ID: mappingData.orgID,
+            APP_ID: mappingData.appID,
+            ...(mappingData.kmID && { KM_ID: mappingData.kmID }),
+            AS_CLIENT_ID: mappingData.asClientID,
+            KEY_TYPE: mappingData.keyType,
+            ADDITIONAL_PROPERTIES: mappingData.additionalProperties,
+        }, { transaction: t });
+    } catch (error) {
+        if (error instanceof Sequelize.UniqueConstraintError) {
+            throw error;
+        }
+        throw new Sequelize.DatabaseError(error);
+    }
+};
 
 const updateApplicationKeyMapping = async (apiID, mappingData, t) => {
     try {
@@ -1339,6 +1374,7 @@ module.exports = {
     getSubscribedAPIs,
     getApplicationKeyMapping,
     createApplicationKeyMapping,
+    upsertApplicationKeyMapping,
     updateApplicationKeyMapping,
     getApplicationAPIMapping,
     deleteAppMappings,

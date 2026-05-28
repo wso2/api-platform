@@ -5,7 +5,6 @@
   <link rel="stylesheet" href="/technical-styles/oauth2-key-generation.css" />
   <script src="/technical-scripts/oauth2-key-generation.js" defer></script>
   <script src="/technical-scripts/edit-application-form.js" defer></script>
-  <script src="/technical-scripts/api-key-generation.js" defer></script>
 </head>
 <main class="container-fluid py-3">
   {{> manage-keys }}
@@ -13,6 +12,7 @@
   {{> keys-modify }}
   {{> keys-token }}
   {{> keys-instructions }}
+  {{> keys-generate-token-prompt }}
   {{> alert }}
 </main>
 

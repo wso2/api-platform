@@ -146,11 +146,11 @@ async function generateApplicationKey(formId, appId, keyType, keyManager, client
 
                 const consumerKeyContainer = document.getElementById("consumerKeyContainer-" + keyType);
                 const consumerKeyContainerView = document.getElementById("consumerKey-" + keyType + "-view");
-                const consumerSecretContainerView = document.getElementById("consumerSecret-" + keyType + "-view");
 
                 const curlDisplay = document.getElementById("curlDisplay_" + keyManager + "_" + keyType);
                 const kmData = document.getElementById("KMData_" + keyManager + "_" + keyType);
 
+                // Update consumer key in view modal
                 if (consumerKeyEl) {
                     consumerKeyEl.removeAttribute("class");
                     if (consumerKeyEl.hasAttribute("style")) {
@@ -162,10 +162,8 @@ async function generateApplicationKey(formId, appId, keyType, keyManager, client
                 if (consumerKeyContainerView && consumerKeyContainerView.hasAttribute("style")) {
                     consumerKeyContainerView.removeAttribute("style");
                 }
-                if (consumerSecretContainerView && consumerSecretContainerView.hasAttribute("style")) {
-                    consumerSecretContainerView.removeAttribute("style");
-                }
 
+                // Show consumer secret only in the view modal, not on the main page
                 if (consumerSecretEl) {
                     consumerSecretEl.value = consumerSecret || '';
                     if (consumerSecretEl.hasAttribute("style")) {
@@ -184,22 +182,38 @@ async function generateApplicationKey(formId, appId, keyType, keyManager, client
                 if (kmData && kmData.hasAttribute("style")) {
                     kmData.removeAttribute("style");
                 }
+
+                // Show one-time secret warning banners
+                const secretWarning = document.getElementById("secretWarning-" + keyType);
+                if (secretWarning) {
+                    secretWarning.style.display = "flex";
+                }
+                const secretWarningView = document.getElementById("secretWarningView-" + keyType);
+                if (secretWarningView) {
+                    secretWarningView.style.display = "flex";
+                }
+
+                // Hide the "secret not available" info messages
+                const secretNotAvailable = document.getElementById("secretNotAvailable-" + keyType);
+                if (secretNotAvailable) {
+                    secretNotAvailable.style.display = "none";
+                }
+                const secretUnavailable = document.getElementById("secretUnavailable-" + keyType);
+                if (secretUnavailable) {
+                    secretUnavailable.style.display = "none";
+                }
             }
 
             // Show containers after key generation (regardless of whether consumerSecret exists)
             const consumerKeyContainerEl = document.getElementById("consumerKeyContainer-" + keyType);
             const consumerKeyViewEl = document.getElementById("consumerKey-" + keyType + "-view");
-            const consumerSecretViewEl = document.getElementById("consumerSecret-" + keyType + "-view");
             const keyActionsContainerEl = document.getElementById("keyActionsContainer-" + keyType);
-            
+
             if (consumerKeyContainerEl) {
                 consumerKeyContainerEl.style.display = "block";
             }
             if (consumerKeyViewEl) {
                 consumerKeyViewEl.style.display = "block";
-            }
-            if (consumerSecretViewEl && consumerSecret) {
-                consumerSecretViewEl.style.display = "block";
             }
             if (keyActionsContainerEl) {
                 keyActionsContainerEl.style.display = "flex";
@@ -221,9 +235,9 @@ async function generateApplicationKey(formId, appId, keyType, keyManager, client
             // });
             const tokenbtn = document.getElementById('tokenKeyBtn-' + keyType);
             if (tokenbtn) {
-                tokenbtn.setAttribute("data-keyMappingId", responseData.keyMappingId);
+                if (responseData.keyMappingId) tokenbtn.setAttribute("data-keymappingid", responseData.keyMappingId);
                 tokenbtn.setAttribute("data-consumerSecretID", consumerSecretID);
-                tokenbtn.setAttribute("data-app-ref-id", responseData.appRefId);
+                if (responseData.appRefId) tokenbtn.setAttribute("data-app-ref-id", responseData.appRefId);
             }
             subList.forEach(subscription => {
                 document.getElementById("generateApiKey_" + subscription.subID)?.setAttribute('data-app-ref-id', `${responseData.appRefId}`);
@@ -428,7 +442,7 @@ function getFormData(formData, keyManager, clientName, appID) {
 };
 
 
-async function updateApplicationKey(formId, appMap, keyType, keyManager, keyManagerId, clientName) {
+async function updateApplicationKey(formId, appId, keyType, keyManager, keyManagerId, clientName) {
     // Get the update button and set loading state
     console.log("Updating application key with formId:", formId);
     const updateBtn = document.getElementById('applicationKeyUpdateButton' + '-' + keyType);
@@ -449,13 +463,10 @@ async function updateApplicationKey(formId, appMap, keyType, keyManager, keyMana
 
     const form = document.getElementById(formId);
     const formData = new FormData(form);
-    const jsonAppdata = appMap ? JSON.parse(appMap) : null;
-    //TODO: Handle multiple CP applications
     const appKeyManagerId = formId.replace("applicationKeyGenerateForm-", "").replace(/-(SANDBOX|PRODUCTION)$/, "");
     const envSuffix = keyType;
-    const appId = jsonAppdata ? jsonAppdata[0].appRefID : document.getElementById("app-ref-" + appKeyManagerId + "-" + envSuffix)?.value;
     const keyMappingId = keyManagerId ? keyManagerId : document.getElementById("key-map-" + appKeyManagerId + "-" + envSuffix)?.value;
-    const jsonObject = getFormData(formData, keyManager, clientName, keyManagerId);
+    const jsonObject = getFormData(formData, keyManager, clientName, appKeyManagerId);
     const validationResponse = validateOauthUpdate(jsonObject);
     if (!validationResponse.valid) {
         errorContainer.textContent = validationResponse.message;
@@ -548,8 +559,18 @@ async function removeApplicationKey() {
     const modal = document.getElementById('deleteConfirmation');
     const applicationId = modal.dataset.applicationId;
     const keyMappingId = modal.dataset.param2;
+    await removeApplicationKeys(applicationId, keyMappingId);
+}
 
-
+async function removeApplicationKeys(applicationId, keyMappingId, keyType) {
+    if (!keyMappingId && keyType) {
+        const tokenBtn = document.getElementById('tokenKeyBtn-' + keyType);
+        keyMappingId = tokenBtn?.dataset?.keymappingid;
+    }
+    if (!applicationId || !keyMappingId) {
+        await showAlert('Unable to remove keys. Please reload the page and try again.', 'error');
+        return;
+    }
     try {
         const response = await fetch(`/devportal/applications/${applicationId}/oauth-keys/${keyMappingId}`, {
             method: 'DELETE',
@@ -558,15 +579,14 @@ async function removeApplicationKey() {
             },
         });
 
-
         const responseData = await response.json();
         if (response.ok) {
             await showAlert('Application keys removed successfully!', 'success');
             const url = new URL(window.location.origin + window.location.pathname);
             window.location.href = url.toString();
         } else {
-            console.error('Failed to removed keys:', responseData);
-            await showAlert(`Failed to removed application keys. Please try again.\n${responseData.description}`, 'error');
+            console.error('Failed to remove keys:', responseData);
+            await showAlert(`Failed to remove application keys. Please try again.\n${responseData.description}`, 'error');
         }
     } catch (error) {
         console.error('Error:', error);
@@ -607,9 +627,14 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
             if (existingScopes.length > 0) {
                 subscribedScopes = existingScopes;
             }
-        } else { 
-            scopeContainer.setAttribute('data-scopes', subscribedScopes);
-            subscribedScopes = JSON.parse(subscribedScopes);
+        } else {
+            try {
+                const parsed = JSON.parse(subscribedScopes);
+                scopeContainer.setAttribute('data-scopes', subscribedScopes);
+                subscribedScopes = parsed;
+            } catch (e) {
+                subscribedScopes = [];
+            }
         }
         tokenBtn = document.getElementById('tokenKeyBtn-' + keyType);
         regenerateBtn = document.getElementById('regenerateButton_' + keyManager + '_' + keyType);
@@ -617,13 +642,15 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
 
     const scopesData = scopeContainer?.dataset?.scopes;
     if (scopesData) {
-        // Clear existing scopes
         scopeContainer.querySelectorAll('.span-tag').forEach(el => el.remove());
-        const scopes = JSON.parse(scopesData);
-
-        scopes.forEach(scope => {
-            addScope(scope);
-        });
+        try {
+            const scopes = JSON.parse(scopesData);
+            scopes.forEach(scope => {
+                addScope(scope);
+            });
+        } catch (e) {
+            // Scopes data is not valid JSON; skip rendering
+        }
     }
 
     scopeContainer?.addEventListener('keypress', function (event) {
@@ -698,10 +725,12 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
 
     if (!keyMappingId) {
         const tokenbtn = document.getElementById('tokenKeyBtn-' + keyType);
-        let clientSecretID = tokenbtn.getAttribute("data-consumerSecretID");
-        clientSecret = document.getElementById(clientSecretID).value;
-        keyMappingId = tokenbtn.getAttribute("data-keyMappingId");
-        appId = tokenbtn.getAttribute("data-app-ref-id");
+        keyMappingId = tokenbtn?.getAttribute("data-keymappingid") || tokenbtn?.getAttribute("data-keyMappingId");
+        if (!appId) appId = tokenbtn?.getAttribute("data-app-id");
+        if (!clientSecret) {
+            const clientSecretID = tokenbtn?.getAttribute("data-consumerSecretID");
+            if (clientSecretID) clientSecret = document.getElementById(clientSecretID)?.value;
+        }
     }
     const jsonObject = getFormData(formData, keyManager, clientName);
 
@@ -905,6 +934,53 @@ function loadKeyGenModal() {
             originalContainer.appendChild(generateKeysBtn);
         }
     }
+}
+
+function closeKeysViewModal(keyType) {
+    const modal = document.getElementById('keysViewModal-' + keyType);
+    if (modal) {
+        // Clear consumer secret from the modal
+        const secretInput = modal.querySelector('input[name="consumerSecret"]');
+        if (secretInput) {
+            secretInput.value = '';
+        }
+        // Hide the secret field and warning in the modal
+        const secretContainer = document.getElementById('consumerSecret-' + keyType);
+        if (secretContainer) {
+            secretContainer.style.display = 'none';
+        }
+        const secretWarning = document.getElementById('secretWarningView-' + keyType);
+        if (secretWarning) {
+            secretWarning.style.display = 'none';
+        }
+        // Make consumer key full width since secret is gone
+        const consumerKeyDiv = document.getElementById('consumerKey-' + keyType);
+        if (consumerKeyDiv) {
+            consumerKeyDiv.classList.remove('col-md-6');
+            consumerKeyDiv.classList.add('col-md-12');
+        }
+        // Show the "secret unavailable" info if not already present
+        let unavailableEl = document.getElementById('secretUnavailable-' + keyType);
+        if (!unavailableEl) {
+            unavailableEl = document.createElement('div');
+            unavailableEl.id = 'secretUnavailable-' + keyType;
+            unavailableEl.className = 'alert alert-info d-flex align-items-center mb-3';
+            unavailableEl.setAttribute('role', 'alert');
+            unavailableEl.innerHTML = '<i class="bi bi-info-circle-fill me-2"></i>' +
+                '<div>The consumer secret is only displayed once at the time of generation and is not stored. ' +
+                'If you need a new secret, please regenerate the credentials.</div>';
+            const keysContainer = modal.querySelector('[id^="consumerKeys_"]');
+            if (keysContainer) {
+                keysContainer.insertBefore(unavailableEl, keysContainer.querySelector('.row'));
+            }
+        }
+        unavailableEl.style.display = 'flex';
+    }
+    // Clear consumer secret from hidden main page input
+    const mainPageSecretInputs = document.querySelectorAll('input[id$="-' + keyType + '-view"][name^="consumerSecret"]');
+    mainPageSecretInputs.forEach(input => { input.value = ''; });
+
+    closeModal('keysViewModal-' + keyType);
 }
 
 function loadKeysViewModal(keyType) {
@@ -1201,22 +1277,18 @@ async function copyConsumerKey(inputId) {
 }
 
 async function copyRealCurl(button) {
-    console.log("Copying cURL command...", button);
     const keyManagerId = button.id.replace("curl-copy-", "");
-    console.log("Key Manager ID:", keyManagerId);
     const tokenEndpoint = button.getAttribute('data-endpoint');
-    const consumerKey = document.getElementById("consumer-key-" + keyManagerId).value;
-    const consumerSecret = document.getElementById("consumer-secret-" + keyManagerId).value;
+    const consumerKeyEl = document.getElementById("consumer-key-" + keyManagerId);
+    const consumerKey = consumerKeyEl ? consumerKeyEl.value : '';
 
-    if (!consumerKey || !consumerSecret) {
-        await showAlert('Consumer key or secret not available. Please generate keys first.', 'warning');
+    if (!consumerKey) {
+        await showAlert('Consumer key not available. Please generate keys first.', 'warning');
         return;
     }
 
     try {
-        const credentials = `${consumerKey}:${consumerSecret}`;
-        const encodedCredentials = btoa(credentials);
-        const curlCommand = `curl -k -X POST ${tokenEndpoint} -d "grant_type=client_credentials" -H "Authorization: Basic ${encodedCredentials}"`;
+        const curlCommand = `curl -k -X POST ${tokenEndpoint} -d "grant_type=client_credentials" -H "Authorization: Basic $(echo -n '${consumerKey}:<your_consumer_secret>' | base64)"`;
 
         // Copy to clipboard
         await navigator.clipboard.writeText(curlCommand);
@@ -1276,6 +1348,68 @@ async function copyOauthURLs(inputId) {
 function loadModal(modalID) {
     const modal = document.getElementById(modalID);
     modal.style.display = 'flex';
+}
+
+function closeModal(modalID) {
+    const modal = document.getElementById(modalID);
+    if (modal) modal.style.display = 'none';
+}
+
+// ---------------------------------------------------------------------------
+// Generate-token secret prompt
+// ---------------------------------------------------------------------------
+
+/** Pending params captured when the user clicks a Generate token button. */
+let _pendingGenerateTokenParams = null;
+
+/**
+ * Open the consumer-secret prompt modal before generating a token.
+ * Called by all "Generate" token buttons instead of generateOauthKey directly.
+ */
+function openGenerateTokenModal(formId, appId, keyMappingId, keyManager, clientName, subscribedScopes, keyType) {
+    const tokenBtn = document.getElementById('tokenKeyBtn-' + keyType);
+    if ((!appId || appId === 'undefined') && tokenBtn?.dataset?.appId) {
+        appId = tokenBtn.dataset.appId;
+    }
+    if ((!keyMappingId || keyMappingId === 'undefined') && tokenBtn?.dataset?.keymappingid) {
+        keyMappingId = tokenBtn.dataset.keymappingid;
+    }
+    if (!subscribedScopes || subscribedScopes === 'undefined') {
+        subscribedScopes = tokenBtn?.dataset?.scopes || '[]';
+    }
+
+    closeModal('keysTokenModal-' + keyType);
+
+    _pendingGenerateTokenParams = { formId, appId, keyMappingId, keyManager, clientName, subscribedScopes, keyType };
+    const input = document.getElementById('generateTokenPromptSecretInput');
+    const errorEl = document.getElementById('generateTokenPromptError');
+    if (input) input.value = '';
+    if (errorEl) errorEl.style.display = 'none';
+    const modal = document.getElementById('generateTokenPromptModal');
+    if (modal) modal.style.display = 'flex';
+}
+
+/**
+ * Confirm button handler inside the prompt modal.
+ * Validates the entered secret then delegates to generateOauthKey.
+ */
+function confirmGenerateTokenPrompt() {
+    const input = document.getElementById('generateTokenPromptSecretInput');
+    const errorEl = document.getElementById('generateTokenPromptError');
+    const secret = input ? input.value.trim() : '';
+
+    if (!secret) {
+        if (errorEl) errorEl.style.display = 'block';
+        return;
+    }
+    if (errorEl) errorEl.style.display = 'none';
+    closeModal('generateTokenPromptModal');
+
+    if (_pendingGenerateTokenParams) {
+        const { formId, appId, keyMappingId, keyManager, clientName, subscribedScopes, keyType } = _pendingGenerateTokenParams;
+        _pendingGenerateTokenParams = null;
+        generateOauthKey(formId, appId, keyMappingId, keyManager, clientName, secret, subscribedScopes, keyType);
+    }
 }
 
 

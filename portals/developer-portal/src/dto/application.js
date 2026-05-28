@@ -55,9 +55,10 @@ class SubscriptionDTO {
 
 class AppMappingDTO {
     constructor(map) {
-        this.appRefID = map.CP_APP_REF;
-        this.token = map.TOKEN_TYPE;
-        this.shared = map.SHARED_TOKEN;
+        this.appRefID = map.AS_CLIENT_ID;
+        this.kmID = map.KM_ID;
+        this.keyType = map.KEY_TYPE;
+        this.additionalProperties = map.ADDITIONAL_PROPERTIES;
     }
 
     setResponseData(data) {

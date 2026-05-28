@@ -33,6 +33,8 @@ const apiDao = require('../dao/apiMetadata');
 const { trackAppCreationStart, trackAppCreationEnd, trackAppDeletion, trackGenerateKey } = require('../utils/telemetry');
 const fs = require('fs');
 const yaml = require('js-yaml');
+const kmDao = require('../dao/keyManager');
+const { getKeyManagerAdapter } = require('../adapters/keyManager');
 const { ImportedApplicationDTO, ApplicationKey } = require('../dto/importedApplication');
 const { CustomError } = require('../utils/errors/customErrors');
 const { APIMetadata, APILabels } = require('../models/apiMetadata');
@@ -376,7 +378,29 @@ const generateOAuthKeys = async (req, res) => {
     try {
         const applicationId = req.params.applicationId;
         const keyMappingId = req.params.keyMappingId;
-        const responseData = await invokeApiRequest(req, 'POST', `${controlPlaneUrl}/applications/${applicationId}/oauth-keys/${keyMappingId}/generate-token`, {}, req.body);
+
+        const { ApplicationKeyMapping } = require('../models/application');
+        const keyMapping = await ApplicationKeyMapping.findOne({
+            where: { MAPPING_ID: keyMappingId, APP_ID: applicationId },
+        });
+        if (!keyMapping || !keyMapping.KM_ID) {
+            return util.handleError(res, { statusCode: 404, message: 'Key mapping not found or missing key manager reference' });
+        }
+        const kmRecord = await kmDao.getKeyManager(keyMapping.KM_ID);
+        const adapter = getKeyManagerAdapter(kmRecord);
+        const { consumerSecret, scopes, validityPeriod } = req.body;
+        const tokenResult = await adapter.generateToken(
+            keyMapping.AS_CLIENT_ID,
+            consumerSecret,
+            scopes || ['default'],
+            validityPeriod || 3600
+        );
+        const responseData = {
+            accessToken: tokenResult.accessToken,
+            validityTime: tokenResult.expiresIn,
+            tokenScopes: tokenResult.scope ? tokenResult.scope.split(' ') : [],
+        };
+
         trackGenerateKey({
             orgId: req.user[constants.ORG_ID],
             appId: applicationId,
@@ -397,10 +421,24 @@ const revokeOAuthKeys = async (req, res) => {
     try {
         const applicationId = req.params.applicationId;
         const keyMappingId = req.params.keyMappingId;
-        const responseData = await invokeApiRequest(req, 'DELETE', `${controlPlaneUrl}/applications/${applicationId}/oauth-keys/${keyMappingId}`, {}, {});
-        res.status(200).json(responseData);
+
+        const { ApplicationKeyMapping } = require('../models/application');
+        const keyMapping = await ApplicationKeyMapping.findOne({
+            where: { MAPPING_ID: keyMappingId, APP_ID: applicationId },
+        });
+        if (!keyMapping || !keyMapping.KM_ID) {
+            return util.handleError(res, { statusCode: 404, message: 'Key mapping not found or missing key manager reference' });
+        }
+        const kmRecord = await kmDao.getKeyManager(keyMapping.KM_ID);
+        const adapter = getKeyManagerAdapter(kmRecord);
+        await adapter.deleteOAuthClient(keyMapping.AS_CLIENT_ID);
+        await ApplicationKeyMapping.update(
+            { AS_CLIENT_ID: null, KM_ID: null },
+            { where: { MAPPING_ID: keyMappingId, APP_ID: applicationId } }
+        );
+        res.status(200).json({ message: 'OAuth client revoked successfully' });
     } catch (error) {
-        logger.error("Error occurred while generating the OAuth keys", {
+        logger.error("Error occurred while revoking the OAuth keys", {
             appId: req.params.applicationId,
             error: error.message,
             stack: error.stack
@@ -413,10 +451,20 @@ const cleanUp = async (req, res) => {
     try {
         const applicationId = req.params.applicationId;
         const keyMappingId = req.params.keyMappingId;
-        const responseData = await invokeApiRequest(req, 'POST', `${controlPlaneUrl}/applications/${applicationId}/oauth-keys/${keyMappingId}/clean-up`, {}, req.body);
-        res.status(200).json(responseData);
+
+        const { ApplicationKeyMapping } = require('../models/application');
+        const keyMapping = await ApplicationKeyMapping.findOne({
+            where: { MAPPING_ID: keyMappingId, APP_ID: applicationId },
+        });
+        if (keyMapping && keyMapping.KM_ID && keyMapping.AS_CLIENT_ID) {
+            const kmRecord = await kmDao.getKeyManager(keyMapping.KM_ID);
+            const adapter = getKeyManagerAdapter(kmRecord);
+            await adapter.deleteOAuthClient(keyMapping.AS_CLIENT_ID);
+        }
+        await ApplicationKeyMapping.destroy({ where: { MAPPING_ID: keyMappingId, APP_ID: applicationId } });
+        res.status(200).json({ message: 'OAuth client cleaned up successfully' });
     } catch (error) {
-        logger.error("Error occurred while generating the OAuth keys", {
+        logger.error("Error occurred while cleaning up the OAuth keys", {
             appId: req.params.applicationId,
             error: error.message,
             stack: error.stack
@@ -430,10 +478,35 @@ const updateOAuthKeys = async (req, res) => {
     try {
         const applicationId = req.params.applicationId;
         const keyMappingId = req.params.keyMappingId;
-        const responseData = await invokeApiRequest(req, 'PUT', `${controlPlaneUrl}/applications/${applicationId}/oauth-keys/${keyMappingId}`, {}, tokenDetails);
-        res.status(200).json(responseData);
+
+        const { ApplicationKeyMapping } = require('../models/application');
+        const keyMapping = await ApplicationKeyMapping.findOne({
+            where: { MAPPING_ID: keyMappingId, APP_ID: applicationId },
+        });
+        if (!keyMapping || !keyMapping.KM_ID) {
+            return util.handleError(res, { statusCode: 404, message: 'Key mapping not found or missing key manager reference' });
+        }
+        const kmRecord = await kmDao.getKeyManager(keyMapping.KM_ID);
+        const adapter = getKeyManagerAdapter(kmRecord);
+        const updatedGrantTypes = tokenDetails.supportedGrantTypes || tokenDetails.grantTypesToBeSupported;
+        const result = await adapter.updateOAuthClient(
+            keyMapping.AS_CLIENT_ID,
+            updatedGrantTypes,
+            tokenDetails.callbackUrl ? [tokenDetails.callbackUrl] : [],
+            tokenDetails.scopes,
+            tokenDetails.additionalProperties
+        );
+
+        if (result?.additionalProperties) {
+            await ApplicationKeyMapping.update(
+                { ADDITIONAL_PROPERTIES: result.additionalProperties },
+                { where: { MAPPING_ID: keyMappingId, APP_ID: applicationId } }
+            );
+        }
+
+        res.status(200).json({ message: 'OAuth client updated successfully' });
     } catch (error) {
-        logger.error("Error occurred while generating the OAuth keys", {
+        logger.error("Error occurred while updating the OAuth keys", {
             appId: req.params.applicationId,
             error: error.message,
             stack: error.stack,

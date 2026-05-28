@@ -78,30 +78,33 @@ const ApplicationKeyMapping = sequelize.define('DP_APP_KEY_MAPPING', {
         type: DataTypes.UUID,
         allowNull: false
     },
-    CP_APP_REF: {
-        type: DataTypes.STRING,
-        allowNull: false
-    },
-    API_REF_ID: {
-        type: DataTypes.UUID,
-        allowNull: true
-    },
     ORG_ID: {
         type: DataTypes.UUID,
         allowNull: false
     },
-    SUBSCRIPTION_REF_ID: {
+    KM_ID: {
         type: DataTypes.UUID,
         allowNull: true
     },
-    SHARED_TOKEN: {
-        type: DataTypes.BOOLEAN,
-        allowNull: false
+    AS_CLIENT_ID: {
+        type: DataTypes.STRING,
+        allowNull: true
     },
-    TOKEN_TYPE: {
-        type: DataTypes.ENUM,
-        values: [constants.TOKEN_TYPES.API_KEY, constants.TOKEN_TYPES.OAUTH, constants.TOKEN_TYPES.BASIC],
-        allowNull: false
+    KEY_TYPE: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        defaultValue: 'PRODUCTION'
+    },
+    ADDITIONAL_PROPERTIES: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        get() {
+            const raw = this.getDataValue('ADDITIONAL_PROPERTIES');
+            return raw ? JSON.parse(raw) : null;
+        },
+        set(val) {
+            this.setDataValue('ADDITIONAL_PROPERTIES', val ? JSON.stringify(val) : null);
+        }
     }
 }, {
     timestamps: false,

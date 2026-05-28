@@ -1,33 +1,41 @@
 function showAlert(message, type) {
     return new Promise((resolve) => {
-        const modalElement = document.getElementById('alertModal');
-        const modalMessage = modalElement.querySelector('.modal-message');
-        const modalBody = modalElement.querySelector('.modal-body');
-        const alertIcon = modalElement.querySelector('.alert-icon');
+        const alertElement = document.getElementById('alertToast');
+        if (!alertElement) {
+            resolve();
+            return;
+        }
+        const alertMessage = alertElement.querySelector('.alert-toast-message');
+        const alertIcon = alertElement.querySelector('.alert-icon');
 
-        modalMessage.textContent = message;
-
-        modalBody.classList.remove('success', 'error');
-        modalBody.classList.add(type);
-        
-        // Set appropriate icon based on alert type
-        alertIcon.className = 'alert-icon bi';
-        if (type === 'success') {
-            alertIcon.classList.add('bi-check-circle-fill');
-        } else if (type === 'error') {
-            alertIcon.classList.add('bi-exclamation-circle-fill');
+        if (alertMessage) {
+            alertMessage.textContent = message;
         }
 
-        const bootstrapModal = new bootstrap.Modal(modalElement, { backdrop: false });
-        bootstrapModal.show();
+        alertElement.classList.remove('success', 'error');
+        alertElement.classList.add(type);
+
+        // Set appropriate icon based on alert type
+        if (alertIcon) {
+            alertIcon.className = 'alert-icon bi';
+            if (type === 'success') {
+                alertIcon.classList.add('bi-check-circle-fill');
+            } else if (type === 'error') {
+                alertIcon.classList.add('bi-exclamation-circle-fill');
+            }
+        }
+
+        // Show the toast
+        alertElement.classList.remove('alert-toast-hidden');
+        alertElement.classList.add('alert-toast-visible');
 
         setTimeout(() => {
-            modalElement.classList.add('fade-out');
+            alertElement.classList.add('alert-toast-fade-out');
             setTimeout(() => {
-                bootstrapModal.hide();
-                modalElement.classList.remove('fade-out');
-                resolve(); 
-            }, 500); 
+                alertElement.classList.remove('alert-toast-visible', 'alert-toast-fade-out');
+                alertElement.classList.add('alert-toast-hidden');
+                resolve();
+            }, 500);
         }, 2300);
     });
 }

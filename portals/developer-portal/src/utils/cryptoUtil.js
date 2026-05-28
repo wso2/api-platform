@@ -92,4 +92,50 @@ function decrypt(payload) {
   return decrypted;
 }
 
-module.exports = { encrypt, decrypt, billingEnabled };
+/**
+ * Create a standalone encrypt/decrypt pair for a given 64-char hex key.
+ * Useful for encrypting key-manager admin secrets, webhook secrets, etc.
+ * without coupling to the billing-specific key.
+ *
+ * @param {string} hexKey  64-character hex string (32 random bytes)
+ * @returns {{ encrypt: (text: string) => string, decrypt: (payload: string) => string }}
+ */
+function createCryptoUtil(hexKey) {
+  if (!hexKey || !/^[0-9a-fA-F]{64}$/.test(hexKey)) {
+    return {
+      encrypt() { throw new Error("Encryption key not configured or invalid."); },
+      decrypt() { throw new Error("Encryption key not configured or invalid."); },
+      enabled: false,
+    };
+  }
+  const keyBuf = Buffer.from(hexKey, "hex");
+  return {
+    encrypt(text) {
+      if (typeof text !== "string") throw new TypeError("encrypt: text must be a string");
+      const iv = crypto.randomBytes(GCM_IV_LENGTH);
+      const cipher = crypto.createCipheriv(GCM_ALGO, keyBuf, iv);
+      let encrypted = cipher.update(text, "utf8", "base64");
+      encrypted += cipher.final("base64");
+      const authTag = cipher.getAuthTag();
+      return `gcm:${iv.toString("base64")}:${authTag.toString("base64")}:${encrypted}`;
+    },
+    decrypt(payload) {
+      if (typeof payload !== "string") throw new TypeError("decrypt: payload must be a string");
+      if (!payload.startsWith("gcm:")) throw new Error("decrypt: invalid payload format");
+      const parts = payload.slice(4).split(":");
+      if (parts.length !== 3) throw new Error("decrypt: invalid payload format");
+      const [ivStr, authTagStr, encrypted] = parts;
+      const iv = Buffer.from(ivStr, "base64");
+      const authTag = Buffer.from(authTagStr, "base64");
+      if (iv.length !== GCM_IV_LENGTH) throw new Error("decrypt: invalid IV length");
+      const decipher = crypto.createDecipheriv(GCM_ALGO, keyBuf, iv);
+      decipher.setAuthTag(authTag);
+      let decrypted = decipher.update(encrypted, "base64", "utf8");
+      decrypted += decipher.final("utf8");
+      return decrypted;
+    },
+    enabled: true,
+  };
+}
+
+module.exports = { encrypt, decrypt, billingEnabled, createCryptoUtil };
