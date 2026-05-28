@@ -21,10 +21,10 @@ Makefile
 VERSION
 target/
 
-# ── Documentation ─────────────────────────────────────────────────
+# ── Documentation (markdown only — keep the OpenAPI spec for the validator) ───
 README.md
 LICENSE
-docs/
+docs/*.md
 bin/
 scripts/
 

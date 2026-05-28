@@ -17,22 +17,11 @@
 # --------------------------------------------------------------------
 
 # Developer Portal Dockerfile
-# Use the latest Node.js 23 with Debian Bookworm as the base image
-FROM node:23-bookworm-slim
+# Use Node.js 23 Alpine for a smaller base image
+FROM node:23-alpine
 
-# Set a non-interactive frontend to prevent prompts
-ENV DEBIAN_FRONTEND=noninteractive 
-
-# Update package lists and install necessary utilities in a single RUN to reduce image layers
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget \
-    bash \
-    coreutils \
-    openssl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Verify the installed wget version
-RUN wget --version
+# Install only the runtime utilities needed by the entrypoint (bash, openssl)
+RUN apk add --no-cache bash openssl
 
 # Set the working directory inside the container
 WORKDIR /app
@@ -50,7 +39,7 @@ COPY . .
 EXPOSE 8080
 
 # Create a non-root user with UID 10001 to satisfy Checkov CKV_CHOREO_1
-RUN groupadd -g 10001 appgroup && useradd -m -u 10001 -g appgroup -s /bin/bash appuser
+RUN addgroup -g 10001 appgroup && adduser -D -u 10001 -G appgroup -s /bin/bash appuser
 
 # Pre-create the certs and logs directories owned by the non-root user so the
 # entrypoint script can write self-signed certs, and the app can write log files.
