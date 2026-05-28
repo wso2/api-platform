@@ -117,7 +117,7 @@ async function toggleSubscriptionStatus(orgID, subscriptionId, newStatus) {
         if (response.ok) {
             window.__subscriptionChanged = true;
             await showAlert(`Subscription ${newStatus === 'ACTIVE' ? 'activated' : 'deactivated'} successfully!`, 'success');
-            refreshPlatformModalOrReload(orgID);
+            refreshModalOrReload(orgID);
         } else {
             const responseData = await response.json();
             await showAlert(`Failed to update subscription: ${responseData.description || 'Unknown error'}`, 'error');
@@ -145,7 +145,7 @@ async function executeDeleteSubscription(orgID, subscriptionId) {
         if (response.ok) {
             window.__subscriptionChanged = true;
             await showAlert('Subscription deleted successfully!', 'success');
-            refreshPlatformModalOrReload(orgID);
+            refreshModalOrReload(orgID);
         } else {
             const responseData = await response.json().catch(() => ({}));
             await showAlert(`Failed to delete subscription: ${responseData.description || 'Unknown error'}`, 'error');
@@ -181,7 +181,7 @@ async function runPendingPlanSwitch(orgID, apiId, planName, displayName, subscri
     }
 }
 
-function refreshPlatformModalOrReload(orgID) {
+function refreshModalOrReload(orgID) {
     // If inside a visible modal, re-render its content instead of reloading the page
     var visibleModal = document.querySelector('.modal.custom-modal[style*="flex"]');
     if (visibleModal && visibleModal.id && typeof prepareSubscriptionModal === 'function') {
@@ -349,7 +349,7 @@ async function refreshLandingPageSubscriptions() {
 function copySubscriptionToken(subscriptionId) {
     (async function() {
         try {
-            const token = await fetchPlatformTokenIfNeeded(subscriptionId);
+            const token = await fetchTokenIfNeeded(subscriptionId);
             if (!token) return;
             navigator.clipboard.writeText(token).then(() => {
                 showAlert('Subscription token copied to clipboard!', 'success');
@@ -383,7 +383,7 @@ function toggleTokenVisibility(subscriptionId) {
         }
 
         try {
-            const fullToken = await fetchPlatformTokenIfNeeded(subscriptionId);
+            const fullToken = await fetchTokenIfNeeded(subscriptionId);
             if (!fullToken) return;
             tokenEl.textContent = fullToken;
             tokenEl.dataset.revealed = 'true';
@@ -395,7 +395,7 @@ function toggleTokenVisibility(subscriptionId) {
 
 const _tokenCache = {};
 
-async function fetchPlatformTokenIfNeeded(subscriptionId) {
+async function fetchTokenIfNeeded(subscriptionId) {
     if (_tokenCache[subscriptionId]) return _tokenCache[subscriptionId];
     const existing = (window.__tokenMap || {})[subscriptionId];
     if (existing && typeof existing === 'string' && !existing.startsWith('****')) {

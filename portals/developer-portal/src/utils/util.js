@@ -841,7 +841,7 @@ function validateScripts(strContent) {
             "<script src='/technical-scripts/subscription.js' defer></script>",
             "<script src='/technical-scripts/subscription-modal.js' defer></script>",
             "<script src='/technical-scripts/subscriptions-page.js' defer></script>",
-            "<script src='/technical-scripts/platform-api-keys-page.js' defer></script>",
+            "<script src='/technical-scripts/api-keys-page.js' defer></script>",
             '<script src="/technical-scripts/oauth2-key-generation.js" defer></script>',
             '<script src="/technical-scripts/api-key-generation.js" defer></script>',
             '<script src="/technical-scripts/billing.js" defer></script>',

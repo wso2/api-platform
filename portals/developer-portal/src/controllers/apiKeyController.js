@@ -27,7 +27,7 @@ function errorStatus(err) {
 }
 
 /**
- * POST /organizations/:orgId/platform-api-keys/generate
+ * POST /organizations/:orgId/api-keys/generate
  * Body: { apiId, name, expiresAt?, subscriptionId? }
  */
 async function generateApiKey(req, res) {
@@ -50,7 +50,7 @@ async function generateApiKey(req, res) {
 }
 
 /**
- * GET /organizations/:orgId/platform-api-keys
+ * GET /organizations/:orgId/api-keys
  * Query: apiId (required), subscriptionId (optional), status (optional)
  */
 async function listApiKeys(req, res) {
@@ -83,7 +83,7 @@ async function listApiKeys(req, res) {
 }
 
 /**
- * POST /organizations/:orgId/platform-api-keys/:apiKeyId/regenerate
+ * POST /organizations/:orgId/api-keys/:apiKeyId/regenerate
  */
 async function regenerateApiKey(req, res) {
     const { orgId, apiKeyId } = req.params;
@@ -98,7 +98,7 @@ async function regenerateApiKey(req, res) {
 }
 
 /**
- * POST /organizations/:orgId/platform-api-keys/:apiKeyId/revoke
+ * POST /organizations/:orgId/api-keys/:apiKeyId/revoke
  */
 async function revokeApiKey(req, res) {
     const { orgId, apiKeyId } = req.params;

@@ -82,7 +82,7 @@ const apiDefinitionHasApiKeySecurity = (apiDefinition) => {
 };
 
 /**
- * API-level Platform API Keys nav: platform gateway and API Key security enabled on the API.
+ * API-level API Keys nav: gateway API with API Key security enabled.
  * If an API definition is available, the decision is driven by its security schemes.
  * Otherwise, it falls back to the control plane securityScheme field.
  *
@@ -92,7 +92,7 @@ const apiDefinitionHasApiKeySecurity = (apiDefinition) => {
  * @param {string|object|null} apiDefinition - Optional raw API definition to inspect for apiKey security
  * @returns {Promise<boolean>}
  */
-async function shouldShowPlatformApiKeysNav(req, metaData, existingApiDetail = null, apiDefinition = null) {
+async function shouldShowApiKeysNav(req, metaData, existingApiDetail = null, apiDefinition = null) {
     if (!metaData?.apiInfo || metaData.apiInfo.gatewayType !== PLATFORM_GATEWAY) {
         return false;
     }
@@ -115,7 +115,7 @@ async function shouldShowPlatformApiKeysNav(req, metaData, existingApiDetail = n
 }
 
 module.exports = {
-    shouldShowPlatformApiKeysNav,
+    shouldShowApiKeysNav,
     findSubscriptionTokenHeader,
     securitySchemeHasApiKey,
     PLATFORM_GATEWAY

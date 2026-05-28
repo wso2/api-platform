@@ -29,7 +29,7 @@ const adminDao = require('../dao/admin');
 const apiDao = require('../dao/apiMetadata');
 const subDao = require('../dao/subscription');
 const apiMetadataService = require('../services/apiMetadataService');
-const { shouldShowPlatformApiKeysNav, findSubscriptionTokenHeader } = require('../services/platformApiKeysNavService');
+const { shouldShowApiKeysNav, findSubscriptionTokenHeader } = require('../services/apiKeysNavService');
 const adminService = require('../services/adminService');
 const apiFlowService = require('../services/apiFlowService');
 const subscriptionPolicyDTO = require('../dto/subscriptionPolicy');
@@ -121,15 +121,14 @@ const loadAPIs = async (req, res) => {
                 metaData.applications = perApiAppList;
             }
 
-            // Load subscriptions for platform APIs with subscription plans (single call for all)
+            // Load subscriptions for APIs with subscription plans (single call for all)
             if (req.user) {
                 try {
                     const localSubs = await subDao.listSubscriptions(orgID);
                     const subscribedApiIds = new Set(localSubs.map(sub => sub.API_ID));
                     for (const metaData of metaDataList) {
-                        const isPlatform = metaData.apiInfo?.gatewayType === 'wso2/api-platform';
                         const hasPlans = (metaData.subscriptionPolicies || []).length > 0;
-                        if (isPlatform && hasPlans) {
+                        if (hasPlans) {
                             metaData.hasSubscription = subscribedApiIds.has(metaData.apiID);
                         }
                     }
@@ -253,7 +252,7 @@ const loadAPIContent = async (req, res) => {
             subscriptionPlans: subscriptionPlans,
             baseUrl: baseURLDev + viewName,
             schemaUrl: `${orgName}/mock/${apiHandle}/${schemaFileName}`,
-            showPlatformApiKeysNav: await shouldShowPlatformApiKeysNav(req, metaData, null, null),
+            showApiKeysNav: await shouldShowApiKeysNav(req, metaData, null, null),
         }
         html = renderTemplate(filePrefix + 'pages/api-landing/page.hbs', filePrefix + 'layout/main.hbs', templateContent, false);
         res.send(html);
@@ -437,11 +436,10 @@ const loadAPIContent = async (req, res) => {
                 }
             }
 
-            // Load subscriptions for platform APIs with subscription plans
+            // Load subscriptions for APIs with subscription plans
             let subscriptions = [];
-            const isGatewayAPI = metaData.apiInfo?.gatewayType === 'wso2/api-platform';
             const hasPlans = (subscriptionPlans || []).length > 0;
-            if (req.user && isGatewayAPI && hasPlans) {
+            if (req.user && hasPlans) {
                 try {
                     const localSubs = await subDao.listSubscriptions(orgID, { apiId: apiID });
                     subscriptions = (localSubs || []).map(sub => ({
@@ -477,7 +475,7 @@ const loadAPIContent = async (req, res) => {
                 try {
                     apiDefinitionForNav = await getApiDefinitionFileContent(orgID, apiID);
                 } catch (definitionErr) {
-                    logger.debug('Could not load API definition for platform API keys nav check', {
+                    logger.debug('Could not load API definition for API keys nav check', {
                         orgID,
                         apiID,
                         error: definitionErr.message
@@ -505,7 +503,7 @@ const loadAPIContent = async (req, res) => {
                 isReadOnlyMode: config.readOnlyMode,
                 isFederatedAPI: isFederatedAPI,
             };
-            templateContent.showPlatformApiKeysNav = await shouldShowPlatformApiKeysNav(req, metaData, apiDetail, apiDefinitionForNav);
+            templateContent.showApiKeysNav = await shouldShowApiKeysNav(req, metaData, apiDetail, apiDefinitionForNav);
             templateContent.hasSubscriptionToken = !!findSubscriptionTokenHeader(apiDefinitionForNav);
             if (metaData.apiInfo.apiType == "MCP") {
                 html = await renderTemplateFromAPI(templateContent, orgID, orgName, "pages/mcp-landing", viewName);
@@ -602,7 +600,7 @@ const loadDocsPage = async (req, res) => {
             docTypes: docNames,
             devportalMode: devportalMode,
             apiType: apiMetadata.apiInfo?.apiType,
-            showPlatformApiKeysNav: await shouldShowPlatformApiKeysNav(req, metaForNav, null, null),
+            showApiKeysNav: await shouldShowApiKeysNav(req, metaForNav, null, null),
         }
         html = renderTemplate(filePrefix + 'pages/docs/page.hbs', filePrefix + 'layout/main.hbs', templateContent, false);
     } else {
@@ -640,7 +638,7 @@ const loadDocsPage = async (req, res) => {
                 try {
                     apiDefinitionForNav = await getApiDefinitionFileContent(orgID, apiID);
                 } catch (definitionErr) {
-                    logger.debug('Could not load API definition for platform API keys nav check', {
+                    logger.debug('Could not load API definition for API keys nav check', {
                         orgID,
                         apiID,
                         error: definitionErr.message
@@ -654,7 +652,7 @@ const loadDocsPage = async (req, res) => {
                 apiType: apiType,
                 profile: req.isAuthenticated() ? profile : null,
                 devportalMode: devportalMode,
-                showPlatformApiKeysNav: await shouldShowPlatformApiKeysNav(req, metaForNav, null, apiDefinitionForNav),
+                showApiKeysNav: await shouldShowApiKeysNav(req, metaForNav, null, apiDefinitionForNav),
             };
             html = await renderTemplateFromAPI(templateContent, orgID, orgName, "pages/docs", viewName);
         } catch (error) {
@@ -885,7 +883,7 @@ const loadDocument = async (req, res) => {
                 apiInfo: { gatewayType: apiMetadata.apiInfo?.gatewayType },
                 apiReferenceID: apiMetadata.apiReferenceID,
             };
-            templateContent.showPlatformApiKeysNav = await shouldShowPlatformApiKeysNav(req, metaForNav, null);
+            templateContent.showApiKeysNav = await shouldShowApiKeysNav(req, metaForNav, null);
             html = renderTemplate(filePrefix + 'pages/docs/page.hbs', filePrefix + 'layout/main.hbs', templateContent, false);
         } else {
 
@@ -921,7 +919,7 @@ const loadDocument = async (req, res) => {
                     apiInfo: { gatewayType: row.GATEWAY_TYPE },
                     apiReferenceID: row.REFERENCE_ID,
                 };
-                templateContent.showPlatformApiKeysNav = await shouldShowPlatformApiKeysNav(req, metaForNav, null);
+                templateContent.showApiKeysNav = await shouldShowApiKeysNav(req, metaForNav, null);
                 html = await renderTemplateFromAPI(templateContent, orgID, orgName, "pages/docs", viewName);
             } catch (error) {
                 const templateContent = {

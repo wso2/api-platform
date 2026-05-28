@@ -166,13 +166,13 @@ router.delete('/organizations/:orgId/subscriptions/:subscriptionId',
     enforceSecuirty(constants.SCOPES.DEVELOPER), subscriptionService.deleteSubscription);
 
 // API keys — devportal is source of truth; gateway notified via webhook event
-router.post('/organizations/:orgId/platform-api-keys/generate',
+router.post('/organizations/:orgId/api-keys/generate',
     enforceSecuirty(constants.SCOPES.DEVELOPER), requireCsrfForMutatingApi, apiKeyController.generateApiKey);
-router.get('/organizations/:orgId/platform-api-keys',
+router.get('/organizations/:orgId/api-keys',
     enforceSecuirty(constants.SCOPES.DEVELOPER), apiKeyController.listApiKeys);
-router.post('/organizations/:orgId/platform-api-keys/:apiKeyId/regenerate',
+router.post('/organizations/:orgId/api-keys/:apiKeyId/regenerate',
     enforceSecuirty(constants.SCOPES.DEVELOPER), requireCsrfForMutatingApi, apiKeyController.regenerateApiKey);
-router.post('/organizations/:orgId/platform-api-keys/:apiKeyId/revoke',
+router.post('/organizations/:orgId/api-keys/:apiKeyId/revoke',
     enforceSecuirty(constants.SCOPES.DEVELOPER), requireCsrfForMutatingApi, apiKeyController.revokeApiKey);
 
 //store key mapping for devportal app and Control plane apps
@@ -194,17 +194,12 @@ router.put('/applications/:applicationId', enforceSecuirty(constants.SCOPES.DEVE
     devportalController.updateApplication);
 router.delete('/applications/:applicationId', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.deleteApplication);
 router.post('/applications/:applicationId/reset-throttle-policy', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.resetThrottlingPolicy);
-router.post('/applications/:applicationId/api-keys/generate', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.generateAPIKeys);
 router.post('/applications/:applicationId/generate-keys', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.generateApplicationKeys);
 router.post('/applications/:applicationId/oauth-keys/:keyMappingId/generate-token', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.generateOAuthKeys);
 router.delete('/applications/:applicationId/oauth-keys/:keyMappingId', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.revokeOAuthKeys);
 router.put('/applications/:applicationId/oauth-keys/:keyMappingId', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.updateOAuthKeys);
 router.post('/applications/:applicationId/oauth-keys/:keyMappingId/clean-up', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.cleanUp);
 
-
-router.post('/api-keys/generate', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.generateAPIKeys);
-router.post('/api-keys/:apiKeyID/revoke', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.revokeAPIKeys);
-router.post('/api-keys/:apiKeyID/regenerate', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.regenerateAPIKeys);
 
 // Billing / Stripe
 router.get("/organizations/:orgId/billing/usage-data", ensureBillingAuth, billingController.getUsageData);

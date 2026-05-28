@@ -41,7 +41,7 @@ async function prepareSubscriptionModal(modalId) {
     const orgID = modal.dataset.orgId || window.__subscriptionOrgID;
     let apiRefId = modal.dataset.apiRefid || '';
     if (!apiRefId) apiRefId = apiId;
-    const platformContainer = document.getElementById('subscriptionContent-' + apiId);
+    const subscriptionContainer = document.getElementById('subscriptionContent-' + apiId);
     const plansBody = modal.querySelector('.subscription-plans-body');
 
     // Only clear the token area if it has no fresh content (i.e. left from a prior modal session)
@@ -52,12 +52,12 @@ async function prepareSubscriptionModal(modalId) {
     }
     window.__preserveTokenArea = false;
 
-    if (!platformContainer) return;
-    platformContainer.innerHTML = '';
+    if (!subscriptionContainer) return;
+    subscriptionContainer.innerHTML = '';
 
     if (!orgID) {
-        platformContainer.innerHTML = '<div class="alert alert-warning">Organization not available.</div>';
-        platformContainer.style.display = 'block';
+        subscriptionContainer.innerHTML = '<div class="alert alert-warning">Organization not available.</div>';
+        subscriptionContainer.style.display = 'block';
         if (plansBody) plansBody.style.display = 'none';
         return;
     }
@@ -165,7 +165,7 @@ async function prepareSubscriptionModal(modalId) {
 
                 tbody.appendChild(tr);
             });
-            platformContainer.appendChild(table);
+            subscriptionContainer.appendChild(table);
         }
 
         // Render subscription plans from CP if available
@@ -173,7 +173,7 @@ async function prepareSubscriptionModal(modalId) {
             const header = document.createElement('div');
             header.className = 'container-header mb-3';
             header.textContent = 'Subscription Plans';
-            platformContainer.appendChild(header);
+            subscriptionContainer.appendChild(header);
 
             const row = document.createElement('div');
             row.className = 'row row-gap-4 justify-content-center';
@@ -211,7 +211,7 @@ async function prepareSubscriptionModal(modalId) {
 
                 row.appendChild(col);
             });
-            platformContainer.appendChild(row);
+            subscriptionContainer.appendChild(row);
             if (plansBody) plansBody.style.display = 'none';
         } else {
             // CP did not return plans — show the static plan cards from the template
@@ -261,10 +261,10 @@ async function prepareSubscriptionModal(modalId) {
             }
         }
 
-        platformContainer.style.display = ((existing && existing.length > 0) || (plans && plans.length > 0)) ? 'block' : 'none';
+        subscriptionContainer.style.display = ((existing && existing.length > 0) || (plans && plans.length > 0)) ? 'block' : 'none';
     } catch (e) {
-        platformContainer.innerHTML = '<div class="alert alert-danger">Could not load subscriptions.</div>';
-        platformContainer.style.display = 'block';
+        subscriptionContainer.innerHTML = '<div class="alert alert-danger">Could not load subscriptions.</div>';
+        subscriptionContainer.style.display = 'block';
         if (plansBody) plansBody.style.display = '';
     }
 }

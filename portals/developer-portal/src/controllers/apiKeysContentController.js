@@ -24,10 +24,10 @@ const adminDao = require('../dao/admin');
 const apiDao = require('../dao/apiMetadata');
 const apiMetadataService = require('../services/apiMetadataService');
 const apiKeyService = require('../services/apiKeyService');
-const { shouldShowPlatformApiKeysNav } = require('../services/platformApiKeysNavService');
+const { shouldShowApiKeysNav } = require('../services/apiKeysNavService');
 const { getSessionCsrfToken } = require('../middlewares/csrfProtection');
 
-const loadAPIPlatformApiKeys = async (req, res) => {
+const loadAPIApiKeys = async (req, res) => {
     let html;
     const { orgName, viewName, apiHandle } = req.params;
 
@@ -72,7 +72,7 @@ const loadAPIPlatformApiKeys = async (req, res) => {
                 const apiFile = await apiDao.getAPIDoc(constants.DOC_TYPES.API_DEFINITION, orgID, apiID);
                 apiDefinitionForNav = apiFile?.API_FILE?.toString(constants.CHARSET_UTF8) || null;
             } catch (definitionErr) {
-                logger.debug('Could not load API definition for platform API keys nav check', {
+                logger.debug('Could not load API definition for API keys nav check', {
                     orgID,
                     apiID,
                     error: definitionErr.message
@@ -80,26 +80,26 @@ const loadAPIPlatformApiKeys = async (req, res) => {
             }
         }
 
-        const showPlatformApiKeysNav = await shouldShowPlatformApiKeysNav(req, metaData, null, apiDefinitionForNav);
-        if (!showPlatformApiKeysNav) {
+        const showApiKeysNav = await shouldShowApiKeysNav(req, metaData, null, apiDefinitionForNav);
+        if (!showApiKeysNav) {
             const templateContent = {
                 baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
                 devportalMode: devportalMode,
                 errorMessage:
-                    'API Keys are not available for this API. They require a Platform Gateway API with API Key security enabled.',
+                    'API Keys are not available for this API. They require an API with API Key security enabled.',
                 profile: req.isAuthenticated() ? req.user : null,
             };
             html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
             return res.status(404).send(html);
         }
 
-        let platformApiKeys = [];
-        let platformApiKeysCount = 0;
-        let platformApiKeysLoadError = false;
+        let apiKeys = [];
+        let apiKeysCount = 0;
+        let apiKeysLoadError = false;
 
         try {
             const keys = await apiKeyService.list(orgID, { apiId: apiID });
-            platformApiKeys = (keys || []).map((k) => ({
+            apiKeys = (keys || []).map((k) => ({
                 keyId: k.KEY_ID,
                 name: k.NAME,
                 status: String(k.STATUS || 'ACTIVE').toLowerCase(),
@@ -109,10 +109,10 @@ const loadAPIPlatformApiKeys = async (req, res) => {
                 apiId: k.API_ID,
                 maskedApiKey: '••••••••'
             }));
-            platformApiKeysCount = platformApiKeys.length;
+            apiKeysCount = apiKeys.length;
         } catch (dbError) {
-            platformApiKeysLoadError = true;
-            logger.warn('Failed to load platform API keys', {
+            apiKeysLoadError = true;
+            logger.warn('Failed to load API keys', {
                 error: dbError.message,
                 orgID,
                 apiHandle
@@ -132,20 +132,20 @@ const loadAPIPlatformApiKeys = async (req, res) => {
             profile: profile,
             devportalMode: devportalMode,
             orgID: orgID,
-            platformApiKeys: platformApiKeys,
-            platformApiKeysCount: platformApiKeysCount,
-            platformApiKeysLoadError,
+            apiKeys: apiKeys,
+            apiKeysCount: apiKeysCount,
+            apiKeysLoadError,
             apiMetadata: metaData,
             apiHandle: apiHandle,
             isReadOnlyMode: config.readOnlyMode,
-            showPlatformApiKeysNav,
+            showApiKeysNav,
             csrfToken: getSessionCsrfToken(req),
         };
 
-        html = await renderTemplateFromAPI(templateContent, orgID, orgName, 'pages/api-platform-keys', viewName);
+        html = await renderTemplateFromAPI(templateContent, orgID, orgName, 'pages/api-keys', viewName);
         res.send(html);
     } catch (error) {
-        logger.error('Error loading API platform API keys page', {
+        logger.error('Error loading API keys page', {
             error: error.message,
             stack: error.stack,
             orgName,
@@ -161,4 +161,4 @@ const loadAPIPlatformApiKeys = async (req, res) => {
     }
 };
 
-module.exports = { loadAPIPlatformApiKeys };
+module.exports = { loadAPIApiKeys };
