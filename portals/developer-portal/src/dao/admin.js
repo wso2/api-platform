@@ -981,7 +981,7 @@ const upsertApplicationKeyMapping = async (mappingData, t) => {
             where: {
                 ORG_ID: mappingData.orgID,
                 APP_ID: mappingData.appID,
-                KM_ID: mappingData.kmID,
+                ...(mappingData.kmID && { KM_ID: mappingData.kmID }),
                 KEY_TYPE: mappingData.keyType,
             },
             ...(t && { transaction: t }),
