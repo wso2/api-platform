@@ -246,14 +246,29 @@ func (h *HubHandler) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Remove subscription from store.
+	// Remove subscription from local store. A miss is not immediately fatal —
+	// the subscription may have been created on another instance.
 	if err := h.store.Remove(topic, callback); err != nil {
-		slog.Error("Failed to remove subscription", "error", err)
-		http.Error(w, "subscription not found", http.StatusNotFound)
-		return
+		if h.syncProducer == nil {
+			slog.Error("Failed to remove subscription", "error", err)
+			http.Error(w, "subscription not found", http.StatusNotFound)
+			return
+		}
+		exists, lookupErr := h.syncProducer.ExistsInKafka(r.Context(), topic, callback)
+		if lookupErr != nil {
+			slog.Error("Failed to look up subscription in Kafka", "error", lookupErr)
+			http.Error(w, "failed to verify subscription", http.StatusInternalServerError)
+			return
+		}
+		if !exists {
+			slog.Error("Failed to remove subscription", "error", err)
+			http.Error(w, "subscription not found", http.StatusNotFound)
+			return
+		}
+		slog.Info("Subscription owned by another instance, proceeding with unsubscribe", "topic", topic, "callback", callback)
 	}
 
-	// Publish tombstone to sync topic.
+	// Publish tombstone to sync topic so all instances honour the unsubscription on restart.
 	if h.syncProducer != nil {
 		if err := h.syncProducer.PublishTombstone(r.Context(), topic, callback); err != nil {
 			slog.Error("Failed to sync unsubscription", "error", err)
