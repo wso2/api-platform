@@ -15,4 +15,4 @@ if [ ! -f "$CERT_DIR/server.crt" ] || [ ! -f "$CERT_DIR/server.key" ]; then
   echo "[entrypoint] Self-signed certificate written to $CERT_DIR"
 fi
 
-exec node src/app.js
+exec node src/server.js
