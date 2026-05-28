@@ -41,9 +41,7 @@ async function prepareSubscriptionModal(modalId) {
     const orgID = modal.dataset.orgId || window.__subscriptionOrgID;
     let apiRefId = modal.dataset.apiRefid || '';
     if (!apiRefId) apiRefId = apiId;
-    const isPlatformGateway = modal.dataset.gatewayType && String(modal.dataset.gatewayType).toLowerCase().indexOf('api-platform') !== -1;
-
-    const platformContainer = document.getElementById('platformContent-' + apiId);
+    const platformContainer = document.getElementById('subscriptionContent-' + apiId);
     const plansBody = modal.querySelector('.subscription-plans-body');
 
     // Only clear the token area if it has no fresh content (i.e. left from a prior modal session)
@@ -53,13 +51,6 @@ async function prepareSubscriptionModal(modalId) {
         tokenArea.style.display = 'none';
     }
     window.__preserveTokenArea = false;
-
-    if (!isPlatformGateway) {
-        // ensure platform container hidden and app-based plans visible
-        if (platformContainer) platformContainer.style.display = 'none';
-        if (plansBody) plansBody.style.display = '';
-        return;
-    }
 
     if (!platformContainer) return;
     platformContainer.innerHTML = '';
@@ -72,8 +63,8 @@ async function prepareSubscriptionModal(modalId) {
     }
 
     try {
-        const resp = await fetch(`/devportal/organizations/${encodeURIComponent(orgID)}/api-platform-subscriptions?apiId=${encodeURIComponent(apiRefId)}`, { headers: { 'Content-Type': 'application/json' } });
-        if (!resp.ok) throw new Error('Failed to fetch platform subscriptions');
+        const resp = await fetch(`/devportal/organizations/${encodeURIComponent(orgID)}/subscriptions?apiId=${encodeURIComponent(apiRefId)}`, { headers: { 'Content-Type': 'application/json' } });
+        if (!resp.ok) throw new Error('Failed to fetch subscriptions');
         const data = await resp.json();
 
         // data may contain list (existing subscriptions) and subscriptionPlans
@@ -157,7 +148,7 @@ async function prepareSubscriptionModal(modalId) {
                 toggleBtn.dataset.newStatus = newStatus;
                 if (window.isReadOnly) toggleBtn.disabled = true;
                 toggleBtn.addEventListener('click', function() {
-                    togglePlatformSubscriptionStatus(this.dataset.orgId, this.dataset.subscriptionId, this.dataset.newStatus);
+                    toggleSubscriptionStatus(this.dataset.orgId, this.dataset.subscriptionId, this.dataset.newStatus);
                 });
                 const deleteBtn = document.createElement('button');
                 deleteBtn.className = 'btn btn-sm btn-outline-danger';
@@ -166,7 +157,7 @@ async function prepareSubscriptionModal(modalId) {
                 deleteBtn.dataset.subscriptionId = sub.subscriptionId;
                 if (window.isReadOnly) deleteBtn.disabled = true;
                 deleteBtn.addEventListener('click', function() {
-                    confirmDeletePlatformSubscription(this.dataset.orgId, this.dataset.subscriptionId);
+                    confirmDeleteSubscription(this.dataset.orgId, this.dataset.subscriptionId);
                 });
                 tdActions.appendChild(toggleBtn);
                 tdActions.appendChild(deleteBtn);
@@ -229,11 +220,11 @@ async function prepareSubscriptionModal(modalId) {
 
         // Store existing subscriptions for plan-change confirmation flow
         if (existing && existing.length > 0) {
-            window.existingPlatformSubscriptions = existing.map(function(sub) {
+            window.existingSubscriptions = existing.map(function(sub) {
                 return { subscriptionId: sub.subscriptionId, subscriptionPlanName: sub.subscriptionPlanName, status: sub.status };
             });
         } else {
-            window.existingPlatformSubscriptions = [];
+            window.existingSubscriptions = [];
         }
 
         // Reset all static plan buttons to default "Subscribe" state, then mark current plan
@@ -272,7 +263,7 @@ async function prepareSubscriptionModal(modalId) {
 
         platformContainer.style.display = ((existing && existing.length > 0) || (plans && plans.length > 0)) ? 'block' : 'none';
     } catch (e) {
-        platformContainer.innerHTML = '<div class="alert alert-danger">Could not load platform subscriptions.</div>';
+        platformContainer.innerHTML = '<div class="alert alert-danger">Could not load subscriptions.</div>';
         platformContainer.style.display = 'block';
         if (plansBody) plansBody.style.display = '';
     }

@@ -838,7 +838,7 @@ function validateScripts(strContent) {
             "<script src='/technical-scripts/common.js' defer></script>",
             "<script src='/technical-scripts/subscription.js' defer></script>",
             "<script src='/technical-scripts/add-application-form.js' defer></script>",
-            "<script src='/technical-scripts/platform-subscription.js' defer></script>",
+            "<script src='/technical-scripts/subscription.js' defer></script>",
             "<script src='/technical-scripts/subscription-modal.js' defer></script>",
             "<script src='/technical-scripts/subscriptions-page.js' defer></script>",
             "<script src='/technical-scripts/platform-api-keys-page.js' defer></script>",
@@ -859,11 +859,11 @@ function validateScripts(strContent) {
             // Reo analytics loader (src/defaultContent/layout/main.hbs)
             "<script type=\"text/javascript\">\n      !function(){var e,t,n;e=\"{{portalConfigs.reoClientID}}\",t=function(){Reo.init({clientID:\"{{portalConfigs.reoClientID}}\"})},(n=document.createElement(\"script\")).src=\"https://static.reo.dev/\"+e+\"/reo.js\",n.defer=!0,n.onload=t,document.head.appendChild(n)}();\n    </script>",
             // Token-map JSON data island (api-landing/partials/api-subscription-plans.hbs)
-            "<script id=\"token-map-data\" type=\"application/json\">{{{jsonSafePlatformSubscriptions ../platformSubscriptions}}}</script>",
+            "<script id=\"token-map-data\" type=\"application/json\">{{{jsonSafeSubscriptions ../subscriptions}}}</script>",
             // Token-meta bootstrap (api-landing/partials/api-subscription-plans.hbs)
             "<script>\n                    (function() {\n                        var data = JSON.parse(document.getElementById('token-map-data').textContent || '[]');\n                        window.__tokenMeta = window.__tokenMeta || {};\n                        data.forEach(function(sub) {\n                            // store only non-sensitive metadata and masked token\n                            window.__tokenMeta[sub.subscriptionId] = {\n                                maskedToken: sub.maskedToken,\n                                customerName: sub.customerName,\n                                subscriptionPlanName: sub.subscriptionPlanName,\n                                status: sub.status\n                            };\n                        });\n                        // expose orgID for on-demand fetches\n                        window.__subscriptionOrgID = \"{{@root.orgID}}\";\n                    })();\n                </script>",
             // Existing-subs JSON data island (api-landing/partials/api-subscription-plans.hbs)
-            "<script id=\"existing-subs-data\" type=\"application/json\">{{{json platformSubscriptions}}}</script>",
+            "<script id=\"existing-subs-data\" type=\"application/json\">{{{json subscriptions}}}</script>",
             // API flows JSON data island (pages/api-flows/page.hbs)
             "<script type=\"application/json\" id=\"apiFlowsDataContainer\">{{{json apiFlows}}}</script>",
             // AI agent data island (pages/api-landing/page.hbs)
@@ -871,7 +871,7 @@ function validateScripts(strContent) {
             // Home discover data island (pages/home/page.hbs)
             "<script type=\"application/json\" id=\"homeDiscoverData\">{\"baseUrl\":\"{{baseUrl}}\"}</script>",
             // Existing-subs bootstrap (api-landing/partials/api-subscription-plans.hbs)
-            "<script>\n                (function() {\n                    window.__subscriptionOrgID = window.__subscriptionOrgID || \"{{@root.orgID}}\";\n                    var raw = document.getElementById('existing-subs-data').textContent || '[]';\n                    try {\n                        var parsed = JSON.parse(raw);\n                        window.existingPlatformSubscriptions = parsed.map(function(sub) {\n                            return { subscriptionId: sub.subscriptionId, subscriptionPlanName: sub.subscriptionPlanName, status: sub.status };\n                        });\n                    } catch (e) {\n                        window.existingPlatformSubscriptions = [];\n                    }\n                })();\n            </script>",
+            "<script>\n                (function() {\n                    window.__subscriptionOrgID = window.__subscriptionOrgID || \"{{@root.orgID}}\";\n                    var raw = document.getElementById('existing-subs-data').textContent || '[]';\n                    try {\n                        var parsed = JSON.parse(raw);\n                        window.existingSubscriptions = parsed.map(function(sub) {\n                            return { subscriptionId: sub.subscriptionId, subscriptionPlanName: sub.subscriptionPlanName, status: sub.status };\n                        });\n                    } catch (e) {\n                        window.existingSubscriptions = [];\n                    }\n                })();\n            </script>",
             // tokenMap + orgID bootstrap (api-subscriptions/partials/api-subscription-list.hbs
             // and subscriptions/partials/subscription-list.hbs)
             "<script>\n                window.__tokenMap = window.__tokenMap || {};\n                window.__subscriptionOrgID = \"{{@root.orgID}}\";\n            </script>",

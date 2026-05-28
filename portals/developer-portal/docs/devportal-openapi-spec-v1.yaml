@@ -1126,23 +1126,23 @@ paths:
         - OAuth2Security:
             - dp:app_write
             - dp:app_manage
-  /organizations/{orgId}/api-platform-subscriptions:
+  /organizations/{orgId}/subscriptions:
     parameters:
       - $ref: "#/components/parameters/OrgId"
     post:
       tags:
-        - Platform Subscriptions
-      operationId: createPlatformGatewaySubscription
+        - Subscriptions
+      operationId: createSubscription
       summary: Create a platform gateway subscription
       description: >-
         Creates a token-based subscription for a Platform Gateway API. The Developer Portal API ID is
         resolved to the control-plane API reference before the subscription is created. The API must exist,
         have token-based subscriptions enabled, and contain a control-plane reference ID.
       requestBody:
-        $ref: "#/components/requestBodies/PlatformGatewaySubscriptionCreateBody"
+        $ref: "#/components/requestBodies/SubscriptionCreateBody"
       responses:
         "201":
-          $ref: "#/components/responses/PlatformGatewaySubscriptionResponse"
+          $ref: "#/components/responses/SubscriptionResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
@@ -1155,8 +1155,8 @@ paths:
             - dp:platform_subscription_manage
     get:
       tags:
-        - Platform Subscriptions
-      operationId: listPlatformGatewaySubscriptions
+        - Subscriptions
+      operationId: listSubscriptions
       summary: List platform gateway subscriptions
       description: >-
         Lists platform gateway subscriptions from the control plane. When `apiId` is provided, the
@@ -1165,7 +1165,7 @@ paths:
         - $ref: "#/components/parameters/ApiIdQueryOptional"
       responses:
         "200":
-          $ref: "#/components/responses/PlatformGatewaySubscriptionListResponse"
+          $ref: "#/components/responses/SubscriptionListResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
@@ -1176,19 +1176,19 @@ paths:
         - OAuth2Security:
             - dp:platform_subscription_read
             - dp:platform_subscription_manage
-  /organizations/{orgId}/api-platform-subscriptions/{subscriptionId}:
+  /organizations/{orgId}/subscriptions/{subscriptionId}:
     parameters:
       - $ref: "#/components/parameters/OrgId"
       - $ref: "#/components/parameters/SubscriptionId"
     get:
       tags:
-        - Platform Subscriptions
-      operationId: getPlatformGatewaySubscription
+        - Subscriptions
+      operationId: getSubscription
       summary: Get a platform gateway subscription
       description: Retrieves a single platform gateway subscription from the control plane by subscription ID.
       responses:
         "200":
-          $ref: "#/components/responses/PlatformGatewaySubscriptionResponse"
+          $ref: "#/components/responses/SubscriptionResponse"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -1199,15 +1199,15 @@ paths:
             - dp:platform_subscription_manage
     put:
       tags:
-        - Platform Subscriptions
-      operationId: updatePlatformGatewaySubscription
+        - Subscriptions
+      operationId: updateSubscription
       summary: Update a platform gateway subscription
       description: Updates the subscription status in the control plane. The service accepts only `ACTIVE` or `INACTIVE`.
       requestBody:
-        $ref: "#/components/requestBodies/PlatformGatewaySubscriptionUpdateBody"
+        $ref: "#/components/requestBodies/SubscriptionUpdateBody"
       responses:
         "200":
-          $ref: "#/components/responses/PlatformGatewaySubscriptionResponse"
+          $ref: "#/components/responses/SubscriptionResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
@@ -1220,8 +1220,8 @@ paths:
             - dp:platform_subscription_manage
     delete:
       tags:
-        - Platform Subscriptions
-      operationId: deletePlatformGatewaySubscription
+        - Subscriptions
+      operationId: deleteSubscription
       summary: Delete a platform gateway subscription
       description: Deletes the subscription in the control plane and returns a success message from the Developer Portal.
       responses:
@@ -1347,146 +1347,6 @@ paths:
         - OAuth2Security:
             - dp:platform_key_revoke
             - dp:platform_key_manage
-  /organizations/{orgId}/subscriptions:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-    post:
-      tags:
-        - Subscriptions
-      operationId: createSubscription
-      summary: Subscribe an application to an API
-      description: >-
-        Creates a Developer Portal subscription row and, when the application already has a control-plane
-        key mapping, creates or reconciles the corresponding control-plane subscription. If no key mapping
-        exists yet, the control-plane subscription is deferred until application keys are generated.
-      requestBody:
-        $ref: "#/components/requestBodies/SubscriptionBody"
-      responses:
-        "200":
-          $ref: "#/components/responses/SubscriptionMessageResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:subscription_write
-            - dp:subscription_manage
-    put:
-      tags:
-        - Subscriptions
-      operationId: updateSubscription
-      summary: Update an application API subscription
-      description: >-
-        Updates the Developer Portal subscription policy and, when a control-plane subscription reference
-        exists, updates the control-plane subscription throttling policy. Canceled paid subscriptions are
-        synchronized to the control plane as blocked.
-      requestBody:
-        $ref: "#/components/requestBodies/SubscriptionBody"
-      responses:
-        "201":
-          $ref: "#/components/responses/SubscriptionMessageResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:subscription_write
-            - dp:subscription_manage
-    get:
-      tags:
-        - Subscriptions
-      operationId: getAllSubscriptions
-      summary: List subscriptions
-      description: >-
-        Lists Developer Portal subscriptions for an application or API. The service filters out pending or
-        failed payment records and returns free or active paid subscriptions.
-      parameters:
-        - $ref: "#/components/parameters/AppIdQueryOptional"
-        - $ref: "#/components/parameters/ApiIdQueryOptional"
-      responses:
-        "200":
-          $ref: "#/components/responses/SubscriptionListResponse"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:subscription_read
-            - dp:subscription_manage
-    delete:
-      tags:
-        - Subscriptions
-      operationId: unsubscribeAPI
-      summary: Unsubscribe an application from an API
-      description: >-
-        Removes the Developer Portal subscription identified by `subscriptionID` and deletes matching
-        control-plane subscription mappings for the supplied application and control-plane API reference.
-        If the control-plane subscription is already missing, the local subscription is still removed.
-      parameters:
-        - $ref: "#/components/parameters/AppIDQuery"
-        - $ref: "#/components/parameters/ApiReferenceIDQuery"
-        - $ref: "#/components/parameters/SubscriptionIDQuery"
-      responses:
-        "204":
-          description: Subscription removed successfully.
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:subscription_delete
-            - dp:subscription_manage
-  /organizations/{orgId}/subscriptions/{subscriptionId}:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/SubscriptionId"
-    get:
-      tags:
-        - Subscriptions
-      operationId: getSubscription
-      summary: Get a subscription
-      description: Retrieves a Developer Portal subscription by subscription ID.
-      responses:
-        "200":
-          $ref: "#/components/responses/SubscriptionResponse"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:subscription_read
-            - dp:subscription_manage
-    delete:
-      tags:
-        - Subscriptions
-      operationId: deleteSubscription
-      summary: Delete a subscription
-      description: >-
-        Deletes a Developer Portal subscription by ID, removes any corresponding control-plane
-        subscriptions from application key mappings, and attempts to cancel the external Stripe
-        subscription when the local subscription is billed through Stripe.
-      responses:
-        "200":
-          $ref: "#/components/responses/TextMessageResponse"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:subscription_delete
-            - dp:subscription_manage
   /organizations/{orgId}/app-key-mapping:
     parameters:
       - $ref: "#/components/parameters/OrgId"
@@ -3417,7 +3277,7 @@ components:
               displayName: Premium APIs
             - name: internal
               displayName: Internal APIs
-    PlatformGatewaySubscriptionCreateBody:
+    SubscriptionCreateBody:
       required: true
       description: >-
         Subscription creation payload. `apiId` is the Developer Portal API ID; the service resolves it to
@@ -3425,7 +3285,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/PlatformGatewaySubscriptionCreateRequest"
+            $ref: "#/components/schemas/SubscriptionCreateRequest"
           examples:
             defaultPlan:
               summary: Subscribe with the API default plan
@@ -3437,13 +3297,13 @@ components:
                 apiId: api-7f4c2a6b
                 subscriptionPlanName: Gold
                 applicationId: cp-app-98765
-    PlatformGatewaySubscriptionUpdateBody:
+    SubscriptionUpdateBody:
       required: true
       description: Platform gateway subscription status update payload.
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/PlatformGatewaySubscriptionUpdateRequest"
+            $ref: "#/components/schemas/SubscriptionUpdateRequest"
           example:
             status: ACTIVE
     PlatformApiKeyBody:
@@ -3468,31 +3328,6 @@ components:
               value:
                 apiId: api-7f4c2a6b
                 name: weather_sandbox_key
-    SubscriptionBody:
-      required: true
-      description: >-
-        Subscription payload. `apiId` and `policyId` are Developer Portal identifiers; `apiReferenceID`
-        and `policyName` are used when the service synchronizes the subscription with the control plane.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/SubscriptionRequest"
-          examples:
-            freePlan:
-              summary: Subscribe using a free policy
-              value:
-                applicationID: app-12345
-                apiId: api-7f4c2a6b
-                apiReferenceID: cp-api-12345
-                policyId: policy-gold
-                policyName: Gold
-            updatePlan:
-              summary: Change subscription policy
-              value:
-                applicationID: app-12345
-                apiId: api-7f4c2a6b
-                apiReferenceID: cp-api-12345
-                policyId: policy-silver
                 policyName: Silver
     AppKeyMappingBody:
       required: true
@@ -4406,12 +4241,12 @@ components:
                 failedSubscriptions:
                   - apiName: Weather API
                     reason: Subscription policy not found
-    PlatformGatewaySubscriptionResponse:
+    SubscriptionResponse:
       description: Platform gateway subscription DTO returned by the control plane.
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/PlatformGatewaySubscriptionResponse"
+            $ref: "#/components/schemas/SubscriptionResponse"
           example:
             subscriptionId: sub-12345
             apiId: cp-api-12345
@@ -4420,7 +4255,7 @@ components:
             subscriptionPlanName: Gold
             status: ACTIVE
             createdTime: "2026-05-07T08:30:00Z"
-    PlatformGatewaySubscriptionListResponse:
+    SubscriptionListResponse:
       description: List of platform gateway subscription DTOs returned by the control plane.
       content:
         application/json:
@@ -4428,7 +4263,7 @@ components:
             oneOf:
               - type: array
                 items:
-                  $ref: "#/components/schemas/PlatformGatewaySubscriptionResponse"
+                  $ref: "#/components/schemas/SubscriptionResponse"
               - type: object
                 properties:
                   count:
@@ -4436,7 +4271,7 @@ components:
                   list:
                     type: array
                     items:
-                      $ref: "#/components/schemas/PlatformGatewaySubscriptionResponse"
+                      $ref: "#/components/schemas/SubscriptionResponse"
                 additionalProperties: true
           example:
             count: 1
@@ -4468,46 +4303,6 @@ components:
             type: array
             items:
               $ref: "#/components/schemas/PlatformApiKeyMetadataResponse"
-    SubscriptionMessageResponse:
-      description: Subscription mutation result.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/MessageResponse"
-          examples:
-            subscribed:
-              summary: Subscription created
-              value:
-                message: Subscribed successfully
-            updated:
-              summary: Subscription updated
-              value:
-                message: Updated subscription successfully
-    SubscriptionResponse:
-      description: Developer Portal subscription DTO.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/SubscriptionResponse"
-          example:
-            id: sub-12345
-            appId: app-12345
-            apiId: cp-api-12345
-            policyId: policy-gold
-    SubscriptionListResponse:
-      description: List of Developer Portal subscription DTOs.
-      content:
-        application/json:
-          schema:
-            type: array
-            items:
-              $ref: "#/components/schemas/SubscriptionResponse"
-          example:
-            - id: sub-12345
-              appId: app-12345
-              apiId: cp-api-12345
-              policyId: policy-gold
-    AppKeyMappingCreateResponse:
       description: >-
         Control-plane key generation or key mapping response, enriched with the control-plane application
         reference and subscription scope keys.
@@ -5710,7 +5505,7 @@ components:
           description: User name whose application throttle policy should be reset in the control plane.
           example: alice@example.com
       additionalProperties: false
-    PlatformGatewaySubscriptionCreateRequest:
+    SubscriptionCreateRequest:
       type: object
       required:
         - apiId
@@ -5728,7 +5523,7 @@ components:
           description: Optional control-plane application ID.
           example: cp-app-98765
       additionalProperties: false
-    PlatformGatewaySubscriptionUpdateRequest:
+    SubscriptionUpdateRequest:
       type: object
       required:
         - status
@@ -5740,7 +5535,7 @@ components:
             - INACTIVE
           example: ACTIVE
       additionalProperties: false
-    PlatformGatewaySubscriptionResponse:
+    SubscriptionResponse:
       type: object
       description: Platform gateway subscription payload returned by the control plane.
       properties:
@@ -5881,30 +5676,6 @@ components:
           description: Subscription policy name used as throttling policy in the control plane.
           example: Gold
       additionalProperties: false
-    SubscriptionResponse:
-      type: object
-      required:
-        - id
-        - appId
-        - apiId
-        - policyId
-      properties:
-        id:
-          type: string
-          description: Developer Portal subscription ID.
-          example: sub-12345
-        appId:
-          type: string
-          description: Developer Portal application ID.
-          example: app-12345
-        apiId:
-          type: string
-          description: API reference ID stored on the subscription DTO.
-          example: cp-api-12345
-        policyId:
-          type: string
-          description: Developer Portal subscription policy ID.
-          example: policy-gold
       additionalProperties: false
     KeyManagerRequest:
       type: object

@@ -18,50 +18,27 @@
 
 let pendingDeleteOrgID = null;
 let pendingDeleteSubID = null;
-let pendingDeleteType = null;
-let pendingDeleteAppID = null;
-let pendingDeleteApiRefID = null;
 
-function prepareDeleteSubscription(orgID, subID, type, appID, apiRefID) {
+function prepareDeleteSubscription(orgID, subID) {
     pendingDeleteOrgID = orgID;
     pendingDeleteSubID = subID;
-    pendingDeleteType = type;
-    pendingDeleteAppID = appID || null;
-    pendingDeleteApiRefID = apiRefID || null;
 
     if (typeof openWarningModal === 'function') {
-        if (type === 'TOKEN_BASED') {
-            openWarningModal('DeleteTokenBasedSubscription', '', '', '', '', '', '');
-        } else {
-            openWarningModal('DeleteAppBasedSubscription', '', '', '', '', '', '');
-        }
+        openWarningModal('DeleteTokenBasedSubscription', '', '', '', '', '', '');
         return;
     }
 
-    const message = type === 'TOKEN_BASED'
-        ? 'Are you sure you want to delete this subscription? The subscription token will be immediately invalidated.'
-        : 'Are you sure you want to unsubscribe from this API?';
-
-    if (confirm(message)) {
+    if (confirm('Are you sure you want to delete this subscription? The subscription token will be immediately invalidated.')) {
         executeDeleteSubscription();
     }
 }
 
 async function executeDeleteSubscription() {
     try {
-        let response;
-        if (pendingDeleteType === 'TOKEN_BASED') {
-            response = await fetch(
-                `/devportal/organizations/${encodeURIComponent(pendingDeleteOrgID)}/api-platform-subscriptions/${encodeURIComponent(pendingDeleteSubID)}`,
-                { method: 'DELETE', headers: { 'Content-Type': 'application/json' } }
-            );
-        } else {
-            // App-based: use existing unsubscribe endpoint
-            response = await fetch(
-                `/devportal/organizations/${encodeURIComponent(pendingDeleteOrgID)}/subscriptions?appID=${encodeURIComponent(pendingDeleteAppID)}&apiReferenceID=${encodeURIComponent(pendingDeleteApiRefID)}&subscriptionID=${encodeURIComponent(pendingDeleteSubID)}`,
-                { method: 'DELETE', headers: { 'Content-Type': 'application/json' } }
-            );
-        }
+        const response = await fetch(
+            `/devportal/organizations/${encodeURIComponent(pendingDeleteOrgID)}/subscriptions/${encodeURIComponent(pendingDeleteSubID)}`,
+            { method: 'DELETE', headers: { 'Content-Type': 'application/json' } }
+        );
 
         if (response.ok) {
             await showAlert('Subscription removed successfully!', 'success');
@@ -99,7 +76,7 @@ async function executeDeleteSubscription() {
 async function toggleSubscriptionStatus(orgID, subscriptionId, newStatus) {
     try {
         const response = await fetch(
-            `/devportal/organizations/${encodeURIComponent(orgID)}/api-platform-subscriptions/${encodeURIComponent(subscriptionId)}`,
+            `/devportal/organizations/${encodeURIComponent(orgID)}/subscriptions/${encodeURIComponent(subscriptionId)}`,
             {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -151,7 +128,7 @@ async function toggleListTokenVisibility(subscriptionId) {
         if (!orgID) return;
         try {
             const response = await fetch(
-                `/devportal/organizations/${encodeURIComponent(orgID)}/api-platform-subscriptions/${encodeURIComponent(subscriptionId)}`,
+                `/devportal/organizations/${encodeURIComponent(orgID)}/subscriptions/${encodeURIComponent(subscriptionId)}`,
                 { headers: { 'Content-Type': 'application/json' } }
             );
             if (!response.ok) return;

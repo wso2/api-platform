@@ -35,7 +35,7 @@ const { enforceSecuirty } = require('../middlewares/ensureAuthenticated');
 const { requireCsrfForMutatingApi } = require('../middlewares/csrfProtection');
 const constants = require('../utils/constants');
 const { config } = require('../config/configLoader');
-const platformSubscriptionService = require('../services/platformSubscriptionService');
+const subscriptionService = require('../services/subscriptionService');
 const apiKeyController = require('../controllers/apiKeyController');
 const apiFlowService = require('../services/apiFlowService');
 const webhookAdminController = require('../controllers/webhookAdminController');
@@ -153,17 +153,17 @@ router.get('/organizations/:orgId/applications/:appId', enforceSecuirty(constant
 router.get('/organizations/:orgId/applications', enforceSecuirty(constants.SCOPES.DEVELOPER), adminService.getDevPortalApplications);
 router.delete('/organizations/:orgId/applications/:appId', enforceSecuirty(constants.SCOPES.DEVELOPER), adminService.deleteDevPortalApplication);
 
-// Platform Gateway Subscriptions (must be before :subscriptionId routes)
-router.post('/organizations/:orgId/api-platform-subscriptions',
-    enforceSecuirty(constants.SCOPES.DEVELOPER), platformSubscriptionService.createPlatformGatewaySubscription);
-router.get('/organizations/:orgId/api-platform-subscriptions',
-    enforceSecuirty(constants.SCOPES.DEVELOPER), platformSubscriptionService.listPlatformGatewaySubscriptions);
-router.get('/organizations/:orgId/api-platform-subscriptions/:subscriptionId',
-    enforceSecuirty(constants.SCOPES.DEVELOPER), platformSubscriptionService.getPlatformGatewaySubscription);
-router.put('/organizations/:orgId/api-platform-subscriptions/:subscriptionId',
-    enforceSecuirty(constants.SCOPES.DEVELOPER), platformSubscriptionService.updatePlatformGatewaySubscription);
-router.delete('/organizations/:orgId/api-platform-subscriptions/:subscriptionId',
-    enforceSecuirty(constants.SCOPES.DEVELOPER), platformSubscriptionService.deletePlatformGatewaySubscription);
+// Platform Gateway Subscriptions
+router.post('/organizations/:orgId/subscriptions',
+    enforceSecuirty(constants.SCOPES.DEVELOPER), subscriptionService.createSubscription);
+router.get('/organizations/:orgId/subscriptions',
+    enforceSecuirty(constants.SCOPES.DEVELOPER), subscriptionService.listSubscriptions);
+router.get('/organizations/:orgId/subscriptions/:subscriptionId',
+    enforceSecuirty(constants.SCOPES.DEVELOPER), subscriptionService.getSubscription);
+router.put('/organizations/:orgId/subscriptions/:subscriptionId',
+    enforceSecuirty(constants.SCOPES.DEVELOPER), subscriptionService.updateSubscription);
+router.delete('/organizations/:orgId/subscriptions/:subscriptionId',
+    enforceSecuirty(constants.SCOPES.DEVELOPER), subscriptionService.deleteSubscription);
 
 // API keys — devportal is source of truth; gateway notified via webhook event
 router.post('/organizations/:orgId/platform-api-keys/generate',
@@ -174,14 +174,6 @@ router.post('/organizations/:orgId/platform-api-keys/:apiKeyId/regenerate',
     enforceSecuirty(constants.SCOPES.DEVELOPER), requireCsrfForMutatingApi, apiKeyController.regenerateApiKey);
 router.post('/organizations/:orgId/platform-api-keys/:apiKeyId/revoke',
     enforceSecuirty(constants.SCOPES.DEVELOPER), requireCsrfForMutatingApi, apiKeyController.revokeApiKey);
-
-//store API subscription
-router.post('/organizations/:orgId/subscriptions', enforceSecuirty(constants.SCOPES.DEVELOPER), adminService.createSubscription);
-router.put('/organizations/:orgId/subscriptions', enforceSecuirty(constants.SCOPES.DEVELOPER), adminService.updateSubscription);
-router.get('/organizations/:orgId/subscriptions/:subscriptionId', enforceSecuirty(constants.SCOPES.DEVELOPER), adminService.getSubscription);
-router.get('/organizations/:orgId/subscriptions', enforceSecuirty(constants.SCOPES.DEVELOPER), adminService.getAllSubscriptions);
-router.delete('/organizations/:orgId/subscriptions/:subscriptionId', enforceSecuirty(constants.SCOPES.DEVELOPER), adminService.deleteSubscription);
-router.delete('/organizations/:orgId/subscriptions', enforceSecuirty(constants.SCOPES.DEVELOPER), adminService.unsubscribeAPI);
 
 //store key mapping for devportal app and Control plane apps
 router.post('/organizations/:orgId/app-key-mapping', enforceSecuirty(constants.SCOPES.DEVELOPER), adminService.createAppKeyMapping);

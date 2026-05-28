@@ -119,7 +119,7 @@
             </div>
             {{#if ../isAuthenticated}}
             {{#if (eq apiInfo.gatewayType "wso2/api-platform")}}
-            <div class="subscription-flag fw-bold" style="display: {{#if hasPlatformSubscription}}block{{else}}none{{/if}};">Subscribed</div>
+            <div class="subscription-flag fw-bold" style="display: {{#if hasSubscription}}block{{else}}none{{/if}};">Subscribed</div>
             {{else}}
             <div class="subscription-flag fw-bold" style="display: {{#if (some applications "subscribed")}}block{{else}}none{{/if}};">Subscribed</div>
             {{/if}}

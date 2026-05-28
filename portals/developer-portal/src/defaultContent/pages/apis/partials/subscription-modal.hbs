@@ -34,8 +34,8 @@
                 <div id="subscriptionTokenArea-{{apiID}}" class="subscription-token-area px-4" style="display:none;">
                     <!-- Token result will be injected here for platform token-based subscriptions -->
                 </div>
-                <div id="platformContent-{{apiID}}" class="platform-subscription-content px-4" style="display:none;">
-                    <!-- Platform subscription table and plans will be injected here dynamically -->
+                <div id="subscriptionContent-{{apiID}}" class="subscription-content px-4" style="display:none;">
+                    <!-- Subscription table and plans will be injected here dynamically -->
                 </div>
                 <div class="subscription-plans-body pb-4" {{#if (eq apiInfo.gatewayType "wso2/api-platform")}}style="display:none;"{{/if}}>
                     <div class="subscription-plans-title small">Subscription Plans</div>
