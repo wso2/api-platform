@@ -77,10 +77,9 @@ func TestRunGetCommand_PrintsJSON(t *testing.T) {
 	}
 }
 
-func TestRunAddCommand_SendsJSONPayload(t *testing.T) {
+func TestRunAddCommand_SendsOrganizationYAMLMultipart(t *testing.T) {
 	testutil.WithTempHome(t)
 
-	var gotBody string
 	server := testutil.NewDevPortalServer(t, func(w http.ResponseWriter, req *http.Request) {
 		if req.Method != http.MethodPost {
 			t.Fatalf("expected POST request, got %s", req.Method)
@@ -88,11 +87,7 @@ func TestRunAddCommand_SendsJSONPayload(t *testing.T) {
 		if req.URL.Path != "/devportal/organizations" {
 			t.Fatalf("unexpected request path %s", req.URL.Path)
 		}
-		body, err := io.ReadAll(req.Body)
-		if err != nil {
-			t.Fatalf("failed to read request body: %v", err)
-		}
-		gotBody = string(body)
+		assertMultipartOrganization(t, req, "org.yaml", "apiVersion: devportal.api-platform.wso2.com/v1\nkind: Organization\n")
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"orgId":"org-1"}`))
 	})
@@ -100,7 +95,10 @@ func TestRunAddCommand_SendsJSONPayload(t *testing.T) {
 	writeOrgConfig(t, server.URL)
 
 	workDir := t.TempDir()
-	addFilePath = testutil.WriteJSONFixture(t, workDir, "organization.json", []byte(`{"orgName":"Acme"}`))
+	addFilePath = filepath.Join(workDir, "org.yaml")
+	if err := os.WriteFile(addFilePath, []byte("apiVersion: devportal.api-platform.wso2.com/v1\nkind: Organization\n"), 0644); err != nil {
+		t.Fatalf("failed to write organization fixture: %v", err)
+	}
 	addName = ""
 	addPlatform = ""
 	addInsecure = false
@@ -108,8 +106,42 @@ func TestRunAddCommand_SendsJSONPayload(t *testing.T) {
 	if err := runAddCommand(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if gotBody != `{"orgName":"Acme"}` {
-		t.Fatalf("unexpected request body %q", gotBody)
+}
+
+func assertMultipartOrganization(t *testing.T, req *http.Request, wantFile, wantPayload string) {
+	t.Helper()
+
+	if got := req.Header.Get("Content-Type"); !strings.HasPrefix(got, "multipart/form-data") {
+		t.Fatalf("expected multipart/form-data content type, got %q", got)
+	}
+	reader, err := req.MultipartReader()
+	if err != nil {
+		t.Fatalf("failed to create multipart reader: %v", err)
+	}
+	part, err := reader.NextPart()
+	if err != nil {
+		t.Fatalf("failed to read multipart part: %v", err)
+	}
+	defer func() { _ = part.Close() }()
+
+	if part.FormName() != "organization" {
+		t.Fatalf("expected multipart field organization, got %q", part.FormName())
+	}
+	if part.FileName() != wantFile {
+		t.Fatalf("expected multipart filename %q, got %q", wantFile, part.FileName())
+	}
+	body, err := io.ReadAll(part)
+	if err != nil {
+		t.Fatalf("failed to read multipart payload: %v", err)
+	}
+	if string(body) != wantPayload {
+		t.Fatalf("unexpected multipart payload %q", string(body))
+	}
+	if part, err := reader.NextPart(); err != io.EOF {
+		if part != nil {
+			_ = part.Close()
+		}
+		t.Fatalf("expected one multipart part, got next part err=%v", err)
 	}
 }
 
@@ -181,11 +213,11 @@ func TestRunDeleteCommand_SendsDelete(t *testing.T) {
 	}
 }
 
-func TestRunAddCommand_MissingJSONFile(t *testing.T) {
+func TestRunAddCommand_MissingYAMLFile(t *testing.T) {
 	testutil.WithTempHome(t)
 	writeOrgConfig(t, "http://example.com")
 
-	addFilePath = filepath.Join(t.TempDir(), "missing.json")
+	addFilePath = filepath.Join(t.TempDir(), "missing.yaml")
 	addName = ""
 	addPlatform = ""
 	addInsecure = false

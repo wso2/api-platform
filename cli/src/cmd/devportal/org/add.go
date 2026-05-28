@@ -21,6 +21,8 @@ package org
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/wso2/api-platform/cli/internal/config"
@@ -30,11 +32,11 @@ import (
 
 const (
 	AddCmdLiteral = "add"
-	AddCmdExample = `# Create an organization from a JSON file
-ap devportal org add -f organization.json
+	AddCmdExample = `# Create an organization from a YAML CR file
+ap devportal org add -f org.yaml
 
 # Create an organization using a specific devportal
-ap devportal org add -f organization.json --display-name my-portal --platform eu`
+ap devportal org add -f org.yaml --display-name my-portal --platform eu`
 )
 
 var (
@@ -47,7 +49,7 @@ var (
 var addCmd = &cobra.Command{
 	Use:     AddCmdLiteral,
 	Short:   "Create a DevPortal organization",
-	Long:    "Creates an organization in the selected DevPortal using a JSON request body from a file.",
+	Long:    "Creates an organization in the selected DevPortal using a YAML CR file.",
 	Example: AddCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runAddCommand(); err != nil {
@@ -58,7 +60,7 @@ var addCmd = &cobra.Command{
 }
 
 func init() {
-	utils.AddStringFlag(addCmd, utils.FlagFile, &addFilePath, "", "Path to the organization JSON file")
+	utils.AddStringFlag(addCmd, utils.FlagFile, &addFilePath, "", "Path to the organization YAML CR file")
 	utils.AddStringFlag(addCmd, utils.FlagName, &addName, "", "DevPortal display name")
 	utils.AddStringFlag(addCmd, utils.FlagPlatform, &addPlatform, "", "Platform name")
 	addCmd.Flags().BoolVar(&addInsecure, "insecure", false, "Skip TLS certificate verification")
@@ -66,7 +68,7 @@ func init() {
 }
 
 func runAddCommand() error {
-	payload, err := internaldevportal.ReadJSONFile(addFilePath)
+	organizationPath, err := resolveOrganizationFilePath(addFilePath)
 	if err != nil {
 		return err
 	}
@@ -82,11 +84,31 @@ func runAddCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, addInsecure)
-	resp, err := client.PostJSON("/devportal/organizations", payload)
+	resp, err := client.PostMultipartFile("/devportal/organizations", "organization", organizationPath)
 	if err != nil {
 		return internaldevportal.WrapRequestError("create organization", err, addInsecure)
 	}
 
 	fmt.Printf("Organization created using devportal %s (platform: %s)\n", devPortal.Name, resolvedPlatform)
 	return internaldevportal.PrintJSONResponse(resp)
+}
+
+func resolveOrganizationFilePath(filePath string) (string, error) {
+	resolvedPath, err := filepath.Abs(strings.TrimSpace(filePath))
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve file path: %w", err)
+	}
+
+	info, err := os.Stat(resolvedPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("file not found: %s", resolvedPath)
+		}
+		return "", fmt.Errorf("failed to inspect file: %w", err)
+	}
+	if info.IsDir() {
+		return "", fmt.Errorf("file path must point to a YAML CR file, got directory: %s", resolvedPath)
+	}
+
+	return resolvedPath, nil
 }

@@ -217,17 +217,56 @@ ap devportal org get --org org_1 --display-name my-portal --platform eu
 
 ### `ap devportal org add`
 
-Creates an organization using a JSON request payload file.
+Creates an organization by uploading a YAML CR file as multipart form data using the `organization` field.
 
 ```shell
-ap devportal org add --file <organization.json> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal org add --file <org.yaml> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap devportal org add -f organization.json
-ap devportal org add -f organization.json --display-name my-portal --platform eu
+ap devportal org add -f org.yaml
+ap devportal org add -f org.yaml --display-name my-portal --platform eu
+```
+
+Expected CR shape (`org.yaml`):
+
+```yaml
+apiVersion: devportal.api-platform.wso2.com/v1
+kind: Organization
+
+metadata:
+  name: ACME
+
+spec:
+  displayName: acme
+  organizationIdentifier: acme
+  adminRole: admin
+  subscriberRole: subscriber
+  superAdminRole: superAdmin
+
+  labels:
+    - name: default
+      displayName: Default
+
+  views:
+    - name: default
+      displayName: Default View
+      labels:
+        - default
+```
+
+Notes:
+
+- `metadata.name` is read as the organization handle.
+- `spec.displayName` is read as the organization display name.
+- All other organization fields are read from `spec`.
+
+Equivalent request shape:
+
+```shell
+curl -X POST /devportal/organizations -F "organization=@org.yaml"
 ```
 
 ### `ap devportal org edit`
@@ -260,7 +299,7 @@ ap devportal org delete --org org_1
 ap devportal org delete --org org_1 --display-name my-portal --platform eu
 ```
 
-Expected payload shape for `ap devportal org add` and `ap devportal org edit`:
+Expected payload shape for `ap devportal org edit`:
 
 `organization.json`
 ```json
