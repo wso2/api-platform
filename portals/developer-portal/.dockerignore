@@ -1,0 +1,42 @@
+# ── Runtime exclusions ────────────────────────────────────────────
+# node_modules is installed fresh inside the container by npm ci
+node_modules
+
+# ── Config / secrets (mounted at runtime via volume) ──────────────
+config.yaml
+configs/
+sample_config.yaml
+.env
+.env.*
+
+# ── Docker / distribution files ───────────────────────────────────
+docker-compose.yml
+distribution/
+
+# ── Database init / seed scripts (volume-mounted into postgres) ───
+artifacts/
+
+# ── Build tooling ─────────────────────────────────────────────────
+Makefile
+VERSION
+target/
+
+# ── Documentation ─────────────────────────────────────────────────
+README.md
+LICENSE
+docs/
+bin/
+scripts/
+
+# ── Git / editor metadata ─────────────────────────────────────────
+.git
+.gitignore
+.vscode
+.DS_Store
+
+# ── Logs and temp files ───────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+dist/

@@ -52,9 +52,9 @@ EXPOSE 8080
 # Create a non-root user with UID 10001 to satisfy Checkov CKV_CHOREO_1
 RUN groupadd -g 10001 appgroup && useradd -m -u 10001 -g appgroup -s /bin/bash appuser
 
-# Pre-create the certs directory owned by the non-root user so the
-# entrypoint script can write self-signed certs into the mounted volume.
-RUN mkdir -p /app/certs && chown -R 10001:10001 /app/certs
+# Pre-create the certs and logs directories owned by the non-root user so the
+# entrypoint script can write self-signed certs, and the app can write log files.
+RUN mkdir -p /app/certs /app/logs && chown -R 10001:10001 /app/certs /app/logs
 
 RUN chmod +x /app/docker-entrypoint.sh
 
