@@ -1,31 +1,32 @@
 #!/bin/sh
 set -eu
 
+# Initialise tput colors if available
+if command -v tput >/dev/null 2>&1 && [ -n "${TERM:-}" ] && tput setaf 2 >/dev/null 2>&1; then
+  GREEN="$(tput setaf 2)"
+  RED="$(tput setaf 1)"
+  BOLD="$(tput bold)"
+  RESET="$(tput sgr0)"
+else
+  GREEN=""; RED=""; BOLD=""; RESET=""
+fi
+
 print_ok() {
-  tput setaf 2
-  echo "✔  $1"
-  tput sgr0
+  echo "${GREEN}✔  $1${RESET}"
 }
 
 print_error() {
-  tput setaf 1
-  echo "✖  $1"
-  tput sgr0
+  echo "${RED}✖  $1${RESET}"
 }
 
 print_title() {
-  echo
-  tput bold
-  tput setaf 2
-  echo "=== $1 ==="
-  tput sgr0
-  echo
+  echo ""
+  echo "${BOLD}${GREEN}=== $1 ===${RESET}"
+  echo ""
 }
 
 print_result() {
-  tput bold
-  echo "$1"
-  tput sgr0
+  echo "${BOLD}$1${RESET}"
 }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -38,15 +39,18 @@ INBOUND_API_KEY="${INBOUND_API_KEY:-demo-unlocked-sample-key}"
 TARGET="https://localhost:${TRAFFIC_PORT}/assistant/chat/completions"
 PAYLOAD='{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Test call"}]}'
 
+# Mask API key for display — show prefix and last 4 chars
+KEY_MASKED="$(echo "$INBOUND_API_KEY" | sed 's/\(.\{4\}\).*/\1/') ****"
+
 print_title "WSO2 AI Gateway — LLM Proxy Test"
 echo "Target  : ${TARGET}"
-echo "API Key : ${INBOUND_API_KEY}"
+echo "API Key : ${KEY_MASKED}"
 echo "Payload : ${PAYLOAD}"
 
 print_title "Test 1: Valid API key — expect HTTP 200"
 echo "Running:"
 echo "  curl -sk -X POST ${TARGET} \\"
-echo "    -H 'api_key: ${INBOUND_API_KEY}' \\"
+echo "    -H 'api_key: ${KEY_MASKED}' \\"
 echo "    -H 'Content-Type: application/json' \\"
 echo "    -d '${PAYLOAD}'"
 echo ""
@@ -75,7 +79,7 @@ echo "This call is made immediately after with the same key."
 echo ""
 echo "Running:"
 echo "  curl -sk -X POST ${TARGET} \\"
-echo "    -H 'api_key: ${INBOUND_API_KEY}' \\"
+echo "    -H 'api_key: ${KEY_MASKED}' \\"
 echo "    -H 'Content-Type: application/json' \\"
 echo "    -d '${PAYLOAD}'"
 echo ""
@@ -100,7 +104,7 @@ fi
 
 echo ""
 if [ "$STATUS_1" -eq 200 ] && [ "$STATUS_2" -eq 429 ]; then
-  print_result "✔  PASSED — API key auth and rate limiting are working correctly."
+  print_result "✔  PASSED — Rate limiting is working correctly."
   exit 0
 else
   print_result "✖  FAILED — Expected HTTP 200 then HTTP 429, got ${STATUS_1} then ${STATUS_2}."

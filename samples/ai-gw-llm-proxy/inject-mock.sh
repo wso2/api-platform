@@ -1,10 +1,15 @@
 #!/bin/sh
 set -eu
 
+# Initialise tput colors if available
+if command -v tput >/dev/null 2>&1 && [ -n "${TERM:-}" ] && tput setaf 2 >/dev/null 2>&1; then
+  GREEN="$(tput setaf 2)"; RESET="$(tput sgr0)"
+else
+  GREEN=""; RESET=""
+fi
+
 print_ok() {
-  tput setaf 2
-  echo "✔  $1"
-  tput sgr0
+  echo "${GREEN}✔  $1${RESET}"
 }
 
 print_info() {

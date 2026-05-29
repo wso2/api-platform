@@ -1,10 +1,19 @@
 #!/bin/sh
 set -eu
 
+# Initialise tput colors if available
+if command -v tput >/dev/null 2>&1 && [ -n "${TERM:-}" ] && tput setaf 2 >/dev/null 2>&1; then
+  GREEN="$(tput setaf 2)"
+  YELLOW="$(tput setaf 3)"
+  RED="$(tput setaf 1)"
+  BOLD="$(tput bold)"
+  RESET="$(tput sgr0)"
+else
+  GREEN=""; YELLOW=""; RED=""; BOLD=""; RESET=""
+fi
+
 print_ok() {
-  tput setaf 2
-  echo "✔  $1"
-  tput sgr0
+  echo "${GREEN}✔  $1${RESET}"
 }
 
 print_info() {
@@ -12,31 +21,33 @@ print_info() {
 }
 
 print_warn() {
-  tput setaf 3
-  echo "⚠   $1"
-  tput sgr0
+  echo "${YELLOW}⚠   $1${RESET}"
+}
+
+print_error() {
+  echo "${RED}✖  $1${RESET}"
 }
 
 print_title() {
-  echo
-  tput bold
-  tput setaf 2
-  echo "=== $1 ==="
-  tput sgr0
-  echo
+  echo ""
+  echo "${BOLD}${GREEN}=== $1 ===${RESET}"
+  echo ""
 }
 
-if [ -f .env ]; then
-  . .env
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+if [ -f "${SCRIPT_DIR}/.env" ]; then
+  . "${SCRIPT_DIR}/.env"
 else
-  print_warn "No .env found — copy .env.example to .env, or defaults will be used."
+  print_warn "No .env found at ${SCRIPT_DIR}/.env — copy .env.example to .env, or defaults will be used."
   INBOUND_API_KEY="${INBOUND_API_KEY:-demo-unlocked-sample-key}"
   MGMT_PORT="${MGMT_PORT:-9090}"
   HEALTH_PORT="${HEALTH_PORT:-9094}"
   TRAFFIC_PORT="${TRAFFIC_PORT:-8443}"
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+MAX_RETRIES="${MAX_RETRIES:-30}"
+RETRY_INTERVAL=2
 
 print_title "Downloading WSO2 AI Gateway"
 print_info "Downloading official distribution package..."
@@ -60,8 +71,14 @@ print_ok "Gateway stack started"
 
 print_title "Waiting for Gateway"
 print_info "Waiting for gateway controller to be ready..."
+retries=0
 until curl -s "http://localhost:${HEALTH_PORT:-9094}/health" > /dev/null 2>&1; do
-  sleep 2
+  retries=$((retries + 1))
+  if [ "$retries" -ge "$MAX_RETRIES" ]; then
+    print_error "Gateway controller did not become healthy after $((MAX_RETRIES * RETRY_INTERVAL))s. Check: docker compose logs"
+    exit 1
+  fi
+  sleep "$RETRY_INTERVAL"
 done
 print_ok "Gateway controller is healthy"
 
@@ -79,14 +96,18 @@ sh "${SCRIPT_DIR}/inject-mock.sh"
 
 print_title "Waiting for Routes"
 print_info "Polling gateway traffic endpoint until routes are live..."
-TRAFFIC_PORT="${TRAFFIC_PORT:-8443}"
-INBOUND_API_KEY="${INBOUND_API_KEY:-demo-unlocked-sample-key}"
+retries=0
 until [ "$(curl -sk -o /dev/null -w '%{http_code}' -X POST \
-  "https://localhost:${TRAFFIC_PORT}/assistant/chat/completions" \
+  "https://localhost:${TRAFFIC_PORT:-8443}/assistant/chat/completions" \
   -H "api_key: route-probe-key" \
   -H "Content-Type: application/json" \
   -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"ping"}]}')" = "401" ]; do
-  sleep 2
+  retries=$((retries + 1))
+  if [ "$retries" -ge "$MAX_RETRIES" ]; then
+    print_error "Routes did not become live after $((MAX_RETRIES * RETRY_INTERVAL))s. Check: docker compose logs"
+    exit 1
+  fi
+  sleep "$RETRY_INTERVAL"
 done
 print_ok "Routes are live"
 
