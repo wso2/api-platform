@@ -145,8 +145,6 @@ func validateThunderToken(c *gin.Context, tokenString string, config AuthConfig)
 		return fmt.Errorf("token missing required '%s' claim", orgClaimName)
 	}
 
-	platformRoles := strings.Fields(getStringClaim(mapClaims, "scope"))
-
 	sub, _ := mapClaims["sub"].(string)
 	claimsObj := &CustomClaims{
 		Organization: org,
@@ -169,7 +167,9 @@ func validateThunderToken(c *gin.Context, tokenString string, config AuthConfig)
 	c.Set("scope", claimsObj.Scope)
 	c.Set("audience", claimsObj.Audience)
 	c.Set("claims", claimsObj)
-	c.Set("platform_roles", platformRoles)
+	// Thunder tokens carry fine-grained scopes, not role names — platform_roles is empty
+	// here because scope-based validation takes precedence in resolveEffectiveScopes.
+	c.Set("platform_roles", []string{})
 
 	return nil
 }

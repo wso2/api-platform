@@ -27,7 +27,6 @@ import (
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
-	"platform-api/src/internal/rbac"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
@@ -53,12 +52,12 @@ func NewMCPProxyDeploymentHandler(deploymentService *service.MCPDeploymentServic
 func (h *MCPProxyDeploymentHandler) RegisterRoutes(r *gin.Engine) {
 	proxyGroup := r.Group("/api/v1/mcp-proxies/:id")
 	{
-		proxyGroup.POST("/deployments", middleware.RequirePermission(rbac.MCPProxyDeploy), h.DeployMCPProxy)
-		proxyGroup.POST("/deployments/undeploy", middleware.RequirePermission(rbac.MCPProxyDeploy), h.UndeployMCPProxyDeployment)
-		proxyGroup.POST("/deployments/restore", middleware.RequirePermission(rbac.MCPProxyDeploy), h.RestoreMCPProxyDeployment)
+		proxyGroup.POST("/deployments", h.DeployMCPProxy)
+		proxyGroup.POST("/deployments/undeploy", h.UndeployMCPProxyDeployment)
+		proxyGroup.POST("/deployments/restore", h.RestoreMCPProxyDeployment)
 		proxyGroup.GET("/deployments", h.GetMCPProxyDeployments)
 		proxyGroup.GET("/deployments/:deploymentId", h.GetMCPProxyDeployment)
-		proxyGroup.DELETE("/deployments/:deploymentId", middleware.RequirePermission(rbac.MCPProxyDeploy), h.DeleteMCPProxyDeployment)
+		proxyGroup.DELETE("/deployments/:deploymentId", h.DeleteMCPProxyDeployment)
 	}
 }
 

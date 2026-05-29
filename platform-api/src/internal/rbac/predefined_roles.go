@@ -17,30 +17,34 @@
 
 package rbac
 
-// RoleAdmin, RoleDeveloper, RoleViewer are the canonical platform role names.
-// IDPs and Thunder groups are mapped to these names via configuration.
+// Canonical platform role names. IDPs and Thunder groups are mapped to these via configuration.
 const (
 	RoleAdmin     = "admin"
 	RoleDeveloper = "developer"
+	RolePublisher = "publisher"
+	RoleOperator  = "operator"
 	RoleViewer    = "viewer"
 )
 
-// adminPermissions is the full set of platform permissions.
+// adminPermissions is the full set of platform permissions, including the
+// per-resource manage scopes that act as root scopes covering all write operations.
 var adminPermissions = []Permission{
-	GatewayCreate, GatewayRead, GatewayUpdate, GatewayDelete, GatewayTokenManage, GatewayPolicyManage,
-	APICreate, APIRead, APIUpdate, APIDelete, APIDeploy, APIPublish, APIImport,
-	ProjectCreate, ProjectRead, ProjectUpdate, ProjectDelete,
-	ApplicationCreate, ApplicationRead, ApplicationUpdate, ApplicationDelete, ApplicationKeyManage,
-	DevPortalCreate, DevPortalRead, DevPortalUpdate, DevPortalDelete, DevPortalManage,
-	SubscriptionCreate, SubscriptionRead, SubscriptionUpdate, SubscriptionDelete,
-	SubscriptionPlanCreate, SubscriptionPlanRead, SubscriptionPlanUpdate, SubscriptionPlanDelete,
-	APIKeyCreate, APIKeyRead, APIKeyUpdate, APIKeyDelete,
-	LLMTemplateCreate, LLMTemplateRead, LLMTemplateUpdate, LLMTemplateDelete,
-	LLMProviderCreate, LLMProviderRead, LLMProviderUpdate, LLMProviderDelete, LLMProviderDeploy, LLMProviderKeyManage,
-	LLMProxyCreate, LLMProxyRead, LLMProxyUpdate, LLMProxyDelete, LLMProxyDeploy, LLMProxyKeyManage,
-	MCPProxyCreate, MCPProxyRead, MCPProxyUpdate, MCPProxyDelete, MCPProxyDeploy,
-	WebSubAPICreate, WebSubAPIRead, WebSubAPIUpdate, WebSubAPIDelete, WebSubAPIDeploy, WebSubAPIPublish, WebSubAPIKeyManage,
-	WebBrokerAPICreate, WebBrokerAPIRead, WebBrokerAPIUpdate, WebBrokerAPIDelete, WebBrokerAPIDeploy, WebBrokerAPIPublish, WebBrokerAPIKeyManage,
+	GatewayManage, GatewayCreate, GatewayRead, GatewayUpdate, GatewayDelete, GatewayTokenManage, GatewayTokenRead, GatewayTokenCreate, GatewayTokenDelete, GatewayPolicyManage, GatewayPolicyRead, GatewayPolicyCreate, GatewayPolicyDelete, GatewayArtifactsRead, GatewayManifestRead, GatewayStatusRead,
+	APIManage, APICreate, APIRead, APIUpdate, APIDelete, APIPublish, APIImport,
+	APIGatewayManage, APIGatewayCreate, APIGatewayRead,
+	APIDeploymentManage, APIDeploymentCreate, APIDeploymentRead, APIDeploymentDelete, APIDeploymentUndeploy, APIDeploymentRestore,
+	ProjectManage, ProjectCreate, ProjectRead, ProjectUpdate, ProjectDelete,
+	ApplicationManage, ApplicationCreate, ApplicationRead, ApplicationUpdate, ApplicationDelete, ApplicationAPIKeyManage, ApplicationAPIKeyCreate, ApplicationAPIKeyRead, ApplicationAPIKeyDelete, ApplicationAssociationsManage, ApplicationAssociationsCreate, ApplicationAssociationsRead, ApplicationAssociationsDelete, ApplicationAssociationsAPIKeyRead,
+	DevPortalManage, DevPortalCreate, DevPortalRead, DevPortalUpdate, DevPortalDelete,
+	SubscriptionManage, SubscriptionCreate, SubscriptionRead, SubscriptionUpdate, SubscriptionDelete,
+	SubscriptionPlanManage, SubscriptionPlanCreate, SubscriptionPlanRead, SubscriptionPlanUpdate, SubscriptionPlanDelete,
+	APIKeyManage, APIKeyCreate, APIKeyRead, APIKeyUpdate, APIKeyDelete,
+	LLMTemplateManage, LLMTemplateCreate, LLMTemplateRead, LLMTemplateUpdate, LLMTemplateDelete,
+	LLMProviderManage, LLMProviderCreate, LLMProviderRead, LLMProviderUpdate, LLMProviderDelete, LLMProviderDeploymentManage, LLMProviderKeyManage,
+	LLMProxyManage, LLMProxyCreate, LLMProxyRead, LLMProxyUpdate, LLMProxyDelete, LLMProxyDeploymentManage, LLMProxyKeyManage,
+	MCPProxyManage, MCPProxyCreate, MCPProxyRead, MCPProxyUpdate, MCPProxyDelete, MCPProxyDeploymentManage,
+	WebSubAPIManage, WebSubAPICreate, WebSubAPIRead, WebSubAPIUpdate, WebSubAPIDelete, WebSubAPIDeploymentManage, WebSubAPIPublish, WebSubAPIKeyManage,
+	WebBrokerAPIManage, WebBrokerAPICreate, WebBrokerAPIRead, WebBrokerAPIUpdate, WebBrokerAPIDelete, WebBrokerAPIDeploymentManage, WebBrokerAPIPublish, WebBrokerAPIKeyManage,
 	GitRead,
 }
 
@@ -49,28 +53,63 @@ var adminPermissions = []Permission{
 // which are reserved for admins.
 var developerPermissions = []Permission{
 	GatewayRead,
-	APICreate, APIRead, APIUpdate, APIDelete, APIDeploy, APIPublish, APIImport,
+	APICreate, APIRead, APIUpdate, APIDelete, APIPublish, APIImport,
+	APIGatewayCreate, APIGatewayRead,
+	APIDeploymentCreate, APIDeploymentRead, APIDeploymentDelete, APIDeploymentUndeploy, APIDeploymentRestore,
 	ProjectCreate, ProjectRead, ProjectUpdate, ProjectDelete,
-	ApplicationCreate, ApplicationRead, ApplicationUpdate, ApplicationDelete, ApplicationKeyManage,
+	ApplicationCreate, ApplicationRead, ApplicationUpdate, ApplicationDelete, ApplicationAPIKeyManage, ApplicationAPIKeyCreate, ApplicationAPIKeyRead, ApplicationAPIKeyDelete, ApplicationAssociationsManage, ApplicationAssociationsCreate, ApplicationAssociationsRead, ApplicationAssociationsDelete, ApplicationAssociationsAPIKeyRead,
 	DevPortalRead,
 	SubscriptionCreate, SubscriptionRead, SubscriptionUpdate, SubscriptionDelete,
 	SubscriptionPlanRead,
 	APIKeyCreate, APIKeyRead, APIKeyUpdate, APIKeyDelete,
 	LLMTemplateCreate, LLMTemplateRead, LLMTemplateUpdate, LLMTemplateDelete,
-	LLMProviderCreate, LLMProviderRead, LLMProviderUpdate, LLMProviderDelete, LLMProviderDeploy, LLMProviderKeyManage,
-	LLMProxyCreate, LLMProxyRead, LLMProxyUpdate, LLMProxyDelete, LLMProxyDeploy, LLMProxyKeyManage,
-	MCPProxyCreate, MCPProxyRead, MCPProxyUpdate, MCPProxyDelete, MCPProxyDeploy,
-	WebSubAPICreate, WebSubAPIRead, WebSubAPIUpdate, WebSubAPIDelete, WebSubAPIDeploy, WebSubAPIPublish, WebSubAPIKeyManage,
-	WebBrokerAPICreate, WebBrokerAPIRead, WebBrokerAPIUpdate, WebBrokerAPIDelete, WebBrokerAPIDeploy, WebBrokerAPIPublish, WebBrokerAPIKeyManage,
+	LLMProviderCreate, LLMProviderRead, LLMProviderUpdate, LLMProviderDelete, LLMProviderDeploymentManage, LLMProviderKeyManage,
+	LLMProxyCreate, LLMProxyRead, LLMProxyUpdate, LLMProxyDelete, LLMProxyDeploymentManage, LLMProxyKeyManage,
+	MCPProxyCreate, MCPProxyRead, MCPProxyUpdate, MCPProxyDelete, MCPProxyDeploymentManage,
+	WebSubAPICreate, WebSubAPIRead, WebSubAPIUpdate, WebSubAPIDelete, WebSubAPIDeploymentManage, WebSubAPIPublish, WebSubAPIKeyManage,
+	WebBrokerAPICreate, WebBrokerAPIRead, WebBrokerAPIUpdate, WebBrokerAPIDelete, WebBrokerAPIDeploymentManage, WebBrokerAPIPublish, WebBrokerAPIKeyManage,
 	GitRead,
+}
+
+// publisherPermissions covers reading APIs across all types and publishing them to DevPortals.
+// It cannot create or edit API definitions, deploy to gateways, or manage credentials.
+var publisherPermissions = []Permission{
+	GatewayRead,
+	APIRead, APIPublish,
+	APIDeploymentRead,
+	ProjectRead,
+	DevPortalRead,
+	SubscriptionRead,
+	SubscriptionPlanRead,
+	LLMProviderRead,
+	LLMProxyRead,
+	MCPProxyRead,
+	WebSubAPIRead, WebSubAPIPublish,
+	WebBrokerAPIRead, WebBrokerAPIPublish,
+}
+
+// operatorPermissions covers runtime lifecycle operations across all deployable resource types:
+// gateway associations, deployments, undeploys, and restores. It cannot create or edit API
+// definitions, publish to DevPortals, or manage credentials.
+var operatorPermissions = []Permission{
+	GatewayRead,
+	APIRead,
+	APIGatewayRead, APIGatewayCreate,
+	APIDeploymentCreate, APIDeploymentRead, APIDeploymentDelete, APIDeploymentUndeploy, APIDeploymentRestore,
+	ProjectRead,
+	LLMProviderRead, LLMProviderDeploymentManage,
+	LLMProxyRead, LLMProxyDeploymentManage,
+	MCPProxyRead, MCPProxyDeploymentManage,
+	WebSubAPIRead, WebSubAPIDeploymentManage,
+	WebBrokerAPIRead, WebBrokerAPIDeploymentManage,
 }
 
 // viewerPermissions covers read-only access to all resources.
 var viewerPermissions = []Permission{
-	GatewayRead,
-	APIRead,
+	GatewayRead, GatewayTokenRead, GatewayPolicyRead, GatewayArtifactsRead, GatewayManifestRead, GatewayStatusRead,
+	APIRead, APIGatewayRead, APIDeploymentRead,
 	ProjectRead,
-	ApplicationRead,
+	ApplicationRead, ApplicationAPIKeyRead,
 	DevPortalRead,
 	SubscriptionRead,
 	SubscriptionPlanRead,
@@ -88,6 +127,8 @@ var viewerPermissions = []Permission{
 var RolePermissions = map[string][]Permission{
 	RoleAdmin:     adminPermissions,
 	RoleDeveloper: developerPermissions,
+	RolePublisher: publisherPermissions,
+	RoleOperator:  operatorPermissions,
 	RoleViewer:    viewerPermissions,
 }
 

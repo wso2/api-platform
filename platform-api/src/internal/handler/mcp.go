@@ -27,7 +27,6 @@ import (
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
-	"platform-api/src/internal/rbac"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
@@ -49,12 +48,12 @@ func NewMCPProxyHandler(service *service.MCPProxyService, slogger *slog.Logger) 
 func (h *MCPProxyHandler) RegisterRoutes(r *gin.Engine) {
 	v1 := r.Group("/api/v1")
 	{
-		v1.POST("/mcp-proxies", middleware.RequirePermission(rbac.MCPProxyCreate), h.CreateMCPProxy)
+		v1.POST("/mcp-proxies", h.CreateMCPProxy)
 		v1.GET("/mcp-proxies", h.ListMCPProxies)
 		v1.GET("/mcp-proxies/:id", h.GetMCPProxy)
-		v1.PUT("/mcp-proxies/:id", middleware.RequirePermission(rbac.MCPProxyUpdate), h.UpdateMCPProxy)
-		v1.DELETE("/mcp-proxies/:id", middleware.RequirePermission(rbac.MCPProxyDelete), h.DeleteMCPProxy)
-		v1.POST("/mcp-proxies/fetch-server-info", middleware.RequirePermission(rbac.MCPProxyRead), h.FetchMCPProxyServerInfo)
+		v1.PUT("/mcp-proxies/:id", h.UpdateMCPProxy)
+		v1.DELETE("/mcp-proxies/:id", h.DeleteMCPProxy)
+		v1.POST("/mcp-proxies/fetch-server-info", h.FetchMCPProxyServerInfo)
 	}
 }
 

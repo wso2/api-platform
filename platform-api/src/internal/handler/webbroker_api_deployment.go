@@ -27,7 +27,6 @@ import (
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
-	"platform-api/src/internal/rbac"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
@@ -53,12 +52,12 @@ func NewWebBrokerAPIDeploymentHandler(webbrokerAPIDeploymentService *service.Web
 func (h *WebBrokerAPIDeploymentHandler) RegisterRoutes(r *gin.Engine) {
 	g := r.Group("/api/v1/webbroker-apis/:apiId")
 	{
-		g.POST("/deployments", middleware.RequirePermission(rbac.WebBrokerAPIDeploy), h.DeployWebBrokerAPI)
-		g.POST("/deployments/undeploy", middleware.RequirePermission(rbac.WebBrokerAPIDeploy), h.UndeployDeployment)
-		g.POST("/deployments/restore", middleware.RequirePermission(rbac.WebBrokerAPIDeploy), h.RestoreDeployment)
+		g.POST("/deployments", h.DeployWebBrokerAPI)
+		g.POST("/deployments/undeploy", h.UndeployDeployment)
+		g.POST("/deployments/restore", h.RestoreDeployment)
 		g.GET("/deployments", h.GetDeployments)
 		g.GET("/deployments/:deploymentId", h.GetDeployment)
-		g.DELETE("/deployments/:deploymentId", middleware.RequirePermission(rbac.WebBrokerAPIDeploy), h.DeleteDeployment)
+		g.DELETE("/deployments/:deploymentId", h.DeleteDeployment)
 	}
 }
 

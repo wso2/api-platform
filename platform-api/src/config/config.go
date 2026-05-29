@@ -27,7 +27,6 @@ import (
 // Server holds the configuration parameters for the application.
 type Server struct {
 	LogLevel string `envconfig:"LOG_LEVEL" default:"DEBUG"`
-	//Logger   logging.Logger
 
 	// Server configurations
 	Port string `envconfig:"PORT" default:"9243"`
@@ -36,10 +35,13 @@ type Server struct {
 	Database     Database `envconfig:"DATABASE"`
 	DBSchemaPath string   `envconfig:"DB_SCHEMA_PATH" default:"./internal/database/schema.sql"`
 
+	// OpenAPI spec path — used at startup to build the scope registry.
+	OpenAPISpecPath string `envconfig:"OPENAPI_SPEC_PATH" default:"./resources/openapi.yaml"`
+
 	// LLM provider template bootstrap (used to seed defaults into the DB)
 	LLMTemplateDefinitionsPath string `envconfig:"LLM_TEMPLATE_DEFINITIONS_PATH" default:"./resources/default-llm-provider-templates"`
 
-	// JWT dev/local configurations (skip paths, skip validation, secret key)
+	// JWT configurations — used in non-IDP mode (IDP_ENABLED=false)
 	JWT JWT `envconfig:"JWT"`
 
 	// WebSocket configurations
@@ -50,83 +52,124 @@ type Server struct {
 
 	// Deployment configurations
 	Deployments Deployments `envconfig:"DEPLOYMENTS"`
+
 	// TLS configurations
 	TLS TLS `envconfig:"TLS"`
 
 	// API key configurations
 	APIKey APIKey `envconfig:"API_KEY"`
 
-	// IDP configurations — controls authentication mode
+	// IDP configurations — controls authentication mode and claim extraction.
+	// All identity providers (Thunder, Keycloak, Asgardeo, Azure AD, Okta, …)
+	// share the same config surface; set IDP_ENABLED=true to activate.
 	IDP IDP `envconfig:"IDP"`
-
-	// ExternalIDP configurations (used when IDP.Type="external")
-	ExternalIDP ExternalIDP `envconfig:"EXTERNAL_IDP"`
 
 	// Gateway configurations
 	Gateway Gateway `envconfig:"GATEWAY"`
-
-	// Thunder configurations
-	Thunder Thunder `envconfig:"THUNDER"`
 
 	// RBAC configurations
 	RBAC RBAC `envconfig:"RBAC"`
 }
 
-// IDP holds the top-level identity provider configuration.
+// IDP holds configuration for JWT-based identity providers.
+// The same fields apply regardless of which IDP is in use (Thunder, Keycloak,
+// Asgardeo, Azure AD, Okta, etc.).
+//
+// When IDP_ENABLED=false (default), the server validates tokens with a local
+// HMAC secret (JWT_SECRET_KEY) or skips validation entirely in dev mode.
+// When IDP_ENABLED=true, JWKS-based validation is performed against IDP_JWKS_URL.
 type IDP struct {
-	// Enabled controls whether IDP-based JWT validation is active.
-	// When false (default), the server uses simple JWT parsing — it checks that the
-	// configured organization claim is present but does not verify the token signature
-	// unless JWT_SKIP_VALIDATION=false (in which case HMAC verification with JWT_SECRET_KEY is used).
+	// Enabled controls whether JWKS-based JWT validation is active.
+	// When false (default), the server uses HMAC validation (JWT_SECRET_KEY) or
+	// skips validation when JWT_SKIP_VALIDATION=true (local development only).
 	// Env: IDP_ENABLED (default: false)
 	Enabled bool `envconfig:"ENABLED" default:"false"`
 
-	// Type selects the IDP backend when Enabled=true.
-	// Accepted values: "thunder", "external"
-	// Env: IDP_TYPE (required when IDP_ENABLED=true)
+	// Type is an optional label describing which IDP is configured (e.g. "thunder",
+	// "keycloak", "asgardeo"). It does not change runtime behavior — all IDPs use the
+	// same config fields — but it appears in startup log messages.
+	// Env: IDP_TYPE (default: "")
 	Type string `envconfig:"TYPE" default:""`
+
+	// JWKSUrl is the IDP's JWKS endpoint for fetching public signing keys.
+	// Required when IDP_ENABLED=true.
+	// Env: IDP_JWKS_URL
+	JWKSUrl string `envconfig:"JWKS_URL" default:""`
+
+	// Issuer is the list of accepted JWT issuers (comma-separated).
+	// Required when IDP_ENABLED=true.
+	// Example: "https://accounts.example.com,https://sso.example.com"
+	// Env: IDP_ISSUER
+	Issuer []string `envconfig:"ISSUER"`
+
+	// Audience is the list of accepted JWT audiences (comma-separated).
+	// Optional. Entries ending with "*" are treated as prefix matches.
+	// Env: IDP_AUDIENCE
+	Audience []string `envconfig:"AUDIENCE"`
+
+	// --- Claim name mappings ---
+	// Set these when your IDP uses non-standard claim names.
+
+	// OrganizationClaimName is the JWT claim that holds the organization/tenant UUID.
+	// Every protected request must carry this claim; requests without it are rejected.
+	// Env: IDP_ORGANIZATION_CLAIM_NAME (default: "organization")
+	OrganizationClaimName string `envconfig:"ORGANIZATION_CLAIM_NAME" default:"organization"`
+
+	// UserIDClaimName is the JWT claim used as the canonical user identifier.
+	// Env: IDP_USER_ID_CLAIM_NAME (default: "sub")
+	UserIDClaimName string `envconfig:"USER_ID_CLAIM_NAME" default:"sub"`
+
+	// UsernameClaimName is the JWT claim for the human-readable username.
+	// Env: IDP_USERNAME_CLAIM_NAME (default: "username")
+	UsernameClaimName string `envconfig:"USERNAME_CLAIM_NAME" default:"username"`
+
+	// EmailClaimName is the JWT claim for the user's email address.
+	// Env: IDP_EMAIL_CLAIM_NAME (default: "email")
+	EmailClaimName string `envconfig:"EMAIL_CLAIM_NAME" default:"email"`
+
+	// ScopeClaimName is the JWT claim that carries the granted OAuth2 scopes.
+	// When this claim is present in the token, scope-based validation is used directly.
+	// When absent, role-based expansion applies (see RolesClaimPath).
+	// Env: IDP_SCOPE_CLAIM_NAME (default: "scope")
+	ScopeClaimName string `envconfig:"SCOPE_CLAIM_NAME" default:"scope"`
+
+	// --- Role-based access (for IDPs that issue roles instead of scopes) ---
+
+	// RolesClaimPath is the dot-notation path to the claim containing the user's roles.
+	// Supports both flat claims ("roles") and nested claims ("realm_access.roles").
+	// The claim value can be a string array or a space-separated string.
+	// When empty, role-based expansion is disabled and only scope-based validation applies.
+	// Env: IDP_ROLES_CLAIM_PATH (default: "")
+	RolesClaimPath string `envconfig:"ROLES_CLAIM_PATH" default:""`
+
+	// RoleMappings maps IDP role values to platform roles (admin, developer, viewer).
+	// Format: comma-separated "idp-role=platform-role" pairs.
+	// Example: "PLATFORM_ADMIN=admin,PLATFORM_DEV=developer,PLATFORM_VIEWER=viewer"
+	// When empty, IDP role values are used as platform role names directly
+	// (only works if the IDP already issues "admin", "developer", or "viewer").
+	// Only relevant when IDP_VALIDATION_MODE=role.
+	// Env: IDP_ROLE_MAPPINGS
+	RoleMappings []string `envconfig:"ROLE_MAPPINGS"`
+
+	// ValidationMode selects how authorization is enforced. Pick one:
+	//   "scope" (default) — validate using the JWT scope claim directly.
+	//                       The IDP must issue fine-grained platform scopes.
+	//   "role"            — validate by expanding IDP roles to platform roles
+	//                       and treating the full role permission set as the
+	//                       caller's effective scopes. Requires RolesClaimPath
+	//                       and optionally RoleMappings to be configured.
+	// These modes are mutually exclusive; there is no fallback between them.
+	// Env: IDP_VALIDATION_MODE (default: "scope")
+	ValidationMode string `envconfig:"VALIDATION_MODE" default:"scope"`
 }
 
 // RBAC holds role-based access control configuration.
 type RBAC struct {
-	// Enabled controls whether permission checks are enforced on protected routes.
-	// When false, all authenticated requests are allowed regardless of role — useful
-	// for local development or initial deployment before roles are configured.
+	// Enabled controls whether scope checks are enforced on protected routes.
+	// When false, all authenticated requests are allowed regardless of scope — useful
+	// for local development or initial deployment before scopes are configured.
 	// Env: RBAC_ENABLED (default: true)
 	Enabled bool `envconfig:"ENABLED" default:"true"`
-}
-
-// Thunder holds configuration for Thunder as the identity provider.
-// Used when IDP_ENABLED=true and IDP_TYPE=thunder.
-type Thunder struct {
-	// BaseURL is the root URL of the Thunder service (e.g. "http://localhost:8090").
-	// Env: THUNDER_BASE_URL (default: "http://localhost:8090")
-	BaseURL string `envconfig:"BASE_URL" default:"http://localhost:8090"`
-
-	// ClientID is the OAuth2 client ID used to obtain a system-level access token
-	// from Thunder's /oauth2/token endpoint (client_credentials grant).
-	// Env: THUNDER_CLIENT_ID
-	ClientID string `envconfig:"CLIENT_ID" default:""`
-
-	// ClientSecret is the OAuth2 client secret paired with ClientID.
-	// Env: THUNDER_CLIENT_SECRET
-	ClientSecret string `envconfig:"CLIENT_SECRET" default:""`
-
-	// JWKSUrl is Thunder's JWKS endpoint for JWT signature validation.
-	// Required when IDP_TYPE=thunder.
-	// Env: THUNDER_JWKS_URL (default: "")
-	JWKSUrl string `envconfig:"JWKS_URL" default:""`
-
-	// Issuer is Thunder's expected JWT issuer value.
-	// Env: THUNDER_ISSUER (default: "thunder")
-	Issuer string `envconfig:"ISSUER" default:"thunder"`
-
-	// OrganizationClaimName is the JWT claim that holds the organization/tenant ID.
-	// Only used when IDP_ENABLED=true and IDP_TYPE=thunder.
-	// When IDP_ENABLED=false, the org claim name is always "organization" (hardcoded default).
-	// Override when Thunder uses a non-standard claim name (e.g. "ouId").
-	// Env: THUNDER_ORGANIZATION_CLAIM_NAME (default: "organization")
-	OrganizationClaimName string `envconfig:"ORGANIZATION_CLAIM_NAME" default:"organization"`
 }
 
 // Gateway holds gateway-related configuration.
@@ -150,20 +193,25 @@ type TLS struct {
 	CertDir string `envconfig:"CERT_DIR" default:"./data/certs"`
 }
 
-// JWT holds JWT middleware configuration shared across all authentication modes.
+// JWT holds configuration for the non-IDP authentication mode (IDP_ENABLED=false).
+// When IDP_ENABLED=true, JWT signature validation is handled by JWKS (see IDP config).
 type JWT struct {
 	// SecretKey is the HMAC signing key used to verify token signatures when
 	// IDP_ENABLED=false and JWT_SKIP_VALIDATION=false.
 	// Env: JWT_SECRET_KEY (default: "your-secret-key-change-in-production")
 	SecretKey string `envconfig:"SECRET_KEY" default:"your-secret-key-change-in-production"`
 
+	// Issuer is the expected JWT issuer value for HMAC-signed tokens.
+	// When empty, issuer validation is skipped.
+	// Env: JWT_ISSUER (default: "")
+	Issuer string `envconfig:"ISSUER" default:""`
+
 	// SkipPaths is the list of path prefixes that bypass JWT authentication entirely.
 	// Env: JWT_SKIP_PATHS
 	SkipPaths []string `envconfig:"SKIP_PATHS" default:"/health,/metrics,/api/internal/v1/ws/gateways/connect,/api/internal/v1/apis,/api/internal/v1/llm-providers,/api/internal/v1/llm-proxies,/api/internal/v1/subscription-plans,/api/internal/v1/mcp-proxies,/api/internal/v1/gateways,/api/internal/v1/deployments,/api/internal/v1/artifacts,/api/internal/v1/websub-apis,/api/internal/v1/webbroker-apis"`
 
 	// SkipValidation disables JWT signature verification.
-	// Only applies when IDP_ENABLED=false. When true, the token is parsed without
-	// verifying the signature — use only for local development.
+	// Only applies when IDP_ENABLED=false. Use only for local development.
 	// Env: JWT_SKIP_VALIDATION (default: true)
 	SkipValidation bool `envconfig:"SKIP_VALIDATION" default:"true"`
 }
@@ -241,60 +289,6 @@ type Deployments struct {
 	TimeoutDuration int  `envconfig:"TIMEOUT_DURATION" default:"60"` // seconds before a status is considered stale
 }
 
-// ExternalIDP holds configuration for an external identity provider (e.g. Asgardeo, Keycloak).
-// Used when IDP_ENABLED=true and IDP_TYPE=external.
-type ExternalIDP struct {
-	// JWKSUrl is the IDP's JWKS endpoint for fetching public signing keys.
-	// Required when IDP_TYPE=external.
-	// Env: EXTERNAL_IDP_JWKS_URL
-	JWKSUrl string `envconfig:"JWKS_URL" default:""`
-
-	// Issuer is the list of accepted JWT issuers (comma-separated).
-	// Required when Enabled=true.
-	// Env: EXTERNAL_IDP_ISSUER
-	Issuer []string `envconfig:"ISSUER"`
-
-	// Audience is the list of accepted JWT audiences (comma-separated).
-	// Entries ending with "*" are treated as prefixes.
-	// Env: EXTERNAL_IDP_AUDIENCE
-	Audience []string `envconfig:"AUDIENCE"`
-
-	// Claim name mappings — set these when your IDP uses non-standard claim names.
-
-	// OrganizationClaimName is the JWT claim that holds the organization/tenant ID.
-	// Env: EXTERNAL_IDP_ORGANIZATION_CLAIM_NAME (default: "organization")
-	OrganizationClaimName string `envconfig:"ORGANIZATION_CLAIM_NAME" default:"organization"`
-
-	// UserIDClaimName is the JWT claim used as the user identifier.
-	// Env: EXTERNAL_IDP_USER_ID_CLAIM_NAME (default: "sub")
-	UserIDClaimName string `envconfig:"USER_ID_CLAIM_NAME" default:"sub"`
-
-	// UsernameClaimName is the JWT claim for the username.
-	// Env: EXTERNAL_IDP_USERNAME_CLAIM_NAME (default: "username")
-	UsernameClaimName string `envconfig:"USERNAME_CLAIM_NAME" default:"username"`
-
-	// EmailClaimName is the JWT claim for the user's email address.
-	// Env: EXTERNAL_IDP_EMAIL_CLAIM_NAME (default: "email")
-	EmailClaimName string `envconfig:"EMAIL_CLAIM_NAME" default:"email"`
-
-	// ScopeClaimName is the JWT claim for the granted scopes.
-	// Env: EXTERNAL_IDP_SCOPE_CLAIM_NAME (default: "scope")
-	ScopeClaimName string `envconfig:"SCOPE_CLAIM_NAME" default:"scope"`
-
-	// RolesClaimPath is the dot-notation path to the claim containing the user's roles.
-	// Supports nested claims (e.g., "realm_access.roles") and space-separated strings.
-	// When empty, roles are not extracted from the token.
-	// Env: EXTERNAL_IDP_ROLES_CLAIM_PATH (default: "roles")
-	RolesClaimPath string `envconfig:"ROLES_CLAIM_PATH" default:"roles"`
-
-	// RoleMappings maps IDP role values to platform roles (admin, developer, viewer).
-	// Format: comma-separated "idp-value=platform-role" pairs.
-	// Example: "platform-admin=admin,platform-dev=developer"
-	// When empty, IDP values are used as platform roles directly.
-	// Env: EXTERNAL_IDP_ROLE_MAPPINGS
-	RoleMappings []string `envconfig:"ROLE_MAPPINGS"`
-}
-
 // APIKey holds API key-specific configuration
 type APIKey struct {
 	// HashingAlgorithms is the list of algorithms used to hash API keys before storage and broadcast.
@@ -310,27 +304,19 @@ var (
 )
 
 // GetConfig initializes and returns a singleton instance of the Settings struct.
-// It uses sync.Once to ensure that the initialization logic is executed only once,
-// making it safe for concurrent use. If there is an error during the initialization,
-// the function will panic.
-//
-// Returns:
-//
-//	*Settings - A pointer to the singleton instance of the Settings struct. from environment variables.
 func GetConfig() *Server {
 	var err error
 	processOnce.Do(func() {
 		settingInstance = &Server{}
 		err = envconfig.Process("", settingInstance)
 		if err == nil {
-			// Validate default devportal configuration
 			err = validateDefaultDevPortalConfig(&settingInstance.DefaultDevPortal)
 		}
 		if err == nil {
 			err = validateDeploymentsConfig(&settingInstance.Deployments)
 		}
 		if err == nil {
-			err = validateIDPConfig(&settingInstance.IDP, &settingInstance.Thunder, &settingInstance.ExternalIDP)
+			err = validateIDPConfig(&settingInstance.IDP)
 		}
 	})
 	if err != nil {
@@ -339,76 +325,55 @@ func GetConfig() *Server {
 	return settingInstance
 }
 
-// validateDefaultDevPortalConfig validates default DevPortal configuration
-//
-// When default DevPortal is enabled, this function ensures that required
-// fields are provided.
-//
-// Parameters:
-//   - cfg: default DevPortal configuration to validate
-//
-// Returns:
-//   - error: Validation error if configuration is invalid, nil otherwise
 func validateDefaultDevPortalConfig(cfg *DefaultDevPortal) error {
-	// If default DevPortal is not enabled, no validation needed
 	if !cfg.Enabled {
 		return nil
 	}
-
-	// When enabled, required fields must be provided
 	if cfg.Name == "" {
 		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_NAME is not configured")
 	}
-
 	if cfg.Identifier == "" {
 		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_IDENTIFIER is not configured")
 	}
-
 	if cfg.APIUrl == "" {
 		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_API_URL is not configured")
 	}
-
 	if cfg.Hostname == "" {
 		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_HOSTNAME is not configured")
 	}
-
 	if cfg.APIKey == "" {
 		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_API_KEY is not configured")
 	}
-
-	// Header key name is always required since we use header mode
 	if cfg.HeaderKeyName == "" {
 		return fmt.Errorf("default DevPortal header key name is not configured")
 	}
-
 	return nil
 }
 
 // validateIDPConfig validates IDP configuration when enabled.
-func validateIDPConfig(idp *IDP, thunder *Thunder, external *ExternalIDP) error {
+func validateIDPConfig(idp *IDP) error {
 	if !idp.Enabled {
 		return nil
 	}
-	switch idp.Type {
-	case "thunder":
-		if thunder.JWKSUrl == "" {
-			return fmt.Errorf("IDP_TYPE=thunder requires THUNDER_JWKS_URL to be configured")
-		}
-	case "external":
-		if external.JWKSUrl == "" {
-			return fmt.Errorf("IDP_TYPE=external requires EXTERNAL_IDP_JWKS_URL to be configured")
-		}
-		if len(external.Issuer) == 0 {
-			return fmt.Errorf("IDP_TYPE=external requires EXTERNAL_IDP_ISSUER to be configured")
-		}
+	if idp.JWKSUrl == "" {
+		return fmt.Errorf("IDP_ENABLED=true requires IDP_JWKS_URL to be configured")
+	}
+	if len(idp.Issuer) == 0 {
+		return fmt.Errorf("IDP_ENABLED=true requires IDP_ISSUER to be configured")
+	}
+	switch idp.ValidationMode {
+	case "scope", "role":
+		// valid
 	default:
-		return fmt.Errorf("IDP_ENABLED=true requires IDP_TYPE to be set to \"thunder\" or \"external\" (got %q)", idp.Type)
+		return fmt.Errorf("IDP_VALIDATION_MODE must be \"scope\" or \"role\" (got %q)", idp.ValidationMode)
+	}
+	if idp.ValidationMode == "role" && idp.RolesClaimPath == "" {
+		return fmt.Errorf("IDP_VALIDATION_MODE=role requires IDP_ROLES_CLAIM_PATH to be configured")
 	}
 	return nil
 }
 
 // validateDeploymentsConfig validates deployment timeout configuration.
-// When timeout is enabled, interval and duration must be positive.
 func validateDeploymentsConfig(cfg *Deployments) error {
 	if !cfg.TimeoutEnabled {
 		return nil

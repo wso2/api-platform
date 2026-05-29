@@ -22,7 +22,6 @@ import (
 	"net/http"
 	"platform-api/src/api"
 	"platform-api/src/internal/middleware"
-	"platform-api/src/internal/rbac"
 	"platform-api/src/internal/service"
 	"strings"
 
@@ -253,7 +252,7 @@ func (h *GitHandler) FetchRepoContent(c *gin.Context) {
 func (h *GitHandler) RegisterRoutes(router *gin.Engine) {
 	gitRoutes := router.Group("/api/v1/git")
 	{
-		gitRoutes.POST("/repo/fetch-branches", middleware.RequirePermission(rbac.GitRead), h.FetchRepoBranches)
-		gitRoutes.POST("/repo/branch/fetch-content", middleware.RequirePermission(rbac.GitRead), h.FetchRepoContent)
+		gitRoutes.POST("/repo/fetch-branches", h.FetchRepoBranches)
+		gitRoutes.POST("/repo/branch/fetch-content", h.FetchRepoContent)
 	}
 }

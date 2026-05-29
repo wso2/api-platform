@@ -28,82 +28,107 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	// ValidationModeScope validates using the JWT scope claim directly.
+	ValidationModeScope = "scope"
+	// ValidationModeRole expands platform roles to their full permission set and validates against that.
+	ValidationModeRole = "role"
+)
+
 var rbacEnabled = true
 
-// SetRBACEnabled controls whether permission checks are enforced globally.
+// SetRBACEnabled controls whether scope checks are enforced globally.
 // When false, all authenticated requests are allowed regardless of scope.
 func SetRBACEnabled(enabled bool) {
 	rbacEnabled = enabled
 }
 
-// InitScopeAuthz configures scope-based authorization (Thunder mode).
-// Permissions are resolved by checking perm.Scope() against the space-separated
-// scope claim that Thunder embeds in the JWT — no runtime identity-service call needed.
+// InitScopeAuthz is retained for compatibility.
 func InitScopeAuthz() {}
 
-// InitClaimsAuthz is retained for IDP mode where tokens carry platform role names
-// instead of fine-grained scope strings.
+// InitClaimsAuthz is retained for compatibility.
 func InitClaimsAuthz() {}
 
-// RequirePermission returns a Gin middleware that aborts with 403 unless the
-// authenticated user's token grants perm. In Thunder mode the scope claim is
-// checked directly; in IDP mode platform roles are mapped to permissions as a
-// fallback when the scope claim is absent or does not carry fine-grained scopes.
-func RequirePermission(perm rbac.Permission) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if !checkPermission(c, perm) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "insufficient permissions"})
-			c.Abort()
-			return
-		}
-		c.Next()
-	}
+// ScopeEnforcerConfig holds options for the ScopeEnforcer middleware.
+type ScopeEnforcerConfig struct {
+	// ValidationMode controls how the caller's permissions are resolved.
+	// ValidationModeScope ("scope"): read the JWT scope claim directly.
+	// ValidationModeRole  ("role"):  expand platform_roles to their full permission set.
+	// Defaults to ValidationModeScope when empty.
+	ValidationMode string
 }
 
-// RequireAnyPermission returns a Gin middleware that aborts with 403 unless
-// the authenticated user holds at least one of the given permissions.
-func RequireAnyPermission(perms ...rbac.Permission) gin.HandlerFunc {
+// ScopeEnforcer returns a Gin middleware that reads the required scopes for each
+// request from the OpenAPI ScopeRegistry and enforces them.
+//
+// The validation path is determined entirely by cfg.ValidationMode — there is no
+// fallback between the two modes. Routes not present in the registry are passed
+// through without a scope check, relying on authentication alone.
+func ScopeEnforcer(registry *ScopeRegistry, cfg ScopeEnforcerConfig) gin.HandlerFunc {
+	mode := cfg.ValidationMode
+	if mode == "" {
+		mode = ValidationModeScope
+	}
+
 	return func(c *gin.Context) {
-		for _, perm := range perms {
-			if checkPermission(c, perm) {
+		if !rbacEnabled {
+			c.Next()
+			return
+		}
+
+		if v, ok := c.Get(commonconstants.AuthzSkipKey); ok {
+			if skip, ok2 := v.(bool); ok2 && skip {
 				c.Next()
 				return
 			}
 		}
+
+		requiredScopes, found := registry.Lookup(c.Request.Method, c.FullPath())
+		if !found || len(requiredScopes) == 0 {
+			c.Next()
+			return
+		}
+
+		effectiveScopes := resolveEffectiveScopes(c, mode)
+
+		for _, required := range requiredScopes {
+			for _, have := range effectiveScopes {
+				if have == required {
+					c.Next()
+					return
+				}
+			}
+		}
+
 		c.JSON(http.StatusForbidden, gin.H{"error": "insufficient permissions"})
 		c.Abort()
 	}
 }
 
-func checkPermission(c *gin.Context, perm rbac.Permission) bool {
-	if !rbacEnabled {
-		return true
+// resolveEffectiveScopes returns the caller's effective scopes based on the chosen mode.
+// In scope mode the JWT scope claim is used as-is.
+// In role mode platform roles are expanded to their full permission set.
+func resolveEffectiveScopes(c *gin.Context, mode string) []string {
+	if mode == ValidationModeRole {
+		roles, _ := GetPlatformRolesFromContext(c)
+		return expandRolesToScopes(roles)
 	}
-	if v, ok := c.Get(commonconstants.AuthzSkipKey); ok {
-		if skip, ok2 := v.(bool); ok2 && skip {
-			return true
-		}
-	}
-	// Scope-based check: Thunder embeds fine-grained scopes directly in the JWT.
-	if hasScope(c, perm.Scope()) {
-		return true
-	}
-	// Role-based fallback: IDP tokens may carry role names (admin/developer/viewer)
-	// that are mapped to permission sets rather than emitting individual scopes.
-	roles, _ := GetPlatformRolesFromContext(c)
-	return rbac.HasPermissionForRoles(roles, perm)
-}
-
-// hasScope reports whether the space-separated scope string stored in the Gin
-// context contains target. Both ThunderAuthMiddleware and PlatformClaimsMiddleware
-// write to the "scope" key, so this works regardless of which JWT path is active.
-func hasScope(c *gin.Context, target string) bool {
+	// scope mode
 	raw, _ := c.Get("scope")
 	scopeStr, _ := raw.(string)
-	for _, s := range strings.Fields(scopeStr) {
-		if s == target {
-			return true
-		}
+	return strings.Fields(scopeStr)
+}
+
+// expandRolesToScopes converts platform role names to the full list of scope strings
+// those roles grant.
+func expandRolesToScopes(roles []string) []string {
+	if len(roles) == 0 {
+		return nil
 	}
-	return false
+	perms := rbac.PermissionsForRoles(roles)
+	scopes := make([]string, 0, len(perms))
+	for perm := range perms {
+		scopes = append(scopes, perm.Scope())
+	}
+	return scopes
 }

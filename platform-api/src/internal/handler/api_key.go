@@ -26,7 +26,6 @@ import (
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
-	"platform-api/src/internal/rbac"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
@@ -291,8 +290,8 @@ func (h *APIKeyHandler) RegisterRoutes(r *gin.Engine) {
 	h.slogger.Debug("Registering API key routes")
 	apiKeyGroup := r.Group("/api/v1/rest-apis/:apiId/api-keys")
 	{
-		apiKeyGroup.POST("", middleware.RequirePermission(rbac.APIKeyCreate), h.CreateAPIKey)
-		apiKeyGroup.PUT("/:keyName", middleware.RequirePermission(rbac.APIKeyUpdate), h.UpdateAPIKey)
-		apiKeyGroup.DELETE("/:keyName", middleware.RequirePermission(rbac.APIKeyDelete), h.RevokeAPIKey)
+		apiKeyGroup.POST("", h.CreateAPIKey)
+		apiKeyGroup.PUT("/:keyName", h.UpdateAPIKey)
+		apiKeyGroup.DELETE("/:keyName", h.RevokeAPIKey)
 	}
 }

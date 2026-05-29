@@ -28,7 +28,6 @@ import (
 	"strings"
 
 	"platform-api/src/internal/middleware"
-	"platform-api/src/internal/rbac"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
@@ -686,14 +685,14 @@ func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 	h.slogger.Debug("Registering gateway routes")
 	gatewayGroup := r.Group("/api/v1/gateways")
 	{
-		gatewayGroup.POST("", middleware.RequirePermission(rbac.GatewayCreate), h.CreateGateway)
+		gatewayGroup.POST("", h.CreateGateway)
 		gatewayGroup.GET("", h.ListGateways)
 		gatewayGroup.GET("/:gatewayId", h.GetGateway)
-		gatewayGroup.PUT("/:gatewayId", middleware.RequirePermission(rbac.GatewayUpdate), h.UpdateGateway)
-		gatewayGroup.DELETE("/:gatewayId", middleware.RequirePermission(rbac.GatewayDelete), h.DeleteGateway)
+		gatewayGroup.PUT("/:gatewayId", h.UpdateGateway)
+		gatewayGroup.DELETE("/:gatewayId", h.DeleteGateway)
 		gatewayGroup.GET("/:gatewayId/tokens", h.ListTokens)
-		gatewayGroup.POST("/:gatewayId/tokens", middleware.RequirePermission(rbac.GatewayTokenManage), h.RotateToken)
-		gatewayGroup.DELETE("/:gatewayId/tokens/:tokenId", middleware.RequirePermission(rbac.GatewayTokenManage), h.RevokeToken)
+		gatewayGroup.POST("/:gatewayId/tokens", h.RotateToken)
+		gatewayGroup.DELETE("/:gatewayId/tokens/:tokenId", h.RevokeToken)
 		gatewayGroup.GET("/:gatewayId/live-proxy-artifacts", h.GetGatewayArtifacts)
 		gatewayGroup.GET("/:gatewayId/manifest", h.GetGatewayManifest)
 	}
@@ -701,9 +700,9 @@ func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 	customPoliciesGroup := r.Group("/api/v1/gateway-custom-policies")
 	{
 		customPoliciesGroup.GET("", h.ListCustomPolicies)
-		customPoliciesGroup.POST("/sync", middleware.RequirePermission(rbac.GatewayPolicyManage), h.SyncCustomPolicy)
+		customPoliciesGroup.POST("/sync", h.SyncCustomPolicy)
 		customPoliciesGroup.GET("/:customPolicyUuid/version/:version", h.GetCustomPolicy)
-		customPoliciesGroup.DELETE("/:customPolicyUuid/version/:version", middleware.RequirePermission(rbac.GatewayPolicyManage), h.DeleteCustomPolicy)
+		customPoliciesGroup.DELETE("/:customPolicyUuid/version/:version", h.DeleteCustomPolicy)
 	}
 
 	gatewayStatusGroup := r.Group("/api/v1/status")

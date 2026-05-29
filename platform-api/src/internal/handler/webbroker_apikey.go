@@ -28,7 +28,6 @@ import (
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
-	"platform-api/src/internal/rbac"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
@@ -55,9 +54,9 @@ func NewWebBrokerAPIKeyHandler(webbrokerAPIService *service.WebBrokerAPIService,
 func (h *WebBrokerAPIKeyHandler) RegisterRoutes(r *gin.Engine) {
 	v1 := r.Group("/api/v1/webbroker-apis/:apiId/api-keys")
 	{
-		v1.POST("", middleware.RequirePermission(rbac.WebBrokerAPIKeyManage), h.CreateAPIKey)
-		v1.PUT("/:keyName", middleware.RequirePermission(rbac.WebBrokerAPIKeyManage), h.UpdateAPIKey)
-		v1.DELETE("/:keyName", middleware.RequirePermission(rbac.WebBrokerAPIKeyManage), h.DeleteAPIKey)
+		v1.POST("", h.CreateAPIKey)
+		v1.PUT("/:keyName", h.UpdateAPIKey)
+		v1.DELETE("/:keyName", h.DeleteAPIKey)
 	}
 }
 

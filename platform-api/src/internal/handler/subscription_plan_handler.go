@@ -27,7 +27,6 @@ import (
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/model"
-	"platform-api/src/internal/rbac"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
@@ -327,11 +326,11 @@ func (h *SubscriptionPlanHandler) DeleteSubscriptionPlan(c *gin.Context) {
 func (h *SubscriptionPlanHandler) RegisterRoutes(r *gin.Engine) {
 	group := r.Group("/api/v1/subscription-plans")
 	{
-		group.POST("", middleware.RequirePermission(rbac.SubscriptionPlanCreate), h.CreateSubscriptionPlan)
+		group.POST("", h.CreateSubscriptionPlan)
 		group.GET("", h.ListSubscriptionPlans)
 		group.GET("/:planId", h.GetSubscriptionPlan)
-		group.PUT("/:planId", middleware.RequirePermission(rbac.SubscriptionPlanUpdate), h.UpdateSubscriptionPlan)
-		group.DELETE("/:planId", middleware.RequirePermission(rbac.SubscriptionPlanDelete), h.DeleteSubscriptionPlan)
+		group.PUT("/:planId", h.UpdateSubscriptionPlan)
+		group.DELETE("/:planId", h.DeleteSubscriptionPlan)
 	}
 }
 

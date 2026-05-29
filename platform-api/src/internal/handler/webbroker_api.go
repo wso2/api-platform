@@ -29,7 +29,6 @@ import (
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
-	"platform-api/src/internal/rbac"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
@@ -54,13 +53,13 @@ func NewWebBrokerAPIHandler(webbrokerAPIService *service.WebBrokerAPIService, sl
 func (h *WebBrokerAPIHandler) RegisterRoutes(r *gin.Engine) {
 	v1 := r.Group("/api/v1")
 	{
-		v1.POST("/webbroker-apis", middleware.RequirePermission(rbac.WebBrokerAPICreate), h.CreateWebBrokerAPI)
+		v1.POST("/webbroker-apis", h.CreateWebBrokerAPI)
 		v1.GET("/webbroker-apis", h.ListWebBrokerAPIs)
 		v1.GET("/webbroker-apis/:apiId", h.GetWebBrokerAPI)
-		v1.PUT("/webbroker-apis/:apiId", middleware.RequirePermission(rbac.WebBrokerAPIUpdate), h.UpdateWebBrokerAPI)
-		v1.DELETE("/webbroker-apis/:apiId", middleware.RequirePermission(rbac.WebBrokerAPIDelete), h.DeleteWebBrokerAPI)
-		v1.POST("/webbroker-apis/:apiId/devportals/publish", middleware.RequirePermission(rbac.WebBrokerAPIPublish), h.PublishToDevPortal)
-		v1.POST("/webbroker-apis/:apiId/devportals/unpublish", middleware.RequirePermission(rbac.WebBrokerAPIPublish), h.UnpublishFromDevPortal)
+		v1.PUT("/webbroker-apis/:apiId", h.UpdateWebBrokerAPI)
+		v1.DELETE("/webbroker-apis/:apiId", h.DeleteWebBrokerAPI)
+		v1.POST("/webbroker-apis/:apiId/devportals/publish", h.PublishToDevPortal)
+		v1.POST("/webbroker-apis/:apiId/devportals/unpublish", h.UnpublishFromDevPortal)
 	}
 }
 

@@ -27,7 +27,6 @@ import (
 	"platform-api/src/api"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/middleware"
-	"platform-api/src/internal/rbac"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
@@ -441,18 +440,18 @@ func (h *ApplicationHandler) RegisterRoutes(r *gin.Engine) {
 	applicationGroup := r.Group("/api/v1/applications")
 	{
 		applicationGroup.GET("", h.ListApplications)
-		applicationGroup.POST("", middleware.RequirePermission(rbac.ApplicationCreate), h.CreateApplication)
+		applicationGroup.POST("", h.CreateApplication)
 		applicationGroup.GET("/:appId", h.GetApplication)
-		applicationGroup.PUT("/:appId", middleware.RequirePermission(rbac.ApplicationUpdate), h.UpdateApplication)
-		applicationGroup.DELETE("/:appId", middleware.RequirePermission(rbac.ApplicationDelete), h.DeleteApplication)
+		applicationGroup.PUT("/:appId", h.UpdateApplication)
+		applicationGroup.DELETE("/:appId", h.DeleteApplication)
 
 		applicationGroup.GET("/:appId/api-keys", h.ListApplicationAPIKeys)
-		applicationGroup.POST("/:appId/api-keys", middleware.RequirePermission(rbac.ApplicationKeyManage), h.AddApplicationAPIKeys)
-		applicationGroup.DELETE("/:appId/api-keys/:keyId", middleware.RequirePermission(rbac.ApplicationKeyManage), h.RemoveApplicationAPIKey)
+		applicationGroup.POST("/:appId/api-keys", h.AddApplicationAPIKeys)
+		applicationGroup.DELETE("/:appId/api-keys/:keyId", h.RemoveApplicationAPIKey)
 		applicationGroup.GET("/:appId/associations", h.ListApplicationAssociations)
-		applicationGroup.POST("/:appId/associations", middleware.RequirePermission(rbac.ApplicationKeyManage), h.AddApplicationAssociations)
+		applicationGroup.POST("/:appId/associations", h.AddApplicationAssociations)
 		applicationGroup.GET("/:appId/associations/:associationId/api-keys", h.ListApplicationAssociationAPIKeys)
-		applicationGroup.DELETE("/:appId/associations/:associationId", middleware.RequirePermission(rbac.ApplicationKeyManage), h.RemoveApplicationAssociation)
+		applicationGroup.DELETE("/:appId/associations/:associationId", h.RemoveApplicationAssociation)
 	}
 }
 
