@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package subapikey
+package apikey
 
 import (
 	"fmt"
@@ -33,26 +33,26 @@ import (
 
 const (
 	RevokeCmdLiteral = "revoke"
-	RevokeCmdExample = `# Revoke a platform API key
-ap devportal sub-api-key revoke --org org_1 --api-key-id key_1 --api-id api_1
+	RevokeCmdExample = `# Revoke an API key
+ap devportal api-key revoke --org org_1 --api-key-id key_1
 
 # Revoke using a specific devportal
-ap devportal sub-api-key revoke --org org_1 --api-key-id key_1 --api-id api_1 --display-name my-portal --platform eu`
+ap devportal api-key revoke --org org_1 --api-key-id key_1 --display-name my-portal --platform eu`
 )
 
 var (
-	revokeOrgID    string
-	revokeAPIKeyID string
-	revokeAPIID    string
-	revokeName     string
-	revokePlatform string
-	revokeInsecure bool
+	revokeOrgID       string
+	revokeAPIKeyID    string
+	revokeDisplayName string
+	revokePlatform    string
+	revokeInsecure    bool
 )
 
 var revokeCmd = &cobra.Command{
-	Use:     RevokeCmdLiteral,
-	Short:   "Revoke a DevPortal platform API key",
-	Long:    "Revokes a platform API key in the selected DevPortal.",
+	Use:   RevokeCmdLiteral,
+	Short: "Revoke a DevPortal API key",
+	Long: "Revokes an existing API key. Connected gateways immediately reject requests carrying the " +
+		"revoked key.",
 	Example: RevokeCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runRevokeCommand(); err != nil {
@@ -64,14 +64,12 @@ var revokeCmd = &cobra.Command{
 
 func init() {
 	utils.AddStringFlag(revokeCmd, utils.FlagOrgID, &revokeOrgID, "", "Organization ID")
-	utils.AddStringFlag(revokeCmd, utils.FlagAPIKeyID, &revokeAPIKeyID, "", "Platform API key ID")
-	utils.AddStringFlag(revokeCmd, utils.FlagAPIID, &revokeAPIID, "", "API ID")
-	utils.AddStringFlag(revokeCmd, utils.FlagName, &revokeName, "", "DevPortal display name")
+	utils.AddStringFlag(revokeCmd, utils.FlagAPIKeyID, &revokeAPIKeyID, "", "API key ID")
+	utils.AddStringFlag(revokeCmd, utils.FlagName, &revokeDisplayName, "", "DevPortal display name")
 	utils.AddStringFlag(revokeCmd, utils.FlagPlatform, &revokePlatform, "", "Platform name")
 	utils.AddBoolFlag(revokeCmd, utils.FlagInsecure, &revokeInsecure, false, "Skip TLS certificate verification")
 	_ = revokeCmd.MarkFlagRequired(utils.FlagOrgID)
 	_ = revokeCmd.MarkFlagRequired(utils.FlagAPIKeyID)
-	_ = revokeCmd.MarkFlagRequired(utils.FlagAPIID)
 }
 
 func runRevokeCommand() error {
@@ -85,24 +83,19 @@ func runRevokeCommand() error {
 		return fmt.Errorf("api key ID is required")
 	}
 
-	apiID := strings.TrimSpace(revokeAPIID)
-	if apiID == "" {
-		return fmt.Errorf("api ID is required")
-	}
-
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	devPortal, resolvedPlatform, err := internaldevportal.ResolveDevPortal(cfg, revokeName, revokePlatform)
+	devPortal, resolvedPlatform, err := internaldevportal.ResolveDevPortal(cfg, revokeDisplayName, revokePlatform)
 	if err != nil {
 		return err
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, revokeInsecure)
 	baseURL := strings.TrimSuffix(devPortal.URL, "/")
-	path := fmt.Sprintf("/devportal/organizations/%s/platform-api-keys/%s/revoke?apiId=%s", url.PathEscape(orgID), url.PathEscape(apiKeyID), url.QueryEscape(apiID))
+	path := fmt.Sprintf("/devportal/organizations/%s/api-keys/%s/revoke", url.PathEscape(orgID), url.PathEscape(apiKeyID))
 	req, err := http.NewRequest(http.MethodPost, baseURL+path, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -110,12 +103,12 @@ func runRevokeCommand() error {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return internaldevportal.WrapRequestError("revoke platform API key", err, revokeInsecure)
+		return internaldevportal.WrapRequestError("revoke API key", err, revokeInsecure)
 	}
 	if !isHTTPSuccess(resp.StatusCode) {
-		return utils.FormatHTTPError("revoke platform API key", resp, "DevPortal")
+		return utils.FormatHTTPError("revoke API key", resp, "DevPortal")
 	}
 
-	fmt.Printf("Platform API key revoked using devportal %s (platform: %s)\n", devPortal.Name, resolvedPlatform)
+	fmt.Printf("API key revoked using devportal %s (platform: %s)\n", devPortal.Name, resolvedPlatform)
 	return internaldevportal.PrintJSONResponse(resp)
 }

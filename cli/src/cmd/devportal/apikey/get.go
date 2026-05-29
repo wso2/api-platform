@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package subapikey
+package apikey
 
 import (
 	"fmt"
@@ -33,24 +33,25 @@ import (
 
 const (
 	GetCmdLiteral = "get"
-	GetCmdExample = `# List platform API keys
-ap devportal sub-api-key get --org org_1
+	GetCmdExample = `# List API keys for an API
+ap devportal api-key get --org org_1 --api-id api_1
 
-# List platform API keys from a specific devportal
-ap devportal sub-api-key get --org org_1 --display-name my-portal --platform eu`
+# List API keys from a specific devportal
+ap devportal api-key get --org org_1 --api-id api_1 --display-name my-portal --platform eu`
 )
 
 var (
-	getOrgID    string
-	getName     string
-	getPlatform string
-	getInsecure bool
+	getOrgID       string
+	getAPIID       string
+	getDisplayName string
+	getPlatform    string
+	getInsecure    bool
 )
 
 var getCmd = &cobra.Command{
 	Use:     GetCmdLiteral,
-	Short:   "Get DevPortal platform API keys",
-	Long:    "Retrieves platform API keys for an organization.",
+	Short:   "List DevPortal API keys",
+	Long:    "Lists API keys for an API. The --api-id flag is required and is resolved to the control-plane API reference.",
 	Example: GetCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runGetCommand(); err != nil {
@@ -62,10 +63,12 @@ var getCmd = &cobra.Command{
 
 func init() {
 	utils.AddStringFlag(getCmd, utils.FlagOrgID, &getOrgID, "", "Organization ID")
-	utils.AddStringFlag(getCmd, utils.FlagName, &getName, "", "DevPortal display name")
+	utils.AddStringFlag(getCmd, utils.FlagAPIID, &getAPIID, "", "Developer Portal API ID")
+	utils.AddStringFlag(getCmd, utils.FlagName, &getDisplayName, "", "DevPortal display name")
 	utils.AddStringFlag(getCmd, utils.FlagPlatform, &getPlatform, "", "Platform name")
 	utils.AddBoolFlag(getCmd, utils.FlagInsecure, &getInsecure, false, "Skip TLS certificate verification")
 	_ = getCmd.MarkFlagRequired(utils.FlagOrgID)
+	_ = getCmd.MarkFlagRequired(utils.FlagAPIID)
 }
 
 func runGetCommand() error {
@@ -74,26 +77,31 @@ func runGetCommand() error {
 		return fmt.Errorf("organization ID is required")
 	}
 
+	apiID := strings.TrimSpace(getAPIID)
+	if apiID == "" {
+		return fmt.Errorf("api ID is required")
+	}
+
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	devPortal, resolvedPlatform, err := internaldevportal.ResolveDevPortal(cfg, getName, getPlatform)
+	devPortal, resolvedPlatform, err := internaldevportal.ResolveDevPortal(cfg, getDisplayName, getPlatform)
 	if err != nil {
 		return err
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, getInsecure)
-	path := fmt.Sprintf("/devportal/organizations/%s/platform-api-keys", url.PathEscape(orgID))
+	path := fmt.Sprintf("/devportal/organizations/%s/api-keys?apiId=%s", url.PathEscape(orgID), url.QueryEscape(apiID))
 	resp, err := client.Get(path)
 	if err != nil {
-		return internaldevportal.WrapRequestError("get platform API keys", err, getInsecure)
+		return internaldevportal.WrapRequestError("get API keys", err, getInsecure)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return utils.FormatHTTPError("get platform API keys", resp, "DevPortal")
+		return utils.FormatHTTPError("get API keys", resp, "DevPortal")
 	}
 
-	fmt.Printf("Platform API keys from devportal %s (platform: %s)\n", devPortal.Name, resolvedPlatform)
+	fmt.Printf("API keys from devportal %s (platform: %s)\n", devPortal.Name, resolvedPlatform)
 	return internaldevportal.PrintJSONResponse(resp)
 }
