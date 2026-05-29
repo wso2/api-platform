@@ -137,7 +137,7 @@ dist: clean-dist ## Build standalone developer portal distribution zip
 	@echo "Building distribution $(DIST_NAME)..."
 	@mkdir -p $(DIST_DIR)/configs $(DIST_DIR)/artifacts
 	@cp -R artifacts/docker-init $(DIST_DIR)/artifacts/
-	@cp configs/config.yaml $(DIST_DIR)/configs/config.yaml
+	@cp sample_config.yaml $(DIST_DIR)/configs/config.yaml
 	@cp distribution/docker-compose.yaml $(DIST_DIR)/docker-compose.yaml
 	@sed -i.bak \
 	    -e 's|image: .*/developer-portal:[^[:space:]]*|image: $(DEVPORTAL_IMAGE):$(DIST_VERSION)|g' \
