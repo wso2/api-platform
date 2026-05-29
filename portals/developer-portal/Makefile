@@ -62,6 +62,10 @@ help: ## Show this help message
 	@echo ''
 	@echo 'Clean Targets:'
 	@echo '  make clean                       - Clean all build artifacts'
+	@echo ''
+	@echo 'Integration Tests:'
+	@echo '  make it                          - Run Cypress integration tests (headless, in Docker)'
+	@echo '  make it-open                     - Open Cypress interactive UI (needs devportal running locally)'
 
 # Build Targets
 
@@ -163,3 +167,12 @@ generate-apidocs: ## Generate REST API docs from devportal OpenAPI spec
 		--user_templates $(APIDOCS_TOOLS_DIR)/widdershins_templates/
 	@bash $(APIDOCS_TOOLS_DIR)/split-openapi.sh /tmp/dp-openapi.md $(DOCS_OUT_DIR)
 	@echo "REST API docs generated at $(DOCS_OUT_DIR)"
+
+# Integration Test Targets
+
+.PHONY: it it-open
+it: ## Run Cypress integration tests headlessly inside Docker Compose
+	$(MAKE) -C it test
+
+it-open: ## Open Cypress interactive UI against a locally running devportal
+	$(MAKE) -C it open

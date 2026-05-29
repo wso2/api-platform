@@ -42,6 +42,83 @@ function loadBaseConfig() {
 }
 
 /**
+ * Minimal defaults so the app never crashes on missing top-level config sections
+ * when no config.yaml is mounted (e.g. in the IT test environment where all
+ * values are supplied via DP_* environment variables).
+ */
+const CONFIG_DEFAULTS = {
+    defaultPort: 3000,
+    mode: 'production',
+    baseUrl: 'http://localhost:3000',
+    db: {
+        host: 'localhost',
+        port: 5432,
+        database: 'devportal',
+        username: 'postgres',
+        password: '',
+        dialect: 'postgres',
+    },
+    advanced: {
+        http: true,
+        dbSslDialectOption: false,
+        resourceLoadFromBaseUrl: false,
+        disabledRoleValidation: true,
+        disableOrgCallback: true,
+        disableScopeValidation: true,
+        disableSilentSSO: false,
+        keyManagerEncryptionKey: '',
+        apiKey: {
+            enabled: false,
+            keyType: 'x-wso2-api-key',
+            keyValue: '',
+        },
+        tokenExchanger: {
+            enabled: false,
+        },
+        openApiValidator: {
+            enabled: false,
+            validateResponses: 'off',
+        },
+    },
+    controlPlane: {
+        enabled: false,
+        url: '',
+        graphqlURL: '',
+        gwUrl: '',
+        disableCertValidation: true,
+        pathToCertificate: '',
+    },
+    logging: {
+        consoleOnly: true,
+    },
+    billing: {
+        billingKeyEncryptionKey: '',
+    },
+    serverCerts: {
+        pathToCert: '',
+        pathToPk: '',
+        pathToCA: '',
+    },
+    authorizedPages: [],
+    authenticatedPages: [],
+};
+
+/**
+ * Deep-merge src into dst (dst wins on conflicts).
+ * Only sets keys from src that are missing in dst.
+ */
+function mergeDefaults(dst, src) {
+    for (const [k, v] of Object.entries(src)) {
+        if (dst[k] === undefined || dst[k] === null) {
+            dst[k] = v;
+        } else if (typeof v === 'object' && !Array.isArray(v) && typeof dst[k] === 'object' && !Array.isArray(dst[k])) {
+            mergeDefaults(dst[k], v);
+        }
+    }
+    return dst;
+}
+
+/**
  * Deep-set a value in an object given a path expressed as an array of lowercase key tokens.
  * At each level, keys are matched case-insensitively (so "dbsecret" matches "dbSecret").
  * If no matching key exists, the token itself is used as the new key name.
@@ -116,6 +193,7 @@ function applyEnvOverrides(config) {
 }
 
 const config = loadBaseConfig();
+mergeDefaults(config, CONFIG_DEFAULTS);
 applyEnvOverrides(config);
 
 // Webhook subscriber secrets/key paths can be supplied via env vars:
