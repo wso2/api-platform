@@ -65,6 +65,9 @@ const (
 	FlagKeyName                = "key-name"
 	FlagExpiresAt              = "expires-at"
 	FlagApiKeyName             = "name"
+	FlagAppID                  = "app-id"
+	FlagAppName                = "name"
+	FlagDescription            = "description"
 )
 
 var shortFlags = map[string]string{

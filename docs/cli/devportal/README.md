@@ -8,6 +8,7 @@ Available command groups:
 - `ap devportal rest-api`
 - `ap devportal org`
 - `ap devportal api-key`
+- `ap devportal application`
 - `ap devportal subscription`
 - `ap devportal sub-plan`
 
@@ -317,6 +318,82 @@ Expected payload shape for `ap devportal org edit`:
   "subscriberRole": "subscriber",
   "superAdminRole": "superAdmin"
 }
+```
+
+## Application Commands
+
+These commands manage DevPortal applications using the `/devportal/organizations/{orgId}/applications` endpoints.
+
+### `ap devportal application create`
+
+Creates an application. Only `--name` and `--type` are required; `--description` is optional.
+
+```shell
+ap devportal application create --org <org-id> --name <name> --type <type> [--description <description>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal application create --org org_1 --name "Weather App" --type WEB
+ap devportal application create --org org_1 --name "Weather App" --type WEB --description "Calls the Weather APIs"
+ap devportal application create --org org_1 --name "Weather App" --type WEB --display-name my-portal --platform eu
+```
+
+Expected payload shape (`description` is omitted when `--description` is not provided):
+
+```json
+{
+  "name": "Weather App",
+  "type": "WEB",
+  "description": "Calls the Weather APIs"
+}
+```
+
+### `ap devportal application get`
+
+Lists applications in an organization, or retrieves a single application when `--app-id` is provided.
+
+```shell
+ap devportal application get --org <org-id> [--app-id <app-id>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal application get --org org_1
+ap devportal application get --org org_1 --app-id app_1
+ap devportal application get --org org_1 --app-id app_1 --display-name my-portal --platform eu
+```
+
+### `ap devportal application update`
+
+Updates an existing application. `--name` and `--type` are required in the body; `--description` is optional. (`edit` is accepted as an alias.)
+
+```shell
+ap devportal application update --org <org-id> --app-id <app-id> --name <name> --type <type> [--description <description>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal application update --org org_1 --app-id app_1 --name "Weather App" --type WEB
+ap devportal application update --org org_1 --app-id app_1 --name "Weather App" --type WEB --description "Calls the Weather APIs"
+```
+
+### `ap devportal application delete`
+
+Deletes an application by its application ID.
+
+```shell
+ap devportal application delete --org <org-id> --app-id <app-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal application delete --org org_1 --app-id app_1
+ap devportal application delete --org org_1 --app-id app_1 --display-name my-portal --platform eu
 ```
 
 ## Subscription Commands
