@@ -30,15 +30,27 @@
  * disk when missing, and sets req.file when a single file was uploaded.
  */
 const fs = require('fs');
+const fsp = fs.promises;
+const logger = require('../../config/logger');
 
-function adaptMultipart(req, _res, next) {
+async function adaptMultipart(req, _res, next) {
     if (!Array.isArray(req.files) || req.files.length === 0) return next();
 
     const grouped = {};
     try {
         for (const f of req.files) {
             if (!f.buffer && f.path) {
-                f.buffer = fs.readFileSync(f.path);
+                // Async read so we don't block the event loop on large uploads.
+                f.buffer = await fsp.readFile(f.path);
+                // multer's disk storage leaves the temp file behind; remove it
+                // now that the contents are in memory to avoid a disk leak.
+                await fsp.unlink(f.path).catch(() => { /* best-effort cleanup */ });
+            }
+            // Guard against files with no fieldname (e.g. unnamed fields), which
+            // would otherwise silently collect under a "undefined" key.
+            if (f.fieldname == null) {
+                logger.warn(`Skipping uploaded file with no fieldname: ${f.originalname || 'unknown'}`);
+                continue;
             }
             (grouped[f.fieldname] ||= []).push(f);
         }
