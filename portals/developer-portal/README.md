@@ -1,53 +1,94 @@
-## Quick start (Docker Compose)
+# Developer Portal
 
-The fastest way to explore the portal:
+A multi-organisation API developer portal built on Node.js. It provides a customisable web UI for discovering and subscribing to APIs, and a set of Admin REST APIs for managing organisations, views, API metadata, and portal content.
+
+For end-user documentation, see [docs/](docs/).
+
+## Ports
+
+| Port | Protocol | Description |
+|------|----------|-------------|
+| `3000` | HTTPS (default) / HTTP | Developer Portal UI and Admin REST API |
+
+## Prerequisites
+
+- **Node.js** v22.0.0
+- **Make**
+- **PostgreSQL** 16
+- **Docker + Docker Compose** (for the Docker-based workflow)
+- **psql** (required to run schema/seed scripts manually)
+
+---
+
+## Quick Start (Docker Compose)
+
+The fastest way to get the portal running — no local Node or PostgreSQL install required.
+
+### Build
 
 ```bash
-cp sample_config.yaml config.yaml   # only needed once
+# Build the developer-portal Docker image from source
+make build
+```
+
+### Run
+
+```bash
+cp sample_config.yaml configs/config.yaml   # optional — omit to rely entirely on environment variables
 docker compose up
 ```
 
 Then open **https://localhost:3000/ACME/views/default**
 
-> **Browser warning:** The portal uses a self-signed TLS certificate generated automatically on first start. Click **Advanced → Proceed** (Chrome) or **Accept the Risk** (Firefox) to continue.
+> **Browser warning:** A self-signed TLS certificate is generated automatically on first start. Click **Advanced → Proceed** (Chrome) or **Accept the Risk** (Firefox) to continue.
 
 Default local users: `admin` / `admin` and `developer` / `developer`
 
-What happens automatically:
+What happens automatically on first start:
 - PostgreSQL starts and the DB schema is applied (`artifacts/docker-init/01_schema.sql`)
 - A default **ACME** org, view, labels, and subscription plans are seeded (`artifacts/docker-init/02_seed_default.sql`)
 - A self-signed TLS certificate is generated and stored in the `certs_data` Docker volume
-- The devportal image is built from source and connected to the DB
 - On first boot the app seeds the default theme assets into the database
 
-To stop and clean up:
+### Test
+
 ```bash
-docker compose down -v   # -v also removes the postgres data volume and certs volume
+# Run Cypress integration tests headlessly inside Docker
+make it
+
+# Open Cypress interactive UI — requires the portal running locally first
+make it-open
+```
+
+For integration test details, see [it/README.md](it/README.md).
+
+### Clean
+
+```bash
+# Stop and remove containers, volumes, and the postgres data volume
+docker compose down -v
+
+# Remove build artifacts and distribution zips
+make clean
 ```
 
 ---
 
-## Manual setup (npm start)
+## Development (`npm start`)
 
-Use this for production, custom IdP configuration, or local development without Docker.
+Use this for active development, custom IdP configuration, or when you prefer to run Node directly.
 
-### Prerequisites
-
-- **Node.js**: v22.0.0
-- **PostgreSQL**: 16 (local install or Docker — see [Database setup](#4--database-setup))
-- **psql**: PostgreSQL client (required to run schema and seed scripts)
-
-### 1 — Create config file
+### 1. Create config file
 
 ```bash
-cp sample_config.yaml config.yaml
+cp sample_config.yaml configs/config.yaml
 ```
 
-`config.yaml` is your local config file (not committed to git). See [Configuration reference](#configuration-reference) below for all available settings.
+`configs/config.yaml` is your local config file (not committed to git). See [Configuration reference](#configuration-reference) below for all available settings.
 
-### 2 — Configure HTTP mode (simplest)
+### 2. Configure HTTP mode (optional)
 
-Open `config.yaml` and confirm these are set (they are the defaults in `sample_config.yaml`):
+Open `configs/config.yaml` and confirm these are set (they are the defaults in `sample_config.yaml`):
 
 ```yaml
 advanced:
@@ -56,9 +97,9 @@ baseUrl: "http://localhost:3000"
 defaultPort: 3000
 ```
 
-### 3 — Configure the Identity Provider
+### 3. Configure the Identity Provider (optional)
 
-The portal's login flow requires a valid OAuth2/OIDC provider. Update the `identityProvider` block in `config.yaml` with your IdP details:
+The portal's login flow requires a valid OAuth2/OIDC provider. Update the `identityProvider` block in `configs/config.yaml`:
 
 ```yaml
 identityProvider:
@@ -73,7 +114,7 @@ identityProvider:
 
 For local exploration you can skip IdP setup by using the built-in local users instead (see [Local auth](#local-auth)).
 
-### 4 — Database setup
+### 4. Database setup
 
 #### Create the database
 
@@ -92,7 +133,7 @@ docker run --name devportal-postgres \
   -d postgres:16
 ```
 
-#### Update DB config in `config.yaml`
+#### Update DB config in `configs/config.yaml`
 
 ```yaml
 db:
@@ -130,52 +171,44 @@ PGPASSWORD=<DB_PASSWORD> ./artifacts/theme_data.sh
 
 #### Add sample APIs (optional)
 
-The sample API artifacts are in `artifacts/default/apiContent/`. Load them with:
-
 ```bash
 PGPASSWORD=<DB_PASSWORD> ./artifacts/api_data.sh
-```
 
-To remove the seeded APIs:
-```bash
+# To remove the seeded APIs:
 PGPASSWORD=<DB_PASSWORD> ./artifacts/delete_api_data.sh
 ```
 
-### 5 — Install and run
+### 5. Install and run
 
 ```bash
 npm install
 npm start
 ```
 
-### Verify
-
 Open **http://localhost:3000/ACME/views/default**
 
 ---
 
-## Configuration reference
+## Configuration Reference
 
-All settings live in `config.yaml`. Every setting can be overridden with a `DP_*` environment variable — see [Environment variable overrides](#environment-variable-overrides).
+All settings live in `configs/config.yaml`. Every setting can also be overridden with a `DP_*` environment variable.
 
-The full list of settings with comments is in [`sample_config.yaml`](sample_config.yaml).
+The full annotated list of settings is in [`sample_config.yaml`](sample_config.yaml).
 
 ### Secrets
 
-Sensitive values belong under the `secrets:` key in `config.yaml`, or injected as env vars:
+Sensitive values belong under the `secrets:` key in `configs/config.yaml`, or injected as env vars. In production, prefer env vars over storing secrets in the file.
 
 | Key | Env var | Description |
 |-----|---------|-------------|
 | `secrets.dbSecret` | `DP_SECRETS_DBSECRET` | Database password |
 | `secrets.apiKeySecret` | `DP_SECRETS_APIKEYSECRET` | API key secret |
 | `secrets.billingKeyEncryptionKey` | `DP_SECRETS_BILLINGKEYENCRYPTIONKEY` | 64-char hex key for billing encryption |
-| `secrets.azureInsightsConnectionString` | `DP_SECRETS_AZUREINSIGHTSCONNECTIONSTRING` | Azure Application Insights |
-
-In production, inject secrets as env vars rather than storing them in the file.
+| `secrets.azureInsightsConnectionString` | `DP_SECRETS_AZUREINSIGHTSCONNECTIONSTRING` | Azure Application Insights connection string |
 
 ### Local auth
 
-For quick exploration without an IdP, the portal includes built-in local users. They are enabled by default in `sample_config.yaml`:
+For quick exploration without an IdP, the portal includes built-in local users enabled by default in `sample_config.yaml`:
 
 ```yaml
 defaultAuth:
@@ -194,9 +227,7 @@ defaultAuth:
 
 Remove or empty the `users` list in production.
 
----
-
-## Environment variable overrides
+### Environment variable overrides
 
 Every config key can be overridden with a `DP_*` environment variable. You can place these in a `.env` file at the project root.
 
@@ -205,8 +236,6 @@ Every config key can be overridden with a `DP_*` environment variable. You can p
 - `_` separates nesting levels (one token = one config object level)
 - `__` represents a literal underscore within a key name
 - Tokens are matched case-insensitively against config keys
-
-**Examples:**
 
 | Env var | Config path |
 |---------|-------------|
@@ -230,7 +259,7 @@ DP_IDENTITYPROVIDER_CLIENTID=my-client-id
 
 ---
 
-## Add a third-party API (Admin APIs)
+## Add a Third-Party API (Admin APIs)
 
 Use the Devportal Admin REST APIs to publish APIs without using seed scripts.
 
@@ -294,6 +323,8 @@ curl --location --request POST 'http://localhost:3000/devportal/organizations/{o
   }"; type=application/json'
 ```
 
-### Postman collection
+---
+
+## Postman Collection
 
 [Devportal Postman collection](https://devportal-4432.postman.co/workspace/Devportal-Workspace~9221a728-2c4b-46ec-acc3-095b9debacbc/collection/5029047-61d763dc-d7b9-4436-9a2e-94585c806943?action=share&creator=5029047)
