@@ -73,19 +73,53 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 3 — Start the stack
+# Step 3 — Merge redis service into docker-compose
+# ---------------------------------------------------------------------------
+COMPOSE_FILE="${DIST_NAME}/docker-compose.yaml"
+[[ -f "${COMPOSE_FILE}" ]] || COMPOSE_FILE="${DIST_NAME}/docker-compose.yml"
+[[ -f "${COMPOSE_FILE}" ]] || error "docker-compose file not found in ${DIST_NAME}/"
+
+REDIS_SERVICE_YAML="${SCRIPT_DIR}/redis-service.yaml"
+[[ -f "${REDIS_SERVICE_YAML}" ]] || error "redis-service.yaml not found at ${REDIS_SERVICE_YAML}"
+
+info "Merging redis service into ${COMPOSE_FILE} ..."
+python3 - "${COMPOSE_FILE}" "${REDIS_SERVICE_YAML}" <<'PYEOF'
+import sys, yaml
+
+compose_file, redis_file = sys.argv[1], sys.argv[2]
+
+with open(compose_file) as f:
+    compose = yaml.safe_load(f)
+
+with open(redis_file) as f:
+    redis_service = yaml.safe_load(f)
+
+if 'redis' in compose.get('services', {}):
+    print("Redis service already present, skipping merge.")
+    sys.exit(0)
+
+compose.setdefault('services', {}).update(redis_service)
+compose.setdefault('volumes', {})['redis-data'] = {'driver': 'local'}
+
+with open(compose_file, 'w') as f:
+    yaml.dump(compose, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+PYEOF
+success "Redis service merged into docker-compose."
+
+# ---------------------------------------------------------------------------
+# Step 4 — Start the stack
 # ---------------------------------------------------------------------------
 info "Starting Docker Compose stack in ${DIST_NAME}/ ..."
 (cd "${DIST_NAME}" && docker compose up -d)
 success "Docker Compose stack started."
 
 # ---------------------------------------------------------------------------
-# Step 4 — Health check
+# Step 5 — Health check
 # ---------------------------------------------------------------------------
 wait_for_health "${GATEWAY_HEALTH_URL}"
 
 # ---------------------------------------------------------------------------
-# Step 5 — Deploy LLM provider
+# Step 6 — Deploy LLM provider
 # ---------------------------------------------------------------------------
 info "Deploying LLM provider from ${PROVIDER_YAML} ..."
 [[ -f "${PROVIDER_YAML}" ]] || error "llm-provider.yaml not found at ${PROVIDER_YAML}"
@@ -107,7 +141,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 6 — Deploy LLM proxy
+# Step 7 — Deploy LLM proxy
 # ---------------------------------------------------------------------------
 info "Deploying LLM proxy from ${PROXY_YAML} ..."
 [[ -f "${PROXY_YAML}" ]] || error "llm-proxy.yaml not found at ${PROXY_YAML}"
