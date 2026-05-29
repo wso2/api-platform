@@ -27,6 +27,10 @@ spec:
       targetPort: websocket
       protocol: TCP
       name: websocket
+    - port: {{ $runtime.service.ports.websocketHttps }}
+      targetPort: websocket-https
+      protocol: TCP
+      name: websocket-https
     - port: {{ $runtime.service.ports.admin }}
       targetPort: admin
       protocol: TCP
