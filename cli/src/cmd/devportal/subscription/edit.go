@@ -34,20 +34,16 @@ import (
 
 const (
 	EditCmdLiteral = "edit"
-	EditCmdExample = `# Update a platform subscription status using flags
+	EditCmdExample = `# Update a platform subscription status
 ap devportal subscription edit --org org_1 --sub-id sub_1 --status ACTIVE
 
 # Update using a specific devportal
-ap devportal subscription edit --org org_1 --sub-id sub_1 --status ACTIVE --display-name my-portal --platform eu
-
-# Update a platform subscription from a JSON file
-ap devportal subscription edit --org org_1 --sub-id sub_1 -f subscription-update.json`
+ap devportal subscription edit --org org_1 --sub-id sub_1 --status ACTIVE --display-name my-portal --platform eu`
 )
 
 var (
 	editOrgID        string
 	editSubscription string
-	editFilePath     string
 	editStatus       string
 	editName         string
 	editPlatform     string
@@ -70,13 +66,13 @@ var editCmd = &cobra.Command{
 func init() {
 	utils.AddStringFlag(editCmd, utils.FlagOrgID, &editOrgID, "", "Organization ID")
 	utils.AddStringFlag(editCmd, utils.FlagSubID, &editSubscription, "", "Subscription ID")
-	utils.AddStringFlag(editCmd, utils.FlagFile, &editFilePath, "", "Path to the subscription JSON file")
 	utils.AddStringFlag(editCmd, utils.FlagStatus, &editStatus, "", "Subscription status")
 	utils.AddStringFlag(editCmd, utils.FlagName, &editName, "", "DevPortal display name")
 	utils.AddStringFlag(editCmd, utils.FlagPlatform, &editPlatform, "", "Platform name")
 	editCmd.Flags().BoolVar(&editInsecure, utils.FlagInsecure, false, "Skip TLS certificate verification")
 	_ = editCmd.MarkFlagRequired(utils.FlagOrgID)
 	_ = editCmd.MarkFlagRequired(utils.FlagSubID)
+	_ = editCmd.MarkFlagRequired(utils.FlagStatus)
 }
 
 func runEditCommand() error {
@@ -115,12 +111,7 @@ func runEditCommand() error {
 }
 
 func buildEditPayload() ([]byte, error) {
-	filePath := strings.TrimSpace(editFilePath)
 	status := strings.TrimSpace(editStatus)
-
-	if filePath != "" {
-		return internaldevportal.ReadJSONFile(filePath)
-	}
 
 	if status == "" {
 		return nil, fmt.Errorf("status is required")

@@ -23,8 +23,7 @@ import (
 	devportalapikey "github.com/wso2/api-platform/cli/cmd/devportal/apikey"
 	devportalorg "github.com/wso2/api-platform/cli/cmd/devportal/org"
 	"github.com/wso2/api-platform/cli/cmd/devportal/restapi"
-	devportalsubapikey "github.com/wso2/api-platform/cli/cmd/devportal/subapikey"
-	devportalsubpolicy "github.com/wso2/api-platform/cli/cmd/devportal/subpolicy"
+	devportalsubplan "github.com/wso2/api-platform/cli/cmd/devportal/subplan"
 	devportalsubscription "github.com/wso2/api-platform/cli/cmd/devportal/subscription"
 )
 
@@ -54,9 +53,8 @@ func init() {
 	DevPortalCmd.AddCommand(healthCmd)
 	DevPortalCmd.AddCommand(buildCmd)
 	DevPortalCmd.AddCommand(devportalorg.OrgCmd)
-	DevPortalCmd.AddCommand(devportalsubapikey.SubKeyCmd)
 	DevPortalCmd.AddCommand(devportalapikey.APIKeyCmd)
 	DevPortalCmd.AddCommand(devportalsubscription.SubscriptionCmd)
-	DevPortalCmd.AddCommand(devportalsubpolicy.SubPolicyCmd)
+	DevPortalCmd.AddCommand(devportalsubplan.SubPlanCmd)
 	DevPortalCmd.AddCommand(restapi.APICmd)
 }

@@ -44,6 +44,7 @@ type Gateway struct {
 	Name   string     `yaml:"-"`
 	Server string     `yaml:"server"`
 	Auth   AuthConfig `yaml:"auth,omitempty"`
+	AdminServer string `yaml:"adminServer,omitempty"`
 }
 
 // DevPortal represents a developer portal configuration.

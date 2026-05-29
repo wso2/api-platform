@@ -3,7 +3,6 @@ package subscription
 import (
 	"io"
 	"net/http"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -36,10 +35,8 @@ func TestRunCreateCommand_SendsJSONPayload(t *testing.T) {
 	writeSubscriptionConfig(t, server.URL)
 
 	createOrgID = "org-1"
-	createFilePath = ""
 	createAPIID = "api-1"
 	createSubscriptionPlan = "gold"
-	createApplicationID = "app-1"
 	createName = ""
 	createPlatform = ""
 	createInsecure = false
@@ -47,7 +44,7 @@ func TestRunCreateCommand_SendsJSONPayload(t *testing.T) {
 	if err := runCreateCommand(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if gotBody != `{"apiId":"api-1","applicationId":"app-1","subscriptionPlanName":"gold"}` {
+	if gotBody != `{"apiId":"api-1","subscriptionPlanName":"gold"}` {
 		t.Fatalf("unexpected request body %q", gotBody)
 	}
 }
@@ -76,7 +73,6 @@ func TestRunEditCommand_SendsJSONPayload(t *testing.T) {
 
 	editOrgID = "org-1"
 	editSubscription = "sub-1"
-	editFilePath = ""
 	editStatus = "ACTIVE"
 	editName = ""
 	editPlatform = ""
@@ -172,22 +168,35 @@ func TestRunDeleteCommand_SendsDelete(t *testing.T) {
 	}
 }
 
-func TestRunCreateCommand_MissingJSONFile(t *testing.T) {
+func TestRunCreateCommand_OmitsSubscriptionPlanWhenEmpty(t *testing.T) {
 	testutil.WithTempHome(t)
-	writeSubscriptionConfig(t, "http://example.com")
+
+	var gotBody string
+	server := testutil.NewDevPortalServer(t, func(w http.ResponseWriter, req *http.Request) {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("failed to read request body: %v", err)
+		}
+		gotBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"subscriptionId":"sub-1"}`))
+	})
+
+	writeSubscriptionConfig(t, server.URL)
 
 	createOrgID = "org-1"
-	createFilePath = filepath.Join(t.TempDir(), "missing.json")
-	createAPIID = ""
+	createAPIID = "api-1"
 	createSubscriptionPlan = ""
-	createApplicationID = ""
 	createName = ""
 	createPlatform = ""
 	createInsecure = false
 
-	err := runCreateCommand()
-	if err == nil || !strings.Contains(err.Error(), "file not found") {
-		t.Fatalf("expected missing file error, got %v", err)
+	if err := runCreateCommand(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotBody != `{"apiId":"api-1"}` {
+		t.Fatalf("unexpected request body %q", gotBody)
 	}
 }
 
@@ -196,10 +205,8 @@ func TestRunCreateCommand_MissingRequiredFlags(t *testing.T) {
 	writeSubscriptionConfig(t, "http://example.com")
 
 	createOrgID = "org-1"
-	createFilePath = ""
 	createAPIID = ""
 	createSubscriptionPlan = "gold"
-	createApplicationID = "app-1"
 	createName = ""
 	createPlatform = ""
 	createInsecure = false
@@ -210,13 +217,12 @@ func TestRunCreateCommand_MissingRequiredFlags(t *testing.T) {
 	}
 }
 
-func TestRunEditCommand_MissingStatusWithoutFile(t *testing.T) {
+func TestRunEditCommand_MissingStatus(t *testing.T) {
 	testutil.WithTempHome(t)
 	writeSubscriptionConfig(t, "http://example.com")
 
 	editOrgID = "org-1"
 	editSubscription = "sub-1"
-	editFilePath = ""
 	editStatus = ""
 	editName = ""
 	editPlatform = ""

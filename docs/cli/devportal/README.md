@@ -7,9 +7,9 @@ Available command groups:
 - `ap devportal`
 - `ap devportal rest-api`
 - `ap devportal org`
-- `ap devportal sub-api-key`
+- `ap devportal api-key`
 - `ap devportal subscription`
-- `ap devportal sub-policy`
+- `ap devportal sub-plan`
 
 ## Prerequisites
 
@@ -325,36 +325,35 @@ These commands manage DevPortal platform subscriptions using the `/devportal/org
 
 ### `ap devportal subscription create`
 
-Creates a platform subscription using flags or a JSON request payload file.
+Creates a platform subscription. Only the API ID is required; the subscription plan is optional.
 
 ```shell
-ap devportal subscription create --org <org-id> (--api-id <api-id> --subscription-plan <plan-name> --application-id <application-id> | --file <subscription.json>) [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal subscription create --org <org-id> --api-id <api-id> [--subscription-plan <plan-name>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap devportal subscription create --org org_1 --api-id api_1 --subscription-plan gold --application-id app_1
-ap devportal subscription create --org org_1 --api-id api_1 --subscription-plan gold --application-id app_1 --display-name my-portal --platform eu
-ap devportal subscription create --org org_1 -f subscription.json
+ap devportal subscription create --org org_1 --api-id api_1
+ap devportal subscription create --org org_1 --api-id api_1 --subscription-plan gold
+ap devportal subscription create --org org_1 --api-id api_1 --subscription-plan gold --display-name my-portal --platform eu
 ```
 
-Expected payload shape:
+Expected payload shape (`subscriptionPlanName` is omitted when `--subscription-plan` is not provided):
 
 ```json
 {
   "apiId": "api_1",
-  "subscriptionPlanName": "gold",
-  "applicationId": "app_1"
+  "subscriptionPlanName": "gold"
 }
 ```
 
 ### `ap devportal subscription edit`
 
-Updates a platform subscription using flags or a JSON request payload file.
+Updates a platform subscription status with flags.
 
 ```shell
-ap devportal subscription edit --org <org-id> --sub-id <subscription-id> (--status <status> | --file <subscription-update.json>) [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal subscription edit --org <org-id> --sub-id <subscription-id> --status <status> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
@@ -362,7 +361,6 @@ Examples:
 ```shell
 ap devportal subscription edit --org org_1 --sub-id sub_1 --status ACTIVE
 ap devportal subscription edit --org org_1 --sub-id sub_1 --status ACTIVE --display-name my-portal --platform eu
-ap devportal subscription edit --org org_1 --sub-id sub_1 -f subscription-update.json
 ```
 
 Expected payload shape:
@@ -402,90 +400,6 @@ Examples:
 ```shell
 ap devportal subscription delete --org org_1 --sub-id sub_1
 ap devportal subscription delete --org org_1 --sub-id sub_1 --display-name my-portal --platform eu
-```
-
-## Platform API Key Commands
-
-These commands manage DevPortal platform API keys using the `/devportal/organizations/{orgId}/platform-api-keys` endpoints.
-
-### `ap devportal sub-api-key generate`
-
-Generates a platform API key.
-
-```shell
-ap devportal sub-api-key generate --org <org-id> --api-id <api-id> --key-name <key-name> [--expires-at <iso-8601-datetime>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
-```
-
-Examples:
-
-```shell
-ap devportal sub-api-key generate --org org_1 --api-id api_1 --key-name mobile-app-key
-ap devportal sub-api-key generate --org org_1 --api-id api_1 --key-name mobile-app-key --expires-at 2026-12-31T23:59:59Z
-```
-
-Expected payload shape:
-
-```json
-{
-  "apiId": "api_1",
-  "name": "mobile-app-key",
-  "expiresAt": "2026-12-31T23:59:59Z"
-}
-```
-
-### `ap devportal sub-api-key get`
-
-Lists platform API keys in an organization.
-
-```shell
-ap devportal sub-api-key get --org <org-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
-```
-
-Examples:
-
-```shell
-ap devportal sub-api-key get --org org_1
-ap devportal sub-api-key get --org org_1 --display-name my-portal --platform eu
-```
-
-### `ap devportal sub-api-key regenerate`
-
-Regenerates a platform API key.
-
-```shell
-ap devportal sub-api-key regenerate --org <org-id> --api-key-id <api-key-id> --api-id <api-id> --key-name <key-name> [--expires-at <iso-8601-datetime>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
-```
-
-Examples:
-
-```shell
-ap devportal sub-api-key regenerate --org org_1 --api-key-id key_1 --api-id api_1 --key-name mobile-app-key
-ap devportal sub-api-key regenerate --org org_1 --api-key-id key_1 --api-id api_1 --key-name mobile-app-key --expires-at 2026-12-31T23:59:59Z
-```
-
-Expected payload shape:
-
-```json
-{
-  "apiId": "api_1",
-  "name": "mobile-app-key",
-  "expiresAt": "2026-12-31T23:59:59Z"
-}
-```
-
-### `ap devportal sub-api-key revoke`
-
-Revokes a platform API key.
-
-```shell
-ap devportal sub-api-key revoke --org <org-id> --api-key-id <api-key-id> --api-id <api-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
-```
-
-Examples:
-
-```shell
-ap devportal sub-api-key revoke --org org_1 --api-key-id key_1 --api-id api_1
-ap devportal sub-api-key revoke --org org_1 --api-key-id key_1 --api-id api_1 --display-name my-portal --platform eu
 ```
 
 ## REST API Commands
@@ -589,46 +503,191 @@ ap devportal rest-api delete --org org_1 --id api_1
 ap devportal rest-api delete --org org_1 --id api_1 --display-name my-portal --platform eu
 ```
 
-## Subscription Policy Commands
+Current status:
 
-These commands help generate and apply DevPortal subscription policy payloads.
+- The command exists in the CLI surface, but the apply flow is not implemented yet.
 
-### `ap devportal sub-policy build`
+## API Key Commands
 
-Generates a subscription policy JSON template in the current directory using the derived policy name.
+These commands manage API keys using the `/devportal/organizations/{orgId}/api-keys` endpoints.
+
+### `ap devportal api-key generate`
+
+Generates an API key for an API. The plaintext secret is returned once in the response and is never persisted. Run without the required flags to be prompted interactively.
 
 ```shell
-ap devportal sub-policy build --display-name <name> --type <requestcount|eventcount> --pricing-model <FREE|VOLUME_TIERS|GRADUATED_TIERS> [--request-count <count>] [--event-count <count>] [--flat-amount <amount>] [--unit-amount <amount>] [--billing-period <period>] [--currency <currency>] [--no-interactive]
+ap devportal api-key generate --org <org-id> --api-id <api-id> --name <key-name> [--expires-at <expiry>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap devportal sub-policy build --display-name gold --type requestcount --pricing-model FREE
-ap devportal sub-policy build --display-name monetized-events --type eventcount --pricing-model VOLUME_TIERS
-ap devportal sub-policy build --display-name tiered-policy --type requestcount --pricing-model GRADUATED_TIERS --flat-amount 150 --unit-amount 25 --billing-period year --currency EUR
+# Provide everything via flags
+ap devportal api-key generate --org org_1 --api-id api_1 --name weather_prod_key
+
+# Add an expiry (ISO-8601 with timezone, epoch seconds, or epoch milliseconds)
+ap devportal api-key generate --org org_1 --api-id api_1 --name weather_prod_key --expires-at 2026-12-31T23:59:59Z
+
+# Interactive mode (prompts for any missing org/api-id/name/expiry)
+ap devportal api-key generate
+
+# Skip prompts and fail if a required flag is missing
+ap devportal api-key generate --org org_1 --api-id api_1 --name weather_prod_key --no-interactive
 ```
 
-Behavior:
+Notes:
 
-- The output file is always generated in the current directory.
-- The file name is derived from `display-name`, for example `Gold Plan` becomes `gold-plan.json`.
-- `FREE` templates stay minimal and include only the fields needed for that pricing model.
-- `VOLUME_TIERS` and `GRADUATED_TIERS` include additional billing fields and a `pricingTiers` placeholder block.
-- `--request-count` and `--event-count` prefill the corresponding quota field when provided.
-- `--flat-amount`, `--unit-amount`, `--billing-period`, and `--currency` act as optional prefills for tiered pricing templates.
+- `--name` is the API key name and must match `^[a-z0-9][a-z0-9_-]{0,127}$` (lowercase letters, numbers, `_`, and `-`). The CLI validates this before sending the request.
+- `--expires-at` is optional.
+- `generate` is the only API key command with interactive mode.
 
-### `ap devportal sub-policy apply`
+### `ap devportal api-key get`
 
-Reserved for applying a generated subscription policy file.
+Lists API keys for an API.
 
 ```shell
-ap devportal sub-policy apply -f <policy.json>
+ap devportal api-key get --org <org-id> --api-id <api-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
-Current status:
+Examples:
 
-- The command exists in the CLI surface, but the apply flow is not implemented yet.
+```shell
+ap devportal api-key get --org org_1 --api-id api_1
+ap devportal api-key get --org org_1 --api-id api_1 --display-name my-portal --platform eu
+```
+
+### `ap devportal api-key regenerate`
+
+Regenerates the secret for an existing API key. The old secret is invalidated at connected gateways and the new plaintext secret is returned once.
+
+```shell
+ap devportal api-key regenerate --org <org-id> --api-key-id <api-key-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal api-key regenerate --org org_1 --api-key-id key_1
+ap devportal api-key regenerate --org org_1 --api-key-id key_1 --display-name my-portal --platform eu
+```
+
+### `ap devportal api-key revoke`
+
+Revokes an existing API key. Connected gateways immediately reject requests carrying the revoked key.
+
+```shell
+ap devportal api-key revoke --org <org-id> --api-key-id <api-key-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal api-key revoke --org org_1 --api-key-id key_1
+ap devportal api-key revoke --org org_1 --api-key-id key_1 --display-name my-portal --platform eu
+```
+
+## Subscription Plan Commands
+
+These commands manage subscription plans using the `/devportal/organizations/{orgId}/subscription-policies` endpoint.
+
+### `ap devportal sub-plan publish`
+
+Publishes one or more subscription plans by uploading a YAML CR file as multipart form data using the `subscriptionPolicy` field. Both a single plan (`kind: SubscriptionPolicy`) and a bulk list (`kind: SubscriptionPolicyList` with an `items` array) are accepted.
+
+```shell
+ap devportal sub-plan publish --file <plan.yaml> --org <org-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal sub-plan publish -f sub_plan_gold.yaml --org org_1
+ap devportal sub-plan publish -f sub_plans.yaml --org org_1
+ap devportal sub-plan publish -f sub_plan_gold.yaml --org org_1 --display-name my-portal --platform eu
+```
+
+Single plan CR shape (`sub_plan_gold.yaml`):
+
+```yaml
+apiVersion: devportal.api-platform.wso2.com/v1
+kind: SubscriptionPolicy
+metadata:
+  name: Gold
+spec:
+  displayName: Gold Plan
+  billingPlan: FREE
+  type: requestcount
+  requestCount: 5000
+  description: Allows 5000 requests per minute
+  refId: cp-plan-gold           # optional external reference
+```
+
+Multiple plans in one file (`sub_plans.yaml`):
+
+```yaml
+apiVersion: devportal.api-platform.wso2.com/v1
+kind: SubscriptionPolicyList
+items:
+  - metadata:
+      name: Gold
+    spec:
+      displayName: Gold Plan
+      billingPlan: FREE
+      type: requestcount
+      requestCount: 5000
+  - metadata:
+      name: Unlimited
+    spec:
+      displayName: Unlimited
+      billingPlan: FREE
+      type: requestcount
+      requestCount: -1
+```
+
+Notes:
+
+- The CLI validates the CR locally before upload: `kind` must be `SubscriptionPolicy` or `SubscriptionPolicyList`, and each plan must have `metadata.name`.
+- `type` accepts `requestcount` or `eventcount`. Use `-1` for an unlimited request/event count.
+- Equivalent request shape: `curl -X POST /devportal/organizations/<org-id>/subscription-policies -F "subscriptionPolicy=@sub_plan_gold.yaml"`.
+
+### `ap devportal sub-plan get`
+
+Gets a single subscription plan by its policy ID.
+
+```shell
+ap devportal sub-plan get --policy-id <policy-id> --org <org-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal sub-plan get --policy-id plan_1 --org org_1
+ap devportal sub-plan get --policy-id plan_1 --org org_1 --display-name my-portal --platform eu
+```
+
+Notes:
+
+- The spec path parameter is `policyIdOrName`; this command always treats the supplied value as the policy ID.
+
+### `ap devportal sub-plan delete`
+
+Deletes a subscription plan by its policy ID.
+
+```shell
+ap devportal sub-plan delete --policy-id <policy-id> --org <org-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+```
+
+Examples:
+
+```shell
+ap devportal sub-plan delete --policy-id plan_1 --org org_1
+ap devportal sub-plan delete --policy-id plan_1 --org org_1 --display-name my-portal --platform eu
+```
+
+Notes:
+
+- The spec path parameter is `policyIdOrName`; this command always treats the supplied value as the policy ID.
+- A successful delete returns `204 No Content`.
 
 ## Related Commands
 

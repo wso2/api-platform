@@ -34,15 +34,15 @@ import (
 )
 
 const (
-	GenerateCmdLiteral = "gen"
+	GenerateCmdLiteral = "generate"
 	GenerateCmdExample = `# Generate an API key
-ap devportal api-key gen --org org_1 --api-id api_1 --name weather_prod_key
+ap devportal api-key generate --org org_1 --api-id api_1 --name weather_prod_key
 
 # Generate an API key with an expiry
-ap devportal api-key gen --org org_1 --api-id api_1 --name weather_prod_key --expires-at 2026-12-31T23:59:59Z
+ap devportal api-key generate --org org_1 --api-id api_1 --name weather_prod_key --expires-at 2026-12-31T23:59:59Z
 
 # Generate an API key interactively (prompts for any missing value)
-ap devportal api-key gen`
+ap devportal api-key generate`
 )
 
 // keyNamePattern mirrors the ApiKeyRequest.name constraint in
@@ -71,7 +71,6 @@ type apiKeyRequest struct {
 
 var generateCmd = &cobra.Command{
 	Use:     GenerateCmdLiteral,
-	Aliases: []string{"generate"},
 	Short:   "Generate a DevPortal API key",
 	Long: "Generates an API key for an API in the selected DevPortal. The plaintext secret is " +
 		"returned once in the response and never persisted. Run without the required flags to be " +

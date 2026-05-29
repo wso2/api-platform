@@ -33,22 +33,17 @@ import (
 
 const (
 	CreateCmdLiteral = "create"
-	CreateCmdExample = `# Create a platform subscription using flags
-ap devportal subscription create --org org_1 --api-id api_1 --subscription-plan gold --application-id app_1
+	CreateCmdExample = `# Create a platform subscription
+ap devportal subscription create --org org_1 --api-id api_1 --subscription-plan gold
 
 # Create using a specific devportal
-ap devportal subscription create --org org_1 --api-id api_1 --subscription-plan gold --application-id app_1 --display-name my-portal --platform eu
-
-# Create a platform subscription from a JSON file
-ap devportal subscription create --org org_1 -f subscription.json`
+ap devportal subscription create --org org_1 --api-id api_1 --subscription-plan gold --display-name my-portal --platform eu`
 )
 
 var (
 	createOrgID            string
-	createFilePath         string
 	createAPIID            string
 	createSubscriptionPlan string
-	createApplicationID    string
 	createName             string
 	createPlatform         string
 	createInsecure         bool
@@ -69,14 +64,13 @@ var createCmd = &cobra.Command{
 
 func init() {
 	utils.AddStringFlag(createCmd, utils.FlagOrgID, &createOrgID, "", "Organization ID")
-	utils.AddStringFlag(createCmd, utils.FlagFile, &createFilePath, "", "Path to the subscription JSON file")
 	utils.AddStringFlag(createCmd, utils.FlagAPIID, &createAPIID, "", "API ID")
 	utils.AddStringFlag(createCmd, utils.FlagSubscriptionPlan, &createSubscriptionPlan, "", "Subscription plan name")
-	utils.AddStringFlag(createCmd, utils.FlagApplicationID, &createApplicationID, "", "Application ID")
 	utils.AddStringFlag(createCmd, utils.FlagName, &createName, "", "DevPortal display name")
 	utils.AddStringFlag(createCmd, utils.FlagPlatform, &createPlatform, "", "Platform name")
 	createCmd.Flags().BoolVar(&createInsecure, utils.FlagInsecure, false, "Skip TLS certificate verification")
 	_ = createCmd.MarkFlagRequired(utils.FlagOrgID)
+	_ = createCmd.MarkFlagRequired(utils.FlagAPIID)
 }
 
 func runCreateCommand() error {
@@ -104,35 +98,23 @@ func runCreateCommand() error {
 		return utils.FormatHTTPError("create platform subscription", resp, "DevPortal")
 	}
 
-
 	fmt.Printf("Platform subscription created using devportal %s (platform: %s)\n", devPortal.Name, resolvedPlatform)
 	return internaldevportal.PrintJSONResponse(resp)
 }
 
 func buildCreatePayload() ([]byte, error) {
-	filePath := strings.TrimSpace(createFilePath)
 	apiID := strings.TrimSpace(createAPIID)
 	subscriptionPlan := strings.TrimSpace(createSubscriptionPlan)
-	applicationID := strings.TrimSpace(createApplicationID)
-
-	if filePath != "" {
-		return internaldevportal.ReadJSONFile(filePath)
-	}
 
 	if apiID == "" {
 		return nil, fmt.Errorf("api ID is required")
 	}
-	if subscriptionPlan == "" {
-		return nil, fmt.Errorf("subscription plan is required")
-	}
-	if applicationID == "" {
-		return nil, fmt.Errorf("application ID is required")
-	}
 
 	payload := map[string]string{
-		"apiId":                apiID,
-		"subscriptionPlanName": subscriptionPlan,
-		"applicationId":        applicationID,
+		"apiId": apiID,
+	}
+	if subscriptionPlan != "" {
+		payload["subscriptionPlanName"] = subscriptionPlan
 	}
 
 	data, err := json.Marshal(payload)
