@@ -22,30 +22,6 @@ info:
     Authorization is enforced via OAuth2 scopes carried in the JWT. Both read (GET) and write
     operations require specific scopes listed in `x-required-scopes`.
 
-    ### Read scopes (GET operations)
-
-    | Resource | Required scope |
-    |---|---|
-    | Projects | `api-platform:project:read` |
-    | Applications | `api-platform:application:read` |
-    | REST APIs & deployments | `api-platform:rest_api:read` |
-    | Gateways, tokens, policies, status | `api-platform:gateway:read` |
-    | DevPortals | `api-platform:devportal:read` |
-    | Subscriptions | `api-platform:subscription:read` |
-    | Subscription plans | `api-platform:subscription_plan:read` |
-    | LLM provider templates | `api-platform:llm_template:read` |
-    | LLM providers & deployments | `api-platform:llm_provider:read` |
-    | LLM proxies & deployments | `api-platform:llm_proxy:read` |
-    | MCP proxies & deployments | `api-platform:mcp_proxy:read` |
-    | WebSub APIs & deployments | `api-platform:websub_api:read` |
-    | WebBroker APIs & deployments | `api-platform:webbroker_api:read` |
-    | User API keys (`/me/api-keys`) | `api-platform:rest_api:api_key:read` |
-    | LLM provider API keys (list) | `api-platform:llm_provider:key:manage` |
-    | LLM proxy API keys (list) | `api-platform:llm_proxy:key:manage` |
-
-    Endpoints open to any authenticated user (no scope required): `GET /organizations`,
-    `HEAD /organizations/{organizationId}`, `GET /organizations/{organizationId}/subscription`.
-
   version: 1.0.0
   contact:
     name: WSO2 API Platform Team
