@@ -73,7 +73,26 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 3 — Merge redis service into docker-compose
+# Step 3 — Merge additional-config.toml into gateway config.toml
+# ---------------------------------------------------------------------------
+ADDITIONAL_CONFIG="${SCRIPT_DIR}/additional-config.toml"
+GATEWAY_CONFIG="${DIST_NAME}/configs/config.toml"
+
+[[ -f "${ADDITIONAL_CONFIG}" ]] || error "additional-config.toml not found at ${ADDITIONAL_CONFIG}"
+[[ -f "${GATEWAY_CONFIG}" ]]    || error "Gateway config.toml not found at ${GATEWAY_CONFIG}"
+
+# Use the first key in additional-config.toml as a sentinel for idempotency.
+SENTINEL=$(grep -m1 '^\s*[a-zA-Z]' "${ADDITIONAL_CONFIG}" | cut -d'=' -f1 | tr -d ' ')
+if grep -q "^${SENTINEL}" "${GATEWAY_CONFIG}"; then
+  info "Additional config already merged into ${GATEWAY_CONFIG}, skipping."
+else
+  info "Merging ${ADDITIONAL_CONFIG} into ${GATEWAY_CONFIG} ..."
+  { echo ""; cat "${ADDITIONAL_CONFIG}"; } >> "${GATEWAY_CONFIG}"
+  success "Config merged."
+fi
+
+# ---------------------------------------------------------------------------
+# Step 4 — Merge redis service into docker-compose
 # ---------------------------------------------------------------------------
 COMPOSE_FILE="${DIST_NAME}/docker-compose.yaml"
 [[ -f "${COMPOSE_FILE}" ]] || COMPOSE_FILE="${DIST_NAME}/docker-compose.yml"
@@ -107,19 +126,19 @@ PYEOF
 success "Redis service merged into docker-compose."
 
 # ---------------------------------------------------------------------------
-# Step 4 — Start the stack
+# Step 5 — Start the stack
 # ---------------------------------------------------------------------------
 info "Starting Docker Compose stack in ${DIST_NAME}/ ..."
 (cd "${DIST_NAME}" && docker compose up -d)
 success "Docker Compose stack started."
 
 # ---------------------------------------------------------------------------
-# Step 5 — Health check
+# Step 6 — Health check
 # ---------------------------------------------------------------------------
 wait_for_health "${GATEWAY_HEALTH_URL}"
 
 # ---------------------------------------------------------------------------
-# Step 6 — Deploy LLM provider
+# Step 7 — Deploy LLM provider
 # ---------------------------------------------------------------------------
 info "Deploying LLM provider from ${PROVIDER_YAML} ..."
 [[ -f "${PROVIDER_YAML}" ]] || error "llm-provider.yaml not found at ${PROVIDER_YAML}"
@@ -141,7 +160,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 7 — Deploy LLM proxy
+# Step 8 — Deploy LLM proxy
 # ---------------------------------------------------------------------------
 info "Deploying LLM proxy from ${PROXY_YAML} ..."
 [[ -f "${PROXY_YAML}" ]] || error "llm-proxy.yaml not found at ${PROXY_YAML}"
