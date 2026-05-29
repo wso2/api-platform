@@ -76,7 +76,7 @@ function enforceSecuirty(scope) {
                     }
                 }
                 enforceAPIKey(req, res, next);
-            } else if (req.connection.getPeerCertificate(true)) {
+            } else if (typeof req.socket?.getPeerCertificate === 'function' && req.socket.getPeerCertificate(true)) {
                 enforceMTLS(req, res, next);
             } else {
                 req.session.returnTo = req.originalUrl || `/${req.params.orgName}`;
@@ -446,7 +446,7 @@ const validateBasicAuth = async (basicHeader) => {
 }
 
 const enforceMTLS = (req, res, next) => {
-    const clientCert = req.connection.getPeerCertificate(true);
+    const clientCert = req.socket?.getPeerCertificate?.(true);
 
     if (!clientCert || Object.keys(clientCert).length === 0) {
         return res.status(403).send('Client certificate required');

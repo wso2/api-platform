@@ -157,3 +157,6 @@ dev-policies/
 .github/prompts
 
 gateway/target/
+
+# Devportal
+portals/developer-portal/target/

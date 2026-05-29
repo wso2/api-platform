@@ -22,9 +22,6 @@ const fs = require('fs');
 
 const { config } = require('../config/configLoader');
 
-const filePrefix = config.pathToDBCert;
-const dbCAPath = path.join(process.cwd(), filePrefix);
-
 const sequelizeOptions = {
     host: config.db.host,
     port: config.db.port,
@@ -43,6 +40,7 @@ const sequelizeOptions = {
 };
 
 if (config.advanced.dbSslDialectOption) {
+    const dbCAPath = path.join(process.cwd(), config.pathToDBCert);
     sequelizeOptions.dialectOptions = {
         ssl: {
             require: true,

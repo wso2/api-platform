@@ -1,0 +1,9 @@
+node_modules/
+reports/videos/
+reports/screenshots/
+reports/*.json
+reports/*.html
+cypress/screenshots/
+cypress/videos/
+*.core
+core
