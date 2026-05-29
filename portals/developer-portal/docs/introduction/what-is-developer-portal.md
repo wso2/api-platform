@@ -17,25 +17,16 @@ The Developer Portal is a self-hosted web application that acts as the front doo
 | **AI-friendly discovery** | Machine-readable `llms.txt`, per-API Markdown docs, and OpenAPI/AsyncAPI specs for AI agent integration |
 | **Theming** | Customize the portal's look and feel per organization and per API |
 
-## How it fits in the platform
+## Gateway-agnostic, unified developer experience
 
-```
-API Publisher
-     │
-     │  registers APIs, uploads definitions
-     ▼
-┌─────────────────────────┐
-│     Developer Portal    │  ← this component
-│  (Node.js / Express)    │
-│  PostgreSQL backend     │
-└──────────┬──────────────┘
-           │  webhook events (API key lifecycle, subscriptions)
-           ▼
-    API Gateway ──────────► API Consumer (invokes API)
-                                  ▲
-                                  │ discovers, subscribes, gets credentials
-                           Developer Portal UI
-```
+The portal is designed to work with any API gateway. It does not embed gateway-specific logic — instead it communicates with gateways through a generic webhook event outbox. When a developer generates an API key, subscribes, or revokes a key, the portal fires a signed event to every registered gateway subscriber. Each gateway adapter listens for these events and enforces access in its own way.
+
+This means you can:
+
+- Connect multiple gateways of different types to the same portal simultaneously
+- Replace or swap out a gateway without changing how developers interact with the portal
+- Run the portal in a fully standalone mode (no live gateway required) and replay events later
+
 
 ## Multi-tenancy
 

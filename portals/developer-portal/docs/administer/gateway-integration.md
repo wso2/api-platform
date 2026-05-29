@@ -80,15 +80,278 @@ export DP_WEBHOOK_SECRET_MY_GATEWAY="your-hmac-secret"
 export DP_WEBHOOK_PUBKEY_PATH_MY_GATEWAY="/run/secrets/gateway-pubkey.pem"
 ```
 
+## Webhook Request Format
+
+Every event is delivered as an HTTP POST with a JSON body and the following headers:
+
+| Header | Description |
+|---|---|
+| `X-Devportal-Event` | Event type (e.g. `apikey.generated`) |
+| `X-Devportal-Event-Id` | UUID of the event — use for idempotency |
+| `X-Devportal-Delivery-Id` | UUID of this specific delivery attempt |
+| `X-Devportal-Signature` | HMAC-SHA256 signature (see [Signature Verification](#signature-verification)) |
+| `Content-Type` | `application/json` |
+
+### Envelope structure
+
+All events share this top-level shape:
+
+```json
+{
+  "event_id": "a1b2c3d4-...",
+  "event_type": "apikey.generated",
+  "occurred_at": "2026-05-29T10:00:00.000Z",
+  "org_id": "1ba42a09-...",
+  "gateway_type": "wso2/api-platform",
+  "data": { ... }
+}
+```
+
+The `data` field varies by event type and is described below.
+
+---
+
+## Event Payloads
+
+### `apikey.generated`
+
+Fired when a developer generates a new API key for an API.
+
+```json
+{
+  "event_id": "a1b2c3d4-...",
+  "event_type": "apikey.generated",
+  "occurred_at": "2026-05-29T10:00:00.000Z",
+  "org_id": "1ba42a09-...",
+  "gateway_type": "wso2/api-platform",
+  "data": {
+    "key_id": "key-uuid",
+    "name": "my-key",
+    "expires_at": "2027-01-01T00:00:00.000Z",
+    "api": {
+      "name": "Order API",
+      "version": "v1.0",
+      "ref_id": "cp-api-uuid"
+    },
+    "subscription": {
+      "ref_id": "sub-token",
+      "plan_name": "Gold"
+    },
+    "encrypted_key": {
+      "wrappedKey": "<base64>",
+      "iv": "<base64>",
+      "tag": "<base64>",
+      "ciphertext": "<base64>"
+    }
+  }
+}
+```
+
+- `subscription` is present only when the key is bound to a subscription
+- `encrypted_key` is present only when a `publicKey` is configured for the subscriber (see [Envelope Encryption](#envelope-encryption-for-api-key-events))
+- `expires_at` is `null` for non-expiring keys
+
+### `apikey.regenerated`
+
+Fired when a developer rotates an existing key. The `key_id` is unchanged; the old secret is invalidated and replaced by the new one in `encrypted_key`.
+
+```json
+{
+  "event_type": "apikey.regenerated",
+  "data": {
+    "key_id": "key-uuid",
+    "name": "my-key",
+    "expires_at": null,
+    "api": {
+      "name": "Order API",
+      "version": "v1.0",
+      "ref_id": "cp-api-uuid"
+    },
+    "subscription": {
+      "ref_id": "sub-token",
+      "plan_name": "Gold"
+    },
+    "encrypted_key": { "wrappedKey": "...", "iv": "...", "tag": "...", "ciphertext": "..." }
+  }
+}
+```
+
+### `apikey.revoked`
+
+Fired when a developer revokes a key. The gateway should reject any request presenting this `key_id`.
+
+```json
+{
+  "event_type": "apikey.revoked",
+  "data": {
+    "key_id": "key-uuid",
+    "name": "my-key",
+    "api": {
+      "name": "Order API",
+      "version": "v1.0",
+      "ref_id": "cp-api-uuid"
+    }
+  }
+}
+```
+
+No `encrypted_key` is included — the gateway only needs the `key_id` to revoke access.
+
+### `subscription.created`
+
+Fired when a developer subscribes to an API.
+
+```json
+{
+  "event_type": "subscription.created",
+  "data": {
+    "subscription": {
+      "token": "sub-token",
+      "plan_name": "Gold",
+      "plan_ref_id": "policy-uuid",
+      "status": "ACTIVE"
+    },
+    "api": {
+      "name": "Order API",
+      "version": "v1.0",
+      "ref_id": "cp-api-uuid"
+    }
+  }
+}
+```
+
+The `subscription.token` is the value developers must include as `X-Subscription-Token` on APIs that use token-based subscription enforcement.
+
+### `subscription.plan_changed`
+
+Fired when a subscription's plan changes.
+
+```json
+{
+  "event_type": "subscription.plan_changed",
+  "data": {
+    "subscription": {
+      "token": "sub-token",
+      "plan_name": "Bronze",
+      "plan_ref_id": "policy-uuid",
+      "status": "ACTIVE"
+    },
+    "api": {
+      "name": "Order API",
+      "version": "v1.0",
+      "ref_id": "cp-api-uuid"
+    }
+  }
+}
+```
+
+### `subscription.deleted`
+
+Fired when a developer unsubscribes. The gateway should revoke access for the subscription token.
+
+```json
+{
+  "event_type": "subscription.deleted",
+  "data": {
+    "subscription": {
+      "token": "sub-token",
+      "plan_name": "Gold",
+      "plan_ref_id": "policy-uuid",
+      "status": "CANCELLED"
+    },
+    "api": {
+      "name": "Order API",
+      "version": "v1.0",
+      "ref_id": "cp-api-uuid"
+    }
+  }
+}
+```
+
+---
+
 ## Event Security
 
 ### Signature verification
 
-Every webhook POST includes an `x-signature` header containing the HMAC-SHA256 signature of the request body, signed with the subscriber's `secret`. Your gateway should verify this signature on every request and reject any request that fails verification.
+Every POST includes an `X-Devportal-Signature` header. The format is:
+
+```
+t=<unix_seconds>,v1=<hex_hmac>
+```
+
+The HMAC-SHA256 is computed over the canonical string `<unix_seconds>.<raw_body>` using the subscriber's `secret`.
+
+**Verification steps:**
+
+1. Extract `t` and `v1` from the header.
+2. Check that `|now - t| <= 300` seconds (configurable via `delivery.signatureToleranceSec`). Reject if outside the window — this prevents replay attacks.
+3. Compute `HMAC-SHA256(secret, "<t>.<raw_request_body>")`.
+4. Compare the result with `v1` using a timing-safe comparison. Reject the request if they do not match.
+
+**Example (Node.js):**
+
+```js
+const crypto = require('crypto');
+
+function verifySignature(secret, rawBody, signatureHeader) {
+    const parts = Object.fromEntries(
+        signatureHeader.split(',').map(p => p.split('='))
+    );
+    const t = parseInt(parts.t, 10);
+    if (Math.abs(Date.now() / 1000 - t) > 300) return false; // replay window
+
+    const expected = crypto
+        .createHmac('sha256', secret)
+        .update(`${t}.${rawBody}`)
+        .digest('hex');
+
+    return crypto.timingSafeEqual(
+        Buffer.from(expected),
+        Buffer.from(parts.v1)
+    );
+}
+```
 
 ### Envelope encryption for API key events
 
-API key payloads (`apikey.*` events) are encrypted with the subscriber's RSA-2048 public key using envelope encryption. Only the holder of the corresponding private key can decrypt the payload. If no public key is configured, API key payloads are sent unencrypted.
+API key payloads (`apikey.generated`, `apikey.regenerated`) include an `encrypted_key` object when a `publicKey` is configured for the subscriber. The key is never included in plaintext.
+
+**Encryption scheme:** hybrid RSA-OAEP + AES-256-GCM.
+
+```
+encrypted_key = {
+  wrappedKey  — RSA-OAEP(SHA-256) encrypted 256-bit AES key (base64)
+  iv          — 12-byte AES-GCM IV (base64)
+  tag         — 16-byte AES-GCM authentication tag (base64)
+  ciphertext  — AES-256-GCM encrypted API key secret (base64)
+}
+```
+
+**Decryption steps:**
+
+1. RSA-decrypt `wrappedKey` with your private key using OAEP+SHA-256 → `aesKey`
+2. AES-256-GCM decrypt `ciphertext` using `aesKey`, `iv`, and `tag` → plaintext API key secret
+
+**Example (Node.js):**
+
+```js
+const crypto = require('crypto');
+
+function decryptApiKey(privateKeyPem, encryptedKey) {
+    const aesKey = crypto.privateDecrypt(
+        { key: privateKeyPem, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
+        Buffer.from(encryptedKey.wrappedKey, 'base64')
+    );
+    const decipher = crypto.createDecipheriv(
+        'aes-256-gcm', aesKey, Buffer.from(encryptedKey.iv, 'base64')
+    );
+    decipher.setAuthTag(Buffer.from(encryptedKey.tag, 'base64'));
+    return decipher.update(Buffer.from(encryptedKey.ciphertext, 'base64')) + decipher.final('utf8');
+}
+```
+
+If no `publicKey` is configured for the subscriber, `encrypted_key` is omitted and the API key secret is not delivered at all — configure a public key before going to production.
 
 ## Delivery Retry
 

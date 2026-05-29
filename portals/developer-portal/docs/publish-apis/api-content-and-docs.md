@@ -1,51 +1,89 @@
 # API Content and Docs
 
-Beyond the API definition file (OpenAPI, AsyncAPI, etc.), you can enrich each API's portal page with a landing page, documentation sections, and images. This content is what developers see when they open an API in the catalog.
+Beyond the API definition file (OpenAPI, AsyncAPI, etc.), you can enrich each API's portal page with a landing page, images, and documentation sections. This content is what developers see when they open an API in the catalog.
 
-## Landing Page Content
+## Content ZIP Structure
 
-The landing page is the first thing a developer sees when they open an API. It can be a Markdown document or a Handlebars template.
+All API content is uploaded as a single ZIP file. The ZIP must follow this directory structure:
 
-### Upload Landing Page Content
+```
+my-api-content.zip
+├── web/                    # landing page and images (optional)
+│   ├── api-content.hbs     # landing page — Handlebars template
+│   │   OR
+│   ├── api-content.md      # landing page — Markdown
+│   ├── api-icon.png        # API icon shown in the catalog card
+│   └── <other-images>      # images referenced from the landing page
+└── docs/                   # documentation pages (optional)
+    ├── overview.md
+    ├── getting-started.md
+    ├── faq.md
+    └── HowTo/              # subdirectories are supported
+        └── guide.md
+```
+
+At least one of `web/` or `docs/` must be present in the ZIP.
+
+## Upload API Content
 
 ```bash
-# Markdown
 curl -X POST \
   "http://localhost:3000/organizations/{orgId}/apis/{apiId}/content" \
   -u admin:admin \
-  -F "apiContent=@overview.md;type=text/markdown"
+  -F "apiContent=@my-api-content.zip" \
+  -F 'imageMetadata={"api-icon":"api-icon.png"}'
 ```
 
-```bash
-# Handlebars template
-curl -X POST \
-  "http://localhost:3000/organizations/{orgId}/apis/{apiId}/content" \
-  -u admin:admin \
-  -F "apiContent=@overview.hbs;type=text/x-handlebars-template"
-```
-
-### Update Landing Page Content
+To update existing content, use `PUT`:
 
 ```bash
 curl -X PUT \
   "http://localhost:3000/organizations/{orgId}/apis/{apiId}/content" \
   -u admin:admin \
-  -F "apiContent=@updated-overview.md;type=text/markdown"
+  -F "apiContent=@my-api-content-v2.zip" \
+  -F 'imageMetadata={"api-icon":"api-icon.png"}'
 ```
 
-### Delete Landing Page Content
+| Form field | Description |
+|---|---|
+| `apiContent` | ZIP file containing `web/` and/or `docs/` directories |
+| `imageMetadata` | JSON object mapping image tag names to filenames within `web/`. The `api-icon` tag sets the catalog card icon |
+| `docMetadata` | JSON array for external documentation links (see [External Doc Links](#external-doc-links)) |
 
-```bash
-curl -X DELETE \
-  "http://localhost:3000/organizations/{orgId}/apis/{apiId}/content" \
-  -u admin:admin
+## Landing Page (`web/`)
+
+The `web/` directory holds the API landing page and any images it references.
+
+### Handlebars Template (`.hbs`)
+
+A Handlebars template gives you full control over the landing page HTML. Images uploaded in the same `web/` folder are accessible via `apiMetadata`:
+
+```hbs
+<!-- web/api-content.hbs -->
+<section class="api-overview-section">
+  <div class="api-overview">
+    <h1>Order API</h1>
+    <p>Create and manage customer orders.</p>
+    <img src="{{apiMetadata.apiInfo.apiImageMetadata.banner}}" alt="Banner" />
+  </div>
+</section>
 ```
 
-### Markdown Example
+Available Handlebars variables:
 
-A well-structured landing page helps developers quickly understand the API:
+| Variable | Description |
+|---|---|
+| `{{apiMetadata.apiInfo.apiName}}` | API display name |
+| `{{apiMetadata.apiInfo.apiVersion}}` | API version string |
+| `{{apiMetadata.apiInfo.apiDescription}}` | API description |
+| `{{apiMetadata.apiInfo.apiImageMetadata.<tag>}}` | URL of an image uploaded with the given tag name |
+
+### Markdown (`.md`)
+
+For simpler landing pages, a Markdown file works without any templating:
 
 ```markdown
+<!-- web/api-content.md -->
 ## Overview
 
 The Order API lets you create, retrieve, update, and cancel customer orders.
@@ -54,68 +92,50 @@ The Order API lets you create, retrieve, update, and cancel customer orders.
 
 - **E-commerce checkout** — create an order after payment is confirmed
 - **Order tracking** — retrieve order status for customer-facing apps
-- **Order management** — update or cancel orders from admin tools
+```
 
-## Quick Start
+## Documentation Pages (`docs/`)
 
-1. [Subscribe](../../consume-an-api/subscriptions.md) to the Order API
-2. Generate an [API key](../../consume-an-api/consume-with-api-key.md) or [OAuth2 credentials](../../consume-an-api/consume-with-oauth2.md)
-3. Create your first order:
+Files placed in `docs/` appear as pages in the API's **Documentation** tab. Any Markdown file inside `docs/` (including subdirectories) becomes a documentation page. The file name is used as the page title.
+
+```
+docs/
+├── overview.md          → "Overview" page
+├── getting-started.md   → "Getting Started" page
+├── faq.md               → "FAQ" page
+└── HowTo/
+    └── guide.md         → "Guide" page under "HowTo"
+```
+
+Example doc page:
+
+```markdown
+<!-- docs/getting-started.md -->
+# Getting Started
+
+## Authentication
+
+Include your API key in the `X-API-Key` header on every request.
+
+## Example
 
 ```bash
-curl -X POST https://api.example.com/orders/v1/orders \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{"customerId": "cust_123", "items": [{"sku": "PROD-001", "quantity": 2}]}'
+curl https://api.example.com/orders \
+  -H "X-API-Key: <your-key>"
+```
 ```
 
-## Rate Limits
+## External Doc Links
 
-| Plan | Requests/hour |
-|---|---|
-| Bronze | 500 |
-| Gold | 5000 |
-| Unlimited | No limit |
-```
-
-### Handlebars Variables
-
-If using a `.hbs` template, these variables are available:
-
-| Variable | Description |
-|---|---|
-| `{{apiName}}` | API display name |
-| `{{apiVersion}}` | API version string |
-| `{{baseUrl}}` | Portal base URL |
-| `{{apiDescription}}` | API description |
-| `{{apiContext}}` | API base path |
-
----
-
-## Documentation Sections
-
-In addition to the landing page, you can upload additional documentation files (guides, tutorials, changelog, etc.) that appear as sections in the API's **Documentation** tab.
-
-Documentation sections can be Markdown files uploaded alongside or after the API definition.
-
----
-
-## API Images
-
-Upload an icon and banner image to make the API visually distinct in the catalog.
-
-### Upload an Icon
+To link to externally hosted documentation (rather than uploaded files), pass `docMetadata` as a JSON string:
 
 ```bash
 curl -X POST \
   "http://localhost:3000/organizations/{orgId}/apis/{apiId}/content" \
   -u admin:admin \
-  -F "apiIcon=@icon.png;type=image/png"
+  -F "apiContent=@my-api-content.zip" \
+  -F 'docMetadata=[{"name":"External Guide","url":"https://docs.example.com/guide","type":"LINK"}]'
 ```
-
-Supported formats: `image/png`, `image/jpeg`, `image/svg+xml`.
-
-Recommended icon size: 128×128 pixels.
 
 ## Get API Content
 
@@ -126,5 +146,5 @@ curl http://localhost:3000/organizations/{orgId}/apis/{apiId}/content \
 
 ## Related
 
-- [Publishing APIs](publishing-apis.md) — register the API entry first
+- [Publishing APIs](publishing-apis.md) — register the API entry before uploading content
 - [API-Level Theming](../administer/theming/api-level-theming.md) — customize CSS for the API landing page
