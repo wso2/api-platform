@@ -115,6 +115,10 @@ data:
     websub_tls_cert_file = {{ $rt.server.websubTlsCertFile | quote }}
     websub_tls_key_file = {{ $rt.server.websubTlsKeyFile | quote }}
     websocket_port = {{ $rt.server.websocketPort }}
+    websocket_https_port = {{ $rt.server.websocketHttpsPort }}
+    websocket_tls_enabled = {{ $rt.server.websocketTlsEnabled }}
+    websocket_tls_cert_file = {{ $rt.server.websocketTlsCertFile | quote }}
+    websocket_tls_key_file = {{ $rt.server.websocketTlsKeyFile | quote }}
     admin_port = {{ $rt.server.adminPort }}
     metrics_port = {{ $rt.server.metricsPort }}
 

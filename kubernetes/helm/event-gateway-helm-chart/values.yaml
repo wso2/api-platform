@@ -128,6 +128,12 @@ eventGateway:
         websubTlsKeyFile: "/etc/event-gateway/tls/default-listener.key"
         # WebSocket port
         websocketPort: 8081
+        # HTTPS port for WebSocket server (WSS)
+        websocketHttpsPort: 8444
+        # Enable TLS for WebSocket (WebBrokerApi)
+        websocketTlsEnabled: true
+        websocketTlsCertFile: "/etc/event-gateway/tls/default-listener.crt"
+        websocketTlsKeyFile: "/etc/event-gateway/tls/default-listener.key"
         # Admin API port
         adminPort: 9002
         # Metrics port
@@ -293,6 +299,7 @@ eventGateway:
         websubHttp: 8080
         websubHttps: 8443
         websocket: 8081
+        websocketHttps: 8444
         admin: 9002
         metrics: 9003
     # TLS certificate configuration for the WebSub HTTPS listener
