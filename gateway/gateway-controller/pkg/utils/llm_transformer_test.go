@@ -622,6 +622,231 @@ func TestIsAllowedByAccessControl(t *testing.T) {
 	})
 }
 
+func TestIsMoreSpecificPath(t *testing.T) {
+	// isMoreSpecificPath is only ever invoked (via moreSpecificPolicyAttachmentCovers) on two
+	// paths that both already match the same target, so "concrete beats wildcard, then longer
+	// beats shorter" is a sound specificity ordering for the path forms in use (exact paths and
+	// trailing "/*" wildcards). These cases pin that behaviour.
+	tests := []struct {
+		name string
+		a    string
+		b    string
+		want bool
+	}{
+		{"concrete beats wildcard", "/chat/completions", "/chat/*", true},
+		{"wildcard loses to concrete", "/chat/*", "/chat/completions", false},
+		{"concrete beats root wildcard", "/chat/completions", "/*", true},
+		{"root wildcard loses to concrete", "/*", "/chat/completions", false},
+		{"longer wildcard prefix beats shorter", "/chat/*", "/*", true},
+		{"shorter wildcard prefix loses", "/*", "/chat/*", false},
+		{"deeper nested wildcard beats shallower", "/chat/completions/*", "/chat/*", true},
+		{"shallower nested wildcard loses", "/chat/*", "/chat/completions/*", false},
+		{"three-level nesting beats one-level", "/a/b/c/*", "/a/*", true},
+		{"identical concrete is not strictly more specific", "/chat/completions", "/chat/completions", false},
+		{"identical wildcard is not strictly more specific", "/chat/*", "/chat/*", false},
+		{"identical root wildcard", "/*", "/*", false},
+		{"longer concrete wins on length", "/chat/completions", "/chat", true},
+		{"shorter concrete loses on length", "/chat", "/chat/completions", false},
+		{"equal-length concrete paths tie", "/aaa/bbb", "/bbb/aaa", false},
+		{"equal-length wildcards tie", "/ab/*", "/cd/*", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, isMoreSpecificPath(tc.a, tc.b))
+		})
+	}
+
+	// Properties: a path is never strictly more specific than itself (irreflexive), and two
+	// distinct paths cannot each be strictly more specific than the other (antisymmetric).
+	paths := []string{"/chat/completions", "/chat/*", "/*", "/chat/completions/*", "/a"}
+	for _, p := range paths {
+		assert.Falsef(t, isMoreSpecificPath(p, p), "%q should not be more specific than itself", p)
+	}
+	for _, x := range paths {
+		for _, y := range paths {
+			if x != y && isMoreSpecificPath(x, y) {
+				assert.Falsef(t, isMoreSpecificPath(y, x),
+					"%q>%q and %q>%q cannot both hold", x, y, y, x)
+			}
+		}
+	}
+}
+
+func TestMoreSpecificPolicyAttachmentCovers(t *testing.T) {
+	// The function is block-scoped by signature: it only inspects current.policy.Paths, so
+	// these cases construct the block (and the current entry within it) directly. It returns
+	// true iff some OTHER entry in the same block both covers (targetPath, method) and is
+	// strictly more specific than the current entry.
+	mk := func(path string, methods ...string) api.LLMPolicyPath {
+		ms := make([]api.LLMPolicyPathMethods, len(methods))
+		for i, m := range methods {
+			ms[i] = api.LLMPolicyPathMethods(m)
+		}
+		return api.LLMPolicyPath{Path: path, Methods: ms}
+	}
+	ccAll := mk("/chat/completions", "*")
+	ccGet := mk("/chat/completions", "GET")
+	ccPost := mk("/chat/completions", "POST")
+	ccGetPost := mk("/chat/completions", "GET", "POST")
+	chatWild := mk("/chat/*", "*")
+	chatWildPost := mk("/chat/*", "POST")
+	root := mk("/*", "*")
+
+	tests := []struct {
+		name       string
+		block      []api.LLMPolicyPath
+		current    api.LLMPolicyPath
+		targetPath string
+		method     string
+		want       bool
+	}{
+		// --- nothing more specific present ---
+		{"only the current entry in the block", []api.LLMPolicyPath{root}, root, "/chat/completions", "POST", false},
+		{"current is the most specific entry", []api.LLMPolicyPath{ccAll, chatWild, root}, ccAll, "/chat/completions", "POST", false},
+		{"only a less specific sibling", []api.LLMPolicyPath{ccAll, root}, ccAll, "/chat/completions", "POST", false},
+
+		// --- more specific by PATH ---
+		{"more specific concrete sibling covers target", []api.LLMPolicyPath{ccAll, root}, root, "/chat/completions", "POST", true},
+		{"more specific nested-wildcard sibling covers target", []api.LLMPolicyPath{chatWild, root}, root, "/chat/foo", "POST", true},
+		{"more specific sibling does not cover target", []api.LLMPolicyPath{ccAll, root}, root, "/models", "POST", false},
+
+		// --- method gating of the more specific sibling ---
+		{"more specific sibling does not apply to method", []api.LLMPolicyPath{ccGet, root}, root, "/chat/completions", "POST", false},
+		{"more specific sibling applies to method", []api.LLMPolicyPath{ccGet, root}, root, "/chat/completions", "GET", true},
+
+		// --- method specificity on the SAME path ---
+		{"concrete method beats wildcard method", []api.LLMPolicyPath{ccAll, ccGet}, ccAll, "/chat/completions", "GET", true},
+		{"wildcard method not suppressed for uncovered method", []api.LLMPolicyPath{ccAll, ccGet}, ccAll, "/chat/completions", "POST", false},
+		{"concrete-method current not suppressed by wildcard-method sibling", []api.LLMPolicyPath{ccAll, ccGet}, ccGet, "/chat/completions", "GET", false},
+		{"narrower method set beats broader", []api.LLMPolicyPath{ccGetPost, ccPost}, ccGetPost, "/chat/completions", "POST", true},
+		{"broader method set does not suppress narrower", []api.LLMPolicyPath{ccGetPost, ccPost}, ccPost, "/chat/completions", "POST", false},
+
+		// --- ties ---
+		{"equal-specificity duplicate is a tie", []api.LLMPolicyPath{ccPost, mk("/chat/completions", "POST")}, ccPost, "/chat/completions", "POST", false},
+
+		// --- path dominates method ---
+		{"specific path beats method-specific wildcard path", []api.LLMPolicyPath{chatWildPost, ccAll}, chatWildPost, "/chat/completions", "POST", true},
+		{"method-specific wildcard path does not beat specific path", []api.LLMPolicyPath{chatWildPost, ccAll}, ccAll, "/chat/completions", "POST", false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			att := llmPolicyAttachment{
+				policy:    api.LLMPolicy{Name: "advanced-ratelimit", Version: "v1", Paths: tc.block},
+				pathEntry: tc.current,
+			}
+			assert.Equal(t, tc.want, moreSpecificPolicyAttachmentCovers(tc.targetPath, tc.method, att))
+		})
+	}
+}
+
+func TestMethodSet(t *testing.T) {
+	mm := func(methods ...string) []api.LLMPolicyPathMethods {
+		out := make([]api.LLMPolicyPathMethods, len(methods))
+		for i, m := range methods {
+			out[i] = api.LLMPolicyPathMethods(m)
+		}
+		return out
+	}
+
+	t.Run("single concrete method", func(t *testing.T) {
+		assert.Equal(t, map[string]bool{"GET": true}, methodSet(mm("GET")))
+	})
+	t.Run("multiple concrete methods", func(t *testing.T) {
+		assert.Equal(t, map[string]bool{"GET": true, "POST": true}, methodSet(mm("GET", "POST")))
+	})
+	t.Run("duplicate methods are de-duplicated", func(t *testing.T) {
+		assert.Equal(t, map[string]bool{"GET": true}, methodSet(mm("GET", "GET")))
+	})
+	t.Run("empty methods yield empty set", func(t *testing.T) {
+		assert.Empty(t, methodSet(mm()))
+	})
+	t.Run("lone wildcard expands to all supported methods", func(t *testing.T) {
+		got := methodSet(mm("*"))
+		require.Len(t, got, len(constants.WILDCARD_HTTP_METHODS))
+		for _, m := range constants.WILDCARD_HTTP_METHODS {
+			assert.Truef(t, got[m], "expected %s in expanded wildcard set", m)
+		}
+		assert.False(t, got["*"], "the literal '*' must not be a member of the expanded set")
+	})
+	t.Run("wildcard only expands when it is the sole element", func(t *testing.T) {
+		// expandLLMPolicyMethods only treats a single-element ["*"] as the wildcard; mixed with
+		// other methods the '*' stays literal.
+		assert.Equal(t, map[string]bool{"GET": true, "*": true}, methodSet(mm("GET", "*")))
+	})
+}
+
+func TestIsStrictMethodSubset(t *testing.T) {
+	mm := func(methods ...string) []api.LLMPolicyPathMethods {
+		out := make([]api.LLMPolicyPathMethods, len(methods))
+		for i, m := range methods {
+			out[i] = api.LLMPolicyPathMethods(m)
+		}
+		return out
+	}
+	tests := []struct {
+		name string
+		a, b []api.LLMPolicyPathMethods
+		want bool
+	}{
+		{"strict subset", mm("POST"), mm("GET", "POST"), true},
+		{"multi-element strict subset", mm("POST", "PUT"), mm("GET", "POST", "PUT"), true},
+		{"superset is not a subset", mm("GET", "POST"), mm("POST"), false},
+		{"equal single set is not strict", mm("POST"), mm("POST"), false},
+		{"equal multi set is not strict", mm("GET", "POST"), mm("GET", "POST"), false},
+		{"concrete is strict subset of wildcard", mm("POST"), mm("*"), true},
+		{"two concrete are strict subset of wildcard", mm("GET", "POST"), mm("*"), true},
+		{"wildcard is not subset of concrete", mm("*"), mm("POST"), false},
+		{"wildcard equals wildcard is not strict", mm("*"), mm("*"), false},
+		{"disjoint equal length", mm("GET"), mm("POST"), false},
+		{"smaller but not a member subset", mm("GET"), mm("POST", "PUT"), false},
+		{"empty is not a strict subset", mm(), mm("POST"), false},
+		{"both empty", mm(), mm(), false},
+		{"duplicates collapse before comparison", mm("POST", "POST"), mm("POST"), false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, isStrictMethodSubset(tc.a, tc.b))
+		})
+	}
+}
+
+func TestIsMoreSpecificAttachment(t *testing.T) {
+	mk := func(path string, methods ...string) api.LLMPolicyPath {
+		ms := make([]api.LLMPolicyPathMethods, len(methods))
+		for i, m := range methods {
+			ms[i] = api.LLMPolicyPathMethods(m)
+		}
+		return api.LLMPolicyPath{Path: path, Methods: ms}
+	}
+	tests := []struct {
+		name string
+		a, b api.LLMPolicyPath
+		want bool
+	}{
+		// Path specificity dominates, regardless of methods.
+		{"more specific path wins over broader-path narrower-method", mk("/chat/completions", "*"), mk("/chat/*", "POST"), true},
+		{"less specific path loses even with narrower method", mk("/chat/*", "GET"), mk("/chat/completions", "*"), false},
+		{"concrete path beats root wildcard", mk("/chat/completions", "POST"), mk("/*", "*"), true},
+		{"nested wildcard beats root wildcard", mk("/chat/*", "*"), mk("/*", "*"), true},
+		// Same path -> method specificity decides.
+		{"same path, narrower method set wins", mk("/chat/completions", "POST"), mk("/chat/completions", "GET", "POST"), true},
+		{"same path, broader method set loses", mk("/chat/completions", "GET", "POST"), mk("/chat/completions", "POST"), false},
+		{"same path, concrete method beats wildcard method", mk("/chat/completions", "GET"), mk("/chat/completions", "*"), true},
+		{"same path, wildcard method loses to concrete", mk("/chat/completions", "*"), mk("/chat/completions", "GET"), false},
+		{"same path, equal methods are not more specific", mk("/chat/completions", "POST"), mk("/chat/completions", "POST"), false},
+		// Equal path-specificity (different, non-overlapping paths) falls through to method
+		// comparison; unreachable in practice but pins the documented ordering.
+		{"equal path specificity falls through to method subset", mk("/ab/*", "POST"), mk("/cd/*", "GET", "POST"), true},
+		{"equal path specificity, method not a subset", mk("/ab/*", "GET"), mk("/cd/*", "POST"), false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, isMoreSpecificAttachment(tc.a, tc.b))
+		})
+	}
+}
+
 func TestPathsMatch(t *testing.T) {
 	tests := []struct {
 		name       string
