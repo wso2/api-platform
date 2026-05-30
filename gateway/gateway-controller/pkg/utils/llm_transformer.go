@@ -246,7 +246,7 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 							if attachedPolicyPaths[targetPath] {
 								continue
 							}
-							if moreSpecificPolicyAttachmentCovers(targetPath, policyMethod, attachment, *proxy.Spec.Policies) {
+							if moreSpecificPolicyAttachmentCovers(targetPath, policyMethod, attachment) {
 								continue
 							}
 							targetKey := pathMethodKey{path: targetPath, method: policyMethod}
@@ -467,7 +467,7 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 								if attachedPolicyPaths[targetPath] {
 									continue
 								}
-								if moreSpecificPolicyAttachmentCovers(targetPath, policyMethod, attachment, *provider.Spec.Policies) {
+								if moreSpecificPolicyAttachmentCovers(targetPath, policyMethod, attachment) {
 									continue
 								}
 								targetKey := pathMethodKey{path: targetPath, method: policyMethod}
@@ -557,7 +557,7 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 								if attachedPolicyPaths[targetPath] {
 									continue
 								}
-								if moreSpecificPolicyAttachmentCovers(targetPath, policyMethod, attachment, *provider.Spec.Policies) {
+								if moreSpecificPolicyAttachmentCovers(targetPath, policyMethod, attachment) {
 									continue
 								}
 								targetKey := pathMethodKey{path: targetPath, method: policyMethod}
@@ -812,30 +812,25 @@ func methodsInclude(methods []string, method string) bool {
 	return false
 }
 
-// moreSpecificPolicyAttachmentCovers reports whether another path entry of the SAME policy
-// covers targetPath for the given HTTP method and is strictly more specific than the current
-// entry. When true, the current (less specific) entry must not be layered onto targetPath, so
-// the most specific match wins for that policy. Specificity is compared by path first
-// (see isMoreSpecificPath) and then, for entries on an equally specific path, by method
-// (a concrete method beats the '*' wildcard). Different policy names still layer (e.g. a
-// wildcard set-headers plus a path-specific rate limit); only same-name overlaps are collapsed.
-func moreSpecificPolicyAttachmentCovers(targetPath, method string, current llmPolicyAttachment,
-	policies []api.LLMPolicy) bool {
-	for _, llmPol := range policies {
-		if llmPol.Name != current.policy.Name {
+// moreSpecificPolicyAttachmentCovers reports whether another path entry WITHIN THE SAME policy
+// block covers targetPath for the given HTTP method and is strictly more specific than the
+// current entry. When true, the current (less specific) entry must not be layered onto
+// targetPath, so the most specific match wins within that block. Specificity is compared by
+// path first (see isMoreSpecificPath) and then, for entries on an equally specific path, by
+// method (the narrower method set wins). Resolution is scoped to a single block, so separate
+// policy blocks - even ones with the same name - each contribute their most specific match and
+// all layer onto the route.
+func moreSpecificPolicyAttachmentCovers(targetPath, method string, current llmPolicyAttachment) bool {
+	for i := range current.policy.Paths {
+		other := current.policy.Paths[i]
+		if !pathsMatch(targetPath, other.Path) {
 			continue
 		}
-		for i := range llmPol.Paths {
-			other := llmPol.Paths[i]
-			if !pathsMatch(targetPath, other.Path) {
-				continue
-			}
-			if !methodsInclude(expandLLMPolicyMethods(other.Methods), method) {
-				continue
-			}
-			if isMoreSpecificAttachment(other, current.pathEntry) {
-				return true
-			}
+		if !methodsInclude(expandLLMPolicyMethods(other.Methods), method) {
+			continue
+		}
+		if isMoreSpecificAttachment(other, current.pathEntry) {
+			return true
 		}
 	}
 	return false

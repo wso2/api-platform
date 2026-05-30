@@ -1108,7 +1108,7 @@ func TestTransformProvider_MostSpecificPathWinsForSamePolicy(t *testing.T) {
 			Spec:     api.LLMProviderTemplateData{},
 		},
 	}
-	db.SaveLLMProviderTemplate(template)
+	require.NoError(t, db.SaveLLMProviderTemplate(template))
 	require.NoError(t, store.AddTemplate(template))
 
 	rateLimitParams := func(quotaName string, limit int) map[string]interface{} {
@@ -1206,7 +1206,7 @@ func TestTransformProvider_MostSpecificPathWinsAcrossNestedWildcards(t *testing.
 			Spec:     api.LLMProviderTemplateData{},
 		},
 	}
-	db.SaveLLMProviderTemplate(template)
+	require.NoError(t, db.SaveLLMProviderTemplate(template))
 	require.NoError(t, store.AddTemplate(template))
 
 	rlParams := func(limit int) map[string]interface{} {
@@ -1329,7 +1329,7 @@ func TestTransformProvider_MostSpecificPathWinsAcrossMethodsAndOrder(t *testing.
 				UUID:          "0000-template-1-0000-000000000004",
 				Configuration: api.LLMProviderTemplate{Metadata: api.Metadata{Name: "openai"}, Spec: api.LLMProviderTemplateData{}},
 			}
-			db.SaveLLMProviderTemplate(template)
+			require.NoError(t, db.SaveLLMProviderTemplate(template))
 			require.NoError(t, store.AddTemplate(template))
 
 			upstreamURL := "https://api.openai.com"
@@ -1429,7 +1429,7 @@ func TestTransformProvider_MostSpecificMethodWinsOnSamePath(t *testing.T) {
 				UUID:          "0000-template-1-0000-000000000005",
 				Configuration: api.LLMProviderTemplate{Metadata: api.Metadata{Name: "openai"}, Spec: api.LLMProviderTemplateData{}},
 			}
-			db.SaveLLMProviderTemplate(template)
+			require.NoError(t, db.SaveLLMProviderTemplate(template))
 			require.NoError(t, store.AddTemplate(template))
 
 			upstreamURL := "https://api.openai.com"
@@ -1529,7 +1529,7 @@ func transformProviderWithPolicies(t *testing.T, uuid string, tmplSpec api.LLMPr
 		UUID:          uuid,
 		Configuration: api.LLMProviderTemplate{Metadata: api.Metadata{Name: "openai"}, Spec: tmplSpec},
 	}
-	db.SaveLLMProviderTemplate(template)
+	require.NoError(t, db.SaveLLMProviderTemplate(template))
 	require.NoError(t, store.AddTemplate(template))
 	upstreamURL := "https://api.openai.com"
 	provider := &api.LLMProviderConfiguration{
@@ -1691,6 +1691,41 @@ func TestTransformProvider_TemplateExpansionDedupesSameNamePolicy(t *testing.T) 
 	require.NotNil(t, wildOp.Policies)
 	require.Len(t, *wildOp.Policies, 1)
 	assert.Equal(t, 1, quotaLimitOf(t, (*wildOp.Policies)[0]))
+}
+
+// Two separate policy blocks of the SAME name each resolve most-specific-within-block and
+// both layer onto every route (the user's two-advanced-ratelimit scenario).
+func TestTransformProvider_SeparatePoliciesOfSameNameBothApply(t *testing.T) {
+	block1 := api.LLMPolicy{Name: "advanced-ratelimit", Version: "v1", Paths: []api.LLMPolicyPath{
+		{Path: "/chat/completions", Methods: []api.LLMPolicyPathMethods{"*"}, Params: rlQuota(4)},
+		{Path: "/chat/completions", Methods: []api.LLMPolicyPathMethods{"GET"}, Params: rlQuota(10)},
+		{Path: "/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: rlQuota(1)},
+		{Path: "/chat/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: rlQuota(2)},
+	}}
+	block2 := api.LLMPolicy{Name: "advanced-ratelimit", Version: "v1", Paths: []api.LLMPolicyPath{
+		{Path: "/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: rlQuota(100)},
+	}}
+	result := transformProviderWithPolicies(t, "0000-template-1-0000-000000000011",
+		api.LLMProviderTemplateData{}, api.LLMAccessControl{Mode: api.AllowAll},
+		[]api.LLMPolicy{block1, block2})
+
+	limitsFor := func(path, method string) []int {
+		op := findOperation(result.Spec.Operations, path, method)
+		require.NotNil(t, op, "expected %s %s operation", method, path)
+		require.NotNil(t, op.Policies)
+		out := []int{}
+		for _, p := range *op.Policies {
+			assert.Equal(t, "advanced-ratelimit", p.Name)
+			out = append(out, quotaLimitOf(t, p))
+		}
+		return out
+	}
+
+	// Each route carries block #1's most-specific match AND block #2's /* (100). Both apply.
+	assert.ElementsMatch(t, []int{4, 100}, limitsFor("/chat/completions", "POST"))
+	assert.ElementsMatch(t, []int{10, 100}, limitsFor("/chat/completions", "GET"))
+	assert.ElementsMatch(t, []int{2, 100}, limitsFor("/chat/*", "POST"))
+	assert.ElementsMatch(t, []int{1, 100}, limitsFor("/*", "POST"))
 }
 
 func TestTransformProvider_WithUpstreamAuth(t *testing.T) {

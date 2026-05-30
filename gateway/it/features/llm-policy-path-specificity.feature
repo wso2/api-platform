@@ -909,3 +909,138 @@ Feature: LLM policy path and method specificity
     Then the response status code should be 200
     When I delete the LLM provider template "proxyspec-template"
     Then the response status code should be 200
+
+  # ------------------------------------------------------------------
+  # Two separate policy blocks of the SAME name both apply. Each block is resolved
+  # most-specific-within-itself, and every block layers onto the route. set-headers is used
+  # (two blocks setting DIFFERENT response headers) so "both applied" is directly assertable:
+  #   Block 1 (set-headers, X-Tier):  /chat/completions [*]->chat-all, [GET]->chat-get,
+  #                                   /chat/* [*]->chat-wild, /* [*]->root
+  #   Block 2 (set-headers, X-Global): /* [*]->global-applied
+  # Every response carries the block-1 X-Tier for its most specific path/method AND the
+  # block-2 X-Global, proving both same-name blocks apply.
+  # ------------------------------------------------------------------
+  Scenario: Two policy blocks of the same name both apply, each most-specific within itself
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProviderTemplate
+      metadata:
+        name: twoblocks-template
+      spec:
+        displayName: Two Blocks Template
+      """
+    Then the response status code should be 201
+
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: LlmProvider
+      metadata:
+        name: twoblocks-provider
+      spec:
+        displayName: Two Blocks Provider
+        version: v1.0
+        context: /twoblocks
+        template: twoblocks-template
+        upstream:
+          url: http://echo-backend-multi-arch:8080/anything
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-api-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: set-headers
+            version: v1
+            paths:
+              - path: /chat/completions
+                methods:
+                  - '*'
+                params:
+                  response:
+                    headers:
+                      - name: X-Tier
+                        value: chat-all
+              - path: /chat/completions
+                methods:
+                  - 'GET'
+                params:
+                  response:
+                    headers:
+                      - name: X-Tier
+                        value: chat-get
+              - path: /chat/*
+                methods:
+                  - '*'
+                params:
+                  response:
+                    headers:
+                      - name: X-Tier
+                        value: chat-wild
+              - path: /*
+                methods:
+                  - '*'
+                params:
+                  response:
+                    headers:
+                      - name: X-Tier
+                        value: root
+          - name: set-headers
+            version: v1
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+                params:
+                  response:
+                    headers:
+                      - name: X-Global
+                        value: global-applied
+      """
+    Then the response status code should be 201
+    And I wait for 2 seconds
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    # POST /chat/completions -> block 1 most-specific is the [*] entry (chat-all); block 2 also applies
+    When I send a POST request to "http://localhost:8080/twoblocks/chat/completions" with body:
+      """
+      {"model": "gpt-4"}
+      """
+    Then the response status code should be 200
+    And the response header "X-Tier" should be "chat-all"
+    And the response header "X-Global" should be "global-applied"
+
+    # GET /chat/completions -> block 1 most-specific is the [GET] entry (chat-get); block 2 also applies
+    When I send a GET request to "http://localhost:8080/twoblocks/chat/completions"
+    Then the response status code should be 200
+    And the response header "X-Tier" should be "chat-get"
+    And the response header "X-Global" should be "global-applied"
+
+    # /chat/<other> -> block 1 /chat/* (chat-wild); block 2 also applies
+    When I send a POST request to "http://localhost:8080/twoblocks/chat/embeddings" with body:
+      """
+      {"model": "gpt-4"}
+      """
+    Then the response status code should be 200
+    And the response header "X-Tier" should be "chat-wild"
+    And the response header "X-Global" should be "global-applied"
+
+    # any other path -> block 1 /* (root); block 2 also applies
+    When I send a POST request to "http://localhost:8080/twoblocks/models" with body:
+      """
+      {"model": "gpt-4"}
+      """
+    Then the response status code should be 200
+    And the response header "X-Tier" should be "root"
+    And the response header "X-Global" should be "global-applied"
+
+    # Cleanup
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "twoblocks-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "twoblocks-template"
+    Then the response status code should be 200
