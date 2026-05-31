@@ -29,14 +29,10 @@
 
         <div class="api-details-btn">
           {{!-- Subscribe --}}
-          {{#if (eq apiMetadata.apiInfo.gatewayType "wso2/api-platform")}}
-            {{#if subscriptionPlans.length}}
-              {{#unless subscriptions.length}}
+          {{#if subscriptionPlans.length}}
+            {{#unless subscriptions.length}}
           <a type="button" class="common-btn-primary" href="#subscriptionPlans">Subscribe</a>
-              {{/unless}}
-            {{/if}}
-          {{else}}
-          <a type="button" class="common-btn-primary" href="#subscriptionPlans">Subscribe</a>
+            {{/unless}}
           {{/if}}
           {{#in apiMetadata.apiInfo.apiType values="REST,WS,WEBSUB,GRAPHQL,MCP"}}
           <a type="button" class="common-btn-outlined"
@@ -45,11 +41,7 @@
           <a type="button" class="common-btn-outlined" href="{{{schemaUrl}}}" download>Download</a>
           {{/in}}
           {{!-- Subscriptions --}}
-          {{#if (eq apiMetadata.apiInfo.gatewayType "wso2/api-platform")}}
-            {{#if subscriptionPlans.length}}
-          <a type="button" class="common-btn-outlined" href="{{baseUrl}}/api/{{apiMetadata.apiHandle}}/subscriptions">Subscriptions</a>
-            {{/if}}
-          {{else}}
+          {{#if subscriptionPlans.length}}
           <a type="button" class="common-btn-outlined" href="{{baseUrl}}/api/{{apiMetadata.apiHandle}}/subscriptions">Subscriptions</a>
           {{/if}}
           {{#if showApiKeysNav}}

@@ -82,13 +82,6 @@ const createSubscription = async (req, res) => {
 
         const apiMetadata = apiMetadataResponse[0];
 
-        if (apiMetadata.GATEWAY_TYPE !== 'wso2/api-platform') {
-            return res.status(400).json({
-                code: '400', message: 'Bad Request',
-                description: 'This API does not support subscriptions',
-            });
-        }
-
         const plans = apiMetadata.DP_SUBSCRIPTION_POLICies || [];
         if (plans.length === 0) {
             return res.status(400).json({

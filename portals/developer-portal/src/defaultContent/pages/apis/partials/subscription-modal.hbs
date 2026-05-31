@@ -1,6 +1,6 @@
 <div id="planModal-{{apiID}}" class="modal custom-modal subscription-plan-modal" tabindex="-1" role="dialog"
     style="display:none;"
-    data-org-id="{{@root.orgID}}" data-api-refid="{{#if apiInfo.apiReferenceID}}{{apiInfo.apiReferenceID}}{{else}}{{apiID}}{{/if}}" data-gateway-type="{{apiInfo.gatewayType}}"
+    data-org-id="{{@root.orgID}}" data-api-refid="{{#if apiInfo.apiReferenceID}}{{apiInfo.apiReferenceID}}{{else}}{{apiID}}{{/if}}"
     data-has-subscription-token="{{@root.hasSubscriptionToken}}">
     <div class="modal-dialog modal-xl subscription-plan-modal-dialog" role="document">
         <div class="modal-content custom-modal-content">
@@ -37,93 +37,34 @@
                 <div id="subscriptionContent-{{apiID}}" class="subscription-content px-4" style="display:none;">
                     <!-- Subscription table and plans will be injected here dynamically -->
                 </div>
-                <div class="subscription-plans-body pb-4" {{#if (eq apiInfo.gatewayType "wso2/api-platform")}}style="display:none;"{{/if}}>
+                <div class="subscription-plans-body pb-4">
                     <div class="subscription-plans-title small">Subscription Plans</div>
                     <p class="subscription-plans-subtitle">Please select the most suitable subscription plan from the
                         options
                         available for this API</p>
                     <input type="hidden" id="modal-selected-app-{{apiID}}" value="" />
-                    
+
                     <div class="row row-gap-4 pt-3">
                         {{#each subscriptionPolicyDetails}}
                         <div class="col-12 col-md-6 col-lg-4">
                             <div id="subscriptionCard-{{policyID}}" class="card dev-card subscription-card">
                                 <div class="card-body align-items-center text-center p-0">
                                     <span class="subscription-plans-card-title">{{displayName}}</span>
-                                        <div class="mb-3 w-100">
-                                            <div class="d-flex flex-column align-items-center gap-2" style="margin: 0 auto;">
-                                                <span class="text-muted d-block mt-3 mb-0" style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom:0 !important; min-height: 18px;">Rate Limit</span>
-                                                <span class="fw-bold d-inline" style="color: #0f172a; font-size: 25px;">{{requestCount}}<small class="text-muted d-inline" style="font-size: 11px;">&nbsp;req/min</small></span>
-                                            </div>
+                                    <div class="mb-3 w-100">
+                                        <div class="d-flex flex-column align-items-center gap-2" style="margin: 0 auto;">
+                                            <span class="text-muted d-block mt-3 mb-0" style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom:0 !important; min-height: 18px;">Rate Limit</span>
+                                            <span class="fw-bold d-inline" style="color: #0f172a; font-size: 25px;">{{requestCount}}<small class="text-muted d-inline" style="font-size: 11px;">&nbsp;req/min</small></span>
                                         </div>
-                                                {{#if (eq ../apiInfo.gatewayType "wso2/api-platform")}}
-                                                    <button id="subscribe-btn-{{policyID}}" type="button"
-                                                        class="common-btn-primary p-1 ps-2 pe-2 w-100 subscription-plan-subscribe-btn {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                                                        data-org-id="{{@root.orgID}}"
-                                                        data-api-id="{{#if apiID}}{{apiID}}{{else}}{{../apiID}}{{/if}}"
-                                                        data-policy-id="{{policyID}}"
-                                                        data-policy-name="{{policyName}}"
-                                                        data-display-name="{{displayName}}"
-                                                        {{#unless @root.isReadOnlyMode}}onclick="handlePlanSubscription(this)"{{/unless}}
-                                                        {{#if @root.isReadOnlyMode}}disabled aria-disabled="true"{{/if}}>Subscribe</button>
-                                                {{else}}
-                                                    {{#if ../subID}}
-                                                        {{!-- Update mode: app already known, show Update button directly --}}
-                                                        <button id="subscribe-btn-{{policyID}}" type="button"
-                                                            class="common-btn-primary p-1 ps-2 pe-2 w-100 subscription-plan-subscribe-btn {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                                                            {{#unless @root.isReadOnlyMode}}onclick="showSubscribeButtonLoading(this); updateSubscription('{{@root.orgID}}', '{{../appID}}', '{{../apiID}}', '{{#if ../refID}}{{../refID}}{{else}}{{../apiID}}{{/if}}', '{{policyID}}', '{{policyName}}', '{{../selectedPlan}}', '{{../subID}}')"{{/unless}}
-                                                            {{#if @root.isReadOnlyMode}}disabled aria-disabled="true"{{/if}}>Update</button>
-                                                    {{else}}
-                                                        {{!-- App-based subscription flow: show dropdown above a full-width Subscribe button --}}
-                                                        <div class="p-3 d-flex flex-column align-items-stretch">
-                                                            <div class="mb-2">
-                                                                <div class="custom-dropdown show" id="customDropdown-{{policyID}}" style="min-width: 100%; marginBottom: 30px">
-                                                                    <input type="hidden" id="selectedAppId-{{policyID}}" value="" />
-                                                                    <div class="custom-select-container" style="width: 100%; margin-bottom: 8px;">
-                                                                        <div class="select-selected" aria-expanded="false">
-                                                                            <span class="selected-text">Create an app</span>
-                                                                            <span class="select-arrow"></span>
-                                                                        </div>
-                                                                        <div class="select-items" role="listbox">
-                                                                            <div class="select-search-container">
-                                                                                <input type="text" class="select-search-input {{#if @root.isReadOnlyMode}}d-none{{/if}}" placeholder="Find or create an application..."
-                                                                                    aria-label="Search applications">
-                                                                            </div>
-                                                                            <div class="select-items-container">
-                                                                                {{#each ../applications}}
-                                                                                <div class="select-item {{#if subscribed}}disabled{{/if}}" role="button" data-value="{{id}}" data-app-name="{{name}}">
-                                                                                    <div class="d-flex flex-column flex-grow-1">
-                                                                                        <span class="fw-semibold">{{name}}</span>
-                                                                                        {{#if subscriptionPolicy}}
-                                                                                        <small style="font-size: 11px; margin-top: 3px;">
-                                                                                            <span class="badge" style="background-color: #e0f2fe; color: #0369a1; padding: 2px 8px; border-radius: 10px; font-weight: 600; font-size: 10px;">
-                                                                                                {{subscriptionPolicy.policyName}}
-                                                                                            </span>
-                                                                                        </small>
-                                                                                        {{/if}}
-                                                                                    </div>
-                                                                                    {{#if subscribed}}
-                                                                                        <span class="badge" style="background:#ecfdf5;color:#047857;padding:2px 8px;border-radius:10px;font-weight:700;font-size:10px;flex-shrink:0;">Active</span>
-                                                                                    {{/if}}
-                                                                                </div>
-                                                                                {{/each}}
-                                                                            </div>
-                                                                            <div class="create-app-container" style="display: none;">
-                                                                                <div class="create-app-option" role="button">
-                                                                                    Create application "<span class="search-term"></span>"
-                                                                                </div>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                            <button id="subscribe-btn-{{policyID}}" type="button"
-                                                                class="common-btn-primary w-100 subscription-plan-subscribe-btn {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                                                                {{#unless @root.isReadOnlyMode}}onclick="showSubscribeButtonLoading(this); subscribe('{{@root.orgID}}', '', '{{../apiID}}', '{{#if ../apiReferenceID}}{{../apiReferenceID}}{{else}}{{../apiID}}{{/if}}', '{{policyID}}', '{{policyName}}', this)"{{/unless}}
-                                                                {{#if @root.isReadOnlyMode}}disabled aria-disabled="true"{{/if}}>Subscribe</button>
-                                                        </div>
-                                                    {{/if}}
-                                                {{/if}}
+                                    </div>
+                                    <button id="subscribe-btn-{{policyID}}" type="button"
+                                        class="common-btn-primary p-1 ps-2 pe-2 w-100 subscription-plan-subscribe-btn {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+                                        data-org-id="{{@root.orgID}}"
+                                        data-api-id="{{#if apiID}}{{apiID}}{{else}}{{../apiID}}{{/if}}"
+                                        data-policy-id="{{policyID}}"
+                                        data-policy-name="{{policyName}}"
+                                        data-display-name="{{displayName}}"
+                                        {{#unless @root.isReadOnlyMode}}onclick="handlePlanSubscription(this)"{{/unless}}
+                                        {{#if @root.isReadOnlyMode}}disabled aria-disabled="true"{{/if}}>Subscribe</button>
                                 </div>
                             </div>
                         </div>

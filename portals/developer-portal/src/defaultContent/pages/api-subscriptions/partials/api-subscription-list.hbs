@@ -8,13 +8,8 @@
         <thead>
             <tr>
                 <th>Plan</th>
-                {{#unless (eq @root.apiMetadata.apiInfo.gatewayType "wso2/api-platform")}}
-                <th>Application</th>
-                {{/unless}}
                 <th>Status</th>
-                {{#if (eq @root.apiMetadata.apiInfo.gatewayType "wso2/api-platform")}}
                 <th>Subscription Token</th>
-                {{/if}}
                 <th>Actions</th>
             </tr>
         </thead>
@@ -26,21 +21,11 @@
             {{#each subscriptions}}
             <tr id="sub-row-{{this.id}}">
                 <td>{{this.planName}}</td>
-                {{#unless (eq @root.apiMetadata.apiInfo.gatewayType "wso2/api-platform")}}
-                <td>
-                    {{#if this.applicationName}}
-                        {{this.applicationName}}
-                    {{else}}
-                        <span class="text-muted">&mdash;</span>
-                    {{/if}}
-                </td>
-                {{/unless}}
                 <td>
                     <span class="badge {{#if (eq this.status 'ACTIVE')}}bg-success{{else}}bg-secondary{{/if}}">
                         {{this.status}}
                     </span>
                 </td>
-                {{#if (eq @root.apiMetadata.apiInfo.gatewayType "wso2/api-platform")}}
                 <td>
                     <div class="token-display d-flex align-items-center gap-1">
                         <code class="masked-token" id="list-token-{{this.id}}" data-revealed="false">****</code>
@@ -52,7 +37,6 @@
                         </button>
                     </div>
                 </td>
-                {{/if}}
                 <td>
                     <div class="d-flex gap-1">
                         <button class="btn btn-sm btn-outline-warning {{#if @root.isReadOnlyMode}}disabled{{/if}}" title="{{#if (eq this.status 'ACTIVE')}}Deactivate{{else}}Activate{{/if}}"
