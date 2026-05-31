@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 env:
-  DOCKER_REGISTRY: ghcr.io/wso2/api-platform
+  DOCKER_REGISTRY: ghcr.io/${{ github.repository_owner }}/api-platform
 
 jobs:
   release:
