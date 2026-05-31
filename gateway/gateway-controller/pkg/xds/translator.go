@@ -853,13 +853,17 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		sandboxCluster := t.createCluster(sbClusterName, parsedSbURL, nil, sbUpstreamClusterConnectTimeout)
 		clusters = append(clusters, sandboxCluster)
 
-		// Create sandbox routes for each operation
+		// Create sandbox routes. When upstreamDefinitions exist, enable dynamic cluster
+		// selection (mirrors main), defaulting to the sandbox cluster.
 		sbRoutesList := make([]*route.Route, 0)
+		sbUseClusterHeader := apiData.UpstreamDefinitions != nil && len(*apiData.UpstreamDefinitions) > 0
+		sbDefaultCluster := ""
+		if sbUseClusterHeader {
+			sbDefaultCluster = sbClusterName
+		}
 		for _, op := range apiData.Operations {
-			// Use sbClusterName for sandbox upstream path
-			// Sandbox routes don't support dynamic cluster selection
 			r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, sbTimeout, false, "", nil)
+				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, sbTimeout, sbUseClusterHeader, sbDefaultCluster, upstreamDefPaths)
 			sbRoutesList = append(sbRoutesList, r)
 		}
 		routesList = append(routesList, sbRoutesList...)

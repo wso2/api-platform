@@ -344,3 +344,46 @@ func TestResolvePort(t *testing.T) {
 		})
 	}
 }
+
+// TestRestAPITransformer_SandboxRouteClusterHeader pins the sandbox route's dynamic
+// cluster selection: with upstreamDefinitions the sandbox route uses cluster_header
+// routing (so a dynamic-endpoint policy can divert sandbox traffic) and defaults to the
+// sandbox cluster; without them it stays a static sandbox route.
+func TestRestAPITransformer_SandboxRouteClusterHeader(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{}
+	const sandboxURL = "http://sandbox-backend:9080/sandbox"
+	const sandboxRouteKey = "GET|/test/hello|sandbox.local"
+	expectedSandboxCluster := sanitizeEnvoyClusterName("sandbox-backend:9080", "http")
+
+	t.Run("without upstreamDefinitions the sandbox route is static", func(t *testing.T) {
+		transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+		cfg := makeRestAPIStoredConfig(nil, nil)
+		restAPI := cfg.Configuration.(api.RestAPI)
+		restAPI.Spec.Upstream.Sandbox = &api.Upstream{Url: ptrStr(sandboxURL)}
+		cfg.Configuration = restAPI
+
+		rdc, err := transformer.Transform(cfg)
+		require.NoError(t, err)
+		r, exists := rdc.Routes[sandboxRouteKey]
+		require.True(t, exists, "sandbox route should exist")
+		assert.False(t, r.Upstream.UseClusterHeader)
+		assert.Equal(t, "", r.Upstream.DefaultCluster)
+	})
+
+	t.Run("with upstreamDefinitions the sandbox route uses cluster_header defaulting to the sandbox cluster", func(t *testing.T) {
+		transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+		cfg := makeRestAPIStoredConfig(nil, nil)
+		restAPI := cfg.Configuration.(api.RestAPI)
+		restAPI.Spec.Upstream.Sandbox = &api.Upstream{Url: ptrStr(sandboxURL)}
+		restAPI.Spec.UpstreamDefinitions = &[]api.UpstreamDefinition{{Name: "alt-upstream"}}
+		cfg.Configuration = restAPI
+
+		rdc, err := transformer.Transform(cfg)
+		require.NoError(t, err)
+		r, exists := rdc.Routes[sandboxRouteKey]
+		require.True(t, exists, "sandbox route should exist")
+		assert.True(t, r.Upstream.UseClusterHeader)
+		assert.Equal(t, expectedSandboxCluster, r.Upstream.DefaultCluster,
+			"sandbox route must default to the sandbox cluster, not main")
+	})
+}

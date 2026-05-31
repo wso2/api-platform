@@ -227,8 +227,14 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 			routeKey := xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, effectiveSandboxVHost)
 			if r, exists := rdc.Routes[routeKey]; exists {
 				r.Upstream.ClusterKey = sbUpstream.ClusterKey
-				r.Upstream.UseClusterHeader = false
-				r.Upstream.DefaultCluster = ""
+				// Mirror main on sandbox routes: cluster_header lets a dynamic-endpoint policy
+				// divert sandbox traffic, defaulting to the sandbox cluster when none does.
+				r.Upstream.UseClusterHeader = useClusterHeader
+				if useClusterHeader {
+					r.Upstream.DefaultCluster = sbUpstream.EnvoyClusterName
+				} else {
+					r.Upstream.DefaultCluster = ""
+				}
 				r.AutoHostRewrite = sbAutoHostRewrite
 			}
 		}
