@@ -201,11 +201,12 @@ const resetThrottlingPolicy = async (req, res) => {
 };
 
 const generateKeys = async (req, res) => {
-    const orgID = await adminDao.getOrgId(req.user[constants.ORG_IDENTIFIER]);
-    const appID = req.params.applicationId;
-    const userID = req[constants.USER_ID] || req.user?.sub;
-    logger.info('Initiate create application key mapping...', { orgId: orgID, appId: appID });
+    let orgID, appID, userID;
     try {
+        orgID = await adminDao.getOrgId(req.user[constants.ORG_IDENTIFIER]);
+        appID = req.params.applicationId;
+        userID = req[constants.USER_ID] || req.user?.sub;
+        logger.info('Initiate create application key mapping...', { orgId: orgID, appId: appID });
         const {
             keyManager: kmName,
             keyType: rawKeyType,
@@ -236,6 +237,7 @@ const generateKeys = async (req, res) => {
             tokenEndpoint: kmRecord.TOKEN_ENDPOINT,
             supportedGrantTypes: kmRecord.SUPPORTED_GRANT_TYPES,
             additionalProperties: oauthClient.additionalProperties,
+            subscriptionScopes: oauthClient.subscriptionScopes || [],
         };
 
         const appKeyMapping = {

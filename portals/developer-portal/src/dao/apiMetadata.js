@@ -1428,7 +1428,7 @@ async function updateAPISubscriptionPolicy(subscriptionPolicies, apiID, t) {
     try {
         for (const policy of subscriptionPolicies) {
             policiesToCreate.push({
-                POLICY_ID: policy.policyID,
+                POLICY_ID: policy.policyId ?? policy.policyID,
                 API_ID: apiID,
             })
         }

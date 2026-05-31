@@ -1700,7 +1700,7 @@ Minimal developer-facing key manager view. No admin credentials or DCR endpoints
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |keyManager|string|true|none|none|
-|keyType|string|false|none|none|
+|keyType|string|true|none|none|
 |grantTypesToBeSupported|[string]|false|none|none|
 |callbackUrl|string(uri)|false|none|none|
 |scopes|[string]|false|none|none|
