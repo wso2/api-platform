@@ -41,7 +41,7 @@ To delete an application:
 2. Click the **Delete** option from the application menu.
 3. Confirm deletion.
 
-> **Warning:** Deleting an application invalidates all OAuth2 credentials (consumer key/secret) associated with it. Existing access tokens issued for this application will stop working when they expire or are revoked. This action is irreversible.
+> **Warning:** Deleting an application revokes all OAuth2 clients registered with the key manager and removes all stored key mappings. Existing access tokens will stop working when they expire. This action is irreversible.
 
 ## Related
 

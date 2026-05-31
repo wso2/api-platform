@@ -978,9 +978,10 @@ paths:
         - Applications
       summary: Delete an application for the authenticated user
       description: >-
-        Deletes an application owned by the authenticated user. If the application has billed Stripe
-        subscriptions, the service cancels them before deleting the local application. If a control-plane
-        application mapping exists, the corresponding control-plane application is deleted as well.
+        Deletes an application owned by the authenticated user. Before removing the application record the
+        service revokes all OAuth clients registered with their respective key managers and deletes all
+        stored key mappings. If the application has billed Stripe subscriptions, those are also cancelled
+        first. Key manager revocation failures are logged as warnings and do not abort the deletion.
       operationId: deleteApplication
       responses:
         "200":
@@ -1361,8 +1362,7 @@ paths:
       description: >-
         Generates or maps OAuth credentials for the specified application through the selected key manager.
         The portal calls the Authorization Server DCR endpoint directly using the configured key manager
-        adapter and stores the resulting key mapping. Supply `clientID` to map an existing AS client instead
-        of creating one; `tokenDetails.keyType` is required in both cases.
+        adapter and stores the resulting key mapping.
       requestBody:
         $ref: "#/components/requestBodies/AppKeyMappingBody"
       responses:
@@ -3071,9 +3071,7 @@ components:
     AppKeyMappingBody:
       required: true
       description: >-
-        Application key mapping payload. Use internal, resident, or STS key managers to generate OAuth
-        keys. For external key managers, provide `clientID` and `tokenDetails.keyType` to map an existing
-        client.
+        OAuth key generation payload. The application is identified by the `applicationId` path parameter.
       content:
         application/json:
           schema:
@@ -3082,27 +3080,15 @@ components:
             generateResidentOAuthKeys:
               summary: Generate OAuth keys using the resident key manager
               value:
-                applicationName: Weather App
-                tokenType: OAUTH
-                tokenDetails:
-                  keyManager: Resident Key Manager
-                  keyType: PRODUCTION
-                  grantTypesToBeSupported:
-                    - client_credentials
-                    - refresh_token
-                  callbackUrl: https://app.example.com/callback
-                  additionalProperties:
-                    application_access_token_expiry_time: "3600"
-                    user_access_token_expiry_time: "3600"
-            mapExternalClient:
-              summary: Map an existing external client ID
-              value:
-                applicationName: Weather App
-                tokenType: OAUTH
-                clientID: external-client-123
-                tokenDetails:
-                  keyManager: External Key Manager
-                  keyType: PRODUCTION
+                keyManager: Resident Key Manager
+                keyType: PRODUCTION
+                grantTypesToBeSupported:
+                  - client_credentials
+                  - refresh_token
+                callbackUrl: https://app.example.com/callback
+                additionalProperties:
+                  application_access_token_expiry_time: "3600"
+                  user_access_token_expiry_time: "3600"
     ViewCreateBody:
       required: true
       description: View creation payload with the label names that should be visible in the view.
@@ -5690,66 +5676,40 @@ components:
     AppKeyMappingRequest:
       type: object
       required:
-        - tokenDetails
+        - keyManager
       properties:
-        applicationName:
+        keyManager:
           type: string
-          example: Weather App
-        apis:
-          type: array
-          description: Optional list of API identifiers. Existing service logic synchronizes subscribed APIs for the application.
-          items:
-            type: object
-          example:
-            - apiName: Weather API
-              apiRefId: "214te6382jjq9274eg332190"
-              policyID: "24341d98-90f7-4530-95ef-0709609eea1a"
-        tokenType:
+          example: Resident Key Manager
+        keyType:
           type: string
           enum:
-            - API_KEY
-            - OAUTH
-            - BASIC
-          example: OAUTH
-        provider:
+            - PRODUCTION
+            - SANDBOX
+          example: PRODUCTION
+        grantTypesToBeSupported:
+          type: array
+          items:
+            type: string
+          example:
+            - client_credentials
+            - refresh_token
+        callbackUrl:
           type: string
-          example: WSO2
-        clientID:
-          type: string
-          description: Existing consumer key used when mapping external keys.
-          example: external-client-123
-        tokenDetails:
+          format: uri
+          example: https://app.example.com/callback
+        scopes:
+          type: array
+          items:
+            type: string
+          example:
+            - default
+        additionalProperties:
           type: object
-          required:
-            - keyManager
-          properties:
-            keyManager:
-              type: string
-              example: Resident Key Manager
-            keyType:
-              type: string
-              enum:
-                - PRODUCTION
-                - SANDBOX
-              example: PRODUCTION
-            grantTypesToBeSupported:
-              type: array
-              items:
-                type: string
-              example:
-                - client_credentials
-                - refresh_token
-            callbackUrl:
-              type: string
-              format: uri
-              example: https://app.example.com/callback
-            additionalProperties:
-              type: object
-              additionalProperties: true
-              example:
-                application_access_token_expiry_time: "3600"
-                user_access_token_expiry_time: "3600"
           additionalProperties: true
+          example:
+            application_access_token_expiry_time: "3600"
+            user_access_token_expiry_time: "3600"
       additionalProperties: false
     AppKeyMappingCreateResponse:
       type: object

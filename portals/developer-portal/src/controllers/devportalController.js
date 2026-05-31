@@ -245,50 +245,44 @@ const generateKeys = async (req, res) => {
     const userID = req[constants.USER_ID] || req.user?.sub;
     logger.info('Initiate create application key mapping...', { orgId: orgID, appId: appID });
     try {
-        const { tokenDetails, clientID } = req.body;
+        const {
+            keyManager: kmName,
+            keyType: rawKeyType,
+            grantTypesToBeSupported,
+            callbackUrl,
+            scopes,
+            additionalProperties: additionalProps,
+        } = req.body;
 
-        const kmName = tokenDetails.keyManager;
         const kmRecord = await kmDao.getKeyManagerByName(orgID, kmName);
         const adapter = getKeyManagerAdapter(kmRecord);
 
-        let responseData;
-        let oauthClient;
+        const grantTypes = grantTypesToBeSupported || ['client_credentials'];
+        const redirectUris = callbackUrl ? [callbackUrl] : [];
+        const resolvedScopes = scopes || ['default'];
+        const resolvedProps = additionalProps || {};
 
-        if (clientID) {
-            responseData = {
-                consumerKey: clientID,
-                consumerSecret: null,
-                keyManager: kmName,
-                additionalProperties: tokenDetails.additionalProperties || {},
-            };
-        } else {
-            const grantTypes = tokenDetails.grantTypesToBeSupported || ['client_credentials'];
-            const redirectUris = tokenDetails.callbackUrl ? [tokenDetails.callbackUrl] : [];
-            const scopes = tokenDetails.scopes || ['default'];
-            const additionalProps = tokenDetails.additionalProperties || {};
+        const sanitize = (s) => String(s).replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+        const keyType = (rawKeyType || 'PRODUCTION').toUpperCase();
+        const clientName = `${sanitize(userID)}_${sanitize(appID)}_${keyType}`;
 
-            const sanitize = (s) => String(s).replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
-            const keyType = (tokenDetails.keyType || 'PRODUCTION').toUpperCase();
-            const clientName = `${sanitize(userID)}_${sanitize(appID)}_${keyType}`;
+        const oauthClient = await adapter.createOAuthClient(clientName, grantTypes, redirectUris, resolvedScopes, resolvedProps);
 
-            oauthClient = await adapter.createOAuthClient(clientName, grantTypes, redirectUris, scopes, additionalProps);
-
-            responseData = {
-                consumerKey: oauthClient.clientId,
-                consumerSecret: oauthClient.clientSecret,
-                keyManager: kmName,
-                tokenEndpoint: kmRecord.TOKEN_ENDPOINT,
-                supportedGrantTypes: kmRecord.SUPPORTED_GRANT_TYPES,
-                additionalProperties: oauthClient.additionalProperties,
-            };
-        }
+        const responseData = {
+            consumerKey: oauthClient.clientId,
+            consumerSecret: oauthClient.clientSecret,
+            keyManager: kmName,
+            tokenEndpoint: kmRecord.TOKEN_ENDPOINT,
+            supportedGrantTypes: kmRecord.SUPPORTED_GRANT_TYPES,
+            additionalProperties: oauthClient.additionalProperties,
+        };
 
         const appKeyMapping = {
             orgID,
             appID,
             kmID: kmRecord.KM_ID,
             asClientID: responseData.consumerKey,
-            keyType: tokenDetails.keyType || 'PRODUCTION',
+            keyType: rawKeyType || 'PRODUCTION',
             additionalProperties: responseData.additionalProperties || {},
         };
         let keyMappingRecord;

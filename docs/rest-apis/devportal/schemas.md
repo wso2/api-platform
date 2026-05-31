@@ -1816,29 +1816,19 @@ Minimal developer-facing key manager view. No admin credentials or DCR endpoints
 
 ```json
 {
-  "applicationName": "Weather App",
-  "apis": [
-    {
-      "apiName": "Weather API",
-      "apiRefId": "214te6382jjq9274eg332190",
-      "policyID": "24341d98-90f7-4530-95ef-0709609eea1a"
-    }
+  "keyManager": "Resident Key Manager",
+  "keyType": "PRODUCTION",
+  "grantTypesToBeSupported": [
+    "client_credentials",
+    "refresh_token"
   ],
-  "tokenType": "OAUTH",
-  "provider": "WSO2",
-  "clientID": "external-client-123",
-  "tokenDetails": {
-    "keyManager": "Resident Key Manager",
-    "keyType": "PRODUCTION",
-    "grantTypesToBeSupported": [
-      "client_credentials",
-      "refresh_token"
-    ],
-    "callbackUrl": "https://app.example.com/callback",
-    "additionalProperties": {
-      "application_access_token_expiry_time": "3600",
-      "user_access_token_expiry_time": "3600"
-    }
+  "callbackUrl": "https://app.example.com/callback",
+  "scopes": [
+    "default"
+  ],
+  "additionalProperties": {
+    "application_access_token_expiry_time": "3600",
+    "user_access_token_expiry_time": "3600"
   }
 }
 
@@ -1848,25 +1838,17 @@ Minimal developer-facing key manager view. No admin credentials or DCR endpoints
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|applicationName|string|true|none|none|
-|apis|[object]|false|none|Optional list of API identifiers. Existing service logic synchronizes subscribed APIs for the application.|
-|tokenType|string|false|none|none|
-|provider|string|false|none|none|
-|clientID|string|false|none|Existing consumer key used when mapping external keys.|
-|tokenDetails|object|true|none|none|
-|» keyManager|string|true|none|none|
-|» keyType|string|false|none|none|
-|» grantTypesToBeSupported|[string]|false|none|none|
-|» callbackUrl|string(uri)|false|none|none|
-|» additionalProperties|object|false|none|none|
+|keyManager|string|true|none|none|
+|keyType|string|false|none|none|
+|grantTypesToBeSupported|[string]|false|none|none|
+|callbackUrl|string(uri)|false|none|none|
+|scopes|[string]|false|none|none|
+|additionalProperties|object|false|none|none|
 
 #### Enumerated Values
 
 |Property|Value|
 |---|---|
-|tokenType|API_KEY|
-|tokenType|OAUTH|
-|tokenType|BASIC|
 |keyType|PRODUCTION|
 |keyType|SANDBOX|
 

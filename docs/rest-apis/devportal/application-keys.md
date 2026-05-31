@@ -1,6 +1,6 @@
 <h1 id="wso2-api-developer-portal-core-devportal-routes-application-keys">Application Keys</h1>
 
-## Generate OAuth keys for a control-plane application
+## Generate OAuth keys for a Developer Portal application
 
 <a id="opIdgenerateApplicationKeys"></a>
 
@@ -19,20 +19,23 @@ curl -X POST http://localhost:3000/devportal/applications/{applicationId}/genera
 
 ```
 
-Proxies key generation to the control-plane application key endpoint. Use this when the caller already has the control-plane application ID and wants to create OAuth credentials for a key manager.
+Generates or maps OAuth credentials for the specified application through the selected key manager. The portal calls the Authorization Server DCR endpoint directly using the configured key manager adapter and stores the resulting key mapping.
 
 > Payload
 
 ```json
 {
-  "keyType": "PRODUCTION",
   "keyManager": "Resident Key Manager",
+  "keyType": "PRODUCTION",
   "grantTypesToBeSupported": [
     "client_credentials",
     "refresh_token"
   ],
   "callbackUrl": "https://app.example.com/callback",
-  "additionalProperties": {}
+  "additionalProperties": {
+    "application_access_token_expiry_time": "3600",
+    "user_access_token_expiry_time": "3600"
+  }
 }
 ```
 
@@ -43,11 +46,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
-<h3 id="generate-oauth-keys-for-a-control-plane-application-parameters">Parameters</h3>
+<h3 id="generate-oauth-keys-for-a-developer-portal-application-parameters">Parameters</h3>
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[ApplicationKeysGenerateRequest](schemas.md#schemaapplicationkeysgeneraterequest)|false|OAuth key generation payload passed through to the configured control-plane application key endpoint.|
+|body|body|[AppKeyMappingRequest](schemas.md#schemaappkeymappingrequest)|true|OAuth key generation payload. The application is identified by the `applicationId` path parameter.|
 |applicationId|path|string|true|none|
 
 > Example responses
@@ -125,7 +128,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-<h3 id="generate-oauth-keys-for-a-control-plane-application-responses">Responses</h3>
+<h3 id="generate-oauth-keys-for-a-developer-portal-application-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
@@ -135,7 +138,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Duplicate organization data conflicts with an existing record.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
-<h3 id="generate-oauth-keys-for-a-control-plane-application-responseschema">Response Schema</h3>
+<h3 id="generate-oauth-keys-for-a-developer-portal-application-responseschema">Response Schema</h3>
 
 ## Generate an OAuth access token
 

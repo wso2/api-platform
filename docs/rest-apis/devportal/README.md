@@ -78,11 +78,6 @@ Base URLs:
 
 ### [Applications](applications.md)
 
-- [Create an application](applications.md#create-an-application)
-- [List applications](applications.md#list-applications)
-- [Update an application](applications.md#update-an-application)
-- [Get application details](applications.md#get-application-details)
-- [Delete an application](applications.md#delete-an-application)
 - [Import an application](applications.md#import-an-application)
 - [Create an application for the authenticated user's organization](applications.md#create-an-application-for-the-authenticated-users-organization)
 - [Update an application for the authenticated user](applications.md#update-an-application-for-the-authenticated-user)
@@ -104,11 +99,6 @@ Base URLs:
 - [Regenerate an API key](api-keys.md#regenerate-an-api-key)
 - [Revoke an API key](api-keys.md#revoke-an-api-key)
 
-### [App Key Mapping](app-key-mapping.md)
-
-- [Create application key mapping](app-key-mapping.md#create-application-key-mapping)
-- [Get application key mappings](app-key-mapping.md#get-application-key-mappings)
-
 ### [Views](views.md)
 
 - [Create a view](views.md#create-a-view)
@@ -119,7 +109,7 @@ Base URLs:
 
 ### [Application Keys](application-keys.md)
 
-- [Generate OAuth keys for a control-plane application](application-keys.md#generate-oauth-keys-for-a-control-plane-application)
+- [Generate OAuth keys for a Developer Portal application](application-keys.md#generate-oauth-keys-for-a-developer-portal-application)
 - [Generate an OAuth access token](application-keys.md#generate-an-oauth-access-token)
 - [Revoke OAuth keys](application-keys.md#revoke-oauth-keys)
 - [Update OAuth keys](application-keys.md#update-oauth-keys)
