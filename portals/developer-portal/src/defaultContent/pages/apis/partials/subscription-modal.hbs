@@ -52,71 +52,6 @@
                                     <span class="subscription-plans-card-title">{{displayName}}</span>
                                         <div class="mb-3 w-100">
                                             <div class="d-flex flex-column align-items-center gap-2" style="margin: 0 auto;">
-                                                <span class="text-muted d-block mb-0" style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom:0 !important; min-height: 18px;">Price</span>
-                                                {{#if pricingModel}}
-                                                    {{#compare pricingModel "===" "FLAT"}}
-                                                        {{#if flatAmount}}
-                                                        <span class="fw-bold d-inline" style="color: #0f172a; font-size: 22px;">{{currency}} {{formatPrice flatAmount}}<small class="text-muted d-inline" style="font-size: 10px;">/{{formatBillingPeriod billingPeriod}}</small></span>
-                                                        {{else}}
-                                                        <span class="fw-bold d-inline" style="color: #16a34a; font-size: 22px;">Free</span>
-                                                        {{/if}}
-                                                    {{else}}
-                                                        {{#if (eq pricingModel "VOLUME_TIERS")}}
-                                                        <div class="subscription-tier-wrapper mx-auto text-center" style="width: fit-content; min-width: 280px;">
-                                                            <details class="subscription-tier-details">
-                                                                <summary style="font-size: 12px; font-weight: 600; color: #0f172a; cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: center; gap: 4px;"><span class="tier-chevron" style="font-size: 10px;">&#9654;</span> Tier-based pricing</summary>
-                                                                <table class="table table-sm mt-2 mb-0" style="font-size: 11px;">
-                                                                    <thead><tr><th style="color: #64748b; font-weight: 600; text-align: center; vertical-align: middle;">Total Request<br>Volume</th><th style="color: #64748b; font-weight: 600; text-align: center; vertical-align: middle;">Flat<br>Price</th><th style="color: #64748b; font-weight: 600; text-align: center; vertical-align: middle;">Price /<br>req</th></tr></thead>
-                                                                    <tbody>
-                                                                        {{#each pricingMetadata.tiers}}
-                                                                        <tr>
-                                                                            <td style="text-align: center; vertical-align: middle;">{{formatTierRange startUnit endUnit}}</td>
-                                                                            <td style="text-align: center; vertical-align: middle;">{{../currency}} {{formatPrice flatPrice}}</td>
-                                                                            <td style="text-align: center; vertical-align: middle;">{{../currency}} {{formatPrice unitPrice}}</td>
-                                                                        </tr>
-                                                                        {{/each}}
-                                                                    </tbody>
-                                                                </table>
-                                                            </details>
-                                                        </div>
-                                                        {{#if billingPeriod}}
-                                                        <span class="badge d-inline-block mt-2 mb-1" style="background-color: #e0f2fe; color: #0369a1; font-size: 9px; padding: 3px 8px; border-radius: 10px;">Billed {{formatBillingPeriod billingPeriod}}</span>
-                                                        {{/if}}
-                                                        {{else if (eq pricingModel "GRADUATED_TIERS")}}
-                                                        <div class="subscription-tier-wrapper mx-auto text-center" style="width: fit-content; min-width: 280px;">
-                                                            <details class="subscription-tier-details">
-                                                                <summary style="font-size: 12px; font-weight: 600; color: #0f172a; cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: center; gap: 4px;"><span class="tier-chevron" style="font-size: 10px;">&#9654;</span> Tier-based pricing</summary>
-                                                                <table class="table table-sm mt-2 mb-0" style="font-size: 11px;">
-                                                                    <thead><tr><th style="color: #64748b; font-weight: 600; text-align: center; vertical-align: middle;">Request<br>Range</th><th style="color: #64748b; font-weight: 600; text-align: center; vertical-align: middle;">Flat<br>Price</th><th style="color: #64748b; font-weight: 600; text-align: center; vertical-align: middle;">Price /<br>req</th></tr></thead>
-                                                                    <tbody>
-                                                                        {{#each pricingMetadata.tiers}}
-                                                                        <tr>
-                                                                            <td style="text-align: center; vertical-align: middle;">{{formatTierRange startUnit endUnit}}</td>
-                                                                            <td style="text-align: center; vertical-align: middle;">{{../currency}} {{formatPrice flatPrice}}</td>
-                                                                            <td style="text-align: center; vertical-align: middle;">{{../currency}} {{formatPrice unitPrice}}</td>
-                                                                        </tr>
-                                                                        {{/each}}
-                                                                    </tbody>
-                                                                </table>
-                                                            </details>
-                                                        </div>
-                                                        {{#if billingPeriod}}
-                                                        <span class="badge d-inline-block mt-2 mb-1" style="background-color: #e0f2fe; color: #0369a1; font-size: 9px; padding: 3px 8px; border-radius: 10px;">Billed {{formatBillingPeriod billingPeriod}}</span>
-                                                        {{/if}}
-                                                        {{else}}
-                                                        {{#if unitAmount}}
-                                                        <span class="fw-bold d-inline" style="color: #0f172a; font-size: 22px;">{{currency}} {{formatPrice unitAmount}}<small class="text-muted d-inline" style="font-size: 10px;">/req</small></span>
-                                                        {{#if billingPeriod}}
-                                                        <span class="badge d-inline-block mt-2" style="background-color: #e0f2fe; color: #0369a1; font-size: 9px; padding: 3px 8px; border-radius: 10px;">Billed {{formatBillingPeriod billingPeriod}}</span>
-                                                        {{/if}}
-                                                        {{else}}
-                                                        <span class="fw-bold d-inline" style="color: #16a34a; font-size: 22px;">Free</span>
-                                                        {{/if}}
-                                                        {{/if}}
-                                                    {{/compare}}
-                                                {{else}}
-                                                    <span class="fw-bold d-inline" style="color: #16a34a; font-size: 22px;">Free</span>
-                                                {{/if}}
                                                 <span class="text-muted d-block mt-3 mb-0" style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom:0 !important; min-height: 18px;">Rate Limit</span>
                                                 <span class="fw-bold d-inline" style="color: #0f172a; font-size: 25px;">{{requestCount}}<small class="text-muted d-inline" style="font-size: 11px;">&nbsp;req/min</small></span>
                                             </div>
@@ -129,8 +64,6 @@
                                                         data-policy-id="{{policyID}}"
                                                         data-policy-name="{{policyName}}"
                                                         data-display-name="{{displayName}}"
-                                                        data-external-price-id="{{pricingMetadata.external.priceId}}"
-                                                        data-is-paid="{{#if isPaid}}true{{else}}false{{/if}}"
                                                         {{#unless @root.isReadOnlyMode}}onclick="handlePlanSubscription(this)"{{/unless}}
                                                         {{#if @root.isReadOnlyMode}}disabled aria-disabled="true"{{/if}}>Subscribe</button>
                                                 {{else}}
@@ -138,8 +71,6 @@
                                                         {{!-- Update mode: app already known, show Update button directly --}}
                                                         <button id="subscribe-btn-{{policyID}}" type="button"
                                                             class="common-btn-primary p-1 ps-2 pe-2 w-100 subscription-plan-subscribe-btn {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                                                            data-external-price-id="{{pricingMetadata.external.priceId}}"
-                                                            data-is-paid="{{#if isPaid}}true{{else}}false{{/if}}"
                                                             {{#unless @root.isReadOnlyMode}}onclick="showSubscribeButtonLoading(this); updateSubscription('{{@root.orgID}}', '{{../appID}}', '{{../apiID}}', '{{#if ../refID}}{{../refID}}{{else}}{{../apiID}}{{/if}}', '{{policyID}}', '{{policyName}}', '{{../selectedPlan}}', '{{../subID}}')"{{/unless}}
                                                             {{#if @root.isReadOnlyMode}}disabled aria-disabled="true"{{/if}}>Update</button>
                                                     {{else}}
@@ -159,7 +90,7 @@
                                                                                     aria-label="Search applications">
                                                                             </div>
                                                                             <div class="select-items-container">
-                                                                                {{#each (filter ../applications "subscriptionStatus" "CANCELED" false)}}
+                                                                                {{#each ../applications}}
                                                                                 <div class="select-item {{#if subscribed}}disabled{{/if}}" role="button" data-value="{{id}}" data-app-name="{{name}}">
                                                                                     <div class="d-flex flex-column flex-grow-1">
                                                                                         <span class="fw-semibold">{{name}}</span>
@@ -172,15 +103,7 @@
                                                                                         {{/if}}
                                                                                     </div>
                                                                                     {{#if subscribed}}
-                                                                                        {{#if (eq subscriptionStatus "ACTIVE")}}
                                                                                         <span class="badge" style="background:#ecfdf5;color:#047857;padding:2px 8px;border-radius:10px;font-weight:700;font-size:10px;flex-shrink:0;">Active</span>
-                                                                                        {{else if (eq subscriptionStatus "TRIALING")}}
-                                                                                        <span class="badge" style="background:#eff6ff;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-weight:700;font-size:10px;flex-shrink:0;">Trial</span>
-                                                                                        {{else if (eq subscriptionStatus "PAST_DUE")}}
-                                                                                        <span class="badge" style="background:#fef2f2;color:#b91c1c;padding:2px 8px;border-radius:10px;font-weight:700;font-size:10px;flex-shrink:0;">Past due</span>
-                                                                                        {{else if (eq subscriptionStatus "CANCEL_SCHEDULED")}}
-                                                                                        <span class="badge" style="background:#fff7ed;color:#c2410c;padding:2px 8px;border-radius:10px;font-weight:700;font-size:10px;flex-shrink:0;">Cancels soon</span>
-                                                                                        {{/if}}
                                                                                     {{/if}}
                                                                                 </div>
                                                                                 {{/each}}
@@ -196,8 +119,6 @@
                                                             </div>
                                                             <button id="subscribe-btn-{{policyID}}" type="button"
                                                                 class="common-btn-primary w-100 subscription-plan-subscribe-btn {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                                                                data-external-price-id="{{pricingMetadata.external.priceId}}"
-                                                                data-is-paid="{{#if isPaid}}true{{else}}false{{/if}}"
                                                                 {{#unless @root.isReadOnlyMode}}onclick="showSubscribeButtonLoading(this); subscribe('{{@root.orgID}}', '', '{{../apiID}}', '{{#if ../apiReferenceID}}{{../apiReferenceID}}{{else}}{{../apiID}}{{/if}}', '{{policyID}}', '{{policyName}}', this)"{{/unless}}
                                                                 {{#if @root.isReadOnlyMode}}disabled aria-disabled="true"{{/if}}>Subscribe</button>
                                                         </div>

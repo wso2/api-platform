@@ -160,87 +160,6 @@
                             <p class="text-muted small mb-3" style="font-size: 12px; line-height: 1.5;">{{description}}</p>
                             {{/if}}
                             <div class="plan-kpis">
-
-                                <div class="plan-kpi-row">
-                                    <div class="plan-kpi-label">Price</div>
-                                    <div class="plan-kpi-valueTop">
-                                        {{#if pricingModel}}
-                                            {{#compare pricingModel "===" "FLAT"}}
-                                                {{#if flatAmount}}
-                                                    <span class="plan-kpi-amount">{{currency}} {{formatPrice flatAmount}}</span>
-                                                    <span class="plan-kpi-unit">/{{formatBillingPeriod billingPeriod}}</span>
-                                                {{else}}
-                                                    <span class="plan-kpi-free">Free</span>
-                                                {{/if}}
-                                            {{else}}
-                                                {{#if (eq pricingModel "VOLUME_TIERS")}}
-                                                    <details class="subscription-tier-details plan-kpi-tier-details">
-                                                        <summary><span class="tier-chevron" style="font-size: 10px;">&#9654;</span> Tier-based pricing</summary>
-                                                    </details>
-                                                {{else if (eq pricingModel "GRADUATED_TIERS")}}
-                                                    <details class="subscription-tier-details plan-kpi-tier-details">
-                                                        <summary><span class="tier-chevron" style="font-size: 10px;">&#9654;</span> Tier-based pricing</summary>
-                                                    </details>
-                                                {{else}}
-                                                    {{#if unitAmount}}
-                                                        <span class="plan-kpi-amount">{{currency}} {{formatPrice unitAmount}}</span>
-                                                        <span class="plan-kpi-unit">/req</span>
-                                                    {{else}}
-                                                        <span class="plan-kpi-free">Free</span>
-                                                    {{/if}}
-                                                {{/if}}
-                                            {{/compare}}
-                                        {{else}}
-                                            <span class="plan-kpi-free">Free</span>
-                                        {{/if}}
-                                    </div>
-                                    <div class="plan-kpi-labelSub"></div>
-                                    <div class="plan-kpi-valueSub">
-                                        {{#if billingPeriod}}
-                                            <span class="plan-kpi-badge">Billed {{formatBillingPeriod billingPeriod}}</span>
-                                        {{else}}
-                                            <span class="plan-kpi-badge-placeholder">&nbsp;</span>
-                                        {{/if}}
-                                    </div>
-                                    {{#if (eq pricingModel "VOLUME_TIERS")}}
-                                    <div class="plan-kpi-tier-table-row">
-                                        <table class="table table-sm mt-2 mb-0" style="font-size: 11px;">
-                                            <thead><tr>
-                                                <th style="color: #64748b; font-weight: 600; text-align: center; vertical-align: middle;">Total Request<br>Volume</th>
-                                                <th style="color: #64748b; font-weight: 600; text-align: center; vertical-align: middle;">Price</th>
-                                            </tr></thead>
-                                            <tbody>
-                                                {{#each pricingMetadata.tiers}}
-                                                <tr>
-                                                    <td style="text-align: center; vertical-align: middle;">{{formatTierRange startUnit endUnit}}</td>
-                                                    <td style="text-align: center; vertical-align: middle;">{{../currency}} {{formatPrice flatPrice}} <span style="color: #94a3b8;">+</span> {{../currency}} {{formatPrice unitPrice}}/req</td>
-                                                </tr>
-                                                {{/each}}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                    {{else if (eq pricingModel "GRADUATED_TIERS")}}
-                                    <div class="plan-kpi-tier-table-row">
-                                        <table class="table table-sm mt-2 mb-0" style="font-size: 11px;">
-                                            <thead><tr>
-                                                <th style="color: #64748b; font-weight: 600; text-align: center; vertical-align: middle;">Request<br>Range</th>
-                                                <th style="color: #64748b; font-weight: 600; text-align: center; vertical-align: middle;">Price</th>
-                                            </tr></thead>
-                                            <tbody>
-                                                {{#each pricingMetadata.tiers}}
-                                                <tr>
-                                                    <td style="text-align: center; vertical-align: middle;">{{formatTierRange startUnit endUnit}}</td>
-                                                    <td style="text-align: center; vertical-align: middle;">{{../currency}} {{formatPrice flatPrice}} <span style="color: #94a3b8;">+</span> {{../currency}} {{formatPrice unitPrice}}/req</td>
-                                                </tr>
-                                                {{/each}}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                    {{/if}}
-                                </div>
-
-                                <div class="plan-kpi-divider"></div>
-
                                 <div class="plan-kpi-row">
                                     <div class="plan-kpi-label">Rate limit</div>
                                     <div class="plan-kpi-valueTop">
@@ -305,8 +224,6 @@
                                     class="common-btn-primary subscribe-btn {{#if @root.isReadOnlyMode}}disabled{{/if}}"
                                     data-policy-id="{{policyID}}"
                                     data-policy-name="{{policyName}}"
-                                    data-external-price-id="{{pricingMetadata.external.priceId}}"
-                                    data-is-paid="{{#if pricingMetadata.external.priceId}}true{{else}}false{{/if}}"
                                     onclick="handleLandingPlanSubscription('{{@root.orgID}}', '{{../apiMetadata.apiID}}', '{{../apiMetadata.apiReferenceID}}', '{{policyID}}', '{{policyName}}', this)"
                                 >
                                     Subscribe
@@ -325,10 +242,6 @@
                                 <button type="button" class="close-message" aria-label="Close message">&times;</button>
                             </div>
 
-                            {{!-- Stripe embedded checkout container (hidden by default) --}}
-                            <div id="landing-stripeCheckoutModal-{{policyID}}" class="stripe-checkout-modal" style="display:none;">
-                                <div id="landing-stripe-checkout-{{policyID}}"></div>
-                            </div>
                         </div>
                     </div>
                 </div>

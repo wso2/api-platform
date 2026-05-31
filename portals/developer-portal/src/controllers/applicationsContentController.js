@@ -140,10 +140,7 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
 
     const subAPIs = await adminDao.getSubscribedAPIs(orgID, applicationId);
 
-    const filteredSubAPIs = subAPIs.filter(sub => {
-        const ps = sub.dataValues.DP_APPLICATIONs?.[0]?.dataValues?.DP_API_SUBSCRIPTION?.dataValues?.PAYMENT_STATUS;
-        return !ps || ps === 'ACTIVE';
-    });
+    const filteredSubAPIs = subAPIs;
 
     const allAPIs = await apiMetadata.getAllAPIMetadata(orgID, groupList, viewName);
 
@@ -587,10 +584,7 @@ const loadApplications = async (req, res) => {
             const metaData = await Promise.all(
                 applications.map(async (application) => {
                     const subApis = await adminDao.getSubscriptions(orgID, application.APP_ID, '');
-                    const activeCount = subApis.filter(s => {
-                        const ps = s.PAYMENT_STATUS;
-                        return !ps || ps === 'ACTIVE';
-                    }).length;
+                    const activeCount = subApis.length;
                     return {
                         ...new ApplicationDTO(application),
                         subscriptionCount: activeCount

@@ -58,7 +58,6 @@ const createAPIMetadata = async (orgID, apiMetadata, t) => {
             PRODUCTION_URL: apiMetadata.endPoints.productionURL,
             METADATA_SEARCH: apiMetadata,
             GATEWAY_TYPE: apiMetadata.apiInfo.gatewayType || null,
-            MONETIZATION_ENABLED: apiMetadata.monetizationInfo?.enabled || false,
             ORG_ID: orgID
         },
             { transaction: t }
@@ -459,33 +458,6 @@ const computeRequestCount = (policy) => {
   return null;
 };
 
-const buildPricingMetadata = (policy) => {
-    const meta = {};
-
-    const productId = policy.externalProductId ?? null;
-    const priceId = policy.externalPriceId ?? null;
-
-    if (productId || priceId) {
-        meta.external = { productId, priceId };
-    }
-
-    const pricingModel = toUpper(policy.pricingModel);
-    const isTiered = pricingModel === "VOLUME_TIERS" || pricingModel === "GRADUATED_TIERS";
-    const tiers = Array.isArray(policy.tiers) ? policy.tiers : policy.pricingTiers;
-
-    if (isTiered && Array.isArray(tiers) && tiers.length > 0) {
-        meta.tiers = tiers.map((tier, idx) => ({
-            tierIndex: tier.tierIndex ?? (idx + 1),
-            startUnit: tier.startUnit,
-            endUnit: tier.endUnit ?? null,
-            unitPrice: tier.unitPrice ?? null,
-            flatPrice: tier.flatPrice ?? null
-        }));
-    }
-
-    return Object.keys(meta).length > 0 ? meta : null;
-};
-
 const buildSubscriptionPolicyRow = (orgID, policy) => {
   const requestCount = computeRequestCount(policy);
 
@@ -497,27 +469,17 @@ const buildSubscriptionPolicyRow = (orgID, policy) => {
 
     POLICY_NAME: policy.policyName,
     DISPLAY_NAME: policy.displayName,
-    BILLING_PLAN: policy.billingPlan,
     DESCRIPTION: policy.description,
     REQUEST_COUNT: requestCount,
     REF_ID: policy.refId ?? null,
-
-    PRICING_MODEL: toUpper(policy.pricingModel) ?? null,
-    CURRENCY: policy.currency ?? null,
-    BILLING_PERIOD: policy.billingPeriod ?? null,
-    FLAT_AMOUNT: policy.flatAmount ?? null,
-    UNIT_AMOUNT: policy.unitAmount ?? null,
-
-    PRICING_METADATA: buildPricingMetadata(policy)
   };
 };
 
 const createAPISubscriptionPolicy = async (apiSubscriptionPolicies, apiID, t) => {
   try {
     const rows = apiSubscriptionPolicies.map((policy) => ({
-      POLICY_ID: policy.policyId ?? policy.policyID, // supports both
+      POLICY_ID: policy.policyId ?? policy.policyID,
       API_ID: apiID,
-      BILLING_METER_ID: policy.meterId
     }));
 
     return await APISubscriptionPolicy.bulkCreate(rows, { transaction: t });
@@ -527,39 +489,9 @@ const createAPISubscriptionPolicy = async (apiSubscriptionPolicies, apiID, t) =>
   }
 };
 
-/**
- * Upsert a single API-policy-meter mapping
- */
-const upsertAPISubscriptionPolicyMeter = async (apiID, policyID, meterId, t) => {
-  try {
-    const [row, created] = await APISubscriptionPolicy.findOrCreate({
-      where: { API_ID: apiID, POLICY_ID: policyID },
-      defaults: { API_ID: apiID, POLICY_ID: policyID, BILLING_METER_ID: meterId },
-      transaction: t
-    });
-    if (!created && meterId !== undefined && meterId !== null) {
-      await row.update({ BILLING_METER_ID: meterId }, { transaction: t });
-    }
-    return row;
-  } catch (error) {
-    if (error instanceof Sequelize.ValidationError) throw error;
-    throw new Sequelize.DatabaseError(error);
-  }
-};
-
 const putSubscriptionPolicy = async (orgID, policy, t) => {
   const current = await getSubscriptionPolicyByName(orgID, policy.policyName, t);
   if (current) {
-    // Preserve existing externalProductId/externalPriceId if the incoming update
-    // doesn't carry them (e.g. a normal rate-limit update from APIM Publisher).
-    if (!policy.externalProductId && !policy.externalPriceId
-        && current.PRICING_METADATA?.external) {
-      policy = {
-        ...policy,
-        externalProductId: current.PRICING_METADATA.external.productId,
-        externalPriceId: current.PRICING_METADATA.external.priceId
-      };
-    }
     const updated = await updateSubscriptionPolicy(orgID, current.POLICY_ID, policy, t);
     return { subscriptionPolicyResponse: updated, statusCode: 200 };
   }
@@ -1473,7 +1405,6 @@ const updateAPIMetadata = async (orgID, apiID, apiMetadata, t) => {
             PRODUCTION_URL: apiMetadata.endPoints.productionURL,
             METADATA_SEARCH: apiMetadata,
             GATEWAY_TYPE: apiMetadata.apiInfo.gatewayType || null,
-            MONETIZATION_ENABLED: apiMetadata.monetizationInfo?.enabled || false,
         }, {
             where: {
                 API_ID: apiID,
@@ -1499,7 +1430,6 @@ async function updateAPISubscriptionPolicy(subscriptionPolicies, apiID, t) {
             policiesToCreate.push({
                 POLICY_ID: policy.policyID,
                 API_ID: apiID,
-                BILLING_METER_ID: policy.meterId
             })
         }
         if (policiesToCreate.length > 0) {
@@ -1872,7 +1802,6 @@ const getApiIdByReferenceId = async (orgID, referenceId, t) => {
 module.exports = {
     createAPIMetadata,
     createAPISubscriptionPolicy,
-    upsertAPISubscriptionPolicyMeter,
     storeAPIFile,
     getAPIMetadata,
     getAllAPIMetadata,

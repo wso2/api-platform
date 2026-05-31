@@ -2,11 +2,10 @@
 <h1 id="wso2-api-developer-portal-core-devportal-routes">WSO2 API Developer Portal Core - Devportal Routes v1.0.0</h1>
 
 Fine-grained Developer Portal API for managing organizations, identity providers, providers,
-API metadata and content, applications, subscriptions, application credentials, billing, invoices, usage, and API flows.
+API metadata and content, applications, subscriptions, application credentials, and API flows.
 
 All paths are served under the `/devportal` base path. Operations declare the least-privilege
-OAuth2 scopes required for each resource action, and selected billing-related endpoints also
-support API key authentication where configured.
+OAuth2 scopes required for each resource action.
 
 Base URLs:
 * <a href="http://localhost:3000/devportal">http://localhost:3000/devportal</a>
@@ -114,35 +113,6 @@ Base URLs:
 - [Revoke OAuth keys](application-keys.md#revoke-oauth-keys)
 - [Update OAuth keys](application-keys.md#update-oauth-keys)
 - [Clean up OAuth key artifacts](application-keys.md#clean-up-oauth-key-artifacts)
-
-### [Billing](billing.md)
-
-- [Get billing usage data](billing.md#get-billing-usage-data)
-- [List payment methods](billing.md#list-payment-methods)
-- [Add billing engine keys](billing.md#add-billing-engine-keys)
-- [Update billing engine keys](billing.md#update-billing-engine-keys)
-- [Delete billing engine keys](billing.md#delete-billing-engine-keys)
-- [Get billing engine keys](billing.md#get-billing-engine-keys)
-- [Get billing profile information](billing.md#get-billing-profile-information)
-- [List subscriptions for billing](billing.md#list-subscriptions-for-billing)
-- [Create a checkout session](billing.md#create-a-checkout-session)
-- [Register a Stripe checkout session](billing.md#register-a-stripe-checkout-session)
-- [Cancel a paid subscription](billing.md#cancel-a-paid-subscription)
-- [Get subscription billing status](billing.md#get-subscription-billing-status)
-- [Create an organization billing portal session](billing.md#create-an-organization-billing-portal-session)
-- [Create a subscription billing portal session](billing.md#create-a-subscription-billing-portal-session)
-
-### [Usage](usage.md)
-
-- [Get subscription usage](usage.md#get-subscription-usage)
-
-### [Invoices](invoices.md)
-
-- [List invoices](invoices.md#list-invoices)
-- [Get an invoice](invoices.md#get-an-invoice)
-- [List invoices by subscription](invoices.md#list-invoices-by-subscription)
-- [Get invoice PDF link](invoices.md#get-invoice-pdf-link)
-- [redirectHostedInvoice](invoices.md#redirecthostedinvoice)
 
 ### [API Flows](api-flows.md)
 

@@ -1111,12 +1111,11 @@ const createCPApplication = async (req, cpApplicationName) => {
     }
 }
 
-const createCPSubscription = async (req, apiId, cpAppID, policyDetails, billingData = null) => {
+const createCPSubscription = async (req, apiId, cpAppID, policyDetails) => {
     logger.info('Creating control plane subscription', {
         apiId,
         cpAppID,
         policyDetails: policyDetails.dataValues ? policyDetails.dataValues.POLICY_NAME : policyDetails,
-        billingData: billingData ? { customerId: billingData.customerId, subscriptionId: billingData.subscriptionId } : null
     });
     try {
         const requestBody = {
@@ -1124,14 +1123,6 @@ const createCPSubscription = async (req, apiId, cpAppID, policyDetails, billingD
             applicationId: cpAppID,
             throttlingPolicy: policyDetails.dataValues ? policyDetails.dataValues.POLICY_NAME : policyDetails
         };
-
-        // Add billing metadata if available (for paid subscriptions)
-        if (billingData) {
-            requestBody.billingMetadata = {
-                billingCustomerId: billingData.customerId,
-                billingSubscriptionId: billingData.subscriptionId,
-            };
-        }
 
         const cpSubscribeResponse = await invokeApiRequest(req, 'POST', `${controlPlaneUrl}/subscriptions`, {}, requestBody);
         return cpSubscribeResponse;

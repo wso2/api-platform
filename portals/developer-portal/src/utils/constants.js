@@ -191,35 +191,30 @@ module.exports = {
             "description": "Allows 1000 requests per minute",
             "requestCount": 1000,
             "displayName": "Bronze",
-            "billingPlan": "FREE"
         },
         {
             "policyName": "Gold",
             "description": "Allows 5000 requests per minute",
             "displayName": "Gold",
             "requestCount": 5000,
-            "billingPlan": "FREE"
         },
         {
             "policyName": "Silver",
             "description": "Allows 2000 requests per minute",
             "displayName": "Silver",
             "requestCount": 2000,
-            "billingPlan": "FREE"
         },
         {
             "policyName": "Unlimited",
             "description": "Allows unlimited requests",
             "displayName": "Unlimited",
             "requestCount": "Unlimited",
-            "billingPlan": "FREE"
         },
         {
             "policyName": "AsyncUnlimited",
             "description": "Allows unlimited requests for Async APIs",
             "displayName": "AsyncUnlimited",
             "requestCount": "Unlimited",
-            "billingPlan": "FREE"
         }
     ],
     ERROR_MESSAGE: {

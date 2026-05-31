@@ -387,7 +387,7 @@ curl -X DELETE http://localhost:3000/devportal/applications/{applicationId} \
 
 ```
 
-Deletes an application owned by the authenticated user. Before removing the application record the service revokes all OAuth clients registered with their respective key managers and deletes all stored key mappings. If the application has billed Stripe subscriptions, those are also cancelled first. Key manager revocation failures are logged as warnings and do not abort the deletion.
+Deletes an application owned by the authenticated user. Before removing the application record the service revokes all OAuth clients registered with their respective key managers and deletes all stored key mappings. Key manager revocation failures are logged as warnings and do not abort the deletion.
 
 ### Authentication
 

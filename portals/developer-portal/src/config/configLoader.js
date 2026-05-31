@@ -91,9 +91,6 @@ const CONFIG_DEFAULTS = {
     logging: {
         consoleOnly: true,
     },
-    billing: {
-        billingKeyEncryptionKey: '',
-    },
     serverCerts: {
         pathToCert: '',
         pathToPk: '',
@@ -175,7 +172,6 @@ function coerceValue(value) {
  *   DP_IDENTITYPROVIDER_CLIENTID → config.identityProvider.clientId
  *   DP_DB_PASSWORD                      → config.db.password
  *   DP_ADVANCED_APIKEY_KEYVALUE         → config.advanced.apiKey.keyValue
- *   DP_BILLING_BILLINGKEYENCRYPTIONKEY   → config.billing.billingKeyEncryptionKey
  *   DP_TELEMETRY_AZUREINSIGHTSCONNECTIONSTRING → config.telemetry.azureInsightsConnectionString
  */
 function applyEnvOverrides(config) {

@@ -39,8 +39,6 @@ const { ImportedApplicationDTO, ApplicationKey } = require('../dto/importedAppli
 const { CustomError } = require('../utils/errors/customErrors');
 const { APIMetadata, APILabels } = require('../models/apiMetadata');
 const sequelize = require('../db/sequelize');
-const monetizationService = require('../services/monetizationService');
-
 // ***** POST / DELETE / PUT Functions ***** (Only work in production)
 
 function parseApplicationDataFromRequest(req) {
@@ -144,43 +142,6 @@ const deleteApplication = async (req, res) => {
         const orgID = await adminDao.getOrgId(req.user[constants.ORG_IDENTIFIER]);
         const applicationId = req.params.applicationId;
         try {
-            // Cancel all Stripe subscriptions for this application before deleting
-            try {
-                const subscriptions = await adminDao.getSubscriptions(orgID, applicationId, '');
-                for (const subscription of subscriptions) {
-                    if (subscription.BILLING_SUBSCRIPTION_ID && subscription.PAYMENT_PROVIDER === 'STRIPE') {
-                         try {
-                            logger.info('Canceling Stripe subscription before deleting application', {
-                                appId: applicationId,
-                                subId: subscription.SUB_ID,
-                                billingSubscriptionId: subscription.BILLING_SUBSCRIPTION_ID
-                            });
-                            await monetizationService.cancelPaidSubscription({
-                                req,
-                                orgId: orgID,
-                                subId: subscription.SUB_ID,
-                                user: req.user || {}
-                            });
-                        } catch (stripeErr) {
-                            logger.error('Failed to cancel Stripe subscription — aborting application delete', {
-                                appId: applicationId,
-                                subId: subscription.SUB_ID,
-                                error: stripeErr.message,
-                                stack: stripeErr.stack
-                            });
-                            throw stripeErr;
-                        }
-                    }
-                }
-            } catch (stripeErr) {
-                logger.error('Failed to cancel Stripe subscriptions — aborting application delete', {
-                    appId: applicationId,
-                    error: stripeErr.message,
-                    stack: stripeErr.stack
-                });
-                throw stripeErr;
-            }
-
             await revokeAppKeyMappings(orgID, applicationId);
             const appDeleteResponse = await adminDao.deleteApplication(orgID, applicationId, req.user.sub);
             if (appDeleteResponse === 0) {

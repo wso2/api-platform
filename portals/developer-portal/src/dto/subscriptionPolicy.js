@@ -21,19 +21,10 @@ class SubscriptionPolicy {
         this.policyID = subscriptionPolicy.POLICY_ID;
         this.policyName = subscriptionPolicy.POLICY_NAME;
         this.displayName = subscriptionPolicy.DISPLAY_NAME;
-        this.billingPlan = subscriptionPolicy.BILLING_PLAN;
         this.description = subscriptionPolicy.DESCRIPTION;
         this.requestCount = subscriptionPolicy.REQUEST_COUNT;
         this.refId = subscriptionPolicy.REF_ID;
         this.orgID = subscriptionPolicy.ORG_ID;
-        
-        // Pricing fields
-        this.pricingModel = subscriptionPolicy.PRICING_MODEL;
-        this.currency = subscriptionPolicy.CURRENCY;
-        this.billingPeriod = subscriptionPolicy.BILLING_PERIOD;
-        this.flatAmount = subscriptionPolicy.FLAT_AMOUNT;
-        this.unitAmount = subscriptionPolicy.UNIT_AMOUNT;
-        this.pricingMetadata = subscriptionPolicy.PRICING_METADATA;
     }
 }
 

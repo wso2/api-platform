@@ -124,12 +124,6 @@ const helpers = {
         const d = new Date(s);
         return Number.isNaN(d.getTime()) ? s : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
     },
-    formatPrice: (price) => price ? parseFloat(price).toString() : '0',
-    formatBillingPeriod: (period) => ({ day: 'daily', week: 'weekly', month: 'monthly', year: 'yearly' })[String(period || '').toLowerCase()] || (String(period || '').toLowerCase() + 'ly'),
-    formatTierRange: (startUnit, endUnit) => {
-        const start = startUnit != null ? Number(startUnit).toLocaleString() : '0';
-        return (endUnit == null || endUnit === '' || endUnit === Infinity) ? start + ' +' : start + ' \u2013 ' + Number(endUnit).toLocaleString();
-    },
 };
 
 function registerHelpers() {
