@@ -41,8 +41,9 @@ Feature: Dynamic Endpoint policy
         context: /dynamic-endpoint/$version
         upstreamDefinitions:
           - name: alt-upstream
+            basePath: /alternate
             upstreams:
-              - url: http://sample-backend:9080/alternate
+              - url: http://sample-backend:9080
         upstream:
           main:
             url: http://sample-backend:9080
@@ -96,11 +97,13 @@ Feature: Dynamic Endpoint policy
         context: /dynamic-endpoint-routes/$version
         upstreamDefinitions:
           - name: foo-upstream
+            basePath: /foo
             upstreams:
-              - url: http://sample-backend:9080/foo
+              - url: http://sample-backend:9080
           - name: bar-upstream
+            basePath: /bar
             upstreams:
-              - url: http://sample-backend:9080/bar
+              - url: http://sample-backend:9080
           - name: root-upstream
             upstreams:
               - url: http://sample-backend:9080

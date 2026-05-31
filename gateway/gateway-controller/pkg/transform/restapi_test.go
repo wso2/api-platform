@@ -265,21 +265,21 @@ func TestResolveUpstreamURL(t *testing.T) {
 	t.Run("direct URL", func(t *testing.T) {
 		u := "http://direct:8080"
 		up := &api.Upstream{Url: &u}
-		got, err := resolveUpstreamURL("main", up, nil)
+		got, _, err := resolveUpstreamURL("main", up, nil)
 		require.NoError(t, err)
 		assert.Equal(t, u, got)
 	})
 
 	t.Run("ref to existing definition", func(t *testing.T) {
 		up := &api.Upstream{Ref: &refName}
-		got, err := resolveUpstreamURL("main", up, defs)
+		got, _, err := resolveUpstreamURL("main", up, defs)
 		require.NoError(t, err)
 		assert.Equal(t, defURL, got)
 	})
 
 	t.Run("ref but no definitions provided", func(t *testing.T) {
 		up := &api.Upstream{Ref: &refName}
-		_, err := resolveUpstreamURL("main", up, nil)
+		_, _, err := resolveUpstreamURL("main", up, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), refName)
 	})
@@ -287,14 +287,14 @@ func TestResolveUpstreamURL(t *testing.T) {
 	t.Run("ref to unknown definition", func(t *testing.T) {
 		unknownRef := "unknown-def"
 		up := &api.Upstream{Ref: &unknownRef}
-		_, err := resolveUpstreamURL("main", up, defs)
+		_, _, err := resolveUpstreamURL("main", up, defs)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "not found")
 	})
 
 	t.Run("neither URL nor ref", func(t *testing.T) {
 		up := &api.Upstream{}
-		_, err := resolveUpstreamURL("main", up, defs)
+		_, _, err := resolveUpstreamURL("main", up, defs)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no URL or ref")
 	})
@@ -302,7 +302,7 @@ func TestResolveUpstreamURL(t *testing.T) {
 	t.Run("whitespace-only URL treated as missing", func(t *testing.T) {
 		blank := "   "
 		up := &api.Upstream{Url: &blank}
-		_, err := resolveUpstreamURL("main", up, nil)
+		_, _, err := resolveUpstreamURL("main", up, nil)
 		require.Error(t, err)
 	})
 
@@ -318,7 +318,7 @@ func TestResolveUpstreamURL(t *testing.T) {
 		}
 		emptyRef := "empty-def"
 		up := &api.Upstream{Ref: &emptyRef}
-		_, err := resolveUpstreamURL("main", up, emptyDefs)
+		_, _, err := resolveUpstreamURL("main", up, emptyDefs)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no URLs")
 	})

@@ -178,12 +178,14 @@ func TestResolveUpstreamCluster_WithRef_WithTimeout(t *testing.T) {
 	translator := &Translator{}
 	ref := "my-upstream"
 	timeoutStr := "45s"
+	basePath := "/v2"
 	upstream := &api.Upstream{
 		Ref: &ref,
 	}
 	definitions := &[]api.UpstreamDefinition{
 		{
-			Name: "my-upstream",
+			Name:     "my-upstream",
+			BasePath: &basePath,
 			Timeout: &api.UpstreamTimeout{
 				Connect: &timeoutStr,
 			},
@@ -192,7 +194,7 @@ func TestResolveUpstreamCluster_WithRef_WithTimeout(t *testing.T) {
 				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 			}{
 				{
-					Url: "http://backend-1:9000/v2",
+					Url: "http://backend-1:9000",
 				},
 			},
 		},
