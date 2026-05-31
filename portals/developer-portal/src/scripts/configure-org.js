@@ -206,7 +206,7 @@ async function updateOrgContent(orgID) {
 
     const zipFile = document.getElementById('editZipFile');
     if (!zipFile.files[0]) {
-        alert('Please select a ZIP file to upload.');
+        showAlert('Please select a ZIP file to upload.', 'error');
         return;
     }
     const formData = new FormData();
@@ -218,11 +218,11 @@ async function updateOrgContent(orgID) {
     });
     if (response.ok) {
         const result = await response.json();
-        alert(`Upload successful! Organization ID: ${result.orgId}, File Name: ${result.fileName}`);
+        await showAlert(`Upload successful! Organization ID: ${result.orgId}, File Name: ${result.fileName}`, 'success');
         window.location.href = 'configure';
     } else {
         const error = await response.text();
-        alert(`Upload failed: ${error}`);
+        showAlert(`Upload failed: ${error}`, 'error');
     }
 }
 
@@ -240,11 +240,29 @@ async function uploadContent(orgID) {
     });
     if (response.ok) {
         const result = await response.json();
-        alert(`Upload successful! Organization ID: ${result.orgId}, File Name: ${result.fileName}`);
+        await showAlert(`Upload successful! Organization ID: ${result.orgId}, File Name: ${result.fileName}`, 'success');
         window.location.href = 'configure';
     } else {
         const error = await response.text();
-        alert(`Upload failed: ${error}`);
+        showAlert(`Upload failed: ${error}`, 'error');
+    }
+}
+
+async function deleteProvider(orgID, name) {
+    try {
+        const response = await fetch(
+            `/devportal/organizations/${encodeURIComponent(orgID)}/provider?name=${encodeURIComponent(name)}`,
+            { method: 'DELETE', credentials: 'same-origin' }
+        );
+        if (response.ok || response.status === 204) {
+            await showAlert('Provider deleted successfully.', 'success');
+            window.location.href = 'configure';
+        } else {
+            const errorText = await response.text().catch(() => response.statusText || 'Unknown error');
+            showAlert(`Failed to delete provider: ${errorText}`, 'error');
+        }
+    } catch (e) {
+        showAlert(`Error deleting provider: ${e.message}`, 'error');
     }
 }
 

@@ -279,8 +279,37 @@
         }
     });
 
+    // Expose revoke executor for the warning modal confirm button
+    window.__pendingRevokeKeyBtn = null;
+    window.executeRevokeApiKey = async function () {
+        const btn = window.__pendingRevokeKeyBtn;
+        const keyId = btn ? (btn.getAttribute('data-key-id') || '') : '';
+        if (!keyId) return;
+        if (btn) {
+            btn.dataset.loading = 'true';
+            btn.disabled = true;
+        }
+        try {
+            await postRevoke(keyId);
+            if (typeof showAlert === 'function') {
+                await showAlert('API key revoked.', 'success');
+            }
+            window.location.reload();
+        } catch (e) {
+            if (typeof showAlert === 'function') {
+                await showAlert(e.message || 'Failed to revoke API key', 'error');
+            }
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                delete btn.dataset.loading;
+            }
+            window.__pendingRevokeKeyBtn = null;
+        }
+    };
+
     document.querySelectorAll('.btn-revoke-key').forEach(function (btn) {
-        btn.addEventListener('click', async function () {
+        btn.addEventListener('click', function () {
             if (readOnly || btn.dataset.loading === 'true') {
                 return;
             }
@@ -288,24 +317,12 @@
             if (!keyId) {
                 return;
             }
-            if (!confirm('Revoke this API key? Clients using it will fail immediately.')) {
-                return;
-            }
-            btn.dataset.loading = 'true';
-            btn.disabled = true;
-            try {
-                await postRevoke(keyId);
-                if (typeof showAlert === 'function') {
-                    await showAlert('API key revoked.', 'success');
-                }
-                window.location.reload();
-            } catch (e) {
-                if (typeof showAlert === 'function') {
-                    await showAlert(e.message || 'Failed to revoke API key', 'error');
-                }
-            } finally {
-                btn.disabled = false;
-                delete btn.dataset.loading;
+            window.__pendingRevokeKeyBtn = btn;
+            if (typeof openWarningModal === 'function') {
+                openWarningModal('RevokeApiKey', keyId, '', '', '', '', '');
+            } else {
+                // fallback — should not happen if warning partial is included
+                window.executeRevokeApiKey();
             }
         });
     });

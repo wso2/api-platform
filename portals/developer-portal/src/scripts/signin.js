@@ -78,13 +78,24 @@ document.addEventListener('DOMContentLoaded', function () {
     const emailInput = document.getElementById('enterprise-email');
     const continueBtn = document.getElementById('login-enterprise');
 
+    // Inline error element shown below the email input
+    let emailErrorEl = document.getElementById('enterprise-email-error');
+    if (!emailErrorEl) {
+        emailErrorEl = document.createElement('div');
+        emailErrorEl.id = 'enterprise-email-error';
+        emailErrorEl.className = 'text-danger small mt-1';
+        emailErrorEl.style.display = 'none';
+        emailInput.parentNode.insertBefore(emailErrorEl, emailInput.nextSibling);
+    }
+
     continueBtn.addEventListener('click', function (e) {
         const email = emailInput.value.trim();
         if (!validateEmail(email)) {
-            alert("Please enter a valid email address.");
+            emailErrorEl.textContent = 'Please enter a valid email address.';
+            emailErrorEl.style.display = 'block';
             return;
         }
-
+        emailErrorEl.style.display = 'none';
         const redirectUrl = `${baseUrl}/login?fidp=enterprise&username=${encodeURIComponent(email)}`;
         window.location.href = redirectUrl;
     });
@@ -95,6 +106,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
         continueBtn.disabled = !isValid;
         continueBtn.style.opacity = isValid ? '1' : '0.5';
+        if (isValid) {
+            emailErrorEl.style.display = 'none';
+        }
     });
 
     function validateEmail(email) {
