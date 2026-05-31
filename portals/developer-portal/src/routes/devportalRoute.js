@@ -24,10 +24,6 @@ const devportalService = require('../services/devportalService');
 const apiMetadataService = require('../services/apiMetadataService');
 const adminService = require('../services/adminService');
 const devportalController = require('../controllers/devportalController');
-const billingController = require("../controllers/billingController");
-const usageController = require("../controllers/usageController");
-const invoiceController = require("../controllers/invoiceController");
-const { ensureBillingAuth, verifyRequestOrigin } = require("../middlewares/billingAuth");
 const multer = require('multer');
 const storage = multer.memoryStorage()
 const multipartHandler = multer({storage: storage})
@@ -143,15 +139,6 @@ router.put('/organizations/:orgId/labels', enforceSecuirty(constants.SCOPES.ADMI
 router.get('/organizations/:orgId/labels', enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.retrieveLabels);
 router.delete('/organizations/:orgId/labels', enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.deleteLabels);
 
-router.post('/organizations/:orgId/applications', enforceSecuirty(constants.SCOPES.DEVELOPER),
-    multipartHandler.fields([{name: 'application', maxCount: 1}]),
-    adminService.createDevPortalApplication);
-router.put('/organizations/:orgId/applications/:appId', enforceSecuirty(constants.SCOPES.DEVELOPER),
-    multipartHandler.fields([{name: 'application', maxCount: 1}]),
-    adminService.updateDevPortalApplication);
-router.get('/organizations/:orgId/applications/:appId', enforceSecuirty(constants.SCOPES.DEVELOPER), adminService.getDevPortalApplicationDetails);
-router.get('/organizations/:orgId/applications', enforceSecuirty(constants.SCOPES.DEVELOPER), adminService.getDevPortalApplications);
-router.delete('/organizations/:orgId/applications/:appId', enforceSecuirty(constants.SCOPES.DEVELOPER), adminService.deleteDevPortalApplication);
 
 // Platform Gateway Subscriptions
 router.post('/organizations/:orgId/subscriptions',
@@ -175,10 +162,6 @@ router.post('/organizations/:orgId/api-keys/:apiKeyId/regenerate',
 router.post('/organizations/:orgId/api-keys/:apiKeyId/revoke',
     enforceSecuirty(constants.SCOPES.DEVELOPER), requireCsrfForMutatingApi, apiKeyController.revokeApiKey);
 
-//store key mapping for devportal app and Control plane apps
-router.post('/organizations/:orgId/app-key-mapping', enforceSecuirty(constants.SCOPES.DEVELOPER), adminService.createAppKeyMapping);
-router.get('/organizations/:orgId/app-key-mapping/:appId', enforceSecuirty(constants.SCOPES.DEVELOPER), adminService.retriveAppKeyMappings);
-//router.delete('/organizations/:orgId/app-key-mapping/:appId', enforceSecuirty(constants.SCOPES.DEVELOPER), adminService.updateDevPortalApplication);
 
 router.post('/organizations/:orgId/views', enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.addView);
 router.put('/organizations/:orgId/views/:name', enforceSecuirty(constants.SCOPES.ADMIN), apiMetadataService.updateView);
@@ -194,40 +177,12 @@ router.put('/applications/:applicationId', enforceSecuirty(constants.SCOPES.DEVE
     devportalController.updateApplication);
 router.delete('/applications/:applicationId', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.deleteApplication);
 router.post('/applications/:applicationId/reset-throttle-policy', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.resetThrottlingPolicy);
-router.post('/applications/:applicationId/generate-keys', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.generateApplicationKeys);
+router.post('/applications/:applicationId/generate-keys', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.generateKeys);
 router.post('/applications/:applicationId/oauth-keys/:keyMappingId/generate-token', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.generateOAuthKeys);
 router.delete('/applications/:applicationId/oauth-keys/:keyMappingId', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.revokeOAuthKeys);
 router.put('/applications/:applicationId/oauth-keys/:keyMappingId', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.updateOAuthKeys);
 router.post('/applications/:applicationId/oauth-keys/:keyMappingId/clean-up', enforceSecuirty(constants.SCOPES.DEVELOPER), devportalController.cleanUp);
 
-
-// Billing / Stripe
-router.get("/organizations/:orgId/billing/usage-data", ensureBillingAuth, billingController.getUsageData);
-router.get("/organizations/:orgId/billing/payment-methods", ensureBillingAuth, billingController.getPaymentMethods);
-
-// Billing Engine Keys CRUD
-router.post("/organizations/:orgId/billing-engine-keys", verifyRequestOrigin, enforceSecuirty(constants.SCOPES.ADMIN), billingController.addBillingEngineKeys);
-router.put("/organizations/:orgId/billing-engine-keys", verifyRequestOrigin, enforceSecuirty(constants.SCOPES.ADMIN), billingController.updateBillingEngineKeys);
-router.delete("/organizations/:orgId/billing-engine-keys", verifyRequestOrigin, enforceSecuirty(constants.SCOPES.ADMIN), billingController.deleteBillingEngineKeys);
-router.get("/organizations/:orgId/billing-engine-keys", enforceSecuirty(constants.SCOPES.ADMIN), billingController.getBillingEngineKeys);
-router.get("/organizations/:orgId/billing/info", ensureBillingAuth, billingController.getBillingInfo);
-router.get("/organizations/:orgId/billing/subscriptions", ensureBillingAuth, billingController.getActiveSubscriptions);
-router.post("/organizations/:orgId/monetization/checkout", verifyRequestOrigin, ensureBillingAuth, billingController.createCheckoutSessionForSubscription);
-router.post("/organizations/:orgId/monetization/stripe/register/:checkoutSessionId", verifyRequestOrigin, ensureBillingAuth, billingController.registerStripeCheckoutSession);
-router.post("/organizations/:orgId/subscriptions/:subId/cancel", verifyRequestOrigin, ensureBillingAuth, billingController.cancelSubscription);
-router.get("/organizations/:orgId/subscriptions/:subId/billing-status", ensureBillingAuth, billingController.getSubscriptionBillingStatus);
-router.post("/organizations/:orgId/billing-portal", verifyRequestOrigin, ensureBillingAuth, billingController.createBillingPortalByOrg);
-router.post("/organizations/:orgId/subscriptions/:subId/billing-portal", verifyRequestOrigin, ensureBillingAuth, billingController.createBillingPortal);
-
-// Usage
-router.get("/organizations/:orgId/subscriptions/:subId/usage", ensureBillingAuth, usageController.getSubscriptionUsage);
-
-// Invoices
-router.get("/organizations/:orgId/invoices", ensureBillingAuth, invoiceController.listInvoices);
-router.get("/organizations/:orgId/invoices/:invoiceId", ensureBillingAuth, invoiceController.getInvoice);
-router.get("/organizations/:orgId/subscriptions/:subId/invoices", ensureBillingAuth, invoiceController.listInvoicesBySubscription);
-router.get("/organizations/:orgId/invoices/:invoiceId/pdf", ensureBillingAuth, invoiceController.getInvoicePdfLink);
-router.get("/organizations/:orgId/invoices/:invoiceId/hosted", ensureBillingAuth, invoiceController.redirectHostedInvoice);
 
 // API Flows (admin)
 router.post('/organizations/:orgId/views/:viewName/api-flows', enforceSecuirty(constants.SCOPES.ADMIN), requireCsrfForMutatingApi, apiFlowService.createAPIFlow);

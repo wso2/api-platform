@@ -16,35 +16,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const nameEditError = document.getElementById('nameEditError');
         const descriptionEditError = document.getElementById('descriptionEditError');
         const inlineEditForm = document.getElementById('inlineEditForm');
-        // Setup client ID editing for custom key managers
-        const setupClientIDEditing = (suffix = '') => {
-            const addClientID = document.getElementById('addClientID' + suffix);
-            const clientIDInput = document.getElementById('clientIDInput' + suffix);
-            const cancelClientIDBtn = document.getElementById('cancelClientIDBtn' + suffix);
-            const clientIDEditActions = document.getElementById('clientIDEditActions' + suffix);
-
-            if (addClientID && clientIDInput && cancelClientIDBtn && clientIDEditActions) {
-                addClientID.addEventListener('click', () => {
-                    console.log('addClientID' + suffix + ' clicked');
-                    clientIDInput.style.display = 'inline-block';
-                    clientIDInput.focus();
-                    addClientID.style.display = 'none';
-                    clientIDEditActions.style.display = 'inline-flex';
-                });
-
-                // Cancel client ID edit
-                cancelClientIDBtn.addEventListener('click', () => {
-                    clientIDInput.value = '';
-                    clientIDInput.style.display = 'none';
-                    clientIDEditActions.style.display = 'none';
-                    addClientID.style.display = 'inline-block';
-                });
-            }
-        };
-
-        setupClientIDEditing('-PRODUCTION');
-        setupClientIDEditing('-SANDBOX');
-
         if (!applicationName || !applicationDescription) return;
 
         const applicationId = inlineEditForm.dataset.applicationId;

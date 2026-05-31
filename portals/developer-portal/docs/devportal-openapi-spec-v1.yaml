@@ -22,11 +22,10 @@ info:
   version: 1.0.0
   description: |
     Fine-grained Developer Portal API for managing organizations, identity providers, providers,
-    API metadata and content, applications, subscriptions, application credentials, billing, invoices, usage, and API flows.
+    API metadata and content, applications, subscriptions, application credentials, and API flows.
 
     All paths are served under the `/devportal` base path. Operations declare the least-privilege
-    OAuth2 scopes required for each resource action, and selected billing-related endpoints also
-    support API key authentication where configured.
+    OAuth2 scopes required for each resource action.
 servers:
   - url: http://localhost:3000/devportal
     description: Local development server
@@ -50,9 +49,6 @@ tags:
   - name: App Key Mapping
   - name: Views
   - name: Application Keys
-  - name: Billing
-  - name: Usage
-  - name: Invoices
   - name: API Flows
   - name: Utilities
   - name: Authentication
@@ -892,111 +888,6 @@ paths:
         - OAuth2Security:
             - dp:label_delete
             - dp:label_manage
-  /organizations/{orgId}/applications:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-    post:
-      tags:
-        - Applications
-      summary: Create an application
-      description: >-
-        Creates a Developer Portal application in the specified organization for the authenticated user.
-        The request may be JSON, multipart form fields, or an application YAML file in the `application`
-        multipart field.
-      operationId: createDevPortalApplication
-      requestBody:
-        $ref: "#/components/requestBodies/ApplicationMultipartBody"
-      responses:
-        "201":
-          $ref: "#/components/responses/ApplicationResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:app_write
-            - dp:app_manage
-    get:
-      tags:
-        - Applications
-      summary: List applications
-      description: Returns applications in the organization that belong to the authenticated user.
-      operationId: getDevPortalApplications
-      responses:
-        "200":
-          $ref: "#/components/responses/ApplicationListResponse"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:app_read
-            - dp:app_manage
-  /organizations/{orgId}/applications/{appId}:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/AppId"
-    put:
-      tags:
-        - Applications
-      summary: Update an application
-      description: Updates an existing Developer Portal application owned by the authenticated user.
-      operationId: updateDevPortalApplication
-      requestBody:
-        $ref: "#/components/requestBodies/ApplicationMultipartBody"
-      responses:
-        "200":
-          $ref: "#/components/responses/ApplicationResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:app_write
-            - dp:app_manage
-    get:
-      tags:
-        - Applications
-      summary: Get application details
-      description: Retrieves one Developer Portal application by ID for the authenticated user.
-      operationId: getDevPortalApplicationDetails
-      responses:
-        "200":
-          $ref: "#/components/responses/ApplicationResponse"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:app_read
-            - dp:app_manage
-    delete:
-      tags:
-        - Applications
-      summary: Delete an application
-      description: Deletes a Developer Portal application owned by the authenticated user.
-      operationId: deleteDevPortalApplication
-      responses:
-        "200":
-          $ref: "#/components/responses/TextMessageResponse"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:app_delete
-            - dp:app_manage
   /organizations/{orgId}/applications/import:
     parameters:
       - $ref: "#/components/parameters/OrgId"
@@ -1083,9 +974,9 @@ paths:
         - Applications
       summary: Delete an application for the authenticated user
       description: >-
-        Deletes an application owned by the authenticated user. If the application has billed Stripe
-        subscriptions, the service cancels them before deleting the local application. If a control-plane
-        application mapping exists, the corresponding control-plane application is deleted as well.
+        Deletes an application owned by the authenticated user. Before removing the application record the
+        service will make a best-effort attempt to revoke registered OAuth clients with their respective key
+        managers and deletes all stored key mappings; failures are logged as warnings and do not abort deletion.
       operationId: deleteApplication
       responses:
         "200":
@@ -1345,61 +1236,6 @@ paths:
         - OAuth2Security:
             - dp:api_key_revoke
             - dp:api_key_manage
-  /organizations/{orgId}/app-key-mapping:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-    post:
-      tags:
-        - App Key Mapping
-      operationId: createAppKeyMapping
-      summary: Create application key mapping
-      description: >-
-        Creates or reuses an application and generates or maps OAuth credentials through the selected
-        key manager. In control-plane mode the portal creates a CP application and synchronizes
-        subscriptions. In decoupled mode the portal calls the Authorization Server DCR endpoint directly
-        using the configured key manager adapter. Supply `clientID` to map an existing AS client instead
-        of creating one; `tokenDetails.keyType` is required in both cases.
-      requestBody:
-        $ref: "#/components/requestBodies/AppKeyMappingBody"
-      responses:
-        "200":
-          $ref: "#/components/responses/AppKeyMappingCreateResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:app_key_mapping_write
-            - dp:app_key_mapping_manage
-  /organizations/{orgId}/app-key-mapping/{appId}:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/AppId"
-    get:
-      tags:
-        - App Key Mapping
-      operationId: retrieveAppKeyMappings
-      summary: Get application key mappings
-      description: >-
-        Retrieves the Developer Portal application and its stored control-plane key mapping rows. The
-        request is scoped to the authenticated user, and returns `404` when the application is not visible
-        to that user.
-      responses:
-        "200":
-          $ref: "#/components/responses/AppKeyMappingListResponse"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:app_key_mapping_read
-            - dp:app_key_mapping_manage
   /organizations/{orgId}/views:
     parameters:
       - $ref: "#/components/parameters/OrgId"
@@ -1517,12 +1353,13 @@ paths:
       tags:
         - Application Keys
       operationId: generateApplicationKeys
-      summary: Generate OAuth keys for a control-plane application
+      summary: Generate OAuth keys for a Developer Portal application
       description: >-
-        Proxies key generation to the control-plane application key endpoint. Use this when the caller
-        already has the control-plane application ID and wants to create OAuth credentials for a key manager.
+        Generates or maps OAuth credentials for the specified application through the selected key manager.
+        The portal calls the Authorization Server DCR endpoint directly using the configured key manager
+        adapter and stores the resulting key mapping.
       requestBody:
-        $ref: "#/components/requestBodies/ApplicationKeysGenerateBody"
+        $ref: "#/components/requestBodies/AppKeyMappingBody"
       responses:
         "200":
           $ref: "#/components/responses/ApplicationKeyResponse"
@@ -1635,528 +1472,6 @@ paths:
         - OAuth2Security:
             - dp:app_key_write
             - dp:app_key_manage
-  /organizations/{orgId}/billing/usage-data:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-    get:
-      tags:
-        - Billing
-      operationId: getUsageData
-      summary: Get billing usage data
-      description: >-
-        Returns billing usage totals for the authenticated user in the organization. The optional period
-        can be `current`, `last30`, or `last90`; `from` and `to` can be used for a custom date range.
-      parameters:
-        - $ref: "#/components/parameters/BillingUsagePeriodQuery"
-        - $ref: "#/components/parameters/BillingUsageFromQuery"
-        - $ref: "#/components/parameters/BillingUsageToQuery"
-      responses:
-        "200":
-          $ref: "#/components/responses/BillingUsageDataResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:billing_read
-            - dp:billing_manage
-        - apiKeyAuth: []
-  /organizations/{orgId}/billing/payment-methods:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-    get:
-      tags:
-        - Billing
-      operationId: getPaymentMethods
-      summary: List payment methods
-      description: >-
-        Lists Stripe payment methods for the authenticated billing user. If no Stripe customer exists yet,
-        the service can create or locate one by user email before listing methods.
-      responses:
-        "200":
-          $ref: "#/components/responses/PaymentMethodsResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:billing_read
-            - dp:billing_manage
-        - apiKeyAuth: []
-  /organizations/{orgId}/billing-engine-keys:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-    post:
-      tags:
-        - Billing
-      operationId: addBillingEngineKeys
-      summary: Add billing engine keys
-      description: >-
-        Stores encrypted billing engine credentials for the organization. Currently used for Stripe
-        secret, publishable, and webhook keys.
-      requestBody:
-        $ref: "#/components/requestBodies/BillingEngineKeysBody"
-      responses:
-        "201":
-          $ref: "#/components/responses/MessageResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:billing_config_write
-            - dp:billing_config_manage
-    put:
-      tags:
-        - Billing
-      operationId: updateBillingEngineKeys
-      summary: Update billing engine keys
-      description: Updates the encrypted billing engine credentials for an existing organization billing configuration.
-      requestBody:
-        $ref: "#/components/requestBodies/BillingEngineKeysBody"
-      responses:
-        "200":
-          $ref: "#/components/responses/MessageResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/MessageResponse"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:billing_config_write
-            - dp:billing_config_manage
-    delete:
-      tags:
-        - Billing
-      operationId: deleteBillingEngineKeys
-      summary: Delete billing engine keys
-      description: >-
-        Deletes billing engine credentials for the organization. `billingEngine` may be supplied in the
-        request body or as a query parameter.
-      requestBody:
-        $ref: "#/components/requestBodies/BillingEngineDeleteBody"
-      parameters:
-        - $ref: "#/components/parameters/BillingEngineQuery"
-      responses:
-        "200":
-          $ref: "#/components/responses/MessageResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/MessageResponse"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:billing_config_delete
-            - dp:billing_config_manage
-    get:
-      tags:
-        - Billing
-      operationId: getBillingEngineKeys
-      summary: Get billing engine keys
-      description: >-
-        Returns masked billing engine key metadata. Secret values are never returned; configured values are
-        represented as `****`.
-      parameters:
-        - $ref: "#/components/parameters/BillingEngineQuery"
-      responses:
-        "200":
-          $ref: "#/components/responses/BillingEngineKeysResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/MessageResponse"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:billing_config_read
-            - dp:billing_config_manage
-  /organizations/{orgId}/billing/info:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-    get:
-      tags:
-        - Billing
-      operationId: getBillingInfo
-      summary: Get billing profile information
-      description: >-
-        Returns billing profile information for the authenticated user and organization. When a Stripe
-        customer exists, the response includes customer address and tax ID information from Stripe.
-      responses:
-        "200":
-          $ref: "#/components/responses/BillingInfoResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:billing_read
-            - dp:billing_manage
-        - apiKeyAuth: []
-  /organizations/{orgId}/billing/subscriptions:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-    get:
-      tags:
-        - Billing
-      operationId: getActiveSubscriptions
-      summary: List subscriptions for billing
-      description: >-
-        Returns the authenticated user's subscriptions formatted for the billing page, including plan,
-        billing cycle, amount, currency, next billing date, and payment status.
-      responses:
-        "200":
-          $ref: "#/components/responses/BillingSubscriptionsResponse"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:billing_read
-            - dp:billing_manage
-        - apiKeyAuth: []
-  /organizations/{orgId}/monetization/checkout:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-    post:
-      tags:
-        - Billing
-      operationId: createCheckoutSessionForSubscription
-      summary: Create a checkout session
-      description: >-
-        Creates a pending Developer Portal subscription row and a Stripe embedded checkout session for a
-        paid subscription policy.
-      requestBody:
-        $ref: "#/components/requestBodies/CheckoutSessionBody"
-      responses:
-        "200":
-          $ref: "#/components/responses/CheckoutSessionResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/MessageResponse"
-        "502":
-          $ref: "#/components/responses/MessageResponse"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:billing_write
-            - dp:billing_manage
-        - apiKeyAuth: []
-  /organizations/{orgId}/monetization/stripe/register/{checkoutSessionId}:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/CheckoutSessionId"
-    post:
-      tags:
-        - Billing
-      operationId: registerStripeCheckoutSession
-      summary: Register a Stripe checkout session
-      description: >-
-        Verifies the Stripe checkout session, activates the Developer Portal subscription, and synchronizes
-        the subscription into the control plane when application key mappings already exist.
-      responses:
-        "201":
-          $ref: "#/components/responses/CheckoutRegistrationResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/MessageResponse"
-        "502":
-          $ref: "#/components/responses/MessageResponse"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:billing_write
-            - dp:billing_manage
-        - apiKeyAuth: []
-  /organizations/{orgId}/subscriptions/{subId}/cancel:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/SubId"
-    post:
-      tags:
-        - Billing
-      operationId: cancelSubscription
-      summary: Cancel a paid subscription
-      description: >-
-        Cancels a paid Stripe subscription, marks the Developer Portal subscription as canceled, and
-        schedules non-fatal Moesif billing cleanup.
-      responses:
-        "200":
-          $ref: "#/components/responses/BillingCancelResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "502":
-          $ref: "#/components/responses/MessageResponse"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:billing_write
-            - dp:billing_manage
-        - apiKeyAuth: []
-  /organizations/{orgId}/subscriptions/{subId}/billing-status:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/SubId"
-    get:
-      tags:
-        - Billing
-      operationId: getSubscriptionBillingStatus
-      summary: Get subscription billing status
-      description: Returns billing status and Stripe billing identifiers for a Developer Portal subscription.
-      responses:
-        "200":
-          $ref: "#/components/responses/SubscriptionBillingStatusResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:billing_read
-            - dp:billing_manage
-        - apiKeyAuth: []
-  /organizations/{orgId}/billing-portal:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-    post:
-      tags:
-        - Billing
-      operationId: createBillingPortalByOrg
-      summary: Create an organization billing portal session
-      description: >-
-        Creates a Stripe customer portal session for the authenticated user's organization. If no billed
-        subscription exists yet, the service can create or locate a Stripe customer by user email.
-      responses:
-        "200":
-          $ref: "#/components/responses/BillingPortalResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "502":
-          $ref: "#/components/responses/MessageResponse"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:billing_write
-            - dp:billing_manage
-        - apiKeyAuth: []
-  /organizations/{orgId}/subscriptions/{subId}/billing-portal:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/SubId"
-    post:
-      tags:
-        - Billing
-      operationId: createBillingPortal
-      summary: Create a subscription billing portal session
-      description: Creates a Stripe customer portal session for a specific paid subscription.
-      responses:
-        "200":
-          $ref: "#/components/responses/BillingPortalResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "502":
-          $ref: "#/components/responses/MessageResponse"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:billing_write
-            - dp:billing_manage
-        - apiKeyAuth: []
-  /organizations/{orgId}/subscriptions/{subId}/usage:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/SubId"
-    get:
-      tags:
-        - Usage
-      operationId: getSubscriptionUsage
-      summary: Get subscription usage
-      description: >-
-        Returns usage metrics for a subscription over a date range. When `usageFrom` or `usageTo` are not
-        supplied, the service defaults to the last 30 days ending at the current time.
-      parameters:
-        - $ref: "#/components/parameters/UsageFromQuery"
-        - $ref: "#/components/parameters/UsageToQuery"
-      responses:
-        "200":
-          $ref: "#/components/responses/SubscriptionUsageResponse"
-        "400":
-          $ref: "#/components/responses/UsageErrorResponse"
-        "404":
-          $ref: "#/components/responses/UsageErrorResponse"
-        "502":
-          $ref: "#/components/responses/UsageErrorResponse"
-        "500":
-          $ref: "#/components/responses/UsageErrorResponse"
-      security:
-        - OAuth2Security:
-            - dp:usage_read
-            - dp:usage_manage
-        - apiKeyAuth: []
-  /organizations/{orgId}/invoices:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-    get:
-      tags:
-        - Invoices
-      operationId: listInvoices
-      summary: List invoices
-      description: >-
-        Lists invoices for the authenticated billing user. The `period` query controls the Stripe invoice
-        created-date window.
-      parameters:
-        - $ref: "#/components/parameters/InvoicePeriodQuery"
-      responses:
-        "200":
-          $ref: "#/components/responses/InvoiceListResponse"
-        "400":
-          $ref: "#/components/responses/InvoiceErrorResponse"
-        "502":
-          $ref: "#/components/responses/InvoiceErrorResponse"
-        "500":
-          $ref: "#/components/responses/InvoiceErrorResponse"
-      security:
-        - OAuth2Security:
-            - dp:invoice_read
-            - dp:invoice_manage
-        - apiKeyAuth: []
-  /organizations/{orgId}/invoices/{invoiceId}:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/InvoiceId"
-    get:
-      tags:
-        - Invoices
-      operationId: getInvoice
-      summary: Get an invoice
-      description: Retrieves a Stripe invoice after verifying that the invoice customer belongs to the authenticated user.
-      responses:
-        "200":
-          $ref: "#/components/responses/InvoiceResponse"
-        "400":
-          $ref: "#/components/responses/InvoiceErrorResponse"
-        "404":
-          $ref: "#/components/responses/InvoiceErrorResponse"
-        "502":
-          $ref: "#/components/responses/InvoiceErrorResponse"
-        "500":
-          $ref: "#/components/responses/InvoiceErrorResponse"
-      security:
-        - OAuth2Security:
-            - dp:invoice_read
-            - dp:invoice_manage
-        - apiKeyAuth: []
-  /organizations/{orgId}/subscriptions/{subId}/invoices:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/SubId"
-    get:
-      tags:
-        - Invoices
-      operationId: listInvoicesBySubscription
-      summary: List invoices by subscription
-      description: >-
-        Lists Stripe invoices for a specific Developer Portal subscription after verifying subscription
-        ownership. The response preserves Stripe's invoice list shape and filters it to the Stripe
-        subscription linked to the Developer Portal subscription.
-      responses:
-        "200":
-          $ref: "#/components/responses/StripeInvoiceListResponse"
-        "400":
-          $ref: "#/components/responses/InvoiceErrorResponse"
-        "404":
-          $ref: "#/components/responses/InvoiceErrorResponse"
-        "502":
-          $ref: "#/components/responses/InvoiceErrorResponse"
-        "500":
-          $ref: "#/components/responses/InvoiceErrorResponse"
-      security:
-        - OAuth2Security:
-            - dp:invoice_read
-            - dp:invoice_manage
-        - apiKeyAuth: []
-  /organizations/{orgId}/invoices/{invoiceId}/pdf:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/InvoiceId"
-    get:
-      tags:
-        - Invoices
-      operationId: getInvoicePdfLink
-      summary: Get invoice PDF link
-      description: Returns hosted invoice and PDF links for an invoice. A non-finalized invoice may not have a PDF link yet.
-      responses:
-        "200":
-          $ref: "#/components/responses/InvoicePdfLinkResponse"
-        "404":
-          $ref: "#/components/responses/InvoicePdfNotAvailableResponse"
-        "400":
-          $ref: "#/components/responses/InvoiceErrorResponse"
-        "502":
-          $ref: "#/components/responses/InvoiceErrorResponse"
-        "500":
-          $ref: "#/components/responses/InvoiceErrorResponse"
-      security:
-        - OAuth2Security:
-            - dp:invoice_read
-            - dp:invoice_manage
-        - apiKeyAuth: []
-  /organizations/{orgId}/invoices/{invoiceId}/hosted:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/InvoiceId"
-    get:
-      tags:
-        - Invoices
-      operationId: redirectHostedInvoice
-      responses:
-        "302":
-          description: Redirects to the hosted invoice URL.
-          headers:
-            Location:
-              description: Hosted Stripe invoice URL.
-              schema:
-                type: string
-                format: uri
-        "404":
-          $ref: "#/components/responses/MessageResponse"
-        "400":
-          $ref: "#/components/responses/InvoiceErrorResponse"
-        "502":
-          $ref: "#/components/responses/InvoiceErrorResponse"
-        "500":
-          $ref: "#/components/responses/InvoiceErrorResponse"
-      security:
-        - OAuth2Security:
-            - dp:invoice_read
-            - dp:invoice_manage
-        - apiKeyAuth: []
   /organizations/{orgId}/views/{viewName}/api-flows:
     parameters:
       - $ref: "#/components/parameters/OrgId"
@@ -2610,19 +1925,6 @@ components:
             dp:app_key_write: Generate, update, regenerate, or clean up application keys.
             dp:app_key_revoke: Revoke application keys.
             dp:app_key_manage: Manage application keys.
-            dp:billing_read: Read billing information, usage data, payment methods, and subscription billing status.
-            dp:billing_write: >-
-              Create checkout sessions, register checkout sessions, create billing portal sessions, or cancel paid
-              subscriptions.
-            dp:billing_manage: Manage billing information, checkout, portal, and subscription billing actions.
-            dp:billing_config_read: Read billing engine key configuration.
-            dp:billing_config_write: Create or update billing engine key configuration.
-            dp:billing_config_delete: Delete billing engine key configuration.
-            dp:billing_config_manage: Manage billing engine key configuration.
-            dp:usage_read: Read subscription usage.
-            dp:usage_manage: Manage subscription usage access.
-            dp:invoice_read: Read invoices and invoice links.
-            dp:invoice_manage: Manage invoice access.
             dp:api_flow_read: Read API flows.
             dp:api_flow_write: Create, update, or generate API flows.
             dp:api_flow_delete: Delete API flows.
@@ -2740,19 +2042,6 @@ components:
       required: true
       schema:
         type: string
-    CheckoutSessionId:
-      name: checkoutSessionId
-      in: path
-      required: true
-      schema:
-        type: string
-    InvoiceId:
-      name: invoiceId
-      in: path
-      required: true
-      schema:
-        type: string
-        example: in_12345
     ViewName:
       name: viewName
       in: path
@@ -2785,19 +2074,6 @@ components:
         format: date-time
         example: "2026-05-07T00:00:00Z"
       description: Usage end timestamp. Defaults to the request time.
-    InvoicePeriodQuery:
-      name: period
-      in: query
-      required: false
-      schema:
-        type: string
-        enum:
-          - last3months
-          - last6months
-          - last12months
-          - all
-        default: last3months
-      description: Invoice created-date window.
     ContentTypeQuery:
       name: type
       in: query
@@ -2984,44 +2260,6 @@ components:
         type: string
         example: sub-12345
       description: Developer Portal subscription ID to remove.
-    BillingEngineQuery:
-      name: billingEngine
-      in: query
-      required: false
-      schema:
-        type: string
-        example: STRIPE
-      description: Alternative to sending `billingEngine` in the delete request body.
-    BillingUsagePeriodQuery:
-      name: period
-      in: query
-      required: false
-      schema:
-        type: string
-        enum:
-          - current
-          - last30
-          - last90
-        default: current
-      description: Usage period used when `from` and `to` are not supplied.
-    BillingUsageFromQuery:
-      name: from
-      in: query
-      required: false
-      schema:
-        type: string
-        format: date
-        example: "2026-05-01"
-      description: Custom usage start date. The service expands this to the beginning of the day in UTC.
-    BillingUsageToQuery:
-      name: to
-      in: query
-      required: false
-      schema:
-        type: string
-        format: date
-        example: "2026-05-07"
-      description: Custom usage end date. The service expands this to the end of the day in UTC.
   requestBodies:
     JsonObjectBody:
       required: false
@@ -3229,9 +2467,7 @@ components:
     AppKeyMappingBody:
       required: true
       description: >-
-        Application key mapping payload. Use internal, resident, or STS key managers to generate OAuth
-        keys. For external key managers, provide `clientID` and `tokenDetails.keyType` to map an existing
-        client.
+        OAuth key generation payload. The application is identified by the `applicationId` path parameter.
       content:
         application/json:
           schema:
@@ -3240,27 +2476,15 @@ components:
             generateResidentOAuthKeys:
               summary: Generate OAuth keys using the resident key manager
               value:
-                applicationName: Weather App
-                tokenType: OAUTH
-                tokenDetails:
-                  keyManager: Resident Key Manager
-                  keyType: PRODUCTION
-                  grantTypesToBeSupported:
-                    - client_credentials
-                    - refresh_token
-                  callbackUrl: https://app.example.com/callback
-                  additionalProperties:
-                    application_access_token_expiry_time: "3600"
-                    user_access_token_expiry_time: "3600"
-            mapExternalClient:
-              summary: Map an existing external client ID
-              value:
-                applicationName: Weather App
-                tokenType: OAUTH
-                clientID: external-client-123
-                tokenDetails:
-                  keyManager: External Key Manager
-                  keyType: PRODUCTION
+                keyManager: Resident Key Manager
+                keyType: PRODUCTION
+                grantTypesToBeSupported:
+                  - client_credentials
+                  - refresh_token
+                callbackUrl: https://app.example.com/callback
+                additionalProperties:
+                  application_access_token_expiry_time: "3600"
+                  user_access_token_expiry_time: "3600"
     ViewCreateBody:
       required: true
       description: View creation payload with the label names that should be visible in the view.
@@ -3442,41 +2666,6 @@ components:
                 type: string
                 format: binary
                 description: KeyManager YAML file with partial update fields.
-    BillingEngineKeysBody:
-      required: true
-      description: Billing engine credentials to encrypt and store for the organization.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/BillingEngineKeysRequest"
-          example:
-            billingEngine: STRIPE
-            secretKey: sk_test_123
-            publishableKey: pk_test_123
-            webhookSecret: whsec_123
-    BillingEngineDeleteBody:
-      required: false
-      description: Optional billing engine selector. The same value can also be supplied with the `billingEngine` query parameter.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/BillingEngineDeleteRequest"
-          example:
-            billingEngine: STRIPE
-    CheckoutSessionBody:
-      required: true
-      description: Paid subscription checkout payload.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/CheckoutSessionRequest"
-          example:
-            applicationID: app-12345
-            apiId: api-7f4c2a6b
-            apiReferenceID: cp-api-12345
-            policyId: policy-pro
-            policyName: Pro
-            sourcePage: /devportal/apis/weather-api-v1
     APIFlowCreateBody:
       required: true
       description: API flow creation payload. Use `contentType` `ARAZZO` for JSON/YAML workflow content or `MD` for Markdown flow content.
@@ -3976,13 +3165,10 @@ components:
             endPoints:
               productionURL: https://api.example.com/weather
               sandboxURL: https://sandbox.example.com/weather
-            monetizationInfo:
-              enabled: false
             subscriptionPolicies:
               - policyID: policy-gold
                 policyName: Gold
                 displayName: Gold
-                billingPlan: FREE
                 requestCount: 10000
     ApiMetadataResponse:
       description: API metadata DTO returned by the service.
@@ -4013,13 +3199,10 @@ components:
             endPoints:
               sandboxURL: https://sandbox.example.com/weather
               productionURL: https://api.example.com/weather
-            monetizationInfo:
-              enabled: false
             subscriptionPolicies:
               - policyID: policy-gold
                 policyName: Gold
                 displayName: Gold
-                billingPlan: FREE
                 requestCount: 10000
     ApiMetadataListResponse:
       description: List of API metadata DTOs.
@@ -4050,8 +3233,6 @@ components:
               endPoints:
                 sandboxURL: https://sandbox.example.com/weather
                 productionURL: https://api.example.com/weather
-              monetizationInfo:
-                enabled: false
     SubscriptionPolicyResponse:
       description: Subscription policy DTO.
       content:
@@ -4316,233 +3497,6 @@ components:
               - $ref: "#/components/schemas/GenericObject"
           example:
             message: Operation completed successfully
-    BillingUsageDataResponse:
-      description: Billing usage summary for the authenticated user.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/BillingUsageDataResponse"
-          example:
-            totalRequests: 12450
-            activeSubscriptions: 2
-            estimatedCost: 29.99
-            currency: USD
-            avgResponseTime: 142
-            subscriptions:
-              - apiName: Weather API
-                applicationName: Weather App
-                planName: Pro
-                requests: 12000
-                pricingModel: METERED
-                cost: 24.99
-                currency: USD
-                avgResponseTime: 145
-    PaymentMethodsResponse:
-      description: Stripe payment methods for the authenticated billing user.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/PaymentMethodsResponse"
-          example:
-            paymentMethods:
-              - id: pm_12345
-                brand: visa
-                last4: "4242"
-                expMonth: 12
-                expYear: 2030
-                isDefault: true
-    BillingEngineKeysResponse:
-      description: Masked billing engine credentials.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/BillingEngineKeysResponse"
-          example:
-            billingEngine: STRIPE
-            secretKey: "****"
-            publishableKey: "****"
-            webhookSecret: "****"
-    BillingInfoResponse:
-      description: Billing profile information for the authenticated user.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/BillingInfoResponse"
-          example:
-            organizationName: Acme Inc
-            email: dev@example.com
-            address:
-              line1: 100 Market Street
-              city: San Francisco
-              country: US
-            taxId: "123456789"
-    BillingSubscriptionsResponse:
-      description: Subscriptions formatted for billing page display.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/BillingSubscriptionsResponse"
-          example:
-            subscriptions:
-              - id: sub-12345
-                apiName: Weather API
-                applicationName: Weather App
-                planName: Pro
-                billingCycle: Month
-                amount: 2999
-                currency: usd
-                nextBillingDate: 1775088000000
-                status: active
-    CheckoutSessionResponse:
-      description: Stripe checkout session details for a pending paid subscription.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/CheckoutSessionResponse"
-          example:
-            subId: sub-12345
-            checkoutSessionId: cs_test_12345
-            clientSecret: cs_test_12345_secret_abc
-            publishableKey: pk_test_123
-            billingCustomerId: cus_12345
-            paymentProvider: STRIPE
-            paymentStatus: PENDING
-    CheckoutRegistrationResponse:
-      description: Registered checkout session and activated subscription details.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/CheckoutRegistrationResponse"
-          example:
-            subId: sub-12345
-            billingCustomerId: cus_12345
-            billingSubscriptionId: sub_stripe_12345
-            paymentStatus: ACTIVE
-            paymentProvider: STRIPE
-    BillingCancelResponse:
-      description: Paid subscription cancellation result.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/BillingCancelResponse"
-          example:
-            subId: sub-12345
-            paymentStatus: CANCELED
-    SubscriptionBillingStatusResponse:
-      description: Billing status for a Developer Portal subscription.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/SubscriptionBillingStatusResponse"
-          example:
-            subId: sub-12345
-            paymentProvider: STRIPE
-            paymentStatus: ACTIVE
-            billingCustomerId: cus_12345
-            billingSubscriptionId: sub_stripe_12345
-    BillingPortalResponse:
-      description: Stripe billing portal session URL.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/BillingPortalResponse"
-          example:
-            url: https://billing.stripe.com/p/session/test_123
-    SubscriptionUsageResponse:
-      description: Usage metrics for a subscription.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/SubscriptionUsageResponse"
-          example:
-            subscriptionId: cp-sub-12345
-            from: "2026-04-07T00:00:00Z"
-            to: "2026-05-07T00:00:00Z"
-            total_requests: 12000
-            avg_response_time: 145
-            currency: USD
-    UsageErrorResponse:
-      description: Usage lookup error.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ControllerErrorResponse"
-          example:
-            error: CustomError
-            message: Invalid usageFrom date
-    InvoiceListResponse:
-      description: Compact invoice list for the authenticated billing user.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/InvoiceListResponse"
-          example:
-            invoices:
-              - id: in_12345
-                number: INV-001
-                created: 1775088000
-                amount: 2999
-                currency: usd
-                status: paid
-                hostedInvoiceUrl: https://invoice.stripe.com/i/acct/test
-                invoicePdf: https://pay.stripe.com/invoice/acct/test/pdf
-    StripeInvoiceListResponse:
-      description: Stripe invoice list response filtered by subscription.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/StripeInvoiceListResponse"
-          example:
-            object: list
-            data:
-              - id: in_12345
-                object: invoice
-                status: paid
-                hosted_invoice_url: https://invoice.stripe.com/i/acct/test
-                invoice_pdf: https://pay.stripe.com/invoice/acct/test/pdf
-            has_more: false
-    InvoiceResponse:
-      description: Stripe invoice object.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/StripeInvoiceResponse"
-          example:
-            id: in_12345
-            object: invoice
-            status: paid
-            customer: cus_12345
-            hosted_invoice_url: https://invoice.stripe.com/i/acct/test
-            invoice_pdf: https://pay.stripe.com/invoice/acct/test/pdf
-    InvoicePdfLinkResponse:
-      description: Hosted invoice and PDF links.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/InvoicePdfLinkResponse"
-          example:
-            invoiceId: in_12345
-            hosted_invoice_url: https://invoice.stripe.com/i/acct/test
-            invoice_pdf: https://pay.stripe.com/invoice/acct/test/pdf
-    InvoicePdfNotAvailableResponse:
-      description: Invoice PDF is not available yet.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/InvoicePdfNotAvailableResponse"
-          example:
-            error: InvoicePdfNotAvailable
-            message: Invoice PDF is not available for this invoice. It may not be finalized or paid yet.
-            hosted_invoice_url: https://invoice.stripe.com/i/acct/test
-    InvoiceErrorResponse:
-      description: Invoice lookup error.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ControllerErrorResponse"
-          example:
-            error: InternalServerError
-            message: An unexpected error occurred
     APIFlowCreateResponse:
       description: Created API flow summary.
       content:
@@ -4901,8 +3855,6 @@ components:
           $ref: "#/components/schemas/ApiInfoResponse"
         endPoints:
           $ref: "#/components/schemas/ApiEndpointsResponse"
-        monetizationInfo:
-          $ref: "#/components/schemas/ApiMonetizationInfoResponse"
         subscriptionPolicies:
           type: array
           items:
@@ -4927,8 +3879,6 @@ components:
           $ref: "#/components/schemas/ApiInfoResponse"
         endPoints:
           $ref: "#/components/schemas/ApiEndpointsResponse"
-        monetizationInfo:
-          $ref: "#/components/schemas/ApiMonetizationInfoResponse"
         subscriptionPolicies:
           type: array
           items:
@@ -5013,12 +3963,6 @@ components:
       type: object
       additionalProperties:
         type: string
-    ApiMonetizationInfoResponse:
-      type: object
-      properties:
-        enabled:
-          type: boolean
-      additionalProperties: true
     SubscriptionPolicyResponse:
       type: object
       properties:
@@ -5028,8 +3972,6 @@ components:
           type: string
         displayName:
           type: string
-        billingPlan:
-          type: string
         description:
           type: string
         requestCount:
@@ -5038,19 +3980,6 @@ components:
             - type: string
         orgID:
           type: string
-        pricingModel:
-          type: string
-        currency:
-          type: string
-        billingPeriod:
-          type: string
-        flatAmount:
-          type: number
-        unitAmount:
-          type: number
-        pricingMetadata:
-          type: object
-          additionalProperties: true
       additionalProperties: false
     LabelResponse:
       type: object
@@ -5288,9 +4217,6 @@ components:
           type: string
         displayName:
           type: string
-        billingPlan:
-          type: string
-          example: FREE
         description:
           type: string
         type:
@@ -5309,61 +4235,6 @@ components:
             - type: integer
             - type: string
           description: Required for event-count policies. Use -1 for unlimited.
-        pricingModel:
-          type: string
-          enum:
-            - FREE
-            - FLAT
-            - PER_UNIT
-            - VOLUME_TIERS
-            - GRADUATED_TIERS
-        currency:
-          type: string
-          example: USD
-        billingPeriod:
-          type: string
-          example: month
-        flatAmount:
-          type: number
-        unitAmount:
-          type: number
-        externalProductId:
-          type: string
-        externalPriceId:
-          type: string
-        tiers:
-          type: array
-          items:
-            $ref: "#/components/schemas/PricingTier"
-        pricingTiers:
-          type: array
-          items:
-            $ref: "#/components/schemas/PricingTier"
-        billingMeterData:
-          type: array
-          items:
-            type: object
-            properties:
-              apiId:
-                type: string
-              meterId:
-                type: string
-    PricingTier:
-      type: object
-      properties:
-        tierIndex:
-          type: integer
-        startUnit:
-          type: integer
-        endUnit:
-          type: integer
-          nullable: true
-        unitPrice:
-          type: number
-          nullable: true
-        flatPrice:
-          type: number
-          nullable: true
     LabelRequest:
       type: object
       required:
@@ -5848,67 +4719,41 @@ components:
     AppKeyMappingRequest:
       type: object
       required:
-        - applicationName
-        - tokenDetails
+        - keyManager
+        - keyType
       properties:
-        applicationName:
+        keyManager:
           type: string
-          example: Weather App
-        apis:
-          type: array
-          description: Optional list of API identifiers. Existing service logic synchronizes subscribed APIs for the application.
-          items:
-            type: object
-          example:
-            - apiName: Weather API
-              apiRefId: "214te6382jjq9274eg332190"
-              policyID: "24341d98-90f7-4530-95ef-0709609eea1a"
-        tokenType:
+          example: Resident Key Manager
+        keyType:
           type: string
           enum:
-            - API_KEY
-            - OAUTH
-            - BASIC
-          example: OAUTH
-        provider:
+            - PRODUCTION
+            - SANDBOX
+          example: PRODUCTION
+        grantTypesToBeSupported:
+          type: array
+          items:
+            type: string
+          example:
+            - client_credentials
+            - refresh_token
+        callbackUrl:
           type: string
-          example: WSO2
-        clientID:
-          type: string
-          description: Existing consumer key used when mapping external keys.
-          example: external-client-123
-        tokenDetails:
+          format: uri
+          example: https://app.example.com/callback
+        scopes:
+          type: array
+          items:
+            type: string
+          example:
+            - default
+        additionalProperties:
           type: object
-          required:
-            - keyManager
-          properties:
-            keyManager:
-              type: string
-              example: Resident Key Manager
-            keyType:
-              type: string
-              enum:
-                - PRODUCTION
-                - SANDBOX
-              example: PRODUCTION
-            grantTypesToBeSupported:
-              type: array
-              items:
-                type: string
-              example:
-                - client_credentials
-                - refresh_token
-            callbackUrl:
-              type: string
-              format: uri
-              example: https://app.example.com/callback
-            additionalProperties:
-              type: object
-              additionalProperties: true
-              example:
-                application_access_token_expiry_time: "3600"
-                user_access_token_expiry_time: "3600"
           additionalProperties: true
+          example:
+            application_access_token_expiry_time: "3600"
+            user_access_token_expiry_time: "3600"
       additionalProperties: false
     AppKeyMappingCreateResponse:
       type: object
@@ -6276,321 +5121,6 @@ components:
           type: string
           example: weather.read
       additionalProperties: true
-    BillingEngineKeysRequest:
-      type: object
-      required:
-        - billingEngine
-        - secretKey
-        - publishableKey
-        - webhookSecret
-      properties:
-        billingEngine:
-          type: string
-          example: STRIPE
-        secretKey:
-          type: string
-          description: Billing engine secret key. Stored encrypted and never returned in clear text.
-          example: sk_test_123
-        publishableKey:
-          type: string
-          example: pk_test_123
-        webhookSecret:
-          type: string
-          example: whsec_123
-      additionalProperties: false
-    BillingEngineDeleteRequest:
-      type: object
-      properties:
-        billingEngine:
-          type: string
-          example: STRIPE
-      additionalProperties: false
-    BillingEngineKeysResponse:
-      type: object
-      required:
-        - billingEngine
-      properties:
-        billingEngine:
-          type: string
-          example: STRIPE
-        secretKey:
-          type: string
-          nullable: true
-          description: Masked secret key marker when configured.
-          example: "****"
-        publishableKey:
-          type: string
-          nullable: true
-          description: Masked publishable key marker when configured.
-          example: "****"
-        webhookSecret:
-          type: string
-          nullable: true
-          description: Masked webhook secret marker when configured.
-          example: "****"
-      additionalProperties: false
-    CheckoutSessionRequest:
-      type: object
-      required:
-        - applicationID
-        - apiId
-        - apiReferenceID
-        - policyId
-        - policyName
-      properties:
-        applicationID:
-          type: string
-          description: Developer Portal application ID.
-          example: app-12345
-        apiId:
-          type: string
-          description: Developer Portal API ID.
-          example: api-7f4c2a6b
-        apiReferenceID:
-          type: string
-          description: Control-plane API reference ID.
-          example: cp-api-12345
-        policyId:
-          type: string
-          description: Developer Portal subscription policy ID.
-          example: policy-pro
-        policyName:
-          type: string
-          description: Subscription policy name.
-          example: Pro
-        sourcePage:
-          type: string
-          description: Portal page to return to after checkout.
-          example: /devportal/apis/weather-api-v1
-      additionalProperties: false
-    BillingUsageDataResponse:
-      type: object
-      properties:
-        totalRequests:
-          type: integer
-          example: 12450
-        activeSubscriptions:
-          type: integer
-          example: 2
-        estimatedCost:
-          type: number
-          example: 29.99
-        currency:
-          type: string
-          example: USD
-        avgResponseTime:
-          type: integer
-          description: Average response time in milliseconds.
-          example: 142
-        subscriptions:
-          type: array
-          items:
-            $ref: "#/components/schemas/BillingUsageSubscription"
-      additionalProperties: false
-    BillingUsageSubscription:
-      type: object
-      properties:
-        apiName:
-          type: string
-          example: Weather API
-        applicationName:
-          type: string
-          example: Weather App
-        planName:
-          type: string
-          example: Pro
-        requests:
-          type: integer
-          example: 12000
-        pricingModel:
-          type: string
-          example: METERED
-        cost:
-          type: number
-          example: 24.99
-        currency:
-          type: string
-          example: USD
-        avgResponseTime:
-          type: integer
-          example: 145
-      additionalProperties: true
-    PaymentMethodsResponse:
-      type: object
-      properties:
-        paymentMethods:
-          type: array
-          items:
-            $ref: "#/components/schemas/PaymentMethodResponse"
-      additionalProperties: false
-    PaymentMethodResponse:
-      type: object
-      properties:
-        id:
-          type: string
-          example: pm_12345
-        brand:
-          type: string
-          example: visa
-        last4:
-          type: string
-          example: "4242"
-        expMonth:
-          type: integer
-          example: 12
-        expYear:
-          type: integer
-          example: 2030
-        isDefault:
-          type: boolean
-          example: true
-      additionalProperties: false
-    BillingInfoResponse:
-      type: object
-      properties:
-        organizationName:
-          type: string
-          example: Acme Inc
-        email:
-          type: string
-          format: email
-          example: dev@example.com
-        address:
-          type: object
-          nullable: true
-          additionalProperties: true
-        taxId:
-          type: string
-          nullable: true
-          example: "123456789"
-      additionalProperties: true
-    BillingSubscriptionsResponse:
-      type: object
-      properties:
-        subscriptions:
-          type: array
-          items:
-            $ref: "#/components/schemas/BillingSubscriptionResponse"
-      additionalProperties: false
-    BillingSubscriptionResponse:
-      type: object
-      properties:
-        id:
-          type: string
-          example: sub-12345
-        apiName:
-          type: string
-          example: Weather API
-        applicationName:
-          type: string
-          example: Weather App
-        planName:
-          type: string
-          example: Pro
-        billingCycle:
-          type: string
-          example: Month
-        amount:
-          type: number
-          description: Amount in the smallest Stripe currency unit when sourced from Stripe.
-          example: 2999
-        currency:
-          type: string
-          example: usd
-        nextBillingDate:
-          type: integer
-          nullable: true
-          description: Next billing timestamp in milliseconds since epoch.
-          example: 1775088000000
-        status:
-          type: string
-          example: active
-      additionalProperties: true
-    CheckoutSessionResponse:
-      type: object
-      properties:
-        subId:
-          type: string
-          example: sub-12345
-        checkoutSessionId:
-          type: string
-          example: cs_test_12345
-        clientSecret:
-          type: string
-          example: cs_test_12345_secret_abc
-        publishableKey:
-          type: string
-          example: pk_test_123
-        billingCustomerId:
-          type: string
-          example: cus_12345
-        paymentProvider:
-          type: string
-          example: STRIPE
-        paymentStatus:
-          type: string
-          example: PENDING
-      additionalProperties: true
-    CheckoutRegistrationResponse:
-      type: object
-      properties:
-        subId:
-          type: string
-          example: sub-12345
-        billingCustomerId:
-          type: string
-          example: cus_12345
-        billingSubscriptionId:
-          type: string
-          example: sub_stripe_12345
-        paymentStatus:
-          type: string
-          example: ACTIVE
-        paymentProvider:
-          type: string
-          example: STRIPE
-      additionalProperties: true
-    BillingCancelResponse:
-      type: object
-      properties:
-        subId:
-          type: string
-          example: sub-12345
-        paymentStatus:
-          type: string
-          example: CANCELED
-      additionalProperties: false
-    SubscriptionBillingStatusResponse:
-      type: object
-      properties:
-        subId:
-          type: string
-          example: sub-12345
-        paymentProvider:
-          type: string
-          nullable: true
-          example: STRIPE
-        paymentStatus:
-          type: string
-          nullable: true
-          example: ACTIVE
-        billingCustomerId:
-          type: string
-          nullable: true
-          example: cus_12345
-        billingSubscriptionId:
-          type: string
-          nullable: true
-          example: sub_stripe_12345
-      additionalProperties: false
-    BillingPortalResponse:
-      type: object
-      properties:
-        url:
-          type: string
-          format: uri
-          example: https://billing.stripe.com/p/session/test_123
-      additionalProperties: false
     ControllerErrorResponse:
       type: object
       properties:
@@ -6603,145 +5133,6 @@ components:
         description:
           type: string
       additionalProperties: true
-    SubscriptionUsageResponse:
-      type: object
-      description: Usage response returned by the monetization service or Moesif proxy.
-      properties:
-        subscriptionId:
-          type: string
-          example: cp-sub-12345
-        from:
-          type: string
-          format: date-time
-        to:
-          type: string
-          format: date-time
-        total_requests:
-          type: integer
-          example: 12000
-        usage:
-          type: integer
-          example: 12000
-        avg_response_time:
-          type: number
-          example: 145
-        currency:
-          type: string
-          example: USD
-      additionalProperties: true
-    InvoiceListResponse:
-      type: object
-      properties:
-        invoices:
-          type: array
-          items:
-            $ref: "#/components/schemas/InvoiceSummaryResponse"
-      additionalProperties: false
-    InvoiceSummaryResponse:
-      type: object
-      properties:
-        id:
-          type: string
-          example: in_12345
-        number:
-          type: string
-          nullable: true
-          example: INV-001
-        created:
-          type: integer
-          description: Stripe-created timestamp in seconds.
-          example: 1775088000
-        amount:
-          type: number
-          example: 2999
-        currency:
-          type: string
-          example: usd
-        status:
-          type: string
-          example: paid
-        hostedInvoiceUrl:
-          type: string
-          format: uri
-          nullable: true
-        invoicePdf:
-          type: string
-          format: uri
-          nullable: true
-      additionalProperties: false
-    StripeInvoiceListResponse:
-      type: object
-      properties:
-        object:
-          type: string
-          example: list
-        data:
-          type: array
-          items:
-            $ref: "#/components/schemas/StripeInvoiceResponse"
-        has_more:
-          type: boolean
-          example: false
-        url:
-          type: string
-      additionalProperties: true
-    StripeInvoiceResponse:
-      type: object
-      properties:
-        id:
-          type: string
-          example: in_12345
-        object:
-          type: string
-          example: invoice
-        status:
-          type: string
-          example: paid
-        customer:
-          oneOf:
-            - type: string
-            - type: object
-              additionalProperties: true
-        subscription:
-          type: string
-          nullable: true
-          example: sub_stripe_12345
-        hosted_invoice_url:
-          type: string
-          format: uri
-          nullable: true
-        invoice_pdf:
-          type: string
-          format: uri
-          nullable: true
-      additionalProperties: true
-    InvoicePdfLinkResponse:
-      type: object
-      properties:
-        invoiceId:
-          type: string
-          example: in_12345
-        hosted_invoice_url:
-          type: string
-          format: uri
-          nullable: true
-        invoice_pdf:
-          type: string
-          format: uri
-      additionalProperties: false
-    InvoicePdfNotAvailableResponse:
-      type: object
-      properties:
-        error:
-          type: string
-          example: InvoicePdfNotAvailable
-        message:
-          type: string
-        hosted_invoice_url:
-          type: string
-          format: uri
-          nullable: true
-      additionalProperties: false
     APIFlowCreateResponse:
       type: object
       properties:

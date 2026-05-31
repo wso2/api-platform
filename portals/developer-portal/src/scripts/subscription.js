@@ -16,12 +16,9 @@
  * under the License.
  */
 
-async function subscribe(orgID, apiId, planName, applicationId) {
+async function subscribe(orgID, apiId, planName) {
     try {
         const body = { apiId, subscriptionPlanName: planName };
-        if (applicationId) {
-            body.applicationId = applicationId;
-        }
 
         const response = await fetch(`/devportal/organizations/${encodeURIComponent(orgID)}/subscriptions`, {
             method: 'POST',

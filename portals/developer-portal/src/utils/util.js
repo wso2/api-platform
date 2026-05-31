@@ -832,7 +832,6 @@ function validateScripts(strContent) {
         const allowedScripts = new Set([
             "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'></script>",
             '<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>',
-            '<script src="https://js.stripe.com/v3/"></script>',
             "<script src='/technical-scripts/search.js' defer></script>",
             "<script src='/technical-scripts/filter.js' defer></script>",
             "<script src='/technical-scripts/common.js' defer></script>",
@@ -844,7 +843,6 @@ function validateScripts(strContent) {
             "<script src='/technical-scripts/api-keys-page.js' defer></script>",
             '<script src="/technical-scripts/oauth2-key-generation.js" defer></script>',
             '<script src="/technical-scripts/api-key-generation.js" defer></script>',
-            '<script src="/technical-scripts/billing.js" defer></script>',
             "<script src='/technical-scripts/delete-confirmation-modal.js' defer></script>",
             "<script src='/technical-scripts/api-flow-detail.js' defer></script>",
             "<script src='/technical-scripts/api-workflows.js' defer></script>",
@@ -937,30 +935,12 @@ async function appendSubscriptionPlanDetails(orgID, subscriptionPolicies) {
                 });
                 continue;
             }
-            const billingPlanRaw = subscriptionPlan.billingPlan;
-            const billingPlan = (typeof billingPlanRaw === 'string') ? billingPlanRaw.trim().toUpperCase() : '';
-            const isPaid = billingPlan === 'COMMERCIAL';
-            logger.debug('[appendSubscriptionPlanDetails] Plan:', {
-                policyID: subscriptionPlan.policyID,
-                policyName: subscriptionPlan.policyName,
-                billingPlanRaw,
-                billingPlan,
-                isPaid
-            });
             subscriptionPlans.push({
                 policyID: subscriptionPlan.policyID,
                 displayName: subscriptionPlan.displayName,
                 policyName: subscriptionPlan.policyName,
                 description: subscriptionPlan.description,
-                billingPlan: subscriptionPlan.billingPlan,
                 requestCount: subscriptionPlan.requestCount,
-                pricingModel: subscriptionPlan.pricingModel,
-                currency: subscriptionPlan.currency,
-                billingPeriod: subscriptionPlan.billingPeriod,
-                flatAmount: subscriptionPlan.flatAmount,
-                unitAmount: subscriptionPlan.unitAmount,
-                pricingMetadata: subscriptionPlan.pricingMetadata,
-                isPaid: isPaid
             });
         }
     }

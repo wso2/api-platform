@@ -28,9 +28,8 @@ function prepareDeleteSubscription(orgID, subID) {
         return;
     }
 
-    if (confirm('Are you sure you want to delete this subscription? The subscription token will be immediately invalidated.')) {
-        executeDeleteSubscription();
-    }
+    // openWarningModal unavailable — execute directly (should not happen in normal usage)
+    executeDeleteSubscription();
 }
 
 async function executeDeleteSubscription() {

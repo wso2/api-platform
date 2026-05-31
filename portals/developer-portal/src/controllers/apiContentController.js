@@ -57,7 +57,6 @@ const loadAPIs = async (req, res) => {
                 displayName: "Sample",
                 policyName: "Sample",
                 description: "Sample",
-                billingPlan: "Sample",
                 requestCount: "1000",
             });
             metaData.subscriptionPolicyDetails = subscriptionPlans;
@@ -101,19 +100,14 @@ const loadAPIs = async (req, res) => {
                     perApiAppList = await Promise.all(
                         allApplications.map(async (app) => {
                             const subscription = await adminDao.getAppApiSubscription(orgID, app.APP_ID, metaData.apiID);
-                            const activeSubs = subscription.filter(s => {
-                                const ps = s.PAYMENT_STATUS;
-                                return !ps || ps === 'ACTIVE';
-                            });
-                            const subscriptionData = activeSubs.length > 0 ? {
-                                policyId: activeSubs[0].POLICY_ID,
-                                policyName: metaData.subscriptionPolicies.find(p => p.policyID === activeSubs[0].POLICY_ID)?.policyName || 'Unknown'
+                            const subscriptionData = subscription.length > 0 ? {
+                                policyId: subscription[0].POLICY_ID,
+                                policyName: metaData.subscriptionPolicies.find(p => p.policyID === subscription[0].POLICY_ID)?.policyName || 'Unknown'
                             } : null;
                             return {
                                 ...new ApplicationDTO(app),
-                                subscribed: activeSubs.length > 0,
-                                subscriptionPolicy: subscriptionData,
-                                subscriptionStatus: activeSubs.length > 0 ? activeSubs[0].PAYMENT_STATUS : null
+                                subscribed: subscription.length > 0,
+                                subscriptionPolicy: subscriptionData
                             };
                         })
                     );

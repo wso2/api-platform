@@ -30,7 +30,7 @@ const { ApplicationDTO } = require('../dto/application');
 const { Sequelize } = require("sequelize");
 const adminService = require('../services/adminService');
 const apiDao = require('../dao/apiMetadata');
-const { trackAppCreationStart, trackAppCreationEnd, trackAppDeletion, trackGenerateKey } = require('../utils/telemetry');
+const { trackAppCreationStart, trackAppCreationEnd, trackAppDeletion, trackGenerateKey, trackGenerateCredentials } = require('../utils/telemetry');
 const fs = require('fs');
 const yaml = require('js-yaml');
 const kmDao = require('../dao/keyManager');
@@ -39,8 +39,6 @@ const { ImportedApplicationDTO, ApplicationKey } = require('../dto/importedAppli
 const { CustomError } = require('../utils/errors/customErrors');
 const { APIMetadata, APILabels } = require('../models/apiMetadata');
 const sequelize = require('../db/sequelize');
-const monetizationService = require('../services/monetizationService');
-
 // ***** POST / DELETE / PUT Functions ***** (Only work in production)
 
 function parseApplicationDataFromRequest(req) {
@@ -115,48 +113,36 @@ const updateApplication = async (req, res) => {
 
 // ***** Delete Application *****
 
+const revokeAppKeyMappings = async (orgID, appID) => {
+    const { ApplicationKeyMapping } = require('../models/application');
+    const mappings = await ApplicationKeyMapping.findAll({
+        where: { APP_ID: appID, ORG_ID: orgID },
+    });
+    for (const mapping of mappings) {
+        if (mapping.KM_ID && mapping.AS_CLIENT_ID) {
+            try {
+                const kmRecord = await kmDao.getKeyManager(mapping.KM_ID);
+                const adapter = getKeyManagerAdapter(kmRecord);
+                await adapter.deleteOAuthClient(mapping.AS_CLIENT_ID);
+            } catch (err) {
+                logger.warn('Failed to revoke OAuth client during application deletion', {
+                    appId: appID,
+                    clientId: mapping.AS_CLIENT_ID,
+                    kmId: mapping.KM_ID,
+                    errorMessage: err.message,
+                });
+            }
+        }
+    }
+    await adminDao.deleteAppMappings(orgID, appID);
+};
+
 const deleteApplication = async (req, res) => {
     try {
         const orgID = await adminDao.getOrgId(req.user[constants.ORG_IDENTIFIER]);
         const applicationId = req.params.applicationId;
         try {
-            // Cancel all Stripe subscriptions for this application before deleting
-            try {
-                const subscriptions = await adminDao.getSubscriptions(orgID, applicationId, '');
-                for (const subscription of subscriptions) {
-                    if (subscription.BILLING_SUBSCRIPTION_ID && subscription.PAYMENT_PROVIDER === 'STRIPE') {
-                         try {
-                            logger.info('Canceling Stripe subscription before deleting application', {
-                                appId: applicationId,
-                                subId: subscription.SUB_ID,
-                                billingSubscriptionId: subscription.BILLING_SUBSCRIPTION_ID
-                            });
-                            await monetizationService.cancelPaidSubscription({
-                                req,
-                                orgId: orgID,
-                                subId: subscription.SUB_ID,
-                                user: req.user || {}
-                            });
-                        } catch (stripeErr) {
-                            logger.error('Failed to cancel Stripe subscription — aborting application delete', {
-                                appId: applicationId,
-                                subId: subscription.SUB_ID,
-                                error: stripeErr.message,
-                                stack: stripeErr.stack
-                            });
-                            throw stripeErr;
-                        }
-                    }
-                }
-            } catch (stripeErr) {
-                logger.error('Failed to cancel Stripe subscriptions — aborting application delete', {
-                    appId: applicationId,
-                    error: stripeErr.message,
-                    stack: stripeErr.stack
-                });
-                throw stripeErr;
-            }
-
+            await revokeAppKeyMappings(orgID, applicationId);
             const appDeleteResponse = await adminDao.deleteApplication(orgID, applicationId, req.user.sub);
             if (appDeleteResponse === 0) {
                 throw new Sequelize.EmptyResultError("Resource not found to delete");
@@ -166,6 +152,7 @@ const deleteApplication = async (req, res) => {
             }
         } catch (error) {
             if (error.statusCode === 404) {
+                await revokeAppKeyMappings(orgID, applicationId);
                 const appDeleteResponse = await adminDao.deleteApplication(orgID, applicationId, req.user.sub);
                 if (appDeleteResponse === 0) {
                     throw new Sequelize.EmptyResultError("Resource not found to delete");
@@ -213,18 +200,85 @@ const resetThrottlingPolicy = async (req, res) => {
     }
 };
 
-const generateApplicationKeys = async (req, res) => {
+const generateKeys = async (req, res) => {
+    let orgID, appID, userID;
     try {
-        const applicationId = req.params.applicationId;
-        const responseData = await invokeApiRequest(req, 'POST', `${controlPlaneUrl}/applications/${applicationId}/generate-keys`, {}, req.body);
-        res.status(200).json(responseData);
+        orgID = await adminDao.getOrgId(req.user[constants.ORG_IDENTIFIER]);
+        appID = req.params.applicationId;
+        userID = req[constants.USER_ID] || req.user?.sub;
+        logger.info('Initiate create application key mapping...', { orgId: orgID, appId: appID });
+        const {
+            keyManager: kmName,
+            keyType: rawKeyType,
+            grantTypesToBeSupported,
+            callbackUrl,
+            scopes,
+            additionalProperties: additionalProps,
+        } = req.body;
+
+        const kmRecord = await kmDao.getKeyManagerByName(orgID, kmName);
+        const adapter = getKeyManagerAdapter(kmRecord);
+
+        const grantTypes = grantTypesToBeSupported || ['client_credentials'];
+        const redirectUris = callbackUrl ? [callbackUrl] : [];
+        const resolvedScopes = scopes || ['default'];
+        const resolvedProps = additionalProps || {};
+
+        const sanitize = (s) => String(s).replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+        const keyType = (rawKeyType || 'PRODUCTION').toUpperCase();
+        const clientName = `${sanitize(userID)}_${sanitize(appID)}_${keyType}`;
+
+        const oauthClient = await adapter.createOAuthClient(clientName, grantTypes, redirectUris, resolvedScopes, resolvedProps);
+
+        const responseData = {
+            consumerKey: oauthClient.clientId,
+            consumerSecret: oauthClient.clientSecret,
+            keyManager: kmName,
+            tokenEndpoint: kmRecord.TOKEN_ENDPOINT,
+            supportedGrantTypes: kmRecord.SUPPORTED_GRANT_TYPES,
+            additionalProperties: oauthClient.additionalProperties,
+            subscriptionScopes: oauthClient.subscriptionScopes || [],
+        };
+
+        const appKeyMapping = {
+            orgID,
+            appID,
+            kmID: kmRecord.KM_ID,
+            asClientID: responseData.consumerKey,
+            keyType: rawKeyType || 'PRODUCTION',
+            additionalProperties: responseData.additionalProperties || {},
+        };
+        let keyMappingRecord;
+        try {
+            keyMappingRecord = await adminDao.upsertApplicationKeyMapping(appKeyMapping);
+        } catch (dbError) {
+            if (oauthClient) {
+                await adapter.deleteOAuthClient(oauthClient.clientId).catch((cleanupErr) => {
+                    logger.warn('Failed to roll back OAuth client after DB error', {
+                        clientId: oauthClient.clientId,
+                        errorMessage: cleanupErr.message,
+                    });
+                });
+            }
+            throw dbError;
+        }
+
+        responseData.keyMappingId = keyMappingRecord?.dataValues?.MAPPING_ID;
+
+        trackGenerateCredentials({
+            orgId: orgID,
+            appName: appID,
+            idpId: req.isAuthenticated() ? userID : undefined
+        }, req);
+        return res.status(200).json(responseData);
     } catch (error) {
-        logger.error("Error occurred while generating the application keys", {
-            appId: req.params.applicationId,
+        logger.error('key mapping create error failed', {
             error: error.message,
-            stack: error.stack
+            stack: error.stack,
+            orgId: orgID,
+            appId: appID
         });
-        util.handleError(res, error);
+        return util.handleError(res, error);
     }
 };
 
@@ -709,7 +763,7 @@ module.exports = {
     updateApplication,
     deleteApplication,
     resetThrottlingPolicy,
-    generateApplicationKeys,
+    generateKeys,
     generateOAuthKeys,
     revokeOAuthKeys,
     updateOAuthKeys,

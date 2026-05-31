@@ -72,24 +72,24 @@ ORG_ID="1ba42a09-45c0-40f8-a1bf-e4aa7cde1575"
  insert_subscription_policy_data() {
     psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "
     INSERT INTO \"DP_SUBSCRIPTION_POLICY\" (
-        \"ORG_ID\", \"POLICY_ID\", \"POLICY_NAME\", \"DISPLAY_NAME\", \"BILLING_PLAN\", \"DESCRIPTION\"
+        \"ORG_ID\", \"POLICY_ID\", \"POLICY_NAME\", \"DISPLAY_NAME\", \"DESCRIPTION\"
     ) VALUES (
-        '$ORG_ID', '1ba42a09-45c0-40f8-a1bf-e4aa7cde1234', 'Gold', 'Gold', 'FREE', 'Allows 1000 total tokens and 100 requests per minute'
+        '$ORG_ID', '1ba42a09-45c0-40f8-a1bf-e4aa7cde1234', 'Gold', 'Gold', 'Allows 1000 total tokens and 100 requests per minute'
     ) ON CONFLICT (\"POLICY_ID\") DO NOTHING;
     INSERT INTO \"DP_SUBSCRIPTION_POLICY\" (
-        \"ORG_ID\", \"POLICY_ID\", \"POLICY_NAME\", \"DISPLAY_NAME\", \"BILLING_PLAN\", \"DESCRIPTION\"
+        \"ORG_ID\", \"POLICY_ID\", \"POLICY_NAME\", \"DISPLAY_NAME\", \"DESCRIPTION\"
     ) VALUES (
-        '$ORG_ID', '1ba42a09-45c0-40f8-a1bf-e4aa7cde2345', 'Silver', 'Silver', 'FREE', 'Allows 2000 requests per minute'
+        '$ORG_ID', '1ba42a09-45c0-40f8-a1bf-e4aa7cde2345', 'Silver', 'Silver', 'Allows 2000 requests per minute'
     ) ON CONFLICT (\"POLICY_ID\") DO NOTHING;
     INSERT INTO \"DP_SUBSCRIPTION_POLICY\" (
-        \"ORG_ID\", \"POLICY_ID\", \"POLICY_NAME\", \"DISPLAY_NAME\", \"BILLING_PLAN\", \"DESCRIPTION\"
+        \"ORG_ID\", \"POLICY_ID\", \"POLICY_NAME\", \"DISPLAY_NAME\", \"DESCRIPTION\"
     ) VALUES (
-        '$ORG_ID', '1ba42a09-45c0-40f8-a1bf-e4aa7cde3456', 'Bronze', 'Bronze', 'FREE', 'Allows 1000 requests per minute'
+        '$ORG_ID', '1ba42a09-45c0-40f8-a1bf-e4aa7cde3456', 'Bronze', 'Bronze', 'Allows 1000 requests per minute'
     ) ON CONFLICT (\"POLICY_ID\") DO NOTHING;
     INSERT INTO \"DP_SUBSCRIPTION_POLICY\" (
-        \"ORG_ID\", \"POLICY_ID\", \"POLICY_NAME\", \"DISPLAY_NAME\", \"BILLING_PLAN\", \"DESCRIPTION\"
+        \"ORG_ID\", \"POLICY_ID\", \"POLICY_NAME\", \"DISPLAY_NAME\", \"DESCRIPTION\"
     ) VALUES (
-        '$ORG_ID', '1ba42a09-45c0-40f8-a1bf-e4aa7cde4567', 'Unlimited', 'Unlimited', 'FREE', 'Allows unlimited requests'
+        '$ORG_ID', '1ba42a09-45c0-40f8-a1bf-e4aa7cde4567', 'Unlimited', 'Unlimited', 'Allows unlimited requests'
     ) ON CONFLICT (\"POLICY_ID\") DO NOTHING;
     "
  }

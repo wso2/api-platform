@@ -1,3 +1,17 @@
+if (typeof window.loadModal !== 'function') {
+    window.loadModal = function loadModal(modalID) {
+        const modal = document.getElementById(modalID);
+        if (modal) modal.style.display = 'flex';
+    };
+}
+
+if (typeof window.closeModal !== 'function') {
+    window.closeModal = function closeModal(modalID) {
+        const modal = document.getElementById(modalID);
+        if (modal) modal.style.display = 'none';
+    };
+}
+
 document.addEventListener('click', function (e) {
     const btn = e.target.closest('.subscription-plan-subscribe-btn');
     if (!btn) return;
@@ -214,7 +228,6 @@ async function prepareSubscriptionModal(modalId) {
             subscriptionContainer.appendChild(row);
             if (plansBody) plansBody.style.display = 'none';
         } else {
-            // CP did not return plans — show the static plan cards from the template
             if (plansBody) plansBody.style.display = '';
         }
 
@@ -225,40 +238,6 @@ async function prepareSubscriptionModal(modalId) {
             });
         } else {
             window.existingSubscriptions = [];
-        }
-
-        // Reset all static plan buttons to default "Subscribe" state, then mark current plan
-        if (plansBody) {
-            var planBtns = plansBody.querySelectorAll('.subscription-plan-subscribe-btn');
-            planBtns.forEach(function(btn) {
-                btn.textContent = 'Subscribe';
-                btn.classList.add('common-btn-primary');
-                if (window.isReadOnly) {
-                    btn.disabled = true;
-                    btn.classList.add('disabled');
-                    btn.removeAttribute('onclick');
-                } else {
-                    btn.disabled = false;
-                    btn.classList.remove('disabled');
-                    btn.setAttribute('onclick', 'handlePlanSubscription(this)');
-                }
-            });
-
-            if (existing && existing.length > 0) {
-                var activePlanNames = existing
-                    .filter(function(s) { return s.status === 'ACTIVE'; })
-                    .map(function(s) { return (s.subscriptionPlanName || '').toLowerCase(); });
-
-                planBtns.forEach(function(btn) {
-                    var policyName = (btn.dataset.policyName || '').toLowerCase();
-                    if (activePlanNames.indexOf(policyName) !== -1) {
-                        btn.textContent = 'Current Plan';
-                        btn.disabled = true;
-                        btn.classList.add('disabled');
-                        btn.removeAttribute('onclick');
-                    }
-                });
-            }
         }
 
         subscriptionContainer.style.display = ((existing && existing.length > 0) || (plans && plans.length > 0)) ? 'block' : 'none';
