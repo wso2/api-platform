@@ -43,7 +43,7 @@ services:
       - it-devportal-network
 
   devportal:
-    image: ghcr.io/wso2/api-platform/developer-portal:test
+    image: ${DOCKER_REGISTRY:-ghcr.io/wso2/api-platform}/developer-portal:test
     depends_on:
       postgres:
         condition: service_healthy
@@ -74,7 +74,6 @@ services:
 
   cypress:
     image: cypress/included:13.17.0
-    platform: linux/arm64
     depends_on:
       devportal:
         condition: service_healthy

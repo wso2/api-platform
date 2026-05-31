@@ -172,7 +172,7 @@ generate-apidocs: ## Generate REST API docs from devportal OpenAPI spec
 
 .PHONY: it it-open
 it: ## Run Cypress integration tests headlessly inside Docker Compose
-	$(MAKE) -C it test
+	$(MAKE) -C it test DOCKER_REGISTRY=$(DOCKER_REGISTRY)
 
 it-open: ## Open Cypress interactive UI against a locally running devportal
-	$(MAKE) -C it open
+	$(MAKE) -C it open DOCKER_REGISTRY=$(DOCKER_REGISTRY)
