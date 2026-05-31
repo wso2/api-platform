@@ -30,7 +30,7 @@ const { ApplicationDTO } = require('../dto/application');
 const { Sequelize } = require("sequelize");
 const adminService = require('../services/adminService');
 const apiDao = require('../dao/apiMetadata');
-const { trackAppCreationStart, trackAppCreationEnd, trackAppDeletion, trackGenerateKey } = require('../utils/telemetry');
+const { trackAppCreationStart, trackAppCreationEnd, trackAppDeletion, trackGenerateKey, trackGenerateCredentials } = require('../utils/telemetry');
 const fs = require('fs');
 const yaml = require('js-yaml');
 const kmDao = require('../dao/keyManager');
@@ -115,6 +115,30 @@ const updateApplication = async (req, res) => {
 
 // ***** Delete Application *****
 
+const revokeAppKeyMappings = async (orgID, appID) => {
+    const { ApplicationKeyMapping } = require('../models/application');
+    const mappings = await ApplicationKeyMapping.findAll({
+        where: { APP_ID: appID, ORG_ID: orgID },
+    });
+    for (const mapping of mappings) {
+        if (mapping.KM_ID && mapping.AS_CLIENT_ID) {
+            try {
+                const kmRecord = await kmDao.getKeyManager(mapping.KM_ID);
+                const adapter = getKeyManagerAdapter(kmRecord);
+                await adapter.deleteOAuthClient(mapping.AS_CLIENT_ID);
+            } catch (err) {
+                logger.warn('Failed to revoke OAuth client during application deletion', {
+                    appId: appID,
+                    clientId: mapping.AS_CLIENT_ID,
+                    kmId: mapping.KM_ID,
+                    errorMessage: err.message,
+                });
+            }
+        }
+    }
+    await adminDao.deleteAppMappings(orgID, appID);
+};
+
 const deleteApplication = async (req, res) => {
     try {
         const orgID = await adminDao.getOrgId(req.user[constants.ORG_IDENTIFIER]);
@@ -157,6 +181,7 @@ const deleteApplication = async (req, res) => {
                 throw stripeErr;
             }
 
+            await revokeAppKeyMappings(orgID, applicationId);
             const appDeleteResponse = await adminDao.deleteApplication(orgID, applicationId, req.user.sub);
             if (appDeleteResponse === 0) {
                 throw new Sequelize.EmptyResultError("Resource not found to delete");
@@ -166,6 +191,7 @@ const deleteApplication = async (req, res) => {
             }
         } catch (error) {
             if (error.statusCode === 404) {
+                await revokeAppKeyMappings(orgID, applicationId);
                 const appDeleteResponse = await adminDao.deleteApplication(orgID, applicationId, req.user.sub);
                 if (appDeleteResponse === 0) {
                     throw new Sequelize.EmptyResultError("Resource not found to delete");
@@ -213,18 +239,89 @@ const resetThrottlingPolicy = async (req, res) => {
     }
 };
 
-const generateApplicationKeys = async (req, res) => {
+const generateKeys = async (req, res) => {
+    const orgID = await adminDao.getOrgId(req.user[constants.ORG_IDENTIFIER]);
+    const appID = req.params.applicationId;
+    const userID = req[constants.USER_ID] || req.user?.sub;
+    logger.info('Initiate create application key mapping...', { orgId: orgID, appId: appID });
     try {
-        const applicationId = req.params.applicationId;
-        const responseData = await invokeApiRequest(req, 'POST', `${controlPlaneUrl}/applications/${applicationId}/generate-keys`, {}, req.body);
-        res.status(200).json(responseData);
+        const { tokenDetails, clientID } = req.body;
+
+        const kmName = tokenDetails.keyManager;
+        const kmRecord = await kmDao.getKeyManagerByName(orgID, kmName);
+        const adapter = getKeyManagerAdapter(kmRecord);
+
+        let responseData;
+        let oauthClient;
+
+        if (clientID) {
+            responseData = {
+                consumerKey: clientID,
+                consumerSecret: null,
+                keyManager: kmName,
+                additionalProperties: tokenDetails.additionalProperties || {},
+            };
+        } else {
+            const grantTypes = tokenDetails.grantTypesToBeSupported || ['client_credentials'];
+            const redirectUris = tokenDetails.callbackUrl ? [tokenDetails.callbackUrl] : [];
+            const scopes = tokenDetails.scopes || ['default'];
+            const additionalProps = tokenDetails.additionalProperties || {};
+
+            const sanitize = (s) => String(s).replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+            const keyType = (tokenDetails.keyType || 'PRODUCTION').toUpperCase();
+            const clientName = `${sanitize(userID)}_${sanitize(appID)}_${keyType}`;
+
+            oauthClient = await adapter.createOAuthClient(clientName, grantTypes, redirectUris, scopes, additionalProps);
+
+            responseData = {
+                consumerKey: oauthClient.clientId,
+                consumerSecret: oauthClient.clientSecret,
+                keyManager: kmName,
+                tokenEndpoint: kmRecord.TOKEN_ENDPOINT,
+                supportedGrantTypes: kmRecord.SUPPORTED_GRANT_TYPES,
+                additionalProperties: oauthClient.additionalProperties,
+            };
+        }
+
+        const appKeyMapping = {
+            orgID,
+            appID,
+            kmID: kmRecord.KM_ID,
+            asClientID: responseData.consumerKey,
+            keyType: tokenDetails.keyType || 'PRODUCTION',
+            additionalProperties: responseData.additionalProperties || {},
+        };
+        let keyMappingRecord;
+        try {
+            keyMappingRecord = await adminDao.upsertApplicationKeyMapping(appKeyMapping);
+        } catch (dbError) {
+            if (oauthClient) {
+                await adapter.deleteOAuthClient(oauthClient.clientId).catch((cleanupErr) => {
+                    logger.warn('Failed to roll back OAuth client after DB error', {
+                        clientId: oauthClient.clientId,
+                        errorMessage: cleanupErr.message,
+                    });
+                });
+            }
+            throw dbError;
+        }
+
+        responseData.keyMappingId = keyMappingRecord?.dataValues?.MAPPING_ID;
+
+        trackGenerateCredentials({
+            orgId: orgID,
+            appName: appID,
+            idpId: req.isAuthenticated() ? userID : undefined
+        }, req);
+        return res.status(200).json(responseData);
     } catch (error) {
-        logger.error("Error occurred while generating the application keys", {
-            appId: req.params.applicationId,
+        logger.error('key mapping create error failed', {
             error: error.message,
-            stack: error.stack
+            stack: error.stack,
+            orgId: orgID,
+            appId: appID
         });
-        util.handleError(res, error);
+        return util.handleError(res, error);
     }
 };
 
@@ -709,7 +806,7 @@ module.exports = {
     updateApplication,
     deleteApplication,
     resetThrottlingPolicy,
-    generateApplicationKeys,
+    generateKeys,
     generateOAuthKeys,
     revokeOAuthKeys,
     updateOAuthKeys,

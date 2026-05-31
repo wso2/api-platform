@@ -811,18 +811,6 @@ const deleteAppMappings = async (orgID, appID, t) => {
 }
 
 
-const createAppKeyMapping = async (appKeyMap, t) => {
-    try {
-        const appKeyMapping = await ApplicationKeyMapping.create(appKeyMap, { transaction: t });
-        return appKeyMapping;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
-
 const getKeyMapping = async (orgID, appID, t) => {
     try {
         const result = await Application.findOne(
@@ -1277,7 +1265,6 @@ module.exports = {
     getSubscriptions,
     deleteSubscription,
     getApplicationID,
-    createAppKeyMapping,
     getKeyMapping,
     getAppApiSubscription,
     getSubscribedAPIs,

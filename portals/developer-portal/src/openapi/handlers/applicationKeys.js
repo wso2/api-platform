@@ -23,7 +23,7 @@
 const devportalController = require('../../controllers/devportalController');
 
 module.exports = {
-    generateApplicationKeys: devportalController.generateApplicationKeys,
+    generateApplicationKeys: devportalController.generateKeys,
     generateOAuthKeys: devportalController.generateOAuthKeys,
     revokeOAuthKeys: devportalController.revokeOAuthKeys,
     updateOAuthKeys: devportalController.updateOAuthKeys,

@@ -892,111 +892,6 @@ paths:
         - OAuth2Security:
             - dp:label_delete
             - dp:label_manage
-  /organizations/{orgId}/applications:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-    post:
-      tags:
-        - Applications
-      summary: Create an application
-      description: >-
-        Creates a Developer Portal application in the specified organization for the authenticated user.
-        The request may be JSON, multipart form fields, or an application YAML file in the `application`
-        multipart field.
-      operationId: createDevPortalApplication
-      requestBody:
-        $ref: "#/components/requestBodies/ApplicationMultipartBody"
-      responses:
-        "201":
-          $ref: "#/components/responses/ApplicationResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:app_write
-            - dp:app_manage
-    get:
-      tags:
-        - Applications
-      summary: List applications
-      description: Returns applications in the organization that belong to the authenticated user.
-      operationId: getDevPortalApplications
-      responses:
-        "200":
-          $ref: "#/components/responses/ApplicationListResponse"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:app_read
-            - dp:app_manage
-  /organizations/{orgId}/applications/{appId}:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/AppId"
-    put:
-      tags:
-        - Applications
-      summary: Update an application
-      description: Updates an existing Developer Portal application owned by the authenticated user.
-      operationId: updateDevPortalApplication
-      requestBody:
-        $ref: "#/components/requestBodies/ApplicationMultipartBody"
-      responses:
-        "200":
-          $ref: "#/components/responses/ApplicationResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:app_write
-            - dp:app_manage
-    get:
-      tags:
-        - Applications
-      summary: Get application details
-      description: Retrieves one Developer Portal application by ID for the authenticated user.
-      operationId: getDevPortalApplicationDetails
-      responses:
-        "200":
-          $ref: "#/components/responses/ApplicationResponse"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:app_read
-            - dp:app_manage
-    delete:
-      tags:
-        - Applications
-      summary: Delete an application
-      description: Deletes a Developer Portal application owned by the authenticated user.
-      operationId: deleteDevPortalApplication
-      responses:
-        "200":
-          $ref: "#/components/responses/TextMessageResponse"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:app_delete
-            - dp:app_manage
   /organizations/{orgId}/applications/import:
     parameters:
       - $ref: "#/components/parameters/OrgId"
@@ -1345,61 +1240,6 @@ paths:
         - OAuth2Security:
             - dp:api_key_revoke
             - dp:api_key_manage
-  /organizations/{orgId}/app-key-mapping:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-    post:
-      tags:
-        - App Key Mapping
-      operationId: createAppKeyMapping
-      summary: Create application key mapping
-      description: >-
-        Creates or reuses an application and generates or maps OAuth credentials through the selected
-        key manager. In control-plane mode the portal creates a CP application and synchronizes
-        subscriptions. In decoupled mode the portal calls the Authorization Server DCR endpoint directly
-        using the configured key manager adapter. Supply `clientID` to map an existing AS client instead
-        of creating one; `tokenDetails.keyType` is required in both cases.
-      requestBody:
-        $ref: "#/components/requestBodies/AppKeyMappingBody"
-      responses:
-        "200":
-          $ref: "#/components/responses/AppKeyMappingCreateResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:app_key_mapping_write
-            - dp:app_key_mapping_manage
-  /organizations/{orgId}/app-key-mapping/{appId}:
-    parameters:
-      - $ref: "#/components/parameters/OrgId"
-      - $ref: "#/components/parameters/AppId"
-    get:
-      tags:
-        - App Key Mapping
-      operationId: retrieveAppKeyMappings
-      summary: Get application key mappings
-      description: >-
-        Retrieves the Developer Portal application and its stored control-plane key mapping rows. The
-        request is scoped to the authenticated user, and returns `404` when the application is not visible
-        to that user.
-      responses:
-        "200":
-          $ref: "#/components/responses/AppKeyMappingListResponse"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-      security:
-        - OAuth2Security:
-            - dp:app_key_mapping_read
-            - dp:app_key_mapping_manage
   /organizations/{orgId}/views:
     parameters:
       - $ref: "#/components/parameters/OrgId"
@@ -1517,12 +1357,14 @@ paths:
       tags:
         - Application Keys
       operationId: generateApplicationKeys
-      summary: Generate OAuth keys for a control-plane application
+      summary: Generate OAuth keys for a Developer Portal application
       description: >-
-        Proxies key generation to the control-plane application key endpoint. Use this when the caller
-        already has the control-plane application ID and wants to create OAuth credentials for a key manager.
+        Generates or maps OAuth credentials for the specified application through the selected key manager.
+        The portal calls the Authorization Server DCR endpoint directly using the configured key manager
+        adapter and stores the resulting key mapping. Supply `clientID` to map an existing AS client instead
+        of creating one; `tokenDetails.keyType` is required in both cases.
       requestBody:
-        $ref: "#/components/requestBodies/ApplicationKeysGenerateBody"
+        $ref: "#/components/requestBodies/AppKeyMappingBody"
       responses:
         "200":
           $ref: "#/components/responses/ApplicationKeyResponse"
@@ -5848,7 +5690,6 @@ components:
     AppKeyMappingRequest:
       type: object
       required:
-        - applicationName
         - tokenDetails
       properties:
         applicationName:

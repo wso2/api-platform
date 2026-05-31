@@ -20,15 +20,9 @@
 /*
  * Tag: Applications
  */
-const adminService = require('../../services/adminService');
 const devportalController = require('../../controllers/devportalController');
 
 module.exports = {
-    createDevPortalApplication: adminService.createDevPortalApplication,
-    updateDevPortalApplication: adminService.updateDevPortalApplication,
-    getDevPortalApplicationDetails: adminService.getDevPortalApplicationDetails,
-    getDevPortalApplications: adminService.getDevPortalApplications,
-    deleteDevPortalApplication: adminService.deleteDevPortalApplication,
     importApplications: devportalController.importApplications,
     saveApplication: devportalController.saveApplication,
     updateApplication: devportalController.updateApplication,
