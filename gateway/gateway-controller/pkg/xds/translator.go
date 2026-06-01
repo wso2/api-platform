@@ -325,14 +325,11 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 		upstreamPath = ""
 	}
 
-	// Derive context prefix from fullPath minus operationPath
-	// fullPath = contextWithVersion + operationPath
+	// Derive context prefix from fullPath minus operationPath (fullPath = context + operationPath).
+	// For a wildcard operation path like "/foo/*", strip only the context so the matched literal
+	// prefix ("/foo") is PRESERVED on the upstream — consistent with exact paths. The bare "/*"
+	// catch-all (empty literal prefix) and "/" root are unaffected. See issue #2071.
 	contextWithVersion := strings.TrimSuffix(fullPath, operationPath)
-	if isWildcardPath {
-		// For wildcard, include the path up to the /* in the context for rewriting
-		pathWithoutWildcard := strings.TrimSuffix(operationPath, "/*")
-		contextWithVersion = strings.TrimSuffix(fullPath, operationPath) + pathWithoutWildcard
-	}
 
 	escapedContext := regexp.QuoteMeta(contextWithVersion)
 	if isRootPath {
@@ -1870,15 +1867,12 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	if upstreamIsRoot {
 		upstreamPath = ""
 	}
-	// For wildcard routes, construct the regex to match everything after the prefix
-	var contextWithVersion string
-	if isWildcardPath {
-		// Remove the /* from the end before constructing the context
-		pathWithoutWildcard := strings.TrimSuffix(path, "/*")
-		contextWithVersion = ConstructFullPath(context, apiVersion, pathWithoutWildcard)
-	} else {
-		contextWithVersion = ConstructFullPath(context, apiVersion, "")
-	}
+	// Strip only the API context (with version) from the upstream path. For a wildcard
+	// operation path like "/foo/*", the matched literal prefix ("/foo") is PRESERVED on the
+	// upstream — the capture group below already includes everything after the context — so
+	// behavior is consistent with exact paths (exact "/foo" also forwards "/foo"). The bare
+	// "/*" catch-all (empty literal prefix) and "/" root are unaffected. See issue #2071.
+	contextWithVersion := ConstructFullPath(context, apiVersion, "")
 	escapedContext := regexp.QuoteMeta(contextWithVersion)
 	if isRootPath {
 		// Root path ("/") matches both /ctx and /ctx/. Using a non-capturing pattern
