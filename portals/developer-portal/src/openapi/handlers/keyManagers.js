@@ -18,13 +18,15 @@
  */
 
 /*
- * Tag: Subscription Policies
+ * Tag: Key Managers
  */
-const apiMetadataService = require('../../services/apiMetadataService');
+const keyManagerService = require('../../services/keyManagerService');
 
 module.exports = {
-    addSubscriptionPolicies: apiMetadataService.addSubscriptionPolicies,
-    putSubscriptionPolicies: apiMetadataService.putSubscriptionPolicies,
-    getSubscriptionPolicy: apiMetadataService.getSubscriptionPolicy,
-    deleteSubscriptionPolicy: apiMetadataService.deleteSubscriptionPolicy,
+    createKeyManager: keyManagerService.createKeyManager,
+    getKeyManagers: keyManagerService.getKeyManagers,
+    getAvailableKeyManagers: keyManagerService.getAvailableKeyManagers,
+    getKeyManager: keyManagerService.getKeyManager,
+    updateKeyManager: keyManagerService.updateKeyManager,
+    deleteKeyManager: keyManagerService.deleteKeyManager,
 };
