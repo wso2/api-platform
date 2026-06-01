@@ -749,7 +749,7 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig, allConfig
 	// Extract template handle and provider name for LLM provider/proxy scenarios
 	templateHandle := t.extractTemplateHandle(cfg, allConfigs)
 	providerName := t.extractProviderName(cfg, allConfigs)
-	r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, "POST", constants.WEBSUB_PATH, mainClusterName, "/", effectiveMainVHost, cfg.Kind, templateHandle, providerName, nil, apiProjectID, nil, false, "", nil)
+	r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, "POST", constants.WEBSUB_PATH, mainClusterName, "/", effectiveMainVHost, cfg.Kind, templateHandle, providerName, nil, apiProjectID, nil, false, nil)
 	routesList = append(routesList, mainRoutesList...)
 	routesList = append(routesList, r)
 
@@ -822,14 +822,9 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		// Determine if dynamic cluster selection should be used
 		// When upstreamDefinitions exist, use cluster_header routing so policies can select the upstream
 		useClusterHeader := apiData.UpstreamDefinitions != nil && len(*apiData.UpstreamDefinitions) > 0
-		defaultCluster := ""
-		if useClusterHeader {
-			// Default to the main cluster (with the upstream_ prefix for cluster_header lookup)
-			defaultCluster = mainClusterName
-		}
 
 		r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID, mainTimeout, useClusterHeader, defaultCluster, upstreamDefPaths)
+			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID, mainTimeout, useClusterHeader, upstreamDefPaths)
 		mainRoutesList = append(mainRoutesList, r)
 	}
 	routesList = append(routesList, mainRoutesList...)
@@ -851,16 +846,12 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		clusters = append(clusters, sandboxCluster)
 
 		// Create sandbox routes. When upstreamDefinitions exist, enable dynamic cluster
-		// selection (mirrors main), defaulting to the sandbox cluster.
+		// selection (mirrors main).
 		sbRoutesList := make([]*route.Route, 0)
 		sbUseClusterHeader := apiData.UpstreamDefinitions != nil && len(*apiData.UpstreamDefinitions) > 0
-		sbDefaultCluster := ""
-		if sbUseClusterHeader {
-			sbDefaultCluster = sbClusterName
-		}
 		for _, op := range apiData.Operations {
 			r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, sbTimeout, sbUseClusterHeader, sbDefaultCluster, upstreamDefPaths)
+				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, sbTimeout, sbUseClusterHeader, upstreamDefPaths)
 			sbRoutesList = append(sbRoutesList, r)
 		}
 		routesList = append(routesList, sbRoutesList...)
@@ -1741,11 +1732,12 @@ func (t *Translator) extractProviderName(cfg *models.StoredConfig, allConfigs []
 }
 
 // createRoute creates a route for an operation
-// When useClusterHeader is true, the route uses cluster_header for dynamic cluster selection,
-// and defaultCluster specifies the cluster to use when no policy overrides it.
+// When useClusterHeader is true, the route uses cluster_header for dynamic cluster selection;
+// the no-policy fallback cluster is supplied by the policy engine (default_upstream_cluster),
+// not by the route action.
 // upstreamDefPaths maps upstream definition names to their URL paths for dynamic path rewriting.
 func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, path, clusterName,
-	upstreamPath string, vhost string, apiKind string, templateHandle string, providerName string, hostRewrite *api.UpstreamHostRewrite, projectID string, timeoutCfg *resolvedTimeout, useClusterHeader bool, defaultCluster string, upstreamDefPaths map[string]string) *route.Route {
+	upstreamPath string, vhost string, apiKind string, templateHandle string, providerName string, hostRewrite *api.UpstreamHostRewrite, projectID string, timeoutCfg *resolvedTimeout, useClusterHeader bool, upstreamDefPaths map[string]string) *route.Route {
 	// Resolve version placeholder in context
 	context = strings.ReplaceAll(context, "$version", apiVersion)
 
