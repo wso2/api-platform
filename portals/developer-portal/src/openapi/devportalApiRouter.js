@@ -106,7 +106,20 @@ function operationResolver(handlersPath, route, apiDoc) {
     if (typeof handler !== 'function') {
         return notImplementedHandler(operationId, tag);
     }
-    return handler;
+    // express-openapi-validator uses multer.any() internally, which stores uploaded
+    // files in req.files as a flat array [{fieldname, buffer, ...}, ...].
+    // Service code expects the multer.fields() shape: { fieldname: [file, ...] }.
+    // Normalize here so no service file needs to know which format it received.
+    return (req, res, next) => {
+        if (Array.isArray(req.files)) {
+            const byField = {};
+            for (const file of req.files) {
+                (byField[file.fieldname] = byField[file.fieldname] || []).push(file);
+            }
+            req.files = byField;
+        }
+        return handler(req, res, next);
+    };
 }
 
 /**
@@ -159,8 +172,12 @@ function build() {
             },
             // Multipart endpoints in the spec (org content upload, API
             // metadata upload, etc.) are handled by the validator's built-in
-            // multer. Disk storage matches the legacy multer config.
-            fileUploader: { dest: require('os').tmpdir() },
+            // multer. Memory storage is required: service code reads file.buffer
+            // for YAML files and artifact ZIPs (extractFullApiBundleFromUploadedZip,
+            // parseApiMetadataFromYamlRequest). extractApiContentFromUploadedZip
+            // handles both file.path and file.buffer so memory storage is safe
+            // for all endpoints including API content ZIP uploads.
+            fileUploader: { storage: require('multer').memoryStorage() },
             // Format strictness — use 'fast' for runtime cost; 'full' is too
             // strict for some of our existing schemas (e.g. uri formats).
             validateFormats: 'fast',

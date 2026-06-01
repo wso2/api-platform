@@ -545,23 +545,30 @@ const deleteIdentityProvider = async (req, res) => {
 const createOrgContent = async (req, res) => {
     const orgId = req.params.orgId;
     const viewName = req.params.name;
+    const zipFile = req.files?.file?.[0] ?? req.file;
     logger.info('Initiate create organization content...', {
         orgId,
         viewName
     });
 
     const extractPath = path.join(process.cwd(), '..', '.tmp', orgId);
+    let tempZipPath;
 
     try {
         if (!orgId) {
             throw new CustomError(400, "Bad Request", "Missing required parameter: 'orgId'");
         }
-        const zipPath = req.file?.path;
-        if (!zipPath) {
+        if (!zipFile) {
             throw new CustomError(400, "Bad Request", "Missing required zip file");
         }
-        if (req.file.size > 50 * 1024 * 1024) {
+        if (zipFile.size > 50 * 1024 * 1024) {
             throw new CustomError(400, "Bad Request", "File size exceeds the 50MB limit");
+        }
+        let zipPath = zipFile.path;
+        if (!zipPath && zipFile.buffer) {
+            tempZipPath = path.join(require('os').tmpdir(), `org-content-${orgId}-${Date.now()}.zip`);
+            fs.writeFileSync(tempZipPath, zipFile.buffer);
+            zipPath = tempZipPath;
         }
         await util.unzipDirectory(zipPath, extractPath);
         const files = await util.readFilesInDirectory(extractPath, orgId, req.protocol, req.get('host'), viewName);
@@ -572,8 +579,9 @@ const createOrgContent = async (req, res) => {
             orgId,
             viewName
         });
-        res.status(201).send({ "orgId": orgId, "fileName": req.file.originalname });
+        res.status(201).send({ "orgId": orgId, "fileName": zipFile.originalname });
         fs.rmSync(extractPath, { recursive: true, force: true });
+        if (tempZipPath) fs.rmSync(tempZipPath, { force: true });
 
     } catch (error) {
         logger.error('Organization content creation failed', {
@@ -581,9 +589,10 @@ const createOrgContent = async (req, res) => {
             stack: error.stack,
             orgId,
             viewName,
-            fileName: req.file?.originalname
+            fileName: zipFile?.originalname
         });
         fs.rmSync(extractPath, { recursive: true, force: true });
+        if (tempZipPath) fs.rmSync(tempZipPath, { force: true });
         return util.handleError(res, error);
     }
 };
@@ -611,21 +620,28 @@ const createContent = async (filePath, fileName, fileContent, fileType, orgId, v
 const updateOrgContent = async (req, res) => {
     const orgId = req.params.orgId;
     const viewName = req.params.name;
+    const zipFile = req.files?.file?.[0] ?? req.file;
     logger.info('Initiate update organization content...', {
         orgId,
         viewName
     });
     const extractPath = path.join(process.cwd(), '..', '.tmp', orgId);
+    let tempZipPath;
     try {
         if (!orgId) {
             throw new CustomError(400, "Bad Request", "Missing required parameter: 'orgId'");
         }
-        const zipPath = req.file?.path;
-        if (!zipPath) {
+        if (!zipFile) {
             throw new CustomError(400, "Bad Request", "Missing required zip file");
         }
-        if (req.file.size > 50 * 1024 * 1024) {
+        if (zipFile.size > 50 * 1024 * 1024) {
             throw new CustomError(400, "Bad Request", "File size exceeds the 50MB limit");
+        }
+        let zipPath = zipFile.path;
+        if (!zipPath && zipFile.buffer) {
+            tempZipPath = path.join(require('os').tmpdir(), `org-content-${orgId}-${Date.now()}.zip`);
+            fs.writeFileSync(tempZipPath, zipFile.buffer);
+            zipPath = tempZipPath;
         }
         await util.unzipDirectory(zipPath, extractPath);
         const files = await util.readFilesInDirectory(extractPath, orgId, req.protocol, req.get('host'), viewName);
@@ -654,20 +670,22 @@ const updateOrgContent = async (req, res) => {
             }
         }
         fs.rmSync(extractPath, { recursive: true, force: true });
+        if (tempZipPath) fs.rmSync(tempZipPath, { force: true });
         logger.info('Organization content updated successfully', {
             orgId,
             viewName
         });
-        res.status(201).send({ "orgId": orgId, "fileName": req.file.originalname });
+        res.status(201).send({ "orgId": orgId, "fileName": zipFile.originalname });
     } catch (error) {
         logger.error('Organization content update failed', {
             error: error.message,
             stack: error.stack,
             orgId,
             viewName,
-            fileName: req.file?.originalname
+            fileName: zipFile?.originalname
         });
         fs.rmSync(extractPath, { recursive: true, force: true });
+        if (tempZipPath) fs.rmSync(tempZipPath, { force: true });
         util.handleError(res, error);
     }
 };
