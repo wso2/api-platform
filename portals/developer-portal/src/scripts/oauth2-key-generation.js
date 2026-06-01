@@ -77,24 +77,15 @@ async function generateApplicationKey(formId, appId, keyType, keyManager, client
         grantTypes = jsonObject.grantTypes;
     }
     const payload = JSON.stringify({
-        "applicationName": clientName,
-        "apis": apiList,
-        "tokenType": "OAUTH",
-        "tokenDetails": {
-            "grantTypesToBeSupported": grantTypes,
-            "keyType": keyType,
-            "keyManager": keyManager,
-            "callbackUrl": jsonObject.callbackURL,
-            "scopes": [
-                "default"
-            ],
-            "validityTime": 3600,
-            "additionalProperties": jsonObject.additionalProperties,
-        },
-        "clientID": document.getElementById("clientIDInput-" + keyType)?.value?.trim(),
+        "keyManager": keyManager,
+        "keyType": keyType,
+        "grantTypesToBeSupported": grantTypes,
+        "callbackUrl": jsonObject.callbackURL,
+        "scopes": ["default"],
+        "additionalProperties": jsonObject.additionalProperties,
     })
     try {
-        const response = await fetch(`/devportal/organizations/${orgID}/app-key-mapping`, {
+        const response = await fetch(`/devportal/applications/${appId}/generate-keys`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

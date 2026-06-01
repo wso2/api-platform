@@ -84,7 +84,7 @@
               </div>
             </div>
             {{#if ../isAuthenticated}}
-            <div class="subscription-flag fw-bold" style="display: {{#if (some applications "subscribed")}}block{{else}}none{{/if}};">Subscribed</div>
+            <div class="subscription-flag fw-bold" style="display: {{#if hasSubscription}}block{{else}}none{{/if}};">Subscribed</div>
             {{/if}}
           </div>
           <div class="api-card-body flex-grow-1" onclick="window.location.href='{{../baseUrl}}/mcp/{{apiHandle}}'" style="cursor: pointer;">
@@ -97,19 +97,18 @@
               </div>
             </div>
           </div>
-          {{#if ../isAuthenticated}}
+          {{#if subscriptionPolicies.length}}
           <hr class="card-separator" />
           {{/if}}
           <div class="api-card-footer">
             <div id="btnSection" class="d-flex align-items-center gap-2 w-100">
-              {{#if ../isAuthenticated}}
               <div id="subscriptionBox" class="subscription-container w-100">
-                {{> subscription-plans apiInfo=apiInfo apiName=apiInfo.apiName}}
                 {{#if subscriptionPolicies.length}}
-                  <button type="button" class="common-btn-primary w-100" onclick="loadModal('planModal-{{apiID}}')" {{#if @root.isReadOnlyMode}}disabled aria-disabled="true"{{/if}}>Subscribe</button>
+                <a type="button" class="common-btn-primary w-100 {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+                  {{#unless @root.isReadOnlyMode}}href="{{../baseUrl}}/mcp/{{apiHandle}}#subscriptionPlans"{{/unless}}
+                  {{#if @root.isReadOnlyMode}}aria-disabled="true"{{/if}}>Subscribe</a>
                 {{/if}}
               </div>
-              {{/if}}
             </div>
 
             <div class="message-overlay hidden">

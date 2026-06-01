@@ -55,13 +55,13 @@ ON CONFLICT DO NOTHING;
 
 -- ── Subscription Policies ────────────────────────────────────────────────────
 INSERT INTO "DP_SUBSCRIPTION_POLICY"
-    ("ORG_ID", "POLICY_ID", "POLICY_NAME", "DISPLAY_NAME", "BILLING_PLAN", "DESCRIPTION", "REQUEST_COUNT")
+    ("ORG_ID", "POLICY_ID", "POLICY_NAME", "DISPLAY_NAME", "DESCRIPTION", "REQUEST_COUNT")
 VALUES
-    (v_org_id, v_pol_bronze, 'Bronze',        'Bronze',        'FREE', 'Allows 1000 requests per minute',               '1000'),
-    (v_org_id, v_pol_silver, 'Silver',        'Silver',        'FREE', 'Allows 2000 requests per minute',               '2000'),
-    (v_org_id, v_pol_gold,   'Gold',          'Gold',          'FREE', 'Allows 5000 requests per minute',               '5000'),
-    (v_org_id, v_pol_unl,    'Unlimited',     'Unlimited',     'FREE', 'Allows unlimited requests',                     'Unlimited'),
-    (v_org_id, v_pol_async,  'AsyncUnlimited','AsyncUnlimited','FREE', 'Allows unlimited requests for Async APIs',      'Unlimited')
+    (v_org_id, v_pol_bronze, 'Bronze',        'Bronze',        'Allows 1000 requests per minute',               '1000'),
+    (v_org_id, v_pol_silver, 'Silver',        'Silver',        'Allows 2000 requests per minute',               '2000'),
+    (v_org_id, v_pol_gold,   'Gold',          'Gold',          'Allows 5000 requests per minute',               '5000'),
+    (v_org_id, v_pol_unl,    'Unlimited',     'Unlimited',     'Allows unlimited requests',                     'Unlimited'),
+    (v_org_id, v_pol_async,  'AsyncUnlimited','AsyncUnlimited','Allows unlimited requests for Async APIs',      'Unlimited')
 ON CONFLICT DO NOTHING;
 
 END $$;

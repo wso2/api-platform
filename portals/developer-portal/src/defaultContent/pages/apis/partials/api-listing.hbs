@@ -118,11 +118,7 @@
               </div>
             </div>
             {{#if ../isAuthenticated}}
-            {{#if (eq apiInfo.gatewayType "wso2/api-platform")}}
             <div class="subscription-flag fw-bold" style="display: {{#if hasSubscription}}block{{else}}none{{/if}};">Subscribed</div>
-            {{else}}
-            <div class="subscription-flag fw-bold" style="display: {{#if (some applications "subscribed")}}block{{else}}none{{/if}};">Subscribed</div>
-            {{/if}}
             {{/if}}
           </div>
           <div class="api-card-body flex-grow-1" data-href="{{../baseUrl}}/api/{{apiHandle}}" style="cursor: pointer;">
@@ -160,37 +156,18 @@
               </div>
             </div>
           </div>
-          {{#if ../isAuthenticated}}
-          {{#if (eq apiInfo.gatewayType "wso2/api-platform")}}
-            {{#if subscriptionPolicies.length}}
+          {{#if subscriptionPolicies.length}}
           <hr class="card-separator" />
-            {{/if}}
-          {{else if subscriptionPolicies.length}}
-          <hr class="card-separator" />
-          {{/if}}
           {{/if}}
           <div class="api-card-footer">
             <div id="btnSection" class="d-flex align-items-center gap-2 w-100">
-              {{#if ../isAuthenticated}}
               <div id="subscriptionBox" class="subscription-container w-100">
-                {{#if (eq apiInfo.gatewayType "wso2/api-platform")}}
-                  {{#if subscriptionPolicies.length}}
-                  {{> subscription-modal apiID=apiID apiInfo=apiInfo apiReferenceID=apiReferenceID}}
-                  <a type="button" class="common-btn-primary w-100 open-modal-btn {{#if @root.isReadOnlyMode}}is-readonly{{/if}}"
-                    {{#unless @root.isReadOnlyMode}}data-modal="planModal-{{apiID}}"{{/unless}}
-                    {{#if @root.isReadOnlyMode}}aria-disabled="true"{{/if}}>Subscribe</a>
-                  {{/if}}
-                {{else}}
-                {{> subscription-plans apiInfo=apiInfo apiName=apiInfo.apiName}}
                 {{#if subscriptionPolicies.length}}
-                  {{!-- Application selection moved into the subscription modal. --}}
-                  <a type="button" class="common-btn-primary w-100 open-modal-btn {{#if @root.isReadOnlyMode}}is-readonly{{/if}}"
-                    {{#unless @root.isReadOnlyMode}}data-modal="planModal-{{apiID}}"{{/unless}}
-                    {{#if @root.isReadOnlyMode}}aria-disabled="true"{{/if}}>Subscribe</a>
-                {{/if}}
+                <a type="button" class="common-btn-primary w-100 {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+                  {{#unless @root.isReadOnlyMode}}href="{{../baseUrl}}/api/{{apiHandle}}#subscriptionPlans"{{/unless}}
+                  {{#if @root.isReadOnlyMode}}aria-disabled="true"{{/if}}>Subscribe</a>
                 {{/if}}
               </div>
-              {{/if}}
             </div>
             
             <div class="message-overlay hidden">

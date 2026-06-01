@@ -27,11 +27,6 @@ class APIDTO {
         this.apiInfo = new APIInfo(api);
         this.endPoints = new Endpoints(api);
         
-        // Monetization info - use database value
-        this.monetizationInfo = {
-            enabled: api.MONETIZATION_ENABLED || false
-        };
-        
         if (api.DP_SUBSCRIPTION_POLICies) {
             this.subscriptionPolicies = api.DP_SUBSCRIPTION_POLICies.map(policy => new APISubscriptionPolicy(policy));
         }
@@ -96,15 +91,6 @@ class APISubscriptionPolicy {
         this.requestCount = apiSubscriptionPolicy.REQUEST_COUNT;
         this.policyID = apiSubscriptionPolicy.POLICY_ID;
         this.description = apiSubscriptionPolicy.DESCRIPTION;
-        this.billingPlan = apiSubscriptionPolicy.BILLING_PLAN;
-        
-        // Pricing fields
-        this.pricingModel = apiSubscriptionPolicy.PRICING_MODEL;
-        this.currency = apiSubscriptionPolicy.CURRENCY;
-        this.billingPeriod = apiSubscriptionPolicy.BILLING_PERIOD;
-        this.flatAmount = apiSubscriptionPolicy.FLAT_AMOUNT;
-        this.unitAmount = apiSubscriptionPolicy.UNIT_AMOUNT;
-        this.pricingMetadata = apiSubscriptionPolicy.PRICING_METADATA;
     }
 }
 

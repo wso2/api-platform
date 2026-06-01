@@ -178,3 +178,5 @@ When a developer clicks **Generate Keys** for their application in the portal:
 3. The developer uses these credentials to obtain access tokens from the key manager's token endpoint.
 
 If multiple key managers are configured for an organization, the developer can choose which one to use when generating keys.
+
+When an application is deleted, the portal automatically revokes all OAuth clients registered with their respective key managers and removes all stored key mappings.

@@ -238,3 +238,57 @@ Feature: Route Path Matching
 
     When I delete the API "route-exact-upstream-slash-api"
     Then the response should be successful
+
+  Scenario: Wildcard /foo/* preserves the matched prefix (and method) on the upstream path
+    # A wildcard operation path "/foo/*" must forward "/foo" and any sub-path to the upstream,
+    # not strip it down to "/". The PUT /put/* operation checks that the matched prefix and method
+    # both reach a method-specific endpoint. The sample backend echoes the path/method it received,
+    # so each assertion pins the upstream request.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: route-wildcard-prefix-api
+      spec:
+        displayName: Route-Wildcard-Prefix-API
+        version: v1.0
+        context: /route-wc-prefix/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /forecast/*
+          - method: PUT
+            path: /put/*
+      """
+    Then the response should be successful
+    And I wait for 2 seconds
+
+    # Bare prefix — upstream must receive /forecast (before the fix it was stripped to /)
+    When I send a GET request to "http://localhost:8080/route-wc-prefix/v1.0/forecast"
+    Then the response status code should be 200
+    And the JSON response field "path" should be "/forecast"
+
+    # Single sub-path segment — upstream must receive /forecast/today (was /today before the fix)
+    When I send a GET request to "http://localhost:8080/route-wc-prefix/v1.0/forecast/today"
+    Then the response status code should be 200
+    And the JSON response field "path" should be "/forecast/today"
+
+    # Nested sub-paths
+    When I send a GET request to "http://localhost:8080/route-wc-prefix/v1.0/forecast/a/b/c"
+    Then the response status code should be 200
+    And the JSON response field "path" should be "/forecast/a/b/c"
+
+    # Explicit non-GET method — matched prefix and method must both reach the upstream
+    When I send a PUT request to "http://localhost:8080/route-wc-prefix/v1.0/put" with body:
+      """
+      {"hello":"world"}
+      """
+    Then the response status code should be 200
+    And the JSON response field "path" should be "/put"
+    And the JSON response field "method" should be "PUT"
+
+    When I delete the API "route-wildcard-prefix-api"
+    Then the response should be successful

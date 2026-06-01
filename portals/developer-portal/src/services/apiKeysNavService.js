@@ -19,8 +19,6 @@ const util = require('../utils/util');
 const logger = require('../config/logger');
 const yaml = require('js-yaml');
 
-const PLATFORM_GATEWAY = 'wso2/api-platform';
-
 const securitySchemeHasApiKey = (securityScheme) =>
     Array.isArray(securityScheme) && securityScheme.includes('api_key');
 
@@ -93,7 +91,7 @@ const apiDefinitionHasApiKeySecurity = (apiDefinition) => {
  * @returns {Promise<boolean>}
  */
 async function shouldShowApiKeysNav(req, metaData, existingApiDetail = null, apiDefinition = null) {
-    if (!metaData?.apiInfo || metaData.apiInfo.gatewayType !== PLATFORM_GATEWAY) {
+    if (!metaData?.apiInfo) {
         return false;
     }
 
@@ -118,5 +116,4 @@ module.exports = {
     shouldShowApiKeysNav,
     findSubscriptionTokenHeader,
     securitySchemeHasApiKey,
-    PLATFORM_GATEWAY
 };

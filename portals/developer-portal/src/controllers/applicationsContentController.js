@@ -140,10 +140,7 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
 
     const subAPIs = await adminDao.getSubscribedAPIs(orgID, applicationId);
 
-    const filteredSubAPIs = subAPIs.filter(sub => {
-        const ps = sub.dataValues.DP_APPLICATIONs?.[0]?.dataValues?.DP_API_SUBSCRIPTION?.dataValues?.PAYMENT_STATUS;
-        return !ps || ps === 'ACTIVE';
-    });
+    const filteredSubAPIs = subAPIs;
 
     const allAPIs = await apiMetadata.getAllAPIMetadata(orgID, groupList, viewName);
 
@@ -205,7 +202,6 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
     let otherAPICount = 0;
     let mcpAPICount = 0;
     let apiKeyEnabledAPICount = 0;
-    const PLATFORM_GATEWAY_TYPE = 'wso2/api-platform';
 
     let subList = [];
     if (filteredSubAPIs.length > 0) {
@@ -245,7 +241,7 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
             const projectId = projectIdEntry?.value;
             if (apiDetails) {
                 apiDTO.security = apiDetails.securityScheme;
-                if (apiDTO.security && apiDTO.security.includes('api_key') && apiDTO.gatewayType !== PLATFORM_GATEWAY_TYPE) {
+                if (apiDTO.security && apiDTO.security.includes('api_key')) {
                     apiKeyEnabledAPICount++;
                 }
             }
@@ -285,10 +281,7 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
 
     util.appendAPIImageURL(subList, req, orgID);
 
-    const subAPIsForApplicationKeys = subList.filter(s => s.gatewayType !== PLATFORM_GATEWAY_TYPE);
-    const isApiKey = subAPIsForApplicationKeys.some(
-        api => api.security && api.security.includes('api_key')
-    );
+    const isApiKey = subList.some(api => api.security && api.security.includes('api_key'));
 
     await Promise.all(nonSubscribedAPIs.map(async (api) => {
         api.subscriptionPolicyDetails = await util.appendSubscriptionPlanDetails(orgID, api.subscriptionPolicies);
@@ -479,12 +472,11 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
         }
     }
 
-    // Load platform APIs that don't require subscription (gatewayType=wso2/api-platform, no subscription plans)
+    // Load APIs that don't require subscription (no subscription plans)
     let noSubAPIs = [];
     try {
         const noSubApis = await apiMetadata.getAPIMetadataByCondition({
             ORG_ID: orgID,
-            GATEWAY_TYPE: 'wso2/api-platform',
             STATUS: constants.API_STATUS.PUBLISHED
         });
 
@@ -546,9 +538,6 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
         applicationList,
         keyManagersMetadata: kMmetaData,
         subAPIs: subList,
-        subAPIsForApplicationKeys,
-        subscriptionsForApplicationKeys: [],
-        noSubAPIsForApplicationKeys: [],
         nonSubAPIs: nonSubscribedAPIs,
         productionKeys,
         sandboxKeys,
@@ -587,10 +576,7 @@ const loadApplications = async (req, res) => {
             const metaData = await Promise.all(
                 applications.map(async (application) => {
                     const subApis = await adminDao.getSubscriptions(orgID, application.APP_ID, '');
-                    const activeCount = subApis.filter(s => {
-                        const ps = s.PAYMENT_STATUS;
-                        return !ps || ps === 'ACTIVE';
-                    }).length;
+                    const activeCount = subApis.length;
                     return {
                         ...new ApplicationDTO(application),
                         subscriptionCount: activeCount
@@ -756,9 +742,6 @@ const loadApplicationKeys = async (req, res) => {
                 orgID: null,
                 subscriptionScopes: [],
                 isApiKey: false,
-                subAPIsForApplicationKeys: [],
-                subscriptionsForApplicationKeys: [],
-                noSubAPIsForApplicationKeys: [],
                 isReadOnlyMode: config.readOnlyMode
             }
             html = renderTemplate('../pages/manage-keys/page.hbs', filePrefix + 'layout/main.hbs', templateContent, true);
@@ -790,11 +773,8 @@ const loadApplicationKeys = async (req, res) => {
                     }
                 ],
                 isApiKey: data.isApiKey,
-                subAPIsForApplicationKeys: data.subAPIsForApplicationKeys,
                 subscriptions: data.subscriptions,
-                subscriptionsForApplicationKeys: data.subscriptionsForApplicationKeys,
                 noSubAPIs: data.noSubAPIs,
-                noSubAPIsForApplicationKeys: data.noSubAPIsForApplicationKeys,
                 subscriptionScopes: data.subscriptionScopes,
                 otherAPICount: data.otherAPICount,
                 mcpAPICount: data.mcpAPICount,

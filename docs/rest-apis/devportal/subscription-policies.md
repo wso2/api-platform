@@ -29,42 +29,10 @@ Creates one subscription policy when the request body is an object, or multiple 
   "policyID": "string",
   "policyName": "string",
   "displayName": "string",
-  "billingPlan": "FREE",
   "description": "string",
   "type": "requestcount",
   "requestCount": 0,
-  "eventCount": 0,
-  "pricingModel": "FREE",
-  "currency": "USD",
-  "billingPeriod": "month",
-  "flatAmount": 0,
-  "unitAmount": 0,
-  "externalProductId": "string",
-  "externalPriceId": "string",
-  "tiers": [
-    {
-      "tierIndex": 0,
-      "startUnit": 0,
-      "endUnit": 0,
-      "unitPrice": 0,
-      "flatPrice": 0
-    }
-  ],
-  "pricingTiers": [
-    {
-      "tierIndex": 0,
-      "startUnit": 0,
-      "endUnit": 0,
-      "unitPrice": 0,
-      "flatPrice": 0
-    }
-  ],
-  "billingMeterData": [
-    {
-      "apiId": "string",
-      "meterId": "string"
-    }
-  ]
+  "eventCount": 0
 }
 ```
 
@@ -73,33 +41,10 @@ policyId: string
 policyID: string
 policyName: string
 displayName: string
-billingPlan: FREE
 description: string
 type: requestcount
 requestCount: 0
 eventCount: 0
-pricingModel: FREE
-currency: USD
-billingPeriod: month
-flatAmount: 0
-unitAmount: 0
-externalProductId: string
-externalPriceId: string
-tiers:
-  - tierIndex: 0
-    startUnit: 0
-    endUnit: 0
-    unitPrice: 0
-    flatPrice: 0
-pricingTiers:
-  - tierIndex: 0
-    startUnit: 0
-    endUnit: 0
-    unitPrice: 0
-    flatPrice: 0
-billingMeterData:
-  - apiId: string
-    meterId: string
 
 ```
 
@@ -214,42 +159,10 @@ Upserts one subscription policy when the request body is an object, or multiple 
   "policyID": "string",
   "policyName": "string",
   "displayName": "string",
-  "billingPlan": "FREE",
   "description": "string",
   "type": "requestcount",
   "requestCount": 0,
-  "eventCount": 0,
-  "pricingModel": "FREE",
-  "currency": "USD",
-  "billingPeriod": "month",
-  "flatAmount": 0,
-  "unitAmount": 0,
-  "externalProductId": "string",
-  "externalPriceId": "string",
-  "tiers": [
-    {
-      "tierIndex": 0,
-      "startUnit": 0,
-      "endUnit": 0,
-      "unitPrice": 0,
-      "flatPrice": 0
-    }
-  ],
-  "pricingTiers": [
-    {
-      "tierIndex": 0,
-      "startUnit": 0,
-      "endUnit": 0,
-      "unitPrice": 0,
-      "flatPrice": 0
-    }
-  ],
-  "billingMeterData": [
-    {
-      "apiId": "string",
-      "meterId": "string"
-    }
-  ]
+  "eventCount": 0
 }
 ```
 
@@ -258,33 +171,10 @@ policyId: string
 policyID: string
 policyName: string
 displayName: string
-billingPlan: FREE
 description: string
 type: requestcount
 requestCount: 0
 eventCount: 0
-pricingModel: FREE
-currency: USD
-billingPeriod: month
-flatAmount: 0
-unitAmount: 0
-externalProductId: string
-externalPriceId: string
-tiers:
-  - tierIndex: 0
-    startUnit: 0
-    endUnit: 0
-    unitPrice: 0
-    flatPrice: 0
-pricingTiers:
-  - tierIndex: 0
-    startUnit: 0
-    endUnit: 0
-    unitPrice: 0
-    flatPrice: 0
-billingMeterData:
-  - apiId: string
-    meterId: string
 
 ```
 
@@ -311,16 +201,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "policyID": "string",
   "policyName": "string",
   "displayName": "string",
-  "billingPlan": "string",
   "description": "string",
   "requestCount": 0,
-  "orgID": "string",
-  "pricingModel": "string",
-  "currency": "string",
-  "billingPeriod": "string",
-  "flatAmount": 0,
-  "unitAmount": 0,
-  "pricingMetadata": {}
+  "orgID": "string"
 }
 ```
 
@@ -435,16 +318,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "policyID": "string",
   "policyName": "string",
   "displayName": "string",
-  "billingPlan": "string",
   "description": "string",
   "requestCount": 0,
-  "orgID": "string",
-  "pricingModel": "string",
-  "currency": "string",
-  "billingPeriod": "string",
-  "flatAmount": 0,
-  "unitAmount": 0,
-  "pricingMetadata": {}
+  "orgID": "string"
 }
 ```
 

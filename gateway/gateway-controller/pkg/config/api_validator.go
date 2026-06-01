@@ -332,6 +332,15 @@ func (v *APIValidator) validateUpstreamDefinitions(definitions *[]api.UpstreamDe
 						Message: "URL must include a host",
 					})
 				}
+
+				// upstreamDefinitions URLs must be host[:port] only — the base path is
+				// configured exclusively via upstreamDefinitions[].basePath.
+				if parsedURL.Path != "" && parsedURL.Path != "/" {
+					errors = append(errors, ValidationError{
+						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
+						Message: "URL must not include a path; set the base path in upstreamDefinitions[].basePath instead",
+					})
+				}
 			}
 
 			// Validate weight if present

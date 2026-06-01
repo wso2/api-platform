@@ -88,15 +88,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "productionURL": "https://api.example.com/weather",
     "sandboxURL": "https://sandbox.example.com/weather"
   },
-  "monetizationInfo": {
-    "enabled": false
-  },
   "subscriptionPolicies": [
     {
       "policyID": "policy-gold",
       "policyName": "Gold",
       "displayName": "Gold",
-      "billingPlan": "FREE",
       "requestCount": 10000
     }
   ]
@@ -238,9 +234,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "endPoints": {
       "sandboxURL": "https://sandbox.example.com/weather",
       "productionURL": "https://api.example.com/weather"
-    },
-    "monetizationInfo": {
-      "enabled": false
     }
   }
 ]
@@ -330,13 +323,10 @@ Status Code **200**
 |» endPoints|[ApiEndpointsResponse](schemas.md#schemaapiendpointsresponse)|false|none|none|
 |»» sandboxURL|string|false|none|none|
 |»» productionURL|string|false|none|none|
-|» monetizationInfo|[ApiMonetizationInfoResponse](schemas.md#schemaapimonetizationinforesponse)|false|none|none|
-|»» enabled|boolean|false|none|none|
 |» subscriptionPolicies|[[SubscriptionPolicyResponse](schemas.md#schemasubscriptionpolicyresponse)]|false|none|none|
 |»» policyID|string|false|none|none|
 |»» policyName|string|false|none|none|
 |»» displayName|string|false|none|none|
-|»» billingPlan|string|false|none|none|
 |»» description|string|false|none|none|
 |»» requestCount|any|false|none|none|
 
@@ -357,12 +347,6 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |»» orgID|string|false|none|none|
-|»» pricingModel|string|false|none|none|
-|»» currency|string|false|none|none|
-|»» billingPeriod|string|false|none|none|
-|»» flatAmount|number|false|none|none|
-|»» unitAmount|number|false|none|none|
-|»» pricingMetadata|object|false|none|none|
 
 ## Get API metadata
 
@@ -428,15 +412,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "sandboxURL": "https://sandbox.example.com/weather",
     "productionURL": "https://api.example.com/weather"
   },
-  "monetizationInfo": {
-    "enabled": false
-  },
   "subscriptionPolicies": [
     {
       "policyID": "policy-gold",
       "policyName": "Gold",
       "displayName": "Gold",
-      "billingPlan": "FREE",
       "requestCount": 10000
     }
   ]
@@ -583,15 +563,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
     "sandboxURL": "https://sandbox.example.com/weather",
     "productionURL": "https://api.example.com/weather"
   },
-  "monetizationInfo": {
-    "enabled": false
-  },
   "subscriptionPolicies": [
     {
       "policyID": "policy-gold",
       "policyName": "Gold",
       "displayName": "Gold",
-      "billingPlan": "FREE",
       "requestCount": 10000
     }
   ]

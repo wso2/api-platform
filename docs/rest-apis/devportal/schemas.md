@@ -457,24 +457,14 @@ continued
     "sandboxURL": "string",
     "productionURL": "string"
   },
-  "monetizationInfo": {
-    "enabled": true
-  },
   "subscriptionPolicies": [
     {
       "policyID": "string",
       "policyName": "string",
       "displayName": "string",
-      "billingPlan": "string",
       "description": "string",
       "requestCount": 0,
-      "orgID": "string",
-      "pricingModel": "string",
-      "currency": "string",
-      "billingPeriod": "string",
-      "flatAmount": 0,
-      "unitAmount": 0,
-      "pricingMetadata": {}
+      "orgID": "string"
     }
   ]
 }
@@ -492,7 +482,6 @@ continued
 |dataSource|string|false|none|none|
 |apiInfo|[ApiInfoResponse](#schemaapiinforesponse)|false|none|none|
 |endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
-|monetizationInfo|[ApiMonetizationInfoResponse](#schemaapimonetizationinforesponse)|false|none|none|
 |subscriptionPolicies|[[SubscriptionPolicyResponse](#schemasubscriptionpolicyresponse)]|false|none|none|
 
 <h2 id="tocS_ApiMetadataResponse">ApiMetadataResponse</h2>
@@ -554,24 +543,14 @@ continued
     "sandboxURL": "string",
     "productionURL": "string"
   },
-  "monetizationInfo": {
-    "enabled": true
-  },
   "subscriptionPolicies": [
     {
       "policyID": "string",
       "policyName": "string",
       "displayName": "string",
-      "billingPlan": "string",
       "description": "string",
       "requestCount": 0,
-      "orgID": "string",
-      "pricingModel": "string",
-      "currency": "string",
-      "billingPeriod": "string",
-      "flatAmount": 0,
-      "unitAmount": 0,
-      "pricingMetadata": {}
+      "orgID": "string"
     }
   ]
 }
@@ -590,7 +569,6 @@ continued
 |policyID|string|false|none|none|
 |apiInfo|[ApiInfoResponse](#schemaapiinforesponse)|false|none|none|
 |endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
-|monetizationInfo|[ApiMonetizationInfoResponse](#schemaapimonetizationinforesponse)|false|none|none|
 |subscriptionPolicies|[[SubscriptionPolicyResponse](#schemasubscriptionpolicyresponse)]|false|none|none|
 
 <h2 id="tocS_ApiInfoResponse">ApiInfoResponse</h2>
@@ -736,26 +714,6 @@ continued
 |---|---|---|---|---|
 |**additionalProperties**|string|false|none|none|
 
-<h2 id="tocS_ApiMonetizationInfoResponse">ApiMonetizationInfoResponse</h2>
-
-<a id="schemaapimonetizationinforesponse"></a>
-<a id="schema_ApiMonetizationInfoResponse"></a>
-<a id="tocSapimonetizationinforesponse"></a>
-<a id="tocsapimonetizationinforesponse"></a>
-
-```json
-{
-  "enabled": true
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|enabled|boolean|false|none|none|
-
 <h2 id="tocS_SubscriptionPolicyResponse">SubscriptionPolicyResponse</h2>
 
 <a id="schemasubscriptionpolicyresponse"></a>
@@ -768,16 +726,9 @@ continued
   "policyID": "string",
   "policyName": "string",
   "displayName": "string",
-  "billingPlan": "string",
   "description": "string",
   "requestCount": 0,
-  "orgID": "string",
-  "pricingModel": "string",
-  "currency": "string",
-  "billingPeriod": "string",
-  "flatAmount": 0,
-  "unitAmount": 0,
-  "pricingMetadata": {}
+  "orgID": "string"
 }
 
 ```
@@ -789,7 +740,6 @@ continued
 |policyID|string|false|none|none|
 |policyName|string|false|none|none|
 |displayName|string|false|none|none|
-|billingPlan|string|false|none|none|
 |description|string|false|none|none|
 |requestCount|any|false|none|none|
 
@@ -810,12 +760,6 @@ continued
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |orgID|string|false|none|none|
-|pricingModel|string|false|none|none|
-|currency|string|false|none|none|
-|billingPeriod|string|false|none|none|
-|flatAmount|number|false|none|none|
-|unitAmount|number|false|none|none|
-|pricingMetadata|object|false|none|none|
 
 <h2 id="tocS_LabelResponse">LabelResponse</h2>
 
@@ -1120,42 +1064,10 @@ continued
   "policyID": "string",
   "policyName": "string",
   "displayName": "string",
-  "billingPlan": "FREE",
   "description": "string",
   "type": "requestcount",
   "requestCount": 0,
-  "eventCount": 0,
-  "pricingModel": "FREE",
-  "currency": "USD",
-  "billingPeriod": "month",
-  "flatAmount": 0,
-  "unitAmount": 0,
-  "externalProductId": "string",
-  "externalPriceId": "string",
-  "tiers": [
-    {
-      "tierIndex": 0,
-      "startUnit": 0,
-      "endUnit": 0,
-      "unitPrice": 0,
-      "flatPrice": 0
-    }
-  ],
-  "pricingTiers": [
-    {
-      "tierIndex": 0,
-      "startUnit": 0,
-      "endUnit": 0,
-      "unitPrice": 0,
-      "flatPrice": 0
-    }
-  ],
-  "billingMeterData": [
-    {
-      "apiId": "string",
-      "meterId": "string"
-    }
-  ]
+  "eventCount": 0
 }
 
 ```
@@ -1168,7 +1080,6 @@ continued
 |policyID|string|false|none|Alternative casing accepted by the DAO.|
 |policyName|string|true|none|none|
 |displayName|string|true|none|none|
-|billingPlan|string|false|none|none|
 |description|string|false|none|none|
 |type|string|true|none|Service accepts case-insensitive `requestcount` or `eventcount`.|
 |requestCount|any|false|none|Required for request-count policies. Use -1 for unlimited.|
@@ -1203,62 +1114,12 @@ xor
 |---|---|---|---|---|
 |» *anonymous*|string|false|none|none|
 
-continued
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|pricingModel|string|false|none|none|
-|currency|string|false|none|none|
-|billingPeriod|string|false|none|none|
-|flatAmount|number|false|none|none|
-|unitAmount|number|false|none|none|
-|externalProductId|string|false|none|none|
-|externalPriceId|string|false|none|none|
-|tiers|[[PricingTier](#schemapricingtier)]|false|none|none|
-|pricingTiers|[[PricingTier](#schemapricingtier)]|false|none|none|
-|billingMeterData|[object]|false|none|none|
-|» apiId|string|false|none|none|
-|» meterId|string|false|none|none|
-
 #### Enumerated Values
 
 |Property|Value|
 |---|---|
 |type|requestcount|
 |type|eventcount|
-|pricingModel|FREE|
-|pricingModel|FLAT|
-|pricingModel|PER_UNIT|
-|pricingModel|VOLUME_TIERS|
-|pricingModel|GRADUATED_TIERS|
-
-<h2 id="tocS_PricingTier">PricingTier</h2>
-
-<a id="schemapricingtier"></a>
-<a id="schema_PricingTier"></a>
-<a id="tocSpricingtier"></a>
-<a id="tocspricingtier"></a>
-
-```json
-{
-  "tierIndex": 0,
-  "startUnit": 0,
-  "endUnit": 0,
-  "unitPrice": 0,
-  "flatPrice": 0
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|tierIndex|integer|false|none|none|
-|startUnit|integer|false|none|none|
-|endUnit|integer¦null|false|none|none|
-|unitPrice|number¦null|false|none|none|
-|flatPrice|number¦null|false|none|none|
 
 <h2 id="tocS_LabelRequest">LabelRequest</h2>
 
@@ -1816,29 +1677,19 @@ Minimal developer-facing key manager view. No admin credentials or DCR endpoints
 
 ```json
 {
-  "applicationName": "Weather App",
-  "apis": [
-    {
-      "apiName": "Weather API",
-      "apiRefId": "214te6382jjq9274eg332190",
-      "policyID": "24341d98-90f7-4530-95ef-0709609eea1a"
-    }
+  "keyManager": "Resident Key Manager",
+  "keyType": "PRODUCTION",
+  "grantTypesToBeSupported": [
+    "client_credentials",
+    "refresh_token"
   ],
-  "tokenType": "OAUTH",
-  "provider": "WSO2",
-  "clientID": "external-client-123",
-  "tokenDetails": {
-    "keyManager": "Resident Key Manager",
-    "keyType": "PRODUCTION",
-    "grantTypesToBeSupported": [
-      "client_credentials",
-      "refresh_token"
-    ],
-    "callbackUrl": "https://app.example.com/callback",
-    "additionalProperties": {
-      "application_access_token_expiry_time": "3600",
-      "user_access_token_expiry_time": "3600"
-    }
+  "callbackUrl": "https://app.example.com/callback",
+  "scopes": [
+    "default"
+  ],
+  "additionalProperties": {
+    "application_access_token_expiry_time": "3600",
+    "user_access_token_expiry_time": "3600"
   }
 }
 
@@ -1848,25 +1699,17 @@ Minimal developer-facing key manager view. No admin credentials or DCR endpoints
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|applicationName|string|true|none|none|
-|apis|[object]|false|none|Optional list of API identifiers. Existing service logic synchronizes subscribed APIs for the application.|
-|tokenType|string|false|none|none|
-|provider|string|false|none|none|
-|clientID|string|false|none|Existing consumer key used when mapping external keys.|
-|tokenDetails|object|true|none|none|
-|» keyManager|string|true|none|none|
-|» keyType|string|false|none|none|
-|» grantTypesToBeSupported|[string]|false|none|none|
-|» callbackUrl|string(uri)|false|none|none|
-|» additionalProperties|object|false|none|none|
+|keyManager|string|true|none|none|
+|keyType|string|true|none|none|
+|grantTypesToBeSupported|[string]|false|none|none|
+|callbackUrl|string(uri)|false|none|none|
+|scopes|[string]|false|none|none|
+|additionalProperties|object|false|none|none|
 
 #### Enumerated Values
 
 |Property|Value|
 |---|---|
-|tokenType|API_KEY|
-|tokenType|OAUTH|
-|tokenType|BASIC|
 |keyType|PRODUCTION|
 |keyType|SANDBOX|
 
@@ -2349,466 +2192,6 @@ OAuth key payload returned by the control plane.
 |expires_in|integer|false|none|none|
 |scope|string|false|none|none|
 
-<h2 id="tocS_BillingEngineKeysRequest">BillingEngineKeysRequest</h2>
-
-<a id="schemabillingenginekeysrequest"></a>
-<a id="schema_BillingEngineKeysRequest"></a>
-<a id="tocSbillingenginekeysrequest"></a>
-<a id="tocsbillingenginekeysrequest"></a>
-
-```json
-{
-  "billingEngine": "STRIPE",
-  "secretKey": "sk_test_123",
-  "publishableKey": "pk_test_123",
-  "webhookSecret": "whsec_123"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|billingEngine|string|true|none|none|
-|secretKey|string|true|none|Billing engine secret key. Stored encrypted and never returned in clear text.|
-|publishableKey|string|true|none|none|
-|webhookSecret|string|true|none|none|
-
-<h2 id="tocS_BillingEngineDeleteRequest">BillingEngineDeleteRequest</h2>
-
-<a id="schemabillingenginedeleterequest"></a>
-<a id="schema_BillingEngineDeleteRequest"></a>
-<a id="tocSbillingenginedeleterequest"></a>
-<a id="tocsbillingenginedeleterequest"></a>
-
-```json
-{
-  "billingEngine": "STRIPE"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|billingEngine|string|false|none|none|
-
-<h2 id="tocS_BillingEngineKeysResponse">BillingEngineKeysResponse</h2>
-
-<a id="schemabillingenginekeysresponse"></a>
-<a id="schema_BillingEngineKeysResponse"></a>
-<a id="tocSbillingenginekeysresponse"></a>
-<a id="tocsbillingenginekeysresponse"></a>
-
-```json
-{
-  "billingEngine": "STRIPE",
-  "secretKey": "****",
-  "publishableKey": "****",
-  "webhookSecret": "****"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|billingEngine|string|true|none|none|
-|secretKey|string¦null|false|none|Masked secret key marker when configured.|
-|publishableKey|string¦null|false|none|Masked publishable key marker when configured.|
-|webhookSecret|string¦null|false|none|Masked webhook secret marker when configured.|
-
-<h2 id="tocS_CheckoutSessionRequest">CheckoutSessionRequest</h2>
-
-<a id="schemacheckoutsessionrequest"></a>
-<a id="schema_CheckoutSessionRequest"></a>
-<a id="tocScheckoutsessionrequest"></a>
-<a id="tocscheckoutsessionrequest"></a>
-
-```json
-{
-  "applicationID": "app-12345",
-  "apiId": "api-7f4c2a6b",
-  "apiReferenceID": "cp-api-12345",
-  "policyId": "policy-pro",
-  "policyName": "Pro",
-  "sourcePage": "/devportal/apis/weather-api-v1"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|applicationID|string|true|none|Developer Portal application ID.|
-|apiId|string|true|none|Developer Portal API ID.|
-|apiReferenceID|string|true|none|Control-plane API reference ID.|
-|policyId|string|true|none|Developer Portal subscription policy ID.|
-|policyName|string|true|none|Subscription policy name.|
-|sourcePage|string|false|none|Portal page to return to after checkout.|
-
-<h2 id="tocS_BillingUsageDataResponse">BillingUsageDataResponse</h2>
-
-<a id="schemabillingusagedataresponse"></a>
-<a id="schema_BillingUsageDataResponse"></a>
-<a id="tocSbillingusagedataresponse"></a>
-<a id="tocsbillingusagedataresponse"></a>
-
-```json
-{
-  "totalRequests": 12450,
-  "activeSubscriptions": 2,
-  "estimatedCost": 29.99,
-  "currency": "USD",
-  "avgResponseTime": 142,
-  "subscriptions": [
-    {
-      "apiName": "Weather API",
-      "applicationName": "Weather App",
-      "planName": "Pro",
-      "requests": 12000,
-      "pricingModel": "METERED",
-      "cost": 24.99,
-      "currency": "USD",
-      "avgResponseTime": 145
-    }
-  ]
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|totalRequests|integer|false|none|none|
-|activeSubscriptions|integer|false|none|none|
-|estimatedCost|number|false|none|none|
-|currency|string|false|none|none|
-|avgResponseTime|integer|false|none|Average response time in milliseconds.|
-|subscriptions|[[BillingUsageSubscription](#schemabillingusagesubscription)]|false|none|none|
-
-<h2 id="tocS_BillingUsageSubscription">BillingUsageSubscription</h2>
-
-<a id="schemabillingusagesubscription"></a>
-<a id="schema_BillingUsageSubscription"></a>
-<a id="tocSbillingusagesubscription"></a>
-<a id="tocsbillingusagesubscription"></a>
-
-```json
-{
-  "apiName": "Weather API",
-  "applicationName": "Weather App",
-  "planName": "Pro",
-  "requests": 12000,
-  "pricingModel": "METERED",
-  "cost": 24.99,
-  "currency": "USD",
-  "avgResponseTime": 145
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|apiName|string|false|none|none|
-|applicationName|string|false|none|none|
-|planName|string|false|none|none|
-|requests|integer|false|none|none|
-|pricingModel|string|false|none|none|
-|cost|number|false|none|none|
-|currency|string|false|none|none|
-|avgResponseTime|integer|false|none|none|
-
-<h2 id="tocS_PaymentMethodsResponse">PaymentMethodsResponse</h2>
-
-<a id="schemapaymentmethodsresponse"></a>
-<a id="schema_PaymentMethodsResponse"></a>
-<a id="tocSpaymentmethodsresponse"></a>
-<a id="tocspaymentmethodsresponse"></a>
-
-```json
-{
-  "paymentMethods": [
-    {
-      "id": "pm_12345",
-      "brand": "visa",
-      "last4": "4242",
-      "expMonth": 12,
-      "expYear": 2030,
-      "isDefault": true
-    }
-  ]
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|paymentMethods|[[PaymentMethodResponse](#schemapaymentmethodresponse)]|false|none|none|
-
-<h2 id="tocS_PaymentMethodResponse">PaymentMethodResponse</h2>
-
-<a id="schemapaymentmethodresponse"></a>
-<a id="schema_PaymentMethodResponse"></a>
-<a id="tocSpaymentmethodresponse"></a>
-<a id="tocspaymentmethodresponse"></a>
-
-```json
-{
-  "id": "pm_12345",
-  "brand": "visa",
-  "last4": "4242",
-  "expMonth": 12,
-  "expYear": 2030,
-  "isDefault": true
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|id|string|false|none|none|
-|brand|string|false|none|none|
-|last4|string|false|none|none|
-|expMonth|integer|false|none|none|
-|expYear|integer|false|none|none|
-|isDefault|boolean|false|none|none|
-
-<h2 id="tocS_BillingInfoResponse">BillingInfoResponse</h2>
-
-<a id="schemabillinginforesponse"></a>
-<a id="schema_BillingInfoResponse"></a>
-<a id="tocSbillinginforesponse"></a>
-<a id="tocsbillinginforesponse"></a>
-
-```json
-{
-  "organizationName": "Acme Inc",
-  "email": "dev@example.com",
-  "address": {},
-  "taxId": "123456789"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|organizationName|string|false|none|none|
-|email|string(email)|false|none|none|
-|address|object¦null|false|none|none|
-|taxId|string¦null|false|none|none|
-
-<h2 id="tocS_BillingSubscriptionsResponse">BillingSubscriptionsResponse</h2>
-
-<a id="schemabillingsubscriptionsresponse"></a>
-<a id="schema_BillingSubscriptionsResponse"></a>
-<a id="tocSbillingsubscriptionsresponse"></a>
-<a id="tocsbillingsubscriptionsresponse"></a>
-
-```json
-{
-  "subscriptions": [
-    {
-      "id": "sub-12345",
-      "apiName": "Weather API",
-      "applicationName": "Weather App",
-      "planName": "Pro",
-      "billingCycle": "Month",
-      "amount": 2999,
-      "currency": "usd",
-      "nextBillingDate": 1775088000000,
-      "status": "active"
-    }
-  ]
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|subscriptions|[[BillingSubscriptionResponse](#schemabillingsubscriptionresponse)]|false|none|none|
-
-<h2 id="tocS_BillingSubscriptionResponse">BillingSubscriptionResponse</h2>
-
-<a id="schemabillingsubscriptionresponse"></a>
-<a id="schema_BillingSubscriptionResponse"></a>
-<a id="tocSbillingsubscriptionresponse"></a>
-<a id="tocsbillingsubscriptionresponse"></a>
-
-```json
-{
-  "id": "sub-12345",
-  "apiName": "Weather API",
-  "applicationName": "Weather App",
-  "planName": "Pro",
-  "billingCycle": "Month",
-  "amount": 2999,
-  "currency": "usd",
-  "nextBillingDate": 1775088000000,
-  "status": "active"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|id|string|false|none|none|
-|apiName|string|false|none|none|
-|applicationName|string|false|none|none|
-|planName|string|false|none|none|
-|billingCycle|string|false|none|none|
-|amount|number|false|none|Amount in the smallest Stripe currency unit when sourced from Stripe.|
-|currency|string|false|none|none|
-|nextBillingDate|integer¦null|false|none|Next billing timestamp in milliseconds since epoch.|
-|status|string|false|none|none|
-
-<h2 id="tocS_CheckoutSessionResponse">CheckoutSessionResponse</h2>
-
-<a id="schemacheckoutsessionresponse"></a>
-<a id="schema_CheckoutSessionResponse"></a>
-<a id="tocScheckoutsessionresponse"></a>
-<a id="tocscheckoutsessionresponse"></a>
-
-```json
-{
-  "subId": "sub-12345",
-  "checkoutSessionId": "cs_test_12345",
-  "clientSecret": "cs_test_12345_secret_abc",
-  "publishableKey": "pk_test_123",
-  "billingCustomerId": "cus_12345",
-  "paymentProvider": "STRIPE",
-  "paymentStatus": "PENDING"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|subId|string|false|none|none|
-|checkoutSessionId|string|false|none|none|
-|clientSecret|string|false|none|none|
-|publishableKey|string|false|none|none|
-|billingCustomerId|string|false|none|none|
-|paymentProvider|string|false|none|none|
-|paymentStatus|string|false|none|none|
-
-<h2 id="tocS_CheckoutRegistrationResponse">CheckoutRegistrationResponse</h2>
-
-<a id="schemacheckoutregistrationresponse"></a>
-<a id="schema_CheckoutRegistrationResponse"></a>
-<a id="tocScheckoutregistrationresponse"></a>
-<a id="tocscheckoutregistrationresponse"></a>
-
-```json
-{
-  "subId": "sub-12345",
-  "billingCustomerId": "cus_12345",
-  "billingSubscriptionId": "sub_stripe_12345",
-  "paymentStatus": "ACTIVE",
-  "paymentProvider": "STRIPE"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|subId|string|false|none|none|
-|billingCustomerId|string|false|none|none|
-|billingSubscriptionId|string|false|none|none|
-|paymentStatus|string|false|none|none|
-|paymentProvider|string|false|none|none|
-
-<h2 id="tocS_BillingCancelResponse">BillingCancelResponse</h2>
-
-<a id="schemabillingcancelresponse"></a>
-<a id="schema_BillingCancelResponse"></a>
-<a id="tocSbillingcancelresponse"></a>
-<a id="tocsbillingcancelresponse"></a>
-
-```json
-{
-  "subId": "sub-12345",
-  "paymentStatus": "CANCELED"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|subId|string|false|none|none|
-|paymentStatus|string|false|none|none|
-
-<h2 id="tocS_SubscriptionBillingStatusResponse">SubscriptionBillingStatusResponse</h2>
-
-<a id="schemasubscriptionbillingstatusresponse"></a>
-<a id="schema_SubscriptionBillingStatusResponse"></a>
-<a id="tocSsubscriptionbillingstatusresponse"></a>
-<a id="tocssubscriptionbillingstatusresponse"></a>
-
-```json
-{
-  "subId": "sub-12345",
-  "paymentProvider": "STRIPE",
-  "paymentStatus": "ACTIVE",
-  "billingCustomerId": "cus_12345",
-  "billingSubscriptionId": "sub_stripe_12345"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|subId|string|false|none|none|
-|paymentProvider|string¦null|false|none|none|
-|paymentStatus|string¦null|false|none|none|
-|billingCustomerId|string¦null|false|none|none|
-|billingSubscriptionId|string¦null|false|none|none|
-
-<h2 id="tocS_BillingPortalResponse">BillingPortalResponse</h2>
-
-<a id="schemabillingportalresponse"></a>
-<a id="schema_BillingPortalResponse"></a>
-<a id="tocSbillingportalresponse"></a>
-<a id="tocsbillingportalresponse"></a>
-
-```json
-{
-  "url": "https://billing.stripe.com/p/session/test_123"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|url|string(uri)|false|none|none|
-
 <h2 id="tocS_ControllerErrorResponse">ControllerErrorResponse</h2>
 
 <a id="schemacontrollererrorresponse"></a>
@@ -2832,238 +2215,6 @@ OAuth key payload returned by the control plane.
 |error|string|false|none|none|
 |message|string|false|none|none|
 |description|string|false|none|none|
-
-<h2 id="tocS_SubscriptionUsageResponse">SubscriptionUsageResponse</h2>
-
-<a id="schemasubscriptionusageresponse"></a>
-<a id="schema_SubscriptionUsageResponse"></a>
-<a id="tocSsubscriptionusageresponse"></a>
-<a id="tocssubscriptionusageresponse"></a>
-
-```json
-{
-  "subscriptionId": "cp-sub-12345",
-  "from": "2019-08-24T14:15:22Z",
-  "to": "2019-08-24T14:15:22Z",
-  "total_requests": 12000,
-  "usage": 12000,
-  "avg_response_time": 145,
-  "currency": "USD"
-}
-
-```
-
-Usage response returned by the monetization service or Moesif proxy.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|subscriptionId|string|false|none|none|
-|from|string(date-time)|false|none|none|
-|to|string(date-time)|false|none|none|
-|total_requests|integer|false|none|none|
-|usage|integer|false|none|none|
-|avg_response_time|number|false|none|none|
-|currency|string|false|none|none|
-
-<h2 id="tocS_InvoiceListResponse">InvoiceListResponse</h2>
-
-<a id="schemainvoicelistresponse"></a>
-<a id="schema_InvoiceListResponse"></a>
-<a id="tocSinvoicelistresponse"></a>
-<a id="tocsinvoicelistresponse"></a>
-
-```json
-{
-  "invoices": [
-    {
-      "id": "in_12345",
-      "number": "INV-001",
-      "created": 1775088000,
-      "amount": 2999,
-      "currency": "usd",
-      "status": "paid",
-      "hostedInvoiceUrl": "http://example.com",
-      "invoicePdf": "http://example.com"
-    }
-  ]
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|invoices|[[InvoiceSummaryResponse](#schemainvoicesummaryresponse)]|false|none|none|
-
-<h2 id="tocS_InvoiceSummaryResponse">InvoiceSummaryResponse</h2>
-
-<a id="schemainvoicesummaryresponse"></a>
-<a id="schema_InvoiceSummaryResponse"></a>
-<a id="tocSinvoicesummaryresponse"></a>
-<a id="tocsinvoicesummaryresponse"></a>
-
-```json
-{
-  "id": "in_12345",
-  "number": "INV-001",
-  "created": 1775088000,
-  "amount": 2999,
-  "currency": "usd",
-  "status": "paid",
-  "hostedInvoiceUrl": "http://example.com",
-  "invoicePdf": "http://example.com"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|id|string|false|none|none|
-|number|string¦null|false|none|none|
-|created|integer|false|none|Stripe-created timestamp in seconds.|
-|amount|number|false|none|none|
-|currency|string|false|none|none|
-|status|string|false|none|none|
-|hostedInvoiceUrl|string(uri)¦null|false|none|none|
-|invoicePdf|string(uri)¦null|false|none|none|
-
-<h2 id="tocS_StripeInvoiceListResponse">StripeInvoiceListResponse</h2>
-
-<a id="schemastripeinvoicelistresponse"></a>
-<a id="schema_StripeInvoiceListResponse"></a>
-<a id="tocSstripeinvoicelistresponse"></a>
-<a id="tocsstripeinvoicelistresponse"></a>
-
-```json
-{
-  "object": "list",
-  "data": [
-    {
-      "id": "in_12345",
-      "object": "invoice",
-      "status": "paid",
-      "customer": "string",
-      "subscription": "sub_stripe_12345",
-      "hosted_invoice_url": "http://example.com",
-      "invoice_pdf": "http://example.com"
-    }
-  ],
-  "has_more": false,
-  "url": "string"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|object|string|false|none|none|
-|data|[[StripeInvoiceResponse](#schemastripeinvoiceresponse)]|false|none|none|
-|has_more|boolean|false|none|none|
-|url|string|false|none|none|
-
-<h2 id="tocS_StripeInvoiceResponse">StripeInvoiceResponse</h2>
-
-<a id="schemastripeinvoiceresponse"></a>
-<a id="schema_StripeInvoiceResponse"></a>
-<a id="tocSstripeinvoiceresponse"></a>
-<a id="tocsstripeinvoiceresponse"></a>
-
-```json
-{
-  "id": "in_12345",
-  "object": "invoice",
-  "status": "paid",
-  "customer": "string",
-  "subscription": "sub_stripe_12345",
-  "hosted_invoice_url": "http://example.com",
-  "invoice_pdf": "http://example.com"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|id|string|false|none|none|
-|object|string|false|none|none|
-|status|string|false|none|none|
-|customer|any|false|none|none|
-
-oneOf
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» *anonymous*|string|false|none|none|
-
-xor
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» *anonymous*|object|false|none|none|
-
-continued
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|subscription|string¦null|false|none|none|
-|hosted_invoice_url|string(uri)¦null|false|none|none|
-|invoice_pdf|string(uri)¦null|false|none|none|
-
-<h2 id="tocS_InvoicePdfLinkResponse">InvoicePdfLinkResponse</h2>
-
-<a id="schemainvoicepdflinkresponse"></a>
-<a id="schema_InvoicePdfLinkResponse"></a>
-<a id="tocSinvoicepdflinkresponse"></a>
-<a id="tocsinvoicepdflinkresponse"></a>
-
-```json
-{
-  "invoiceId": "in_12345",
-  "hosted_invoice_url": "http://example.com",
-  "invoice_pdf": "http://example.com"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|invoiceId|string|false|none|none|
-|hosted_invoice_url|string(uri)¦null|false|none|none|
-|invoice_pdf|string(uri)|false|none|none|
-
-<h2 id="tocS_InvoicePdfNotAvailableResponse">InvoicePdfNotAvailableResponse</h2>
-
-<a id="schemainvoicepdfnotavailableresponse"></a>
-<a id="schema_InvoicePdfNotAvailableResponse"></a>
-<a id="tocSinvoicepdfnotavailableresponse"></a>
-<a id="tocsinvoicepdfnotavailableresponse"></a>
-
-```json
-{
-  "error": "InvoicePdfNotAvailable",
-  "message": "string",
-  "hosted_invoice_url": "http://example.com"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|error|string|false|none|none|
-|message|string|false|none|none|
-|hosted_invoice_url|string(uri)¦null|false|none|none|
 
 <h2 id="tocS_APIFlowCreateResponse">APIFlowCreateResponse</h2>
 

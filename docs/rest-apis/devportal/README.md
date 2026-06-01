@@ -2,11 +2,10 @@
 <h1 id="wso2-api-developer-portal-core-devportal-routes">WSO2 API Developer Portal Core - Devportal Routes v1.0.0</h1>
 
 Fine-grained Developer Portal API for managing organizations, identity providers, providers,
-API metadata and content, applications, subscriptions, application credentials, billing, invoices, usage, and API flows.
+API metadata and content, applications, subscriptions, application credentials, and API flows.
 
 All paths are served under the `/devportal` base path. Operations declare the least-privilege
-OAuth2 scopes required for each resource action, and selected billing-related endpoints also
-support API key authentication where configured.
+OAuth2 scopes required for each resource action.
 
 Base URLs:
 * <a href="http://localhost:3000/devportal">http://localhost:3000/devportal</a>
@@ -78,11 +77,6 @@ Base URLs:
 
 ### [Applications](applications.md)
 
-- [Create an application](applications.md#create-an-application)
-- [List applications](applications.md#list-applications)
-- [Update an application](applications.md#update-an-application)
-- [Get application details](applications.md#get-application-details)
-- [Delete an application](applications.md#delete-an-application)
 - [Import an application](applications.md#import-an-application)
 - [Create an application for the authenticated user's organization](applications.md#create-an-application-for-the-authenticated-users-organization)
 - [Update an application for the authenticated user](applications.md#update-an-application-for-the-authenticated-user)
@@ -104,11 +98,6 @@ Base URLs:
 - [Regenerate an API key](api-keys.md#regenerate-an-api-key)
 - [Revoke an API key](api-keys.md#revoke-an-api-key)
 
-### [App Key Mapping](app-key-mapping.md)
-
-- [Create application key mapping](app-key-mapping.md#create-application-key-mapping)
-- [Get application key mappings](app-key-mapping.md#get-application-key-mappings)
-
 ### [Views](views.md)
 
 - [Create a view](views.md#create-a-view)
@@ -119,40 +108,11 @@ Base URLs:
 
 ### [Application Keys](application-keys.md)
 
-- [Generate OAuth keys for a control-plane application](application-keys.md#generate-oauth-keys-for-a-control-plane-application)
+- [Generate OAuth keys for a Developer Portal application](application-keys.md#generate-oauth-keys-for-a-developer-portal-application)
 - [Generate an OAuth access token](application-keys.md#generate-an-oauth-access-token)
 - [Revoke OAuth keys](application-keys.md#revoke-oauth-keys)
 - [Update OAuth keys](application-keys.md#update-oauth-keys)
 - [Clean up OAuth key artifacts](application-keys.md#clean-up-oauth-key-artifacts)
-
-### [Billing](billing.md)
-
-- [Get billing usage data](billing.md#get-billing-usage-data)
-- [List payment methods](billing.md#list-payment-methods)
-- [Add billing engine keys](billing.md#add-billing-engine-keys)
-- [Update billing engine keys](billing.md#update-billing-engine-keys)
-- [Delete billing engine keys](billing.md#delete-billing-engine-keys)
-- [Get billing engine keys](billing.md#get-billing-engine-keys)
-- [Get billing profile information](billing.md#get-billing-profile-information)
-- [List subscriptions for billing](billing.md#list-subscriptions-for-billing)
-- [Create a checkout session](billing.md#create-a-checkout-session)
-- [Register a Stripe checkout session](billing.md#register-a-stripe-checkout-session)
-- [Cancel a paid subscription](billing.md#cancel-a-paid-subscription)
-- [Get subscription billing status](billing.md#get-subscription-billing-status)
-- [Create an organization billing portal session](billing.md#create-an-organization-billing-portal-session)
-- [Create a subscription billing portal session](billing.md#create-a-subscription-billing-portal-session)
-
-### [Usage](usage.md)
-
-- [Get subscription usage](usage.md#get-subscription-usage)
-
-### [Invoices](invoices.md)
-
-- [List invoices](invoices.md#list-invoices)
-- [Get an invoice](invoices.md#get-an-invoice)
-- [List invoices by subscription](invoices.md#list-invoices-by-subscription)
-- [Get invoice PDF link](invoices.md#get-invoice-pdf-link)
-- [redirectHostedInvoice](invoices.md#redirecthostedinvoice)
 
 ### [API Flows](api-flows.md)
 

@@ -31,10 +31,6 @@ const APISubscriptionPolicy = sequelize.define('DP_API_SUBSCRIPTION_POLICY', {
         allowNull: false,
         primaryKey: true
     },
-    BILLING_METER_ID: {
-        type: DataTypes.STRING(128),
-        allowNull: true
-    }
 }, {
     timestamps: false,
     tableName: 'DP_API_SUBSCRIPTION_POLICY',
