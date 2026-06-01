@@ -138,8 +138,9 @@ Feature: Sandbox Routing
           sandbox: sandbox-sandbox-ref.local
         upstreamDefinitions:
           - name: sandbox-upstream
+            basePath: /sandbox
             upstreams:
-              - url: http://sample-backend:9080/sandbox
+              - url: http://sample-backend:9080
         upstream:
           main:
             url: http://sample-backend:9080
@@ -243,8 +244,9 @@ Feature: Sandbox Routing
           sandbox: sandbox-sandbox-policy.local
         upstreamDefinitions:
           - name: sandbox-upstream
+            basePath: /sandbox
             upstreams:
-              - url: http://sample-backend:9080/sandbox
+              - url: http://sample-backend:9080
         upstream:
           main:
             url: http://sample-backend:9080
@@ -301,8 +303,9 @@ Feature: Sandbox Routing
             upstreams:
               - url: http://sample-backend:9080
           - name: sandbox-upstream
+            basePath: /sandbox
             upstreams:
-              - url: http://sample-backend:9080/sandbox
+              - url: http://sample-backend:9080
         upstream:
           main:
             ref: main-upstream
@@ -348,8 +351,9 @@ Feature: Sandbox Routing
           sandbox: sandbox-sandbox-manual.local
         upstreamDefinitions:
           - name: sandbox-upstream
+            basePath: /anything
             upstreams:
-              - url: http://echo-backend:80/anything
+              - url: http://echo-backend:80
         upstream:
           main:
             url: http://sample-backend:9080
@@ -433,8 +437,9 @@ Feature: Sandbox Routing
           sandbox: sandbox-sandbox-https.local
         upstreamDefinitions:
           - name: sandbox-http-upstream
+            basePath: /openai/v1
             upstreams:
-              - url: http://mock-openapi:4010/openai/v1
+              - url: http://mock-openapi:4010
         upstream:
           main:
             url: http://sample-backend:9080
@@ -470,7 +475,9 @@ Feature: Sandbox Routing
     When I delete the API "env-routing-sandbox-https-ref-v1.0"
     Then the response should be successful
 
-  Scenario: Sandbox ref with multiple urls should use the first url
+  # upstreamDefinitions URLs must be host[:port] only; the base path belongs in basePath.
+  # A path embedded in the URL (here on load-balanced URLs) is rejected with a 400.
+  Scenario: Deploy fails when an upstreamDefinitions URL contains a path
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
@@ -482,9 +489,6 @@ Feature: Sandbox Routing
         displayName: Env-Routing-Sandbox-Multi-URL-Ref-API
         version: v1.0
         context: /env-sandbox-multi/$version
-        vhosts:
-          main: main-sandbox-multi.local
-          sandbox: sandbox-sandbox-multi.local
         upstreamDefinitions:
           - name: sandbox-multi-upstream
             upstreams:
@@ -492,25 +496,15 @@ Feature: Sandbox Routing
               - url: http://sample-backend:9080/sandbox
         upstream:
           main:
-            url: http://sample-backend:9080
-          sandbox:
             ref: sandbox-multi-upstream
         operations:
           - method: GET
             path: /whoami
       """
-    Then the response should be successful
-    And I wait for the endpoint "http://localhost:8080/env-sandbox-multi/v1.0/whoami" to be ready with host "sandbox-sandbox-multi.local"
-
-    When I clear all headers
-    And I set request host to "sandbox-sandbox-multi.local"
-    And I send a GET request to "http://localhost:8080/env-sandbox-multi/v1.0/whoami"
-    Then the response should be successful
-    And the JSON response field "path" should be "/first/whoami"
-
-    Given I authenticate using basic auth as "admin"
-    When I delete the API "env-routing-sandbox-multi-url-ref-v1.0"
-    Then the response should be successful
+    Then the response should be a client error
+    And the response should be valid JSON
+    And the JSON response field "status" should be "error"
+    And the response body should contain "must not include a path"
 
   Scenario: Path params should route correctly with sandbox ref
     Given I authenticate using basic auth as "admin"
@@ -529,8 +523,9 @@ Feature: Sandbox Routing
           sandbox: sandbox-sandbox-params.local
         upstreamDefinitions:
           - name: sandbox-upstream
+            basePath: /sandbox
             upstreams:
-              - url: http://sample-backend:9080/sandbox
+              - url: http://sample-backend:9080
         upstream:
           main:
             url: http://sample-backend:9080
@@ -576,8 +571,9 @@ Feature: Sandbox Routing
           sandbox: sandbox-sandbox-wild.local
         upstreamDefinitions:
           - name: sandbox-upstream
+            basePath: /sandbox
             upstreams:
-              - url: http://sample-backend:9080/sandbox
+              - url: http://sample-backend:9080
         upstream:
           main:
             url: http://sample-backend:9080
@@ -679,8 +675,9 @@ Feature: Sandbox Routing
             upstreams:
               - url: http://sample-backend:9080
           - name: sandbox-upstream
+            basePath: /sandbox
             upstreams:
-              - url: http://sample-backend:9080/sandbox
+              - url: http://sample-backend:9080
         upstream:
           main:
             ref: main-upstream

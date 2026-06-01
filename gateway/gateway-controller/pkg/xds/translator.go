@@ -922,6 +922,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 func (t *Translator) resolveUpstreamCluster(upstreamName string, up *api.Upstream, upstreamDefinitions *[]api.UpstreamDefinition) (string, *url.URL, *resolvedTimeout, error) {
 	var rawURL string
 	var timeout *resolvedTimeout
+	var refBasePath *string
 
 	// Resolve URL and timeout
 	if up.Url != nil && strings.TrimSpace(*up.Url) != "" {
@@ -944,6 +945,14 @@ func (t *Translator) resolveUpstreamCluster(upstreamName string, up *api.Upstrea
 		}
 		rawURL = definition.Upstreams[0].Url
 
+		// A referenced definition's base path comes solely from its basePath field
+		// (upstreamDefinitions URLs are host[:port] only).
+		defBasePath := ""
+		if definition.BasePath != nil {
+			defBasePath = *definition.BasePath
+		}
+		refBasePath = &defBasePath
+
 		// Extract timeout if specified in the definition (may be nil)
 		if definition.Timeout != nil {
 			resolved, err := resolveTimeoutFromDefinition(definition)
@@ -963,6 +972,11 @@ func (t *Translator) resolveUpstreamCluster(upstreamName string, up *api.Upstrea
 	}
 	if parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
 		return "", nil, nil, fmt.Errorf("invalid %s upstream URL: must include host and http/https scheme", upstreamName)
+	}
+
+	// A referenced definition's base path overrides the URL path (which must be empty).
+	if refBasePath != nil {
+		parsedURL.Path = *refBasePath
 	}
 
 	// Generate cluster name

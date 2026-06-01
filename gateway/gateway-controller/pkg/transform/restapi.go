@@ -194,9 +194,11 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 				return nil, fmt.Errorf("invalid URL in upstream definition '%s': %w", def.Name, err)
 			}
 			port := ResolvePort(parsedURL)
-			basePath := parsedURL.Path
-			if basePath == "" {
-				basePath = "/"
+			// Base path comes solely from the explicit basePath field; upstreamDefinitions
+			// URLs are host[:port] only (a path in the URL is rejected during validation).
+			basePath := "/"
+			if def.BasePath != nil && *def.BasePath != "" {
+				basePath = *def.BasePath
 			}
 			rdc.UpstreamClusters[defClusterKey] = &models.UpstreamCluster{
 				Name:     def.Name,
@@ -305,7 +307,7 @@ func (t *RestAPITransformer) addUpstreamCluster(
 	up *api.Upstream,
 	upstreamDefinitions *[]api.UpstreamDefinition,
 ) (*upstreamClusterResult, error) {
-	rawURL, err := resolveUpstreamURL(upstreamName, up, upstreamDefinitions)
+	rawURL, refBasePath, err := resolveUpstreamURL(upstreamName, up, upstreamDefinitions)
 	if err != nil {
 		return nil, err
 	}
@@ -319,7 +321,12 @@ func (t *RestAPITransformer) addUpstreamCluster(
 	}
 
 	port := ResolvePort(parsedURL)
+	// Direct URLs carry their base path in the path; a ref takes its base path solely from
+	// the definition's basePath field (upstreamDefinitions URLs are host[:port] only).
 	basePath := parsedURL.Path
+	if refBasePath != nil {
+		basePath = *refBasePath
+	}
 	if basePath == "" {
 		basePath = "/"
 	}
@@ -350,27 +357,33 @@ func sanitizeEnvoyClusterName(host, scheme string) string {
 	return "cluster_" + scheme + "_" + name
 }
 
-// resolveUpstreamURL resolves the URL from an upstream (direct URL or ref).
-func resolveUpstreamURL(name string, up *api.Upstream, defs *[]api.UpstreamDefinition) (string, error) {
+// resolveUpstreamURL resolves the URL from an upstream (direct URL or ref). For a ref it
+// also returns the referenced definition's base path (from basePath, never the URL); for a
+// direct URL the returned base-path pointer is nil, signalling the caller to use the URL path.
+func resolveUpstreamURL(name string, up *api.Upstream, defs *[]api.UpstreamDefinition) (string, *string, error) {
 	if up.Url != nil && strings.TrimSpace(*up.Url) != "" {
-		return strings.TrimSpace(*up.Url), nil
+		return strings.TrimSpace(*up.Url), nil, nil
 	}
 	if up.Ref != nil && strings.TrimSpace(*up.Ref) != "" {
 		refName := strings.TrimSpace(*up.Ref)
 		if defs == nil {
-			return "", fmt.Errorf("upstream definition '%s' referenced but no definitions provided", refName)
+			return "", nil, fmt.Errorf("upstream definition '%s' referenced but no definitions provided", refName)
 		}
 		for _, def := range *defs {
 			if def.Name == refName {
 				if len(def.Upstreams) == 0 || def.Upstreams[0].Url == "" {
-					return "", fmt.Errorf("upstream definition '%s' has no URLs", refName)
+					return "", nil, fmt.Errorf("upstream definition '%s' has no URLs", refName)
 				}
-				return def.Upstreams[0].Url, nil
+				basePath := ""
+				if def.BasePath != nil {
+					basePath = *def.BasePath
+				}
+				return def.Upstreams[0].Url, &basePath, nil
 			}
 		}
-		return "", fmt.Errorf("upstream definition '%s' not found", refName)
+		return "", nil, fmt.Errorf("upstream definition '%s' not found", refName)
 	}
-	return "", fmt.Errorf("%s upstream has no URL or ref", name)
+	return "", nil, fmt.Errorf("%s upstream has no URL or ref", name)
 }
 
 // ResolvePort returns the port from a URL, defaulting to 80/443.
