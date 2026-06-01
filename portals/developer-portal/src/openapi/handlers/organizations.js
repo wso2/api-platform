@@ -22,13 +22,11 @@
  */
 const adminService = require('../../services/adminService');
 const devportalService = require('../../services/devportalService');
-const { requireCsrfForMutatingApi } = require('../../middlewares/csrfProtection')
-const { compose } = require('./_compose');
 
 module.exports = {
-    createOrganization: compose(requireCsrfForMutatingApi, adminService.createOrganization),
+    createOrganization: adminService.createOrganization,
     getOrganizations: adminService.getOrganizations,
-    updateOrganization: compose(requireCsrfForMutatingApi, adminService.updateOrganization),
+    updateOrganization: adminService.updateOrganization,
     getOrganization: devportalService.getOrganization,
-    deleteOrganization: compose(requireCsrfForMutatingApi, adminService.deleteOrganization),
+    deleteOrganization: adminService.deleteOrganization,
 };

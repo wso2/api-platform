@@ -697,17 +697,18 @@ const createAPITemplate = async (req, res) => {
 };
 
 const createAPIContent = async (req, res) => {
+    const uploadedFile = req.files?.apiContent?.[0] ?? req.file;
     logger.info('Creating API content...', {
         orgId: req.params.orgId,
         apiId: req.params.apiId,
-        fileName: req.file?.originalname,
+        fileName: uploadedFile?.originalname,
     });
     try {
         const { orgId, apiId } = req.params;
         if (!orgId) {
             throw new CustomError(400, "Bad Request", "Missing required parameter: 'orgId'");
         }
-        let apiContent = await extractApiContentFromUploadedZip(req.file, orgId, apiId, 'classic');
+        let apiContent = await extractApiContentFromUploadedZip(uploadedFile, orgId, apiId, 'classic');
         let docMetadata = "";
         if (req.body.docMetadata) {
             docMetadata = JSON.parse(req.body.docMetadata);
@@ -747,7 +748,7 @@ const createAPIContent = async (req, res) => {
             stack: error.stack,
             orgId: req.params.orgId,
             apiId: req.params.apiId,
-            fileName: req.file?.originalname,
+            fileName: uploadedFile?.originalname,
         });
         util.handleError(res, error);
     }
@@ -855,10 +856,11 @@ const updateAPITemplate = async (req, res) => {
 };
 
 const updateAPIContent = async (req, res) => {
+    const uploadedFile = req.files?.apiContent?.[0] ?? req.file;
     logger.info('Updating API content...', {
         orgId: req.params.orgId,
         apiId: req.params.apiId,
-        fileName: req.file?.originalname
+        fileName: uploadedFile?.originalname
     });
     try {
         const { orgId, apiId } = req.params;
@@ -869,7 +871,7 @@ const updateAPIContent = async (req, res) => {
         if (!orgId) {
             throw new CustomError(400, "Bad Request", "Missing required parameter: 'orgId'");
         }
-        let apiContent = await extractApiContentFromUploadedZip(req.file, orgId, apiId, 'classic');
+        let apiContent = await extractApiContentFromUploadedZip(uploadedFile, orgId, apiId, 'classic');
 
         if (req.body.docMetadata) {
             const docMetadata = JSON.parse(req.body.docMetadata);
@@ -900,7 +902,7 @@ const updateAPIContent = async (req, res) => {
             stack: error.stack,
             orgId: req.params.orgId,
             apiId: req.params.apiId,
-            fileName: req.file?.originalname
+            fileName: uploadedFile?.originalname
         });
         util.handleError(res, error);
     }
