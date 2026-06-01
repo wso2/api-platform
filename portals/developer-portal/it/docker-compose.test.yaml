@@ -74,6 +74,7 @@ services:
 
   cypress:
     image: cypress/included:13.17.0
+    platform: ${CYPRESS_PLATFORM:-linux/amd64}
     depends_on:
       devportal:
         condition: service_healthy

@@ -12,8 +12,8 @@ Get the Developer Portal running locally in a few minutes using Docker Compose.
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/wso2/api-developer-portal.git
-cd api-developer-portal
+git clone https://github.com/wso2/api-platform.git
+cd api-platform/portals/developer-portal/
 ```
 
 ### 2. Create a configuration file

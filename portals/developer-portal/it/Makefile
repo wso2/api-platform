@@ -22,6 +22,11 @@ VERSION ?= $(shell cat ../VERSION 2>/dev/null | tr -d '[:space:]' || echo "0.0.1
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME      := developer-portal
 
+# Auto-detect host CPU so Cypress runs natively (no QEMU).
+# arm64 = Apple Silicon → pull linux/arm64 Cypress image.
+# Everything else (CI, Intel) defaults to linux/amd64.
+CYPRESS_PLATFORM ?= $(shell [ "$$(uname -m)" = "arm64" ] && echo "linux/arm64" || echo "linux/amd64")
+
 # Tag the pre-built developer-portal image as :test so docker-compose.test.yaml can
 # reference a stable :test tag regardless of whether the local build is :VERSION.
 ensure-test-tag:
@@ -37,7 +42,7 @@ ensure-test-tag:
 # Run Cypress tests headlessly inside Docker Compose (CI-friendly).
 # Requires the developer-portal image to be built first: make build (from portals/developer-portal/).
 test: ensure-test-tag
-	docker compose -f docker-compose.test.yaml up --abort-on-container-exit --exit-code-from cypress
+	CYPRESS_PLATFORM=$(CYPRESS_PLATFORM) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.yaml up --abort-on-container-exit --exit-code-from cypress
 	$(MAKE) _collect-exit
 
 # Capture the exit code from the cypress container even after compose exits.
