@@ -206,8 +206,9 @@ Feature: Dynamic Endpoint policy
           sandbox: dyn-sb-sandbox.local
         upstreamDefinitions:
           - name: alt-upstream
+            basePath: /alternate
             upstreams:
-              - url: http://sample-backend:9080/alternate
+              - url: http://sample-backend:9080
         upstream:
           main:
             url: http://sample-backend:9080
@@ -265,8 +266,9 @@ Feature: Dynamic Endpoint policy
           sandbox: dyn-api-sb-sandbox.local
         upstreamDefinitions:
           - name: alt-upstream
+            basePath: /alternate
             upstreams:
-              - url: http://sample-backend:9080/alternate
+              - url: http://sample-backend:9080
         upstream:
           main:
             url: http://sample-backend:9080
@@ -325,8 +327,9 @@ Feature: Dynamic Endpoint policy
           sandbox: dyn-mixed-sandbox.local
         upstreamDefinitions:
           - name: alt-upstream
+            basePath: /alternate
             upstreams:
-              - url: http://sample-backend:9080/alternate
+              - url: http://sample-backend:9080
         upstream:
           main:
             url: http://sample-backend:9080
