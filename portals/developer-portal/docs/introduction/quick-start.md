@@ -21,10 +21,10 @@ cd api-platform/portals/developer-portal/
 Copy the sample configuration and set the minimum required values:
 
 ```bash
-cp sample_config.yaml config.yaml
+mkdir -p configs && cp sample_config.yaml configs/config.yaml
 ```
 
-Open `config.yaml` and set:
+<!-- Open `config.yaml` and set:
 
 ```yaml
 baseUrl: "http://localhost:3000"
@@ -49,7 +49,7 @@ defaultAuth:
       organizationIdentifier: "ACME"
 ```
 
-> **Note:** The `defaultAuth` block enables built-in local users for exploration. Remove it before deploying to production and configure a real [identity provider](../administer/manage-organizations.md#identity-provider-configuration).
+> **Note:** The `defaultAuth` block enables built-in local users for exploration. Remove it before deploying to production and configure a real [identity provider](../administer/manage-organizations.md#identity-provider-configuration). -->
 
 ### 3. Start the portal
 
@@ -77,45 +77,129 @@ Create an API manifest file and an OpenAPI definition, then upload them:
 
 ```yaml
 # api.yaml
-apiVersion: devportal.wso2.com/v1
+apiVersion: devportal.api-platform.wso2.com/v1
 kind: RestApi
 
 metadata:
-  name: ping-api-v1
+  name: ping-api-v1.0
 
 spec:
   type: REST
   displayName: Ping API
   version: v1.0
-  description: A simple health-check API.
+  description: Sample HTTP echo/probe API. Requires API key authentication. No subscription plans.
+  provider: WSO2
   status: PUBLISHED
+  gatewayType: wso2/api-platform
+  referenceID: ping-api-v1.0
+
+  tags:
+    - ping
+    - api-key
+
   labels:
     - default
+
+  subscriptionPolicies: []
+
   visibility: PUBLIC
+  visibleGroups: []
+
+  businessInformation:
+    businessOwner: Platform Owner
+    businessOwnerEmail: support@example.com
+    technicalOwner: API Team
+    technicalOwnerEmail: architecture@example.com
+
   endpoints:
-    productionUrl: https://httpbin.org/get
+    sandboxUrl: http://localhost:8080/ping
+    productionUrl: http://localhost:8080/ping
 ```
 
 ```yaml
 # openapi.yaml
-openapi: "3.0.0"
+openapi: 3.0.1
 info:
   title: Ping API
-  version: v1.0
+  version: 1.0.0
+  description: |
+    HTTP echo/probe API secured with an API key (`X-API-Key` header).
+    Use this API to inspect requests, test connectivity, and probe status codes.
+    No subscription plans are required — just an API key.
+servers:
+  - url: /ping
+security:
+  - ApiKeyHeader: []
+components:
+  securitySchemes:
+    ApiKeyHeader:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  schemas:
+    PingResponse:
+      type: object
+      description: Response returned by the ping/echo service
+      additionalProperties: true
+
 paths:
-  /ping:
+  /get:
     get:
-      summary: Health check
+      summary: Echo a GET request
+      description: Returns the query parameters and headers sent with the request.
       responses:
-        "200":
+        '200':
           description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PingResponse'
+
+  /post:
+    post:
+      summary: Echo a POST request
+      description: Echoes the posted JSON body back in the response.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PingResponse'
+
+  /status/{code}:
+    get:
+      summary: Return a specific HTTP status code
+      description: Returns the given HTTP status code — useful for testing error handling.
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+      responses:
+        '200':
+          description: Proxy response (actual status depends on the `code` path parameter)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PingResponse'
+
 ```
 
 ```bash
-curl -X POST "http://localhost:3000/organizations/ACME/apis" \
-  -u admin:admin \
-  -F "api=@api.yaml" \
-  -F "apiDefinition=@openapi.yaml;type=application/yaml"
+curl -sk -X POST "https://localhost:3000/devportal/organizations/1ba42a09-45c0-40f8-a1bf-e4aa7cde1575/apis" \           ✔
+   -u admin:admin \
+   -F "api=@api.yaml;type=application/yaml" \
+   -F "apiDefinition=@openapi.yaml;type=application/yaml" -k
 ```
 
 Refresh the portal — the Ping API now appears in the catalog. Click it to view the documentation and try-out console.
