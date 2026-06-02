@@ -1638,6 +1638,47 @@ func TestTranslator_CreateRoute_Basic(t *testing.T) {
 	assert.Contains(t, route.Name, "/api/users")
 }
 
+// TestTranslator_CreateRoute_DynamicRouting pins the cluster specifier createRoute emits:
+// a static cluster when useClusterHeader is false, and cluster_header routing (with the
+// x-target-upstream header stripped before forwarding) when it is true. This is the
+// legacy-xDS half of the sandbox dynamic-endpoint fix.
+func TestTranslator_CreateRoute_DynamicRouting(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	t.Run("static cluster when useClusterHeader is false", func(t *testing.T) {
+		r := translator.createRoute(
+			"api-123", "0000-test-api-0000-000000000000", "v1", "/api", "GET", "/users",
+			"static-cluster", "", "localhost", "API", "", "", nil, "proj-001", nil,
+			false, "", nil,
+		)
+		require.NotNil(t, r)
+		routeAction, ok := r.Action.(*route.Route_Route)
+		require.True(t, ok)
+		clusterSpec, ok := routeAction.Route.ClusterSpecifier.(*route.RouteAction_Cluster)
+		require.True(t, ok, "expected a static cluster specifier")
+		assert.Equal(t, "static-cluster", clusterSpec.Cluster)
+		assert.NotContains(t, r.RequestHeadersToRemove, constants.TargetUpstreamHeader)
+	})
+
+	t.Run("cluster_header routing when useClusterHeader is true", func(t *testing.T) {
+		r := translator.createRoute(
+			"api-123", "0000-test-api-0000-000000000000", "v1", "/api", "GET", "/users",
+			"static-cluster", "", "localhost", "API", "", "", nil, "proj-001", nil,
+			true, "default-cluster", nil,
+		)
+		require.NotNil(t, r)
+		routeAction, ok := r.Action.(*route.Route_Route)
+		require.True(t, ok)
+		clusterSpec, ok := routeAction.Route.ClusterSpecifier.(*route.RouteAction_ClusterHeader)
+		require.True(t, ok, "expected a cluster_header specifier for dynamic selection")
+		assert.Equal(t, constants.TargetUpstreamHeader, clusterSpec.ClusterHeader)
+		assert.Contains(t, r.RequestHeadersToRemove, constants.TargetUpstreamHeader)
+	})
+}
+
 func TestTranslator_ExtractTemplateHandle_ValidLLMProvider(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
