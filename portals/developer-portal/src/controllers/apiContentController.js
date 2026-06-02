@@ -29,7 +29,7 @@ const adminDao = require('../dao/admin');
 const apiDao = require('../dao/apiMetadata');
 const subDao = require('../dao/subscription');
 const apiMetadataService = require('../services/apiMetadataService');
-const { shouldShowApiKeysNav, findSubscriptionTokenHeader } = require('../services/apiKeysNavService');
+const { apiUsesApiKeySecurity, findSubscriptionTokenHeader, securitySchemeHasApiKey } = require('../utils/apiDefinitionUtil');
 const adminService = require('../services/adminService');
 const apiFlowService = require('../services/apiFlowService');
 const subscriptionPolicyDTO = require('../dto/subscriptionPolicy');
@@ -246,7 +246,7 @@ const loadAPIContent = async (req, res) => {
             subscriptionPlans: subscriptionPlans,
             baseUrl: baseURLDev + viewName,
             schemaUrl: `${orgName}/mock/${apiHandle}/${schemaFileName}`,
-            showApiKeysNav: await shouldShowApiKeysNav(req, metaData, null, null),
+            showApiKeysNav: apiUsesApiKeySecurity(metaData),
         }
         html = renderTemplate(filePrefix + 'pages/api-landing/page.hbs', filePrefix + 'layout/main.hbs', templateContent, false);
         res.send(html);
@@ -497,7 +497,7 @@ const loadAPIContent = async (req, res) => {
                 isReadOnlyMode: config.readOnlyMode,
                 isFederatedAPI: isFederatedAPI,
             };
-            templateContent.showApiKeysNav = await shouldShowApiKeysNav(req, metaData, apiDetail, apiDefinitionForNav);
+            templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaData, apiDefinitionForNav);
             templateContent.hasSubscriptionToken = !!findSubscriptionTokenHeader(apiDefinitionForNav);
             if (metaData.apiInfo.apiType == "MCP") {
                 html = await renderTemplateFromAPI(templateContent, orgID, orgName, "pages/mcp-landing", viewName);
@@ -594,7 +594,7 @@ const loadDocsPage = async (req, res) => {
             docTypes: docNames,
             devportalMode: devportalMode,
             apiType: apiMetadata.apiInfo?.apiType,
-            showApiKeysNav: await shouldShowApiKeysNav(req, metaForNav, null, null),
+            showApiKeysNav: apiUsesApiKeySecurity(metaForNav),
         }
         html = renderTemplate(filePrefix + 'pages/docs/page.hbs', filePrefix + 'layout/main.hbs', templateContent, false);
     } else {
@@ -646,7 +646,7 @@ const loadDocsPage = async (req, res) => {
                 apiType: apiType,
                 profile: req.isAuthenticated() ? profile : null,
                 devportalMode: devportalMode,
-                showApiKeysNav: await shouldShowApiKeysNav(req, metaForNav, null, apiDefinitionForNav),
+                showApiKeysNav: apiUsesApiKeySecurity(metaForNav, apiDefinitionForNav),
             };
             html = await renderTemplateFromAPI(templateContent, orgID, orgName, "pages/docs", viewName);
         } catch (error) {
@@ -769,7 +769,7 @@ const loadDocument = async (req, res) => {
                     if (config.controlPlane?.enabled !== false) {
                         try {
                             const response = await util.invokeApiRequest(req, 'GET', controlPlaneUrl + `/apis/${apiMetadata.apiReferenceID}`, null, null);
-                            if (response.securityScheme.includes("api_key")) {
+                            if (securitySchemeHasApiKey(response.securityScheme)) {
                                 if (!modifiedSwagger.components) modifiedSwagger.components = {};
                                 if (!modifiedSwagger.components.securitySchemes) modifiedSwagger.components.securitySchemes = {};
                                 modifiedSwagger.components.securitySchemes.ApiKeyAuth = { "type": "apiKey", "name": `${response.apiKeyHeader}`, "in": "header" };
@@ -877,7 +877,7 @@ const loadDocument = async (req, res) => {
                 apiInfo: { gatewayType: apiMetadata.apiInfo?.gatewayType },
                 apiReferenceID: apiMetadata.apiReferenceID,
             };
-            templateContent.showApiKeysNav = await shouldShowApiKeysNav(req, metaForNav, null);
+            templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaForNav);
             html = renderTemplate(filePrefix + 'pages/docs/page.hbs', filePrefix + 'layout/main.hbs', templateContent, false);
         } else {
 
@@ -913,7 +913,7 @@ const loadDocument = async (req, res) => {
                     apiInfo: { gatewayType: row.GATEWAY_TYPE },
                     apiReferenceID: row.REFERENCE_ID,
                 };
-                templateContent.showApiKeysNav = await shouldShowApiKeysNav(req, metaForNav, null);
+                templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaForNav);
                 html = await renderTemplateFromAPI(templateContent, orgID, orgName, "pages/docs", viewName);
             } catch (error) {
                 const templateContent = {

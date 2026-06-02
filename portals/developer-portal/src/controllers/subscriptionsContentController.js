@@ -24,7 +24,7 @@ const adminDao = require('../dao/admin');
 const apiDao = require('../dao/apiMetadata');
 const subDao = require('../dao/subscription');
 const apiMetadataService = require('../services/apiMetadataService');
-const { shouldShowApiKeysNav } = require('../services/apiKeysNavService');
+const { apiUsesApiKeySecurity } = require('../utils/apiDefinitionUtil');
 
 
 const loadSubscriptions = async (req, res) => {
@@ -194,7 +194,7 @@ const loadAPISubscriptions = async (req, res) => {
             apiMetadata: metaData,
             apiHandle: apiHandle,
             isReadOnlyMode: config.readOnlyMode,
-            showApiKeysNav: await shouldShowApiKeysNav(req, metaData, null, apiDefinitionForNav),
+            showApiKeysNav: apiUsesApiKeySecurity(metaData, apiDefinitionForNav),
         };
 
         html = await renderTemplateFromAPI(templateContent, orgID, orgName, 'pages/api-subscriptions', viewName);
