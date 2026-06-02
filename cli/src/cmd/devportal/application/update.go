@@ -71,7 +71,7 @@ var updateCmd = &cobra.Command{
 func init() {
 	utils.AddStringFlag(updateCmd, utils.FlagOrgID, &updateOrgID, "", "Organization ID")
 	utils.AddStringFlag(updateCmd, utils.FlagAppID, &updateAppID, "", "Application ID")
-	utils.AddStringFlag(updateCmd, utils.FlagAppName, &updateAppName, "", "Application name")
+	utils.AddStringFlag(updateCmd, utils.FlagPropertyName, &updateAppName, "", "Application name")
 	utils.AddStringFlag(updateCmd, utils.FlagType, &updateType, "", "Application type (e.g. WEB)")
 	utils.AddStringFlag(updateCmd, utils.FlagDescription, &updateDescription, "", "Application description (optional)")
 	utils.AddStringFlag(updateCmd, utils.FlagName, &updateName, "", "DevPortal display name")
@@ -79,7 +79,7 @@ func init() {
 	utils.AddBoolFlag(updateCmd, utils.FlagInsecure, &updateInsecure, false, "Skip TLS certificate verification")
 	_ = updateCmd.MarkFlagRequired(utils.FlagOrgID)
 	_ = updateCmd.MarkFlagRequired(utils.FlagAppID)
-	_ = updateCmd.MarkFlagRequired(utils.FlagAppName)
+	_ = updateCmd.MarkFlagRequired(utils.FlagPropertyName)
 	_ = updateCmd.MarkFlagRequired(utils.FlagType)
 }
 

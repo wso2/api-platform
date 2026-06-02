@@ -64,9 +64,8 @@ const (
 	FlagAPIKeyID               = "api-key-id"
 	FlagKeyName                = "key-name"
 	FlagExpiresAt              = "expires-at"
-	FlagApiKeyName             = "name"
+	FlagPropertyName           = "name"
 	FlagAppID                  = "app-id"
-	FlagAppName                = "name"
 	FlagDescription            = "description"
 )
 

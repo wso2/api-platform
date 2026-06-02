@@ -136,6 +136,14 @@ type projectAPIResource struct {
 	Metadata struct {
 		Name string `yaml:"name"`
 	} `yaml:"metadata"`
+	Spec struct {
+		Description         string                       `yaml:"description"`
+		ReferenceID         string                       `yaml:"referenceID"`
+		Tags                []string                     `yaml:"tags"`
+		Labels              []string                     `yaml:"labels"`
+		BusinessInformation devPortalBusinessInformation `yaml:"businessInformation"`
+		Endpoints           devPortalEndpoints           `yaml:"endpoints"`
+	} `yaml:"spec"`
 }
 
 type gatewayResource struct {
@@ -158,18 +166,18 @@ type devPortalManifestMeta struct {
 }
 
 type devPortalManifestSpec struct {
-	DisplayName         string                       `yaml:"displayName"`
-	Version             string                       `yaml:"version"`
-	Description         string                       `yaml:"description"`
-	Provider            string                       `yaml:"provider"`
-	ReferenceID         string                       `yaml:"referenceID"`
-	Tags                []string                     `yaml:"tags"`
-	Labels              []string                     `yaml:"labels"`
-	SubscriptionPlans   []string                     `yaml:"subscriptionPlans"`
-	Visibility          string                       `yaml:"visibility"`
-	VisibleGroups       []string                     `yaml:"visibleGroups"`
-	BusinessInformation devPortalBusinessInformation `yaml:"businessInformation"`
-	Endpoints           devPortalEndpoints           `yaml:"endpoints"`
+	DisplayName          string                       `yaml:"displayName"`
+	Version              string                       `yaml:"version"`
+	Description          string                       `yaml:"description"`
+	Provider             string                       `yaml:"provider"`
+	ReferenceID          string                       `yaml:"referenceID"`
+	Tags                 []string                     `yaml:"tags"`
+	Labels               []string                     `yaml:"labels"`
+	SubscriptionPolicies []string                     `yaml:"subscriptionPolicies"`
+	Visibility           string                       `yaml:"visibility"`
+	VisibleGroups        []string                     `yaml:"visibleGroups"`
+	BusinessInformation  devPortalBusinessInformation `yaml:"businessInformation"`
+	Endpoints            devPortalEndpoints           `yaml:"endpoints"`
 }
 
 type devPortalBusinessInformation struct {
@@ -295,6 +303,16 @@ func buildDefaultDevPortalManifest(projectRoot string, projectConfig *apiProject
 		return nil, fmt.Errorf("failed to parse gateway artifact: %w", err)
 	}
 
+	tags := apiMetadata.Spec.Tags
+	if len(tags) == 0 {
+		tags = []string{"default"}
+	}
+
+	labels := apiMetadata.Spec.Labels
+	if len(labels) == 0 {
+		labels = []string{"default"}
+	}
+
 	return &devPortalManifest{
 		APIVersion: "devportal.api-platform.wso2.com/v1",
 		Kind:       "RestApi",
@@ -302,26 +320,18 @@ func buildDefaultDevPortalManifest(projectRoot string, projectConfig *apiProject
 			Name: strings.TrimSpace(apiMetadata.Metadata.Name),
 		},
 		Spec: devPortalManifestSpec{
-			DisplayName:       strings.TrimSpace(gateway.Spec.DisplayName),
-			Version:           strings.TrimSpace(gateway.Spec.Version),
-			Description:       "",
-			Provider:          "WSO2",
-			ReferenceID:       "",
-			Tags:              []string{"default"},
-			Labels:           []string{"default"},
-			SubscriptionPlans: gateway.Spec.SubscriptionPlans,
-			Visibility:        "PUBLIC",
-			VisibleGroups:     []string{},
-			BusinessInformation: devPortalBusinessInformation{
-				BusinessOwner:       "",
-				BusinessOwnerEmail:  "",
-				TechnicalOwner:      "",
-				TechnicalOwnerEmail: "",
-			},
-			Endpoints: devPortalEndpoints{
-				SandboxURL:    "",
-				ProductionURL: "",
-			},
+			DisplayName:          strings.TrimSpace(gateway.Spec.DisplayName),
+			Version:              strings.TrimSpace(gateway.Spec.Version),
+			Description:          strings.TrimSpace(apiMetadata.Spec.Description),
+			Provider:             "WSO2",
+			ReferenceID:          strings.TrimSpace(apiMetadata.Spec.ReferenceID),
+			Tags:                 tags,
+			Labels:               labels,
+			SubscriptionPolicies: gateway.Spec.SubscriptionPlans,
+			Visibility:           "PUBLIC",
+			VisibleGroups:        []string{},
+			BusinessInformation:  apiMetadata.Spec.BusinessInformation,
+			Endpoints:            apiMetadata.Spec.Endpoints,
 		},
 	}, nil
 }

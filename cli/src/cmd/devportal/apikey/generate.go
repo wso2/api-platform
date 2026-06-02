@@ -87,7 +87,7 @@ var generateCmd = &cobra.Command{
 func init() {
 	utils.AddStringFlag(generateCmd, utils.FlagOrgID, &generateOrgID, "", "Organization ID")
 	utils.AddStringFlag(generateCmd, utils.FlagAPIID, &generateAPIID, "", "Developer Portal API ID")
-	utils.AddStringFlag(generateCmd, utils.FlagApiKeyName, &generateName, "", "API key name (lowercase letters, numbers, '_' and '-'; matches ^[a-z0-9][a-z0-9_-]{0,127}$)")
+	utils.AddStringFlag(generateCmd, utils.FlagPropertyName, &generateName, "", "API key name (lowercase letters, numbers, '_' and '-'; matches ^[a-z0-9][a-z0-9_-]{0,127}$)")
 	utils.AddStringFlag(generateCmd, utils.FlagExpiresAt, &generateExpiresAt, "", "Optional expiry: ISO-8601 datetime with timezone (e.g. 2026-12-31T23:59:59Z), epoch seconds, or epoch milliseconds")
 	utils.AddStringFlag(generateCmd, utils.FlagName, &generateDisplayName, "", "DevPortal display name")
 	utils.AddStringFlag(generateCmd, utils.FlagPlatform, &generatePlatform, "", "Platform name")

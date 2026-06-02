@@ -223,6 +223,17 @@ metadata:
 spec:
   description: ""
   gatewayType: wso2/api-platform
+  referenceID: ""
+  tags: []
+  labels: []
+  businessInformation:
+    businessOwner: ""
+    businessOwnerEmail: ""
+    technicalOwner: ""
+    technicalOwnerEmail: ""
+  endpoints:
+    sandboxUrl: ""
+    productionUrl: ""
 `, resourceName)
 }
 
