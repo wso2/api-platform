@@ -19,6 +19,26 @@ const crypto = require('crypto');
 const { SubscriptionMapping } = require('../models/application');
 const { APIMetadata } = require('../models/apiMetadata');
 const SubscriptionPolicy = require('../models/subscriptionPolicy');
+const { createCryptoUtil } = require('../utils/cryptoUtil');
+const { config } = require('../config/configLoader');
+
+const subCrypto = createCryptoUtil(config.advanced.subscriptionTokenEncryptionKey);
+
+function encryptToken(token) {
+    return subCrypto.encrypt(token);
+}
+
+function decryptToken(value) {
+    if (!value) return value;
+    return subCrypto.decrypt(value);
+}
+
+function decryptSubRecord(sub) {
+    if (!sub) return sub;
+    const dv = sub.dataValues || sub;
+    if (dv.SUB_TOKEN) dv.SUB_TOKEN = decryptToken(dv.SUB_TOKEN);
+    return sub;
+}
 
 const INCLUDE_API_AND_POLICY = [
     {
@@ -43,17 +63,20 @@ async function createSubscription(orgId, apiId, policyId, transaction) {
     for (let attempt = 0; attempt < 3; attempt++) {
         const subToken = generateSubToken();
         try {
-            return await SubscriptionMapping.create(
+            const record = await SubscriptionMapping.create(
                 {
                     APP_ID: null,
                     ORG_ID: orgId,
                     API_ID: apiId,
                     POLICY_ID: policyId || null,
-                    SUB_TOKEN: subToken,
+                    SUB_TOKEN: encryptToken(subToken),
                     STATUS: 'ACTIVE',
                 },
                 { transaction }
             );
+            // Expose the plaintext token to callers (never the encrypted form).
+            record.dataValues.SUB_TOKEN = subToken;
+            return record;
         } catch (err) {
             const isTokenCollision =
                 err.name === 'SequelizeUniqueConstraintError' &&
@@ -69,18 +92,19 @@ async function createSubscription(orgId, apiId, policyId, transaction) {
 async function listSubscriptions(orgId, { apiId } = {}) {
     const where = { ORG_ID: orgId, APP_ID: null };
     if (apiId) where.API_ID = apiId;
-    return SubscriptionMapping.findAll({
+    const rows = await SubscriptionMapping.findAll({
         where,
         include: INCLUDE_API_AND_POLICY,
         order: [['SUB_ID', 'ASC']],
     });
+    return rows.map(decryptSubRecord);
 }
 
 async function getSubscription(orgId, subId) {
-    return SubscriptionMapping.findOne({
+    return decryptSubRecord(await SubscriptionMapping.findOne({
         where: { SUB_ID: subId, ORG_ID: orgId, APP_ID: null },
         include: INCLUDE_API_AND_POLICY,
-    });
+    }));
 }
 
 async function updateSubscriptionStatus(orgId, subId, status, transaction) {
@@ -100,10 +124,10 @@ async function deleteSubscription(orgId, subId, transaction) {
 }
 
 async function getSubscriptionById(orgId, subId) {
-    return SubscriptionMapping.findOne({
+    return decryptSubRecord(await SubscriptionMapping.findOne({
         where: { SUB_ID: subId, ORG_ID: orgId },
         include: INCLUDE_API_AND_POLICY,
-    });
+    }));
 }
 
 module.exports = {

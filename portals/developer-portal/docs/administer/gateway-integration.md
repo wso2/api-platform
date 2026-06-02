@@ -20,16 +20,16 @@ The portal fires events in the background via a delivery worker with automatic r
 
 ## Webhook Events
 
-| Event | Description | Payload |
+| Event | Description | Sensitive field |
 |---|---|---|
-| `apikey.generated` | A new API key was generated for a subscription | API key value (encrypted) |
-| `apikey.regenerated` | An existing API key was rotated | Old + new key value (encrypted) |
-| `apikey.revoked` | An API key was revoked | API key reference (encrypted) |
-| `subscription.created` | A developer subscribed an application to an API | Subscription details |
-| `subscription.updated` | A subscription's plan or state changed | Updated subscription details |
-| `subscription.deleted` | A developer unsubscribed | Subscription reference |
+| `apikey.generated` | A new API key was generated for a subscription | API key secret (`encrypted_key`) |
+| `apikey.regenerated` | An existing API key was rotated | New API key secret (`encrypted_key`) |
+| `apikey.revoked` | An API key was revoked | — |
+| `subscription.created` | A developer subscribed to an API | Subscription token (`encrypted_key`) |
+| `subscription.plan_changed` | A subscription's plan changed | — |
+| `subscription.deleted` | A developer unsubscribed | — |
 
-API key payloads are **envelope-encrypted** with the subscriber's RSA-2048 public key so that sensitive key material is never exposed in transit.
+For events that carry a sensitive field (`apikey.generated`, `apikey.regenerated`, `subscription.created`), the value is **envelope-encrypted** with the subscriber's RSA-2048 public key and delivered in `data.encrypted_key`. It is never included in plaintext.
 
 ## Configure a Webhook Subscriber
 
@@ -42,7 +42,7 @@ webhooks:
       gatewayType: "wso2/api-platform"         # matches the API's gateway type; use "*" for all
       url: "https://gateway.example.com/devportal/events"
       secret: "change-me-minimum-32-chars"     # HMAC-SHA256 signing key
-      publicKey: |                             # RSA-2048 PEM — for encrypting apikey.* payloads
+      publicKey: |                             # RSA-2048 PEM — for encrypting sensitive fields
         -----BEGIN PUBLIC KEY-----
         MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...
         -----END PUBLIC KEY-----
@@ -66,7 +66,7 @@ webhooks:
 | `gatewayType` | No | Filter events to APIs with this gateway type. Use `"*"` to match all |
 | `url` | Yes | HTTPS endpoint on your gateway that receives webhook POSTs |
 | `secret` | Yes | Minimum 32-character string used to sign each event with HMAC-SHA256 |
-| `publicKey` | Recommended | RSA-2048 public key (PEM) for envelope-encrypting API key payloads |
+| `publicKey` | Recommended | RSA-2048 public key (PEM) for envelope-encrypting sensitive fields in `apikey.generated`, `apikey.regenerated`, and `subscription.created` events |
 | `events` | No | Event type allowlist. Wildcards supported (`apikey.*`). Omit to receive all |
 | `timeoutMs` | No | HTTP request timeout in milliseconds (default: 5000) |
 
@@ -79,6 +79,29 @@ To avoid storing secrets in `config.yaml`, use environment variables. The ID is 
 export DP_WEBHOOK_SECRET_MY_GATEWAY="your-hmac-secret"
 export DP_WEBHOOK_PUBKEY_PATH_MY_GATEWAY="/run/secrets/gateway-pubkey.pem"
 ```
+
+### Encrypting subscription tokens at rest
+
+Subscription tokens are encrypted at rest in the database using AES-256-GCM. A 64-character hex key **must** be configured before starting the portal:
+
+```yaml
+advanced:
+  subscriptionTokenEncryptionKey: "<64-char hex string>"  # 32 random bytes as hex
+```
+
+Or via environment variable:
+
+```bash
+export DP_ADVANCED_SUBSCRIPTIONTOKENENCRYPTIONKEY="<64-char hex string>"
+```
+
+Generate a suitable key with:
+
+```bash
+openssl rand -hex 32
+```
+
+The portal will fail to encrypt or decrypt tokens if this key is missing or invalid.
 
 ## Webhook Request Format
 
@@ -148,7 +171,7 @@ Fired when a developer generates a new API key for an API.
 ```
 
 - `subscription` is present only when the key is bound to a subscription
-- `encrypted_key` is present only when a `publicKey` is configured for the subscriber (see [Envelope Encryption](#envelope-encryption-for-api-key-events))
+- `encrypted_key` is present only when a `publicKey` is configured for the subscriber (see [Envelope Encryption](#envelope-encryption))
 - `expires_at` is `null` for non-expiring keys
 
 ### `apikey.regenerated`
@@ -199,14 +222,13 @@ No `encrypted_key` is included — the gateway only needs the `key_id` to revoke
 
 ### `subscription.created`
 
-Fired when a developer subscribes to an API.
+Fired when a developer subscribes to an API. The subscription token is delivered in `encrypted_key` — it is never included in plaintext.
 
 ```json
 {
   "event_type": "subscription.created",
   "data": {
     "subscription": {
-      "token": "sub-token",
       "plan_name": "Gold",
       "plan_ref_id": "policy-uuid",
       "status": "ACTIVE"
@@ -215,12 +237,19 @@ Fired when a developer subscribes to an API.
       "name": "Order API",
       "version": "v1.0",
       "ref_id": "cp-api-uuid"
+    },
+    "encrypted_key": {
+      "wrappedKey": "<base64>",
+      "iv": "<base64>",
+      "tag": "<base64>",
+      "ciphertext": "<base64>"
     }
   }
 }
 ```
 
-The `subscription.token` is the value developers must include as `X-Subscription-Token` on APIs that use token-based subscription enforcement.
+- `encrypted_key` decrypts to the subscription token — the value developers must include as `X-Subscription-Token` on APIs that use token-based subscription enforcement
+- `encrypted_key` is present only when a `publicKey` is configured for the subscriber; if no public key is configured, the token is not delivered
 
 ### `subscription.plan_changed`
 
@@ -231,7 +260,6 @@ Fired when a subscription's plan changes.
   "event_type": "subscription.plan_changed",
   "data": {
     "subscription": {
-      "token": "sub-token",
       "plan_name": "Bronze",
       "plan_ref_id": "policy-uuid",
       "status": "ACTIVE"
@@ -245,19 +273,20 @@ Fired when a subscription's plan changes.
 }
 ```
 
+The gateway identifies the affected subscription via the `aggregateId` in the event. No token is included.
+
 ### `subscription.deleted`
 
-Fired when a developer unsubscribes. The gateway should revoke access for the subscription token.
+Fired when a developer unsubscribes. The gateway should revoke access for the corresponding subscription.
 
 ```json
 {
   "event_type": "subscription.deleted",
   "data": {
     "subscription": {
-      "token": "sub-token",
       "plan_name": "Gold",
       "plan_ref_id": "policy-uuid",
-      "status": "CANCELLED"
+      "status": "ACTIVE"
     },
     "api": {
       "name": "Order API",
@@ -267,6 +296,8 @@ Fired when a developer unsubscribes. The gateway should revoke access for the su
   }
 }
 ```
+
+The gateway identifies the affected subscription via the `aggregateId` in the event. No token is included.
 
 ---
 
@@ -313,9 +344,9 @@ function verifySignature(secret, rawBody, signatureHeader) {
 }
 ```
 
-### Envelope encryption for API key events
+### Envelope encryption
 
-API key payloads (`apikey.generated`, `apikey.regenerated`) include an `encrypted_key` object when a `publicKey` is configured for the subscriber. The key is never included in plaintext.
+`apikey.generated`, `apikey.regenerated`, and `subscription.created` events include an `encrypted_key` object when a `publicKey` is configured for the subscriber. The sensitive value (API key secret or subscription token) is never included in plaintext.
 
 **Encryption scheme:** hybrid RSA-OAEP + AES-256-GCM.
 
@@ -324,21 +355,21 @@ encrypted_key = {
   wrappedKey  — RSA-OAEP(SHA-256) encrypted 256-bit AES key (base64)
   iv          — 12-byte AES-GCM IV (base64)
   tag         — 16-byte AES-GCM authentication tag (base64)
-  ciphertext  — AES-256-GCM encrypted API key secret (base64)
+  ciphertext  — AES-256-GCM encrypted secret value (base64)
 }
 ```
 
 **Decryption steps:**
 
 1. RSA-decrypt `wrappedKey` with your private key using OAEP+SHA-256 → `aesKey`
-2. AES-256-GCM decrypt `ciphertext` using `aesKey`, `iv`, and `tag` → plaintext API key secret
+2. AES-256-GCM decrypt `ciphertext` using `aesKey`, `iv`, and `tag` → plaintext secret
 
 **Example (Node.js):**
 
 ```js
 const crypto = require('crypto');
 
-function decryptApiKey(privateKeyPem, encryptedKey) {
+function decryptSecret(privateKeyPem, encryptedKey) {
     const aesKey = crypto.privateDecrypt(
         { key: privateKeyPem, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
         Buffer.from(encryptedKey.wrappedKey, 'base64')
@@ -351,7 +382,7 @@ function decryptApiKey(privateKeyPem, encryptedKey) {
 }
 ```
 
-If no `publicKey` is configured for the subscriber, `encrypted_key` is omitted and the API key secret is not delivered at all — configure a public key before going to production.
+If no `publicKey` is configured for the subscriber, `encrypted_key` is omitted and the sensitive value is not delivered at all — configure a public key before going to production.
 
 ## Delivery Retry
 

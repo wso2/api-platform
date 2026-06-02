@@ -36,7 +36,6 @@ function buildWebhookPayload(sub, apiMetadata, policy) {
     return {
         subscription: {
             plan_ref_id: policy ? (policy.REF_ID || null) : null,
-            token: sub.SUB_TOKEN,
             plan_name: policy ? (policy.DISPLAY_NAME || policy.POLICY_NAME || null) : null,
             status: sub.STATUS,
         },
@@ -116,6 +115,7 @@ const createSubscription = async (req, res) => {
                 gatewayType: apiMetadata.GATEWAY_TYPE,
                 aggregateType: 'subscription',
                 aggregateId: newSub.SUB_ID,
+                plaintextKey: newSub.SUB_TOKEN,
             });
         });
 

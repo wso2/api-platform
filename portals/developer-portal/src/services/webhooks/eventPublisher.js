@@ -34,14 +34,17 @@ const VALID_EVENT_TYPES = new Set([
     'apikey.revoked'
 ]);
 
-const KEY_EVENT_TYPES = new Set(['apikey.generated', 'apikey.regenerated']);
+const SECRET_EVENT_TYPES = new Set([
+    'apikey.generated', 'apikey.regenerated',
+    'subscription.created',
+]);
 
 /**
  * Publish a domain event inside an existing Sequelize transaction.
  *
- * For apikey.generated / apikey.regenerated: pass `opts.plaintextKey` (string).
- * The key is encrypted per-subscriber and stored in DP_EVENT_DELIVERY.ENCRYPTED_FIELDS.
- * It is NOT written to DP_EVENT.PAYLOAD.
+ * For SECRET_EVENT_TYPES (apikey.* and subscription.*): pass `opts.plaintextKey` (string).
+ * The value is encrypted per-subscriber into DP_EVENT_DELIVERY.ENCRYPTED_FIELDS and
+ * is NOT written to DP_EVENT.PAYLOAD.
  *
  * @param {string} eventType
  * @param {object} payload          — event data (no plaintext keys here)
@@ -51,7 +54,7 @@ const KEY_EVENT_TYPES = new Set(['apikey.generated', 'apikey.regenerated']);
  * @param {string} [opts.gatewayType]
  * @param {string} [opts.aggregateType]
  * @param {string} opts.aggregateId  — PK of the primary entity (keyId, subId, etc.)
- * @param {string} [opts.plaintextKey] — only for apikey.* events; zeroized after use
+ * @param {string} [opts.plaintextKey] — required for SECRET_EVENT_TYPES; zeroized after use for apikey.* events
  * @returns {Promise<string>} eventId
  */
 async function publish(eventType, payload, opts) {
@@ -72,7 +75,7 @@ async function publish(eventType, payload, opts) {
         payload
     }, transaction);
 
-    if (KEY_EVENT_TYPES.has(eventType) && !plaintextKey) {
+    if (SECRET_EVENT_TYPES.has(eventType) && !plaintextKey) {
         logger.error('[eventPublisher] key event missing plaintextKey — rejecting', {
             eventType, orgId, aggregateId
         });
@@ -83,7 +86,7 @@ async function publish(eventType, payload, opts) {
 
     // For key events, encrypt the plaintext per subscriber and write delivery rows now
     // (inside the same TX) so the plaintext never leaves this call's stack.
-    if (KEY_EVENT_TYPES.has(eventType) && plaintextKey) {
+    if (SECRET_EVENT_TYPES.has(eventType) && plaintextKey) {
         const subscribers = matchSubscribers(eventType, gatewayType || null);
         const perSubscriberEncrypted = {};
 
@@ -112,7 +115,7 @@ async function publish(eventType, payload, opts) {
 
         bus.emit('key_event_published');
     } else {
-        // Non-key events: dispatcher will fan-out and create delivery rows.
+        // Non-sensitive events: dispatcher will fan-out and create delivery rows.
         bus.emit('event_published');
     }
 
