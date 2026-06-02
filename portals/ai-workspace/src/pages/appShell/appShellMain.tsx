@@ -33,6 +33,7 @@ import {
 
 // import { handleLogout } from '../../auth/logout'; // [standalone]
 import { useAppShell as useWorkspaceAppShell } from '../../contexts/AppShellContext';
+import { useAppAuth } from '../../contexts/AppAuthContext';
 
 import AppHeader from './AppHeader';
 import AppSidebar from './AppSidebar';
@@ -63,6 +64,7 @@ type SelectableProject = {
 export default function AppLayout(): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
+  const { logout } = useAppAuth();
   // [standalone] const { signOut } = useAuthContext();
 
   const {
@@ -83,10 +85,7 @@ export default function AppLayout(): JSX.Element {
   } = useWorkspaceAppShell();
 
   // [standalone] logout clears the stored token and reloads
-  const onLogout = () => {
-    sessionStorage.clear();
-    window.location.href = '/register-org';
-  };
+  const onLogout = () => { logout(); };
 
   const { state: shellState, actions: shellActions } = useOxygenAppShell({
     initialCollapsed: false,

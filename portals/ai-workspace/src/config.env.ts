@@ -36,6 +36,16 @@ import { getEnvOrDefault } from './utils/getEnvOrDefault';
 // Debug mode
 export const DEBUG = getEnvOrDefault('VITE_DEBUG', false);
 
+// Disable auth — set VITE_DISABLE_AUTH=true to use mock login for local dev
+export const DISABLE_AUTH = (import.meta.env.VITE_DISABLE_AUTH as string | undefined) === 'true';
+
+// Permission resolution mode:
+//   "scope" (default) — use the OAuth2 scope claim in the JWT directly
+//   "role"            — expand the platform_role/role claim to its full scope set
+export const PERMISSION_MODE = (getEnvOrDefault('VITE_PERMISSION_MODE', 'scope') as string) === 'role'
+  ? 'role' as const
+  : 'scope' as const;
+
 // Sentry environment (used for CookiePro and other env-specific features)
 export const SENTRY_ENV = getEnvOrDefault('VITE_SENTRY_ENV', 'DEV');
 
@@ -46,143 +56,44 @@ export const CHOREO_SYSTEM_ORG = getEnvOrDefault(
   'choreocontrolplane'
 );
 
-// Asgardeo configuration
-export const ASGARDEO_ORG_DOT = getEnvOrDefault(
-  'VITE_ASGARDEO_ORG_DOT',
-  'dev.'
+// OIDC configuration — works with any OIDC-compliant identity provider
+// Set VITE_OIDC_AUTHORITY to your IdP's issuer URL; endpoints are auto-discovered
+// from {authority}/.well-known/openid-configuration
+export const OIDC_AUTHORITY = getEnvOrDefault(
+  'VITE_OIDC_AUTHORITY',
+  'https://localhost:8090'
 );
-export const ASGARDEO_URI = getEnvOrDefault('VITE_ASGARDEO_URI', 'asgardeo.io');
-export const ASGARDEO_CLIENT_ID = getEnvOrDefault(
-  'VITE_ASGARDEO_CLIENT_ID',
-  'GtPvf9AfAd6v_DGU3WLADxV0_4Aa'
+export const OIDC_CLIENT_ID = getEnvOrDefault('VITE_OIDC_CLIENT_ID', '');
+export const OIDC_REDIRECT_URI = getEnvOrDefault(
+  'VITE_OIDC_REDIRECT_URI',
+  `https://${DOMAIN}/signin`
 );
-
-// Federated IDP identifiers
-export const FIDP_GOOGLE = getEnvOrDefault('VITE_FIDP_GOOGLE', 'google');
-export const FIDP_GITHUB = getEnvOrDefault('VITE_FIDP_GITHUB', 'github');
-export const FIDP_MICROSOFT = getEnvOrDefault(
-  'VITE_FIDP_MICROSOFT',
-  'microsoft'
+export const OIDC_POST_LOGOUT_REDIRECT_URI = getEnvOrDefault(
+  'VITE_OIDC_POST_LOGOUT_REDIRECT_URI',
+  `https://${DOMAIN}/login`
 );
-export const FIDP_ANONYMOUS = getEnvOrDefault(
-  'VITE_FIDP_ANONYMOUS',
-  'choreoanonymous'
-);
-export const FIDP_ENTERPRISE = getEnvOrDefault(
-  'VITE_FIDP_ENTERPRISE',
-  'EnterpriseIDP'
-);
-export const FIDP_E2E = getEnvOrDefault('VITE_FIDP_E2E', 'choreoe2etest');
-
-// Scopes
-export const ASGARDEO_SDK_SCOPES = getEnvOrDefault(
-  'VITE_ASGARDEO_SDK_SCOPES',
-  'email|profile|groups'
+export const OIDC_END_SESSION_ENDPOINT = getEnvOrDefault(
+  'VITE_OIDC_END_SESSION_ENDPOINT',
+  ''
 );
 
-// Asgardeo SDK Config object
-export const asgardeoSdkConfig = {
-  endpoints: {
-    authorizationEndpoint: getEnvOrDefault(
-      'VITE_ASGARDEO_AUTH_ENDPOINT',
-      `https://${ASGARDEO_ORG_DOT}api.${ASGARDEO_URI}/t/a/oauth2/authorize`
-    ),
-    tokenEndpoint: getEnvOrDefault(
-      'VITE_ASGARDEO_TOKEN_ENDPOINT',
-      `https://${ASGARDEO_ORG_DOT}api.${ASGARDEO_URI}/t/a/oauth2/token`
-    ),
-    endSessionEndpoint: getEnvOrDefault(
-      'VITE_ASGARDEO_END_SESSION_ENDPOINT',
-      `https://${ASGARDEO_ORG_DOT}api.${ASGARDEO_URI}/t/a/oidc/logout`
-    ),
-  },
-  overrideWellEndpointConfig: getEnvOrDefault(
-    'VITE_ASGARDEO_OVERRIDE_WELL_ENDPOINT',
-    true
-  ),
-  signInRedirectURL: getEnvOrDefault(
-    'VITE_ASGARDEO_SIGNIN_REDIRECT_URL',
-    `https://${DOMAIN}/signin`
-  ),
-  signOutRedirectURL: getEnvOrDefault(
-    'VITE_ASGARDEO_SIGNOUT_REDIRECT_URL',
-    `https://${DOMAIN}/login`
-  ),
-  clientID: ASGARDEO_CLIENT_ID,
-  baseUrl: getEnvOrDefault(
-    'VITE_ASGARDEO_BASE_URL',
-    `https://${ASGARDEO_ORG_DOT}api.${ASGARDEO_URI}`
-  ),
-  clientHost: getEnvOrDefault('VITE_ASGARDEO_CLIENT_HOST', `https://${DOMAIN}`),
-  enablePKCE: getEnvOrDefault('VITE_ASGARDEO_ENABLE_PKCE', true),
-  storage: getEnvOrDefault('VITE_ASGARDEO_STORAGE', 'sessionStorage') as
-    | 'sessionStorage'
-    | 'localStorage'
-    | 'webWorker',
-  checkSessionInterval: getEnvOrDefault(
-    'VITE_ASGARDEO_CHECK_SESSION_INTERVAL',
-    -1
-  ),
-  disableTrySignInSilently: getEnvOrDefault(
-    'VITE_ASGARDEO_DISABLE_TRY_SIGNIN_SILENTLY',
-    true
-  ),
-};
-
-// Asgardeo Resource Server URLs (pipe-separated)
-export const ASGARDEO_SDK_RESOURCE_URLS = getEnvOrDefault(
-  'VITE_ASGARDEO_SDK_RESOURCE_URLS',
-  'https://devportal.preview-dv.bijira.dev|https://sts.preview-dv.choreo.dev|https://km.preview-dv.choreo.dev|https://apim.preview-dv.choreo.dev|https://127.0.0.1:9444/api/am/admin/v2|https://127.0.0.1:9444/api/am/publisher/v2|https://id.dv.choreo.dev|https://consolev2.preview-dv.choreo.dev|https://app.preview-dv.choreo.dev|https://choreocontrolplane.preview-dv.choreo.dev|https://api.dev-central.ballerina.io|https://subscriptions.dv.wso2.com|https://apis.preview-dv.choreo.dev/projects/1.0.0/graphql|https://apis.preview-dv.choreo.dev/moesif-key/0.1.0|https://apis.preview-dv.choreo.dev/org-mgt/1.0.0/orgs|https://apis.preview-dv.choreo.dev/org-mgt/1.0.0|https://apis.preview-dv.choreo.dev/devwfmgt/v1.0|https://apis.preview-dv.choreo.dev/component-mgt/1.0.0|https://apis.preview-dv.choreo.dev/user-mgt/1.0.0|https://apis.preview-dv.choreo.dev/orgs/1.0.0|https://apis.preview-dv.choreo.dev/config-mgt/1.0.0/orgs|https://apis.preview-dv.choreo.dev/alert-configuration-service|https://apis.preview-dv.choreo.dev/devops/1.0.0|https://apis.preview-dv.choreo.dev/cio-query-api/1.0.0/query|https://apis.preview-dv.choreo.dev/cio-incident-configurator/1.0.0|https://apis.preview-dv.choreo.dev/crypto-key-service/0.1.0|https://apis.preview-dv.choreo.dev/custom-domain/1.0.0/orgs|https://apis.preview-dv.choreo.dev/onprem-key-mgt/1.0.0/orgs|https://apis.preview-dv.choreo.dev/audit-logging/1.0.0/orgs|https://apis.preview-dv.choreo.dev/component-utils/1.0.0|https://apis.preview-dv.choreo.dev/marketplace/0.1.0|https://apis.preview-dv.choreo.dev/user-store-mgt/v1.0|https://choreo-shared-choreo-samples-cdne.azureedge.net|https://apis.preview-dv.choreo.dev/platform-services/v1.0|https://apis.preview-dv.choreo.dev/code-challenge-eval/v1|https://apis.preview-dv.choreo.dev/authz-mgt/v1.0|https://apis.preview-dv.choreo.dev/config-svc/v1.0|https://apis.preview-dv.choreo.dev/config-mapping-svc/v1|https://apis.preview-dv.choreo.dev/connections/v1|https://apis.preview-dv.choreo.dev/component-creation|https://apis.preview-dv.choreo.dev/apim-appdev/v1.0|https://apis.preview-dv.choreo.dev/url-mgt/v1.0|https://apis.preview-dv.choreo.dev/declarative-api/v1.0|https://apis.preview-dv.choreo.dev/code-challenge/v1.0|https://apis.preview-dv.choreo.dev/governance/v1.0|https://apis.preview-dv.choreo.dev/choreo-appdev-sts-management-service/v1.0|https://apis.preview-dv.choreo.dev/api-key-service/v1.0|https://apis.preview-dv.choreo.dev/contract-service/1.0.0|https://apis.preview-dv.choreo.dev/oas-provider-service/1.0.0|https://apis.preview-dv.choreo.dev/architect-agent-api-design/v1.0|https://apis.preview-dv.choreo.dev/federation/v1|https://apis.preview-dv.choreo.dev/moesif-key/0.1.0'
+export const OIDC_SCOPE = getEnvOrDefault(
+  'VITE_OIDC_SCOPE',
+  'openid profile email api-platform:gateway:manage api-platform:gateway:create api-platform:gateway:read api-platform:gateway:update api-platform:gateway:delete api-platform:gateway:token:manage api-platform:gateway:token:read api-platform:gateway:token:create api-platform:gateway:token:delete api-platform:gateway:policy:manage api-platform:gateway:policy:read api-platform:gateway:policy:create api-platform:gateway:policy:delete api-platform:gateway:artifacts:read api-platform:gateway:manifest:read api-platform:gateway:status:read api-platform:rest_api:manage api-platform:rest_api:create api-platform:rest_api:read api-platform:rest_api:update api-platform:rest_api:delete api-platform:rest_api:publish api-platform:rest_api:import api-platform:rest_api:gateway:manage api-platform:rest_api:gateway:create api-platform:rest_api:gateway:read api-platform:rest_api:deployment:manage api-platform:rest_api:deployment:create api-platform:rest_api:deployment:read api-platform:rest_api:deployment:delete api-platform:rest_api:deployment:undeploy api-platform:rest_api:deployment:restore api-platform:rest_api:api_key:manage api-platform:rest_api:api_key:create api-platform:rest_api:api_key:read api-platform:rest_api:api_key:update api-platform:rest_api:api_key:delete api-platform:project:manage api-platform:project:create api-platform:project:read api-platform:project:update api-platform:project:delete api-platform:application:manage api-platform:application:create api-platform:application:read api-platform:application:update api-platform:application:delete api-platform:application:api_key:manage api-platform:application:api_key:create api-platform:application:api_key:read api-platform:application:api_key:delete api-platform:application:associations:manage api-platform:application:associations:create api-platform:application:associations:read api-platform:application:associations:delete api-platform:application:associations:api_key:read api-platform:devportal:manage api-platform:devportal:create api-platform:devportal:read api-platform:devportal:update api-platform:devportal:delete api-platform:subscription:manage api-platform:subscription:create api-platform:subscription:read api-platform:subscription:update api-platform:subscription:delete api-platform:subscription_plan:manage api-platform:subscription_plan:create api-platform:subscription_plan:read api-platform:subscription_plan:update api-platform:subscription_plan:delete api-platform:llm_template:manage api-platform:llm_template:create api-platform:llm_template:read api-platform:llm_template:update api-platform:llm_template:delete api-platform:llm_provider:manage api-platform:llm_provider:create api-platform:llm_provider:read api-platform:llm_provider:update api-platform:llm_provider:delete api-platform:llm_provider:deployment:manage api-platform:llm_provider:key:manage api-platform:llm_proxy:manage api-platform:llm_proxy:create api-platform:llm_proxy:read api-platform:llm_proxy:update api-platform:llm_proxy:delete api-platform:llm_proxy:deployment:manage api-platform:llm_proxy:key:manage api-platform:mcp_proxy:manage api-platform:mcp_proxy:create api-platform:mcp_proxy:read api-platform:mcp_proxy:update api-platform:mcp_proxy:delete api-platform:mcp_proxy:deployment:manage api-platform:websub_api:manage api-platform:websub_api:create api-platform:websub_api:read api-platform:websub_api:update api-platform:websub_api:delete api-platform:websub_api:deployment:manage api-platform:websub_api:publish api-platform:websub_api:key:manage api-platform:webbroker_api:manage api-platform:webbroker_api:create api-platform:webbroker_api:read api-platform:webbroker_api:update api-platform:webbroker_api:delete api-platform:webbroker_api:deployment:manage api-platform:webbroker_api:publish api-platform:webbroker_api:key:manage api-platform:git:read'
 );
 
-// STS Token Exchange Configuration
-export const STS_CLIENT_ID = getEnvOrDefault(
-  'VITE_STS_CLIENT_ID',
-  'VGfdOpECCQ8skOxW_39rOjhuMioa'
-);
-export const STS_TOKEN_ENDPOINT = getEnvOrDefault(
-  'VITE_STS_TOKEN_ENDPOINT',
-  'https://sts.preview-dv.choreo.dev:443/oauth2/token'
-);
-export const STS_SCOPE = getEnvOrDefault(
-  'VITE_STS_SCOPE',
-  'apim:api_create apim:api_manage apim:subscription_manage apim:tier_manage apim:admin apim:publisher_settings environments:view_prod environments:view_dev choreo:user_manage apim:dcr:app_manage choreo:deployment_manage choreo:dev_env_manage choreo:prod_env_manage choreo:non_prod_env_manage choreo:component_manage choreo:project_manage choreo:project_view apim:api_publish apim:document_manage apim:api_settings apim:subscription_view apim:environment_manage choreo:log_view_non_prod choreo:log_view_prod apim:subscribe urn:choreocontrolplane:usermanagement:role_mapping_manage urn:choreocontrolplane:usermanagement:role_mapping_view urn:choreocontrolplane:usermanagement:role_mapping_create urn:choreocontrolplane:usermanagement:role_mapping_update urn:choreocontrolplane:usermanagement:role_mapping_delete urn:choreocontrolplane:configmanagement:global_config_view urn:choreocontrolplane:configmanagement:global_config_create urn:choreocontrolplane:configmanagement:global_config_update urn:choreocontrolplane:configmanagement:global_config_delete urn:choreocontrolplane:configmanagement:global_config_manage urn:choreocontrolplane:configmanagement:config_view urn:choreocontrolplane:configmanagement:config_create urn:choreocontrolplane:configmanagement:config_delete urn:choreocontrolplane:configmanagement:config_manage urn:choreocontrolplane:customdomainapi:custom_domain_view urn:choreocontrolplane:customdomainapi:custom_domain_create urn:choreocontrolplane:customdomainapi:custom_domain_update urn:choreocontrolplane:customdomainapi:custom_domain_delete urn:choreocontrolplane:customdomainapi:custom_domain_manage urn:choreocontrolplane:usermanagement:role_view urn:choreocontrolplane:usermanagement:role_create urn:choreocontrolplane:usermanagement:role_update urn:choreocontrolplane:usermanagement:role_delete urn:choreocontrolplane:usermanagement:role_manage urn:choreocontrolplane:usermanagement:role_manage urn:choreocontrolplane:onpremkeymanagement:on_prem_key_view urn:choreocontrolplane:onpremkeymanagement:on_prem_key_create urn:choreocontrolplane:onpremkeymanagement:on_prem_key_delete urn:choreocontrolplane:onpremkeymanagement:on_prem_key_update urn:choreocontrolplane:onpremkeymanagement:on_prem_key_manage urn:choreocontrolplane:organizationmanagement:theme_view urn:choreocontrolplane:organizationmanagement:theme_create urn:choreocontrolplane:organizationmanagement:theme_delete urn:choreocontrolplane:organizationmanagement:theme_deploy urn:choreocontrolplane:organizationmanagement:theme_manage urn:choreocontrolplane:organizationmanagement:enterprise_login_config_view urn:choreocontrolplane:organizationmanagement:enterprise_login_config_manage urn:choreocontrolplane:organizationmanagement:self_signup_config_view urn:choreocontrolplane:organizationmanagement:self_signup_config_update urn:choreocontrolplane:organizationmanagement:self_signup_manage urn:choreocontrolplane:organizationmanagement:self_signup_approval_view urn:choreocontrolplane:organizationmanagement:self_signup_approval_update urn:choreocontrolplane:usermanagement:user_manage urn:choreocontrolplane:usermanagement:user_view urn:choreocontrolplane:usermanagement:user_delete urn:choreocontrolplane:usermanagement:user_update urn:choreocontrolplane:usermanagement:permission_view urn:choreocontrolplane:usermanagement:invitation_manage urn:choreocontrolplane:usermanagement:invitation_view urn:choreocontrolplane:usermanagement:invitation_send urn:choreocontrolplane:usermanagement:invitation_delete urn:choreocontrolplane:choreodevopsportalapi:deployment_manage urn:choreocontrolplane:choreodevopsportalapi:component_manage urn:choreocontrolplane:componentsmanagement:component_trigger urn:choreocontrolplane:componentsmanagement:component_create urn:choreocontrolplane:componentsmanagement:component_config_view urn:choreocontrolplane:componentsmanagement:component_logs_view urn:choreocontrolplane:componentsmanagement:component_init_view urn:choreocontrolplane:componentsmanagement:component_file_view urn:choreocontrolplane:componentsmanagement:component_manage urn:choreocontrolplane:choreodevopsportalapi:deployment_view apim:api_view apim:tier_view apim:api_generate_key urn:choreocontrolplane:choreodevopsportalapi:deployment_view urn:choreocontrolplane:choreoauditloggingapi:audit_logs_view urn:choreocontrolplane:choreoauditloggingapi:audit_logs_manage urn:choreocontrolplane:componentutils:component_manage urn:choreocontrolplane:componentutils:component_file_view urn:choreocontrolplane:componentutils:component_trigger urn:choreocontrolplane:componentutils:component_logs_view urn:choreocontrolplane:organizationapi:org_manage choreo:domain_manage choreo:domain_view choreo:url_mapping_manage choreo:url_mapping_approve choreo:url_mapping_view choreo:insights_org_view choreo:workflow_component_promotion_approve choreo:workflow_subscription_approve choreo:workflow_url_mapping_approve choreo:workflow_request choreo:platform_engineer  choreo:env_manage choreo:log_view'
-);
-export const TOKEN_EXCHANGE_CONFIG_ID = getEnvOrDefault(
-  'VITE_TOKEN_EXCHANGE_CONFIG_ID',
-  'choreo-sts-token-exchange'
+// The query param name used to pass a federated IDP hint to the authorization server.
+// Thunder/Asgardeo use "fidp"; Keycloak uses "kc_idp_hint"; Auth0 uses "connection".
+export const OIDC_IDP_HINT_PARAM = getEnvOrDefault(
+  'VITE_OIDC_IDP_HINT_PARAM',
+  'fidp'
 );
 
-// Token Exchange Config for Asgardeo SDK's requestCustomGrant
-export const tokenExchangeConfig = {
-  tokenEndpoint: STS_TOKEN_ENDPOINT,
-  attachToken: true,
-  data: {
-    client_id: STS_CLIENT_ID,
-    grant_type: getEnvOrDefault(
-      'VITE_TOKEN_EXCHANGE_GRANT_TYPE',
-      'urn:ietf:params:oauth:grant-type:token-exchange'
-    ),
-    subject_token_type: getEnvOrDefault(
-      'VITE_TOKEN_EXCHANGE_SUBJECT_TOKEN_TYPE',
-      'urn:ietf:params:oauth:token-type:jwt'
-    ),
-    requested_token_type: getEnvOrDefault(
-      'VITE_TOKEN_EXCHANGE_REQUESTED_TOKEN_TYPE',
-      'urn:ietf:params:oauth:token-type:jwt'
-    ),
-    scope: STS_SCOPE,
-    subject_token: '{{token}}',
-  },
-  id: TOKEN_EXCHANGE_CONFIG_ID,
-  returnResponse: getEnvOrDefault('VITE_TOKEN_EXCHANGE_RETURN_RESPONSE', true),
-  returnsSession: getEnvOrDefault('VITE_TOKEN_EXCHANGE_RETURNS_SESSION', true),
-  signInRequired: getEnvOrDefault('VITE_TOKEN_EXCHANGE_SIGNIN_REQUIRED', true),
-  shouldReplayAfterRefresh: getEnvOrDefault(
-    'VITE_TOKEN_EXCHANGE_REPLAY_AFTER_REFRESH',
-    true
-  ),
-};
+// Social / federated IDP identifiers passed as the hint value
+export const SOCIAL_IDP_GOOGLE = getEnvOrDefault('VITE_SOCIAL_IDP_GOOGLE', 'google');
+export const SOCIAL_IDP_GITHUB = getEnvOrDefault('VITE_SOCIAL_IDP_GITHUB', 'github');
+export const SOCIAL_IDP_MICROSOFT = getEnvOrDefault('VITE_SOCIAL_IDP_MICROSOFT', 'microsoft');
+export const SOCIAL_IDP_ENTERPRISE = getEnvOrDefault('VITE_SOCIAL_IDP_ENTERPRISE', 'EnterpriseIDP');
 
 // API Base URLs
 export const DEV_PORTAL_BASE_URL = getEnvOrDefault(
@@ -274,3 +185,26 @@ export const PLATFORM_API_BASE_URL = getEnvOrDefault(
   'VITE_PLATFORM_API_BASE_URL',
   'https://localhost:9243/api/v1'
 );
+
+// Dev-mode org UUID — the organization that mock-auth users belong to.
+// Must match a seeded org in the local platform-api database.
+// Only used when VITE_DISABLE_AUTH=true.
+export const DEV_ORG_ID = getEnvOrDefault(
+  'VITE_DEV_ORG_ID',
+  'db278eb4-9e08-4a6e-a00a-493d0ce4b8a6'
+);
+
+// The JWT claim name that holds the organization UUID.
+// Configure this alongside your IDP to match whatever claim your IDP puts the org UUID in.
+export const OIDC_ORG_CLAIM = getEnvOrDefault('VITE_OIDC_ORG_CLAIM', 'organization');
+
+// JWT claim names for pre-filling org registration. When present in the token,
+// the org name and handle fields are set automatically and made read-only.
+export const OIDC_ORG_NAME_CLAIM = getEnvOrDefault('VITE_OIDC_ORG_NAME_CLAIM', 'org_name');
+export const OIDC_ORG_HANDLE_CLAIM = getEnvOrDefault('VITE_OIDC_ORG_HANDLE_CLAIM', 'org_handle');
+
+// JWT claim names for user display — configure to match your IDP's token structure.
+// Common alternatives: 'name', 'preferred_username' (Keycloak), 'upn' (Azure AD)
+export const OIDC_USERNAME_CLAIM = getEnvOrDefault('VITE_OIDC_USERNAME_CLAIM', 'given_name');
+export const OIDC_EMAIL_CLAIM = getEnvOrDefault('VITE_OIDC_EMAIL_CLAIM', 'email');
+

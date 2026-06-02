@@ -17,129 +17,106 @@
  */
 
 import { useState, type JSX } from 'react';
-import { Box, Button, Divider, TextField, Typography, Link } from '@wso2/oxygen-ui';
-import {
-  ArrowLeft,
-  GitHub,
-  Google,
-  // Microsoft,
-  ShieldCheck,
-} from '@wso2/oxygen-ui-icons-react';
-import { useAuthContext } from '@asgardeo/auth-react';
-import {
-  handleGoogleLogin,
-  handleGithubLogin,
-  handleMicrosoftLogin,
-  handleEnterpriseLogin,
-} from '../../auth/login';
-
-/**
- * Simple email validation regex
- */
-const isValidEmail = (email: string): boolean =>
-  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+import { Alert, Box, Button, TextField, Typography } from '@wso2/oxygen-ui';
+import { Lock } from '@wso2/oxygen-ui-icons-react';
+import { useNavigate } from 'react-router-dom';
+import { DISABLE_AUTH } from '../../config.env';
+import { useAppAuth } from '../../contexts/AppAuthContext';
 
 export default function LoginBox(): JSX.Element {
-  const { signIn } = useAuthContext();
-  const [enterpriseMode, setEnterpriseMode] = useState(false);
-  const [email, setEmail] = useState('');
-  const [emailError, setEmailError] = useState('');
+  const { login } = useAppAuth();
+  const navigate = useNavigate();
+  const [signInError, setSignInError] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const onGoogleLogin = () => {
-    handleGoogleLogin(signIn, '/');
-  };
+  if (DISABLE_AUTH) {
+    const handleMockSignIn = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setSignInError('');
+      setIsSubmitting(true);
+      try {
+        await login({ username, password });
+        const raw = sessionStorage.getItem('ai_workspace_return_url') || '/';
+        sessionStorage.removeItem('ai_workspace_return_url');
+        // Only allow same-origin relative paths
+        const returnUrl = raw.startsWith('/') && !raw.startsWith('//') ? raw : '/';
+        navigate(returnUrl, { replace: true });
+      } catch (err) {
+        setSignInError(
+          err instanceof Error ? err.message : 'Sign in failed. Please try again.'
+        );
+      } finally {
+        setIsSubmitting(false);
+      }
+    };
 
-  const onGithubLogin = () => {
-    handleGithubLogin(signIn, '/');
-  };
-
-  const onMicrosoftLogin = () => {
-    handleMicrosoftLogin(signIn, '/');
-  };
-
-  const onEnterpriseContinue = () => {
-    const trimmedEmail = email.trim();
-    if (!trimmedEmail) {
-      setEmailError('Email is required');
-      return;
-    }
-    if (!isValidEmail(trimmedEmail)) {
-      setEmailError('Please enter a valid email address');
-      return;
-    }
-    setEmailError('');
-    handleEnterpriseLogin(signIn, '/', trimmedEmail);
-  };
-
-  const handleBack = () => {
-    setEnterpriseMode(false);
-    setEmail('');
-    setEmailError('');
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      onEnterpriseContinue();
-    }
-  };
-
-  if (enterpriseMode) {
     return (
       <Box>
-        <Box sx={{ mb: 6 }}>
+        <Box sx={{ mb: 10 }}>
           <Typography variant="h3" gutterBottom>
-            Sign in with Enterprise ID
+            Sign in to AI Workspace
           </Typography>
           <Typography color="text.secondary">
-            Enter your enterprise email to continue
+            Sign in with your username and password to continue
           </Typography>
         </Box>
 
-        <Box display="flex" flexDirection="column" gap={3}>
-          <TextField
-            fullWidth
-            label="Email"
-            placeholder="Enter your enterprise email"
-            type="email"
-            value={email}
-            onChange={(e) => {
-              setEmail(e.target.value);
-              if (emailError) setEmailError('');
-            }}
-            onKeyDown={handleKeyDown}
-            error={!!emailError}
-            helperText={emailError}
-            autoFocus
-          />
+        {signInError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {signInError}
+          </Alert>
+        )}
 
+        <Box
+          component="form"
+          onSubmit={handleMockSignIn}
+          display="flex"
+          flexDirection="column"
+          gap={2}
+        >
+          <TextField
+            label="Username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            fullWidth
+            required
+            autoComplete="username"
+          />
+          <TextField
+            label="Password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            fullWidth
+            required
+            autoComplete="current-password"
+          />
           <Button
             fullWidth
             variant="contained"
-            onClick={onEnterpriseContinue}
+            startIcon={<Lock />}
+            type="submit"
+            disabled={isSubmitting}
           >
-            Continue
+            Sign in
           </Button>
-
-          <Box sx={{ textAlign: 'center' }}>
-            <Link
-              component="button"
-              underline="hover"
-              onClick={handleBack}
-              sx={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 0.5,
-                cursor: 'pointer',
-              }}
-            >
-              <ArrowLeft fontSize="small" />
-              Back to sign in options
-            </Link>
-          </Box>
         </Box>
       </Box>
     );
   }
+
+  const handleSignIn = async () => {
+    setSignInError('');
+    try {
+      await login();
+    } catch (err) {
+      setSignInError(
+        err instanceof Error ? err.message : 'Sign in failed. Please try again.'
+      );
+    }
+  };
 
   return (
     <Box>
@@ -147,52 +124,25 @@ export default function LoginBox(): JSX.Element {
         <Typography variant="h3" gutterBottom>
           Sign in to AI Workspace
         </Typography>
-
         <Typography color="text.secondary">
-          Continue using your preferred identity provider
+          Sign in with your username and password to continue
         </Typography>
       </Box>
+
+      {signInError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {signInError}
+        </Alert>
+      )}
 
       <Box display="flex" flexDirection="column" gap={3}>
         <Button
           fullWidth
           variant="contained"
-          startIcon={<Google />}
-          color="secondary"
-          onClick={onGoogleLogin}
+          startIcon={<Lock />}
+          onClick={handleSignIn}
         >
-          Continue with Google
-        </Button>
-
-        <Button
-          fullWidth
-          variant="contained"
-          startIcon={<GitHub />}
-          color="secondary"
-          onClick={onGithubLogin}
-        >
-          Continue with GitHub
-        </Button>
-
-        <Button
-          fullWidth
-          variant="contained"
-          startIcon={<ShieldCheck />}
-          color="secondary"
-          onClick={onMicrosoftLogin}
-        >
-          Continue with Microsoft
-        </Button>
-
-        <Divider sx={{ my: 1 }}>or</Divider>
-
-        <Button
-          fullWidth
-          variant="outlined"
-          startIcon={<ShieldCheck />}
-          onClick={() => setEnterpriseMode(true)}
-        >
-          Sign in with Enterprise ID
+          Sign in
         </Button>
       </Box>
     </Box>

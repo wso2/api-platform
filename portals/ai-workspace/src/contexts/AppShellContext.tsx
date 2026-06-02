@@ -36,7 +36,6 @@ import React, {
 import { logger } from '../utils/logger';
 import { getProjects } from '../apis/projectApis';
 import type { Organization, ProjectBase } from '../utils/types';
-import { useRole } from './RoleContext';
 import { useChoreoUser } from './ChoreoUserContext';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -91,7 +90,6 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
   userName: initialUserName,
   userEmail: initialUserEmail,
 }) => {
-  const { setRole } = useRole();
   const { setIsTokenExchanged, getOrganizations, setOrganizations } = useChoreoUser();
 
   const isInitializedRef = useRef(false);
@@ -143,7 +141,6 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
 
       try {
         sessionStorage.setItem('currentOrgHandle', org.handle);
-        setRole('admin'); // Always admin in local dev
         setIsTokenExchanged(true);
         await fetchProjectsForOrg();
       } catch (err) {
@@ -153,7 +150,7 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
         isOrgChangeInProgressRef.current = false;
       }
     },
-    [currentOrganization, fetchProjectsForOrg, setRole, setIsTokenExchanged],
+    [currentOrganization, fetchProjectsForOrg, setIsTokenExchanged],
   );
 
   const setCurrentProject = useCallback((project: ProjectBase | null) => {
@@ -179,10 +176,21 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
       setOrganizationsState(orgs);
 
       if (orgs.length === 0) {
-        // No org yet — redirect the user to register one
         logger.warn('No organization found. Please register at /register-org');
         if (!window.location.pathname.startsWith('/register-org')) {
-          keepLoading = true; // don't flash blank workspace while page redirects
+          keepLoading = true;
+          window.location.href = '/register-org';
+        }
+        return;
+      }
+
+      // If the token carries an org UUID that doesn't match any registered org,
+      // the user needs to register a new org for that identity.
+      const pendingOrgUuid = sessionStorage.getItem('pending_org_uuid');
+      if (pendingOrgUuid && !orgs.some((o) => o.id === pendingOrgUuid || o.uuid === pendingOrgUuid)) {
+        logger.warn('Token org UUID does not match any registered org. Redirecting to /register-org');
+        if (!window.location.pathname.startsWith('/register-org')) {
+          keepLoading = true;
           window.location.href = '/register-org';
         }
         return;
@@ -200,7 +208,6 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
 
       setCurrentOrganizationState(targetOrg);
       sessionStorage.setItem('currentOrgHandle', targetOrg.handle);
-      setRole('admin');
       setIsTokenExchanged(true);
 
       await fetchProjectsForOrg();
@@ -212,7 +219,7 @@ export const AppShellProvider: React.FC<AppShellProviderProps> = ({
       // so the loading spinner remains visible while the page navigates away.
       if (!keepLoading) setIsLoading(false);
     }
-  }, [getOrganizations, setOrganizations, fetchProjectsForOrg, setRole, setIsTokenExchanged]);
+  }, [getOrganizations, setOrganizations, fetchProjectsForOrg, setIsTokenExchanged]);
 
   useEffect(() => {
     if (isInitializedRef.current) return;

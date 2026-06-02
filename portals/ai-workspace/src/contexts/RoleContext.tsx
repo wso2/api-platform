@@ -16,8 +16,11 @@
  * under the License.
  */
 
-import React, { createContext, useContext, useMemo, useState } from 'react';
-export type UserRole = 'admin' | 'developer';
+import React, { createContext, useContext, useMemo } from 'react';
+import { useAppAuth } from './AppAuthContext';
+import type { PlatformRole } from '../auth/permissions';
+
+export type UserRole = PlatformRole;
 
 type RoleContextValue = {
   role: UserRole;
@@ -25,15 +28,14 @@ type RoleContextValue = {
 };
 
 const RoleContext = createContext<RoleContextValue>({
-  role: 'admin',
+  role: 'viewer',
   setRole: () => {},
 });
 
 export function RoleProvider({ children }: { children: React.ReactNode }) {
-  const [role, setRole] = useState<UserRole>('admin');
-
-  const value = useMemo(() => ({ role, setRole }), [role]);
-
+  const { user } = useAppAuth();
+  const role: UserRole = user?.role ?? 'viewer';
+  const value = useMemo(() => ({ role, setRole: () => {} }), [role]);
   return <RoleContext.Provider value={value}>{children}</RoleContext.Provider>;
 }
 

@@ -16,21 +16,18 @@
  * under the License.
  */
 
-// import { useAuthContext } from '@asgardeo/auth-react'; // [standalone] Asgardeo auth disabled
 import {
   BrowserRouter,
   Routes,
   Route,
   Navigate,
   useLocation,
+  useNavigate,
 } from 'react-router-dom';
-// import SigninCallback from './pages/login/signinCallback'; // [standalone]
-// import Login from './pages/login/login'; // [standalone]
+import Login from './pages/login/login';
 import AppShellMain from './pages/appShell/appShellMain';
-// import { storeUserInfo } from './auth/login'; // [standalone]
 import { AppShellProvider } from './contexts/AppShellContext';
 import { RoleProvider } from './contexts/RoleContext';
-// import { useSignInSilent } from './auth/useSignInSilent'; // [standalone]
 import PageErrorBoundary from './Components/common/PageErrorBoundary';
 import { AIWorkspaceSnackbarProvider } from './contexts/AIWorkspaceSnackbarContext';
 import { MoesifProvider } from './contexts/MoesifContext';
@@ -75,27 +72,154 @@ import ExternalServersDeploy from './pages/appShell/appShellPages/externalServer
 import EditExternalServer from './pages/appShell/appShellPages/externalServers/EditExternalServer';
 import { MCPServerValidationProvider } from './contexts/MCP';
 import { LLMProvidersProvider } from './contexts/llmProvider';
-import { ChoreoUserProvider } from './contexts/ChoreoUserContext';
+import { ChoreoUserProvider, useChoreoUser } from './contexts/ChoreoUserContext';
+import { setStoredToken } from './clients/choreoApiClient';
+import { OIDC_ORG_CLAIM, OIDC_ORG_NAME_CLAIM, OIDC_ORG_HANDLE_CLAIM } from './config.env';
+import { useAppAuth } from './contexts/AppAuthContext';
 import React from 'react';
 
-// [standalone] ProtectedRoute — Asgardeo auth removed.
-// Always renders children; no redirect to /login.
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+function extractClaimFromJwt(token: string, claim: string): string | null {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return typeof payload[claim] === 'string' ? payload[claim] : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Only allow same-origin relative paths as return URLs to prevent open redirects.
+ * Rejects protocol-relative URLs (//evil.com) and absolute URLs.
+ */
+function sanitizeReturnUrl(url: string): string {
+  if (typeof url !== 'string') return '/';
+  if (!url.startsWith('/') || url.startsWith('//')) return '/';
+  // Strip any embedded newlines that could be used for header injection
+  const clean = url.replace(/[\r\n]/g, '');
+  return clean || '/';
+}
+
+function PublicOnlyRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useAppAuth();
+  if (isLoading) return null;
+  if (isAuthenticated) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
-// [standalone] No Asgardeo state — userName/userEmail passed as empty.
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useAppAuth();
+  const location = useLocation();
+
+  if (isLoading) {
+    return null;
+  }
+
+  if (!isAuthenticated) {
+    const returnUrl = sanitizeReturnUrl(location.pathname + location.search);
+    if (returnUrl !== '/' && returnUrl !== '/login' && returnUrl !== '/signin') {
+      sessionStorage.setItem('ai_workspace_return_url', returnUrl);
+    }
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+// AuthProvider processes the ?code param automatically. We wait for the exchange
+// to settle, then navigate forward on success or back to login on failure.
+function SigninCallbackRoute() {
+  const { isAuthenticated, isLoading } = useAppAuth();
+  const navigate = useNavigate();
+
+  React.useEffect(() => {
+    if (isLoading) return;
+    if (isAuthenticated) {
+      const returnUrl = sanitizeReturnUrl(sessionStorage.getItem('ai_workspace_return_url') || '/');
+      sessionStorage.removeItem('ai_workspace_return_url');
+      navigate(returnUrl, { replace: true });
+    } else {
+      // Token exchange failed or user is not authenticated — go back to login.
+      navigate('/login', { replace: true });
+    }
+  }, [isAuthenticated, isLoading, navigate]);
+
+  return null;
+}
+
+// Runs once after sign-in to fetch the access token and load organizations.
+function PostSignInInit({ children }: { children: React.ReactNode }) {
+  const { accessToken } = useAppAuth();
+  const { getOrganizations, setOrganizations, setIsTokenExchanged, isTokenExchanged } = useChoreoUser();
+  const navigate = useNavigate();
+
+  React.useEffect(() => {
+    if (isTokenExchanged) return;
+
+    const init = async () => {
+      try {
+        const token = accessToken;
+        if (token) {
+          setStoredToken(token);
+          const orgUuid = extractClaimFromJwt(token, OIDC_ORG_CLAIM);
+          if (orgUuid) {
+            sessionStorage.setItem('pending_org_uuid', orgUuid);
+          }
+          const orgName = extractClaimFromJwt(token, OIDC_ORG_NAME_CLAIM);
+          if (orgName) {
+            sessionStorage.setItem('pending_org_name', orgName);
+          } else {
+            sessionStorage.removeItem('pending_org_name');
+          }
+          const orgHandle = extractClaimFromJwt(token, OIDC_ORG_HANDLE_CLAIM);
+          if (orgHandle) {
+            sessionStorage.setItem('pending_org_handle', orgHandle);
+          } else {
+            sessionStorage.removeItem('pending_org_handle');
+          }
+        }
+        const orgs = await getOrganizations();
+        setOrganizations(orgs);
+        setIsTokenExchanged(true);
+
+        const orgUuid = sessionStorage.getItem('pending_org_uuid');
+        const matchedOrg = orgUuid
+          ? orgs.find((o) => o.id === orgUuid || o.uuid === orgUuid)
+          : orgs[0];
+
+        if (matchedOrg) {
+          navigate(`/organizations/${matchedOrg.handle}/home`, { replace: true });
+        } else {
+          navigate('/register-org', { replace: true });
+        }
+      } catch (err) {
+        console.error('Post sign-in init failed:', err);
+        navigate('/login', { replace: true });
+      }
+    };
+
+    init();
+  }, [isTokenExchanged]);
+
+  return <>{children}</>;
+}
+
 function ProtectedAppShell() {
+  const { user } = useAppAuth();
+  const userName = user?.name ?? undefined;
+  const userEmail = user?.email ?? undefined;
+
   return (
-    <RoleProvider>
-      <AIWorkspaceSnackbarProvider>
-        <AppShellProvider>
-          <MoesifProvider>
-            <AppShellMain />
-          </MoesifProvider>
-        </AppShellProvider>
-      </AIWorkspaceSnackbarProvider>
-    </RoleProvider>
+    <PostSignInInit>
+      <RoleProvider>
+        <AIWorkspaceSnackbarProvider>
+          <AppShellProvider userName={userName} userEmail={userEmail}>
+            <MoesifProvider>
+              <AppShellMain />
+            </MoesifProvider>
+          </AppShellProvider>
+        </AIWorkspaceSnackbarProvider>
+      </RoleProvider>
+    </PostSignInInit>
   );
 }
 
@@ -113,17 +237,23 @@ function WithPageBoundary({ children }: { children: React.ReactNode }) {
   return <RoutePageBoundary>{children}</RoutePageBoundary>;
 }
 
-// [standalone] No Asgardeo — App component simplified
 export default function App() {
   return (
     <BrowserRouter>
       <ChoreoUserProvider>
       <Routes>
-        {/* [standalone] Asgardeo OAuth callback removed */}
-        {/* [standalone] Login page removed — auth not required */}
+        {/* OAuth callback — Thunder redirects here, Callback forwards code back to origin */}
+        <Route path="/signin" element={<SigninCallbackRoute />} />
 
-        {/* Public: Organization registration — no auth required */}
-        <Route path="/register-org" element={<OrgRegisterPage />} />
+        {/* Login page — public, but redirect away when already authenticated */}
+        <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
+
+        {/* Organization registration — requires auth, shown only when no org exists */}
+        <Route path="/register-org" element={
+          <ProtectedRoute>
+            <OrgRegisterPage />
+          </ProtectedRoute>
+        } />
 
         {/* Protected Routes */}
         <Route

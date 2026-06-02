@@ -46,7 +46,8 @@ import {
 import { Clock, Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
 import { useApplications } from '../../../../contexts/ApplicationsContext';
-import { useRole } from '../../../../contexts/RoleContext';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { SCOPES } from '../../../../auth/permissions';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import {
   formatRelativeTime,
@@ -109,7 +110,7 @@ function truncateText(text: string, maxLength: number): string {
 
 export default function ServiceProviders() {
   const navigate = useNavigate();
-  const { role } = useRole();
+  const { hasPermission } = useAppAuth();
   const {
     providersResponse,
     deleteProvider,
@@ -122,7 +123,7 @@ export default function ServiceProviders() {
     useAppShell();
   const isProjectLevel = Boolean(currentProject?.id);
   const apimBaseUrl = PLATFORM_API_BASE_URL;
-  const canDelete = !isProjectLevel && role === 'admin';
+  const canDelete = !isProjectLevel && hasPermission(SCOPES.LLM_PROVIDER_DELETE);
   const newProviderPath = isProjectLevel
     ? buildProjectPath(
         currentOrganization,
@@ -243,9 +244,9 @@ export default function ServiceProviders() {
   const isDeleteConfirmationValid =
     deleteConfirmationInput.trim() === (deleteTarget?.name ?? '').trim();
 
-  const isDeveloper = role === 'developer';
+  const isDeveloper = !hasPermission(SCOPES.LLM_PROVIDER_CREATE);
   const canCreateProvider =
-    !isProjectLevel && role === 'admin' && !isProviderQuotaReached;
+    !isProjectLevel && hasPermission(SCOPES.LLM_PROVIDER_CREATE) && !isProviderQuotaReached;
   const shouldShowCreateProviderButton = !isProjectLevel;
   const orgServiceProviderPath = buildOrgPath(
     currentOrganization,

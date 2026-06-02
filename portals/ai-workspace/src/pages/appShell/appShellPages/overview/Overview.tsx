@@ -17,10 +17,11 @@
  */
 
 import { useEffect, useMemo } from 'react';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { SCOPES } from '../../../../auth/permissions';
 import { useNavigate } from 'react-router-dom';
 import { Grid, PageContent } from '@wso2/oxygen-ui';
 import { useAppShell } from '../../../../contexts/AppShellContext';
-import { useRole } from '../../../../contexts/RoleContext';
 import {
   LLMProvidersProvider,
   useLLMProviders,
@@ -44,7 +45,7 @@ import { trackOverviewPageView } from '../../../../utils/app-insights';
 
 export default function Overview() {
   const navigate = useNavigate();
-  const { role } = useRole();
+  const { user, hasPermission } = useAppAuth();
   const { currentProject, currentOrganization, setCurrentProject } =
     useAppShell();
   const isProjectLevel = Boolean(currentProject?.id);
@@ -87,7 +88,7 @@ export default function Overview() {
 
   const handleProvidersSeeMore = () => navigate(serviceProvidersPath);
   const handleAddProvider =
-    role === 'admin' && isProjectLevel
+    hasPermission(SCOPES.LLM_PROVIDER_CREATE) && isProjectLevel
       ? () => {
           setCurrentProject(null);
           navigate(buildOrgPath(currentOrganization, '/service-provider/new'));
@@ -133,19 +134,12 @@ export default function Overview() {
   useEffect(() => {
     const trackOverviewVisit = async () => {
       try {
-        const { AsgardeoSPAClient } = await import('@asgardeo/auth-react');
-        const auth = AsgardeoSPAClient.getInstance();
-
-        if (auth) {
-          const basicUserInfo = await auth.getBasicUserInfo();
-
-          if (basicUserInfo?.sub) {
-            trackOverviewPageView(
-              currentOrganization?.uuid,
-              basicUserInfo.sub,
-              basicUserInfo.email as string | undefined
-            );
-          }
+        if (user?.email) {
+          trackOverviewPageView(
+            currentOrganization?.uuid,
+            user.email,
+            user.email
+          );
         }
       } catch (error) {
         // Silently fail if auth is not available
@@ -162,7 +156,7 @@ export default function Overview() {
   return (
     <PageContent fullWidth>
       <Grid container spacing={3} sx={{ width: '100%', m: 0 }}>
-        {role === 'developer' ? (
+        {hasPermission(SCOPES.LLM_PROXY_CREATE) ? (
           <Grid size={{ xs: 12 }} sx={{ width: '100%' }}>
             <ProxyQuickStartBanner />
           </Grid>

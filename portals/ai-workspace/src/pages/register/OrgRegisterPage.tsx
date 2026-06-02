@@ -40,10 +40,13 @@ import {
 } from '@wso2/oxygen-ui';
 import { Building2, CheckCircle2, RefreshCw } from 'lucide-react';
 import Logo from '../../Components/Logo';
+import UserMenu from '../../Components/UserMenu';
+import { useAppAuth } from '../../contexts/AppAuthContext';
 import {
   registerOrganization,
   type RegisterOrganizationRequest,
 } from '../../apis/platformApis';
+import { DISABLE_AUTH } from '../../config.env';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -64,6 +67,10 @@ const REDIRECT_DELAY_MS = 1500;
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const generateUUID = (): string => crypto.randomUUID();
+
+const claimOrgUuid    = sessionStorage.getItem('pending_org_uuid');
+const claimOrgName    = sessionStorage.getItem('pending_org_name');
+const claimOrgHandle  = sessionStorage.getItem('pending_org_handle');
 
 const toHandle = (name: string): string =>
   name.toLowerCase().trim()
@@ -127,28 +134,35 @@ function RedirectingToWorkspace({ orgName }: { orgName: string }) {
 
 export default function OrgRegisterPage() {
   const navigate = useNavigate();
+  const { user, logout } = useAppAuth();
+
+  const userForMenu = {
+    name: user?.name || user?.email || 'User',
+    email: user?.email || '',
+    role: user?.role ?? undefined,
+  };
 
   const [form, setForm] = useState<FormState>({
-    id: generateUUID(),
-    name: '',
-    handle: '',
+    id: claimOrgUuid ?? generateUUID(),
+    name: claimOrgName ?? '',
+    handle: claimOrgHandle ?? '',
     region: 'us',
   });
   const [errors, setErrors]           = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [apiError, setApiError]         = useState<string | null>(null);
-  /** name of the org we just created — triggers the redirect banner */
   const [registeredOrgName, setRegisteredOrgName] = useState<string | null>(null);
+  const [registeredOrgHandle, setRegisteredOrgHandle] = useState<string | null>(null);
 
   // ── Auto-redirect after success ───────────────────────────────────────────
 
   useEffect(() => {
-    if (!registeredOrgName) return;
+    if (!registeredOrgName || !registeredOrgHandle) return;
     const timer = setTimeout(() => {
-      navigate('/');
+      navigate(`/organizations/${registeredOrgHandle}/home`, { replace: true });
     }, REDIRECT_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [registeredOrgName, navigate]);
+  }, [registeredOrgName, registeredOrgHandle, navigate]);
 
   // ── Validation ─────────────────────────────────────────────────────────────
 
@@ -176,7 +190,12 @@ export default function OrgRegisterPage() {
 
   const handleNameChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const name = e.target.value;
-    setForm((prev) => ({ ...prev, name, handle: toHandle(name) }));
+    setForm((prev) => ({
+      ...prev,
+      name,
+      // Only auto-derive handle when it isn't locked from a claim
+      handle: claimOrgHandle ? prev.handle : toHandle(name),
+    }));
     setErrors((prev) => ({ ...prev, name: undefined, handle: undefined }));
     setApiError(null);
   }, []);
@@ -218,11 +237,13 @@ export default function OrgRegisterPage() {
 
       const org = await registerOrganization(payload);
 
-      // Store the org handle so AppShellContext selects it on first load
       sessionStorage.setItem('currentOrgHandle', org.handle);
+      sessionStorage.removeItem('pending_org_uuid');
+      sessionStorage.removeItem('pending_org_name');
+      sessionStorage.removeItem('pending_org_handle');
 
-      // Trigger the redirect banner — useEffect above fires navigate('/')
       setRegisteredOrgName(org.name);
+      setRegisteredOrgHandle(org.handle);
     } catch (err: any) {
       setApiError(err?.message ?? 'An unexpected error occurred.');
     } finally {
@@ -312,17 +333,19 @@ export default function OrgRegisterPage() {
             ))}
           </Stack>
 
-          <Chip
-            label="Local development mode"
-            size="small"
-            sx={{
-              width: 'fit-content',
-              bgcolor: 'rgba(255,255,255,0.15)',
-              color: '#fff',
-              borderColor: 'rgba(255,255,255,0.3)',
-              border: '1px solid',
-            }}
-          />
+          {DISABLE_AUTH && (
+            <Chip
+              label="Local development mode"
+              size="small"
+              sx={{
+                width: 'fit-content',
+                bgcolor: 'rgba(255,255,255,0.15)',
+                color: '#fff',
+                borderColor: 'rgba(255,255,255,0.3)',
+                border: '1px solid',
+              }}
+            />
+          )}
         </Grid>
 
         {/* ── Right panel (form) ──────────────────────────────────────────── */}
@@ -339,8 +362,9 @@ export default function OrgRegisterPage() {
               <Box sx={{ display: { md: 'none' } }}>
                 <Logo height={40} />
               </Box>
-              <Box sx={{ ml: 'auto' }}>
+              <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
                 <ColorSchemeToggle />
+                <UserMenu user={userForMenu} onLogout={logout} />
               </Box>
             </Box>
 
@@ -379,7 +403,7 @@ export default function OrgRegisterPage() {
                       <Stack spacing={2.5}>
 
                         {/* Organization Name */}
-                        <FormControl fullWidth required disabled={isSubmitting}>
+                        <FormControl fullWidth required disabled={isSubmitting || !!claimOrgName}>
                           <FormLabel sx={{ mb: 0.5, fontWeight: 500 }}>
                             Organization Name
                           </FormLabel>
@@ -388,16 +412,16 @@ export default function OrgRegisterPage() {
                             value={form.name}
                             onChange={handleNameChange}
                             error={!!errors.name}
-                            fullWidth autoFocus
-                            disabled={isSubmitting}
+                            fullWidth autoFocus={!claimOrgName}
+                            disabled={isSubmitting || !!claimOrgName}
                           />
                           <FormHelperText error={!!errors.name}>
-                            {errors.name}
+                            {errors.name ?? (claimOrgName ? 'Sourced from your identity provider token' : undefined)}
                           </FormHelperText>
                         </FormControl>
 
                         {/* Handle */}
-                        <FormControl fullWidth required disabled={isSubmitting}>
+                        <FormControl fullWidth required disabled={isSubmitting || !!claimOrgHandle}>
                           <FormLabel sx={{ mb: 0.5, fontWeight: 500 }}>
                             Handle
                           </FormLabel>
@@ -407,9 +431,12 @@ export default function OrgRegisterPage() {
                             onChange={handleHandleChange}
                             error={!!errors.handle}
                             fullWidth
-                            disabled={isSubmitting}
+                            disabled={isSubmitting || !!claimOrgHandle}
                             inputProps={{ pattern: '[a-z0-9-]+' }}
                           />
+                          <FormHelperText error={!!errors.handle}>
+                            {errors.handle ?? (claimOrgHandle ? 'Sourced from your identity provider token' : undefined)}
+                          </FormHelperText>
                         </FormControl>
 
                         {/* Region */}
@@ -431,7 +458,7 @@ export default function OrgRegisterPage() {
                           )}
                         </FormControl>
 
-                        {/* UUID (read-only with refresh) */}
+                        {/* UUID — read-only from token claim, or auto-generated with refresh */}
                         <FormControl fullWidth disabled={isSubmitting}>
                           <FormLabel sx={{ mb: 0.5, fontWeight: 500 }}>
                             Organization ID (UUID)
@@ -446,17 +473,23 @@ export default function OrgRegisterPage() {
                             >
                               {form.id}
                             </Typography>
-                            <Tooltip title="Regenerate UUID">
-                              <Box
-                                component="span"
-                                sx={{ cursor: 'pointer', color: 'text.secondary', display: 'flex', flexShrink: 0, '&:hover': { color: 'primary.main' } }}
-                                onClick={regenerateId}
-                              >
-                                <RefreshCw size={14} />
-                              </Box>
-                            </Tooltip>
+                            {!claimOrgUuid && (
+                              <Tooltip title="Regenerate UUID">
+                                <Box
+                                  component="span"
+                                  sx={{ cursor: 'pointer', color: 'text.secondary', display: 'flex', flexShrink: 0, '&:hover': { color: 'primary.main' } }}
+                                  onClick={regenerateId}
+                                >
+                                  <RefreshCw size={14} />
+                                </Box>
+                              </Tooltip>
+                            )}
                           </Paper>
-                          <FormHelperText>Auto-generated — click ↻ to regenerate</FormHelperText>
+                          <FormHelperText>
+                            {claimOrgUuid
+                              ? 'Sourced from your identity provider token'
+                              : 'Auto-generated — click ↻ to regenerate'}
+                          </FormHelperText>
                         </FormControl>
 
                         {/* Submit */}

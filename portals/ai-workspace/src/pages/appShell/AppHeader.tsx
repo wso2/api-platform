@@ -120,8 +120,9 @@ export default function AppHeader(props: Props) {
     () => ({
       name: userName || userEmail || 'User',
       email: userEmail || '',
+      role: role || undefined,
     }),
-    [userName, userEmail]
+    [userName, userEmail, role]
   );
   const canShowProjectSwitcher = Boolean(currentProject?.id);
   const isProjectPickerDisabled =

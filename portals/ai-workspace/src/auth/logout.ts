@@ -16,27 +16,27 @@
  * under the License.
  */
 
-/*
- * Logout functionality for AI Workspace using Asgardeo SDK
- */
-
-import { removeFidpId } from '../utils/cookies';
+import { clearStoredToken } from '../clients/choreoApiClient';
 import { logger } from '../utils/logger';
 
-type SignOutFunction = () => Promise<boolean>;
+type SignOutFunction = () => Promise<void>;
+
+const AUTH_SESSION_KEYS = [
+  'platform_auth_token',
+  'platform_org_token',
+  'mock_auth_user',
+  'currentOrgHandle',
+  'pending_org_uuid',
+  'ai_workspace_return_url',
+] as const;
 
 /**
- * Perform sign out
- * @param signOut - The signOut function from useAuthContext
+ * Perform sign out via OIDC end-session endpoint.
  */
-export const handleLogout = async (signOut: SignOutFunction): Promise<void> => {
+export const handleLogout = async (signoutRedirect: SignOutFunction): Promise<void> => {
   try {
-    // Clear fidpId cookie so user isn't auto-redirected to the same IDP on next visit
-    removeFidpId();
-    sessionStorage.removeItem('idpId');
-    sessionStorage.removeItem('currentOrgHandle');
-    // Call Asgardeo signOut
-    await signOut();
+    clearAuthData();
+    await signoutRedirect();
   } catch (error) {
     logger.error('Sign out error:', error);
     throw error;
@@ -44,12 +44,10 @@ export const handleLogout = async (signOut: SignOutFunction): Promise<void> => {
 };
 
 /**
- * Clear all auth-related data from storage
- * This can be used for local-only logout without redirecting to Asgardeo
+ * Clear auth-related data from storage (local-only, no redirect).
+ * Only removes known auth keys — does not wipe unrelated sessionStorage entries.
  */
 export const clearAuthData = (): void => {
-  // Clear fidpId cookie
-  removeFidpId();
-  // Clear session storage items that might be set by Asgardeo
-  sessionStorage.clear();
+  clearStoredToken();
+  AUTH_SESSION_KEYS.forEach((key) => sessionStorage.removeItem(key));
 };

@@ -40,7 +40,8 @@ import {
 } from '@wso2/oxygen-ui';
 import { ArrowRight } from '@wso2/oxygen-ui-icons-react';
 import { useAppShell } from '../../../../contexts/AppShellContext';
-import { useRole } from '../../../../contexts/RoleContext';
+import { useAppAuth } from '../../../../contexts/AppAuthContext';
+import { SCOPES } from '../../../../auth/permissions';
 import { useLLMProviders } from '../../../../contexts/llmProvider';
 import {
   buildOrgPath,
@@ -184,10 +185,10 @@ export default function QuickStart(): JSX.Element {
     userName,
     userEmail,
   } = useAppShell();
-  const { role } = useRole();
+  const { hasPermission } = useAppAuth();
   const { providersResponse } = useLLMProviders();
   const [selectedOptionId, setSelectedOptionId] = useState<QuickStartOptionId>(
-    role === 'developer' ? 'mcp-proxy' : 'provider-proxy'
+    hasPermission(SCOPES.LLM_PROVIDER_CREATE) ? 'provider-proxy' : 'mcp-proxy'
   );
   const [isProjectSelectionOpen, setIsProjectSelectionOpen] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState('');
@@ -220,13 +221,11 @@ export default function QuickStart(): JSX.Element {
     getMCPProxyOption(() => mcpNewPath),
   ];
 
-  const quickStartOptions =
-    role === 'developer'
-      ? allQuickStartOptions.filter(
-          (option) =>
-            option.id !== 'provider-proxy' && option.id !== 'manage-gateways'
-        )
-      : allQuickStartOptions;
+  const quickStartOptions = allQuickStartOptions.filter((option) => {
+    if (option.id === 'manage-gateways') return hasPermission(SCOPES.GATEWAY_MANAGE);
+    if (option.id === 'provider-proxy') return hasPermission(SCOPES.LLM_PROVIDER_CREATE);
+    return true;
+  });
 
   const selectedOption =
     quickStartOptions.find((option) => option.id === selectedOptionId) ||

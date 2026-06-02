@@ -16,10 +16,7 @@
  * under the License.
  */
 
-import React, { useState, useEffect } from 'react';
-import { useAuthContext } from '@asgardeo/auth-react';
-import { useChoreoUser } from '../contexts/ChoreoUserContext';
-import { FIDP_GITHUB } from '../config.env';
+import React, { useState } from 'react';
 import {
   Avatar,
   Box,
@@ -199,24 +196,7 @@ export default function UserMenu({
   onBillingClick,
   onLogout,
 }: UserMenuProps) {
-  const { getDecodedIDToken, state: authState } = useAuthContext();
-  const { fidp } = useChoreoUser();
-  const [profilePicUrl, setProfilePicUrl] = useState<string | undefined>(undefined);
-
-  useEffect(() => {
-    if (!authState.isAuthenticated || !fidp) return;
-    const fetchProfilePic = async () => {
-      const decodedIDToken = await getDecodedIDToken();
-      if (decodedIDToken) {
-        const pictureUrl =
-          fidp === FIDP_GITHUB
-            ? (decodedIDToken as any).avatar_url
-            : (decodedIDToken as any).google_pic_url || (decodedIDToken as any).picture;
-        setProfilePicUrl(pictureUrl || undefined);
-      }
-    };
-    fetchProfilePic();
-  }, [authState.isAuthenticated, fidp, getDecodedIDToken]);
+  const [profilePicUrl] = useState<string | undefined>(undefined);
 
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
   const open = Boolean(anchorEl);
@@ -248,7 +228,7 @@ export default function UserMenu({
           aria-expanded={open ? 'true' : undefined}
         >
           <UserMenuAvatar src={profilePicUrl || undefined} alt={user.name}>
-            {!profilePicUrl && user.name.charAt(0)}
+            {!profilePicUrl && (user.name || 'U').charAt(0).toUpperCase()}
           </UserMenuAvatar>
         </UserMenuTrigger>
       </Tooltip>
@@ -272,18 +252,11 @@ export default function UserMenu({
         <UserMenuHeader>
           <UserMenuHeaderContent>
             <UserMenuHeaderAvatar src={profilePicUrl || undefined} alt={user.name}>
-              {!profilePicUrl && user.name.charAt(0)}
+              {!profilePicUrl && (user.name || 'U').charAt(0).toUpperCase()}
             </UserMenuHeaderAvatar>
             <UserMenuUserInfo>
               <UserMenuNameRow>
                 <UserMenuName variant="subtitle2">{user.name}</UserMenuName>
-                {user.role && (
-                  <UserMenuRoleChip
-                    label={user.role}
-                    size="small"
-                    color="primary"
-                  />
-                )}
               </UserMenuNameRow>
               <UserMenuEmail variant="caption">{user.email}</UserMenuEmail>
             </UserMenuUserInfo>

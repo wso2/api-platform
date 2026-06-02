@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useAuthContext } from '@asgardeo/auth-react';
+import React from 'react';
 import {
   Box,
   ColorSchemeImage,
