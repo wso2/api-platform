@@ -21,6 +21,9 @@ Makefile
 VERSION
 target/
 
+# ── Integration tests (not needed at runtime) ─────────────────────
+it/
+
 # ── Documentation (markdown only — keep the OpenAPI spec for the validator) ───
 README.md
 LICENSE
