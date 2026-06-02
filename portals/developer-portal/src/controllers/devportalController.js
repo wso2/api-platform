@@ -139,11 +139,7 @@ const revokeAppKeyMappings = async (orgID, appID) => {
             succeededMappingIds.push(mapping.MAPPING_ID);
         }
     }
-    if (succeededMappingIds.length > 0) {
-        await ApplicationKeyMapping.destroy({
-            where: { MAPPING_ID: succeededMappingIds, ORG_ID: orgID },
-        });
-    }
+    await adminDao.deleteAppMappingsByIds(orgID, succeededMappingIds);
 };
 
 const deleteApplication = async (req, res) => {

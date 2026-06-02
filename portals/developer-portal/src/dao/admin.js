@@ -785,6 +785,19 @@ const deleteSubscription = async (orgID, subID, t) => {
 }
 
 
+const deleteAppMappingsByIds = async (orgID, mappingIds, t) => {
+    if (!mappingIds || mappingIds.length === 0) return 0;
+    try {
+        return await ApplicationKeyMapping.destroy({
+            where: { MAPPING_ID: mappingIds, ORG_ID: orgID },
+            transaction: t,
+        });
+    } catch (error) {
+        if (error instanceof Sequelize.EmptyResultError) throw error;
+        throw new Sequelize.DatabaseError(error);
+    }
+};
+
 const deleteAppMappings = async (orgID, appID, t) => {
     try {
         const deletedRowsCount = await ApplicationKeyMapping.destroy({
@@ -1026,6 +1039,7 @@ module.exports = {
     createApplicationKeyMapping,
     upsertApplicationKeyMapping,
     deleteAppMappings,
+    deleteAppMappingsByIds,
     findSubscriptionByUniqueKey,
     listSubscriptionsByOrg,
     listSubscriptionsByUser,
