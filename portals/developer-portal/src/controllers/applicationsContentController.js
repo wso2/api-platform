@@ -24,84 +24,13 @@ const constants = require('../utils/constants');
 const path = require('path');
 const fs = require('fs');
 const adminDao = require('../dao/admin');
-const apiMetadata = require('../dao/apiMetadata');
-const apiKeyDao = require('../dao/apiKey');
-const subDao = require('../dao/subscription');
 const util = require('../utils/util');
-const yaml = require('js-yaml');
 const filePrefix = config.pathToContent;
 const controlPlaneUrl = config.controlPlane.url;
 const { ApplicationDTO } = require('../dto/application');
-const APIDTO = require('../dto/apiDTO');
 const kmDao = require('../dao/keyManager');
 const adminService = require('../services/adminService');
 const baseURLDev = config.baseUrl + constants.ROUTE.VIEWS_PATH;
-
-const parseApiDefinition = (definition) => {
-    if (!definition) {
-        return null;
-    }
-    if (typeof definition !== 'string') {
-        return definition;
-    }
-    try {
-        return JSON.parse(definition);
-    } catch (jsonError) {
-        try {
-            return yaml.load(definition);
-        } catch (yamlError) {
-            logger.warn('Failed to parse API definition', {
-                error: yamlError.message || jsonError.message
-            });
-            return null;
-        }
-    }
-};
-
-const apiDefinitionHasApiKeySecurity = (apiDefinition) => {
-    if (!apiDefinition || typeof apiDefinition !== 'object') {
-        return false;
-    }
-
-    const securitySchemes = apiDefinition.components?.securitySchemes || apiDefinition.securityDefinitions;
-    if (securitySchemes && typeof securitySchemes === 'object') {
-        return Object.values(securitySchemes).some((scheme) => {
-            if (!scheme || typeof scheme !== 'object') {
-                return false;
-            }
-            const type = String(scheme.type || '').toLowerCase();
-            return type === 'apikey' || type === 'httpapikey' || type === 'http_api_key';
-        });
-    }
-
-    return false;
-};
-
-const loadApiDefinitionFromDb = async (orgID, apiID) => {
-    try {
-        const apiFile = await apiMetadata.getAPIDoc(constants.DOC_TYPES.API_DEFINITION, orgID, apiID);
-        const rawDefinition = apiFile?.API_FILE?.toString(constants.CHARSET_UTF8);
-        return parseApiDefinition(rawDefinition);
-    } catch (error) {
-        logger.warn('Failed to load API definition from DB', {
-            orgID,
-            apiID,
-            error: error.message
-        });
-        return null;
-    }
-};
-
-const buildApiKeyPayload = (keyRow) => {
-    if (!keyRow) {
-        return {};
-    }
-    return {
-        key: [{ id: keyRow.KEY_ID }],
-        name: keyRow.NAME,
-        scopes: []
-    };
-};
 
 const orgIDValue = async (orgName) => {
     const organization = await adminDao.getOrganization(orgName);
@@ -132,22 +61,6 @@ const buildProfile = (req) => {
  */
 const loadApplicationData = async (req, orgName, applicationId, viewName) => {
     const orgID = await orgIDValue(orgName);
-
-    let groupList = [];
-    if (req.query.groups) {
-        groupList.push(req.query.groups.split(" "));
-    }
-
-    const subAPIs = await adminDao.getSubscribedAPIs(orgID, applicationId);
-
-    const filteredSubAPIs = subAPIs;
-
-    const allAPIs = await apiMetadata.getAllAPIMetadata(orgID, groupList, viewName);
-
-    const subscribedAPIIds = new Set(filteredSubAPIs.map(api => api.API_ID));
-    const nonSubscribedAPIs = allAPIs
-        .filter(api => !subscribedAPIIds.has(api.API_ID) && api.DP_SUBSCRIPTION_POLICies.length > 0)
-        .map(api => new APIDTO(api));
 
     const userID = req[constants.USER_ID]
     const applicationList = await adminService.getApplicationKeyMap(orgID, applicationId, userID);
@@ -198,94 +111,6 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
             }
         }
     }
-
-    let otherAPICount = 0;
-    let mcpAPICount = 0;
-    let apiKeyEnabledAPICount = 0;
-
-    let subList = [];
-    if (filteredSubAPIs.length > 0) {
-        subList = await Promise.all(filteredSubAPIs.map(async (sub) => {
-            const api = new APIDTO(sub);
-            let apiDTO = {};
-            apiDTO.apiInfo = {
-                apiName: api.apiInfo.apiName,
-                apiVersion: api.apiInfo.apiVersion,
-                apiDescription: api.apiInfo.apiDescription,
-                apiType: api.apiInfo.apiType,
-                gatewayType: api.apiInfo.gatewayType || null,
-                apiImageMetadata: api.apiInfo.apiImageMetadata
-            };
-            apiDTO.name = api.apiInfo.apiName;
-            apiDTO.apiID = api.apiID;
-            apiDTO.version = api.apiInfo.apiVersion;
-            apiDTO.apiType = api.apiInfo.apiType;
-            apiDTO.gatewayType = api.apiInfo.gatewayType || null;
-            apiDTO.image = api.apiInfo.apiImageMetadata["api-icon"];
-            apiDTO.subID = sub.dataValues.DP_APPLICATIONs[0].dataValues.DP_API_SUBSCRIPTION.dataValues.SUB_ID;
-            apiDTO.policyID = sub.dataValues.DP_APPLICATIONs[0].dataValues.DP_API_SUBSCRIPTION.dataValues.POLICY_ID;
-            apiDTO.refID = api.apiReferenceID;
-            apiDTO.apiHandle = api.apiHandle;
-
-            let apiDetails = null;
-            if (config.controlPlane?.enabled !== false) {
-                try {
-                    apiDetails = await getAPIDetails(req, api.apiReferenceID);
-                } catch (apiError) {
-                    logger.warn('Failed to fetch API details from CP', {
-                        apiReferenceID: api.apiReferenceID, error: apiError.message
-                    });
-                }
-            }
-            const projectIdEntry = apiDetails?.additionalProperties?.find(item => item.name === 'projectId');
-            const projectId = projectIdEntry?.value;
-            if (apiDetails) {
-                apiDTO.security = apiDetails.securityScheme;
-                if (apiDTO.security && apiDTO.security.includes('api_key')) {
-                    apiKeyEnabledAPICount++;
-                }
-            }
-            if (projectId) {
-                apiDTO.projectId = projectId;
-            }
-            const subPolicy = await apiMetadata.getSubscriptionPolicy(apiDTO.policyID, orgID);
-            if (subPolicy) {
-                apiDTO.policyName = subPolicy.dataValues.POLICY_NAME;
-            }
-            if (constants.API_TYPE.MCP === api.apiInfo.apiType) {
-                mcpAPICount++;
-            } else {
-                otherAPICount++;
-            }
-            let productionApiKeys = [];
-            let sandboxApiKeys = [];
-            if (config.controlPlane?.enabled !== false) {
-                try {
-                    productionApiKeys = await getAPIKeys(req, api.apiReferenceID, applicationReference, 'PRODUCTION');
-                    sandboxApiKeys = await getAPIKeys(req, api.apiReferenceID, applicationReference, 'SANDBOX');
-                } catch (keyError) {
-                    logger.warn('Failed to fetch API keys from CP', {
-                        apiReferenceID: api.apiReferenceID, error: keyError.message
-                    });
-                }
-            }
-            apiDTO.apiKeys = {
-                production: productionApiKeys,
-                sandbox: sandboxApiKeys
-            };
-            apiDTO.subscriptionPolicyDetails = await util.appendSubscriptionPlanDetails(orgID, api.subscriptionPolicies);
-            apiDTO.scopes = (apiDetails?.scopes || []).map(scope => scope.key);
-            return apiDTO
-        }));
-    }
-
-    util.appendAPIImageURL(subList, req, orgID);
-
-    const isApiKey = subList.some(api => api.security && api.security.includes('api_key'));
-
-    await Promise.all(nonSubscribedAPIs.map(async (api) => {
-        api.subscriptionPolicyDetails = await util.appendSubscriptionPlanDetails(orgID, api.subscriptionPolicies);
-    }));
 
     let kMmetaData = [];
     if (config.controlPlane?.enabled !== false) {
@@ -416,138 +241,15 @@ const loadApplicationData = async (req, orgName, applicationId, viewName) => {
         }
     }
 
-    // Load TOKEN-BASED subscriptions from local DB
-    let subscriptions = [];
-    if (req.user) {
-        try {
-            const localSubs = await subDao.listSubscriptions(orgID);
-            subscriptions = await Promise.all(localSubs.map(async (sub) => {
-                const apiRefId = sub.DP_API_METADATA?.REFERENCE_ID;
-                const apiDefinition = await loadApiDefinitionFromDb(orgID, sub.API_ID);
-                const security = apiDefinitionHasApiKeySecurity(apiDefinition) ? ['api_key'] : [];
-
-                let productionApiKeys = {};
-                let sandboxApiKeys = {};
-                try {
-                    const keys = await apiKeyDao.listKeys(orgID, {
-                        apiId: sub.API_ID,
-                        subscriptionId: sub.SUB_ID,
-                        status: 'ACTIVE'
-                    });
-                    productionApiKeys = buildApiKeyPayload(keys?.[0]);
-                } catch (keyError) {
-                    logger.warn('Failed to fetch subscription API keys from DB', {
-                        apiId: sub.API_ID, error: keyError.message
-                    });
-                }
-
-                return {
-                    id: sub.SUB_ID,
-                    subID: sub.SUB_ID,
-                    apiID: sub.API_ID,
-                    name: sub.DP_API_METADATA?.API_NAME || '',
-                    apiName: sub.DP_API_METADATA?.API_NAME || '',
-                    version: sub.DP_API_METADATA?.API_VERSION || '',
-                    apiVersion: sub.DP_API_METADATA?.API_VERSION || '',
-                    apiHandle: sub.DP_API_METADATA?.API_HANDLE || '#',
-                    apiType: sub.DP_API_METADATA?.API_TYPE || 'REST',
-                    refID: apiRefId || sub.API_ID,
-                    planName: sub.DP_SUBSCRIPTION_POLICY?.POLICY_NAME || '',
-                    policyName: sub.DP_SUBSCRIPTION_POLICY?.POLICY_NAME || '',
-                    status: sub.STATUS,
-                    subscriptionToken: sub.SUB_TOKEN,
-                    security,
-                    apiKeys: {
-                        production: productionApiKeys,
-                        sandbox: sandboxApiKeys
-                    },
-                    scopes: [],
-                    isSubscription: true,
-                };
-            }));
-        } catch (err) {
-            logger.warn('Failed to load subscriptions for application overview', {
-                error: err.message
-            });
-        }
-    }
-
-    // Load APIs that don't require subscription (no subscription plans)
-    let noSubAPIs = [];
-    try {
-        const noSubApis = await apiMetadata.getAPIMetadataByCondition({
-            ORG_ID: orgID,
-            STATUS: constants.API_STATUS.PUBLISHED
-        });
-
-        const filteredNoSubApis = (noSubApis || []).filter(api => {
-            const policies = api.DP_SUBSCRIPTION_POLICies || [];
-            return policies.length === 0;
-        });
-
-        if (filteredNoSubApis.length > 0) {
-            noSubAPIs = await Promise.all(filteredNoSubApis.map(async (api) => {
-                const apiDTO = new APIDTO(api);
-                const refID = apiDTO.apiReferenceID;
-
-                const apiDefinition = await loadApiDefinitionFromDb(orgID, apiDTO.apiID);
-                const security = apiDefinitionHasApiKeySecurity(apiDefinition) ? ['api_key'] : [];
-
-                let productionApiKeys = {};
-                let sandboxApiKeys = {};
-                try {
-                    const keys = await apiKeyDao.listKeys(orgID, {
-                        apiId: apiDTO.apiID,
-                        subscriptionId: null,
-                        status: 'ACTIVE'
-                    });
-                    productionApiKeys = buildApiKeyPayload(keys?.[0]);
-                } catch (keyError) {
-                    logger.warn('Failed to fetch no-sub API keys.', {
-                        apiReferenceID: refID, error: keyError.message
-                    });
-                }
-
-                return {
-                    subID: apiDTO.apiID,
-                    apiID: apiDTO.apiID,
-                    name: apiDTO.apiInfo.apiName,
-                    version: apiDTO.apiInfo.apiVersion,
-                    apiHandle: apiDTO.apiHandle,
-                    apiType: apiDTO.apiInfo.apiType || 'REST',
-                    refID: refID,
-                    policyName: '',
-                    security,
-                    apiKeys: {
-                        production: productionApiKeys,
-                        sandbox: sandboxApiKeys
-                    },
-                    scopes: [],
-                    isNoSubAPI: true,
-                };
-            }));
-        }
-    } catch (err) {
-        logger.warn('Failed to load no-subscription APIs', { error: err.message });
-    }
-
     const profile = buildProfile(req);
 
     return {
         orgID,
         applicationList,
         keyManagersMetadata: kMmetaData,
-        subAPIs: subList,
-        nonSubAPIs: nonSubscribedAPIs,
         productionKeys,
         sandboxKeys,
         subscriptionScopes,
-        otherAPICount,
-        mcpAPICount,
-        apiKeyEnabledAPICount,
-        isApiKey,
-        subscriptions,
-        noSubAPIs,
         profile
     };
 };
@@ -658,14 +360,9 @@ const loadApplication = async (req, res) => {
 
             templateContent = {
                 orgID: data.orgID,
-                applicationMetadata: {
-                    ...metaData,
-                    subscriptionCount: data.subAPIs.length
-                },
+                applicationMetadata: metaData,
                 keyManagersMetadata: kMmetaData,
                 baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                subAPIs: data.subAPIs,
-                nonSubAPIs: data.nonSubAPIs,
                 productionKeys: data.productionKeys,
                 sandboxKeys: data.sandboxKeys,
                 applicationKeys: [
@@ -679,13 +376,7 @@ const loadApplication = async (req, res) => {
                     }
                 ],
                 isProduction: true,
-                isApiKey: data.isApiKey,
                 subscriptionScopes: data.subscriptionScopes,
-                otherAPICount: data.otherAPICount,
-                mcpAPICount: data.mcpAPICount,
-                apiKeyEnabledAPICount: data.apiKeyEnabledAPICount,
-                subscriptions: data.subscriptions,
-                noSubAPIs: data.noSubAPIs,
                 profile: req.isAuthenticated() ? data.profile : null,
                 devportalMode: devportalMode,
                 isReadOnlyMode: config.readOnlyMode
@@ -738,10 +429,8 @@ const loadApplicationKeys = async (req, res) => {
                 baseUrl: baseURLDev + viewName,
                 productionKeys: [],
                 sandboxKeys: [],
-                subAPIs: [],
                 orgID: null,
                 subscriptionScopes: [],
-                isApiKey: false,
                 isReadOnlyMode: config.readOnlyMode
             }
             html = renderTemplate('../pages/manage-keys/page.hbs', filePrefix + 'layout/main.hbs', templateContent, true);
@@ -752,14 +441,9 @@ const loadApplicationKeys = async (req, res) => {
 
             templateContent = {
                 orgID: data.orgID,
-                applicationMetadata: {
-                    ...metaData,
-                    subscriptionCount: data.subAPIs.length
-                },
+                applicationMetadata: metaData,
                 keyManagersMetadata: kMmetaData,
                 baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                subAPIs: data.subAPIs,
-                nonSubAPIs: data.nonSubAPIs,
                 productionKeys: data.productionKeys,
                 sandboxKeys: data.sandboxKeys,
                 applicationKeys: [
@@ -772,13 +456,7 @@ const loadApplicationKeys = async (req, res) => {
                         keyType: constants.KEY_TYPE.SANDBOX
                     }
                 ],
-                isApiKey: data.isApiKey,
-                subscriptions: data.subscriptions,
-                noSubAPIs: data.noSubAPIs,
                 subscriptionScopes: data.subscriptionScopes,
-                otherAPICount: data.otherAPICount,
-                mcpAPICount: data.mcpAPICount,
-                apiKeyEnabledAPICount: data.apiKeyEnabledAPICount,
                 profile: req.isAuthenticated() ? data.profile : null,
                 devportalMode: devportalMode,
                 isReadOnlyMode: config.readOnlyMode
@@ -832,30 +510,6 @@ async function getApplicationKeys(applicationList, req) {
     }
 }
 
-async function getAllAPIs(req) {
-    try {
-        return await util.invokeApiRequest(req, 'GET', `${controlPlaneUrl}/apis`);
-    } catch (error) {
-        logger.error("Error occurred while loading APIs", {
-            error: error.message,
-            stack: error.stack
-        });
-        throw error;
-    }
-}
-
-const getSubscribedApis = async (req, appId) => {
-    try {
-        return await util.invokeApiRequest(req, 'GET', `${controlPlaneUrl}/subscriptions?applicationId=${appId}`);
-    } catch (error) {
-        logger.error("Error occurred while loading subscriptions", {
-            applicationId: appId,
-            error: error.message,
-            stack: error.stack
-        });
-        throw error;
-    }
-}
 async function getMockApplication() {
     const mockApplicationMetaDataPath = path.join(process.cwd(), filePrefix + '../mock/Applications/DefaultApplication', 'DefaultApplication.json');
     const mockApplicationMetaData = JSON.parse(fs.readFileSync(mockApplicationMetaDataPath, 'utf-8'));
@@ -876,24 +530,6 @@ async function getAPIMApplication(req, applicationId) {
 async function getAPIMKeyManagers(req) {
     const responseData = await invokeApiRequest(req, 'GET', controlPlaneUrl + '/key-managers?devPortalAppEnv=prod', null, null);
     return responseData.list;
-}
-
-async function getAPIDetails(req, apiId) {
-    const responseData = await invokeApiRequest(req, 'GET', controlPlaneUrl + `/apis/${apiId}`, null, null);
-    return responseData;
-}
-
-async function getAPIKeys(req, apiId, applicationId, keyType) {
-    const responseData = await invokeApiRequest(req, 'GET', controlPlaneUrl + `/api-keys?apiId=${apiId}&keyType=${keyType}`, null, null);
-    let apiKeys = {};
-    for (const key of responseData) {
-        if (key.application.id === applicationId) {
-            apiKeys.key = key.keys;
-            apiKeys.scopes = key.scopes;
-            apiKeys.name = key.alias;
-        }
-    }
-    return apiKeys;
 }
 
 async function mapGrants(grantTypes) {
