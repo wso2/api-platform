@@ -7,23 +7,48 @@
 #    publisher / operator / viewer)
 #
 # Usage:
-#   export ASGARDEO_TOKEN=<your-management-api-bearer-token>
+#   export ASGARDEO_CLIENT_ID=<management-app-client-id>
+#   export ASGARDEO_CLIENT_SECRET=<management-app-client-secret>
 #   bash scripts/asgardeo-setup.sh
+#
+# The management app must have the Asgardeo Management API authorised with
+# the following scopes (bulk + role management):
+#   internal_bulk_group_create/delete/update   internal_bulk_resource_create
+#   internal_bulk_role_create/delete/update    internal_bulk_user_create/delete/update
+#   internal_org_bulk_group_create/delete/update
+#   internal_org_bulk_resource_create          internal_org_bulk_role_create/delete/update
+#   internal_org_bulk_user_create/delete/update
+#   internal_org_role_mgt_create/delete/update/view
+#   internal_org_role_mgt_groups_update        internal_org_role_mgt_permissions_update
+#   internal_org_role_mgt_users_update
 # =============================================================================
 set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
 TENANT="${ASGARDEO_TENANT:-thushani}"
 BASE="https://api.asgardeo.io/t/${TENANT}"
-TOKEN="${ASGARDEO_TOKEN:-}"
 RESOURCE_ID="${ASGARDEO_RESOURCE_ID:-b2ebfc5a-97fb-454c-bae0-192bf56916d0}"
+CLIENT_ID="${ASGARDEO_CLIENT_ID:-}"
+CLIENT_SECRET="${ASGARDEO_CLIENT_SECRET:-}"
 
-if [[ -z "$TOKEN" ]]; then
-  echo "ERROR: set ASGARDEO_TOKEN env var to a valid management API bearer token"
+if [[ -z "$CLIENT_ID" || -z "$CLIENT_SECRET" ]]; then
+  echo "ERROR: set ASGARDEO_CLIENT_ID and ASGARDEO_CLIENT_SECRET"
   exit 1
 fi
 
-CURL=(curl -sf
+echo "▶ Fetching management API token for tenant '${TENANT}' ..."
+TOKEN_RESPONSE=$(curl -s -X POST \
+  "https://api.asgardeo.io/t/${TENANT}/oauth2/token" \
+  -u "${CLIENT_ID}:${CLIENT_SECRET}" \
+  -d "grant_type=client_credentials&scope=internal_bulk_group_create internal_api_resource_create internal_api_resource_update internal_api_resource_delete internal_org_api_resource_view internal_bulk_group_delete internal_bulk_group_update internal_bulk_resource_create internal_bulk_role_create internal_bulk_role_delete internal_bulk_role_update internal_bulk_user_create internal_bulk_user_delete internal_bulk_user_update internal_org_bulk_group_create internal_org_bulk_group_delete internal_org_bulk_group_update internal_org_bulk_resource_create internal_org_bulk_role_create internal_org_bulk_role_delete internal_org_bulk_role_update internal_org_bulk_user_create internal_org_bulk_user_delete internal_org_bulk_user_update internal_org_role_mgt_create internal_org_role_mgt_delete internal_org_role_mgt_groups_update internal_org_role_mgt_permissions_update internal_org_role_mgt_update internal_org_role_mgt_users_update internal_org_role_mgt_view")
+TOKEN=$(echo "$TOKEN_RESPONSE" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+if [[ -z "$TOKEN" ]]; then
+  echo "  ✗ Failed to obtain token: $TOKEN_RESPONSE"
+  exit 1
+fi
+echo "  ✓ Token obtained"
+
+CURL=(curl -s
   -H "Authorization: Bearer ${TOKEN}"
   -H "Content-Type: application/json"
   -H "Accept: application/json"
@@ -31,13 +56,12 @@ CURL=(curl -sf
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-# Build a JSON array of scope objects from a bash array of scope strings.
+# Build a JSON array of scope objects from a list of scope strings.
 # Each entry: {"name":"api-platform:x:y","displayName":"XY","description":""}
 scopes_json() {
-  local -n _scopes=$1
   local json="["
   local first=true
-  for s in "${_scopes[@]}"; do
+  for s in "$@"; do
     # Convert "api-platform:llm_provider:read" → "LlmProviderRead"
     local display
     display=$(echo "$s" | sed 's/api-platform://g; s/[_:]/ /g' \
@@ -52,10 +76,9 @@ scopes_json() {
 
 # Build a SCIM2 PatchOp body to set permissions on a role.
 permissions_patch() {
-  local -n _scopes=$1
   local json='{"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],"Operations":[{"op":"add","path":"permissions","value":['
   local first=true
-  for s in "${_scopes[@]}"; do
+  for s in "$@"; do
     [[ "$first" == true ]] && first=false || json+=","
     json+="{\"value\":\"${s}\"}"
   done
@@ -241,23 +264,22 @@ VIEWER_SCOPES=(
 # ── Step 1: Add all scopes to the API resource ────────────────────────────────
 echo "▶ Adding ${#ALL_SCOPES[@]} scopes to API resource ${RESOURCE_ID} ..."
 
-SCOPES_BODY=$(scopes_json ALL_SCOPES)
+SCOPES_BODY=$(scopes_json "${ALL_SCOPES[@]}")
 PATCH_BODY="{\"addedScopes\":${SCOPES_BODY}}"
 
-"${CURL[@]}" -X PATCH \
+RESPONSE=$("${CURL[@]}" -w "\n__HTTP_STATUS__:%{http_code}" -X PATCH \
   "${BASE}/api/server/v1/api-resources/${RESOURCE_ID}" \
-  -d "$PATCH_BODY" \
-  | grep -q "" && echo "  ✓ Scopes added" || echo "  ✓ Scopes added (or already exist)"
+  -d "$PATCH_BODY")
+HTTP_STATUS=$(echo "$RESPONSE" | grep -o '__HTTP_STATUS__:[0-9]*' | cut -d: -f2)
+BODY=$(echo "$RESPONSE" | sed 's/__HTTP_STATUS__:[0-9]*$//')
+if [[ "$HTTP_STATUS" == "200" || "$HTTP_STATUS" == "201" || "$HTTP_STATUS" == "204" ]]; then
+  echo "  ✓ Scopes added (HTTP $HTTP_STATUS)"
+else
+  echo "  ✗ Failed (HTTP $HTTP_STATUS): $BODY"
+  exit 1
+fi
 
 # ── Step 2: Assign scopes to each role ───────────────────────────────────────
-declare -A ROLE_SCOPE_MAP=(
-  [admin]="ADMIN_SCOPES"
-  [developer]="DEVELOPER_SCOPES"
-  [publisher]="PUBLISHER_SCOPES"
-  [operator]="OPERATOR_SCOPES"
-  [viewer]="VIEWER_SCOPES"
-)
-
 for ROLE_NAME in admin developer publisher operator viewer; do
   echo "▶ Looking up role: ${ROLE_NAME} ..."
   ROLE_ID=$(get_role_id "$ROLE_NAME")
@@ -268,13 +290,25 @@ for ROLE_NAME in admin developer publisher operator viewer; do
   fi
 
   echo "  ID: ${ROLE_ID}"
-  SCOPE_VAR="${ROLE_SCOPE_MAP[$ROLE_NAME]}"
-  PATCH=$( permissions_patch "$SCOPE_VAR" )
+  case "$ROLE_NAME" in
+    admin)     SCOPE_VAR="ADMIN_SCOPES" ;;
+    developer) SCOPE_VAR="DEVELOPER_SCOPES" ;;
+    publisher) SCOPE_VAR="PUBLISHER_SCOPES" ;;
+    operator)  SCOPE_VAR="OPERATOR_SCOPES" ;;
+    viewer)    SCOPE_VAR="VIEWER_SCOPES" ;;
+  esac
+  PATCH=$(eval "permissions_patch \"\${${SCOPE_VAR}[@]}\"")
 
-  "${CURL[@]}" -X PATCH \
+  ROLE_RESPONSE=$("${CURL[@]}" -w "\n__HTTP_STATUS__:%{http_code}" -X PATCH \
     "${BASE}/scim2/v2/Roles/${ROLE_ID}" \
-    -d "$PATCH" \
-    | grep -q "" && echo "  ✓ Permissions assigned to '${ROLE_NAME}'"
+    -d "$PATCH")
+  ROLE_STATUS=$(echo "$ROLE_RESPONSE" | grep -o '__HTTP_STATUS__:[0-9]*' | cut -d: -f2)
+  ROLE_BODY=$(echo "$ROLE_RESPONSE" | sed 's/__HTTP_STATUS__:[0-9]*$//')
+  if [[ "$ROLE_STATUS" == "200" || "$ROLE_STATUS" == "204" ]]; then
+    echo "  ✓ Permissions assigned to '${ROLE_NAME}' (HTTP $ROLE_STATUS)"
+  else
+    echo "  ✗ Failed for '${ROLE_NAME}' (HTTP $ROLE_STATUS): $ROLE_BODY"
+  fi
 done
 
 echo ""
