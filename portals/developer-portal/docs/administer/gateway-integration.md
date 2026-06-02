@@ -42,10 +42,7 @@ webhooks:
       gatewayType: "wso2/api-platform"         # matches the API's gateway type; use "*" for all
       url: "https://gateway.example.com/devportal/events"
       secret: "change-me-minimum-32-chars"     # HMAC-SHA256 signing key
-      publicKey: |                             # RSA-2048 PEM — for encrypting sensitive fields
-        -----BEGIN PUBLIC KEY-----
-        MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...
-        -----END PUBLIC KEY-----
+      publicKeyPath: "/run/secrets/gateway-pubkey.pem"  # RSA-2048 PEM file — for encrypting sensitive fields
       events:                                  # event type filter (omit to receive all events)
         - apikey.*
         - subscription.*
@@ -66,7 +63,7 @@ webhooks:
 | `gatewayType` | No | Filter events to APIs with this gateway type. Use `"*"` to match all |
 | `url` | Yes | HTTPS endpoint on your gateway that receives webhook POSTs |
 | `secret` | Yes | Minimum 32-character string used to sign each event with HMAC-SHA256 |
-| `publicKey` | Recommended | RSA-2048 public key (PEM) for envelope-encrypting sensitive fields in `apikey.generated`, `apikey.regenerated`, and `subscription.created` events |
+| `publicKeyPath` | Recommended | Path to an RSA-2048 public key PEM file for envelope-encrypting sensitive fields in `apikey.generated`, `apikey.regenerated`, and `subscription.created` events |
 | `events` | No | Event type allowlist. Wildcards supported (`apikey.*`). Omit to receive all |
 | `timeoutMs` | No | HTTP request timeout in milliseconds (default: 5000) |
 
