@@ -21,7 +21,7 @@ const { createCryptoUtil } = require('../utils/cryptoUtil');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 
-const kmCrypto = createCryptoUtil(config.advanced.keyManagerEncryptionKey);
+const kmCrypto = createCryptoUtil(config.advanced.encryptionKey);
 
 /**
  * Create a new key manager for an organization.
@@ -31,7 +31,7 @@ const createKeyManager = async (orgId, kmData) => {
     try {
         if (!kmCrypto.enabled) {
             throw new Error('Key manager encryption key is not configured. ' +
-                'Set config.advanced.keyManagerEncryptionKey to a 64-char hex string.');
+                'Set config.advanced.encryptionKey to a 64-char hex string.');
         }
         const record = await KeyManager.create({
             ORG_ID: orgId,

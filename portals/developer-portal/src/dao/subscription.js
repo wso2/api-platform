@@ -22,7 +22,7 @@ const SubscriptionPolicy = require('../models/subscriptionPolicy');
 const { createCryptoUtil } = require('../utils/cryptoUtil');
 const { config } = require('../config/configLoader');
 
-const subCrypto = createCryptoUtil(config.advanced.subscriptionTokenEncryptionKey);
+const subCrypto = createCryptoUtil(config.advanced.encryptionKey);
 
 function encryptToken(token) {
     return subCrypto.encrypt(token);

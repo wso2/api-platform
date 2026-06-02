@@ -4,11 +4,11 @@ A key manager is the OAuth2 authorization server used by the Developer Portal to
 
 ## Prerequisites
 
-Before adding a key manager, set the encryption key in `config.yaml`. This key protects key manager credentials stored in the database:
+Before adding a key manager, set the encryption key in `config.yaml`. This key protects sensitive data stored in the database, including key manager credentials and subscription tokens:
 
 ```yaml
 advanced:
-  keyManagerEncryptionKey: ""   # 64-character hex string (AES-256-GCM)
+  encryptionKey: ""   # 64-character hex string (AES-256-GCM)
 ```
 
 Generate a suitable key:
@@ -17,9 +17,9 @@ Generate a suitable key:
 openssl rand -hex 32
 ```
 
-Set the output as `keyManagerEncryptionKey`. You can also provide it via the environment variable `DP_ADVANCED_KEYMANAGERENCRYPTIONKEY`.
+Set the output as `encryptionKey`. You can also provide it via the environment variable `DP_ADVANCED_ENCRYPTIONKEY`.
 
-> **Important:** Store this key securely. If it is lost, stored key manager credentials cannot be decrypted.
+> **Important:** Store this key securely. If it is lost, all encrypted data in the database cannot be decrypted.
 
 ## Add a Key Manager
 

@@ -82,17 +82,17 @@ export DP_WEBHOOK_PUBKEY_PATH_MY_GATEWAY="/run/secrets/gateway-pubkey.pem"
 
 ### Encrypting subscription tokens at rest
 
-Subscription tokens are encrypted at rest in the database using AES-256-GCM. A 64-character hex key **must** be configured before starting the portal:
+Subscription tokens are encrypted at rest in the database using AES-256-GCM. The key **must** be configured before starting the portal:
 
 ```yaml
 advanced:
-  subscriptionTokenEncryptionKey: "<64-char hex string>"  # 32 random bytes as hex
+  encryptionKey: "<64-char hex string>"  # 32 random bytes as hex
 ```
 
 Or via environment variable:
 
 ```bash
-export DP_ADVANCED_SUBSCRIPTIONTOKENENCRYPTIONKEY="<64-char hex string>"
+export DP_ADVANCED_ENCRYPTIONKEY="<64-char hex string>"
 ```
 
 Generate a suitable key with:
