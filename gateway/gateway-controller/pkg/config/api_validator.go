@@ -347,14 +347,14 @@ func (v *APIValidator) validateUpstreamDefinitions(definitions *[]api.UpstreamDe
 				if parsedURL.RawQuery != "" || parsedURL.ForceQuery {
 					errors = append(errors, ValidationError{
 						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
-						Message: "URL must not include a query string",
+						Message: "URL must not include a query string; it is not honored for upstreamDefinitions URLs",
 					})
 				}
 
 				if parsedURL.Fragment != "" {
 					errors = append(errors, ValidationError{
 						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
-						Message: "URL must not include a fragment",
+						Message: "URL must not include a fragment; it is not honored for upstreamDefinitions URLs",
 					})
 				}
 			}
