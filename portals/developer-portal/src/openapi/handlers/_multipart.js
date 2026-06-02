@@ -41,10 +41,11 @@ async function adaptMultipart(req, _res, next) {
         for (const f of req.files) {
             if (!f.buffer && f.path) {
                 // Async read so we don't block the event loop on large uploads.
+                // NOTE: we deliberately leave the temp file on disk and keep
+                // f.path set. Some consumers (e.g. zip artifact upload in
+                // apiMetadataService) read directly from f.path and own its
+                // cleanup; deleting it here would break those flows (ENOENT).
                 f.buffer = await fsp.readFile(f.path);
-                // multer's disk storage leaves the temp file behind; remove it
-                // now that the contents are in memory to avoid a disk leak.
-                await fsp.unlink(f.path).catch(() => { /* best-effort cleanup */ });
             }
             // Guard against files with no fieldname (e.g. unnamed fields), which
             // would otherwise silently collect under a "undefined" key.
