@@ -52,7 +52,7 @@ advanced:
   disableOrgCallback: true
   disableScopeValidation: true
   disableSilentSSO: false
-  keyManagerEncryptionKey: ""  # 64-char hex key for AES-256-GCM key manager credential encryption
+  encryptionKey: ""  # 64-char hex key for AES-256-GCM encryption of sensitive data at rest
   apiKey:
     enabled: true
     keyType: "x-wso2-api-key"

@@ -77,29 +77,6 @@ export DP_WEBHOOK_SECRET_MY_GATEWAY="your-hmac-secret"
 export DP_WEBHOOK_PUBKEY_PATH_MY_GATEWAY="/run/secrets/gateway-pubkey.pem"
 ```
 
-### Encrypting subscription tokens at rest
-
-Subscription tokens are encrypted at rest in the database using AES-256-GCM. The key **must** be configured before starting the portal:
-
-```yaml
-advanced:
-  encryptionKey: "<64-char hex string>"  # 32 random bytes as hex
-```
-
-Or via environment variable:
-
-```bash
-export DP_ADVANCED_ENCRYPTIONKEY="<64-char hex string>"
-```
-
-Generate a suitable key with:
-
-```bash
-openssl rand -hex 32
-```
-
-The portal will fail to encrypt or decrypt tokens if this key is missing or invalid.
-
 ## Webhook Request Format
 
 Every event is delivered as an HTTP POST with a JSON body and the following headers:
@@ -282,8 +259,7 @@ Fired when a developer unsubscribes. The gateway should revoke access for the co
   "data": {
     "subscription": {
       "plan_name": "Gold",
-      "plan_ref_id": "policy-uuid",
-      "status": "ACTIVE"
+      "plan_ref_id": "policy-uuid"
     },
     "api": {
       "name": "Order API",
