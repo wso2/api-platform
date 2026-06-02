@@ -90,7 +90,7 @@ func runCreateCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, createInsecure)
-	resp, err := client.PostJSON(fmt.Sprintf("/devportal/organizations/%s/api-platform-subscriptions", createOrgID), payload)
+	resp, err := client.PostJSON(fmt.Sprintf("/devportal/organizations/%s/subscriptions", createOrgID), payload)
 	if err != nil {
 		return internaldevportal.WrapRequestError("create platform subscription", err, createInsecure)
 	}

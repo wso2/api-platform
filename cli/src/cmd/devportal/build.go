@@ -139,6 +139,8 @@ type projectAPIResource struct {
 	Spec struct {
 		Description         string                       `yaml:"description"`
 		ReferenceID         string                       `yaml:"referenceID"`
+		GatewayType         string                       `yaml:"gatewayType"`
+		Status              string                       `yaml:"status"`
 		Tags                []string                     `yaml:"tags"`
 		Labels              []string                     `yaml:"labels"`
 		BusinessInformation devPortalBusinessInformation `yaml:"businessInformation"`
@@ -170,6 +172,8 @@ type devPortalManifestSpec struct {
 	Version              string                       `yaml:"version"`
 	Description          string                       `yaml:"description"`
 	Provider             string                       `yaml:"provider"`
+	GatewayType          string                       `yaml:"gatewayType"`
+	Status               string                       `yaml:"status"`
 	ReferenceID          string                       `yaml:"referenceID"`
 	Tags                 []string                     `yaml:"tags"`
 	Labels               []string                     `yaml:"labels"`
@@ -313,6 +317,16 @@ func buildDefaultDevPortalManifest(projectRoot string, projectConfig *apiProject
 		labels = []string{"default"}
 	}
 
+	gatewayType := apiMetadata.Spec.GatewayType
+	if gatewayType == "" {
+		gatewayType = "wso2/api-platform"
+	}
+
+	status := strings.TrimSpace(apiMetadata.Spec.Status)
+	if status == "" {
+		status = "PUBLISHED"
+	}
+
 	return &devPortalManifest{
 		APIVersion: "devportal.api-platform.wso2.com/v1",
 		Kind:       "RestApi",
@@ -324,6 +338,8 @@ func buildDefaultDevPortalManifest(projectRoot string, projectConfig *apiProject
 			Version:              strings.TrimSpace(gateway.Spec.Version),
 			Description:          strings.TrimSpace(apiMetadata.Spec.Description),
 			Provider:             "WSO2",
+			GatewayType:          gatewayType,
+			Status:               status,
 			ReferenceID:          strings.TrimSpace(apiMetadata.Spec.ReferenceID),
 			Tags:                 tags,
 			Labels:               labels,

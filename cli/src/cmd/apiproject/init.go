@@ -223,6 +223,7 @@ metadata:
 spec:
   description: ""
   gatewayType: wso2/api-platform
+  status: PUBLISHED
   referenceID: ""
   tags: []
   labels: []

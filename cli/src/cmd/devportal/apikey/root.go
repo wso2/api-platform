@@ -23,10 +23,10 @@ import "github.com/spf13/cobra"
 const (
 	APIKeyCmdLiteral = "api-key"
 	APIKeyCmdExample = `# Generate an API key
-ap devportal api-key gen --org org_1 --api-id api_1 --name weather_prod_key
+ap devportal api-key generate --org org_1 --api-id api_1 --name weather_prod_key
 
 # Generate an API key interactively
-ap devportal api-key gen
+ap devportal api-key generate
 
 # List API keys for an API
 ap devportal api-key get --org org_1 --api-id api_1

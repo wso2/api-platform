@@ -97,7 +97,7 @@ func runEditCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, editInsecure)
-	path := fmt.Sprintf("/devportal/organizations/%s/api-platform-subscriptions/%s", url.PathEscape(editOrgID), url.PathEscape(subscriptionID))
+	path := fmt.Sprintf("/devportal/organizations/%s/subscriptions/%s", url.PathEscape(editOrgID), url.PathEscape(subscriptionID))
 	resp, err := client.PutJSON(path, payload)
 	if err != nil {
 		return internaldevportal.WrapRequestError("update platform subscription", err, editInsecure)
