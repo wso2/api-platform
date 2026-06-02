@@ -119,6 +119,7 @@ const revokeAppKeyMappings = async (orgID, appID) => {
         where: { APP_ID: appID, ORG_ID: orgID },
     });
     const succeededMappingIds = [];
+    const failedMappingIds = [];
     for (const mapping of mappings) {
         if (mapping.KM_ID && mapping.AS_CLIENT_ID) {
             try {
@@ -133,6 +134,7 @@ const revokeAppKeyMappings = async (orgID, appID) => {
                     kmId: mapping.KM_ID,
                     errorMessage: err.message,
                 });
+                failedMappingIds.push(mapping.MAPPING_ID);
             }
         } else {
             // No OAuth client to revoke — safe to remove the local mapping.
@@ -140,6 +142,12 @@ const revokeAppKeyMappings = async (orgID, appID) => {
         }
     }
     await adminDao.deleteAppMappingsByIds(orgID, succeededMappingIds);
+    if (failedMappingIds.length > 0) {
+        throw new Error(
+            `Failed to revoke OAuth clients for ${failedMappingIds.length} mapping(s) ` +
+            `(mappingIds: ${failedMappingIds.join(', ')}). Application deletion aborted.`
+        );
+    }
 };
 
 const deleteApplication = async (req, res) => {
