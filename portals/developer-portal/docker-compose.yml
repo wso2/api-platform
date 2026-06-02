@@ -63,7 +63,7 @@ services:
 
   devportal:
     build: .
-    image: ghcr.io/wso2/api-platform/developer-portal:0.1.0
+    image: ghcr.io/wso2/api-platform/developer-portal:0.2.0-SNAPSHOT
     ports:
       - "3000:3000"
     depends_on:
