@@ -206,9 +206,6 @@ async function generateApplicationKey(formId, appId, keyType, keyManager, client
             if (consumerKeyViewEl) {
                 consumerKeyViewEl.style.display = "block";
             }
-            if (keyActionsContainerEl) {
-                keyActionsContainerEl.style.display = "flex";
-            }
             
             // Update UI elements in the overview section
             const generateKeyContainer = document.getElementById("generateKeyContainer" + "-" +  keyType);
@@ -242,7 +239,12 @@ async function generateApplicationKey(formId, appId, keyType, keyManager, client
                 generateKeyContainer.style.display = 'none';
                 generateKeyContainer.classList.add('d-none');
             }
-            
+
+            const keyTabNav = document.getElementById('keyTabNav-' + keyType);
+            if (keyTabNav) {
+                keyTabNav.style.display = 'flex';
+            }
+
             loadKeysViewModal(keyType);
 
 
@@ -334,6 +336,215 @@ async function generateApplicationKey(formId, appId, keyType, keyManager, client
     }
 }
 
+
+function confirmAndRevokeKeys(applicationId, keyMappingId, keyType) {
+    const modal = document.getElementById('deleteConfirmation');
+    if (modal) {
+        const titleEl = modal.querySelector('.modal-title');
+        const msgEl = modal.querySelector('.modal-message');
+        if (titleEl) titleEl.textContent = 'Revoke Application Keys';
+        if (msgEl) msgEl.textContent = 'Are you sure you want to revoke these credentials? All tokens issued with these credentials will be immediately invalidated.';
+        modal.dataset.applicationId = applicationId;
+        modal.dataset.param2 = keyMappingId;
+
+        const confirmBtn = document.getElementById('deleteConfirmationBtn');
+        const originalConfirmHtml = confirmBtn?.innerHTML;
+        const handler = async () => {
+            confirmBtn.removeEventListener('click', handler);
+            if (confirmBtn) {
+                confirmBtn.disabled = true;
+                confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Revoking…';
+            }
+            await removeApplicationKeys(applicationId, keyMappingId, keyType);
+            if (confirmBtn) {
+                confirmBtn.disabled = false;
+                confirmBtn.innerHTML = originalConfirmHtml;
+            }
+        };
+        confirmBtn.addEventListener('click', handler);
+
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+    } else if (confirm('Are you sure you want to revoke these credentials? This cannot be undone.')) {
+        removeApplicationKeys(applicationId, keyMappingId, keyType);
+    }
+}
+
+function toggleKmDropdown(keyType) {
+    const menu = document.getElementById('kmDropdown-' + keyType);
+    if (!menu) return;
+    const isOpen = menu.classList.contains('mk-km-dropdown-open');
+
+    document.querySelectorAll('.mk-km-dropdown-menu').forEach(m => m.classList.remove('mk-km-dropdown-open'));
+
+    if (!isOpen) {
+        menu.classList.add('mk-km-dropdown-open');
+        const close = (e) => {
+            if (!menu.parentElement.contains(e.target)) {
+                menu.classList.remove('mk-km-dropdown-open');
+                document.removeEventListener('click', close);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', close), 0);
+    }
+}
+
+async function selectKmAndGenerate(keyType, appId, appName, orgID, itemEl) {
+    const kmName = itemEl?.dataset?.kmName;
+    if (!kmName) return;
+
+    const menu = document.getElementById('kmDropdown-' + keyType);
+    if (menu) menu.classList.remove('mk-km-dropdown-open');
+
+    const btn = itemEl.closest('.mk-add-km-btn') || itemEl.querySelector('.mk-add-km-btn') || itemEl;
+    const spinner = btn.querySelector('.mk-add-km-spinner') || document.getElementById('addKmSpinner-' + keyType);
+    if (btn) btn.disabled = true;
+    if (spinner) spinner.style.display = 'inline-flex';
+
+    const restore = () => {
+        if (btn) btn.disabled = false;
+        if (spinner) spinner.style.display = 'none';
+    };
+
+    const payload = JSON.stringify({
+        keyManager: kmName,
+        keyType,
+        grantTypesToBeSupported: ['client_credentials'],
+        callbackUrl: '',
+        scopes: ['default'],
+        additionalProperties: {},
+    });
+
+    try {
+        const response = await fetch(`/devportal/applications/${appId}/generate-keys`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+        });
+        const data = await response.json();
+        if (response.ok) {
+            await showAlert('Credentials generated successfully!', 'success');
+            window.location.reload();
+        } else {
+            await showAlert(data.description || data.message || 'Generation failed.', 'error');
+            restore();
+        }
+    } catch (error) {
+        await showAlert(error.message, 'error');
+        restore();
+    }
+}
+
+function startEditConfiguration(kmId, keyType) {
+    document.getElementById('configView-' + kmId + '-' + keyType)?.setAttribute('style', 'display:none');
+    document.getElementById('configEdit-' + kmId + '-' + keyType)?.setAttribute('style', 'display:block');
+    document.getElementById('editConfigBtn-' + kmId + '-' + keyType)?.setAttribute('style', 'display:none');
+}
+
+function cancelEditConfiguration(kmId, keyType) {
+    document.getElementById('configView-' + kmId + '-' + keyType)?.setAttribute('style', 'display:block');
+    document.getElementById('configEdit-' + kmId + '-' + keyType)?.setAttribute('style', 'display:none');
+    const errEl = document.getElementById('keyUpdateErrorContainer-' + keyType);
+    if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+}
+
+async function saveInlineKeyConfig(kmId, keyType, appId, keyManager, keyMappingId, clientName, consumerKey) {
+    const formId = 'inlineConfigForm-' + kmId + '-' + keyType;
+    const form = document.getElementById(formId);
+    if (!form) return;
+
+    // --- DOM fallbacks for values that may be empty at first render (keys generated after page load) ---
+    const tokenBtn = document.getElementById('tokenKeyBtn-' + keyType);
+    if (!keyMappingId || keyMappingId === 'undefined') {
+        keyMappingId = tokenBtn?.dataset?.keymappingid || '';
+    }
+    if (!appId || appId === 'undefined') {
+        appId = tokenBtn?.dataset?.appId || '';
+    }
+    if (!consumerKey || consumerKey === 'undefined') {
+        consumerKey = document.getElementById('consumer-key-' + kmId + '-' + keyType + '-view')?.value || '';
+    }
+
+    if (!appId || !keyMappingId) {
+        await showAlert('Unable to save — missing credentials. Please reload the page and try again.', 'error');
+        return;
+    }
+
+    const saveBtn = document.getElementById('saveConfigBtn-' + kmId + '-' + keyType);
+    const errEl = document.getElementById('keyUpdateErrorContainer-' + keyType);
+    const originalBtnHtml = saveBtn?.innerHTML;
+
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Saving…';
+    }
+    if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+
+    const formData = new FormData(form);
+    const grantTypes = formData.getAll('grantTypes');
+    const callbackUrl = formData.get('callbackURL') || '';
+
+    const additionalProperties = {};
+    formData.forEach((value, key) => {
+        if (key.startsWith('additionalProperties.')) {
+            const propName = key.replace('additionalProperties.', '');
+            if (additionalProperties[propName] !== undefined) {
+                additionalProperties[propName] = [].concat(additionalProperties[propName], value);
+            } else {
+                additionalProperties[propName] = value;
+            }
+        }
+    });
+    form.querySelectorAll('input[type="checkbox"][name^="additionalProperties."]').forEach(cb => {
+        const propName = cb.name.replace('additionalProperties.', '');
+        additionalProperties[propName] = cb.checked;
+    });
+
+    const payload = JSON.stringify({
+        supportedGrantTypes: grantTypes.length ? grantTypes : ['client_credentials'],
+        keyType,
+        keyManager,
+        callbackUrl,
+        consumerKey,
+        consumerSecret: '',
+        keyMappingId,
+        additionalProperties,
+    });
+
+    const restoreBtn = () => {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = originalBtnHtml;
+        }
+    };
+
+    try {
+        const response = await fetch(`/devportal/applications/${appId}/oauth-keys/${keyMappingId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+        });
+        const data = await response.json();
+        if (response.ok) {
+            await showAlert('Configuration updated successfully!', 'success');
+            window.location.reload();
+        } else {
+            const msg = data.description || data.message || 'Update failed. Please try again.';
+            if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
+            restoreBtn();
+        }
+    } catch (error) {
+        if (errEl) { errEl.textContent = error.message; errEl.style.display = 'block'; }
+        restoreBtn();
+    }
+}
+
+async function confirmRegenerateSecret(applicationId, keyMappingId) {
+    const proceed = confirm('Regenerating will issue a new consumer secret and immediately invalidate the current one. Continue?');
+    if (proceed) {
+        await cleanUp(applicationId, keyMappingId);
+    }
+}
 
 async function cleanUp(applicationId, keyMappingId) {
     try {
@@ -688,8 +899,8 @@ async function generateOauthKey(formId, appId, keyMappingId, keyManager, clientN
     const normalState = tokenBtn.querySelector('.button-normal-state');
     const loadingState = tokenBtn.querySelector('.button-loading-state');
 
-    const regenerateNormalState = regenerateBtn.querySelector('.button-normal-state');
-    const regenerateLoadingState = regenerateBtn.querySelector('.button-loading-state');
+    const regenerateNormalState = regenerateBtn?.querySelector('.button-normal-state');
+    const regenerateLoadingState = regenerateBtn?.querySelector('.button-loading-state');
     
     if (regenerateNormalState && regenerateLoadingState && regenerateBtn) {
         regenerateNormalState.style.display = 'none';

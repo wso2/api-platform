@@ -1,573 +1,330 @@
-<head>
-    <link rel="stylesheet" href="/technical-styles/manage-keys.css" />
-    <script src="/technical-scripts/oauth2-key-generation.js" defer></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css"
-    integrity="sha384-Ay26V7L8bsJTsX9Sxclnvsn+hkdiwRnrjZJXqKmkIDobPgIIWBOVguEcQQLDuhfN"
-    crossorigin="anonymous">
-</head>
-<main>
-    {{> header profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav }}
-    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav }}
-    <section class="section keys-section">
-        <div>
-            <div class="container-header mb-4 d-sm-flex justify-content-between align-items-center">Manage Keys - {{applicationMetadata.name}}</div>
-        </div>
+<link rel="stylesheet" href="/technical-styles/manage-keys.css" />
+<section id="manage-keys-section" class="section keys-section">
+<div class="container-fluid">
 
-        <div>
-        <ul class="nav nav-tabs key-btn-container" id="keysTab" role="tablist">
-            <li class="nav-item" role="presentation">
-                <button class="key-btn active" id="production-tab" data-bs-toggle="tab" data-bs-target="#production"
-                    type="button" role="tab" aria-controls="production" aria-selected="true">
-                    Production
-                </button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="key-btn" id="sandbox-tab" data-bs-toggle="tab" data-bs-target="#sandbox" type="button"
-                    role="tab" aria-controls="sandbox" aria-selected="false">
-                    Sandbox
-                </button>
-            </li>
-        </ul>
+    <div class="mk-header">
+        <h2 class="mk-title">Manage Keys</h2>
+        <p class="mk-subtitle">Generate and govern OAuth2 credentials for <strong>{{applicationMetadata.name}}</strong>. Each key manager issues its own consumer key &amp; secret.</p>
+    </div>
 
-        <div class="tab-content" id="keysTabContent">
-            <div class="tab-pane fade show active" id="production" role="tabpanel" aria-labelledby="production-tab">
-                <div class="accordion" id="productionAccordion">
-                    <div class="accordion-item mb-3">
-                        <h2 class="accordion-header" id="production-oauth2">
-                            <button class="accordion-button" type="button" data-bs-toggle="collapse"
-                                data-bs-target="#collapseProductionOauth2" aria-expanded="true"
-                                aria-controls="collapseProductionOauth2">
-                                OAuth2 Keys
-                            </button>
-                        </h2>
-                        <div id="collapseProductionOauth2" class="accordion-collapse collapse show"
-                            aria-labelledby="production-oauth2">
-                            <div class="accordion-body">
-                                {{#if keyManagersMetadata}}
-                                {{#each keyManagersMetadata}}
-                                {{#in name values="_internal_key_manager_,Resident Key Manager,_appdev_sts_key_manager_"}}
-                                {{#if enabled}}
-                                {{#let "keys" productionKeys}}
-                                <div class="accordion-body-content">
-                                    <div class="mb-4" id="consumerKeyContainer-PRODUCTION"
-                                        style="{{#unless keys.consumerKey}}display: none;{{/unless}}">
-                                        <div id="consumerKey-PRODUCTION-view" class="col-md-6"
-                                            style="{{#unless keys.consumerKey}}display: none;{{/unless}}">
-                                            <label for='consumer-key-{{../id}}-PRODUCTION-view' class='form-label'>
-                                                Consumer Key
-                                            </label>
-                                            <div class="password-toggle-container">
-                                                <input type='text' id='consumer-key-{{../id}}-PRODUCTION-view'
-                                                    class='form-control' name="consumerKey-PRODUCTION"
-                                                    value='{{keys.consumerKey}}' readonly disabled />
-                                                <button type="button" class="password-copy-btn"
-                                                    onclick="copyConsumerKey('consumer-key-{{../id}}-PRODUCTION-view')">
-                                                    <i class="bi bi-clipboard"></i>
-                                                </button>
-                                            </div>
-                                            <input type='hidden' id='app-ref-{{../id}}-PRODUCTION' class='form-control'
-                                                name="appRefId" value='{{keys.appRefId}}' />
-                                            <input type='hidden' id='key-map-{{../id}}-PRODUCTION' class='form-control'
-                                                name="keyMappingId" value='{{keys.keyMappingId}}' />
-                                        </div>
-                                        <div id="consumerSecret-PRODUCTION-view" class="col-md-6"
-                                            style="display: none;">
-                                            <label for='consumer-secret-{{../id}}-PRODUCTION-view' class='form-label'>
-                                                Consumer Secret
-                                            </label>
-                                            <div class="password-toggle-container">
-                                                <input type='password' id='consumer-secret-{{../id}}-PRODUCTION-view'
-                                                    class='form-control' name="consumerSecret-PRODUCTION"
-                                                    value='{{keys.consumerSecret}}' readonly disabled />
-                                                <button type="button" class="password-toggle-btn"
-                                                    onclick="togglePasswordVisibility('consumer-secret-{{../id}}-PRODUCTION-view')">
-                                                    <i class="bi bi-eye"></i>
-                                                </button>
-                                                <button type="button" class="password-copy-btn"
-                                                    onclick="copyConsumerSecret('consumer-secret-{{../id}}-PRODUCTION-view')">
-                                                    <i class="bi bi-clipboard"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div id="keyActionsContainer-PRODUCTION" class="key-actions-container col-md-6"
-                                        style="{{#unless keys.consumerKey}}display: none;{{/unless}}">
-                                        <div class="key-action-row">
-                                            <div class="key-action-buttons-row col-md-7 d-flex w-100">
-                                                <button id="viewKeyBtn-PRODUCTION" class="common-btn-outlined btn-sm flex-grow-1"
-                                                    onclick="loadKeysViewModal('PRODUCTION')">
-                                                    <i class="bi bi-eye"></i> View
-                                                </button>
-                                                <button id="modifyKeyBtn-PRODUCTION"
-                                                    class="common-btn-outlined btn-sm flex-grow-1 {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                                                    style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
-                                                    onclick="loadKeysModifyModal('PRODUCTION')">
-                                                    <i class="bi bi-pencil-square"></i> Modify
-                                                </button>
-                                                <button id="tokenKeyBtn-PRODUCTION"
-                                                    class="common-btn-outlined btn-sm flex-grow-1 {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                                                    data-app-id="{{@root.applicationMetadata.id}}"
-                                                    data-keymappingid="{{keys.keyMappingId}}"
-                                                    style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
-                                                    onclick="openGenerateTokenModal('applicationKeyGenerateForm-{{../id}}-PRODUCTION', '{{@root.applicationMetadata.id}}', '{{keys.keyMappingId}}', '{{../name}}', '{{../../applicationMetadata/name}}', '{{json @root.subscriptionScopes}}', 'PRODUCTION')">
-                                                    <span class="button-normal-state">
-                                                        <i class="bi bi-key-fill"></i> Generate
-                                                    </span>
-                                                    <span class="button-loading-state" style="display: none;">
-                                                        <span class="spinner-border spinner-border-sm me-1"
-                                                            role="status"></span>
-                                                        Generating...
-                                                    </span>
-                                                </button>
-                                                <button id="tokenInstructionsBtn-PRODUCTION"
-                                                    class="common-btn-outlined btn-sm flex-grow-1"
-                                                    onclick="loadKeysInstructionsModal('PRODUCTION')">
-                                                    <i class="bi bi-info-circle"></i> Instructions
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div id="generateKeyContainer-PRODUCTION" class="{{#unless keys.consumerKey}}d-flex{{/unless}}"
-                                        style="{{#if keys.consumerKey}}display: none;{{/if}}">
-                                        <div class="d-flex align-items-left flex-column">
-                                            <div class="info-box mt-0">
-                                                <div class="info-content">
-                                                    <div class="info-title">
-                                                        Application keys have not been generated yet. Click the button
-                                                        below to create
-                                                        credentials
-                                                        that will be shared across all APIs. </div>
-                                                </div>
-                                            </div>
-                                            <button data-cyid="generateKey-PRODUCTION" id="generateKeyBtn-PRODUCTION"
-                                                class="common-btn-primary btn-sm {{#if @root.isReadOnlyMode}}disabled{{/if}} col-md-3"
-                                                style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
-                                                data-subscriptions="{{ json ../../subAPIs }}"
-                                                onclick="generateApplicationKey('keysview-{{../id}}-PRODUCTION', '{{../../applicationMetadata.id}}', 'PRODUCTION', '{{../name}}', '{{../../applicationMetadata/name}}', this.getAttribute('data-subscriptions'), '{{../../orgID}}', 'consumer-key-{{../id}}-PRODUCTION', 'consumer-secret-{{../id}}-PRODUCTION')">
-                                                <span class="button-normal-state">
-                                                    <i class="bi bi-key me-1"></i> Generate Key
-                                                </span>
-                                                <span class="button-loading-state" style="display: none;">
-                                                    <span class="spinner-border spinner-border-sm me-1"
-                                                        role="status"></span>
-                                                    Generating...
-                                                </span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <!-- Error message container for key generation and token generation -->
-                                    <div id="keyGenerationErrorContainer-PRODUCTION" class="mt-2 text-danger"
-                                        style="display: none; font-size: 0.75rem; word-wrap: break-word;"></div>
-                                </div>
-                                {{/let}}
-                                {{/if}}
-                                {{else}}
-                                {{#if enabled}}
-                                {{#let "keys" productionKeys}}
-                                <div class="accordion-body-content">
-                                    <div id="generateKeyContainer-PRODUCTION" class="{{#unless keys.consumerKey}}d-flex{{/unless}}"
-                                        style="{{#if keys.consumerKey}}display: none;{{/if}}">
-                                        <div class="d-flex align-items-left flex-column">
-                                            <div class="info-box mt-0">
-                                                <div class="info-content">
-                                                    <div class="info-title">
-                                                        Application keys have not been generated yet. Click the button
-                                                        below to create
-                                                        credentials
-                                                        that will be shared across all APIs. </div>
-                                                </div>
-                                            </div>
-                                            <button data-cyid="generateKey-PRODUCTION" id="generateKeyBtn-PRODUCTION"
-                                                class="common-btn-primary btn-sm {{#if @root.isReadOnlyMode}}disabled{{/if}} col-md-3"
-                                                style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
-                                                data-subscriptions="{{ json ../../subAPIs }}"
-                                                onclick="generateApplicationKey('keysview-{{../id}}-PRODUCTION', '{{../../applicationMetadata.id}}', 'PRODUCTION', '{{../name}}', '{{../../applicationMetadata/name}}', this.getAttribute('data-subscriptions'), '{{../../orgID}}', 'consumer-key-{{../id}}-PRODUCTION', 'consumer-secret-{{../id}}-PRODUCTION')">
-                                                <span class="button-normal-state">
-                                                    <i class="bi bi-key me-1"></i> Generate Key
-                                                </span>
-                                                <span class="button-loading-state" style="display: none;">
-                                                    <span class="spinner-border spinner-border-sm me-1"
-                                                        role="status"></span>
-                                                    Generating...
-                                                </span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div class="mb-4" id="consumerKeyContainer-PRODUCTION"
-                                        style="{{#unless keys.consumerKey}}display: none;{{/unless}}">
-                                        <div id="consumerKey-PRODUCTION-view" class="col-md-6"
-                                            style="{{#unless keys.consumerKey}}display: none;{{/unless}}">
-                                            <label for='consumer-key-{{../id}}-PRODUCTION-view' class='form-label'>
-                                                Consumer Key
-                                            </label>
-                                            <div class="password-toggle-container">
-                                                <input type='text' id='consumer-key-{{../id}}-PRODUCTION-view'
-                                                    class='form-control' name="consumerKey-PRODUCTION"
-                                                    value='{{keys.consumerKey}}' readonly disabled />
-                                                <button type="button" class="password-copy-btn"
-                                                    onclick="copyConsumerKey('consumer-key-{{../id}}-PRODUCTION-view')">
-                                                    <i class="bi bi-clipboard"></i>
-                                                </button>
-                                            </div>
-                                            <input type='hidden' id='app-ref-{{../id}}-PRODUCTION' class='form-control'
-                                                name="appRefId" value='{{keys.appRefId}}' />
-                                            <input type='hidden' id='key-map-{{../id}}-PRODUCTION' class='form-control'
-                                                name="keyMappingId" value='{{keys.keyMappingId}}' />
-                                        </div>
-                                        <div id="consumerSecret-PRODUCTION-view" class="col-md-6"
-                                            style="display: none;">
-                                            <label for='consumer-secret-{{../id}}-PRODUCTION-view' class='form-label'>
-                                                Consumer Secret
-                                            </label>
-                                            <div class="password-toggle-container">
-                                                <input type='password' id='consumer-secret-{{../id}}-PRODUCTION-view'
-                                                    class='form-control' name="consumerSecret-PRODUCTION"
-                                                    value='{{keys.consumerSecret}}' readonly disabled />
-                                                <button type="button" class="password-toggle-btn"
-                                                    onclick="togglePasswordVisibility('consumer-secret-{{../id}}-PRODUCTION-view')">
-                                                    <i class="bi bi-eye"></i>
-                                                </button>
-                                                <button type="button" class="password-copy-btn"
-                                                    onclick="copyConsumerSecret('consumer-secret-{{../id}}-PRODUCTION-view')">
-                                                    <i class="bi bi-clipboard"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div id="keyActionsContainer-PRODUCTION" class="key-actions-container"
-                                        style="{{#unless keys.consumerKey}}display: none;{{/unless}}">
-                                        <div class="key-action-row">
-                                            <div class="key-action-buttons-row col-md-7">
-                                                <button id="viewKeyBtn-PRODUCTION" class="common-btn-outlined btn-sm"
-                                                    onclick="loadKeysViewModal('PRODUCTION')">
-                                                    <i class="bi bi-eye"></i> View
-                                                </button>
-                                                <button id="modifyKeyBtn-PRODUCTION"
-                                                    class="common-btn-outlined btn-sm {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                                                    style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
-                                                    onclick="loadKeysModifyModal('PRODUCTION')">
-                                                    <i class="bi bi-pencil-square"></i> Modify
-                                                </button>
-                                                <button id="tokenKeyBtn-PRODUCTION"
-                                                    class="common-btn-outlined btn-sm {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                                                    data-app-id="{{@root.applicationMetadata.id}}"
-                                                    style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
-                                                    onclick="openGenerateTokenModal('applicationKeyGenerateForm-{{../id}}-PRODUCTION', '{{@root.applicationMetadata.id}}', '{{keys.keyMappingId}}', '{{../name}}', '{{../../applicationMetadata/name}}', '{{json @root.subscriptionScopes}}', 'PRODUCTION')">
-                                                    <span class="button-normal-state">
-                                                        <i class="bi bi-key-fill"></i> Generate
-                                                    </span>
-                                                    <span class="button-loading-state" style="display: none;">
-                                                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                                                        Generating...
-                                                    </span>
-                                                </button>
-                                                <button id="tokenInstructionsBtn-PRODUCTION"
-                                                    class="common-btn-outlined btn-sm"
-                                                    onclick="loadKeysInstructionsModal('PRODUCTION')">
-                                                    <i class="bi bi-info-circle"></i> Instructions
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                {{/let}}
-                                {{/if}}
-                                {{/in}}
-                                <!-- Error message container for key generation and token generation -->
-                                <div id="keyGenerationErrorContainer-PRODUCTION" class="mt-2 text-danger"
-                                    style="display: none; font-size: 0.75rem; word-wrap: break-word;"></div>
-                                {{/each}}
-                                {{else}}
-                                <div style="margin-left: 1rem;">
-                                    <div class="info-box">
-                                        <div class="info-content">
-                                            <div class="info-title">
-                                                Key generation is currently unavailable. Please contact the organization administrator.
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                {{/if}}
-                            </div>
-                        </div>
-                    </div>
+    {{!-- Environment selector — card-style tab triggers --}}
+    <div class="mk-env-selector" role="tablist">
+        <button class="mk-env-card active" id="production-tab" role="tab"
+            data-bs-toggle="tab" data-bs-target="#production"
+            aria-controls="production" aria-selected="true">
+            <span class="mk-env-dot mk-env-dot-prod"></span>
+            <div class="mk-env-text">
+                <span class="mk-env-name">Production</span>
+                <span class="mk-env-desc">Live traffic</span>
+            </div>
+        </button>
+        <button class="mk-env-card" id="sandbox-tab" role="tab"
+            data-bs-toggle="tab" data-bs-target="#sandbox"
+            aria-controls="sandbox" aria-selected="false">
+            <span class="mk-env-dot mk-env-dot-sandbox"></span>
+            <div class="mk-env-text">
+                <span class="mk-env-name">Sandbox</span>
+                <span class="mk-env-desc">Safe to test</span>
+            </div>
+        </button>
+    </div>
+
+    <div class="tab-content mk-tab-content" id="keysTabContent">
+
+        {{!-- ── PRODUCTION ── --}}
+        <div class="tab-pane fade show active" id="production" role="tabpanel" aria-labelledby="production-tab">
+
+            <div class="mk-context-banner mk-context-banner-prod">
+                <i class="bi bi-circle-fill mk-env-dot-prod-icon"></i>
+                <span>You are viewing <strong>Production</strong> credentials. Tokens issued here are valid in the live environment.</span>
+            </div>
+
+            {{#if keyManagersMetadata}}
+
+            {{!-- Internal / Resident KMs: always show card --}}
+            {{#each keyManagersMetadata}}
+            {{#in name values="_internal_key_manager_,Resident Key Manager,_appdev_sts_key_manager_"}}
+            {{#if enabled}}
+            {{#let "keys" productionKeys}}
+            {{> manage-keys-km-card
+                kmName=../name
+                kmId=../id
+                kmType=../type
+                keyType="PRODUCTION"
+                keys=keys
+                availableGrantTypes=../availableGrantTypes
+                applicationConfiguration=../applicationConfiguration
+                tokenEndpoint=../tokenEndpoint
+                appId=@root.applicationMetadata.id
+                appName=@root.applicationMetadata.name
+                orgID=@root.orgID
+                subscriptionScopes=@root.subscriptionScopes
+                isReadOnlyMode=@root.isReadOnlyMode
+            }}
+            {{/let}}
+            {{/if}}
+            {{/in}}
+            {{/each}}
+
+            {{!-- External KMs: only show card if keys already exist --}}
+            {{#each keyManagersMetadata}}
+            {{#in name values="_internal_key_manager_,Resident Key Manager,_appdev_sts_key_manager_"}}
+            {{!-- skip internal --}}
+            {{else}}
+            {{#if enabled}}
+            {{#let "keys" productionKeys}}
+            {{#if keys.consumerKey}}
+            {{> manage-keys-km-card
+                kmName=../name
+                kmId=../id
+                kmType=../type
+                keyType="PRODUCTION"
+                keys=keys
+                availableGrantTypes=../availableGrantTypes
+                applicationConfiguration=../applicationConfiguration
+                tokenEndpoint=../tokenEndpoint
+                appId=@root.applicationMetadata.id
+                appName=@root.applicationMetadata.name
+                orgID=@root.orgID
+                subscriptionScopes=@root.subscriptionScopes
+                isReadOnlyMode=@root.isReadOnlyMode
+            }}
+            {{/if}}
+            {{/let}}
+            {{/if}}
+            {{/in}}
+            {{/each}}
+
+            {{!-- "Generate with another KM" --}}
+            <div class="mk-add-km-section" id="addKmSection-PRODUCTION" style="display:none">
+                {{!-- Single-KM direct buttons (JS hides all but one, or hides entire block if >1) --}}
+                {{#each keyManagersMetadata}}
+                {{#in name values="_internal_key_manager_,Resident Key Manager,_appdev_sts_key_manager_"}}
+                {{else}}
+                {{#if enabled}}
+                {{#let "keys" productionKeys}}
+                {{#unless keys.consumerKey}}
+                <div class="mk-add-km-single-item" data-env="PRODUCTION">
+                    <button class="mk-add-km-btn" type="button"
+                        data-km-name="{{../name}}"
+                        onclick="selectKmAndGenerate('PRODUCTION', '{{@root.applicationMetadata.id}}', '{{@root.applicationMetadata.name}}', '{{@root.orgID}}', this)">
+                        <i class="bi bi-plus"></i>
+                        <span>Generate keys with <strong>{{../name}}</strong></span>
+                        <span class="mk-add-km-spinner" style="display:none">
+                            <span class="spinner-border spinner-border-sm" role="status"></span>
+                        </span>
+                    </button>
+                </div>
+                {{/unless}}
+                {{/let}}
+                {{/if}}
+                {{/in}}
+                {{/each}}
+
+                {{!-- Multi-KM dropdown (JS shows this instead when >1 available) --}}
+                <div class="mk-add-km-dropdown" id="addKmMulti-PRODUCTION" style="display:none">
+                    <button class="mk-add-km-btn" type="button"
+                        onclick="toggleKmDropdown('PRODUCTION')">
+                        <i class="bi bi-plus"></i>
+                        <span>Generate keys with another key manager</span>
+                        <span class="mk-add-km-spinner" id="addKmSpinner-PRODUCTION" style="display:none">
+                            <span class="spinner-border spinner-border-sm" role="status"></span>
+                        </span>
+                    </button>
+                    <ul class="mk-km-dropdown-menu" id="kmDropdown-PRODUCTION">
+                        {{#each keyManagersMetadata}}
+                        {{#in name values="_internal_key_manager_,Resident Key Manager,_appdev_sts_key_manager_"}}
+                        {{else}}
+                        {{#if enabled}}
+                        {{#let "keys" productionKeys}}
+                        {{#unless keys.consumerKey}}
+                        <li class="mk-km-dropdown-item"
+                            data-km-id="{{../id}}" data-km-name="{{../name}}"
+                            onclick="selectKmAndGenerate('PRODUCTION', '{{@root.applicationMetadata.id}}', '{{@root.applicationMetadata.name}}', '{{@root.orgID}}', this)">
+                            <i class="bi bi-key"></i>
+                            <span>{{../name}}</span>
+                        </li>
+                        {{/unless}}
+                        {{/let}}
+                        {{/if}}
+                        {{/in}}
+                        {{/each}}
+                    </ul>
                 </div>
             </div>
-            <div class="tab-pane fade" id="sandbox" role="tabpanel" aria-labelledby="sandbox-tab">
-                <div class="info-box mt-0">
-                    <div class="info-content">
-                        <div class="info-title">
-                            <i class="bi bi-info-circle-fill me-2"></i>
-                            These keys can be used only for the sandbox environment.
-                        </div>
-                    </div>
-                </div>
-                <div class="accordion" id="sandboxAccordion">
-                        <div class="accordion-item mb-3">
-                            <h2 class="accordion-header" id="sandbox-oauth2">
-                                <button class="accordion-button" type="button" data-bs-toggle="collapse"
-                                    data-bs-target="#collapseSandboxOAuth2" aria-expanded="true"
-                                    aria-controls="collapseSandboxOAuth2">
-                                    OAuth2 Keys
-                                </button>
-                            </h2>
-                            <div id="collapseSandboxOAuth2" class="accordion-collapse collapse show"
-                                aria-labelledby="sandbox-oauth2">
-                                <div class="accordion-body">
-                                    {{#if keyManagersMetadata}}
-                                    {{#each keyManagersMetadata}}
-                                    {{#in name values="_internal_key_manager_,Resident Key Manager,_appdev_sts_key_manager_"}}
-                                    {{#if enabled}}
-                                    {{#let "keys" sandboxKeys}}
-                                    <div class="accordion-body-content">
-                                        <div class="mb-4" id="consumerKeyContainer-SANDBOX"
-                                            style="{{#unless keys.consumerKey}}display: none;{{/unless}}">
-                                            <div id="consumerKey-SANDBOX-view" class="col-md-6"
-                                                style="{{#unless keys.consumerKey}}display: none;{{/unless}}">
-                                                <label for='consumer-key-{{../id}}-SANDBOX-view' class='form-label'>
-                                                    Consumer Key
-                                                </label>
-                                                <div class="password-toggle-container">
-                                                    <input type='text' id='consumer-key-{{../id}}-SANDBOX-view'
-                                                        class='form-control' name="consumerKey-SANDBOX"
-                                                        value='{{keys.consumerKey}}' readonly disabled />
-                                                    <button type="button" class="password-copy-btn"
-                                                        onclick="copyConsumerKey('consumer-key-{{../id}}-SANDBOX-view')">
-                                                        <i class="bi bi-clipboard"></i>
-                                                    </button>
-                                                </div>
-                                                <input type='hidden' id='app-ref-{{../id}}-SANDBOX' class='form-control'
-                                                    name="appRefId" value='{{keys.appRefId}}' />
-                                                <input type='hidden' id='key-map-{{../id}}-SANDBOX' class='form-control'
-                                                    name="keyMappingId" value='{{keys.keyMappingId}}' />
-                                            </div>
-                                            <div id="consumerSecret-SANDBOX-view" class="col-md-6"
-                                                style="display: none;">
-                                                <label for='consumer-secret-{{../id}}-SANDBOX-view' class='form-label'>
-                                                    Consumer Secret
-                                                </label>
-                                                <div class="password-toggle-container">
-                                                    <input type='password' id='consumer-secret-{{../id}}-SANDBOX-view'
-                                                        class='form-control' name="consumerSecret-SANDBOX"
-                                                        value='{{keys.consumerSecret}}' readonly disabled />
-                                                    <button type="button" class="password-toggle-btn"
-                                                        onclick="togglePasswordVisibility('consumer-secret-{{../id}}-SANDBOX-view')">
-                                                        <i class="bi bi-eye"></i>
-                                                    </button>
-                                                    <button type="button" class="password-copy-btn"
-                                                        onclick="copyConsumerSecret('consumer-secret-{{../id}}-SANDBOX-view')">
-                                                        <i class="bi bi-clipboard"></i>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div id="keyActionsContainer-SANDBOX" class="key-actions-container col-md-6"
-                                            style="{{#unless keys.consumerKey}}display: none;{{/unless}}">
-                                            <div class="key-action-row">
-                                                <div class="key-action-buttons-row col-md-7 d-flex w-100">
-                                                    <button id="viewKeyBtn-SANDBOX" class="common-btn-outlined btn-sm flex-grow-1"
-                                                        onclick="loadKeysViewModal('SANDBOX')">
-                                                        <i class="bi bi-eye"></i> View
-                                                    </button>
-                                        
-                                                    <button id="modifyKeyBtn-SANDBOX" class="common-btn-outlined btn-sm flex-grow-1 {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                                                        style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
-                                                        onclick="loadKeysModifyModal('SANDBOX')">
-                                                        <i class="bi bi-pencil-square"></i> Modify
-                                                    </button>
-                                        
-                                                    <button id="tokenKeyBtn-SANDBOX"
-                                                        class="common-btn-outlined btn-sm flex-grow-1 {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                                                        data-app-id="{{@root.applicationMetadata.id}}"
-                                                        data-keymappingid="{{keys.keyMappingId}}"
-                                                        style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
-                                                        onclick="openGenerateTokenModal('applicationKeyGenerateForm-{{../id}}-SANDBOX', '{{@root.applicationMetadata.id}}', '{{keys.keyMappingId}}', '{{../name}}', '{{../../applicationMetadata/name}}', '{{json @root.subscriptionScopes}}', 'SANDBOX')">
-                                                        <span class="button-normal-state">
-                                                            <i class="bi bi-key-fill"></i> Generate
-                                                        </span>
-                                                        <span class="button-loading-state" style="display: none;">
-                                                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                                                            Generating...
-                                                        </span>
-                                                    </button>
-                                        
-                                                    <button id="tokenInstructionsBtn-SANDBOX" class="common-btn-outlined btn-sm flex-grow-1"
-                                                        onclick="loadKeysInstructionsModal('SANDBOX')">
-                                                        <i class="bi bi-info-circle"></i> Instructions
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div id="generateKeyContainer-SANDBOX" class="{{#unless keys.consumerKey}}d-flex{{/unless}}"
-                                            style="{{#if keys.consumerKey}}display: none;{{/if}}">
-                                            <div class="d-flex align-items-left flex-column">
-                                                <div class="info-box mt-0">
-                                                    <div class="info-content">
-                                                        <div class="info-title">
-                                                            Application keys have not been generated yet. Click the
-                                                            button
-                                                            below to create credentials that will be shared across all
-                                                            APIs.
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <button data-cyid="generateKey-SANDBOX" id="generateKeyBtn-SANDBOX"
-                                                    class="common-btn-primary btn-sm {{#if @root.isReadOnlyMode}}disabled{{/if}} col-md-3"
-                                                    style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
-                                                    data-subscriptions="{{ json ../../subAPIs }}"
-                                                    onclick="generateApplicationKey('keysview-{{../id}}-SANDBOX', '{{../../applicationMetadata.id}}', 'SANDBOX', '{{../name}}', '{{../../applicationMetadata/name}}', this.getAttribute('data-subscriptions'), '{{../../orgID}}', 'consumer-key-{{../id}}-SANDBOX', 'consumer-secret-{{../id}}-SANDBOX')">
-                                                    <span class="button-normal-state">
-                                                        <i class="bi bi-key me-1"></i> Generate Key
-                                                    </span>
-                                                    <span class="button-loading-state" style="display: none;">
-                                                        <span class="spinner-border spinner-border-sm me-1"
-                                                            role="status"></span>
-                                                        Generating...
-                                                    </span>
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <!-- Error message container for key generation and token generation -->
-                                        <div id="keyGenerationErrorContainer-SANDBOX" class="mt-2 text-danger"
-                                            style="display: none; font-size: 0.75rem; word-wrap: break-word;"></div>
-                                    </div>
-                                    {{/let}}
-                                    {{/if}}
-                                    {{else}}
-                                    {{#if enabled}}
-                                    {{#let "keys" sandboxKeys}}
-                                    <div class="accordion-body-content">
-                                        <div id="generateKeyContainer-SANDBOX" class="{{#unless keys.consumerKey}}d-flex{{/unless}}"
-                                            style="{{#if keys.consumerKey}}display: none;{{/if}}">
-                                            <div class="d-flex align-items-left flex-column">
-                                                <div class="info-box mt-0">
-                                                    <div class="info-content">
-                                                        <div class="info-title">
-                                                            Application keys have not been generated yet. Click the
-                                                            button
-                                                            below to create credentials that will be shared across all
-                                                            APIs.
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <button data-cyid="generateKey-SANDBOX" id="generateKeyBtn-SANDBOX"
-                                                    class="common-btn-primary btn-sm {{#if @root.isReadOnlyMode}}disabled{{/if}} col-md-3"
-                                                    style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
-                                                    data-subscriptions="{{ json ../../subAPIs }}"
-                                                    onclick="generateApplicationKey('keysview-{{../id}}-SANDBOX', '{{../../applicationMetadata.id}}', 'SANDBOX', '{{../name}}', '{{../../applicationMetadata/name}}', this.getAttribute('data-subscriptions'), '{{../../orgID}}', 'consumer-key-{{../id}}-SANDBOX', 'consumer-secret-{{../id}}-SANDBOX')">
-                                                    <span class="button-normal-state">
-                                                        <i class="bi bi-key me-1"></i> Generate Key
-                                                    </span>
-                                                    <span class="button-loading-state" style="display: none;">
-                                                        <span class="spinner-border spinner-border-sm me-1"
-                                                            role="status"></span>
-                                                        Generating...
-                                                    </span>
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div class="mb-4" id="consumerKeyContainer-SANDBOX"
-                                            style="{{#unless keys.consumerKey}}display: none;{{/unless}}">
-                                            <div id="consumerKey-SANDBOX-view" class="col-md-6"
-                                                style="{{#unless keys.consumerKey}}display: none;{{/unless}}">
-                                                <label for='consumer-key-{{../id}}-SANDBOX-view' class='form-label'>
-                                                    Consumer Key
-                                                </label>
-                                                <div class="password-toggle-container">
-                                                    <input type='text' id='consumer-key-{{../id}}-SANDBOX-view'
-                                                        class='form-control' name="consumerKey-SANDBOX"
-                                                        value='{{keys.consumerKey}}' readonly disabled />
-                                                    <button type="button" class="password-copy-btn"
-                                                        onclick="copyConsumerKey('consumer-key-{{../id}}-SANDBOX-view')">
-                                                        <i class="bi bi-clipboard"></i>
-                                                    </button>
-                                                </div>
-                                                <input type='hidden' id='app-ref-{{../id}}-SANDBOX' class='form-control'
-                                                    name="appRefId" value='{{keys.appRefId}}' />
-                                                <input type='hidden' id='key-map-{{../id}}-SANDBOX' class='form-control'
-                                                    name="keyMappingId" value='{{keys.keyMappingId}}' />
-                                            </div>
-                                            <div id="consumerSecret-SANDBOX-view" class="col-md-6"
-                                                style="display: none;">
-                                                <label for='consumer-secret-{{../id}}-SANDBOX-view' class='form-label'>
-                                                    Consumer Secret
-                                                </label>
-                                                <div class="password-toggle-container">
-                                                    <input type='password' id='consumer-secret-{{../id}}-SANDBOX-view'
-                                                        class='form-control' name="consumerSecret-SANDBOX"
-                                                        value='{{keys.consumerSecret}}' readonly disabled />
-                                                    <button type="button" class="password-toggle-btn"
-                                                        onclick="togglePasswordVisibility('consumer-secret-{{../id}}-SANDBOX-view')">
-                                                        <i class="bi bi-eye"></i>
-                                                    </button>
-                                                    <button type="button" class="password-copy-btn"
-                                                        onclick="copyConsumerSecret('consumer-secret-{{../id}}-SANDBOX-view')">
-                                                        <i class="bi bi-clipboard"></i>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div id="keyActionsContainer-SANDBOX" class="key-actions-container"
-                                            style="{{#unless keys.consumerKey}}display: none;{{/unless}}">
-                                            <div class="key-action-row">
-                                                <div class="key-action-buttons-row col-md-7">
-                                                    <button id="viewKeyBtn-SANDBOX" class="common-btn-outlined btn-sm"
-                                                        onclick="loadKeysViewModal('SANDBOX')">
-                                                        <i class="bi bi-eye"></i> View
-                                                    </button>
-                                                    <button id="modifyKeyBtn-SANDBOX"
-                                                        class="common-btn-outlined btn-sm {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                                                        style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
-                                                        onclick="loadKeysModifyModal('SANDBOX')">
-                                                        <i class="bi bi-pencil-square"></i> Modify
-                                                    </button>
-                                                    <button id="tokenKeyBtn-SANDBOX"
-                                                        class="common-btn-outlined btn-sm {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                                                        data-app-id="{{@root.applicationMetadata.id}}"
-                                                        style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
-                                                        onclick="openGenerateTokenModal('applicationKeyGenerateForm-{{../id}}-SANDBOX', '{{@root.applicationMetadata.id}}', '{{keys.keyMappingId}}', '{{../name}}', '{{../../applicationMetadata/name}}', '{{json @root.subscriptionScopes}}', 'SANDBOX')">
-                                                        <span class="button-normal-state">
-                                                            <i class="bi bi-key-fill"></i> Generate
-                                                        </span>
-                                                        <span class="button-loading-state" style="display: none;">
-                                                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                                                            Generating...
-                                                        </span>
-                                                    </button>
-                                                    <button id="tokenInstructionsBtn-SANDBOX"
-                                                        class="common-btn-outlined btn-sm"
-                                                        onclick="loadKeysInstructionsModal('SANDBOX')">
-                                                        <i class="bi bi-info-circle"></i> Instructions
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {{/let}}
-                                    {{/if}}
-                                    {{/in}}
-                                    <!-- Error message container for key generation and token generation -->
-                                    <div id="keyGenerationErrorContainer-SANDBOX" class="mt-2 text-danger"
-                                        style="display: none; font-size: 0.75rem; word-wrap: break-word;"></div>
-                                    {{/each}}
-                                    {{else}}
-                                    <div style="margin-left: 1rem;">
-                                        <div class="info-box">
-                                            <div class="info-content">
-                                                <div class="info-title">
-                                                    Key generation is currently unavailable. Please contact the organization administrator.
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {{/if}}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+            <script>
+            (function(){
+                var sec = document.getElementById('addKmSection-PRODUCTION');
+                if (!sec) return;
+                var singles = sec.querySelectorAll('.mk-add-km-single-item[data-env="PRODUCTION"]');
+                if (singles.length === 0) return;
+                sec.style.display = '';
+                if (singles.length === 1) {
+                    singles[0].style.display = '';
+                } else {
+                    singles.forEach(function(el) { el.style.display = 'none'; });
+                    document.getElementById('addKmMulti-PRODUCTION').style.display = '';
+                }
+            })();
+            </script>
+
+            {{else}}
+            <div class="mk-unavailable">
+                <i class="bi bi-exclamation-circle"></i>
+                <span>Key generation is unavailable. Please contact your organization administrator.</span>
             </div>
+            {{/if}}
         </div>
+
+        {{!-- ── SANDBOX ── --}}
+        <div class="tab-pane fade" id="sandbox" role="tabpanel" aria-labelledby="sandbox-tab">
+
+            <div class="mk-context-banner mk-context-banner-sandbox">
+                <i class="bi bi-circle-fill mk-env-dot-sandbox-icon"></i>
+                <span>You are viewing <strong>Sandbox</strong> credentials. These are for testing only and cannot be used in production.</span>
+            </div>
+
+            {{#if keyManagersMetadata}}
+
+            {{!-- Internal / Resident KMs: always show card --}}
+            {{#each keyManagersMetadata}}
+            {{#in name values="_internal_key_manager_,Resident Key Manager,_appdev_sts_key_manager_"}}
+            {{#if enabled}}
+            {{#let "keys" sandboxKeys}}
+            {{> manage-keys-km-card
+                kmName=../name
+                kmId=../id
+                kmType=../type
+                keyType="SANDBOX"
+                keys=keys
+                availableGrantTypes=../availableGrantTypes
+                applicationConfiguration=../applicationConfiguration
+                tokenEndpoint=../tokenEndpoint
+                appId=@root.applicationMetadata.id
+                appName=@root.applicationMetadata.name
+                orgID=@root.orgID
+                subscriptionScopes=@root.subscriptionScopes
+                isReadOnlyMode=@root.isReadOnlyMode
+                isSandbox=true
+            }}
+            {{/let}}
+            {{/if}}
+            {{/in}}
+            {{/each}}
+
+            {{!-- External KMs: only show card if keys already exist --}}
+            {{#each keyManagersMetadata}}
+            {{#in name values="_internal_key_manager_,Resident Key Manager,_appdev_sts_key_manager_"}}
+            {{!-- skip internal --}}
+            {{else}}
+            {{#if enabled}}
+            {{#let "keys" sandboxKeys}}
+            {{#if keys.consumerKey}}
+            {{> manage-keys-km-card
+                kmName=../name
+                kmId=../id
+                kmType=../type
+                keyType="SANDBOX"
+                keys=keys
+                availableGrantTypes=../availableGrantTypes
+                applicationConfiguration=../applicationConfiguration
+                tokenEndpoint=../tokenEndpoint
+                appId=@root.applicationMetadata.id
+                appName=@root.applicationMetadata.name
+                orgID=@root.orgID
+                subscriptionScopes=@root.subscriptionScopes
+                isReadOnlyMode=@root.isReadOnlyMode
+                isSandbox=true
+            }}
+            {{/if}}
+            {{/let}}
+            {{/if}}
+            {{/in}}
+            {{/each}}
+
+            {{!-- "Generate with another KM" --}}
+            <div class="mk-add-km-section" id="addKmSection-SANDBOX" style="display:none">
+                {{!-- Single-KM direct buttons --}}
+                {{#each keyManagersMetadata}}
+                {{#in name values="_internal_key_manager_,Resident Key Manager,_appdev_sts_key_manager_"}}
+                {{else}}
+                {{#if enabled}}
+                {{#let "keys" sandboxKeys}}
+                {{#unless keys.consumerKey}}
+                <div class="mk-add-km-single-item" data-env="SANDBOX">
+                    <button class="mk-add-km-btn" type="button"
+                        data-km-name="{{../name}}"
+                        onclick="selectKmAndGenerate('SANDBOX', '{{@root.applicationMetadata.id}}', '{{@root.applicationMetadata.name}}', '{{@root.orgID}}', this)">
+                        <i class="bi bi-plus"></i>
+                        <span>Generate keys with <strong>{{../name}}</strong></span>
+                        <span class="mk-add-km-spinner" style="display:none">
+                            <span class="spinner-border spinner-border-sm" role="status"></span>
+                        </span>
+                    </button>
+                </div>
+                {{/unless}}
+                {{/let}}
+                {{/if}}
+                {{/in}}
+                {{/each}}
+
+                {{!-- Multi-KM dropdown --}}
+                <div class="mk-add-km-dropdown" id="addKmMulti-SANDBOX" style="display:none">
+                    <button class="mk-add-km-btn" type="button"
+                        onclick="toggleKmDropdown('SANDBOX')">
+                        <i class="bi bi-plus"></i>
+                        <span>Generate keys with another key manager</span>
+                        <span class="mk-add-km-spinner" id="addKmSpinner-SANDBOX" style="display:none">
+                            <span class="spinner-border spinner-border-sm" role="status"></span>
+                        </span>
+                    </button>
+                    <ul class="mk-km-dropdown-menu" id="kmDropdown-SANDBOX">
+                        {{#each keyManagersMetadata}}
+                        {{#in name values="_internal_key_manager_,Resident Key Manager,_appdev_sts_key_manager_"}}
+                        {{else}}
+                        {{#if enabled}}
+                        {{#let "keys" sandboxKeys}}
+                        {{#unless keys.consumerKey}}
+                        <li class="mk-km-dropdown-item"
+                            data-km-id="{{../id}}" data-km-name="{{../name}}"
+                            onclick="selectKmAndGenerate('SANDBOX', '{{@root.applicationMetadata.id}}', '{{@root.applicationMetadata.name}}', '{{@root.orgID}}', this)">
+                            <i class="bi bi-key"></i>
+                            <span>{{../name}}</span>
+                        </li>
+                        {{/unless}}
+                        {{/let}}
+                        {{/if}}
+                        {{/in}}
+                        {{/each}}
+                    </ul>
+                </div>
+            </div>
+            <script>
+            (function(){
+                var sec = document.getElementById('addKmSection-SANDBOX');
+                if (!sec) return;
+                var singles = sec.querySelectorAll('.mk-add-km-single-item[data-env="SANDBOX"]');
+                if (singles.length === 0) return;
+                sec.style.display = '';
+                if (singles.length === 1) {
+                    singles[0].style.display = '';
+                } else {
+                    singles.forEach(function(el) { el.style.display = 'none'; });
+                    document.getElementById('addKmMulti-SANDBOX').style.display = '';
+                }
+            })();
+            </script>
+
+            {{else}}
+            <div class="mk-unavailable">
+                <i class="bi bi-exclamation-circle"></i>
+                <span>Key generation is unavailable. Please contact your organization administrator.</span>
+            </div>
+            {{/if}}
         </div>
-        {{> warning }}
-    </section>
-</main>
+
+    </div>{{!-- /tab-content --}}
+
+    {{> warning }}
+</div>
+</section>

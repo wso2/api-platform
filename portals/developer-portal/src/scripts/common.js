@@ -81,7 +81,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const currentPath = window.location.pathname;
         const navLinks = document.querySelectorAll('.nav-link');
         const apiSubmenu = document.getElementById('api-submenu');
-        const applicationsSubmenu = document.getElementById('applications-submenu');
+
         const mcpSubmenu = document.getElementById('mcp-submenu');
         const apisLink = document.getElementById('apis');
         const applicationsLink = document.getElementById('applications');
@@ -142,27 +142,8 @@ document.addEventListener("DOMContentLoaded", function () {
                     document.getElementById('api-overview')?.classList.add('active');
                 }
             }
-        } else if (currentPath.includes('/applications/')) {
-            applicationsSubmenu.classList.add('show');
+        } else if (currentPath.includes('/applications/') || currentPath.includes('/applications')) {
             applicationsLink?.classList.add('active');
-            applicationsLink?.classList.add('has-active-submenu');
-
-            // Extract Application ID from URL path and update submenu links
-            const applicationIdMatch = currentPath.match(/\/applications\/([^\/]+)/);
-            if (applicationIdMatch && applicationIdMatch[1]) {
-                const applicationId = applicationIdMatch[1];
-
-                // Update the submenu links with the correct Application ID and base path
-                document.getElementById('applications-overview').href = `${basePath}/applications/${applicationId}`;
-                document.getElementById('applications-keys').href = `${basePath}/applications/${applicationId}/manage-keys`;
-
-                // Set active submenu item
-                if (currentPath.includes('/manage-keys')) {
-                    document.getElementById('applications-keys')?.classList.add('active');
-                } else {
-                    document.getElementById('applications-overview')?.classList.add('active');
-                }
-            }
         } else if (currentPath.includes('/mcps')) {
             document.getElementById('mcps')?.classList.add('active');
             mcpSubmenu.classList.remove('show');

@@ -10,12 +10,11 @@
  *
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR ANY
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
  * KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations
  * under the License.
  */
-const util = require('../utils/util');
 const logger = require('../config/logger');
 const yaml = require('js-yaml');
 
@@ -80,17 +79,13 @@ const apiDefinitionHasApiKeySecurity = (apiDefinition) => {
 };
 
 /**
- * API-level API Keys nav: gateway API with API Key security enabled.
- * If an API definition is available, the decision is driven by its security schemes.
- * Otherwise, it falls back to the control plane securityScheme field.
+ * Whether an API uses API Key security, driven by its API definition's security schemes.
  *
- * @param {object} req - Express request (for invokeApiRequest auth)
- * @param {object} metaData - Metadata with apiInfo.gatewayType and apiReferenceID (APIM DTO shape)
- * @param {object|null} existingApiDetail - Optional CP GET /apis/:ref response to avoid a duplicate call
+ * @param {object} metaData - Metadata in APIM DTO shape; requires apiInfo to be present
  * @param {string|object|null} apiDefinition - Optional raw API definition to inspect for apiKey security
- * @returns {Promise<boolean>}
+ * @returns {boolean}
  */
-async function shouldShowApiKeysNav(req, metaData, existingApiDetail = null, apiDefinition = null) {
+function apiUsesApiKeySecurity(metaData, apiDefinition = null) {
     if (!metaData?.apiInfo) {
         return false;
     }
@@ -100,20 +95,12 @@ async function shouldShowApiKeysNav(req, metaData, existingApiDetail = null, api
         return apiDefinitionHasApiKeySecurity(parsedDefinition);
     }
 
-    const refId = metaData.apiReferenceID;
-    let detail = existingApiDetail;
-
-    if (detail && detail.securityScheme !== undefined) {
-        return securitySchemeHasApiKey(detail.securityScheme);
-    }
-
-    // If no API definition or existing API detail is available, don't attempt
-    // to call the control plane; fall back to not showing the nav.
+    // No API definition available to inspect.
     return false;
 }
 
 module.exports = {
-    shouldShowApiKeysNav,
+    apiUsesApiKeySecurity,
     findSubscriptionTokenHeader,
     securitySchemeHasApiKey,
 };

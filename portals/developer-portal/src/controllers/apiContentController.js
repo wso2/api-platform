@@ -29,12 +29,10 @@ const adminDao = require('../dao/admin');
 const apiDao = require('../dao/apiMetadata');
 const subDao = require('../dao/subscription');
 const apiMetadataService = require('../services/apiMetadataService');
-const { shouldShowApiKeysNav, findSubscriptionTokenHeader } = require('../services/apiKeysNavService');
+const { apiUsesApiKeySecurity, findSubscriptionTokenHeader } = require('../utils/apiDefinitionUtil');
 const adminService = require('../services/adminService');
 const apiFlowService = require('../services/apiFlowService');
-const subscriptionPolicyDTO = require('../dto/subscriptionPolicy');
 const { ApplicationDTO } = require('../dto/application');
-const APIDTO = require('../dto/apiDTO');
 const { buildSchema, getIntrospectionQuery, graphql: executeGraphQL } = require('graphql');
 const yaml = require('js-yaml');
 const { log } = require('console');
@@ -133,31 +131,6 @@ const loadAPIs = async (req, res) => {
                 }
             }
 
-            //retrieve api list from control plane
-            if (config.controlPlane?.enabled !== false) {
-                let publicMode = false;
-                if (cpOrgID && Array.isArray(req.user?.authorizedOrgs) && !req.user.authorizedOrgs?.includes(cpOrgID)) {
-                    publicMode = true;
-                }
-                try {
-                    const allowedAPIList = await util.invokeApiRequest(req, 'GET', `${controlPlaneUrl}/apis?limit=1000`, {}, {}, publicMode);
-                    if (allowedAPIList) {
-                        //filter apis based on the roles
-                        metaDataList = util.filterAllowedAPIs(metaDataList, allowedAPIList.list);
-                    }
-                } catch (error) {
-                    logger.warn("Cannot retrieve allowed API list from control plane", {
-                        orgName: req.params.orgName,
-                        error: error.message,
-                        stack: error.stack
-                    });
-                }
-            } else {
-                logger.debug("Control plane is disabled, skipping API filtering", {
-                    orgName: req.params.orgName
-                });
-            }
-
             let profile = null;
             if (req.user) {
                 profile = {
@@ -246,7 +219,7 @@ const loadAPIContent = async (req, res) => {
             subscriptionPlans: subscriptionPlans,
             baseUrl: baseURLDev + viewName,
             schemaUrl: `${orgName}/mock/${apiHandle}/${schemaFileName}`,
-            showApiKeysNav: await shouldShowApiKeysNav(req, metaData, null, null),
+            showApiKeysNav: apiUsesApiKeySecurity(metaData),
         }
         html = renderTemplate(filePrefix + 'pages/api-landing/page.hbs', filePrefix + 'layout/main.hbs', templateContent, false);
         res.send(html);
@@ -271,46 +244,6 @@ const loadAPIContent = async (req, res) => {
             const gatewayVendor = metaData?.apiInfo?.gatewayVendor ? metaData?.apiInfo?.gatewayVendor: 'wso2';
             const isFederatedAPI = constants.FEDERATED_GATEWAY_VENDORS.includes(gatewayVendor);
             
-            let apiDetail = null;
-            //check whether user has access to the API via control plane
-            const isMCPFromRegistry = metaData.apiInfo?.apiType === constants.API_TYPE.MCP && !metaData.apiReferenceID;
-            if (config.controlPlane?.enabled !== false && !isFederatedAPI && !isMCPFromRegistry) {
-                try {
-                    apiDetail = await util.invokeApiRequest(req, 'GET', controlPlaneUrl + `/apis/${metaData.apiReferenceID}`, null, null);
-                    if (!apiDetail) {
-                        let templateContent = {
-                            baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                            errorMessage: constants.ERROR_MESSAGE.UNAUTHORIZED_API,
-                            devportalMode: devportalMode,
-                            isFederatedAPI,
-                            profile: req.isAuthenticated() ? req.user : null,
-                        }
-                        if (!(req.user)) {
-                            logger.warn("User is not authorized to access the API or user session expired, hence redirecting to login page", {
-                                orgName: orgName,
-                                apiID: apiID
-                            });
-                            res.redirect(req.originalUrl.split("/api/")[0] + '/login');
-                            return;
-                        } else {
-                            html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
-                            res.send(html);
-                            return;
-                        }
-                    }
-                } catch (error) {
-                    logger.warn("Error checking API authorization from control plane, proceeding without authorization check", {
-                        orgName: orgName,
-                        apiID: apiID,
-                        error: error.message
-                    });
-                }
-            } else {
-                logger.debug("Control plane is disabled, skipping API authorization check", {
-                    orgName: orgName,
-                    apiID: apiID
-                });
-            }
             let subscriptionPlans = await util.appendSubscriptionPlanDetails(orgID, metaData.subscriptionPolicies);
             let providerUrl;
             if (metaData.provider === "WSO2") {
@@ -491,13 +424,13 @@ const loadAPIContent = async (req, res) => {
                 resources: apiDetails,
                 orgID: orgID,
                 schemaDefinition: schemaDefinition,
-                scopes: apiDetail?.scopes,
+                scopes: [],
                 devportalMode: devportalMode,
                 profile: req.isAuthenticated() ? profile : null,
                 isReadOnlyMode: config.readOnlyMode,
                 isFederatedAPI: isFederatedAPI,
             };
-            templateContent.showApiKeysNav = await shouldShowApiKeysNav(req, metaData, apiDetail, apiDefinitionForNav);
+            templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaData, apiDefinitionForNav);
             templateContent.hasSubscriptionToken = !!findSubscriptionTokenHeader(apiDefinitionForNav);
             if (metaData.apiInfo.apiType == "MCP") {
                 html = await renderTemplateFromAPI(templateContent, orgID, orgName, "pages/mcp-landing", viewName);
@@ -594,7 +527,7 @@ const loadDocsPage = async (req, res) => {
             docTypes: docNames,
             devportalMode: devportalMode,
             apiType: apiMetadata.apiInfo?.apiType,
-            showApiKeysNav: await shouldShowApiKeysNav(req, metaForNav, null, null),
+            showApiKeysNav: apiUsesApiKeySecurity(metaForNav),
         }
         html = renderTemplate(filePrefix + 'pages/docs/page.hbs', filePrefix + 'layout/main.hbs', templateContent, false);
     } else {
@@ -646,7 +579,7 @@ const loadDocsPage = async (req, res) => {
                 apiType: apiType,
                 profile: req.isAuthenticated() ? profile : null,
                 devportalMode: devportalMode,
-                showApiKeysNav: await shouldShowApiKeysNav(req, metaForNav, null, apiDefinitionForNav),
+                showApiKeysNav: apiUsesApiKeySecurity(metaForNav, apiDefinitionForNav),
             };
             html = await renderTemplateFromAPI(templateContent, orgID, orgName, "pages/docs", viewName);
         } catch (error) {
@@ -695,47 +628,7 @@ const loadDocument = async (req, res) => {
         }
         let apiMetadata = definitionResponse.metaData;
         
-        const gatewayVendor = apiMetadata?.apiInfo?.gatewayVendor || 'wso2';
-        const isFederatedAPI = constants.FEDERATED_GATEWAY_VENDORS.includes(gatewayVendor);
         const isMCPFromRegistry = apiMetadata?.apiInfo?.apiType === constants.API_TYPE.MCP && !apiMetadata?.apiReferenceID;
-        //check whether user has access to the API via control plane
-        if (config.controlPlane?.enabled !== false && !isFederatedAPI && !isMCPFromRegistry) {
-            try {
-                let apiName = "";
-                if (apiMetadata && typeof apiMetadata.apiHandle === "string" && apiMetadata.apiHandle.includes("-v")) {
-                    apiName = apiMetadata.apiHandle.split('-v')[0];
-                } else if (apiMetadata && apiMetadata.apiInfo && apiMetadata.apiInfo.apiName) {
-                    apiName = apiMetadata.apiInfo.apiName;
-                }
-                const version = apiMetadata ? apiMetadata.apiInfo.apiVersion : "";
-                let allowedAPIList = await util.invokeApiRequest(req, 'GET', `${controlPlaneUrl}/apis?query=name:"${apiName}"+version:${version}`, {}, {});
-                if (allowedAPIList.count == 0 && apiMetadata && apiMetadata.apiInfo && apiMetadata.apiInfo.apiName) {
-                    apiName = apiMetadata.apiInfo.apiName;
-                    allowedAPIList = await util.invokeApiRequest(req, 'GET', `${controlPlaneUrl}/apis?query=name:"${apiName}"+version:${version}`, {}, {});
-                }
-                if (allowedAPIList.count === 0) {
-                    templateContent = {
-                        errorMessage: constants.ERROR_MESSAGE.UNAUTHORIZED_API,
-                        baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                        baseDocUrl: baseDocUrl,
-                        devportalMode: devportalMode,
-                        profile: req.isAuthenticated() ? req.user : null,
-                    }
-                    html = renderTemplate('../pages/error-page/page.hbs', "./src/defaultContent/" + 'layout/main.hbs', templateContent, true);
-                    res.send(html);
-                    return;
-                }
-            } catch (error) {
-                logger.warn("Error checking API authorization from control plane, proceeding without authorization check", {
-                    orgName: orgName,
-                    error: error.message
-                });
-            }
-        } else {
-            logger.debug("Control plane is disabled, skipping API authorization check", {
-                orgName: orgName
-            });
-        }
 
         //load API definition
         if (req.originalUrl.includes(constants.FILE_NAME.API_SPECIFICATION_PATH)) {
@@ -766,32 +659,6 @@ const loadDocument = async (req, res) => {
                 }
 
                 if (modifiedSwagger) {
-                    if (config.controlPlane?.enabled !== false) {
-                        try {
-                            const response = await util.invokeApiRequest(req, 'GET', controlPlaneUrl + `/apis/${apiMetadata.apiReferenceID}`, null, null);
-                            if (response.securityScheme.includes("api_key")) {
-                                if (!modifiedSwagger.components) modifiedSwagger.components = {};
-                                if (!modifiedSwagger.components.securitySchemes) modifiedSwagger.components.securitySchemes = {};
-                                modifiedSwagger.components.securitySchemes.ApiKeyAuth = { "type": "apiKey", "name": `${response.apiKeyHeader}`, "in": "header" };
-                                for (let path in modifiedSwagger.paths) {
-                                    for (let method in modifiedSwagger.paths[path]) {
-                                        if (modifiedSwagger.paths[path].hasOwnProperty(method)) {
-                                            const operation = modifiedSwagger.paths[path][method];
-                                            if (!operation.security) operation.security = [{}];
-                                            if (!operation.security[0] || typeof operation.security[0] !== 'object') operation.security[0] = {};
-                                            operation.security[0].ApiKeyAuth = [];
-                                        }
-                                    }
-                                }
-                            }
-                        } catch (error) {
-                            logger.warn("Error fetching API security details from control plane", {
-                                orgName: orgName,
-                                error: error.message
-                            });
-                        }
-                    }
-
                     // Add apiKey security scheme headers as operation parameters
                     // so Stoplight Elements renders input fields in the try-it panel
                     if (modifiedSwagger.components?.securitySchemes) {
@@ -877,7 +744,7 @@ const loadDocument = async (req, res) => {
                 apiInfo: { gatewayType: apiMetadata.apiInfo?.gatewayType },
                 apiReferenceID: apiMetadata.apiReferenceID,
             };
-            templateContent.showApiKeysNav = await shouldShowApiKeysNav(req, metaForNav, null);
+            templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaForNav);
             html = renderTemplate(filePrefix + 'pages/docs/page.hbs', filePrefix + 'layout/main.hbs', templateContent, false);
         } else {
 
@@ -913,7 +780,7 @@ const loadDocument = async (req, res) => {
                     apiInfo: { gatewayType: row.GATEWAY_TYPE },
                     apiReferenceID: row.REFERENCE_ID,
                 };
-                templateContent.showApiKeysNav = await shouldShowApiKeysNav(req, metaForNav, null);
+                templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaForNav);
                 html = await renderTemplateFromAPI(templateContent, orgID, orgName, "pages/docs", viewName);
             } catch (error) {
                 const templateContent = {

@@ -52,18 +52,10 @@
           </div>
         </div>
         <div id="descriptionEditError" class="edit-error-message" style="display: none;"></div>
-        <p class="app-subscription-count mt-3">Subscriptions: {{subscriptionCount}}</p>
       </div>
       {{/applicationMetadata}}
 
 
-      <!-- OAuth2 Keys Section -->
-      <div class="oauth2-keys-section">
-        <h5 class="oauth2-title mb-2">Keys</h5>
-        <a href="{{baseUrl}}/applications/{{applicationMetadata.id}}/manage-keys" class="common-btn-primary btn-sm">
-          <i class="bi bi-key me-1"></i> Manage Keys
-        </a>
-      </div>
     </div>
   </div>
   <form id="inlineEditForm" data-application-id="{{applicationMetadata.id}}" style="display: none;"></form>

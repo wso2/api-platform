@@ -24,7 +24,7 @@ const adminDao = require('../dao/admin');
 const apiDao = require('../dao/apiMetadata');
 const apiMetadataService = require('../services/apiMetadataService');
 const apiKeyService = require('../services/apiKeyService');
-const { shouldShowApiKeysNav } = require('../services/apiKeysNavService');
+const { apiUsesApiKeySecurity } = require('../utils/apiDefinitionUtil');
 const { getSessionCsrfToken } = require('../middlewares/csrfProtection');
 
 const loadAPIApiKeys = async (req, res) => {
@@ -80,7 +80,7 @@ const loadAPIApiKeys = async (req, res) => {
             }
         }
 
-        const showApiKeysNav = await shouldShowApiKeysNav(req, metaData, null, apiDefinitionForNav);
+        const showApiKeysNav = apiUsesApiKeySecurity(metaData, apiDefinitionForNav);
         if (!showApiKeysNav) {
             const templateContent = {
                 baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
