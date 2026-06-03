@@ -32,7 +32,7 @@ services:
       POSTGRES_PASSWORD: devportal
       POSTGRES_DB: devportal
     volumes:
-      - ../artifacts/docker-init:/docker-entrypoint-initdb.d:ro
+      - ../database:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U devportal -d devportal"]
       interval: 5s
@@ -58,7 +58,6 @@ services:
       # Use plain HTTP inside the test network so Cypress doesn't need to trust a cert.
       DP_ADVANCED_HTTP: "true"
       DP_BASEURL: "http://devportal:3000"
-      DP_SEEDDEFAULTS: "true"
       DP_GENERATEDEFAULTSUBPOLICIES: "true"
       DP_ADVANCED_APIKEY_ENABLED: "true"
       DP_ADVANCED_APIKEY_KEYVALUE: "devportal-it-test-key"

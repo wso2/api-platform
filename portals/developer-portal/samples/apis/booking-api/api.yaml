@@ -1,0 +1,41 @@
+apiVersion: devportal.api-platform.wso2.com/v1
+kind: RestApi
+
+metadata:
+  name: booking-api-v1.0
+
+spec:
+  type: REST
+  displayName: Booking API
+  version: v1.0
+  description: Sample hotel/event booking API. Requires API key authentication and a per-request subscription token. Choose a Gold, Silver, or Bronze plan when subscribing.
+  provider: WSO2
+  status: PUBLISHED
+  gatewayType: wso2/api-platform
+  referenceID: booking-api-v1.0
+
+  tags:
+    - booking
+    - api-key
+    - subscription-token
+
+  labels:
+    - default
+
+  subscriptionPolicies:
+    - Gold
+    - Silver
+    - Bronze
+
+  visibility: PUBLIC
+  visibleGroups: []
+
+  businessInformation:
+    businessOwner: Platform Owner
+    businessOwnerEmail: support@example.com
+    technicalOwner: API Team
+    technicalOwnerEmail: architecture@example.com
+
+  endpoints:
+    sandboxUrl: http://localhost:8080/booking
+    productionUrl: http://localhost:8080/booking

@@ -16,20 +16,16 @@
 # under the License.
 # --------------------------------------------------------------------
 
-# Developer Portal — standalone distribution variant (assembled by `make dist`).
-# Uses pre-built images from GHCR. For the build-from-source variant see
-# the docker-compose.yml one level up.
+# Developer Portal — Docker Compose (development / build-from-source variant)
+#
+# NOTE: distribution/docker-compose.yaml ships the standalone variant (pre-built image) — keep
+#       devportal service config in sync there too. Documented differences that should
+#       diverge: uses `build: .` here vs pre-built GHCR image in distribution.
 #
 # Quick start:
 #   docker compose up
 #   Then open https://localhost:3000/ACME/views/default  (accept the self-signed cert warning)
 #   Login: admin / admin  (or developer / developer)
-#
-# Configuration:
-#   Edit configs/config.yaml to customise settings.
-#   Every config value can also be overridden via a DP_* env var.
-#   Create a .env file next to this file for persistent overrides.
-#   See configs/config.yaml for the full list of available settings.
 #
 # TLS:
 #   A self-signed certificate is generated automatically on first start and stored
@@ -38,6 +34,12 @@
 #   To use your own certificate, replace the certs_data volume with a bind-mount:
 #     - ./my-certs:/app/certs:ro
 #   and ensure it contains server.crt and server.key.
+#
+# Configuration:
+#   Edit configs/config.yaml (copied from sample.config.yaml) to customise settings.
+#   Every config value can be overridden with a DP_* env var.
+#   Create a .env file at the project root for persistent overrides.
+#   See sample.config.yaml for the full list of settings.
 
 services:
   postgres:
@@ -60,14 +62,15 @@ services:
       - devportal-network
 
   devportal:
+    build: .
     image: ghcr.io/wso2/api-platform/developer-portal:0.1.0-SNAPSHOT
     ports:
-      - "3000:3000"   # Developer Portal UI (HTTPS)
+      - "3000:3000"
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
-      # Mount config from the configs/ directory.
+      # Mount config from the configs/ directory (copy of sample.config.yaml).
       - ./configs/config.yaml:/app/configs/config.yaml:ro
       # Persist the auto-generated TLS certificate across container restarts.
       # To use your own cert, replace with: - ./my-certs:/app/certs:ro
@@ -102,9 +105,7 @@ services:
 
 volumes:
   postgres_data:
-    driver: local
   certs_data:
-    driver: local
 
 networks:
   devportal-network:

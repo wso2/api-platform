@@ -5,7 +5,7 @@ node_modules
 # ── Config / secrets (mounted at runtime via volume) ──────────────
 config.yaml
 configs/
-sample_config.yaml
+sample.config.yaml
 .env
 .env.*
 

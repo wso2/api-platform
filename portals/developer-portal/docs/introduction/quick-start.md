@@ -21,35 +21,8 @@ cd api-platform/portals/developer-portal/
 Copy the sample configuration and set the minimum required values:
 
 ```bash
-mkdir -p configs && cp sample_config.yaml configs/config.yaml
+mkdir -p configs && cp sample.config.yaml configs/config.yaml
 ```
-
-<!-- Open `config.yaml` and set:
-
-```yaml
-baseUrl: "http://localhost:3000"
-
-db:
-  host: "localhost"       # or "postgres" when using Docker Compose
-  port: 5432
-  database: "devportal"
-  username: "postgres"
-  password: "yourpassword"
-
-advanced:
-  http: true              # use plain HTTP for local dev
-
-defaultAuth:
-  users:
-    - username: "admin"
-      password: "admin"
-      roles:
-        - "admin"
-      orgClaimName: "ACME"
-      organizationIdentifier: "ACME"
-```
-
-> **Note:** The `defaultAuth` block enables built-in local users for exploration. Remove it before deploying to production and configure a real [identity provider](../administer/manage-organizations.md#identity-provider-configuration). -->
 
 ### 3. Start the portal
 
@@ -203,8 +176,6 @@ curl -sk -X POST "https://localhost:3000/devportal/organizations/1ba42a09-45c0-4
 ```
 
 Refresh the portal — the Ping API now appears in the catalog. Click it to view the documentation and try-out console.
-
-> **Tip:** For `orgId` you can use the org handle (`ACME`) or the UUID returned when the organization was created.
 
 ## What was just created?
 

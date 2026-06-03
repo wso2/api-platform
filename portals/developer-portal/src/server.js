@@ -24,7 +24,6 @@ const { config } = require('./config/configLoader');
 const constants = require('./utils/constants');
 const webhookDispatcher = require('./services/webhooks/dispatcher');
 const webhookDeliveryWorker = require('./services/webhooks/deliveryWorker');
-const seedDefaultData = require('./startup/seedDefaultData');
 const app = require('./app');
 
 const PORT = process.env.PORT || config.defaultPort;
@@ -58,9 +57,6 @@ function logStartupInfo() {
 function onListening() {
     logStartupInfo();
     startBackgroundServices();
-    if (config.seedDefaults) {
-        seedDefaultData().catch(err => logger.error('seedDefaultData failed', { error: err.message }));
-    }
 }
 
 if (config.advanced.http) {

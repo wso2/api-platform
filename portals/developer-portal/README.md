@@ -34,7 +34,7 @@ make build
 ### Run
 
 ```bash
-cp sample_config.yaml configs/config.yaml   # optional — omit to rely entirely on environment variables
+mkdir -p configs && cp sample.config.yaml configs/config.yaml
 docker compose up
 ```
 
@@ -45,10 +45,9 @@ Then open **https://localhost:3000/ACME/views/default**
 Default local users: `admin` / `admin` and `developer` / `developer`
 
 What happens automatically on first start:
-- PostgreSQL starts and the DB schema is applied (`artifacts/docker-init/01_schema.sql`)
-- A default **ACME** org, view, labels, and subscription plans are seeded (`artifacts/docker-init/02_seed_default.sql`)
+- PostgreSQL starts and the DB schema is applied (`database/01-schema.postgres.sql`)
+- A default **ACME** org, view, labels, and subscription plans are seeded (`database/02-seed_org.postgres.sql`)
 - A self-signed TLS certificate is generated and stored in the `certs_data` Docker volume
-- On first boot the app seeds the default theme assets into the database
 
 ### Test
 
@@ -81,14 +80,14 @@ Use this for active development, custom IdP configuration, or when you prefer to
 ### 1. Create config file
 
 ```bash
-cp sample_config.yaml configs/config.yaml
+mkdir -p configs && cp sample.config.yaml configs/config.yaml
 ```
 
 `configs/config.yaml` is your local config file (not committed to git). See [Configuration reference](#configuration-reference) below for all available settings.
 
 ### 2. Configure HTTP mode (optional)
 
-Open `configs/config.yaml` and confirm these are set (they are the defaults in `sample_config.yaml`):
+Open `configs/config.yaml` and confirm these are set (they are the defaults in `sample.config.yaml`):
 
 ```yaml
 advanced:
@@ -118,11 +117,13 @@ For local exploration you can skip IdP setup by using the built-in local users i
 
 #### Create the database
 
+Create a new database in your local PostgreSQL instancec with,
+
 ```bash
 createdb -h <HOST> -U <USER> devportal
 ```
 
-Or spin up PostgreSQL with Docker:
+Or spin up PostgreSQL with Docker.
 
 ```bash
 docker run --name devportal-postgres \
@@ -141,49 +142,52 @@ db:
   port: 5432
   database: "devportal"
   username: "postgres"
+  password: "postgres"
   dialect: "postgres"
-
-secrets:
-  dbSecret: "postgres"   # DB password
 ```
+
+In Production setup, you can set the password via `DP_DB_PASSWORD` enviornment variable.
 
 #### Apply the schema
 
-> ⚠️ This drops and recreates all tables — don't run against a database you can't reset.
+> ⚠️ This drops and recreates all tables. Don't run against a database you can't reset.
 
 ```bash
-psql -h <HOST> -p <PORT> -U <USER> -d devportal -f artifacts/script.sql
+psql -h <HOST> -p <PORT> -U <USER> -d devportal -f database/01-schema.postgres.sql
 ```
 
-#### Seed default org and theme (optional)
+### 5. Seed default organization
 
 ```bash
-chmod +x artifacts/*.sh
-./artifacts/org_data.sh        # ACME org + default view + org layout assets
-./artifacts/theme_data.sh      # Default theme/styling assets
+psql -h <HOST> -p <PORT> -U <USER> -d devportal -f database/02-seed_org.postgres.sql
 ```
 
-Pass the DB password non-interactively:
-```bash
-PGPASSWORD=<DB_PASSWORD> ./artifacts/org_data.sh
-PGPASSWORD=<DB_PASSWORD> ./artifacts/theme_data.sh
-```
+> **Note:**
+>
+> Use the following command to pass the DB password non-interactively.
+> ```bash
+> PGPASSWORD=<DB_PASSWORD> ./seeders/seed-apis.sh
+> ```
 
-#### Add sample APIs (optional)
-
-```bash
-PGPASSWORD=<DB_PASSWORD> ./artifacts/api_data.sh
-
-# To remove the seeded APIs:
-PGPASSWORD=<DB_PASSWORD> ./artifacts/delete_api_data.sh
-```
-
-### 5. Install and run
+### 6. Install and run
 
 ```bash
 npm install
 npm start
 ```
+
+### 7. Seed sample APIs (optional)
+
+```bash
+sh ./seeders/seed-apis.sh
+```
+
+> **Note:**
+> 
+> Use the following command to pass variables to the script.
+> ```bash
+> DEVPORTAL_URL=https://localhost:3000 ORG_ID=1ba42a09-45c0-40f8-a1bf-e4aa7cde1575 DEVPORTAL_CREDENTIALS=admin:admin ./seeders/seed-apis.sh
+> ```
 
 Open **http://localhost:3000/ACME/views/default**
 
@@ -193,22 +197,11 @@ Open **http://localhost:3000/ACME/views/default**
 
 All settings live in `configs/config.yaml`. Every setting can also be overridden with a `DP_*` environment variable.
 
-The full annotated list of settings is in [`sample_config.yaml`](sample_config.yaml).
-
-### Secrets
-
-Sensitive values belong under the `secrets:` key in `configs/config.yaml`, or injected as env vars. In production, prefer env vars over storing secrets in the file.
-
-| Key | Env var | Description |
-|-----|---------|-------------|
-| `secrets.dbSecret` | `DP_SECRETS_DBSECRET` | Database password |
-| `secrets.apiKeySecret` | `DP_SECRETS_APIKEYSECRET` | API key secret |
-| `secrets.billingKeyEncryptionKey` | `DP_SECRETS_BILLINGKEYENCRYPTIONKEY` | 64-char hex key for billing encryption |
-| `secrets.azureInsightsConnectionString` | `DP_SECRETS_AZUREINSIGHTSCONNECTIONSTRING` | Azure Application Insights connection string |
+The full annotated list of settings is in [`sample.config.yaml`](sample.config.yaml).
 
 ### Local auth
 
-For quick exploration without an IdP, the portal includes built-in local users enabled by default in `sample_config.yaml`:
+For quick exploration without an IdP, the portal includes built-in local users enabled by default in `sample.config.yaml`:
 
 ```yaml
 defaultAuth:
@@ -241,13 +234,11 @@ Every config key can be overridden with a `DP_*` environment variable. You can p
 |---------|-------------|
 | `DP_DB_HOST` | `config.db.host` |
 | `DP_DB_PORT` | `config.db.port` |
-| `DP_SECRETS_DBSECRET` | `config.secrets.dbSecret` |
 | `DP_ADVANCED_HTTP` | `config.advanced.http` |
 | `DP_IDENTITYPROVIDER_CLIENTID` | `config.identityProvider.clientId` |
 | `DP_IDENTITYPROVIDER_ISSUER` | `config.identityProvider.issuer` |
 | `DP_BASEURL` | `config.baseUrl` |
 | `DP_DEFAULTPORT` | `config.defaultPort` |
-| `DP_SEEDDEFAULTS` | `config.seedDefaults` |
 | `DP_ADVANCED_DBSSLDIALECTOPTION` | `config.advanced.dbSslDialectOption` |
 
 `.env` example:
@@ -259,72 +250,147 @@ DP_IDENTITYPROVIDER_CLIENTID=my-client-id
 
 ---
 
-## Add a Third-Party API (Admin APIs)
+## Publish your first API
 
-Use the Devportal Admin REST APIs to publish APIs without using seed scripts.
+Create an API manifest file and an OpenAPI definition, then upload them:
 
-### 1 — Configure a provider (control plane)
+```yaml
+# api.yaml
+apiVersion: devportal.api-platform.wso2.com/v1
+kind: RestApi
+
+metadata:
+  name: ping-api-v1.0
+
+spec:
+  type: REST
+  displayName: Ping API
+  version: v1.0
+  description: Sample HTTP echo/probe API. Requires API key authentication. No subscription plans.
+  provider: WSO2
+  status: PUBLISHED
+  gatewayType: wso2/api-platform
+  referenceID: ping-api-v1.0
+
+  tags:
+    - ping
+    - api-key
+
+  labels:
+    - default
+
+  subscriptionPolicies: []
+
+  visibility: PUBLIC
+  visibleGroups: []
+
+  businessInformation:
+    businessOwner: Platform Owner
+    businessOwnerEmail: support@example.com
+    technicalOwner: API Team
+    technicalOwnerEmail: architecture@example.com
+
+  endpoints:
+    sandboxUrl: http://localhost:8080/ping
+    productionUrl: http://localhost:8080/ping
+```
+
+```yaml
+# openapi.yaml
+openapi: 3.0.1
+info:
+  title: Ping API
+  version: 1.0.0
+  description: |
+    HTTP echo/probe API secured with an API key (`X-API-Key` header).
+    Use this API to inspect requests, test connectivity, and probe status codes.
+    No subscription plans are required — just an API key.
+servers:
+  - url: /ping
+security:
+  - ApiKeyHeader: []
+components:
+  securitySchemes:
+    ApiKeyHeader:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  schemas:
+    PingResponse:
+      type: object
+      description: Response returned by the ping/echo service
+      additionalProperties: true
+
+paths:
+  /get:
+    get:
+      summary: Echo a GET request
+      description: Returns the query parameters and headers sent with the request.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PingResponse'
+
+  /post:
+    post:
+      summary: Echo a POST request
+      description: Echoes the posted JSON body back in the response.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PingResponse'
+
+  /status/{code}:
+    get:
+      summary: Return a specific HTTP status code
+      description: Returns the given HTTP status code — useful for testing error handling.
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int32
+      responses:
+        '200':
+          description: Proxy response (actual status depends on the `code` path parameter)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PingResponse'
+
+```
 
 ```bash
-curl --location 'http://localhost:3000/devportal/organizations/{orgId}/provider' \
-  --header 'Content-Type: application/json' \
-  --header 'Authorization: Bearer <access_token>' \
-  --data '{
-    "name": "MuleSoft",
-    "providerURL": "https://anypoint.mulesoft.com/login/signin?apintent=generic"
-  }'
+curl -sk -X POST "https://localhost:3000/devportal/organizations/1ba42a09-45c0-40f8-a1bf-e4aa7cde1575/apis" \           ✔
+   -u admin:admin \
+   -F "api=@api.yaml;type=application/yaml" \
+   -F "apiDefinition=@openapi.yaml;type=application/yaml" -k
 ```
 
-### 2 — Create an API (metadata + definition file)
+Refresh the portal — the Ping API now appears in the catalog. Click it to view the documentation and try-out console.
 
-- `apiType` can be `REST`, `AsyncAPI`, `GraphQL`, or `SOAP`
-- This is a multipart request: JSON metadata + an API definition file
+> **Tip:** For `orgId` you can use the org handle (`ACME`) or the UUID returned when the organization was created.
 
-```bash
-curl --location 'http://localhost:3000/devportal/organizations/{organizationID}/apis' \
-  --header 'Authorization: Bearer <access_token>' \
-  --form 'api-metadata="{
-    \"apiInfo\": {
-      \"apiName\": \"NavigationAPI\",
-      \"provider\": \"MuleSoft\",
-      \"orgName\": \"ACME\",
-      \"apiType\": \"REST\",
-      \"apiVersion\": \"1.0.0\",
-      \"apiDescription\": \"<description>\",
-      \"visibility\": \"PUBLIC\"
-    }
-  }"; type=application/json' \
-  --form 'apiDefinition=@"{path-to-apiDefinition.json}"'
-```
+## What was just created?
 
-### 3 — Upload API landing page content (optional)
-
-Create a zip with this structure:
-
-```text
-{API NAME}/
-  content/
-    api-content.hbs
-    apiContent.md
-  images/
-    icon.svg
-    product.png
-```
-
-Then upload it:
-
-```bash
-curl --location --request POST 'http://localhost:3000/devportal/organizations/{organizationID}/apis/{apiID}/template' \
-  --header 'Authorization: Bearer <access_token>' \
-  --form 'apiContent=@"{path-to-zip-file}"' \
-  --form 'imageMetadata="{
-    \"api-icon\": \"icon.svg\",
-    \"api-product\": \"product.png\"
-  }"; type=application/json'
-```
-
----
-
-## Postman Collection
-
-[Devportal Postman collection](https://devportal-4432.postman.co/workspace/Devportal-Workspace~9221a728-2c4b-46ec-acc3-095b9debacbc/collection/5029047-61d763dc-d7b9-4436-9a2e-94585c806943?action=share&creator=5029047)
+| Resource | Value |
+|---|---|
+| Organization | `ACME` |
+| Default view | `default` |
+| Portal URL | `http://localhost:3000/ACME/views/default` |
+| Admin credentials | `admin` / `admin` (local auth) |
+| Sample API | `Ping API` visible in the catalog |
