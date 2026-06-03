@@ -12,8 +12,8 @@ function showAlert(message, type) {
             alertMessage.textContent = message;
         }
 
-        alertElement.classList.remove('success', 'error');
-        alertElement.classList.add(type);
+        alertElement.classList.remove('success', 'error', 'info');
+        if (type) alertElement.classList.add(type);
 
         // Set appropriate icon based on alert type
         if (alertIcon) {

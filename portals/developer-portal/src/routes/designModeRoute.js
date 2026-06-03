@@ -41,7 +41,6 @@ router.get('/views/:viewName/api/:apiHandle/docs/:docType/:docName', registerPar
 
 router.get('/views/:viewName/applications', registerPartials, applicationController.loadApplications);
 router.get('/views/:viewName/applications/:applicationId', registerPartials, applicationController.loadApplication);
-router.get('/views/:viewName/applications/:applicationId/manage-keys', registerPartials, applicationController.loadApplicationKeys);
 
 router.get('/configure', registerPartials, settingsController.loadOrgSettingsPage);
 

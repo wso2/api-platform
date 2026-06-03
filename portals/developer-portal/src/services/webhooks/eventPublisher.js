@@ -118,6 +118,10 @@ async function publish(eventType, payload, opts) {
         // Non-sensitive events: dispatcher will fan-out and create delivery rows.
         bus.emit('event_published');
     }
+    logger.info('[eventPublisher] publishing event', {
+        eventId: event.EVENT_ID, eventType, orgId, gatewayType, aggregateType, aggregateId,
+        hasPlaintextKey: !!plaintextKey
+    });
 
     return event.EVENT_ID;
 }
