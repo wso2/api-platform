@@ -189,3 +189,185 @@ Feature: Dynamic Endpoint policy
     And the response should be valid JSON
     And the JSON response field "status" should be "error"
     And the response body should contain "targetUpstream"
+
+  # Regression: a dynamic-endpoint policy on the SANDBOX vhost must route to the target
+  # upstream (base /alternate), not prepend the sandbox base path (/sandbox/alternate/whoami).
+  Scenario: Dynamic-endpoint policy applies on the sandbox vhost
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: dynamic-endpoint-sandbox-v1.0
+      spec:
+        displayName: Dynamic-Endpoint-Sandbox-API
+        version: v1.0
+        context: /dynamic-endpoint-sandbox/$version
+        vhosts:
+          main: dyn-sb-main.local
+          sandbox: dyn-sb-sandbox.local
+        upstreamDefinitions:
+          - name: alt-upstream
+            basePath: /alternate
+            upstreams:
+              - url: http://sample-backend:9080
+        upstream:
+          main:
+            url: http://sample-backend:9080
+          sandbox:
+            url: http://sample-backend:9080/sandbox
+        operations:
+          - method: GET
+            path: /whoami
+            policies:
+              - name: dynamic-endpoint
+                version: v1
+                params:
+                  targetUpstream: alt-upstream
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/dynamic-endpoint-sandbox/v1.0/whoami" to be ready with host "dyn-sb-main.local"
+
+    # Main vhost: policy diverts to alt-upstream (base path /alternate).
+    When I clear all headers
+    And I set request host to "dyn-sb-main.local"
+    And I send a GET request to "http://localhost:8080/dynamic-endpoint-sandbox/v1.0/whoami"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/alternate/whoami"
+
+    # Sandbox vhost: the same policy must divert to alt-upstream (base /alternate), not the static sandbox upstream.
+    When I clear all headers
+    And I set request host to "dyn-sb-sandbox.local"
+    And I send a GET request to "http://localhost:8080/dynamic-endpoint-sandbox/v1.0/whoami"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/alternate/whoami"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "dynamic-endpoint-sandbox-v1.0"
+    Then the response should be successful
+
+  # An API-level dynamic-endpoint (under spec.policies) applies to every operation on both
+  # vhosts. On the sandbox vhost it must still divert to the target upstream (base /alternate),
+  # not prepend the sandbox base path.
+  Scenario: API-level dynamic-endpoint policy applies on the sandbox vhost
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: dynamic-endpoint-api-sandbox-v1.0
+      spec:
+        displayName: Dynamic-Endpoint-API-Sandbox-API
+        version: v1.0
+        context: /dynamic-endpoint-api-sandbox/$version
+        vhosts:
+          main: dyn-api-sb-main.local
+          sandbox: dyn-api-sb-sandbox.local
+        upstreamDefinitions:
+          - name: alt-upstream
+            basePath: /alternate
+            upstreams:
+              - url: http://sample-backend:9080
+        upstream:
+          main:
+            url: http://sample-backend:9080
+          sandbox:
+            url: http://sample-backend:9080/sandbox
+        policies:
+          - name: dynamic-endpoint
+            version: v1
+            params:
+              targetUpstream: alt-upstream
+        operations:
+          - method: GET
+            path: /whoami
+          - method: GET
+            path: /ping
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/dynamic-endpoint-api-sandbox/v1.0/whoami" to be ready with host "dyn-api-sb-main.local"
+
+    # Main vhost: the API-level policy diverts every operation to alt-upstream (base /alternate).
+    When I clear all headers
+    And I set request host to "dyn-api-sb-main.local"
+    And I send a GET request to "http://localhost:8080/dynamic-endpoint-api-sandbox/v1.0/whoami"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/alternate/whoami"
+
+    # Sandbox vhost: the same API-level policy must divert to alt-upstream (base /alternate), not the static sandbox upstream.
+    When I clear all headers
+    And I set request host to "dyn-api-sb-sandbox.local"
+    And I send a GET request to "http://localhost:8080/dynamic-endpoint-api-sandbox/v1.0/ping"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/alternate/ping"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "dynamic-endpoint-api-sandbox-v1.0"
+    Then the response should be successful
+
+  # Adding cluster_header routing to sandbox routes must not break operations WITHOUT a
+  # dynamic-endpoint policy: those fall back to the sandbox upstream (base /sandbox).
+  Scenario: Sandbox operation without the policy falls back to the sandbox upstream
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: dynamic-endpoint-sandbox-mixed-v1.0
+      spec:
+        displayName: Dynamic-Endpoint-Sandbox-Mixed-API
+        version: v1.0
+        context: /dynamic-endpoint-sandbox-mixed/$version
+        vhosts:
+          main: dyn-mixed-main.local
+          sandbox: dyn-mixed-sandbox.local
+        upstreamDefinitions:
+          - name: alt-upstream
+            basePath: /alternate
+            upstreams:
+              - url: http://sample-backend:9080
+        upstream:
+          main:
+            url: http://sample-backend:9080
+          sandbox:
+            url: http://sample-backend:9080/sandbox
+        operations:
+          - method: GET
+            path: /whoami
+            policies:
+              - name: dynamic-endpoint
+                version: v1
+                params:
+                  targetUpstream: alt-upstream
+          - method: GET
+            path: /ping
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/dynamic-endpoint-sandbox-mixed/v1.0/ping" to be ready with host "dyn-mixed-sandbox.local"
+
+    # Sandbox vhost, operation WITH the policy: diverted to alt-upstream (base /alternate).
+    When I clear all headers
+    And I set request host to "dyn-mixed-sandbox.local"
+    And I send a GET request to "http://localhost:8080/dynamic-endpoint-sandbox-mixed/v1.0/whoami"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/alternate/whoami"
+
+    # Sandbox vhost, operation WITHOUT the policy: falls back to the sandbox upstream (base /sandbox).
+    When I clear all headers
+    And I set request host to "dyn-mixed-sandbox.local"
+    And I send a GET request to "http://localhost:8080/dynamic-endpoint-sandbox-mixed/v1.0/ping"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/sandbox/ping"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "dynamic-endpoint-sandbox-mixed-v1.0"
+    Then the response should be successful
