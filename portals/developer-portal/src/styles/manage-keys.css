@@ -937,6 +937,95 @@
     opacity: 1;
 }
 
+/* ── "Generate with another KM" section ── */
+.keys-section .mk-add-km-section {
+    margin-top: 0.75rem;
+}
+
+.keys-section .mk-add-km-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.keys-section .mk-add-km-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 1.1rem;
+    border: 1.5px dashed var(--bs-gray-300);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--main-text-color);
+    opacity: 0.65;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color 0.15s, opacity 0.15s, color 0.15s;
+}
+
+.keys-section .mk-add-km-btn:hover {
+    border-color: var(--primary-main-color);
+    color: var(--primary-main-color);
+    opacity: 1;
+}
+
+.keys-section .mk-add-km-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.keys-section .mk-km-dropdown-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 240px;
+    max-width: 360px;
+    background: #fff;
+    border: 1px solid var(--bs-gray-200);
+    border-radius: 10px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+    padding: 0.35rem 0;
+    margin: 0;
+    list-style: none;
+    z-index: 100;
+}
+
+.keys-section .mk-km-dropdown-menu.mk-km-dropdown-open {
+    display: block;
+}
+
+.keys-section .mk-km-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.55rem 1rem;
+    font-size: 0.855rem;
+    color: var(--main-text-color);
+    cursor: pointer;
+    transition: background 0.12s;
+}
+
+.keys-section .mk-km-dropdown-item:hover {
+    background: var(--primary-light-color);
+    color: var(--primary-main-color);
+}
+
+.keys-section .mk-km-dropdown-item i {
+    font-size: 0.8rem;
+    opacity: 0.5;
+}
+
+.keys-section .mk-km-dropdown-item:hover i {
+    opacity: 1;
+}
+
+.keys-section .mk-add-km-spinner {
+    display: inline-flex;
+    align-items: center;
+    color: var(--primary-main-color);
+}
+
 /* ── Tab content transitions ── */
 .keys-section .mk-km-tab-content .tab-pane {
     outline: none;

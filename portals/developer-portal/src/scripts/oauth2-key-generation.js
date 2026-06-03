@@ -370,6 +370,71 @@ function confirmAndRevokeKeys(applicationId, keyMappingId, keyType) {
     }
 }
 
+function toggleKmDropdown(keyType) {
+    const menu = document.getElementById('kmDropdown-' + keyType);
+    if (!menu) return;
+    const isOpen = menu.classList.contains('mk-km-dropdown-open');
+
+    document.querySelectorAll('.mk-km-dropdown-menu').forEach(m => m.classList.remove('mk-km-dropdown-open'));
+
+    if (!isOpen) {
+        menu.classList.add('mk-km-dropdown-open');
+        const close = (e) => {
+            if (!menu.parentElement.contains(e.target)) {
+                menu.classList.remove('mk-km-dropdown-open');
+                document.removeEventListener('click', close);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', close), 0);
+    }
+}
+
+async function selectKmAndGenerate(keyType, appId, appName, orgID, itemEl) {
+    const kmName = itemEl?.dataset?.kmName;
+    if (!kmName) return;
+
+    const menu = document.getElementById('kmDropdown-' + keyType);
+    if (menu) menu.classList.remove('mk-km-dropdown-open');
+
+    const btn = itemEl.closest('.mk-add-km-btn') || itemEl.querySelector('.mk-add-km-btn') || itemEl;
+    const spinner = btn.querySelector('.mk-add-km-spinner') || document.getElementById('addKmSpinner-' + keyType);
+    if (btn) btn.disabled = true;
+    if (spinner) spinner.style.display = 'inline-flex';
+
+    const restore = () => {
+        if (btn) btn.disabled = false;
+        if (spinner) spinner.style.display = 'none';
+    };
+
+    const payload = JSON.stringify({
+        keyManager: kmName,
+        keyType,
+        grantTypesToBeSupported: ['client_credentials'],
+        callbackUrl: '',
+        scopes: ['default'],
+        additionalProperties: {},
+    });
+
+    try {
+        const response = await fetch(`/devportal/applications/${appId}/generate-keys`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+        });
+        const data = await response.json();
+        if (response.ok) {
+            await showAlert('Credentials generated successfully!', 'success');
+            window.location.reload();
+        } else {
+            await showAlert(data.description || data.message || 'Generation failed.', 'error');
+            restore();
+        }
+    } catch (error) {
+        await showAlert(error.message, 'error');
+        restore();
+    }
+}
+
 function startEditConfiguration(kmId, keyType) {
     document.getElementById('configView-' + kmId + '-' + keyType)?.setAttribute('style', 'display:none');
     document.getElementById('configEdit-' + kmId + '-' + keyType)?.setAttribute('style', 'display:block');
