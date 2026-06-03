@@ -66,7 +66,7 @@ const CONFIG_DEFAULTS = {
         disableOrgCallback: true,
         disableScopeValidation: true,
         disableSilentSSO: false,
-        keyManagerEncryptionKey: '',
+        encryptionKey: '',
         apiKey: {
             enabled: false,
             keyType: 'x-wso2-api-key',
