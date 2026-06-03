@@ -2119,6 +2119,19 @@ jobs:
           kubectl logs -n scoped-test -l app.kubernetes.io/component=gateway-runtime --tail=200 || true
 
           echo ""
+          echo "=== K8s Gateway API Resources (gateway-api-test) ==="
+          kubectl get gateway,httproute -n gateway-api-test -o wide || true
+          kubectl describe httproute -n gateway-api-test || true
+
+          echo ""
+          echo "=== K8s Gateway API Controller Logs (gateway-api-test) ==="
+          kubectl logs -n gateway-api-test -l app.kubernetes.io/component=controller --tail=200 || true
+
+          echo ""
+          echo "=== K8s Gateway API Gateway Runtime Logs (gateway-api-test) ==="
+          kubectl logs -n gateway-api-test -l app.kubernetes.io/component=gateway-runtime --tail=200 || true
+
+          echo ""
           echo "=== All Pods ==="
           kubectl get pods -A
 
