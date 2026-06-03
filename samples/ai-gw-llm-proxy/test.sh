@@ -35,7 +35,7 @@ if [ -f "${SCRIPT_DIR}/.env" ]; then
 fi
 
 TRAFFIC_PORT="${TRAFFIC_PORT:-8443}"
-INBOUND_API_KEY="${INBOUND_API_KEY:-demo-unlocked-sample-key}"
+INBOUND_API_KEY="${INBOUND_API_KEY:-demo-api-key}"
 TARGET="https://localhost:${TRAFFIC_PORT}/assistant/chat/completions"
 PAYLOAD='{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Test call"}]}'
 
@@ -59,7 +59,7 @@ FULL_1=$(curl -sk -w "\n%{http_code}" -X POST "$TARGET" \
   -H "api_key: ${INBOUND_API_KEY}" \
   -H "Content-Type: application/json" \
   -d "$PAYLOAD") || {
-  print_error "Could not reach gateway at ${TARGET}. Is the gateway running? Run: sh run.sh"
+  print_error "Could not reach gateway at ${TARGET}. Is the gateway running? Run: sh setup.sh"
   exit 1
 }
 STATUS_1=$(echo "$FULL_1" | tail -1)
@@ -88,7 +88,7 @@ FULL_2=$(curl -sk -w "\n%{http_code}" -X POST "$TARGET" \
   -H "api_key: ${INBOUND_API_KEY}" \
   -H "Content-Type: application/json" \
   -d "$PAYLOAD") || {
-  print_error "Could not reach gateway at ${TARGET}. Is the gateway running? Run: sh run.sh"
+  print_error "Could not reach gateway at ${TARGET}. Is the gateway running? Run: sh setup.sh"
   exit 1
 }
 STATUS_2=$(echo "$FULL_2" | tail -1)
@@ -112,6 +112,6 @@ else
   echo "Troubleshooting:"
   echo "  - Check setup completed: cd wso2apip-ai-gateway-1.1.0 && docker compose logs"
   echo "  - Verify containers are up: docker ps"
-  echo "  - Re-run setup: sh run.sh"
+  echo "  - Re-run setup: sh setup.sh"
   exit 1
 fi

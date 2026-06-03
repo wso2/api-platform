@@ -40,7 +40,7 @@ if [ -f "${SCRIPT_DIR}/.env" ]; then
   . "${SCRIPT_DIR}/.env"
 else
   print_warn "No .env found at ${SCRIPT_DIR}/.env — copy .env.example to .env, or defaults will be used."
-  INBOUND_API_KEY="${INBOUND_API_KEY:-demo-unlocked-sample-key}"
+  INBOUND_API_KEY="${INBOUND_API_KEY:-demo-api-key}"
   MGMT_PORT="${MGMT_PORT:-9090}"
   HEALTH_PORT="${HEALTH_PORT:-9094}"
   TRAFFIC_PORT="${TRAFFIC_PORT:-8443}"
@@ -49,11 +49,25 @@ fi
 MAX_RETRIES="${MAX_RETRIES:-30}"
 RETRY_INTERVAL=2
 
+ZIP_URL="https://github.com/wso2/api-platform/releases/download/ai-gateway/v1.1.0/wso2apip-ai-gateway-1.1.0.zip"
+ZIP_FILE="${SCRIPT_DIR}/wso2apip-ai-gateway-1.1.0.zip"
+
 print_title "Downloading WSO2 AI Gateway"
-print_info "Downloading official distribution package..."
-wget -qN https://github.com/wso2/api-platform/releases/download/ai-gateway/v1.1.0/wso2apip-ai-gateway-1.1.0.zip
+if [ -f "$ZIP_FILE" ]; then
+  print_info "Distribution zip already exists, skipping download."
+else
+  print_info "Downloading official distribution package..."
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$ZIP_URL" -o "$ZIP_FILE"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q "$ZIP_URL" -O "$ZIP_FILE"
+  else
+    print_error "Neither curl nor wget found. Please install one and retry."
+    exit 1
+  fi
+fi
 print_info "Unzipping distribution..."
-unzip -o wso2apip-ai-gateway-1.1.0.zip
+unzip -o "$ZIP_FILE" -d "${SCRIPT_DIR}"
 
 print_title "Starting Containers"
 print_info "Starting WireMock mock LLM backend..."
@@ -72,7 +86,7 @@ print_ok "Gateway stack started"
 print_title "Waiting for Gateway"
 print_info "Waiting for gateway controller to be ready..."
 retries=0
-until curl -s "http://localhost:${HEALTH_PORT:-9094}/health" > /dev/null 2>&1; do
+until [ "$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:${HEALTH_PORT:-9094}/health")" = "200" ]; do
   retries=$((retries + 1))
   if [ "$retries" -ge "$MAX_RETRIES" ]; then
     print_error "Gateway controller did not become healthy after $((MAX_RETRIES * RETRY_INTERVAL))s. Check: docker compose logs"
