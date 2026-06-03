@@ -25,6 +25,17 @@ CREATE TABLE IF NOT EXISTS organizations (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- User-organization membership table (multi-org support)
+CREATE TABLE IF NOT EXISTS user_org_memberships (
+    user_id VARCHAR(255) NOT NULL,
+    organization_uuid VARCHAR(40) NOT NULL,
+    role VARCHAR(63) NOT NULL DEFAULT 'owner',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, organization_uuid),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_user_org_memberships_user_id ON user_org_memberships(user_id);
+
 -- Projects table
 CREATE TABLE IF NOT EXISTS projects (
     uuid VARCHAR(40) PRIMARY KEY,

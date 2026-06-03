@@ -31,14 +31,15 @@ import (
 
 // CustomClaims represents the JWT claims structure used in local JWT (non-IDP) mode.
 type CustomClaims struct {
-	Audience     string `json:"aud"`
-	Email        string `json:"email"`
-	FirstName    string `json:"firstName"`
-	LastName     string `json:"lastName"`
-	JTI          string `json:"jti"`
-	Organization string `json:"organization"`
-	Scope        string `json:"scope"`
-	Username     string `json:"username"`
+	Audience      string   `json:"aud"`
+	Email         string   `json:"email"`
+	FirstName     string   `json:"firstName"`
+	LastName      string   `json:"lastName"`
+	JTI           string   `json:"jti"`
+	Organization  string   `json:"organization"`
+	Organizations []string `json:"organizations,omitempty"`
+	Scope         string   `json:"scope"`
+	Username      string   `json:"username"`
 	jwt.RegisteredClaims
 }
 
@@ -53,13 +54,14 @@ type AuthConfig struct {
 
 // PlatformClaimNames holds the JWT claim names used to extract platform-specific values.
 type PlatformClaimNames struct {
-	OrganizationClaim string
-	UserIDClaim       string
-	UsernameClaim     string
-	EmailClaim        string
-	ScopeClaim        string
-	RolesClaimPath    string
-	RoleMappings      []string // "idp-value=platform-role" pairs
+	OrganizationClaim  string // active org UUID for this token (e.g. "organization")
+	OrganizationsClaim string // all org UUIDs the user belongs to (e.g. "organizations")
+	UserIDClaim        string
+	UsernameClaim      string
+	EmailClaim         string
+	ScopeClaim         string
+	RolesClaimPath     string
+	RoleMappings       []string // "idp-value=platform-role" pairs
 }
 
 // LocalJWTAuthMiddleware returns a Gin middleware for locally-issued JWT validation.
@@ -86,6 +88,8 @@ func LocalJWTAuthMiddleware(config AuthConfig) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+
+		fmt.Printf("[DEBUG] LocalJWTAuth token: %s\n", tokenString)
 
 		if err := validateLocalJWT(c, tokenString, config); err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
@@ -205,10 +209,16 @@ func PlatformClaimsMiddleware(claimNames PlatformClaimNames) gin.HandlerFunc {
 		}
 
 		org := getStringClaim(mapClaims, claimNames.OrganizationClaim)
-		if org == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": fmt.Sprintf("token missing required '%s' claim", claimNames.OrganizationClaim)})
-			c.Abort()
-			return
+
+		// organizations (plural) — full list of org UUIDs the user belongs to.
+		// May be a space-separated string or a JSON array; normalised to []string.
+		var orgs []string
+		if claimNames.OrganizationsClaim != "" {
+			orgs = toStringSlice(mapClaims[claimNames.OrganizationsClaim])
+			if len(orgs) == 0 {
+				// fall back: treat the singular claim as a one-element list
+				orgs = []string{org}
+			}
 		}
 
 		userID := authCtx.UserID
@@ -242,9 +252,19 @@ func PlatformClaimsMiddleware(claimNames PlatformClaimNames) gin.HandlerFunc {
 		c.Set("user_id", userID)
 		c.Set("username", username)
 		c.Set("email", email)
-		c.Set("first_name", getStringClaim(mapClaims, "given_name"))
-		c.Set("last_name", getStringClaim(mapClaims, "family_name"))
+		// Try OIDC-standard names first, fall back to WSO2/Asgardeo attribute names.
+		firstName := getStringClaim(mapClaims, "given_name")
+		if firstName == "" {
+			firstName = getStringClaim(mapClaims, "firstName")
+		}
+		lastName := getStringClaim(mapClaims, "family_name")
+		if lastName == "" {
+			lastName = getStringClaim(mapClaims, "lastName")
+		}
+		c.Set("first_name", firstName)
+		c.Set("last_name", lastName)
 		c.Set("organization", org)
+		c.Set("organizations", orgs)
 		c.Set("scope", scope)
 		c.Set("audience", aud)
 		c.Set("claims", claimsObj)
@@ -373,6 +393,17 @@ func GetOrganizationFromContext(c *gin.Context) (string, bool) {
 	}
 	orgStr, ok := organization.(string)
 	return orgStr, ok
+}
+
+// GetOrganizationsFromContext extracts the full list of org UUIDs from the Gin context.
+// Returns nil when the claim was not present in the token.
+func GetOrganizationsFromContext(c *gin.Context) ([]string, bool) {
+	v, exists := c.Get("organizations")
+	if !exists {
+		return nil, false
+	}
+	orgs, ok := v.([]string)
+	return orgs, ok
 }
 
 // GetUserIDFromContext extracts the user ID from the Gin context.

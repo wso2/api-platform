@@ -39,6 +39,7 @@ import (
 	"time"
 
 	"platform-api/src/config"
+	"platform-api/src/internal/client/idp"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/handler"
 	"platform-api/src/internal/repository"
@@ -102,6 +103,15 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	websubAPIRepo := repository.NewWebSubAPIRepo(db)
 	webbrokerAPIRepo := repository.NewWebBrokerAPIRepo(db)
 	apiKeyRepo := repository.NewAPIKeyRepo(db)
+	membershipRepo := repository.NewUserOrgMembershipRepo(db)
+
+	// IDP SCIM2 claim updater — syncs org membership claim after org creation.
+	// Returns nil when IDP_SCIM2_BASE_URL is not set, which disables sync silently.
+	var idpClaimUpdater service.IDPClaimUpdater
+	if scimUpdater := idp.NewClaimUpdater(cfg.Auth.IDP.SCIM2BaseURL, cfg.Auth.IDP.OrgClaimSCIM2Schema, cfg.Auth.IDP.OrgClaimSCIM2Attr, cfg.Auth.IDP.SCIM2InsecureSkipVerify); scimUpdater != nil {
+		idpClaimUpdater = scimUpdater
+		slogger.Info("IDP SCIM2 claim sync enabled", "url", cfg.Auth.IDP.SCIM2BaseURL)
+	}
 
 	// Seed default LLM provider templates into the DB (per organization)
 	cfg.LLMTemplateDefinitionsPath = strings.TrimSpace(cfg.LLMTemplateDefinitionsPath)
@@ -172,6 +182,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	// Initialize services
 	orgService := service.NewOrganizationService(
 		orgRepo,
+		membershipRepo,
+		idpClaimUpdater,
 		projectRepo,
 		appRepo,
 		apiRepo,
@@ -258,7 +270,20 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		slogger,
 	)
 
+	// Initialize auth service for token exchange.
+	// Token exchange is only available when JWT mode is enabled and a secret key is configured.
+	jwtSigningEnabled := cfg.Auth.JWT.Enabled && cfg.Auth.JWT.SecretKey != ""
+	authService := service.NewAuthService(
+		membershipRepo,
+		cfg.Auth.JWT.SecretKey,
+		cfg.Auth.JWT.Issuer,
+		cfg.Auth.JWT.TokenExpirySeconds,
+		jwtSigningEnabled,
+		slogger,
+	)
+
 	// Initialize handlers
+	authHandler := handler.NewAuthHandler(authService, slogger)
 	orgHandler := handler.NewOrganizationHandler(orgService, slogger)
 	projectHandler := handler.NewProjectHandler(projectService, slogger)
 	apiHandler := handler.NewAPIHandler(apiService, slogger)
@@ -337,6 +362,13 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	if err != nil {
 		return nil, err
 	}
+	router.Use(func(c *gin.Context) {
+		if h := c.GetHeader("Authorization"); h != "" {
+			token := strings.TrimPrefix(h, "Bearer ")
+			fmt.Printf("[DEBUG] raw token: %s\n", token)
+		}
+		c.Next()
+	})
 	for _, mw := range authenticator.Middleware() {
 		router.Use(mw)
 	}
@@ -344,10 +376,11 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	// Apply the OpenAPI-driven scope enforcer after authentication so identity
 	// values are already in the context when scope checks run.
 	router.Use(middleware.ScopeEnforcer(scopeRegistry, middleware.ScopeEnforcerConfig{
-		ValidationMode: cfg.IDP.ValidationMode,
+		ValidationMode: cfg.Auth.IDP.ValidationMode,
 	}))
 
 	// Register routes
+	authHandler.RegisterRoutes(router)
 	orgHandler.RegisterRoutes(router)
 	projectHandler.RegisterRoutes(router)
 	appHandler.RegisterRoutes(router)
@@ -399,61 +432,71 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 // buildAuthenticator constructs a JWTAuthenticator from the server configuration.
 // Add new cases here when supporting additional auth mechanisms (e.g. BasicAuth).
 func buildAuthenticator(cfg *config.Server, slogger *slog.Logger) (middleware.Authenticator, error) {
-	if !cfg.IDP.Enabled {
-		if cfg.JWT.SkipValidation {
-			slogger.Warn("Simple JWT mode: signature validation disabled (JWT_SKIP_VALIDATION=true)")
+	if !cfg.Auth.IDP.Enabled {
+		if cfg.Auth.JWT.SkipValidation {
+			if !cfg.DevMode {
+				slogger.Warn("⚠️  WARNING: JWT signature validation is DISABLED (AUTH_JWT_SKIP_VALIDATION=true) but DEV_MODE=false. " +
+					"Tokens are NOT verified — any bearer value will be accepted. " +
+					"Set DEV_MODE=true to suppress this warning, or set AUTH_JWT_SKIP_VALIDATION=false for production.")
+			} else {
+				slogger.Warn("JWT mode: signature validation disabled (AUTH_JWT_SKIP_VALIDATION=true) [DEV_MODE=true]")
+			}
 		} else {
-			slogger.Info("Simple JWT mode: HMAC signature validation enabled")
+			slogger.Info("JWT mode: HMAC signature validation enabled")
 		}
 		return middleware.NewJWTAuthenticator(
 			middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
-				SecretKey:      cfg.JWT.SecretKey,
-				TokenIssuer:    cfg.JWT.Issuer,
-				SkipPaths:      cfg.JWT.SkipPaths,
-				SkipValidation: cfg.JWT.SkipValidation,
+				SecretKey:      cfg.Auth.JWT.SecretKey,
+				TokenIssuer:    cfg.Auth.JWT.Issuer,
+				SkipPaths:      cfg.Auth.SkipPaths,
+				SkipValidation: cfg.Auth.JWT.SkipValidation,
 			}),
 		), nil
 	}
 
 	// IDP mode — same config fields for all providers (Thunder, Keycloak, Asgardeo, etc.)
 	issuerURL := ""
-	if len(cfg.IDP.Issuer) > 0 {
-		issuerURL = cfg.IDP.Issuer[0]
+	if len(cfg.Auth.IDP.Issuer) > 0 {
+		issuerURL = cfg.Auth.IDP.Issuer[0]
 	}
 	idpCfg := commonmodels.IDPConfig{
 		Enabled:    true,
 		IssuerURL:  issuerURL,
-		JWKSUrl:    cfg.IDP.JWKSUrl,
-		ScopeClaim: cfg.IDP.ScopeClaimName,
+		JWKSUrl:    cfg.Auth.IDP.JWKSUrl,
+		ScopeClaim: cfg.Auth.IDP.ScopeClaimName,
 	}
 	authCfg := commonmodels.AuthConfig{
 		JWTConfig: &idpCfg,
-		SkipPaths: cfg.JWT.SkipPaths,
+		SkipPaths: cfg.Auth.SkipPaths,
 	}
 	authMiddleware, err := authenticators.AuthMiddleware(authCfg, slogger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize IDP auth middleware: %w", err)
 	}
 	claimsMiddleware := middleware.PlatformClaimsMiddleware(middleware.PlatformClaimNames{
-		OrganizationClaim: cfg.IDP.OrganizationClaimName,
-		UserIDClaim:       cfg.IDP.UserIDClaimName,
-		UsernameClaim:     cfg.IDP.UsernameClaimName,
-		EmailClaim:        cfg.IDP.EmailClaimName,
-		ScopeClaim:        cfg.IDP.ScopeClaimName,
-		RolesClaimPath:    cfg.IDP.RolesClaimPath,
-		RoleMappings:      cfg.IDP.RoleMappings,
+		OrganizationClaim:  cfg.Auth.IDP.OrganizationClaimName,
+		OrganizationsClaim: cfg.Auth.IDP.OrganizationsClaimName,
+		UserIDClaim:        cfg.Auth.IDP.UserIDClaimName,
+		UsernameClaim:      cfg.Auth.IDP.UsernameClaimName,
+		EmailClaim:         cfg.Auth.IDP.EmailClaimName,
+		ScopeClaim:         cfg.Auth.IDP.ScopeClaimName,
+		RolesClaimPath:     cfg.Auth.IDP.RolesClaimPath,
+		RoleMappings:       cfg.Auth.IDP.RoleMappings,
 	})
 
-	idpLabel := cfg.IDP.Type
+	idpLabel := cfg.Auth.IDP.Name
 	if idpLabel == "" {
 		idpLabel = "IDP"
 	}
 	slogger.Info("IDP authentication enabled",
-		slog.String("type", idpLabel),
-		slog.String("jwksUrl", cfg.IDP.JWKSUrl),
-		slog.Any("issuers", cfg.IDP.Issuer),
+		slog.String("name", idpLabel),
+		slog.String("jwksUrl", cfg.Auth.IDP.JWKSUrl),
+		slog.Any("issuers", cfg.Auth.IDP.Issuer),
 	)
-	return middleware.NewJWTAuthenticator(authMiddleware, claimsMiddleware), nil
+	return middleware.NewJWTAuthenticator(
+		authMiddleware,
+		claimsMiddleware,
+	), nil
 }
 
 // generateSelfSignedCert creates a self-signed certificate for development and saves it to disk

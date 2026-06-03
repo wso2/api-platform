@@ -124,11 +124,14 @@ func (j *JWTAuthenticator) Authenticate(ctx *gin.Context) (*AuthResult, error) {
 	}
 
 	claims := jwt.MapClaims{}
-	validatedToken, err := jwt.ParseWithClaims(tokenString, claims, j.jwks.Keyfunc, jwt.WithLeeway(30*time.Second))
+	validatedToken, err := jwt.ParseWithClaims(tokenString, claims, j.jwks.Keyfunc, jwt.WithLeeway(60*time.Second))
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
 			return nil, ErrExpiredToken
+		}
+		if errors.Is(err, jwt.ErrTokenNotValidYet) {
+			return nil, fmt.Errorf("%w: token not yet valid (clock skew?)", ErrInvalidToken)
 		}
 		return nil, fmt.Errorf("%w: %v", ErrInvalidToken, err)
 	}

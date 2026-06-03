@@ -131,50 +131,87 @@ const (
 	LLMTemplateDelete Permission = "llm_template:delete"
 
 	// LLM provider
-	LLMProviderManage    Permission = "llm_provider:manage"
-	LLMProviderCreate    Permission = "llm_provider:create"
-	LLMProviderRead      Permission = "llm_provider:read"
-	LLMProviderUpdate    Permission = "llm_provider:update"
-	LLMProviderDelete    Permission = "llm_provider:delete"
-	LLMProviderDeploymentManage Permission = "llm_provider:deployment:manage"
-	LLMProviderKeyManage        Permission = "llm_provider:key:manage"
+	LLMProviderManage             Permission = "llm_provider:manage"
+	LLMProviderCreate             Permission = "llm_provider:create"
+	LLMProviderRead               Permission = "llm_provider:read"
+	LLMProviderUpdate             Permission = "llm_provider:update"
+	LLMProviderDelete             Permission = "llm_provider:delete"
+	LLMProviderDeploymentManage   Permission = "llm_provider:deployment:manage"
+	LLMProviderDeploymentCreate   Permission = "llm_provider:deployment:create"
+	LLMProviderDeploymentRead     Permission = "llm_provider:deployment:read"
+	LLMProviderDeploymentDelete   Permission = "llm_provider:deployment:delete"
+	LLMProviderDeploymentUndeploy Permission = "llm_provider:deployment:undeploy"
+	LLMProviderDeploymentRestore  Permission = "llm_provider:deployment:restore"
+	LLMProviderAPIKeyManage       Permission = "llm_provider:api_key:manage"
+	LLMProviderAPIKeyCreate       Permission = "llm_provider:api_key:create"
+	LLMProviderAPIKeyRead         Permission = "llm_provider:api_key:read"
+	LLMProviderAPIKeyDelete       Permission = "llm_provider:api_key:delete"
 
 	// LLM proxy
-	LLMProxyManage    Permission = "llm_proxy:manage"
-	LLMProxyCreate    Permission = "llm_proxy:create"
-	LLMProxyRead      Permission = "llm_proxy:read"
-	LLMProxyUpdate    Permission = "llm_proxy:update"
-	LLMProxyDelete    Permission = "llm_proxy:delete"
-	LLMProxyDeploymentManage Permission = "llm_proxy:deployment:manage"
-	LLMProxyKeyManage        Permission = "llm_proxy:key:manage"
+	LLMProxyManage             Permission = "llm_proxy:manage"
+	LLMProxyCreate             Permission = "llm_proxy:create"
+	LLMProxyRead               Permission = "llm_proxy:read"
+	LLMProxyUpdate             Permission = "llm_proxy:update"
+	LLMProxyDelete             Permission = "llm_proxy:delete"
+	LLMProxyDeploymentManage   Permission = "llm_proxy:deployment:manage"
+	LLMProxyDeploymentCreate   Permission = "llm_proxy:deployment:create"
+	LLMProxyDeploymentRead     Permission = "llm_proxy:deployment:read"
+	LLMProxyDeploymentDelete   Permission = "llm_proxy:deployment:delete"
+	LLMProxyDeploymentUndeploy Permission = "llm_proxy:deployment:undeploy"
+	LLMProxyDeploymentRestore  Permission = "llm_proxy:deployment:restore"
+	LLMProxyAPIKeyManage       Permission = "llm_proxy:api_key:manage"
+	LLMProxyAPIKeyCreate       Permission = "llm_proxy:api_key:create"
+	LLMProxyAPIKeyRead         Permission = "llm_proxy:api_key:read"
+	LLMProxyAPIKeyDelete       Permission = "llm_proxy:api_key:delete"
 
 	// MCP proxy
-	MCPProxyManage Permission = "mcp_proxy:manage"
-	MCPProxyCreate Permission = "mcp_proxy:create"
-	MCPProxyRead   Permission = "mcp_proxy:read"
-	MCPProxyUpdate Permission = "mcp_proxy:update"
-	MCPProxyDelete Permission = "mcp_proxy:delete"
-	MCPProxyDeploymentManage Permission = "mcp_proxy:deployment:manage"
+	MCPProxyManage             Permission = "mcp_proxy:manage"
+	MCPProxyCreate             Permission = "mcp_proxy:create"
+	MCPProxyRead               Permission = "mcp_proxy:read"
+	MCPProxyUpdate             Permission = "mcp_proxy:update"
+	MCPProxyDelete             Permission = "mcp_proxy:delete"
+	MCPProxyDeploymentManage   Permission = "mcp_proxy:deployment:manage"
+	MCPProxyDeploymentCreate   Permission = "mcp_proxy:deployment:create"
+	MCPProxyDeploymentRead     Permission = "mcp_proxy:deployment:read"
+	MCPProxyDeploymentDelete   Permission = "mcp_proxy:deployment:delete"
+	MCPProxyDeploymentUndeploy Permission = "mcp_proxy:deployment:undeploy"
+	MCPProxyDeploymentRestore  Permission = "mcp_proxy:deployment:restore"
 
 	// WebSub API
-	WebSubAPIManage    Permission = "websub_api:manage"
-	WebSubAPICreate    Permission = "websub_api:create"
-	WebSubAPIRead      Permission = "websub_api:read"
-	WebSubAPIUpdate    Permission = "websub_api:update"
-	WebSubAPIDelete    Permission = "websub_api:delete"
-	WebSubAPIDeploymentManage Permission = "websub_api:deployment:manage"
-	WebSubAPIPublish          Permission = "websub_api:publish"
-	WebSubAPIKeyManage        Permission = "websub_api:key:manage"
+	WebSubAPIManage             Permission = "websub_api:manage"
+	WebSubAPICreate             Permission = "websub_api:create"
+	WebSubAPIRead               Permission = "websub_api:read"
+	WebSubAPIUpdate             Permission = "websub_api:update"
+	WebSubAPIDelete             Permission = "websub_api:delete"
+	WebSubAPIDeploymentManage   Permission = "websub_api:deployment:manage"
+	WebSubAPIDeploymentCreate   Permission = "websub_api:deployment:create"
+	WebSubAPIDeploymentRead     Permission = "websub_api:deployment:read"
+	WebSubAPIDeploymentDelete   Permission = "websub_api:deployment:delete"
+	WebSubAPIDeploymentUndeploy Permission = "websub_api:deployment:undeploy"
+	WebSubAPIDeploymentRestore  Permission = "websub_api:deployment:restore"
+	WebSubAPIPublish            Permission = "websub_api:publish"
+	WebSubAPIKeyManage          Permission = "websub_api:api_key:manage"
+	WebSubAPIKeyCreate          Permission = "websub_api:api_key:create"
+	WebSubAPIKeyUpdate          Permission = "websub_api:api_key:update"
+	WebSubAPIKeyDelete          Permission = "websub_api:api_key:delete"
 
 	// WebBroker API
-	WebBrokerAPIManage    Permission = "webbroker_api:manage"
-	WebBrokerAPICreate    Permission = "webbroker_api:create"
-	WebBrokerAPIRead      Permission = "webbroker_api:read"
-	WebBrokerAPIUpdate    Permission = "webbroker_api:update"
-	WebBrokerAPIDelete    Permission = "webbroker_api:delete"
-	WebBrokerAPIDeploymentManage Permission = "webbroker_api:deployment:manage"
-	WebBrokerAPIPublish          Permission = "webbroker_api:publish"
-	WebBrokerAPIKeyManage        Permission = "webbroker_api:key:manage"
+	WebBrokerAPIManage             Permission = "webbroker_api:manage"
+	WebBrokerAPICreate             Permission = "webbroker_api:create"
+	WebBrokerAPIRead               Permission = "webbroker_api:read"
+	WebBrokerAPIUpdate             Permission = "webbroker_api:update"
+	WebBrokerAPIDelete             Permission = "webbroker_api:delete"
+	WebBrokerAPIDeploymentManage   Permission = "webbroker_api:deployment:manage"
+	WebBrokerAPIDeploymentCreate   Permission = "webbroker_api:deployment:create"
+	WebBrokerAPIDeploymentRead     Permission = "webbroker_api:deployment:read"
+	WebBrokerAPIDeploymentDelete   Permission = "webbroker_api:deployment:delete"
+	WebBrokerAPIDeploymentUndeploy Permission = "webbroker_api:deployment:undeploy"
+	WebBrokerAPIDeploymentRestore  Permission = "webbroker_api:deployment:restore"
+	WebBrokerAPIPublish            Permission = "webbroker_api:publish"
+	WebBrokerAPIKeyManage          Permission = "webbroker_api:api_key:manage"
+	WebBrokerAPIKeyCreate          Permission = "webbroker_api:api_key:create"
+	WebBrokerAPIKeyUpdate          Permission = "webbroker_api:api_key:update"
+	WebBrokerAPIKeyDelete          Permission = "webbroker_api:api_key:delete"
 
 	// Git
 	GitRead Permission = "git:read"
@@ -261,38 +298,64 @@ var ManagedBy = map[Permission]Permission{
 	LLMTemplateDelete: LLMTemplateManage,
 
 	// LLM provider
-	LLMProviderCreate:           LLMProviderManage,
-	LLMProviderUpdate:           LLMProviderManage,
-	LLMProviderDelete:           LLMProviderManage,
-	LLMProviderDeploymentManage: LLMProviderManage,
-	LLMProviderKeyManage:        LLMProviderManage,
+	LLMProviderCreate:             LLMProviderManage,
+	LLMProviderUpdate:             LLMProviderManage,
+	LLMProviderDelete:             LLMProviderManage,
+	LLMProviderDeploymentManage:   LLMProviderManage,
+	LLMProviderDeploymentCreate:   LLMProviderDeploymentManage,
+	LLMProviderDeploymentDelete:   LLMProviderDeploymentManage,
+	LLMProviderDeploymentUndeploy: LLMProviderDeploymentManage,
+	LLMProviderDeploymentRestore:  LLMProviderDeploymentManage,
+	LLMProviderAPIKeyCreate:       LLMProviderAPIKeyManage,
+	LLMProviderAPIKeyDelete:       LLMProviderAPIKeyManage,
 
 	// LLM proxy
-	LLMProxyCreate:           LLMProxyManage,
-	LLMProxyUpdate:           LLMProxyManage,
-	LLMProxyDelete:           LLMProxyManage,
-	LLMProxyDeploymentManage: LLMProxyManage,
-	LLMProxyKeyManage:        LLMProxyManage,
+	LLMProxyCreate:             LLMProxyManage,
+	LLMProxyUpdate:             LLMProxyManage,
+	LLMProxyDelete:             LLMProxyManage,
+	LLMProxyDeploymentManage:   LLMProxyManage,
+	LLMProxyDeploymentCreate:   LLMProxyDeploymentManage,
+	LLMProxyDeploymentDelete:   LLMProxyDeploymentManage,
+	LLMProxyDeploymentUndeploy: LLMProxyDeploymentManage,
+	LLMProxyDeploymentRestore:  LLMProxyDeploymentManage,
+	LLMProxyAPIKeyCreate:       LLMProxyAPIKeyManage,
+	LLMProxyAPIKeyDelete:       LLMProxyAPIKeyManage,
 
 	// MCP proxy
-	MCPProxyCreate:           MCPProxyManage,
-	MCPProxyUpdate:           MCPProxyManage,
-	MCPProxyDelete:           MCPProxyManage,
-	MCPProxyDeploymentManage: MCPProxyManage,
+	MCPProxyCreate:             MCPProxyManage,
+	MCPProxyUpdate:             MCPProxyManage,
+	MCPProxyDelete:             MCPProxyManage,
+	MCPProxyDeploymentManage:   MCPProxyManage,
+	MCPProxyDeploymentCreate:   MCPProxyDeploymentManage,
+	MCPProxyDeploymentDelete:   MCPProxyDeploymentManage,
+	MCPProxyDeploymentUndeploy: MCPProxyDeploymentManage,
+	MCPProxyDeploymentRestore:  MCPProxyDeploymentManage,
 
 	// WebSub API
-	WebSubAPICreate:           WebSubAPIManage,
-	WebSubAPIUpdate:           WebSubAPIManage,
-	WebSubAPIDelete:           WebSubAPIManage,
-	WebSubAPIDeploymentManage: WebSubAPIManage,
-	WebSubAPIPublish:          WebSubAPIManage,
-	WebSubAPIKeyManage:        WebSubAPIManage,
+	WebSubAPICreate:             WebSubAPIManage,
+	WebSubAPIUpdate:             WebSubAPIManage,
+	WebSubAPIDelete:             WebSubAPIManage,
+	WebSubAPIDeploymentManage:   WebSubAPIManage,
+	WebSubAPIDeploymentCreate:   WebSubAPIDeploymentManage,
+	WebSubAPIDeploymentDelete:   WebSubAPIDeploymentManage,
+	WebSubAPIDeploymentUndeploy: WebSubAPIDeploymentManage,
+	WebSubAPIDeploymentRestore:  WebSubAPIDeploymentManage,
+	WebSubAPIPublish:            WebSubAPIManage,
+	WebSubAPIKeyCreate:          WebSubAPIKeyManage,
+	WebSubAPIKeyUpdate:          WebSubAPIKeyManage,
+	WebSubAPIKeyDelete:          WebSubAPIKeyManage,
 
 	// WebBroker API
-	WebBrokerAPICreate:           WebBrokerAPIManage,
-	WebBrokerAPIUpdate:           WebBrokerAPIManage,
-	WebBrokerAPIDelete:           WebBrokerAPIManage,
-	WebBrokerAPIDeploymentManage: WebBrokerAPIManage,
-	WebBrokerAPIPublish:          WebBrokerAPIManage,
-	WebBrokerAPIKeyManage:        WebBrokerAPIManage,
+	WebBrokerAPICreate:             WebBrokerAPIManage,
+	WebBrokerAPIUpdate:             WebBrokerAPIManage,
+	WebBrokerAPIDelete:             WebBrokerAPIManage,
+	WebBrokerAPIDeploymentManage:   WebBrokerAPIManage,
+	WebBrokerAPIDeploymentCreate:   WebBrokerAPIDeploymentManage,
+	WebBrokerAPIDeploymentDelete:   WebBrokerAPIDeploymentManage,
+	WebBrokerAPIDeploymentUndeploy: WebBrokerAPIDeploymentManage,
+	WebBrokerAPIDeploymentRestore:  WebBrokerAPIDeploymentManage,
+	WebBrokerAPIPublish:            WebBrokerAPIManage,
+	WebBrokerAPIKeyCreate:          WebBrokerAPIKeyManage,
+	WebBrokerAPIKeyUpdate:          WebBrokerAPIKeyManage,
+	WebBrokerAPIKeyDelete:          WebBrokerAPIKeyManage,
 }

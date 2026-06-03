@@ -40,11 +40,11 @@ var adminPermissions = []Permission{
 	SubscriptionPlanManage, SubscriptionPlanCreate, SubscriptionPlanRead, SubscriptionPlanUpdate, SubscriptionPlanDelete,
 	APIKeyManage, APIKeyCreate, APIKeyRead, APIKeyUpdate, APIKeyDelete,
 	LLMTemplateManage, LLMTemplateCreate, LLMTemplateRead, LLMTemplateUpdate, LLMTemplateDelete,
-	LLMProviderManage, LLMProviderCreate, LLMProviderRead, LLMProviderUpdate, LLMProviderDelete, LLMProviderDeploymentManage, LLMProviderKeyManage,
-	LLMProxyManage, LLMProxyCreate, LLMProxyRead, LLMProxyUpdate, LLMProxyDelete, LLMProxyDeploymentManage, LLMProxyKeyManage,
-	MCPProxyManage, MCPProxyCreate, MCPProxyRead, MCPProxyUpdate, MCPProxyDelete, MCPProxyDeploymentManage,
-	WebSubAPIManage, WebSubAPICreate, WebSubAPIRead, WebSubAPIUpdate, WebSubAPIDelete, WebSubAPIDeploymentManage, WebSubAPIPublish, WebSubAPIKeyManage,
-	WebBrokerAPIManage, WebBrokerAPICreate, WebBrokerAPIRead, WebBrokerAPIUpdate, WebBrokerAPIDelete, WebBrokerAPIDeploymentManage, WebBrokerAPIPublish, WebBrokerAPIKeyManage,
+	LLMProviderManage, LLMProviderCreate, LLMProviderRead, LLMProviderUpdate, LLMProviderDelete, LLMProviderDeploymentManage, LLMProviderDeploymentCreate, LLMProviderDeploymentRead, LLMProviderDeploymentDelete, LLMProviderDeploymentUndeploy, LLMProviderDeploymentRestore, LLMProviderAPIKeyManage, LLMProviderAPIKeyCreate, LLMProviderAPIKeyRead, LLMProviderAPIKeyDelete,
+	LLMProxyManage, LLMProxyCreate, LLMProxyRead, LLMProxyUpdate, LLMProxyDelete, LLMProxyDeploymentManage, LLMProxyDeploymentCreate, LLMProxyDeploymentRead, LLMProxyDeploymentDelete, LLMProxyDeploymentUndeploy, LLMProxyDeploymentRestore, LLMProxyAPIKeyManage, LLMProxyAPIKeyCreate, LLMProxyAPIKeyRead, LLMProxyAPIKeyDelete,
+	MCPProxyManage, MCPProxyCreate, MCPProxyRead, MCPProxyUpdate, MCPProxyDelete, MCPProxyDeploymentManage, MCPProxyDeploymentCreate, MCPProxyDeploymentRead, MCPProxyDeploymentDelete, MCPProxyDeploymentUndeploy, MCPProxyDeploymentRestore,
+	WebSubAPIManage, WebSubAPICreate, WebSubAPIRead, WebSubAPIUpdate, WebSubAPIDelete, WebSubAPIDeploymentManage, WebSubAPIDeploymentCreate, WebSubAPIDeploymentRead, WebSubAPIDeploymentDelete, WebSubAPIDeploymentUndeploy, WebSubAPIDeploymentRestore, WebSubAPIPublish, WebSubAPIKeyManage, WebSubAPIKeyCreate, WebSubAPIKeyUpdate, WebSubAPIKeyDelete,
+	WebBrokerAPIManage, WebBrokerAPICreate, WebBrokerAPIRead, WebBrokerAPIUpdate, WebBrokerAPIDelete, WebBrokerAPIDeploymentManage, WebBrokerAPIDeploymentCreate, WebBrokerAPIDeploymentRead, WebBrokerAPIDeploymentDelete, WebBrokerAPIDeploymentUndeploy, WebBrokerAPIDeploymentRestore, WebBrokerAPIPublish, WebBrokerAPIKeyManage, WebBrokerAPIKeyCreate, WebBrokerAPIKeyUpdate, WebBrokerAPIKeyDelete,
 	GitRead,
 }
 
@@ -63,11 +63,11 @@ var developerPermissions = []Permission{
 	SubscriptionPlanRead,
 	APIKeyCreate, APIKeyRead, APIKeyUpdate, APIKeyDelete,
 	LLMTemplateCreate, LLMTemplateRead, LLMTemplateUpdate, LLMTemplateDelete,
-	LLMProviderCreate, LLMProviderRead, LLMProviderUpdate, LLMProviderDelete, LLMProviderDeploymentManage, LLMProviderKeyManage,
-	LLMProxyCreate, LLMProxyRead, LLMProxyUpdate, LLMProxyDelete, LLMProxyDeploymentManage, LLMProxyKeyManage,
-	MCPProxyCreate, MCPProxyRead, MCPProxyUpdate, MCPProxyDelete, MCPProxyDeploymentManage,
-	WebSubAPICreate, WebSubAPIRead, WebSubAPIUpdate, WebSubAPIDelete, WebSubAPIDeploymentManage, WebSubAPIPublish, WebSubAPIKeyManage,
-	WebBrokerAPICreate, WebBrokerAPIRead, WebBrokerAPIUpdate, WebBrokerAPIDelete, WebBrokerAPIDeploymentManage, WebBrokerAPIPublish, WebBrokerAPIKeyManage,
+	LLMProviderCreate, LLMProviderRead, LLMProviderUpdate, LLMProviderDelete, LLMProviderDeploymentManage, LLMProviderDeploymentCreate, LLMProviderDeploymentRead, LLMProviderDeploymentDelete, LLMProviderDeploymentUndeploy, LLMProviderDeploymentRestore, LLMProviderAPIKeyManage, LLMProviderAPIKeyCreate, LLMProviderAPIKeyRead, LLMProviderAPIKeyDelete,
+	LLMProxyCreate, LLMProxyRead, LLMProxyUpdate, LLMProxyDelete, LLMProxyDeploymentManage, LLMProxyDeploymentCreate, LLMProxyDeploymentRead, LLMProxyDeploymentDelete, LLMProxyDeploymentUndeploy, LLMProxyDeploymentRestore, LLMProxyAPIKeyManage, LLMProxyAPIKeyCreate, LLMProxyAPIKeyRead, LLMProxyAPIKeyDelete,
+	MCPProxyCreate, MCPProxyRead, MCPProxyUpdate, MCPProxyDelete, MCPProxyDeploymentManage, MCPProxyDeploymentCreate, MCPProxyDeploymentRead, MCPProxyDeploymentDelete, MCPProxyDeploymentUndeploy, MCPProxyDeploymentRestore,
+	WebSubAPICreate, WebSubAPIRead, WebSubAPIUpdate, WebSubAPIDelete, WebSubAPIDeploymentManage, WebSubAPIDeploymentCreate, WebSubAPIDeploymentRead, WebSubAPIDeploymentDelete, WebSubAPIDeploymentUndeploy, WebSubAPIDeploymentRestore, WebSubAPIPublish, WebSubAPIKeyManage, WebSubAPIKeyCreate, WebSubAPIKeyUpdate, WebSubAPIKeyDelete,
+	WebBrokerAPICreate, WebBrokerAPIRead, WebBrokerAPIUpdate, WebBrokerAPIDelete, WebBrokerAPIDeploymentManage, WebBrokerAPIDeploymentCreate, WebBrokerAPIDeploymentRead, WebBrokerAPIDeploymentDelete, WebBrokerAPIDeploymentUndeploy, WebBrokerAPIDeploymentRestore, WebBrokerAPIPublish, WebBrokerAPIKeyManage, WebBrokerAPIKeyCreate, WebBrokerAPIKeyUpdate, WebBrokerAPIKeyDelete,
 	GitRead,
 }
 
@@ -97,11 +97,11 @@ var operatorPermissions = []Permission{
 	APIGatewayRead, APIGatewayCreate,
 	APIDeploymentCreate, APIDeploymentRead, APIDeploymentDelete, APIDeploymentUndeploy, APIDeploymentRestore,
 	ProjectRead,
-	LLMProviderRead, LLMProviderDeploymentManage,
-	LLMProxyRead, LLMProxyDeploymentManage,
-	MCPProxyRead, MCPProxyDeploymentManage,
-	WebSubAPIRead, WebSubAPIDeploymentManage,
-	WebBrokerAPIRead, WebBrokerAPIDeploymentManage,
+	LLMProviderRead, LLMProviderDeploymentManage, LLMProviderDeploymentCreate, LLMProviderDeploymentRead, LLMProviderDeploymentDelete, LLMProviderDeploymentUndeploy, LLMProviderDeploymentRestore,
+	LLMProxyRead, LLMProxyDeploymentManage, LLMProxyDeploymentCreate, LLMProxyDeploymentRead, LLMProxyDeploymentDelete, LLMProxyDeploymentUndeploy, LLMProxyDeploymentRestore,
+	MCPProxyRead, MCPProxyDeploymentManage, MCPProxyDeploymentCreate, MCPProxyDeploymentRead, MCPProxyDeploymentDelete, MCPProxyDeploymentUndeploy, MCPProxyDeploymentRestore,
+	WebSubAPIRead, WebSubAPIDeploymentManage, WebSubAPIDeploymentCreate, WebSubAPIDeploymentRead, WebSubAPIDeploymentDelete, WebSubAPIDeploymentUndeploy, WebSubAPIDeploymentRestore,
+	WebBrokerAPIRead, WebBrokerAPIDeploymentManage, WebBrokerAPIDeploymentCreate, WebBrokerAPIDeploymentRead, WebBrokerAPIDeploymentDelete, WebBrokerAPIDeploymentUndeploy, WebBrokerAPIDeploymentRestore,
 }
 
 // viewerPermissions covers read-only access to all resources.
@@ -115,11 +115,11 @@ var viewerPermissions = []Permission{
 	SubscriptionPlanRead,
 	APIKeyRead,
 	LLMTemplateRead,
-	LLMProviderRead,
-	LLMProxyRead,
-	MCPProxyRead,
-	WebSubAPIRead,
-	WebBrokerAPIRead,
+	LLMProviderRead, LLMProviderDeploymentRead,
+	LLMProxyRead, LLMProxyDeploymentRead,
+	MCPProxyRead, MCPProxyDeploymentRead,
+	WebSubAPIRead, WebSubAPIDeploymentRead,
+	WebBrokerAPIRead, WebBrokerAPIDeploymentRead,
 }
 
 // RolePermissions maps a platform role name to its granted permissions.

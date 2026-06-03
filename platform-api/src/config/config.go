@@ -28,6 +28,12 @@ import (
 type Server struct {
 	LogLevel string `envconfig:"LOG_LEVEL" default:"DEBUG"`
 
+	// DevMode disables safety guardrails intended for production (e.g. allows
+	// JWT signature validation to be skipped without a loud warning).
+	// Set to true only in local development environments.
+	// Env: DEV_MODE (default: false)
+	DevMode bool `envconfig:"DEV_MODE" default:"false"`
+
 	// Server configurations
 	Port string `envconfig:"PORT" default:"9243"`
 
@@ -41,8 +47,9 @@ type Server struct {
 	// LLM provider template bootstrap (used to seed defaults into the DB)
 	LLMTemplateDefinitionsPath string `envconfig:"LLM_TEMPLATE_DEFINITIONS_PATH" default:"./resources/default-llm-provider-templates"`
 
-	// JWT configurations — used in non-IDP mode (IDP_ENABLED=false)
-	JWT JWT `envconfig:"JWT"`
+	// Auth groups all authentication configuration.
+	// Two modes are supported: JWT (local HMAC) and IDP (JWKS-based).
+	Auth Auth `envconfig:"AUTH"`
 
 	// WebSocket configurations
 	WebSocket WebSocket `envconfig:"WEBSOCKET"`
@@ -59,11 +66,6 @@ type Server struct {
 	// API key configurations
 	APIKey APIKey `envconfig:"API_KEY"`
 
-	// IDP configurations — controls authentication mode and claim extraction.
-	// All identity providers (Thunder, Keycloak, Asgardeo, Azure AD, Okta, …)
-	// share the same config surface; set IDP_ENABLED=true to activate.
-	IDP IDP `envconfig:"IDP"`
-
 	// Gateway configurations
 	Gateway Gateway `envconfig:"GATEWAY"`
 
@@ -71,66 +73,87 @@ type Server struct {
 	RBAC RBAC `envconfig:"RBAC"`
 }
 
-// IDP holds configuration for JWT-based identity providers.
+// Auth groups all authentication-related configuration.
+// Exactly one of JWT or IDP should be the active primary mode.
+// SkipPaths applies to both modes.
+type Auth struct {
+	// SkipPaths is the list of path prefixes that bypass authentication entirely.
+	// Applies to both JWT and IDP modes.
+	// Env: AUTH_SKIP_PATHS
+	SkipPaths []string `envconfig:"SKIP_PATHS" default:"/health,/metrics,/api/internal/v1/ws/gateways/connect,/api/internal/v1/apis,/api/internal/v1/llm-providers,/api/internal/v1/llm-proxies,/api/internal/v1/subscription-plans,/api/internal/v1/mcp-proxies,/api/internal/v1/gateways,/api/internal/v1/deployments,/api/internal/v1/artifacts,/api/internal/v1/websub-apis,/api/internal/v1/webbroker-apis"`
+
+	// IDP holds JWKS-based identity provider configuration.
+	// Env prefix: AUTH_IDP_
+	IDP IDP `envconfig:"IDP"`
+
+	// JWT holds local HMAC JWT configuration.
+	// Env prefix: AUTH_JWT_
+	JWT JWT `envconfig:"JWT"`
+}
+
+// IDP holds configuration for JWKS-based identity providers.
 // The same fields apply regardless of which IDP is in use (Thunder, Keycloak,
 // Asgardeo, Azure AD, Okta, etc.).
-//
-// When IDP_ENABLED=false (default), the server validates tokens with a local
-// HMAC secret (JWT_SECRET_KEY) or skips validation entirely in dev mode.
-// When IDP_ENABLED=true, JWKS-based validation is performed against IDP_JWKS_URL.
+// Env prefix: AUTH_IDP_
 type IDP struct {
 	// Enabled controls whether JWKS-based JWT validation is active.
-	// When false (default), the server uses HMAC validation (JWT_SECRET_KEY) or
-	// skips validation when JWT_SKIP_VALIDATION=true (local development only).
-	// Env: IDP_ENABLED (default: false)
+	// When false (default), the server falls back to local HMAC JWT validation.
+	// Env: AUTH_IDP_ENABLED (default: false)
 	Enabled bool `envconfig:"ENABLED" default:"false"`
 
-	// Type is an optional label describing which IDP is configured (e.g. "thunder",
-	// "keycloak", "asgardeo"). It does not change runtime behavior — all IDPs use the
-	// same config fields — but it appears in startup log messages.
-	// Env: IDP_TYPE (default: "")
-	Type string `envconfig:"TYPE" default:""`
+	// Name is an optional label identifying which IDP is configured (e.g. "thunder",
+	// "keycloak", "asgardeo"). Does not affect runtime behaviour — used only in
+	// startup log messages to make the active IDP visible.
+	// Env: AUTH_IDP_NAME (default: "")
+	Name string `envconfig:"NAME" default:""`
 
 	// JWKSUrl is the IDP's JWKS endpoint for fetching public signing keys.
-	// Required when IDP_ENABLED=true.
-	// Env: IDP_JWKS_URL
+	// Required when AUTH_IDP_ENABLED=true.
+	// Env: AUTH_IDP_JWKS_URL
 	JWKSUrl string `envconfig:"JWKS_URL" default:""`
 
 	// Issuer is the list of accepted JWT issuers (comma-separated).
-	// Required when IDP_ENABLED=true.
+	// Required when AUTH_IDP_ENABLED=true.
 	// Example: "https://accounts.example.com,https://sso.example.com"
-	// Env: IDP_ISSUER
+	// Env: AUTH_IDP_ISSUER
 	Issuer []string `envconfig:"ISSUER"`
 
 	// Audience is the list of accepted JWT audiences (comma-separated).
 	// Optional. Entries ending with "*" are treated as prefix matches.
-	// Env: IDP_AUDIENCE
+	// Env: AUTH_IDP_AUDIENCE
 	Audience []string `envconfig:"AUDIENCE"`
 
 	// --- Claim name mappings ---
 	// Set these when your IDP uses non-standard claim names.
 
-	// OrganizationClaimName is the JWT claim that holds the organization/tenant UUID.
+	// OrganizationClaimName is the JWT claim that holds the currently selected org UUID.
+	// Set per-token by the IDP based on which org the user logged into.
 	// Every protected request must carry this claim; requests without it are rejected.
-	// Env: IDP_ORGANIZATION_CLAIM_NAME (default: "organization")
+	// Env: AUTH_IDP_ORGANIZATION_CLAIM_NAME (default: "organization")
 	OrganizationClaimName string `envconfig:"ORGANIZATION_CLAIM_NAME" default:"organization"`
 
+	// OrganizationsClaimName is the JWT claim that holds the full list of org UUIDs
+	// the user belongs to (space-separated string or JSON array). Used by
+	// GET /users/me/organizations as a fast path before falling back to the DB.
+	// Env: AUTH_IDP_ORGANIZATIONS_CLAIM_NAME (default: "organizations")
+	OrganizationsClaimName string `envconfig:"ORGANIZATIONS_CLAIM_NAME" default:"organizations"`
+
 	// UserIDClaimName is the JWT claim used as the canonical user identifier.
-	// Env: IDP_USER_ID_CLAIM_NAME (default: "sub")
+	// Env: AUTH_IDP_USER_ID_CLAIM_NAME (default: "sub")
 	UserIDClaimName string `envconfig:"USER_ID_CLAIM_NAME" default:"sub"`
 
 	// UsernameClaimName is the JWT claim for the human-readable username.
-	// Env: IDP_USERNAME_CLAIM_NAME (default: "username")
+	// Env: AUTH_IDP_USERNAME_CLAIM_NAME (default: "username")
 	UsernameClaimName string `envconfig:"USERNAME_CLAIM_NAME" default:"username"`
 
 	// EmailClaimName is the JWT claim for the user's email address.
-	// Env: IDP_EMAIL_CLAIM_NAME (default: "email")
+	// Env: AUTH_IDP_EMAIL_CLAIM_NAME (default: "email")
 	EmailClaimName string `envconfig:"EMAIL_CLAIM_NAME" default:"email"`
 
 	// ScopeClaimName is the JWT claim that carries the granted OAuth2 scopes.
 	// When this claim is present in the token, scope-based validation is used directly.
 	// When absent, role-based expansion applies (see RolesClaimPath).
-	// Env: IDP_SCOPE_CLAIM_NAME (default: "scope")
+	// Env: AUTH_IDP_SCOPE_CLAIM_NAME (default: "scope")
 	ScopeClaimName string `envconfig:"SCOPE_CLAIM_NAME" default:"scope"`
 
 	// --- Role-based access (for IDPs that issue roles instead of scopes) ---
@@ -139,27 +162,45 @@ type IDP struct {
 	// Supports both flat claims ("roles") and nested claims ("realm_access.roles").
 	// The claim value can be a string array or a space-separated string.
 	// When empty, role-based expansion is disabled and only scope-based validation applies.
-	// Env: IDP_ROLES_CLAIM_PATH (default: "")
+	// Env: AUTH_IDP_ROLES_CLAIM_PATH (default: "")
 	RolesClaimPath string `envconfig:"ROLES_CLAIM_PATH" default:""`
 
 	// RoleMappings maps IDP role values to platform roles (admin, developer, viewer).
 	// Format: comma-separated "idp-role=platform-role" pairs.
 	// Example: "PLATFORM_ADMIN=admin,PLATFORM_DEV=developer,PLATFORM_VIEWER=viewer"
-	// When empty, IDP role values are used as platform role names directly
-	// (only works if the IDP already issues "admin", "developer", or "viewer").
-	// Only relevant when IDP_VALIDATION_MODE=role.
-	// Env: IDP_ROLE_MAPPINGS
+	// When empty, IDP role values are used as platform role names directly.
+	// Only relevant when AUTH_IDP_VALIDATION_MODE=role.
+	// Env: AUTH_IDP_ROLE_MAPPINGS
 	RoleMappings []string `envconfig:"ROLE_MAPPINGS"`
+
+	// --- SCIM2 claim sync (multi-org) ---
+
+	// SCIM2BaseURL is the base URL for the IDP's SCIM2 API, used to update user
+	// attributes (e.g. the org membership claim) after an org is created.
+	// When empty, SCIM2 claim sync is disabled.
+	// Example: "https://api.asgardeo.io/t/my-org" or "https://localhost:9443"
+	// Env: AUTH_IDP_SCIM2_BASE_URL (default: "")
+	SCIM2BaseURL string `envconfig:"SCIM2_BASE_URL" default:""`
+
+	// OrgClaimSCIM2Schema is the SCIM2 schema URI that contains the org claims.
+	// Must match what is registered in the IDP (Thunder: custom-user extension).
+	// Env: AUTH_IDP_ORG_CLAIM_SCIM2_SCHEMA (default: "urn:scim:schemas:extension:custom:User")
+	OrgClaimSCIM2Schema string `envconfig:"ORG_CLAIM_SCIM2_SCHEMA" default:"urn:scim:schemas:extension:custom:User"`
+
+	// OrgClaimSCIM2Attr is the SCIM2 attribute name for the full org membership list.
+	// Env: AUTH_IDP_ORG_CLAIM_SCIM2_ATTR (default: "organizations")
+	OrgClaimSCIM2Attr string `envconfig:"ORG_CLAIM_SCIM2_ATTR" default:"organizations"`
+
+	// SCIM2InsecureSkipVerify disables TLS certificate verification for SCIM2
+	// requests. Enable only for local development with self-signed certs.
+	// Keep false (default) for cloud IDPs like Asgardeo.
+	// Env: AUTH_IDP_SCIM2_INSECURE_SKIP_VERIFY (default: false)
+	SCIM2InsecureSkipVerify bool `envconfig:"SCIM2_INSECURE_SKIP_VERIFY" default:"false"`
 
 	// ValidationMode selects how authorization is enforced. Pick one:
 	//   "scope" (default) — validate using the JWT scope claim directly.
-	//                       The IDP must issue fine-grained platform scopes.
-	//   "role"            — validate by expanding IDP roles to platform roles
-	//                       and treating the full role permission set as the
-	//                       caller's effective scopes. Requires RolesClaimPath
-	//                       and optionally RoleMappings to be configured.
-	// These modes are mutually exclusive; there is no fallback between them.
-	// Env: IDP_VALIDATION_MODE (default: "scope")
+	//   "role"            — expand IDP roles to platform roles via RoleMappings.
+	// Env: AUTH_IDP_VALIDATION_MODE (default: "scope")
 	ValidationMode string `envconfig:"VALIDATION_MODE" default:"scope"`
 }
 
@@ -193,27 +234,36 @@ type TLS struct {
 	CertDir string `envconfig:"CERT_DIR" default:"./data/certs"`
 }
 
-// JWT holds configuration for the non-IDP authentication mode (IDP_ENABLED=false).
-// When IDP_ENABLED=true, JWT signature validation is handled by JWKS (see IDP config).
+// JWT holds configuration for local HMAC JWT authentication (the non-IDP mode).
+// Also supplies the signing key for platform-issued org-scoped tokens, which are
+// used even in IDP mode (produced by POST /auth/token).
+// Env prefix: AUTH_JWT_
 type JWT struct {
-	// SecretKey is the HMAC signing key used to verify token signatures when
-	// IDP_ENABLED=false and JWT_SKIP_VALIDATION=false.
-	// Env: JWT_SECRET_KEY (default: "your-secret-key-change-in-production")
+	// Enabled activates local HMAC JWT as the primary authentication mode.
+	// Set to false when AUTH_IDP_ENABLED=true and you want IDP-only auth.
+	// Env: AUTH_JWT_ENABLED (default: true)
+	Enabled bool `envconfig:"ENABLED" default:"true"`
+
+	// SecretKey is the HMAC signing key used to verify token signatures in JWT mode
+	// and to sign platform-issued org-scoped tokens in both modes.
+	// Env: AUTH_JWT_SECRET_KEY (default: "your-secret-key-change-in-production")
 	SecretKey string `envconfig:"SECRET_KEY" default:"your-secret-key-change-in-production"`
 
 	// Issuer is the expected JWT issuer value for HMAC-signed tokens.
-	// When empty, issuer validation is skipped.
-	// Env: JWT_ISSUER (default: "")
-	Issuer string `envconfig:"ISSUER" default:""`
-
-	// SkipPaths is the list of path prefixes that bypass JWT authentication entirely.
-	// Env: JWT_SKIP_PATHS
-	SkipPaths []string `envconfig:"SKIP_PATHS" default:"/health,/metrics,/api/internal/v1/ws/gateways/connect,/api/internal/v1/apis,/api/internal/v1/llm-providers,/api/internal/v1/llm-proxies,/api/internal/v1/subscription-plans,/api/internal/v1/mcp-proxies,/api/internal/v1/gateways,/api/internal/v1/deployments,/api/internal/v1/artifacts,/api/internal/v1/websub-apis,/api/internal/v1/webbroker-apis"`
+	// Also used as the iss claim in platform-issued org-scoped tokens.
+	// Env: AUTH_JWT_ISSUER (default: "platform-api")
+	Issuer string `envconfig:"ISSUER" default:"platform-api"`
 
 	// SkipValidation disables JWT signature verification.
-	// Only applies when IDP_ENABLED=false. Use only for local development.
-	// Env: JWT_SKIP_VALIDATION (default: true)
+	// Only applies when AUTH_IDP_ENABLED=false (JWT mode). Use only for local development.
+	// When DEV_MODE=false this combination logs a prominent warning at startup.
+	// Env: AUTH_JWT_SKIP_VALIDATION (default: true)
 	SkipValidation bool `envconfig:"SKIP_VALIDATION" default:"true"`
+
+	// TokenExpirySeconds is the lifetime of platform-issued org-scoped tokens
+	// produced by POST /auth/token. Default is 3600 (1 hour).
+	// Env: AUTH_JWT_TOKEN_EXPIRY_SECONDS (default: 3600)
+	TokenExpirySeconds int `envconfig:"TOKEN_EXPIRY_SECONDS" default:"3600"`
 }
 
 // WebSocket holds WebSocket-specific configuration
@@ -316,7 +366,7 @@ func GetConfig() *Server {
 			err = validateDeploymentsConfig(&settingInstance.Deployments)
 		}
 		if err == nil {
-			err = validateIDPConfig(&settingInstance.IDP)
+			err = validateIDPConfig(&settingInstance.Auth.IDP)
 		}
 	})
 	if err != nil {

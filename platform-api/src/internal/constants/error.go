@@ -28,10 +28,11 @@ var (
 	ErrInvalidHandle          = errors.New("handle must be lowercase alphanumeric with hyphens only (no consecutive hyphens, cannot start or end with hyphen)")
 	ErrHandleGenerationFailed = errors.New("failed to generate unique handle after maximum retries")
 	ErrHandleSourceEmpty      = errors.New("source string cannot be empty for handle generation")
-	ErrOrganizationExists     = errors.New("organization already exists with the given UUID")
-	ErrOrganizationNotFound   = errors.New("organization not found")
-	ErrMultipleOrganizations  = errors.New("multiple organizations found")
-	ErrInvalidInput           = errors.New("invalid input parameters")
+	ErrOrganizationExists        = errors.New("organization already exists with the given UUID")
+	ErrOrganizationNotFound      = errors.New("organization not found")
+	ErrMultipleOrganizations     = errors.New("multiple organizations found")
+	ErrInvalidInput              = errors.New("invalid input parameters")
+	ErrTokenExchangeDisabled     = errors.New("token exchange is disabled: AUTH_JWT_ENABLED=false or AUTH_JWT_SECRET_KEY is not set")
 )
 
 var (
