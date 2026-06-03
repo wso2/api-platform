@@ -39,7 +39,7 @@ type JWTAuthenticator struct {
 }
 
 // NewJWTAuthenticator creates an Authenticator backed by the given Gin handlers.
-// Pass ThunderAuthMiddleware or the IDP auth+claims pair here.
+// Pass LocalJWTAuthMiddleware or the IDP auth+claims pair here.
 func NewJWTAuthenticator(handlers ...gin.HandlerFunc) *JWTAuthenticator {
 	return &JWTAuthenticator{handlers: handlers}
 }

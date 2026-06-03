@@ -406,7 +406,7 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger) (middleware.Au
 			slogger.Info("Simple JWT mode: HMAC signature validation enabled")
 		}
 		return middleware.NewJWTAuthenticator(
-			middleware.ThunderAuthMiddleware(middleware.AuthConfig{
+			middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
 				SecretKey:      cfg.JWT.SecretKey,
 				TokenIssuer:    cfg.JWT.Issuer,
 				SkipPaths:      cfg.JWT.SkipPaths,

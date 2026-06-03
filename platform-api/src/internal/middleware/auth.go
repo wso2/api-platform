@@ -29,7 +29,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// CustomClaims represents the JWT claims structure from Thunder (non-IDP mode).
+// CustomClaims represents the JWT claims structure used in local JWT (non-IDP) mode.
 type CustomClaims struct {
 	Audience     string `json:"aud"`
 	Email        string `json:"email"`
@@ -42,7 +42,7 @@ type CustomClaims struct {
 	jwt.RegisteredClaims
 }
 
-// AuthConfig holds the configuration for the Thunder (non-IDP) JWT authentication path.
+// AuthConfig holds the configuration for the local JWT (non-IDP) authentication path.
 type AuthConfig struct {
 	SecretKey             string
 	TokenIssuer           string
@@ -62,9 +62,9 @@ type PlatformClaimNames struct {
 	RoleMappings      []string // "idp-value=platform-role" pairs
 }
 
-// ThunderAuthMiddleware returns a Gin middleware for Thunder-issued JWT validation.
+// LocalJWTAuthMiddleware returns a Gin middleware for locally-issued JWT validation.
 // Used only when IDP mode is disabled.
-func ThunderAuthMiddleware(config AuthConfig) gin.HandlerFunc {
+func LocalJWTAuthMiddleware(config AuthConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		for _, path := range config.SkipPaths {
 			if strings.HasPrefix(c.Request.URL.Path, path) {
@@ -87,7 +87,7 @@ func ThunderAuthMiddleware(config AuthConfig) gin.HandlerFunc {
 			return
 		}
 
-		if err := validateThunderToken(c, tokenString, config); err != nil {
+		if err := validateLocalJWT(c, tokenString, config); err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 			c.Abort()
 			return
@@ -97,9 +97,9 @@ func ThunderAuthMiddleware(config AuthConfig) gin.HandlerFunc {
 	}
 }
 
-// validateThunderToken handles Thunder-issued JWT validation (non-IDP mode).
+// validateLocalJWT handles locally-issued JWT validation (non-IDP mode).
 // When SkipValidation is true the signature is not verified — intended for local development only.
-func validateThunderToken(c *gin.Context, tokenString string, config AuthConfig) error {
+func validateLocalJWT(c *gin.Context, tokenString string, config AuthConfig) error {
 	mapClaims := jwt.MapClaims{}
 
 	if config.SkipValidation {
@@ -140,6 +140,7 @@ func validateThunderToken(c *gin.Context, tokenString string, config AuthConfig)
 	if orgClaimName == "" {
 		orgClaimName = "organization"
 	}
+	fmt.Println("orgClaimName", orgClaimName)
 	org := getStringClaim(mapClaims, orgClaimName)
 	if org == "" {
 		return fmt.Errorf("token missing required '%s' claim", orgClaimName)
@@ -167,7 +168,7 @@ func validateThunderToken(c *gin.Context, tokenString string, config AuthConfig)
 	c.Set("scope", claimsObj.Scope)
 	c.Set("audience", claimsObj.Audience)
 	c.Set("claims", claimsObj)
-	// Thunder tokens carry fine-grained scopes, not role names — platform_roles is empty
+	// Local JWT tokens carry fine-grained scopes, not role names — platform_roles is empty
 	// here because scope-based validation takes precedence in resolveEffectiveScopes.
 	c.Set("platform_roles", []string{})
 

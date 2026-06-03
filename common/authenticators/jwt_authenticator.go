@@ -124,8 +124,7 @@ func (j *JWTAuthenticator) Authenticate(ctx *gin.Context) (*AuthResult, error) {
 	}
 
 	claims := jwt.MapClaims{}
-	// jwt.WithLeeway(30*time.Second) to cover clock drifts
-	validatedToken, err := jwt.ParseWithClaims(tokenString, claims, j.jwks.Keyfunc)
+	validatedToken, err := jwt.ParseWithClaims(tokenString, claims, j.jwks.Keyfunc, jwt.WithLeeway(30*time.Second))
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
