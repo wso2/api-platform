@@ -278,14 +278,14 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 					"targetUpstream", *targetUpstreamName,
 					"targetUpstreamPath", targetUpstreamPath)
 
-				// Set target_path to trigger Lua filter path transformation if not already set
-				// If request-rewrite policy set it, use that; otherwise use original request path
-				if _, hasTargetPath := out.DynamicMetadata[extProcNS]["request_transformation.target_path"]; !hasTargetPath {
-					out.DynamicMetadata[extProcNS]["request_transformation.target_path"] = execCtx.requestBodyCtx.Path
-					execCtx.dynamicMetadata[extProcNS]["request_transformation.target_path"] = execCtx.requestBodyCtx.Path
-					slog.Info("UpstreamName: set target_path", "path", execCtx.requestBodyCtx.Path)
+				// Surface the raw request path as metadata["path"] so Lua rewrites :path once;
+				// guard so an earlier path-changing policy (e.g. request-rewrite) isn't clobbered.
+				if out.Mutations.Path == nil {
+					rawPath := execCtx.requestBodyCtx.Path
+					out.Mutations.Path = &rawPath
+					slog.Info("UpstreamName: set mutations.Path", "path", rawPath)
 				} else {
-					slog.Info("UpstreamName: target_path already set by policy")
+					slog.Info("UpstreamName: mutations.Path already set by policy")
 				}
 			} else {
 				slog.Warn("UpstreamName: target upstream not found in upstreamDefinitionPaths",
@@ -462,14 +462,13 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 		dynamicMetadata[extProcNS]["upstream_base_path"] = execCtx.upstreamBasePath
 		if execCtx.upstreamDefinitionPaths != nil {
 			if targetUpstreamPath, ok := execCtx.upstreamDefinitionPaths[*targetUpstreamName]; ok {
-				// Advertise the target upstream base path; the Lua filter prepends it once.
-				// Do NOT set mutations.Path here -- it surfaces as metadata["path"], which Lua reads
-				// before target_path and would double-prefix (e.g. /sandbox/alternate/whoami on sandbox).
 				dynamicMetadata[extProcNS]["target_upstream_base_path"] = targetUpstreamPath
 				execCtx.dynamicMetadata[extProcNS]["target_upstream_base_path"] = targetUpstreamPath
-				if _, hasTargetPath := dynamicMetadata[extProcNS]["request_transformation.target_path"]; !hasTargetPath {
-					dynamicMetadata[extProcNS]["request_transformation.target_path"] = execCtx.requestBodyCtx.Path
-					execCtx.dynamicMetadata[extProcNS]["request_transformation.target_path"] = execCtx.requestBodyCtx.Path
+				// Surface the raw request path as metadata["path"] so Lua rewrites :path once;
+				// guard so an earlier path-changing policy (e.g. request-rewrite) isn't clobbered.
+				if mutations.Path == nil {
+					rawPath := execCtx.requestBodyCtx.Path
+					mutations.Path = &rawPath
 				}
 			}
 		}
@@ -690,14 +689,13 @@ func TranslateRequestHeaderActionsWithBodyMerge(
 		dynamicMetadata[extProcNS]["upstream_base_path"] = execCtx.upstreamBasePath
 		if execCtx.upstreamDefinitionPaths != nil {
 			if targetUpstreamPath, ok := execCtx.upstreamDefinitionPaths[*targetUpstreamName]; ok {
-				// Advertise the target upstream base path; the Lua filter prepends it once.
-				// Do NOT set mutations.Path here -- it surfaces as metadata["path"], which Lua reads
-				// before target_path and would double-prefix (e.g. /sandbox/alternate/whoami on sandbox).
 				dynamicMetadata[extProcNS]["target_upstream_base_path"] = targetUpstreamPath
 				execCtx.dynamicMetadata[extProcNS]["target_upstream_base_path"] = targetUpstreamPath
-				if _, hasTargetPath := dynamicMetadata[extProcNS]["request_transformation.target_path"]; !hasTargetPath {
-					dynamicMetadata[extProcNS]["request_transformation.target_path"] = execCtx.requestBodyCtx.Path
-					execCtx.dynamicMetadata[extProcNS]["request_transformation.target_path"] = execCtx.requestBodyCtx.Path
+				// Surface the raw request path as metadata["path"] so Lua rewrites :path once;
+				// guard so an earlier path-changing policy (e.g. request-rewrite) isn't clobbered.
+				if mutations.Path == nil {
+					rawPath := execCtx.requestBodyCtx.Path
+					mutations.Path = &rawPath
 				}
 			}
 		}
