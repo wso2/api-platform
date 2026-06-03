@@ -565,7 +565,7 @@ func TestTranslator_CreateRoute_PathSpecifier(t *testing.T) {
 				"test-id", "TestAPI", tt.apiVersion, tt.context,
 				"GET", tt.path, "test-cluster", "/",
 				"localhost", "http/rest", "", "", nil, "", nil,
-				false, "", nil,
+				false, nil,
 			)
 			require.NotNil(t, r)
 			{
@@ -616,7 +616,7 @@ func TestTranslator_WildcardRegexBoundary(t *testing.T) {
 			"test-id", "TestAPI", tc.apiVersion, tc.context,
 			"GET", tc.path, "test-cluster", "/",
 			"localhost", "http/rest", "", "", nil, "", nil,
-			false, "", nil,
+			false, nil,
 		)
 		require.NotNil(t, r)
 		regexSpec, ok := r.Match.PathSpecifier.(*route.RouteMatch_SafeRegex)
@@ -686,7 +686,7 @@ func TestTranslator_WildcardUpstreamRewrite(t *testing.T) {
 				"test-id", "TestAPI", "v1.0", tt.context,
 				"GET", tt.path, "test-cluster", tt.upstreamPath,
 				"localhost", "http/rest", "", "", nil, "", nil,
-				false, "", nil,
+				false, nil,
 			)
 			require.NotNil(t, r)
 			assert.Equal(t, tt.wantUpstream, applyEnvoyRewrite(t, r, tt.request))
@@ -1629,7 +1629,6 @@ func TestTranslator_CreateRoute_Basic(t *testing.T) {
 		"proj-001",                        // projectID
 		nil,                               // timeoutCfg
 		false,                             // useClusterHeader
-		"",                                // defaultCluster
 		nil,                               // upstreamDefPaths
 	)
 
@@ -1652,7 +1651,7 @@ func TestTranslator_CreateRoute_DynamicRouting(t *testing.T) {
 		r := translator.createRoute(
 			"api-123", "0000-test-api-0000-000000000000", "v1", "/api", "GET", "/users",
 			"static-cluster", "", "localhost", "API", "", "", nil, "proj-001", nil,
-			false, "", nil,
+			false, nil,
 		)
 		require.NotNil(t, r)
 		routeAction, ok := r.Action.(*route.Route_Route)
@@ -1667,7 +1666,7 @@ func TestTranslator_CreateRoute_DynamicRouting(t *testing.T) {
 		r := translator.createRoute(
 			"api-123", "0000-test-api-0000-000000000000", "v1", "/api", "GET", "/users",
 			"static-cluster", "", "localhost", "API", "", "", nil, "proj-001", nil,
-			true, "default-cluster", nil,
+			true, nil,
 		)
 		require.NotNil(t, r)
 		routeAction, ok := r.Action.(*route.Route_Route)
