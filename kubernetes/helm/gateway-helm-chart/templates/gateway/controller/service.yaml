@@ -29,10 +29,12 @@ spec:
       port: {{ $service.ports.policy }}
       targetPort: policy
       protocol: TCP
+    {{- if $service.expose.admin }}
     - name: admin
       port: {{ $service.ports.admin }}
       targetPort: admin
       protocol: TCP
+    {{- end }}
     - name: metrics
       port: {{ $service.ports.metrics }}
       targetPort: metrics
