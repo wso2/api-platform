@@ -620,6 +620,113 @@ func TestValidateUpstreamDefinitions_URLWithPathRejected(t *testing.T) {
 	assert.Contains(t, errors[0].Message, "basePath")
 }
 
+// upstreamDefinitions basePath, when set, must be absolute (start with "/"); a
+// relative basePath like "svc" yields "svc/users" which Envoy rejects with 400.
+func TestValidateUpstreamDefinitions_BasePathWithoutLeadingSlashRejected(t *testing.T) {
+	validator := NewAPIValidator()
+
+	basePath := "svc"
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name:     "my-upstream-1",
+			BasePath: &basePath,
+			Upstreams: []struct {
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{Url: "http://backend-1:8080"},
+			},
+		},
+	}
+
+	errors := validator.validateUpstreamDefinitions(definitions)
+	require.Len(t, errors, 1)
+	assert.Equal(t, "spec.upstreamDefinitions[0].basePath", errors[0].Field)
+	assert.Contains(t, errors[0].Message, "absolute path")
+}
+
+// upstreamDefinitions basePath must not carry a trailing "/"; "/svc/" + "/users"
+// would otherwise yield the double slash "/svc//users".
+func TestValidateUpstreamDefinitions_BasePathTrailingSlashRejected(t *testing.T) {
+	validator := NewAPIValidator()
+
+	basePath := "/svc/"
+	definitions := &[]api.UpstreamDefinition{
+		{
+			Name:     "my-upstream-1",
+			BasePath: &basePath,
+			Upstreams: []struct {
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{Url: "http://backend-1:8080"},
+			},
+		},
+	}
+
+	errors := validator.validateUpstreamDefinitions(definitions)
+	require.Len(t, errors, 1)
+	assert.Equal(t, "spec.upstreamDefinitions[0].basePath", errors[0].Field)
+	assert.Contains(t, errors[0].Message, "trailing")
+}
+
+// basePath is consumed verbatim by the xDS/transform layers, so surrounding
+// whitespace (which a trimmed-then-validated check would let slip through and a
+// whitespace-only value would skip entirely) must be rejected on the raw value.
+func TestValidateUpstreamDefinitions_BasePathWhitespaceRejected(t *testing.T) {
+	validator := NewAPIValidator()
+
+	for _, bc := range []string{" ", "   ", " /svc", "/svc ", "/svc/ "} {
+		t.Run(bc, func(t *testing.T) {
+			basePath := bc
+			definitions := &[]api.UpstreamDefinition{
+				{
+					Name:     "my-upstream-1",
+					BasePath: &basePath,
+					Upstreams: []struct {
+						Url    string `json:"url" yaml:"url"`
+						Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+					}{
+						{Url: "http://backend-1:8080"},
+					},
+				},
+			}
+
+			errors := validator.validateUpstreamDefinitions(definitions)
+			require.Len(t, errors, 1)
+			assert.Equal(t, "spec.upstreamDefinitions[0].basePath", errors[0].Field)
+			assert.Contains(t, errors[0].Message, "whitespace")
+		})
+	}
+}
+
+// nil/empty basePath is untouched and root "/" is accepted (the trailing-slash
+// rule only fires for len > 1), alongside ordinary absolute paths.
+func TestValidateUpstreamDefinitions_BasePathValidEdgeCases(t *testing.T) {
+	validator := NewAPIValidator()
+
+	for _, bc := range []string{"/", "", "/svc", "/api/v2"} {
+		t.Run(bc, func(t *testing.T) {
+			basePath := bc
+			definitions := &[]api.UpstreamDefinition{
+				{
+					Name:     "my-upstream-1",
+					BasePath: &basePath,
+					Upstreams: []struct {
+						Url    string `json:"url" yaml:"url"`
+						Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+					}{
+						{Url: "http://backend-1:8080"},
+					},
+				},
+			}
+
+			errors := validator.validateUpstreamDefinitions(definitions)
+			assert.Empty(t, errors)
+		})
+	}
+}
+
 func TestValidateUpstreamDefinitions_DuplicateNames(t *testing.T) {
 	validator := NewAPIValidator()
 

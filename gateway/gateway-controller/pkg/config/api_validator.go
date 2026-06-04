@@ -354,6 +354,34 @@ func (v *APIValidator) validateUpstreamDefinitions(definitions *[]api.UpstreamDe
 			}
 		}
 
+		// basePath, when set, must be a clean absolute path: it has to start with
+		// "/", carry no trailing "/", and have no surrounding whitespace. The raw
+		// value is validated (not a trimmed copy) because the xDS/transform layers
+		// consume it verbatim, so a relative "svc" (Envoy 400 plus wedged deploys),
+		// a trailing "/svc/" (double slash "/svc//users"), or a padded " /svc " must
+		// all be rejected at deploy time rather than producing a malformed route.
+		if def.BasePath != nil {
+			bp := *def.BasePath
+			if bp != "" {
+				if strings.TrimSpace(bp) != bp {
+					errors = append(errors, ValidationError{
+						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].basePath", i),
+						Message: "basePath must not contain leading or trailing whitespace",
+					})
+				} else if !strings.HasPrefix(bp, "/") {
+					errors = append(errors, ValidationError{
+						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].basePath", i),
+						Message: "basePath must be an absolute path starting with '/'",
+					})
+				} else if len(bp) > 1 && strings.HasSuffix(bp, "/") {
+					errors = append(errors, ValidationError{
+						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].basePath", i),
+						Message: "basePath must not end with a trailing '/'",
+					})
+				}
+			}
+		}
+
 		// Timeout validation is limited to connect timeout; request and idle
 		// timeouts are no longer supported at the upstream definition level.
 		if def.Timeout != nil && def.Timeout.Connect != nil {
