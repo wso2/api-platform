@@ -98,13 +98,13 @@ const authedFetch = async (path: string, init?: RequestInit) => {
 /** ----- Hook ----- */
 
 export const useGithubProjectValidation = () => {
-  /** POST: /api/v1/validate/api-project */
+  /** POST: /api/v1/api-projects/validate */
   const validateGithubApiProject = useCallback(
     async (
       payload: GithubProjectValidationRequest,
       opts?: { signal?: AbortSignal }
     ): Promise<GithubProjectValidationResponse> => {
-      const res = await authedFetch(`/api/v1/validate/api-project`, {
+      const res = await authedFetch(`/api/v1/api-projects/validate`, {
         method: "POST",
         body: JSON.stringify(payload),
         signal: opts?.signal,
