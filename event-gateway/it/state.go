@@ -23,6 +23,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 // Port constants for event gateway services.
@@ -59,6 +61,9 @@ type Config struct {
 	WebSubURL            string
 	WebSocketURL         string
 	WebhookListenerURL   string
+	KafkaBrokers         []string
+	KafkaUsername        string
+	KafkaPassword        string
 	HTTPTimeout          time.Duration
 	Users                map[string]AuthUser
 }
@@ -72,6 +77,9 @@ func DefaultConfig() *Config {
 		WebSubURL:            fmt.Sprintf("http://localhost:%s", WebSubPort),
 		WebSocketURL:         fmt.Sprintf("ws://localhost:%s", WebSocketPort),
 		WebhookListenerURL:   fmt.Sprintf("http://localhost:%s", WebhookListenerPort),
+		KafkaBrokers:         []string{"localhost:29092"},
+		KafkaUsername:        "egw",
+		KafkaPassword:        "egw-pass",
 		HTTPTimeout:          15 * time.Second,
 		Users: map[string]AuthUser{
 			"admin": {Username: "admin", Password: "admin"},
@@ -90,6 +98,10 @@ type TestState struct {
 	lastBody []byte
 	// headers is the set of request headers to include in the next request.
 	headers map[string]string
+	// wsConn is the active WebSocket connection, nil if none.
+	wsConn *websocket.Conn
+	// wsConnErr holds the error from the last WebSocket connect attempt.
+	wsConnErr error
 }
 
 // NewTestState creates and returns an initialised TestState.
@@ -112,6 +124,11 @@ func (s *TestState) Reset() {
 	s.lastResponse = nil
 	s.lastBody = nil
 	s.headers = make(map[string]string)
+	if s.wsConn != nil {
+		_ = s.wsConn.Close()
+		s.wsConn = nil
+	}
+	s.wsConnErr = nil
 }
 
 // SetHeader sets a request header that will be included in subsequent requests.

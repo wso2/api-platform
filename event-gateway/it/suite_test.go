@@ -59,6 +59,8 @@ func getFeaturePaths() []string {
 		"features/health.feature",
 		"features/websub-api-management.feature",
 		"features/websub-e2e.feature",
+		"features/webbroker-api-management.feature",
+		"features/webbroker-e2e.feature",
 	}
 
 	raw := strings.TrimSpace(os.Getenv("IT_FEATURE_PATHS"))
@@ -139,5 +141,6 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 
 	RegisterHealthSteps(ctx, testState)
 	RegisterWebSubSteps(ctx, testState)
+	RegisterWebBrokerSteps(ctx, testState)
 	RegisterCommonSteps(ctx, testState)
 }

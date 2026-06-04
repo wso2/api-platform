@@ -30,6 +30,8 @@ help: ## Show available targets
 	@echo '  make test-health           Run only health-check scenarios'
 	@echo '  make test-websub           Run only WebSub management scenarios'
 	@echo '  make test-e2e              Run only end-to-end WebSub flow scenarios'
+	@echo '  make test-webbroker        Run only WebBroker management scenarios'
+	@echo '  make test-webbroker-e2e    Run only end-to-end WebBroker flow scenarios'
 	@echo '  make tidy                  Run go mod tidy'
 	@echo '  make clean                 Remove generated logs and test artefacts'
 
@@ -48,6 +50,14 @@ test-websub: ## Run WebSub API management feature only
 .PHONY: test-e2e
 test-e2e: ## Run WebSub end-to-end feature only
 	IT_FEATURE_PATHS=websub-e2e.feature go test -v -timeout 10m ./...
+
+.PHONY: test-webbroker
+test-webbroker: ## Run WebBroker API management feature only
+	IT_FEATURE_PATHS=webbroker-api-management.feature go test -v -timeout 5m ./...
+
+.PHONY: test-webbroker-e2e
+test-webbroker-e2e: ## Run WebBroker end-to-end feature only
+	IT_FEATURE_PATHS=webbroker-e2e.feature go test -v -timeout 10m ./...
 
 .PHONY: tidy
 tidy: ## Tidy go modules
