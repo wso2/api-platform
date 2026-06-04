@@ -25,14 +25,25 @@ success() { echo "[OK]    $*"; }
 error()   { echo "[ERROR] $*" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
-# Resolve API key — arg > env var > interactive prompt
+# Resolve OpenAI API key — arg > env var > interactive prompt (required)
 # ---------------------------------------------------------------------------
 API_KEY="${1:-${OPENAI_API_KEY:-}}"
 if [[ -z "${API_KEY}" ]]; then
   read -rsp "Enter your OpenAI API key: " API_KEY
   echo
 fi
-[[ -n "${API_KEY}" ]] || error "API key is required."
+[[ -n "${API_KEY}" ]] || error "OpenAI API key is required."
+
+# ---------------------------------------------------------------------------
+# Resolve Mistral API key — env var > interactive prompt (required)
+# Used by the semantic-cache policy to generate embeddings.
+# ---------------------------------------------------------------------------
+MISTRAL_KEY="${MISTRAL_API_KEY:-}"
+if [[ -z "${MISTRAL_KEY}" ]]; then
+  read -rsp "Enter your Mistral API key: " MISTRAL_KEY
+  echo
+fi
+[[ -n "${MISTRAL_KEY}" ]] || error "Mistral API key is required."
 
 wait_for_health() {
   local url="$1"
@@ -87,7 +98,15 @@ if grep -q "^${SENTINEL}" "${GATEWAY_CONFIG}"; then
   info "Additional config already merged into ${GATEWAY_CONFIG}, skipping."
 else
   info "Merging ${ADDITIONAL_CONFIG} into ${GATEWAY_CONFIG} ..."
-  { echo ""; cat "${ADDITIONAL_CONFIG}"; } >> "${GATEWAY_CONFIG}"
+  # Prepend, not append: additional-config.toml holds bare top-level keys.
+  # Appending after a [section] header in config.toml would bind them to that
+  # section, so the policy engine never sees them as the globals it expects.
+  TMP_ADDITIONAL=$(mktemp)
+  TMP_MERGED=$(mktemp)
+  sed "s|<MISTRAL_API_KEY>|${MISTRAL_KEY}|g" "${ADDITIONAL_CONFIG}" > "${TMP_ADDITIONAL}"
+  { cat "${TMP_ADDITIONAL}"; echo ""; cat "${GATEWAY_CONFIG}"; } > "${TMP_MERGED}"
+  mv "${TMP_MERGED}" "${GATEWAY_CONFIG}"
+  rm -f "${TMP_ADDITIONAL}"
   success "Config merged."
 fi
 
@@ -187,7 +206,7 @@ echo "  Gateway health : ${GATEWAY_HEALTH_URL}"
 echo "  Management API : ${GATEWAY_MGMT_URL}"
 echo ""
 echo " Usage:"
-echo "   ./setup.sh <api-key>          # pass key as argument"
-echo "   OPENAI_API_KEY=sk-... ./setup.sh  # or via env var"
-echo "   ./setup.sh                    # or enter interactively"
+echo "   ./setup.sh <openai-api-key>                       # pass OpenAI key as argument"
+echo "   OPENAI_API_KEY=sk-... MISTRAL_API_KEY=... ./setup.sh   # or via env vars"
+echo "   ./setup.sh                                        # or enter interactively"
 echo "============================================================"
