@@ -21,8 +21,6 @@ import (
 	"net/http"
 	"strings"
 
-	"platform-api/src/internal/rbac"
-
 	commonconstants "github.com/wso2/api-platform/common/constants"
 
 	"github.com/gin-gonic/gin"
@@ -31,8 +29,6 @@ import (
 const (
 	// ValidationModeScope validates using the JWT scope claim directly.
 	ValidationModeScope = "scope"
-	// ValidationModeRole expands platform roles to their full permission set and validates against that.
-	ValidationModeRole = "role"
 )
 
 var rbacEnabled = true
@@ -51,10 +47,7 @@ func InitClaimsAuthz() {}
 
 // ScopeEnforcerConfig holds options for the ScopeEnforcer middleware.
 type ScopeEnforcerConfig struct {
-	// ValidationMode controls how the caller's permissions are resolved.
-	// ValidationModeScope ("scope"): read the JWT scope claim directly.
-	// ValidationModeRole  ("role"):  expand platform_roles to their full permission set.
-	// Defaults to ValidationModeScope when empty.
+	// ValidationMode is reserved for future use. Currently only ValidationModeScope is supported.
 	ValidationMode string
 }
 
@@ -105,30 +98,9 @@ func ScopeEnforcer(registry *ScopeRegistry, cfg ScopeEnforcerConfig) gin.Handler
 	}
 }
 
-// resolveEffectiveScopes returns the caller's effective scopes based on the chosen mode.
-// In scope mode the JWT scope claim is used as-is.
-// In role mode platform roles are expanded to their full permission set.
-func resolveEffectiveScopes(c *gin.Context, mode string) []string {
-	if mode == ValidationModeRole {
-		roles, _ := GetPlatformRolesFromContext(c)
-		return expandRolesToScopes(roles)
-	}
-	// scope mode
+// resolveEffectiveScopes returns the scopes from the JWT scope claim.
+func resolveEffectiveScopes(c *gin.Context, _ string) []string {
 	raw, _ := c.Get("scope")
 	scopeStr, _ := raw.(string)
 	return strings.Fields(scopeStr)
-}
-
-// expandRolesToScopes converts platform role names to the full list of scope strings
-// those roles grant.
-func expandRolesToScopes(roles []string) []string {
-	if len(roles) == 0 {
-		return nil
-	}
-	perms := rbac.PermissionsForRoles(roles)
-	scopes := make([]string, 0, len(perms))
-	for perm := range perms {
-		scopes = append(scopes, perm.Scope())
-	}
-	return scopes
 }

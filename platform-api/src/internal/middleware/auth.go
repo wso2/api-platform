@@ -498,16 +498,6 @@ func GetClaimsFromContext(c *gin.Context) (*CustomClaims, bool) {
 	return claimsObj, ok
 }
 
-// GetPlatformRolesFromContext returns the resolved platform roles stored in the Gin context.
-func GetPlatformRolesFromContext(c *gin.Context) ([]string, bool) {
-	v, exists := c.Get("platform_roles")
-	if !exists {
-		return nil, false
-	}
-	roles, ok := v.([]string)
-	return roles, ok
-}
-
 // RequireOrganization returns a middleware that aborts with 403 if the token's organization
 // does not match the organization ID in the URL parameter named by organizationParam.
 func RequireOrganization(organizationParam string) gin.HandlerFunc {
