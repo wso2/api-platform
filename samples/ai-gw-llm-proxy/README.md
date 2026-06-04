@@ -99,8 +99,6 @@ Status   : HTTP 429
 
 The mock LLM backend returns exactly 30 total tokens in every response. The `token-based-ratelimit` policy on the provider is configured with a quota of 30 total tokens per minute. The first request consumes the entire quota and succeeds. The second request finds the quota exhausted and is rejected with `429`.
 
-The `api-key-auth` policy on the proxy ensures only requests carrying a registered `api_key` header reach the rate limiter at all.
-
 ## Configuration
 
 | Variable          | Default                     | Description                                               |
@@ -115,9 +113,9 @@ The `api-key-auth` policy on the proxy ensures only requests carrying a register
 
 | Container          | Role                            | Port  |
 |--------------------|---------------------------------|-------|
-| `wso2-gateway`     | WSO2 AI Gateway (traffic)       | 8443  |
-| `wso2-controller`  | WSO2 management + policy engine | 9090  |
-| `mock-llm-openai`  | WireMock standing in for OpenAI | 8082  |
+| `wso2-gateway-runtime` | WSO2 AI Gateway (traffic) + policy engine | 8443  |
+| `wso2-controller`      | Gateway control plane                     | 9090  |
+| `mock-llm-openai`      | WireMock standing in for OpenAI           | 8082  |
 
 ## Teardown
 
