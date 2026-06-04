@@ -78,6 +78,10 @@ paths:
         Retrieves the organization details for the organization specified in the JWT token's 
         `organization` claim.
       operationId: GetOrganization
+      security:
+        - OAuth2Security:
+            - ap:organization:read
+            - ap:organization:manage
       tags:
         - Organizations
       responses:
@@ -122,6 +126,10 @@ paths:
         Returns the current organization subscription view with resource quota usage.
         The organization ID in the path must match the JWT token's organization claim.
       operationId: GetOrganizationSubscription
+      security:
+        - OAuth2Security:
+            - ap:organization:subscription:read
+            - ap:organization:manage
       tags:
         - Organizations
       parameters:
@@ -764,131 +772,22 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /import/openapi:
+  /api-projects/validate:
     post:
-      deprecated: true
-      summary: "[Deprecated] Use POST /rest-apis/import-openapi"
-      description: Deprecated. Use `POST /rest-apis/import-openapi` instead.
-      operationId: ImportOpenAPIDeprecated
+      summary: Validate API project
+      description: |
+        Validates an API project into the platform from a provided Git Repository URL.
+        This endpoint checks the validity of the API project definitions and the overall validity of the API.
+        Returns the metadata of the API and the resources if the API project is valid.
+      operationId: ValidateAPIProject
       security:
         - OAuth2Security:
-            - ap:rest_api:import
+            - ap:rest_api:read
             - ap:rest_api:manage
       tags:
         - REST APIs
-        - Imports
       requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/ImportOpenAPIRequest'
-            encoding:
-              url:
-                contentType: text/plain
-                style: form
-              definition:
-                contentType: application/octet-stream, application/json, application/yaml, text/yaml
-                style: form
-              api:
-                contentType: application/json
-                style: form
-      responses:
-        '201':
-          description: OpenAPI imported successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RESTAPI'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /import/api-project:
-    post:
-      deprecated: true
-      summary: "[Deprecated] Use POST /api-projects"
-      description: Deprecated. Use `POST /api-projects` instead.
-      operationId: ImportAPIProjectDeprecated
-      security:
-        - OAuth2Security:
-            - ap:rest_api:import
-            - ap:rest_api:manage
-      tags:
-        - REST APIs
-        - Imports
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ImportAPIProjectRequest'
-      responses:
-        '201':
-          description: API project imported successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RESTAPI'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /validate/openapi:
-    post:
-      deprecated: true
-      summary: "[Deprecated] Use POST /rest-apis/validate-openapi"
-      description: Deprecated. Use `POST /rest-apis/validate-openapi` instead.
-      operationId: ValidateOpenAPIDeprecated
-      tags:
-        - REST APIs
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/ValidateOpenAPIRequest'
-      responses:
-        '200':
-          description: OpenAPI definition validation completed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OpenAPIValidationResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /validate/api-project:
-    post:
-      deprecated: true
-      summary: "[Deprecated] Use POST /api-projects/validate"
-      description: Deprecated. Use `POST /api-projects/validate` instead.
-      operationId: ValidateAPIProjectDeprecated
-      tags:
-        - REST APIs
-      requestBody:
+        description: API project validation details
         required: true
         content:
           application/json:
@@ -912,7 +811,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /api-projects:
+  /api-projects/import:
     post:
       summary: Import API project
       description: |
@@ -947,41 +846,6 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /api-projects/validate:
-    post:
-      summary: Validate API project
-      description: |
-        Validates an API project into the platform from a provided Git Repository URL.
-        This endpoint checks the validity of the API project definitions and the overall validity of the API.
-        Returns the metadata of the API and the resources if the API project is valid.
-      operationId: ValidateAPIProject
-      tags:
-        - REST APIs
-      requestBody:
-        description: API project validation details
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ValidateAPIProjectRequest'
-      responses:
-        '201':
-          description: API project is valid
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RESTAPIProjectValidationResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -1122,6 +986,10 @@ paths:
         Returns validation results including any errors found and extracted metadata
         such as name, and operations if the definition is valid.
       operationId: ValidateOpenAPI
+      security:
+        - OAuth2Security:
+            - ap:rest_api:read
+            - ap:rest_api:manage
       tags:
         - REST APIs
       requestBody:
@@ -1862,114 +1730,6 @@ paths:
       responses:
         '204':
           description: Subscription deleted (no content)
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /rest-apis/validate:
-    get:
-      deprecated: true
-      summary: "[Deprecated] Use GET /rest-apis?name=&version="
-      description: Deprecated. Use `GET /rest-apis?name=&version=` — an empty result means the name/version combination is available.
-      operationId: ValidateRESTAPI
-      security:
-        - OAuth2Security:
-            - ap:rest_api:read
-            - ap:rest_api:manage
-      tags:
-        - REST APIs
-      parameters:
-        - $ref: '#/components/parameters/api-identifier-Q'
-        - $ref: '#/components/parameters/api-name-Q'
-        - $ref: '#/components/parameters/api-version-Q'
-      responses:
-        '200':
-          description: API validation result
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RESTAPIValidationResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /rest-apis/{apiId}/devportals/publish:
-    post:
-      deprecated: true
-      summary: "[Deprecated] Use POST /rest-apis/{apiId}/publications"
-      description: Deprecated. Use `POST /rest-apis/{apiId}/publications` instead.
-      operationId: PublishRESTAPIToDevPortalDeprecated
-      security:
-        - OAuth2Security:
-            - ap:rest_api:publication:create
-            - ap:rest_api:manage
-      tags:
-        - REST APIs
-        - DevPortal
-      parameters:
-        - $ref: '#/components/parameters/apiId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PublishToDevPortalRequest'
-      responses:
-        '200':
-          description: API successfully published to DevPortal
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CommonResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /rest-apis/{apiId}/devportals/unpublish:
-    post:
-      deprecated: true
-      summary: "[Deprecated] Use DELETE /rest-apis/{apiId}/publications/{devportalId}"
-      description: Deprecated. Use `DELETE /rest-apis/{apiId}/publications/{devportalId}` instead.
-      operationId: UnpublishRESTAPIFromDevPortalDeprecated
-      security:
-        - OAuth2Security:
-            - ap:rest_api:publication:delete
-            - ap:rest_api:manage
-      tags:
-        - REST APIs
-        - DevPortal
-      parameters:
-        - $ref: '#/components/parameters/apiId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UnpublishFromDevPortalRequest'
-      responses:
-        '200':
-          description: API successfully unpublished from DevPortal
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CommonResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -3134,36 +2894,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /status/gateways:
-    get:
-      deprecated: true
-      summary: "[Deprecated] Use GET /gateways — check isActive field"
-      description: Deprecated. Use `GET /gateways` and inspect the `isActive` field on each gateway instead.
-      operationId: GetGatewayStatus
-      security:
-        - OAuth2Security:
-            - ap:gateway:status:read
-            - ap:gateway:manage
-      tags:
-        - Gateways
-      parameters:
-        - $ref: '#/components/parameters/gatewayId-Q'
-      responses:
-        '200':
-          description: Gateway status retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GatewayStatusListResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   /git/repo/fetch-branches:
     post:
       summary: Fetch Git repository branches
@@ -3387,32 +3117,6 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /devportals/default:
-    get:
-      deprecated: true
-      summary: "[Deprecated] Use GET /devportals?default=true"
-      description: Deprecated. Use `GET /devportals?default=true` instead.
-      operationId: GetDefaultDevPortal
-      security:
-        - OAuth2Security:
-            - ap:devportal:read
-            - ap:devportal:manage
-      tags:
-        - DevPortals
-      responses:
-        '200':
-          description: Default DevPortal retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DevPortalResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -5979,6 +5683,10 @@ paths:
         Fetches server information from the backend services of an MCP proxy. 
         This is used to validate connectivity and retrieve metadata about the backend services.
       operationId: fetchMCPProxyServerInfo
+      security:
+        - OAuth2Security:
+            - ap:mcp_proxy:read
+            - ap:mcp_proxy:manage
       tags:
         - MCP Proxies
       requestBody:
@@ -6294,23 +6002,54 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /websub-apis/{apiId}/devportals/publish:
-    post:
-      summary: Publish WebSub API to DevPortal
-      operationId: publishWebSubAPIToDevPortal
+  /websub-apis/{apiId}/publications:
+    get:
+      summary: Get WebSub API publications
+      description: |
+        Retrieves all DevPortals associated with a WebSub API including publication details.
+      operationId: GetWebSubAPIPublications
       security:
         - OAuth2Security:
-            - ap:websub_api:publish
+            - ap:websub_api:publication:read
             - ap:websub_api:manage
       tags:
         - WebSubAPIs
+        - DevPortal
       parameters:
-        - name: apiId
-          in: path
-          required: true
-          schema:
-            type: string
+        - $ref: '#/components/parameters/apiId'
+      responses:
+        '200':
+          description: API publications retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebSubAPIDevPortalListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      summary: Publish WebSub API to DevPortal
+      description: |
+        Publishes an existing WebSub API to the configured DevPortal.
+      operationId: PublishWebSubAPIToDevPortal
+      security:
+        - OAuth2Security:
+            - ap:websub_api:publication:create
+            - ap:websub_api:manage
+      tags:
+        - WebSubAPIs
+        - DevPortal
+      parameters:
+        - $ref: '#/components/parameters/apiId'
       requestBody:
+        description: DevPortal to publish to
         required: true
         content:
           application/json:
@@ -6318,7 +6057,11 @@ paths:
               $ref: '#/components/schemas/PublishToDevPortalRequest'
       responses:
         '200':
-          description: Published successfully
+          description: API successfully published to DevPortal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -6329,32 +6072,42 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '503':
+          description: DevPortal unavailable after retries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
-  /websub-apis/{apiId}/devportals/unpublish:
-    post:
+  /websub-apis/{apiId}/publications/{devportalId}:
+    delete:
       summary: Unpublish WebSub API from DevPortal
-      operationId: unpublishWebSubAPIFromDevPortal
+      description: |
+        Removes a WebSub API from the configured DevPortal.
+      operationId: UnpublishWebSubAPIFromDevPortal
       security:
         - OAuth2Security:
-            - ap:websub_api:unpublish
+            - ap:websub_api:publication:delete
             - ap:websub_api:manage
       tags:
         - WebSubAPIs
+        - DevPortal
       parameters:
-        - name: apiId
+        - $ref: '#/components/parameters/apiId'
+        - name: devportalId
           in: path
           required: true
+          description: UUID of the DevPortal to unpublish from
           schema:
             type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UnpublishFromDevPortalRequest'
+            format: uuid
       responses:
         '200':
-          description: Unpublished successfully
+          description: API successfully unpublished from DevPortal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -6365,6 +6118,12 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '503':
+          description: DevPortal unavailable after retries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /websub-apis/{apiId}/deployments:
     post:
@@ -6991,23 +6750,54 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /webbroker-apis/{apiId}/devportals/publish:
-    post:
-      summary: Publish WebBroker API to DevPortal
-      operationId: publishWebBrokerAPIToDevPortal
+  /webbroker-apis/{apiId}/publications:
+    get:
+      summary: Get WebBroker API publications
+      description: |
+        Retrieves all DevPortals associated with a WebBroker API including publication details.
+      operationId: GetWebBrokerAPIPublications
       security:
         - OAuth2Security:
-            - ap:webbroker_api:publish
+            - ap:webbroker_api:publication:read
             - ap:webbroker_api:manage
       tags:
         - WebBrokerAPIs
+        - DevPortal
       parameters:
-        - name: apiId
-          in: path
-          required: true
-          schema:
-            type: string
+        - $ref: '#/components/parameters/apiId'
+      responses:
+        '200':
+          description: API publications retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebBrokerAPIDevPortalListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      summary: Publish WebBroker API to DevPortal
+      description: |
+        Publishes an existing WebBroker API to the configured DevPortal.
+      operationId: PublishWebBrokerAPIToDevPortal
+      security:
+        - OAuth2Security:
+            - ap:webbroker_api:publication:create
+            - ap:webbroker_api:manage
+      tags:
+        - WebBrokerAPIs
+        - DevPortal
+      parameters:
+        - $ref: '#/components/parameters/apiId'
       requestBody:
+        description: DevPortal to publish to
         required: true
         content:
           application/json:
@@ -7015,7 +6805,11 @@ paths:
               $ref: '#/components/schemas/PublishToDevPortalRequest'
       responses:
         '200':
-          description: Published successfully
+          description: API successfully published to DevPortal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -7026,32 +6820,42 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '503':
+          description: DevPortal unavailable after retries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
-  /webbroker-apis/{apiId}/devportals/unpublish:
-    post:
+  /webbroker-apis/{apiId}/publications/{devportalId}:
+    delete:
       summary: Unpublish WebBroker API from DevPortal
-      operationId: unpublishWebBrokerAPIFromDevPortal
+      description: |
+        Removes a WebBroker API from the configured DevPortal.
+      operationId: UnpublishWebBrokerAPIFromDevPortal
       security:
         - OAuth2Security:
-            - ap:webbroker_api:unpublish
+            - ap:webbroker_api:publication:delete
             - ap:webbroker_api:manage
       tags:
         - WebBrokerAPIs
+        - DevPortal
       parameters:
-        - name: apiId
+        - $ref: '#/components/parameters/apiId'
+        - name: devportalId
           in: path
           required: true
+          description: UUID of the DevPortal to unpublish from
           schema:
             type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UnpublishFromDevPortalRequest'
+            format: uuid
       responses:
         '200':
-          description: Unpublished successfully
+          description: API successfully unpublished from DevPortal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -7062,6 +6866,12 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '503':
+          description: DevPortal unavailable after retries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /webbroker-apis/{apiId}/deployments:
     post:
@@ -7539,9 +7349,10 @@ components:
             ap:webbroker_api:deployment:restore: Restore webbroker api
             ap:webbroker_api:deployment:undeploy: Undeploy webbroker api
             ap:webbroker_api:manage: Full access to webbroker api
-            ap:webbroker_api:publish: Publish webbroker api
+            ap:webbroker_api:publication:create: Publish webbroker api to DevPortal
+            ap:webbroker_api:publication:delete: Unpublish webbroker api from DevPortal
+            ap:webbroker_api:publication:read: Read webbroker api DevPortal publications
             ap:webbroker_api:read: Read webbroker api
-            ap:webbroker_api:unpublish: Unpublish webbroker api
             ap:webbroker_api:update: Update webbroker api
             ap:websub_api:api_key:create: Create websub api
             ap:websub_api:api_key:delete: Delete websub api
@@ -7556,9 +7367,10 @@ components:
             ap:websub_api:deployment:restore: Restore websub api
             ap:websub_api:deployment:undeploy: Undeploy websub api
             ap:websub_api:manage: Full access to websub api
-            ap:websub_api:publish: Publish websub api
+            ap:websub_api:publication:create: Publish websub api to DevPortal
+            ap:websub_api:publication:delete: Unpublish websub api from DevPortal
+            ap:websub_api:publication:read: Read websub api DevPortal publications
             ap:websub_api:read: Read websub api
-            ap:websub_api:unpublish: Unpublish websub api
             ap:websub_api:update: Update websub api
   schemas:
     APIKeyItem:
@@ -9764,6 +9576,150 @@ components:
           format: date-time
           description: Timestamp when the publication was last updated
           example: "2025-10-15T11:00:00Z"
+
+    WebSubAPIPublicationDetails:
+      type: object
+      description: Details about WebSub API publication to a specific DevPortal
+      required:
+        - status
+        - publishedAt
+        - updatedAt
+      properties:
+        status:
+          type: string
+          description: Current publication status
+          enum: ["published", "failed", "publishing"]
+          example: "published"
+        apiVersion:
+          type: string
+          description: Version of the API that was published
+          example: "1.0.0"
+        devPortalRefId:
+          type: string
+          description: Reference ID in the DevPortal
+          example: "api-12345"
+        publishedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the API was published
+          example: "2025-10-15T11:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the publication was last updated
+          example: "2025-10-15T11:00:00Z"
+
+    WebSubAPIDevPortalResponse:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/DevPortalResponse'
+        - type: object
+          required:
+            - associatedAt
+            - isPublished
+          properties:
+            associatedAt:
+              type: string
+              format: date-time
+              description: Timestamp when the DevPortal was associated with the API
+              example: "2025-10-15T10:30:00Z"
+            isPublished:
+              type: boolean
+              description: Whether the API is currently published to this DevPortal
+              example: true
+            publication:
+              $ref: '#/components/schemas/WebSubAPIPublicationDetails'
+              description: Publication details (only present when isPublished is true)
+
+    WebSubAPIDevPortalListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of DevPortals in current response
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebSubAPIDevPortalResponse'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    WebBrokerAPIPublicationDetails:
+      type: object
+      description: Details about WebBroker API publication to a specific DevPortal
+      required:
+        - status
+        - publishedAt
+        - updatedAt
+      properties:
+        status:
+          type: string
+          description: Current publication status
+          enum: ["published", "failed", "publishing"]
+          example: "published"
+        apiVersion:
+          type: string
+          description: Version of the API that was published
+          example: "1.0.0"
+        devPortalRefId:
+          type: string
+          description: Reference ID in the DevPortal
+          example: "api-12345"
+        publishedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the API was published
+          example: "2025-10-15T11:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the publication was last updated
+          example: "2025-10-15T11:00:00Z"
+
+    WebBrokerAPIDevPortalResponse:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/DevPortalResponse'
+        - type: object
+          required:
+            - associatedAt
+            - isPublished
+          properties:
+            associatedAt:
+              type: string
+              format: date-time
+              description: Timestamp when the DevPortal was associated with the API
+              example: "2025-10-15T10:30:00Z"
+            isPublished:
+              type: boolean
+              description: Whether the API is currently published to this DevPortal
+              example: true
+            publication:
+              $ref: '#/components/schemas/WebBrokerAPIPublicationDetails'
+              description: Publication details (only present when isPublished is true)
+
+    WebBrokerAPIDevPortalListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of DevPortals in current response
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebBrokerAPIDevPortalResponse'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
 
     PublishToDevPortalRequest:
       type: object

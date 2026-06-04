@@ -445,7 +445,7 @@ create_action "$RS_ID" "$R_LLM_DEPLOY"   "Delete"   "delete"   "Delete an LLM pr
 create_action "$RS_ID" "$R_LLM_DEPLOY"   "Undeploy" "undeploy" "Undeploy an LLM provider from a gateway"
 create_action "$RS_ID" "$R_LLM_DEPLOY"   "Restore"  "restore"  "Restore a previous LLM provider deployment"
 
-# LLM Provider → API Key sub-resource (admin + developer; explicit opt-in, not covered by llm_provider:manage)
+# LLM Provider → API Key sub-resource (admin + developer; explicit opt-in)
 create_action "$RS_ID" "$R_LLM_KEY"      "Create"   "create"   "Create an LLM provider API key"
 create_action "$RS_ID" "$R_LLM_KEY"      "Read"     "read"     "List LLM provider API keys"
 create_action "$RS_ID" "$R_LLM_KEY"      "Delete"   "delete"   "Delete an LLM provider API key"
@@ -535,6 +535,26 @@ create_action "$RS_ID" "$R_SUBPLAN"      "Delete"   "delete"   "Delete a subscri
 create_action "$RS_ID" "$R_POLICY"       "Read"     "read"     "View custom policies"
 create_action "$RS_ID" "$R_POLICY"       "Sync"     "sync"     "Sync a custom policy to gateways"
 create_action "$RS_ID" "$R_POLICY"       "Delete"   "delete"   "Delete a custom policy"
+create_action "$RS_ID" "$R_POLICY"       "Manage"   "manage"   "Full management of custom policies"
+
+# Manage actions on all level-1 resources
+# Admin is assigned only these manage scopes (api-platform:{resource}:manage) — one
+# per resource — rather than enumerating every individual CRUD/sub-resource scope.
+create_action "$RS_ID" "$R_ORG"          "Manage"   "manage"   "Full management of organizations"
+create_action "$RS_ID" "$R_PROJECT"      "Manage"   "manage"   "Full management of projects"
+create_action "$RS_ID" "$R_API"          "Manage"   "manage"   "Full management of REST APIs"
+create_action "$RS_ID" "$R_APP"          "Manage"   "manage"   "Full management of applications"
+create_action "$RS_ID" "$R_GW"           "Manage"   "manage"   "Full management of gateways"
+create_action "$RS_ID" "$R_DP"           "Manage"   "manage"   "Full management of developer portals"
+create_action "$RS_ID" "$R_GIT"          "Manage"   "manage"   "Full management of git access"
+create_action "$RS_ID" "$R_LLMT"         "Manage"   "manage"   "Full management of LLM provider templates"
+create_action "$RS_ID" "$R_LLM"          "Manage"   "manage"   "Full management of LLM providers"
+create_action "$RS_ID" "$R_PROXY"        "Manage"   "manage"   "Full management of LLM proxies"
+create_action "$RS_ID" "$R_MCP"          "Manage"   "manage"   "Full management of MCP proxies"
+create_action "$RS_ID" "$R_WEBSUB"       "Manage"   "manage"   "Full management of WebSub APIs"
+create_action "$RS_ID" "$R_WEBBROKER"    "Manage"   "manage"   "Full management of WebBroker APIs"
+create_action "$RS_ID" "$R_SUB"          "Manage"   "manage"   "Full management of subscriptions"
+create_action "$RS_ID" "$R_SUBPLAN"      "Manage"   "manage"   "Full management of subscription plans"
 
 log_success "All actions registered."
 
@@ -589,51 +609,27 @@ ADMIN_ROLE_ID=$(prompt_role_id ADMIN_ROLE_ID "admin")
 DEVELOPER_ROLE_ID=$(prompt_role_id DEVELOPER_ROLE_ID "developer")
 VIEWER_ROLE_ID=$(prompt_role_id VIEWER_ROLE_ID "viewer")
 
-# Admin: full access to everything
+# Admin: one manage scope per level-1 resource — no sub-resource scopes needed.
 ADMIN_PERMISSIONS='[
-  "api-platform:org:create","api-platform:org:read","api-platform:org:update","api-platform:org:delete",
-  "api-platform:project:create","api-platform:project:read","api-platform:project:update","api-platform:project:delete",
-  "api-platform:rest_api:create","api-platform:rest_api:read","api-platform:rest_api:update","api-platform:rest_api:delete",
-  "api-platform:rest_api:import","api-platform:rest_api:publish",
-  "api-platform:rest_api:deployment:create","api-platform:rest_api:deployment:read","api-platform:rest_api:deployment:delete",
-  "api-platform:rest_api:deployment:undeploy","api-platform:rest_api:deployment:restore",
-  "api-platform:rest_api:gateway:create","api-platform:rest_api:gateway:read",
-  "api-platform:rest_api:api_key:create","api-platform:rest_api:api_key:read","api-platform:rest_api:api_key:update","api-platform:rest_api:api_key:delete",
-  "api-platform:application:create","api-platform:application:read","api-platform:application:update","api-platform:application:delete",
-  "api-platform:application:api_key:create","api-platform:application:api_key:read","api-platform:application:api_key:delete",
-  "api-platform:gateway:create","api-platform:gateway:read","api-platform:gateway:update","api-platform:gateway:delete",
-  "api-platform:gateway:token:create","api-platform:gateway:token:read","api-platform:gateway:token:delete",
-  "api-platform:gateway:policy:create","api-platform:gateway:policy:read","api-platform:gateway:policy:delete",
-  "api-platform:devportal:create","api-platform:devportal:read","api-platform:devportal:update","api-platform:devportal:delete",
-  "api-platform:git:read",
-  "api-platform:llm_template:create","api-platform:llm_template:read","api-platform:llm_template:update","api-platform:llm_template:delete",
-  "api-platform:llm_provider:create","api-platform:llm_provider:read","api-platform:llm_provider:update","api-platform:llm_provider:delete",
-  "api-platform:llm_provider:deployment:create","api-platform:llm_provider:deployment:read","api-platform:llm_provider:deployment:delete",
-  "api-platform:llm_provider:deployment:undeploy","api-platform:llm_provider:deployment:restore",
-  "api-platform:llm_provider:api_key:create","api-platform:llm_provider:api_key:read","api-platform:llm_provider:api_key:delete",
-  "api-platform:llm_proxy:create","api-platform:llm_proxy:read","api-platform:llm_proxy:update","api-platform:llm_proxy:delete",
-  "api-platform:llm_proxy:deployment:create","api-platform:llm_proxy:deployment:read","api-platform:llm_proxy:deployment:delete",
-  "api-platform:llm_proxy:deployment:undeploy","api-platform:llm_proxy:deployment:restore",
-  "api-platform:llm_proxy:api_key:create","api-platform:llm_proxy:api_key:read","api-platform:llm_proxy:api_key:delete",
-  "api-platform:mcp_proxy:create","api-platform:mcp_proxy:read","api-platform:mcp_proxy:update","api-platform:mcp_proxy:delete",
-  "api-platform:mcp_proxy:deployment:create","api-platform:mcp_proxy:deployment:read","api-platform:mcp_proxy:deployment:delete",
-  "api-platform:mcp_proxy:deployment:undeploy","api-platform:mcp_proxy:deployment:restore",
-  "api-platform:websub_api:create","api-platform:websub_api:read","api-platform:websub_api:update","api-platform:websub_api:delete",
-  "api-platform:websub_api:publish",
-  "api-platform:websub_api:deployment:create","api-platform:websub_api:deployment:read","api-platform:websub_api:deployment:delete",
-  "api-platform:websub_api:deployment:undeploy","api-platform:websub_api:deployment:restore",
-  "api-platform:websub_api:api_key:create","api-platform:websub_api:api_key:update","api-platform:websub_api:api_key:delete",
-  "api-platform:webbroker_api:create","api-platform:webbroker_api:read","api-platform:webbroker_api:update","api-platform:webbroker_api:delete",
-  "api-platform:webbroker_api:publish",
-  "api-platform:webbroker_api:deployment:create","api-platform:webbroker_api:deployment:read","api-platform:webbroker_api:deployment:delete",
-  "api-platform:webbroker_api:deployment:undeploy","api-platform:webbroker_api:deployment:restore",
-  "api-platform:webbroker_api:api_key:create","api-platform:webbroker_api:api_key:update","api-platform:webbroker_api:api_key:delete",
-  "api-platform:subscription:create","api-platform:subscription:read","api-platform:subscription:update","api-platform:subscription:delete",
-  "api-platform:subscription_plan:create","api-platform:subscription_plan:read","api-platform:subscription_plan:update","api-platform:subscription_plan:delete",
-  "api-platform:custom_policy:read","api-platform:custom_policy:sync","api-platform:custom_policy:delete"
+  "api-platform:org:manage",
+  "api-platform:project:manage",
+  "api-platform:rest_api:manage",
+  "api-platform:application:manage",
+  "api-platform:gateway:manage",
+  "api-platform:devportal:manage",
+  "api-platform:git:manage",
+  "api-platform:llm_template:manage",
+  "api-platform:llm_provider:manage",
+  "api-platform:llm_proxy:manage",
+  "api-platform:mcp_proxy:manage",
+  "api-platform:websub_api:manage",
+  "api-platform:webbroker_api:manage",
+  "api-platform:subscription:manage",
+  "api-platform:subscription_plan:manage",
+  "api-platform:custom_policy:manage"
 ]'
 
-# Developer: no org/gateway write, no devportal management, no subscription plan write, no custom-policy write
+# Developer: no org/gateway write, no devportal management, no subscription plan write, no custom-policy write, no manage scopes
 DEVELOPER_PERMISSIONS='[
   "api-platform:project:create","api-platform:project:read","api-platform:project:update","api-platform:project:delete",
   "api-platform:rest_api:create","api-platform:rest_api:read","api-platform:rest_api:update","api-platform:rest_api:delete",

@@ -351,9 +351,8 @@ func (h *DevPortalHandler) SetAsDefault(c *gin.Context) {
 	})
 }
 
-// GetDefaultDevPortal handles GET /api/v1/devportals/default
+// GetDefaultDevPortal retrieves the default DevPortal for the organization.
 func (h *DevPortalHandler) GetDefaultDevPortal(c *gin.Context) {
-	// Extract organization ID from context
 	orgID, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
@@ -361,10 +360,8 @@ func (h *DevPortalHandler) GetDefaultDevPortal(c *gin.Context) {
 		return
 	}
 
-	// Get default DevPortal
 	response, err := h.devPortalService.GetDefaultDevPortal(orgID)
 	if err != nil {
-		// Use centralized error handling
 		status, errorResp := utils.GetErrorResponse(err)
 		c.JSON(status, errorResp)
 		return
@@ -381,7 +378,6 @@ func (h *DevPortalHandler) RegisterRoutes(r *gin.Engine) {
 		// DevPortal CRUD operations
 		v1.POST("/devportals", h.CreateDevPortal)
 		v1.GET("/devportals", h.ListDevPortals)
-		v1.GET("/devportals/default", h.GetDefaultDevPortal) // deprecated — must be before /:devportalId
 		v1.GET("/devportals/:devportalId", h.GetDevPortal)
 		v1.PUT("/devportals/:devportalId", h.UpdateDevPortal)
 		v1.DELETE("/devportals/:devportalId", h.DeleteDevPortal)

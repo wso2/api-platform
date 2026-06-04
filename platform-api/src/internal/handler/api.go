@@ -488,7 +488,6 @@ func (h *APIHandler) PublishToDevPortal(c *gin.Context) {
 }
 
 // UnpublishFromDevPortal handles DELETE /api/v1/rest-apis/:apiId/publications/:devportalId
-// and (deprecated) POST /api/v1/rest-apis/:apiId/devportals/unpublish
 func (h *APIHandler) UnpublishFromDevPortal(c *gin.Context) {
 	orgID, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -504,18 +503,7 @@ func (h *APIHandler) UnpublishFromDevPortal(c *gin.Context) {
 		return
 	}
 
-	// New route: devportalId is a path param.
-	// Deprecated route: devportalId comes from the request body.
 	devPortalID := c.Param("devportalId")
-	if devPortalID == "" {
-		var req api.UnpublishFromDevPortalRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			status, errorResp := utils.GetErrorResponse(err)
-			c.JSON(status, errorResp)
-			return
-		}
-		devPortalID = utils.OpenAPIUUIDToString(req.DevPortalUuid)
-	}
 	if devPortalID == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"DevPortal ID is required"))
@@ -936,7 +924,7 @@ func (h *APIHandler) ImportOpenAPI(c *gin.Context) {
 	c.JSON(http.StatusCreated, apiResponse)
 }
 
-// ValidateAPI handles GET /api/v1/rest-apis/validate
+// ValidateAPI handles GET /api/v1/rest-apis?name=&version=
 func (h *APIHandler) ValidateAPI(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -951,7 +939,6 @@ func (h *APIHandler) ValidateAPI(c *gin.Context) {
 		return
 	}
 
-	// Validate that either identifier OR both name and version are provided
 	identifier := ""
 	name := ""
 	version := ""
@@ -982,7 +969,6 @@ func (h *APIHandler) ValidateAPI(c *gin.Context) {
 		return
 	}
 
-	// Always return 200 OK with the validation result
 	c.JSON(http.StatusOK, response)
 }
 
@@ -1004,26 +990,11 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		apiGroup.DELETE("/:apiId/publications/:devportalId", h.UnpublishFromDevPortal)
 		apiGroup.GET("/:apiId/publications", h.GetAPIPublications)
 
-		// Deprecated paths — kept for backward compatibility.
-		apiGroup.GET("/validate", h.ValidateAPI)
-		apiGroup.POST("/:apiId/devportals/publish", h.PublishToDevPortal)
-		apiGroup.POST("/:apiId/devportals/unpublish", h.UnpublishFromDevPortal)
 	}
 	apiProjectsGroup := r.Group("/api/v1/api-projects")
 	{
-		apiProjectsGroup.POST("", h.ImportAPIProject)
+		apiProjectsGroup.POST("/import", h.ImportAPIProject)
 		apiProjectsGroup.POST("/validate", h.ValidateAPIProject)
-	}
-	// Deprecated paths — kept for backward compatibility.
-	deprecatedImport := r.Group("/api/v1/import")
-	{
-		deprecatedImport.POST("/openapi", h.ImportOpenAPI)
-		deprecatedImport.POST("/api-project", h.ImportAPIProject)
-	}
-	deprecatedValidate := r.Group("/api/v1/validate")
-	{
-		deprecatedValidate.POST("/openapi", h.ValidateOpenAPI)
-		deprecatedValidate.POST("/api-project", h.ValidateAPIProject)
 	}
 }
 
