@@ -69,8 +69,8 @@ type Server struct {
 	// Gateway configurations
 	Gateway Gateway `envconfig:"GATEWAY"`
 
-	// RBAC configurations
-	RBAC RBAC `envconfig:"RBAC"`
+	// EnableScopeValidation controls whether scope checks are enforced on protected routes.
+	EnableScopeValidation bool `envconfig:"ENABLE_SCOPE_VALIDATION" default:"false"`
 }
 
 // Auth groups all authentication-related configuration.
@@ -202,15 +202,6 @@ type IDP struct {
 	//   "role"            — expand IDP roles to platform roles via RoleMappings.
 	// Env: AUTH_IDP_VALIDATION_MODE (default: "scope")
 	ValidationMode string `envconfig:"VALIDATION_MODE" default:"scope"`
-}
-
-// RBAC holds role-based access control configuration.
-type RBAC struct {
-	// Enabled controls whether scope checks are enforced on protected routes.
-	// When false, all authenticated requests are allowed regardless of scope — useful
-	// for local development or initial deployment before scopes are configured.
-	// Env: RBAC_ENABLED (default: false)
-	Enabled bool `envconfig:"ENABLED" default:"false"`
 }
 
 // Gateway holds gateway-related configuration.

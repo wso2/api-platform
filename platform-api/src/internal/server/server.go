@@ -346,10 +346,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	}
 	slogger.Info("Loaded OpenAPI scope registry", "path", cfg.OpenAPISpecPath)
 
-	// Configure RBAC.
-	middleware.SetRBACEnabled(cfg.RBAC.Enabled)
-	if !cfg.RBAC.Enabled {
-		slogger.Warn("RBAC is disabled — all authenticated requests will be allowed regardless of scope")
+	// Configure scope validation.
+	middleware.SetScopeValidationEnabled(cfg.EnableScopeValidation)
+	if !cfg.EnableScopeValidation {
+		slogger.Warn("scope validation is disabled — all authenticated requests will be allowed regardless of scope")
 	}
 
 	// Register public routes before auth middleware so they bypass authentication.

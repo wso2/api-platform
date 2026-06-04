@@ -31,12 +31,12 @@ const (
 	ValidationModeScope = "scope"
 )
 
-var rbacEnabled = true
+var scopeValidationEnabled = true
 
-// SetRBACEnabled controls whether scope checks are enforced globally.
+// SetScopeValidationEnabled controls whether scope checks are enforced globally.
 // When false, all authenticated requests are allowed regardless of scope.
-func SetRBACEnabled(enabled bool) {
-	rbacEnabled = enabled
+func SetScopeValidationEnabled(enabled bool) {
+	scopeValidationEnabled = enabled
 }
 
 // InitScopeAuthz is retained for compatibility.
@@ -64,7 +64,7 @@ func ScopeEnforcer(registry *ScopeRegistry, cfg ScopeEnforcerConfig) gin.Handler
 	}
 
 	return func(c *gin.Context) {
-		if !rbacEnabled {
+		if !scopeValidationEnabled {
 			c.Next()
 			return
 		}
