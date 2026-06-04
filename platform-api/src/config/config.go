@@ -209,8 +209,8 @@ type RBAC struct {
 	// Enabled controls whether scope checks are enforced on protected routes.
 	// When false, all authenticated requests are allowed regardless of scope — useful
 	// for local development or initial deployment before scopes are configured.
-	// Env: RBAC_ENABLED (default: true)
-	Enabled bool `envconfig:"ENABLED" default:"true"`
+	// Env: RBAC_ENABLED (default: false)
+	Enabled bool `envconfig:"ENABLED" default:"false"`
 }
 
 // Gateway holds gateway-related configuration.
@@ -357,6 +357,7 @@ var (
 func GetConfig() *Server {
 	var err error
 	processOnce.Do(func() {
+		applyLegacyEnvAliases()
 		settingInstance = &Server{}
 		err = envconfig.Process("", settingInstance)
 		if err == nil {
