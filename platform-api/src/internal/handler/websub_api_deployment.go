@@ -53,6 +53,9 @@ func (h *WebSubAPIDeploymentHandler) RegisterRoutes(r *gin.Engine) {
 	g := r.Group("/api/v1/websub-apis/:apiId")
 	{
 		g.POST("/deployments", h.DeployWebSubAPI)
+		g.POST("/deployments/:deploymentId/undeploy", h.UndeployDeployment)
+		g.POST("/deployments/:deploymentId/restore", h.RestoreDeployment)
+		// Deprecated paths — kept for backward compatibility.
 		g.POST("/deployments/undeploy", h.UndeployDeployment)
 		g.POST("/deployments/restore", h.RestoreDeployment)
 		g.GET("/deployments", h.GetDeployments)
@@ -103,7 +106,7 @@ func (h *WebSubAPIDeploymentHandler) DeployWebSubAPI(c *gin.Context) {
 	c.JSON(http.StatusCreated, deployment)
 }
 
-// UndeployDeployment handles POST /api/v1/websub-apis/:apiId/deployments/undeploy
+// UndeployDeployment handles POST /api/v1/websub-apis/:apiId/deployments/:deploymentId/undeploy
 func (h *WebSubAPIDeploymentHandler) UndeployDeployment(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -112,14 +115,11 @@ func (h *WebSubAPIDeploymentHandler) UndeployDeployment(c *gin.Context) {
 	}
 
 	apiId := c.Param("apiId")
-	var params api.UndeployDeploymentParams
-	if err := c.ShouldBindQuery(&params); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
-		return
+	deploymentId := c.Param("deploymentId")
+	if deploymentId == "" {
+		deploymentId = c.Query("deploymentId")
 	}
-
-	deploymentId := params.DeploymentId
-	gatewayId := params.GatewayId
+	gatewayId := c.Query("gatewayId")
 	if deploymentId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "deploymentId is required"))
 		return
@@ -138,7 +138,7 @@ func (h *WebSubAPIDeploymentHandler) UndeployDeployment(c *gin.Context) {
 	c.JSON(http.StatusOK, deployment)
 }
 
-// RestoreDeployment handles POST /api/v1/websub-apis/:apiId/deployments/restore
+// RestoreDeployment handles POST /api/v1/websub-apis/:apiId/deployments/:deploymentId/restore
 func (h *WebSubAPIDeploymentHandler) RestoreDeployment(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -147,14 +147,11 @@ func (h *WebSubAPIDeploymentHandler) RestoreDeployment(c *gin.Context) {
 	}
 
 	apiId := c.Param("apiId")
-	var params api.RestoreDeploymentParams
-	if err := c.ShouldBindQuery(&params); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
-		return
+	deploymentId := c.Param("deploymentId")
+	if deploymentId == "" {
+		deploymentId = c.Query("deploymentId")
 	}
-
-	deploymentId := params.DeploymentId
-	gatewayId := params.GatewayId
+	gatewayId := c.Query("gatewayId")
 
 	deployment, err := h.websubAPIDeploymentService.RestoreWebSubAPIDeploymentByHandle(apiId, deploymentId, gatewayId, orgId)
 	if err != nil {

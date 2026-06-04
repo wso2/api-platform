@@ -708,86 +708,17 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /validate/api-project:
-    post:
-      summary: Validate API project
-      description: |
-        Validates an API project into the platform from a provided Git Repository URL.
-        This endpoint checks the validity of the API project definitions and the overall validity of the API. 
-        Returns the metadata of the API and the resources if the API project is valid.
-      operationId: ValidateAPIProject
-      tags:
-        - REST APIs
-      requestBody:
-        description: API project validation details
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ValidateAPIProjectRequest'
-      responses:
-        '201':
-          description: API project is valid
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RESTAPIProjectValidationResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /validate/openapi:
-    post:
-      summary: Validate OpenAPI definition
-      description: |
-        Validates an OpenAPI definition provided either via URL or as a file upload.
-        Returns validation results including any errors found and extracted metadata
-        such as name, and operations if the definition is valid.
-      operationId: ValidateOpenAPI
-      tags:
-        - REST APIs
-      requestBody:
-        description: OpenAPI definition validation details
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/ValidateOpenAPIRequest'
-      responses:
-        '200':
-          description: OpenAPI definition validation completed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OpenAPIValidationResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   /import/openapi:
     post:
-      summary: Import and create API from OpenAPI definition
-      description: |
-        Imports an OpenAPI definition into the platform from a provided URL or file upload.
-        A REST API is created from the imported OpenAPI definition and is associated with a specified project within the
-        organization in the JWT token.
-      operationId: ImportOpenAPI
+      deprecated: true
+      summary: "[Deprecated] Use POST /rest-apis/import-openapi"
+      description: Deprecated. Use `POST /rest-apis/import-openapi` instead.
+      operationId: ImportOpenAPIDeprecated
       x-required-scopes: [api-platform:rest_api:import, api-platform:rest_api:manage]
       tags:
         - REST APIs
         - Imports
       requestBody:
-        description: OpenAPI import details
         required: true
         content:
           multipart/form-data:
@@ -824,6 +755,102 @@ paths:
           $ref: '#/components/responses/InternalServerError'
 
   /import/api-project:
+    post:
+      deprecated: true
+      summary: "[Deprecated] Use POST /api-projects"
+      description: Deprecated. Use `POST /api-projects` instead.
+      operationId: ImportAPIProjectDeprecated
+      x-required-scopes: [api-platform:rest_api:import, api-platform:rest_api:manage]
+      tags:
+        - REST APIs
+        - Imports
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportAPIProjectRequest'
+      responses:
+        '201':
+          description: API project imported successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RESTAPI'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /validate/openapi:
+    post:
+      deprecated: true
+      summary: "[Deprecated] Use POST /rest-apis/validate-openapi"
+      description: Deprecated. Use `POST /rest-apis/validate-openapi` instead.
+      operationId: ValidateOpenAPIDeprecated
+      tags:
+        - REST APIs
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ValidateOpenAPIRequest'
+      responses:
+        '200':
+          description: OpenAPI definition validation completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenAPIValidationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /validate/api-project:
+    post:
+      deprecated: true
+      summary: "[Deprecated] Use POST /api-projects/validate"
+      description: Deprecated. Use `POST /api-projects/validate` instead.
+      operationId: ValidateAPIProjectDeprecated
+      tags:
+        - REST APIs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateAPIProjectRequest'
+      responses:
+        '201':
+          description: API project is valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RESTAPIProjectValidationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api-projects:
     post:
       summary: Import API project
       description: |
@@ -862,12 +889,48 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /api-projects/validate:
+    post:
+      summary: Validate API project
+      description: |
+        Validates an API project into the platform from a provided Git Repository URL.
+        This endpoint checks the validity of the API project definitions and the overall validity of the API.
+        Returns the metadata of the API and the resources if the API project is valid.
+      operationId: ValidateAPIProject
+      tags:
+        - REST APIs
+      requestBody:
+        description: API project validation details
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateAPIProjectRequest'
+      responses:
+        '201':
+          description: API project is valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RESTAPIProjectValidationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /rest-apis:
     get:
       summary: Get all REST APIs for an organization
       description: |
         Retrieves all REST APIs belonging to an organization.
         Requires the projectId query parameter to filter APIs by project.
+        Provide name and version together to check uniqueness (empty result = name/version combination is available).
         Access is validated against the organization in the JWT token.
       operationId: ListRESTAPIs
       x-required-scopes: [api-platform:rest_api:read, api-platform:rest_api:manage]
@@ -875,6 +938,8 @@ paths:
         - REST APIs
       parameters:
         - $ref: '#/components/parameters/projectId-Q'
+        - $ref: '#/components/parameters/api-name-Q'
+        - $ref: '#/components/parameters/api-version-Q'
       responses:
         '200':
           description: REST APIs retrieved successfully
@@ -923,6 +988,86 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /rest-apis/import-openapi:
+    post:
+      summary: Import and create API from OpenAPI definition
+      description: |
+        Imports an OpenAPI definition into the platform from a provided URL or file upload.
+        A REST API is created from the imported OpenAPI definition and is associated with a specified project within the
+        organization in the JWT token.
+      operationId: ImportOpenAPI
+      x-required-scopes: [api-platform:rest_api:import, api-platform:rest_api:manage]
+      tags:
+        - REST APIs
+        - Imports
+      requestBody:
+        description: OpenAPI import details
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ImportOpenAPIRequest'
+            encoding:
+              url:
+                contentType: text/plain
+                style: form
+              definition:
+                contentType: application/octet-stream, application/json, application/yaml, text/yaml
+                style: form
+              api:
+                contentType: application/json
+                style: form
+      responses:
+        '201':
+          description: OpenAPI imported successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RESTAPI'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /rest-apis/validate-openapi:
+    post:
+      summary: Validate OpenAPI definition
+      description: |
+        Validates an OpenAPI definition provided either via URL or as a file upload.
+        Returns validation results including any errors found and extracted metadata
+        such as name, and operations if the definition is valid.
+      operationId: ValidateOpenAPI
+      tags:
+        - REST APIs
+      requestBody:
+        description: OpenAPI definition validation details
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ValidateOpenAPIRequest'
+      responses:
+        '200':
+          description: OpenAPI definition validation completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenAPIValidationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1593,7 +1738,134 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /rest-apis/validate:
+    get:
+      deprecated: true
+      summary: "[Deprecated] Use GET /rest-apis?name=&version="
+      description: Deprecated. Use `GET /rest-apis?name=&version=` — an empty result means the name/version combination is available.
+      operationId: ValidateRESTAPI
+      x-required-scopes: [api-platform:rest_api:read, api-platform:rest_api:manage]
+      tags:
+        - REST APIs
+      parameters:
+        - $ref: '#/components/parameters/api-identifier-Q'
+        - $ref: '#/components/parameters/api-name-Q'
+        - $ref: '#/components/parameters/api-version-Q'
+      responses:
+        '200':
+          description: API validation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RESTAPIValidationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /rest-apis/{apiId}/devportals/publish:
+    post:
+      deprecated: true
+      summary: "[Deprecated] Use POST /rest-apis/{apiId}/publications"
+      description: Deprecated. Use `POST /rest-apis/{apiId}/publications` instead.
+      operationId: PublishRESTAPIToDevPortalDeprecated
+      x-required-scopes: [api-platform:rest_api:publish, api-platform:rest_api:manage]
+      tags:
+        - REST APIs
+        - DevPortal
+      parameters:
+        - $ref: '#/components/parameters/apiId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishToDevPortalRequest'
+      responses:
+        '200':
+          description: API successfully published to DevPortal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /rest-apis/{apiId}/devportals/unpublish:
+    post:
+      deprecated: true
+      summary: "[Deprecated] Use DELETE /rest-apis/{apiId}/publications/{devportalId}"
+      description: Deprecated. Use `DELETE /rest-apis/{apiId}/publications/{devportalId}` instead.
+      operationId: UnpublishRESTAPIFromDevPortalDeprecated
+      x-required-scopes: [api-platform:rest_api:publish, api-platform:rest_api:manage]
+      tags:
+        - REST APIs
+        - DevPortal
+      parameters:
+        - $ref: '#/components/parameters/apiId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnpublishFromDevPortalRequest'
+      responses:
+        '200':
+          description: API successfully unpublished from DevPortal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /rest-apis/{apiId}/publications:
+    get:
+      summary: Get REST API publications
+      description: |
+        Retrieves all DevPortals associated with an API including publication details.
+      operationId: GetRESTAPIPublications
+      x-required-scopes: [api-platform:rest_api:read, api-platform:rest_api:manage]
+      tags:
+        - REST APIs
+        - DevPortal
+      parameters:
+        - $ref: '#/components/parameters/apiId'
+      responses:
+        '200':
+          description: API publications retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RESTAPIDevPortalListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
     post:
       summary: Publish REST API to DevPortal
       description: |
@@ -1606,7 +1878,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/apiId'
       requestBody:
-        description: API publishing details
+        description: DevPortal to publish to
         required: true
         content:
           application/json:
@@ -1669,25 +1941,25 @@ paths:
                 message: Service Unavailable
                 description: Failed to reach DevPortal after 3 retry attempts (total 60 seconds)
 
-  /rest-apis/{apiId}/devportals/unpublish:
-    post:
+  /rest-apis/{apiId}/publications/{devportalId}:
+    delete:
       summary: Unpublish REST API from DevPortal
       description: |
         Removes an API from the configured DevPortal.
       operationId: UnpublishRESTAPIFromDevPortal
-      x-required-scopes: [api-platform:rest_api:publish, api-platform:rest_api:manage]
+      x-required-scopes: [api-platform:rest_api:unpublish, api-platform:rest_api:manage]
       tags:
         - REST APIs
         - DevPortal
       parameters:
         - $ref: '#/components/parameters/apiId'
-      requestBody:
-        description: API unpublishing details
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UnpublishFromDevPortalRequest'
+        - name: devportalId
+          in: path
+          required: true
+          description: UUID of the DevPortal to unpublish from
+          schema:
+            type: string
+            format: uuid
       responses:
         '200':
           description: API successfully unpublished from DevPortal
@@ -1723,65 +1995,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-
-  /rest-apis/{apiId}/publications:
-    get:
-      summary: Get REST API publications
-      description: |
-        Retrieves all DevPortals associated with an API including publication details.
-      operationId: GetRESTAPIPublications
-      x-required-scopes: [api-platform:rest_api:read, api-platform:rest_api:manage]
-      tags:
-        - REST APIs
-        - DevPortal
-      parameters:
-        - $ref: '#/components/parameters/apiId'
-      responses:
-        '200':
-          description: API publications retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RESTAPIDevPortalListResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: API not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /rest-apis/validate:
-    get:
-      summary: Validate REST API identifier, name and version uniqueness within an organization
-      description: |
-        Validates if an API with the given identifier exists in an organization and if an API with the given name and 
-        version combination exists within an organization. Either provide an identifier OR a combination of name and
-        version as query parameters. Organization ID is automatically extracted from the JWT token.
-      operationId: ValidateRESTAPI
-      x-required-scopes: [api-platform:rest_api:read, api-platform:rest_api:manage]
-      tags:
-        - REST APIs
-      parameters:
-        - $ref: '#/components/parameters/api-identifier-Q'
-        - $ref: '#/components/parameters/api-name-Q'
-        - $ref: '#/components/parameters/api-version-Q'
-      responses:
-        '200':
-          description: API validation result
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RESTAPIValidationResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
 
   /rest-apis/{apiId}/deployments:
     post:
@@ -1918,16 +2131,15 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /rest-apis/{apiId}/deployments/undeploy:
+  /rest-apis/{apiId}/deployments/{deploymentId}/undeploy:
     post:
       summary: Undeploy deployment from gateway
       description: |
         Undeploys an active deployment, stopping the API from being served on the specified gateway.
         The deployment artifact remains in the system and can be restored later.
         Returns the updated deployment object with initial status UNDEPLOYING. Final status (UNDEPLOYED or FAILED) will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
-        
-        Both deploymentId and gatewayId are required for safety. The backend validates that the 
-        deployment's bound gateway matches the provided gatewayId to prevent unintended operations.
+
+        The gatewayId query parameter is validated against deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
       operationId: UndeployDeployment
       x-required-scopes: [api-platform:rest_api:deployment:undeploy, api-platform:rest_api:deployment:manage, api-platform:rest_api:manage]
@@ -1937,7 +2149,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/apiId'
         - name: deploymentId
-          in: query
+          in: path
           required: true
           schema:
             type: string
@@ -1968,16 +2180,15 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /rest-apis/{apiId}/deployments/restore:
+  /rest-apis/{apiId}/deployments/{deploymentId}/restore:
     post:
       summary: Restore a previous deployment
       description: |
         Initiates restoring a previous deployment (ARCHIVED or UNDEPLOYED) on the specified gateway.
         Returns the deployment with initial status DEPLOYING. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         The target deployment must not already be in DEPLOYED status.
-        
-        Both deploymentId and gatewayId are required for safety. The backend validates that the 
-        deployment's bound gateway matches the provided gatewayId to prevent unintended operations.
+
+        The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
       operationId: RestoreDeployment
       x-required-scopes: [api-platform:rest_api:deployment:restore, api-platform:rest_api:deployment:manage, api-platform:rest_api:manage]
@@ -1987,7 +2198,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/apiId'
         - name: deploymentId
-          in: query
+          in: path
           required: true
           schema:
             type: string
@@ -2019,6 +2230,90 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /rest-apis/{apiId}/deployments/undeploy:
+    post:
+      deprecated: true
+      summary: "[Deprecated] Use POST /rest-apis/{apiId}/deployments/{deploymentId}/undeploy"
+      description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
+      operationId: UndeployDeploymentDeprecated
+      x-required-scopes: [api-platform:rest_api:deployment:undeploy, api-platform:rest_api:deployment:manage, api-platform:rest_api:manage]
+      tags:
+        - REST API Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/apiId'
+        - name: deploymentId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Undeploy initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /rest-apis/{apiId}/deployments/restore:
+    post:
+      deprecated: true
+      summary: "[Deprecated] Use POST /rest-apis/{apiId}/deployments/{deploymentId}/restore"
+      description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
+      operationId: RestoreDeploymentDeprecated
+      x-required-scopes: [api-platform:rest_api:deployment:restore, api-platform:rest_api:deployment:manage, api-platform:rest_api:manage]
+      tags:
+        - REST API Deployments
+        - Deployments
+      parameters:
+        - $ref: '#/components/parameters/apiId'
+        - name: deploymentId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Restore initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2419,7 +2714,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /gateway-custom-policies/{customPolicyUuid}/version/{version}:
+  /gateway-custom-policies/{customPolicyUuid}/versions/{version}:
     get:
       summary: Get a specific custom policy version
       description: Returns a custom policy by its UUID and version for the current organization.
@@ -2498,6 +2793,78 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /gateway-custom-policies/{customPolicyUuid}/version/{version}:
+    get:
+      deprecated: true
+      summary: "[Deprecated] Use GET /gateway-custom-policies/{customPolicyUuid}/versions/{version}"
+      description: Deprecated. Use the plural `/versions/` path instead.
+      operationId: GetGatewayCustomPolicyDeprecated
+      x-required-scopes: [api-platform:gateway:policy:read, api-platform:gateway:policy:manage, api-platform:gateway:manage]
+      tags:
+        - Gateway Policies
+      parameters:
+        - name: customPolicyUuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Custom policy retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomPolicyResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      deprecated: true
+      summary: "[Deprecated] Use DELETE /gateway-custom-policies/{customPolicyUuid}/versions/{version}"
+      description: Deprecated. Use the plural `/versions/` path instead.
+      operationId: DeleteGatewayCustomPolicyDeprecated
+      x-required-scopes: [api-platform:gateway:policy:delete, api-platform:gateway:policy:manage, api-platform:gateway:manage]
+      tags:
+        - Gateway Policies
+      parameters:
+        - name: customPolicyUuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Custom policy deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Custom policy is in use by one or more APIs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /gateways/{gatewayId}/manifest:
     get:
       summary: Get gateway policy manifest
@@ -2527,11 +2894,9 @@ paths:
 
   /status/gateways:
     get:
-      summary: Get gateway status
-      description: |
-        Retrieves lightweight status information for gateways. This endpoint is optimized for frequent polling 
-        by management portals to monitor gateway connection status. If gatewayId query parameter is provided, 
-        returns status for that specific gateway only. Otherwise returns status for all gateways in the organization.
+      deprecated: true
+      summary: "[Deprecated] Use GET /gateways — check isActive field"
+      description: Deprecated. Use `GET /gateways` and inspect the `isActive` field on each gateway instead.
       operationId: GetGatewayStatus
       x-required-scopes: [api-platform:gateway:status:read, api-platform:gateway:manage]
       tags:
@@ -2550,11 +2915,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Gateway not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2776,9 +3137,9 @@ paths:
 
   /devportals/default:
     get:
-      summary: Get default DevPortal
-      description: |
-        Retrieves the default DevPortal for the organization specified in the JWT token.
+      deprecated: true
+      summary: "[Deprecated] Use GET /devportals?default=true"
+      description: Deprecated. Use `GET /devportals?default=true` instead.
       operationId: GetDefaultDevPortal
       x-required-scopes: [api-platform:devportal:read, api-platform:devportal:manage]
       tags:
@@ -2793,11 +3154,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Default DevPortal not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3531,7 +3888,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-providers/{id}/deployments/undeploy:
+  /llm-providers/{id}/deployments/{deploymentId}/undeploy:
     post:
       summary: Undeploy LLM provider deployment from gateway
       description: |
@@ -3539,8 +3896,7 @@ paths:
         The deployment artifact remains in the system and can be restored later.
         Returns the updated deployment object with initial status UNDEPLOYING. Final status (UNDEPLOYED or FAILED) will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
 
-        Both deploymentId and gatewayId are required for safety. The backend validates that the
-        deployment's bound gateway matches the provided gatewayId to prevent unintended operations.
+        The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
       operationId: undeployLLMProviderDeployment
       x-required-scopes: [api-platform:llm_provider:deployment:undeploy, api-platform:llm_provider:deployment:manage, api-platform:llm_provider:manage]
@@ -3555,7 +3911,7 @@ paths:
           schema:
             type: string
         - name: deploymentId
-          in: query
+          in: path
           required: true
           schema:
             type: string
@@ -3586,7 +3942,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-providers/{id}/deployments/restore:
+  /llm-providers/{id}/deployments/{deploymentId}/restore:
     post:
       summary: Restore a previous LLM provider deployment
       description: |
@@ -3594,8 +3950,7 @@ paths:
         Returns the deployment with initial status DEPLOYING. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         The target deployment must not already be in DEPLOYED status.
 
-        Both deploymentId and gatewayId are required for safety. The backend validates that the
-        deployment's bound gateway matches the provided gatewayId to prevent unintended operations.
+        The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
       operationId: restoreLLMProviderDeployment
       x-required-scopes: [api-platform:llm_provider:deployment:restore, api-platform:llm_provider:deployment:manage, api-platform:llm_provider:manage]
@@ -3610,7 +3965,7 @@ paths:
           schema:
             type: string
         - name: deploymentId
-          in: query
+          in: path
           required: true
           schema:
             type: string
@@ -3642,6 +3997,98 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-providers/{id}/deployments/undeploy:
+    post:
+      deprecated: true
+      summary: "[Deprecated] Use POST /llm-providers/{id}/deployments/{deploymentId}/undeploy"
+      description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
+      operationId: undeployLLMProviderDeploymentDeprecated
+      x-required-scopes: [api-platform:llm_provider:deployment:undeploy, api-platform:llm_provider:deployment:manage, api-platform:llm_provider:manage]
+      tags:
+        - LLM Provider Deployments
+        - Deployments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: deploymentId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Undeploy initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-providers/{id}/deployments/restore:
+    post:
+      deprecated: true
+      summary: "[Deprecated] Use POST /llm-providers/{id}/deployments/{deploymentId}/restore"
+      description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
+      operationId: restoreLLMProviderDeploymentDeprecated
+      x-required-scopes: [api-platform:llm_provider:deployment:restore, api-platform:llm_provider:deployment:manage, api-platform:llm_provider:manage]
+      tags:
+        - LLM Provider Deployments
+        - Deployments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: deploymentId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Restore initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3800,7 +4247,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-proxies/{id}/deployments/undeploy:
+  /llm-proxies/{id}/deployments/{deploymentId}/undeploy:
     post:
       summary: Undeploy LLM proxy deployment from gateway
       description: |
@@ -3808,8 +4255,7 @@ paths:
         The deployment artifact remains in the system and can be restored later.
         Returns the updated deployment object with initial status UNDEPLOYING. Final status (UNDEPLOYED or FAILED) will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
 
-        Both deploymentId and gatewayId are required for safety. The backend validates that the
-        deployment's bound gateway matches the provided gatewayId to prevent unintended operations.
+        The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
       operationId: undeployLLMProxyDeployment
       x-required-scopes: [api-platform:llm_proxy:deployment:undeploy, api-platform:llm_proxy:deployment:manage, api-platform:llm_proxy:manage]
@@ -3824,7 +4270,7 @@ paths:
           schema:
             type: string
         - name: deploymentId
-          in: query
+          in: path
           required: true
           schema:
             type: string
@@ -3855,7 +4301,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /llm-proxies/{id}/deployments/restore:
+  /llm-proxies/{id}/deployments/{deploymentId}/restore:
     post:
       summary: Restore a previous LLM proxy deployment
       description: |
@@ -3863,8 +4309,7 @@ paths:
         Returns the deployment with initial status DEPLOYING. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         The target deployment must not already be in DEPLOYED status.
 
-        Both deploymentId and gatewayId are required for safety. The backend validates that the
-        deployment's bound gateway matches the provided gatewayId to prevent unintended operations.
+        The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
       operationId: restoreLLMProxyDeployment
       x-required-scopes: [api-platform:llm_proxy:deployment:restore, api-platform:llm_proxy:deployment:manage, api-platform:llm_proxy:manage]
@@ -3879,7 +4324,7 @@ paths:
           schema:
             type: string
         - name: deploymentId
-          in: query
+          in: path
           required: true
           schema:
             type: string
@@ -3911,6 +4356,98 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-proxies/{id}/deployments/undeploy:
+    post:
+      deprecated: true
+      summary: "[Deprecated] Use POST /llm-proxies/{id}/deployments/{deploymentId}/undeploy"
+      description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
+      operationId: undeployLLMProxyDeploymentDeprecated
+      x-required-scopes: [api-platform:llm_proxy:deployment:undeploy, api-platform:llm_proxy:deployment:manage, api-platform:llm_proxy:manage]
+      tags:
+        - LLM Proxy Deployments
+        - Deployments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: deploymentId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Undeploy initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /llm-proxies/{id}/deployments/restore:
+    post:
+      deprecated: true
+      summary: "[Deprecated] Use POST /llm-proxies/{id}/deployments/{deploymentId}/restore"
+      description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
+      operationId: restoreLLMProxyDeploymentDeprecated
+      x-required-scopes: [api-platform:llm_proxy:deployment:restore, api-platform:llm_proxy:deployment:manage, api-platform:llm_proxy:manage]
+      tags:
+        - LLM Proxy Deployments
+        - Deployments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: deploymentId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Restore initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -4387,6 +4924,35 @@ paths:
 
   /me/api-keys:
     get:
+      deprecated: true
+      summary: "[Deprecated] Use GET /api-keys"
+      description: Deprecated. Use `GET /api-keys` instead.
+      operationId: listUserAPIKeysDeprecated
+      x-required-scopes: [api-platform:rest_api:api_key:read]
+      tags:
+        - API Keys
+      parameters:
+        - name: type
+          in: query
+          required: false
+          description: Comma-separated list of artifact types to filter by.
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [RestApi, LlmProvider, LlmProxy]
+          style: form
+          explode: false
+      responses:
+        '200':
+          $ref: '#/components/responses/OK'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api-keys:
+    get:
       summary: List API keys for the current user
       description: |
         Returns API keys created by the caller within the organization.
@@ -4738,16 +5304,15 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /mcp-proxies/{id}/deployments/undeploy:
+  /mcp-proxies/{id}/deployments/{deploymentId}/undeploy:
     post:
       summary: Undeploy deployment from gateway
       description: |
         Undeploys an active deployment, stopping the MCP proxy from being served on the specified gateway.
         The deployment artifact remains in the system and can be restored later.
         Returns the updated deployment object with initial status UNDEPLOYING. Final status (UNDEPLOYED or FAILED) will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
-        
-        Both deploymentId and gatewayId are required for safety. The backend validates that the 
-        deployment's bound gateway matches the provided gatewayId to prevent unintended operations.
+
+        The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
       operationId: UndeployMCPProxyDeployment
       x-required-scopes: [api-platform:mcp_proxy:deployment:undeploy, api-platform:mcp_proxy:deployment:manage, api-platform:mcp_proxy:manage]
@@ -4762,7 +5327,7 @@ paths:
           schema:
             type: string
         - name: deploymentId
-          in: query
+          in: path
           required: true
           schema:
             type: string
@@ -4791,16 +5356,15 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /mcp-proxies/{id}/deployments/restore:
+  /mcp-proxies/{id}/deployments/{deploymentId}/restore:
     post:
       summary: Restore a previous deployment
       description: |
         Initiates restoring a previous deployment (ARCHIVED or UNDEPLOYED) on the specified gateway.
         Returns the deployment with initial status DEPLOYING. Final success or failure will be reported asynchronously via the deployment's status and statusReason once the gateway acknowledges.
         The target deployment must not already be in DEPLOYED status.
-        
-        Both deploymentId and gatewayId are required for safety. The backend validates that the 
-        deployment's bound gateway matches the provided gatewayId to prevent unintended operations.
+
+        The gatewayId query parameter is validated against the deployment's bound gateway to prevent unintended operations.
         Access is validated against the organization in the JWT token.
       operationId: RestoreMCPProxyDeployment
       x-required-scopes: [api-platform:mcp_proxy:deployment:restore, api-platform:mcp_proxy:deployment:manage, api-platform:mcp_proxy:manage]
@@ -4815,11 +5379,11 @@ paths:
           schema:
             type: string
         - name: deploymentId
-          in: query
+          in: path
           required: true
           schema:
             type: string
-          description: UUID of the deployment to undeploy
+          description: UUID of the deployment to restore (must be ARCHIVED or UNDEPLOYED)
         - name: gatewayId
           in: query
           required: true
@@ -4845,6 +5409,98 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /mcp-proxies/{id}/deployments/undeploy:
+    post:
+      deprecated: true
+      summary: "[Deprecated] Use POST /mcp-proxies/{id}/deployments/{deploymentId}/undeploy"
+      description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
+      operationId: UndeployMCPProxyDeploymentDeprecated
+      x-required-scopes: [api-platform:mcp_proxy:deployment:undeploy, api-platform:mcp_proxy:deployment:manage, api-platform:mcp_proxy:manage]
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: deploymentId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Undeploy initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /mcp-proxies/{id}/deployments/restore:
+    post:
+      deprecated: true
+      summary: "[Deprecated] Use POST /mcp-proxies/{id}/deployments/{deploymentId}/restore"
+      description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
+      operationId: RestoreMCPProxyDeploymentDeprecated
+      x-required-scopes: [api-platform:mcp_proxy:deployment:restore, api-platform:mcp_proxy:deployment:manage, api-platform:mcp_proxy:manage]
+      tags:
+        - MCP Proxy Deployments
+        - Deployments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: deploymentId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Restore initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -5180,7 +5836,7 @@ paths:
     post:
       summary: Unpublish WebSub API from DevPortal
       operationId: unpublishWebSubAPIFromDevPortal
-      x-required-scopes: [api-platform:websub_api:publish, api-platform:websub_api:manage]
+      x-required-scopes: [api-platform:websub_api:unpublish, api-platform:websub_api:manage]
       tags:
         - WebSubAPIs
       parameters:
@@ -5338,7 +5994,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /websub-apis/{apiId}/deployments/undeploy:
+  /websub-apis/{apiId}/deployments/{deploymentId}/undeploy:
     post:
       summary: Undeploy WebSub API from gateway
       operationId: undeployWebSubAPI
@@ -5352,7 +6008,7 @@ paths:
           schema:
             type: string
         - name: deploymentId
-          in: query
+          in: path
           required: true
           schema:
             type: string
@@ -5379,7 +6035,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /websub-apis/{apiId}/deployments/restore:
+  /websub-apis/{apiId}/deployments/{deploymentId}/restore:
     post:
       summary: Restore a previous WebSub API deployment
       operationId: restoreWebSubAPIDeployment
@@ -5393,7 +6049,7 @@ paths:
           schema:
             type: string
         - name: deploymentId
-          in: query
+          in: path
           required: true
           schema:
             type: string
@@ -5413,6 +6069,98 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /websub-apis/{apiId}/deployments/undeploy:
+    post:
+      deprecated: true
+      summary: "[Deprecated] Use POST /websub-apis/{apiId}/deployments/{deploymentId}/undeploy"
+      description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
+      operationId: undeployWebSubAPIDeprecated
+      x-required-scopes: [api-platform:websub_api:deployment:undeploy, api-platform:websub_api:deployment:manage, api-platform:websub_api:manage]
+      tags:
+        - WebSubAPI Deployments
+        - Deployments
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: deploymentId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Undeploy initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /websub-apis/{apiId}/deployments/restore:
+    post:
+      deprecated: true
+      summary: "[Deprecated] Use POST /websub-apis/{apiId}/deployments/{deploymentId}/restore"
+      description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
+      operationId: restoreWebSubAPIDeploymentDeprecated
+      x-required-scopes: [api-platform:websub_api:deployment:restore, api-platform:websub_api:deployment:manage, api-platform:websub_api:manage]
+      tags:
+        - WebSubAPI Deployments
+        - Deployments
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: deploymentId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Restore initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -5720,7 +6468,7 @@ paths:
     post:
       summary: Unpublish WebBroker API from DevPortal
       operationId: unpublishWebBrokerAPIFromDevPortal
-      x-required-scopes: [api-platform:webbroker_api:publish, api-platform:webbroker_api:manage]
+      x-required-scopes: [api-platform:webbroker_api:unpublish, api-platform:webbroker_api:manage]
       tags:
         - WebBrokerAPIs
       parameters:
@@ -5878,7 +6626,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /webbroker-apis/{apiId}/deployments/undeploy:
+  /webbroker-apis/{apiId}/deployments/{deploymentId}/undeploy:
     post:
       summary: Undeploy WebBroker API from gateway
       operationId: undeployWebBrokerAPI
@@ -5892,7 +6640,7 @@ paths:
           schema:
             type: string
         - name: deploymentId
-          in: query
+          in: path
           required: true
           schema:
             type: string
@@ -5919,7 +6667,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /webbroker-apis/{apiId}/deployments/restore:
+  /webbroker-apis/{apiId}/deployments/{deploymentId}/restore:
     post:
       summary: Restore a previous WebBroker API deployment
       operationId: restoreWebBrokerAPIDeployment
@@ -5933,7 +6681,7 @@ paths:
           schema:
             type: string
         - name: deploymentId
-          in: query
+          in: path
           required: true
           schema:
             type: string
@@ -5953,6 +6701,98 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /webbroker-apis/{apiId}/deployments/undeploy:
+    post:
+      deprecated: true
+      summary: "[Deprecated] Use POST /webbroker-apis/{apiId}/deployments/{deploymentId}/undeploy"
+      description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
+      operationId: undeployWebBrokerAPIDeprecated
+      x-required-scopes: [api-platform:webbroker_api:deployment:undeploy, api-platform:webbroker_api:deployment:manage, api-platform:webbroker_api:manage]
+      tags:
+        - WebBrokerAPI Deployments
+        - Deployments
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: deploymentId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Undeploy initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /webbroker-apis/{apiId}/deployments/restore:
+    post:
+      deprecated: true
+      summary: "[Deprecated] Use POST /webbroker-apis/{apiId}/deployments/{deploymentId}/restore"
+      description: Deprecated. Pass deploymentId as a path parameter instead of a query parameter.
+      operationId: restoreWebBrokerAPIDeploymentDeprecated
+      x-required-scopes: [api-platform:webbroker_api:deployment:restore, api-platform:webbroker_api:deployment:manage, api-platform:webbroker_api:manage]
+      tags:
+        - WebBrokerAPI Deployments
+        - Deployments
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: deploymentId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: gatewayId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Restore initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':

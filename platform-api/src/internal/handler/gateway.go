@@ -701,12 +701,13 @@ func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		customPoliciesGroup.GET("", h.ListCustomPolicies)
 		customPoliciesGroup.POST("/sync", h.SyncCustomPolicy)
+		customPoliciesGroup.GET("/:customPolicyUuid/versions/:version", h.GetCustomPolicy)
+		customPoliciesGroup.DELETE("/:customPolicyUuid/versions/:version", h.DeleteCustomPolicy)
+		// Deprecated paths — kept for backward compatibility.
 		customPoliciesGroup.GET("/:customPolicyUuid/version/:version", h.GetCustomPolicy)
 		customPoliciesGroup.DELETE("/:customPolicyUuid/version/:version", h.DeleteCustomPolicy)
 	}
 
-	gatewayStatusGroup := r.Group("/api/v1/status")
-	{
-		gatewayStatusGroup.GET("/gateways", h.GetGatewayStatus)
-	}
+	// Deprecated — kept for backward compatibility.
+	r.Group("/api/v1/status").GET("/gateways", h.GetGatewayStatus)
 }

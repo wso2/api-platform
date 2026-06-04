@@ -381,7 +381,7 @@ func (h *DevPortalHandler) RegisterRoutes(r *gin.Engine) {
 		// DevPortal CRUD operations
 		v1.POST("/devportals", h.CreateDevPortal)
 		v1.GET("/devportals", h.ListDevPortals)
-		v1.GET("/devportals/default", h.GetDefaultDevPortal)
+		v1.GET("/devportals/default", h.GetDefaultDevPortal) // deprecated — must be before /:devportalId
 		v1.GET("/devportals/:devportalId", h.GetDevPortal)
 		v1.PUT("/devportals/:devportalId", h.UpdateDevPortal)
 		v1.DELETE("/devportals/:devportalId", h.DeleteDevPortal)

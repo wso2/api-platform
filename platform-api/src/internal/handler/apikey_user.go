@@ -72,5 +72,6 @@ func (h *APIKeyUserHandler) ListUserAPIKeys(c *gin.Context) {
 
 // RegisterRoutes registers the user API key routes.
 func (h *APIKeyUserHandler) RegisterRoutes(r *gin.Engine) {
-	r.GET("/api/v1/me/api-keys", h.ListUserAPIKeys)
+	r.GET("/api/v1/api-keys", h.ListUserAPIKeys)
+	r.GET("/api/v1/me/api-keys", h.ListUserAPIKeys) // deprecated
 }
