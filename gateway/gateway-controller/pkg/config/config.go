@@ -375,8 +375,6 @@ type PolicyEngineConfig struct {
 	Host              string          `koanf:"host"` // Policy engine hostname/IP (TCP mode only)
 	Port              uint32          `koanf:"port"` // Policy engine ext_proc port (TCP mode only)
 	TimeoutMs         uint32          `koanf:"timeout_ms"`
-	FailureModeAllow  bool            `koanf:"failure_mode_allow"`
-	AllowModeOverride bool            `koanf:"allow_mode_override"`
 	MessageTimeoutMs  uint32          `koanf:"message_timeout_ms"`
 	TLS               PolicyEngineTLS `koanf:"tls"` // TLS configuration (TCP mode only)
 }
@@ -722,8 +720,6 @@ func defaultConfig() *Config {
 				Host:              "policy-engine", // Only used in TCP mode
 				Port:              9001,            // Only used in TCP mode
 				TimeoutMs:         60000,
-				FailureModeAllow:  false,
-				AllowModeOverride: true,
 				MessageTimeoutMs:  60000,
 				TLS: PolicyEngineTLS{
 					Enabled:    false,

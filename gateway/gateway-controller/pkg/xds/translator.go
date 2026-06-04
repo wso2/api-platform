@@ -2960,9 +2960,12 @@ func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 			},
 			Timeout: durationpb.New(time.Duration(policyEngine.TimeoutMs) * time.Millisecond),
 		},
-		FailureModeAllow:  policyEngine.FailureModeAllow,
-		RouteCacheAction:  extproc.ExternalProcessor_DEFAULT,
-		AllowModeOverride: policyEngine.AllowModeOverride,
+		// Always fail closed: if the policy engine fails, the request must not reach the upstream.
+		FailureModeAllow: false,
+		RouteCacheAction: extproc.ExternalProcessor_DEFAULT,
+		// Always allow mode override: the policy engine sets the per-request body mode
+		// (skip/buffered/streamed); without this Envoy would ignore it and never send bodies.
+		AllowModeOverride: true,
 		RequestAttributes: []string{constants.ExtProcRequestAttributeRouteName},
 		ProcessingMode: &extproc.ProcessingMode{
 			RequestHeaderMode: extproc.ProcessingMode_SEND,
