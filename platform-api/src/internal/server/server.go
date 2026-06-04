@@ -270,20 +270,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		slogger,
 	)
 
-	// Initialize auth service for token exchange.
-	// Token exchange is only available when JWT mode is enabled and a secret key is configured.
-	jwtSigningEnabled := cfg.Auth.JWT.Enabled && cfg.Auth.JWT.SecretKey != ""
-	authService := service.NewAuthService(
-		membershipRepo,
-		cfg.Auth.JWT.SecretKey,
-		cfg.Auth.JWT.Issuer,
-		cfg.Auth.JWT.TokenExpirySeconds,
-		jwtSigningEnabled,
-		slogger,
-	)
-
 	// Initialize handlers
-	authHandler := handler.NewAuthHandler(authService, slogger)
 	orgHandler := handler.NewOrganizationHandler(orgService, slogger)
 	projectHandler := handler.NewProjectHandler(projectService, slogger)
 	apiHandler := handler.NewAPIHandler(apiService, slogger)
@@ -380,7 +367,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	}))
 
 	// Register routes
-	authHandler.RegisterRoutes(router)
 	orgHandler.RegisterRoutes(router)
 	projectHandler.RegisterRoutes(router)
 	appHandler.RegisterRoutes(router)

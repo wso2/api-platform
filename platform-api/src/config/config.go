@@ -226,8 +226,6 @@ type TLS struct {
 }
 
 // JWT holds configuration for local HMAC JWT authentication (the non-IDP mode).
-// Also supplies the signing key for platform-issued org-scoped tokens, which are
-// used even in IDP mode (produced by POST /auth/token).
 // Env prefix: AUTH_JWT_
 type JWT struct {
 	// Enabled activates local HMAC JWT as the primary authentication mode.
@@ -235,13 +233,11 @@ type JWT struct {
 	// Env: AUTH_JWT_ENABLED (default: true)
 	Enabled bool `envconfig:"ENABLED" default:"true"`
 
-	// SecretKey is the HMAC signing key used to verify token signatures in JWT mode
-	// and to sign platform-issued org-scoped tokens in both modes.
+	// SecretKey is the HMAC signing key used to verify token signatures in JWT mode.
 	// Env: AUTH_JWT_SECRET_KEY (default: "your-secret-key-change-in-production")
 	SecretKey string `envconfig:"SECRET_KEY" default:"your-secret-key-change-in-production"`
 
 	// Issuer is the expected JWT issuer value for HMAC-signed tokens.
-	// Also used as the iss claim in platform-issued org-scoped tokens.
 	// Env: AUTH_JWT_ISSUER (default: "platform-api")
 	Issuer string `envconfig:"ISSUER" default:"platform-api"`
 
@@ -250,11 +246,6 @@ type JWT struct {
 	// When DEV_MODE=false this combination logs a prominent warning at startup.
 	// Env: AUTH_JWT_SKIP_VALIDATION (default: true)
 	SkipValidation bool `envconfig:"SKIP_VALIDATION" default:"true"`
-
-	// TokenExpirySeconds is the lifetime of platform-issued org-scoped tokens
-	// produced by POST /auth/token. Default is 3600 (1 hour).
-	// Env: AUTH_JWT_TOKEN_EXPIRY_SECONDS (default: 3600)
-	TokenExpirySeconds int `envconfig:"TOKEN_EXPIRY_SECONDS" default:"3600"`
 }
 
 // WebSocket holds WebSocket-specific configuration

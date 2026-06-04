@@ -32,7 +32,6 @@ var (
 	ErrOrganizationNotFound      = errors.New("organization not found")
 	ErrMultipleOrganizations     = errors.New("multiple organizations found")
 	ErrInvalidInput              = errors.New("invalid input parameters")
-	ErrTokenExchangeDisabled     = errors.New("token exchange is disabled: AUTH_JWT_ENABLED=false or AUTH_JWT_SECRET_KEY is not set")
 )
 
 var (
