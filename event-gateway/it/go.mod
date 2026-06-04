@@ -22,9 +22,9 @@ go 1.25.0
 
 require (
 	github.com/cucumber/godog v0.15.0
-	github.com/gorilla/websocket v1.5.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/testcontainers/testcontainers-go/modules/compose v0.40.0
-	github.com/twmb/franz-go v1.21.2
+	github.com/twmb/franz-go v1.18.1
 )
 
 require (
