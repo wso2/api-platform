@@ -460,7 +460,7 @@ paths:
       description: |
         Lists all API keys mapped to the specified application.
       operationId: ListApplicationAPIKeys
-      x-required-scopes: [ap:application:api_key:read, ap:application:api_key:manage]
+      x-required-scopes: [ap:application:api_key:read, ap:application:api_key:manage, ap:application:manage]
       tags:
         - Applications
         - API Keys
@@ -504,7 +504,7 @@ paths:
       description: |
         Adds API key mappings to the specified application.
       operationId: AddApplicationAPIKeys
-      x-required-scopes: [ap:application:api_key:create, ap:application:api_key:manage]
+      x-required-scopes: [ap:application:api_key:create, ap:application:api_key:manage, ap:application:manage]
       tags:
         - Applications
         - API Keys
@@ -540,7 +540,7 @@ paths:
       description: |
         Removes a mapped API key from the specified application.
       operationId: RemoveApplicationAPIKey
-      x-required-scopes: [ap:application:api_key:delete, ap:application:api_key:manage]
+      x-required-scopes: [ap:application:api_key:delete, ap:application:api_key:manage, ap:application:manage]
       tags:
         - Applications
         - API Keys
@@ -1241,7 +1241,7 @@ paths:
         storage and broadcasted to all gateways where the API is deployed. This endpoint
         allows external platforms to inject API keys to hybrid gateways.
       operationId: CreateAPIKey
-      x-required-scopes: [ap:rest_api:api_key:create, ap:rest_api:api_key:manage]
+      x-required-scopes: [ap:rest_api:api_key:create, ap:rest_api:api_key:manage, ap:rest_api:manage]
       tags:
         - REST APIs
         - API Keys
@@ -1286,7 +1286,7 @@ paths:
         be hashed before storage and broadcasted to all gateways where the API is deployed.
         This endpoint allows external platforms to rotate API keys on hybrid gateways.
       operationId: UpdateAPIKey
-      x-required-scopes: [ap:rest_api:api_key:update, ap:rest_api:api_key:manage]
+      x-required-scopes: [ap:rest_api:api_key:update, ap:rest_api:api_key:manage, ap:rest_api:manage]
       tags:
         - REST APIs
         - API Keys
@@ -1337,7 +1337,7 @@ paths:
         to all gateways where the API is deployed. This endpoint allows external platforms
         to revoke API keys on hybrid gateways.
       operationId: RevokeAPIKey
-      x-required-scopes: [ap:rest_api:api_key:delete, ap:rest_api:api_key:manage]
+      x-required-scopes: [ap:rest_api:api_key:delete, ap:rest_api:api_key:manage, ap:rest_api:manage]
       tags:
         - REST APIs
         - API Keys
@@ -4505,7 +4505,7 @@ paths:
         is broadcasted to all gateways in the organization and can be used to
         authenticate requests to the LLM provider when API key validation is enabled.
       operationId: createLLMProviderAPIKey
-      x-required-scopes: [ap:llm_provider:api_key:create, ap:llm_provider:api_key:manage]
+      x-required-scopes: [ap:llm_provider:api_key:create, ap:llm_provider:api_key:manage, ap:llm_provider:manage]
       tags:
         - LLM Providers
         - API Keys
@@ -4553,7 +4553,7 @@ paths:
       summary: List API keys for an LLM provider
       description: Returns all API keys associated with the specified LLM provider. The plain key value is never returned.
       operationId: listLLMProviderAPIKeys
-      x-required-scopes: [ap:llm_provider:api_key:read, ap:llm_provider:api_key:manage]
+      x-required-scopes: [ap:llm_provider:api_key:read, ap:llm_provider:api_key:manage, ap:llm_provider:manage]
       tags:
         - LLM Providers
         - API Keys
@@ -4589,7 +4589,7 @@ paths:
       description: |
         Deletes the key from the database and broadcasts a revoke event to the allowed gateways.
       operationId: deleteLLMProviderAPIKey
-      x-required-scopes: [ap:llm_provider:api_key:delete, ap:llm_provider:api_key:manage]
+      x-required-scopes: [ap:llm_provider:api_key:delete, ap:llm_provider:api_key:manage, ap:llm_provider:manage]
       tags:
         - LLM Providers
         - API Keys
@@ -4800,7 +4800,7 @@ paths:
         is broadcasted to all gateways in the organization and can be used to
         authenticate requests to the LLM proxy when API key validation is enabled.
       operationId: createLLMProxyAPIKey
-      x-required-scopes: [ap:llm_proxy:api_key:create, ap:llm_proxy:api_key:manage]
+      x-required-scopes: [ap:llm_proxy:api_key:create, ap:llm_proxy:api_key:manage, ap:llm_proxy:manage]
       tags:
         - LLM Proxies
       parameters:
@@ -4847,7 +4847,7 @@ paths:
       summary: List API keys for an LLM proxy
       description: Returns all API keys associated with the specified LLM proxy. The plain key value is never returned.
       operationId: listLLMProxyAPIKeys
-      x-required-scopes: [ap:llm_proxy:api_key:read, ap:llm_proxy:api_key:manage]
+      x-required-scopes: [ap:llm_proxy:api_key:read, ap:llm_proxy:api_key:manage, ap:llm_proxy:manage]
       tags:
         - LLM Proxies
         - API Keys
@@ -4883,7 +4883,7 @@ paths:
       description: |
         Deletes the key from the database and broadcasts a revoke event to the allowed gateways.
       operationId: deleteLLMProxyAPIKey
-      x-required-scopes: [ap:llm_proxy:api_key:delete, ap:llm_proxy:api_key:manage]
+      x-required-scopes: [ap:llm_proxy:api_key:delete, ap:llm_proxy:api_key:manage, ap:llm_proxy:manage]
       tags:
         - LLM Proxies
         - API Keys
@@ -4928,7 +4928,7 @@ paths:
       summary: "[Deprecated] Use GET /api-keys"
       description: Deprecated. Use `GET /api-keys` instead.
       operationId: listUserAPIKeysDeprecated
-      x-required-scopes: [ap:rest_api:api_key:read]
+      x-required-scopes: [ap:rest_api:api_key:read, ap:rest_api:api_key:manage, ap:rest_api:manage]
       tags:
         - API Keys
       parameters:
@@ -4959,7 +4959,7 @@ paths:
         Optionally filter by one or more artifact types using a comma-separated `type` query parameter.
         The plain key value is never returned.
       operationId: listUserAPIKeys
-      x-required-scopes: [ap:rest_api:api_key:read]
+      x-required-scopes: [ap:rest_api:api_key:read, ap:rest_api:api_key:manage, ap:rest_api:manage]
       tags:
         - API Keys
       parameters:
@@ -5691,7 +5691,7 @@ paths:
     post:
       summary: Create an API key for WebSub API
       operationId: createWebSubAPIKey
-      x-required-scopes: [ap:websub_api:api_key:create, ap:websub_api:api_key:manage]
+      x-required-scopes: [ap:websub_api:api_key:create, ap:websub_api:api_key:manage, ap:websub_api:manage]
       tags:
         - WebSubAPIs
       parameters:
@@ -5730,7 +5730,7 @@ paths:
         be hashed before storage and broadcasted to all gateways where the API is deployed.
         This endpoint allows external platforms to rotate API keys on hybrid gateways.
       operationId: updateWebSubAPIKey
-      x-required-scopes: [ap:websub_api:api_key:update, ap:websub_api:api_key:manage]
+      x-required-scopes: [ap:websub_api:api_key:update, ap:websub_api:api_key:manage, ap:websub_api:manage]
       tags:
         - WebSubAPIs
       parameters:
@@ -5775,7 +5775,7 @@ paths:
     delete:
       summary: Delete an API key for WebSub API
       operationId: deleteWebSubAPIKey
-      x-required-scopes: [ap:websub_api:api_key:delete, ap:websub_api:api_key:manage]
+      x-required-scopes: [ap:websub_api:api_key:delete, ap:websub_api:api_key:manage, ap:websub_api:manage]
       tags:
         - WebSubAPIs
       parameters:
@@ -6323,7 +6323,7 @@ paths:
     post:
       summary: Create an API key for WebBroker API
       operationId: createWebBrokerAPIKey
-      x-required-scopes: [ap:webbroker_api:api_key:create, ap:webbroker_api:api_key:manage]
+      x-required-scopes: [ap:webbroker_api:api_key:create, ap:webbroker_api:api_key:manage, ap:webbroker_api:manage]
       tags:
         - WebBrokerAPIs
       parameters:
@@ -6362,7 +6362,7 @@ paths:
         be hashed before storage and broadcasted to all gateways where the API is deployed.
         This endpoint allows external platforms to rotate API keys on hybrid gateways.
       operationId: updateWebBrokerAPIKey
-      x-required-scopes: [ap:webbroker_api:api_key:update, ap:webbroker_api:api_key:manage]
+      x-required-scopes: [ap:webbroker_api:api_key:update, ap:webbroker_api:api_key:manage, ap:webbroker_api:manage]
       tags:
         - WebBrokerAPIs
       parameters:
@@ -6407,7 +6407,7 @@ paths:
     delete:
       summary: Delete an API key for WebBroker API
       operationId: deleteWebBrokerAPIKey
-      x-required-scopes: [ap:webbroker_api:api_key:delete, ap:webbroker_api:api_key:manage]
+      x-required-scopes: [ap:webbroker_api:api_key:delete, ap:webbroker_api:api_key:manage, ap:webbroker_api:manage]
       tags:
         - WebBrokerAPIs
       parameters:
