@@ -1,0 +1,19 @@
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProxy
+metadata:
+  name: openai-assistant
+spec:
+  displayName: OpenAI Assistant
+  version: v1.0
+  context: /assistant
+  provider:
+    id: openai-provider
+  policies:
+    - name: api-key-auth
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            key: api_key
+            in: header
