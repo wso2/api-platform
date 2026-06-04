@@ -1,0 +1,172 @@
+openapi: 3.0.1
+info:
+  title: Booking API
+  version: 1.0.0
+  description: |
+    Hotel and event booking API with subscription-based access control.
+
+    **Two headers are required on every request:**
+    - `X-API-Key` — your API key for identity verification
+    - `X-Subscription-Token` — the token issued when you subscribed to a plan (Gold, Silver, or Bronze)
+servers:
+  - url: /booking
+security:
+  - ApiKeyHeader: []
+components:
+  securitySchemes:
+    ApiKeyHeader:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  parameters:
+    SubscriptionTokenHeader:
+      x-header-type: subscription-token
+      name: X-Subscription-Token
+      in: header
+      description: Subscription token issued after subscribing to a plan.
+      required: true
+      schema:
+        type: string
+  schemas:
+    Booking:
+      type: object
+      properties:
+        bookingId:
+          type: string
+          example: bk-00123
+        guestName:
+          type: string
+          example: Alex Johnson
+        roomType:
+          type: string
+          enum: [standard, deluxe, suite]
+          example: deluxe
+        checkIn:
+          type: string
+          format: date
+          example: "2026-06-01"
+        checkOut:
+          type: string
+          format: date
+          example: "2026-06-05"
+        confirmed:
+          type: boolean
+          example: true
+      required:
+        - bookingId
+        - guestName
+        - roomType
+        - checkIn
+        - checkOut
+    Error:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        message:
+          type: string
+      required:
+        - code
+        - message
+
+paths:
+  /bookings:
+    parameters:
+      - $ref: '#/components/parameters/SubscriptionTokenHeader'
+    get:
+      summary: List all bookings
+      description: Returns a list of bookings associated with the API key's account.
+      operationId: listBookings
+      tags:
+        - bookings
+      responses:
+        '200':
+          description: OK. List of bookings.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Booking'
+        '401':
+          description: Unauthorized. Invalid or missing API key or subscription token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      summary: Create a booking
+      description: Creates a new hotel or event booking.
+      operationId: createBooking
+      tags:
+        - bookings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Booking'
+      responses:
+        '201':
+          description: Created. The new booking.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '400':
+          description: Bad Request. Invalid request body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized. Invalid or missing API key or subscription token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /bookings/{bookingId}:
+    parameters:
+      - name: bookingId
+        in: path
+        required: true
+        description: Unique identifier of the booking.
+        schema:
+          type: string
+      - $ref: '#/components/parameters/SubscriptionTokenHeader'
+    get:
+      summary: Get a booking
+      description: Returns details of a specific booking by ID.
+      operationId: getBooking
+      tags:
+        - bookings
+      responses:
+        '200':
+          description: OK. Booking details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '404':
+          description: Not Found. Booking does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      summary: Cancel a booking
+      description: Cancels and removes a booking by ID.
+      operationId: cancelBooking
+      tags:
+        - bookings
+      responses:
+        '200':
+          description: OK. Booking successfully cancelled.
+        '404':
+          description: Not Found. Booking does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

@@ -32,7 +32,7 @@ try {
  * Returns an empty object if the file does not exist, so env vars alone can drive the app.
  */
 function loadBaseConfig() {
-    const yamlPath = path.join(process.cwd(), 'config.yaml');
+    const yamlPath = path.join(process.cwd(), 'configs', 'config.yaml');
 
     if (fs.existsSync(yamlPath)) {
         const raw = fs.readFileSync(yamlPath, 'utf8');
