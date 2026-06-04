@@ -3131,8 +3131,9 @@ type WebBrokerAPI struct {
 
 	// Receiver WebSocket receiver configuration
 	Receiver struct {
-		Name string                   `json:"name" yaml:"name"`
-		Type WebBrokerAPIReceiverType `json:"type" yaml:"type"`
+		Name       string                   `json:"name" yaml:"name"`
+		Properties *map[string]interface{}  `json:"properties,omitempty" yaml:"properties,omitempty"`
+		Type       WebBrokerAPIReceiverType `json:"type" yaml:"type"`
 	} `binding:"required" json:"receiver" yaml:"receiver"`
 
 	// SubscriptionPlans List of subscription plan IDs

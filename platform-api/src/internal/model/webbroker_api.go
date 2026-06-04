@@ -52,8 +52,9 @@ type WebBrokerAPIConfiguration struct {
 
 // WebBrokerReceiver represents the receiver configuration
 type WebBrokerReceiver struct {
-	Name string `json:"name"`
-	Type string `json:"type"` // e.g., "websocket"
+	Name       string                 `json:"name"`
+	Type       string                 `json:"type"` // e.g., "websocket"
+	Properties map[string]interface{} `json:"properties,omitempty"`
 }
 
 // WebBrokerBroker represents the broker configuration
