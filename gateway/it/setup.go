@@ -431,6 +431,7 @@ func CheckPortsAvailable() error {
 	ports := []string{
 		GatewayControllerPort, // 9090
 		GatewayControllerAdminPort,
+		GatewayControllerRuntimeAdminPort, // 9093
 		RouterPort,     // 8080
 		"8443",         // HTTPS
 		EnvoyAdminPort, // 9901
