@@ -20,10 +20,10 @@ package rbac
 // Permission is a typed string identifying a single platform capability.
 type Permission string
 
-// Scope returns the OAuth2 scope string as Thunder issues it in the token (e.g. "api-platform:gateway:create").
+// Scope returns the OAuth2 scope string as Thunder issues it in the token (e.g. "ap:gateway:create").
 // Thunder prefixes scopes with the resource-server identifier when issuing tokens.
 func (p Permission) Scope() string {
-	return "api-platform:" + string(p)
+	return "ap:" + string(p)
 }
 
 const (
