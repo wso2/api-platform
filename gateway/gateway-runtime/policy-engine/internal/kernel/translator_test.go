@@ -754,10 +754,11 @@ func TestTranslateResponseActionsCore_NoShortCircuit(t *testing.T) {
 // Dynamic-endpoint request-header translation
 // =============================================================================
 
-// A dynamic-endpoint policy sets UpstreamName: the header phase must advertise the
-// target upstream base path in dynamic metadata and leave target_path at the original
-// request path, without baking a "path" mutation that Lua reads first and would
-// double-prefix on the sandbox vhost (e.g. /sandbox/alternate/whoami).
+// A dynamic-endpoint policy sets UpstreamName: the header phase must advertise the target
+// upstream base path in dynamic metadata and surface the RAW request path as metadata["path"]
+// (via the mutation struct). The Lua filter strips api_context and prepends the target base
+// exactly once, so the value must be the raw path, never a pre-baked one. A path-changing
+// policy that already set mutations.Path must win (not be clobbered).
 func TestTranslateRequestHeaderActions_DynamicEndpoint(t *testing.T) {
 	newExecCtx := func() *PolicyExecutionContext {
 		kernel := NewKernel()
@@ -778,7 +779,7 @@ func TestTranslateRequestHeaderActions_DynamicEndpoint(t *testing.T) {
 	targetUpstream := "alt-upstream"
 	chain := &registry.PolicyChain{}
 
-	t.Run("advertises target upstream base path without baking a path mutation", func(t *testing.T) {
+	t.Run("surfaces the raw request path and target upstream base path", func(t *testing.T) {
 		execCtx := newExecCtx()
 		result := &executor.RequestHeaderExecutionResult{
 			Results: []executor.RequestHeaderPolicyResult{
@@ -804,19 +805,18 @@ func TestTranslateRequestHeaderActions_DynamicEndpoint(t *testing.T) {
 		extProc := resp.DynamicMetadata.Fields[constants.ExtProcFilterName].GetStructValue()
 		require.NotNil(t, extProc)
 		assert.Equal(t, "/alternate", extProc.Fields["target_upstream_base_path"].GetStringValue())
-		assert.Equal(t, "/api/whoami", extProc.Fields["request_transformation.target_path"].GetStringValue())
-		assert.NotContains(t, extProc.Fields, "path")
+		assert.Equal(t, "/api/whoami", extProc.Fields["path"].GetStringValue())
+		assert.NotContains(t, extProc.Fields, "request_transformation.target_path")
 	})
 
-	t.Run("preserves a target_path already set by an earlier policy", func(t *testing.T) {
+	t.Run("does not clobber a path set by an earlier policy", func(t *testing.T) {
 		execCtx := newExecCtx()
+		rewrittenPath := "/rewritten/path"
 		result := &executor.RequestHeaderExecutionResult{
 			Results: []executor.RequestHeaderPolicyResult{
 				{Action: policy.UpstreamRequestHeaderModifications{
 					UpstreamName: &targetUpstream,
-					DynamicMetadata: map[string]map[string]interface{}{
-						constants.ExtProcFilterName: {"request_transformation.target_path": "/rewritten/path"},
-					},
+					Path:         &rewrittenPath,
 				}},
 			},
 		}
@@ -825,15 +825,15 @@ func TestTranslateRequestHeaderActions_DynamicEndpoint(t *testing.T) {
 		require.NoError(t, err)
 		extProc := resp.DynamicMetadata.Fields[constants.ExtProcFilterName].GetStructValue()
 		require.NotNil(t, extProc)
-		assert.Equal(t, "/rewritten/path", extProc.Fields["request_transformation.target_path"].GetStringValue())
+		assert.Equal(t, "/rewritten/path", extProc.Fields["path"].GetStringValue())
 		assert.Equal(t, "/alternate", extProc.Fields["target_upstream_base_path"].GetStringValue())
-		assert.NotContains(t, extProc.Fields, "path")
+		assert.NotContains(t, extProc.Fields, "request_transformation.target_path")
 	})
 }
 
 // The body-merge variant (body-less requests) shares the same dynamic-endpoint contract:
-// the policy runs in the header phase, must not bake a path, and preserves a target_path
-// already chosen by an earlier policy.
+// the policy runs in the header phase, surfaces the raw request path as metadata["path"],
+// and must not clobber a path already set by an earlier policy.
 func TestTranslateRequestHeaderActionsWithBodyMerge_DynamicEndpoint(t *testing.T) {
 	newExecCtx := func() *PolicyExecutionContext {
 		kernel := NewKernel()
@@ -855,7 +855,7 @@ func TestTranslateRequestHeaderActionsWithBodyMerge_DynamicEndpoint(t *testing.T
 		return &executor.RequestExecutionResult{Results: []executor.RequestPolicyResult{}}
 	}
 
-	t.Run("advertises target upstream base path without baking a path mutation", func(t *testing.T) {
+	t.Run("surfaces the raw request path and target upstream base path", func(t *testing.T) {
 		execCtx := newExecCtx()
 		headerResult := &executor.RequestHeaderExecutionResult{
 			Results: []executor.RequestHeaderPolicyResult{
@@ -868,19 +868,18 @@ func TestTranslateRequestHeaderActionsWithBodyMerge_DynamicEndpoint(t *testing.T
 		extProc := resp.DynamicMetadata.Fields[constants.ExtProcFilterName].GetStructValue()
 		require.NotNil(t, extProc)
 		assert.Equal(t, "/alternate", extProc.Fields["target_upstream_base_path"].GetStringValue())
-		assert.Equal(t, "/api/whoami", extProc.Fields["request_transformation.target_path"].GetStringValue())
-		assert.NotContains(t, extProc.Fields, "path")
+		assert.Equal(t, "/api/whoami", extProc.Fields["path"].GetStringValue())
+		assert.NotContains(t, extProc.Fields, "request_transformation.target_path")
 	})
 
-	t.Run("preserves a target_path already set by an earlier policy", func(t *testing.T) {
+	t.Run("does not clobber a path set by an earlier policy", func(t *testing.T) {
 		execCtx := newExecCtx()
+		rewrittenPath := "/rewritten/path"
 		headerResult := &executor.RequestHeaderExecutionResult{
 			Results: []executor.RequestHeaderPolicyResult{
 				{Action: policy.UpstreamRequestHeaderModifications{
 					UpstreamName: &targetUpstream,
-					DynamicMetadata: map[string]map[string]interface{}{
-						constants.ExtProcFilterName: {"request_transformation.target_path": "/rewritten/path"},
-					},
+					Path:         &rewrittenPath,
 				}},
 			},
 		}
@@ -888,8 +887,8 @@ func TestTranslateRequestHeaderActionsWithBodyMerge_DynamicEndpoint(t *testing.T
 		require.NoError(t, err)
 		extProc := resp.DynamicMetadata.Fields[constants.ExtProcFilterName].GetStructValue()
 		require.NotNil(t, extProc)
-		assert.Equal(t, "/rewritten/path", extProc.Fields["request_transformation.target_path"].GetStringValue())
+		assert.Equal(t, "/rewritten/path", extProc.Fields["path"].GetStringValue())
 		assert.Equal(t, "/alternate", extProc.Fields["target_upstream_base_path"].GetStringValue())
-		assert.NotContains(t, extProc.Fields, "path")
+		assert.NotContains(t, extProc.Fields, "request_transformation.target_path")
 	})
 }

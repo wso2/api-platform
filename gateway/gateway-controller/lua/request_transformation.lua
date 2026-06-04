@@ -26,28 +26,8 @@ local function resolve_target_method(metadata)
     return nil
   end
 
-  -- Check the new SDK format first (mods.Method sets this)
-  local method_key = metadata["method"]
-  if method_key ~= nil then
-    return method_key
-  end
-
-  local direct = metadata["request_transformation.target_method"]
-  if direct ~= nil then
-    return direct
-  end
-
-  local new_method = metadata["new_method"]
-  if new_method ~= nil then
-    return new_method
-  end
-
-  local nested = metadata["request_transformation"]
-  if type(nested) == "table" then
-    return nested["target_method"]
-  end
-
-  return nil
+  -- metadata["method"] is the single channel the policy engine uses (from mods.Method).
+  return metadata["method"]
 end
 
 local function resolve_target_host(metadata)
@@ -55,23 +35,8 @@ local function resolve_target_host(metadata)
     return nil
   end
 
-  -- New SDK format: mods.Host sets this
-  local host_key = metadata["host"]
-  if host_key ~= nil then
-    return host_key
-  end
-
-  local direct = metadata["request_transformation.target_host"]
-  if direct ~= nil then
-    return direct
-  end
-
-  local nested = metadata["request_transformation"]
-  if type(nested) == "table" then
-    return nested["target_host"]
-  end
-
-  return nil
+  -- metadata["host"] is the single channel the policy engine uses (from mods.Host).
+  return metadata["host"]
 end
 
 local function resolve_target_path(metadata)
@@ -79,23 +44,9 @@ local function resolve_target_path(metadata)
     return nil
   end
 
-  -- Check the new SDK format first (mods.Path sets this)
-  local path_key = metadata["path"]
-  if path_key ~= nil then
-    return path_key
-  end
-
-  local direct = metadata["request_transformation.target_path"]
-  if direct ~= nil then
-    return direct
-  end
-
-  local nested = metadata["request_transformation"]
-  if type(nested) == "table" then
-    return nested["target_path"]
-  end
-
-  return nil
+  -- metadata["path"] is the single channel the policy engine uses: the dynamic-endpoint
+  -- handler and path-changing policies (e.g. request-rewrite) both set it via mods.Path.
+  return metadata["path"]
 end
 
 -- Strip API context from path and prepend upstream base path

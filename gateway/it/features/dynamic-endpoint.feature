@@ -371,3 +371,116 @@ Feature: Dynamic Endpoint policy
     Given I authenticate using basic auth as "admin"
     When I delete the API "dynamic-endpoint-sandbox-mixed-v1.0"
     Then the response should be successful
+
+  # A path-changing policy (request-rewrite) and dynamic-endpoint on the SAME operation must
+  # compose: the rewrite sets mutations.Path -> metadata["path"], and the dynamic-endpoint
+  # handler must NOT clobber it. The Lua filter prepends the target upstream base (/alternate)
+  # exactly once, so the rewrite AND the routing both apply -> /alternate/rewritten.
+  Scenario: Dynamic-endpoint combined with a path-rewrite policy on the same operation
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: dynamic-endpoint-rewrite-v1.0
+      spec:
+        displayName: Dynamic-Endpoint-Rewrite-API
+        version: v1.0
+        context: /dynamic-endpoint-rewrite/$version
+        upstreamDefinitions:
+          - name: alt-upstream
+            basePath: /alternate
+            upstreams:
+              - url: http://sample-backend:9080
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /whoami
+            policies:
+              - name: request-rewrite
+                version: v1
+                params:
+                  pathRewrite:
+                    type: ReplaceFullPath
+                    replaceFullPath: /rewritten
+              - name: dynamic-endpoint
+                version: v1
+                params:
+                  targetUpstream: alt-upstream
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/dynamic-endpoint-rewrite/v1.0/whoami" to be ready
+
+    # Both the rewrite (/whoami -> /rewritten) and the dynamic-endpoint base (/alternate) apply,
+    # prefixed exactly once.
+    When I clear all headers
+    And I send a GET request to "http://localhost:8080/dynamic-endpoint-rewrite/v1.0/whoami"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/alternate/rewritten"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "dynamic-endpoint-rewrite-v1.0"
+    Then the response should be successful
+
+  # The same request-rewrite + dynamic-endpoint combination on the SANDBOX vhost: the sandbox
+  # base (/sandbox) must NOT leak in. The request diverts to the target upstream (/alternate)
+  # with the rewritten path, prefixed exactly once -> /alternate/rewritten.
+  Scenario: Dynamic-endpoint and a path-rewrite policy combined on the sandbox vhost
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: dynamic-endpoint-rewrite-sandbox-v1.0
+      spec:
+        displayName: Dynamic-Endpoint-Rewrite-Sandbox-API
+        version: v1.0
+        context: /dynamic-endpoint-rewrite-sandbox/$version
+        vhosts:
+          main: dyn-rw-sb-main.local
+          sandbox: dyn-rw-sb-sandbox.local
+        upstreamDefinitions:
+          - name: alt-upstream
+            basePath: /alternate
+            upstreams:
+              - url: http://sample-backend:9080
+        upstream:
+          main:
+            url: http://sample-backend:9080
+          sandbox:
+            url: http://sample-backend:9080/sandbox
+        operations:
+          - method: GET
+            path: /whoami
+            policies:
+              - name: request-rewrite
+                version: v1
+                params:
+                  pathRewrite:
+                    type: ReplaceFullPath
+                    replaceFullPath: /rewritten
+              - name: dynamic-endpoint
+                version: v1
+                params:
+                  targetUpstream: alt-upstream
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/dynamic-endpoint-rewrite-sandbox/v1.0/whoami" to be ready with host "dyn-rw-sb-sandbox.local"
+
+    # Sandbox vhost: rewrite under the target upstream base (/alternate), prefixed once.
+    # The sandbox base (/sandbox) must not appear.
+    When I clear all headers
+    And I set request host to "dyn-rw-sb-sandbox.local"
+    And I send a GET request to "http://localhost:8080/dynamic-endpoint-rewrite-sandbox/v1.0/whoami"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/alternate/rewritten"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "dynamic-endpoint-rewrite-sandbox-v1.0"
+    Then the response should be successful
