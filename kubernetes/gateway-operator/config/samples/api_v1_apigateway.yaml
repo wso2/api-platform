@@ -500,7 +500,7 @@ data:
           ports:
             http: 8080
             https: 8443
-            envoyAdmin: 9901
+            routerAdmin: 9901
             policyEngineAdmin: 9002
             policyEngineMetrics: 9003
         deployment:

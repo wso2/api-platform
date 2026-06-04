@@ -14,6 +14,9 @@ Gateway Controller has been deployed:
   - REST API Port: {{ .Values.gateway.controller.service.ports.rest }}
   - xDS Port: {{ .Values.gateway.controller.service.ports.xds }}
   - Policy xDS Port: {{ .Values.gateway.controller.service.ports.policy }}
+{{- if .Values.gateway.controller.service.expose.admin }}
+  - Admin Port: {{ .Values.gateway.controller.service.ports.admin }} (exposed on the Service — serves config_dump/health)
+{{- end }}
 {{- if .Values.gateway.controller.tls.enabled }}
   - HTTPS Enabled: Yes
   {{- if eq .Values.gateway.controller.tls.certificateProvider "cert-manager" }}
@@ -37,6 +40,12 @@ Gateway Runtime (Router + Policy Engine) has been deployed:
   - Service: {{ include "gateway-operator.fullname" . }}-gateway-runtime
   - HTTP Port: {{ .Values.gateway.gatewayRuntime.service.ports.http }}
   - HTTPS Port: {{ .Values.gateway.gatewayRuntime.service.ports.https }}
+{{- if .Values.gateway.gatewayRuntime.service.expose.routerAdmin }}
+  - Router Admin Port: {{ .Values.gateway.gatewayRuntime.service.ports.routerAdmin }} (exposed — includes MUTATING admin endpoints; restrict access)
+{{- end }}
+{{- if .Values.gateway.gatewayRuntime.service.expose.policyEngineAdmin }}
+  - Policy Engine Admin Port: {{ .Values.gateway.gatewayRuntime.service.ports.policyEngineAdmin }} (exposed — serves config_dump/health)
+{{- end }}
 
 To access the Gateway Runtime:
   {{- if eq .Values.gateway.gatewayRuntime.service.type "LoadBalancer" }}

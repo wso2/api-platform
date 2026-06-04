@@ -180,6 +180,9 @@ gateway:
         policy: 18001
         admin: 9092
         metrics: 9091
+      # Publish admin/debug ports on the Service. Off by default — keep pod-internal.
+      expose:
+        admin: false
     controlPlane:
       host: host.docker.internal
       port: 8443
@@ -317,9 +320,14 @@ gateway:
       ports:
         http: 8080
         https: 8443
-        envoyAdmin: 9901
+        routerAdmin: 9901
         policyEngineAdmin: 9002
         policyEngineMetrics: 9003
+      # Publish the runtime admin/debug ports on the Service. Off by default.
+      # routerAdmin (Envoy admin) has mutating endpoints — leave OFF unless trusted.
+      expose:
+        routerAdmin: false
+        policyEngineAdmin: false
     deployment:
       enabled: true
       replicaCount: 1

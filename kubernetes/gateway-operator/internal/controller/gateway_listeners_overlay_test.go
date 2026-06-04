@@ -115,7 +115,7 @@ func TestApplyListenerOverlayToValues_OverridesHTTPAndHTTPSPorts(t *testing.T) {
       ports:
         http: 9090
         https: 9443
-        envoyAdmin: 9901
+        routerAdmin: 9901
   replicaCount: 2
 `
 	gw := newGatewayWithListeners(listener("HTTP", 80), listener("HTTPS", 443))
@@ -144,7 +144,7 @@ func TestApplyListenerOverlayToValues_OverridesHTTPAndHTTPSPorts(t *testing.T) {
 	if ports["https"] != 443 {
 		t.Errorf("gatewayRuntime.service.ports.https = %v, want 443", ports["https"])
 	}
-	if ports["envoyAdmin"] != 9901 {
+	if ports["routerAdmin"] != 9901 {
 		t.Errorf("sibling service port keys dropped; ports=%v", ports)
 	}
 }

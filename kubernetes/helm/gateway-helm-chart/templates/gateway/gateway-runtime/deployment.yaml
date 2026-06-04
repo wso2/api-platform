@@ -93,8 +93,8 @@ spec:
             - name: https
               containerPort: {{ $unified.service.ports.https }}
               protocol: TCP
-            - name: envoy-admin
-              containerPort: {{ $unified.service.ports.envoyAdmin }}
+            - name: router-admin
+              containerPort: {{ $unified.service.ports.routerAdmin }}
               protocol: TCP
             - name: pe-admin
               containerPort: {{ $unified.service.ports.policyEngineAdmin }}
