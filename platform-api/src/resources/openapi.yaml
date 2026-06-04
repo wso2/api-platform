@@ -1771,7 +1771,7 @@ paths:
       summary: "[Deprecated] Use POST /rest-apis/{apiId}/publications"
       description: Deprecated. Use `POST /rest-apis/{apiId}/publications` instead.
       operationId: PublishRESTAPIToDevPortalDeprecated
-      x-required-scopes: [api-platform:rest_api:publish, api-platform:rest_api:manage]
+      x-required-scopes: [api-platform:rest_api:publication:create, api-platform:rest_api:manage]
       tags:
         - REST APIs
         - DevPortal
@@ -1807,7 +1807,7 @@ paths:
       summary: "[Deprecated] Use DELETE /rest-apis/{apiId}/publications/{devportalId}"
       description: Deprecated. Use `DELETE /rest-apis/{apiId}/publications/{devportalId}` instead.
       operationId: UnpublishRESTAPIFromDevPortalDeprecated
-      x-required-scopes: [api-platform:rest_api:publish, api-platform:rest_api:manage]
+      x-required-scopes: [api-platform:rest_api:publication:delete, api-platform:rest_api:manage]
       tags:
         - REST APIs
         - DevPortal
@@ -1843,7 +1843,7 @@ paths:
       description: |
         Retrieves all DevPortals associated with an API including publication details.
       operationId: GetRESTAPIPublications
-      x-required-scopes: [api-platform:rest_api:read, api-platform:rest_api:manage]
+      x-required-scopes: [api-platform:rest_api:publication:read, api-platform:rest_api:manage]
       tags:
         - REST APIs
         - DevPortal
@@ -1871,7 +1871,7 @@ paths:
       description: |
         Publishes an existing API from platform-api to the configured DevPortal.
       operationId: PublishRESTAPIToDevPortal
-      x-required-scopes: [api-platform:rest_api:publish, api-platform:rest_api:manage]
+      x-required-scopes: [api-platform:rest_api:publication:create, api-platform:rest_api:manage]
       tags:
         - REST APIs
         - DevPortal
@@ -1947,7 +1947,7 @@ paths:
       description: |
         Removes an API from the configured DevPortal.
       operationId: UnpublishRESTAPIFromDevPortal
-      x-required-scopes: [api-platform:rest_api:unpublish, api-platform:rest_api:manage]
+      x-required-scopes: [api-platform:rest_api:publication:delete, api-platform:rest_api:manage]
       tags:
         - REST APIs
         - DevPortal
